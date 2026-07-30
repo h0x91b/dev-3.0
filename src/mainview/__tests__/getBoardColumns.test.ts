@@ -58,8 +58,56 @@ describe("getBoardColumns", () => {
 	});
 
 	it("AI Review stays visible (even when disabled) if it currently has items", () => {
-		const result = tokens(getBoardColumns(project({ builtinColumnAgents: {} }), { aiReviewHasItems: true }));
+		const result = tokens(
+			getBoardColumns(project({ builtinColumnAgents: {} }), { occupiedStatuses: new Set(["review-by-ai"] as const) }),
+		);
 		expect(result).toContain("review-by-ai");
+	});
+
+	// An occupied column that hides takes its cards off the board for good: they
+	// stay in tasks.json and stay visible to the CLI, and a restart does not bring
+	// them back. Never hide a column that holds tasks.
+	it("PR Review stays visible with peer review off if it currently has items", () => {
+		const result = tokens(
+			getBoardColumns(project({ peerReviewEnabled: false }), {
+				occupiedStatuses: new Set(["review-by-colleague"] as const),
+			}),
+		);
+		expect(result).toContain("review-by-colleague");
+	});
+
+	it("virtual board keeps an occupied AI Review / PR Review column", () => {
+		const result = tokens(
+			getBoardColumns(project({ kind: "virtual" }), {
+				occupiedStatuses: new Set(["review-by-ai", "review-by-colleague"] as const),
+			}),
+		);
+		expect(result).toContain("review-by-ai");
+		expect(result).toContain("review-by-colleague");
+	});
+
+	it("occupancy of an unrelated column does not resurrect a hidden one", () => {
+		const result = tokens(
+			getBoardColumns(project({ peerReviewEnabled: false }), { occupiedStatuses: new Set(["todo"] as const) }),
+		);
+		expect(result).not.toContain("review-by-colleague");
+	});
+
+	it("a hidden column stays hidden when it is listed in a stored columnOrder", () => {
+		const result = tokens(
+			getBoardColumns(project({ peerReviewEnabled: false, columnOrder: ["todo", "review-by-colleague", "completed"] })),
+		);
+		expect(result).not.toContain("review-by-colleague");
+	});
+
+	it("an occupied column listed in a stored columnOrder keeps its stored position", () => {
+		const result = tokens(
+			getBoardColumns(
+				project({ peerReviewEnabled: false, columnOrder: ["todo", "review-by-colleague", "completed"] }),
+				{ occupiedStatuses: new Set(["review-by-colleague"] as const) },
+			),
+		);
+		expect(result.slice(0, 3)).toEqual(["todo", "review-by-colleague", "completed"]);
 	});
 
 	it("virtual (Operations) board hides both AI Review and PR Review", () => {

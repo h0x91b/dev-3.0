@@ -1095,27 +1095,34 @@ export type BoardColumnSlot =
  * Returns every column a project's board renders, in effective display order,
  * respecting `columnOrder` and hiding columns that don't apply (virtual boards
  * have no AI/PR review; `peerReviewEnabled === false` hides PR review; AI review
- * hides when disabled and empty). Single source of truth for the board's column
- * layout — see [[KanbanBoard]].
+ * hides when disabled). Single source of truth for the board's column layout —
+ * see [[KanbanBoard]].
  *
- * Pure function of the project plus `opts.aiReviewHasItems` (the renderer passes
- * whether the AI-review column currently holds tasks).
+ * Pure function of the project plus `opts.occupiedStatuses` — the built-in
+ * statuses that currently hold at least one card. **A column holding tasks is
+ * never hidden**, whatever the project config says: hiding it would drop those
+ * cards off the board with no way to reach them (and it survives a restart,
+ * which reads as data loss). Turning peer review off, or converting a board to
+ * Operations, therefore leaves an occupied review column standing until it
+ * empties out.
  */
 export function getBoardColumns(
 	project: Pick<Project, "customColumns" | "columnOrder" | "peerReviewEnabled" | "builtinColumnAgents" | "kind">,
-	opts: { aiReviewHasItems?: boolean } = {},
+	opts: { occupiedStatuses?: ReadonlySet<TaskStatus> } = {},
 ): BoardColumnSlot[] {
 	const cols = project.customColumns ?? [];
 	const peerReviewEnabled = project.peerReviewEnabled !== false;
 	// AI Review shows by default (on when builtinColumnAgents is unset or has a review-by-ai config).
 	const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
-	const aiReviewHasItems = opts.aiReviewHasItems ?? false;
+	const occupied = opts.occupiedStatuses;
 	// Virtual ("Operations") boards have no diff/PR, so AI Review and PR Review are hidden.
 	const isVirtual = project.kind === "virtual";
 	const shouldHide = (s: TaskStatus) =>
-		(isVirtual && (s === "review-by-ai" || s === "review-by-colleague")) ||
-		(s === "review-by-colleague" && !peerReviewEnabled) ||
-		(s === "review-by-ai" && !aiReviewEnabled && !aiReviewHasItems);
+		!occupied?.has(s) && (
+			(isVirtual && (s === "review-by-ai" || s === "review-by-colleague")) ||
+			(s === "review-by-colleague" && !peerReviewEnabled) ||
+			(s === "review-by-ai" && !aiReviewEnabled)
+		);
 	const filterBuiltin = (statuses: TaskStatus[]) => statuses.filter((s) => !shouldHide(s));
 
 	if (!project.columnOrder || project.columnOrder.length === 0) {

@@ -88,7 +88,7 @@ export async function atomicWriteFile(filePath: string, content: string): Promis
 	}
 }
 
-// ---- Read cache (mtime/size keyed) ----
+// ---- Read cache (inode/mtime/size keyed) ----
 //
 // Background pollers re-read projects.json/tasks.json multiple times per second.
 // Caching the parsed result and validating it with a cheap stat() avoids re-reading
@@ -96,10 +96,19 @@ export async function atomicWriteFile(filePath: string, content: string): Promis
 // BEFORE readFile so a concurrent write can only over-invalidate, never serve stale.
 // Cache hits return shallow copies; mutators bypass the cache and saves invalidate it,
 // so callers of the public load APIs must treat results as read-only snapshots.
+//
+// The identity includes the inode and nanosecond mtime, not just millisecond mtime
+// and size: every write here lands via atomicWriteFile's rename(), which always
+// produces a NEW inode, so a same-size rewrite can never be mistaken for the cached
+// file — including a rewrite by another app instance within the same millisecond.
 
-interface FileCacheEntry<T> {
-	mtimeMs: number;
-	size: number;
+interface FileIdentity {
+	mtimeNs: bigint;
+	size: bigint;
+	ino: bigint;
+}
+
+interface FileCacheEntry<T> extends FileIdentity {
 	value: T[];
 }
 
@@ -107,19 +116,23 @@ const projectsCache = new Map<string, FileCacheEntry<Project>>();
 const virtualProjectsCache = new Map<string, FileCacheEntry<Project>>();
 const tasksCache = new Map<string, FileCacheEntry<Task>>();
 
+function sameFileIdentity(a: FileIdentity, b: FileIdentity): boolean {
+	return a.ino === b.ino && a.mtimeNs === b.mtimeNs && a.size === b.size;
+}
+
 async function cacheLookup<T>(
 	cache: Map<string, FileCacheEntry<T>>,
 	file: string,
-): Promise<{ hit: T[] | null; stat: { mtimeMs: number; size: number } | null }> {
-	let fileStat: { mtimeMs: number; size: number } | null = null;
+): Promise<{ hit: T[] | null; stat: FileIdentity | null }> {
+	let fileStat: FileIdentity;
 	try {
-		const st = await stat(file);
-		fileStat = { mtimeMs: st.mtimeMs, size: st.size };
+		const st = await stat(file, { bigint: true });
+		fileStat = { mtimeNs: st.mtimeNs, size: st.size, ino: st.ino };
 	} catch {
 		return { hit: null, stat: null };
 	}
 	const entry = cache.get(file);
-	if (entry && entry.mtimeMs === fileStat.mtimeMs && entry.size === fileStat.size) {
+	if (entry && sameFileIdentity(entry, fileStat)) {
 		return { hit: entry.value.map((item) => ({ ...item })), stat: fileStat };
 	}
 	return { hit: null, stat: fileStat };
@@ -151,7 +164,7 @@ function toDataFileReadError(
 async function rawLoadAllProjects(options?: { strict?: boolean; persistMigrations?: boolean }): Promise<Project[]> {
 	// Mutators (strict/persistMigrations) always read fresh from disk.
 	const useCache = !options?.strict && !options?.persistMigrations;
-	let preReadStat: { mtimeMs: number; size: number } | null = null;
+	let preReadStat: FileIdentity | null = null;
 	if (useCache) {
 		const { hit, stat: st } = await cacheLookup(projectsCache, PROJECTS_FILE);
 		if (hit) return hit;
@@ -276,7 +289,7 @@ export async function saveProjects(projects: Project[]): Promise<void> {
 
 async function rawLoadAllVirtualProjects(options?: { strict?: boolean }): Promise<Project[]> {
 	const useCache = !options?.strict;
-	let preReadStat: { mtimeMs: number; size: number } | null = null;
+	let preReadStat: FileIdentity | null = null;
 	if (useCache) {
 		const { hit, stat: st } = await cacheLookup(virtualProjectsCache, VIRTUAL_PROJECTS_FILE);
 		if (hit) return hit;
@@ -599,7 +612,7 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 	const file = tasksFile(project);
 	// Mutators (strict/persistMigrations) always read fresh from disk.
 	const useCache = !options?.strict && !options?.persistMigrations;
-	let preReadStat: { mtimeMs: number; size: number } | null = null;
+	let preReadStat: FileIdentity | null = null;
 	if (useCache) {
 		const { hit, stat: st } = await cacheLookup(tasksCache, file);
 		if (hit) return hit;

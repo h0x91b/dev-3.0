@@ -14,6 +14,7 @@ import KanbanColumn from "./KanbanColumn";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import CreateTaskModal from "./CreateTaskModal";
 import { sortTasksForColumn } from "./sortTasks";
+import { partitionTasksByStatus } from "./partitionTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesTaskQuery } from "../utils/taskSearch";
 import { buildFilterGroups, taskQueryContext, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
@@ -495,16 +496,9 @@ function KanbanBoard({
 	}
 
 	// Built-in column tasks (exclude tasks in an existing custom column; tasks
-	// with a dangling customColumnId fall back here into their status column).
-	const tasksByStatus = new Map<TaskStatus, Task[]>();
-	for (const status of ALL_STATUSES) {
-		tasksByStatus.set(status, []);
-	}
-	for (const task of displayTasks) {
-		if (!isInCustomColumn(task)) {
-			tasksByStatus.get(task.status)?.push(task);
-		}
-	}
+	// with a dangling customColumnId fall back here into their status column,
+	// and an unrecognized status falls back to To Do — see partitionTasksByStatus).
+	const tasksByStatus = partitionTasksByStatus(displayTasks, isInCustomColumn);
 
 	// Sort tasks within each built-in column for variant grouping
 	for (const status of ALL_STATUSES) {
@@ -515,12 +509,17 @@ function KanbanBoard({
 	}
 
 	// Returns all columns in their effective display order (delegates to the
-	// shared getBoardColumns). "Your Review" stays even on virtual boards: a
-	// finished ops task is handed
-	// back via review-by-user, so hiding it would drop the task off the board.
+	// shared getBoardColumns). Occupancy is computed from the FULL task list, not
+	// the filtered one: a search filter must never hide a column out from under
+	// the cards it holds. "Your Review" stays even on virtual boards: a finished
+	// ops task is handed back via review-by-user, so hiding it would drop the
+	// task off the board.
 	function getOrderedColumns(): ColumnSlot[] {
-		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !isInCustomColumn(t));
-		return getBoardColumns(project, { aiReviewHasItems });
+		const occupiedStatuses = new Set<TaskStatus>();
+		for (const task of tasks) {
+			if (!isInCustomColumn(task)) occupiedStatuses.add(task.status);
+		}
+		return getBoardColumns(project, { occupiedStatuses });
 	}
 
 	function handleColumnDragStart(colId: string) {

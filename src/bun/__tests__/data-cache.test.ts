@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, utimesSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import type { Project, Task } from "../../shared/types";
 
 const { logDebug, testHome } = vi.hoisted(() => ({
@@ -154,6 +154,35 @@ describe("tasks read cache", () => {
 
 		const reloaded = await loadTasks(project);
 		expect(reloaded).toHaveLength(3);
+	});
+
+	// Every write in data.ts lands via atomicWriteFile's rename(), so a replaced
+	// file always has a new inode. That makes the cache safe even when the new
+	// payload has the identical byte length AND the timestamps are forced back —
+	// the case that would otherwise serve a stale board (missing task) forever.
+	it("re-reads a same-size, same-mtime replacement (inode differs)", async () => {
+		const project = makeProject();
+		const file = `${HOME}/data/${SLUG}/tasks.json`;
+		const frozen = new Date("2026-05-05T05:05:05.000Z");
+
+		writeTasksFile([makeTask({ id: "aaaaa" })]);
+		utimesSync(file, frozen, frozen);
+		expect((await loadTasks(project))[0].id).toBe("aaaaa");
+		expect(loadingTasksLogCount()).toBe(1);
+		const before = statSync(file, { bigint: true });
+
+		writeFileSync(`${file}.swap`, JSON.stringify([makeTask({ id: "bbbbb" })], null, 2));
+		renameSync(`${file}.swap`, file);
+		utimesSync(file, frozen, frozen);
+
+		// Only the inode may differ — size and mtime are byte-for-byte identical.
+		const after = statSync(file, { bigint: true });
+		expect(after.size).toBe(before.size);
+		expect(after.mtimeNs).toBe(before.mtimeNs);
+
+		const reloaded = await loadTasks(project);
+		expect(reloaded[0].id).toBe("bbbbb");
+		expect(loadingTasksLogCount()).toBe(2);
 	});
 
 	it("still returns empty list when tasks file is missing", async () => {
