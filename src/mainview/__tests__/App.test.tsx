@@ -205,6 +205,21 @@ class FakeWebNotification {
 	}
 }
 
+const realNavigator = globalThis.navigator;
+
+/**
+ * Fake the platform `isMac()` reads. The shortcut chain is platform-exact for
+ * the combos the terminal owns (⌘Q/⌘H/⌘N/⌘P/⌘K/⌘[/⌘G), so a test asserting a
+ * ⌘ or a Ctrl combo has to state which OS it is on.
+ */
+function fakePlatform(os: "mac" | "linux") {
+	const value =
+		os === "mac"
+			? { platform: "MacIntel", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" }
+			: { platform: "Linux x86_64", userAgent: "Mozilla/5.0 (X11; Linux x86_64)" };
+	Object.defineProperty(globalThis, "navigator", { value, writable: true, configurable: true });
+}
+
 describe("App keyboard shortcuts", () => {
 	beforeEach(() => {
 		// These assert the DESKTOP keymap (⌘Q, ⌘N, zoom, ⌘1–9). happy-dom looks like
@@ -212,11 +227,17 @@ describe("App keyboard shortcuts", () => {
 		// the Electrobun webview flag. Safe here because rpc is mocked (above).
 		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
 		rpcTransport.isElectrobun = true;
+		// The ⌘ combos below are the macOS keymap — happy-dom is not a Mac.
+		fakePlatform("mac");
 		vi.clearAllMocks();
 		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
 		vi.mocked(api.request.getProjects).mockResolvedValue([]);
 		vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: null });
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
+	});
+
+	afterEach(() => {
+		Object.defineProperty(globalThis, "navigator", { value: realNavigator, writable: true, configurable: true });
 	});
 
 	it("opens the native pane layout lab from the debug menu action", async () => {
@@ -264,11 +285,19 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.requestQuit).toHaveBeenCalled();
 		});
 
-		it("Ctrl+Q forwards to bun via requestQuit", async () => {
+		it("Ctrl+Q forwards to bun via requestQuit off macOS", async () => {
+			fakePlatform("linux");
 			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
 			await renderApp();
 			await userEvent.keyboard("{Control>}q{/Control}");
 			expect(api.request.requestQuit).toHaveBeenCalled();
+		});
+
+		it("Ctrl+Q on macOS is XON for the terminal, not a quit", async () => {
+			vi.mocked(api.request.requestQuit).mockResolvedValue(undefined);
+			await renderApp();
+			await userEvent.keyboard("{Control>}q{/Control}");
+			expect(api.request.requestQuit).not.toHaveBeenCalled();
 		});
 
 		it("Escape closes the quit dialog", async () => {
@@ -304,10 +333,53 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.hideApp).toHaveBeenCalled();
 		});
 
-		it("Ctrl+H calls hideApp", async () => {
+		it("Ctrl+H calls hideApp off macOS", async () => {
+			fakePlatform("linux");
 			await renderApp();
 			await userEvent.keyboard("{Control>}h{/Control}");
 			expect(api.request.hideApp).toHaveBeenCalled();
+		});
+
+		it("Ctrl+H on macOS is backspace for the terminal, not a hide", async () => {
+			await renderApp();
+			await userEvent.keyboard("{Control>}h{/Control}");
+			expect(api.request.hideApp).not.toHaveBeenCalled();
+		});
+	});
+
+	// Regression guard for the ⌃O bug (PR #1193) and its siblings: the chain runs
+	// in capture phase and calls preventDefault + stopPropagation, so any combo it
+	// claims never reaches the focused terminal. On macOS these belong to the shell.
+	describe("Ctrl+<key> stays with the terminal on macOS", () => {
+		const stolen: Array<{ combo: string; init: KeyboardEventInit }> = [
+			{ combo: "Ctrl+Q (XON)", init: { key: "q", code: "KeyQ" } },
+			{ combo: "Ctrl+H (backspace)", init: { key: "h", code: "KeyH" } },
+			{ combo: "Ctrl+N (next history)", init: { key: "n", code: "KeyN" } },
+			{ combo: "Ctrl+P (previous history)", init: { key: "p", code: "KeyP" } },
+			{ combo: "Ctrl+K (kill to end of line)", init: { key: "k", code: "KeyK" } },
+			{ combo: "Ctrl+G (abort input)", init: { key: "g", code: "KeyG" } },
+			{ combo: "Ctrl+[ (escape)", init: { key: "[", code: "BracketLeft" } },
+			{ combo: "Ctrl+O (open file)", init: { key: "o", code: "KeyO" } },
+		];
+
+		it.each(stolen)("leaves $combo alone", async ({ init }) => {
+			await renderApp();
+			const event = new KeyboardEvent("keydown", { ...init, ctrlKey: true, bubbles: true, cancelable: true });
+			act(() => window.dispatchEvent(event));
+			expect(event.defaultPrevented).toBe(false);
+			expect(api.request.requestQuit).not.toHaveBeenCalled();
+			expect(api.request.hideApp).not.toHaveBeenCalled();
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+			expect(screen.queryByTestId("add-project-modal")).not.toBeInTheDocument();
+			expect(screen.queryByText("New Task")).not.toBeInTheDocument();
+		});
+
+		it("still claims the same keys with Ctrl off macOS", async () => {
+			fakePlatform("linux");
+			await renderApp();
+			const event = new KeyboardEvent("keydown", { key: "k", code: "KeyK", ctrlKey: true, bubbles: true, cancelable: true });
+			act(() => window.dispatchEvent(event));
+			expect(event.defaultPrevented).toBe(true);
 		});
 	});
 

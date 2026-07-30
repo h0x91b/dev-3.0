@@ -793,16 +793,18 @@ function App() {
 			// native behavior; aliased ones (⌘1–9 → `G then 1–9`, ⌘N → `C`) fall back
 			// to their bare-key path. Source of truth: `keymap.ts` scope/remoteKeys.
 			const remote = isRemote();
-			if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "q") {
+			if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "q") {
 				if (remote) return; // ⌘Q quits the browser — leave it to the browser.
 				// WKWebView swallows the native menu Cmd+Q accelerator while a
 				// terminal has focus, so we catch it here (capture phase) and ask
 				// the main process to start the quit. The `before-quit` gate then
 				// pushes `showQuitDialog` back, or quits if the user opted out.
+				// Platform-exact modifier: ⌃Q is XON, it unfreezes terminal output.
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.requestQuit().catch(() => {});
-			} else if ((e.metaKey || e.ctrlKey) && e.key === "h") {
+			} else if (hasAppModifier(e) && e.key === "h") {
+				// Platform-exact modifier: ⌃H is backspace in readline.
 				if (remote) return; // ⌘H hides the browser — leave it to the browser.
 				e.preventDefault();
 				e.stopPropagation();
@@ -824,23 +826,26 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.openNewWindow().catch(() => {});
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
 				// ⌘N opens a new browser window in remote (not cancelable) — fall back
 				// to the bare `C` shortcut there. See keymap.ts `new-task` remoteKeys.
+				// Platform-exact modifier: ⌃N is next-history in the shell.
 				if (remote) return;
 				if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
 				if (!openCreateTaskModal()) return;
 				e.preventDefault();
 				e.stopPropagation();
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
+			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
+				// Cmd/Ctrl+P — Add Project. Platform-exact modifier: ⌃P is previous-history.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog) return;
 				openAddProject();
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
 				// Cmd/Ctrl+K — open the project quick-switch palette (Slack/Linear/VSCode
 				// "go to anything" convention). Not Cmd+T: that's the universal new-tab key
 				// and the live terminal underneath (ghostty/tmux) intercepts it.
+				// Platform-exact modifier: ⌃K is kill-to-end-of-line in the shell.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
@@ -923,8 +928,9 @@ function App() {
 				if (!cycleVariant(1)) return;
 				e.preventDefault();
 				e.stopPropagation();
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "[") {
-				// Cmd+[ — navigate back through route history
+			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key === "[") {
+				// Cmd+[ — navigate back through route history. Platform-exact modifier:
+				// ⌃[ is Escape in a terminal; the Ctrl+- alias above covers mac Ctrl users.
 				e.preventDefault();
 				e.stopPropagation();
 				dispatch({ type: "goBack" });
@@ -1006,8 +1012,9 @@ function App() {
 					e.stopPropagation();
 					navigateToProject(available[idx].id);
 				}
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === "KeyG") {
+			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.code === "KeyG") {
 				// Cmd/Ctrl+G — Mac-friendly chord alias for the bare-`f` hint mode.
+				// Platform-exact modifier: ⌃G aborts the current shell input.
 				if (isTypingContext()) return;
 				if (!document.querySelector("[data-hint-id]")) return;
 				e.preventDefault();
