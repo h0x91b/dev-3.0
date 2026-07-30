@@ -827,14 +827,6 @@ export interface GlobalSettings {
 	 */
 	pxpipeProxyEnabled?: boolean;
 	/**
-	 * Which terminal backend NEW tasks on this machine are created with. Purely
-	 * machine-local (it lives in ~/.dev3.0/settings.json, never in a project) and
-	 * forward-only: it is read once at task creation and never rewrites an
-	 * existing task. Undefined ⇒ the platform default (POSIX leaves the task
-	 * unmarked/tmux, Windows stamps native because it has no tmux runtime).
-	 */
-	newTaskTerminalBackend?: TerminalBackendIdentity;
-	/**
 	 * Cross-provider "favorite" agent configs shown as quick-pick chips on the
 	 * launch picker (Launch/Retry, Spawn, Bug Hunters). Thin pointers, capped at
 	 * MAX_FAVORITES with LFU-then-LRU eviction; ordered by uses then recency.
@@ -3105,6 +3097,19 @@ export type AppRPCSchema = {
 			getNativeTerminalAvailability: {
 				params: void;
 				response: NativeTerminalAvailability;
+			};
+			/**
+			 * Machine-local backend for NEW tasks, from its own versioned sidecar
+			 * (never settings.json — an older side-by-side build would delete an
+			 * unknown key there). Null means no preference ⇒ platform default.
+			 */
+			getNewTaskTerminalBackend: {
+				params: void;
+				response: { backend: TerminalBackendIdentity | null };
+			};
+			setNewTaskTerminalBackend: {
+				params: { backend: TerminalBackendIdentity };
+				response: { backend: TerminalBackendIdentity };
 			};
 			setTaskPriority: {
 				// Writes the priority to the whole variant group; returns every task

@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import type { GlobalSettings } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
-import { isTerminalBackendIdentity } from "../shared/terminal-backend-identity";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -98,12 +97,6 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 			// Default-off experimental toggle — only an explicit true is a stored opt-in.
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
-			// Machine-local backend for NEW tasks; only a recognized identity is kept,
-			// so an undefined/garbage value falls back to the platform default rather
-			// than stamping something the task-creation seam cannot decode.
-			newTaskTerminalBackend: isTerminalBackendIdentity(data.newTaskTerminalBackend)
-				? data.newTaskTerminalBackend
-				: undefined,
 			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
 			favorites: sanitizeFavorites(data.favorites),
 		};
@@ -210,12 +203,6 @@ export function loadSettingsSync(): GlobalSettings {
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 			// Default-off experimental toggle — only an explicit true is a stored opt-in.
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
-			// Machine-local backend for NEW tasks; only a recognized identity is kept,
-			// so an undefined/garbage value falls back to the platform default rather
-			// than stamping something the task-creation seam cannot decode.
-			newTaskTerminalBackend: isTerminalBackendIdentity(data.newTaskTerminalBackend)
-				? data.newTaskTerminalBackend
-				: undefined,
 			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
 			favorites: sanitizeFavorites(data.favorites),
 		};

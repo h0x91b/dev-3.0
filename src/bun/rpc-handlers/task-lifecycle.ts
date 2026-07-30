@@ -13,6 +13,10 @@ import {
 	readTaskTerminalBackendState,
 	switchTaskTerminalBackend,
 } from "../task-terminal-backend-switch";
+import {
+	readNewTaskTerminalBackendPreference,
+	writeNewTaskTerminalBackendPreference,
+} from "../terminal-backend-preference";
 
 function scratchPlaceholder(now: Date = new Date()): string {
 	const hh = String(now.getHours()).padStart(2, "0");
@@ -991,6 +995,24 @@ function getNativeTerminalAvailability(): NativeTerminalAvailability {
 	return nativeTerminalAvailability();
 }
 
+/**
+ * The machine-local new-task preference, read from and written to its own
+ * versioned sidecar. It is deliberately NOT part of GlobalSettings: settings.json
+ * is loaded through a field whitelist, so an older side-by-side build would drop
+ * the key on its next save and silently undo the rollout choice.
+ */
+function getNewTaskTerminalBackend(): { backend: TerminalBackendIdentity | null } {
+	return { backend: readNewTaskTerminalBackendPreference() };
+}
+
+async function setNewTaskTerminalBackend(params: {
+	backend: TerminalBackendIdentity;
+}): Promise<{ backend: TerminalBackendIdentity }> {
+	log.info("→ setNewTaskTerminalBackend", { backend: params.backend });
+	await writeNewTaskTerminalBackendPreference(params.backend);
+	return { backend: params.backend };
+}
+
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
@@ -1019,4 +1041,6 @@ export const taskLifecycleHandlers = {
 	getTaskTerminalBackend,
 	setTaskTerminalBackend,
 	getNativeTerminalAvailability,
+	getNewTaskTerminalBackend,
+	setNewTaskTerminalBackend,
 };

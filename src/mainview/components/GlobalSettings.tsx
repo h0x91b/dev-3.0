@@ -103,6 +103,8 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	// guessing that native is (un)available.
 	const [nativeTerminalAvailability, setNativeTerminalAvailability] =
 		useState<NativeTerminalAvailability | null>(null);
+	const [newTaskTerminalBackend, setNewTaskTerminalBackend] =
+		useState<TerminalBackendIdentity | undefined>(undefined);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
 		normalizeSettingsCategoryId(section),
@@ -212,6 +214,9 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		api.request.getNativeTerminalAvailability()
 			.then(setNativeTerminalAvailability)
 			.catch(() => {});
+		api.request.getNewTaskTerminalBackend()
+			.then(({ backend }) => setNewTaskTerminalBackend(backend ?? undefined))
+			.catch(() => {});
 	}, []);
 
 	useEffect(() => {
@@ -275,13 +280,14 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
+	// Sidecar-backed, not part of GlobalSettings — see terminal-backend-preference.ts.
 	const handleNewTaskTerminalBackendChange = useCallback(
 		(backend: TerminalBackendIdentity) => {
-			persistSettingChange({ newTaskTerminalBackend: backend }, {
-				tracking: { setting: "new_task_terminal_backend", value: backend },
-			});
+			setNewTaskTerminalBackend(backend);
+			api.request.setNewTaskTerminalBackend({ backend }).catch(() => {});
+			trackEvent("settings_changed", { setting: "new_task_terminal_backend", value: backend });
 		},
-		[persistSettingChange],
+		[],
 	);
 
 	const handleSoundToggle = useCallback(
@@ -595,7 +601,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						t={t}
 						keymapPreset={keymapPreset}
 						scrollSpeed={scrollSpeed}
-						newTaskTerminalBackend={globalSettings.newTaskTerminalBackend}
+						newTaskTerminalBackend={newTaskTerminalBackend}
 						nativeTerminalAvailability={nativeTerminalAvailability}
 						onKeymapChange={handleKeymapChange}
 						onNewTaskTerminalBackendChange={handleNewTaskTerminalBackendChange}

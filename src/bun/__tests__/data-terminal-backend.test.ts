@@ -173,17 +173,21 @@ describe("newTaskTerminalBackend", () => {
 // ============================================================
 
 describe("the new-task terminal backend preference", () => {
-	function writeSettings(value: unknown): void {
+	/**
+	 * Seed the SIDECAR, not settings.json — the preference deliberately lives
+	 * outside the whitelisted settings file (see terminal-backend-preference.ts).
+	 */
+	function writePreference(value: unknown): void {
 		mkdirSync(TEST_HOME, { recursive: true });
 		writeFileSync(
-			`${TEST_HOME}/settings.json`,
-			JSON.stringify({ defaultAgentId: "builtin-claude", newTaskTerminalBackend: value }),
+			`${TEST_HOME}/terminal-backend.json`,
+			JSON.stringify({ version: 1, newTaskBackend: value }),
 			"utf-8",
 		);
 	}
 
 	it("stamps native on every creation path once opted in", async () => {
-		writeSettings("native");
+		writePreference("native");
 		const plain = await addTask(testProject, "Fresh task");
 		const scratch = await addTask(testProject, "Scratch — 01:08", "todo", { scratch: true });
 		const variant = await addTask(testProject, "Variant", "todo", { groupId: "g", autoVariantIndex: true });
@@ -193,20 +197,39 @@ describe("the new-task terminal backend preference", () => {
 		expect(readSavedTasks().every((task) => task.terminalBackend === "native")).toBe(true);
 	});
 
-	it("leaves new tasks unmarked when the preference is absent, tmux, or garbage", async () => {
-		for (const stored of [undefined, "tmux", "nonsense", 7]) {
+	it("leaves new tasks unmarked with no sidecar, a tmux preference, or a garbage one", async () => {
+		const cases: Array<[label: string, seed: () => void]> = [
+			["no sidecar file", () => rmSync(`${TEST_HOME}/terminal-backend.json`, { force: true })],
+			["tmux", () => writePreference("tmux")],
+			["unknown identity", () => writePreference("screen")],
+			["wrong type", () => writePreference(7)],
+			["missing value", () => writePreference(undefined)],
+			["future schema version", () => {
+				mkdirSync(TEST_HOME, { recursive: true });
+				writeFileSync(
+					`${TEST_HOME}/terminal-backend.json`,
+					JSON.stringify({ version: 99, newTaskBackend: "native" }),
+					"utf-8",
+				);
+			}],
+			["corrupt json", () => {
+				mkdirSync(TEST_HOME, { recursive: true });
+				writeFileSync(`${TEST_HOME}/terminal-backend.json`, "{not json", "utf-8");
+			}],
+		];
+		for (const [label, seed] of cases) {
 			rmSync(`${TEST_HOME}/data`, { recursive: true, force: true });
 			_resetDataCaches();
-			writeSettings(stored);
+			seed();
 			const created = await addTask(testProject, "Fresh task");
-			expect(created, `preference ${JSON.stringify(stored)}`).not.toHaveProperty("terminalBackend");
+			expect(created, `preference: ${label}`).not.toHaveProperty("terminalBackend");
 		}
 	});
 
 	it("never rewrites tasks that already exist when the preference flips", async () => {
-		writeSettings("tmux");
+		writePreference("tmux");
 		const before = await addTask(testProject, "Existing");
-		writeSettings("native");
+		writePreference("native");
 		await addTask(testProject, "Later");
 
 		const saved = readSavedTasks();

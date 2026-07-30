@@ -18,8 +18,16 @@ have duplicated it.
 
 ## Decision
 
-- `GlobalSettings.newTaskTerminalBackend` (machine-local, `~/.dev3.0/settings.json`)
-  is read per creation inside `addTask` and passed to `newTaskTerminalBackend()`.
+- The preference lives in its OWN versioned sidecar,
+  `~/.dev3.0/terminal-backend.json`, owned by `src/bun/terminal-backend-preference.ts`:
+
+      { "version": 1, "newTaskBackend": "tmux" | "native" }
+
+  Missing file, corrupt JSON, an unknown `version`, or an unrecognised identity
+  all mean **no preference**, and the platform default stands. Writes are atomic
+  (temp file + rename) and machine-local; an unreadable sidecar is left alone
+  rather than repaired.
+- It is read per creation inside `addTask` and passed to `newTaskTerminalBackend()`.
   **Only `native` writes a marker.** A `tmux` preference — like no preference —
   leaves the record field-less, byte-identical to what every previous build wrote,
   so older versions on the same machine keep reading it. Windows stays `native`
@@ -35,6 +43,17 @@ have duplicated it.
 - UI: `TerminalBackendSetting` in Global Settings → Terminal, and
   `TaskTerminalBackendRow` in the Task Detail modal. Unavailable choices stay
   visible but disabled with their reason, never hidden.
+
+## Why not `settings.json`
+
+The first cut of this change put the preference in `GlobalSettings`. That is
+wrong, and it was caught on a real machine: `loadSettings` is a **field
+whitelist**, so a build that predates the key rebuilds settings.json without it
+on its next save. An older app installed side by side therefore *deletes* the
+rollout choice — the exact shared-state breakage the on-disk invariants forbid. A
+file older builds neither read nor rewrite is the only durable home for it, and
+because this change is unmerged the `GlobalSettings` field was removed outright
+rather than kept as a second code path.
 
 ## Risks
 

@@ -81,7 +81,8 @@ export type SettingsEntry = {
 	readonly descriptionKey: TranslationKey;
 	readonly anchor?: string;
 	readonly globalField?: keyof GlobalSettings;
-	readonly storage: "global" | "local" | "browser" | "surface";
+	/** `sidecar` = its own versioned file under ~/.dev3.0, outside settings.json. */
+	readonly storage: "global" | "local" | "browser" | "surface" | "sidecar";
 };
 
 /**
@@ -217,8 +218,7 @@ export const SETTINGS_ENTRIES = [
 		titleKey: "settings.terminalBackend",
 		descriptionKey: "settings.terminalBackendDesc",
 		anchor: "terminal-backend",
-		globalField: "newTaskTerminalBackend",
-		storage: "global",
+		storage: "sidecar",
 	},
 	{
 		id: "terminal-scroll-speed",
@@ -388,7 +388,6 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"favorites",
-	"newTaskTerminalBackend",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 type RegisteredGlobalSettingsField = (typeof SETTINGS_ENTRIES)[number] extends infer Entry

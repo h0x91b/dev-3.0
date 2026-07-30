@@ -12,6 +12,7 @@ import { createLogger } from "./logger";
 import { DEV3_HOME, OPS_DIR } from "./paths";
 import { detectClonePaths } from "./cow-clone";
 import { withFileLock } from "./file-lock";
+import { readNewTaskTerminalBackendPreference } from "./terminal-backend-preference";
 import { projectSlug } from "./git";
 
 const log = createLogger("data");
@@ -825,22 +826,6 @@ export function newTaskTerminalBackend(
 	return preference === "native" ? "native" : null;
 }
 
-/**
- * The machine-local new-task backend opt-in, read fresh per creation so a
- * settings change takes effect on the very next task. Unreadable settings mean
- * "no preference" — a broken settings.json must not stamp a backend nobody
- * chose, and must not block task creation either.
- */
-async function newTaskTerminalBackendPreference(): Promise<TerminalBackendIdentity | null> {
-	try {
-		const { loadSettings } = await import("./settings");
-		return (await loadSettings()).newTaskTerminalBackend ?? null;
-	} catch (err) {
-		log.warn("Could not read the new-task terminal backend preference", { error: String(err) });
-		return null;
-	}
-}
-
 export async function addTask(
 	project: Project,
 	description: string,
@@ -903,7 +888,7 @@ export async function addTask(
 			}
 			variantIndex = maxVariantIndex + 1;
 		}
-		const newBackend = newTaskTerminalBackend(process.platform, await newTaskTerminalBackendPreference());
+		const newBackend = newTaskTerminalBackend(process.platform, readNewTaskTerminalBackendPreference());
 		const task: Task = {
 			id: crypto.randomUUID(),
 			seq: extras?.seq ?? nextSeq(tasks),

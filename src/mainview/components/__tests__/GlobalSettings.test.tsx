@@ -31,6 +31,8 @@ vi.mock("../../rpc", () => ({
 			getNativeTerminalAvailability: vi
 				.fn()
 				.mockResolvedValue({ available: true, tmuxSupported: true, diagnostics: [] }),
+			getNewTaskTerminalBackend: vi.fn().mockResolvedValue({ backend: null }),
+			setNewTaskTerminalBackend: vi.fn().mockResolvedValue({ backend: "native" }),
 			listAgentAccounts: vi.fn().mockResolvedValue({
 				claude: { accounts: [], activeId: null, systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
@@ -295,9 +297,9 @@ describe("GlobalSettings", () => {
 			await waitFor(() => expect(nativeCard()).toBeEnabled());
 			await user.click(nativeCard());
 
-			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
-				expect.objectContaining({ newTaskTerminalBackend: "native" }),
-			);
+			// The preference lives in its own sidecar file, never in settings.json.
+			expect(mockedApi.request.setNewTaskTerminalBackend).toHaveBeenCalledWith({ backend: "native" });
+			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
 		});
 
 		it("keeps native disabled and unsaved when this build has no native host", async () => {
@@ -313,7 +315,7 @@ describe("GlobalSettings", () => {
 
 			await waitFor(() => expect(nativeCard()).toBeDisabled());
 			await user.click(nativeCard());
-			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
+			expect(mockedApi.request.setNewTaskTerminalBackend).not.toHaveBeenCalled();
 		});
 	});
 
