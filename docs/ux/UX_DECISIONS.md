@@ -25,8 +25,9 @@ action, at budget) and never on the board card, so waking stays an explicit act 
 the task. It wears `warning` (amber) and a filled skull: `danger` is reserved for
 irreversible loss and the same bar already spends it on Bug Hunters, while the one
 illustrative glyph in a 2px-stroke set is what makes a rare, costly action visible at
-17px. No `confirm()` — nothing on disk is touched, so it is reversible, not destructive;
-the tooltip front-loads what survives. Rejected: a dedicated column (the board must keep
+17px. It is confirmed: nothing on disk is touched, but the session dies for good, so the
+dialog leads with what survives and counts the agents when the task runs more than one.
+Rejected: a dedicated column (the board must keep
 telling the truth about where the work is), and a red skull (two reds in a four-button
 bar make red decorative). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskInfoPanel.tsx`.
 

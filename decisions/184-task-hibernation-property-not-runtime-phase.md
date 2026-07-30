@@ -35,11 +35,14 @@ class as `Task.draft`. The task keeps its column and its runtime stays `idle`.
 - Waking reuses the existing recovery screen: `getPtyUrl` reports the frozen state
   instead of auto-restoring, and `resumeTask` / `restartTask` clear the flag.
 
-**No busy-guard and no confirmation dialog.** Freezing is one gesture even while the
-agent is mid-run. Hibernation touches nothing on disk, so the manifest's
-"destructive ⇒ confirm" rule does not apply; the accepted cost is that freezing a task
-mid-migration discards that in-flight work silently. A runaway agent burning CPU is
-exactly the case where "the agent is busy" must not be the reason you cannot stop it.
+**No busy-guard, but a confirmation dialog.** Freezing stays one gesture even while the
+agent is mid-run — a runaway agent burning CPU is exactly the case where "the agent is
+busy" must not be the reason you cannot stop it. It is still confirmed, because killing
+the session is the one part hibernation cannot undo: terminal scrollback never comes
+back, and extra agent panes return only through `resumeTask`, while `restartTask`
+clears `sessionState` and drops them permanently. The dialog therefore leads with what
+survives and adds a separate line counting the running agents when `sessionState.panes`
+holds more than one.
 
 ## Risks
 

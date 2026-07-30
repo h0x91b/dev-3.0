@@ -48,6 +48,7 @@ vi.mock("../../rpc", () => ({
 				layoutPreset: null,
 				capabilities: ["split", "zoom", "newWindow"],
 			}),
+			hibernateTask: vi.fn(),
 		},
 	},
 }));
@@ -3397,5 +3398,71 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 
 			expect(screen.queryByTestId("label-strip-overflow")).not.toBeInTheDocument();
 		});
+	});
+});
+
+describe("hibernate button", () => {
+	const mockedConfirm = vi.mocked(confirm);
+
+	// This block sits outside the top-level describe that owns the shared
+	// clearAllMocks, so call history has to be reset here.
+	beforeEach(() => {
+		mockedConfirm.mockClear();
+		mockedApi.request.hibernateTask.mockClear();
+	});
+
+	it("does nothing when the confirmation is declined", async () => {
+		mockedConfirm.mockResolvedValue(false);
+		let view!: ReturnType<typeof renderPanel>;
+		await act(async () => {
+			view = renderPanel(makeTask());
+		});
+
+		await act(async () => {
+			fireEvent.click(view.getAllByTestId("task-hibernate-button")[0]);
+		});
+
+		expect(mockedConfirm).toHaveBeenCalled();
+		expect(mockedApi.request.hibernateTask).not.toHaveBeenCalled();
+	});
+
+	it("hibernates once confirmed", async () => {
+		mockedConfirm.mockResolvedValue(true);
+		const task = makeTask();
+		mockedApi.request.hibernateTask.mockResolvedValue({
+			task: { ...task, hibernated: true },
+			freedRssBytes: null,
+		});
+		let view!: ReturnType<typeof renderPanel>;
+		await act(async () => {
+			view = renderPanel(task);
+		});
+
+		await act(async () => {
+			fireEvent.click(view.getAllByTestId("task-hibernate-button")[0]);
+		});
+
+		expect(mockedApi.request.hibernateTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+	});
+
+	it("warns about the extra agents when the task runs more than one pane", async () => {
+		mockedConfirm.mockResolvedValue(false);
+		let view!: ReturnType<typeof renderPanel>;
+		await act(async () => {
+			view = renderPanel(makeTask({
+				sessionState: {
+					panes: [
+						{ agentCmd: "claude", sessionId: "s1", agentId: null, configId: null },
+						{ agentCmd: "claude", sessionId: "s2", agentId: null, configId: null },
+					],
+				},
+			}));
+		});
+
+		await act(async () => {
+			fireEvent.click(view.getAllByTestId("task-hibernate-button")[0]);
+		});
+
+		expect(mockedConfirm.mock.calls[0][0].message).toContain("2 agents");
 	});
 });

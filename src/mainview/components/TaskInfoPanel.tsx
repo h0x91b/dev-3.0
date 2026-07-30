@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { toast } from "../toast";
+import { confirm } from "../confirm";
 import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label, TaskPRBadgeInfo } from "../../shared/types";
 import LabelChip from "./LabelChip";
@@ -901,6 +902,21 @@ function TaskInfoPanel({
 	// Compact label ("Later") keeps the session bar tight; the full "Send later"
 	// stays in the tooltip/aria. The pending queue renders in the adjacent chip.
 	async function handleHibernate() {
+		// Confirmed, unlike every other reversible action: killing the session is
+		// the one part hibernation cannot undo. Extra agent panes come back only
+		// through "Resume agent conversation" — waking with a plain shell clears
+		// sessionState and drops them for good (see restartTask in tmux-pty.ts).
+		const paneCount = task.sessionState?.panes?.length ?? 0;
+		const confirmed = await confirm({
+			title: t("task.hibernateConfirmTitle"),
+			message: paneCount > 1
+				? `${t("task.hibernateConfirmBody")}\n\n${t("task.hibernateConfirmMulti", { count: String(paneCount) })}`
+				: t("task.hibernateConfirmBody"),
+			confirmLabel: t("task.hibernateConfirmCta"),
+			danger: true,
+			info: { title: task.title },
+		});
+		if (!confirmed) return;
 		setHibernating(true);
 		try {
 			const { task: updated, freedRssBytes } = await api.request.hibernateTask({ taskId: task.id, projectId: project.id });
@@ -938,7 +954,6 @@ function TaskInfoPanel({
 	// worktree. Session-domain, so it lives in this bar next to the other
 	// agent-session controls — never on the board card (a hibernated card is inert
 	// by design, and waking must be an explicit act inside the task).
-	// No confirmation: hibernation is reversible, nothing on disk is touched.
 	// Amber, not danger: red in this app means "destroys something you cannot get
 	// back", and the neighbouring Bug Hunters button already owns it here. The skull
 	// is the one filled glyph in this bar on purpose — it has to stop the eye before
