@@ -5,6 +5,7 @@ import { ImagesIcon } from "../TaskIcons";
 
 interface TaskSharedImagesProps {
 	task: Task;
+	projectId: string;
 	/** Icon-only rendering (count kept) for a bar that is short on width. */
 	compact?: boolean;
 }
@@ -17,26 +18,31 @@ interface TaskSharedImagesProps {
  * App-level lightbox at the newest image via the same `dev3:openImageViewer`
  * event the inspector badge used, so the viewer stays a single App-mounted host.
  */
-export default function TaskSharedImages({ task, compact = false }: TaskSharedImagesProps) {
+export default function TaskSharedImages({ task, projectId, compact = false }: TaskSharedImagesProps) {
 	const t = useT();
 	const count = task.sharedImages?.length ?? 0;
 	if (count === 0) return null;
 
-	const label = t("infoPanel.imagesBadge", { count: String(count) });
+	const isUnread = task.sharedImages?.some((image) => image.isUnread) ?? false;
+	const baseLabel = t("infoPanel.imagesBadge", { count: String(count) });
+	const label = isUnread ? `${baseLabel}. ${t("infoPanel.sharedItemsUnread")}` : baseLabel;
 	return (
 		<Tooltip content={label} detail={t("ttip.sharedImages")}>
 			<button
 				type="button"
 				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-					detail: { taskId: task.id, images: task.sharedImages, index: count - 1 },
+					detail: { taskId: task.id, projectId, images: task.sharedImages, index: count - 1 },
 				}))}
-				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 text-fg-2 hover:text-fg hover:bg-elevated-hover border border-edge"
+				className={`task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 border ${isUnread
+					? "text-success bg-success/15 border-success/40 hover:bg-success/25"
+					: "text-fg-2 hover:text-fg hover:bg-elevated-hover border-edge"
+				}`}
 				aria-label={label}
 				data-testid="shared-images-badge"
 			>
-				<ImagesIcon className="w-[1.125rem] h-[1.125rem]" />
+				<ImagesIcon className={`w-[1.125rem] h-[1.125rem]${isUnread ? " task-shared-unread-icon" : ""}`} />
 				{!compact && <span className="text-[0.6875rem] font-semibold">{t("infoPanel.imagesLabel")}</span>}
-				<span className="text-[0.6875rem] font-semibold text-accent tabular-nums">{count}</span>
+				<span className={`text-[0.6875rem] font-semibold tabular-nums ${isUnread ? "text-success" : "text-accent"}`}>{count}</span>
 			</button>
 		</Tooltip>
 	);

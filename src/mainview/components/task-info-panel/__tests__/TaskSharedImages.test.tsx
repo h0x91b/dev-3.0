@@ -23,7 +23,7 @@ function makeTask(images?: SharedImage[]): Task {
 function renderBtn(task: Task) {
 	return render(
 		<I18nProvider>
-			<TaskSharedImages task={task} />
+			<TaskSharedImages task={task} projectId="project-1" />
 		</I18nProvider>,
 	);
 }
@@ -42,6 +42,18 @@ describe("TaskSharedImages", () => {
 		expect(btn).toHaveAttribute("aria-label", expect.stringContaining("3"));
 	});
 
+	it("highlights and animates the button only when an image is unread", () => {
+		const unread = { ...sharedImage("new"), isUnread: true };
+		const { rerender } = renderBtn(makeTask([unread]));
+		const button = screen.getByTestId("shared-images-badge");
+		expect(button.className).toContain("text-success");
+		expect(button.querySelector(".task-shared-unread-icon")).not.toBeNull();
+
+		rerender(<I18nProvider><TaskSharedImages task={makeTask([sharedImage("old")])} projectId="project-1" /></I18nProvider>);
+		expect(button.className).not.toContain("text-success");
+		expect(button.querySelector(".task-shared-unread-icon")).toBeNull();
+	});
+
 	it("dispatches dev3:openImageViewer at the newest image when clicked", async () => {
 		const task = makeTask([sharedImage("a"), sharedImage("b")]);
 		const spy = vi.fn();
@@ -51,7 +63,7 @@ describe("TaskSharedImages", () => {
 		window.removeEventListener("dev3:openImageViewer", spy);
 		expect(spy).toHaveBeenCalledTimes(1);
 		const detail = (spy.mock.calls[0][0] as CustomEvent).detail;
-		expect(detail).toMatchObject({ taskId: "task-1", index: 1 });
+		expect(detail).toMatchObject({ taskId: "task-1", projectId: "project-1", index: 1 });
 		expect(detail.images).toHaveLength(2);
 	});
 });

@@ -1386,8 +1386,8 @@ function TaskInfoPanel({
 								</>
 							)}
 							<TaskExposedPorts task={task} compact={tight} />
-							<TaskSharedImages task={task} compact={tight} />
-							<TaskArtifacts task={task} compact={tight} />
+							<TaskSharedImages task={task} projectId={project.id} compact={tight} />
+							<TaskArtifacts task={task} projectId={project.id} compact={tight} />
 						</div>
 					</div>
 				</div>
@@ -1472,8 +1472,8 @@ function TaskInfoPanel({
 									</>
 								)}
 								<TaskExposedPorts task={task} compact={tight} />
-								<TaskSharedImages task={task} compact={tight} />
-								<TaskArtifacts task={task} compact={tight} />
+								<TaskSharedImages task={task} projectId={project.id} compact={tight} />
+								<TaskArtifacts task={task} projectId={project.id} compact={tight} />
 							</div>
 						</div>
 					</div>

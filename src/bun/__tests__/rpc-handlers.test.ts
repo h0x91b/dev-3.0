@@ -6494,6 +6494,59 @@ describe("handlers.setTaskLabels", () => {
 	});
 });
 
+describe("handlers.markTaskSharedItemsRead", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("marks only the requested images as read and leaves legacy items read", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			sharedImages: [
+				{ id: "new", isUnread: true },
+				{ id: "other", isUnread: true },
+				{ id: "legacy" },
+			] as Task["sharedImages"],
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
+
+		const result = await handlers.markTaskSharedItemsRead({
+			taskId: "task-1",
+			projectId: "proj-1",
+			kind: "images",
+			itemIds: ["new", "legacy"],
+		});
+
+		expect(result.sharedImages?.map((image) => image.isUnread)).toEqual([false, true, undefined]);
+	});
+
+	it("marks only the requested artifacts as read", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			sharedArtifacts: [
+				{ id: "seen", isUnread: true },
+				{ id: "later", isUnread: true },
+			] as Task["sharedArtifacts"],
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
+
+		const result = await handlers.markTaskSharedItemsRead({
+			taskId: "task-1",
+			projectId: "proj-1",
+			kind: "artifacts",
+			itemIds: ["seen"],
+		});
+
+		expect(result.sharedArtifacts?.map((artifact) => artifact.isUnread)).toEqual([false, true]);
+	});
+});
+
 // ================================================================
 // handlers.addTaskNote / updateTaskNote / deleteTaskNote
 // ================================================================

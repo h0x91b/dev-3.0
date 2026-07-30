@@ -130,6 +130,7 @@ export function saveSharedArtifact(
 		const baseTitle = htmlName.replace(/\.html$/i, "");
 		const record: SharedArtifact = {
 			id,
+			isUnread: true,
 			kind: "html",
 			title: title?.trim() || baseTitle,
 			name: htmlName,

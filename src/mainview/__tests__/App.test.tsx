@@ -47,6 +47,7 @@ vi.mock("../rpc", () => ({
 			openQuickShell: vi.fn().mockResolvedValue({ id: "op-task-1", projectId: "ops-proj" }),
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
 			setTaskManualCompletion: vi.fn().mockResolvedValue(undefined),
+			markTaskSharedItemsRead: vi.fn().mockResolvedValue({ id: "updated-task" }),
 			listAgentSkills: vi.fn().mockResolvedValue([]),
 			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
 			getRemoteAccessQR: vi.fn().mockResolvedValue({
@@ -822,6 +823,7 @@ describe("App keyboard shortcuts", () => {
 		];
 		const sharedImage = {
 			id: "img1",
+			isUnread: true,
 			storedPath: "/a/shared-images/img1.png",
 			originalPath: "/tmp/img1.png",
 			name: "img1.png",
@@ -869,6 +871,12 @@ describe("App keyboard shortcuts", () => {
 			expect(view).toHaveAttribute("data-project-id", "p1");
 			expect(view).toHaveAttribute("data-active-task-id", "t-img");
 			expect(screen.getByTestId("image-viewer")).toBeInTheDocument();
+			expect(api.request.markTaskSharedItemsRead).toHaveBeenCalledWith({
+				projectId: "p1",
+				taskId: "t-img",
+				kind: "images",
+				itemIds: ["img1"],
+			});
 		});
 
 		it("fullscreen open-mode: clicking the toast opens the full-page task view", async () => {
@@ -893,6 +901,7 @@ describe("App keyboard shortcuts", () => {
 		];
 		const artifact = (id: string) => ({
 			id,
+			isUnread: true,
 			kind: "html",
 			title: `Artifact ${id}`,
 			name: `${id}.html`,
@@ -910,10 +919,16 @@ describe("App keyboard shortcuts", () => {
 			await renderApp();
 			act(() => {
 				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-					detail: { taskId: "t-artifact", artifacts: [artifact("a"), artifact("b")], index: 1 },
+					detail: { taskId: "t-artifact", projectId: "p1", artifacts: [artifact("a"), artifact("b")], index: 1 },
 				}));
 			});
 			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-title", "Artifact b"));
+			expect(api.request.markTaskSharedItemsRead).toHaveBeenCalledWith({
+				projectId: "p1",
+				taskId: "t-artifact",
+				kind: "artifacts",
+				itemIds: ["a", "b"],
+			});
 
 			const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
 			try {

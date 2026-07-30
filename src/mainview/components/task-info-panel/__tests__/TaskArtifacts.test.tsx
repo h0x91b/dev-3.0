@@ -19,7 +19,7 @@ function artifact(id: string): SharedArtifact {
 }
 
 function renderButton(artifacts?: SharedArtifact[]) {
-	return render(<I18nProvider><TaskArtifacts task={{ id: "task-1", sharedArtifacts: artifacts } as Task} /></I18nProvider>);
+	return render(<I18nProvider><TaskArtifacts task={{ id: "task-1", sharedArtifacts: artifacts } as Task} projectId="project-1" /></I18nProvider>);
 }
 
 describe("TaskArtifacts", () => {
@@ -37,7 +37,19 @@ describe("TaskArtifacts", () => {
 		await userEvent.click(screen.getByTestId("shared-artifacts-badge"));
 		window.removeEventListener("dev3:openArtifactViewer", spy);
 		const detail = (spy.mock.calls[0][0] as CustomEvent).detail;
-		expect(detail).toMatchObject({ taskId: "task-1", index: 1 });
+		expect(detail).toMatchObject({ taskId: "task-1", projectId: "project-1", index: 1 });
 		expect(detail.artifacts).toHaveLength(2);
+	});
+
+	it("highlights and animates unread artifacts while legacy artifacts remain read", () => {
+		renderButton([{ ...artifact("new"), isUnread: true }]);
+		const unreadButton = screen.getByTestId("shared-artifacts-badge");
+		expect(unreadButton.className).toContain("text-success");
+		expect(unreadButton.querySelector(".task-shared-unread-icon")).not.toBeNull();
+
+		renderButton([artifact("legacy")]);
+		const buttons = screen.getAllByTestId("shared-artifacts-badge");
+		expect(buttons[1].className).not.toContain("text-success");
+		expect(buttons[1].querySelector(".task-shared-unread-icon")).toBeNull();
 	});
 });

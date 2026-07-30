@@ -1422,9 +1422,23 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .task-anim:hover .th-col-up { animation: th-col-up 2.4s ease-in-out infinite; }
 .task-anim:hover .th-col-up-ghost { animation: th-col-up-ghost 2.4s ease-in-out infinite; }
 
+/* Fresh task-bound images/artifacts keep gently nudging until their viewer opens. */
+@keyframes task-shared-unread-nudge {
+	0%, 55%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+	64% { transform: translateY(-1.5px) rotate(-7deg) scale(1.06); }
+	73% { transform: translateY(0) rotate(6deg) scale(1.06); }
+	82% { transform: translateY(-.5px) rotate(-3deg) scale(1.02); }
+	91% { transform: translateY(0) rotate(0deg) scale(1); }
+}
+.task-shared-unread-icon {
+	transform-origin: center;
+	animation: task-shared-unread-nudge 1.8s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.task-anim:hover [class^="th-"],
-	.task-anim:hover [class*=" th-"] {
+	.task-anim:hover [class*=" th-"],
+	.task-shared-unread-icon {
 		animation: none;
 	}
 }

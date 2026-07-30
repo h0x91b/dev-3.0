@@ -83,6 +83,7 @@ export function saveSharedImage(projectPath: string, sourcePath: string, caption
 	const trimmedCaption = caption?.trim();
 	return {
 		id: crypto.randomUUID(),
+		isUnread: true,
 		storedPath,
 		originalPath: sourcePath,
 		name: name || `image.${ext}`,

@@ -3,25 +3,30 @@ import { useT } from "../../i18n";
 import { ArtifactsIcon } from "../TaskIcons";
 import Tooltip from "../Tooltip";
 
-export default function TaskArtifacts({ task, compact = false }: { task: Task; compact?: boolean }) {
+export default function TaskArtifacts({ task, projectId, compact = false }: { task: Task; projectId: string; compact?: boolean }) {
 	const t = useT();
 	const count = task.sharedArtifacts?.length ?? 0;
 	if (count === 0) return null;
-	const label = t.plural("infoPanel.artifactsBadge", count);
+	const isUnread = task.sharedArtifacts?.some((artifact) => artifact.isUnread) ?? false;
+	const baseLabel = t.plural("infoPanel.artifactsBadge", count);
+	const label = isUnread ? `${baseLabel}. ${t("infoPanel.sharedItemsUnread")}` : baseLabel;
 	return (
 		<Tooltip content={label} detail={t("ttip.sharedArtifacts")}>
 			<button
 				type="button"
 				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-					detail: { taskId: task.id, artifacts: task.sharedArtifacts, index: count - 1 },
+					detail: { taskId: task.id, projectId, artifacts: task.sharedArtifacts, index: count - 1 },
 				}))}
-				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 text-fg-2 hover:text-fg hover:bg-elevated-hover border border-edge"
+				className={`task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 border ${isUnread
+					? "text-success bg-success/15 border-success/40 hover:bg-success/25"
+					: "text-fg-2 hover:text-fg hover:bg-elevated-hover border-edge"
+				}`}
 				aria-label={label}
 				data-testid="shared-artifacts-badge"
 			>
-				<ArtifactsIcon className="w-[1.125rem] h-[1.125rem]" />
+				<ArtifactsIcon className={`w-[1.125rem] h-[1.125rem]${isUnread ? " task-shared-unread-icon" : ""}`} />
 				{!compact && <span className="text-[0.6875rem] font-semibold">{t("infoPanel.artifactsLabel")}</span>}
-				<span className="text-[0.6875rem] font-semibold text-accent tabular-nums">{count}</span>
+				<span className={`text-[0.6875rem] font-semibold tabular-nums ${isUnread ? "text-success" : "text-accent"}`}>{count}</span>
 			</button>
 		</Tooltip>
 	);

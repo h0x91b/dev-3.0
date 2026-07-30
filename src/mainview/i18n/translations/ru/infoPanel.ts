@@ -240,6 +240,7 @@ const infoPanel = {
 	"infoPanel.artifactsBadge_many": "Открыть {count} присланных артефактов",
 	"infoPanel.artifactsBadge_other": "Открыть {count} присланных артефактов",
 	"infoPanel.artifactsLabel": "Артефакты",
+	"infoPanel.sharedItemsUnread": "Есть новые непросмотренные элементы",
 };
 
 export default infoPanel;

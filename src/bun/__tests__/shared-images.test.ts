@@ -95,6 +95,7 @@ describe("saveSharedImage", () => {
 		expect(rec.mime).toBe("image/png");
 		expect(rec.originalPath).toBe(src);
 		expect(rec.bytes).toBe(Buffer.byteLength("PNGDATA"));
+		expect(rec.isUnread).toBe(true);
 		expect(existsSync(rec.storedPath)).toBe(true);
 		expect(readFileSync(rec.storedPath, "utf8")).toBe("PNGDATA");
 	});

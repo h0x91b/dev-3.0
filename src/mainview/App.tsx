@@ -340,6 +340,18 @@ function App() {
 	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
 	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number } | null>(null);
 	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; artifacts: SharedArtifact[]; index: number } | null>(null);
+	const markSharedItemsRead = useCallback((
+		projectId: string,
+		taskId: string,
+		kind: "images" | "artifacts",
+		items: Array<{ id: string; isUnread?: boolean }>,
+	) => {
+		const itemIds = items.filter((item) => item.isUnread).map((item) => item.id);
+		if (itemIds.length === 0) return;
+		void api.request.markTaskSharedItemsRead({ projectId, taskId, kind, itemIds })
+			.then((task) => dispatch({ type: "updateTask", task }))
+			.catch((error) => console.error("Failed to mark shared items read:", error));
+	}, [dispatch]);
 	const closeArtifactViewer = useCallback(() => {
 		setArtifactViewer(null);
 		requestAnimationFrame(() => {
@@ -1299,6 +1311,7 @@ function App() {
 			const alreadyOpenForTask = imageViewerRef.current?.taskId === taskId;
 
 			if (alreadyOpenForTask || (viewingThisTask && autoOpen && foreground)) {
+				markSharedItemsRead(projectId, taskId, "images", images);
 				setImageViewer({ taskId, images, index: images.length - 1 });
 				return;
 			}
@@ -1312,28 +1325,31 @@ function App() {
 				context,
 				onClick: () => {
 					openTaskFromNotification(taskId, projectId);
+					markSharedItemsRead(projectId, taskId, "images", images);
 					setImageViewer({ taskId, images, index: images.length - 1 });
 				},
 			});
 		}
 		window.addEventListener("rpc:cliShowImage", onCliShowImage);
 		return () => window.removeEventListener("rpc:cliShowImage", onCliShowImage);
-	}, [dispatch, openTaskFromNotification, t, state.route]);
+	}, [dispatch, markSharedItemsRead, openTaskFromNotification, t, state.route]);
 
 	// Reopen the image viewer from a task-scoped trigger (the inspector image badge).
 	useEffect(() => {
 		function onOpenViewer(e: Event) {
-			const { taskId, images, index } = (e as CustomEvent).detail as {
+			const { taskId, projectId, images, index } = (e as CustomEvent).detail as {
 				taskId: string;
+				projectId: string;
 				images: SharedImage[];
 				index?: number;
 			};
-			if (!taskId || !images?.length) return;
+			if (!taskId || !projectId || !images?.length) return;
+			markSharedItemsRead(projectId, taskId, "images", images);
 			setImageViewer({ taskId, images, index: index ?? images.length - 1 });
 		}
 		window.addEventListener("dev3:openImageViewer", onOpenViewer);
 		return () => window.removeEventListener("dev3:openImageViewer", onOpenViewer);
-	}, []);
+	}, [markSharedItemsRead]);
 
 	useEffect(() => {
 		function onCliShowArtifact(e: Event) {
@@ -1354,6 +1370,7 @@ function App() {
 			const foreground = typeof document === "undefined" || (document.visibilityState === "visible" && document.hasFocus());
 			const alreadyOpenForTask = artifactViewerRef.current?.taskId === taskId;
 			if (alreadyOpenForTask || (viewingThisTask && foreground)) {
+				markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
 				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
 				return;
 			}
@@ -1364,27 +1381,30 @@ function App() {
 				context,
 				onClick: () => {
 					openTaskFromNotification(taskId, projectId);
+					markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
 					setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
 				},
 			});
 		}
 		window.addEventListener("rpc:cliShowArtifact", onCliShowArtifact);
 		return () => window.removeEventListener("rpc:cliShowArtifact", onCliShowArtifact);
-	}, [dispatch, openTaskFromNotification, state.route, t]);
+	}, [dispatch, markSharedItemsRead, openTaskFromNotification, state.route, t]);
 
 	useEffect(() => {
 		function onOpenArtifactViewer(e: Event) {
-			const { taskId, artifacts, index } = (e as CustomEvent).detail as {
+			const { taskId, projectId, artifacts, index } = (e as CustomEvent).detail as {
 				taskId: string;
+				projectId: string;
 				artifacts: SharedArtifact[];
 				index?: number;
 			};
-			if (!taskId || !artifacts?.length) return;
+			if (!taskId || !projectId || !artifacts?.length) return;
+			markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
 			setArtifactViewer({ taskId, artifacts, index: index ?? artifacts.length - 1 });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
-	}, []);
+	}, [markSharedItemsRead]);
 
 	// Browser Web Notifications (remote mode). The desktop WKWebView already shows
 	// the native banner, so it ignores this push; only browsers act on it, falling

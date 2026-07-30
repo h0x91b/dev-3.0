@@ -224,6 +224,7 @@ const infoPanel = {
 	"infoPanel.artifactsBadge_one": "Ver {count} artefacto compartido",
 	"infoPanel.artifactsBadge_other": "Ver {count} artefactos compartidos",
 	"infoPanel.artifactsLabel": "Artefactos",
+	"infoPanel.sharedItemsUnread": "Hay elementos nuevos sin ver",
 };
 
 export default infoPanel;

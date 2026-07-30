@@ -1956,6 +1956,8 @@ export interface TaskNote {
  */
 export interface SharedImage {
 	id: string;
+	/** True until the user opens a viewer containing this image. Absent means read for legacy records. */
+	isUnread?: boolean;
 	/** Absolute path of the copied file under ~/.dev3.0/worktrees/<slug>/shared-images/. */
 	storedPath: string;
 	/** The path the agent originally passed (kept for provenance / tooltip). */
@@ -1989,6 +1991,8 @@ export interface SharedArtifactAsset {
  */
 export interface SharedArtifact {
 	id: string;
+	/** True until the user opens a viewer containing this artifact. Absent means read for legacy records. */
+	isUnread?: boolean;
 	kind: "html";
 	title: string;
 	name: string;
@@ -3190,6 +3194,10 @@ export type AppRPCSchema = {
 			};
 			setTaskLabels: {
 				params: { taskId: string; projectId: string; labelIds: string[] };
+				response: Task;
+			};
+			markTaskSharedItemsRead: {
+				params: { taskId: string; projectId: string; kind: "images" | "artifacts"; itemIds: string[] };
 				response: Task;
 			};
 			toggleTaskWatch: {

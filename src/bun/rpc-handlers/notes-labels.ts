@@ -224,6 +224,38 @@ async function setTaskLabels(params: { taskId: string; projectId: string; labelI
 	return task;
 }
 
+async function markTaskSharedItemsRead(params: {
+	taskId: string;
+	projectId: string;
+	kind: "images" | "artifacts";
+	itemIds: string[];
+}): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	const itemIds = new Set(params.itemIds);
+	const { task } = await data.updateTaskWith(project, params.taskId, (current) => {
+		if (params.kind === "images") {
+			return {
+				updates: {
+					sharedImages: (current.sharedImages ?? []).map((image) =>
+						itemIds.has(image.id) && image.isUnread ? { ...image, isUnread: false } : image,
+					),
+				},
+				result: undefined,
+			};
+		}
+		return {
+			updates: {
+				sharedArtifacts: (current.sharedArtifacts ?? []).map((artifact) =>
+					itemIds.has(artifact.id) && artifact.isUnread ? { ...artifact, isUnread: false } : artifact,
+				),
+			},
+			result: undefined,
+		};
+	});
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	return task;
+}
+
 async function addTaskNote(params: { taskId: string; projectId: string; content: string; source?: NoteSource }): Promise<Task> {
 	log.info("→ addTaskNote", { taskId: params.taskId });
 	const project = await data.getProject(params.projectId);
@@ -287,6 +319,7 @@ export const notesLabelsHandlers = {
 	reorderColumns,
 	reorderLabels,
 	setTaskLabels,
+	markTaskSharedItemsRead,
 	addTaskNote,
 	updateTaskNote,
 	deleteTaskNote,

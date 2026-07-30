@@ -64,6 +64,7 @@ describe("saveSharedArtifact", () => {
 		const saved = saveSharedArtifact("/my/project", html, [image], "Quarterly report");
 
 		expect(saved.title).toBe("Quarterly report");
+		expect(saved.isUnread).toBe(true);
 		expect(saved.name).toBe("report.html");
 		expect(saved.assets.map((item) => item.name)).toEqual(["chart.png"]);
 		expect(dirname(saved.assets[0].storedPath)).toBe(dirname(saved.storedPath));
