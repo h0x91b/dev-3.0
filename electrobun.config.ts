@@ -81,10 +81,10 @@ export default {
 		},
 	},
 	scripts: {
-		// Windows only (both no-op elsewhere): postBuild assembles the versioned
-		// native host image into the bundle so it ships inside the update archive,
-		// postPackage re-verifies that image from the FINAL archive.
-		postBuild: "./scripts/verify-packaged-windows-conpty.ts",
+		// postBuild assembles the versioned native host image into the bundle on
+		// every platform, so it ships inside the update archive; postPackage
+		// re-verifies the Windows image from the FINAL archive (no-op elsewhere).
+		postBuild: "./scripts/package-native-host.ts",
 		postPackage: "./scripts/verify-windows-conpty-update-archive.ts",
 	},
 } satisfies ElectrobunConfig;

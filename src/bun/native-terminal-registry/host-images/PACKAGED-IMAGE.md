@@ -53,15 +53,37 @@ The staging root is `hostImagesRootDir()` (`../paths.ts`): an additive
 
 ## Build + verification path
 
-1. `bun run build:native` bundles `dist/native/dev3-terminal-host.js`.
-2. Electrobun `postBuild` → `scripts/verify-packaged-windows-conpty.ts` assembles
-   the image into the bundle, so it ships in the archive, and validates it.
+1. `bun run build:native` bundles `dist/native/dev3-terminal-host.js` — on every
+   platform. Electrobun's `dist/native` copy rule carries it into the package.
+2. Electrobun `postBuild` → `scripts/package-native-host.ts` dispatches by
+   platform. Both branches assemble the image into the bundle so it ships in the
+   archive, then stage it outside the install root and drive a detached host
+   start / reattach / stop with no Bun on PATH.
+   * Windows → `scripts/verify-packaged-windows-conpty.ts`, which additionally
+     asserts the ConPTY process image names and the rollback-beside behaviour.
+   * macOS + Linux → `scripts/package-posix-native-host.ts`.
 3. Electrobun `postPackage` → `scripts/verify-windows-conpty-update-archive.ts`
-   re-enters the same script against the **final `.tar.zst`**: discover, validate
+   re-enters the Windows script against the **final `.tar.zst`**: discover, validate
    archive paths, stage outside the install root, start detached / reattach / stop
    with no Bun on PATH, then stage a second image beside the live one and prove
    the old image is byte-identical and still selectable for rollback.
-4. Everything asserted lands in `windows-conpty-package-proof.json`.
+4. Everything asserted lands in `windows-conpty-package-proof.json`, or in
+   `native-host-package-proof.json` on macOS and Linux.
+
+### Where the image sits, per platform
+
+`package-layout.ts` owns this. The image root must be the packaged runtime's own
+directory or its parent — those are the only two roots `packagedHostImageRoots()`
+probes at launch.
+
+| OS | Packaged runtime | Image root |
+|---|---|---|
+| macOS | `<bundle>.app/Contents/MacOS/bun` | `<bundle>.app/Contents/` |
+| Linux | `<bundle>/bin/bun` | `<bundle>/` |
+| Windows | `<bundle>\bin\bun.exe` | `<bundle>\` |
+
+The runtime carrier inside the image is `dev3-terminal-host.exe` on Windows and
+`dev3-terminal-host` everywhere else.
 
 ## Artifact-manifest CLI
 

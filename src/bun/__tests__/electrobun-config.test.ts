@@ -21,11 +21,11 @@ describe("electrobun bundled resources", () => {
 });
 
 describe("electrobun packaged Bun runtime", () => {
-	it("pins the global app runtime at or above the ConPTY floor and verifies the packaged Windows host", () => {
+	it("pins the global app runtime at or above the ConPTY floor and packages a native host on every platform", () => {
 		expect(config.build).toHaveProperty("bunVersion");
 		expect(assertPackagedConptyRuntime(config.build.bunVersion)).toBe(config.build.bunVersion);
 		expect(config.scripts).not.toHaveProperty("preBuild");
-		expect(config.scripts.postBuild).toBe("./scripts/verify-packaged-windows-conpty.ts");
+		expect(config.scripts.postBuild).toBe("./scripts/package-native-host.ts");
 		expect(config.build.copy["dist/native"]).toBe("native");
 	});
 

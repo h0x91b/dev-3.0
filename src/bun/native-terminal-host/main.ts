@@ -20,7 +20,7 @@ import {
 	type NativeTerminalHostProofState,
 } from "../../shared/native-terminal-runtime";
 import { resolveHostConfig, runHost as runRegistrySessionHost } from "../native-terminal-registry/host";
-import { powerShellInteractiveArgs } from "./pty-proof";
+import { proofShellCommand } from "./pty-proof";
 import { computeTerminalHostReentryArgs, requireLiveTerminalHostState } from "./reentry";
 import { resolvesWithin } from "./wait-with-timeout";
 
@@ -103,10 +103,10 @@ async function runHost(): Promise<void> {
 		// Containment may still use a signed helper; the proof reports this capability.
 	}
 
-	const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
-	if (!systemRoot) throw new Error("Packaged terminal host cannot resolve SystemRoot.");
-	const powershell = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-	if (!existsSync(powershell)) throw new Error(`Packaged terminal host cannot find PowerShell at ${powershell}.`);
+	const shell = proofShellCommand(process.platform, process.env);
+	if (!existsSync(shell.executable)) {
+		throw new Error(`Packaged terminal host cannot find its proof shell at ${shell.executable}.`);
+	}
 
 	let output = "";
 	let captureStartup = true;
@@ -117,7 +117,7 @@ async function runHost(): Promise<void> {
 	const decoder = new TextDecoder();
 	const proc = (() => {
 		try {
-			return spawn([powershell, ...powerShellInteractiveArgs()], {
+			return spawn([shell.executable, ...shell.args], {
 				cwd: process.cwd(),
 				env: { ...process.env, TERM: "xterm-256color" },
 				terminal: {
@@ -134,7 +134,7 @@ async function runHost(): Promise<void> {
 			throw nativeTerminalSpawnError({
 				platform: process.platform,
 				bunVersion: Bun.version,
-				command: powershell,
+				command: shell.executable,
 				cause,
 			});
 		}
@@ -148,18 +148,18 @@ async function runHost(): Promise<void> {
 		throw nativeTerminalSpawnError({
 			platform: process.platform,
 			bunVersion: Bun.version,
-			command: powershell,
+			command: shell.executable,
 			cause: new Error("Bun.spawn returned without a terminal handle"),
 		});
 	}
 
 	const startup = await resolvesWithin(ptyOutputSeen, 10_000);
-	const powershellPid = proc.pid;
+	const shellPid = proc.pid;
 	captureStartup = false;
 	if (!startup) {
 		proc.kill();
 		throw new Error(
-			`Packaged Bun ${Bun.version} started PowerShell ${proc.pid} but received no Bun.Terminal output. ` +
+			`Packaged Bun ${Bun.version} started ${shell.executable} ${proc.pid} but received no Bun.Terminal output. ` +
 				`Transcript: ${JSON.stringify(output.slice(-2000))}`,
 		);
 	}
@@ -168,14 +168,14 @@ async function runHost(): Promise<void> {
 		marker: NATIVE_TERMINAL_HOST_READY_MARKER,
 		bunVersion: Bun.version,
 		hostPid: process.pid,
-		shellPid: powershellPid,
+		shellPid,
 		executable: process.execPath,
 		entrypoint: process.argv[1],
 		ffiModuleAvailable,
 	});
 
 	while (!existsSync(stopFile())) {
-		if (!isProcessAlive(proc.pid)) throw new Error("PowerShell exited before the detached host stop request.");
+		if (!isProcessAlive(proc.pid)) throw new Error(`${shell.executable} exited before the detached host stop request.`);
 		await delay(50);
 	}
 

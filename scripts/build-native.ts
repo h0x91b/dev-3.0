@@ -3,8 +3,8 @@
  * the `build:native` package script.
  *
  * The macOS notification shim is still built by its `.sh` script; Windows only
- * needs the `dist/native` copy source to exist. The terminal host bundler is a
- * TypeScript script on every platform and no-ops outside Windows itself.
+ * needs the `dist/native` copy source to exist. The terminal host bundler runs
+ * on every platform — a package without it has no native terminal to launch.
  */
 
 import { mkdirSync } from "node:fs";
@@ -38,7 +38,7 @@ function main(): void {
 	for (const script of plan.shellSteps) runOrExit(["bash", script], script);
 	// Always present so the electrobun `dist/native` copy rule has a source.
 	mkdirSync(resolve(import.meta.dir, "../dist/native"), { recursive: true });
-	runOrExit([process.execPath, "scripts/build-windows-terminal-host.ts"], "Windows terminal host bundle");
+	runOrExit([process.execPath, "scripts/build-terminal-host.ts"], "native terminal host bundle");
 }
 
 if (import.meta.main) main();

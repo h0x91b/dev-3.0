@@ -48,8 +48,14 @@ import {
 
 /** Directory, inside the package/archive, that holds every packaged host image. */
 export const PACKAGED_HOST_IMAGE_PARENT = "native-host-image";
-/** Bun runtime carrier filename inside an image — also the detached host's process image name. */
-export const PACKAGED_HOST_RUNTIME_CARRIER = "dev3-terminal-host.exe";
+/**
+ * Bun runtime carrier filename inside an image — also the detached host's
+ * process image name. Windows refuses to execute an extensionless binary and
+ * reports this name in Task Manager; macOS and Linux want no extension.
+ */
+export function packagedHostRuntimeCarrier(os: ManifestOs): string {
+	return os === "win32" ? "dev3-terminal-host.exe" : "dev3-terminal-host";
+}
 /** Bundled host entrypoint filename inside an image. */
 export const PACKAGED_HOST_ENTRYPOINT = "dev3-terminal-host.js";
 
@@ -103,14 +109,15 @@ export function assemblePackagedImage(input: AssemblePackagedImageInput): Assemb
 	const parentDir = join(input.packageRoot, PACKAGED_HOST_IMAGE_PARENT);
 	mkdirSync(parentDir, { recursive: true });
 	const scratchDir = mkdtempSync(join(parentDir, ".assemble-"));
+	const runtimeCarrier = packagedHostRuntimeCarrier(input.os);
 	try {
-		copyFileSync(input.runtimeSourcePath, join(scratchDir, PACKAGED_HOST_RUNTIME_CARRIER));
+		copyFileSync(input.runtimeSourcePath, join(scratchDir, runtimeCarrier));
 		copyFileSync(input.entrypointSourcePath, join(scratchDir, PACKAGED_HOST_ENTRYPOINT));
 		const manifest = buildPackagedHostImageManifest({
 			imageRoot: scratchDir,
 			entrypoint: PACKAGED_HOST_ENTRYPOINT,
-			runtimeCarrier: PACKAGED_HOST_RUNTIME_CARRIER,
-			files: [PACKAGED_HOST_RUNTIME_CARRIER, PACKAGED_HOST_ENTRYPOINT],
+			runtimeCarrier,
+			files: [runtimeCarrier, PACKAGED_HOST_ENTRYPOINT],
 			metadata: {
 				hostVersion: input.hostVersion,
 				protocolVersion: input.protocolVersion,

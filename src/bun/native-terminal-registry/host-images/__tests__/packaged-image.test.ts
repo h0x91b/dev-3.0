@@ -17,7 +17,7 @@ import {
 	listPackagedImages,
 	PACKAGED_HOST_ENTRYPOINT,
 	PACKAGED_HOST_IMAGE_PARENT,
-	PACKAGED_HOST_RUNTIME_CARRIER,
+	packagedHostRuntimeCarrier,
 	readPackagedImage,
 	selectPackagedImage,
 	stagePackagedImage,
@@ -79,12 +79,12 @@ describe("assemblePackagedImage", () => {
 		expect(image.reused).toBe(false);
 		expect(image.tag.startsWith("1.3.14-p1-")).toBe(true);
 		expect(image.manifest.archiveRoot).toBe(`${PACKAGED_HOST_IMAGE_PARENT}/${image.tag}`);
-		expect(image.manifest.runtimeCarrier).toBe(PACKAGED_HOST_RUNTIME_CARRIER);
+		expect(image.manifest.runtimeCarrier).toBe("dev3-terminal-host.exe");
 		expect(image.manifest.artifact.entrypoint).toBe(PACKAGED_HOST_ENTRYPOINT);
 		expect(existsSync(image.entrypointPath)).toBe(true);
 		expect(existsSync(image.runtimeCarrierPath)).toBe(true);
 		expect(image.manifest.artifact.files.map((entry) => entry.path).sort()).toEqual(
-			[PACKAGED_HOST_ENTRYPOINT, PACKAGED_HOST_RUNTIME_CARRIER].sort(),
+			[PACKAGED_HOST_ENTRYPOINT, "dev3-terminal-host.exe"].sort(),
 		);
 	});
 
@@ -322,5 +322,47 @@ describe("selectPackagedImage", () => {
 		const selection = selectPackagedImage(stagingRoot, { protocolVersion: 1 });
 		expect(selection.status).toBe("ambiguous");
 		if (selection.status === "ambiguous") expect(selection.tags).toHaveLength(2);
+	});
+});
+
+describe("cross-platform images", () => {
+	test("the runtime carrier is extensionless everywhere except Windows", () => {
+		expect(packagedHostRuntimeCarrier("win32")).toBe("dev3-terminal-host.exe");
+		expect(packagedHostRuntimeCarrier("darwin")).toBe("dev3-terminal-host");
+		expect(packagedHostRuntimeCarrier("linux")).toBe("dev3-terminal-host");
+	});
+
+	test.each([
+		["darwin", "arm64"],
+		["linux", "x64"],
+	] as const)("assembles and discovers a %s/%s image", (os, arch) => {
+		const packageRoot = newPackageRoot(`${os}-${arch}`);
+		const image = assemblePackagedImage(assembleInput(packageRoot, writeSources(`${os}-${arch}`), { os, arch }));
+
+		expect(image.manifest.runtimeCarrier).toBe("dev3-terminal-host");
+		expect(image.manifest.artifact.os).toBe(os);
+		expect(image.manifest.artifact.files.map((entry) => entry.path).sort()).toEqual(
+			[PACKAGED_HOST_ENTRYPOINT, "dev3-terminal-host"].sort(),
+		);
+
+		const discovered = discoverPackagedImage(packageRoot, { os, arch, archiveParent: PACKAGED_HOST_IMAGE_PARENT });
+		expect(discovered.status).toBe("ok");
+		if (discovered.status === "ok") expect(discovered.tag).toBe(image.tag);
+	});
+
+	test("an image built for another OS is rejected rather than adapted", () => {
+		const packageRoot = newPackageRoot("wrong-os");
+		assemblePackagedImage(assembleInput(packageRoot, writeSources("wrong-os"), { os: "darwin", arch: "arm64" }));
+
+		const discovered = discoverPackagedImage(packageRoot, { os: "linux", arch: "arm64" });
+		expect(discovered.status).toBe("partial");
+		if (discovered.status === "partial") expect(discovered.reason).toMatch(/os is darwin, expected linux/);
+	});
+
+	test("the same bytes on two platforms are two different images", () => {
+		const sources = writeSources("shared-bytes");
+		const mac = assemblePackagedImage(assembleInput(newPackageRoot("m"), sources, { os: "darwin", arch: "arm64" }));
+		const win = assemblePackagedImage(assembleInput(newPackageRoot("w"), sources, { os: "win32", arch: "arm64" }));
+		expect(mac.tag).not.toBe(win.tag);
 	});
 });

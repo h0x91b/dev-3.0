@@ -18,6 +18,7 @@ vi.mock("node:child_process", () => ({
 
 vi.mock("../native-terminal-registry/host-images/packaged-image", () => ({
 	PACKAGED_HOST_IMAGE_PARENT: "native-host-image",
+	PACKAGED_HOST_ENTRYPOINT: "dev3-terminal-host.js",
 	discoverPackagedImage: vi.fn(() => ({ status: "absent", reason: "no native-host-image/ in this test package" })),
 	stagePackagedImage: vi.fn(() => ({ status: "failed", tag: null, reason: "not reached" })),
 }));
@@ -42,6 +43,7 @@ import {
 	resolveNativeHostRuntime,
 } from "../native-host-runtime";
 import { discoverPackagedImage } from "../native-terminal-registry/host-images/packaged-image";
+import { nativeHostPackageLayout } from "../native-terminal-registry/host-images/package-layout";
 import { encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../native-terminal-registry/shell-launch";
 
 const TEST_ROOT = join(process.env.DEV3_TEST_ROOT ?? "/tmp", "native-host-runtime");
@@ -141,6 +143,15 @@ describe("packaged image lookup", () => {
 		const roots = packagedHostImageRoots();
 		expect(roots.length).toBe(2);
 		expect(join(roots[0], "..")).toBe(roots[1]);
+	});
+
+	it("covers where every platform's packaging hook writes the image", () => {
+		const roots = packagedHostImageRoots();
+
+		// macOS assembles under <bundle>.app/Contents, one level above MacOS/bun.
+		expect(nativeHostPackageLayout("darwin", join(roots[0], "bun")).hostImagePackageRoot).toBe(roots[1]);
+		// Linux and Windows assemble at the bundle root, one level above bin/bun.
+		expect(nativeHostPackageLayout("linux", join(roots[0], "bun")).hostImagePackageRoot).toBe(roots[1]);
 	});
 
 	it("finds an image the Windows package wrote above the runtime's bin/ directory", () => {
