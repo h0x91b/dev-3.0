@@ -125,6 +125,17 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		return () => { cancelled = true; };
 	}, [taskId, isPreparing]);
 
+	// Hibernating a task whose terminal is already open must not leave a dead
+	// socket reconnecting forever: drop straight to the wake screen the moment the
+	// flag flips. Waking clears the flag, so this never fights the resume path.
+	useEffect(() => {
+		if (!task?.hibernated) return;
+		setPtyUrl(null);
+		setError(null);
+		setRecoverable(task.sessionState ?? { panes: [] });
+		setHibernated(true);
+	}, [task?.hibernated, task?.sessionState]);
+
 	// For getPtyUrl success + broken session: listen for ptyDied.
 	useEffect(() => {
 		function onPtyDied(e: Event) {
