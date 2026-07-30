@@ -3,12 +3,13 @@ import userEvent from "@testing-library/user-event";
 import CreateTaskModal from "../CreateTaskModal";
 import { splitBranchWords, matchesBranchQuery } from "../BranchSelector";
 import { I18nProvider } from "../../i18n";
-import type { Project, Task } from "../../../shared/types";
+import type { Project, Task, SystemMemorySnapshot } from "../../../shared/types";
 import type { AppAction } from "../../state";
 
 vi.mock("../../rpc", () => ({
 	api: {
 	request: {
+			getSystemMemory: vi.fn().mockResolvedValue(null),
 			createTask: vi.fn(),
 			renameTask: vi.fn(),
 			editTask: vi.fn(),
@@ -1715,5 +1716,70 @@ describe("CreateTaskModal — Save as draft from the discard confirmation", () =
 				draft: true,
 			}));
 		});
+	});
+});
+
+describe("CreateTaskModal — memory notice", () => {
+	const GIB = 1024 ** 3;
+
+	function memory(overrides?: Partial<SystemMemorySnapshot>): SystemMemorySnapshot {
+		return {
+			headroom: 3 * GIB,
+			used: 61 * GIB,
+			total: 64 * GIB,
+			cached: 2 * GIB,
+			pressure: "warn",
+			pressureEstimated: false,
+			swapUsed: 0,
+			swapTotal: 2 * GIB,
+			swapping: false,
+			topConsumers: [],
+			appRss: 300 * 1024 * 1024,
+			activeTaskCount: 2,
+			tasksRssApprox: 4 * GIB,
+			topTasks: [],
+			medianTaskRss: 2 * GIB,
+			...overrides,
+		};
+	}
+
+	it("stays silent when memory is comfortable", async () => {
+		mockedApi.request.getSystemMemory.mockResolvedValue(
+			memory({ pressure: "normal", headroom: 40 * GIB }),
+		);
+		renderModal();
+
+		await waitFor(() => expect(mockedApi.request.getSystemMemory).toHaveBeenCalled());
+		expect(screen.queryByTestId("memory-pressure-banner")).toBeNull();
+	});
+
+	it("states free memory and whether the machine is swapping", async () => {
+		mockedApi.request.getSystemMemory.mockResolvedValue(memory({ swapping: true }));
+		renderModal();
+
+		const banner = await screen.findByTestId("memory-pressure-banner");
+		expect(banner).toHaveTextContent("3.0 GB");
+		expect(banner).toHaveTextContent(/already swapping/i);
+	});
+
+	it("forecasts one task, because this modal creates one", async () => {
+		mockedApi.request.getSystemMemory.mockResolvedValue(memory());
+		renderModal();
+
+		expect(await screen.findByTestId("memory-pressure-banner")).toHaveTextContent(
+			/1 more would need roughly 2\.0 GB/,
+		);
+	});
+
+	it("never disables the create exits while the notice is showing", async () => {
+		mockedApi.request.getSystemMemory.mockResolvedValue(
+			memory({ pressure: "critical", headroom: 64 * 1024 * 1024 }),
+		);
+		renderModal();
+
+		await screen.findByTestId("memory-pressure-banner");
+		await userEvent.type(screen.getByPlaceholderText(/describe/i), "do the thing");
+
+		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
 	});
 });

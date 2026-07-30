@@ -1,0 +1,3 @@
+Short: See how much RAM is left
+
+The global header now carries a memory-stick pill showing how many gigabytes are still free, coloured by the operating system's own memory-pressure signal rather than a threshold of our own. Hovering it (tapping, on touch) opens a breakdown of who actually took the rest: the five heaviest applications outside dev-3.0 grouped per app with their process counts, then dev-3.0's own share split into the app itself and the tasks you launched. The same numbers appear as a non-blocking notice in the create-task and launch-variants modals when memory is tight, forecasting the cost from what your own active tasks actually consume — it informs, it never blocks a launch.

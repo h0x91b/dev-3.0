@@ -146,6 +146,39 @@ const dashboard = {
 	"fileBrowser.notInstalledDesc": "The file browser requires yazi. Run the command below to install it:",
 	"fileBrowser.linuxBrewHint": "Install Homebrew for Linux first (https://brew.sh), then run:",
 	"fileBrowser.clickAgainHint": "After installation, click Files again and it will work.",
+
+	// ---- Memory headroom (global-header ambient readout) ----
+	// The wording is load-bearing: the number is FREE memory. A bare quantity
+	// labelled only "memory" reproduces the ambiguity the widget exists to dissolve.
+	"memory.label": "Memory left",
+	"memory.ariaLabel": "{free} of memory still free",
+	"memory.system": "System",
+	"memory.free": "still free",
+	"memory.usedOfTotal": "{used} of {total} in use",
+	"memory.cached": "{size} of that is reclaimable file cache",
+	"memory.pressure.normal": "pressure normal",
+	"memory.pressure.warn": "under pressure",
+	"memory.pressure.critical": "critically low",
+	"memory.pressureEstimated": "This kernel does not report memory pressure, so the level is estimated.",
+	"memory.swap": "Swap",
+	"memory.swapInUse": "{used} of {total} in use",
+	"memory.swapNone": "none configured",
+	"memory.swappingNow": "swapping right now",
+	"memory.swappingNot": "not swapping",
+	"memory.outsideDev3": "Heaviest outside dev-3.0",
+	"memory.noConsumers": "Nothing outside dev-3.0 worth listing.",
+	"memory.processCount_one": "({count} process)",
+	"memory.processCount_other": "({count} processes)",
+	"memory.dev3Section": "dev-3.0",
+	"memory.appItself": "The app itself",
+	"memory.activeTasks_one": "{count} active task",
+	"memory.activeTasks_other": "{count} active tasks",
+	"memory.approxNote": "Approximate: shared pages are counted once per process, so this overstates.",
+	"memory.bannerHeadline": "{free} of memory left",
+	"memory.bannerSwapping": "The machine is already swapping.",
+	"memory.bannerForecast": "Your active tasks use about {median} each, so {count} more would need roughly {needed}.",
+	"memory.bannerNoForecast": "No tasks are running yet, so there is nothing to base a forecast on.",
+	"memory.bannerWontFit": "That does not fit in what is left.",
 } as const;
 
 export default dashboard;

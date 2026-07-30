@@ -1,9 +1,10 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AgentUsageReport } from "../../shared/types";
+import type { AgentUsageReport, SystemMemorySnapshot } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import { getAgentRateLimitsReport } from "../rate-limit-monitor";
+import { getSystemMemorySnapshot } from "../resource-monitor";
 import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
@@ -99,7 +100,17 @@ async function getAgentRateLimits(): Promise<AgentRateLimitsReport> {
 	return getAgentRateLimitsReport();
 }
 
+/**
+ * Latest system-memory snapshot for the header widget's first render and the
+ * launch-time banner. Null until the resource monitor's first tick completes;
+ * live updates ride the `systemMemoryUpdated` push.
+ */
+async function getSystemMemory(): Promise<SystemMemorySnapshot | null> {
+	return getSystemMemorySnapshot();
+}
+
 export const agentUsageHandlers = {
 	getAgentUsage,
 	getAgentRateLimits,
+	getSystemMemory,
 };

@@ -10,6 +10,7 @@ vi.mock("../../rpc", () => ({
 	isElectrobun: false,
 	api: {
 		request: {
+			getSystemMemory: vi.fn().mockResolvedValue(null),
 			getTasks: vi.fn(),
 			applyUpdate: vi.fn(),
 			saveLastRoute: vi.fn(),

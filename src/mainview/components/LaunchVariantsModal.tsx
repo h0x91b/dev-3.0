@@ -13,6 +13,7 @@ import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
 import AgentConfigPicker from "./AgentConfigPicker";
 import SchedulePicker from "./SchedulePicker";
+import MemoryPressureBanner from "./MemoryPressureBanner";
 
 interface VariantRow {
 	agentId: string | null;
@@ -285,6 +286,12 @@ function LaunchVariantsModal({
 							</button>
 						</Tooltip>
 					</div>
+				</div>
+
+				{/* Memory notice, outside the scrolling variant list so it cannot be
+				    scrolled out of sight. The forecast scales with the variant count. */}
+				<div className="px-6 pt-4 empty:hidden">
+					<MemoryPressureBanner launchCount={variants.length} />
 				</div>
 
 				{/* Variant rows */}

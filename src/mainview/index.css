@@ -1221,12 +1221,23 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .header-anim:hover .hdr-help-dot { animation: hdr-help-dot 2.4s ease-in-out infinite; }
 .header-anim:hover .hdr-help-ring { transform-origin: 12px 12px; animation: hdr-help-ring 2.4s ease-in-out infinite; }
 
+/* The memory-headroom fill level is live data, not a hover flourish: it eases
+   between polls so the level visibly drifts instead of jumping, and holds still
+   under reduced motion. */
+.hdr-mem-fill {
+	transition: y 600ms ease-out, height 600ms ease-out, fill-opacity 300ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.header-anim:hover [class^="hdr-"],
 	.header-anim:hover [class*=" hdr-"],
 	.header-anim.remote-access-active [class^="hdr-"],
 	.header-anim.remote-access-active [class*=" hdr-"] {
 		animation: none;
+	}
+
+	.hdr-mem-fill {
+		transition: none;
 	}
 }
 

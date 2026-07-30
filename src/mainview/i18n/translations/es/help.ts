@@ -207,6 +207,8 @@ const help = {
 	"help.field.streamerMode.title": "Oculta datos privados en directo",
 	"help.field.streamerMode.body":
 		"Al activarlo, los valores que revelan identidad — correos y nombres de cuentas, organizaciones, rutas de la carpeta personal, URLs de túnel y el código QR de acceso remoto — se difuminan en toda la interfaz. El contenido del terminal NO se oculta: los paneles muestran lo que impriman los agentes. Actívalo rápido desde la paleta de comandos ⇧⌘P.",
+	"help.header.memory.title": "La píldora de memoria muestra lo que QUEDA",
+	"help.header.memory.body": "El número es memoria libre, no usada. Pasa el cursor para ver quién se llevó el resto: dev-3.0 en sí ocupa unos cientos de megabytes; los gigabytes son de los agentes que lanzaste y de lo demás que esté corriendo.",
 } as const;
 
 export default help;

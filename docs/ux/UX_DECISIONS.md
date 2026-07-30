@@ -10,6 +10,12 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** the 2026-06-10 completion rule bundled identity and severity, so a second instance (an agent asking to *start* a task, which is reversible and creates state) would have shipped a red button for a safe action and spent the danger token on nothing. Rejected: extending `confirm()` to host the agent picker — that turns a boolean service into a form host.
 - **Status:** Implemented. Evidence: `AgentLaunchRequestModal.tsx`, `TaskDialogSubjectCard.tsx`, `confirm.tsx`, `agent-requests.ts`, `cli-socket-server.ts`. Extends the 2026-06-10 entry.
 
+## 2026-07-30 — Capacity telemetry is permanent header chrome; faults are not
+
+- **Rule:** Host-machine capacity (memory headroom) gets **one** permanent global-header readout at every width — framed as headroom *left*, coloured by the OS's own pressure verdict — plus a non-blocking banner at the launch decision point. Capped at one; a second ambient readout folds into the narrow sheet. Bible §5, §10 row `ambient resource telemetry`, §12.6.
+- **Why:** §5.5 doctrine keeps *faults* (transport health, diagnostics) as conditional chrome so the happy path stays clean, and that reads as forbidding this widget — but capacity is a continuous decision input: the user learns *normal* only by seeing it while nothing is wrong, and needs it with zero tasks running. Same class as the always-on prevent-sleep toggle, not an error indicator. Rejected: a pressure-only conditional pill (too late to inform a launch), folding it into the narrow kebab (kills the signal exactly when screen is scarce and load is high), and colouring by an invented percentage threshold (meaningless across 8 GB and 512 GB machines).
+- **Status:** Proposed. Evidence: `GlobalHeader.tsx`, `PreventSleepToggle.tsx` (`--awake` precedent), `BottomSheet.tsx`, `SiblingPopover.tsx` (popover row → navigate precedent).
+
 ## 2026-07-30 — Hibernated is a card state, not a column or a card action
 
 A hibernated task keeps its column and renders inert everywhere it is listed (greyed +

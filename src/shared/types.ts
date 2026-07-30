@@ -2376,6 +2376,75 @@ export interface ResourceUsage {
 	rss: number;
 }
 
+// ---- System memory (header headroom widget) ----
+
+/**
+ * The OS's own verdict on memory scarcity — NOT a percentage threshold we
+ * invented. Kept separate from `headroom` on purpose: headroom is a quantity
+ * ("can I start another task?"), pressure is a signal ("is the machine hurting?").
+ */
+export type MemoryPressure = "normal" | "warn" | "critical";
+
+/** Heaviest memory consumers, grouped per application rather than per process. */
+export interface MemoryConsumerGroup {
+	/** Display name — macOS `.app` bundle name, else executable basename. */
+	name: string;
+	/** Summed resident memory across the group's processes, in bytes. */
+	rss: number;
+	/** How many processes the group contains (why one app holds 9 GB). */
+	processCount: number;
+	/** Executable path of the group's heaviest process. */
+	path: string;
+	/** Full command line of the heaviest process, length-capped. */
+	cmdline: string;
+}
+
+export interface MemoryTaskConsumer {
+	/** Short task id (first 8 chars), matching `resourceUsageUpdated`. Always set. */
+	shortId: string;
+	/**
+	 * Full task id, or null when the task could not be resolved (its board entry
+	 * is gone but its tmux session is still alive). Navigation needs the full id,
+	 * so a null here means the row shows its number but is not clickable.
+	 */
+	taskId: string | null;
+	title: string;
+	projectId: string;
+	rss: number;
+}
+
+export interface SystemMemorySnapshot {
+	/** Bytes still available — the number the header pill shows. */
+	headroom: number;
+	/** Bytes in use, defined to match the OS's own activity monitor. */
+	used: number;
+	total: number;
+	/** Reclaimable file cache: neither used nor free. Shown for honesty. */
+	cached: number;
+	pressure: MemoryPressure;
+	/** True when `pressure` came from a fallback heuristic, not the OS. */
+	pressureEstimated: boolean;
+	swapUsed: number;
+	swapTotal: number;
+	/** The swap-out counter moved since the previous sample. */
+	swapping: boolean;
+	/** Heaviest consumers OUTSIDE dev3 — the comparison that ends the argument. */
+	topConsumers: MemoryConsumerGroup[];
+	/** The dev3 application process tree itself, separate from its agents. */
+	appRss: number;
+	/** Tasks with a live tmux session. */
+	activeTaskCount: number;
+	/**
+	 * UPPER BOUND on task memory: shared pages (runtimes, shared libraries) are
+	 * counted once per process, so this overstates. Deliberately the least
+	 * flattering available figure — labelled as approximate in the UI.
+	 */
+	tasksRssApprox: number;
+	topTasks: MemoryTaskConsumer[];
+	/** Median task RSS, or null with no active tasks — never a guessed stand-in. */
+	medianTaskRss: number | null;
+}
+
 // ---- tmux layout (dev3 ui state) ----
 
 export interface TmuxWindowInfo {
@@ -2911,6 +2980,15 @@ export type AppRPCSchema = {
 			getAgentRateLimits: {
 				params: void;
 				response: AgentRateLimitsReport;
+			};
+			/**
+			 * Latest system-memory snapshot, or null before the first poll completes.
+			 * Used for the header widget's first render and by the launch-time banner;
+			 * live updates arrive on the `systemMemoryUpdated` push.
+			 */
+			getSystemMemory: {
+				params: void;
+				response: SystemMemorySnapshot | null;
 			};
 			/** Agent account switcher (multi-account per agent CLI, hot-swap without re-login). */
 			listAgentAccounts: {
@@ -3745,6 +3823,14 @@ export type AppRPCSchema = {
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
+			/**
+			 * System-wide memory, sampled in the same resource-monitor tick as the
+			 * per-task figures (so the dev3 subtotal and the system total are never
+			 * from different moments). Throttled: only emitted when headroom moves
+			 * meaningfully, the pressure/swapping signal changes, or the membership
+			 * of either top list changes.
+			 */
+			systemMemoryUpdated: SystemMemorySnapshot;
 			/**
 			 * Fresh agent rate-limit data (Claude dump / Codex rollouts + monthly credits).
 			 * Pushed by the rate-limit monitor whenever the parsed windows change.

@@ -36,6 +36,12 @@ const PROCESS_INFO_CACHE_MS = 5_000;
 type ProcessInfoResult = {
 	tree: Map<number, number[]>;
 	resources: Map<number, { rss: number; cpu: number }>;
+	/**
+	 * Full command line per PID, for the memory-headroom breakdown (grouping
+	 * heavy processes per application needs the executable path). Populated from
+	 * the SAME ps call — never enumerate the process table twice.
+	 */
+	cmdlines: Map<number, string>;
 };
 
 let _processInfoCache: { promise: Promise<ProcessInfoResult>; expiry: number } | null = null;
@@ -45,19 +51,27 @@ export function clearProcessInfoCache(): void {
 	_processInfoCache = null;
 }
 
-/** Parse `ps -eo pid=,ppid=,rss=,%cpu=` output. Exported for tests. */
+/**
+ * Parse `ps -eo pid=,ppid=,rss=,%cpu=,args=` output. Exported for tests.
+ *
+ * The four numeric fields are matched positionally and everything after them is
+ * the command line verbatim — `args` is unbounded and routinely contains spaces
+ * ("/Applications/Visual Studio Code - Insiders.app/…"), so whitespace-splitting
+ * the whole line mangles it. A line with no args (kernel threads) still parses.
+ */
 export function parseProcessInfoOutput(output: string): ProcessInfoResult {
 	const tree = new Map<number, number[]>();
 	const resources = new Map<number, { rss: number; cpu: number }>();
+	const cmdlines = new Map<number, string>();
 	for (const line of output.split("\n")) {
 		const trimmed = line.trim();
 		if (!trimmed) continue;
-		const parts = trimmed.split(/\s+/);
-		if (parts.length < 4) continue;
-		const pid = parseInt(parts[0], 10);
-		const ppid = parseInt(parts[1], 10);
-		const rss = parseInt(parts[2], 10);
-		const cpu = parseFloat(parts[3]);
+		const m = trimmed.match(/^(\d+)\s+(\d+)\s+(\d+)\s+([\d.]+)(?:\s+(.*))?$/);
+		if (!m) continue;
+		const pid = parseInt(m[1], 10);
+		const ppid = parseInt(m[2], 10);
+		const rss = parseInt(m[3], 10);
+		const cpu = parseFloat(m[4]);
 		if (isNaN(pid) || isNaN(ppid)) continue;
 		let children = tree.get(ppid);
 		if (!children) {
@@ -68,8 +82,10 @@ export function parseProcessInfoOutput(output: string): ProcessInfoResult {
 		if (!isNaN(rss) && !isNaN(cpu)) {
 			resources.set(pid, { rss: rss * 1024, cpu });
 		}
+		const args = m[5]?.trim();
+		if (args) cmdlines.set(pid, args);
 	}
-	return { tree, resources };
+	return { tree, resources, cmdlines };
 }
 
 /**
@@ -84,7 +100,7 @@ export function collectProcessInfo(): Promise<ProcessInfoResult> {
 	const now = Date.now();
 	if (_processInfoCache && now < _processInfoCache.expiry) return _processInfoCache.promise;
 
-	const promise = runText(["ps", "-eo", "pid=,ppid=,rss=,%cpu="]).then(parseProcessInfoOutput);
+	const promise = runText(["ps", "-eo", "pid=,ppid=,rss=,%cpu=,args="]).then(parseProcessInfoOutput);
 	_processInfoCache = { promise, expiry: now + PROCESS_INFO_CACHE_MS };
 	return promise;
 }

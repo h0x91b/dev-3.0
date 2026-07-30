@@ -174,7 +174,12 @@ ux_architecture:
       evidence: ["src/mainview/diagnostics.ts", "src/mainview/components/RootErrorBoundary.tsx", "src/mainview/components/BootstrapScreen.tsx", "src/mainview/components/DiagnosticsPanel.tsx", "src/mainview/components/StatusDock.tsx", "src/mainview/components/ConnectionStatusPill.tsx", "src/mainview/components/DiagnosticsIndicator.tsx", "src/mainview/components/KanbanBoardSkeleton.tsx", "src/mainview/components/BoardLoadFailed.tsx", "src/mainview/index.html (pre-React loader)"]
     global_header:
       purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
-      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator"]
+      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout"]
+      ambient_resource_readout:
+        budget: 1   # currently memory headroom; a second one folds into the narrow sheet instead
+        spec: "Permanent, all widths. Shows headroom LEFT (free GB), never a bare quantity labelled 'memory'; colour = OS pressure verdict (normal -> text-fg-3 neutral, warn -> text-warning, critical -> text-danger); never success-green (green means Completed here). Hover/tap opens a breakdown: system, swap, top-5 consumers outside the app, then the app's own share split from the agent share. NOT a link."
+        narrow: "stays in the header (does NOT fold into the kebab sheet, and is NOT duplicated there); >=44x44px target; breakdown renders as BottomSheet, not a floating popover (no hover on touch)."
+        status: "proposed"
       forbidden: ["task_scoped_action", "dense_filters", "destructive_primary"]
       note: "history_nav = back/forward arrows pinned at the far left of the breadcrumb row (browser convention), driven by the route-history stack in state.ts. Also bound to Cmd+[/Cmd+] and mouse side buttons. Buttons are neutral/ghost icon-only and disable when canGoBack/canGoForward is false."
       evidence: ["src/mainview/components/GlobalHeader.tsx", "src/mainview/state.ts (routeHistory/goBack/goForward)", "src/mainview/App.tsx (Cmd+[/], mouseup buttons 3/4)"]
@@ -662,7 +667,7 @@ ux_architecture:
       settings: { narrow: "category list first -> one category detail at a time with an in-app back affordance; same settings route, no horizontal overflow", status: implemented, evidence: "GlobalSettings.tsx, settings-registry.ts, useNarrowViewport(768)" }
       dashboard: { narrow: "vertical project list, full-width cards (p-3 vs p-7); per-project actions + reorder collapse into a kebab -> BottomSheet action sheet (hover icon-cluster + HTML5 drag + hidden up/down steps are all dead on touch); touch targets >=44px", status: observed, evidence: "ActivityOverview.tsx useNarrowViewport(CAROUSEL_MAX_WIDTH), BottomSheet, ProjectActionButtons (hidden md:flex)" }
       command_palette: { narrow: "needs a TOUCH entry + w-full max-w-[calc(100vw-2rem)] (PaletteShell is 34rem fixed, keyboard-only) — it is the action fallback for the absent native menu", status: proposed, evidence: "PaletteShell.tsx w-[34rem], App.tsx Cmd+K/Cmd+Shift+P" }
-      global_header: { narrow: "reflow: logo + truncated breadcrumb + ONE overflow kebab for all utilities; never a 9-icon row (useCompact at 1600 only hides labels)", status: proposed, evidence: "GlobalHeader.tsx flex justify-between, useCompact.ts" }
+      global_header: { narrow: "reflow: logo + truncated breadcrumb + ONE overflow kebab for all utilities + the single ambient resource readout (memory headroom stays visible, >=44px, breakdown renders as BottomSheet not a floating popover); never a 9-icon row (useCompact at 1600 only hides labels)", status: proposed, evidence: "GlobalHeader.tsx flex justify-between, useCompact.ts" }
       hover_terminal_preview: { narrow: "DISABLED on touch/narrow (no hover; popover obscures)", status: observed, evidence: "useTerminalPreview.ts hoverPreviewEnabled()" }
       toast: { narrow: "already max-w-[calc(100vw-2rem)] — OK", status: ok, evidence: "toast.tsx" }
       task_image_viewer: { narrow: "lightbox is full-bleed; filmstrip -> bottom horizontal-scroll strip; image area is live-content -> axis-arbitrated horizontal swipe + visible prev/next + dots (swipe never the only way); touch entry = inspector badge (>=44px) + palette action (native menu absent in remote). Clamp inner panels to max-w-[calc(100vw-2rem)]; prefers-reduced-motion snaps.", status: proposed }
@@ -679,7 +684,7 @@ ux_architecture:
       used_for: ["context-menu -> action sheet", "board filters", "column-jump list", "Move to <status>", "inspector actions", "diff file picker", "narrow form of action-style modals"]
       requirements: "slide from bottom; respect env(safe-area-inset-bottom); trap + restore focus; dismiss on backdrop tap / swipe-down / Esc; pure React (no native dialog — works in desktop and browser). Build once; no ad-hoc sheets."
     budgets_narrow:
-      global_header: "logo + breadcrumb + 1 overflow kebab; rest into kebab/sheet"
+      global_header: "logo + breadcrumb + 1 overflow kebab + <=1 ambient resource readout; rest into kebab/sheet. The readout is an action-vs-status exception, capped at one, >=44px — see PRODUCT_UX_BIBLE §12.6."
       page_primary: "1 (FAB or header button); rest into a bottom sheet"
       inspector: "1 summary bar; all actions into the actions sheet"
       toolbar_row: "wrap or sheet — NEVER a non-wrapping overflow row"

@@ -213,6 +213,8 @@ const help = {
 	"help.field.streamerMode.title": "Hide private info on stream",
 	"help.field.streamerMode.body":
 		"When on, identity-bearing values — account emails and names, organizations, home-folder paths, tunnel URLs, and the remote-access QR code — are blurred across the UI. Terminal content is NOT masked: panes print whatever agents output. Toggle it quickly from the ⇧⌘P command palette.",
+	"help.header.memory.title": "The memory pill shows what is LEFT",
+	"help.header.memory.body": "The number is free memory, not used — hover it to see who actually took the rest. dev-3.0 itself holds a few hundred megabytes; the gigabytes belong to the agents you launched, and to whatever else is running.",
 } as const;
 
 export default help;

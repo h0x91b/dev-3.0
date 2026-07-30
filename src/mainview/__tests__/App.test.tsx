@@ -14,6 +14,7 @@ vi.mock("../rpc", () => ({
 	reconnectRpc: vi.fn(),
 	api: {
 		request: {
+			getSystemMemory: vi.fn().mockResolvedValue(null),
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),

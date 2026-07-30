@@ -21,6 +21,7 @@ import { openFolderPicker } from "../folder-picker";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import HelpSpot from "./HelpSpot";
 import Select from "./Select";
+import MemoryPressureBanner from "./MemoryPressureBanner";
 
 /** "draft" parks the task as an unfinished draft; the rest are the launch exits. */
 type SubmitMode = "save" | "run" | "scratch" | "draft";
@@ -728,6 +729,10 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 						</div>
 					)}
 				</div>
+
+				{/* Memory notice at the moment the launch decision is made. Informs
+				    only — it never gates or disables Create. */}
+				<MemoryPressureBanner launchCount={1} />
 
 				{showPrBanner && detectedPr && (
 					<div className="flex items-start gap-2.5 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5">

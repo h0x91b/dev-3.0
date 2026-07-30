@@ -1,13 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LaunchVariantsModal from "../LaunchVariantsModal";
 import { I18nProvider } from "../../i18n";
-import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../../shared/types";
+import type { CodingAgent, GlobalSettings, Project, Task, TaskStatus, SystemMemorySnapshot } from "../../../shared/types";
 import type { AppAction } from "../../state";
 
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
+			getSystemMemory: vi.fn().mockResolvedValue(null),
 			spawnVariants: vi.fn(),
 			addAttempts: vi.fn(),
 			toggleTaskWatch: vi.fn(),
@@ -731,5 +732,102 @@ describe("LaunchVariantsModal", () => {
 
 			document.body.removeChild(outside);
 		});
+	});
+});
+
+describe("LaunchVariantsModal — memory notice", () => {
+	const GIB = 1024 ** 3;
+
+	function memory(overrides?: Partial<SystemMemorySnapshot>): SystemMemorySnapshot {
+		return {
+			headroom: 4 * GIB,
+			used: 60 * GIB,
+			total: 64 * GIB,
+			cached: 2 * GIB,
+			pressure: "warn",
+			pressureEstimated: false,
+			swapUsed: 0,
+			swapTotal: 2 * GIB,
+			swapping: false,
+			topConsumers: [],
+			appRss: 300 * 1024 * 1024,
+			activeTaskCount: 3,
+			tasksRssApprox: 9 * GIB,
+			topTasks: [],
+			medianTaskRss: 3 * GIB,
+			...overrides,
+		};
+	}
+
+	it("stays silent when memory is comfortable", async () => {
+		mockedApi.request.getSystemMemory.mockResolvedValue(
+			memory({ pressure: "normal", headroom: 40 * GIB, medianTaskRss: 2 * GIB }),
+		);
+		renderModal(makeProject());
+
+		await waitFor(() => expect(mockedApi.request.getSystemMemory).toHaveBeenCalled());
+		expect(screen.queryByTestId("memory-pressure-banner")).toBeNull();
+	});
+
+	it("appears when the machine is under pressure", async () => {
+		mockedApi.request.getSystemMemory.mockResolvedValue(memory());
+		renderModal(makeProject());
+
+		expect(await screen.findByTestId("memory-pressure-banner")).toHaveTextContent("4.0 GB");
+	});
+
+	it("scales the forecast by the number of variants", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.getSystemMemory.mockResolvedValue(memory({ headroom: 20 * GIB, pressure: "warn" }));
+		renderModal(makeProject());
+
+		const banner = await screen.findByTestId("memory-pressure-banner");
+		// One variant at a 3 GB median.
+		expect(banner).toHaveTextContent(/1 more would need roughly 3\.0 GB/);
+
+		await user.click(screen.getByRole("button", { name: /Add Variant/i }));
+		await user.click(screen.getByRole("button", { name: /Add Variant/i }));
+
+		expect(await screen.findByTestId("memory-pressure-banner")).toHaveTextContent(
+			/3 more would need roughly 9\.0 GB/,
+		);
+	});
+
+	it("warns when the forecast does not fit, even at normal pressure", async () => {
+		mockedApi.request.getSystemMemory.mockResolvedValue(
+			memory({ pressure: "normal", headroom: 1 * GIB, medianTaskRss: 3 * GIB }),
+		);
+		renderModal(makeProject());
+
+		const banner = await screen.findByTestId("memory-pressure-banner");
+		expect(banner).toHaveTextContent(/does not fit/i);
+		expect(banner.className).toContain("border-danger/30");
+	});
+
+	it("omits the forecast when there are no active tasks to learn from", async () => {
+		mockedApi.request.getSystemMemory.mockResolvedValue(
+			memory({ activeTaskCount: 0, tasksRssApprox: 0, medianTaskRss: null }),
+		);
+		renderModal(makeProject());
+
+		const banner = await screen.findByTestId("memory-pressure-banner");
+		expect(banner).toHaveTextContent(/nothing to base a forecast on/i);
+		expect(banner).not.toHaveTextContent(/would need roughly/);
+	});
+
+	it("never blocks the launch — the button stays enabled and still spawns", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.getSystemMemory.mockResolvedValue(
+			memory({ pressure: "critical", headroom: 128 * 1024 * 1024 }),
+		);
+		mockedApi.request.spawnVariants.mockResolvedValue([]);
+		renderModal(makeProject());
+
+		await screen.findByTestId("memory-pressure-banner");
+		const launch = screen.getByRole("button", { name: /^Launch$/ });
+		expect(launch).toBeEnabled();
+
+		await user.click(launch);
+		expect(mockedApi.request.spawnVariants).toHaveBeenCalled();
 	});
 });

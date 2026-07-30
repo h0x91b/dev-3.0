@@ -305,3 +305,32 @@ export function HelpModeIcon({ className }: HeaderIconProps) {
 		</svg>
 	);
 }
+
+// 23 — Memory headroom: a memory module filling from the bottom as RAM is
+// consumed. The fill is `currentColor` at low opacity, so the pressure colour on
+// the hosting button drives outline and fill together — one class, no raw hex.
+// A per-chip segmented rendering was rejected as illegible at header size.
+export function MemoryStickIcon({ className, usedRatio = 0 }: HeaderIconProps & { usedRatio?: number }) {
+	const clamped = Math.min(1, Math.max(0, usedRatio));
+	// The module body spans y=4..19 (15 units); the fill grows upward from its base.
+	const fillHeight = 15 * clamped;
+	return (
+		<svg {...svgBase(className)}>
+			<rect x="5" y="4" width="14" height="15" rx="1.8" />
+			{fillHeight > 0 && (
+				<rect
+					x="5"
+					y={19 - fillHeight}
+					width="14"
+					height={fillHeight}
+					fill="currentColor"
+					fillOpacity={0.4}
+					stroke="none"
+					className="hdr-mem-fill"
+				/>
+			)}
+			{/* Contact pins on the bottom edge — what makes the glyph read as memory. */}
+			<path d="M8.5 19v2.4M12 19v2.4M15.5 19v2.4" />
+		</svg>
+	);
+}

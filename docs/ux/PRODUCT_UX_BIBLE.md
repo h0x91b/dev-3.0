@@ -106,7 +106,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 
 | Surface | Purpose | Allowed | Forbidden | Evidence |
 |---|---|---|---|---|
-| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
+| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
 | Application menu (native) | Canonical home for the full action taxonomy | every action type | — | `application-menu.ts`, `menu-actions.ts` |
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, task filter (token-DSL search + funnel; label chips are a view of it) | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx`, `LabelFilterBar.tsx`, `FilterFunnel.tsx` |
 | Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge | full settings, global destination, unbounded dot rows | `TaskCard.tsx` (large — watch density) |
@@ -323,6 +323,7 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 | debug surface | menu `Debug` | header, dashboard, sidebar | dev surfaces must not leak to users |
 | diagnostic surface (crash/error) | error boundary around providers, bootstrap phase+timeout state, conditional floating pill (remote + errorCount>0) → `DiagnosticsPanel` | permanent header/toolbar button, nav destination, desktop-shell chrome | faults must be visible where there is no devtools (mobile) without adding happy-path chrome (see §5.5) |
 | transport health (`status`) | conditional floating pill in `StatusDock` (remote + transport unhealthy), tap = reconnect, ~2.5s success confirmation on recovery; per-screen skeleton / retry-panel / self-heal refetch for the data it blocks | header status dot or banner (permanent chrome + layout shift), a toast (transient — the condition persists), silence until the 120s RPC timeout | a dropped socket must be visible and retryable for as long as it lasts, without adding happy-path chrome (see §5.5) |
+| ambient resource telemetry (`status`) — host-machine capacity the user spends by launching work | **permanent** global-header readout (≤1, see §5 budget), framed as *headroom left* not *usage*, colour driven by the OS's own pressure verdict; hover/tap → popover (desktop) / BottomSheet (narrow) with the who-took-it breakdown, own-app share stated separately from the agent share; the same numbers repeated as a **non-blocking** banner at the launch decision point (create-task, launch-variants) | a fault-style conditional pill (this is not a fault — it is a continuous decision input), a percentage threshold we invented instead of the OS signal, a bare quantity labelled only "memory", blocking/gating a launch, toasts or attention badges on pressure, memory history/graphs on the cockpit | unlike transport health and diagnostics (faults → conditional chrome, §5.5), capacity is useful on the happy path: the user builds an intuition for *normal* only by seeing it when nothing is wrong, and needs it with zero tasks running. Same class as the prevent-sleep toggle (always-on ambient machine state, `--awake`), not the same class as an error indicator. It also exists to answer a blame question honestly — so the app's own share must never be flattered (decision 2026-07-30) |
 | hint navigation (jump) | `HintOverlay` over any `[data-hint-id]` target; activate with bare `f` / `⌘G` | mutation or destructive targets, visible button | hints are destinations, not actions; keyboard-only avoids button-creep |
 | keyboard expert nav | bare-key + `g`-prefix sequences (`g d/p/t/s`), `/` focus search, `c` new task — declared in `keymap.ts`, matched on `e.code` | native menu accelerators (Electrobun can't bind chords/sequences) | layout-independent; reserve `g` for the go-to prefix |
 | countable/motivational metric (`data_visualization`) | emit into the stats engine first (`productivity-stats.ts` + `productivityStats.ts`), then a viz on the Velocity Cockpit (`stats`) | controls/config on the cockpit, a new top-level screen per metric, a header counter, diagnostic noise | the cockpit is the one home for shipping signal — keep it read-only and within the honesty/complexity budget (see §1.1) |
@@ -420,11 +421,13 @@ The doctrine needs **one** reusable bottom-sheet primitive; none exists today (o
 
 | Surface | Narrow budget | Overflow rule |
 |---|---|---|
-| Global header utilities | logo + breadcrumb + **1** overflow kebab | everything else into the kebab/sheet |
+| Global header utilities | logo + breadcrumb + **1** overflow kebab + **≤1 ambient resource readout** | everything else into the kebab/sheet |
 | Page primary action | 1 (a FAB or header button) | rest into a bottom sheet |
 | Inspector | 1 summary bar | all actions into the actions sheet |
 | Any toolbar/action row | wrap or sheet — **never** a non-wrapping overflow row | move to bottom sheet |
 | Touch target | **≥ 44×44px** | many current controls are 32px / `p-0.5` — bump on narrow |
+
+**The one ambient-readout slot is an exception, and it is capped at one.** Utilities fold into the kebab because they are *actions* you go looking for; an ambient resource readout is a *status* whose whole value is being seen without looking — and it matters most on narrow, where the user has less screen and usually more running. It claims exactly one slot (currently memory headroom) and must hit the 44×44px touch target. No second readout inherits this; the next one folds into the sheet. Its neighbours `PreventSleepToggle` / `RateLimitIndicator` stay folded (a toggle is an action; per-account quota is not machine-critical), and the readout is **not** duplicated inside the sheet.
 
 ### 12.7 Accessibility, motion, input — `Proposed`
 

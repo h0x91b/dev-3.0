@@ -144,6 +144,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 		link: { labelKey: "help.ui.openShortcuts", action: "open-keyboard-shortcuts" },
 	},
 	{ id: "header.rateLimits", titleKey: "help.header.rateLimits.title", bodyKey: "help.header.rateLimits.body" },
+	{ id: "header.memory", titleKey: "help.header.memory.title", bodyKey: "help.header.memory.body" },
 	{ id: "header.tmux-sessions", titleKey: "help.header.tmuxSessions.title", bodyKey: "help.header.tmuxSessions.body" },
 	{ id: "sidebar.active-tasks", titleKey: "help.sidebar.activeTasks.title", bodyKey: "help.sidebar.activeTasks.body" },
 ];
