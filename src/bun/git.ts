@@ -1225,22 +1225,10 @@ async function refExists(projectPath: string, ref: string): Promise<boolean> {
 	return result.ok;
 }
 
-function parseRecentCommitters(shortlogOutput: string): Set<string> {
-	const emails = new Set<string>();
-
-	for (const line of shortlogOutput.split("\n")) {
-		const match = line.match(/<([^>]+)>/);
-		if (!match) continue;
-		emails.add(match[1].trim().toLowerCase());
-	}
-
-	return emails;
-}
-
-// detectDefaultCompareRef runs `git shortlog` over two weeks of history — expensive
-// on large repos. It is invoked by resolveProjectConfig, which the renderer polls
-// every few seconds, so the result is cached with a TTL. The in-flight promise is
-// cached too, coalescing concurrent callers.
+// detectDefaultCompareRef spawns several git commands (and sets up base-branch
+// tracking). It is invoked by resolveProjectConfig, which the renderer polls every
+// few seconds, so the result is cached with a TTL. The in-flight promise is cached
+// too, coalescing concurrent callers.
 const compareRefCache = new Map<string, { at: number; promise: Promise<string> }>();
 const COMPARE_REF_CACHE_TTL_MS = 10 * 60_000;
 
@@ -1275,36 +1263,20 @@ async function detectDefaultCompareRefUncached(
 		.includes("origin");
 	const remoteBaseRef = `origin/${baseBranch}`;
 	const remoteBaseExists = hasOriginRemote && await refExists(projectPath, remoteBaseRef);
-	let localBaseExists = await refExists(projectPath, baseBranch);
+	const localBaseExists = await refExists(projectPath, baseBranch);
 	if (baseBranch === "main" || baseBranch === "master") {
 		if (remoteBaseExists) {
 			if (localBaseExists) {
 				await run(["git", "branch", "--set-upstream-to", remoteBaseRef, baseBranch], projectPath);
 			} else {
 				await run(["git", "branch", "--track", baseBranch, remoteBaseRef], projectPath);
-				localBaseExists = true;
 			}
 		}
 	}
-	const historyRef = remoteBaseExists ? remoteBaseRef : baseBranch;
 
-	const shortlogResult = await run(
-		["git", "shortlog", "-sne", "--since=2 weeks ago", historyRef],
-		projectPath,
-	);
-	const recentCommitters = shortlogResult.ok
-		? parseRecentCommitters(shortlogResult.stdout)
-		: new Set<string>();
-
-	if (recentCommitters.size <= 1) {
-		if (localBaseExists) return baseBranch;
-		if (remoteBaseExists) return remoteBaseRef;
-		return baseBranch;
-	}
-
-	if (remoteBaseExists) {
-		return remoteBaseRef;
-	}
+	// The remote ref always wins: dev3 fetches origin but never fast-forwards the
+	// main clone's local base branch, so the local one goes stale and diffs lie.
+	if (remoteBaseExists) return remoteBaseRef;
 
 	if (hasOriginRemote) {
 		for (const branchName of ["main", "master"]) {
@@ -1313,7 +1285,6 @@ async function detectDefaultCompareRefUncached(
 		}
 	}
 
-	if (localBaseExists) return baseBranch;
 	return baseBranch;
 }
 

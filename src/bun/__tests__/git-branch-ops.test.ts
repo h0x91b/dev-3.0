@@ -656,40 +656,52 @@ describe("listBranches", () => {
 // ─── detectDefaultCompareRef ────────────────────────────────────────────────
 
 describe("detectDefaultCompareRef", () => {
-	it("prefers local main when the last two weeks have one committer", async () => {
+	it("prefers origin/main even when a single committer owns the repo", async () => {
 		queueResponse(0, "origin\n"); // remotes
 		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
 		queueResponse(0, "abc123\n"); // rev-parse --verify main
 		queueResponse(0, ""); // branch --set-upstream-to origin/main main
-		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n    2 h0x91B <H0X91B@gmail.com>\n"); // shortlog
-
-		const ref = await detectDefaultCompareRef("/repo", "main");
-
-		expect(ref).toBe("main");
-	});
-
-	it("prefers origin/main when there are multiple recent committers and a remote main exists", async () => {
-		queueResponse(0, "origin\n"); // remotes
-		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
-		queueResponse(0, "def456\n"); // rev-parse --verify main
-		queueResponse(0, ""); // branch --set-upstream-to origin/main main
-		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n    3 roi <roir@wix.com>\n"); // shortlog
 
 		const ref = await detectDefaultCompareRef("/repo", "main");
 
 		expect(ref).toBe("origin/main");
 	});
 
-	it("uses origin/master when master is the collaborative base branch", async () => {
+	it("tracks the local base branch against origin when it does not exist yet", async () => {
+		queueResponse(0, "origin\n"); // remotes
+		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
+		queueResponse(128, "", "fatal: ambiguous argument 'main'"); // rev-parse --verify main
+		queueResponse(0, ""); // branch --track main origin/main
+
+		expect(await detectDefaultCompareRef("/repo", "main")).toBe("origin/main");
+		expect(spawnResponses).toHaveLength(0);
+	});
+
+	it("uses origin/master when master is the base branch", async () => {
 		queueResponse(0, "origin\n"); // remotes
 		queueResponse(0, "abc123\n"); // rev-parse --verify origin/master
 		queueResponse(128, "", "fatal: ambiguous argument 'master'"); // rev-parse --verify master
 		queueResponse(0, ""); // branch --track master origin/master
-		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n    3 roi <roir@wix.com>\n"); // shortlog
 
 		const ref = await detectDefaultCompareRef("/repo", "master");
 
 		expect(ref).toBe("origin/master");
+	});
+
+	it("falls back to the local base branch when there is no origin remote", async () => {
+		queueResponse(0, "\n"); // remotes — none
+		queueResponse(0, "abc123\n"); // rev-parse --verify main
+
+		expect(await detectDefaultCompareRef("/repo", "main")).toBe("main");
+	});
+
+	it("falls back to origin/main when the configured base branch has no remote ref", async () => {
+		queueResponse(0, "origin\n"); // remotes
+		queueResponse(128, "", "fatal"); // rev-parse --verify origin/develop
+		queueResponse(0, "abc123\n"); // rev-parse --verify develop
+		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
+
+		expect(await detectDefaultCompareRef("/repo", "develop")).toBe("origin/main");
 	});
 
 	it("caches the result for repeated calls (no extra git spawns)", async () => {
@@ -697,23 +709,19 @@ describe("detectDefaultCompareRef", () => {
 		queueResponse(0, "abc123\n"); // rev-parse --verify origin/main
 		queueResponse(0, "abc123\n"); // rev-parse --verify main
 		queueResponse(0, ""); // branch --set-upstream-to origin/main main
-		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n"); // shortlog
 
 		const first = await detectDefaultCompareRef("/repo", "main");
-		expect(first).toBe("main");
+		expect(first).toBe("origin/main");
 		expect(spawnResponses).toHaveLength(0);
 
 		// Second call hits the cache — nothing queued, no spawn attempted
 		const second = await detectDefaultCompareRef("/repo", "main");
-		expect(second).toBe("main");
+		expect(second).toBe("origin/main");
 	});
 
 	it("caches per projectPath+baseBranch key", async () => {
-		queueResponse(0, "origin\n");
+		queueResponse(0, "\n");
 		queueResponse(0, "abc123\n");
-		queueResponse(0, "abc123\n");
-		queueResponse(0, "");
-		queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n");
 		expect(await detectDefaultCompareRef("/repo", "main")).toBe("main");
 
 		// Different repo: full detection runs again
@@ -721,7 +729,6 @@ describe("detectDefaultCompareRef", () => {
 		queueResponse(0, "abc123\n");
 		queueResponse(0, "def456\n");
 		queueResponse(0, "");
-		queueResponse(0, "   10 a <a@x.com>\n    3 b <b@x.com>\n");
 		expect(await detectDefaultCompareRef("/other-repo", "main")).toBe("origin/main");
 		expect(spawnResponses).toHaveLength(0);
 	});
@@ -729,11 +736,8 @@ describe("detectDefaultCompareRef", () => {
 	it("expires the cache after the TTL", async () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		try {
-			queueResponse(0, "origin\n");
+			queueResponse(0, "\n");
 			queueResponse(0, "abc123\n");
-			queueResponse(0, "abc123\n");
-			queueResponse(0, "");
-			queueResponse(0, "   10 Arseniy Pavlenko <h0x91b@gmail.com>\n");
 			expect(await detectDefaultCompareRef("/repo", "main")).toBe("main");
 
 			vi.setSystemTime(Date.now() + 11 * 60_000);
@@ -742,7 +746,6 @@ describe("detectDefaultCompareRef", () => {
 			queueResponse(0, "abc123\n");
 			queueResponse(0, "def456\n");
 			queueResponse(0, "");
-			queueResponse(0, "   10 a <a@x.com>\n    3 b <b@x.com>\n");
 			expect(await detectDefaultCompareRef("/repo", "main")).toBe("origin/main");
 			expect(spawnResponses).toHaveLength(0);
 		} finally {
