@@ -84,7 +84,6 @@ const terminal = {
 	"tmux.layoutMainHDesc": "Main + bottom",
 	"tmux.layoutMainVDesc": "Main + right",
 	"tmux.layoutMenuTitle": "tmux layouts",
-	"tmux.chooseLayout": "Choose tmux layout",
 	"tmux.closePaneDesc": "Close pane",
 	"tmux.closePaneEofDesc": "Close pane (exit shell)",
 	"tmux.pickPaneHint": "Click a pane to close it",

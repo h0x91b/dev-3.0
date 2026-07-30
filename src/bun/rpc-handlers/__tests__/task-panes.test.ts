@@ -104,7 +104,7 @@ import { taskPanesHandlers } from "../task-panes";
 
 const TASK_ID = "aaaaaaaa-0000-0000-0000-000000000001";
 const tmuxTask = { id: TASK_ID, terminalBackend: undefined } as any;
-const nativeTask = { id: TASK_ID, terminalBackend: "native" } as any;
+const nativeTask = { id: TASK_ID, terminalBackend: "native", worktreePath: "/tmp/wt", title: "T", branchName: "b" } as any;
 
 /** Minimal TmuxLayout for two panes in one 100×40-cell window. */
 const twoPane80TmuxLayout = {
@@ -416,12 +416,19 @@ describe("taskPaneAction (native)", () => {
 			TASK_ID,
 			"pane-1", // active pane id from makeTwoPaneNativeState
 			"vertical",
+			// cwd/env come from the task record, so a split survives an app restart.
+			{ cwd: "/tmp/wt", env: expect.objectContaining({ DEV3_WORKTREE_PATH: "/tmp/wt" }) },
 		);
 	});
 
 	it("splitV calls splitNativeTaskPane with orientation 'horizontal'", async () => {
 		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitV" } });
-		expect(mocks.splitNativeTaskPane).toHaveBeenCalledWith(TASK_ID, expect.any(String), "horizontal");
+		expect(mocks.splitNativeTaskPane).toHaveBeenCalledWith(
+			TASK_ID,
+			expect.any(String),
+			"horizontal",
+			expect.objectContaining({ cwd: "/tmp/wt" }),
+		);
 	});
 
 	it("focus calls focusNativeTaskPane", async () => {

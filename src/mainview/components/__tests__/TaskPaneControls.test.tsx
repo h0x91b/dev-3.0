@@ -200,6 +200,25 @@ describe("TaskPaneControls", () => {
 
 	// ── Action handlers ───────────────────────────────────────────────────────
 
+	it("targets the viewer-focused pane on native, not the server-active one", async () => {
+		const user = userEvent.setup();
+		const { publishNativePaneFocus, _resetNativePaneFocus } = await import("../../native-pane-focus");
+		_resetNativePaneFocus();
+		publishNativePaneFocus("task-1", "pane-2");
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(NATIVE_TWO_PANE);
+		vi.mocked(api.request.taskPaneAction).mockResolvedValue(NATIVE_TWO_PANE);
+
+		renderControls();
+		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
+		await user.click(screen.getByLabelText("Zoom pane (toggle)"));
+
+		await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+			taskId: "task-1",
+			action: { kind: "zoom", mode: "toggle", paneId: "pane-2" },
+		}));
+		_resetNativePaneFocus();
+	});
+
 	it("sends splitH action without prompting", async () => {
 		const user = userEvent.setup();
 		vi.mocked(api.request.taskPaneAction).mockResolvedValue(TMUX_TWO_PANE);

@@ -1,5 +1,8 @@
 const panes = {
 	"panes.layoutLabel": "Layout",
+	"panes.chooseLayout": "Choose pane layout",
+	"panes.unzoom": "Unzoom",
+	"panes.actionFailed": "Pane action failed: {error}",
 	"panes.layoutNeedsTwoPanes": "Need at least 2 panes to cycle layouts",
 	"panes.nativeHintsTitle": "Terminal Shortcuts",
 	"panes.nativeNoPrefixKeys": "No ⌃B prefix — pane actions use the toolbar above",

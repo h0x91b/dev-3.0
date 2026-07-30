@@ -251,4 +251,27 @@ describe("TaskTerminal (native multi-pane)", () => {
 		renderTaskTerminal(NATIVE_TASK, true);
 		await waitFor(() => expect(screen.queryByTestId("mobile-pane-carousel")).toBeInTheDocument());
 	});
+
+	it("renders only the zoomed pane when the shared layout reports one", async () => {
+		const zoomed = { ...makeNativePaneState(["pane-1", "pane-2", "pane-3"]), zoomedPaneId: "pane-2" };
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(zoomed);
+		renderTaskTerminal(NATIVE_TASK);
+		await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(1));
+		expect(screen.getByRole("button", { name: "Unzoom" })).toBeInTheDocument();
+	});
+
+	it("unzoom asks the backend to clear the shared zoom", async () => {
+		const zoomed = { ...makeNativePaneState(["pane-1", "pane-2"]), zoomedPaneId: "pane-2" };
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(zoomed);
+		vi.mocked(api.request.taskPaneAction).mockResolvedValue(makeNativePaneState(["pane-1", "pane-2"]));
+		renderTaskTerminal(NATIVE_TASK);
+		const button = await waitFor(() => screen.getByRole("button", { name: "Unzoom" }));
+		button.click();
+		await waitFor(() =>
+			expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+				taskId: TASK_ID,
+				action: { kind: "zoom", mode: "off" },
+			}),
+		);
+	});
 });

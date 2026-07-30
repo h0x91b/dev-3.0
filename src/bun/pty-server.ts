@@ -401,7 +401,7 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 	session.nativeAttaching = true;
 	sessions.set(taskId, session);
 	try {
-		const panesState = await recoverNativeTaskPanes(taskId, { cwd: session.cwd, env: session.env });
+		const panesState = await recoverNativeTaskPanes(taskId);
 		if (!panesState) {
 			if (!existing) sessions.delete(taskId);
 			return false;

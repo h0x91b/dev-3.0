@@ -86,7 +86,6 @@ const terminal = {
 	"tmux.layoutMainHDesc": "Главная + низ",
 	"tmux.layoutMainVDesc": "Главная + право",
 	"tmux.layoutMenuTitle": "Раскладки tmux",
-	"tmux.chooseLayout": "Выбрать раскладку tmux",
 	"tmux.closePaneDesc": "Закрыть панель",
 	"tmux.closePaneEofDesc": "Закрыть панель (выход из shell)",
 	"tmux.pickPaneHint": "Нажмите на панель, чтобы закрыть её",

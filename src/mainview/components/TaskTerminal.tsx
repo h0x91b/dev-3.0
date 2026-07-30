@@ -22,6 +22,7 @@ import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
 import type { TaskPaneState } from "../../shared/task-panes";
 import { getPaneRects, restoreSplitTree } from "../../shared/split-tree";
+import { publishNativePaneFocus } from "../native-pane-focus";
 
 interface TaskTerminalProps {
 	projectId: string;
@@ -77,8 +78,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [paneUrls, setPaneUrls] = useState<Map<string, string>>(() => new Map());
 	// Client-local focus: clicking/typing into a pane focuses it here, not on the server.
 	const [clientFocusPaneId, setClientFocusPaneId] = useState<string | null>(null);
-	// Client-local zoom: show only the focused pane full-bleed.
-	const [clientZoom, setClientZoom] = useState(false);
 	// Per-pane handles and roles for NativeViewerBar.
 	const paneHandlesRef = useRef<Map<string, TerminalHandle>>(new Map());
 	const paneRolesRef = useRef<Map<string, { role: NativeStreamRole; refusedAt: number }>>(new Map());
@@ -136,7 +135,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				if (cancelled) return;
 				setNativePaneState(state);
 				// Set initial client focus to the server-active pane.
-				setClientFocusPaneId((prev) => prev ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null));
+				setClientFocusPaneId((prev) => {
+						const next = prev ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null);
+						if (next) publishNativePaneFocus(taskId, next);
+						return next;
+					});
 			} catch {
 				if (!cancelled) await classifyAndSetError();
 			}
@@ -410,6 +413,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 		function handleFocusPane(paneId: string) {
 			setClientFocusPaneId(paneId);
+			publishNativePaneFocus(taskId, paneId);
 			const stored = paneRolesRef.current.get(paneId);
 			setFocusedPaneRole(stored?.role ?? "writer");
 			setFocusedPaneRefusedAt(stored?.refusedAt ?? 0);
@@ -534,8 +538,9 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		// Wide: absolute-positioned panes from SplitTree rects — stable keys, no remounting on sibling changes.
 		const GAP = 0.003; // ~1px visual gap between panes
 
-		// Zoom: show only the focused pane full-bleed.
-		const zoomedPane = clientZoom ? focusPaneId : null;
+		// Zoom lives in the shared tree so the toolbar button, the keyboard path and a
+		// reconnecting viewer all agree on which pane is zoomed.
+		const zoomedPane = panes.length > 1 ? nativePaneState?.zoomedPaneId ?? null : null;
 
 		return (
 			<div className="relative h-full w-full flex flex-col overflow-hidden">
@@ -556,18 +561,23 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
 						<div
 							key={zoomedPane}
+							data-pane-id={zoomedPane}
+							data-zoomed="true"
 							className="absolute inset-0 border border-accent/60 ring-1 ring-accent/30 overflow-hidden"
 							onClick={() => handleFocusPane(zoomedPane)}
 						>
 							{renderNativePane(zoomedPane)}
 						</div>
-						{/* Client-local unzoom button for native panes */}
 						<button
 							className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[0.625rem] font-medium bg-accent/20 text-accent border border-accent/40 hover:bg-accent/30 transition-colors"
-							onClick={() => setClientZoom(false)}
-							aria-label={t("tmux.zoomDesc")}
+							onClick={() => {
+								api.request.taskPaneAction({ taskId, action: { kind: "zoom", mode: "off" } })
+									.then(setNativePaneState)
+									.catch(() => {});
+							}}
+							aria-label={t("panes.unzoom")}
 						>
-							{t("tmux.zoomDesc")}
+							{t("panes.unzoom")}
 						</button>
 					</div>
 				) : panes.length > 0 ? (

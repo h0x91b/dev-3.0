@@ -84,7 +84,6 @@ const terminal = {
 	"tmux.layoutMainHDesc": "Principal + abajo",
 	"tmux.layoutMainVDesc": "Principal + derecha",
 	"tmux.layoutMenuTitle": "Distribuciones tmux",
-	"tmux.chooseLayout": "Elegir distribución tmux",
 	"tmux.closePaneDesc": "Cerrar panel",
 	"tmux.closePaneEofDesc": "Cerrar panel (salir del shell)",
 	"tmux.pickPaneHint": "Haz clic en un panel para cerrarlo",

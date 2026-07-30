@@ -17,6 +17,7 @@ import {
 	TmuxError,
 } from "../tmux";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
+import { buildTaskLifecycleEnv } from "./shared-pure";
 import {
 	nativeTaskPanesState,
 	splitNativeTaskPane,
@@ -355,6 +356,19 @@ async function tmuxPaneAction(taskId: string, action: TaskPaneAction): Promise<T
 
 // ── native pane action dispatch ───────────────────────────────────────────────
 
+/**
+ * Where a new native pane's shell starts. Resolved from the task on every split
+ * so it survives an app restart, unlike anything cached in this process.
+ */
+async function splitContext(taskId: string): Promise<{ cwd: string; env: Record<string, string> }> {
+	const { task, project } = await findTaskAcrossProjects(taskId);
+	const cwd = task?.worktreePath;
+	if (!task || !project || !cwd) {
+		throw new Error(`Cannot split: no worktree on record for task ${taskId.slice(0, 8)}`);
+	}
+	return { cwd, env: buildTaskLifecycleEnv(project, task, cwd) };
+}
+
 async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise<TaskPaneState> {
 	// Read current state first — most actions need the active pane id or tree
 	const nativeState = await nativeTaskPanesState(taskId);
@@ -369,7 +383,7 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 			const orientation = paneActionToSplitOrientation(action.kind);
 			const fromPaneId = action.paneId ?? nativeState.activePaneId;
 			if (!fromPaneId) throw new Error("No active pane to split from");
-			const { state } = await splitNativeTaskPane(taskId, fromPaneId, orientation);
+			const { state } = await splitNativeTaskPane(taskId, fromPaneId, orientation, await splitContext(taskId));
 			updatedState = state;
 			break;
 		}

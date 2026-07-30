@@ -73,7 +73,6 @@ export const tooltips = {
 		"tmux: splits the current pane in two, side by side. Run a shell, a log tail or a second tool next to the agent.",
 	"ttip.tmux.splitV": "tmux: splits the current pane in two, stacked — the new pane opens below the active one.",
 	"ttip.tmux.nextLayout": "tmux: cycles through the preset pane layouts (even columns, rows, tiled…) for this window.",
-	"ttip.tmux.chooseLayout": "tmux: pick an exact pane layout from the list instead of cycling through them.",
 	"ttip.tmux.zoom":
 		"tmux: temporarily maximizes the active pane to the whole window. Press again to restore the layout — nothing is closed.",
 	"ttip.tmux.closePane":

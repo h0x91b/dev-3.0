@@ -53,6 +53,42 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 	useEscapeKey(cancel, { enabled: active });
 
 	const begin = useCallback(async () => {
+		// Native panes already report normalized rects, so they need none of the tmux
+		// cell/status-bar math below — and tmuxLayout would fail on them outright.
+		let paneState;
+		try {
+			paneState = await api.request.taskPaneState({ taskId });
+		} catch {
+			toast.error(t("tmux.pickPaneError"), { taskId });
+			return;
+		}
+		if (paneState.backend === "native") {
+			const isLast = paneState.panes.length === 1;
+			const visible = paneState.zoomedPaneId
+				? paneState.panes.filter((p) => p.paneId === paneState.zoomedPaneId)
+				: paneState.panes;
+			if (visible.length === 0) {
+				toast.error(t("tmux.pickPaneError"), { taskId });
+				return;
+			}
+			setBoxes(
+				visible.map((pane) => {
+					const rect = paneState.zoomedPaneId ? { x: 0, y: 0, width: 1, height: 1 } : pane.rect;
+					return {
+						paneId: pane.paneId,
+						label: pane.label.trim() || t("panePager.pane", { index: String(pane.index + 1) }),
+						leftPct: rect.x * 100,
+						topPct: rect.y * 100,
+						widthPct: rect.width * 100,
+						heightPct: rect.height * 100,
+						isLast,
+					};
+				}),
+			);
+			setBusy(false);
+			return;
+		}
+
 		let layout;
 		try {
 			layout = await api.request.tmuxLayout({ taskId });

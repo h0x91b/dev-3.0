@@ -71,7 +71,6 @@ export const tooltips = {
 		"tmux: divide el panel actual en dos, lado a lado. Ejecuta un shell, un tail de logs o una segunda herramienta junto al agente.",
 	"ttip.tmux.splitV": "tmux: divide el panel actual en dos, apilados — el nuevo se abre debajo del activo.",
 	"ttip.tmux.nextLayout": "tmux: recorre los diseños de paneles predefinidos (columnas, filas, mosaico…) de esta ventana.",
-	"ttip.tmux.chooseLayout": "tmux: elige un diseño de paneles concreto de la lista, en vez de ir rotando.",
 	"ttip.tmux.zoom":
 		"tmux: maximiza temporalmente el panel activo a toda la ventana. Pulsa otra vez para restaurar el diseño — no se cierra nada.",
 	"ttip.tmux.closePane":

@@ -7,10 +7,11 @@
  * directly; native-only details (pids, SplitTree, geometry publish) are exposed
  * via native-only methods on the concrete NativeTerminalBackend class.
  *
- * Per-task context (cwd + env) is kept in `contexts` so a split pane inherits
- * the task's working directory and environment instead of inventing /tmp or an
- * empty env. The context is populated on start and on recover; splitNativeTaskPane
- * fails loudly when it is absent.
+ * A split pane inherits its cwd and env from the CALLER, which resolves them from
+ * the task itself (worktree path + task lifecycle env). This module keeps no
+ * per-process memory of them: after an app restart the pane set is recovered from
+ * disk, and anything remembered only in RAM would be gone exactly when the user
+ * clicks Split.
  *
  * Never touches tmux. Never constructs a second backend or coordinator.
  */
@@ -64,11 +65,6 @@ export interface StartNativeTaskPanesSpec {
 	rows: number;
 }
 
-export interface TaskPaneContext {
-	cwd: string;
-	env: Record<string, string>;
-}
-
 // ── Internal state ────────────────────────────────────────────────────────────
 
 /**
@@ -85,11 +81,7 @@ function getBackend(): NativeTerminalBackend {
 /** @internal Exposed for tests only. Resets the singleton so tests get a fresh world. */
 export function _resetBackendForTests(): void {
 	_backend = null;
-	contexts.clear();
 }
-
-/** Task cwd + env, populated on start or recover, consumed by split. */
-const contexts = new Map<string, TaskPaneContext>();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -160,9 +152,6 @@ export async function startNativeTaskPanes(spec: StartNativeTaskPanesSpec): Prom
 
 	await backend.openSession({ id: coordId, cwd, env, launch, size: { cols, rows } });
 
-	// Store context for split inheritance before reading the state.
-	contexts.set(taskId, { cwd, env });
-
 	const state = await buildState(taskId);
 	log.info("Native task panes started", {
 		taskId: taskId.slice(0, 8),
@@ -175,23 +164,12 @@ export async function startNativeTaskPanes(spec: StartNativeTaskPanesSpec): Prom
 /**
  * Rediscover an existing pane set after an app restart. Never spawns.
  * Returns `null` when no coordinator record exists for this task.
- *
- * `context` carries the cwd/env needed for subsequent `splitNativeTaskPane`
- * calls; pass it whenever the caller has the information (e.g. pty-server on
- * reattach). Without it, splits after a fresh-process recover will fail loudly.
  */
-export async function recoverNativeTaskPanes(
-	taskId: string,
-	context?: TaskPaneContext,
-): Promise<NativeTaskPanesState | null> {
+export async function recoverNativeTaskPanes(taskId: string): Promise<NativeTaskPanesState | null> {
 	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
 	const sessionState = await backend.describeSession(coordId);
 	if (!sessionState) return null;
-
-	// Store context when provided; keep any previously stored context otherwise.
-	if (context) contexts.set(taskId, context);
-
 	return buildState(taskId);
 }
 
@@ -205,26 +183,17 @@ export async function nativeTaskPanesState(taskId: string): Promise<NativeTaskPa
 }
 
 /**
- * Split an existing pane, spawning a new independent shell.
- * Inherits cwd and env from the context stored at start/recover time.
- * Fails loudly when no context is available — do not invent /tmp defaults.
+ * Split an existing pane, spawning a new independent shell in the task's own
+ * cwd and env — both required, so a split can never land in `/tmp` with an empty
+ * environment.
  */
 export async function splitNativeTaskPane(
 	taskId: string,
 	fromPaneId: string,
 	orientation: SplitOrientation,
-	spec?: { cwd?: string; env?: Record<string, string>; launch?: TerminalLaunchSpec; cols?: number; rows?: number },
+	spec: { cwd: string; env: Record<string, string>; launch?: TerminalLaunchSpec; cols?: number; rows?: number },
 ): Promise<{ paneId: string; state: NativeTaskPanesState }> {
-	const ctx = contexts.get(taskId);
-	if (!ctx) {
-		throw new Error(
-			`splitNativeTaskPane: no cwd/env context for task ${taskId.slice(0, 8)} — ` +
-				"call startNativeTaskPanes or recoverNativeTaskPanes(taskId, { cwd, env }) first",
-		);
-	}
-
-	const cwd = spec?.cwd ?? ctx.cwd;
-	const env = spec?.env ?? ctx.env;
+	const { cwd, env } = spec;
 
 	// Derive geometry from the source pane's record; fall back to 80×24 and log.
 	const backend = getBackend();
@@ -279,7 +248,6 @@ export async function closeNativeTaskPane(
 	await backend.closeView(coordId, paneId);
 	const after = await backend.describeSession(coordId);
 	if (!after) {
-		contexts.delete(taskId);
 		return { sessionTornDown: true, state: null };
 	}
 	return { sessionTornDown: false, state: await buildState(taskId) };
@@ -310,7 +278,6 @@ export async function focusNativeTaskPane(taskId: string, paneId: string): Promi
 export async function stopNativeTaskPanes(taskId: string): Promise<void> {
 	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
-	contexts.delete(taskId);
 	await backend.cleanupSession(coordId, { ignoreMissing: true });
 	const after = await backend.describeSession(coordId);
 	if (after !== null) {

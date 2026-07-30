@@ -10,7 +10,7 @@ import { toast } from "../../toast";
 import { startClosePanePicker } from "../../close-pane-picker";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { tmuxLayout: vi.fn(), taskPaneAction: vi.fn() } },
+	api: { request: { tmuxLayout: vi.fn(), taskPaneState: vi.fn(), taskPaneAction: vi.fn() } },
 }));
 vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
 vi.mock("../../toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
@@ -67,6 +67,15 @@ function renderPicker(taskId = "task-1") {
 describe("ClosePanePicker", () => {
 	beforeEach(() => {
 		vi.mocked(api.request.tmuxLayout).mockReset();
+		vi.mocked(api.request.taskPaneState).mockReset().mockResolvedValue({
+			backend: "tmux",
+			panes: [],
+			activePaneId: null,
+			zoomedPaneId: null,
+			layout: null,
+			layoutPreset: null,
+			capabilities: [],
+		} as any);
 		vi.mocked(api.request.taskPaneAction).mockReset().mockResolvedValue({
 			backend: "tmux",
 			panes: [],
@@ -206,5 +215,42 @@ describe("ClosePanePicker", () => {
 
 		await waitFor(() => expect(screen.queryByLabelText("Close claude")).toBeNull());
 		expect(api.request.taskPaneAction).not.toHaveBeenCalled();
+	});
+});
+
+
+describe("ClosePanePicker (native backend)", () => {
+	const NATIVE_STATE = {
+		backend: "native",
+		panes: [
+			{ paneId: "pane-1", index: 0, label: "", active: true, zoomed: false, rect: { x: 0, y: 0, width: 0.5, height: 1 } },
+			{ paneId: "pane-2", index: 1, label: "", active: false, zoomed: false, rect: { x: 0.5, y: 0, width: 0.5, height: 1 } },
+		],
+		activePaneId: "pane-1",
+		zoomedPaneId: null,
+		layout: null,
+		layoutPreset: null,
+		capabilities: ["split", "close"],
+	} as any;
+
+	beforeEach(() => {
+		vi.mocked(api.request.taskPaneState).mockReset().mockResolvedValue(NATIVE_STATE);
+		vi.mocked(api.request.tmuxLayout).mockReset();
+		vi.mocked(toast.error).mockReset();
+	});
+
+	it("draws one hit-box per native pane without touching tmuxLayout", async () => {
+		renderPicker();
+		startClosePanePicker("task-1");
+		await waitFor(() => expect(screen.getAllByRole("button")).toHaveLength(2));
+		expect(api.request.tmuxLayout).not.toHaveBeenCalled();
+		expect(toast.error).not.toHaveBeenCalled();
+	});
+
+	it("draws a single full-cover box while a native pane is zoomed", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue({ ...NATIVE_STATE, zoomedPaneId: "pane-2" });
+		renderPicker();
+		startClosePanePicker("task-1");
+		await waitFor(() => expect(screen.getAllByRole("button")).toHaveLength(1));
 	});
 });

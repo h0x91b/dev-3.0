@@ -1,5 +1,8 @@
 const panes = {
 	"panes.layoutLabel": "Макет",
+	"panes.chooseLayout": "Выбрать раскладку панелей",
+	"panes.unzoom": "Убрать зум",
+	"panes.actionFailed": "Действие с панелью не удалось: {error}",
 	"panes.layoutNeedsTwoPanes": "Нужно минимум 2 панели для смены макета",
 	"panes.nativeHintsTitle": "Быстрые команды",
 	"panes.nativeNoPrefixKeys": "Префикс ⌃B не используется — управление панелями через панель инструментов",

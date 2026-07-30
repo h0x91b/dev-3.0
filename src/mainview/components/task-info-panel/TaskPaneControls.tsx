@@ -25,6 +25,8 @@ import {
 } from "../TmuxIcons";
 import type { TaskPaneState } from "../../../shared/task-panes";
 import { taskPaneSupports } from "../../../shared/task-panes";
+import { currentNativePaneFocus } from "../../native-pane-focus";
+import { toast } from "../../toast";
 
 interface TaskPaneControlsProps {
 	taskId: string;
@@ -233,13 +235,17 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 				api.request.taskPaneAction({ taskId, action: { kind: "close", force: true } }).catch(() => {}).finally(refreshState);
 				return;
 			}
-			api.request.taskPaneAction({ taskId, action: { kind: "close" } }).catch(() => {}).finally(refreshState);
+			const closeTarget = paneState?.backend === "native" ? currentNativePaneFocus(taskId) ?? undefined : undefined;
+			api.request.taskPaneAction({ taskId, action: { kind: "close", paneId: closeTarget } }).catch(() => {}).finally(refreshState);
 			return;
 		}
+		// Native focus is client-local, so the viewer tells us which pane to act on;
+		// a tmux pane id would be meaningless here, hence native-only.
+		const target = paneState?.backend === "native" ? currentNativePaneFocus(taskId) ?? undefined : undefined;
 		const actionMap: Record<string, import("../../../shared/task-panes").TaskPaneAction> = {
-			splitH: { kind: "splitH" },
-			splitV: { kind: "splitV" },
-			zoom: { kind: "zoom", mode: "toggle" },
+			splitH: { kind: "splitH", paneId: target },
+			splitV: { kind: "splitV", paneId: target },
+			zoom: { kind: "zoom", mode: "toggle", paneId: target },
 			nextLayout: { kind: "layoutCycle" },
 			layoutTiled: { kind: "layoutPreset", preset: "tiled" },
 			layoutEvenH: { kind: "layoutPreset", preset: "evenH" },
@@ -249,7 +255,9 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		};
 		const paneAction = actionMap[action];
 		if (paneAction) {
-			api.request.taskPaneAction({ taskId, action: paneAction }).then(setPaneState).catch(() => {});
+			api.request.taskPaneAction({ taskId, action: paneAction })
+				.then(setPaneState)
+				.catch((err) => toast.error(t("panes.actionFailed", { error: String(err) })));
 		}
 	};
 
@@ -378,7 +386,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 									event.stopPropagation();
 									showLayout();
 								}}
-								aria-label={t("tmux.chooseLayout")}
+								aria-label={t("panes.chooseLayout")}
 								aria-haspopup="menu"
 								aria-expanded={layoutOpen}
 							>

@@ -160,7 +160,10 @@ describe("single backend ownership", () => {
 		const firstPane = state.panes[0]!;
 
 		// Split a second pane.
-		const { paneId: secondPane } = await splitNativeTaskPane(TASK_ID, firstPane.paneId, "horizontal");
+		const { paneId: secondPane } = await splitNativeTaskPane(TASK_ID, firstPane.paneId, "horizontal", {
+			cwd: "/work",
+			env: { MY_VAR: "hello" },
+		});
 		expect(secondPane).not.toBe(firstPane.paneId);
 
 		// Both panes carry the same coordinator id prefix — one coordinator.
@@ -178,7 +181,7 @@ describe("single backend ownership", () => {
 });
 
 describe("split cwd/env inheritance (fix #2)", () => {
-	it("split inherits task cwd and env from the stored context", async () => {
+	it("split uses the caller-supplied task cwd and env", async () => {
 		await startNativeTaskPanes({
 			taskId: TASK_ID,
 			cwd: "/task-work",
@@ -189,7 +192,10 @@ describe("split cwd/env inheritance (fix #2)", () => {
 		});
 
 		const firstPaneId = `dev3-task-${TASK_ID}-pane-1`;
-		await splitNativeTaskPane(TASK_ID, "pane-1", "horizontal");
+		await splitNativeTaskPane(TASK_ID, "pane-1", "horizontal", {
+			cwd: "/task-work",
+			env: { PATH: "/custom", MY_ENV: "value" },
+		});
 
 		// The second startPane call should have the task's cwd and env.
 		const splitOpts = startedPanes[1]!.opts as { launch: { cwd: string; env: Record<string, string> } };
@@ -198,13 +204,7 @@ describe("split cwd/env inheritance (fix #2)", () => {
 		void firstPaneId;
 	});
 
-	it("fails loudly when no context is stored (never saw start or recover)", async () => {
-		await expect(splitNativeTaskPane("unknown-task", "pane-1", "horizontal")).rejects.toThrow(
-			/cwd\/env context/,
-		);
-	});
-
-	it("recover with context enables subsequent splits", async () => {
+	it("splits a pane set recovered by a fresh process — no in-process context needed", async () => {
 		// Simulate app restart: first start in a different call to prime the record.
 		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: { E: "1" }, launch: LAUNCH, cols: 80, rows: 24 });
 		_resetBackendForTests(); // simulate fresh process
@@ -217,7 +217,11 @@ describe("split cwd/env inheritance (fix #2)", () => {
 		paneRecords.clear();
 		// startNativeTaskPanes in the new backend creates fresh panes.
 		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/new-work", env: { E: "2" }, launch: LAUNCH, cols: 80, rows: 24 });
-		const { state } = await splitNativeTaskPane(TASK_ID, "pane-1", "horizontal");
+		_resetBackendForTests(); // the split now happens in a process that never saw start
+		const { state } = await splitNativeTaskPane(TASK_ID, "pane-1", "horizontal", {
+			cwd: "/new-work",
+			env: { E: "2" },
+		});
 		const splitOpts = startedPanes[1]!.opts as { launch: { cwd: string; env: Record<string, string> } };
 		expect(splitOpts.launch.cwd).toBe("/new-work");
 		expect(state.panes).toHaveLength(2);

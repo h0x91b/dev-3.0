@@ -412,8 +412,9 @@ export class NativeMultipaneCoordinator {
 			throw new LayoutPaneSetMismatchError(this.coordinatorId, currentIds, newIds);
 		}
 		return this.withOwnedRecord(async () => {
-			// Clear client-local zoom; preserve activePaneId (shared focus).
-			this.publish({ ...tree, zoomedPaneId: null });
+			// Zoom rides along with the geometry: the toolbar drives zoom through this
+			// path, so clearing it here would make the Zoom button a silent no-op.
+			this.publish({ ...tree });
 		});
 	}
 

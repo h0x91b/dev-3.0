@@ -268,6 +268,16 @@ describe("native multipane coordinator publishGeometry", () => {
 		expect(recovered!.layout.activePaneId).toBe("pane-2");
 	});
 
+	it("persists a zoomed pane so the toolbar's Zoom is not a no-op", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		await coordinator.publishGeometry({ ...coordinator.layout, zoomedPaneId: "pane-2" });
+		expect(coordinator.layout.zoomedPaneId).toBe("pane-2");
+
+		coordinator.detach();
+		const recovered = await NativeMultipaneCoordinator.recover(ID, deps);
+		expect(recovered!.layout.zoomedPaneId).toBe("pane-2");
+	});
+
 	it("rejects when the new tree's pane set differs from the current one", async () => {
 		const { LayoutPaneSetMismatchError } = await import("../errors");
 		const coordinator = await createWithPanes(deps, 2);
