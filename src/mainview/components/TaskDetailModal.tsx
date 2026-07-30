@@ -10,6 +10,7 @@ import MoveToProjectPicker from "./MoveToProjectPicker";
 import PriorityBadge from "./PriorityBadge";
 import { NoteItem, formatDate } from "./NoteItem";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
+import TaskTerminalBackendRow from "./TaskTerminalBackendRow";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -572,6 +573,8 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							</div>
 						)}
 					</div>
+
+					{!isEditing && <TaskTerminalBackendRow task={task} project={project} dispatch={dispatch} />}
 				</div>
 
 				{/* Footer — actions for a not-yet-started task */}

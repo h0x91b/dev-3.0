@@ -111,6 +111,27 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).tipsDisabled).toBeUndefined();
 	});
 
+	// The new-task backend preference is machine-local and forward-only: an
+	// absent value must keep the exact platform default, and an unrecognized one
+	// must not reach the task-creation seam.
+	it("leaves newTaskTerminalBackend undefined when absent or unrecognized", async () => {
+		for (const stored of [undefined, "screen", 7, null, true]) {
+			writeFileSync(
+				settingsPath,
+				JSON.stringify(makeSettings(stored === undefined ? {} : ({ newTaskTerminalBackend: stored } as never)), null, 2),
+				"utf-8",
+			);
+			expect((await loadSettings()).newTaskTerminalBackend, `stored ${JSON.stringify(stored)}`).toBeUndefined();
+			expect(loadSettingsSync().newTaskTerminalBackend, `stored ${JSON.stringify(stored)} (sync)`).toBeUndefined();
+		}
+	});
+
+	it.each(["tmux", "native"] as const)("reads back an explicit %s new-task backend (async + sync)", async (backend) => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ newTaskTerminalBackend: backend }), null, 2), "utf-8");
+		expect((await loadSettings()).newTaskTerminalBackend).toBe(backend);
+		expect(loadSettingsSync().newTaskTerminalBackend).toBe(backend);
+	});
+
 	it("remaps a stored defaultConfigId that was removed in a preset cleanup", async () => {
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-bypass-opus48" }), null, 2), "utf-8");
 		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus48-xhigh");
@@ -161,6 +182,7 @@ describe("saveSettings", () => {
 			suggestCompletingTasksAfterMerge: false,
 			agentsLayoutRevision: 1,
 			pxpipeProxyEnabled: true,
+			newTaskTerminalBackend: "native",
 			favorites: [{ agentId: "builtin-codex", configId: "codex-default", uses: 3, lastUsedAt: 123 }],
 		};
 

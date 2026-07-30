@@ -112,7 +112,7 @@ const help = {
 		"Board and task behavior defaults: where a dropped card lands in its column, the task-completion sound, focus mode, watch-by-default, and feature tips.",
 	"help.settings.terminal.title": "Terminal",
 	"help.settings.terminal.body":
-		"How the terminal feels: the keyboard preset (Default or iTerm2-style), scroll speed, and zoom reset.",
+		"How the terminal feels: the keyboard preset (Default or iTerm2-style), scroll speed, and zoom reset. Also which terminal backend NEW tasks on this computer get — tmux (today's default) or the experimental native terminal; existing tasks are never changed.",
 	"help.settings.accounts.title": "Agent accounts",
 	"help.settings.accounts.body":
 		"Sign in to multiple accounts per agent (Claude Code, Codex), switch which one is active, and manage API-key profiles.",
@@ -168,7 +168,7 @@ const help = {
 		"Drop a second agent into this task's existing session — same worktree, same terminal. Useful to hand off to a different model or run a helper alongside the main agent.",
 	"help.modal.taskDetail.title": "Task details",
 	"help.modal.taskDetail.body":
-		"Edit everything about the task: title, description (the agent's prompt), labels, priority, and status. Changes apply across the whole variant group.",
+		"Edit everything about the task: title, description (the agent's prompt), labels, priority, and status. Changes apply across the whole variant group. The terminal backend row overrides tmux/native for this task's next launch, and is locked while its terminal is live.",
 	"help.modal.automation.title": "Automation",
 	"help.modal.automation.body":
 		"A schedule that fires an agent on a recurring cadence. Pick the cadence, timezone, prompt, and agent — each run creates an ordinary task on the board.",

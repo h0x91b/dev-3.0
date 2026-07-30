@@ -28,6 +28,9 @@ vi.mock("../../rpc", () => ({
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			setTmuxTheme: vi.fn().mockResolvedValue(undefined),
 			checkCaffeinateAvailable: vi.fn().mockResolvedValue({ available: true }),
+			getNativeTerminalAvailability: vi
+				.fn()
+				.mockResolvedValue({ available: true, tmuxSupported: true, diagnostics: [] }),
 			listAgentAccounts: vi.fn().mockResolvedValue({
 				claude: { accounts: [], activeId: null, systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
@@ -273,6 +276,44 @@ describe("GlobalSettings", () => {
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
 				expect.objectContaining({ taskDropPosition: "bottom" }),
 			);
+		});
+	});
+
+	describe("new-task terminal backend", () => {
+		const nativeCard = () => screen.getByRole("radio", { name: /^Native terminal \(experimental\)/ });
+
+		it("shows tmux selected and saves an explicit native opt-in", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings("terminal");
+			await waitForLoad();
+
+			expect(screen.getByRole("radio", { name: /^tmux \(current default\)/ })).toHaveAttribute(
+				"aria-checked",
+				"true",
+			);
+			await waitFor(() => expect(nativeCard()).toBeEnabled());
+			await user.click(nativeCard());
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ newTaskTerminalBackend: "native" }),
+			);
+		});
+
+		it("keeps native disabled and unsaved when this build has no native host", async () => {
+			setupMocks();
+			mockedApi.request.getNativeTerminalAvailability.mockResolvedValue({
+				available: false,
+				tmuxSupported: true,
+				diagnostics: ["Packaged host image unusable: no manifest"],
+			});
+			const user = userEvent.setup();
+			renderGlobalSettings("terminal");
+			await waitForLoad();
+
+			await waitFor(() => expect(nativeCard()).toBeDisabled());
+			await user.click(nativeCard());
+			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
 		});
 	});
 

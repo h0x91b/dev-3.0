@@ -16,8 +16,10 @@ import type {
 	CodingAgent,
 	ExternalApp,
 	GlobalSettings as GlobalSettingsType,
+	NativeTerminalAvailability,
 	TerminalKeymapPreset,
 } from "../../shared/types";
+import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
 import { api } from "../rpc";
@@ -97,6 +99,10 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	);
 	const [tipsResetDone, setTipsResetDone] = useState(false);
 	const [caffeinateAvailable, setCaffeinateAvailable] = useState(true);
+	// Null until the host answers — the backend picker stays inert rather than
+	// guessing that native is (un)available.
+	const [nativeTerminalAvailability, setNativeTerminalAvailability] =
+		useState<NativeTerminalAvailability | null>(null);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
 		normalizeSettingsCategoryId(section),
@@ -203,6 +209,12 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	}, [setGlobalSettingsState]);
 
 	useEffect(() => {
+		api.request.getNativeTerminalAvailability()
+			.then(setNativeTerminalAvailability)
+			.catch(() => {});
+	}, []);
+
+	useEffect(() => {
 		api.request.checkCaffeinateAvailable()
 			.then((result) => setCaffeinateAvailable(result.available))
 			.catch(() => {});
@@ -259,6 +271,15 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 			setKeymapPresetState(preset);
 			setKeymapPreset(preset);
 			persistSettingChange({ terminalKeymap: preset });
+		},
+		[persistSettingChange],
+	);
+
+	const handleNewTaskTerminalBackendChange = useCallback(
+		(backend: TerminalBackendIdentity) => {
+			persistSettingChange({ newTaskTerminalBackend: backend }, {
+				tracking: { setting: "new_task_terminal_backend", value: backend },
+			});
 		},
 		[persistSettingChange],
 	);
@@ -574,7 +595,10 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						t={t}
 						keymapPreset={keymapPreset}
 						scrollSpeed={scrollSpeed}
+						newTaskTerminalBackend={globalSettings.newTaskTerminalBackend}
+						nativeTerminalAvailability={nativeTerminalAvailability}
 						onKeymapChange={handleKeymapChange}
+						onNewTaskTerminalBackendChange={handleNewTaskTerminalBackendChange}
 					/>
 				);
 			case "agents":

@@ -811,11 +811,34 @@ export async function saveTasks(
  * absent still means tmux everywhere — so the marker is written at creation
  * time instead, and only for new tasks. Existing unmarked tasks are never
  * backfilled, reinterpreted, or migrated: that is Seq 1296's call.
+ *
+ * `preference` is the machine-local `GlobalSettings.newTaskTerminalBackend`
+ * opt-in. Only `native` produces a marker: choosing tmux — or leaving the
+ * preference unset — keeps the record field-less, which is byte-identical to
+ * what every previous build wrote and stays readable by them.
  */
 export function newTaskTerminalBackend(
 	platform: NodeJS.Platform = process.platform,
+	preference?: TerminalBackendIdentity | null,
 ): TerminalBackendIdentity | null {
-	return platform === "win32" ? "native" : null;
+	if (platform === "win32") return "native";
+	return preference === "native" ? "native" : null;
+}
+
+/**
+ * The machine-local new-task backend opt-in, read fresh per creation so a
+ * settings change takes effect on the very next task. Unreadable settings mean
+ * "no preference" — a broken settings.json must not stamp a backend nobody
+ * chose, and must not block task creation either.
+ */
+async function newTaskTerminalBackendPreference(): Promise<TerminalBackendIdentity | null> {
+	try {
+		const { loadSettings } = await import("./settings");
+		return (await loadSettings()).newTaskTerminalBackend ?? null;
+	} catch (err) {
+		log.warn("Could not read the new-task terminal backend preference", { error: String(err) });
+		return null;
+	}
 }
 
 export async function addTask(
@@ -880,7 +903,7 @@ export async function addTask(
 			}
 			variantIndex = maxVariantIndex + 1;
 		}
-		const newBackend = newTaskTerminalBackend();
+		const newBackend = newTaskTerminalBackend(process.platform, await newTaskTerminalBackendPreference());
 		const task: Task = {
 			id: crypto.randomUUID(),
 			seq: extras?.seq ?? nextSeq(tasks),

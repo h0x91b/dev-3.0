@@ -106,7 +106,7 @@ const help = {
 		"Comportamiento por defecto del tablero y las tareas: dónde cae una tarjeta arrastrada en su columna, el sonido al completar una tarea, el modo concentración, el seguimiento por defecto y los consejos de funciones.",
 	"help.settings.terminal.title": "Terminal",
 	"help.settings.terminal.body":
-		"Cómo se siente la terminal: el preajuste de teclado (estándar o estilo iTerm2), la velocidad de desplazamiento y el restablecimiento del zoom.",
+		"Cómo se siente la terminal: el preajuste de teclado (estándar o estilo iTerm2), la velocidad de desplazamiento y el restablecimiento del zoom. También qué backend de terminal reciben las tareas NUEVAS en este equipo: tmux (el predeterminado actual) o el terminal nativo experimental; las tareas existentes no cambian.",
 	"help.settings.accounts.title": "Cuentas de agentes",
 	"help.settings.accounts.body":
 		"Inicia sesión en varias cuentas por agente (Claude Code, Codex), cambia cuál está activa y gestiona los perfiles de claves API.",
@@ -162,7 +162,7 @@ const help = {
 		"Añade un segundo agente a la sesión existente de esta tarea — mismo worktree, misma terminal. Útil para pasar el relevo a otro modelo o correr un ayudante junto al agente principal.",
 	"help.modal.taskDetail.title": "Detalles de la tarea",
 	"help.modal.taskDetail.body":
-		"Edita todo sobre la tarea: título, descripción (el prompt del agente), etiquetas, prioridad y estado. Los cambios se aplican a todo el grupo de variantes.",
+		"Edita todo sobre la tarea: título, descripción (el prompt del agente), etiquetas, prioridad y estado. Los cambios se aplican a todo el grupo de variantes. La fila de backend de terminal cambia tmux/nativo para el próximo arranque de esta tarea y se bloquea mientras su terminal está activo.",
 	"help.modal.automation.title": "Automatización",
 	"help.modal.automation.body":
 		"Un horario que dispara un agente con una cadencia recurrente. Elige la cadencia, la zona horaria, el prompt y el agente — cada ejecución crea una tarea normal en el tablero.",

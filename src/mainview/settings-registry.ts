@@ -212,6 +212,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "terminal-backend-new-tasks",
+		category: "terminal",
+		titleKey: "settings.terminalBackend",
+		descriptionKey: "settings.terminalBackendDesc",
+		anchor: "terminal-backend",
+		globalField: "newTaskTerminalBackend",
+		storage: "global",
+	},
+	{
 		id: "terminal-scroll-speed",
 		category: "terminal",
 		titleKey: "settings.scrollSpeed",
@@ -379,6 +388,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"favorites",
+	"newTaskTerminalBackend",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 type RegisteredGlobalSettingsField = (typeof SETTINGS_ENTRIES)[number] extends infer Entry

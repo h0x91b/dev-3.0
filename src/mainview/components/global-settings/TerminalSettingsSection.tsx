@@ -6,23 +6,40 @@ import {
 	MIN_SCROLL_SPEED,
 	SCROLL_SPEED_STEP,
 } from "../../scroll-speed";
-import type { TerminalKeymapPreset } from "../../../shared/types";
+import type { NativeTerminalAvailability, TerminalKeymapPreset } from "../../../shared/types";
+import type { TerminalBackendIdentity } from "../../../shared/terminal-backend-identity";
 import SettingsEntry from "./SettingsEntry";
+import TerminalBackendSetting from "./TerminalBackendSetting";
 import SettingsSection from "./SettingsSection";
 
 export default function TerminalSettingsSection({
 	t,
 	keymapPreset,
 	scrollSpeed,
+	newTaskTerminalBackend,
+	nativeTerminalAvailability,
 	onKeymapChange,
+	onNewTaskTerminalBackendChange,
 }: {
 	t: TFunction;
 	keymapPreset: TerminalKeymapPreset;
 	scrollSpeed: number;
+	newTaskTerminalBackend: TerminalBackendIdentity | undefined;
+	nativeTerminalAvailability: NativeTerminalAvailability | null;
 	onKeymapChange: (preset: TerminalKeymapPreset) => void;
+	onNewTaskTerminalBackendChange: (backend: TerminalBackendIdentity) => void;
 }) {
 	return (
 		<SettingsSection title={t("settings.categoryTerminal")} helpTopicId="settings.terminal">
+			<SettingsEntry anchor="terminal-backend">
+				<TerminalBackendSetting
+					t={t}
+					value={newTaskTerminalBackend}
+					availability={nativeTerminalAvailability}
+					onChange={onNewTaskTerminalBackendChange}
+				/>
+			</SettingsEntry>
+
 			<SettingsEntry anchor="terminal-keymap">
 				<div>
 					<label className="block text-fg text-sm font-semibold mb-2">

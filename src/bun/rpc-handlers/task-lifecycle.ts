@@ -1,4 +1,5 @@
-import type { LaunchVariant, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
+import type { LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo } from "../../shared/types";
+import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import { resolveAgentRequest, type AgentLaunchChoice } from "../agent-requests";
@@ -7,6 +8,11 @@ import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
 import { clearMergeNotification } from "../lifecycle/activities";
 import { getResourceUsage } from "../resource-monitor";
+import {
+	nativeTerminalAvailability,
+	readTaskTerminalBackendState,
+	switchTaskTerminalBackend,
+} from "../task-terminal-backend-switch";
 
 function scratchPlaceholder(now: Date = new Date()): string {
 	const hh = String(now.getHours()).padStart(2, "0");
@@ -957,6 +963,34 @@ async function startScheduledLaunchNow(params: { taskId: string; projectId: stri
 	return fireScheduledLaunch(project, task);
 }
 
+/**
+ * The GUI half of the terminal-backend override (the CLI half is
+ * `dev3 task terminal-backend`). Both go through the same gate module, so the
+ * live-session refusal cannot drift between them.
+ */
+async function getTaskTerminalBackend(params: { taskId: string; projectId: string }): Promise<TaskTerminalBackendInfo> {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	return readTaskTerminalBackendState(task);
+}
+
+async function setTaskTerminalBackend(params: {
+	taskId: string;
+	projectId: string;
+	backend: TerminalBackendIdentity;
+}): Promise<Task> {
+	log.info("→ setTaskTerminalBackend", { taskId: params.taskId.slice(0, 8), backend: params.backend });
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const { task: updated } = await switchTaskTerminalBackend(project, task, params.backend);
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	return updated;
+}
+
+function getNativeTerminalAvailability(): NativeTerminalAvailability {
+	return nativeTerminalAvailability();
+}
+
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
@@ -982,4 +1016,7 @@ export const taskLifecycleHandlers = {
 	startScheduledLaunchNow,
 	respondToAgentCompletionRequest,
 	respondToAgentLaunchRequest,
+	getTaskTerminalBackend,
+	setTaskTerminalBackend,
+	getNativeTerminalAvailability,
 };

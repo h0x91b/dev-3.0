@@ -22,6 +22,8 @@ vi.mock("../../rpc", () => ({
 			uploadFileBase64: vi.fn(),
 			pasteClipboardImage: vi.fn(),
 			readImageBase64: vi.fn(),
+			getTaskTerminalBackend: vi.fn(() => new Promise(() => {})),
+			getNativeTerminalAvailability: vi.fn(() => new Promise(() => {})),
 		},
 	},
 }));

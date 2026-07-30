@@ -146,6 +146,73 @@ describe("newTaskTerminalBackend", () => {
 		expect(newTaskTerminalBackend("darwin")).toBeNull();
 		expect(newTaskTerminalBackend("linux")).toBeNull();
 	});
+
+	it("stamps native on POSIX only when the machine-local preference opts in", () => {
+		expect(newTaskTerminalBackend("darwin", "native")).toBe("native");
+		expect(newTaskTerminalBackend("linux", "native")).toBe("native");
+	});
+
+	// An explicit tmux preference must stay byte-identical to the legacy write —
+	// an unmarked record is what older builds can still read.
+	it("leaves POSIX records unmarked for a tmux preference and for no preference", () => {
+		expect(newTaskTerminalBackend("darwin", "tmux")).toBeNull();
+		expect(newTaskTerminalBackend("linux", "tmux")).toBeNull();
+		expect(newTaskTerminalBackend("darwin", null)).toBeNull();
+		expect(newTaskTerminalBackend("darwin", undefined)).toBeNull();
+	});
+
+	// Windows has no tmux runtime at all, so the preference cannot select it.
+	it("keeps win32 native regardless of the preference", () => {
+		expect(newTaskTerminalBackend("win32", "tmux")).toBe("native");
+		expect(newTaskTerminalBackend("win32", null)).toBe("native");
+	});
+});
+
+// ============================================================
+// The machine-local new-task preference, through the creation seam
+// ============================================================
+
+describe("the new-task terminal backend preference", () => {
+	function writeSettings(value: unknown): void {
+		mkdirSync(TEST_HOME, { recursive: true });
+		writeFileSync(
+			`${TEST_HOME}/settings.json`,
+			JSON.stringify({ defaultAgentId: "builtin-claude", newTaskTerminalBackend: value }),
+			"utf-8",
+		);
+	}
+
+	it("stamps native on every creation path once opted in", async () => {
+		writeSettings("native");
+		const plain = await addTask(testProject, "Fresh task");
+		const scratch = await addTask(testProject, "Scratch — 01:08", "todo", { scratch: true });
+		const variant = await addTask(testProject, "Variant", "todo", { groupId: "g", autoVariantIndex: true });
+		for (const task of [plain, scratch, variant]) {
+			expect(task.terminalBackend).toBe("native");
+		}
+		expect(readSavedTasks().every((task) => task.terminalBackend === "native")).toBe(true);
+	});
+
+	it("leaves new tasks unmarked when the preference is absent, tmux, or garbage", async () => {
+		for (const stored of [undefined, "tmux", "nonsense", 7]) {
+			rmSync(`${TEST_HOME}/data`, { recursive: true, force: true });
+			_resetDataCaches();
+			writeSettings(stored);
+			const created = await addTask(testProject, "Fresh task");
+			expect(created, `preference ${JSON.stringify(stored)}`).not.toHaveProperty("terminalBackend");
+		}
+	});
+
+	it("never rewrites tasks that already exist when the preference flips", async () => {
+		writeSettings("tmux");
+		const before = await addTask(testProject, "Existing");
+		writeSettings("native");
+		await addTask(testProject, "Later");
+
+		const saved = readSavedTasks();
+		expect(saved.find((task) => task.id === before.id)).not.toHaveProperty("terminalBackend");
+		expect(saved.find((task) => task.title === "Later")?.terminalBackend).toBe("native");
+	});
 });
 
 describe("task creation on Windows", () => {

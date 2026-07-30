@@ -25,6 +25,10 @@ action, at budget) and never on the board card, so waking stays an explicit act 
 the task. No `confirm()` — nothing on disk is touched, so it is reversible, not
 destructive. Rejected: a dedicated column (the board must keep telling the truth about
 where the work is). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskInfoPanel.tsx`.
+## 2026-07-30 — A global default's rare per-object override lives in that object's detail modal
+
+- **Rule:** a durable machine-local preference lives in Global Settings (bible §10 `configuration`); its rare per-object exception lives in the object's **detail modal** as a low-emphasis segmented control — never on the board, a toolbar/header, the create modal, or live object chrome. An unavailable choice stays visible, `disabled`, with its reason in `--warning` text next to it. Evidence: `src/mainview/components/global-settings/TerminalBackendSetting.tsx`, `src/mainview/components/TaskTerminalBackendRow.tsx`.
+- **Why:** the terminal-backend rollout needed both a fleet-wide default and a one-task escape hatch; the modal already allows `focused_config`, so the exception rides an existing surface instead of adding toolbar buttons (the project's top anti-pattern). Rejected: a board card affordance and a Create Task field — both would advertise a rare expert switch on the happy path.
 
 ## 2026-07-30 — Find-in-content follows the content, not the viewer header
 

@@ -13,7 +13,7 @@ import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import { createScratchTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
-import { getTmuxLayout, tmuxSessionExists } from "./pty-server";
+import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
 import { getUserIdleSeconds } from "./user-activity";
 import * as repoConfig from "./repo-config";
@@ -21,8 +21,7 @@ import { loadSettings } from "./settings";
 import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { syncTaskBranchName } from "./task-branch-sync";
-import { nativeTaskTerminalAlive } from "./native-task-terminal";
-import { isTerminalBackendIdentity } from "../shared/terminal-backend-identity";
+import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "./task-terminal-backend-switch";
 import { DEV3_HOME } from "./paths";
 import { cliTransportFor, startCliListener } from "./cli-listener";
 
@@ -881,58 +880,18 @@ const handlers: Record<string, Handler> = {
 	 * Read-only without `to`. With `to` it flips the persisted identity — refused
 	 * while either backend still owns a live session for this task, because live
 	 * terminal state is never migrated between backends: you stop the session
-	 * first, then switch. Deliberately CLI-only and unlisted in the UI.
-	 *
-	 * This is the ONE place that asks both backends about one task — the switch
-	 * gate needs that answer. It only reads: nothing here creates, attaches to, or
-	 * kills a session on either side.
+	 * first, then switch. The expert equivalent of the Task Detail modal's
+	 * per-task override — both share the gate in `task-terminal-backend-switch`.
 	 */
 	"task.terminalBackend": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const current = data.readTaskTerminalBackend(task);
-		if (!current.ok) {
-			throw new Error(
-				`Task ${task.id.slice(0, 8)} has an unreadable terminalBackend (${current.code}: ${JSON.stringify(current.received)}). ` +
-					'Repair it with --to tmux.',
-			);
-		}
-
-		const liveOn = async (): Promise<"tmux" | "native" | null> => {
-			if (await nativeTaskTerminalAlive(task.id)) return "native";
-			if (await tmuxSessionExists(task.id, task.tmuxSocket ?? undefined)) return "tmux";
-			return null;
-		};
-
 		if (params.to === undefined) {
-			return {
-				taskId: task.id,
-				projectId: project.id,
-				backend: current.backend,
-				explicit: current.present,
-				liveBackend: await liveOn(),
-			};
+			const state = await readTaskTerminalBackendState(task);
+			return { taskId: task.id, projectId: project.id, ...state };
 		}
-
-		const target = String(params.to);
-		if (!isTerminalBackendIdentity(target)) {
-			throw new Error(`Invalid terminal backend "${target}". Use tmux or native.`);
-		}
-		const live = await liveOn();
-		if (live && target !== current.backend) {
-			throw new Error(
-				`Task ${task.id.slice(0, 8)} still has a live ${live} terminal. Stop it first ` +
-					"(move the task out of progress, or restart it after switching) — dev3 never transfers live terminal state between backends.",
-			);
-		}
-		const updated = await data.setTaskTerminalBackend(project, task.id, target);
+		const { task: updated, state } = await switchTaskTerminalBackend(project, task, String(params.to));
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		return {
-			taskId: updated.id,
-			projectId: project.id,
-			backend: target,
-			explicit: true,
-			liveBackend: null,
-		};
+		return { taskId: updated.id, projectId: project.id, ...state, liveBackend: null };
 	},
 
 	"task.setLabels": async (params) => {
