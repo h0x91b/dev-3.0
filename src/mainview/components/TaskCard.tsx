@@ -115,6 +115,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const isTodo = task.status === "todo";
 	// An unfinished draft: not runnable, and a click reopens the New Task popup.
 	const isDraft = task.draft === true;
+	// Parked: agent, terminal and dev server killed, worktree intact. The card is
+	// inert (no drag, no column change) but still opens, and still completes.
+	const isHibernated = task.hibernated === true;
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
 	const isCompleting = (moving || isMovingProp) && (task.status === "completed" || task.status === "cancelled");
@@ -611,7 +614,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			data-task-id={task.id}
 			data-hint-id={task.id}
 			data-help-id="board.task-card"
-			draggable={!isDisabled && !detailOpen}
+			draggable={!isDisabled && !detailOpen && !isHibernated}
 			onDragStart={handleDragStart}
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
@@ -620,7 +623,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
-			} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : ""}`}
+			} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated ? "grayscale opacity-60" : ""}`}
 			style={{ borderLeftColor: isCompleting || isShuttingDown ? "#888" : color }}
 			onClick={handleClick}
 		>
@@ -754,6 +757,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							{t("task.draftBadge")}
 						</span>
 					)}
+				</div>
+			)}
+
+			{/* Hibernated label — greyness alone must not have to carry the meaning. */}
+			{isHibernated && (
+				<div className="mb-1.5 flex items-center gap-1.5">
+					<span
+						data-testid="task-card-hibernated-badge"
+						title={t("task.hibernatedHint")}
+						className="inline-flex items-center rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
+					>
+						{t("task.hibernatedBadge")}
+					</span>
 				</div>
 			)}
 
@@ -951,6 +967,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					const activeCol = task.customColumnId
 						? (project.customColumns ?? []).find((c) => c.id === task.customColumnId)
 						: null;
+					// Deliberately NOT gated on `isHibernated`: finishing a parked task
+					// must not require waking it first.
 					const canQuickComplete = !narrow && !isDisabled && getAllowedTransitions(task.status).includes("completed");
 					return (
 						<div className="flex min-w-0 items-center rounded-lg transition-colors hover:bg-fg/5">
@@ -958,7 +976,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								ref={triggerRef}
 								onClick={toggleMenu}
 								className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1"
-								disabled={isDisabled}
+								disabled={isDisabled || isHibernated}
 							>
 								{activeCol ? (
 									<div

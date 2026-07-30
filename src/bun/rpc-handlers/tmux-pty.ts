@@ -39,6 +39,7 @@ import {
 	findAltClickPane,
 	validAltClickPanes,
 } from "../tmux";
+import { dispatchLifecycleEvent } from "../lifecycle/service";
 import { markAgentPane } from "../agent-prompt";
 import { dev3TaskTempPath } from "../temp-paths";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
@@ -1284,6 +1285,20 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 
 		const { task: foundTask, project: foundProject } = await findTaskAcrossProjects(params.taskId);
 
+		// A hibernated task is never auto-restored: opening it must not undo the
+		// hibernation. Report the frozen state so the renderer offers an explicit
+		// wake (plain shell or resume the agent's conversation) instead.
+		if (foundTask?.hibernated) {
+			log.info("Hibernated task — offering an explicit wake instead of restoring", {
+				taskId: params.taskId.slice(0, 8),
+			});
+			return {
+				recoverable: true as const,
+				sessionState: foundTask.sessionState ?? { panes: [] },
+				hibernated: true as const,
+			};
+		}
+
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 			const identity = taskTerminalBackendIdentity(foundTask);
 			const sessionAlive = identity === "native"
@@ -1371,6 +1386,16 @@ async function findTaskAcrossProjects(taskId: string): Promise<{ task: Task | nu
 	return { task: null, project: null };
 }
 
+/**
+ * Clear the hibernation flag as part of a successful wake. Waking is always an
+ * explicit act performed inside the task, so this only ever runs from the two
+ * buttons on the wake screen — never from merely opening the terminal.
+ */
+async function wakeIfHibernated(project: Project, task: Task): Promise<void> {
+	if (!task.hibernated) return;
+	await dispatchLifecycleEvent(project.id, task.id, { type: "wakeRequested" }, { project, task });
+}
+
 async function resumeTask(params: { taskId: string }): Promise<string> {
 	log.info("→ resumeTask", { taskId: params.taskId.slice(0, 8) });
 	const { task, project } = await findTaskAcrossProjects(params.taskId);
@@ -1381,6 +1406,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 	if (!panes?.length) {
 		throw new Error(`Cannot resume: task ${params.taskId} has no stored pane sessions`);
 	}
+	await wakeIfHibernated(project, task);
 
 	// Destroy any dead session in memory
 	if (pty.hasSession(params.taskId)) {
@@ -1482,6 +1508,7 @@ async function restartTask(params: { taskId: string }): Promise<string> {
 	if (!task || !project || !task.worktreePath) {
 		throw new Error(`Cannot restart: task ${params.taskId} not found or has no worktree`);
 	}
+	await wakeIfHibernated(project, task);
 
 	// Destroy any dead session in memory
 	if (pty.hasSession(params.taskId)) {

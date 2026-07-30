@@ -19,6 +19,11 @@ const terminal = {
 	"terminal.resumeSession": "Resume Session",
 	"terminal.startFresh": "Start Fresh",
 	"terminal.startFreshDesc": "A new session will be started with the task description.",
+	"terminal.hibernatedTitle": "This task is hibernated",
+	"terminal.hibernatedDesc": "Its agent, terminal and dev server were stopped to free memory. The worktree and your changes are untouched. Pick how to bring it back — the dev server stays down either way.",
+	"terminal.wakeResume": "Wake and resume agent",
+	"terminal.wakeShell": "Wake with a plain shell",
+	"terminal.wakeShellDesc": "A plain shell starts instantly; resuming replays the agent's conversation.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Terminal panes",

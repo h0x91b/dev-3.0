@@ -168,6 +168,7 @@ function TaskInfoPanel({
 	const [quickCompleting, setQuickCompleting] = useState(false);
 	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
 	const [scheduleMsgOpen, setScheduleMsgOpen] = useState(false);
+	const [hibernating, setHibernating] = useState(false);
 	const [bugHuntersOpen, setBugHuntersOpen] = useState(false);
 	const [metadataBranchState, setMetadataBranchState] = useState<TaskBranchStatusMeta | null>(null);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
@@ -899,6 +900,23 @@ function TaskInfoPanel({
 	// Same live-agent gate as spawn: an active task with a worktree/session.
 	// Compact label ("Later") keeps the session bar tight; the full "Send later"
 	// stays in the tooltip/aria. The pending queue renders in the adjacent chip.
+	async function handleHibernate() {
+		setHibernating(true);
+		try {
+			const { task: updated, freedRssBytes } = await api.request.hibernateTask({ taskId: task.id, projectId: project.id });
+			dispatch({ type: "updateTask", task: updated });
+			// "about": the reading comes from the resource monitor's last poll, which
+			// can be up to one poll interval older than the kill.
+			toast.success(freedRssBytes
+				? t("task.hibernatedToastMem", { mem: formatBytes(freedRssBytes) })
+				: t("task.hibernatedToast"));
+		} catch (err) {
+			toast.error(t("task.hibernateFailed", { error: String(err) }));
+		} finally {
+			setHibernating(false);
+		}
+	}
+
 	const sendLaterButton = isTaskActive && task.worktreePath ? (
 		<Tooltip content={t("task.sendLater")} detail={t("task.sendLaterHint")}>
 			<button
@@ -912,6 +930,33 @@ function TaskInfoPanel({
 					<path d="M5 3 2 6M19 3l3 3" />
 				</svg>
 				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("task.sendLaterShort")}</span>}
+			</button>
+		</Tooltip>
+	) : null;
+
+	// Park the task: kill the agent, its tmux session and the dev server, keep the
+	// worktree. Session-domain, so it lives in this bar next to the other
+	// agent-session controls — never on the board card (a hibernated card is inert
+	// by design, and waking must be an explicit act inside the task).
+	// No confirmation: hibernation is reversible, nothing on disk is touched.
+	const hibernateButton = isTaskActive && task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown ? (
+		<Tooltip content={t("task.hibernate")} detail={t("task.hibernateHint")}>
+			<button
+				data-testid="task-hibernate-button"
+				onClick={handleHibernate}
+				disabled={hibernating}
+				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge disabled:opacity-50"
+				aria-label={t("task.hibernate")}
+			>
+				{hibernating ? (
+					<span className="w-[1.05rem] h-[1.05rem] animate-spin rounded-full border-2 border-fg-muted/30 border-t-fg-3" />
+				) : (
+					<svg className="w-[1.05rem] h-[1.05rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+						<path d="M12 3v18M5.6 6.6l12.8 10.8M18.4 6.6 5.6 17.4" />
+						<path d="M12 3.2 9.8 5.4M12 3.2l2.2 2.2M12 20.8l-2.2-2.2M12 20.8l2.2-2.2" />
+					</svg>
+				)}
+				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("task.hibernateShort")}</span>}
 			</button>
 		</Tooltip>
 	) : null;
@@ -1328,6 +1373,7 @@ function TaskInfoPanel({
 							{bugHuntersButton}
 							{spawnAgentButton}
 							{sendLaterButton}
+							{hibernateButton}
 							{scheduledMessagesChip}
 							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 							<TaskTmuxControls taskId={task.id} compact={tight} />
@@ -1416,6 +1462,7 @@ function TaskInfoPanel({
 								{bugHuntersButton}
 								{spawnAgentButton}
 								{sendLaterButton}
+								{hibernateButton}
 								{scheduledMessagesChip}
 								<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 								<TaskTmuxControls taskId={task.id} compact={tight} />

@@ -66,6 +66,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
 	const [recoverable, setRecoverable] = useState<TaskSessionState | null>(null);
+	// The recovery offer came from hibernation, not from a session that died on
+	// its own: same two buttons, different wording, and waking is the explicit
+	// act that clears the flag.
+	const [hibernated, setHibernated] = useState(false);
 	const [restarting, setRestarting] = useState(false);
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -101,6 +105,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				if ("recoverable" in result) {
 					console.log("[TaskTerminal] Recoverable session detected", result.sessionState);
 					setRecoverable(result.sessionState);
+					setHibernated(result.hibernated === true);
 				} else {
 					console.log("[TaskTerminal] Got PTY URL:", result.url);
 					setPtyUrl(result.url);
@@ -174,6 +179,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				setError(null);
 			} else if ("recoverable" in result) {
 				setRecoverable(result.sessionState);
+				setHibernated(result.hibernated === true);
 				setError(null);
 			}
 		} catch (err) {
@@ -187,6 +193,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	async function handleResumeSession() {
 		setRestarting(true);
 		setRecoverable(null);
+		setHibernated(false);
 		try {
 			const url = await api.request.resumeTask({ taskId });
 			setPtyUrl(url);
@@ -202,6 +209,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	async function handleStartFresh() {
 		setRestarting(true);
 		setRecoverable(null);
+		setHibernated(false);
 		try {
 			const url = await api.request.restartTask({ taskId });
 			setPtyUrl(url);
@@ -233,34 +241,42 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	}
 
 	if (recoverable) {
+		// A hibernated task with no stored panes has no conversation to resume —
+		// only the plain-shell button is honest there.
+		const canResume = !hibernated || recoverable.panes.length > 0;
 		return (
 			<div className="flex items-center justify-center h-full">
-				<div className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4">
+				<div
+					data-testid={hibernated ? "terminal-wake-screen" : "terminal-recovery-screen"}
+					className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4"
+				>
 					<div className="flex items-center gap-2 font-medium text-fg">
 						<span className="text-lg">{"\u{F0645}"}</span>
-						<span>{t("terminal.recoveryTitle")}</span>
+						<span>{hibernated ? t("terminal.hibernatedTitle") : t("terminal.recoveryTitle")}</span>
 					</div>
 					<p className="text-fg-3 text-sm">
-						{t("terminal.recoveryDesc")}
+						{hibernated ? t("terminal.hibernatedDesc") : t("terminal.recoveryDesc")}
 					</p>
 					<div className="space-y-3 pt-2">
 						<div className="flex gap-3">
-							<button
-								onClick={handleResumeSession}
-								disabled={restarting}
-								className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
-							>
-								{restarting ? t("terminal.connecting") : t("terminal.resumeSession")}
-							</button>
+							{canResume && (
+								<button
+									onClick={handleResumeSession}
+									disabled={restarting}
+									className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+								>
+									{restarting ? t("terminal.connecting") : hibernated ? t("terminal.wakeResume") : t("terminal.resumeSession")}
+								</button>
+							)}
 							<button
 								onClick={handleStartFresh}
 								disabled={restarting}
 								className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
 							>
-								{t("terminal.startFresh")}
+								{hibernated ? t("terminal.wakeShell") : t("terminal.startFresh")}
 							</button>
 						</div>
-						<p className="text-fg-muted text-xs">{t("terminal.startFreshDesc")}</p>
+						<p className="text-fg-muted text-xs">{hibernated ? t("terminal.wakeShellDesc") : t("terminal.startFreshDesc")}</p>
 					</div>
 				</div>
 			</div>

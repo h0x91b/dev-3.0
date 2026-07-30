@@ -1,4 +1,4 @@
-import { comparePriority, type Task } from "../../shared/types";
+import { compareTaskSortRank, type Task } from "../../shared/types";
 import { isAttentionTask } from "../utils/taskFacets";
 
 /**
@@ -51,10 +51,10 @@ export interface TierGroupingContext {
  * by `movedAt` (the longest-waiting task in a band is most at risk of being
  * forgotten), then `seq` as a stable tiebreak. Tasks without `movedAt` sink to
  * the bottom of their band. A whole variant group shares one priority, so a band
- * never splits a group.
+ * never splits a group; a hibernated task sinks below every live band.
  */
 export function byPriorityThenMovedAtOldestFirst(a: Task, b: Task): number {
-	const byPriority = comparePriority(a.priority, b.priority);
+	const byPriority = compareTaskSortRank(a, b);
 	if (byPriority !== 0) return byPriority;
 	const aTime = a.movedAt ? new Date(a.movedAt).getTime() : Infinity;
 	const bTime = b.movedAt ? new Date(b.movedAt).getTime() : Infinity;

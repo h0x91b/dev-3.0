@@ -1,4 +1,4 @@
-import { comparePriority, type Task, type TaskStatus } from "../../shared/types";
+import { compareTaskSortRank, type Task, type TaskStatus } from "../../shared/types";
 
 /**
  * Terminal columns are a chronological log, not a prioritized queue: the user
@@ -36,10 +36,11 @@ export function sortTasksForColumn(
 		});
 	}
 	return [...tasks].sort((a, b) => {
-		// Strict priority bands are the TOPMOST key: every P0 above every P1, etc.
-		// A whole variant group shares one priority, so banding never splits a group.
+		// Strict priority bands are the TOPMOST key: every P0 above every P1, etc.,
+		// with hibernated tasks in a sink band below every live P4. A whole variant
+		// group shares one priority, so only hibernation ever splits a group.
 		// All existing rules below apply UNCHANGED within a single band.
-		const byPriority = comparePriority(a.priority, b.priority);
+		const byPriority = compareTaskSortRank(a, b);
 		if (byPriority !== 0) return byPriority;
 		// Move order takes top priority (in-session cross-column moves)
 		const aOrder = moveOrderMap.get(a.id) ?? 0;

@@ -6,6 +6,7 @@ import { loadSettings, recordFavoriteUsages } from "../settings";
 import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
 import { clearMergeNotification } from "../lifecycle/activities";
+import { getResourceUsage } from "../resource-monitor";
 
 function scratchPlaceholder(now: Date = new Date()): string {
 	const hh = String(now.getHours()).padStart(2, "0");
@@ -229,6 +230,22 @@ async function setTaskPriority(params: { taskId: string; projectId: string; prio
 	}
 	log.info("← setTaskPriority done", { count: changed.length });
 	return changed;
+}
+
+/**
+ * Park a task: kill its agent, tmux session and dev server, release its ports,
+ * keep the worktree and everything in it. `freedRssBytes` is read BEFORE the kill
+ * from the resource monitor's last poll (up to 10s stale), which is why the
+ * toast quoting it says "about".
+ */
+async function hibernateTask(params: { taskId: string; projectId: string }): Promise<{ task: Task; freedRssBytes: number | null }> {
+	log.info("→ hibernateTask", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const freedRssBytes = getResourceUsage(task.id)?.rss ?? null;
+	const updated = await dispatchLifecycleEvent(project.id, task.id, { type: "hibernateRequested" }, { project, task });
+	log.info("← hibernateTask done", { taskId: task.id.slice(0, 8), freedRssBytes });
+	return { task: updated, freedRssBytes };
 }
 
 async function deleteTask(params: { taskId: string; projectId: string }): Promise<void> {
@@ -866,6 +883,7 @@ export const taskLifecycleHandlers = {
 	cancelTaskPreparation,
 	reorderTask,
 	setTaskPriority,
+	hibernateTask,
 	deleteTask,
 	moveTaskToProject,
 	spawnVariants,

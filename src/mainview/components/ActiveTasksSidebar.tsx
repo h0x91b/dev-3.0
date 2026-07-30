@@ -655,6 +655,8 @@ function ActiveTasksSidebar({
 											className={`w-full text-left px-3 py-2 transition-all relative cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 												task.shuttingDown
 													? "grayscale opacity-40 pointer-events-none"
+													: task.hibernated
+														? "grayscale opacity-60 hover:bg-elevated-hover"
 													: isActive
 														? "bg-accent/20 ring-1 ring-inset ring-accent/50"
 														: "hover:bg-elevated-hover"
@@ -737,6 +739,15 @@ function ActiveTasksSidebar({
 														onChange={(p) => handleSetPriority(task, p)}
 													/>
 													{agent && <AgentLauncherBadge agent={agent} size={14} />}
+													{task.hibernated && (
+														<span
+															data-testid="sidebar-hibernated-badge"
+															title={t("task.hibernatedHint")}
+															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-[0.5625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
+														>
+															{t("task.hibernatedBadge")}
+														</span>
+													)}
 													<Tooltip content={agentSummary} disabled={!agentSummary}>
 														<div
 															className={`min-w-0 flex-1 truncate text-[0.625rem] font-medium ${

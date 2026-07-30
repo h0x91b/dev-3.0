@@ -19,6 +19,11 @@ const terminal = {
 	"terminal.resumeSession": "Возобновить сессию",
 	"terminal.startFresh": "Начать заново",
 	"terminal.startFreshDesc": "Будет запущена новая сессия с описанием задачи.",
+	"terminal.hibernatedTitle": "Задача заморожена",
+	"terminal.hibernatedDesc": "Агент, терминал и dev-сервер были остановлены, чтобы освободить память. Worktree и изменения не тронуты. Выберите, как вернуть задачу — dev-сервер в любом случае останется выключенным.",
+	"terminal.wakeResume": "Разбудить и продолжить агента",
+	"terminal.wakeShell": "Разбудить с чистым шеллом",
+	"terminal.wakeShellDesc": "Чистый шелл поднимается мгновенно; продолжение перечитывает переписку агента.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Панели терминала",

@@ -91,6 +91,13 @@ export const ACTIVE_STATUSES: TaskStatus[] = [
 export const DRAFT_TASK_ACTIVATION_ERROR =
 	"Task is a draft — finish its description and save it as a normal task before starting it.";
 
+/**
+ * Rejection message every column change on a hibernated task produces. Like
+ * {@link DRAFT_TASK_ACTIVATION_ERROR} this string is a contract, not log text.
+ */
+export const HIBERNATED_TASK_MOVE_ERROR =
+	"Task is hibernated — wake it from its terminal before moving it to another column.";
+
 export const MERGE_COMPLETE_ELIGIBLE_STATUSES: TaskStatus[] = [
 	"user-questions",
 	"review-by-user",
@@ -221,6 +228,36 @@ export function comparePriority(
 	b: TaskPriority | null | undefined,
 ): number {
 	return priorityRank(a) - priorityRank(b);
+}
+
+/**
+ * Rank offset added to a hibernated task so it sinks below every live P4 while
+ * hibernated tasks stay internally ordered by their own priority. Any value
+ * above the highest priority rank works; 10 keeps the two bands readable in a
+ * debugger.
+ */
+export const HIBERNATED_SORT_OFFSET = 10;
+
+/** The subset of a task the shared sort comparator reads. */
+export type TaskSortFields = Pick<Task, "priority" | "hibernated">;
+
+/**
+ * Sort rank of a task: its {@link priorityRank}, plus {@link HIBERNATED_SORT_OFFSET}
+ * when hibernated. Hibernation never writes `priority`, so waking a task returns
+ * it to its rightful place in the queue.
+ */
+export function taskSortRank(task: TaskSortFields): number {
+	return priorityRank(task.priority) + (task.hibernated ? HIBERNATED_SORT_OFFSET : 0);
+}
+
+/**
+ * The one comparator every task list sorts by: strict priority bands with a
+ * hibernated sink band underneath. Deliberately splits a variant group when one
+ * variant is hibernated — the board should show honestly how many attempts are
+ * still alive.
+ */
+export function compareTaskSortRank(a: TaskSortFields, b: TaskSortFields): number {
+	return taskSortRank(a) - taskSortRank(b);
 }
 
 /**
@@ -1356,6 +1393,16 @@ export interface Task {
 	 * same `tasks.json` simply see an ordinary To Do task.
 	 */
 	draft?: boolean;
+	/**
+	 * True while the task is hibernated: its agent, tmux session and dev server
+	 * were killed to reclaim memory, while the worktree, branch, uncommitted
+	 * changes, notes and PR state stay untouched. A property of the task, not a
+	 * column and not a runtime phase — the task keeps its column, sorts below
+	 * every live P4 ({@link taskSortRank}) and refuses column changes
+	 * ({@link HIBERNATED_TASK_MOVE_ERROR}) until an explicit wake. Absent/false on
+	 * every pre-existing task, so older app versions see an ordinary task.
+	 */
+	hibernated?: boolean;
 	/**
 	 * For tasks in a virtual ("Operations") project only: the user-chosen fixed
 	 * working folder picked at creation (e.g. `~/Downloads`). When absent, the
@@ -2890,6 +2937,14 @@ export type AppRPCSchema = {
 				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority };
 				response: Task;
 			};
+			hibernateTask: {
+				// GUI-only, one gesture, no confirmation: kills the agent, the tmux
+				// session and the dev server, keeps the worktree. `freedRssBytes` is the
+				// last resource-monitor reading before the kill (up to one poll old),
+				// so the toast can quote roughly how much memory came back.
+				params: { taskId: string; projectId: string };
+				response: { task: Task; freedRssBytes: number | null };
+			};
 			setTaskPriority: {
 				// Writes the priority to the whole variant group; returns every task
 				// it changed so all open surfaces re-render live.
@@ -2983,7 +3038,11 @@ export type AppRPCSchema = {
 			};
 			getPtyUrl: {
 				params: { taskId: string; resume?: boolean };
-				response: { url: string } | { recoverable: true; sessionState: TaskSessionState };
+				// `hibernated` marks a recovery offer the user must accept explicitly:
+				// a hibernated task is never auto-restored just by opening it.
+				response:
+					| { url: string }
+					| { recoverable: true; sessionState: TaskSessionState; hibernated?: true };
 			};
 			resumeTask: {
 				params: { taskId: string };

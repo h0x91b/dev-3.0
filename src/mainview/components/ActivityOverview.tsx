@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { DragEvent } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { comparePriority, getTaskTitle, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
+import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -310,13 +310,14 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						}
 					}
 
-					// Order every visible row by priority first. On narrow viewports, keep
+					// Order every visible row by priority first (hibernated tasks sink
+					// below every live band). On narrow viewports, keep
 					// "your turn" ahead of colleague reviews within the same priority band,
 					// then cap the list to NARROW_ROW_CAP behind a "show more" fold.
 					const rankOf = (task: Task) =>
 						columnOf(task) !== null ? 3 : ATTENTION_RANK[task.status] ?? 3;
 					const orderedRowTasks = [...rowTasks].sort((a, b) => {
-						const byPriority = comparePriority(a.priority, b.priority);
+						const byPriority = compareTaskSortRank(a, b);
 						if (byPriority !== 0) return byPriority;
 						return narrow ? rankOf(a) - rankOf(b) : 0;
 					});
@@ -493,7 +494,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 											key={task.id}
 											data-hint-id={`task:${task.id}`}
 											onClick={() => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
-											className="relative w-full flex items-start md:items-center gap-3 px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0"
+											className={`relative w-full flex items-start md:items-center gap-3 px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0 ${task.hibernated ? "grayscale opacity-60" : ""}`}
 										>
 											{/* "Your turn" accent strip — narrow only (keeps desktop intact). */}
 											{narrow && needsMe && (
@@ -514,6 +515,14 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 													{getTaskTitle(task)}
 												</span>
 												<span className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+													{task.hibernated && (
+														<span
+															data-testid="activity-hibernated-badge"
+															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-[0.5625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
+														>
+															{t("task.hibernatedBadge")}
+														</span>
+													)}
 													{bellCounts.has(task.id) && (
 														<span className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0" />
 													)}

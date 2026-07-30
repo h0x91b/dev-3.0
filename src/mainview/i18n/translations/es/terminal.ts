@@ -19,6 +19,11 @@ const terminal = {
 	"terminal.resumeSession": "Reanudar sesión",
 	"terminal.startFresh": "Empezar de nuevo",
 	"terminal.startFreshDesc": "Se iniciará una nueva sesión con la descripción de la tarea.",
+	"terminal.hibernatedTitle": "Esta tarea está hibernada",
+	"terminal.hibernatedDesc": "Su agente, terminal y servidor de desarrollo se detuvieron para liberar memoria. El worktree y tus cambios siguen intactos. Elige cómo recuperarla: el servidor de desarrollo permanece apagado en ambos casos.",
+	"terminal.wakeResume": "Despertar y reanudar el agente",
+	"terminal.wakeShell": "Despertar con una shell simple",
+	"terminal.wakeShellDesc": "Una shell simple arranca al instante; reanudar vuelve a leer la conversación del agente.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Paneles del terminal",

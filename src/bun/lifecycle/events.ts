@@ -26,6 +26,8 @@ export interface LifecycleFacts {
 	hasPrIdentity: boolean;
 	/** The task is an unfinished draft: no activation path may start it. */
 	draft?: boolean;
+	/** The task is hibernated: frozen in place, no column change is accepted. */
+	hibernated?: boolean;
 	peerReviewEnabled: boolean;
 	manualCompletion?: boolean;
 	mergeCompletionPrompt?: Task["mergeCompletionPrompt"];
@@ -65,6 +67,7 @@ export type LifecycleTaskPatch = Partial<Pick<
 	| "branchName"
 	| "scheduledLaunch"
 	| "preparationError"
+	| "hibernated"
 >>;
 
 export type LifecycleEvent =
@@ -86,6 +89,8 @@ export type LifecycleEvent =
 		};
 	}
 	| { type: "deleteRequested" }
+	| { type: "hibernateRequested" }
+	| { type: "wakeRequested" }
 	| {
 		type: "preparationStageChanged";
 		runId: string;

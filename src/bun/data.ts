@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskPriority, TaskStatus, TipState } from "../shared/types";
-import { comparePriority, DEFAULT_PRIORITY, getTaskOverview, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import { comparePriority, compareTaskSortRank, DEFAULT_PRIORITY, getTaskOverview, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import {
 	decodeTerminalBackend,
 	isTerminalBackendIdentity,
@@ -1341,14 +1341,15 @@ function isInSameRenderedColumn(task: Task, status: string, customColumnId: stri
 /**
  * Order a set of same-column tasks the way the renderer does, for the purpose of
  * mapping a drop index onto the list the user saw: strict priority bands first
- * (P0 on top), then persisted `columnOrder`, then `createdAt`. Deliberately omits
+ * (P0 on top, hibernated tasks in a sink band below every live P4), then
+ * persisted `columnOrder`, then `createdAt`. Deliberately omits
  * the renderer's ephemeral in-session move order (unknown server-side); band
  * membership — all the drop-index mapping needs — is order-independent within a
  * band. Mirrors `sortTasksForColumn` (renderer) at the band level.
  */
 function sortColumnTasksForReorder(tasks: Task[]): Task[] {
 	return [...tasks].sort((a, b) => {
-		const byPriority = comparePriority(a.priority, b.priority);
+		const byPriority = compareTaskSortRank(a, b);
 		if (byPriority !== 0) return byPriority;
 		if (a.columnOrder !== undefined && b.columnOrder !== undefined) return a.columnOrder - b.columnOrder;
 		if (a.columnOrder !== undefined) return -1;
@@ -1439,8 +1440,13 @@ export async function reorderTasksInColumn(
 		// gap above the first P2 card belongs to P2), while "drag among/above a higher
 		// band" promotes. An empty remaining column (only the moving group) keeps its
 		// priority. Priority belongs to the whole group, so we write every moving item.
-		if (remaining.length > 0) {
-			const neighbor = clampedIndex < remaining.length ? remaining[clampedIndex] : remaining[remaining.length - 1];
+		// Hibernated cards sit in a sink band below every live one while keeping
+		// their own priority, so they must never donate it — dropping a card at the
+		// bottom of a column would otherwise promote it to a parked neighbor's band.
+		const donors = remaining.filter((t) => !t.hibernated);
+		if (donors.length > 0) {
+			const landedOn = clampedIndex < remaining.length ? remaining[clampedIndex] : undefined;
+			const neighbor = landedOn && !landedOn.hibernated ? landedOn : donors[donors.length - 1];
 			const targetPriority = neighbor.priority ?? DEFAULT_PRIORITY;
 			if (comparePriority(targetPriority, task.priority) !== 0) {
 				for (const t of movingItems) t.priority = targetPriority;

@@ -47,7 +47,9 @@ function runtimeFromTask(task: Task): LifecycleRuntime {
 			origin: { status: task.status, customColumnId: task.customColumnId ?? null },
 		};
 	}
-	if (task.worktreePath && task.status !== "completed" && task.status !== "cancelled") {
+	// A hibernated task has a worktree but no session, so the "worktree implies
+	// running" inference below would be wrong for it.
+	if (task.worktreePath && !task.hibernated && task.status !== "completed" && task.status !== "cancelled") {
 		return { phase: "running" };
 	}
 	return { phase: "idle" };
@@ -65,6 +67,7 @@ export function lifecycleStateFromTask(project: Project, task: Task): LifecycleS
 			projectKind: project.kind === "virtual" ? "virtual" : "git",
 			hasPrIdentity: task.prNumber != null,
 			draft: task.draft === true,
+			hibernated: task.hibernated === true,
 			peerReviewEnabled: project.peerReviewEnabled !== false,
 			manualCompletion: task.manualCompletion === true,
 			mergeCompletionPrompt: task.mergeCompletionPrompt,

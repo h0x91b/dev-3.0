@@ -2,6 +2,7 @@ import {
 	ACTIVE_STATUSES as ACTIVE_TASK_STATUSES,
 	DRAFT_TASK_ACTIVATION_ERROR,
 	getAllowedTransitions,
+	HIBERNATED_TASK_MOVE_ERROR,
 	isStatusGuardBlocked,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
 	type TaskStatus,
@@ -21,6 +22,14 @@ import type {
 const ACTIVE_STATUSES = new Set<TaskStatus>(ACTIVE_TASK_STATUSES);
 const TERMINAL_STATUSES = new Set<TaskStatus>(["completed", "cancelled"]);
 const MERGE_ELIGIBLE_STATUSES = new Set<TaskStatus>(MERGE_COMPLETE_ELIGIBLE_STATUSES);
+
+/** Hibernation frees a live session; a To Do or terminal task has none. */
+export const HIBERNATE_INACTIVE_ERROR =
+	"Only an active task can be hibernated — there is nothing running to free.";
+
+/** Freezing mid-preparation or mid-teardown would race the app's own work. */
+export const HIBERNATE_BUSY_ERROR =
+	"Task is still starting up or shutting down — try hibernating it once it settles.";
 
 export interface TransitionResult {
 	next: LifecycleState;
@@ -157,6 +166,16 @@ function moveTransition(
 			effects: [
 				effect({ type: "persistTaskPatch", taskPatch: event.taskPatch }, "abort"),
 			],
+		};
+	}
+	// A hibernated task is frozen in place. Refused at the same choke point the
+	// draft rule uses, so board drag, the status menu, automations, scheduled
+	// launches and the CLI are all covered at once. A move to a terminal status
+	// is the one exception: it tears the task down and takes the flag with it.
+	if (state.facts.hibernated === true && !TERMINAL_STATUSES.has(target.status)) {
+		return {
+			next: state,
+			effects: [effect({ type: "reject", message: HIBERNATED_TASK_MOVE_ERROR }, "abort")],
 		};
 	}
 	if (
@@ -417,6 +436,53 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 	switch (event.type) {
 		case "moveRequested":
 			return moveTransition(state, event);
+		case "hibernateRequested": {
+			// Already frozen: a repeat request is a no-op, not an error. Hibernating
+			// the same task again over its life is a normal recurring move.
+			if (state.facts.hibernated === true) return unchanged(state);
+			if (!ACTIVE_STATUSES.has(state.column.status)) {
+				return {
+					next: state,
+					effects: [effect({ type: "reject", message: HIBERNATE_INACTIVE_ERROR }, "abort")],
+				};
+			}
+			// Freezing must never race a session the app is still building or
+			// tearing down; the phases own their own worktree and terminal tree.
+			if (state.runtime.phase === "preparing" || state.runtime.phase === "tearing-down") {
+				return {
+					next: state,
+					effects: [effect({ type: "reject", message: HIBERNATE_BUSY_ERROR }, "abort")],
+				};
+			}
+			const runtime = { phase: "idle" } as const;
+			return {
+				next: {
+					...state,
+					runtime,
+					facts: { ...state.facts, hibernated: true },
+				},
+				effects: [
+					effect({ type: "clearTaskRuntime" }),
+					// Same abort policy as every other teardown: nothing downstream may
+					// touch the worktree until the task's terminal tree is confirmed gone.
+					effect({ type: "destroyTaskPty" }, "abort"),
+					effect({ type: "killDevServer" }),
+					effect({ type: "releasePorts" }),
+					effect({ type: "persistRuntime", runtime, taskPatch: { hibernated: true } }, "abort"),
+					effect({ type: "push", message: "taskUpdated", view: "current" }),
+				],
+			};
+		}
+		case "wakeRequested": {
+			if (state.facts.hibernated !== true) return unchanged(state);
+			return {
+				next: { ...state, facts: { ...state.facts, hibernated: false } },
+				effects: [
+					effect({ type: "persistTaskPatch", taskPatch: { hibernated: false } }, "abort"),
+					effect({ type: "push", message: "taskUpdated", view: "current" }),
+				],
+			};
+		}
 		case "deleteRequested": {
 			const effects: LifecycleEffect[] = [
 				effect({ type: "clearTaskRuntime" }),
