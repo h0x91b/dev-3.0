@@ -32,6 +32,7 @@ import {
 	stagePackagedImage,
 	PACKAGED_HOST_IMAGE_PARENT,
 } from "./native-terminal-registry/host-images/packaged-image";
+import { hostImageRootForPackagedCli } from "./native-terminal-registry/host-images/package-layout";
 import type { PackagedHostImageExpectations } from "./native-terminal-registry/host-images/packaged-image-manifest";
 import type { HostLaunch, HostLauncher, HostSpawnOptions } from "./native-terminal-registry/registry";
 import { encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "./native-terminal-registry/shell-launch";
@@ -85,17 +86,27 @@ function realExecDir(): string | null {
  * Where a packaged image can sit, nearest first.
  *
  * The packaging hook assembles `<packageRoot>/native-host-image/<tag>/`, and
- * `<packageRoot>` is not always the runtime's own directory: the Windows package
- * puts the runtime in `<packageRoot>\bin\bun.exe`, so looking only beside the
- * executable missed the image the same build had just written one level up
- * (observed on a real Windows machine — the launch failed with "this dev3
- * package has no native-host-image/ directory").
+ * `<packageRoot>` is not always the runtime's own directory:
+ *
+ *  • The desktop app runs the packaged Bun from `<packageRoot>\bin\bun.exe`
+ *    (Windows, Linux) or `<bundle>.app/Contents/MacOS/bun` (macOS), so the image
+ *    is one level up. Looking only beside the executable missed the image the
+ *    same build had just written (observed on a real Windows machine — the
+ *    launch failed with "this dev3 package has no native-host-image/ directory").
+ *  • `dev3 remote` / headless mode runs the BUNDLED CLI, several levels deeper at
+ *    `<packageRoot>/Resources/app/cli/dev3`. Neither directory around it holds
+ *    the image, so packaged remote mode could not launch a native task at all
+ *    (seq 1352). That root comes from Electrobun's own named copy path rather
+ *    than from walking up until something matches.
  */
 export function packagedHostImageRoots(): string[] {
 	const execDir = realExecDir();
 	if (!execDir) return [];
 	const parent = dirname(execDir);
-	return parent && parent !== execDir ? [execDir, parent] : [execDir];
+	const roots = parent && parent !== execDir ? [execDir, parent] : [execDir];
+	const bundledCliRoot = hostImageRootForPackagedCli(execDir);
+	if (bundledCliRoot && !roots.includes(bundledCliRoot)) roots.push(bundledCliRoot);
+	return roots;
 }
 
 function developmentRuntime(): NativeHostRuntime | null {

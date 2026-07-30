@@ -85,6 +85,16 @@ probes at launch.
 The runtime carrier inside the image is `dev3-terminal-host.exe` on Windows and
 `dev3-terminal-host` everywhere else.
 
+Two different executables have to reach that root at runtime:
+
+| Process | `process.execPath` | How it finds the image root |
+|---|---|---|
+| Desktop app | `<package>/bin/bun[.exe]`, or `<bundle>.app/Contents/MacOS/bun` | Its own directory, then one level up |
+| `dev3 remote` / headless | `<package>/Resources/app/cli/dev3[.exe]` | `hostImageRootForPackagedCli()` strips the three named `Resources/app/cli` segments |
+
+The CLI root is derived from Electrobun's own copy path, never by walking up
+until a `native-host-image/` turns up.
+
 ## Artifact-manifest CLI
 
 The standalone generator still exists for describing an arbitrary artifact

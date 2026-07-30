@@ -25,7 +25,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { ManifestArch, ManifestOs } from "./artifact-manifest";
 import { PACKAGED_HOST_ENTRYPOINT } from "./packaged-image";
 
@@ -82,6 +82,39 @@ export function nativeHostPackageLayout(os: ManifestOs, runtimePath: string): Na
 		runtimePath: runtime,
 		entrypointPath: join(bundleRoot, "Resources", "app", "native", PACKAGED_HOST_ENTRYPOINT),
 	};
+}
+
+/**
+ * Path segments Electrobun's copy rules put between the package root and the
+ * bundled `dev3` CLI (`cliCopyEntry()` in electrobun.config.ts writes
+ * `cli/dev3`, and every copy lands under `Resources/app/`).
+ */
+const PACKAGED_CLI_SEGMENTS = ["Resources", "app", "cli"] as const;
+
+/**
+ * The host-image root for a process running as the BUNDLED `dev3` CLI —
+ * `dev3 remote` / headless mode, where `process.execPath` is the packaged CLI
+ * binary rather than the desktop app's Bun.
+ *
+ * Seq 1352 found this the hard way: from `Contents/Resources/app/cli/dev3` the
+ * two roots beside and above the executable are `.../app/cli` and `.../app`,
+ * while the image sits at `Contents/native-host-image`. The gate failed
+ * honestly and never touched tmux, but packaged remote mode could not run a
+ * native task at all.
+ *
+ * Anchored on the three NAMED segments, so it matches the one layout Electrobun
+ * actually emits and nothing else — no walking up until something is found.
+ * Stripping them lands on `Contents/` on macOS (`Resources` sits inside it) and
+ * on the bundle root on Linux and Windows, which are exactly the image roots
+ * {@link nativeHostPackageLayout} assembles into.
+ */
+export function hostImageRootForPackagedCli(executableDir: string): string | null {
+	let candidate = resolve(executableDir);
+	for (const segment of [...PACKAGED_CLI_SEGMENTS].reverse()) {
+		if (basename(candidate) !== segment) return null;
+		candidate = dirname(candidate);
+	}
+	return candidate;
 }
 
 /**

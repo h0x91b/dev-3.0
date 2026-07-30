@@ -27,10 +27,10 @@ vi.mock("../native-terminal-registry/host-images/packaged-image", () => ({
 // registry CLI on disk, and one case needs a build that does not.
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
-	return { ...actual, default: actual, existsSync: vi.fn(actual.existsSync) };
+	return { ...actual, default: actual, existsSync: vi.fn(actual.existsSync), realpathSync: vi.fn(actual.realpathSync) };
 });
 
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { spawn } from "node:child_process";
 const realFs = await vi.importActual<typeof import("node:fs")>("node:fs");
 import {
@@ -58,6 +58,7 @@ function launchSpec() {
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(existsSync).mockImplementation(realFs.existsSync);
+	vi.mocked(realpathSync).mockImplementation(realFs.realpathSync as never);
 	mkdirSync(TEST_ROOT, { recursive: true });
 	writeFileSync(ENTRYPOINT, "// built host bundle\n");
 	delete process.env[NATIVE_HOST_ENTRYPOINT_ENV];
@@ -152,6 +153,26 @@ describe("packaged image lookup", () => {
 		expect(nativeHostPackageLayout("darwin", join(roots[0], "bun")).hostImagePackageRoot).toBe(roots[1]);
 		// Linux and Windows assemble at the bundle root, one level above bin/bun.
 		expect(nativeHostPackageLayout("linux", join(roots[0], "bun")).hostImagePackageRoot).toBe(roots[1]);
+	});
+
+	it("reaches the image from the bundled dev3 CLI that `dev3 remote` runs", () => {
+		// Seq 1352: headless mode's execPath is <bundle>.app/Contents/Resources/app/cli/dev3,
+		// and neither directory around it holds the image.
+		const cliPath = "/Apps/dev-3.0.app/Contents/Resources/app/cli/dev3";
+		vi.mocked(realpathSync).mockImplementation(((path: string) => (path === process.execPath ? cliPath : path)) as never);
+
+		const roots = packagedHostImageRoots();
+
+		expect(roots).toEqual([
+			"/Apps/dev-3.0.app/Contents/Resources/app/cli",
+			"/Apps/dev-3.0.app/Contents/Resources/app",
+			"/Apps/dev-3.0.app/Contents",
+		]);
+		expect(roots[roots.length - 1]).toBe(nativeHostPackageLayout("darwin", "/Apps/dev-3.0.app/Contents/MacOS/bun").hostImagePackageRoot);
+	});
+
+	it("adds nothing extra for a desktop runtime that is not the bundled CLI", () => {
+		expect(packagedHostImageRoots()).toHaveLength(2);
 	});
 
 	it("finds an image the Windows package wrote above the runtime's bin/ directory", () => {

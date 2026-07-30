@@ -15,6 +15,7 @@ import {
 	nativeHostPackageLayout,
 	packagedRuntimePathIn,
 	packagedRuntimeFileName,
+	hostImageRootForPackagedCli,
 } from "../package-layout";
 
 let workspace: string;
@@ -107,5 +108,37 @@ describe("packagedRuntimePathIn", () => {
 		expect(packagedRuntimeFileName("win32")).toBe("bun.exe");
 		expect(packagedRuntimeFileName("darwin")).toBe("bun");
 		expect(packagedRuntimeFileName("linux")).toBe("bun");
+	});
+});
+
+describe("hostImageRootForPackagedCli", () => {
+	// Every row is a REAL Electrobun output path. `hostImagePackageRoot` in the
+	// same bundle must come out identical, or `dev3 remote` looks in the wrong
+	// place while the desktop app looks in the right one.
+	test.each([
+		["darwin", "/b/dev-3.0.app/Contents/MacOS/bun", "/b/dev-3.0.app/Contents/Resources/app/cli"],
+		["linux", "/b/dev-3.0/bin/bun", "/b/dev-3.0/Resources/app/cli"],
+		["win32", "/b/dev-3.0/bin/bun.exe", "/b/dev-3.0/Resources/app/cli"],
+	] as const)("on %s the bundled CLI resolves the same image root as the desktop app", (os, runtimePath, cliDir) => {
+		expect(hostImageRootForPackagedCli(cliDir)).toBe(nativeHostPackageLayout(os, runtimePath).hostImagePackageRoot);
+	});
+
+	test("rejects any directory that is not Electrobun's Resources/app/cli", () => {
+		for (const wrong of [
+			"/b/dev-3.0.app/Contents/MacOS", // desktop runtime dir
+			"/b/dev-3.0.app/Contents/Resources/app", // one segment short
+			"/b/dev-3.0.app/Contents/Resources/app/cli/extra", // one segment too deep
+			"/b/dev-3.0/Resources/cli", // missing app/
+			"/usr/local/bin", // a CLI installed outside any package
+			"/",
+		]) {
+			expect(hostImageRootForPackagedCli(wrong)).toBeNull();
+		}
+	});
+
+	test("does not walk up looking for a match", () => {
+		// A `cli` directory nested under an unrelated tree must not resolve to
+		// some ancestor that happens to exist.
+		expect(hostImageRootForPackagedCli("/home/me/projects/cli")).toBeNull();
 	});
 });
