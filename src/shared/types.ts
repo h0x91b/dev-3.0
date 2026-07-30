@@ -1824,23 +1824,36 @@ export function buildTaskDialogSubject(task: Task, project: Project): TaskDialog
  * branch diff, ahead/behind status, and rebase/merge targets.
  *
  * Normally this is `task.baseBranch` (falling back to the project's default
- * base). PR-review and other "existing branch" tasks are the exception: they
- * check out an existing remote branch and `deriveTaskBaseBranch` (see
- * `src/bun/data.ts`) stores that same branch as `baseBranch`, so
- * `baseBranch === branchName`. Comparing a branch against itself is trivially
- * empty — the "No changes to show" branch-diff bug, and a false "Branch Merged"
- * prompt. When the stored base collapses onto the task's own branch, fall back
- * to the project's real base branch so comparisons show the branch's actual
- * changes. Mirrors the merge-completion poller's inline fallback in
- * `src/bun/rpc-handlers/git-operations.ts`.
+ * base). PR-review and other "existing branch" tasks are the exception:
+ * `deriveTaskBaseBranch` stores their checkout ref as `baseBranch`. The local
+ * branch may have the same name, or a fork-qualified checkout ref such as
+ * `contributor/feature` may become local branch `feature`. Comparing either
+ * checkout shape against HEAD is trivially empty. Fall back to the project's
+ * real base branch so diff, commit count, and branch status show the task's
+ * actual changes. A variant branch intentionally differs from its source
+ * `existingBranch`, so it keeps that source as its comparison base.
  */
 export function resolveTaskCompareBaseBranch(
-	task: Pick<Task, "baseBranch" | "branchName">,
+	task: Pick<Task, "baseBranch" | "branchName" | "existingBranch">,
 	project: Pick<Project, "defaultBaseBranch">,
 ): string {
 	const projectBase = project.defaultBaseBranch || "main";
 	const stored = task.baseBranch || projectBase;
-	if (task.branchName && stored === task.branchName) {
+	const existingBranch = task.existingBranch?.trim()
+		.replace(/^refs\/remotes\//, "")
+		.replace(/^origin\//, "");
+	const existingBranchResolvesToTaskBranch = Boolean(
+		task.branchName
+		&& existingBranch
+		&& (
+			existingBranch === task.branchName
+			|| existingBranch.endsWith(`/${task.branchName}`)
+		),
+	);
+	if (
+		(task.branchName && stored === task.branchName)
+		|| (existingBranchResolvesToTaskBranch && stored === existingBranch)
+	) {
 		return projectBase;
 	}
 	return stored;

@@ -568,7 +568,7 @@ function TaskInfoPanel({
 		? () => onOpenInlineDiff({
 			mode: "branch",
 			compareRef: branchMeta?.compareRef,
-			compareLabel: branchMeta?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`,
+			compareLabel: branchMeta?.compareLabel ?? `origin/${resolveTaskCompareBaseBranch(task, project)}`,
 			focusFirstUnresolvedThread: true,
 		})
 		: undefined;

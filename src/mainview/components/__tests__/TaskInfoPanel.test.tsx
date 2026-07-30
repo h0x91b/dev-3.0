@@ -1583,6 +1583,31 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("opens a fork PR-review diff against the project base", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const onOpenInlineDiff = vi.fn();
+			const task = makeTask({
+				status: "review-by-colleague",
+				branchName: "fix/ctrl-o",
+				baseBranch: "contributor/fix/ctrl-o",
+				existingBranch: "contributor/fix/ctrl-o",
+				prNumber: 1193,
+			});
+
+			await act(async () => {
+				renderPanel(task, { onOpenInlineDiff });
+			});
+
+			const diffButtons = screen.getAllByRole("button", { name: "Show Diff" });
+			const enabledButton = diffButtons.find((button) => !button.hasAttribute("disabled"));
+			await user.click(enabledButton!);
+
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+				mode: "branch",
+				compareLabel: "origin/main",
+			});
+		});
+
 		it("keeps Show Diff active while branch status is still loading", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const onOpenInlineDiff = vi.fn();

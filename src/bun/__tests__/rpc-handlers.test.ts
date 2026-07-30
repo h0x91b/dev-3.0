@@ -4794,6 +4794,26 @@ describe("resolveTaskCompareBaseBranch", () => {
 		).toBe("main");
 	});
 
+	it("falls back to the project base for a fork-qualified existing branch", () => {
+		const task = makeTask({
+			baseBranch: "contributor/fix/ctrl-o",
+			branchName: "fix/ctrl-o",
+			existingBranch: "contributor/fix/ctrl-o",
+		});
+
+		expect(resolveTaskCompareBaseBranch(task, { defaultBaseBranch: "main" })).toBe("main");
+	});
+
+	it("keeps the existing branch as the base for a variant branch", () => {
+		const task = makeTask({
+			baseBranch: "feature/source",
+			branchName: "feature/source-v2",
+			existingBranch: "feature/source",
+		});
+
+		expect(resolveTaskCompareBaseBranch(task, { defaultBaseBranch: "main" })).toBe("feature/source");
+	});
+
 	it("defaults the project base to main when unset", () => {
 		expect(
 			resolveTaskCompareBaseBranch(
@@ -4839,6 +4859,57 @@ describe("handlers.getTaskDiff base branch resolution", () => {
 			"/tmp/wt",
 			"branch",
 			expect.objectContaining({ baseBranch: "main" }),
+		);
+	});
+
+	it("resolves a fork PR-review task's diff base to the project base", async () => {
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({
+			worktreePath: "/tmp/wt",
+			branchName: "fix/ctrl-o",
+			baseBranch: "contributor/fix/ctrl-o",
+			existingBranch: "contributor/fix/ctrl-o",
+			prNumber: 1193,
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getTaskDiff).mockResolvedValue(branchDiffResponse);
+
+		await handlers.getTaskDiff({ taskId: task.id, projectId: project.id, mode: "branch" });
+
+		expect(git.getTaskDiff).toHaveBeenCalledWith(
+			"/tmp/wt",
+			"branch",
+			expect.objectContaining({ baseBranch: "main" }),
+		);
+	});
+
+	it("resolves a fork PR-review task's recent-commit base to the project base", async () => {
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({
+			worktreePath: "/tmp/wt",
+			branchName: "fix/ctrl-o",
+			baseBranch: "contributor/fix/ctrl-o",
+			existingBranch: "contributor/fix/ctrl-o",
+			prNumber: 1193,
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getTaskDiff).mockResolvedValue({
+			...branchDiffResponse,
+			mode: "recent",
+			compareRef: "HEAD~1",
+			compareLabel: "HEAD~1",
+			recentCount: 1,
+		});
+
+		await handlers.getTaskDiff({ taskId: task.id, projectId: project.id, mode: "recent", count: 1 });
+
+		expect(git.getTaskDiff).toHaveBeenCalledWith(
+			"/tmp/wt",
+			"recent",
+			expect.objectContaining({ baseBranch: "main", count: 1 }),
 		);
 	});
 
@@ -5002,22 +5073,18 @@ describe("handlers.getBranchStatus", () => {
 		});
 	});
 
-	it("compares a PR-review task (baseBranch === branchName) against the project base, not itself", async () => {
-		// PR-review / existing-branch tasks check out the PR head branch and
-		// deriveTaskBaseBranch stores that same branch as baseBranch. Comparing
-		// origin/<branch> against HEAD is trivially empty (the "No changes to show"
-		// diff bug + a false "Branch Merged" prompt) — it must fall back to the base.
+	it("compares a fork PR-review task against the project base, not its remote-qualified head", async () => {
 		const project = makeProject({ defaultBaseBranch: "main" });
 		const task = makeTask({
 			worktreePath: "/tmp/wt",
-			branchName: "codex/pr-head",
-			baseBranch: "codex/pr-head",
-			existingBranch: "origin/codex/pr-head",
-			prNumber: 16484,
+			branchName: "fix/ctrl-o",
+			baseBranch: "contributor/fix/ctrl-o",
+			existingBranch: "contributor/fix/ctrl-o",
+			prNumber: 1193,
 		});
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(git.getCurrentBranch).mockResolvedValue("codex/pr-head");
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("fix/ctrl-o");
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 5, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
@@ -5027,7 +5094,6 @@ describe("handlers.getBranchStatus", () => {
 
 		await handlers.getBranchStatus({ taskId: task.id, projectId: project.id });
 
-		// The comparison ref must be the project base, never the branch against itself.
 		expect(git.getBranchStatus).toHaveBeenCalledWith("/tmp/wt", "origin/main");
 		expect(git.getBranchDiffStats).toHaveBeenCalledWith("/tmp/wt", "origin/main");
 	});
