@@ -126,7 +126,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(navigate).not.toHaveBeenCalled();
 	});
 
-	it("keeps the focused task open when clicked again", async () => {
+	it("returns to the Kanban board when the focused task is clicked again", async () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();
 		render(
@@ -145,8 +145,8 @@ function makeTask(overrides?: Partial<Task>): Task {
 		);
 
 		await user.click(screen.getByText("Привет! как сам?"));
-		expect(navigate).not.toHaveBeenCalled();
-		expect(terminalPreview.close).not.toHaveBeenCalled();
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+		expect(terminalPreview.close).toHaveBeenCalledTimes(1);
 	});
 
 	it("shows agent-first identity with compact config and variant dots", () => {

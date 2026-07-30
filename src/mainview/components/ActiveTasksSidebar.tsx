@@ -396,11 +396,12 @@ function ActiveTasksSidebar({
 
 	function handleTaskClick(task: Task) {
 		if (task.shuttingDown) return;
+		preview.close();
 		const targetProjectId = task.projectId || project.id;
 		if (task.id === activeTaskId && targetProjectId === project.id) {
+			navigate({ screen: "project", projectId: project.id });
 			return;
 		}
-		preview.close();
 		navigate({
 			screen: "project",
 			projectId: targetProjectId,
