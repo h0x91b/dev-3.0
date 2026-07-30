@@ -64,7 +64,9 @@ const ArtifactSearchBar = forwardRef<ArtifactSearchBarHandle, ArtifactSearchBarP
 				data-testid="artifact-search-bar"
 				className="absolute top-2 right-2 z-30 flex items-center gap-1 rounded-lg border border-edge bg-elevated/95 px-2 py-1 shadow-lg shadow-black/30 backdrop-blur-sm"
 			>
-				<span aria-hidden="true" className="shrink-0 text-[0.8rem] leading-none text-fg-muted" style={{ fontFamily: ICON }}>{"\uf002"}</span>
+			{/* Nerd Font draws this glyph high in its em box, so box-centering alone
+			    leaves it ~3px above the query text's optical center - nudge it back down. */}
+				<span aria-hidden="true" className="shrink-0 translate-y-[2px] text-sm leading-none text-fg-muted" style={{ fontFamily: ICON }}>{"\uf002"}</span>
 				<input
 					ref={inputRef}
 					type="text"
