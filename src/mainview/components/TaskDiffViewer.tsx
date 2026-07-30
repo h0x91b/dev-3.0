@@ -3197,9 +3197,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				}`}
 			>
 				<div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-base px-2 focus-within:border-accent/60 transition-colors">
+					{/* Nerd Font draws this glyph high in its em box, so box-centering alone
+					    leaves it ~2px above the query's optical center — nudge it back down. */}
 					<span
 						aria-hidden="true"
-						className="shrink-0 text-[0.8rem] leading-none text-fg-muted"
+						className="shrink-0 translate-y-[2px] text-[0.8rem] leading-none text-fg-muted"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
 						{""}
