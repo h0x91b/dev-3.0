@@ -124,19 +124,23 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 		return () => el.removeAttribute("data-image-viewer");
 	}, []);
 
-	// Keyboard navigation + Esc close + f = fullscreen.
+	// Keyboard navigation + Esc close + f = fullscreen. Capture phase +
+	// stopPropagation because this lightbox is a modal that owns the keyboard while
+	// open: the App-level Escape listener is registered first and would otherwise
+	// navigate out of the task workspace behind it (decision 181).
 	useEffect(() => {
 		function onKey(e: KeyboardEvent) {
-			if (e.key === "Escape") { e.preventDefault(); if (fullscreen) setFullscreen(false); else onClose(); }
-			else if (e.key === "ArrowRight") { e.preventDefault(); go(1); }
-			else if (e.key === "ArrowLeft") { e.preventDefault(); go(-1); }
-			else if (e.key === "Home") { e.preventDefault(); setIndex(0); }
-			else if (e.key === "End") { e.preventDefault(); setIndex(images.length - 1); }
-			else if (e.key === "f" || e.key === "F") { e.preventDefault(); setFullscreen((v) => !v); }
+			const consume = () => { e.preventDefault(); e.stopPropagation(); };
+			if (e.key === "Escape") { consume(); if (fullscreen) setFullscreen(false); else onClose(); }
+			else if (e.key === "ArrowRight") { consume(); go(1); }
+			else if (e.key === "ArrowLeft") { consume(); go(-1); }
+			else if (e.key === "Home") { consume(); setIndex(0); }
+			else if (e.key === "End") { consume(); setIndex(images.length - 1); }
+			else if (e.key === "f" || e.key === "F") { consume(); setFullscreen((v) => !v); }
 		}
-		window.addEventListener("keydown", onKey);
+		window.addEventListener("keydown", onKey, { capture: true });
 		containerRef.current?.focus();
-		return () => window.removeEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey, { capture: true });
 	}, [go, onClose, images.length, fullscreen]);
 
 	// Reset per-image derived state and scroll the active thumbnail into view.

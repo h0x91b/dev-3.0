@@ -217,11 +217,16 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		setIndex((value) => Math.max(0, Math.min(artifacts.length - 1, value + delta)));
 	}, [artifacts.length]);
 
+	// Capture phase + stopPropagation: the App-level Escape handler is a plain
+	// window bubble listener registered at root mount, so it runs BEFORE any nested
+	// surface's and would navigate out of the whole task workspace instead of just
+	// closing this viewer. The open viewer owns the keys it handles (decision 181).
 	useEffect(() => {
 		function onKey(event: KeyboardEvent) {
 			if (!fullscreen && !viewerRef.current?.contains(document.activeElement)) return;
 			if (event.key === "Escape") {
 				event.preventDefault();
+				event.stopPropagation();
 				// Escape unwinds one layer at a time: search → fullscreen → viewer.
 				if (searchOpen) closeSearch();
 				else if (fullscreen) setFullscreen(false);
@@ -230,11 +235,12 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				// While searching, arrows belong to the query caret, not to history.
 				if (searchOpen) return;
 				event.preventDefault();
+				event.stopPropagation();
 				go(event.key === "ArrowLeft" ? -1 : 1);
 			}
 		}
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		window.addEventListener("keydown", onKey, { capture: true });
+		return () => window.removeEventListener("keydown", onKey, { capture: true });
 	}, [fullscreen, go, onClose, searchOpen, closeSearch]);
 
 	// ⌘F (Ctrl+F elsewhere) — find inside the artifact. Gated on focus being inside

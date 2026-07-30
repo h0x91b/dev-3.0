@@ -218,6 +218,31 @@ describe("TaskArtifactViewer", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
+	// Regression: the app-level Escape handler is a bubble listener registered at root
+	// mount, so it used to run FIRST and navigate out of the task workspace while the
+	// viewer merely closed itself — one keypress, two layers gone (decision 181).
+	it("consumes Escape and the arrow keys before the app-level handler sees them", async () => {
+		const appLevel = vi.fn();
+		window.addEventListener("keydown", appLevel);
+		try {
+			const onClose = vi.fn();
+			render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a"), artifact("b")]} initialIndex={0} onClose={onClose} /></I18nProvider>);
+			await screen.findByTitle("Artifact a");
+			const close = screen.getByTestId("artifact-viewer-close");
+			close.focus();
+
+			// Dispatched on the focused element, like a real keypress — the viewer's
+			// capture listener must stop it before it bubbles up to window.
+			fireEvent.keyDown(close, { key: "ArrowRight" });
+			expect(screen.getByText("Artifact b")).toBeInTheDocument();
+			fireEvent.keyDown(close, { key: "Escape" });
+			expect(onClose).toHaveBeenCalledOnce();
+			expect(appLevel).not.toHaveBeenCalled();
+		} finally {
+			window.removeEventListener("keydown", appLevel);
+		}
+	});
+
 	it("requests ZIP download when the artifact has assets", async () => {
 		const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
 		const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
