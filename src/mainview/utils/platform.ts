@@ -11,6 +11,16 @@ export function isMac(): boolean {
 }
 
 /**
+ * Whether an event carries the platform's app-shortcut modifier, as declared in
+ * `keymap.ts` (`⌘X` on macOS, `Ctrl+X` elsewhere). Accepting either modifier on
+ * both platforms would steal `Ctrl`-prefixed keys from the focused terminal on
+ * macOS, where they belong to the shell and the agent CLI running in it.
+ */
+export function hasAppModifier(e: KeyboardEvent): boolean {
+	return isMac() ? e.metaKey : e.ctrlKey;
+}
+
+/**
  * Whether the renderer is running in browser remote mode (`dev3 remote`) rather
  * than the Electrobun desktop shell. Electrobun injects `__electrobunWebviewId`
  * onto `window` inside the WKWebView; its absence means a plain browser tab over

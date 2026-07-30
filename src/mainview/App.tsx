@@ -8,7 +8,7 @@ import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
-import { isRemote } from "./utils/platform";
+import { hasAppModifier, isRemote } from "./utils/platform";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import { useMobileDenseZoom } from "./hooks/useMobileDenseZoom";
@@ -807,10 +807,11 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "o") {
+			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "o") {
 				// Cmd/Ctrl+O — open the current project/worktree in the selected app,
 				// or the "Open in..." picker when nothing is chosen yet. In remote mode
 				// Cmd+O is the browser's Open-File dialog, so yield to it (scope: desktop).
+				// Platform-exact modifier: ⌃O belongs to the terminal on macOS.
 				if (remote) return;
 				e.preventDefault();
 				e.stopPropagation();
