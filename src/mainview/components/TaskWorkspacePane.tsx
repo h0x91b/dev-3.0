@@ -135,6 +135,28 @@ function TaskWorkspacePane({
 		});
 	}, [clampArtifactWidth]);
 
+	useEffect(() => {
+		if (!artifactResizing) return;
+		const finishForPointer = (event: PointerEvent) => {
+			if (resizeSessionRef.current?.pointerId !== event.pointerId) return;
+			finishArtifactResize(true);
+		};
+		const finishForBlur = () => finishArtifactResize(true);
+		const finishWhenHidden = () => {
+			if (document.visibilityState === "hidden") finishArtifactResize(true);
+		};
+		window.addEventListener("pointerup", finishForPointer, true);
+		window.addEventListener("pointercancel", finishForPointer, true);
+		window.addEventListener("blur", finishForBlur);
+		document.addEventListener("visibilitychange", finishWhenHidden);
+		return () => {
+			window.removeEventListener("pointerup", finishForPointer, true);
+			window.removeEventListener("pointercancel", finishForPointer, true);
+			window.removeEventListener("blur", finishForBlur);
+			document.removeEventListener("visibilitychange", finishWhenHidden);
+		};
+	}, [artifactResizing, finishArtifactResize]);
+
 	const resizeArtifactBy = useCallback((delta: number) => {
 		setArtifactWidth((width) => clampArtifactWidth(width + delta));
 	}, [clampArtifactWidth]);
