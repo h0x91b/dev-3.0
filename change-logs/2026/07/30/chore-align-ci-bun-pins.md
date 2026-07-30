@@ -1,0 +1,1 @@
+Every CI and release job now installs the same Bun the app packages (1.3.14) instead of the stale 1.3.10 pinned in the build and release workflows, and a test fails the build if a workflow pin ever drifts away from that baseline again.
