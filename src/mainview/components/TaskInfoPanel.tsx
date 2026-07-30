@@ -939,21 +939,30 @@ function TaskInfoPanel({
 	// agent-session controls — never on the board card (a hibernated card is inert
 	// by design, and waking must be an explicit act inside the task).
 	// No confirmation: hibernation is reversible, nothing on disk is touched.
+	// Amber, not danger: red in this app means "destroys something you cannot get
+	// back", and the neighbouring Bug Hunters button already owns it here. The skull
+	// is the one filled glyph in this bar on purpose — it has to stop the eye before
+	// the tooltip explains that the worktree survives.
 	const hibernateButton = isTaskActive && task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown ? (
 		<Tooltip content={t("task.hibernate")} detail={t("task.hibernateHint")}>
 			<button
 				data-testid="task-hibernate-button"
 				onClick={handleHibernate}
 				disabled={hibernating}
-				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge disabled:opacity-50"
+				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning hover:text-warning hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
 				aria-label={t("task.hibernate")}
 			>
 				{hibernating ? (
-					<span className="w-[1.05rem] h-[1.05rem] animate-spin rounded-full border-2 border-fg-muted/30 border-t-fg-3" />
+					<span className="w-[1.05rem] h-[1.05rem] animate-spin rounded-full border-2 border-warning/30 border-t-warning" />
 				) : (
-					<svg className="w-[1.05rem] h-[1.05rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-						<path d="M12 3v18M5.6 6.6l12.8 10.8M18.4 6.6 5.6 17.4" />
-						<path d="M12 3.2 9.8 5.4M12 3.2l2.2 2.2M12 20.8l-2.2-2.2M12 20.8l2.2-2.2" />
+					<svg className="w-[1.05rem] h-[1.05rem]" viewBox="0 0 24 24" fill="none">
+						<path d="M3 13.6 21 20M21 13.6 3 20" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+						<path
+							fill="currentColor"
+							fillRule="evenodd"
+							clipRule="evenodd"
+							d="M12 2.2c-3.3 0-5.8 2.4-5.8 5.7 0 1.8.8 3.3 2.1 4.4v1.5c0 .7.6 1.3 1.3 1.3h4.8c.7 0 1.3-.6 1.3-1.3v-1.5c1.3-1.1 2.1-2.6 2.1-4.4 0-3.3-2.5-5.7-5.8-5.7ZM9.4 5.8a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm5.2 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4ZM12 10.6l1.4 2.4h-2.8l1.4-2.4Z"
+						/>
 					</svg>
 				)}
 				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("task.hibernateShort")}</span>}

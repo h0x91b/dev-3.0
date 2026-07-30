@@ -74,7 +74,7 @@ const kanban = {
 	"task.hibernatedHint": "Parked — agent, terminal and dev server stopped. The worktree and your uncommitted changes are untouched. Open the task to wake it.",
 	"task.hibernate": "Hibernate",
 	"task.hibernateShort": "Hibernate",
-	"task.hibernateHint": "Stop the agent, the terminal and the dev server to free memory. The worktree, your changes and the agent transcript stay exactly as they are.",
+	"task.hibernateHint": "Your work is kept: the worktree, your changes and the agent transcript stay exactly as they are. Stops the agent, the terminal and the dev server to free memory — terminal scrollback is lost.",
 	"task.hibernatedToast": "Task hibernated — agent, terminal and dev server stopped.",
 	"task.hibernatedToastMem": "Task hibernated — about {mem} freed.",
 	"task.hibernateFailed": "Failed to hibernate task: {error}",

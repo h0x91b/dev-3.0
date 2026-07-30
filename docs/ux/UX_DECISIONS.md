@@ -22,9 +22,14 @@ A hibernated task keeps its column and renders inert everywhere it is listed (gr
 dashed `text-fg-muted` label, drag off, status trigger disabled, quick-complete still
 live); the Hibernate control itself sits in the inspector's Session/Agent bar (4th
 action, at budget) and never on the board card, so waking stays an explicit act inside
-the task. No `confirm()` — nothing on disk is touched, so it is reversible, not
-destructive. Rejected: a dedicated column (the board must keep telling the truth about
-where the work is). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskInfoPanel.tsx`.
+the task. It wears `warning` (amber) and a filled skull: `danger` is reserved for
+irreversible loss and the same bar already spends it on Bug Hunters, while the one
+illustrative glyph in a 2px-stroke set is what makes a rare, costly action visible at
+17px. No `confirm()` — nothing on disk is touched, so it is reversible, not destructive;
+the tooltip front-loads what survives. Rejected: a dedicated column (the board must keep
+telling the truth about where the work is), and a red skull (two reds in a four-button
+bar make red decorative). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskInfoPanel.tsx`.
+
 ## 2026-07-30 — A global default's rare per-object override lives in that object's detail modal
 
 - **Rule:** a durable machine-local preference lives in Global Settings (bible §10 `configuration`); its rare per-object exception lives in the object's **detail modal** as a low-emphasis segmented control — never on the board, a toolbar/header, the create modal, or live object chrome. An unavailable choice stays visible, `disabled`, with its reason in `--warning` text next to it. Evidence: `src/mainview/components/global-settings/TerminalBackendSetting.tsx`, `src/mainview/components/TaskTerminalBackendRow.tsx`.

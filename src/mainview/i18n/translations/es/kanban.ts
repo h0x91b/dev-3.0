@@ -74,7 +74,7 @@ const kanban = {
 	"task.hibernatedHint": "Aparcada: el agente, la terminal y el servidor de desarrollo están detenidos. El worktree y tus cambios sin confirmar siguen intactos. Abre la tarea para despertarla.",
 	"task.hibernate": "Hibernar",
 	"task.hibernateShort": "Hibernar",
-	"task.hibernateHint": "Detiene el agente, la terminal y el servidor de desarrollo para liberar memoria. El worktree, tus cambios y la conversación del agente se mantienen igual.",
+	"task.hibernateHint": "Tu trabajo se conserva: el worktree, tus cambios y la conversación del agente se mantienen igual. Detiene el agente, la terminal y el servidor de desarrollo para liberar memoria; el historial de la terminal se pierde.",
 	"task.hibernatedToast": "Tarea hibernada: agente, terminal y servidor de desarrollo detenidos.",
 	"task.hibernatedToastMem": "Tarea hibernada: se liberaron unos {mem}.",
 	"task.hibernateFailed": "No se pudo hibernar la tarea: {error}",
