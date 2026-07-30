@@ -14,6 +14,14 @@ const columns = {
 	"customColumns.failedUpdate": "Ошибка обновления колонки: {error}",
 	"customColumns.failedDelete": "Ошибка удаления колонки: {error}",
 	"customColumns.charCount": "{count}/{max}",
+	"customColumns.charCountOverLimit": "— слишком длинно, не сохранится",
+	"customColumns.colorPicker": "Цвет колонки",
+	"customColumns.deleteConfirmTitle": "Удалить эту колонку?",
+	"customColumns.deleteConfirmMessage_one": "В «{name}» лежит {count} задача. После удаления колонки она вернётся в To Do.",
+	"customColumns.deleteConfirmMessage_few": "В «{name}» лежит {count} задачи. После удаления колонки они вернутся в To Do.",
+	"customColumns.deleteConfirmMessage_many": "В «{name}» лежит {count} задач. После удаления колонки они вернутся в To Do.",
+	"customColumns.deleteConfirmMessage_other": "В «{name}» лежит {count} задач. После удаления колонки они вернутся в To Do.",
+	"customColumns.deleteConfirmMessageEmpty": "«{name}» пустая. Колонка просто исчезнет с борда.",
 
 	// Labels
 	"labels.filterTitle": "Метки",
@@ -42,6 +50,13 @@ const columns = {
 	"labels.taskCount_few": "{count} задачи",
 	"labels.taskCount_many": "{count} задач",
 	"labels.taskCount_other": "{count} задач",
+	"labels.colorPicker": "Цвет метки",
+	"labels.deleteConfirmTitle": "Удалить эту метку?",
+	"labels.deleteConfirmMessage_one": "«{name}» стоит на {count} задаче. Удаление снимет метку с неё. Отменить нельзя.",
+	"labels.deleteConfirmMessage_few": "«{name}» стоит на {count} задачах. Удаление снимет метку со всех. Отменить нельзя.",
+	"labels.deleteConfirmMessage_many": "«{name}» стоит на {count} задачах. Удаление снимет метку со всех. Отменить нельзя.",
+	"labels.deleteConfirmMessage_other": "«{name}» стоит на {count} задачах. Удаление снимет метку со всех. Отменить нельзя.",
+	"labels.deleteConfirmMessageUnused": "«{name}» пока не стоит ни на одной задаче. Отменить удаление нельзя.",
 
 	// Priority
 	"priority.label": "Приоритет",

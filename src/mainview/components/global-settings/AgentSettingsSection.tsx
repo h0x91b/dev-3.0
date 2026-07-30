@@ -1249,6 +1249,7 @@ function ConfigEditor({
 							}
 							placeholder="--flag"
 							addLabel={t("settings.configAddArg")}
+							removeLabel={t("listEditor.removeItem")}
 						/>
 					</div>
 

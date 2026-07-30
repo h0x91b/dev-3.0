@@ -35,6 +35,10 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
+vi.mock("../../confirm", () => ({
+	confirm: vi.fn(() => Promise.resolve(true)),
+}));
+
 const mockProject: Project = {
 	id: "proj-1",
 	name: "Test Project",
@@ -761,6 +765,74 @@ describe("ProjectSettings", () => {
 		it("defaults to the Board tab (columns + labels) for a virtual board", async () => {
 			await renderProjectSettings(virtualProject);
 			expect(screen.getByText(/Board layout/i)).toBeInTheDocument();
+		});
+	});
+
+	describe("label rows", () => {
+		const labelledProject: Project = {
+			...mockProject,
+			labels: [
+				{ id: "label-1", name: "Bug", color: "#ef4444" },
+				{ id: "label-2", name: "Feature", color: "#84cc16" },
+			],
+		};
+		// No worktreePath: the Board tab never loads worktree configs, so these
+		// tests stay independent of the getProjectConfigs mock.
+		const taggedTasks: Task[] = [
+			{ ...mockTaskWithWorktree, id: "t-1", worktreePath: null, labelIds: ["label-1"] },
+			{ ...mockTaskWithWorktree, id: "t-2", worktreePath: null, labelIds: ["label-1"] },
+		];
+
+		it("hides the palette behind the colour dot instead of showing every swatch", async () => {
+			const user = userEvent.setup();
+			await renderProjectSettings(labelledProject);
+			// Two rows, so exactly two triggers — not 2 × the whole palette.
+			const triggers = screen.getAllByRole("button", { name: "Label colour" });
+			expect(triggers).toHaveLength(2);
+			expect(screen.queryByRole("dialog", { name: "Label colour" })).not.toBeInTheDocument();
+
+			await user.click(triggers[0]);
+			const palette = screen.getByRole("dialog", { name: "Label colour" });
+			expect(within(palette).getAllByRole("button")).toHaveLength(12);
+		});
+
+		it("picking a swatch saves the label and closes the palette", async () => {
+			const user = userEvent.setup();
+			vi.mocked(api.request.updateLabel).mockResolvedValue({ id: "label-1", name: "Bug", color: "#3b82f6" });
+			await renderProjectSettings(labelledProject);
+
+			await user.click(screen.getAllByRole("button", { name: "Label colour" })[0]);
+			await user.click(screen.getByRole("button", { name: "#3b82f6" }));
+
+			expect(api.request.updateLabel).toHaveBeenCalledWith(
+				expect.objectContaining({ labelId: "label-1", color: "#3b82f6" }),
+			);
+			expect(screen.queryByRole("dialog", { name: "Label colour" })).not.toBeInTheDocument();
+		});
+
+		it("asks for confirmation before deleting a label, naming the affected task count", async () => {
+			const { confirm } = await import("../../confirm");
+			const user = userEvent.setup();
+			await renderProjectSettings(labelledProject, {}, taggedTasks);
+
+			await user.click(screen.getAllByRole("button", { name: "Delete label" })[0]);
+
+			expect(confirm).toHaveBeenCalledWith(
+				expect.objectContaining({ danger: true, message: expect.stringContaining("2 tasks") }),
+			);
+			expect(api.request.deleteLabel).toHaveBeenCalledWith({ projectId: "proj-1", labelId: "label-1" });
+		});
+
+		it("keeps the label when the confirmation is declined", async () => {
+			const { confirm } = await import("../../confirm");
+			vi.mocked(confirm).mockResolvedValueOnce(false);
+			vi.mocked(api.request.deleteLabel).mockClear();
+			const user = userEvent.setup();
+			await renderProjectSettings(labelledProject, {}, taggedTasks);
+
+			await user.click(screen.getAllByRole("button", { name: "Delete label" })[0]);
+
+			expect(api.request.deleteLabel).not.toHaveBeenCalled();
 		});
 	});
 });

@@ -1,14 +1,17 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type DragEvent, type MutableRefObject } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type DragEvent, type MutableRefObject, type ReactNode } from "react";
 import { toast } from "../toast";
+import { confirm } from "../confirm";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
-import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
+import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { ListEditor } from "./ListEditor";
 import AgentConfigPicker from "./AgentConfigPicker";
 import AutomationsPanel from "./AutomationsPanel";
+import ColorSwatchPicker from "./ColorSwatchPicker";
+import SettingsSection from "./global-settings/SettingsSection";
 import { matchesBranchQuery } from "./BranchSelector";
 import type { NavigationGuard } from "../navigation-guard";
 
@@ -27,6 +30,89 @@ type ProjectConfigValues = Dev3RepoConfig & {
 
 function normalizeReviewPrompt(prompt: string): string {
 	return prompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : prompt.trim();
+}
+
+/** Label + description + control, in the shape GlobalSettings uses. */
+function Field({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+	return (
+		<div>
+			<span className="block text-fg text-sm font-semibold mb-2">{title}</span>
+			<p className="text-fg-3 text-sm mb-3">{description}</p>
+			{children}
+		</div>
+	);
+}
+
+/** Quiet placeholder shown where a list has nothing in it yet. */
+function EmptyHint({ children }: { children: ReactNode }) {
+	return (
+		<p className="px-3 py-4 text-center text-fg-muted text-sm border border-dashed border-edge rounded-xl">
+			{children}
+		</p>
+	);
+}
+
+/** "+ Add …" action that closes a settings list. */
+function AddRowButton({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: ReactNode }) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			className="mt-3 px-2.5 py-1.5 -ml-2.5 rounded-lg text-sm text-accent font-medium outline-none hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96] disabled:opacity-50"
+		>
+			{children}
+		</button>
+	);
+}
+
+/** Amber caution note for a setting whose consequences are easy to miss. */
+function WarningNote({ children }: { children: ReactNode }) {
+	return (
+		<div className="flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5">
+			<span className="mt-0.5 flex-shrink-0 text-warning text-base">&#9888;</span>
+			<p className="text-fg-2 text-xs leading-relaxed">{children}</p>
+		</div>
+	);
+}
+
+/**
+ * The screen's only switch. Kept local (rather than reusing
+ * global-settings/SettingsToggle) because these switches sit right-aligned
+ * against a label+description block instead of carrying their own text.
+ */
+function ToggleSwitch({
+	checked,
+	ariaLabel,
+	onToggle,
+	size = "md",
+}: {
+	checked: boolean;
+	ariaLabel: string;
+	onToggle: () => void;
+	size?: "sm" | "md";
+}) {
+	const track = size === "sm" ? "w-8 h-5" : "w-10 h-6";
+	const knob = size === "sm" ? "w-4 h-4" : "w-5 h-5";
+	const shift = size === "sm" ? "translate-x-3" : "translate-x-4";
+	return (
+		<button
+			type="button"
+			role="switch"
+			aria-checked={checked}
+			aria-label={ariaLabel}
+			onClick={onToggle}
+			className={`relative flex-shrink-0 rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-base ${track} ${
+				checked ? "bg-accent" : "bg-edge-active"
+			}`}
+		>
+			<span
+				className={`absolute top-0.5 left-0.5 rounded-full bg-white shadow transition-transform duration-150 ease-out ${knob} ${
+					checked ? shift : "translate-x-0"
+				}`}
+			/>
+		</button>
+	);
 }
 
 interface LabelRowProps {
@@ -91,14 +177,16 @@ function LabelRow({
 
 	return (
 		<div
-			className={`relative flex items-center gap-2 p-2.5 bg-raised rounded-xl border border-edge transition-opacity ${dragged ? "opacity-50" : ""}`}
+			className={`group relative flex items-center gap-1.5 p-2 pl-1.5 bg-elevated rounded-xl border border-edge hover:border-edge-active transition-[opacity,border-color] duration-150 ease-out ${dragged ? "opacity-50" : ""}`}
 			onDragOver={onDragOver}
 			onDragLeave={onDragLeave}
 			onDrop={onDrop}
 		>
 			{dropSide === "before" && <div className="absolute -top-1 left-3 right-3 h-0.5 bg-accent rounded-full z-10 pointer-events-none" />}
 			{dropSide === "after" && <div className="absolute -bottom-1 left-3 right-3 h-0.5 bg-accent rounded-full z-10 pointer-events-none" />}
-			{/* Reorder cluster — grip drags, arrows step (keyboard/touch fallback). */}
+			{/* Reorder cluster — grip drags, arrows step (keyboard/touch fallback).
+			    Arrows are hover/focus-revealed from `md` up; below that there is no
+			    hover, so they stay visible to keep reorder reachable by touch. */}
 			<div className="flex items-center gap-0.5 flex-shrink-0">
 				<button
 					type="button"
@@ -110,37 +198,44 @@ function LabelRow({
 					}}
 					onDragEnd={onDragEnd}
 					disabled={!canDrag}
-					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-elevated cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-raised-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
 					title={t("labels.dragToReorder")}
 					aria-label={t("labels.dragToReorder")}
 				>
 					<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01DB}"}</span>
 				</button>
-				<button
-					type="button"
-					onClick={onMoveUp}
-					disabled={!reorderEnabled || saving || isFirst}
-					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
-					title={t("labels.moveUp")}
-					aria-label={t("labels.moveUp")}
-				>
-					<span className="text-[0.8125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF062"}</span>
-				</button>
-				<button
-					type="button"
-					onClick={onMoveDown}
-					disabled={!reorderEnabled || saving || isLast}
-					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
-					title={t("labels.moveDown")}
-					aria-label={t("labels.moveDown")}
-				>
-					<span className="text-[0.8125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF063"}</span>
-				</button>
+				<div className="flex items-center gap-0.5 transition-opacity duration-150 ease-out md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+					<button
+						type="button"
+						onClick={onMoveUp}
+						disabled={!reorderEnabled || saving || isFirst}
+						className="text-fg-muted hover:text-fg transition-[color,background-color,opacity] duration-150 ease-out p-1 rounded-lg hover:bg-raised-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+						title={t("labels.moveUp")}
+						aria-label={t("labels.moveUp")}
+					>
+						<span className="text-[0.8125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF062"}</span>
+					</button>
+					<button
+						type="button"
+						onClick={onMoveDown}
+						disabled={!reorderEnabled || saving || isLast}
+						className="text-fg-muted hover:text-fg transition-[color,background-color,opacity] duration-150 ease-out p-1 rounded-lg hover:bg-raised-hover outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+						title={t("labels.moveDown")}
+						aria-label={t("labels.moveDown")}
+					>
+						<span className="text-[0.8125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF063"}</span>
+					</button>
+				</div>
 			</div>
-			{/* Color dot (shows current color) */}
-			<div
-				className="w-4 h-4 rounded-full flex-shrink-0 border border-edge-active"
-				style={{ background: color }}
+			{/* The current-colour dot is the palette trigger */}
+			<ColorSwatchPicker
+				value={color}
+				disabled={saving}
+				label={t("labels.colorPicker")}
+				onChange={(next) => {
+					setColor(next);
+					commitUpdate(name, next);
+				}}
 			/>
 			{/* Name input */}
 			<input
@@ -156,7 +251,7 @@ function LabelRow({
 				aria-label={nameLabel}
 				placeholder={nameLabel}
 				disabled={saving}
-				className="flex-1 bg-transparent text-fg text-sm outline-none placeholder-fg-muted min-w-0"
+				className="flex-1 min-w-0 px-2 py-1 bg-transparent border border-transparent rounded-lg text-fg text-sm outline-none placeholder-fg-muted transition-colors hover:border-edge focus:border-accent/40 focus:bg-base"
 			/>
 			{/* Task-count badge: how many project tasks carry this label. Quiet,
 			    read-only; dimmed at 0 to flag an unused label. */}
@@ -169,32 +264,14 @@ function LabelRow({
 			>
 				{taskCount}
 			</span>
-			{/* Color palette */}
-			<div className="flex items-center gap-1 flex-shrink-0">
-				{LABEL_COLORS.map((c) => (
-					<button
-						key={c}
-						type="button"
-						onClick={() => {
-							setColor(c);
-							commitUpdate(name, c);
-						}}
-						disabled={saving}
-						className={`w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${
-							c === color ? "ring-2 ring-offset-1 ring-fg/30" : ""
-						}`}
-						style={{ background: c }}
-						title={c}
-					/>
-				))}
-			</div>
 			{/* Delete */}
 			<button
 				type="button"
 				onClick={onDelete}
 				disabled={saving}
-				className="ml-1 w-6 h-6 flex items-center justify-center rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors flex-shrink-0"
+				className="grid place-items-center w-7 h-7 rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 outline-none focus-visible:ring-2 focus-visible:ring-danger/50 transition-colors flex-shrink-0"
 				title={deleteLabel}
+				aria-label={deleteLabel}
 			>
 				<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
 					<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -230,33 +307,39 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 	function commitUpdate(newName = name, newColor = color, newInstruction = llmInstruction, newAgentConfig?: ColumnAgentConfig | null) {
 		const trimmedName = newName.trim();
 		if (!trimmedName) return;
+		// An instruction past the limit is rejected by the agent side, so never
+		// persist it — the counter turns red and explains why nothing saved.
+		if (newInstruction.length > CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS) return;
 		onUpdate(trimmedName, newColor, newInstruction, newAgentConfig !== undefined ? newAgentConfig : buildAgentConfig());
 	}
 
 	const isOverLimit = llmInstruction.length > CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS;
 
 	return (
-		<div className="p-3 bg-raised rounded-xl border border-edge space-y-2.5">
+		<div className="p-3 bg-elevated rounded-xl border border-edge space-y-3">
 			{/* Name + color + delete */}
 			<div>
 				<div className="flex items-center justify-between mb-1">
-					<label className="text-fg-3 text-xs">{t("customColumns.columnName")}</label>
+					<span className="text-fg-3 text-xs">{t("customColumns.columnName")}</span>
 					<button
 						type="button"
 						onClick={onDelete}
 						disabled={saving}
-						className="w-5 h-5 flex items-center justify-center rounded text-fg-3 hover:text-danger hover:bg-danger/10 transition-colors"
+						className="grid place-items-center w-7 h-7 rounded-lg text-fg-3 hover:text-danger hover:bg-danger/10 outline-none focus-visible:ring-2 focus-visible:ring-danger/50 transition-colors"
 						title={t("customColumns.deleteColumn")}
+						aria-label={t("customColumns.deleteColumn")}
 					>
-						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+						<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
 							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
 				</div>
-				<div className="flex items-center gap-2">
-					<div
-						className="w-3.5 h-3.5 rounded-full flex-shrink-0"
-						style={{ background: color }}
+				<div className="flex items-center gap-1.5">
+					<ColorSwatchPicker
+						value={color}
+						disabled={saving}
+						label={t("customColumns.colorPicker")}
+						onChange={(next) => { setColor(next); commitUpdate(name, next, llmInstruction); }}
 					/>
 					<input
 						type="text"
@@ -267,28 +350,15 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 						aria-label={t("customColumns.columnName")}
 						placeholder={t("customColumns.columnName")}
 						disabled={saving}
-						className="flex-1 px-3 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors min-w-0"
+						className="flex-1 px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/40 transition-colors min-w-0"
 					/>
-					{/* Color palette */}
-					<div className="flex items-center gap-1 flex-shrink-0">
-						{LABEL_COLORS.map((c) => (
-							<button
-								key={c}
-								type="button"
-								onClick={() => { setColor(c); commitUpdate(name, c, llmInstruction); }}
-								disabled={saving}
-								className={`w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${c === color ? "ring-2 ring-offset-1 ring-fg/30" : ""}`}
-								style={{ background: c }}
-								title={c}
-							/>
-						))}
-					</div>
 				</div>
 			</div>
 			{/* LLM instruction */}
 			<div>
-				<label className="block text-fg-3 text-xs mb-1">{t("customColumns.llmInstruction")}</label>
+				<label htmlFor={`column-instruction-${column.id}`} className="block text-fg-3 text-xs mb-1">{t("customColumns.llmInstruction")}</label>
 				<textarea
+					id={`column-instruction-${column.id}`}
 					value={llmInstruction}
 					onChange={(e) => setLlmInstruction(e.target.value)}
 					onBlur={() => commitUpdate()}
@@ -298,33 +368,38 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 					autoCapitalize="off"
 					autoCorrect="off"
 					spellCheck={false}
-					className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg-2 text-xs placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-none"
+					aria-invalid={isOverLimit}
+					aria-describedby={`column-instruction-count-${column.id}`}
+					className={`w-full px-3 py-2 bg-base border rounded-lg text-fg-2 text-xs placeholder-fg-muted outline-none transition-colors resize-none ${
+						isOverLimit ? "border-danger focus:border-danger" : "border-edge focus:border-accent/40"
+					}`}
 				/>
-				<div className={`text-right text-xs mt-0.5 ${isOverLimit ? "text-danger" : "text-fg-muted"}`}>
+				<div
+					id={`column-instruction-count-${column.id}`}
+					aria-live="polite"
+					className={`text-right text-xs mt-0.5 tabular-nums ${isOverLimit ? "text-danger" : "text-fg-muted"}`}
+				>
 					{t("customColumns.charCount", { count: String(llmInstruction.length), max: String(CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS) })}
+					{isOverLimit && <span className="ml-2">{t("customColumns.charCountOverLimit")}</span>}
 				</div>
 			</div>
 			{/* Column Agent */}
-			<div className="border-t border-edge/50 pt-2.5">
-				<div className="flex items-center justify-between mb-2">
+			<div className="border-t border-edge/50 pt-3">
+				<div className="flex items-center justify-between gap-3 mb-2">
 					<div>
-						<label className="text-fg-3 text-xs font-medium">{t("columnAgent.title")}</label>
+						<span className="block text-fg-3 text-xs font-medium">{t("columnAgent.title")}</span>
 						<p className="text-fg-muted text-[0.65rem]">{t("columnAgent.desc")}</p>
 					</div>
-					<button
-						type="button"
-						role="switch"
-						aria-checked={agentEnabled}
-						aria-label={t("columnAgent.enable")}
-						onClick={() => {
+					<ToggleSwitch
+						checked={agentEnabled}
+						ariaLabel={t("columnAgent.enable")}
+						size="sm"
+						onToggle={() => {
 							const next = !agentEnabled;
 							setAgentEnabled(next);
 							commitUpdate(name, color, llmInstruction, next ? { agentId, configId, prompt: agentPrompt } : null);
 						}}
-						className={`relative flex-shrink-0 ml-3 w-8 h-5 rounded-full transition-colors focus:outline-none ${agentEnabled ? "bg-accent" : "bg-edge-active"}`}
-					>
-						<span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${agentEnabled ? "translate-x-3" : "translate-x-0"}`} />
-					</button>
+					/>
 				</div>
 				{agentEnabled && (
 					<div className="space-y-2 pl-1">
@@ -344,8 +419,9 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 							}}
 						/>
 						<div>
-							<label className="block text-fg-3 text-xs mb-1">{t("columnAgent.prompt")}</label>
+							<label htmlFor={`column-agent-prompt-${column.id}`} className="block text-fg-3 text-xs mb-1">{t("columnAgent.prompt")}</label>
 							<textarea
+								id={`column-agent-prompt-${column.id}`}
 								value={agentPrompt}
 								onChange={(e) => setAgentPrompt(e.target.value)}
 								onBlur={() => commitUpdate()}
@@ -355,7 +431,7 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 								autoCapitalize="off"
 								autoCorrect="off"
 								spellCheck={false}
-								className="w-full px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg-2 text-xs placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y font-mono"
+								className="w-full px-2 py-1.5 bg-base border border-edge rounded-lg text-fg-2 text-xs placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y font-mono"
 							/>
 							<p className="text-fg-muted text-[0.6rem] mt-1">{t("columnAgent.hint")}</p>
 						</div>
@@ -604,15 +680,13 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 	}
 
 	return (
-		<div className="space-y-7">
+		<div>
+			<SettingsSection
+				title={t("projectSettings.groupScripts")}
+				description={t("projectSettings.groupScriptsDesc")}
+			>
 			{/* Setup Script */}
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("projectSettings.setupScript")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("projectSettings.setupScriptDesc")}
-				</p>
+			<Field title={t("projectSettings.setupScript")} description={t("projectSettings.setupScriptDesc")}>
 				<textarea
 					value={config.setupScript ?? ""}
 					onChange={(e) => update("setupScript", e.target.value)}
@@ -621,16 +695,20 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 					autoCapitalize="off"
 					autoCorrect="off"
 					spellCheck={false}
+					aria-label={t("projectSettings.setupScript")}
 					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 				/>
-				<fieldset className="mt-4">
+			</Field>
+
+			<div>
+				<fieldset>
 					<legend className="block text-fg text-sm font-semibold mb-2">
 						{t("projectSettings.setupScriptLaunchMode")}
 					</legend>
 					<p className="text-fg-3 text-sm mb-3">
 						{t("projectSettings.setupScriptLaunchModeDesc")}
 					</p>
-					<div className="grid gap-3 sm:grid-cols-2">
+					<div role="radiogroup" aria-label={t("projectSettings.setupScriptLaunchMode")} className="grid gap-3 sm:grid-cols-2">
 						{([
 							{
 								value: "parallel",
@@ -651,8 +729,16 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 									role="radio"
 									aria-checked={checked}
 									aria-label={option.title}
+									tabIndex={checked ? 0 : -1}
 									onClick={() => update("setupScriptLaunchMode", option.value as SetupScriptLaunchMode)}
-									className={`rounded-xl border p-4 text-left transition-colors ${
+									onKeyDown={(event) => {
+										if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(event.key)) return;
+										event.preventDefault();
+										update("setupScriptLaunchMode", (option.value === "parallel" ? "blocking" : "parallel") as SetupScriptLaunchMode);
+										const siblings = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+										siblings?.[option.value === "parallel" ? 1 : 0]?.focus();
+									}}
+									className={`rounded-xl border p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/60 ${
 										checked
 											? "border-accent/60 bg-accent/10"
 											: "border-edge bg-raised hover:border-edge-active hover:bg-raised-hover"
@@ -667,11 +753,46 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 				</fieldset>
 			</div>
 
+			{/* Dev Script */}
+			<Field title={t("projectSettings.devScript")} description={t("projectSettings.devScriptDesc")}>
+				<textarea
+					value={config.devScript ?? ""}
+					onChange={(e) => update("devScript", e.target.value)}
+					rows={4}
+					placeholder={inheritedHint("devScript") || "bun run dev"}
+					autoCapitalize="off"
+					autoCorrect="off"
+					spellCheck={false}
+					aria-label={t("projectSettings.devScript")}
+					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+				/>
+			</Field>
+
+			{/* Cleanup Script */}
+			<Field title={t("projectSettings.cleanupScript")} description={t("projectSettings.cleanupScriptDesc")}>
+				<textarea
+					value={config.cleanupScript ?? ""}
+					onChange={(e) => update("cleanupScript", e.target.value)}
+					rows={4}
+					placeholder={inheritedHint("cleanupScript") || "git worktree remove ."}
+					autoCapitalize="off"
+					autoCorrect="off"
+					spellCheck={false}
+					aria-label={t("projectSettings.cleanupScript")}
+					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+				/>
+			</Field>
+			</SettingsSection>
+
+			<SettingsSection
+				title={t("projectSettings.groupWorktree")}
+				description={t("projectSettings.groupWorktreeDesc")}
+			>
 			{/* Clone Paths (CoW) */}
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<span className="block text-fg text-sm font-semibold mb-2">
 					{t("projectSettings.clonePaths")}
-				</label>
+				</span>
 				<div className="flex items-start gap-3 mb-3">
 					<p className="text-fg-3 text-sm flex-1">
 						{t("projectSettings.clonePathsDesc")}
@@ -680,13 +801,13 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 						type="button"
 						onClick={runAutoDetect}
 						disabled={detecting}
-						className="flex-shrink-0 px-3 py-1 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 hover:border-accent/50 transition-all disabled:opacity-50"
+						className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent outline-none hover:bg-accent/10 hover:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.96] disabled:opacity-50"
 					>
 						{detecting ? t("projectSettings.autoDetecting") : t("projectSettings.autoDetect")}
 					</button>
 				</div>
 				{detectFeedback && (
-					<p className="text-fg-3 text-xs mb-2">{detectFeedback}</p>
+					<p className="text-fg-3 text-xs mb-2" aria-live="polite">{detectFeedback}</p>
 				)}
 				<ListEditor
 					items={config.clonePaths ?? []}
@@ -696,175 +817,15 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 					}}
 					placeholder={inheritedHint("clonePaths") || "node_modules"}
 					addLabel={t("projectSettings.addClonePath")}
-				/>
-			</div>
-
-			{/* Dev Script */}
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("projectSettings.devScript")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("projectSettings.devScriptDesc")}
-				</p>
-				<textarea
-					value={config.devScript ?? ""}
-					onChange={(e) => update("devScript", e.target.value)}
-					rows={4}
-					placeholder={inheritedHint("devScript") || "bun run dev"}
-					autoCapitalize="off"
-					autoCorrect="off"
-					spellCheck={false}
-					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
-				/>
-			</div>
-
-			{/* Cleanup Script */}
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("projectSettings.cleanupScript")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("projectSettings.cleanupScriptDesc")}
-				</p>
-				<textarea
-					value={config.cleanupScript ?? ""}
-					onChange={(e) => update("cleanupScript", e.target.value)}
-					rows={4}
-					placeholder={inheritedHint("cleanupScript") || "git worktree remove ."}
-					autoCapitalize="off"
-					autoCorrect="off"
-					spellCheck={false}
-					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
-				/>
-			</div>
-
-			{/* Default Base Branch */}
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("projectSettings.baseBranch")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("projectSettings.baseBranchDesc")}
-				</p>
-				<BranchPicker
-					projectId={projectId}
-					value={config.defaultBaseBranch ?? ""}
-					onChange={(value) => update("defaultBaseBranch", value)}
-					placeholder={inheritedHint("defaultBaseBranch") || "main"}
-					label={t("projectSettings.baseBranch")}
-					includeRemote={false}
-				/>
-			</div>
-
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("projectSettings.compareRef")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("projectSettings.compareRefDesc")}
-				</p>
-				<BranchPicker
-					projectId={projectId}
-					value={config.defaultCompareRef ?? ""}
-					onChange={(value) => update("defaultCompareRef", value)}
-					placeholder={inheritedHint("defaultCompareRef") || `origin/${config.defaultBaseBranch ?? inherited?.defaultBaseBranch ?? "main"}`}
-					label={t("projectSettings.compareRef")}
-					includeRemote={true}
-				/>
-			</div>
-
-			{/* Peer Review Column */}
-			<div>
-				<div className="flex items-center justify-between">
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-1">
-							{t("projectSettings.peerReview")}
-						</label>
-						<p className="text-fg-3 text-sm">
-							{t("projectSettings.peerReviewDesc")}
-						</p>
-					</div>
-					<button
-						type="button"
-						role="switch"
-						aria-checked={config.peerReviewEnabled ?? true}
-						aria-label={t("projectSettings.peerReview")}
-						onClick={() => update("peerReviewEnabled", !(config.peerReviewEnabled ?? true))}
-						className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
-							(config.peerReviewEnabled ?? true) ? "bg-accent" : "bg-edge-active"
-						}`}
-					>
-						<span
-							className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-								(config.peerReviewEnabled ?? true) ? "translate-x-4" : "translate-x-0"
-							}`}
-						/>
-					</button>
-				</div>
-			</div>
-
-			{/* Automatic AI Review */}
-			<div className="space-y-3">
-				<div className="flex items-center justify-between">
-					<div>
-						<label className="block text-fg text-sm font-semibold mb-1">
-							{t("projectSettings.autoReview")}
-						</label>
-						<p className="text-fg-3 text-sm">
-							{t("projectSettings.autoReviewDesc")}
-						</p>
-					</div>
-					<button
-						type="button"
-						role="switch"
-						aria-checked={config.autoReviewEnabled ?? false}
-						aria-label={t("projectSettings.autoReviewEnabled")}
-						onClick={() => update("autoReviewEnabled", !(config.autoReviewEnabled ?? false))}
-						className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
-							(config.autoReviewEnabled ?? false) ? "bg-accent" : "bg-edge-active"
-						}`}
-					>
-						<span
-							className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-								(config.autoReviewEnabled ?? false) ? "translate-x-4" : "translate-x-0"
-							}`}
-						/>
-					</button>
-				</div>
-				{(config.autoReviewEnabled ?? false) && (
-					<div className="flex items-start gap-2.5 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5">
-						<span className="mt-0.5 flex-shrink-0 text-yellow-400 text-base">&#9888;</span>
-						<p className="text-fg-2 text-xs leading-relaxed">
-							{t("projectSettings.autoReviewWarning")}
-						</p>
-					</div>
-				)}
-			</div>
-
-			{/* Port Allocation */}
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-1">
-					{t("projectSettings.portCount")}
-				</label>
-				<p className="text-fg-3 text-sm mb-2">
-					{t("projectSettings.portCountDesc")}
-				</p>
-				<input
-					type="number"
-					min={0}
-					max={20}
-					value={config.portCount ?? 0}
-					onChange={(e) => update("portCount", Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
-					className="w-20 px-3 py-1.5 rounded-lg bg-base border border-edge text-fg text-sm focus:outline-none focus:border-accent"
+					removeLabel={t("listEditor.removeItem")}
 				/>
 			</div>
 
 			{/* Worktree File Filter (Sparse Checkout) */}
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<span className="block text-fg text-sm font-semibold mb-2">
 					{t("projectSettings.sparseCheckout")}
-				</label>
+				</span>
 				<div className="flex items-start gap-3 mb-3">
 					<p className="text-fg-3 text-sm flex-1">
 						{t("projectSettings.sparseCheckoutDesc")}
@@ -873,20 +834,18 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 						<button
 							type="button"
 							onClick={() => api.request.openFolder({ path: projectPath })}
-							className="flex-shrink-0 px-3 py-1 text-xs font-medium rounded-lg border border-accent/30 text-accent hover:bg-accent/10 hover:border-accent/50 transition-all"
+							className="flex-shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg border border-accent/30 text-accent outline-none hover:bg-accent/10 hover:border-accent/50 focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.96]"
 						>
 							{t("projectSettings.sparseCheckoutOpenFinder")}
 						</button>
 					)}
 				</div>
-				<div className="flex items-center justify-between mb-3">
+				<div className="flex items-center justify-between gap-4 mb-3">
 					<span className="text-fg-2 text-sm">{t("projectSettings.sparseCheckoutAll")}</span>
-					<button
-						type="button"
-						role="switch"
-						aria-checked={!(config.sparseCheckoutEnabled ?? false)}
-						aria-label={t("projectSettings.sparseCheckoutAll")}
-						onClick={() => {
+					<ToggleSwitch
+						checked={!(config.sparseCheckoutEnabled ?? false)}
+						ariaLabel={t("projectSettings.sparseCheckoutAll")}
+						onToggle={() => {
 							const next = !(config.sparseCheckoutEnabled ?? false);
 							const updates: Partial<Dev3RepoConfig> = { sparseCheckoutEnabled: next };
 							if (next && !(config.sparseCheckoutPaths?.length)) {
@@ -894,16 +853,7 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 							}
 							onChange({ ...config, ...updates });
 						}}
-						className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none ${
-							!(config.sparseCheckoutEnabled ?? false) ? "bg-accent" : "bg-edge-active"
-						}`}
-					>
-						<span
-							className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-								!(config.sparseCheckoutEnabled ?? false) ? "translate-x-4" : "translate-x-0"
-							}`}
-						/>
-					</button>
+					/>
 				</div>
 				{(config.sparseCheckoutEnabled ?? false) && (
 					<ListEditor
@@ -911,10 +861,95 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 						onChange={(items) => update("sparseCheckoutPaths", items)}
 						placeholder={t("projectSettings.sparseCheckoutPlaceholder")}
 						addLabel={t("projectSettings.sparseCheckoutAddPath")}
+						removeLabel={t("listEditor.removeItem")}
 					/>
 				)}
 			</div>
 
+			{/* Port Allocation */}
+			<div>
+				<label htmlFor="project-port-count" className="block text-fg text-sm font-semibold mb-1">
+					{t("projectSettings.portCount")}
+				</label>
+				<p className="text-fg-3 text-sm mb-2">
+					{t("projectSettings.portCountDesc")}
+				</p>
+				<input
+					id="project-port-count"
+					type="number"
+					min={0}
+					max={20}
+					value={config.portCount ?? 0}
+					onChange={(e) => update("portCount", Math.max(0, Math.min(20, parseInt(e.target.value) || 0)))}
+					className="w-20 px-3 py-1.5 rounded-lg bg-base border border-edge text-fg text-sm tabular-nums outline-none focus:border-accent transition-colors"
+				/>
+			</div>
+			</SettingsSection>
+
+			<SettingsSection
+				title={t("projectSettings.groupGit")}
+				description={t("projectSettings.groupGitDesc")}
+			>
+			{/* Default Base Branch */}
+			<Field title={t("projectSettings.baseBranch")} description={t("projectSettings.baseBranchDesc")}>
+				<BranchPicker
+					projectId={projectId}
+					value={config.defaultBaseBranch ?? ""}
+					onChange={(value) => update("defaultBaseBranch", value)}
+					placeholder={inheritedHint("defaultBaseBranch") || "main"}
+					label={t("projectSettings.baseBranch")}
+					includeRemote={false}
+				/>
+			</Field>
+
+			<Field title={t("projectSettings.compareRef")} description={t("projectSettings.compareRefDesc")}>
+				<BranchPicker
+					projectId={projectId}
+					value={config.defaultCompareRef ?? ""}
+					onChange={(value) => update("defaultCompareRef", value)}
+					placeholder={inheritedHint("defaultCompareRef") || `origin/${config.defaultBaseBranch ?? inherited?.defaultBaseBranch ?? "main"}`}
+					label={t("projectSettings.compareRef")}
+					includeRemote={true}
+				/>
+			</Field>
+
+			{/* Peer Review Column */}
+			<div className="flex items-center justify-between gap-4">
+				<div>
+					<span className="block text-fg text-sm font-semibold mb-1">
+						{t("projectSettings.peerReview")}
+					</span>
+					<p className="text-fg-3 text-sm">
+						{t("projectSettings.peerReviewDesc")}
+					</p>
+				</div>
+				<ToggleSwitch
+					checked={config.peerReviewEnabled ?? true}
+					ariaLabel={t("projectSettings.peerReview")}
+					onToggle={() => update("peerReviewEnabled", !(config.peerReviewEnabled ?? true))}
+				/>
+			</div>
+
+			{/* Automatic AI Review */}
+			<div className="space-y-3">
+				<div className="flex items-center justify-between gap-4">
+					<div>
+						<span className="block text-fg text-sm font-semibold mb-1">
+							{t("projectSettings.autoReview")}
+						</span>
+						<p className="text-fg-3 text-sm">
+							{t("projectSettings.autoReviewDesc")}
+						</p>
+					</div>
+					<ToggleSwitch
+						checked={config.autoReviewEnabled ?? false}
+						ariaLabel={t("projectSettings.autoReviewEnabled")}
+						onToggle={() => update("autoReviewEnabled", !(config.autoReviewEnabled ?? false))}
+					/>
+				</div>
+				{(config.autoReviewEnabled ?? false) && <WarningNote>{t("projectSettings.autoReviewWarning")}</WarningNote>}
+			</div>
+			</SettingsSection>
 		</div>
 	);
 }
@@ -1246,6 +1281,19 @@ function ProjectSettings({
 
 	async function handleDeleteLabel(labelId: string) {
 		if (!project) return;
+		// Deleting a label detaches it from every task carrying it, and there is
+		// no undo — always ask, and say how many tasks are affected.
+		const label = (project.labels ?? []).find((l) => l.id === labelId);
+		const taskCount = labelTaskCounts.get(labelId) ?? 0;
+		const confirmed = await confirm({
+			title: t("labels.deleteConfirmTitle"),
+			message: taskCount > 0
+				? t.plural("labels.deleteConfirmMessage", taskCount, { name: label?.name ?? "" })
+				: t("labels.deleteConfirmMessageUnused", { name: label?.name ?? "" }),
+			confirmLabel: t("labels.deleteLabel"),
+			danger: true,
+		});
+		if (!confirmed) return;
 		setLabelSaving(labelId);
 		try {
 			await api.request.deleteLabel({ projectId, labelId });
@@ -1343,6 +1391,17 @@ function ProjectSettings({
 
 	async function handleDeleteColumn(columnId: string) {
 		if (!project) return;
+		const column = (project.customColumns ?? []).find((c) => c.id === columnId);
+		const parked = tasks.filter((task) => task.customColumnId === columnId).length;
+		const confirmed = await confirm({
+			title: t("customColumns.deleteConfirmTitle"),
+			message: parked > 0
+				? t.plural("customColumns.deleteConfirmMessage", parked, { name: column?.name ?? "" })
+				: t("customColumns.deleteConfirmMessageEmpty", { name: column?.name ?? "" }),
+			confirmLabel: t("customColumns.deleteColumn"),
+			danger: true,
+		});
+		if (!confirmed) return;
 		setColumnSaving(columnId);
 		try {
 			await api.request.deleteCustomColumn({ projectId, columnId });
@@ -1426,11 +1485,16 @@ function ProjectSettings({
 			else await handleSaveWtLocal();
 		}
 	};
-	const tabButtonClass = (tab: ConfigTab) => `flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-		activeTab === tab
-			? "bg-accent text-white shadow-sm"
-			: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
-	}`;
+	const tabButtonProps = (tab: ConfigTab) => ({
+		role: "tab",
+		"aria-selected": activeTab === tab,
+		onClick: () => setActiveTab(tab),
+		className: `flex-1 px-4 py-2 text-sm font-medium rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/60 transition-[color,background-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] ${
+			activeTab === tab
+				? "bg-accent text-white shadow-sm"
+				: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
+		}`,
+	});
 
 	const dirty = isDirty();
 	const saving = savingProject || savingWtRepo || savingWtLocal;
@@ -1463,7 +1527,7 @@ function ProjectSettings({
 	return (
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-y-auto p-7">
-				<div className="max-w-2xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
+				<div className="max-w-3xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6 space-y-7">
 
 					{/* Back button when navigated from a task */}
 					{initialWorktreeTaskId && (() => {
@@ -1482,23 +1546,23 @@ function ProjectSettings({
 
 					{/* 3-tab selector */}
 					<div>
-						<div className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">
-							<button type="button" onClick={() => setActiveTab("global")} className={tabButtonClass("global")}>
+						<div role="tablist" aria-label={t("projectSettings.tabsAria")} className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">
+							<button type="button" {...tabButtonProps("global")}>
 								{t("projectSettings.tabGlobal")}
 							</button>
 							{/* Operations boards have no git repo — the Project/Worktree config
 							    tabs are git-only, so hide them and keep just the Board tab. */}
 							{project.kind !== "virtual" && (
 								<>
-									<button type="button" onClick={() => setActiveTab("project")} className={tabButtonClass("project")}>
+									<button type="button" {...tabButtonProps("project")}>
 										{t("projectSettings.tabProject")}
 									</button>
-									<button type="button" onClick={() => setActiveTab("worktree")} className={tabButtonClass("worktree")}>
+									<button type="button" {...tabButtonProps("worktree")}>
 										{t("projectSettings.tabWorktree")}
 									</button>
 								</>
 							)}
-							<button type="button" onClick={() => setActiveTab("automations")} className={tabButtonClass("automations")}>
+							<button type="button" {...tabButtonProps("automations")}>
 								{t("automations.tabLabel")}
 							</button>
 						</div>
@@ -1519,15 +1583,12 @@ function ProjectSettings({
 
 					{/* ======== Global tab ======== */}
 					{activeTab === "global" && (
-						<div className="space-y-7" data-help-id="project-settings.board">
-							{/* Custom Columns */}
+						<div data-help-id="project-settings.board">
+							<SettingsSection
+								title={t("customColumns.settingsTitle")}
+								description={t("customColumns.settingsDesc")}
+							>
 							<div>
-								<label className="block text-fg text-sm font-semibold mb-2">
-									{t("customColumns.settingsTitle")}
-								</label>
-								<p className="text-fg-3 text-sm mb-3">
-									{t("customColumns.settingsDesc")}
-								</p>
 								<div className="space-y-2">
 									{(project.customColumns ?? []).map((col: CustomColumn) => (
 										<CustomColumnRow
@@ -1540,27 +1601,20 @@ function ProjectSettings({
 										/>
 									))}
 									{(project.customColumns ?? []).length === 0 && (
-										<p className="text-fg-muted text-sm italic">{t("customColumns.noColumns")}</p>
+										<EmptyHint>{t("customColumns.noColumns")}</EmptyHint>
 									)}
 								</div>
-								<button
-									type="button"
-									onClick={handleAddColumn}
-									disabled={columnSaving !== null}
-									className="mt-3 text-sm text-accent hover:text-accent-hover font-medium transition-colors disabled:opacity-50"
-								>
+								<AddRowButton onClick={handleAddColumn} disabled={columnSaving !== null}>
 									{t("customColumns.addColumn")}
-								</button>
+								</AddRowButton>
 							</div>
+							</SettingsSection>
 
-							{/* Labels */}
+							<SettingsSection
+								title={t("labels.settingsTitle")}
+								description={t("labels.settingsDesc")}
+							>
 							<div>
-								<label className="block text-fg text-sm font-semibold mb-2">
-									{t("labels.settingsTitle")}
-								</label>
-								<p className="text-fg-3 text-sm mb-3">
-									{t("labels.settingsDesc")}
-								</p>
 								<div className="space-y-2">
 									{(project.labels ?? []).map((label: Label, index: number) => (
 										<LabelRow
@@ -1590,18 +1644,14 @@ function ProjectSettings({
 										/>
 									))}
 									{(project.labels ?? []).length === 0 && (
-										<p className="text-fg-muted text-sm italic">{t("labels.noLabels")}</p>
+										<EmptyHint>{t("labels.noLabels")}</EmptyHint>
 									)}
 								</div>
-								<button
-									type="button"
-									onClick={handleAddLabel}
-									disabled={labelSaving !== null}
-									className="mt-3 text-sm text-accent hover:text-accent-hover font-medium transition-colors disabled:opacity-50"
-								>
+								<AddRowButton onClick={handleAddLabel} disabled={labelSaving !== null}>
 									{t("labels.addLabel")}
-								</button>
+								</AddRowButton>
 							</div>
+							</SettingsSection>
 						</div>
 					)}
 
@@ -1611,14 +1661,11 @@ function ProjectSettings({
 					) : (
 						<div className="space-y-7" data-help-id="project-settings.project">
 							{configFileOverride && (
-								<div className="flex items-start gap-2.5 px-3 py-2.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
-									<span className="text-yellow-400 text-base flex-shrink-0 mt-0.5">&#9888;</span>
-									<p className="text-fg-2 text-xs leading-relaxed">
-										{configFileOverride.includes("local")
-											? t("projectSettings.projectOverriddenByLocal", { file: configFileOverride })
-											: t("projectSettings.projectOverriddenByRepo", { file: configFileOverride })}
-									</p>
-								</div>
+								<WarningNote>
+									{configFileOverride.includes("local")
+										? t("projectSettings.projectOverriddenByLocal", { file: configFileOverride })
+										: t("projectSettings.projectOverriddenByRepo", { file: configFileOverride })}
+								</WarningNote>
 							)}
 							<ConfigForm
 								config={projectConfig}
@@ -1627,9 +1674,13 @@ function ProjectSettings({
 								projectPath={project.path}
 							/>
 
+							<SettingsSection
+								title={t("projectSettings.groupIntegrations")}
+								description={t("projectSettings.groupIntegrationsDesc")}
+							>
 							<div className="space-y-2">
 								<div>
-									<label className="block text-fg text-sm font-semibold mb-1">
+									<label htmlFor="project-github-account" className="block text-fg text-sm font-semibold mb-1">
 										{t("projectSettings.githubAccount")}
 									</label>
 									<p className="text-fg-3 text-sm">
@@ -1637,6 +1688,7 @@ function ProjectSettings({
 									</p>
 								</div>
 								<select
+									id="project-github-account"
 									aria-label={t("projectSettings.githubAccount")}
 									value={selectedGitHubValue}
 									onChange={(event) => {
@@ -1684,9 +1736,9 @@ function ProjectSettings({
 							{/* AI Review Column */}
 							<div className="space-y-4">
 								<div>
-									<label className="block text-fg text-sm font-semibold mb-1">
+									<span className="block text-fg text-sm font-semibold mb-1">
 										{t("projectSettings.aiReview")}
-									</label>
+									</span>
 									<p className="text-fg-3 text-sm">
 										{t("projectSettings.aiReviewDesc")}
 									</p>
@@ -1740,6 +1792,7 @@ function ProjectSettings({
 									</div>
 								</div>
 							</div>
+							</SettingsSection>
 						</div>
 					))}
 
@@ -1760,8 +1813,9 @@ function ProjectSettings({
 
 									{/* Task selector */}
 									<div>
-										<label className="block text-fg-3 text-xs mb-1">{t("projectSettings.worktreeSelector")}</label>
+										<label htmlFor="worktree-task-selector" className="block text-fg-3 text-xs mb-1">{t("projectSettings.worktreeSelector")}</label>
 										<select
+											id="worktree-task-selector"
 											value={selectedWorktreeTaskId ?? ""}
 											onChange={(e) => setSelectedWorktreeTaskId(e.target.value)}
 											className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
@@ -1776,29 +1830,26 @@ function ProjectSettings({
 
 									{/* Repo / Local sub-tabs */}
 									<div>
-										<div className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">
-											<button
-												type="button"
-												onClick={() => setWorktreeSubTab("repo")}
-												className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-													worktreeSubTab === "repo"
-														? "bg-accent text-white shadow-sm"
-														: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
-												}`}
-											>
-												{t("projectSettings.worktreeRepoTab")}
-											</button>
-											<button
-												type="button"
-												onClick={() => setWorktreeSubTab("local")}
-												className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
-													worktreeSubTab === "local"
-														? "bg-accent text-white shadow-sm"
-														: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
-												}`}
-											>
-												{t("projectSettings.worktreeLocalTab")}
-											</button>
+										<div role="tablist" aria-label={t("projectSettings.worktreeSubTabsAria")} className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">
+											{([
+												{ id: "repo" as WorktreeSubTab, label: t("projectSettings.worktreeRepoTab") },
+												{ id: "local" as WorktreeSubTab, label: t("projectSettings.worktreeLocalTab") },
+											]).map((tab) => (
+												<button
+													key={tab.id}
+													type="button"
+													role="tab"
+													aria-selected={worktreeSubTab === tab.id}
+													onClick={() => setWorktreeSubTab(tab.id)}
+													className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/60 transition-[color,background-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] ${
+														worktreeSubTab === tab.id
+															? "bg-accent text-white shadow-sm"
+															: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
+													}`}
+												>
+													{tab.label}
+												</button>
+											))}
 										</div>
 										<p className="text-fg-muted text-xs px-1">
 											{worktreeSubTab === "repo"
@@ -1831,14 +1882,14 @@ function ProjectSettings({
 				</div>
 			</div>
 			{dirty && (
-				<div className="border-t border-edge/60 bg-overlay/95 backdrop-blur px-7 py-4">
-					<div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
+				<div role="status" className="border-t border-edge/60 bg-overlay/95 backdrop-blur px-7 py-4 motion-safe:animate-slide-up">
+					<div className="max-w-3xl mx-auto flex items-center justify-between gap-4">
 						<p className="text-sm text-fg-2">{t("unsavedChanges.banner")}</p>
 						<div className="flex items-center gap-3">
 							<button
 								type="button"
 								onClick={handleDiscardCurrentTab}
-								className="px-4 py-2 text-sm font-medium rounded-xl text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+								className="px-4 py-2 text-sm font-medium rounded-xl text-fg-2 outline-none hover:text-fg hover:bg-elevated focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.96]"
 							>
 								{t("unsavedChanges.discard")}
 							</button>
@@ -1846,7 +1897,7 @@ function ProjectSettings({
 								type="button"
 								onClick={() => handleSaveRef.current()}
 								disabled={saving}
-								className="px-5 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 shadow-lg shadow-accent/20 transition-all active:scale-95"
+								className="px-5 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl outline-none hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-base disabled:opacity-50 shadow-lg shadow-accent/20 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.96]"
 							>
 								{saving ? t("projectSettings.saving") : t("unsavedChanges.save")}
 							</button>

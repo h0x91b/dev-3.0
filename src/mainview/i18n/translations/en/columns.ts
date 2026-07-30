@@ -14,6 +14,12 @@ const columns = {
 	"customColumns.failedUpdate": "Failed to update column: {error}",
 	"customColumns.failedDelete": "Failed to delete column: {error}",
 	"customColumns.charCount": "{count}/{max}",
+	"customColumns.charCountOverLimit": "— too long to save",
+	"customColumns.colorPicker": "Column colour",
+	"customColumns.deleteConfirmTitle": "Delete this column?",
+	"customColumns.deleteConfirmMessage_one": "\"{name}\" holds {count} task. Deleting the column sends it back to To Do.",
+	"customColumns.deleteConfirmMessage_other": "\"{name}\" holds {count} tasks. Deleting the column sends them back to To Do.",
+	"customColumns.deleteConfirmMessageEmpty": "\"{name}\" is empty. The column disappears from the board.",
 
 	// Labels
 	"labels.filterTitle": "Labels",
@@ -40,6 +46,11 @@ const columns = {
 	"labels.taskLabels": "Labels",
 	"labels.taskCount_one": "{count} task",
 	"labels.taskCount_other": "{count} tasks",
+	"labels.colorPicker": "Label colour",
+	"labels.deleteConfirmTitle": "Delete this label?",
+	"labels.deleteConfirmMessage_one": "\"{name}\" is on {count} task. Deleting it removes the label from that task. This cannot be undone.",
+	"labels.deleteConfirmMessage_other": "\"{name}\" is on {count} tasks. Deleting it removes the label from all of them. This cannot be undone.",
+	"labels.deleteConfirmMessageUnused": "\"{name}\" is not on any task yet. Deleting it cannot be undone.",
 
 	// Priority
 	"priority.label": "Priority",

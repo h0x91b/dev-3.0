@@ -14,6 +14,12 @@ const columns = {
 	"customColumns.failedUpdate": "Error al actualizar columna: {error}",
 	"customColumns.failedDelete": "Error al eliminar columna: {error}",
 	"customColumns.charCount": "{count}/{max}",
+	"customColumns.charCountOverLimit": "— demasiado largo para guardar",
+	"customColumns.colorPicker": "Color de la columna",
+	"customColumns.deleteConfirmTitle": "¿Eliminar esta columna?",
+	"customColumns.deleteConfirmMessage_one": "\"{name}\" contiene {count} tarea. Al eliminar la columna volverá a To Do.",
+	"customColumns.deleteConfirmMessage_other": "\"{name}\" contiene {count} tareas. Al eliminar la columna volverán a To Do.",
+	"customColumns.deleteConfirmMessageEmpty": "\"{name}\" está vacía. La columna desaparecerá del tablero.",
 
 	// Labels
 	"labels.filterTitle": "Etiquetas",
@@ -40,6 +46,11 @@ const columns = {
 	"labels.taskLabels": "Etiquetas",
 	"labels.taskCount_one": "{count} tarea",
 	"labels.taskCount_other": "{count} tareas",
+	"labels.colorPicker": "Color de la etiqueta",
+	"labels.deleteConfirmTitle": "¿Eliminar esta etiqueta?",
+	"labels.deleteConfirmMessage_one": "\"{name}\" está en {count} tarea. Al eliminarla se quitará la etiqueta de esa tarea. No se puede deshacer.",
+	"labels.deleteConfirmMessage_other": "\"{name}\" está en {count} tareas. Al eliminarla se quitará la etiqueta de todas. No se puede deshacer.",
+	"labels.deleteConfirmMessageUnused": "\"{name}\" todavía no está en ninguna tarea. Eliminarla no se puede deshacer.",
 
 	// Priority
 	"priority.label": "Prioridad",

@@ -57,10 +57,16 @@ export default {
 					"0%": { transform: "translateY(-120%)" },
 					"100%": { transform: "translateY(220%)" },
 				},
+				// Sticky action bars entering from the bottom edge of a pane.
+				"slide-up": {
+					"0%": { transform: "translateY(0.5rem)", opacity: "0" },
+					"100%": { transform: "translateY(0)", opacity: "1" },
+				},
 			},
 			animation: {
 				"slide-in-right": "slide-in-right 0.3s ease-out",
 				"rail-flow": "rail-flow 2s ease-in-out infinite",
+				"slide-up": "slide-up 0.18s ease-out",
 			},
 		},
 	},
