@@ -68,7 +68,7 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 				</span>
 				<button
 					onClick={handleAddNote}
-					className="text-xs text-accent hover:text-accent-hover transition-colors"
+					className="text-xs text-accent hover:text-accent-emphasis transition-colors"
 				>
 					{t("notes.add")}
 				</button>

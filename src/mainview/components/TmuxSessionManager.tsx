@@ -381,7 +381,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 													e.stopPropagation();
 													handleCopy(session.name);
 												}}
-												className="mt-1.5 inline-flex items-center gap-1.5 text-[0.625rem] text-accent hover:text-accent-hover transition-colors"
+												className="mt-1.5 inline-flex items-center gap-1.5 text-[0.625rem] text-accent hover:text-accent-emphasis transition-colors"
 											>
 												<svg
 													className="w-3 h-3 flex-shrink-0"

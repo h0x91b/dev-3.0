@@ -369,7 +369,7 @@ function LaunchVariantsModal({
 					) : (
 						<button
 							onClick={addVariant}
-							className="text-accent hover:text-accent-hover text-sm font-medium transition-colors"
+							className="text-accent hover:text-accent-emphasis text-sm font-medium transition-colors"
 						>
 							{t("launch.addVariant")}
 						</button>

@@ -221,7 +221,7 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		);
 
 		const projectName = screen.getByRole("button", { name: "Project Alpha" });
-		expect(projectName).toHaveClass("text-accent", "hover:text-accent-hover");
+		expect(projectName).toHaveClass("text-accent", "hover:text-accent-emphasis");
 		expect(projectName).not.toHaveClass("text-fg-3");
 	});
 

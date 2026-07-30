@@ -316,7 +316,7 @@ export default function TaskGitActions({
 					}
 					setRefMenuOpen((open) => !open);
 				}}
-				className="text-[0.6875rem] text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer flex-shrink-0"
+				className="text-[0.6875rem] text-accent font-normal hover:text-accent-emphasis transition-colors cursor-pointer flex-shrink-0"
 			>
 				vs {displayRef} ▾
 			</button>

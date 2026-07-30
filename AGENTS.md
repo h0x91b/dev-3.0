@@ -292,7 +292,7 @@ All UI colors are **CSS custom properties** (design tokens) in `src/mainview/ind
 | `bg-raised-hover`, `bg-elevated-hover` | Hover states for corresponding surfaces |
 | `text-fg`, `text-fg-2`, `text-fg-3`, `text-fg-muted` | Text hierarchy (primary → muted) |
 | `border-edge`, `border-edge-active` | Borders (default / hover) |
-| `bg-accent`, `bg-accent-hover`, `text-accent` | Accent color (blue) |
+| `bg-accent`, `bg-accent-hover`, `text-accent`, `hover:text-accent-emphasis` | Accent color (blue) — `-hover` for fills, `-emphasis` for text/icon hover |
 | `text-danger`, `bg-danger` | Destructive actions (red) |
 
 All tokens support Tailwind opacity modifiers (`bg-accent/20`, `border-accent/30`). Need a new color? Add a CSS variable in `index.css` (both themes) + a Tailwind mapping — never inline arbitrary values. **Exception:** `STATUS_COLORS` in `src/shared/types.ts` stay hex — semantic status colors used in inline styles (column headers, card borders, dots), not theme chrome.

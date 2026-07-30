@@ -36,37 +36,44 @@ html {
 	font-display: swap;
 }
 
-/* ---- Theme tokens (space-separated RGB for Tailwind alpha support) ---- */
+/* ---- Theme tokens (space-separated RGB for Tailwind alpha support) ----
+   Both themes are authored in OKLCH and emitted as sRGB: surfaces share one
+   hue with a monotonic lightness ramp, the text ladder is spaced by APCA
+   contrast, and hover tokens move in the direction their role needs
+   (fills deepen, text lifts on dark). See DESIGN.md for the measured table. */
 :root,
 [data-theme="dark"] {
-	/* ---- Surfaces (opaque fallbacks, used outside kanban) ---- */
-	--surface-base: 6 9 21;
-	--surface-raised: 14 18 30;
-	--surface-raised-hover: 23 28 44;
-	--surface-elevated: 21 26 41;
-	--surface-elevated-hover: 35 40 58;
-	--surface-overlay: 17 23 37;
+	/* ---- Surfaces (opaque fallbacks, used outside kanban) ----
+	   oklch hue 268, L 0.145 → 0.262; overlay sits above elevated so a popup
+	   separates from the card it covers. */
+	--surface-base: 6 9 22;
+	--surface-raised: 14 19 33;
+	--surface-raised-hover: 19 25 41;
+	--surface-elevated: 21 27 43;
+	--surface-elevated-hover: 29 36 53;
+	--surface-overlay: 27 33 48;
 
-	/* ---- Text ---- */
-	--text-primary: 250 252 255;
-	--text-secondary: 170 187 212;
-	--text-tertiary: 115 133 160;
-	--text-muted: 82 98 121;
+	/* ---- Text (oklch hue 262; APCA Lc ~99 / 78 / 61 / 41 on a card) ---- */
+	--text-primary: 239 244 252;
+	--text-secondary: 200 211 231;
+	--text-tertiary: 170 182 204;
+	--text-muted: 132 145 169;
 
 	/* ---- Borders ---- */
-	--border-default: 32 38 55;
-	--border-active: 52 58 83;
+	--border-default: 43 49 65;
+	--border-active: 68 77 99;
 
 	/* ---- Accent / Danger / Success ---- */
-	--accent: 68 150 255;
-	--accent-hover: 43 114 255;
-	--danger: 255 130 130;
-	--success: 74 222 128;
-	--success-hover: 34 197 94;
-	--warning: 250 204 21;
-	--favorite: 245 197 66;    /* gold star for a saved favorite combo */
-	--awake: 251 146 60;
-	--awake-hover: 249 115 22;
+	--accent: 69 150 254;
+	--accent-hover: 28 119 241;    /* accent fills: deeper, keeps white ink readable */
+	--accent-emphasis: 137 190 255; /* accent text/icons on hover: lifts on dark */
+	--danger: 255 137 135;
+	--success: 63 223 126;
+	--success-hover: 4 190 88;
+	--warning: 240 210 78;
+	--favorite: 249 182 61;    /* gold star for a saved favorite combo */
+	--awake: 244 148 86;
+	--awake-hover: 239 108 1;
 	--diff-search-highlight-from: 255 227 138;
 	--diff-search-highlight-to: 255 166 196;
 
@@ -78,9 +85,11 @@ html {
 	--chart-5: 244 114 182;
 	--chart-6: 45 212 191;
 
-	/* ---- Productivity stats flair: achievement gold + on-fire heat ---- */
-	--stat-gold: 212 175 55;   /* medals */
-	--stat-fire: 249 115 22;   /* above-your-norm "on fire" */
+	/* ---- Productivity stats flair: achievement gold + on-fire heat ----
+	   Warm family is hue-separated so it never reads as one colour:
+	   warning 96° → gold 78° → awake 52° → fire 42°. */
+	--stat-gold: 229 170 65;   /* medals */
+	--stat-fire: 251 109 44;   /* above-your-norm "on fire" */
 
 	/* ---- Vimium-style task hint badges ---- */
 	--hint-bg: 253 224 71;     /* amber-300 */
@@ -90,7 +99,7 @@ html {
 
 	/* ---- Background gradient ---- */
 	--bg-grad-angle: 115deg;
-	--bg-grad-from: #060915;
+	--bg-grad-from: #060916;
 	--bg-grad-mid: #0f1731;
 	--bg-grad-to: #180d29;
 
@@ -124,34 +133,36 @@ html {
 }
 
 [data-theme="light"] {
-	/* ---- Surfaces ---- */
-	--surface-base: 240 242 250;
+	/* ---- Surfaces (oklch hue 270; raised-hover sits above base so hovering
+	   a white card never dips below the page) ---- */
+	--surface-base: 238 241 250;
 	--surface-raised: 255 255 255;
-	--surface-raised-hover: 240 241 248;
-	--surface-elevated: 237 239 247;
-	--surface-elevated-hover: 226 229 240;
+	--surface-raised-hover: 244 246 252;
+	--surface-elevated: 234 238 247;
+	--surface-elevated-hover: 224 228 240;
 	--surface-overlay: 255 255 255;
 
 	/* ---- Text (slate-based, never pure black) ---- */
 	--text-primary: 15 23 42;
-	--text-secondary: 71 85 105;
-	--text-tertiary: 100 116 139;
-	--text-muted: 148 163 184;
+	--text-secondary: 70 81 103;
+	--text-tertiary: 99 113 137;
+	--text-muted: 134 147 170;
 
 	/* ---- Borders (visible but refined) ---- */
-	--border-default: 203 213 225;
-	--border-active: 165 180 202;
+	--border-default: 205 212 224;
+	--border-active: 163 176 200;
 
-	/* ---- Accent / Danger / Success ---- */
-	--accent: 59 130 246;
-	--accent-hover: 37 99 235;
-	--danger: 220 38 38;
-	--success: 22 163 74;
-	--success-hover: 21 128 61;
-	--warning: 202 138 4;
-	--favorite: 202 152 20;    /* deeper gold reads on a light canvas */
-	--awake: 217 119 6;
-	--awake-hover: 180 83 9;
+	/* ---- Accent / Danger / Success (darkened until they carry text on white) ---- */
+	--accent: 22 121 232;
+	--accent-hover: 14 95 199;
+	--accent-emphasis: 12 86 181;
+	--danger: 216 27 54;
+	--success: 23 140 74;
+	--success-hover: 18 115 60;
+	--warning: 150 122 22;
+	--favorite: 167 118 21;    /* deeper gold reads on a light canvas */
+	--awake: 194 98 22;
+	--awake-hover: 162 74 15;
 	--diff-search-highlight-from: 250 204 21;
 	--diff-search-highlight-to: 236 72 153;
 
@@ -164,8 +175,8 @@ html {
 	--chart-6: 13 148 136;
 
 	/* ---- Productivity stats flair: achievement gold + on-fire heat ---- */
-	--stat-gold: 184 134 11;   /* deeper gold reads on a light canvas */
-	--stat-fire: 234 88 12;
+	--stat-gold: 161 114 22;   /* deeper gold reads on a light canvas */
+	--stat-fire: 197 79 20;
 
 	/* ---- Vimium-style task hint badges ---- */
 	--hint-bg: 252 211 77;     /* amber-300/400 — pops on a light canvas */
@@ -174,10 +185,12 @@ html {
 	--hint-typed: 185 28 28;
 
 	/* ---- Background gradient ---- */
+	/* Hue travels 258° → 289° → 286°; the old mid stop was olive (118°) and
+	   clashed with both ends. */
 	--bg-grad-angle: 135deg;
-	--bg-grad-from: #dae3ee;
-	--bg-grad-mid: #e1e5d4;
-	--bg-grad-to: #b4b5c4;
+	--bg-grad-from: #dbe3ef;
+	--bg-grad-mid: #e3e2f0;
+	--bg-grad-to: #b8b8c9;
 
 	/* ---- Glass surfaces (frosted white on colored canvas) ---- */
 	--glass-column-rgb: 255 255 255;

@@ -690,7 +690,7 @@ function TaskInfoPanel({
 							<button
 								onClick={(event) => handleFileDiff(event, fileName)}
 								aria-label={t("infoPanel.showDiff")}
-								className="text-sm text-accent hover:text-accent-hover w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
+								className="text-sm text-accent hover:text-accent-emphasis w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
 							>
 								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
 							</button>
@@ -887,7 +887,7 @@ function TaskInfoPanel({
 		<Tooltip content={t("tmux.spawnExtraAgentDesc")} detail={t("ttip.infoPanel.spawnAgent")}>
 			<button
 				onClick={() => setSpawnModalOpen(true)}
-				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
+				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:bg-success/15 border border-success/30"
 				aria-label={t("tmux.spawnExtraAgentDesc")}
 			>
 				<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
@@ -1383,7 +1383,7 @@ function TaskInfoPanel({
 						<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 							<button
 								onClick={toggleTerminalFullscreen}
-								className="task-anim flex-shrink-0 p-1 rounded hover:bg-accent/10 transition-colors text-accent hover:text-accent-hover"
+								className="task-anim flex-shrink-0 p-1 rounded hover:bg-accent/10 transition-colors text-accent hover:text-accent-emphasis"
 								aria-label={terminalFullscreenLabel}
 							>
 								{terminalFullscreenActive
@@ -1472,7 +1472,7 @@ function TaskInfoPanel({
 							<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 								<button
 									onClick={toggleTerminalFullscreen}
-									className="task-anim flex-shrink-0 p-1 rounded hover:bg-accent/10 transition-colors text-accent hover:text-accent-hover"
+									className="task-anim flex-shrink-0 p-1 rounded hover:bg-accent/10 transition-colors text-accent hover:text-accent-emphasis"
 									aria-label={terminalFullscreenLabel}
 								>
 									{terminalFullscreenActive

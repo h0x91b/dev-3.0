@@ -110,7 +110,7 @@ export default function PxpipeProxySettingsSection({
 						href="https://github.com/teamchong/pxpipe"
 						target="_blank"
 						rel="noopener noreferrer"
-						className="text-accent hover:text-accent-hover"
+						className="text-accent hover:text-accent-emphasis"
 					>
 						{t("pxpipe.viewRepo")}
 					</a>
@@ -207,7 +207,7 @@ export default function PxpipeProxySettingsSection({
 								href={dashboardUrl}
 								target="_blank"
 								rel="noopener noreferrer"
-								className="inline-block text-sm text-accent hover:text-accent-hover"
+								className="inline-block text-sm text-accent hover:text-accent-emphasis"
 							>
 								{t("pxpipe.openDashboard")}
 							</a>

@@ -18,55 +18,83 @@ Glass morphism is the defining visual pattern — every kanban column and card u
 
 ## 2. Color Palette & Roles
 
+Both palettes are authored in **OKLCH** and shipped as sRGB triplets. Three rules
+hold the system together:
+
+1. **One hue per family.** Surfaces sit on 268° (dark) / 270° (light), text on 262°.
+   No hue drift up or down a ramp.
+2. **The lightness ramp is monotonic**, so a hover never lands darker than the
+   surface it lifts from, and `--surface-overlay` sits *above* `--surface-elevated`.
+3. **The text ladder is spaced by measured contrast** (APCA), not by eye —
+   roughly `Lc 100 / 78 / 62 / 45` from primary to muted, in both themes.
+
 ### Surfaces
 
 | Role | CSS Variable | Dark | Light |
 |------|-------------|------|-------|
-| Base background | `--surface-base` | `rgb(6, 9, 21)` | `rgb(240, 242, 250)` |
-| Raised surface | `--surface-raised` | `rgb(14, 18, 30)` | `rgb(255, 255, 255)` |
-| Raised hover | `--surface-raised-hover` | `rgb(23, 28, 44)` | `rgb(240, 241, 248)` |
-| Elevated surface | `--surface-elevated` | `rgb(21, 26, 41)` | `rgb(237, 239, 247)` |
-| Elevated hover | `--surface-elevated-hover` | `rgb(35, 40, 58)` | `rgb(226, 229, 240)` |
-| Overlay (modals) | `--surface-overlay` | `rgb(17, 23, 37)` | `rgb(255, 255, 255)` |
+| Base background | `--surface-base` | `rgb(6, 9, 22)` | `rgb(238, 241, 250)` |
+| Raised surface | `--surface-raised` | `rgb(14, 19, 33)` | `rgb(255, 255, 255)` |
+| Raised hover | `--surface-raised-hover` | `rgb(19, 25, 41)` | `rgb(244, 246, 252)` |
+| Elevated surface | `--surface-elevated` | `rgb(21, 27, 43)` | `rgb(234, 238, 247)` |
+| Elevated hover | `--surface-elevated-hover` | `rgb(29, 36, 53)` | `rgb(224, 228, 240)` |
+| Overlay (modals) | `--surface-overlay` | `rgb(27, 33, 48)` | `rgb(255, 255, 255)` |
 
 ### Text
 
-| Role | CSS Variable | Dark | Light |
-|------|-------------|------|-------|
-| Primary | `--text-primary` | `rgb(250, 252, 255)` | `rgb(15, 23, 42)` |
-| Secondary | `--text-secondary` | `rgb(170, 187, 212)` | `rgb(71, 85, 105)` |
-| Tertiary | `--text-tertiary` | `rgb(115, 133, 160)` | `rgb(100, 116, 139)` |
-| Muted | `--text-muted` | `rgb(82, 98, 121)` | `rgb(148, 163, 184)` |
+`Lc` is the APCA contrast against a kanban card — the worst-case reading surface.
+`Lc 75` is the floor for body text, `Lc 60` for everything else; muted is for
+decoration and disabled state only, never for text that has to be read.
+
+| Role | CSS Variable | Dark | Light | Lc dark / light |
+|------|-------------|------|-------|-----------------|
+| Primary | `--text-primary` | `rgb(239, 244, 252)` | `rgb(15, 23, 42)` | 99 / 94 |
+| Secondary | `--text-secondary` | `rgb(200, 211, 231)` | `rgb(70, 81, 103)` | 78 / 77 |
+| Tertiary | `--text-tertiary` | `rgb(170, 182, 204)` | `rgb(99, 113, 137)` | 61 / 64 |
+| Muted | `--text-muted` | `rgb(132, 145, 169)` | `rgb(134, 147, 170)` | 41 / 48 |
 
 ### Borders
 
 | Role | CSS Variable | Dark | Light |
 |------|-------------|------|-------|
-| Default | `--border-default` | `rgb(32, 38, 55)` | `rgb(203, 213, 225)` |
-| Active | `--border-active` | `rgb(52, 58, 83)` | `rgb(165, 180, 202)` |
+| Default | `--border-default` | `rgb(43, 49, 65)` | `rgb(205, 212, 224)` |
+| Active | `--border-active` | `rgb(68, 77, 99)` | `rgb(163, 176, 200)` |
 
 ### Semantic / Interactive
 
+`--accent-hover` is for accent **fills** — it deepens in both themes so white ink
+on the button stays readable. `--accent-emphasis` is for accent **text and icons**
+on hover — it lifts on dark and deepens on light, so a link always gains contrast
+when you point at it. Never swap the two.
+
 | Role | CSS Variable | Dark | Light |
 |------|-------------|------|-------|
-| Accent (primary action) | `--accent` | `#4496ff` | `#3b82f6` |
-| Accent hover | `--accent-hover` | `#2b72ff` | `#2563eb` |
-| Danger | `--danger` | `#ff8282` | `#dc2626` |
-| Success | `--success` | `#4ade80` | `#16a34a` |
-| Success hover | `--success-hover` | `#22c55e` | `#15803d` |
-| Warning | `--warning` | `#facc15` | `#ca8a04` |
-| Favorite (saved star) | `--favorite` | `#f5c542` | `#ca9814` |
+| Accent (primary action) | `--accent` | `#4596fe` | `#1679e8` |
+| Accent hover (fills) | `--accent-hover` | `#1c77f1` | `#0e5fc7` |
+| Accent emphasis (text hover) | `--accent-emphasis` | `#89beff` | `#0c56b5` |
+| Danger | `--danger` | `#ff8987` | `#d81b36` |
+| Success | `--success` | `#3fdf7e` | `#178c4a` |
+| Success hover (fills) | `--success-hover` | `#04be58` | `#12733c` |
+| Warning | `--warning` | `#f0d24e` | `#967a16` |
+| Favorite (saved star) | `--favorite` | `#f9b63d` | `#a77615` |
+| Awake | `--awake` | `#f49456` | `#c26216` |
+| Achievement gold | `--stat-gold` | `#e5aa41` | `#a17216` |
+| On fire | `--stat-fire` | `#fb6d2c` | `#c54f14` |
+
+The four warm roles are separated by **hue**, not just lightness, so they never
+read as one colour: warning 96° → gold 78° → awake 52° → fire 42°.
 
 ### Background Gradient
 
-The app background is a subtle three-stop gradient, not a flat color.
+The app background is a subtle three-stop gradient, not a flat color. Hue travels
+in one direction across the three stops; the light theme's mid stop used to be
+olive and fought both ends.
 
 | Property | Dark | Light |
 |----------|------|-------|
 | Angle | `115deg` | `135deg` |
-| From | `#060915` | `#dae3ee` |
-| Mid | `#0f1731` | `#e1e5d4` |
-| To | `#180d29` | `#b4b5c4` |
+| From | `#060916` | `#dbe3ef` |
+| Mid | `#0f1731` | `#e3e2f0` |
+| To | `#180d29` | `#b8b8c9` |
 
 ### Task Status Colors (Kanban)
 

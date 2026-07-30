@@ -136,7 +136,7 @@ export default function HelpCard({
 			{topic?.link ? (
 				<button
 					type="button"
-					className="mt-2.5 text-xs text-accent hover:text-accent-hover transition-colors"
+					className="mt-2.5 text-xs text-accent hover:text-accent-emphasis transition-colors"
 					onClick={() => {
 						const action = topic.link!.action;
 						onClose();

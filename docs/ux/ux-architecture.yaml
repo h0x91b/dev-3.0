@@ -491,7 +491,7 @@ ux_architecture:
         use_for: "Delete, remove, cancel, reset. Never use bg-accent primary styling for these."
         evidence: ["src/mainview/components/TaskInfoPanel.tsx:585", "src/mainview/components/TaskDetailModal.tsx:317"]
       link:
-        token_class: "text-accent hover:text-accent-hover (no background)"
+        token_class: "text-accent hover:text-accent-emphasis (no background)"
         use_for: "Inline navigation / open-in actions."
     semantic_state_tokens:
       success:

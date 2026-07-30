@@ -272,7 +272,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			: isStarting
 				? "text-fg-3 border border-edge cursor-progress"
 				: isRunning
-					? "text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
+					? "text-success hover:bg-success/15 border border-success/30"
 					: "text-fg-2 hover:text-fg hover:bg-elevated-hover border border-edge";
 
 	const devServerTitle = !hasDevScript

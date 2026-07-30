@@ -164,7 +164,7 @@ export function PrConversationBlock({
 					<button
 						type="button"
 						onClick={onSwitchToBranchDiff}
-						className="text-accent transition-colors hover:text-accent-hover"
+						className="text-accent transition-colors hover:text-accent-emphasis"
 					>
 						{t("infoPanel.prThreadsHintButton")}
 					</button>

@@ -84,7 +84,7 @@ export default function RemoteAccessExposedPorts() {
 							{item.url && (
 								<button
 									onClick={() => copyUrl(item.url!)}
-									className="text-accent hover:text-accent-hover truncate text-left mt-0.5 streamer-private"
+									className="text-accent hover:text-accent-emphasis truncate text-left mt-0.5 streamer-private"
 									title={item.url}
 								>
 									{item.url}

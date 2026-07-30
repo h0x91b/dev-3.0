@@ -2397,7 +2397,7 @@ function App() {
 												applyRemoteQR(res);
 											}).catch(() => {});
 										}}
-										className="text-xs text-accent hover:text-accent-hover transition-colors"
+										className="text-xs text-accent hover:text-accent-emphasis transition-colors"
 									>
 										{t("remote.recheckCloudflared")}
 									</button>

@@ -956,7 +956,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 									<button
 										type="button"
 										onClick={() => onOpenAutomations(project)}
-										className="text-accent hover:text-accent-hover hover:underline transition-colors flex items-center gap-1"
+										className="text-accent hover:text-accent-emphasis hover:underline transition-colors flex items-center gap-1"
 									>
 										<span
 											className="text-[0.8125rem] leading-none"

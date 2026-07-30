@@ -446,7 +446,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 					className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 						!isTaskActive
 							? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
-							: "text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
+							: "text-success hover:bg-success/15 border border-success/30"
 					}`}
 					aria-label={t("scripts.button")}
 				>

@@ -499,7 +499,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							{isTodo && !isEditing && (
 								<button
 									onClick={handleStartEdit}
-									className="text-xs text-accent hover:text-accent-hover transition-colors font-medium"
+									className="text-xs text-accent hover:text-accent-emphasis transition-colors font-medium"
 								>
 									{t("task.edit")}
 								</button>
@@ -835,7 +835,7 @@ function ArchivedView({
 									</span>
 									<button
 										onClick={onAddNote}
-										className="text-xs text-accent hover:text-accent-hover transition-colors"
+										className="text-xs text-accent hover:text-accent-emphasis transition-colors"
 									>
 										{t("notes.add")}
 									</button>

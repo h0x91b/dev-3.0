@@ -410,7 +410,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 							seg.onClick ? (
 								<button
 									onClick={seg.onClick}
-									className="header-anim flex items-center gap-1.5 text-accent hover:text-accent-hover transition-colors flex-shrink-0"
+									className="header-anim flex items-center gap-1.5 text-accent hover:text-accent-emphasis transition-colors flex-shrink-0"
 								>
 									<HomeIcon className="w-3.5 h-3.5 flex-shrink-0" />
 									<span className="font-mono font-semibold text-xs tracking-wide">{seg.label}</span>
@@ -426,7 +426,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 								{seg.onClick ? (
 									<button
 										onClick={seg.onClick}
-										className="text-accent hover:text-accent-hover transition-colors truncate"
+										className="text-accent hover:text-accent-emphasis transition-colors truncate"
 									>
 										{seg.label}
 									</button>
@@ -718,7 +718,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					>
 						<button
 							onClick={() => window.dispatchEvent(new CustomEvent("menu:enter-help-mode"))}
-							className="header-anim flex items-center text-accent hover:text-accent-hover transition-colors px-1.5 py-1 rounded-lg hover:bg-accent/10"
+							className="header-anim flex items-center text-accent hover:text-accent-emphasis transition-colors px-1.5 py-1 rounded-lg hover:bg-accent/10"
 							aria-label={t("header.helpTooltip")}
 							data-testid="header-help-mode"
 						>
