@@ -1,22 +1,107 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	SOUND_DEFS,
-	playTaskCompletionSound,
-	playTaskSoundFromPush,
-	setTaskCompletionSoundEnabled,
-} from "../task-sounds";
 
-// Regression guard for the `views://` range-request bug: task sounds must be
-// inlined as base64 `data:` URLs (via the `?inline` import suffix), never served
-// as separate files through the Electrobun `views://` scheme. WKWebView's media
-// loader fetches <audio> sources with a Range request that the scheme handler
-// does not satisfy, so a file URL silently fails with `NotSupportedError`.
-describe("task sound assets", () => {
-	for (const [status, def] of Object.entries(SOUND_DEFS)) {
-		it(`serves "${status}" as an inlined data: URL`, () => {
-			expect(def.url.startsWith("data:audio/")).toBe(true);
-		});
+// happy-dom has no Web Audio implementation, so every test installs this fake
+// AudioContext on `window` and asserts against the graph the module builds.
+type FakeNode = { connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> };
+type FakeSource = FakeNode & {
+	buffer: unknown;
+	start: ReturnType<typeof vi.fn>;
+	onended: (() => void) | null;
+};
+type FakeGain = FakeNode & { gain: { value: number } };
+
+class FakeAudioContext {
+	static instances: FakeAudioContext[] = [];
+	state: AudioContextState = "running";
+	destination = { name: "destination" } as unknown as AudioDestinationNode;
+	sources: FakeSource[] = [];
+	gains: FakeGain[] = [];
+	decodeCalls: ArrayBuffer[] = [];
+	resumeCalls = 0;
+
+	constructor() {
+		FakeAudioContext.instances.push(this);
 	}
+
+	resume = vi.fn(async () => {
+		this.resumeCalls++;
+		this.state = "running";
+	});
+
+	decodeAudioData = vi.fn((bytes: ArrayBuffer) => {
+		this.decodeCalls.push(bytes);
+		return Promise.resolve({ duration: 1.5, byteLength: bytes.byteLength } as unknown as AudioBuffer);
+	});
+
+	createBufferSource = vi.fn(() => {
+		const source: FakeSource = {
+			buffer: null,
+			onended: null,
+			start: vi.fn(),
+			connect: vi.fn(),
+			disconnect: vi.fn(),
+		};
+		this.sources.push(source);
+		return source as unknown as AudioBufferSourceNode;
+	});
+
+	createGain = vi.fn(() => {
+		const gain: FakeGain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+		this.gains.push(gain);
+		return gain as unknown as GainNode;
+	});
+}
+
+type SoundsModule = typeof import("../task-sounds");
+
+// Every test gets a fresh module instance: unlock state, the decoded-buffer cache
+// and the pending queue are all module-level globals.
+async function loadModule(): Promise<SoundsModule> {
+	vi.resetModules();
+	return await import("../task-sounds");
+}
+
+function latestContext(): FakeAudioContext {
+	const ctx = FakeAudioContext.instances[FakeAudioContext.instances.length - 1];
+	if (!ctx) throw new Error("no AudioContext was constructed");
+	return ctx;
+}
+
+// Playback is async (decode → resume → start) and the fire-and-forget callers
+// (`playTaskCompletionSound`, the push handler, the queue flush) are not
+// awaitable, so drain enough microtasks for the whole chain to land.
+async function settle(): Promise<void> {
+	for (let i = 0; i < 20; i++) await Promise.resolve();
+}
+
+let audioElementPlay: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+	FakeAudioContext.instances = [];
+	(window as unknown as { AudioContext: unknown }).AudioContext = FakeAudioContext;
+	// The whole point of the fix: nothing may reach an <audio> element.
+	audioElementPlay = vi
+		.spyOn(window.HTMLMediaElement.prototype, "play")
+		.mockResolvedValue(undefined as unknown as void);
+});
+
+afterEach(() => {
+	audioElementPlay.mockRestore();
+	delete (window as unknown as { AudioContext?: unknown }).AudioContext;
+});
+
+// Regression guard for the `views://` range-request bug (decision 057): task
+// sounds must be inlined as base64 `data:` URLs (via the `?inline` import
+// suffix), never served as separate files through the Electrobun `views://`
+// scheme — and Web Audio decoding now reads those base64 bytes directly.
+describe("task sound assets", () => {
+	it("serves every sound as an inlined base64 data: URL", async () => {
+		const mod = await loadModule();
+		for (const def of Object.values(mod.SOUND_DEFS)) {
+			expect(def.url.startsWith("data:audio/")).toBe(true);
+			expect(def.url).toContain(";base64,");
+		}
+	});
 });
 
 // The sound plays in exactly one place per move: UI-initiated moves play it
@@ -26,90 +111,133 @@ describe("task sound assets", () => {
 // this is what prevents the double-play in remote mode (desktop window + browser
 // on the same machine both receiving a broadcast push).
 describe("completion sound playback", () => {
-	let playSpy: ReturnType<typeof vi.spyOn>;
-
-	beforeEach(() => {
-		setTaskCompletionSoundEnabled(true);
-		playSpy = vi
-			.spyOn(window.HTMLMediaElement.prototype, "play")
-			.mockResolvedValue(undefined as unknown as void);
+	it("plays locally and reports the UI owns the sound when enabled", async () => {
+		const mod = await loadModule();
+		mod.setTaskCompletionSoundEnabled(true);
+		expect(mod.playTaskCompletionSound("completed")).toBe(true);
+		await settle();
+		expect(latestContext().sources).toHaveLength(1);
+		expect(latestContext().sources[0]?.start).toHaveBeenCalledTimes(1);
 	});
 
-	afterEach(() => {
-		playSpy.mockRestore();
+	it("does not play and reports false when the setting is disabled", async () => {
+		const mod = await loadModule();
+		mod.setTaskCompletionSoundEnabled(false);
+		expect(mod.playTaskCompletionSound("completed")).toBe(false);
+		await settle();
+		expect(FakeAudioContext.instances).toHaveLength(0);
 	});
 
-	it("plays locally and reports the UI owns the sound when enabled", () => {
-		const played = playTaskCompletionSound("completed");
-		expect(played).toBe(true);
-		expect(playSpy).toHaveBeenCalledTimes(1);
+	it("plays the backend push (CLI / branch-merge / agent approval)", async () => {
+		const mod = await loadModule();
+		mod.playTaskSoundFromPush("completed");
+		await settle();
+		expect(latestContext().sources).toHaveLength(1);
 	});
 
-	it("does not play and reports false when the setting is disabled", () => {
-		setTaskCompletionSoundEnabled(false);
-		const played = playTaskCompletionSound("completed");
-		expect(played).toBe(false);
-		expect(playSpy).not.toHaveBeenCalled();
+	it("rings for two different tasks completing back-to-back", async () => {
+		const mod = await loadModule();
+		mod.setTaskCompletionSoundEnabled(true);
+		expect(mod.playTaskCompletionSound("completed")).toBe(true);
+		expect(mod.playTaskCompletionSound("cancelled")).toBe(true);
+		await settle();
+		expect(latestContext().sources).toHaveLength(2);
 	});
 
-	it("plays the backend push (CLI / branch-merge / agent approval)", () => {
-		playTaskSoundFromPush("completed");
-		expect(playSpy).toHaveBeenCalledTimes(1);
+	it("applies the per-sound volume through a gain node", async () => {
+		const mod = await loadModule();
+		await mod.playTaskSound("cancelled");
+		await settle();
+		expect(latestContext().gains[0]?.gain.value).toBe(mod.SOUND_DEFS.cancelled.volume);
 	});
 
-	it("rings for two different tasks completing back-to-back", () => {
-		expect(playTaskCompletionSound("completed")).toBe(true);
-		expect(playTaskCompletionSound("cancelled")).toBe(true);
-		expect(playSpy).toHaveBeenCalledTimes(2);
+	it("decodes each sound once and reuses the buffer", async () => {
+		const mod = await loadModule();
+		await mod.playTaskSound("completed");
+		await mod.playTaskSound("completed");
+		await settle();
+		const ctx = latestContext();
+		expect(ctx.decodeAudioData).toHaveBeenCalledTimes(1);
+		expect(ctx.sources).toHaveLength(2);
 	});
 });
 
-// Desktop Chrome rejects a delayed, programmatic `.play()` on a never-activated
-// <audio> element — and the remote `taskSound` push lands seconds after the
-// user's "Approve" click. Priming each element inside the first user gesture
-// (play/pause) marks it user-activated so the later push-driven play is honored.
-// Fresh module instances (resetModules + dynamic import) isolate this global
-// unlock/prime state from the shared-state tests above.
-describe("audio unlock priming (remote desktop browsers)", () => {
-	it("primes both sound templates on the first user gesture", async () => {
-		vi.resetModules();
-		const playSpy = vi
-			.spyOn(window.HTMLMediaElement.prototype, "play")
-			.mockResolvedValue(undefined as unknown as void);
-		const pauseSpy = vi
-			.spyOn(window.HTMLMediaElement.prototype, "pause")
-			.mockImplementation(() => {});
-		try {
-			const mod = await import("../task-sounds");
-			mod.initTaskSoundPlayback();
-			expect(playSpy).not.toHaveBeenCalled();
-
-			window.dispatchEvent(new Event("pointerdown"));
-
-			// `>=` (not exact): `window` is shared across the static import above and
-			// this fresh dynamic instance, so a leaked unlock listener may also fire.
-			expect(playSpy.mock.calls.length).toBeGreaterThanOrEqual(Object.keys(mod.SOUND_DEFS).length);
-			await Promise.resolve();
-			expect(pauseSpy).toHaveBeenCalled();
-		} finally {
-			playSpy.mockRestore();
-			pauseSpy.mockRestore();
-		}
+// Issue #1176: on macOS, WebKit promotes any <audio> element longer than 0.95s to
+// the system "Now Playing" session, so our 1.3-1.5s chimes stole the hardware
+// media keys from Spotify/Music — Play/Pause replayed the chime. Web Audio never
+// creates a media element and never becomes a Now Playing candidate, so these
+// two assertions are the actual regression guard for the reported bug.
+describe("macOS media-key ownership", () => {
+	it("never plays through an <audio> element", async () => {
+		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		await mod.playTaskSound("completed");
+		window.dispatchEvent(new Event("pointerdown"));
+		await settle();
+		expect(audioElementPlay).not.toHaveBeenCalled();
+		expect(document.querySelector("audio")).toBeNull();
 	});
 
-	it("reuses one <audio> element per status instead of cloning", async () => {
-		vi.resetModules();
-		const playSpy = vi
-			.spyOn(window.HTMLMediaElement.prototype, "play")
-			.mockResolvedValue(undefined as unknown as void);
-		try {
-			const mod = await import("../task-sounds");
-			mod.playTaskSoundFromPush("completed");
-			mod.playTaskSoundFromPush("completed");
-			expect(playSpy).toHaveBeenCalledTimes(2);
-			expect(playSpy.mock.instances[0]).toBe(playSpy.mock.instances[1]);
-		} finally {
-			playSpy.mockRestore();
-		}
+	it("releases the audio graph when the sound ends", async () => {
+		const mod = await loadModule();
+		await mod.playTaskSound("completed");
+		await settle();
+		const ctx = latestContext();
+		const source = ctx.sources[0];
+		const gain = ctx.gains[0];
+		expect(source?.onended).toBeTypeOf("function");
+		source?.onended?.();
+		expect(source?.disconnect).toHaveBeenCalledTimes(1);
+		expect(gain?.disconnect).toHaveBeenCalledTimes(1);
+	});
+});
+
+// Autoplay policy: a context created before any user gesture starts suspended
+// (desktop Chrome in remote mode — the `taskSound` push lands seconds after the
+// user's "Approve" click, long after its transient activation expired). The sound
+// is queued and flushed once a gesture resumes the context.
+describe("autoplay unlock (remote desktop browsers)", () => {
+	class SuspendedAudioContext extends FakeAudioContext {
+		state: AudioContextState = "suspended";
+		gestureSeen = false;
+
+		resume = vi.fn(async () => {
+			this.resumeCalls++;
+			if (this.gestureSeen) this.state = "running";
+		});
+	}
+
+	it("queues a sound while suspended and plays it on the next gesture", async () => {
+		(window as unknown as { AudioContext: unknown }).AudioContext = SuspendedAudioContext;
+		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+
+		await mod.playTaskSound("completed");
+		await settle();
+		const ctx = latestContext() as SuspendedAudioContext;
+		expect(ctx.sources).toHaveLength(0);
+
+		ctx.gestureSeen = true;
+		window.dispatchEvent(new Event("pointerdown"));
+		await settle();
+		expect(ctx.state).toBe("running");
+		expect(ctx.sources).toHaveLength(1);
+	});
+
+	it("does not construct a context before the first gesture or sound", async () => {
+		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		expect(FakeAudioContext.instances).toHaveLength(0);
+
+		window.dispatchEvent(new Event("pointerdown"));
+		await settle();
+		expect(FakeAudioContext.instances).toHaveLength(1);
+	});
+
+	it("stays silent without crashing when Web Audio is unavailable", async () => {
+		delete (window as unknown as { AudioContext?: unknown }).AudioContext;
+		const mod = await loadModule();
+		await expect(mod.playTaskSound("completed")).resolves.toBeUndefined();
+		expect(audioElementPlay).not.toHaveBeenCalled();
 	});
 });
