@@ -39,7 +39,6 @@ import {
 	findAltClickPane,
 	validAltClickPanes,
 } from "../tmux";
-import { dispatchLifecycleEvent } from "../lifecycle/service";
 import { markAgentPane } from "../agent-prompt";
 import { dev3TaskTempPath } from "../temp-paths";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
@@ -1393,6 +1392,9 @@ async function findTaskAcrossProjects(taskId: string): Promise<{ task: Task | nu
  */
 async function wakeIfHibernated(project: Project, task: Task): Promise<void> {
 	if (!task.hibernated) return;
+	// Imported lazily: the lifecycle service pulls in the electrobun-heavy executor,
+	// and this module must stay importable without it.
+	const { dispatchLifecycleEvent } = await import("../lifecycle/service");
 	await dispatchLifecycleEvent(project.id, task.id, { type: "wakeRequested" }, { project, task });
 }
 
