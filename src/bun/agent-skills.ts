@@ -731,10 +731,17 @@ Every agent running in dev3 knows perfectly well it lives inside a tmux session,
 - **"Open a pane below / a new window and run X there."** The agent can create panes and whole tmux windows (tmux has windows — they're the tabs), run any command inside them, and keep long-running things visible right next to itself.
 - **"Move it, shrink it, make it bigger."** Rearranging windows, resizing panes, renaming tabs — just ask; the agent manages the layout too.
 - **Paste and drop files straight into any terminal.** Hit ⌘V / Ctrl+V with an image in the clipboard — it's uploaded automatically and its file path lands in the terminal, ready for the agent. Drag & drop any file onto the terminal — same story: uploaded, full path typed into stdin. Even a huge pasted text block is saved as a file with its path injected, instead of flooding the terminal.
-- **Need more hands → spawn an extra agent.** Another agent in the *same* worktree, opened in a new pane with a fresh session — zero extra setup. Two agents, one branch, side by side.
 - **Too many sessions eating RAM → hibernate some.** The tmux badge in the header lists every dev3 session on the machine — kill the ones you don't need right now to free memory. The task card stays on the board, and **Resume Agent Session** later brings the agent back right where it left off.
 
 The full mechanics live in \`/dev3-tmux\` — the agent reaches for it on its own when needed.
+
+## More than one agent
+
+Several agents at once is the normal case here. Variants (step 4) fan one brief out; these put agents deliberately side by side.
+
+- **More hands on the same task → spawn an extra agent.** Another agent in the *same* worktree, opened in a new pane with a fresh session — zero extra setup. Two agents, one branch, side by side.
+- **Agents in different tasks can talk to each other.** \`dev3 message --task seq:N "text"\` types a message straight into another task's live agent (\`seq:N\` is the small number on its card). Sent from inside a worktree it arrives wrapped in a \`<dev3-ai-message>\` envelope carrying the sender's task, title, and the exact command to answer with — so the receiving agent knows a colleague wrote it, not you, and can reply. Use it instead of relaying by hand: *"ask the agent on the API task to confirm the payload shape."*
+- **A message can also wait.** The same command with \`--in 30m\` / \`--at 14:00\` queues the text (the **Send later** button on the task's composer does it from the UI), and an agent can aim it at itself as a wake-up — *"check the deploy in an hour."*
 
 ## Vocabulary underneath
 
@@ -766,6 +773,7 @@ Off the main flow entirely.
 - **A quick shell at the repo root → Project Terminal (⌘\\\`).** Next to it, the **Git Pull** button pulls the project's main worktree without touching a terminal — a blue dot on it means origin has new commits.
 - **Run project scripts and Makefile targets** — the ƒ Scripts button lists them; pick one and it runs in a live pane.
 - **Huge monorepo → check out less.** Toggle off "Include All Files" in Project Settings so every worktree checks out only the directories you actually need.
+- **Rate limit closing in → hot-swap the account.** The header carries live Claude/Codex rate-limit usage and yellows near the cap; click it to land in **Settings → Agent Accounts**, where several logins per agent CLI sit side by side and the active one switches without a re-login (add one by running the login command dev3 hands you, then verify — or import the login you already have). The switch applies to every *new* agent session dev3 launches — new tasks, spawned agents, bug hunters, auto-review — while running sessions keep theirs, and each launch can pick a non-default account. An **API profile** replaces the subscription login entirely: the Anthropic API, an Anthropic-compatible gateway (OpenRouter, a LiteLLM proxy), or Bedrock, with per-model overrides.
 - **Stats** — productivity and token-cost dashboards across projects.
 - **Automations** — recurring scheduled agent runs on a cron.
 - **Multi-window** — a second window (⇧⌘N) for a second project on another monitor.
