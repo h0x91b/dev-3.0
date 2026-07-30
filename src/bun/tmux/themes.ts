@@ -136,12 +136,13 @@ set -gF message-command-style "fg=#{@thm_teal},bg=#{@thm_overlay_0},align=centre
 # Menu
 set -gF menu-selected-style "#{E:@catppuccin_menu_selected_style}"
 
-# Pane background — match theme bg so no white gaps around borders
-set -gF window-style "bg=#{@thm_bg}"
-set -gF window-active-style "bg=#{@thm_bg}"
+# Pane background — active pane keeps the theme bg; inactive panes get a darker
+# bg and greyed default fg so the focused split is obvious at a glance.
+set -gF window-style "bg=#{@thm_mantle},fg=#{@thm_overlay_1}"
+set -gF window-active-style "bg=#{@thm_bg},fg=#{@thm_fg}"
 
-# Pane borders — include bg so border area also matches
-set -gF pane-border-style "fg=#{@thm_overlay_0},bg=#{@thm_bg}"
+# Pane borders — include bg so border area also matches its pane
+set -gF pane-border-style "fg=#{@thm_surface_1},bg=#{@thm_mantle}"
 set -gF pane-active-border-style "fg=#{@thm_lavender},bg=#{@thm_bg}"
 
 # Popups
