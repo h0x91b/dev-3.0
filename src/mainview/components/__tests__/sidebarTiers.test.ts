@@ -341,6 +341,12 @@ describe("byPriorityThenMovedAtOldestFirst", () => {
 		).toBeGreaterThan(0);
 	});
 
+	it("sinks a hibernated task below every live band", () => {
+		const parked = makeTask({ id: "a", status: "review-by-user" as TaskStatus, priority: "P0", hibernated: true });
+		const live = makeTask({ id: "b", status: "review-by-user" as TaskStatus, priority: "P4" });
+		expect(byPriorityThenMovedAtOldestFirst(parked, live)).toBeGreaterThan(0);
+	});
+
 	it("seq breaks the final tie", () => {
 		expect(byPriorityThenMovedAtOldestFirst(t("a", "P1", undefined, 5), t("b", "P1", undefined, 9))).toBeLessThan(0);
 	});

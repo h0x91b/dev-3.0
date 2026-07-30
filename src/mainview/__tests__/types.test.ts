@@ -1,4 +1,6 @@
 import {
+	compareTaskSortRank,
+	taskSortRank,
 	hexToRgb,
 	titleFromDescription,
 	extractRepoName,
@@ -657,5 +659,36 @@ describe("buildTaskDialogSubject", () => {
 
 		const none = buildTaskDialogSubject(makeTask({ labelIds: [] }), makeProject());
 		expect(none.labels).toEqual([]);
+	});
+});
+
+describe("taskSortRank / compareTaskSortRank", () => {
+	const t = (priority: Task["priority"], hibernated?: boolean) => ({ priority, hibernated });
+
+	it("ranks a priority by its own digit", () => {
+		expect(taskSortRank(t("P0"))).toBe(0);
+		expect(taskSortRank(t("P4"))).toBe(4);
+	});
+
+	it("bands a task with no priority as the default P3", () => {
+		expect(taskSortRank(t(undefined))).toBe(taskSortRank(t("P3")));
+		expect(compareTaskSortRank(t(undefined), t("P3"))).toBe(0);
+	});
+
+	it("sinks a hibernated P0 below a live P4", () => {
+		expect(compareTaskSortRank(t("P0", true), t("P4"))).toBeGreaterThan(0);
+	});
+
+	it("keeps hibernated tasks ordered among themselves by their own priority", () => {
+		expect(compareTaskSortRank(t("P0", true), t("P1", true))).toBeLessThan(0);
+		expect(compareTaskSortRank(t("P4", true), t("P0", true))).toBeGreaterThan(0);
+	});
+
+	it("treats a missing flag exactly like a live task", () => {
+		expect(compareTaskSortRank(t("P2"), t("P2", false))).toBe(0);
+	});
+
+	it("still bands live tasks strictly by priority", () => {
+		expect(compareTaskSortRank(t("P1"), t("P2"))).toBeLessThan(0);
 	});
 });

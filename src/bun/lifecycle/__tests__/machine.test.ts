@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TaskStatus } from "../../../shared/types";
 import type { LifecycleState } from "../events";
-import { transition } from "../machine";
+import { activitiesFor, transition } from "../machine";
 
 function state(
 	status: TaskStatus,
@@ -898,5 +898,124 @@ describe("draft tasks cannot be activated", () => {
 
 		expect(result.next.column.status).toBe("in-progress");
 		expect(result.effects.some((e) => e.type === "prepareTask")).toBe(true);
+	});
+});
+
+describe("hibernation", () => {
+	const active = (overrides: Partial<LifecycleState> = {}) => state("user-questions", overrides);
+	const frozen = (overrides: Partial<LifecycleState> = {}) => {
+		const base = active(overrides);
+		return {
+			...base,
+			runtime: { phase: "idle" } as const,
+			facts: { ...base.facts, hibernated: true },
+		};
+	};
+
+	it("kills the session, keeps the worktree, and records the flag", () => {
+		const result = transition(active(), { type: "hibernateRequested" });
+
+		expect(result.next.facts.hibernated).toBe(true);
+		expect(result.next.column.status).toBe("user-questions");
+		expect(result.next.runtime).toEqual({ phase: "idle" });
+		expect(result.effects.map((e) => e.type)).toEqual([
+			"clearTaskRuntime",
+			"destroyTaskPty",
+			"killDevServer",
+			"releasePorts",
+			"persistRuntime",
+			"push",
+		]);
+		// Nothing may remove the worktree or run the cleanup script.
+		expect(result.effects.map((e) => e.type)).not.toContain("removeWorktree");
+		expect(result.effects.map((e) => e.type)).not.toContain("runCleanupScript");
+	});
+
+	it("aborts the freeze if the terminal tree cannot be confirmed gone", () => {
+		const result = transition(active(), { type: "hibernateRequested" });
+		const destroy = result.effects.find((e) => e.type === "destroyTaskPty");
+
+		expect(destroy?.onError).toBe("abort");
+	});
+
+	it("refuses a To Do task, which has nothing running to free", () => {
+		const result = transition(state("todo"), { type: "hibernateRequested" });
+
+		expect(result.next.facts.hibernated).toBeUndefined();
+		expect(result.effects).toMatchObject([{ type: "reject" }]);
+	});
+
+	it("refuses a task that is still preparing", () => {
+		const preparing = active({
+			runtime: { phase: "preparing", stage: "creating-worktree", runId: "r1", origin: { status: "todo", customColumnId: null } },
+		});
+		const result = transition(preparing, { type: "hibernateRequested" });
+
+		expect(result.effects).toMatchObject([{ type: "reject" }]);
+	});
+
+	it("refuses a task that is tearing down", () => {
+		const tearing = active({ runtime: { phase: "tearing-down", targetStatus: "completed", runId: "r1" } });
+		const result = transition(tearing, { type: "hibernateRequested" });
+
+		expect(result.effects).toMatchObject([{ type: "reject" }]);
+	});
+
+	it("treats a repeat freeze as a no-op, not an error", () => {
+		const result = transition(frozen(), { type: "hibernateRequested" });
+
+		expect(result.effects).toEqual([]);
+		expect(result.next.facts.hibernated).toBe(true);
+	});
+
+	it("refuses every column change while hibernated", () => {
+		const result = transition(frozen(), {
+			type: "moveRequested",
+			target: { status: "in-progress", customColumnId: null },
+		});
+
+		expect(result.next.column.status).toBe("user-questions");
+		expect(result.effects).toMatchObject([{ type: "reject" }]);
+	});
+
+	it("refuses an automation's column change too", () => {
+		const result = transition(frozen(), {
+			type: "moveRequested",
+			target: { status: "review-by-colleague" },
+			cause: "pr-promotion",
+		});
+
+		expect(result.effects).toMatchObject([{ type: "reject" }]);
+	});
+
+	it("still lets a hibernated task be completed", () => {
+		const result = transition(frozen(), {
+			type: "moveRequested",
+			target: { status: "completed", customColumnId: null },
+		});
+
+		expect(result.next.column.status).toBe("completed");
+		expect(result.effects.map((e) => e.type)).toContain("removeWorktree");
+	});
+
+	it("clears the flag on wake and leaves the column alone", () => {
+		const result = transition(frozen(), { type: "wakeRequested" });
+
+		expect(result.next.facts.hibernated).toBe(false);
+		expect(result.next.column.status).toBe("user-questions");
+		expect(result.effects).toMatchObject([
+			{ type: "persistTaskPatch", taskPatch: { hibernated: false } },
+			{ type: "push" },
+		]);
+	});
+
+	it("treats a wake on a live task as a no-op", () => {
+		const result = transition(active(), { type: "wakeRequested" });
+
+		expect(result.effects).toEqual([]);
+	});
+
+	it("keeps merge and PR watching running while hibernated", () => {
+		expect(activitiesFor(frozen())).toContain("mergeWatch");
 	});
 });

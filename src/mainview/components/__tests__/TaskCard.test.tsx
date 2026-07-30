@@ -2050,3 +2050,56 @@ describe("TaskCard — drafts", () => {
 		expect(screen.getByTestId("task-detail-modal")).toBeTruthy();
 	});
 });
+
+describe("hibernated card", () => {
+	function hibernated(overrides?: Partial<Task>): Task {
+		return makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/wt",
+			branchName: "feat/x",
+			hibernated: true,
+			...overrides,
+		});
+	}
+
+	it("says 'hibernated' on the card, so greyness alone need not carry it", () => {
+		renderCard(hibernated());
+
+		expect(screen.getByTestId("task-card-hibernated-badge")).toHaveTextContent(/hibernated/i);
+	});
+
+	it("greys the card out", () => {
+		const { container } = renderCard(hibernated());
+		const card = container.querySelector("[data-task-id='t1']");
+
+		expect(card?.className).toContain("grayscale");
+	});
+
+	it("cannot be dragged", () => {
+		const { container } = renderCard(hibernated());
+		const card = container.querySelector("[data-task-id='t1']");
+
+		expect(card).toHaveAttribute("draggable", "false");
+	});
+
+	it("refuses to open the status menu, so the column cannot be changed", () => {
+		const { container } = renderCard(hibernated());
+		const trigger = container.querySelector("[data-testid='task-card-footer'] button");
+
+		expect(trigger).toBeDisabled();
+	});
+
+	it("keeps the quick-complete checkmark live", () => {
+		renderCard(hibernated());
+
+		expect(screen.getByTestId("task-card-quick-complete")).toBeInTheDocument();
+	});
+
+	it("leaves a live card draggable and un-greyed", () => {
+		const { container } = renderCard(hibernated({ hibernated: false }));
+		const card = container.querySelector("[data-task-id='t1']");
+
+		expect(card).toHaveAttribute("draggable", "true");
+		expect(screen.queryByTestId("task-card-hibernated-badge")).toBeNull();
+	});
+});

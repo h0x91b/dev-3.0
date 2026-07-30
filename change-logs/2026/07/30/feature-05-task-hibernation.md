@@ -1,0 +1,3 @@
+Short: Hibernate a task to free memory
+
+Tasks can now be hibernated from the open task's session bar: the agent, its tmux session and the dev server are stopped and their ports released, while the worktree, branch, uncommitted changes, notes and PR state stay untouched. A hibernated task keeps its column but renders greyed out and labelled, sinks below every live task regardless of priority, refuses column changes, and still offers its quick-complete checkmark. Waking is explicit — opening the task's terminal offers a plain shell or a resume of the agent's conversation, and the dev server stays down.

@@ -254,6 +254,25 @@ describe("ActivityOverview", () => {
 		expect(normal.compareDocumentPosition(low) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
+	it("sinks a hibernated task below every live one and labels it", async () => {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{
+				projectId: "p1",
+				tasks: [
+					{ ...mockTask, id: "parked", title: "Parked task", priority: "P0", hibernated: true },
+					{ ...mockTask, id: "live", title: "Live task", priority: "P4" },
+				],
+			},
+		]);
+
+		renderActivityOverview();
+
+		const live = await screen.findByText("Live task");
+		const parked = screen.getByText("Parked task");
+		expect(live.compareDocumentPosition(parked) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(screen.getByTestId("activity-hibernated-badge")).toBeInTheDocument();
+	});
+
 	it("shows custom-column tasks as rows labeled with the column name", async () => {
 		const projWithColumn: Project = {
 			...mockProject,

@@ -316,6 +316,43 @@ describe("TaskTerminal", () => {
 			expect(mockedApi.request.resumeTask).toHaveBeenCalledWith({ taskId: "t1" });
 		});
 
+		it("shows the wake screen instead of auto-restoring a hibernated task", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({
+				recoverable: true,
+				hibernated: true,
+				sessionState: { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "builtin-claude", configId: "cfg-1" }] },
+			});
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("terminal-wake-screen")).toBeInTheDocument();
+				expect(screen.getByText("This task is hibernated")).toBeInTheDocument();
+				expect(screen.getByText("Wake and resume agent")).toBeInTheDocument();
+				expect(screen.getByText("Wake with a plain shell")).toBeInTheDocument();
+			});
+			expect(screen.queryByText("Previous agent session found")).toBeNull();
+		});
+
+		it("offers only the plain shell when a hibernated task has no stored panes", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({
+				recoverable: true,
+				hibernated: true,
+				sessionState: { panes: [] },
+			});
+
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => {
+				expect(screen.getByText("Wake with a plain shell")).toBeInTheDocument();
+			});
+			expect(screen.queryByText("Wake and resume agent")).toBeNull();
+		});
+
 		it("calls restartTask when clicking Start Fresh", async () => {
 			const user = userEvent.setup();
 			mockedApi.request.getPtyUrl.mockResolvedValue({

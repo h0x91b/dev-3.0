@@ -5556,6 +5556,23 @@ describe("handlers.getPtyUrl", () => {
 		expect(result).toEqual({ recoverable: true, sessionState });
 	});
 
+	it("never restores a hibernated task, and reports the frozen state instead", async () => {
+		const project = makeProject();
+		const sessionState = { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "a", configId: "c" }] };
+		const task = makeTask({ status: "review-by-user", worktreePath: "/tmp/wt", hibernated: true, sessionState });
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(result).toEqual({ recoverable: true, sessionState, hibernated: true });
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
 	it("tries to restore PTY when session is missing and tmux alive", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });

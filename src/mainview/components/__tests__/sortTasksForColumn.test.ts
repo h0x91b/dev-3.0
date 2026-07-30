@@ -524,6 +524,15 @@ describe("sortTasksForColumn — completed/cancelled sort by entry time (freshes
 		expect(ids(result)).toEqual(["b", "a"]);
 	});
 
+	it("sinks a hibernated P0 below a live P4", () => {
+		const tasks = [
+			makeTask({ id: "parked", priority: "P0", hibernated: true }),
+			makeTask({ id: "live", priority: "P4" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap, "user-questions");
+		expect(ids(result)).toEqual(["live", "parked"]);
+	});
+
 	it("in-session move floats a just-finished card above older entries", () => {
 		const tasks = [
 			makeTask({ id: "recent", movedAt: "2025-12-01T00:00:00Z" }),

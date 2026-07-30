@@ -4,6 +4,16 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-30 — Hibernated is a card state, not a column or a card action
+
+A hibernated task keeps its column and renders inert everywhere it is listed (greyed +
+dashed `text-fg-muted` label, drag off, status trigger disabled, quick-complete still
+live); the Hibernate control itself sits in the inspector's Session/Agent bar (4th
+action, at budget) and never on the board card, so waking stays an explicit act inside
+the task. No `confirm()` — nothing on disk is touched, so it is reversible, not
+destructive. Rejected: a dedicated column (the board must keep telling the truth about
+where the work is). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskInfoPanel.tsx`.
+
 ## 2026-07-30 — Find-in-content follows the content, not the viewer header
 
 - **Rule:** `⌘F` over a viewer's rendered content puts the search UI in that surface's *content* toolbar where one exists (diff viewer §5.3), otherwise on a floating top-right bar over the content, focus-gated to that viewer; the header may carry **exactly one** magnifier icon that toggles that bar and nothing else. Bible §10 row `find in content`.

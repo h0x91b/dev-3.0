@@ -187,6 +187,31 @@ describe("reorderTasksInColumn — drag re-prioritization", () => {
 		expect(saved.find((t) => t.id === "g2")!.priority).toBe("P0");
 	});
 
+	it("never promotes a card to a hibernated neighbor's band", async () => {
+		// The hibernated P0 sinks to the bottom of the column, so a card dropped at
+		// the very bottom lands next to it — and must keep the lowest LIVE band.
+		seedTasks([
+			makeTask({ id: "p2", seq: 1, status: "in-progress", priority: "P2", columnOrder: 0 }),
+			makeTask({ id: "p3", seq: 2, status: "in-progress", priority: "P3", columnOrder: 1 }),
+			makeTask({ id: "parked", seq: 3, status: "in-progress", priority: "P0", hibernated: true, columnOrder: 2 }),
+		]);
+		await reorderTasksInColumn(testProject, "p2", 2);
+		const saved = readSavedTasks();
+		expect(saved.find((t) => t.id === "p2")!.priority).toBe("P3");
+		expect(saved.find((t) => t.id === "parked")!.priority).toBe("P0");
+	});
+
+	it("keeps a hibernated card at the bottom of the server's own column order", async () => {
+		seedTasks([
+			makeTask({ id: "parked", seq: 1, status: "in-progress", priority: "P0", hibernated: true, columnOrder: 0 }),
+			makeTask({ id: "live", seq: 2, status: "in-progress", priority: "P4", columnOrder: 1 }),
+		]);
+		// Drop `live` at index 0 — with the sink band it is already first, so its
+		// priority must not change to the parked card's P0.
+		await reorderTasksInColumn(testProject, "live", 0);
+		expect(readSavedTasks().find((t) => t.id === "live")!.priority).toBe("P4");
+	});
+
 	it("keeps priority when the column has no other tasks", async () => {
 		seedTasks([makeTask({ id: "only", seq: 1, status: "in-progress", priority: "P3", columnOrder: 0 })]);
 		await reorderTasksInColumn(testProject, "only", 0);
