@@ -181,6 +181,17 @@ describe("TaskArtifactViewer", () => {
 		expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "dev3-artifact-find-step", delta: 1 }), "*");
 	});
 
+	// Regression: the magnifier shipped as an EMPTY button once — the Nerd Font glyph
+	// was lost in editing, so the control rendered as a blank box.
+	it("renders an actual magnifier glyph on the header toggle and in the bar", async () => {
+		render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		await screen.findByTitle("Artifact a");
+		const toggle = screen.getByTestId("artifact-viewer-search");
+		expect(toggle).toHaveTextContent("\uf002");
+		await userEvent.click(toggle);
+		expect(screen.getByTestId("artifact-search-bar")).toHaveTextContent("\uf002");
+	});
+
 	it("opens find when the artifact relays its own ⌘F, and the header magnifier toggles it", async () => {
 		const { frame } = await openFind();
 

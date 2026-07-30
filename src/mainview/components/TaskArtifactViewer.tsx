@@ -317,7 +317,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 					aria-label={searchLabel}
 					aria-pressed={searchOpen}
 					title={searchLabel}
-				><span style={{ fontFamily: ICON }}></span></button>
+				><span style={{ fontFamily: ICON }}>{"\uf002"}</span></button>
 				<button
 					type="button"
 					data-testid="artifact-viewer-theme"
