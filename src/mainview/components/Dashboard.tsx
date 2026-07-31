@@ -90,7 +90,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 							</p>
 							<button
 								onClick={onOpenAddProject}
-								className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95"
+								className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96]"
 							>
 								{t("dashboard.addProject")}
 							</button>

@@ -32,7 +32,7 @@ function ProjectActionButtons({
 	}
 
 	return (
-		<div className={`flex items-center gap-0.5 transition-all ${className}`.trim()}>
+		<div className={`flex items-center gap-0.5 transition-opacity ${className}`.trim()}>
 			<button
 				type="button"
 				onClick={(event) => {

@@ -168,8 +168,17 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 
 	if (loading) {
 		return (
-			<div className="h-full flex items-center justify-center">
-				<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+			<div className="h-full overflow-hidden p-3 md:p-7" aria-busy="true">
+				<div className="max-w-5xl mx-auto space-y-4 animate-pulse">
+					<div className="h-[4.75rem] rounded-2xl border border-edge bg-raised" />
+					<div className="flex items-center justify-between gap-4">
+						<div className="h-4 w-24 rounded bg-raised" />
+						<div className="h-8 w-28 rounded-xl bg-raised" />
+					</div>
+					{[0, 1, 2].map((i) => (
+						<div key={i} className="h-[5.5rem] rounded-2xl border border-edge bg-raised" />
+					))}
+				</div>
 			</div>
 		);
 	}
@@ -240,14 +249,16 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					data-hint-id="dashboard-stats"
 					data-help-id="dashboard.stats-entry"
 					onClick={() => navigate({ screen: "stats" })}
-					className="group w-full flex items-center gap-4 rounded-2xl border border-edge bg-raised hover:bg-raised-hover hover:border-edge-active px-5 py-4 transition-all text-left"
+					className="group w-full flex items-center gap-4 rounded-2xl border border-edge bg-raised hover:bg-raised-hover hover:border-edge-active px-5 py-4 transition-[background-color,border-color] text-left"
 				>
 					<span className="text-accent text-3xl leading-none shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04C5}"}</span>
 					<div className="flex-1 min-w-0">
 						<div className="text-fg font-semibold">{t("stats.cardTitle")}</div>
 						<div className="text-fg-3 text-xs mt-0.5 truncate">{t("stats.cardSubtitle")}</div>
 					</div>
-					<span className="text-fg-muted group-hover:text-accent transition-colors text-lg leading-none shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0142}"}</span>
+					<svg className="w-4 h-4 text-fg-muted group-hover:text-accent transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
+					</svg>
 				</button>
 				<div className="flex items-start justify-between gap-4">
 					<div>
@@ -263,7 +274,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						<button
 							type="button"
 							onClick={onOpenAddProject}
-							className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95 flex-shrink-0"
+							className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96] flex-shrink-0"
 						>
 							{t("dashboard.addProject")}
 						</button>
@@ -356,7 +367,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 											setDraggedProjectId(null);
 											setDropTarget(null);
 										}}
-										className="text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+										className="text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
 										title={t("dashboard.reorderProject")}
 										aria-label={t("dashboard.reorderProject")}
 										disabled={!onReorderProjects || cannotReorder}
@@ -456,8 +467,8 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 									)}
 									{/* Chevron is redundant on narrow — the name + count already
 									    navigate, so it only crowds the row end where the kebab sits. */}
-									<svg className="hidden md:block w-4 h-4 text-fg-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+									<svg className="hidden md:block w-4 h-4 text-fg-muted group-hover:text-fg-3 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
 									</svg>
 								</button>
 								{/* Narrow: a single kebab folds every per-project action + reorder

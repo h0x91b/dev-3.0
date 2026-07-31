@@ -497,3 +497,28 @@ describe("ActivityOverview — narrow viewport", () => {
 		expect(colleague.compareDocumentPosition(mine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 });
+
+describe("ActivityOverview loading state", () => {
+	it("renders a skeleton placeholder while tasks are still loading", async () => {
+		vi.clearAllMocks();
+		let release: (value: { projectId: string; tasks: Task[] }[]) => void = () => {};
+		mockedApi.request.getAllProjectTasks.mockReturnValue(
+			new Promise((resolve) => {
+				release = resolve;
+			}),
+		);
+
+		const { container } = render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+
+		expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+		expect(screen.queryByText(mockProject.name)).toBeNull();
+
+		release([{ projectId: "p1", tasks: [mockTask] }]);
+		await waitFor(() => expect(screen.getByText(mockProject.name)).toBeInTheDocument());
+		expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+	});
+});
