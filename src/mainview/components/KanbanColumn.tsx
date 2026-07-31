@@ -144,6 +144,9 @@ function KanbanColumn({
 	const [editing, setEditing] = useState(false);
 	const [editValue, setEditValue] = useState("");
 	const [compactExpanded, setCompactExpanded] = useState(false);
+	// A card clipped by the scroll edge sits flush against the pinned footer (tip
+	// card / + New Task) and reads as the footer lying on top of it.
+	const [listClipped, setListClipped] = useState(false);
 	const renameInputRef = useRef<HTMLInputElement>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
 	const compactDwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -184,6 +187,12 @@ function KanbanColumn({
 	useEffect(() => {
 		if (!isCompact) setCompactExpanded(false);
 	}, [isCompact]);
+
+	function syncListClipped() {
+		const el = taskListRef.current;
+		if (!el) return;
+		setListClipped(el.scrollHeight - el.scrollTop - el.clientHeight > 1);
+	}
 
 	function handleCompactPointerEnter() {
 		if (!isCompact || isAnyDragActive) return;
@@ -360,6 +369,21 @@ function KanbanColumn({
 
 	const visibleTasks = expanded ? tasks : tasks.slice(0, COLUMN_TASK_LIMIT);
 	const hiddenCount = tasks.length - visibleTasks.length;
+
+	// Re-measure the scroll edge whenever the rendered task set changes, plus on
+	// any resize of the list itself (window height, sibling panes).
+	useEffect(syncListClipped, [visibleTasks.length, expanded, tip, isCompactNarrow]);
+	useEffect(() => {
+		const el = taskListRef.current;
+		if (!el) return;
+		const observer = new ResizeObserver(syncListClipped);
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, []);
+
+	// Pinned footers (tip card, + New Task) sit directly under the scroll area;
+	// the hairline only appears while a card is actually clipped beneath them.
+	const footerSeam = `border-t pt-2.5 transition-colors duration-150 ${listClipped ? "border-edge" : "border-transparent"}`;
 
 	// Collapsed column rendering
 	if (collapsed) {
@@ -588,6 +612,7 @@ function KanbanColumn({
 			<div
 				ref={taskListRef}
 				className="flex-1 overflow-y-auto px-3 py-3 space-y-2"
+				onScroll={syncListClipped}
 				onDoubleClick={!isCustomColumn && status === "todo" ? (e) => {
 					// Only trigger when clicking empty space, not on a task card
 					if ((e.target as HTMLElement).closest("[data-task-id]")) return;
@@ -657,14 +682,14 @@ function KanbanColumn({
 
 			{/* Tip card — pinned to bottom, above the add-task button */}
 			{tip && tipState && onTipChanged && (
-				<div className="px-3 pb-3 flex-shrink-0">
+				<div className={`px-3 pb-3 flex-shrink-0 ${footerSeam}`}>
 					<TipCard tip={tip} tipState={tipState} onChanged={onTipChanged} />
 				</div>
 			)}
 
 			{/* Add task button (only in To Do column, not custom columns) */}
 			{!isCustomColumn && status === "todo" && (
-				<div className="px-3 pb-3 flex-shrink-0">
+				<div className={`px-3 pb-3 flex-shrink-0 ${tip ? "" : footerSeam}`}>
 					<button
 						onClick={onAddTask}
 						className="w-full text-fg-3 hover:text-accent text-sm font-medium text-center py-2.5 rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"

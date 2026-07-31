@@ -802,3 +802,35 @@ describe("KanbanColumn — draft drop targets", () => {
 		expect(dispatch(columnFor("Agent is Working"), "dragover")).toBe(true);
 	});
 });
+
+// A card clipped by the scroll edge used to sit flush against the pinned footer
+// ("+ New Task" / the Did-you-know tip), so the footer read as lying on top of
+// the task. The hairline appears only while something is actually clipped.
+describe("KanbanColumn — pinned footer seam", () => {
+	function footer() {
+		return screen.getByText("+ New Task").closest("div") as HTMLElement;
+	}
+
+	function setScroll(list: HTMLElement, scrollHeight: number, clientHeight: number) {
+		Object.defineProperty(list, "scrollHeight", { configurable: true, value: scrollHeight });
+		Object.defineProperty(list, "clientHeight", { configurable: true, value: clientHeight });
+		act(() => { list.dispatchEvent(new Event("scroll", { bubbles: true })); });
+	}
+
+	it("keeps the separator invisible while nothing is clipped", () => {
+		renderBuiltinColumn({ status: "todo", label: "To Do" });
+
+		expect(footer().className).toContain("border-transparent");
+		expect(footer().className).toContain("pt-2.5");
+	});
+
+	it("shows the separator once a card is clipped under the footer", () => {
+		renderBuiltinColumn({ status: "todo", label: "To Do" });
+		const list = document.querySelector("[class*='overflow-y-auto']") as HTMLElement;
+
+		setScroll(list, 900, 400);
+
+		expect(footer().className).toContain("border-edge");
+		expect(footer().className).not.toContain("border-transparent");
+	});
+});
