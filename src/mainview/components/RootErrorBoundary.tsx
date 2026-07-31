@@ -173,7 +173,7 @@ export class RootErrorBoundary extends Component<Props, State> {
 						<button
 							type="button"
 							onClick={this.handleReload}
-							className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+							className="px-4 py-2 text-sm rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
 						>
 							Reload app
 						</button>

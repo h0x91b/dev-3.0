@@ -886,7 +886,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 									onClick={handleSaveAsDraft}
 									disabled={creating || !(isDraftEdit || hasAnyInput)}
 									data-testid="discard-save-draft"
-									className="px-3 py-1 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+									className="px-3 py-1 bg-accent-fill text-white text-sm font-medium rounded-lg hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									{t("createTask.saveAsDraft")}
 								</button>
@@ -951,7 +951,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 								<button
 									onClick={handleCreate}
 									disabled={!description.trim() || creating}
-									className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+									className="px-4 py-1.5 bg-accent-fill text-white text-sm font-semibold rounded-lg hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 								>
 									{creating ? t("createTask.creating") : t("createTask.create")}
 								</button>
@@ -1029,7 +1029,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 								<button
 									type="button"
 									onClick={() => handleBranchChoice(pendingBranchChoice)}
-									className="px-3 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors"
+									className="px-3 py-1.5 bg-accent-fill text-white text-sm font-semibold rounded-lg hover:bg-accent-fill-hover transition-colors"
 								>
 									{t("createTask.branchChoiceCurrent", { currentBranch: pendingBranchChoice })}
 								</button>

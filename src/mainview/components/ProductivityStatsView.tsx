@@ -261,7 +261,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 						<button
 							type="button"
 							onClick={fetchStats}
-							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors"
+							className="px-4 py-1.5 bg-accent-fill text-white text-sm font-semibold rounded-xl hover:bg-accent-fill-hover transition-colors"
 						>
 							{t("stats.refresh")}
 						</button>

@@ -112,7 +112,7 @@ export function GithubThreadView({
 					<span
 						aria-hidden="true"
 						className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border text-[0.6rem] leading-none ${
-							exportSelected ? "border-accent bg-accent text-white" : "border-edge bg-base text-transparent"
+							exportSelected ? "border-accent bg-accent-fill text-white" : "border-edge bg-base text-transparent"
 						}`}
 					>
 						{"✓"}

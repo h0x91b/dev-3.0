@@ -107,7 +107,7 @@ export function ViewportLab({ navigate }: ViewportLabProps) {
 				<h1 className="text-fg text-2xl font-bold flex-1">Viewport Lab</h1>
 				<button
 					onClick={refresh}
-					className="px-3 py-1 text-xs font-semibold rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+					className="px-3 py-1 text-xs font-semibold rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
 				>
 					Refresh
 				</button>

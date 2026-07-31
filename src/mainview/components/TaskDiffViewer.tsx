@@ -682,7 +682,7 @@ function InlineCommentThreadView({
 									onClick={() => onSaveEdit(comment.id, editingCommentDraft)}
 									disabled={!editingCommentDraft.trim()}
 									aria-label={t("infoPanel.diffReviewSave")}
-									className="dev3-inline-comment__button dev3-inline-comment__button--primary inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+									className="dev3-inline-comment__button dev3-inline-comment__button--primary inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent-fill px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-fill-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
 								>
 									{t("infoPanel.diffReviewSave")}
 								</button>
@@ -780,7 +780,7 @@ function InlineCommentComposer({
 				<button
 					type="submit"
 					disabled={!trimmedValue}
-					className="dev3-inline-comment__button dev3-inline-comment__button--primary inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+					className="dev3-inline-comment__button dev3-inline-comment__button--primary inline-flex h-8 items-center justify-center rounded-md border border-accent bg-accent-fill px-3 text-xs font-semibold text-white transition-colors hover:bg-accent-fill-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
 				>
 					{t("infoPanel.diffCommentSubmit")}
 				</button>
@@ -2980,7 +2980,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				onClick={onClick}
 				className={`px-2.5 ${padClass} rounded-md border text-[0.6875rem] font-semibold transition-colors ${
 					active
-						? "bg-accent text-white border-accent"
+						? "bg-accent-fill text-white border-accent"
 						: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
 				}`}
 			>
@@ -3006,7 +3006,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				<div
 					className={`inline-flex items-stretch rounded-md border text-[0.6875rem] font-semibold transition-colors ${
 						recentActive
-							? "bg-accent text-white border-accent"
+							? "bg-accent-fill text-white border-accent"
 							: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
 					}`}
 				>
@@ -3174,7 +3174,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					narrowSize ? "h-9 w-9 shrink-0" : "px-2.5 py-0.5"
 				} ${
 					isSearchOpen
-						? "border-accent bg-accent text-white"
+						? "border-accent bg-accent-fill text-white"
 						: "border-edge bg-raised text-fg-2 hover:bg-elevated-hover"
 				}`}
 			>
@@ -3557,7 +3557,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 													className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
 														copiedReviewXml
 															? "border-success/40 bg-success/15 text-success"
-															: "border-accent bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+															: "border-accent bg-accent-fill text-white hover:bg-accent-fill-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
 													}`}
 												>
 													<span

@@ -99,7 +99,7 @@ export default function FilterFunnel({ query, onChange, groups, size = "sm", ope
 								<span
 									aria-hidden
 									className={`flex-shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${
-										checked ? "bg-accent border-accent text-white" : "border-edge-active"
+										checked ? "bg-accent-fill border-accent text-white" : "border-edge-active"
 									}`}
 								>
 									{checked && (
@@ -147,7 +147,7 @@ export default function FilterFunnel({ query, onChange, groups, size = "sm", ope
 					</span>
 					{activeCount > 0 && (
 						<span
-							className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 flex items-center justify-center rounded-full bg-accent text-white text-[0.625rem] font-bold leading-none"
+							className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 flex items-center justify-center rounded-full bg-accent-fill text-white text-[0.625rem] font-bold leading-none"
 							data-testid="filter-funnel-badge"
 						>
 							{activeCount}

@@ -190,7 +190,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						className={`text-sm font-medium px-5 py-2 rounded-xl inline-flex items-center gap-2 ${pressFeedback} ${
 							notReady
 								? "bg-elevated text-fg-muted border border-edge cursor-not-allowed"
-								: "bg-accent hover:bg-accent-hover text-white"
+								: "bg-accent-fill hover:bg-accent-fill-hover text-white"
 						}`}
 					>
 						{launching && (

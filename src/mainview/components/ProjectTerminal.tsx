@@ -99,7 +99,7 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 						<button
 							onClick={handleRestart}
 							disabled={restarting}
-							className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+							className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 						>
 							{restarting ? t("terminal.connecting") : t("projectTerminal.restart")}
 						</button>

@@ -374,7 +374,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 								setDevServerHintCopied(true);
 								setTimeout(() => setDevServerHintCopied(false), 2000);
 							}}
-							className="flex-shrink-0 px-2 py-1.5 rounded text-xs bg-accent hover:bg-accent-hover text-white transition-colors"
+							className="flex-shrink-0 px-2 py-1.5 rounded text-xs bg-accent-fill hover:bg-accent-fill-hover text-white transition-colors"
 						>
 							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 								{devServerHintCopied ? "\uF00C" : "\uF0C5"}

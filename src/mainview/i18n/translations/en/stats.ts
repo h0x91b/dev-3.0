@@ -4,7 +4,7 @@ const stats = {
 	"stats.back": "Back",
 	"stats.refresh": "Refresh",
 	// Dashboard entry card
-	"stats.cardTitle": "Productivity Stats",
+	"stats.cardTitle": "Productivity stats",
 	"stats.cardSubtitle": "Tasks, lines & velocity over time",
 	// Time range switch
 	"stats.range.day": "Day",

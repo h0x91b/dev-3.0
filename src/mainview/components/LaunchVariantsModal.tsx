@@ -268,7 +268,7 @@ function LaunchVariantsModal({
 	const primaryClass = `text-sm font-medium px-5 py-2 rounded-xl flex items-center gap-2 border ${pressClass} ${
 		notReady
 			? "bg-elevated text-fg-muted border-edge cursor-not-allowed"
-			: "bg-accent hover:bg-accent-hover text-white border-transparent"
+			: "bg-accent-fill hover:bg-accent-fill-hover text-white border-transparent"
 	}`;
 	const spinner = launching && (
 		<span

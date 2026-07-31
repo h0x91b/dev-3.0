@@ -274,7 +274,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 								<button
 									onClick={handleResumeSession}
 									disabled={restarting}
-									className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+									className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 								>
 									{restarting ? t("terminal.connecting") : hibernated ? t("terminal.wakeResume") : t("terminal.resumeSession")}
 								</button>
@@ -319,14 +319,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 							<button
 								onClick={handleRestart}
 								disabled={restarting}
-								className="flex-1 px-4 py-2 bg-accent text-white rounded text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+								className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 							>
 								{restarting ? t("terminal.connecting") : t("terminal.resumeAgentSession")}
 							</button>
 						)}
 						<button
 							onClick={() => handleMove("completed")}
-							className={`flex-1 px-4 py-2 ${isSessionEnded ? "bg-elevated text-fg-2 hover:bg-elevated-hover" : "bg-accent text-white hover:bg-accent-hover"} rounded text-sm font-medium transition-colors`}
+							className={`flex-1 px-4 py-2 ${isSessionEnded ? "bg-elevated text-fg-2 hover:bg-elevated-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"} rounded text-sm font-medium transition-colors`}
 						>
 							{t("terminal.complete")}
 						</button>

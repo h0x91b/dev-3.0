@@ -220,7 +220,7 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 								aria-selected={tab === id}
 								className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
 									tab === id
-										? "bg-accent text-white"
+										? "bg-accent-fill text-white"
 										: "text-fg-3 hover:text-fg hover:bg-elevated"
 								}`}
 								onClick={() => onTabChange(id)}

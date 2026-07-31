@@ -21,7 +21,7 @@ export function TimeRangeSwitch({ value, onChange, labels }: TimeRangeSwitchProp
 						aria-selected={active}
 						onClick={() => onChange(r)}
 						className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
-							active ? "bg-accent text-white" : "text-fg-3 hover:text-fg hover:bg-elevated"
+							active ? "bg-accent-fill text-white" : "text-fg-3 hover:text-fg hover:bg-elevated"
 						}`}
 					>
 						{labels[r]}

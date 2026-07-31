@@ -460,7 +460,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 									</button>
 									<button
 										onClick={handleRenameSave}
-										className="text-xs px-2.5 py-1 rounded-lg bg-accent text-white hover:bg-accent-hover font-semibold transition-colors disabled:opacity-50"
+										className="text-xs px-2.5 py-1 rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover font-semibold transition-colors disabled:opacity-50"
 										disabled={renameSaving || !renameValue.trim()}
 									>
 										{t("task.editSave")}
@@ -558,7 +558,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 										</button>
 										<button
 											onClick={handleSave}
-											className="text-xs px-2.5 py-1 rounded-lg bg-accent text-white hover:bg-accent-hover font-semibold transition-colors disabled:opacity-50"
+											className="text-xs px-2.5 py-1 rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover font-semibold transition-colors disabled:opacity-50"
 											disabled={saving || !editValue.trim()}
 										>
 											{t("task.editSave")}

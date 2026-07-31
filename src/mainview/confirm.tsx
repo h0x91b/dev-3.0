@@ -381,7 +381,7 @@ function OutcomeAction({
 		>
 			<span
 				className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-semibold transition-colors ${
-					primary ? "bg-accent text-white" : "bg-raised text-fg-2 group-hover:text-fg"
+					primary ? "bg-accent-fill text-white" : "bg-raised text-fg-2 group-hover:text-fg"
 				}`}
 				aria-hidden
 			>

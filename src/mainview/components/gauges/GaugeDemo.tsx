@@ -168,7 +168,7 @@ export function GaugeDemo({ navigate }: GaugeDemoProps) {
 							onClick={() => setGaugeTheme(opt)}
 							className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
 								gaugeTheme === opt
-									? "bg-accent text-white"
+									? "bg-accent-fill text-white"
 									: "text-fg-3 hover:text-fg"
 							}`}
 						>

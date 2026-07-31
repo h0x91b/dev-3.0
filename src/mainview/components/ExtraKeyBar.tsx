@@ -79,8 +79,8 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 	const btnBase = "flex-shrink-0 flex items-center justify-center rounded-[1vw] font-semibold select-none active:opacity-70 transition-opacity";
 	const btnStyle = "h-[11vw] min-w-[14vw] px-[2vw] text-[4vw]";
 	const btnNormal = `${btnBase} ${btnStyle} bg-elevated text-fg-2`;
-	const btnCtrl = `${btnBase} ${btnStyle} ${ctrlActive ? "bg-accent text-white" : "bg-elevated text-fg-2"}`;
-	const btnRaw = `${btnBase} h-[11vw] min-w-[12vw] px-[2vw] text-[4.5vw] ${rawMode ? "bg-accent text-white" : "bg-elevated text-fg-2"}`;
+	const btnCtrl = `${btnBase} ${btnStyle} ${ctrlActive ? "bg-accent-fill text-white" : "bg-elevated text-fg-2"}`;
+	const btnRaw = `${btnBase} h-[11vw] min-w-[12vw] px-[2vw] text-[4.5vw] ${rawMode ? "bg-accent-fill text-white" : "bg-elevated text-fg-2"}`;
 	const btnArrow = `${btnBase} h-[11vw] w-[11vw] text-[3.5vw] bg-elevated text-fg-2`;
 
 	return (

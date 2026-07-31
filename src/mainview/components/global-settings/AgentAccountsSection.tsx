@@ -291,7 +291,7 @@ function LoginFlowCard({
 					type="button"
 					onClick={onVerify}
 					disabled={flow.verifying}
-					className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors"
+					className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors"
 				>
 					{flow.verifying ? t("settings.accountsVerifying") : t("settings.accountsVerify")}
 				</button>
@@ -545,7 +545,7 @@ function ApiProfileFormCard({
 					type="button"
 					onClick={onSave}
 					disabled={!canSave}
-					className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors"
+					className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors"
 				>
 					{editing ? t("settings.accountsApiSave") : t("settings.accountsApiCreate")}
 				</button>

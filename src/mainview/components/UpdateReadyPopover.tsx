@@ -93,7 +93,7 @@ export default function UpdateReadyPopover({
 				<div className="flex gap-2">
 					<button
 						disabled
-						className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-accent text-white transition-colors disabled:opacity-50"
+						className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-accent-fill text-white transition-colors disabled:opacity-50"
 					>
 						{t("update.restartCountdown", { seconds: String(PREVIEW_COUNTDOWN_SECONDS) })}
 					</button>
@@ -108,7 +108,7 @@ export default function UpdateReadyPopover({
 				<button
 					onClick={onRestart}
 					disabled={restarting}
-					className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
+					className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
 				>
 					{restarting ? t("update.restarting") : t("update.restartBtn")}
 				</button>

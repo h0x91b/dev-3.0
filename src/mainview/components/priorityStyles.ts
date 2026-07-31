@@ -54,8 +54,8 @@ export const PRIORITY_STYLES: Record<TaskPriority, PriorityStyle> = {
 		chipActive: "text-success bg-success/15 border border-success/30 ring-1 ring-success",
 	},
 	P4: {
-		badge: "text-fg-muted bg-fg/10 border border-transparent",
-		chipIdle: "text-fg-muted border border-edge opacity-60 hover:opacity-100",
-		chipActive: "text-fg-muted bg-fg/10 border border-edge ring-1 ring-edge-active",
+		badge: "text-fg-3 bg-fg/10 border border-transparent",
+		chipIdle: "text-fg-3 border border-edge opacity-60 hover:opacity-100",
+		chipActive: "text-fg-3 bg-fg/10 border border-edge ring-1 ring-edge-active",
 	},
 };

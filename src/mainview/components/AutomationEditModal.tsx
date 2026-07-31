@@ -312,7 +312,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 											aria-pressed={byDay.includes(dow)}
 											onClick={() => toggleWeekday(dow)}
 											className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-												byDay.includes(dow) ? "bg-accent text-white" : "bg-raised text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
+												byDay.includes(dow) ? "bg-accent-fill text-white" : "bg-raised text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
 											}`}
 										>
 											{label}
@@ -435,7 +435,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 					<button
 						onClick={handleSave}
 						disabled={!canSave}
-						className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+						className="bg-accent-fill hover:bg-accent-fill-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
 					>
 						{saving ? t("automations.saving") : isCreate ? t("automations.create") : t("automations.save")}
 					</button>

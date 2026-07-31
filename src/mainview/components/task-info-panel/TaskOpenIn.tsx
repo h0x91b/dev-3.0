@@ -137,7 +137,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 								<div className="flex justify-end">
 									<button
 										onClick={() => setYaziInstallPopup(false)}
-										className="px-4 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors"
+										className="px-4 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover transition-colors"
 									>
 										OK
 									</button>

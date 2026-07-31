@@ -246,7 +246,7 @@ function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }
 			</button>
 			<button
 				type="button"
-				className={`${iconBtn} bg-accent text-white disabled:opacity-40`}
+				className={`${iconBtn} bg-accent-fill text-white disabled:opacity-40`}
 				onMouseDown={keepFocus}
 				onClick={() => deliver(true)}
 				disabled={!text}

@@ -524,7 +524,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 										<button
 											type="submit"
 											disabled={creatingFolder || !newFolderInput.trim()}
-											className="px-2.5 py-1 text-xs font-semibold rounded-md bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+											className="px-2.5 py-1 text-xs font-semibold rounded-md bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 										>
 											{creatingFolder ? t("folderPicker.creating") : t("folderPicker.create")}
 										</button>
@@ -597,7 +597,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 						type="button"
 						onClick={handleSelect}
 						disabled={selectedPath.length === 0}
-						className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+						className="px-4 py-1.5 text-sm font-semibold rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
 					>
 						{t("folderPicker.select")}
 					</button>

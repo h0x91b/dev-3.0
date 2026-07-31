@@ -148,7 +148,7 @@ function FakeTerminalPane({
 				<button
 					type="submit"
 					aria-label={t("nativePaneLab.send", { paneId: session.paneId })}
-					className="size-7 rounded bg-accent text-white hover:bg-accent-hover text-sm"
+					className="size-7 rounded bg-accent-fill text-white hover:bg-accent-fill-hover text-sm"
 				>
 					{"↵"}
 				</button>
@@ -395,7 +395,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 								type="button"
 								aria-label={t("nativePaneLab.showPane", { index: index + 1 })}
 								onClick={() => setTree((current) => activatePane(current, paneId))}
-								className={`size-7 rounded text-xs font-semibold ${paneId === tree.activePaneId ? "bg-accent text-white" : "bg-raised text-fg-3 hover:bg-raised-hover"}`}
+								className={`size-7 rounded text-xs font-semibold ${paneId === tree.activePaneId ? "bg-accent-fill text-white" : "bg-raised text-fg-3 hover:bg-raised-hover"}`}
 							>
 								{index + 1}
 							</button>

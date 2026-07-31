@@ -163,7 +163,7 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 					{/* Open in Preview */}
 					<button
 						onClick={handleOpenExternal}
-						className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors"
+						className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover transition-colors"
 					>
 						{t("images.openInPreview")}
 					</button>

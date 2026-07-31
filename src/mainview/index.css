@@ -67,6 +67,11 @@ html {
 	--accent: 69 150 254;
 	--accent-hover: 28 119 241;    /* accent fills: deeper, keeps white ink readable */
 	--accent-emphasis: 137 190 255; /* accent text/icons on hover: lifts on dark */
+	/* Solid fills under white ink. Deeper than --accent, which has to stay light
+	   enough to also serve as accent text on a dark card: white is 5.09:1 here
+	   and only 2.98:1 on --accent. */
+	--accent-fill: 21 105 224;
+	--accent-fill-hover: 12 84 190;
 	--danger: 255 137 135;
 	--danger-strong: 255 137 135; /* danger ink on a danger-tinted fill */
 	--success: 63 223 126;
@@ -163,6 +168,9 @@ html {
 	--accent: 12 117 230;
 	--accent-hover: 8 93 199;
 	--accent-emphasis: 5 84 181;
+	/* Solid fills under white ink — white is 5.32:1 here, 4.47:1 on --accent. */
+	--accent-fill: 10 105 208;
+	--accent-fill-hover: 7 82 176;
 	--danger: 214 17 51;
 	--danger-strong: 159 18 57; /* --danger on a danger/10 fill is only 4.28:1 */
 	--success: 14 138 71;

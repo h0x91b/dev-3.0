@@ -165,7 +165,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 													type="button"
 													onClick={() => handleSetCustomPath(req.id)}
 													disabled={!customPaths[req.id]?.trim() || savingId === req.id}
-													className="px-2.5 py-1 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
+													className="px-2.5 py-1 rounded bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors shrink-0"
 												>
 													{t("requirements.setPath")}
 												</button>
@@ -183,7 +183,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 					type="button"
 					onClick={onRefresh}
 					disabled={checking}
-					className="w-full py-2 px-4 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors"
+					className="w-full py-2 px-4 rounded-lg bg-accent-fill text-white text-sm font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors"
 				>
 					{checking ? (
 						<span className="flex items-center justify-center gap-2">

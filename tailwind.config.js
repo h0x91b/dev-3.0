@@ -35,6 +35,8 @@ export default {
 					DEFAULT: "rgb(var(--accent) / <alpha-value>)",
 					hover: "rgb(var(--accent-hover) / <alpha-value>)",
 					emphasis: "rgb(var(--accent-emphasis) / <alpha-value>)",
+					fill: "rgb(var(--accent-fill) / <alpha-value>)",
+					"fill-hover": "rgb(var(--accent-fill-hover) / <alpha-value>)",
 				},
 				danger: "rgb(var(--danger) / <alpha-value>)",
 				"danger-strong": "rgb(var(--danger-strong) / <alpha-value>)",

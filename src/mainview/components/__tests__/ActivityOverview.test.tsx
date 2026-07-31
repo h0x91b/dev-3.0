@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import ActivityOverview from "../ActivityOverview";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
+import { getTaskTitle } from "../../../shared/types";
 import type { Route } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -81,8 +82,8 @@ describe("ActivityOverview", () => {
 		await screen.findByText("My Project");
 
 		expect(screen.getByText("/home/user/my-project")).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "Add Project" })).toBeInTheDocument();
-		expect(screen.getByTitle("Project Settings")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Add project" })).toBeInTheDocument();
+		expect(screen.getByTitle("Project settings")).toBeInTheDocument();
 		expect(screen.getByTitle("Open in Finder")).toBeInTheDocument();
 		expect(screen.getByTitle("Open a terminal in the project root")).toBeInTheDocument();
 		expect(screen.getByTitle("Remove")).toBeInTheDocument();
@@ -91,8 +92,8 @@ describe("ActivityOverview", () => {
 	it("renders project quick actions before the activity count", async () => {
 		renderActivityOverview(vi.fn(), vi.fn(), vi.fn());
 
-		const settingsButton = await screen.findByTitle("Project Settings");
-		const activeCount = screen.getByText("1 active");
+		const settingsButton = await screen.findByTitle("Project settings");
+		const activeCount = screen.getByText("1 active task");
 
 		expect(
 			settingsButton.compareDocumentPosition(activeCount) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -125,7 +126,7 @@ describe("ActivityOverview", () => {
 		renderActivityOverview(navigate, onRemoveProject, vi.fn());
 		await screen.findByText("My Project");
 
-		await user.click(screen.getByTitle("Project Settings"));
+		await user.click(screen.getByTitle("Project settings"));
 		await user.click(screen.getByTitle("Open a terminal in the project root"));
 		await user.click(screen.getByTitle("Remove"));
 
@@ -152,7 +153,7 @@ describe("ActivityOverview", () => {
 		expect(await screen.findByText("My Project")).toBeInTheDocument();
 		expect(screen.getByText("/home/user/my-project")).toBeInTheDocument();
 		expect(screen.getByText("No active tasks across any project")).toBeInTheDocument();
-		expect(screen.getByText("no active tasks")).toBeInTheDocument();
+		expect(screen.getByText("No active tasks")).toBeInTheDocument();
 	});
 
 	it("shows the special bracketed name + SYSTEM badge for the built-in board and hides the synthetic path", async () => {
@@ -174,7 +175,7 @@ describe("ActivityOverview", () => {
 
 		// Special identity: bracketed name, SYSTEM badge, and the ⌘0 hint.
 		expect(await screen.findByText("[ Operations ]")).toBeInTheDocument();
-		expect(screen.getByText("SYSTEM")).toBeInTheDocument();
+		expect(screen.getByText("System")).toBeInTheDocument();
 		expect(screen.getByText("⌘0")).toBeInTheDocument();
 		expect(screen.getByText("Code-driven tasks · no git")).toBeInTheDocument();
 		// The synthetic on-disk path must never be shown to the user.
@@ -327,7 +328,7 @@ describe("ActivityOverview", () => {
 		renderActivityOverview(vi.fn(), vi.fn(), onOpenAddProject);
 
 		await screen.findByText("My Project");
-		await user.click(screen.getByRole("button", { name: "Add Project" }));
+		await user.click(screen.getByRole("button", { name: "Add project" }));
 
 		expect(onOpenAddProject).toHaveBeenCalled();
 	});
@@ -393,9 +394,9 @@ describe("ActivityOverview — narrow viewport", () => {
 
 		const sheet = screen.getByTestId("activity-project-action-sheet");
 		expect(within(sheet).getByText("Open board")).toBeInTheDocument();
-		expect(within(sheet).getByText("Project Settings")).toBeInTheDocument();
+		expect(within(sheet).getByText("Project settings")).toBeInTheDocument();
 		expect(within(sheet).getByText("Open in Finder")).toBeInTheDocument();
-		expect(within(sheet).getByText("Open a terminal in the project root")).toBeInTheDocument();
+		expect(within(sheet).getByText("Open terminal")).toBeInTheDocument();
 		// Reorder — touch-unreachable on the desktop layout (drag + hidden step
 		// buttons) — is now reachable here.
 		expect(within(sheet).getByText("Move project up")).toBeInTheDocument();
@@ -420,7 +421,7 @@ describe("ActivityOverview — narrow viewport", () => {
 
 		await user.click(screen.getByTitle("Project actions"));
 		const sheet = screen.getByTestId("activity-project-action-sheet");
-		await user.click(within(sheet).getByText("Project Settings"));
+		await user.click(within(sheet).getByText("Project settings"));
 
 		expect(navigate).toHaveBeenCalledWith({ screen: "project-settings", projectId: "p1" });
 		// The sheet closes after a navigation action.
@@ -520,5 +521,73 @@ describe("ActivityOverview loading state", () => {
 		release([{ projectId: "p1", tasks: [mockTask] }]);
 		await waitFor(() => expect(screen.getByText(mockProject.name)).toBeInTheDocument());
 		expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+	});
+});
+
+describe("ActivityOverview accessibility and copy regressions", () => {
+	it("pluralises the background-work summary instead of gluing a count onto a status label", async () => {
+		vi.clearAllMocks();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{
+				projectId: "p1",
+				tasks: [
+					{ ...mockTask, id: "t1", status: "in-progress" as const },
+					{ ...mockTask, id: "t2", status: "in-progress" as const },
+					{ ...mockTask, id: "t3", status: "review-by-ai" as const },
+				],
+			},
+		]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+
+		expect(await screen.findByText("2 agents working")).toBeInTheDocument();
+		expect(screen.getByText("1 in AI review")).toBeInTheDocument();
+		// The old implementation lowercased a status label and prefixed a count.
+		expect(screen.queryByText(/agent is working/i)).toBeNull();
+		expect(screen.queryByText(/\bai review\b/)).toBeNull();
+	});
+
+	it("keeps the drag affordance out of the tab order and off the accessibility tree", async () => {
+		vi.clearAllMocks();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "p1", tasks: [mockTask] }]);
+
+		const { container } = render(
+			<I18nProvider>
+				<ActivityOverview
+					projects={[mockProject]}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+					onReorderProjects={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findByText(mockProject.name);
+		// It is a drag handle, not an action: a focusable button here would be a
+		// dead tab stop, since Enter/Space do nothing and the step buttons own
+		// the keyboard path.
+		expect(screen.queryByRole("button", { name: /drag to reorder/i })).toBeNull();
+		const handle = container.querySelector('[draggable="true"][role="presentation"]');
+		expect(handle).not.toBeNull();
+		expect(handle?.getAttribute("tabindex")).toBeNull();
+	});
+
+	it("gives every truncating identifier a reachable full value", async () => {
+		vi.clearAllMocks();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "p1", tasks: [mockTask] }]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+
+		expect(await screen.findByTitle(mockProject.name)).toBeInTheDocument();
+		expect(screen.getByTitle(mockProject.path)).toBeInTheDocument();
+		expect(screen.getByTitle(getTaskTitle(mockTask))).toBeInTheDocument();
 	});
 });

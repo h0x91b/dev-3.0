@@ -22,8 +22,9 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 
 	async function handleRemoveProject(projectId: string) {
 		const confirmed = await confirm({
-			title: t("dashboard.remove"),
+			title: t("dashboard.confirmRemoveTitle"),
 			message: t("dashboard.confirmRemove"),
+			confirmLabel: t("dashboard.confirmRemoveAction"),
 			danger: true,
 		});
 		if (!confirmed) return;
@@ -53,7 +54,8 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 	}
 
 	return (
-		<div className="h-full w-full flex flex-col">
+		<main className="h-full w-full flex flex-col">
+			<h1 className="sr-only">{t("dashboard.screenTitle")}</h1>
 			<div className="flex-1 overflow-hidden">
 				{projects.length > 0 ? (
 					<ActivityOverview
@@ -65,11 +67,13 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 						onReorderProjects={handleReorderProjects}
 					/>
 				) : (
-					<div className="h-full overflow-y-auto p-7">
+					<div className="h-full overflow-y-auto p-3 md:p-7">
 						<div className="flex flex-col items-center justify-center h-full">
 							<div className="w-20 h-20 rounded-2xl bg-raised flex items-center justify-center mb-5">
 								<svg
-									className="w-10 h-10 text-fg-muted"
+									aria-hidden="true"
+									focusable="false"
+									className="w-10 h-10 text-fg-3"
 									fill="none"
 									stroke="currentColor"
 									viewBox="0 0 24 24"
@@ -82,15 +86,15 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 									/>
 								</svg>
 							</div>
-							<p className="text-fg-2 text-lg font-medium mb-1">
+							<h2 className="text-fg-2 text-lg font-medium mb-1 text-center text-pretty max-w-xs">
 								{t("dashboard.noProjects")}
-							</p>
-							<p className="text-fg-3 text-sm mb-5">
+							</h2>
+							<p className="text-fg-3 text-sm mb-5 text-center text-pretty max-w-xs">
 								{t("dashboard.noProjectsHint")}
 							</p>
 							<button
 								onClick={onOpenAddProject}
-								className="px-5 py-2 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96]"
+								className="px-5 py-2 bg-accent-fill text-white text-sm font-semibold rounded-xl hover:bg-accent-fill-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96]"
 							>
 								{t("dashboard.addProject")}
 							</button>
@@ -98,7 +102,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 					</div>
 				)}
 			</div>
-		</div>
+		</main>
 	);
 }
 

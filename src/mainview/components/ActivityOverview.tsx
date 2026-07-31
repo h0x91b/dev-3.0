@@ -6,6 +6,7 @@ import type { Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
+import { statusKey } from "../i18n/status";
 import { useStatusColors } from "../hooks/useStatusColors";
 import ProjectActionButtons from "./ProjectActionButtons";
 import BottomSheet from "./BottomSheet";
@@ -83,6 +84,7 @@ function ActionSheetButton({
 			className={`flex w-full items-center gap-3 rounded-lg px-2 py-3 min-h-[44px] text-left text-sm transition-colors disabled:opacity-40 ${danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-elevated hover:text-fg"}`}
 		>
 			<span
+				aria-hidden="true"
 				className="w-5 flex-shrink-0 text-center text-[1.125rem] leading-none"
 				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 			>
@@ -111,6 +113,19 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
+	}
+
+	/** One background-work summary segment. A count cannot be glued onto a status
+	 * label — that produced "3 agent is working" — so each background status owns a
+	 * pluralised sentence. A project that renames the status falls back to
+	 * "{count} × {label}", which keeps the custom name verbatim. */
+	function summaryLabel(status: TaskStatus, count: number, project: Project): string {
+		const label = getStatusLabel(status, t, project);
+		const renamed = label !== t(statusKey(status));
+		if (renamed) return t("activity.summaryCustom", { count: String(count), label });
+		if (status === "in-progress") return t.plural("activity.summaryInProgress", count);
+		if (status === "review-by-ai") return t.plural("activity.summaryAiReview", count);
+		return t("activity.summaryCustom", { count: String(count), label });
 	}
 
 	function toggleProjectExpanded(projectId: string) {
@@ -173,7 +188,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					<div className="h-[4.75rem] rounded-2xl border border-edge bg-raised" />
 					<div className="flex items-center justify-between gap-4">
 						<div className="h-4 w-24 rounded bg-raised" />
-						<div className="h-8 w-28 rounded-xl bg-raised" />
+						<div className="h-11 md:h-8 w-28 rounded-xl bg-raised" />
 					</div>
 					{[0, 1, 2].map((i) => (
 						<div key={i} className="h-[5.5rem] rounded-2xl border border-edge bg-raised" />
@@ -249,23 +264,23 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					data-hint-id="dashboard-stats"
 					data-help-id="dashboard.stats-entry"
 					onClick={() => navigate({ screen: "stats" })}
-					className="group w-full flex items-center gap-4 rounded-2xl border border-edge bg-raised hover:bg-raised-hover hover:border-edge-active px-5 py-4 transition-[background-color,border-color] text-left"
+					className="group w-full flex items-center gap-4 rounded-2xl border border-edge bg-raised hover:bg-raised-hover hover:border-edge-active px-3 md:px-5 py-4 transition-[background-color,border-color] text-left"
 				>
-					<span className="text-accent text-3xl leading-none shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04C5}"}</span>
+					<span aria-hidden="true" className="text-accent text-3xl leading-none shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04C5}"}</span>
 					<div className="flex-1 min-w-0">
 						<div className="text-fg font-semibold">{t("stats.cardTitle")}</div>
 						<div className="text-fg-3 text-xs mt-0.5 truncate">{t("stats.cardSubtitle")}</div>
 					</div>
-					<svg className="w-4 h-4 text-fg-muted group-hover:text-accent transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<svg aria-hidden="true" focusable="false" className="w-4 h-4 text-fg-muted group-hover:text-accent transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
 					</svg>
 				</button>
 				<div className="flex items-start justify-between gap-4">
 					<div>
-						<div className="flex items-center gap-1.5 text-fg-2 text-sm font-medium">
+						<h2 className="flex items-center gap-1.5 text-fg-2 text-sm font-medium">
 							{t.plural("dashboard.projectCount", visibleProjects.length)}
 							<HelpSpot topicId="dashboard.projects" />
-						</div>
+						</h2>
 						{totalActive === 0 && (
 							<div className="text-fg-3 text-xs mt-1">{t("activity.noActiveTasks")}</div>
 						)}
@@ -274,7 +289,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						<button
 							type="button"
 							onClick={onOpenAddProject}
-							className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96] flex-shrink-0"
+							className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent-fill text-white text-sm font-semibold rounded-xl hover:bg-accent-fill-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96] flex-shrink-0"
 						>
 							{t("dashboard.addProject")}
 						</button>
@@ -290,6 +305,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					// board would silently snap back after the API call. The project right
 					// below the pinned builtin also cannot move above the pin.
 					const cannotReorder = project.kind === "virtual";
+						const dragEnabled = !!onReorderProjects && !cannotReorder;
 					const cannotMoveUp = index === 0 || (hasPinnedBuiltin && index === 1) || cannotReorder;
 					const showDropBefore = dropTarget?.projectId === project.id && dropTarget.side === "before";
 					const showDropAfter = dropTarget?.projectId === project.id && dropTarget.side === "after";
@@ -350,15 +366,19 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 							{showDropBefore && <div className="absolute top-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 							{showDropAfter && <div className="absolute bottom-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 							{/* Project header */}
-							<div className={`group flex items-center gap-2 pl-3 md:pl-0 pr-2 md:pr-4 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
+							<div className={`group flex items-center gap-2 px-3 md:px-5 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
 								{/* Reorder cluster — desktop only. On touch, drag and the
 								    step buttons are unusable; reorder lives in the action sheet. */}
-								<div className="hidden md:flex pl-3 items-center gap-0.5">
-									<button
-										type="button"
-										draggable={!!onReorderProjects && !cannotReorder}
+								<div className="hidden md:flex -ml-1.5 items-center gap-0.5">
+									{/* Pointer-only drag affordance. Deliberately NOT a button: it has
+									    no click or key handler, and the step buttons beside it are the
+									    keyboard path, so a focusable control here would be a dead tab
+									    stop telling keyboard users to perform a gesture. */}
+									<span
+										role="presentation"
+										draggable={dragEnabled}
 										onDragStart={(event) => {
-											if (!onReorderProjects || cannotReorder) return;
+											if (!dragEnabled) return;
 											setDraggedProjectId(project.id);
 											event.dataTransfer.setData("text/plain", `project:${project.id}`);
 											event.dataTransfer.effectAllowed = "move";
@@ -367,27 +387,27 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 											setDraggedProjectId(null);
 											setDropTarget(null);
 										}}
-										className="text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
-										title={t("dashboard.reorderProject")}
-										aria-label={t("dashboard.reorderProject")}
-										disabled={!onReorderProjects || cannotReorder}
+										className={`p-1.5 rounded-lg text-fg-3 transition-colors ${dragEnabled ? "cursor-grab active:cursor-grabbing hover:text-fg hover:bg-elevated" : "cursor-default opacity-60"}`}
+										title={dragEnabled ? t("dashboard.reorderProject") : undefined}
 									>
 										<span
+											aria-hidden="true"
 											className="text-[1rem] leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
 											{"\u{F01DB}"}
 										</span>
-									</button>
+									</span>
 									<button
 										type="button"
 										onClick={() => moveProjectByStep(project.id, -1)}
-										className="hidden md:flex text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+										className="hidden md:flex text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-60 disabled:hover:text-fg-3 disabled:hover:bg-transparent"
 										title={t("dashboard.moveProjectUp")}
 										aria-label={t("dashboard.moveProjectUp")}
 										disabled={!onReorderProjects || cannotMoveUp}
 									>
 										<span
+											aria-hidden="true"
 											className="text-[0.875rem] leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
@@ -397,12 +417,13 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 									<button
 										type="button"
 										onClick={() => moveProjectByStep(project.id, 1)}
-										className="hidden md:flex text-fg-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+										className="hidden md:flex text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated disabled:opacity-60 disabled:hover:text-fg-3 disabled:hover:bg-transparent"
 										title={t("dashboard.moveProjectDown")}
 										aria-label={t("dashboard.moveProjectDown")}
 										disabled={!onReorderProjects || index === visibleProjects.length - 1 || cannotReorder}
 									>
 										<span
+											aria-hidden="true"
 											className="text-[0.875rem] leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
@@ -417,24 +438,24 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 									className="min-w-0 flex-1 flex items-center gap-3 text-left"
 								>
 									<div className={`${hasActiveTasks ? "w-8 h-8" : "w-6 h-6"} rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0`}>
-										<svg className={`${hasActiveTasks ? "w-4 h-4" : "w-3 h-3"} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<svg aria-hidden="true" focusable="false" className={`${hasActiveTasks ? "w-4 h-4" : "w-3 h-3"} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
 											<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 										</svg>
 									</div>
 									<div className="min-w-0 flex-1">
 										<div className={`${hasActiveTasks ? "text-fg font-semibold" : "text-fg-3"} text-sm truncate flex items-center gap-2`}>
 											{isBuiltinOps && (
-												<span className="text-accent flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+												<span aria-hidden="true" className="text-accent flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 											)}
-											<span className="truncate">{isBuiltinOps ? t("ops.boardName") : project.name}</span>
+											<span className="truncate select-text" title={isBuiltinOps ? undefined : project.name}>{isBuiltinOps ? t("ops.boardName") : project.name}</span>
 											{project.kind === "virtual" && (
-												<span className="px-1.5 py-0.5 rounded bg-raised text-fg-3 text-[0.625rem] font-medium flex items-center gap-1 flex-shrink-0">
-													<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+												<span className="px-1.5 py-0.5 rounded bg-raised text-fg-3 text-[0.625rem] font-medium uppercase tracking-[0.06em] flex items-center gap-1 flex-shrink-0">
+													<span aria-hidden="true" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 													{isBuiltinOps ? t("ops.badgeSystem") : t("ops.badge")}
 												</span>
 											)}
 											{isBuiltinOps && (
-												<span className="text-fg-muted text-[0.5625rem] font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
+												<span className="hidden md:inline-flex text-fg-3 text-[0.5625rem] font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
 											)}
 										</div>
 										{/* Subtitle (path / virtual hint) is dead weight on a phone —
@@ -442,7 +463,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										{project.kind === "virtual" ? (
 											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
 										) : (
-											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate font-mono streamer-private">{project.path}</div>
+											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate font-mono select-text streamer-private" title={project.path}>{project.path}</div>
 										)}
 									</div>
 								</button>
@@ -455,22 +476,18 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										className="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
 									/>
 								</div>
-								<button
-									type="button"
-									onClick={() => openProject(project.id)}
-									className="flex items-center gap-3 pr-1 text-left"
-								>
+								<span className="flex items-center gap-3">
 									{hasActiveTasks ? (
-										<span className="text-fg-3 text-xs">{t.plural("activity.taskCount", tasks.length)}</span>
+										<span className="text-fg-3 text-xs tabular-nums whitespace-nowrap">{t.plural(narrow ? "activity.taskCountShort" : "activity.taskCount", tasks.length)}</span>
 									) : (
-										<span className="text-fg-muted text-xs">{t("activity.noActiveInProject")}</span>
+										<span className="hidden md:inline text-fg-3 text-xs whitespace-nowrap">{t("activity.noActiveInProject")}</span>
 									)}
 									{/* Chevron is redundant on narrow — the name + count already
 									    navigate, so it only crowds the row end where the kebab sits. */}
-									<svg className="hidden md:block w-4 h-4 text-fg-muted group-hover:text-fg-3 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<svg aria-hidden="true" focusable="false" className="hidden md:block w-4 h-4 text-fg-muted group-hover:text-fg-3 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
 									</svg>
-								</button>
+								</span>
 								{/* Narrow: a single kebab folds every per-project action + reorder
 								    into a bottom sheet. Rendered last so it sits at the true row end. */}
 								{narrow && (
@@ -485,7 +502,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										aria-label={t("activity.projectActions")}
 										aria-haspopup="dialog"
 									>
-										<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
+										<span aria-hidden="true" className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
 									</button>
 								)}
 							</div>
@@ -499,13 +516,16 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										const col = columnOf(task);
 										const rowColor = col ? col.color : statusColors[task.status];
 										const rowLabel = col ? col.name : getStatusLabel(task.status, t, project);
+										// A user-picked column colour has no per-theme variant, so it is
+										// shown as a swatch instead of as text colour (see comment above).
+										const labelAsSwatch = col !== null;
 										const needsMe = !col && NEEDS_ME_STATUSES.includes(task.status);
 										return (
 										<button
 											key={task.id}
 											data-hint-id={`task:${task.id}`}
 											onClick={() => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
-											className={`relative w-full flex items-start md:items-center gap-3 px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0 ${task.hibernated ? "grayscale opacity-60" : ""}`}
+											className={`relative w-full flex items-start md:items-center gap-3 px-3 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0 ${task.hibernated ? "grayscale" : ""}`}
 										>
 											{/* "Your turn" accent strip — narrow only (keeps desktop intact). */}
 											{narrow && needsMe && (
@@ -521,7 +541,8 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 											/>
 											<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
 												<span
-													className={`text-fg-2 text-sm min-w-0 md:flex-1 ${narrow ? "line-clamp-2" : "truncate"}`}
+													title={getTaskTitle(task)}
+													className={`text-fg-2 text-sm min-w-0 md:flex-1 select-text ${narrow ? "line-clamp-2" : "truncate"}`}
 												>
 													{getTaskTitle(task)}
 												</span>
@@ -529,19 +550,40 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 													{task.hibernated && (
 														<span
 															data-testid="activity-hibernated-badge"
-															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-[0.5625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
+															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-[0.5625rem] font-semibold uppercase tracking-[0.06em] text-fg-3"
 														>
 															{t("task.hibernatedBadge")}
 														</span>
 													)}
 													{bellCounts.has(task.id) && (
-														<span className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0" />
+														<>
+															<span className="sr-only">
+																{t.plural("activity.unreadUpdates", bellCounts.get(task.id) ?? 1)}
+															</span>
+															<span
+																aria-hidden="true"
+																className="w-2 h-2 rounded-full bg-accent motion-safe:animate-pulse flex-shrink-0"
+															/>
+														</>
 													)}
-													<span className="text-xs flex-shrink-0" style={{ color: rowColor }}>
-														{rowLabel}
-													</span>
+													{labelAsSwatch ? (
+														<span className="flex items-center gap-1.5 min-w-0 flex-shrink">
+															<span
+																aria-hidden="true"
+																className="w-2 h-2 rounded-full flex-shrink-0"
+																style={{ backgroundColor: rowColor }}
+															/>
+															<span className="text-fg-3 text-xs truncate max-w-[8rem]" title={rowLabel}>
+																{rowLabel}
+															</span>
+														</span>
+													) : (
+														<span className="text-xs flex-shrink-0" style={{ color: rowColor }}>
+															{rowLabel}
+														</span>
+													)}
 													{task.movedAt && (
-														<span className="text-fg-muted text-xs flex-shrink-0 md:w-16 md:text-right">
+														<span className="text-fg-3 text-xs flex-shrink-0 tabular-nums whitespace-nowrap md:w-16 md:text-right">
 															{timeAgo(task.movedAt, t)}
 														</span>
 													)}
@@ -557,7 +599,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 											type="button"
 											onClick={() => toggleProjectExpanded(project.id)}
 											aria-expanded={isExpanded}
-											className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] text-xs text-fg-3 hover:text-fg hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0"
+											className="w-full flex items-center justify-center gap-2 px-3 md:px-5 py-3 min-h-[44px] text-xs text-fg-3 hover:text-fg hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0"
 										>
 											{isExpanded
 												? t("activity.showFewerTasks")
@@ -567,15 +609,16 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 
 									{/* Background tasks — collapsed summary line */}
 									{summarySegments.length > 0 && (
-										<div className="flex items-center gap-2 px-5 py-2 border-b border-edge last:border-b-0">
+										<div className="flex items-center gap-2 px-3 md:px-5 py-2 border-b border-edge last:border-b-0">
 											<div className="flex-1 flex items-center gap-3">
 												{summarySegments.map(({ status, count }) => (
 													<span key={status} className="flex items-center gap-1.5 text-xs text-fg-3">
 														<span
+															aria-hidden="true"
 															className="w-2 h-2 rounded-full"
 															style={{ backgroundColor: statusColors[status] }}
 														/>
-														{count} {getStatusLabel(status, t, project).toLowerCase()}
+														<span className="tabular-nums">{summaryLabel(status, count, project)}</span>
 													</span>
 												))}
 											</div>
@@ -627,7 +670,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 							{!sheetIsVirtual && (
 								<ActionSheetButton
 									glyph={"\u{F489}"}
-									label={t("projectTerminal.tooltip")}
+									label={t("activity.openTerminal")}
 									onClick={() => {
 										setActionSheetProjectId(null);
 										navigate({ screen: "project-terminal", projectId: sheetProject.id });

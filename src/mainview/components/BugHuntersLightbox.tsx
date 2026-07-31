@@ -163,7 +163,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 										onClick={() => setCount(n)}
 										className={`w-6 h-6 rounded text-xs font-mono transition-colors ${
 											n === count
-												? "bg-accent text-white"
+												? "bg-accent-fill text-white"
 												: "text-fg-muted hover:text-fg hover:bg-elevated"
 										}`}
 									>

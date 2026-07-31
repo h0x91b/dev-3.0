@@ -163,8 +163,8 @@ export default function HelpOverlay({ onExit }: HelpOverlayProps) {
 							onClick={() => setActiveId(active ? null : topic.id)}
 							className={`absolute w-5 h-5 flex items-center justify-center rounded-full border shadow-lg shadow-black/40 text-[0.75rem] leading-none transition-colors ${
 								active
-									? "bg-accent text-white border-accent"
-									: "bg-overlay text-accent border-accent/60 hover:bg-accent hover:text-white"
+									? "bg-accent-fill text-white border-accent"
+									: "bg-overlay text-accent border-accent/60 hover:bg-accent-fill hover:text-white"
 							}`}
 							style={{
 								top: r.top - 8,

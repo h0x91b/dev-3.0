@@ -472,7 +472,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 													)}
 													<span className="truncate text-sm flex-1">{isBuiltin ? t("ops.boardName") : p.name}</span>
 													{isBuiltin && (
-														<span className="flex-shrink-0 px-1 py-0.5 rounded bg-raised text-fg-muted text-[0.5625rem] font-medium tracking-wide">{t("ops.badgeSystem")}</span>
+														<span className="flex-shrink-0 px-1 py-0.5 rounded bg-raised text-fg-3 text-[0.5625rem] font-medium uppercase tracking-wide">{t("ops.badgeSystem")}</span>
 													)}
 													<span className="text-[0.6875rem] text-fg-muted flex-shrink-0">
 														{count != null
@@ -845,7 +845,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						<div className="flex items-center gap-2 mt-2.5">
 							<button
 								onClick={() => { dismissToast(); handleRestart(); }}
-								className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+								className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
 							>
 								{countdown > 0 ? t("update.restartCountdown", { seconds: String(countdown) }) : t("update.restartBtn")}
 							</button>

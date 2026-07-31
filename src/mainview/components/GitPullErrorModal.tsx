@@ -87,7 +87,7 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 						onClick={onRetry}
 						disabled={retrying}
 						data-testid="git-pull-error-retry"
-						className="px-4 py-2 text-sm font-medium text-white bg-accent hover:bg-accent-hover rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+						className="px-4 py-2 text-sm font-medium text-white bg-accent-fill hover:bg-accent-fill-hover rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 					>
 						<span
 							className={`text-[1rem] leading-none${retrying ? " animate-spin inline-block" : ""}`}

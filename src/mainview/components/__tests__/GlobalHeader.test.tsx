@@ -993,7 +993,7 @@ describe("GlobalHeader — virtual (Operations) board git affordances", () => {
 		// First dropdown row is the pinned Operations board.
 		expect(rows[0].textContent).toContain("[ Operations ]");
 		expect(rows[0].textContent).toContain("⌘0");
-		expect(rows[0].textContent).toContain("SYSTEM");
+		expect(rows[0].textContent).toContain("System");
 		// Ordinary projects keep ⌘1, ⌘2.
 		expect(rows[1].textContent).toContain("⌘1");
 		expect(rows[2].textContent).toContain("⌘2");

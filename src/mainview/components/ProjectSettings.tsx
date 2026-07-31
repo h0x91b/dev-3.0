@@ -1639,7 +1639,7 @@ function ProjectSettings({
 		onClick: () => setActiveTab(tab),
 		className: `flex-1 px-4 py-2 text-sm font-medium rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/60 transition-[color,background-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] ${
 			activeTab === tab
-				? "bg-accent text-white shadow-sm"
+				? "bg-accent-fill text-white shadow-sm"
 				: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
 		}`,
 	});
@@ -1993,7 +1993,7 @@ function ProjectSettings({
 													onClick={() => setWorktreeSubTab(tab.id)}
 													className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/60 transition-[color,background-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] ${
 														worktreeSubTab === tab.id
-															? "bg-accent text-white shadow-sm"
+															? "bg-accent-fill text-white shadow-sm"
 															: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
 													}`}
 												>
@@ -2053,7 +2053,7 @@ function ProjectSettings({
 								type="button"
 								onClick={() => handleSaveRef.current()}
 								disabled={saving || envTextError}
-								className="px-5 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl outline-none hover:bg-accent-hover focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-base disabled:opacity-50 shadow-lg shadow-accent/20 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.96]"
+								className="px-5 py-2.5 bg-accent-fill text-white text-sm font-semibold rounded-xl outline-none hover:bg-accent-fill-hover focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-base disabled:opacity-50 shadow-lg shadow-accent/20 transition-[background-color,opacity,transform] duration-150 ease-out active:scale-[0.96]"
 							>
 								{saving ? t("projectSettings.saving") : t("unsavedChanges.save")}
 							</button>

@@ -253,7 +253,7 @@ function StuckPreparationPopover({ tasks, thresholdMsOverride, forcePlatformMac 
 					type="button"
 					onClick={handleOpenSettings}
 					data-testid="stuck-prep-popover-open-settings"
-					className="px-3 py-1.5 text-xs font-medium text-white bg-accent hover:bg-accent-hover rounded-lg transition-colors"
+					className="px-3 py-1.5 text-xs font-medium text-white bg-accent-fill hover:bg-accent-fill-hover rounded-lg transition-colors"
 				>
 					{t("stuckPrep.popoverOpenSettings")}
 				</button>

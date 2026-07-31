@@ -73,7 +73,7 @@ describe("Dashboard", () => {
 			const onOpenAddProject = vi.fn();
 
 			renderDashboard([], vi.fn(), vi.fn(), onOpenAddProject);
-			await user.click(screen.getByText("Add Project"));
+			await user.click(screen.getByText("Add project"));
 
 			expect(onOpenAddProject).toHaveBeenCalled();
 		});

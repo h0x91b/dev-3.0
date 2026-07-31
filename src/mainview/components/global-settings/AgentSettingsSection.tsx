@@ -683,7 +683,7 @@ export default function AgentSettingsSection({
 																		!agentCustomPaths[agent.id]?.trim() ||
 																		agentSavingId === agent.id
 																	}
-																	className="px-2.5 py-1 rounded bg-accent text-white text-xs font-medium hover:bg-accent-hover disabled:opacity-50 transition-colors shrink-0"
+																	className="px-2.5 py-1 rounded bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors shrink-0"
 																>
 																	{t("requirements.setPath")}
 																</button>
@@ -1478,7 +1478,7 @@ function ProviderSelector({
 							onClick={() => setProvider(opt.id)}
 							className={`px-4 py-2 rounded-lg text-sm transition-colors ${
 								active
-									? "bg-accent text-white"
+									? "bg-accent-fill text-white"
 									: "text-fg-2 hover:bg-elevated"
 							}`}
 						>
@@ -1512,7 +1512,7 @@ function ProviderSelector({
 											type="button"
 											onClick={() => patchProvider({ geo: g })}
 											className={`px-3 py-1 rounded-md text-xs font-mono transition-colors ${
-												active ? "bg-accent text-white" : "text-fg-2 hover:bg-elevated"
+												active ? "bg-accent-fill text-white" : "text-fg-2 hover:bg-elevated"
 											}`}
 										>
 											{g}

@@ -310,7 +310,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 						<button
 							onClick={handleBrowseLocal}
 							disabled={browsing}
-							className="w-full px-4 py-3 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							className="w-full px-4 py-3 bg-accent-fill text-white text-sm font-semibold rounded-xl hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{browsing ? t("addProject.adding") : t("addProject.browseBtn")}
 						</button>
@@ -323,7 +323,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 						<button
 							onClick={handleInitNew}
 							disabled={initializing}
-							className="w-full px-4 py-3 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							className="w-full px-4 py-3 bg-accent-fill text-white text-sm font-semibold rounded-xl hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{initializing ? t("addProject.initializing") : t("addProject.initBtn")}
 						</button>
@@ -429,7 +429,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 						<button
 							onClick={handleClone}
 							disabled={!canClone}
-							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							className="px-4 py-1.5 bg-accent-fill text-white text-sm font-semibold rounded-lg hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{cloning ? t("addProject.cloning") : t("addProject.cloneBtn")}
 						</button>
@@ -438,7 +438,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 						<button
 							onClick={handleCreateOps}
 							disabled={creatingOps}
-							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+							className="px-4 py-1.5 bg-accent-fill text-white text-sm font-semibold rounded-lg hover:bg-accent-fill-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
 						>
 							{creatingOps ? t("addProject.adding") : t("ops.create.submit")}
 						</button>

@@ -44,6 +44,7 @@ function ProjectActionButtons({
 				aria-label={t("header.projectSettings")}
 			>
 				<span
+					aria-hidden="true"
 					className="text-[1rem] leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
@@ -62,6 +63,7 @@ function ProjectActionButtons({
 					aria-label={t("dashboard.openInFinder")}
 				>
 					<span
+						aria-hidden="true"
 						className="text-[1rem] leading-none"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
@@ -81,6 +83,7 @@ function ProjectActionButtons({
 					aria-label={t("projectTerminal.tooltip")}
 				>
 					<span
+						aria-hidden="true"
 						className="text-[1rem] leading-none"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
@@ -95,11 +98,12 @@ function ProjectActionButtons({
 						stopEvent(event);
 						void onRemove(project.id);
 					}}
-					className="text-fg-3 hover:text-danger transition-colors p-1.5 rounded-lg hover:bg-danger/10"
+					className="text-fg-3 hover:text-danger transition-colors p-1.5 ml-2 rounded-lg hover:bg-danger/10"
 					title={t("dashboard.remove")}
 					aria-label={t("dashboard.remove")}
 				>
 					<span
+						aria-hidden="true"
 						className="text-[1rem] leading-none"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>

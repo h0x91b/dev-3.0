@@ -162,7 +162,7 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 					<button
 						type="button"
 						onClick={onClose}
-						className="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+						className="px-4 py-2 text-sm rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
 					>
 						{t("updateSim.close")}
 					</button>

@@ -234,7 +234,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 					<button
 						onClick={handleSubmit}
 						disabled={!canSubmit}
-						className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+						className="bg-accent-fill hover:bg-accent-fill-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
 					>
 						{submitting ? t("scheduleMessage.scheduling") : t("scheduleMessage.schedule")}
 					</button>
