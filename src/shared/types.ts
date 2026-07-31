@@ -137,15 +137,19 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 	cancelled: "#ff8282",
 };
 
+/** Light-theme column colours. Every one sits at the sRGB chroma ceiling for its
+ *  lightness, and the hues are spaced (15° → 40° → 95° → 152° → 232° → 272° →
+ *  318°) so that a column stays recognisable after the glow overlay keeps only a
+ *  fraction of its chroma. `review-by-ai` is deliberately the neutral one. */
 export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
-	todo: "#0891b2",
-	"in-progress": "#6366f1",
-	"user-questions": "#ea580c",
-	"review-by-ai": "#64748b",
-	"review-by-user": "#ca8a04",
-	"review-by-colleague": "#8b5cf6",
-	completed: "#059669",
-	cancelled: "#dc2626",
+	todo: "#0182b0",
+	"in-progress": "#4b59ff",
+	"user-questions": "#d04801",
+	"review-by-ai": "#656971",
+	"review-by-user": "#9e8401",
+	"review-by-colleague": "#b702df",
+	completed: "#04944b",
+	cancelled: "#d20346",
 };
 
 /** Convert "#rrggbb" â "R G B" for use as CSS variable value */

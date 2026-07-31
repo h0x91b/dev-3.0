@@ -133,36 +133,40 @@ html {
 }
 
 [data-theme="light"] {
-	/* ---- Surfaces (oklch hue 270; raised-hover sits above base so hovering
-	   a white card never dips below the page) ---- */
-	--surface-base: 238 241 250;
-	--surface-raised: 255 255 255;
-	--surface-raised-hover: 244 246 252;
-	--surface-elevated: 234 238 247;
-	--surface-elevated-hover: 224 228 240;
-	--surface-overlay: 255 255 255;
+	/* ---- Surfaces (oklch hue 268) ----
+	   Same idea as dark, mirrored: nothing is pure white, every surface carries
+	   a little chroma so it reads as tinted paper rather than a lightbox.
+	   L 0.906 → 0.990, monotonic. */
+	--surface-base: 231 237 251;
+	--surface-raised: 248 250 254;
+	--surface-raised-hover: 239 243 253;
+	--surface-elevated: 228 233 247;
+	--surface-elevated-hover: 217 224 240;
+	--surface-overlay: 250 252 255;
 
-	/* ---- Text (slate-based, never pure black) ---- */
-	--text-primary: 15 23 42;
-	--text-secondary: 70 81 103;
-	--text-tertiary: 99 113 137;
-	--text-muted: 134 147 170;
+	/* ---- Text (slate-based, never pure black; APCA Lc ~91 / 75 / 60 / 44) ---- */
+	--text-primary: 19 29 51;
+	--text-secondary: 67 80 103;
+	--text-tertiary: 101 115 142;
+	--text-muted: 136 150 175;
 
 	/* ---- Borders (visible but refined) ---- */
-	--border-default: 205 212 224;
-	--border-active: 163 176 200;
+	--border-default: 199 208 224;
+	--border-active: 157 171 198;
 
-	/* ---- Accent / Danger / Success (darkened until they carry text on white) ---- */
-	--accent: 22 121 232;
-	--accent-hover: 14 95 199;
-	--accent-emphasis: 12 86 181;
-	--danger: 216 27 54;
-	--success: 23 140 74;
-	--success-hover: 18 115 60;
-	--warning: 150 122 22;
-	--favorite: 167 118 21;    /* deeper gold reads on a light canvas */
-	--awake: 194 98 22;
-	--awake-hover: 162 74 15;
+	/* ---- Accent / Danger / Success ----
+	   Every one sits at the sRGB chroma ceiling for its lightness: as saturated
+	   as this gamut allows while still carrying text (Lc 58+). */
+	--accent: 2 114 227;
+	--accent-hover: 0 91 199;
+	--accent-emphasis: 0 82 180;
+	--danger: 212 2 48;
+	--success: 1 135 67;
+	--success-hover: 1 113 55;
+	--warning: 141 113 2;
+	--favorite: 157 109 3;     /* deeper gold reads on a light canvas */
+	--awake: 186 90 3;
+	--awake-hover: 160 70 1;
 	--diff-search-highlight-from: 250 204 21;
 	--diff-search-highlight-to: 236 72 153;
 
@@ -175,8 +179,8 @@ html {
 	--chart-6: 13 148 136;
 
 	/* ---- Productivity stats flair: achievement gold + on-fire heat ---- */
-	--stat-gold: 161 114 22;   /* deeper gold reads on a light canvas */
-	--stat-fire: 197 79 20;
+	--stat-gold: 153 106 3;    /* deeper gold reads on a light canvas */
+	--stat-fire: 191 71 1;
 
 	/* ---- Vimium-style task hint badges ---- */
 	--hint-bg: 252 211 77;     /* amber-300/400 — pops on a light canvas */
@@ -185,21 +189,23 @@ html {
 	--hint-typed: 185 28 28;
 
 	/* ---- Background gradient ---- */
-	/* Hue travels 258° → 289° → 286°; the old mid stop was olive (118°) and
-	   clashed with both ends. */
+	/* Hue travels 258° → 292° → 300°, one direction. Pulled down to L 0.885 →
+	   0.760 with more chroma: a tinted canvas, not a white one. */
 	--bg-grad-angle: 135deg;
-	--bg-grad-from: #dbe3ef;
-	--bg-grad-mid: #e3e2f0;
-	--bg-grad-to: #b8b8c9;
+	--bg-grad-from: #cddaed;
+	--bg-grad-mid: #dcd9f0;
+	--bg-grad-to: #b5acc8;
 
-	/* ---- Glass surfaces (frosted white on colored canvas) ---- */
+	/* ---- Glass surfaces (frosted white on colored canvas) ----
+	   Thinner white veils than before so the column's own colour reaches the
+	   card instead of being bleached out of it. */
 	--glass-column-rgb: 255 255 255;
-	--glass-column-alpha: 0.52;
+	--glass-column-alpha: 0.46;
 	--glass-card-rgb: 255 255 255;
-	--glass-card-alpha: 0.72;
-	--glass-card-hover-alpha: 0.88;
+	--glass-card-alpha: 0.6;
+	--glass-card-hover-alpha: 0.74;
 	--glass-header-rgb: 255 255 255;
-	--glass-header-alpha: 0.6;
+	--glass-header-alpha: 0.55;
 
 	/* ---- Glass blur ---- */
 	--glass-blur-column: 18px;
@@ -211,10 +217,13 @@ html {
 	--glass-border-card-alpha: 0.06;
 	--glass-border-card-hover-alpha: 0.13;
 
-	/* ---- Column glow (vivid colors need stronger presence on white) ---- */
-	--glow-start-alpha: 0.20;
-	--glow-mid-alpha: 0.06;
-	--glow-line-alpha: 0.45;
+	/* ---- Column glow ----
+	   A colour laid over near-white glass keeps only ~a quarter of its chroma,
+	   which is why eight columns used to look like eight shades of white. These
+	   alphas are what makes them tell apart at a glance. */
+	--glow-start-alpha: 0.42;
+	--glow-mid-alpha: 0.14;
+	--glow-line-alpha: 0.8;
 
 	/* ---- Shadows (blue-tinted, layered for depth) ---- */
 	--shadow-column: 0 8px 30px -8px rgb(80 100 140 / 0.13), 0 2px 8px -2px rgb(80 100 140 / 0.06);
@@ -296,8 +305,8 @@ body, #root {
 /* Colored outer shadow for light theme columns */
 [data-theme="light"] .column-glow {
 	box-shadow:
-		0 4px 20px -4px rgb(var(--col-rgb) / 0.28),
-		0 2px 8px -2px rgb(var(--col-rgb) / 0.14);
+		0 4px 20px -4px rgb(var(--col-rgb) / 0.34),
+		0 2px 8px -2px rgb(var(--col-rgb) / 0.18);
 }
 
 /* ---- Streamer mode (privacy masking) ----

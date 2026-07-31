@@ -10,7 +10,11 @@ Two themes: **dark** (default) and **light**, toggled via `data-theme` attribute
 
 **Dark theme** — deep space-navy backgrounds with frosted glass surfaces. High contrast text on near-black. Kanban columns glow softly with their status color. The feel is focused, immersive, developer-oriented. Density is moderate — enough whitespace to breathe but no wasted space.
 
-**Light theme** — cool off-white backgrounds with white glass surfaces. Subtle colored shadows replace inner glows. Softer, calmer, but the same information density. Kanban status colors darken to maintain contrast on light surfaces.
+**Light theme** — the same concept mirrored, not a bleached copy. Nothing is pure
+white and nothing is pure black: every surface carries a little chroma so it reads
+as tinted paper, and contrast is deliberately short of the maximum. Status colours
+go deep and fully saturated instead of pastel, because the glass veil eats most of
+their chroma on the way to the screen.
 
 Glass morphism is the defining visual pattern — every kanban column and card uses backdrop blur with semi-transparent backgrounds. This creates layered depth without heavy shadows.
 
@@ -21,7 +25,7 @@ Glass morphism is the defining visual pattern — every kanban column and card u
 Both palettes are authored in **OKLCH** and shipped as sRGB triplets. Three rules
 hold the system together:
 
-1. **One hue per family.** Surfaces sit on 268° (dark) / 270° (light), text on 262°.
+1. **One hue per family.** Surfaces sit on 268° in both themes, text on 262°.
    No hue drift up or down a ramp.
 2. **The lightness ramp is monotonic**, so a hover never lands darker than the
    surface it lifts from, and `--surface-overlay` sits *above* `--surface-elevated`.
@@ -32,12 +36,12 @@ hold the system together:
 
 | Role | CSS Variable | Dark | Light |
 |------|-------------|------|-------|
-| Base background | `--surface-base` | `rgb(6, 9, 22)` | `rgb(238, 241, 250)` |
-| Raised surface | `--surface-raised` | `rgb(14, 19, 33)` | `rgb(255, 255, 255)` |
-| Raised hover | `--surface-raised-hover` | `rgb(19, 25, 41)` | `rgb(244, 246, 252)` |
-| Elevated surface | `--surface-elevated` | `rgb(21, 27, 43)` | `rgb(234, 238, 247)` |
-| Elevated hover | `--surface-elevated-hover` | `rgb(29, 36, 53)` | `rgb(224, 228, 240)` |
-| Overlay (modals) | `--surface-overlay` | `rgb(27, 33, 48)` | `rgb(255, 255, 255)` |
+| Base background | `--surface-base` | `rgb(6, 9, 22)` | `rgb(231, 237, 251)` |
+| Raised surface | `--surface-raised` | `rgb(14, 19, 33)` | `rgb(248, 250, 254)` |
+| Raised hover | `--surface-raised-hover` | `rgb(19, 25, 41)` | `rgb(239, 243, 253)` |
+| Elevated surface | `--surface-elevated` | `rgb(21, 27, 43)` | `rgb(228, 233, 247)` |
+| Elevated hover | `--surface-elevated-hover` | `rgb(29, 36, 53)` | `rgb(217, 224, 240)` |
+| Overlay (modals) | `--surface-overlay` | `rgb(27, 33, 48)` | `rgb(250, 252, 255)` |
 
 ### Text
 
@@ -47,17 +51,17 @@ decoration and disabled state only, never for text that has to be read.
 
 | Role | CSS Variable | Dark | Light | Lc dark / light |
 |------|-------------|------|-------|-----------------|
-| Primary | `--text-primary` | `rgb(239, 244, 252)` | `rgb(15, 23, 42)` | 99 / 94 |
-| Secondary | `--text-secondary` | `rgb(200, 211, 231)` | `rgb(70, 81, 103)` | 78 / 77 |
-| Tertiary | `--text-tertiary` | `rgb(170, 182, 204)` | `rgb(99, 113, 137)` | 61 / 64 |
-| Muted | `--text-muted` | `rgb(132, 145, 169)` | `rgb(134, 147, 170)` | 41 / 48 |
+| Primary | `--text-primary` | `rgb(239, 244, 252)` | `rgb(19, 29, 51)` | 99 / 91 |
+| Secondary | `--text-secondary` | `rgb(200, 211, 231)` | `rgb(67, 80, 103)` | 78 / 75 |
+| Tertiary | `--text-tertiary` | `rgb(170, 182, 204)` | `rgb(101, 115, 142)` | 61 / 60 |
+| Muted | `--text-muted` | `rgb(132, 145, 169)` | `rgb(136, 150, 175)` | 41 / 44 |
 
 ### Borders
 
 | Role | CSS Variable | Dark | Light |
 |------|-------------|------|-------|
-| Default | `--border-default` | `rgb(43, 49, 65)` | `rgb(205, 212, 224)` |
-| Active | `--border-active` | `rgb(68, 77, 99)` | `rgb(163, 176, 200)` |
+| Default | `--border-default` | `rgb(43, 49, 65)` | `rgb(199, 208, 224)` |
+| Active | `--border-active` | `rgb(68, 77, 99)` | `rgb(157, 171, 198)` |
 
 ### Semantic / Interactive
 
@@ -68,17 +72,17 @@ when you point at it. Never swap the two.
 
 | Role | CSS Variable | Dark | Light |
 |------|-------------|------|-------|
-| Accent (primary action) | `--accent` | `#4596fe` | `#1679e8` |
-| Accent hover (fills) | `--accent-hover` | `#1c77f1` | `#0e5fc7` |
-| Accent emphasis (text hover) | `--accent-emphasis` | `#89beff` | `#0c56b5` |
-| Danger | `--danger` | `#ff8987` | `#d81b36` |
-| Success | `--success` | `#3fdf7e` | `#178c4a` |
-| Success hover (fills) | `--success-hover` | `#04be58` | `#12733c` |
-| Warning | `--warning` | `#f0d24e` | `#967a16` |
-| Favorite (saved star) | `--favorite` | `#f9b63d` | `#a77615` |
-| Awake | `--awake` | `#f49456` | `#c26216` |
-| Achievement gold | `--stat-gold` | `#e5aa41` | `#a17216` |
-| On fire | `--stat-fire` | `#fb6d2c` | `#c54f14` |
+| Accent (primary action) | `--accent` | `#4596fe` | `#0272e3` |
+| Accent hover (fills) | `--accent-hover` | `#1c77f1` | `#005bc7` |
+| Accent emphasis (text hover) | `--accent-emphasis` | `#89beff` | `#0052b4` |
+| Danger | `--danger` | `#ff8987` | `#d40230` |
+| Success | `--success` | `#3fdf7e` | `#018743` |
+| Success hover (fills) | `--success-hover` | `#04be58` | `#017137` |
+| Warning | `--warning` | `#f0d24e` | `#8d7102` |
+| Favorite (saved star) | `--favorite` | `#f9b63d` | `#9d6d03` |
+| Awake | `--awake` | `#f49456` | `#ba5a03` |
+| Achievement gold | `--stat-gold` | `#e5aa41` | `#996a03` |
+| On fire | `--stat-fire` | `#fb6d2c` | `#bf4701` |
 
 The four warm roles are separated by **hue**, not just lightness, so they never
 read as one colour: warning 96° → gold 78° → awake 52° → fire 42°.
@@ -92,24 +96,28 @@ olive and fought both ends.
 | Property | Dark | Light |
 |----------|------|-------|
 | Angle | `115deg` | `135deg` |
-| From | `#060916` | `#dbe3ef` |
-| Mid | `#0f1731` | `#e3e2f0` |
-| To | `#180d29` | `#b8b8c9` |
+| From | `#060916` | `#cddaed` |
+| Mid | `#0f1731` | `#dcd9f0` |
+| To | `#180d29` | `#b5acc8` |
 
 ### Task Status Colors (Kanban)
 
-Each kanban column has a unique color. Dark uses bright/pastel tones; light uses deeper saturated tones for contrast.
+Each kanban column has a unique color. Dark uses bright/pastel tones; light uses
+deep, fully saturated tones — a colour laid over near-white glass at 42% alpha
+keeps only a fraction of its chroma, so anything softer makes eight columns look
+like eight shades of white. Light hues are spaced 15° → 40° → 95° → 152° → 232° →
+272° → 318°, measured so no two rendered columns land closer than 0.06 in OKLCH.
 
 | Status | Dark | Light |
 |--------|------|-------|
-| Todo | `#70e3ff` (cyan) | `#0891b2` (dark cyan) |
-| In Progress | `#afbaff` (periwinkle) | `#6366f1` (indigo) |
-| User Questions | `#ffa353` (coral orange) | `#ea580c` (dark orange) |
-| Review by AI | `#a0aec0` (cool gray) | `#64748b` (slate) |
-| Review by User | `#ffe55f` (golden yellow) | `#ca8a04` (amber) |
-| Review by Colleague | `#c4a5ff` (light violet) | `#8b5cf6` (violet) |
-| Completed | `#3cf3b0` (mint green) | `#059669` (emerald) |
-| Cancelled | `#ff8282` (red) | `#dc2626` (red) |
+| Todo | `#70e3ff` (cyan) | `#0182b0` (dark cyan) |
+| In Progress | `#afbaff` (periwinkle) | `#4b59ff` (indigo) |
+| User Questions | `#ffa353` (coral orange) | `#d04801` (dark orange) |
+| Review by AI | `#a0aec0` (cool gray) | `#656971` (slate — deliberately the neutral one) |
+| Review by User | `#ffe55f` (golden yellow) | `#9e8401` (deep gold) |
+| Review by Colleague | `#c4a5ff` (light violet) | `#b702df` (magenta) |
+| Completed | `#3cf3b0` (mint green) | `#04944b` (emerald) |
+| Cancelled | `#ff8282` (red) | `#d20346` (crimson) |
 
 ### Label Colors (12-color palette)
 
@@ -313,12 +321,12 @@ This is the signature visual element of dev-3.0. Every kanban column and card us
 | Variable | Dark | Light |
 |----------|------|-------|
 | `--glass-column-rgb` | `12 16 23` | `255 255 255` |
-| `--glass-column-alpha` | `0.7` | `0.52` |
+| `--glass-column-alpha` | `0.7` | `0.46` |
 | `--glass-card-rgb` | `255 255 255` | `255 255 255` |
-| `--glass-card-alpha` | `0.04` | `0.72` |
-| `--glass-card-hover-alpha` | `0.09` | `0.88` |
+| `--glass-card-alpha` | `0.04` | `0.6` |
+| `--glass-card-hover-alpha` | `0.09` | `0.74` |
 | `--glass-header-rgb` | `12 15 23` | `255 255 255` |
-| `--glass-header-alpha` | `0.46` | `0.6` |
+| `--glass-header-alpha` | `0.46` | `0.55` |
 | `--glass-blur-column` | `12px` | `18px` |
 | `--glass-blur-header` | `16px` | `22px` |
 
@@ -349,14 +357,14 @@ Each column has a `::before` pseudo-element that creates a color glow using the 
 
 | Variable | Dark | Light |
 |----------|------|-------|
-| `--glow-start-alpha` | `0.17` | `0.20` |
-| `--glow-mid-alpha` | `0.04` | `0.06` |
-| `--glow-line-alpha` | `0.46` | `0.45` |
+| `--glow-start-alpha` | `0.17` | `0.42` |
+| `--glow-mid-alpha` | `0.04` | `0.14` |
+| `--glow-line-alpha` | `0.46` | `0.8` |
 
 **Light theme outer shadow (per column):**
 ```css
-box-shadow: 0 4px 20px -4px rgb(var(--col-rgb) / 0.28),
-            0 2px 8px -2px rgb(var(--col-rgb) / 0.14);
+box-shadow: 0 4px 20px -4px rgb(var(--col-rgb) / 0.34),
+            0 2px 8px -2px rgb(var(--col-rgb) / 0.18);
 ```
 
 ### Kanban Column Structure
