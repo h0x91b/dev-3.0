@@ -1,4 +1,4 @@
-# 186 — Browser-spawning tests must pass the real HOME
+# 188 — Browser-spawning tests must pass the real HOME
 
 ## Context
 
