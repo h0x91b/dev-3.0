@@ -8,22 +8,29 @@ import { formatBytes, formatBytesCompact } from "../utils/formatBytes";
 import { computeAnchoredPosition } from "../utils/popoverPosition";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
-import { MemoryStickIcon } from "./HeaderIcons";
 import BottomSheet from "./BottomSheet";
-import MemoryBreakdownPanel, { PRESSURE_TEXT_CLASS } from "./MemoryBreakdownPanel";
+import MemoryBreakdownPanel, { PRESSURE_BAR_CLASS, PRESSURE_TEXT_CLASS } from "./MemoryBreakdownPanel";
 
 /**
  * Ambient memory-headroom readout for the global header.
  *
- * Shows what is LEFT, not what is used: "12G" answers "can I start another task?"
- * directly, where "52 / 64" makes the reader do the subtraction. The wording is
- * load-bearing — a bare quantity labelled only "memory" reproduces the exact
- * ambiguity this widget exists to dissolve, so the accessible name and tooltip
- * both say *free*.
+ * Shows what is LEFT, not what is used: "12 GB" answers "can I start another
+ * task?" directly, where "52 / 64" makes the reader do the subtraction. The
+ * wording is load-bearing — a bare quantity labelled only "memory" reproduces the
+ * exact ambiguity this widget exists to dissolve, so the accessible name and
+ * tooltip both say *free*.
+ *
+ * There is deliberately no icon. A drawn memory module was tried first and failed
+ * at 18 px: board, chips, contact teeth and notch all collapse into one grey
+ * smudge that reads as a cassette. The number carries the meaning and a bar the
+ * full width of the pill carries the level, which is the one thing that cannot
+ * lose detail at this size.
  *
  * Colour comes from the operating system's own pressure verdict, never from a
  * percentage threshold of our own, so it stays meaningful on an 8 GB laptop and
- * on a 512 GB workstation alike.
+ * on a 512 GB workstation alike. Length comes from the number. Those two are kept
+ * separate on purpose: the bar can say "nearly full" while the colour still says
+ * "the OS is fine with it", which on a 128 GB machine is the truth.
  *
  * Unlike its neighbours (prevent-sleep, rate limits) this stays in the header at
  * every width — see the ambient-readout exception in PRODUCT_UX_BIBLE §12.6. On
@@ -182,13 +189,21 @@ export default function MemoryHeadroomIndicator({ navigate }: MemoryHeadroomIndi
 				aria-haspopup="dialog"
 				data-help-id="header.memory"
 				data-testid="memory-headroom-indicator"
-				className={`header-anim flex shrink-0 items-center gap-1 rounded-lg transition-colors hover:bg-elevated ${
-					isNarrow ? "h-11 min-w-11 justify-center px-2" : "px-1.5 py-1"
+				className={`header-anim flex shrink-0 flex-col justify-center gap-[0.1875rem] rounded-lg transition-colors hover:bg-elevated ${
+					isNarrow ? "h-11 px-2" : "px-1.5 py-1"
 				} ${pressureClass}`}
 			>
-				<MemoryStickIcon className="w-[1.125rem] h-[1.125rem]" usedRatio={usedRatio} />
-				<span className="text-[0.6875rem] font-medium tabular-nums">
+				<span className="text-[0.6875rem] font-medium leading-none tabular-nums">
 					{formatBytesCompact(snapshot.headroom)}
+				</span>
+				{/* The level lives in a bar under the number, not in a glyph: at header
+				    size a drawn memory module loses the detail that made it readable,
+				    while a bar the full width of the pill cannot lose anything. */}
+				<span aria-hidden="true" className="h-0.5 w-full overflow-hidden rounded-full bg-edge">
+					<span
+						className={`hdr-mem-bar block h-full rounded-full ${PRESSURE_BAR_CLASS[snapshot.pressure]}`}
+						style={{ width: `${Math.round(Math.min(1, Math.max(0, usedRatio)) * 100)}%` }}
+					/>
 				</span>
 			</button>
 

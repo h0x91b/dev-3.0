@@ -1221,13 +1221,12 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .header-anim:hover .hdr-help-dot { animation: hdr-help-dot 2.4s ease-in-out infinite; }
 .header-anim:hover .hdr-help-ring { transform-origin: 12px 12px; animation: hdr-help-ring 2.4s ease-in-out infinite; }
 
-/* The memory-headroom fill level is live data, not a hover flourish: it eases
-   between polls so the level visibly drifts instead of jumping, and holds still
-   under reduced motion. */
-.hdr-mem-fill {
-	transform-box: fill-box;
-	transform-origin: bottom;
-	transition: transform 600ms ease-out;
+/* The memory-headroom level is live data, not a hover flourish: it eases between
+   polls so the bar visibly drifts instead of jumping, and holds still under
+   reduced motion. Colour eases too, so a pressure change reads as a shift rather
+   than a flicker. */
+.hdr-mem-bar {
+	transition: width 600ms ease-out, background-color 300ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1238,7 +1237,7 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 		animation: none;
 	}
 
-	.hdr-mem-fill {
+	.hdr-mem-bar {
 		transition: none;
 	}
 }

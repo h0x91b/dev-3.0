@@ -95,8 +95,37 @@ describe("MemoryHeadroomIndicator — the pill", () => {
 		await waitFor(() => expect(pill()).toBeInTheDocument());
 
 		// 12 GiB free out of 64 — the used figure (52) must not be the headline.
-		expect(pill()).toHaveTextContent("12G");
+		expect(pill()).toHaveTextContent("12 GB");
 		expect(pill()).not.toHaveTextContent("52");
+	});
+
+	it("spells the unit out, because the number carries the widget on its own", async () => {
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		// There is no glyph beside it, so a bare "12G" would read as a code.
+		expect(pill().textContent).toMatch(/\bGB\b/);
+	});
+
+	it("puts the level in a bar under the number, sized by memory used", async () => {
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		const bar = pill().querySelector(".hdr-mem-bar") as HTMLElement;
+		expect(bar).not.toBeNull();
+		// 52 of 64 GiB used.
+		expect(bar.style.width).toBe("81%");
+	});
+
+	it("colours the bar from the OS verdict, never from the percentage", async () => {
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		const bar = () => pill().querySelector(".hdr-mem-bar") as HTMLElement;
+		// 81% used, yet the OS says normal — on a big machine that is genuinely fine,
+		// so the bar must stay accent rather than turning red on our own threshold.
+		expect(bar().className).toContain("bg-accent");
+
+		await pushSnapshot(snapshot({ pressure: "critical" }));
+		expect(bar().className).toContain("bg-danger");
+		expect(bar().className).not.toContain("bg-accent");
 	});
 
 	it("says 'free' in its accessible name, so the number is never ambiguous", async () => {
@@ -142,9 +171,9 @@ describe("MemoryHeadroomIndicator — the pill", () => {
 
 	it("tracks live updates pushed from the backend", async () => {
 		renderIndicator();
-		await waitFor(() => expect(pill()).toHaveTextContent("12G"));
+		await waitFor(() => expect(pill()).toHaveTextContent("12 GB"));
 		await pushSnapshot(snapshot({ headroom: 3 * GIB }));
-		expect(pill()).toHaveTextContent("3.0G");
+		expect(pill()).toHaveTextContent("3.0 GB");
 	});
 
 	it("stays visible on a narrow viewport with a touch-sized target", async () => {

@@ -20,6 +20,17 @@ export const PRESSURE_TEXT_CLASS: Record<MemoryPressure, string> = {
 	critical: "text-danger",
 };
 
+/**
+ * The pill's level bar. Saturated on purpose: the level used to be a 40%-opacity
+ * wash of the text colour, which made warn and critical look identical to normal.
+ * Accent rather than green at normal, for the same reason the text stays neutral.
+ */
+export const PRESSURE_BAR_CLASS: Record<MemoryPressure, string> = {
+	normal: "bg-accent",
+	warn: "bg-warning",
+	critical: "bg-danger",
+};
+
 interface MemoryBreakdownPanelProps {
 	snapshot: SystemMemorySnapshot;
 	/** Jump to a heavy task. Closing the overlay is the caller's job. */
