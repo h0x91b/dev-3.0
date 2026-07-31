@@ -32,7 +32,7 @@ import GaugeDemo from "./components/gauges/GaugeDemo";
 import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
-import { setToastSuppressed, ToastHost, toast, type ToastEntry } from "./toast";
+import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -1276,10 +1276,7 @@ function App() {
 				taskId && projectId
 					? () => openTaskFromNotification(taskId, projectId)
 					: undefined;
-			// Compact source line, e.g. "#804 · dev-3.0 · Task title".
-			const context = taskSeq !== undefined
-				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
-				: undefined;
+			const context = taskToastContext(taskSeq, projectName, taskTitle);
 			toast[level](message, { durationMs, onClick, context, taskId: taskId ?? undefined });
 		}
 		window.addEventListener("rpc:cliToast", onCliToast);
@@ -1326,9 +1323,7 @@ function App() {
 
 			// Elsewhere: don't steal focus automatically — a clickable toast both
 			// navigates to the owning task and opens the viewer (honoring open-mode).
-			const context = taskSeq !== undefined
-				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
-				: undefined;
+			const context = taskToastContext(taskSeq, projectName, taskTitle);
 			toast.info(t.plural("showImage.toast", newCount ?? 1), {
 				context,
 				onClick: () => {
@@ -1382,9 +1377,7 @@ function App() {
 				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
 				return;
 			}
-			const context = taskSeq !== undefined
-				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
-				: undefined;
+			const context = taskToastContext(taskSeq, projectName, taskTitle);
 			toast.info(t.plural("showArtifact.toast", newCount ?? 1), {
 				context,
 				onClick: () => {
@@ -1520,14 +1513,21 @@ function App() {
 	// future merge events behave; user toggles in the inspector stay silent.
 	useEffect(() => {
 		function onManualCompletionChanged(e: Event) {
-			const { taskId, projectId, manualCompletion } = (e as CustomEvent).detail as {
+			const { taskId, projectId, manualCompletion, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				manualCompletion: boolean;
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
 			};
 			toast.info(
 				t(manualCompletion ? "app.manualCompletionAgentEnabled" : "app.manualCompletionAgentDisabled"),
-				{ taskId, onClick: () => openTaskFromNotification(taskId, projectId) },
+				{
+					taskId,
+					context: taskToastContext(taskSeq, projectName, taskTitle),
+					onClick: () => openTaskFromNotification(taskId, projectId),
+				},
 			);
 		}
 		window.addEventListener("rpc:manualCompletionChanged", onManualCompletionChanged);

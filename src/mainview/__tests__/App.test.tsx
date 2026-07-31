@@ -2093,11 +2093,19 @@ describe("App keyboard shortcuts", () => {
 			await renderApp();
 			await act(async () => {
 				window.dispatchEvent(new CustomEvent("rpc:manualCompletionChanged", {
-					detail: { taskId: "t1", projectId: "p1", manualCompletion: true },
+					detail: {
+						taskId: "t1",
+						projectId: "p1",
+						manualCompletion: true,
+						taskSeq: 42,
+						taskTitle: "Some task",
+						projectName: "Alpha",
+					},
 				}));
 			});
 
 			expect(await screen.findByText("Agent turned off completion prompts for this task.")).toBeInTheDocument();
+			expect(await screen.findByText("#42 · Alpha · Some task")).toBeInTheDocument();
 		});
 
 		it("does not navigate when user is on a different task's screen", async () => {

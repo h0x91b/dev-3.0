@@ -26,6 +26,16 @@ export interface ToastOpts {
 	context?: string;
 }
 
+/** Compact source line for a task-scoped toast, e.g. "#804 · dev-3.0 · Task title". */
+export function taskToastContext(
+	taskSeq: number | undefined,
+	projectName: string | undefined,
+	taskTitle: string | undefined,
+): string | undefined {
+	if (taskSeq === undefined) return undefined;
+	return [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ");
+}
+
 export interface ToastHostProps {
 	/** Receives only task-scoped entries evicted by the visible toast capacity limit. */
 	onTaskOverflow?: (entry: ToastEntry) => void;

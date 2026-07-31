@@ -1489,6 +1489,9 @@ describe("task.update", () => {
 			taskId: task.id,
 			projectId: project.id,
 			manualCompletion: true,
+			taskSeq: task.seq,
+			taskTitle: "Test task",
+			projectName: project.name,
 		});
 	});
 

@@ -3677,7 +3677,7 @@ export type AppRPCSchema = {
 			 */
 			updateAvailable: { version: string; changelog?: UpdateChangelog; reminder?: boolean };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null; subject: TaskDialogSubject; shouldPrompt?: boolean; shouldNotify?: boolean };
-			manualCompletionChanged: { taskId: string; projectId: string; manualCompletion: boolean };
+			manualCompletionChanged: { taskId: string; projectId: string; manualCompletion: boolean; taskSeq?: number; taskTitle?: string; projectName?: string };
 			/**
 			 * A branch-merged completion prompt was resolved by declining it
 			 * (`dismissMergeCompletionPrompt`). Lets other connected clients — a

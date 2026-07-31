@@ -469,6 +469,9 @@ const handlers: Record<string, Handler> = {
 					taskId: updated.id,
 					projectId: project.id,
 					manualCompletion,
+					taskSeq: updated.seq,
+					taskTitle: getTaskTitle(updated),
+					projectName: project.name,
 				});
 			}
 		}
