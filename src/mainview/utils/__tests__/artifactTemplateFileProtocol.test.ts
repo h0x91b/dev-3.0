@@ -18,6 +18,46 @@ const tempDir = mkdtempSync(join(tmpdir(), "dev3-artifact-file-protocol-"));
 
 afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
 
+/**
+ * Startup of a real browser is ~2s idle but has been measured spiking past 20s
+ * when several test suites and other headless browsers share the machine, so a
+ * single fixed timeout makes this suite flaky for reasons unrelated to the
+ * artifact template. Retrying with a wider budget keeps every assertion intact
+ * while removing the load sensitivity.
+ *
+ * Deliberately NO `--user-data-dir`: a throwaway profile pays first-run
+ * initialisation and was measured timing out at 40s where the shared profile
+ * returns in 0.6s.
+ */
+const BROWSER_TIMEOUTS_MS = [30_000, 90_000];
+
+function dumpDom(url: string): string {
+	let lastError: unknown;
+	for (const timeout of BROWSER_TIMEOUTS_MS) {
+		try {
+			return execFileSync(
+				browser!,
+				[
+					"--headless",
+					"--disable-gpu",
+					"--disable-background-networking",
+					"--force-prefers-reduced-motion=reduce",
+					"--no-first-run",
+					"--no-sandbox",
+					"--host-resolver-rules=MAP cdnjs.cloudflare.com ~NOTFOUND",
+					"--virtual-time-budget=1000",
+					"--dump-dom",
+					url,
+				],
+				{ encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] },
+			);
+		} catch (err) {
+			lastError = err;
+		}
+	}
+	throw lastError;
+}
+
 describe.skipIf(!browser)("artifact starter through file://", () => {
 	it("loads sibling CSS and classic scripts in a real browser", () => {
 		for (const name of ["app.css", "app.js", "report.js", "dev3-icon.png"]) {
@@ -92,18 +132,7 @@ describe.skipIf(!browser)("artifact starter through file://", () => {
 		const htmlPath = join(tempDir, "index.html");
 		writeFileSync(htmlPath, html);
 
-		const output = execFileSync(browser!, [
-			"--headless",
-			"--disable-gpu",
-			"--disable-background-networking",
-			"--force-prefers-reduced-motion=reduce",
-			"--no-first-run",
-			"--no-sandbox",
-			"--host-resolver-rules=MAP cdnjs.cloudflare.com ~NOTFOUND",
-			"--virtual-time-budget=1000",
-			"--dump-dom",
-			pathToFileURL(htmlPath).href,
-		], { encoding: "utf8", timeout: 20_000, stdio: ["ignore", "pipe", "ignore"] });
+		const output = dumpDom(pathToFileURL(htmlPath).href);
 
 		expect(output).toContain('data-file-protocol="file:"');
 		expect(output).toContain('data-css-loaded="true"');
@@ -115,5 +144,6 @@ describe.skipIf(!browser)("artifact starter through file://", () => {
 		expect(output).toContain('data-choice-selected-light-safe="true"');
 		expect(output).toContain('data-choice-highlighted-light-safe="true"');
 		expect(output).toContain("Artifact workspace");
-	}, 25_000);
+		// Must outlast every browser attempt above, or vitest kills the retry.
+	}, BROWSER_TIMEOUTS_MS.reduce((sum, ms) => sum + ms, 10_000));
 });
