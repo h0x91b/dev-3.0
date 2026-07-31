@@ -113,6 +113,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 
 	// ── Stats ──
 	{ id: "stats.overview", titleKey: "help.stats.overview.title", bodyKey: "help.stats.overview.body" },
+	{ id: "stats.model-configuration", titleKey: "help.stats.modelConfiguration.title", bodyKey: "help.stats.modelConfiguration.body" },
 
 	// ── Modals ──
 	{ id: "modal.create-task", titleKey: "help.modal.createTask.title", bodyKey: "help.modal.createTask.body" },
@@ -214,6 +215,7 @@ export const REQUIRED_HELP_SURFACES: string[] = [
 	"project-settings.automations",
 	// Stats
 	"stats.overview",
+	"stats.model-configuration",
 	// Modals (create/config surfaces owed help)
 	"modal.create-task",
 	"modal.launch-variants",

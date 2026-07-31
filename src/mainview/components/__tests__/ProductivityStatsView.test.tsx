@@ -6,12 +6,13 @@ import { I18nProvider } from "../../i18n";
 import ProductivityStatsView from "../ProductivityStatsView";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { getProductivityStats: vi.fn(), getAgentUsage: vi.fn() } },
+	api: { request: { getProductivityStats: vi.fn(), getAgentUsage: vi.fn(), getAgents: vi.fn() } },
 }));
 
 import { api } from "../../rpc";
 const mockGet = api.request.getProductivityStats as unknown as ReturnType<typeof vi.fn>;
 const mockUsage = api.request.getAgentUsage as unknown as ReturnType<typeof vi.fn>;
+const mockAgents = api.request.getAgents as unknown as ReturnType<typeof vi.fn>;
 
 const DAY = 86_400_000;
 
@@ -31,6 +32,7 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 		files: 1,
 		liveStats: false,
 		agentId: "claude",
+		configId: "config-auto-opus",
 		groupId: null,
 		variantIndex: null,
 		statusDurations: {},
@@ -54,6 +56,7 @@ describe("ProductivityStatsView", () => {
 		localStorage.clear();
 		// Default: no agent usage on disk (the two usage counters stay hidden).
 		mockUsage.mockResolvedValue({ days: [], generatedAt: new Date().toISOString(), hasUnpricedModels: false });
+		mockAgents.mockResolvedValue([]);
 	});
 
 	it("shows the empty state when there are no events", async () => {
@@ -78,6 +81,23 @@ describe("ProductivityStatsView", () => {
 		expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
 		// Per-project section heading.
 		expect(screen.getByText("By project")).toBeInTheDocument();
+		expect(screen.getByText("By model configuration")).toBeInTheDocument();
+	});
+
+	it("resolves model configuration names from the agent catalog", async () => {
+		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
+		mockAgents.mockResolvedValue([
+			{
+				id: "claude",
+				name: "Claude",
+				baseCommand: "claude",
+				configurations: [{ id: "config-auto-opus", name: "Auto (Opus)" }],
+			},
+		]);
+		renderView();
+
+		expect(await screen.findByText("By model configuration")).toBeInTheDocument();
+		expect(screen.getByText("Auto (Opus)")).toBeInTheDocument();
 	});
 
 	it("shows an error state with a retry when the RPC fails", async () => {

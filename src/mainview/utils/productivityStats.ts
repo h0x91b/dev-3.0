@@ -1,4 +1,9 @@
-import { computeTaskTimeBreakdown, DEFAULT_AGENTS, type ProductivityStatEvent } from "../../shared/types";
+import {
+	computeTaskTimeBreakdown,
+	DEFAULT_AGENTS,
+	DEPRECATED_DEFAULT_CONFIG_REMAP,
+	type ProductivityStatEvent,
+} from "../../shared/types";
 
 export type StatsRange = "day" | "week" | "month" | "all";
 
@@ -82,6 +87,22 @@ export interface PerAgentStat {
 	busiest: boolean;
 }
 
+export interface PerModelConfigurationStat {
+	/** Composite key so equal config ids on different agents stay separate. */
+	key: string;
+	/** Raw agent id, or "unknown" when the task had none. */
+	agentId: string;
+	/** Raw model configuration id, or "unknown" when the task had none. */
+	configId: string;
+	/** Human-friendly launch preset name. */
+	name: string;
+	completed: number;
+	lines: number;
+	/** Share of the period's completed tasks, 0–100. */
+	sharePct: number;
+	busiest: boolean;
+}
+
 /**
  * The verdict the momentum headline renders. Derived from the period's output vs
  * the user's rolling average (fire) and vs the previous period (ahead/behind).
@@ -156,6 +177,7 @@ export interface ProductivityDashboardData {
 	series: SeriesBucket[];
 	perProject: PerProjectStat[];
 	perAgent: PerAgentStat[];
+	perModelConfiguration: PerModelConfigurationStat[];
 	/** Time invested (total / agent / your-focus) across the period's completed tasks. */
 	time: TimeInvested;
 }
@@ -211,6 +233,41 @@ function agentDisplayName(agentId: string): string {
 	// Prettify a custom id: "builtin-foo" / "my-agent" → "Foo" / "My agent".
 	const slug = agentId.replace(/^builtin-/, "").replace(/[-_]+/g, " ").trim();
 	return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : agentId;
+}
+
+/** Stable grouping key for a launch preset, including the owning agent. */
+export function modelConfigurationKey(agentId: string | null, configId: string | null): string {
+	return `${agentId ?? "unknown"}:${configId ?? "unknown"}`;
+}
+
+const MODEL_CONFIGURATION_NAMES = new Map(
+	DEFAULT_AGENTS.flatMap((agent) =>
+		agent.configurations.map((config) => [modelConfigurationKey(agent.id, config.id), config.name] as const),
+	),
+);
+
+function fallbackModelConfigurationName(agentId: string | null, configId: string): string {
+	const agentSlug = agentId?.replace(/^builtin-/, "");
+	const withoutAgent = agentSlug && configId.startsWith(`${agentSlug}-`) ? configId.slice(agentSlug.length + 1) : configId;
+	return withoutAgent
+		.replace(/[-_]+/g, " ")
+		.replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function modelConfigurationDisplayName(
+	agentId: string | null,
+	configId: string | null,
+	modelConfigurationNames?: ReadonlyMap<string, string>,
+): string {
+	if (!configId) return agentId ? `${agentDisplayName(agentId)} · Unknown` : "Unknown";
+
+	const key = modelConfigurationKey(agentId, configId);
+	const legacyConfigId = agentId === "builtin-claude" ? DEPRECATED_DEFAULT_CONFIG_REMAP[configId] : undefined;
+	const name =
+		modelConfigurationNames?.get(key) ??
+		MODEL_CONFIGURATION_NAMES.get(key) ??
+		(legacyConfigId ? MODEL_CONFIGURATION_NAMES.get(modelConfigurationKey(agentId, legacyConfigId)) : undefined);
+	return name ?? fallbackModelConfigurationName(agentId, configId);
 }
 
 /**
@@ -451,6 +508,7 @@ export function computeProductivityStats(
 	range: StatsRange,
 	nowMs: number,
 	offset = 0,
+	modelConfigurationNames?: ReadonlyMap<string, string>,
 ): ProductivityDashboardData {
 	// Earliest event (creation or completion) — anchors the "all" window and
 	// gates how far back navigation can go.
@@ -483,6 +541,7 @@ export function computeProductivityStats(
 	const perProjectMap = new Map<string, PerProjectStat>();
 	const perProjectLifetime = new Map<string, { totalMs: number; count: number }>();
 	const perAgentMap = new Map<string, PerAgentStat>();
+	const perModelConfigurationMap = new Map<string, PerModelConfigurationStat>();
 	const completedForSeries: Array<{ at: number; lines: number }> = [];
 
 	// --- Time invested (period, completed tasks) ---
@@ -579,6 +638,21 @@ export function computeProductivityStats(
 				pa.completed += 1;
 				pa.lines += lines;
 				perAgentMap.set(agentId, pa);
+
+				const modelConfigurationKeyValue = modelConfigurationKey(e.agentId, e.configId);
+				const pm = perModelConfigurationMap.get(modelConfigurationKeyValue) ?? {
+					key: modelConfigurationKeyValue,
+					agentId,
+					configId: e.configId ?? "unknown",
+					name: modelConfigurationDisplayName(e.agentId, e.configId, modelConfigurationNames),
+					completed: 0,
+					lines: 0,
+					sharePct: 0,
+					busiest: false,
+				};
+				pm.completed += 1;
+				pm.lines += lines;
+				perModelConfigurationMap.set(modelConfigurationKeyValue, pm);
 				if (lifetimeMs != null) {
 					lifetimeTotalCur += lifetimeMs;
 					lifetimeCountCur += 1;
@@ -615,6 +689,13 @@ export function computeProductivityStats(
 	const perAgent = [...perAgentMap.values()].sort((a, b) => b.completed - a.completed || b.lines - a.lines);
 	for (const pa of perAgent) pa.sharePct = completedCur > 0 ? Math.round((pa.completed / completedCur) * 100) : 0;
 	if (perAgent.length > 0 && perAgent[0].completed > 0) perAgent[0].busiest = true;
+
+	// --- Per-model-configuration share + busiest ---
+	const perModelConfiguration = [...perModelConfigurationMap.values()].sort(
+		(a, b) => b.completed - a.completed || b.lines - a.lines || a.name.localeCompare(b.name),
+	);
+	for (const pm of perModelConfiguration) pm.sharePct = completedCur > 0 ? Math.round((pm.completed / completedCur) * 100) : 0;
+	if (perModelConfiguration.length > 0 && perModelConfiguration[0].completed > 0) perModelConfiguration[0].busiest = true;
 
 	// --- Time invested (period) ---
 	const time: TimeInvested = {
@@ -752,6 +833,7 @@ export function computeProductivityStats(
 		series,
 		perProject,
 		perAgent,
+		perModelConfiguration,
 		time,
 	};
 }

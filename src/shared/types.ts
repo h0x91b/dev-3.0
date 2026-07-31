@@ -2659,6 +2659,8 @@ export interface ProductivityStatEvent {
 	statusEnteredAt: string | null;
 	/** Idle-gated real UI attention time in ms ({@link Task.focusMs}); 0 when untracked. */
 	focusMs: number;
+	/** Launch preset id used by the task's agent, or null when no preset was recorded. */
+	configId: string | null;
 }
 
 export interface ProductivityStats {

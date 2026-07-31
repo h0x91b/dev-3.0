@@ -149,6 +149,9 @@ const help = {
 	"help.stats.overview.title": "Velocity Cockpit",
 	"help.stats.overview.body":
 		"Read-only proof of your shipping speed. Gauges and charts re-scope with the range switch; step through past periods with the arrows. Line counts start from the day tracking shipped — no invented history.",
+	"help.stats.modelConfiguration.title": "Model configuration mix",
+	"help.stats.modelConfiguration.body":
+		"This read-only donut shows which launch presets produced your shipped tasks. Configurations keep their full names, so Auto Opus, Sonnet, effort levels, and other modes remain distinguishable.",
 
 	// ── Modals ──
 	"help.modal.createTask.title": "Creating a task",

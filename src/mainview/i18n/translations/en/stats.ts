@@ -94,6 +94,10 @@ const stats = {
 	"stats.perAgent.empty": "No completed tasks in this period",
 	"stats.perAgent.busiest": "Most-used agent",
 	"stats.perAgent.total": "shipped",
+	// Per-model configuration
+	"stats.perModelConfiguration.title": "By model configuration",
+	"stats.perModelConfiguration.empty": "No completed tasks in this period",
+	"stats.perModelConfiguration.total": "shipped",
 	// Momentum headline (dynamic subtitle)
 	"stats.momentum.fire": "On fire — {pct}% above your usual pace",
 	"stats.momentum.ahead": "Up {pct}% — ahead of last period",

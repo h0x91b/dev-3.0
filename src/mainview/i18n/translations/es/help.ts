@@ -143,6 +143,9 @@ const help = {
 	"help.stats.overview.title": "Velocity Cockpit",
 	"help.stats.overview.body":
 		"Prueba de solo lectura de tu velocidad de entrega. Los medidores y gráficos se recalculan con el selector de rango; navega periodos pasados con las flechas. El conteo de líneas empieza el día en que se lanzó el seguimiento — sin historial inventado.",
+	"help.stats.modelConfiguration.title": "Mezcla de configuraciones de modelo",
+	"help.stats.modelConfiguration.body":
+		"Este donut de solo lectura muestra qué presets de lanzamiento produjeron tus tareas entregadas. Conserva los nombres completos para distinguir Auto Opus, Sonnet, niveles de esfuerzo y otros modos.",
 
 	// ── Modals ──
 	"help.modal.createTask.title": "Crear una tarea",

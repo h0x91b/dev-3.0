@@ -67,6 +67,7 @@ describe("toStatEvent", () => {
 		expect(ev.status).toBe("completed");
 		expect(ev.movedAt).toBe("2026-06-02T00:00:00.000Z");
 		expect(ev.lifecycleStartedAt).toBeNull();
+		expect(ev.configId).toBeNull();
 	});
 
 	it("prefers live diff over captured and flags liveStats", () => {
@@ -82,6 +83,11 @@ describe("toStatEvent", () => {
 	it("defaults to zero when neither captured nor live exists", () => {
 		const ev = toStatEvent(makeProject(), makeTask({ completedDiffStats: undefined }));
 		expect(ev).toMatchObject({ files: 0, insertions: 0, deletions: 0, liveStats: false });
+	});
+
+	it("passes through the launch configuration id", () => {
+		const ev = toStatEvent(makeProject(), makeTask({ configId: "claude-auto-opus5-medium" }));
+		expect(ev.configId).toBe("claude-auto-opus5-medium");
 	});
 
 	it("marks virtual projects and prefers customTitle", () => {

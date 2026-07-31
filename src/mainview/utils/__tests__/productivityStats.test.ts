@@ -22,6 +22,7 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 		files: 0,
 		liveStats: false,
 		agentId: "claude",
+		configId: "claude-auto-opus5-medium",
 		groupId: null,
 		variantIndex: null,
 		statusDurations: {},
@@ -230,6 +231,41 @@ describe("computeProductivityStats — per-agent breakdown", () => {
 	it("falls back to 'unknown' for tasks with no agent", () => {
 		const r = computeProductivityStats([ev({ agentId: null, movedAt: at(1) })], "week", NOW);
 		expect(r.perAgent[0]).toMatchObject({ agentId: "unknown", name: "Unknown", completed: 1 });
+	});
+});
+
+describe("computeProductivityStats — per-model-configuration breakdown", () => {
+	const at = (d: number) => new Date(NOW - d * DAY).toISOString();
+
+	it("groups completed tasks by the exact launch configuration", () => {
+		const events: ProductivityStatEvent[] = [
+			ev({ agentId: "builtin-claude", configId: "claude-auto-opus5-medium", movedAt: at(1) }),
+			ev({ agentId: "builtin-claude", configId: "claude-auto-opus5-medium", movedAt: at(2) }),
+			ev({ agentId: "builtin-claude", configId: "claude-auto-sonnet5-xhigh", movedAt: at(3) }),
+			ev({ agentId: "builtin-codex", configId: "codex-default", movedAt: at(1) }),
+		];
+		const r = computeProductivityStats(events, "week", NOW);
+
+		expect(r.perModelConfiguration).toHaveLength(3);
+		expect(r.perModelConfiguration[0]).toMatchObject({
+			configId: "claude-auto-opus5-medium",
+			name: "Auto (Opus 5, Medium)",
+			completed: 2,
+			sharePct: 50,
+			busiest: true,
+		});
+		expect(r.perModelConfiguration.find((config) => config.configId === "codex-default")?.name).toBe(
+			"GPT-5.6 Luna Bypass [X-High] — Default",
+		);
+	});
+
+	it("falls back to a readable name for a removed custom configuration", () => {
+		const r = computeProductivityStats(
+			[ev({ agentId: "custom-agent", configId: "custom-fast-mode", movedAt: at(1) })],
+			"week",
+			NOW,
+		);
+		expect(r.perModelConfiguration[0]).toMatchObject({ name: "Custom Fast Mode", completed: 1 });
 	});
 });
 

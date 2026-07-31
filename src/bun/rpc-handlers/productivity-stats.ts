@@ -33,6 +33,7 @@ export function toStatEvent(
 		files: diff.files,
 		liveStats: !!liveDiff,
 		agentId: task.agentId ?? null,
+		configId: task.configId ?? null,
 		groupId: task.groupId ?? null,
 		variantIndex: task.variantIndex ?? null,
 		statusDurations: task.statusDurations ?? {},

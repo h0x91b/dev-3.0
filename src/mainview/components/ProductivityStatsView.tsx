@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AgentUsageDay, ProductivityStatEvent } from "../../shared/types";
+import type { AgentUsageDay, CodingAgent, ProductivityStatEvent } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import type { Route } from "../state";
-import { computeProductivityStats, formatDuration, gaugeMax, type StatsRange } from "../utils/productivityStats";
+import { computeProductivityStats, formatDuration, gaugeMax, modelConfigurationKey, type StatsRange } from "../utils/productivityStats";
 import { StatGauge } from "./stats/StatGauge";
 import { BarChart } from "./stats/BarChart";
 import { AreaChart } from "./stats/AreaChart";
-import { AgentPie } from "./stats/AgentPie";
+import { BreakdownPie } from "./stats/BreakdownPie";
 import { SegmentedBar } from "./stats/SegmentedBar";
 import { ContributionHeatmap } from "./stats/ContributionHeatmap";
 import { Milestones } from "./stats/Milestones";
@@ -65,6 +65,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	// cards and tighten page padding.
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [events, setEvents] = useState<ProductivityStatEvent[] | null>(null);
+	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	// Agent token/cost usage (supplementary — never blocks the dashboard on failure).
 	const [usage, setUsage] = useState<AgentUsageDay[] | null>(null);
 	const [error, setError] = useState(false);
@@ -86,6 +87,10 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 			.getAgentUsage()
 			.then((res) => setUsage(res.days))
 			.catch(() => setUsage([]));
+		api.request
+			.getAgents()
+			.then(setAgents)
+			.catch(() => setAgents([]));
 	}, []);
 
 	useEffect(() => {
@@ -103,9 +108,17 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 		}
 	}, []);
 
+	const modelConfigurationNames = useMemo(() => {
+		const names = new Map<string, string>();
+		for (const agent of agents) {
+			for (const config of agent.configurations) names.set(modelConfigurationKey(agent.id, config.id), config.name);
+		}
+		return names;
+	}, [agents]);
+
 	const data = useMemo(
-		() => computeProductivityStats(events ?? [], range, Date.now(), offset),
-		[events, range, offset],
+		() => computeProductivityStats(events ?? [], range, Date.now(), offset, modelConfigurationNames),
+		[events, modelConfigurationNames, range, offset],
 	);
 
 	// Token/cost totals for the visible period. "all" sums everything; other ranges
@@ -575,21 +588,55 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							)}
 						</div>
 
-						{/* Per-agent breakdown — donut of tasks shipped by agent type */}
-						<div>
-							<div className="text-fg-2 text-sm font-semibold mb-3">{t("stats.perAgent.title")}</div>
-							{data.perAgent.length === 0 ? (
-								<div className="text-fg-muted text-xs py-6 text-center">{t("stats.perAgent.empty")}</div>
-							) : (
-								<div className="rounded-2xl border border-edge bg-raised p-4 max-w-md">
-									<AgentPie
-										data={data.perAgent}
-										tasksLabel={t("stats.unit.tasks")}
-										linesLabel={t("stats.unit.lines")}
-										totalLabel={t("stats.perAgent.total")}
-									/>
+						{/* Distribution breakdowns — the same donut pattern keeps the dimensions comparable. */}
+						<div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+							<div>
+								<div className="text-fg-2 text-sm font-semibold mb-3">{t("stats.perAgent.title")}</div>
+								{data.perAgent.length === 0 ? (
+									<div className="text-fg-muted text-xs py-6 text-center">{t("stats.perAgent.empty")}</div>
+								) : (
+									<div className="rounded-2xl border border-edge bg-raised p-4 max-w-md">
+										<BreakdownPie
+											data={data.perAgent.map((agent) => ({
+												id: agent.agentId,
+												name: agent.name,
+												completed: agent.completed,
+												lines: agent.lines,
+												sharePct: agent.sharePct,
+											}))}
+											tasksLabel={t("stats.unit.tasks")}
+											linesLabel={t("stats.unit.lines")}
+											totalLabel={t("stats.perAgent.total")}
+											ariaLabel={t("stats.perAgent.title")}
+										/>
+									</div>
+								)}
+							</div>
+							<div>
+								<div className="flex items-center gap-1.5 text-fg-2 text-sm font-semibold mb-3">
+									<span>{t("stats.perModelConfiguration.title")}</span>
+									<HelpSpot topicId="stats.model-configuration" />
 								</div>
-							)}
+								{data.perModelConfiguration.length === 0 ? (
+									<div className="text-fg-muted text-xs py-6 text-center">{t("stats.perModelConfiguration.empty")}</div>
+								) : (
+									<div className="rounded-2xl border border-edge bg-raised p-4 max-w-md">
+										<BreakdownPie
+											data={data.perModelConfiguration.map((config) => ({
+												id: config.key,
+												name: config.name,
+												completed: config.completed,
+												lines: config.lines,
+												sharePct: config.sharePct,
+											}))}
+											tasksLabel={t("stats.unit.tasks")}
+											linesLabel={t("stats.unit.lines")}
+											totalLabel={t("stats.perModelConfiguration.total")}
+											ariaLabel={t("stats.perModelConfiguration.title")}
+										/>
+									</div>
+								)}
+							</div>
 						</div>
 					</>
 				)}
