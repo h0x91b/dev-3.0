@@ -101,6 +101,33 @@ const AGE_UNIT_KEY: Record<AgeUnit, string> = {
 	y: "activity.yearsAgo",
 };
 
+/**
+ * Nerd Font scope glyph: outline variant by default, filled variant when the
+ * scope is active. Both glyphs stay mounted and cross-fade, so the swap
+ * animates in both directions without a motion dependency.
+ */
+function ScopeGlyph({ outline, filled, active }: { outline: string; filled: string; active: boolean }) {
+	const motion = "transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none";
+	const shown = "scale-100 opacity-100 blur-0";
+	const hidden = "scale-[0.25] opacity-0 blur-[4px]";
+	return (
+		<span
+			aria-hidden
+			className="relative inline-flex items-center justify-center text-sm leading-none"
+			style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+		>
+			<span className={`${motion} ${active ? hidden : shown}`}>{outline}</span>
+			<span className={`absolute inset-0 flex items-center justify-center ${motion} ${active ? shown : hidden}`}>
+				{filled}
+			</span>
+		</span>
+	);
+}
+
+/** Shared chrome for the three scope toggles — press feedback included. */
+const SCOPE_BUTTON_CLASS =
+	"inline-flex items-center justify-center h-5 w-5 leading-none transition-[color,scale] duration-150 ease-out active:scale-[0.96]";
+
 function ActiveTasksSidebar({
 	project,
 	tasks,
@@ -418,7 +445,7 @@ function ActiveTasksSidebar({
 				<span className="text-xs font-semibold text-fg-2 uppercase tracking-wider truncate">
 					{t("sidebar.activeTasks")}
 				</span>
-				<div className="flex items-center gap-1.5 flex-shrink-0 h-5">
+				<div className="flex items-center gap-2 flex-shrink-0 h-5">
 					<div role="group" className="inline-flex items-center gap-px" aria-label={t("sidebar.scopeToggleTitle")}>
 						{/* Folder \u2014 this project only */}
 						<Tooltip content={t("sidebar.scopeProject")} detail={t("ttip.sidebar.scopeProject")} placement="bottom">
@@ -427,18 +454,13 @@ function ActiveTasksSidebar({
 								onClick={() => setScope("project")}
 								aria-pressed={scope === "project"}
 								aria-label={t("sidebar.scopeProject")}
-								className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+								className={`${SCOPE_BUTTON_CLASS} ${
 									scope === "project" ? "text-fg" : "text-fg-muted hover:text-fg-2"
 								}`}
 								data-testid="sidebar-scope-project"
 							>
-								{/* Nerd Font: nf-fa-folder_open (U+F07C) */}
-								<span
-									className="text-sm leading-none"
-									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-								>
-									{"\uF07C"}
-								</span>
+								{/* Nerd Font: nf-fa-folder_open_o (U+F115) \u2192 nf-fa-folder_open (U+F07C) */}
+								<ScopeGlyph outline={"\uF115"} filled={"\uF07C"} active={scope === "project"} />
 							</button>
 						</Tooltip>
 						{/* Globe \u2014 all projects */}
@@ -448,18 +470,14 @@ function ActiveTasksSidebar({
 								onClick={() => setScope("global")}
 								aria-pressed={scope === "global"}
 								aria-label={t("sidebar.scopeGlobal")}
-								className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+								className={`${SCOPE_BUTTON_CLASS} ${
 									scope === "global" ? "text-fg" : "text-fg-muted hover:text-fg-2"
 								}`}
 								data-testid="sidebar-scope-global"
 							>
-								{/* Nerd Font: nf-cod-globe (U+EB01) */}
-								<span
-									className="text-sm leading-none"
-									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-								>
-									{"\uEB01"}
-								</span>
+								{/* Nerd Font: nf-cod-globe (U+EB01) \u2014 no filled counterpart, so the
+								    active state rests on color alone. */}
+								<ScopeGlyph outline={"\uEB01"} filled={"\uEB01"} active={scope === "global"} />
 							</button>
 						</Tooltip>
 						{/* Bell \u2014 attention mode: cross-project, filtered to tasks needing user input */}
@@ -469,7 +487,7 @@ function ActiveTasksSidebar({
 								onClick={() => setScope("attention")}
 								aria-pressed={scope === "attention"}
 								aria-label={t("sidebar.scopeAttention")}
-								className={`relative inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+								className={`relative ${SCOPE_BUTTON_CLASS} ${
 									scope === "attention"
 										? "text-awake"
 										: attentionCount > 0
@@ -478,12 +496,9 @@ function ActiveTasksSidebar({
 								}`}
 								data-testid="sidebar-scope-attention"
 							>
-								{/* Nerd Font: nf-fa-bell (U+F0A2) */}
-								<span
-									className={`text-sm leading-none ${scope !== "attention" && attentionCount > 0 ? "animate-pulse" : ""}`}
-									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-								>
-									{"\uF0A2"}
+								{/* Nerd Font: nf-fa-bell_o (U+F0A2) \u2192 nf-fa-bell (U+F0F3) */}
+								<span className={scope !== "attention" && attentionCount > 0 ? "animate-pulse motion-reduce:animate-none" : ""}>
+									<ScopeGlyph outline={"\uF0A2"} filled={"\uF0F3"} active={scope === "attention"} />
 								</span>
 								{attentionCount > 0 && scope !== "attention" && (
 									<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-awake text-[0.5rem] font-bold text-fg leading-none pointer-events-none">
@@ -500,7 +515,7 @@ function ActiveTasksSidebar({
 								onClick={() =>
 									navigate({ screen: "task", projectId: project.id, taskId: activeTaskId })
 								}
-								className="task-anim inline-flex items-center justify-center h-5 w-5 text-fg-muted hover:text-accent transition-colors rounded hover:bg-fg/5"
+								className="task-anim inline-flex items-center justify-center h-5 w-5 rounded text-fg-muted hover:text-accent hover:bg-fg/5 transition-[color,background-color,scale] duration-150 ease-out active:scale-[0.96]"
 								aria-label={t("sidebar.hide")}
 								data-testid="sidebar-hide"
 							>
@@ -519,7 +534,7 @@ function ActiveTasksSidebar({
 						className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-3 pointer-events-none"
 						fill="none"
 						viewBox="0 0 24 24"
-						strokeWidth={2}
+						strokeWidth={1.5}
 						stroke="currentColor"
 					>
 						<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
@@ -545,7 +560,7 @@ function ActiveTasksSidebar({
 						<button
 							type="button"
 							onClick={() => setSearchQuery("")}
-							className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg text-xs leading-none"
+							className="absolute right-1.5 top-1/2 -translate-y-1/2 text-fg-3 hover:text-fg text-xs leading-none transition-[color,scale] duration-150 ease-out active:scale-[0.96]"
 						>
 							×
 						</button>
@@ -652,7 +667,7 @@ function ActiveTasksSidebar({
 												if (!task.shuttingDown) preview.handlers.onMouseEnter(task.id, e.currentTarget);
 											}}
 											onMouseLeave={preview.handlers.onMouseLeave}
-											className={`w-full text-left px-3 py-2 transition-all relative cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
+											className={`w-full text-left px-3 py-2 transition-colors relative cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 												task.shuttingDown
 													? "grayscale opacity-40 pointer-events-none"
 													: task.hibernated
@@ -689,7 +704,7 @@ function ActiveTasksSidebar({
 														/>
 														{isBusy && (
 															<span
-																className="absolute inset-x-0 h-1/2 animate-rail-flow"
+																className="absolute inset-x-0 h-1/2 animate-rail-flow motion-reduce:animate-none"
 																style={{ background: `linear-gradient(180deg, transparent, ${railColor}, transparent)` }}
 															/>
 														)}
@@ -702,7 +717,7 @@ function ActiveTasksSidebar({
 											{/* Bell badge */}
 											{bellCount > 0 && (
 												<div
-													className="absolute top-1 right-2 min-w-[1rem] h-4 flex items-center justify-center px-1 rounded-full bg-red-500 shadow-sm shadow-red-500/40"
+													className="absolute top-1 right-2 min-w-[1rem] h-4 flex items-center justify-center px-1 rounded-full bg-danger shadow-sm shadow-danger/40"
 												>
 													<span className="text-[0.5625rem] font-bold text-white leading-none">
 														{bellCount > 9 ? "9+" : bellCount}
