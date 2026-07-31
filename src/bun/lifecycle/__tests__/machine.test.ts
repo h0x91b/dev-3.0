@@ -623,6 +623,11 @@ describe("task lifecycle transition table", () => {
 		const promoted = transition(review, promotion.event);
 		expect(promoted.next.column.status).toBe("review-by-colleague");
 		expect(promoted.effects[0]).toMatchObject({ type: "persistColumn", patch: "statusOnly" });
+		// Entering the column via promotion must launch the babysitter column agent.
+		expect(promoted.effects).toContainEqual(expect.objectContaining({
+			type: "launchColumnAgent",
+			column: { status: "review-by-colleague", customColumnId: null },
+		}));
 
 		const failedReview = transition(state("review-by-ai"), {
 			type: "columnAgentFailed",

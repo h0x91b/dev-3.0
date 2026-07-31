@@ -201,7 +201,7 @@ describe("Claude SKILL.md (short variant — protocol lives in the system prompt
 
 	it("keeps the zero-tool-call status auto-set and the brief task snapshot", () => {
 		const skill = getClaudeSkillContent();
-		expect(skill).toContain("task move --status in-progress --if-status-not review-by-ai");
+		expect(skill).toContain("task move --status in-progress --if-status-not review-by-ai,review-by-colleague");
 		expect(skill).toContain("dev3 current --brief");
 		// The full `dev3 current` would re-print the description Claude already
 		// holds as its initial prompt.
@@ -481,7 +481,7 @@ describe("skill content per platform dialect", () => {
 		const cli = '"C:/Users/dev/.dev3.0/bin/dev3.exe"';
 
 		const claude = buildClaudeSkillContent(WINDOWS);
-		expect(claude).toContain(`!\`${cli} task move --status in-progress --if-status-not review-by-ai\``);
+		expect(claude).toContain(`!\`${cli} task move --status in-progress --if-status-not review-by-ai,review-by-colleague\``);
 		expect(claude).toContain(`!\`${cli} current --brief\``);
 		// Windows has no POSIX shell in the injection runner.
 		expect(claude).not.toContain("2>&1");

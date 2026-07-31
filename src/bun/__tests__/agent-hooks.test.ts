@@ -45,7 +45,7 @@ describe("buildClaudeHooks", () => {
 
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain("--status in-progress");
-		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("--if-status-not review-by-ai,review-by-colleague");
 		expect(cmd).not.toContain("review-by-user");
 	});
 
@@ -55,7 +55,7 @@ describe("buildClaudeHooks", () => {
 
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain("--status in-progress");
-		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("--if-status-not review-by-ai,review-by-colleague");
 		expect(cmd).not.toContain("review-by-user");
 	});
 
@@ -66,7 +66,7 @@ describe("buildClaudeHooks", () => {
 		const cmd = hooks.PostToolUse[0].hooks[0].command;
 		expect(cmd).toContain(DEV3_CLI);
 		expect(cmd).toContain("--status in-progress");
-		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("--if-status-not review-by-ai,review-by-colleague");
 	});
 
 	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
@@ -129,7 +129,7 @@ describe("buildClaudeHooks", () => {
 		// review-by-user must NOT be excluded — when user leaves feedback
 		// and the agent resumes, the hook should move the task back to in-progress
 		expect(cmd).not.toContain("review-by-user");
-		expect(cmd).toContain("--if-status-not review-by-ai");
+		expect(cmd).toContain("--if-status-not review-by-ai,review-by-colleague");
 	});
 
 	it("working hooks use --if-status-not to skip during AI review", () => {
@@ -138,8 +138,8 @@ describe("buildClaudeHooks", () => {
 		const preCmd = hooks.PreToolUse[0].hooks[0].command;
 		const userCmd = hooks.UserPromptSubmit[0].hooks[0].command;
 
-		expect(preCmd).toContain("--status in-progress --if-status-not review-by-ai");
-		expect(userCmd).toContain("--status in-progress --if-status-not review-by-ai");
+		expect(preCmd).toContain("--status in-progress --if-status-not review-by-ai,review-by-colleague");
+		expect(userCmd).toContain("--status in-progress --if-status-not review-by-ai,review-by-colleague");
 		expect(preCmd).not.toContain("review-by-user");
 		expect(userCmd).not.toContain("review-by-user");
 	});
@@ -194,7 +194,7 @@ describe("buildClaudeHooks", () => {
 
 		for (const event of ["PreToolUse", "PostToolUse", "UserPromptSubmit"] as const) {
 			const cmd = hooks[event][0].hooks[0].command;
-			expect(cmd).toContain("--status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]");
+			expect(cmd).toContain("--status in-progress --if-status-not review-by-ai,review-by-colleague || [ $? -eq 2 ]");
 		}
 	});
 
@@ -492,11 +492,11 @@ describe("writeClaudeHooks", () => {
 		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.PreToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.PreToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai,review-by-colleague");
 		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
-		expect(hooks.PostToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.PostToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai,review-by-colleague");
 		expect(hooks.PostToolUse[0].hooks[0].command).not.toContain("review-by-user");
-		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai,review-by-colleague");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
 	});
 
@@ -769,7 +769,7 @@ describe("POSIX hook output (byte-identical contract)", () => {
 
 	it("renders the exact Claude command strings", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix });
-		const working = `${DEV3_CLI} task move --status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]`;
+		const working = `${DEV3_CLI} task move --status in-progress --if-status-not review-by-ai,review-by-colleague || [ $? -eq 2 ]`;
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(working);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
@@ -809,7 +809,7 @@ describe("Windows hook output", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_SPACES });
 		const cli = WIN_SPACES.cli;
 		expect(cli).toBe('"C:/Users/John Doe/.dev3.0/bin/dev3.exe"');
-		const working = `${cli} task move --status in-progress --if-status-not review-by-ai --tolerate-app-offline`;
+		const working = `${cli} task move --status in-progress --if-status-not review-by-ai,review-by-colleague --tolerate-app-offline`;
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(working);
 		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);

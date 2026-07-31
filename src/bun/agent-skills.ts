@@ -42,7 +42,7 @@ The full protocol is already in your system prompt (the "dev3 — Task Lifecycle
 
 ## Status (auto-set on skill load)
 
-!\`${dialect.cli} task move --status in-progress --if-status-not review-by-ai${captureStderr}\`
+!\`${dialect.cli} task move --status in-progress --if-status-not review-by-ai,review-by-colleague${captureStderr}\`
 
 ## Your current task
 

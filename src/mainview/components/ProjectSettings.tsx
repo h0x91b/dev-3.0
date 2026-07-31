@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type DragEvent, type MutableRefObject } from "react";
 import { toast } from "../toast";
-import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
+import type { BabysitterAutonomy, BabysitterCapabilities, BabysitterConfig, CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
-import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
+import { BABYSITTER_AUTONOMY_PRESETS, composeBabysitPrompt, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, LABEL_COLORS } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -27,6 +27,19 @@ type ProjectConfigValues = Dev3RepoConfig & {
 
 function normalizeReviewPrompt(prompt: string): string {
 	return prompt.trim() === DEFAULT_REVIEW_PROMPT ? "" : prompt.trim();
+}
+
+interface BabysitterFormState {
+	autonomy: BabysitterAutonomy;
+	handleComments: boolean;
+	overrides: Partial<BabysitterCapabilities>;
+	agentId: string;
+	configId: string;
+	prompt: string;
+}
+
+function serializeBabysitterState(state: BabysitterFormState): string {
+	return JSON.stringify({ ...state, overrides: Object.fromEntries(Object.entries(state.overrides).sort()) });
 }
 
 interface LabelRowProps {
@@ -1080,6 +1093,45 @@ function ProjectSettings({
 	});
 	const [availableAgents, setAvailableAgents] = useState<CodingAgent[]>([]);
 
+	// PR Babysitter state (stored as project.babysitter + builtinColumnAgents["review-by-colleague"])
+	const babysitterCfg = project?.babysitter;
+	const bsColumnCfg = project?.builtinColumnAgents?.["review-by-colleague"];
+	const [bsAutonomy, setBsAutonomy] = useState<BabysitterAutonomy>(babysitterCfg?.autonomy ?? "triage");
+	const [bsHandleComments, setBsHandleComments] = useState(babysitterCfg?.handleComments !== false);
+	const [bsOverrides, setBsOverrides] = useState<Partial<BabysitterCapabilities>>(babysitterCfg?.overrides ?? {});
+	const [bsAgentId, setBsAgentId] = useState(bsColumnCfg?.agentId ?? DEFAULT_REVIEW_AGENT_ID);
+	const [bsConfigId, setBsConfigId] = useState(bsColumnCfg?.configId ?? DEFAULT_REVIEW_CONFIG_ID);
+	// "" = no custom prompt (the composed default is shown and used).
+	const [bsPrompt, setBsPrompt] = useState(bsColumnCfg?.prompt ?? "");
+	const [bsAdvancedOpen, setBsAdvancedOpen] = useState(false);
+	const initialBabysitterRef = useRef(serializeBabysitterState({
+		autonomy: babysitterCfg?.autonomy ?? "triage",
+		handleComments: babysitterCfg?.handleComments !== false,
+		overrides: babysitterCfg?.overrides ?? {},
+		agentId: bsColumnCfg?.agentId ?? DEFAULT_REVIEW_AGENT_ID,
+		configId: bsColumnCfg?.configId ?? DEFAULT_REVIEW_CONFIG_ID,
+		prompt: bsColumnCfg?.prompt ?? "",
+	}));
+	const bsPreset = BABYSITTER_AUTONOMY_PRESETS[bsAutonomy === "off" ? "triage" : bsAutonomy];
+	const bsCaps: BabysitterCapabilities = { ...bsPreset, ...bsOverrides };
+	const bsIsCustom = (Object.keys(bsOverrides) as (keyof BabysitterCapabilities)[])
+		.some((k) => bsOverrides[k] !== undefined && bsOverrides[k] !== bsPreset[k]);
+	const bsComposedPrompt = composeBabysitPrompt({
+		autonomy: bsAutonomy === "off" ? "triage" : bsAutonomy,
+		overrides: bsOverrides,
+		handleComments: bsHandleComments,
+	});
+
+	function toggleBsCapability(key: keyof BabysitterCapabilities) {
+		setBsOverrides((prev) => {
+			const next = { ...prev };
+			const desired = !(prev[key] ?? bsPreset[key]);
+			if (desired === bsPreset[key]) delete next[key];
+			else next[key] = desired;
+			return next;
+		});
+	}
+
 	// Load available agents
 	useEffect(() => {
 		api.request.getAgents().then(setAvailableAgents).catch(() => {});
@@ -1165,6 +1217,7 @@ function ProjectSettings({
 		const bcaA = JSON.stringify(a.builtinColumnAgents ?? {});
 		const bcaB = JSON.stringify(b.builtinColumnAgents ?? {});
 		if (bcaA !== bcaB) return false;
+		if (JSON.stringify(a.babysitter ?? {}) !== JSON.stringify(b.babysitter ?? {})) return false;
 		if ((a.portCount ?? 0) !== (b.portCount ?? 0)) return false;
 		return true;
 	}, []);
@@ -1180,16 +1233,27 @@ function ProjectSettings({
 		return aiReviewAgentId !== init.agentId || aiReviewConfigId !== init.configId || aiReviewPrompt !== init.prompt;
 	}, [aiReviewAgentId, aiReviewConfigId, aiReviewPrompt]);
 
+	const isBabysitterDirty = useCallback(() => {
+		return serializeBabysitterState({
+			autonomy: bsAutonomy,
+			handleComments: bsHandleComments,
+			overrides: bsOverrides,
+			agentId: bsAgentId,
+			configId: bsConfigId,
+			prompt: bsPrompt,
+		}) !== initialBabysitterRef.current;
+	}, [bsAutonomy, bsHandleComments, bsOverrides, bsAgentId, bsConfigId, bsPrompt]);
+
 	const isDirty = useCallback(() => {
 		if (activeTab === "project") {
-			return !projectConfigsEqual(projectConfig, loadedProjectConfig.current) || isAiReviewDirty();
+			return !projectConfigsEqual(projectConfig, loadedProjectConfig.current) || isAiReviewDirty() || isBabysitterDirty();
 		}
 		if (activeTab === "worktree") {
 			if (worktreeSubTab === "repo") return !configsEqual(wtRepoConfig, loadedWtRepoConfig.current);
 			return !configsEqual(wtLocalConfig, loadedWtLocalConfig.current);
 		}
 		return false; // Global tab uses immediate save
-	}, [activeTab, worktreeSubTab, projectConfig, wtRepoConfig, wtLocalConfig, projectConfigsEqual, configsEqual, isAiReviewDirty]);
+	}, [activeTab, worktreeSubTab, projectConfig, wtRepoConfig, wtLocalConfig, projectConfigsEqual, configsEqual, isAiReviewDirty, isBabysitterDirty]);
 
 	const handleSaveRef = useRef<() => Promise<void>>(async () => {});
 
@@ -1361,22 +1425,47 @@ function ProjectSettings({
 	async function handleSaveProjectConfig() {
 		setSavingProject(true);
 		try {
+			const babysitter: BabysitterConfig = {
+				autonomy: bsAutonomy,
+				...(bsIsCustom ? { overrides: bsOverrides } : {}),
+				// handleComments only means something when the level can reply;
+				// read-only levels always monitor comments (drafts into a note).
+				...(bsCaps.reply && !bsHandleComments ? { handleComments: false } : {}),
+			};
+			const bsPromptToStore = bsPrompt.trim() === bsComposedPrompt.trim() ? "" : bsPrompt.trim();
 			const builtinColumnAgents: Record<string, ColumnAgentConfig> = {
 				"review-by-ai": {
 					agentId: aiReviewAgentId,
 					configId: aiReviewConfigId,
 					prompt: normalizeReviewPrompt(aiReviewPrompt),
 				},
+				...(bsAutonomy !== "off" ? {
+					"review-by-colleague": {
+						agentId: bsAgentId,
+						configId: bsConfigId,
+						prompt: bsPromptToStore,
+					},
+				} : {}),
 			};
 			const toSave = {
 				...sanitizeConfigPaths(projectConfig),
 				builtinColumnAgents,
+				babysitter,
 			};
 			const updated = await api.request.updateProjectSettings({ projectId, ...toSave });
 			dispatch({ type: "updateProject", project: updated });
 			loadedProjectConfig.current = toSave;
 			setProjectConfig(toSave);
 			initialAiReviewRef.current = { agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
+			setBsPrompt(bsPromptToStore);
+			initialBabysitterRef.current = serializeBabysitterState({
+				autonomy: bsAutonomy,
+				handleComments: bsHandleComments,
+				overrides: bsOverrides,
+				agentId: bsAgentId,
+				configId: bsConfigId,
+				prompt: bsPromptToStore,
+			});
 		} catch (err) {
 			toast.error(t("projectSettings.failedSave", { error: String(err) }));
 		}
@@ -1738,6 +1827,178 @@ function ProjectSettings({
 											className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 										/>
 									</div>
+								</div>
+							</div>
+
+							{/* PR Babysitter (review-by-colleague column agent) */}
+							<div className="space-y-4">
+								<div>
+									<label className="block text-fg text-sm font-semibold mb-1">
+										{t("projectSettings.babysitter")}
+									</label>
+									<p className="text-fg-3 text-sm">
+										{t("projectSettings.babysitterDesc")}
+									</p>
+								</div>
+								<div className="space-y-3 pl-1">
+									{project.peerReviewEnabled === false && (
+										<p className="text-fg-muted text-xs">{t("projectSettings.babysitterPeerReviewOff")}</p>
+									)}
+									<div className="flex items-center gap-3">
+										<label htmlFor="babysitter-autonomy" className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.babysitterAutonomy")}</label>
+										<select
+											id="babysitter-autonomy"
+											value={bsAutonomy}
+											onChange={(e) => {
+												setBsAutonomy(e.target.value as BabysitterAutonomy);
+												setBsOverrides({});
+											}}
+											className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+										>
+											<option value="off">{t("projectSettings.babysitterAutonomyOff")}</option>
+											<option value="triage">{t("projectSettings.babysitterAutonomyTriage")}</option>
+											<option value="fix">{t("projectSettings.babysitterAutonomyFix")}</option>
+											<option value="land">{t("projectSettings.babysitterAutonomyLand")}</option>
+										</select>
+										{bsIsCustom && bsAutonomy !== "off" && (
+											<span className="text-accent text-xs flex-shrink-0">{t("projectSettings.babysitterCustom")}</span>
+										)}
+									</div>
+									<p className="text-fg-muted text-xs">
+										{bsAutonomy === "off" && t("projectSettings.babysitterAutonomyOffDesc")}
+										{bsAutonomy === "triage" && t("projectSettings.babysitterAutonomyTriageDesc")}
+										{bsAutonomy === "fix" && t("projectSettings.babysitterAutonomyFixDesc")}
+										{bsAutonomy === "land" && t("projectSettings.babysitterAutonomyLandDesc")}
+									</p>
+									{bsAutonomy !== "off" && (
+										<>
+											<div className="flex items-center justify-between">
+												<div>
+													<label className="block text-fg-2 text-sm">{t("projectSettings.babysitterHandleComments")}</label>
+													<p className="text-fg-muted text-xs">
+														{bsCaps.reply
+															? t("projectSettings.babysitterHandleCommentsDesc")
+															: t("projectSettings.babysitterHandleCommentsReadOnlyDesc")}
+													</p>
+												</div>
+												<button
+													type="button"
+													role="switch"
+													aria-checked={bsCaps.reply ? bsHandleComments : false}
+													aria-label={t("projectSettings.babysitterHandleComments")}
+													disabled={!bsCaps.reply}
+													onClick={() => setBsHandleComments(!bsHandleComments)}
+													className={`relative flex-shrink-0 ml-4 w-10 h-6 rounded-full transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+														bsCaps.reply && bsHandleComments ? "bg-accent" : "bg-edge-active"
+													}`}
+												>
+													<span
+														className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+															bsCaps.reply && bsHandleComments ? "translate-x-4" : "translate-x-0"
+														}`}
+													/>
+												</button>
+											</div>
+											<div className="flex items-center gap-3">
+												<label htmlFor="babysitter-agent" className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.babysitterAgent")}</label>
+												<select
+													id="babysitter-agent"
+													value={bsAgentId}
+													onChange={(e) => {
+														setBsAgentId(e.target.value);
+														const agent = availableAgents.find((a) => a.id === e.target.value);
+														if (agent?.configurations?.length) {
+															setBsConfigId(agent.configurations[0].id);
+														}
+													}}
+													className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+												>
+													{availableAgents.map((a) => (
+														<option key={a.id} value={a.id}>{a.name}</option>
+													))}
+												</select>
+											</div>
+											<div className="flex items-center gap-3">
+												<label htmlFor="babysitter-config" className="text-fg-2 text-sm w-28 flex-shrink-0">{t("projectSettings.babysitterConfig")}</label>
+												<select
+													id="babysitter-config"
+													value={bsConfigId}
+													onChange={(e) => setBsConfigId(e.target.value)}
+													className="flex-1 px-3 py-2 bg-raised border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+												>
+													{(availableAgents.find((a) => a.id === bsAgentId)?.configurations ?? []).map((c) => (
+														<option key={c.id} value={c.id}>{c.name || c.id}</option>
+													))}
+												</select>
+											</div>
+											<div>
+												<button
+													type="button"
+													aria-expanded={bsAdvancedOpen}
+													onClick={() => setBsAdvancedOpen(!bsAdvancedOpen)}
+													className="flex items-center gap-1.5 text-fg-2 text-sm hover:text-fg transition-colors"
+												>
+													<span className={`inline-block transition-transform text-[10px] ${bsAdvancedOpen ? "rotate-90" : ""}`}>▶</span>
+													{t("projectSettings.babysitterAdvanced")}
+												</button>
+												{bsAdvancedOpen && (
+													<div className="mt-2 space-y-2 pl-4">
+														{([
+															["push", t("projectSettings.babysitterCapPush")],
+															["reply", t("projectSettings.babysitterCapReply")],
+															["resolve", t("projectSettings.babysitterCapResolve")],
+															["rebase", t("projectSettings.babysitterCapRebase")],
+															["rerunChecks", t("projectSettings.babysitterCapRerunChecks")],
+															["armAutoMerge", t("projectSettings.babysitterCapArmAutoMerge")],
+														] as Array<[keyof BabysitterCapabilities, string]>).map(([key, label]) => (
+															<div key={key} className="flex items-center justify-between">
+																<label className="text-fg-2 text-sm">{label}</label>
+																<button
+																	type="button"
+																	role="switch"
+																	aria-checked={bsCaps[key]}
+																	aria-label={label}
+																	onClick={() => toggleBsCapability(key)}
+																	className={`relative flex-shrink-0 ml-4 w-8 h-5 rounded-full transition-colors focus:outline-none ${
+																		bsCaps[key] ? "bg-accent" : "bg-edge-active"
+																	}`}
+																>
+																	<span
+																		className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+																			bsCaps[key] ? "translate-x-3" : "translate-x-0"
+																		}`}
+																	/>
+																</button>
+															</div>
+														))}
+														<p className="text-fg-muted text-xs">{t("projectSettings.babysitterCeilingsNote")}</p>
+													</div>
+												)}
+											</div>
+											<div>
+												<label htmlFor="babysitter-prompt" className="block text-fg-2 text-sm mb-2">{t("projectSettings.babysitterPrompt")}</label>
+												<textarea
+													id="babysitter-prompt"
+													value={bsPrompt || bsComposedPrompt}
+													onChange={(e) => setBsPrompt(e.target.value === bsComposedPrompt ? "" : e.target.value)}
+													rows={5}
+													autoCapitalize="off"
+													autoCorrect="off"
+													spellCheck={false}
+													className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+												/>
+												{bsPrompt !== "" && (
+													<button
+														type="button"
+														onClick={() => setBsPrompt("")}
+														className="mt-1 text-accent text-xs hover:underline"
+													>
+														{t("projectSettings.babysitterPromptReset")}
+													</button>
+												)}
+											</div>
+										</>
+									)}
 								</div>
 							</div>
 						</div>

@@ -41,7 +41,7 @@ export function getCodexHookTargetStatus(
 		case "PreToolUse":
 		case "PostToolUse":
 			if (currentStatus === "user-questions" && resumeStatus) return resumeStatus;
-			return currentStatus === "review-by-ai" ? null : "in-progress";
+			return currentStatus === "review-by-ai" || currentStatus === "review-by-colleague" ? null : "in-progress";
 		case "PermissionRequest":
 			return "user-questions";
 		case "Stop":
@@ -67,7 +67,7 @@ export interface HookEntry {
  * Unified hooks that work for both the primary agent and the review agent
  * running in the same worktree (they share .claude/settings.local.json).
  *
- * - UserPromptSubmit/PreToolUse/PostToolUse: → in-progress (skipped when in review-by-ai)
+ * - UserPromptSubmit/PreToolUse/PostToolUse: → in-progress (skipped when in review-by-ai or review-by-colleague)
  * - PermissionRequest: → user-questions
  * - Stop: primary agent → stopTarget; review agent → review-by-user
  */
@@ -156,13 +156,15 @@ export function buildClaudeHooks(
 	const move = (status: string, extra?: string) =>
 		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
 
-	// Working hook: move to in-progress, but NOT when in review-by-ai
-	// (the review agent shares the same hooks file and must not flip status).
+	// Working hook: move to in-progress, but NOT when in review-by-ai or
+	// review-by-colleague (the review/babysitter agents share the same hooks
+	// file and must not flip status; review-by-colleague = open-PR phase, the
+	// task stays there while agents work the PR).
 	// review-by-user is intentionally allowed: when the user leaves feedback
 	// and the primary agent resumes, UserPromptSubmit should move the task back.
 	// PostToolUse also covers answers submitted to AskUserQuestion, which resume
 	// an existing tool call without emitting a new user prompt event.
-	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
+	const workingCmd = move("in-progress", "--if-status-not review-by-ai,review-by-colleague");
 
 	return {
 		UserPromptSubmit: [

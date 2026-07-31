@@ -304,6 +304,122 @@ As the very last step (after any commits), you MUST hand the task back to the us
 
 Do not skip this step. Move the task exactly once, at the end.`;
 
+// ---- PR Babysitter (review-by-colleague column agent) ----
+
+export type BabysitterAutonomy = "off" | "triage" | "fix" | "land";
+
+/** Granular GitHub-write capabilities the composed babysitter prompt grants or forbids. */
+export interface BabysitterCapabilities {
+	push: boolean;
+	reply: boolean;
+	resolve: boolean;
+	rebase: boolean;
+	rerunChecks: boolean;
+	armAutoMerge: boolean;
+}
+
+/**
+ * Per-project PR babysitter config, stored alongside builtinColumnAgents in
+ * Project + .dev3/config.json (additive field — older versions ignore it).
+ * Absent object/autonomy defaults to read-only "triage" (zero GitHub writes);
+ * "off" is an explicit opt-out.
+ */
+export interface BabysitterConfig {
+	autonomy?: BabysitterAutonomy;
+	/** Sparse per-capability overrides applied on top of the autonomy preset. */
+	overrides?: Partial<BabysitterCapabilities>;
+	/** Triage new PR comments/threads/reviews (default true). */
+	handleComments?: boolean;
+}
+
+export const BABYSITTER_AUTONOMY_PRESETS: Record<Exclude<BabysitterAutonomy, "off">, BabysitterCapabilities> = {
+	triage: { push: false, reply: false, resolve: false, rebase: false, rerunChecks: false, armAutoMerge: false },
+	fix: { push: true, reply: true, resolve: false, rebase: true, rerunChecks: false, armAutoMerge: false },
+	land: { push: true, reply: true, resolve: true, rebase: true, rerunChecks: true, armAutoMerge: true },
+};
+
+/** Absent config defaults to read-only Triage; "off" is an explicit opt-out. */
+export function effectiveBabysitterAutonomy(config?: BabysitterConfig): BabysitterAutonomy {
+	return config?.autonomy ?? "triage";
+}
+
+export function babysitterEnabled(config?: BabysitterConfig): boolean {
+	return effectiveBabysitterAutonomy(config) !== "off";
+}
+
+export function effectiveBabysitterCapabilities(config?: BabysitterConfig): BabysitterCapabilities {
+	const autonomy = effectiveBabysitterAutonomy(config);
+	return { ...BABYSITTER_AUTONOMY_PRESETS[autonomy === "off" ? "triage" : autonomy], ...config?.overrides };
+}
+
+/**
+ * Composes the babysitter prompt from the config knobs. Every generated prompt
+ * carries the hard ceilings verbatim — they are policy, not knobs.
+ */
+export function composeBabysitPrompt(config?: BabysitterConfig): string {
+	const caps = effectiveBabysitterCapabilities(config);
+	// Without the reply capability (e.g. Triage), comments are always monitored —
+	// triaged and drafted into a task note, never posted. The toggle only governs
+	// levels that can actually answer.
+	const handleComments = !caps.reply || config?.handleComments !== false;
+	const readOnly = !caps.push && !caps.reply && !caps.resolve && !caps.rebase && !caps.rerunChecks && !caps.armAutoMerge;
+
+	const capabilityLines = [
+		readOnly
+			? "This is a read-only triage run: make ZERO writes to GitHub. Investigate, then post your diagnosis as a task note (`dev3 note add`) and raise attention (`dev3 attention \"<summary>\"`)."
+			: null,
+		caps.push
+			? "- You MAY fix problems in this worktree, commit, and push — but ONLY to this PR's own branch, never to any other branch."
+			: "- Do NOT push commits or modify the PR branch.",
+		caps.reply
+			? "- You MAY post replies to review comments, inline threads, and PR conversation comments."
+			: "- Do NOT post comments or replies on GitHub.",
+		caps.resolve
+			? "- You MAY resolve review threads, but only threads you have already replied to in this run."
+			: "- Do NOT resolve review threads.",
+		caps.rebase
+			? "- If the PR is conflicted or behind the base branch, rebase this worktree onto {baseBranch}, fix conflicts, and push with --force-with-lease."
+			: "- Do NOT rebase or force-push; if the PR is conflicted, report it in your note.",
+		caps.rerunChecks
+			? "- You MAY re-run a failed check you suspect is flaky, at most 3 times per check."
+			: "- Do NOT re-run checks.",
+		caps.armAutoMerge
+			? "- Once the PR is approved and all checks are green, you MAY arm auto-merge: `gh pr merge --auto --squash --match-head-commit <head-sha>`."
+			: "- Do NOT enable auto-merge.",
+	].filter(Boolean).join("\n");
+
+	const commentsSection = handleComments
+		? `Handle review feedback: triage every unanswered review submission, inline review thread, and conversation comment. Classify each one:
+- Agree (actionable within this PR's changed lines) → ${caps.push ? "fix it, push, and reply pointing at the commit" : "describe the fix you would make"}.
+- Disagree → a short, polite, reasoned reply; no code churn.
+- Already fixed → reply pointing at the commit that fixed it.
+- Defer (out of this PR's scope) → reply saying so explicitly.
+Exactly one response per comment. Never respond to your own comments. Ignore bot "no issues found" summaries, but ALWAYS process CI/lint-failure bot comments.${caps.reply ? "" : "\nDo not post these replies on GitHub — draft them all into a single task note (`dev3 note add`) instead."}`
+		: "Ignore review comments and conversation comments in this run — handle only mergeability and CI.";
+
+	return `You are babysitting this task's open pull request (the PR for this branch). Inspect its live state with gh (\`gh pr view\`, \`gh pr checks\`, \`gh api\` for review threads) and work strictly in this order: 1) mergeability/conflicts, 2) CI checks, 3) review feedback — a stale base makes green CI meaningless.
+
+What you may and may not do in this run:
+${capabilityLines}
+
+${commentsSection}
+
+Hard limits — non-negotiable, they override everything above:
+- Never merge the PR yourself and never use --admin. Never approve the PR.
+- Never edit CI configuration, tests, or timeouts just to make checks go green.
+- Never touch a draft PR — if this PR is a draft, stop and report.
+- Never plain force-push; --force-with-lease is allowed only immediately after a legitimate rebase.
+- Reply to a review thread before resolving it; never resolve someone's thread silently.
+
+When you finish, record a short summary: \`dev3 note add "<what you did / current PR state>"\`.
+If you are blocked, a human decision is needed, or the same problem persists after your fix — park the task: add a note explaining what is needed, then run:
+    dev3 task move --status user-questions
+Otherwise leave the task in its current column (the PR is still in review).`;
+}
+
+/** The prompt composed from the default knobs (autonomy Triage, comments monitored). */
+export const DEFAULT_BABYSIT_PROMPT = composeBabysitPrompt();
+
 export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
 	return autoReviewEnabled ? "review-by-ai" : "review-by-user";
 }
@@ -992,6 +1108,7 @@ export interface Dev3RepoConfig {
 	sparseCheckoutEnabled?: boolean;
 	sparseCheckoutPaths?: string[];
 	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
+	babysitter?: BabysitterConfig;
 	/** Number of ports to allocate per task/worktree (injected as DEV3_PORT0..N). Default: 0. */
 	portCount?: number;
 }
@@ -1011,6 +1128,7 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"sparseCheckoutEnabled",
 	"sparseCheckoutPaths",
 	"builtinColumnAgents",
+	"babysitter",
 	"portCount",
 ];
 
@@ -1069,6 +1187,8 @@ export interface Project {
 	sparseCheckoutPaths?: string[];
 	// Column agent configs for built-in columns (keyed by TaskStatus)
 	builtinColumnAgents?: Record<string, ColumnAgentConfig>;
+	// PR babysitter for the review-by-colleague column (absent = off)
+	babysitter?: BabysitterConfig;
 	// User-defined display names for built-in columns (keyed by TaskStatus)
 	customStatusLabels?: Record<string, string>;
 	// Number of ports to allocate per task/worktree (injected as DEV3_PORT0..N)

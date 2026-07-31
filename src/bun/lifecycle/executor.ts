@@ -12,7 +12,9 @@ import type {
 	TaskStatus,
 } from "../../shared/types";
 import {
+	babysitterEnabled,
 	buildTaskDialogSubject,
+	composeBabysitPrompt,
 	DEFAULT_REVIEW_PROMPT,
 	getPreparingStageProgress,
 	getTaskTitle,
@@ -410,6 +412,21 @@ async function columnAgentConfig(
 			},
 			paneTitle: "AI Review",
 			onExitCommand: `${DEV3_HOME}/bin/dev3 task move ${task.id} --status review-by-user --if-status review-by-ai`,
+		};
+	}
+	if (column.status === "review-by-colleague" && column.customColumnId === null) {
+		const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath);
+		if (!babysitterEnabled(resolved.babysitter)) return null;
+		const configured = resolved.builtinColumnAgents?.["review-by-colleague"];
+		return {
+			config: {
+				agentId: configured?.agentId || "builtin-claude",
+				configId: configured?.configId || "claude-bypass-sonnet",
+				prompt: configured?.prompt || composeBabysitPrompt(resolved.babysitter),
+			},
+			paneTitle: resolved.customStatusLabels?.["review-by-colleague"] || "PR Review",
+			// No column move on pane exit: the PR is still in review — the prompt
+			// itself parks the task (user-questions) when a human is needed.
 		};
 	}
 	if (!column.customColumnId) return null;

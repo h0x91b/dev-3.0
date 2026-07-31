@@ -209,6 +209,11 @@ function moveTransition(
 				...(event.cause === "pr-promotion"
 					? [effect({ type: "setPrPromoted", promoted: true })]
 					: []),
+				// PR promotion is a real column entry — the babysitter (if enabled)
+				// must launch here just like on a manual move into the column.
+				...(event.cause === "pr-promotion" && state.runtime.phase !== "preparing"
+					? [effect({ type: "launchColumnAgent", column: target })]
+					: []),
 				effect({ type: "push", message: "taskUpdated", view: "current" }),
 			],
 		};

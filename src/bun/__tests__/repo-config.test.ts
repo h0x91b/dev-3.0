@@ -99,6 +99,21 @@ describe("loadRepoConfig", () => {
 		expect(config.cleanupScript).toBe("echo cleanup"); // from repo
 	});
 
+	it("loads and merges the babysitter object", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			babysitter: { autonomy: "fix", handleComments: false },
+		}));
+		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({
+			babysitter: { autonomy: "triage" },
+		}));
+
+		const config = await loadRepoConfig(TEST_DIR);
+		// Per-field, first-defined wins — no deep merge inside the object.
+		expect(config.babysitter).toEqual({ autonomy: "triage" });
+	});
+
 	it("handles corrupt JSON gracefully", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });

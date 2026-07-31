@@ -137,7 +137,7 @@ const help = {
 		"Board-level setup for this project: the custom Kanban columns tasks can move through, and the labels you can tag tasks with.",
 	"help.projectSettings.project.title": "Project configuration",
 	"help.projectSettings.project.body":
-		"Repo-wide settings: the setup / dev / cleanup scripts, the default base branch, the GitHub account, and whether AI review runs automatically.",
+		"Repo-wide settings: the setup / dev / cleanup scripts, the default base branch, the GitHub account, the AI review agent, and the PR Babysitter that watches open pull requests.",
 	"help.projectSettings.worktree.title": "Worktree configuration",
 	"help.projectSettings.worktree.body":
 		"How task worktrees are built from this repo — sparse-checkout paths and which extra files are copied in — so each agent gets exactly the working tree it needs.",

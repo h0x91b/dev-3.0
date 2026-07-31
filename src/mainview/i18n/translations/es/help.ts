@@ -131,7 +131,7 @@ const help = {
 		"Configuración a nivel de tablero para este proyecto: las columnas Kanban personalizadas por las que pasan las tareas, y las etiquetas con las que puedes marcarlas.",
 	"help.projectSettings.project.title": "Configuración del proyecto",
 	"help.projectSettings.project.body":
-		"Ajustes a nivel de repositorio: los scripts de setup / dev / cleanup, la rama base por defecto, la cuenta de GitHub y si la revisión por IA se ejecuta automáticamente.",
+		"Ajustes a nivel de repositorio: los scripts de setup / dev / cleanup, la rama base por defecto, la cuenta de GitHub, el agente de revisión por IA y la niñera de PR que vigila los pull requests abiertos.",
 	"help.projectSettings.worktree.title": "Configuración del worktree",
 	"help.projectSettings.worktree.body":
 		"Cómo se construyen los worktrees de las tareas a partir de este repo — rutas de sparse-checkout y qué archivos extra se copian dentro — para que cada agente reciba exactamente el árbol de trabajo que necesita.",
