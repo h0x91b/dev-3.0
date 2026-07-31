@@ -206,7 +206,7 @@ export default function MemoryHeadroomIndicator({ navigate }: MemoryHeadroomIndi
 						onMouseEnter={cancelClose}
 						onMouseLeave={scheduleClose}
 						data-testid="memory-breakdown-popover"
-						className="fixed z-[1200] overflow-y-auto overflow-x-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/60 ring-1 ring-black/30"
+						className="fixed z-[1200] overflow-y-auto overflow-x-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
 						style={{
 							top: pos?.top ?? 0,
 							left: pos?.left ?? 0,

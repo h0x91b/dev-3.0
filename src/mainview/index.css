@@ -1225,7 +1225,9 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
    between polls so the level visibly drifts instead of jumping, and holds still
    under reduced motion. */
 .hdr-mem-fill {
-	transition: y 600ms ease-out, height 600ms ease-out, fill-opacity 300ms ease-out;
+	transform-box: fill-box;
+	transform-origin: bottom;
+	transition: transform 600ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {

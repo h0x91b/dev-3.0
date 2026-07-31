@@ -312,25 +312,28 @@ export function HelpModeIcon({ className }: HeaderIconProps) {
 // A per-chip segmented rendering was rejected as illegible at header size.
 export function MemoryStickIcon({ className, usedRatio = 0 }: HeaderIconProps & { usedRatio?: number }) {
 	const clamped = Math.min(1, Math.max(0, usedRatio));
-	// The module body spans y=4..19 (15 units); the fill grows upward from its base.
-	const fillHeight = 15 * clamped;
+	// Body 3.3..18.3 plus 2.4 of pin centres the glyph optically on 12, level with
+	// the neighbouring eye (5.8..18.2) instead of sitting low beside it. The fill is
+	// a full-height rect squashed by scaleY, so the level animates on a compositable
+	// transform rather than on the `y`/`height` geometry attributes.
 	return (
 		<svg {...svgBase(className)}>
-			<rect x="5" y="4" width="14" height="15" rx="1.8" />
-			{fillHeight > 0 && (
+			<rect x="5" y="3.3" width="14" height="15" rx="1.8" />
+			{clamped > 0 && (
 				<rect
 					x="5"
-					y={19 - fillHeight}
+					y="3.3"
 					width="14"
-					height={fillHeight}
+					height="15"
 					fill="currentColor"
 					fillOpacity={0.4}
 					stroke="none"
 					className="hdr-mem-fill"
+					style={{ transform: `scaleY(${clamped})` }}
 				/>
 			)}
 			{/* Contact pins on the bottom edge — what makes the glyph read as memory. */}
-			<path d="M8.5 19v2.4M12 19v2.4M15.5 19v2.4" />
+			<path d="M8.5 18.3v2.4M12 18.3v2.4M15.5 18.3v2.4" />
 		</svg>
 	);
 }
