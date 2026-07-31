@@ -3,6 +3,13 @@ export default {
 	content: ["./src/mainview/**/*.{html,js,ts,jsx,tsx}"],
 	theme: {
 		extend: {
+			// The rung below `text-xs` that dense chips and meta lines kept
+			// re-inventing as `text-[0.625rem]` / `text-[0.65rem]` / `text-[0.6875rem]`.
+			// Arbitrary sizes also set no line-height, so they inherited the
+			// ancestor's leading; this rung carries its own.
+			fontSize: {
+				micro: ["0.6875rem", { lineHeight: "1.4" }],
+			},
 			fontFamily: {
 				mono: [
 					"'JetBrainsMono Nerd Font Mono'",
@@ -31,7 +38,9 @@ export default {
 				},
 				danger: "rgb(var(--danger) / <alpha-value>)",
 				"danger-strong": "rgb(var(--danger-strong) / <alpha-value>)",
+				"success-strong": "rgb(var(--success-strong) / <alpha-value>)",
 				warning: "rgb(var(--warning) / <alpha-value>)",
+				"warning-strong": "rgb(var(--warning-strong) / <alpha-value>)",
 				favorite: "rgb(var(--favorite) / <alpha-value>)",
 				awake: {
 					DEFAULT: "rgb(var(--awake) / <alpha-value>)",

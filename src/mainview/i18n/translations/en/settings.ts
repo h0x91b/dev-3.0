@@ -401,7 +401,7 @@ const settings = {
 	"pxpipe.viewRepo": "pxpipe on GitHub ↗",
 	"pxpipe.startError": "Failed to start proxy: {error}",
 	"pxpipe.stopError": "Failed to stop proxy: {error}",
-	"pxpipe.disabledPresetToast": "This preset needs the token-saving proxy — tap to enable it in Settings.",
+	"pxpipe.disabledPresetToast": "This preset needs the token-saving proxy — click to enable it in Settings.",
 	"pxpipe.credit": "Token-saving trick and proxy by the pxpipe team.",
 } as const;
 

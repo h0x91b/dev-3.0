@@ -28,7 +28,7 @@ const common = {
 	"agentLaunch.requestedBy": "Solicitado por la tarea #{seq} — {title}",
 	"agentLaunch.scratchHasNoPrompt": "Se inicia sin prompt. El agente que la pidió le enviará instrucciones.",
 	"agentLaunch.launch": "Iniciar",
-	"agentLaunch.launching": "Iniciando...",
+	"agentLaunch.launching": "Iniciando…",
 	"agentLaunch.decline": "Rechazar",
 
 	// Navegación estilo Vimium

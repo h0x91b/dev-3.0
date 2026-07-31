@@ -117,6 +117,7 @@ const dashboard = {
 	"rateLimits.captured": "captured {time} ago",
 	"rateLimits.capturedNow": "captured just now",
 	"rateLimits.noRecentData": "no recent usage data",
+	"rateLimits.quotaExhausted": "No quota left — this launch will fail until it resets.",
 
 	// Remote Access QR Modal
 	"remote.title": "Remote Access",

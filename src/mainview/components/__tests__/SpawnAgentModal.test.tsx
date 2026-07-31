@@ -73,6 +73,8 @@ vi.mock("../../rpc", () => ({
 				claude: { accounts: [], activeId: null, systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
 			}),
+			// The memory banner lives in the header; without this its effect throws.
+			getSystemMemory: vi.fn().mockResolvedValue(null),
 			checkAgentAvailability: vi.fn().mockResolvedValue([
 				{ agentId: "builtin-claude", name: "Claude", baseCommand: "claude", installed: true, resolvedPath: "/usr/local/bin/claude" },
 				{ agentId: "builtin-codex", name: "Codex", baseCommand: "codex", installed: true, resolvedPath: "/usr/local/bin/codex" },
@@ -128,9 +130,12 @@ describe("SpawnAgentModal", () => {
 		mockedApi.request.getGlobalSettings.mockResolvedValue(globalSettings);
 	});
 
-	it("renders the modal title", async () => {
+	it("renders the modal title and names the task it adds the agent to", async () => {
 		renderModal();
-		expect(screen.getByText("Spawn Agent")).toBeInTheDocument();
+		const heading = screen.getByRole("heading", { level: 2 });
+		expect(heading).toBeInTheDocument();
+		expect(screen.getByRole("dialog")).toHaveAttribute("aria-labelledby", heading.id);
+		expect(screen.getByText("Test task")).toBeInTheDocument();
 	});
 
 	it("shows the Provider/Model/Mode picker after loading", async () => {
@@ -158,10 +163,10 @@ describe("SpawnAgentModal", () => {
 		renderModal(onClose);
 
 		await vi.waitFor(() => {
-			expect(screen.getByText("Spawn")).toBeInTheDocument();
+			expect(screen.getByTestId("spawn-agent-submit")).toBeEnabled();
 		});
 
-		await user.click(screen.getByText("Spawn"));
+		await user.click(screen.getByTestId("spawn-agent-submit"));
 
 		await vi.waitFor(() => {
 			expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalledWith({
@@ -181,14 +186,15 @@ describe("SpawnAgentModal", () => {
 		renderModal();
 
 		await vi.waitFor(() => {
-			expect(screen.getByText("Spawn")).toBeInTheDocument();
+			expect(screen.getByTestId("spawn-agent-submit")).toBeEnabled();
 		});
 
-		await user.click(screen.getByText("Spawn"));
+		await user.click(screen.getByTestId("spawn-agent-submit"));
 
-		await vi.waitFor(() => {
-			expect(screen.getByText(/Failed to spawn.*tmux error/)).toBeInTheDocument();
-		});
+		const alert = await vi.waitFor(() => screen.getByRole("alert"));
+		expect(alert.textContent).toMatch(/tmux error/);
+		// The failure must be reachable, not just visible.
+		expect(alert).toHaveFocus();
 	});
 
 	it("closes on Escape", async () => {
@@ -203,7 +209,7 @@ describe("SpawnAgentModal", () => {
 		const onClose = vi.fn();
 		renderModal(onClose);
 
-		const backdrop = screen.getByText("Spawn Agent").closest(".fixed");
+		const backdrop = screen.getByRole("heading", { level: 2 }).closest(".fixed");
 		if (backdrop) await user.click(backdrop);
 
 		expect(onClose).toHaveBeenCalled();
@@ -283,12 +289,53 @@ describe("SpawnAgentModal", () => {
 		it("does not spawn on Cmd/Ctrl/Shift+Enter", async () => {
 			renderModal();
 			await vi.waitFor(() => {
-				expect(screen.getByText("Spawn")).toBeInTheDocument();
+				expect(screen.getByTestId("spawn-agent-submit")).toBeEnabled();
 			});
 
 			await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
 			await userEvent.keyboard("{Control>}{Enter}{/Control}");
 			await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+
+			expect(mockedApi.request.spawnAgentInTask).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("agent not installed", () => {
+		beforeEach(() => {
+			mockedApi.request.checkAgentAvailability.mockResolvedValue([
+				{ agentId: "builtin-claude", name: "Claude", baseCommand: "claude", installed: false, installCommand: "npm i -g claude" },
+				{ agentId: "builtin-codex", name: "Codex", baseCommand: "codex", installed: true, resolvedPath: "/usr/local/bin/codex" },
+			]);
+		});
+
+		it("keeps the primary focusable and points it at the reason", async () => {
+			renderModal();
+
+			const submit = await vi.waitFor(() => {
+				const btn = screen.getByTestId("spawn-agent-submit");
+				expect(btn).toHaveAttribute("aria-disabled", "true");
+				return btn;
+			});
+			// Focusable, so a keyboard user actually hears the reason.
+			expect(submit).not.toBeDisabled();
+
+			const describedBy = submit.getAttribute("aria-describedby");
+			expect(describedBy).toBeTruthy();
+			const reason = document.getElementById(describedBy as string);
+			expect(reason?.textContent).toMatch(/Claude/);
+			expect(reason?.textContent).toContain("npm i -g claude");
+		});
+
+		it("does not spawn when clicked", async () => {
+			const user = userEvent.setup();
+			renderModal();
+
+			const submit = await vi.waitFor(() => {
+				const btn = screen.getByTestId("spawn-agent-submit");
+				expect(btn).toHaveAttribute("aria-disabled", "true");
+				return btn;
+			});
+			await user.click(submit);
 
 			expect(mockedApi.request.spawnAgentInTask).not.toHaveBeenCalled();
 		});

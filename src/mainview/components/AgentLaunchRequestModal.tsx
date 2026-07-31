@@ -5,8 +5,12 @@ import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import { useT } from "../i18n";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { useReducedMotion } from "../utils/useReducedMotion";
 import AgentConfigPicker from "./AgentConfigPicker";
+import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
+
+const NOT_INSTALLED_ID = "agent-launch-not-installed";
 
 interface AgentLaunchRequestModalProps {
 	request: AgentLaunchRequest;
@@ -27,6 +31,7 @@ interface AgentLaunchRequestModalProps {
 function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	const reducedMotion = useReducedMotion();
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
 	const [agentId, setAgentId] = useState<string | null>(null);
@@ -66,14 +71,21 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 
 	const handleToggleFavorite = useToggleFavorite(setGlobalSettings);
 
-	function handleLaunch() {
-		setLaunching(true);
-		onRespond(true, { agentId, configId, accountId });
-	}
-
 	const selectedAgent = agents.find((a) => a.id === agentId);
 	const selectedAvailability = agentAvailability.find((a) => a.agentId === agentId);
 	const agentNotInstalled = selectedAvailability ? !selectedAvailability.installed : false;
+	// "Not ready" (missing agent / still loading) must not look like "in flight",
+	// which keeps full colour and gets a spinner instead.
+	const notReady = agentNotInstalled || !globalSettings;
+	const pressFeedback = reducedMotion
+		? "transition-colors"
+		: "transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.96]";
+
+	function handleLaunch() {
+		if (agentNotInstalled) return;
+		setLaunching(true);
+		onRespond(true, { agentId, configId, accountId });
+	}
 
 	return (
 		<div
@@ -86,10 +98,13 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="agent-launch-title"
 				tabIndex={-1}
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-accent/40 w-full max-w-xl mx-4 max-h-[calc(100vh-2rem)] overflow-y-auto outline-none"
+				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-accent/40 w-full max-w-2xl mx-4 max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden outline-none"
 			>
-				<div className="px-6 py-4 space-y-3">
+				{/* Only the content scrolls — a blocked CLI waits on the footer answer,
+				    so Decline/Launch must stay visible on a short viewport. */}
+				<div className="px-6 py-4 space-y-3 flex-1 min-h-0 overflow-y-auto">
 					<div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-accent/15 text-accent text-xs font-medium">
 						<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\u{F06A9}"}
@@ -97,7 +112,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						{t("confirmDialog.agentBadge")}
 					</div>
 
-					<h2 className="text-fg text-lg font-semibold">
+					<h2 id="agent-launch-title" className="text-fg text-lg font-semibold">
 						{request.scratch ? t("agentLaunch.titleScratch") : t("agentLaunch.title")}
 					</h2>
 
@@ -136,18 +151,16 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 							onToggleFavorite={handleToggleFavorite}
 						/>
 					) : (
-						<div className="py-6 flex items-center justify-center">
-							<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-						</div>
+						<AgentPickerSkeleton />
 					)}
 
 					{agentNotInstalled && selectedAgent && (
-						<div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+						<div id={NOT_INSTALLED_ID} className="p-3 rounded-lg bg-warning/10 border border-warning/20">
 							<p className="text-warning text-xs font-medium mb-1">
 								{t("spawnAgent.notInstalled", { name: selectedAgent.name })}
 							</p>
 							{selectedAvailability?.installCommand && (
-								<code className="text-warning/80 bg-warning/5 px-2 py-0.5 rounded text-xs font-mono">
+								<code className="text-warning-strong bg-warning/10 px-2 py-0.5 rounded text-xs font-mono">
 									{selectedAvailability.installCommand}
 								</code>
 							)}
@@ -155,23 +168,37 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 					)}
 				</div>
 
-				<div className="px-6 py-4 border-t border-edge flex items-center justify-end gap-3">
+				<div className="px-6 py-4 border-t border-edge flex items-center justify-end gap-3 flex-shrink-0">
 					<button
 						type="button"
 						autoFocus
 						onClick={() => onRespond(false)}
 						disabled={launching}
-						className="text-fg-3 hover:text-fg text-sm transition-colors px-3 py-1.5 disabled:opacity-50"
+						className={`text-fg-3 hover:text-fg text-sm px-3 py-1.5 disabled:opacity-50 ${pressFeedback}`}
 					>
 						{t("agentLaunch.decline")}
 					</button>
+					{/* Not-installed keeps the button focusable (aria-disabled) so its
+					    reason is announced; only the in-flight case is natively disabled. */}
 					<button
 						type="button"
 						data-testid="agent-launch-accept"
 						onClick={handleLaunch}
-						disabled={launching || !globalSettings || agentNotInstalled}
-						className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+						disabled={launching || !globalSettings}
+						aria-disabled={agentNotInstalled || undefined}
+						aria-describedby={agentNotInstalled && selectedAgent ? NOT_INSTALLED_ID : undefined}
+						className={`text-sm font-medium px-5 py-2 rounded-xl inline-flex items-center gap-2 ${pressFeedback} ${
+							notReady
+								? "bg-elevated text-fg-muted border border-edge cursor-not-allowed"
+								: "bg-accent hover:bg-accent-hover text-white"
+						}`}
 					>
+						{launching && (
+							<span
+								className={`h-3 w-3 rounded-full border-2 border-white/30 border-t-white${reducedMotion ? "" : " animate-spin"}`}
+								aria-hidden="true"
+							/>
+						)}
 						{launching ? t("agentLaunch.launching") : t("agentLaunch.launch")}
 					</button>
 				</div>

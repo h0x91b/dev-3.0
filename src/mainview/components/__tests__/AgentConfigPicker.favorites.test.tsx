@@ -114,7 +114,7 @@ describe("AgentConfigPicker — favorites", () => {
 		expect(menu()).toBeNull();
 		await user.click(trigger()!);
 		expect(menu()).not.toBeNull();
-		expect(saveRow()?.textContent).toContain("Save this combo");
+		expect(saveRow()?.textContent).toContain("Save as favorite");
 		expect(menuItemLabels()).toEqual([]);
 	});
 
@@ -204,14 +204,14 @@ describe("AgentConfigPicker — favorites", () => {
 			/>,
 		));
 		await user.click(trigger()!);
-		expect(saveRow()?.textContent).toContain("Save this combo");
+		expect(saveRow()?.textContent).toContain("Save as favorite");
 		await user.click(saveRow()!);
 		expect(onToggleFavorite).toHaveBeenCalledWith("builtin-claude", "fable-auto-medium");
 		// Saving must not dismiss the menu — the user sees the new entry appear.
 		expect(menu()).not.toBeNull();
 	});
 
-	it("the Save row reads 'Remove this combo' and removes when the current combo is already a favorite", async () => {
+	it("the Save row reads 'Remove favorite' and removes when the current combo is already a favorite", async () => {
 		const user = userEvent.setup();
 		const onToggleFavorite = vi.fn();
 		({ container } = render(
@@ -222,7 +222,7 @@ describe("AgentConfigPicker — favorites", () => {
 			/>,
 		));
 		await user.click(trigger()!);
-		expect(saveRow()?.textContent).toContain("Remove this combo");
+		expect(saveRow()?.textContent).toContain("Remove favorite");
 		await user.click(saveRow()!);
 		expect(onToggleFavorite).toHaveBeenCalledWith("builtin-claude", "opus-bypass-xhigh");
 	});

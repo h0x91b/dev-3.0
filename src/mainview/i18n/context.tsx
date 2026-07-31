@@ -33,6 +33,22 @@ interface I18nContextValue {
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
+/** Live snapshot of the provider's `t`, kept for pure non-React modules that
+ *  cannot call a hook (see `translate` below). */
+let activeT: TFunction | null = null;
+
+/** Locale-aware lookup for pure modules (e.g. `utils/agentPicker.ts`) that
+ *  produce user-facing labels but hold no React context. Components must keep
+ *  using `useT()`; this falls back to English before the provider mounts. */
+export function translate(
+	key: TranslationKey,
+	vars?: Record<string, string | number>,
+): string {
+	if (activeT) return activeT(key, vars);
+	const template = en[key] ?? key;
+	return vars ? interpolate(template, vars) : template;
+}
+
 function readLocale(): Locale {
 	const saved = localStorage.getItem(STORAGE_KEY);
 	if (saved === "en" || saved === "ru" || saved === "es") return saved;
@@ -74,6 +90,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 		const mergedVars = { count, ...vars };
 		return interpolate(template, mergedVars);
 	};
+
+	activeT = t;
 
 	return (
 		<I18nContext.Provider value={{ locale, setLocale, t }}>

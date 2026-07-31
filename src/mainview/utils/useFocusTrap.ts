@@ -1,4 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
+import { getOverlayLayerElements } from "./overlay-layers";
 
 /**
  * Selector for natively-focusable / tabbable elements. Mirrors the common
@@ -15,10 +16,37 @@ const FOCUSABLE_SELECTOR = [
 	'[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-function getFocusable(container: HTMLElement): HTMLElement[] {
-	return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-		(el) => el.getAttribute("aria-hidden") !== "true",
+function collect(root: HTMLElement): HTMLElement[] {
+	return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+		// A `button` with tabindex="-1" still matches the selector above but is not
+		// tabbable — that is how a roving-focus listbox marks its rows.
+		(el) => el.getAttribute("aria-hidden") !== "true" && el.tabIndex >= 0,
 	);
+}
+
+/**
+ * The innermost open portalled panel, when it has rows of its own to tab
+ * through. `Select` keeps focus on its trigger and roves with
+ * `aria-activedescendant`, so its options are `tabindex="-1"` and it deliberately
+ * yields nothing here. See `utils/overlay-layers.ts`.
+ */
+function tabbablePanel(container: HTMLElement): HTMLElement[] | null {
+	const layers = getOverlayLayerElements().filter((el) => !container.contains(el));
+	const top = layers[layers.length - 1];
+	if (!top) return null;
+	const rows = collect(top);
+	return rows.length > 0 ? rows : null;
+}
+
+/**
+ * While a portalled panel is open the ring narrows to that panel — Tab cycles
+ * its rows instead of walking the dialog behind it, exactly as a dialog captures
+ * Tab from the page. Unioning both would technically reach the rows, but only
+ * after tabbing through the whole dialog, and it would let the user operate
+ * controls the panel covers.
+ */
+function getFocusable(container: HTMLElement): HTMLElement[] {
+	return tabbablePanel(container) ?? collect(container);
 }
 
 /**
@@ -72,7 +100,18 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(): RefObject<T
 			const first = focusables[0];
 			const last = focusables[focusables.length - 1];
 			const active = document.activeElement;
-			const inside = container.contains(active);
+
+			// An open panel owns the ring. Focus still on its trigger (or anywhere
+			// else in the dialog) is pulled straight into the panel, so the very
+			// first Tab after opening a popover lands on one of its rows.
+			const panel = tabbablePanel(container);
+			if (panel && !panel.includes(active as HTMLElement)) {
+				e.preventDefault();
+				(e.shiftKey ? last : first).focus();
+				return;
+			}
+
+			const inside = panel ? true : container.contains(active);
 
 			if (e.shiftKey) {
 				// Backward: wrap to the last element at the first element, the

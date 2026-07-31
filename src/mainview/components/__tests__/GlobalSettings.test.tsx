@@ -831,12 +831,10 @@ describe("GlobalSettings", () => {
 			setupMocks();
 			const user = await expandFirstConfig();
 
-			// Effort select has empty string as default value
-			const effortSelect = screen.getAllByRole("combobox").find(
-				(s) => {
-					const el = s as HTMLSelectElement;
-					return el.value === "" && el.options.length === 5;
-				},
+			// Effort select has empty string as default value. Query native selects
+			// directly — the app's custom Select also reports role="combobox".
+			const effortSelect = Array.from(document.querySelectorAll("select")).find(
+				(el) => el.value === "" && el.options.length === 5,
 			)!;
 			await user.selectOptions(effortSelect, "high");
 

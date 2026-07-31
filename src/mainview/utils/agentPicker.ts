@@ -1,6 +1,7 @@
 import type { AgentConfiguration, CodingAgent, FavoriteAgentConfig } from "../../shared/types";
 import { DEPRECATED_DEFAULT_CONFIG_REMAP } from "../../shared/types";
 import { orderFavorites } from "../../shared/favorites";
+import { translate } from "../i18n";
 
 /**
  * Presentation helpers for the Provider → Model → Mode launch picker.
@@ -87,11 +88,15 @@ export function prettifyModel(model: string): string {
 	return cleaned.replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
-/** The 2nd-field ("Model") group label for a single preset. */
+/** The 2nd-field ("Model") group label for a single preset.
+ *  A preset that pins no model is not a model of its own — it lets the agent's
+ *  CLI choose — so it gets the localized "Agent's own default" label instead of
+ *  sitting among the real model names. `translate` (not `useT`) because this
+ *  module is a pure util with no React context. */
 export function getModelGroupLabel(config: AgentConfiguration): string {
 	if (config.groupLabel) return config.groupLabel;
 	if (config.model) return MODEL_GROUP_LABELS[config.model] ?? prettifyModel(config.model);
-	return "Default";
+	return translate("launch.modelAgentDefault");
 }
 
 /** Remove the group label from a preset name and tidy leftover punctuation,

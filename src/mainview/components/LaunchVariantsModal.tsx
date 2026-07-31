@@ -1,4 +1,4 @@
-import { useState, useEffect, type Dispatch } from "react";
+import { useState, useEffect, useRef, type Dispatch } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import type { ScheduleMode } from "../../shared/schedule";
@@ -9,9 +9,13 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { useReducedMotion } from "../utils/useReducedMotion";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
-import AgentConfigPicker from "./AgentConfigPicker";
+import AgentConfigPicker, {
+	PICKER_HEADER_CONTAINER_CLASS,
+	pickerLabelsHeaderClass,
+} from "./AgentConfigPicker";
 import SchedulePicker from "./SchedulePicker";
 import MemoryPressureBanner from "./MemoryPressureBanner";
 
@@ -94,6 +98,12 @@ function LaunchVariantsModal({
 	// A freshly created task has no explicit `watched` flag → fall back to the
 	// remembered preference; an existing task with an explicit value keeps it.
 	const [watched, setWatched] = useState(task.watched ?? globalSettings.watchByDefault ?? false);
+	// "Start in…" — a deferred launch instead of spawning now (see handleSchedule).
+	const [scheduleOpen, setScheduleOpen] = useState(false);
+	const [scheduleTarget, setScheduleTarget] = useState<Date | null>(null);
+	const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("in");
+	const reducedMotion = useReducedMotion();
+	const errorRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
@@ -105,7 +115,9 @@ function LaunchVariantsModal({
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
 	useEscapeKey(onClose);
-	// Enter → launch (when no text input is focused)
+	// Enter → the dialog's CURRENT default action. With the Schedule panel open the
+	// primary button says "Schedule", so Enter must schedule, never spawn — and it
+	// does nothing until a time is set.
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
 			if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
@@ -117,13 +129,18 @@ function LaunchVariantsModal({
 				const el = document.activeElement as HTMLElement | null;
 				const tag = el?.tagName;
 				if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT" || tag === "A" || el?.isContentEditable) return;
-				if (!launching && variants.length > 0) handleLaunch();
+				if (launching || variants.length === 0) return;
+				if (scheduleOpen) {
+					if (scheduleTarget) handleSchedule();
+					return;
+				}
+				handleLaunch();
 			}
 		}
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [launching, variants]);
+	}, [launching, variants, scheduleOpen, scheduleTarget]);
 
 	function addVariant() {
 		setVariants((prev) => [...prev, makeDefaultVariant()]);
@@ -203,10 +220,6 @@ function LaunchVariantsModal({
 	// stays in To Do with a countdown badge; the bun scheduler fires the exact
 	// variants captured here when the moment arrives. The in/at picker + its pure
 	// time resolution live in the shared SchedulePicker (also used by "Send later").
-	const [scheduleOpen, setScheduleOpen] = useState(false);
-	const [scheduleTarget, setScheduleTarget] = useState<Date | null>(null);
-	const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("in");
-
 	async function handleSchedule() {
 		if (!scheduleTarget) return;
 		const delayMs = scheduleTarget.getTime() - Date.now();
@@ -235,11 +248,34 @@ function LaunchVariantsModal({
 		setLaunching(false);
 	}
 
+	// A failed launch must not be silent for screen readers: role="alert" announces
+	// it, and focus moves to the message so keyboard users land on the reason.
+	useEffect(() => {
+		if (error) errorRef.current?.focus();
+	}, [error]);
+
 	const isAddVariant = mode === "addAttempts";
 	const title = isAddVariant ? t("launch.retryTitle") : t("launch.title");
 	const launchLabel = isAddVariant
 		? (launching ? t("launch.launching") : t("launch.launchVariant"))
 		: (launching ? t("launch.launching") : t("launch.launch"));
+
+	// Press feedback on the most consequential click in the app.
+	const pressClass = reducedMotion ? "transition-colors" : "transition active:scale-[0.96]";
+	// The two disabled meanings must not look the same: "nothing to launch yet"
+	// greys the button out, while an in-flight launch keeps full colour + spinner.
+	const notReady = scheduleOpen ? !scheduleTarget || variants.length === 0 : variants.length === 0;
+	const primaryClass = `text-sm font-medium px-5 py-2 rounded-xl flex items-center gap-2 border ${pressClass} ${
+		notReady
+			? "bg-elevated text-fg-muted border-edge cursor-not-allowed"
+			: "bg-accent hover:bg-accent-hover text-white border-transparent"
+	}`;
+	const spinner = launching && (
+		<span
+			className={`h-3 w-3 rounded-full border-2 border-white/30 border-t-white${reducedMotion ? "" : " animate-spin"}`}
+			aria-hidden="true"
+		/>
+	);
 
 	return (
 		<div
@@ -250,6 +286,7 @@ function LaunchVariantsModal({
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="launch-variants-title"
 				tabIndex={-1}
 				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-3xl mx-4 overflow-hidden outline-none"
 				onClick={(e) => e.stopPropagation()}
@@ -259,7 +296,7 @@ function LaunchVariantsModal({
 					<div className="flex items-center justify-between gap-3">
 						<div className="min-w-0">
 							<div className="flex items-center gap-1.5">
-								<h2 className="text-fg text-lg font-semibold">{title}</h2>
+								<h2 id="launch-variants-title" className="text-fg text-lg font-semibold">{title}</h2>
 								<HelpSpot topicId="modal.launch-variants" />
 							</div>
 							<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
@@ -277,7 +314,7 @@ function LaunchVariantsModal({
 								}`}
 								aria-label={watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
 							>
-								<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 									{watched ? "\u{F009A}" : "\u{F0F1C}"}
 								</span>
 								<span className="text-xs font-medium">
@@ -294,20 +331,42 @@ function LaunchVariantsModal({
 					<MemoryPressureBanner launchCount={variants.length} />
 				</div>
 
-				{/* Variant rows */}
-				<div className="px-6 py-4 space-y-3 max-h-[50vh] overflow-y-auto">
-					{variants.map((variant, index) => {
-						return (
+				{/* Variant rows. Every row shares one set of rails —
+				    #N | picker | remove — so the index and the × line up with the
+				    fields structurally, and the labels header below tracks the same
+				    columns instead of being nudged with margins. */}
+				<fieldset className="px-6 py-4 max-h-[50vh] overflow-y-auto">
+					<legend className="sr-only">{t("launch.fieldsetLegend")}</legend>
+
+					{/* Labels once for the whole list, not once per variant. The
+					    transparent border + px-3 match a row card's own box, so the
+					    columns align; the middle cell is the picker's width, so the
+					    header appears exactly when the fields sit in a row. */}
+					<div className="grid grid-cols-[1.75rem_minmax(0,1fr)_1.5rem] gap-3 px-3 border border-transparent">
+						<span />
+						<div className={PICKER_HEADER_CONTAINER_CLASS}>
+							<div className={`${pickerLabelsHeaderClass(true)} text-xs text-fg-3 mb-1`}>
+								<span>{t("launch.favorites")}</span>
+								<span>{t("launch.provider")}</span>
+								<span>{t("launch.model")}</span>
+								<span>{t("launch.mode")}</span>
+							</div>
+						</div>
+						<span />
+					</div>
+
+					<div className="space-y-3">
+						{variants.map((variant, index) => (
 							<div
 								key={index}
-								className="flex items-start gap-3 p-3 bg-raised rounded-xl border border-edge"
+								role="group"
+								aria-label={t("launch.variantGroup", { n: String(index + 1) })}
+								className="grid grid-cols-[1.75rem_minmax(0,1fr)_1.5rem] items-start gap-3 p-3 bg-raised rounded-[1.25rem] border border-edge"
 							>
 								{/* Variant number */}
-								<span className="text-accent font-bold text-sm w-7 flex-shrink-0 mt-5">
-									#{index + 1}
-								</span>
+								<span className="text-accent font-bold text-sm">#{index + 1}</span>
 
-								{/* Provider → Model → Mode (stacks on narrow) */}
+								{/* Provider → Model → Mode (stacks in a narrow dialog) */}
 								<AgentConfigPicker
 									idPrefix={`variant-${index}`}
 									agents={agents}
@@ -317,18 +376,19 @@ function LaunchVariantsModal({
 									onChange={(next) => updateVariant(index, next)}
 									accountId={variant.accountId}
 									onAccountChange={(accountId) => updateVariant(index, { accountId })}
-									className="flex-1 min-w-0 flex flex-col sm:flex-row gap-3"
+									showLabels={false}
 									pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 									showFavorites
 									favorites={globalSettings.favorites ?? []}
 									onToggleFavorite={handleToggleFavorite}
 								/>
 
-								{/* Remove button */}
+								{/* Remove button — the rail stays reserved with one variant
+								    so the rows and the header never shift. */}
 								{variants.length > 1 && (
 									<button
 										onClick={() => removeVariant(index)}
-										className="text-fg-muted hover:text-danger transition-colors p-1 mt-6 flex-shrink-0"
+										className={`text-fg-muted hover:text-danger p-1 ${pressClass}`}
 										title={t("launch.removeVariant")}
 									>
 										<svg
@@ -347,14 +407,20 @@ function LaunchVariantsModal({
 									</button>
 								)}
 							</div>
-						);
-					})}
-				</div>
+						))}
+					</div>
+				</fieldset>
 
 				{/* Error */}
 				{error && (
-					<div className="px-6 py-2 text-danger text-sm">
+					<div
+						ref={errorRef}
+						role="alert"
+						tabIndex={-1}
+						className="px-6 py-2 text-danger text-sm outline-none"
+					>
 						{t("launch.failedLaunch", { error })}
+						<span className="text-fg-3 block">{t("launch.failedLaunchHint")}</span>
 					</div>
 				)}
 
@@ -376,7 +442,7 @@ function LaunchVariantsModal({
 					) : (
 						<button
 							onClick={addVariant}
-							className="text-accent hover:text-accent-emphasis text-sm font-medium transition-colors"
+							className={`text-accent hover:text-accent-emphasis text-sm font-medium ${pressClass}`}
 						>
 							{t("launch.addVariant")}
 						</button>
@@ -385,7 +451,7 @@ function LaunchVariantsModal({
 					<div className="flex items-center gap-3">
 						<button
 							onClick={onClose}
-							className="text-fg-3 hover:text-fg text-sm transition-colors px-3 py-1.5"
+							className={`text-fg-3 hover:text-fg text-sm px-3 py-1.5 ${pressClass}`}
 							disabled={launching}
 						>
 							{t("kanban.cancel")}
@@ -394,7 +460,7 @@ function LaunchVariantsModal({
 							<button
 								onClick={() => setScheduleOpen((v) => !v)}
 								disabled={launching}
-								className={`text-sm transition-colors px-3 py-1.5 rounded-lg flex items-center gap-1.5 border ${
+								className={`text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5 border ${pressClass} ${
 									scheduleOpen
 										? "text-accent border-accent/40 bg-accent/10"
 										: "text-fg-3 hover:text-fg border-transparent"
@@ -411,17 +477,19 @@ function LaunchVariantsModal({
 						{scheduleOpen ? (
 							<button
 								onClick={handleSchedule}
-								disabled={launching || !scheduleTarget || variants.length === 0}
-								className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+								disabled={launching || notReady}
+								className={primaryClass}
 							>
+								{spinner}
 								{t("launch.schedule")}
 							</button>
 						) : (
 							<button
 								onClick={handleLaunch}
-								disabled={launching || variants.length === 0}
-								className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+								disabled={launching || notReady}
+								className={primaryClass}
 							>
+								{spinner}
 								{launchLabel}
 							</button>
 						)}

@@ -71,7 +71,9 @@ html {
 	--danger-strong: 255 137 135; /* danger ink on a danger-tinted fill */
 	--success: 63 223 126;
 	--success-hover: 4 190 88;
+	--success-strong: 63 223 126; /* success ink on a success-tinted fill */
 	--warning: 240 210 78;
+	--warning-strong: 240 210 78; /* warning ink on a warning-tinted fill */
 	--favorite: 249 182 61;    /* gold star for a saved favorite combo */
 	--awake: 244 148 86;
 	--awake-hover: 239 108 1;
@@ -165,7 +167,9 @@ html {
 	--danger-strong: 159 18 57; /* --danger on a danger/10 fill is only 4.28:1 */
 	--success: 14 138 71;
 	--success-hover: 10 114 57;
+	--success-strong: 11 105 54; /* --success on a success/10 fill is only 4.36:1 */
 	--warning: 145 118 13;
+	--warning-strong: 118 96 9; /* --warning on a warning/10 fill is only 3.82:1 */
 	--favorite: 162 113 15;    /* deeper gold reads on a light canvas */
 	--awake: 189 94 15;
 	--awake-hover: 161 72 8;

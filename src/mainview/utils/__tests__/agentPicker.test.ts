@@ -42,9 +42,9 @@ describe("getModelGroupLabel", () => {
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "openai/gpt-5.5", groupLabel: "Sisyphus" })).toBe("Sisyphus");
 	});
 
-	it("prettifies unknown models and falls back to Default when no model", () => {
+	it("prettifies unknown models and labels a model-less preset as the agent's own default", () => {
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "some-new-model-preview" })).toBe("Some New Model");
-		expect(getModelGroupLabel({ id: "a", name: "x" })).toBe("Default");
+		expect(getModelGroupLabel({ id: "a", name: "x" })).toBe("Agent's own default");
 	});
 });
 
@@ -105,7 +105,7 @@ describe("buildPickerGroups", () => {
 		expect(buildPickerGroups(undefined)).toEqual([]);
 	});
 
-	it("puts model-less custom configs under a single Default group", () => {
+	it("puts model-less custom configs under a single agent-default group", () => {
 		const custom: CodingAgent = {
 			id: "custom",
 			name: "Custom",
@@ -117,7 +117,7 @@ describe("buildPickerGroups", () => {
 		};
 		const groups = buildPickerGroups(custom);
 		expect(groups).toHaveLength(1);
-		expect(groups[0].label).toBe("Default");
+		expect(groups[0].label).toBe("Agent's own default");
 		expect(groups[0].configs.map((c) => c.id)).toEqual(["a", "b"]);
 	});
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type {
 	AgentAccount,
@@ -12,7 +12,6 @@ import type { CodingAgent } from "../../shared/types";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../shared/rate-limits";
 import {
 	RATE_LIMIT_DANGER_PERCENT,
-	RATE_LIMIT_WARN_PERCENT,
 	formatResetDelta,
 	isUnlimitedRateLimitSnapshot,
 	windowLabel,
@@ -20,8 +19,8 @@ import {
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
-import { useEscapeKey } from "../hooks/useEscapeKey";
-import { CapturedNote, UsageBar } from "./rate-limit-ui";
+import { useOverlayLayer } from "../utils/useOverlayLayer";
+import { CapturedNote, UsageBar, severityText } from "./rate-limit-ui";
 
 /** Fired on window after any account mutation (switch from this popover,
  *  add/remove/switch in Settings → Agent Accounts), so every mounted listener
@@ -88,73 +87,92 @@ interface RowUsage {
 	state: "used" | "unlimited" | "none";
 }
 
-function usageSeverityText(percent: number): string {
-	if (percent >= RATE_LIMIT_DANGER_PERCENT) return "text-danger";
-	if (percent >= RATE_LIMIT_WARN_PERCENT) return "text-warning";
-	return "text-accent";
+interface QuotaLine {
+	key: string;
+	label: string;
+	usedPercent: number;
+	resetsAt: number | null;
 }
 
-/**
- * Compact per-account quota block under a picker row (variant C of the design
- * exploration — mini quota cards): one "label · bar · % · reset" line per limit
- * window plus the captured note; an unlimited chip or a no-data note otherwise.
- */
+function quotaLines(snap: AgentRateLimitSnapshot, monthlyLabel: string): QuotaLine[] {
+	const monthly = snap.monthlyCredits;
+	// Same de-dup as AccountCard: the monthly_credits window mirrors
+	// snap.monthlyCredits, which gets its own line.
+	const lines: QuotaLine[] = snap.windows
+		.filter((win) => !(win.id === "monthly_credits" && monthly))
+		.map((win) => ({ key: win.id, label: windowLabel(win), usedPercent: win.usedPercent, resetsAt: win.resetsAt }));
+	if (monthly) {
+		lines.push({
+			key: "monthly",
+			label: monthlyLabel,
+			usedPercent: Math.max(0, 100 - monthly.remainingPercent),
+			resetsAt: monthly.resetsAt,
+		});
+	}
+	return lines;
+}
+
+/** The one reading a collapsed row keeps: an unlimited chip, or the most severe
+ *  window percentage — enough to choose an account without expanding it. */
+function RowHeadline({ usage, monthlyLabel }: { usage: RowUsage; monthlyLabel: string }) {
+	const t = useT();
+	if (!usage.snap) return null;
+	if (usage.state === "unlimited") {
+		return (
+			<span className="text-success-strong text-micro px-1 py-px bg-success/10 rounded font-medium shrink-0">
+				{t("rateLimits.unlimited")}
+			</span>
+		);
+	}
+	const lines = quotaLines(usage.snap, monthlyLabel);
+	if (lines.length === 0) return null;
+	const percent = Math.round(Math.max(...lines.map((line) => line.usedPercent)));
+	// "37%" alone reads as either used or left; the title carries the direction,
+	// and an exhausted account says so outright — picking it wastes the launch.
+	return (
+		<span
+			className={`shrink-0 text-xs font-semibold tabular-nums ${severityText(percent)}`}
+			title={percent >= RATE_LIMIT_DANGER_PERCENT
+				? t("rateLimits.quotaExhausted")
+				: t("rateLimits.percentUsed", { percent: String(percent) })}
+		>
+			{t("rateLimits.percentUsed", { percent: String(percent) })}
+		</span>
+	);
+}
+
+/** Expanded per-account quota block: one "label · bar · % · reset" line per
+ *  limit window plus the captured note. Collapsed by default so a row is one
+ *  line and the popover fits below its trigger. */
 function RowQuota({ usage, now }: { usage: RowUsage; now: number }) {
 	const t = useT();
-	if (usage.state === "unlimited" && usage.snap) {
-		return (
-			<>
-				<span className="mt-1.5 flex">
-					<span className="text-success text-[0.625rem] px-1 py-px bg-success/10 rounded font-medium">
-						{t("rateLimits.unlimited")}
-					</span>
-				</span>
-				<span className="mt-1 block">
-					<CapturedNote capturedAt={usage.snap.capturedAt} now={now} />
-				</span>
-			</>
-		);
-	}
-	if (usage.state === "used" && usage.snap) {
-		const monthly = usage.snap.monthlyCredits;
-		// Same de-dup as AccountCard: the monthly_credits window mirrors
-		// snap.monthlyCredits, which gets its own line below.
-		const lines = usage.snap.windows
-			.filter((win) => !(win.id === "monthly_credits" && monthly))
-			.map((win) => ({ key: win.id, label: windowLabel(win), usedPercent: win.usedPercent, resetsAt: win.resetsAt }));
-		if (monthly) {
-			lines.push({
-				key: "monthly",
-				label: t("rateLimits.monthlyLabel"),
-				usedPercent: Math.max(0, 100 - monthly.remainingPercent),
-				resetsAt: monthly.resetsAt,
-			});
-		}
-		return (
-			<>
-				{lines.map((line) => {
-					const percent = Math.round(line.usedPercent);
-					const reset = formatResetDelta(line.resetsAt, now);
-					return (
-						<span key={line.key} className="mt-1.5 flex items-center gap-1.5">
-							<span className="min-w-[1.125rem] shrink-0 text-[0.625rem] text-fg-muted tabular-nums whitespace-nowrap">
-								{line.label}
+	if (!usage.snap) return null;
+	const lines = usage.state === "used" ? quotaLines(usage.snap, t("rateLimits.monthlyLabel")) : [];
+	const exhausted = lines.some((line) => line.usedPercent >= RATE_LIMIT_DANGER_PERCENT);
+	return (
+		<div className="pl-8 pr-3 pb-2">
+			{lines.map((line) => {
+				const percent = Math.round(line.usedPercent);
+				const reset = formatResetDelta(line.resetsAt, now);
+				return (
+					<div key={line.key} className="mt-1.5 flex items-center gap-1.5">
+						<span className="min-w-[1.5rem] shrink-0 text-xs text-fg-3 tabular-nums whitespace-nowrap">{line.label}</span>
+						<UsageBar percent={line.usedPercent} className="h-1 min-w-0 flex-1" />
+						<span className="shrink-0 text-xs tabular-nums">
+							<span className={`font-semibold ${severityText(percent)}`}>
+								{t("rateLimits.percentUsed", { percent: String(percent) })}
 							</span>
-							<UsageBar percent={line.usedPercent} className="h-1 min-w-0 flex-1" />
-							<span className="shrink-0 text-[0.625rem] tabular-nums">
-								<span className={`font-semibold ${usageSeverityText(percent)}`}>{percent}%</span>
-								{reset && <span className="text-fg-muted"> · {reset}</span>}
-							</span>
+							{reset && <span className="text-fg-3"> · {t("rateLimits.resetsIn", { time: reset })}</span>}
 						</span>
-					);
-				})}
-				<span className="mt-1 block">
-					<CapturedNote capturedAt={usage.snap.capturedAt} now={now} />
-				</span>
-			</>
-		);
-	}
-	return <span className="mt-1.5 block text-[0.625rem] text-fg-muted">{t("rateLimits.noRecentData")}</span>;
+					</div>
+				);
+			})}
+			{exhausted && <p className="mt-1.5 text-xs text-danger">{t("rateLimits.quotaExhausted")}</p>}
+			<div className="mt-1">
+				<CapturedNote capturedAt={usage.snap.capturedAt} now={now} />
+			</div>
+		</div>
+	);
 }
 
 function identityBadge(identity: AgentAccountIdentity | null): string | null {
@@ -193,6 +211,7 @@ function SwitcherPopover({
 	title,
 	subtitle,
 	onClose,
+	triggerRef,
 }: {
 	anchor: DOMRect;
 	rows: PopoverRow[];
@@ -201,13 +220,18 @@ function SwitcherPopover({
 	title: string;
 	subtitle: string;
 	onClose: () => void;
+	triggerRef: RefObject<HTMLButtonElement | null>;
 }) {
+	const t = useT();
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [pos, setPos] = useState({ top: anchor.top, left: anchor.left });
 	const [visible, setVisible] = useState(false);
+	const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set<string>());
 	const now = Date.now();
 
-	useEscapeKey(onClose);
+	// Registers the panel as an overlay layer: Tab reaches it, Escape closes it
+	// before the surrounding modal, focus leaving it dismisses it.
+	useOverlayLayer(menuRef, { onDismiss: onClose, triggerRef, autoFocus: true });
 	useEffect(() => {
 		function handleClick(e: MouseEvent) {
 			if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose();
@@ -216,85 +240,175 @@ function SwitcherPopover({
 		return () => document.removeEventListener("mousedown", handleClick);
 	}, [onClose]);
 
-	useLayoutEffect(() => {
+	const reposition = useCallback(() => {
 		if (!menuRef.current) return;
 		const menu = menuRef.current.getBoundingClientRect();
 		const pad = 8;
 		const gap = 6;
-		// Open ABOVE the trigger by default: the indicator sits low in the launch
-		// modal, so opening downward spilled past the modal over the Launch/Cancel
-		// buttons. Flip DOWN only when there isn't enough room above.
-		let top = anchor.top - menu.height - gap;
-		if (top < pad) {
-			const below = anchor.bottom + gap;
-			top =
-				below + menu.height <= window.innerHeight - pad
-					? below
-					: Math.max(pad, window.innerHeight - menu.height - pad);
-		}
+		// Clamp inside the anchoring dialog when there is one: opening upward covered
+		// the dialog's own title and picker fields, opening past its edge hid the
+		// panel behind the modal's own chrome.
+		const dialog = triggerRef.current?.closest("[role=dialog]")?.getBoundingClientRect() ?? null;
+		const minTop = Math.max(pad, dialog ? dialog.top + pad : pad);
+		const maxBottom = Math.min(window.innerHeight - pad, dialog ? dialog.bottom - pad : window.innerHeight - pad);
+		const below = anchor.bottom + gap;
+		const above = anchor.top - menu.height - gap;
+		// Prefer BELOW; flip above only when below does not fit the dialog. The final
+		// clamp is against the viewport — a panel taller than its dialog must stay
+		// fully visible rather than be cut off at the screen edge.
+		let top = below;
+		if (below + menu.height > maxBottom && above >= minTop) top = above;
+		top = Math.max(pad, Math.min(top, window.innerHeight - pad - menu.height));
+		const minLeft = Math.max(pad, dialog ? dialog.left + pad : pad);
+		const maxRight = Math.min(window.innerWidth - pad, dialog ? dialog.right - pad : window.innerWidth - pad);
 		let left = anchor.left;
-		if (left + menu.width > window.innerWidth - pad) left = Math.max(pad, window.innerWidth - menu.width - pad);
+		if (left + menu.width > maxRight) left = Math.max(minLeft, maxRight - menu.width);
 		setPos({ top, left });
 		setVisible(true);
-	}, [anchor]);
+	}, [anchor, triggerRef]);
+
+	// The panel grows after mount (usage readings arrive async, rows expand), so
+	// measure-once would leave it hanging off the screen.
+	useLayoutEffect(() => {
+		reposition();
+		const panel = menuRef.current;
+		if (!panel || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(reposition);
+		observer.observe(panel);
+		return () => observer.disconnect();
+	}, [reposition]);
+
+	const autoFocusKey = (rows.find((row) => row.isActive) ?? rows[0])?.key ?? null;
+	const toggleExpanded = (key: string) =>
+		setExpanded((prev) => {
+			const next = new Set(prev);
+			if (!next.delete(key)) next.add(key);
+			return next;
+		});
 
 	return createPortal(
 		<div
 			ref={menuRef}
+			role="menu"
+			aria-label={title}
 			className="fixed z-[10000] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 w-[21rem] max-w-[calc(100vw-1rem)]"
-			style={{ top: pos.top, left: pos.left, visibility: visible ? "visible" : "hidden" }}
+			// Opacity, not `visibility`, hides the pre-measure frame: a
+			// visibility-hidden element cannot take focus, so autofocusing the
+			// active row silently did nothing.
+			style={{ top: pos.top, left: pos.left, opacity: visible ? 1 : 0 }}
 			onClick={(e) => e.stopPropagation()}
 		>
 			<div className="px-3 pt-2 pb-2 mb-1 border-b border-edge">
-				<div className="text-fg-2 text-xs font-semibold uppercase tracking-wider">{title}</div>
-				<p className="text-fg-muted text-[0.6875rem] leading-snug mt-1">{subtitle}</p>
+				<div className="text-fg-2 text-sm font-semibold uppercase tracking-wider">{title}</div>
+				<p className="text-fg-3 text-xs leading-snug mt-1">{subtitle}</p>
 			</div>
-			{rows.map((row) => (
-				<button
-					key={row.key}
-					type="button"
-					disabled={busy || !row.onSelect || row.isActive}
-					onClick={row.onSelect ?? undefined}
-					className={`w-full text-left px-3 py-2 flex items-start gap-2 transition-colors ${
-						row.onSelect && !row.isActive ? "hover:bg-elevated-hover cursor-pointer" : "cursor-default"
-					} disabled:opacity-100`}
-				>
-					<span
-						aria-hidden
-						className={`w-3 h-3 mt-1 rounded-full border-2 shrink-0 ${
-							row.isActive ? "border-accent bg-accent" : "border-fg-muted/50"
-						}`}
-					/>
-					<span className="min-w-0 flex-1">
-						<span className="flex items-center gap-2 min-w-0">
-							<span className="text-fg text-sm truncate flex-1 streamer-private">{row.label}</span>
-							{row.isApi ? (
-								<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
-							) : null}
-							{row.planLabel ? (
-								<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">
-									{row.planLabel}
-								</span>
-							) : null}
-						</span>
-						{(row.sub && row.sub !== row.label && !row.label.includes(row.sub)) || row.workspaceLabel ? (
-							<span className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0">
-								{row.sub && row.sub !== row.label && !row.label.includes(row.sub) ? (
-									<span className="text-fg-muted text-xs font-mono truncate max-w-full streamer-private">{row.sub}</span>
-								) : null}
-								{row.workspaceLabel ? (
-									<span className="text-fg-3 text-[0.625rem] px-1 py-px bg-raised rounded max-w-full streamer-private">
-										{row.workspaceLabel}
+			{rows.map((row) => {
+				// Informational rows (codex "unmanaged") and a busy switch stay inert —
+				// via aria-disabled, so every row keeps its place in the Tab ring.
+				const inert = busy || !row.onSelect;
+				const showSub = !!row.sub && row.sub !== row.label && !row.label.includes(row.sub);
+				const hasQuota = !!row.usage?.snap;
+				const isOpen = expanded.has(row.key);
+				return (
+					<Fragment key={row.key}>
+						<div className={`flex items-start ${inert ? "" : "hover:bg-elevated-hover"} transition-colors`}>
+							<button
+								type="button"
+								role="menuitemradio"
+								aria-checked={row.isActive}
+								aria-disabled={inert || undefined}
+								data-overlay-autofocus={row.key === autoFocusKey ? "" : undefined}
+								onClick={() => {
+									if (inert) return;
+									row.onSelect?.();
+								}}
+								className={`min-w-0 flex-1 text-left pl-3 pr-2 py-2 flex items-start gap-2 focus:bg-elevated-hover ${
+									inert ? "cursor-default" : "cursor-pointer"
+								}`}
+							>
+								<span
+									aria-hidden
+									className={`w-3 h-3 mt-1 rounded-full border-2 shrink-0 ${
+										row.isActive ? "border-accent bg-accent" : "border-fg-3"
+									}`}
+								/>
+								<span className="min-w-0 flex-1">
+									<span className="flex items-center gap-2 min-w-0">
+										<span title={row.label} className="text-fg text-sm truncate flex-1 streamer-private">
+											{row.label}
+										</span>
+										{row.isApi ? (
+											<span className="text-fg-3 text-micro px-1 py-px bg-raised rounded shrink-0">API</span>
+										) : null}
+										{row.planLabel ? (
+											<span className="text-fg-3 text-micro px-1 py-px bg-raised rounded shrink-0">
+												{row.planLabel}
+											</span>
+										) : null}
+										{row.usage ? <RowHeadline usage={row.usage} monthlyLabel={t("rateLimits.monthlyLabel")} /> : null}
 									</span>
+									{showSub || row.workspaceLabel ? (
+										<span className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0">
+											{showSub ? (
+												<span
+													title={row.sub ?? undefined}
+													className="text-fg-3 text-xs font-mono truncate max-w-full streamer-private"
+												>
+													{row.sub}
+												</span>
+											) : null}
+											{row.workspaceLabel ? (
+												<span className="text-fg-3 text-micro px-1 py-px bg-raised rounded max-w-full streamer-private">
+													{row.workspaceLabel}
+												</span>
+											) : null}
+										</span>
+									) : null}
+									{row.usage && row.usage.state === "none" ? (
+										<span className="mt-1 block text-xs text-fg-3">{t("rateLimits.noRecentData")}</span>
+									) : null}
+								</span>
+								{row.isActive ? (
+									<svg
+										aria-hidden
+										className="w-3.5 h-3.5 mt-1 shrink-0 text-accent"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth={2.5}
+									>
+										<path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+									</svg>
 								) : null}
-							</span>
-						) : null}
-						{row.usage ? <RowQuota usage={row.usage} now={now} /> : null}
-					</span>
-				</button>
-			))}
+							</button>
+							{hasQuota ? (
+								<button
+									type="button"
+									role="menuitem"
+									aria-expanded={isOpen}
+									aria-label={t(isOpen ? "launch.accountHideUsage" : "launch.accountShowUsage")}
+									title={t(isOpen ? "launch.accountHideUsage" : "launch.accountShowUsage")}
+									onClick={() => toggleExpanded(row.key)}
+									className="shrink-0 px-2 py-2.5 text-fg-3 hover:text-fg focus:bg-elevated-hover"
+								>
+									<svg
+										className={`w-3.5 h-3.5 transition-transform ${isOpen ? "rotate-180" : ""}`}
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth={2}
+									>
+										<path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
+									</svg>
+								</button>
+							) : null}
+						</div>
+						{hasQuota && isOpen && row.usage ? <RowQuota usage={row.usage} now={now} /> : null}
+					</Fragment>
+				);
+			})}
 			<div className="border-t border-edge mt-1 pt-1.5 px-3 pb-1">
-				<p className="text-fg-muted text-[0.6875rem] leading-snug">{hint}</p>
+				<p className="text-fg-3 text-xs leading-snug">{hint}</p>
 			</div>
 		</div>,
 		document.body,
@@ -446,24 +560,28 @@ export default function AgentAccountIndicator({
 				ref={buttonRef}
 				type="button"
 				data-testid="agent-account-trigger"
+				aria-haspopup="menu"
+				aria-expanded={anchor !== null}
 				onClick={() => setAnchor(buttonRef.current?.getBoundingClientRect() ?? null)}
-				className="mt-1 flex items-center gap-1 max-w-full text-[0.6875rem] text-fg-3 hover:text-fg transition-colors"
+				className="mt-1 flex items-center gap-1 max-w-full text-micro text-fg-3 hover:text-fg transition-colors"
 				title={t("launch.accountSwitcherTooltip")}
 			>
 				<span
 					aria-hidden
-					className="text-[0.75rem] leading-none shrink-0"
+					className="text-xs leading-none shrink-0"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\u{F0004}"}
 				</span>
-				<span className="truncate streamer-private">{activeLabel}</span>
+				<span title={activeLabel} className="truncate streamer-private">
+					{activeLabel}
+				</span>
 				{selectedAccount?.auth === "api" ? (
-					<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
+					<span className="text-fg-3 text-micro px-1 py-px bg-raised rounded shrink-0">API</span>
 				) : null}
 				<span
 					aria-hidden
-					className="text-[0.625rem] leading-none shrink-0 text-fg-muted"
+					className="text-micro leading-none shrink-0 text-fg-muted"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\u{F0140}"}
@@ -478,6 +596,7 @@ export default function AgentAccountIndicator({
 					title={isLocal ? t("launch.accountForLaunchTitle") : t("launch.accountActiveTitle")}
 					subtitle={isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle")}
 					onClose={() => setAnchor(null)}
+					triggerRef={buttonRef}
 				/>
 			) : null}
 		</>

@@ -102,6 +102,13 @@ function makeReport(snapshots: AgentRateLimitSnapshot[]): AgentRateLimitsReport 
 	return { snapshots, generatedAt: Date.now() };
 }
 
+/** Quota bars live behind a per-row disclosure; collapsed rows only show the
+ *  worst percentage. `index` picks which row's toggle to open. */
+async function expandUsage(user: ReturnType<typeof userEvent.setup>, index = 0) {
+	const toggles = await screen.findAllByLabelText("Show usage details");
+	await user.click(toggles[index]!);
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
@@ -282,14 +289,17 @@ describe("AgentAccountIndicator", () => {
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
 
-		// System login shows both windows inline (5h 34%, 7d 62%), accent (<80).
-		const okPercent = await screen.findByText("62%");
-		expect(okPercent.className).toContain("text-accent");
-		expect(screen.getByText("34%")).toBeTruthy();
-		expect(screen.getByText("5h")).toBeTruthy();
-		// The managed account's 7d window sits in the danger tier.
-		const dangerPercent = screen.getByText("97%");
+		// Collapsed rows carry the worst percentage, phrased so the direction is
+		// explicit: 62% used (system, neutral tier) and
+		// 97% (managed account, danger tier).
+		const okPercent = await screen.findByText("62% used");
+		expect(okPercent.className).toContain("text-fg-2");
+		const dangerPercent = screen.getByText("97% used");
 		expect(dangerPercent.className).toContain("text-danger");
+		// Expanding the system row reveals every window.
+		await expandUsage(user, 0);
+		expect(screen.getByText("34% used")).toBeTruthy();
+		expect(screen.getByText("5h")).toBeTruthy();
 	});
 
 	it("shows an unlimited chip and a no-data note per account", async () => {
@@ -320,10 +330,12 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await expandUsage(user, 0);
 
-		// No hover needed — the quota line and its provenance render inline.
-		expect(await screen.findByText("34%")).toBeTruthy();
-		expect(screen.getByText(/· 2h/)).toBeTruthy();
+		// No hover needed — the quota line and its provenance render in the row
+		// (34% shows twice: the collapsed headline and the expanded window line).
+		expect((await screen.findAllByText("34% used")).length).toBe(2);
+		expect(screen.getByText(/· resets in 2h/)).toBeTruthy();
 		expect(screen.getByText("captured 20m ago")).toBeTruthy();
 	});
 
@@ -341,9 +353,10 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
+		expect(await screen.findByText("25% used")).toBeTruthy(); // headline, collapsed
+		await expandUsage(user, 0);
 
-		expect(await screen.findByText("monthly credits")).toBeTruthy();
-		expect(screen.getByText("25%")).toBeTruthy();
+		expect(screen.getByText("monthly credits")).toBeTruthy();
 	});
 
 	it("shows no quota block for API profiles", async () => {
@@ -374,9 +387,30 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(claudeAgent, { value: "api-1", onSelect: vi.fn() });
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
-		await screen.findByText("34%"); // system row has data…
+		await screen.findByText("34% used"); // system row has data…
 		// …but the API row gets neither bars nor a misleading "no data" note.
 		expect(screen.queryByText("no recent usage data")).toBeNull();
+	});
+
+	it("exposes the popover as a keyboard-reachable radio menu", async () => {
+		const user = userEvent.setup();
+		renderIndicator();
+
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		expect(trigger.getAttribute("aria-expanded")).toBe("false");
+		expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+
+		await user.click(trigger);
+		expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+		const rows = screen.getAllByRole("menuitemradio");
+		const active = rows.find((row) => row.getAttribute("aria-checked") === "true");
+		expect(active?.textContent).toContain("work@example.com");
+		// The row carrying the state stays focusable (it used to be natively disabled).
+		expect(active).toBeTruthy();
+		expect((active as HTMLButtonElement).disabled).toBe(false);
+		expect(active?.getAttribute("aria-disabled")).toBeNull();
+		expect(rows.filter((row) => row.getAttribute("aria-checked") === "false").length).toBe(1);
 	});
 
 	it("shows the readable Codex workspace name in the account popover", async () => {

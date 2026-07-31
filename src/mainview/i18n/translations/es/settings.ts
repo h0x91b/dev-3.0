@@ -402,7 +402,7 @@ const settings = {
 	"pxpipe.viewRepo": "pxpipe en GitHub ↗",
 	"pxpipe.startError": "No se pudo iniciar el proxy: {error}",
 	"pxpipe.stopError": "No se pudo detener el proxy: {error}",
-	"pxpipe.disabledPresetToast": "Este preset necesita el proxy de ahorro de tokens — toca para activarlo en Ajustes.",
+	"pxpipe.disabledPresetToast": "Este preset necesita el proxy de ahorro de tokens — haz clic para activarlo en Ajustes.",
 	"pxpipe.credit": "El truco de ahorro de tokens y el proxy son obra del equipo de pxpipe.",
 };
 

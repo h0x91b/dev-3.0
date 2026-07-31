@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 
@@ -50,13 +50,14 @@ const codexAgent: CodingAgent = {
 const agents = [claudeAgent, codexAgent];
 
 /** Controlled harness mirroring how real parents wire the picker. */
-function Harness({ initial, onChange }: { initial: AgentConfigSelection; onChange?: (n: AgentConfigSelection) => void }) {
+function Harness({ initial, onChange, showLabels }: { initial: AgentConfigSelection; onChange?: (n: AgentConfigSelection) => void; showLabels?: boolean }) {
 	const [sel, setSel] = useState(initial);
 	return (
 		<I18nProvider>
 			<AgentConfigPicker
 				idPrefix="test"
 				agents={agents}
+				showLabels={showLabels}
 				agentId={sel.agentId}
 				configId={sel.configId}
 				onChange={(next) => {
@@ -113,6 +114,23 @@ describe("AgentConfigPicker", () => {
 
 		expect(onChange).toHaveBeenLastCalledWith({ agentId: "builtin-claude", configId: "opus-bypass-xhigh" });
 		expect(text(mode())).toBe("Bypass · X-High");
+	});
+
+	it("shows the field labels by default (Settings and single-picker dialogs)", () => {
+		render(<Harness initial={{ agentId: "builtin-claude", configId: "fable-auto-medium" }} />);
+		const label = document.querySelector('label[for="test-provider"]');
+		expect(label?.textContent).toBe("Provider");
+		expect(label?.className).not.toContain("sr-only");
+	});
+
+	it("with showLabels off keeps each label as the control's accessible name", () => {
+		render(<Harness showLabels={false} initial={{ agentId: "builtin-claude", configId: "fable-auto-medium" }} />);
+		// Hidden only where the fields sit in a row — the parent's header takes over
+		// there; stacked, these labels are the only ones on screen.
+		expect(document.querySelector('label[for="test-model"]')?.className).toContain(
+			"[@container_(min-width:34rem)]:sr-only",
+		);
+		expect(screen.getByRole("combobox", { name: "Model" })).toBe(model());
 	});
 
 	it("changing Mode updates only the config id", async () => {

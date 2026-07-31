@@ -28,7 +28,7 @@ const common = {
 	"agentLaunch.requestedBy": "Просит задача #{seq} — {title}",
 	"agentLaunch.scratchHasNoPrompt": "Запускается без промпта. Инструкции пришлёт агент, который её попросил.",
 	"agentLaunch.launch": "Запустить",
-	"agentLaunch.launching": "Запускаю...",
+	"agentLaunch.launching": "Запускаю…",
 	"agentLaunch.decline": "Отказать",
 
 	// Навигация в стиле Vimium

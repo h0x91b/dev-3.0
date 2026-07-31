@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { AgentCheckResult, CodingAgent, FavoriteAgentConfig } from "../../shared/types";
 import { isFavorite } from "../../shared/favorites";
 import { useT } from "../i18n";
@@ -21,6 +21,30 @@ export interface AgentConfigSelection {
 	configId: string | null;
 }
 
+// The fields form a row from 34rem up. A *container* query, not a viewport
+// breakpoint: the picker sizes to its dialog column, not to the window. Every
+// occurrence is written out in full — Tailwind only scans literal classes.
+
+const FIELD_COLS_WITH_FAVORITES =
+	"[@container_(min-width:34rem)]:grid-cols-[3.75rem_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]";
+const FIELD_COLS = "[@container_(min-width:34rem)]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]";
+
+/** The picker's own field rails. */
+export function pickerFieldsGridClass(withFavorites: boolean): string {
+	return `grid gap-3 grid-cols-1 ${withFavorites ? FIELD_COLS_WITH_FAVORITES : FIELD_COLS}`;
+}
+
+/** Rails for a labels header a parent renders once above a list of pickers
+ *  (`showLabels={false}`). Hidden while the fields stack — each picker shows its
+ *  own labels there. */
+export function pickerLabelsHeaderClass(withFavorites: boolean): string {
+	return `hidden gap-3 [@container_(min-width:34rem)]:grid ${withFavorites ? FIELD_COLS_WITH_FAVORITES : FIELD_COLS}`;
+}
+
+/** Wrap that header so its container query matches the picker's: the header cell
+ *  and the picker are the same width. */
+export const PICKER_HEADER_CONTAINER_CLASS = "[container-type:inline-size]";
+
 interface AgentConfigPickerProps {
 	agents: CodingAgent[];
 	agentId: string | null;
@@ -33,8 +57,15 @@ interface AgentConfigPickerProps {
 	/** Unique prefix for the three control ids (label htmlFor targets):
 	 *  `${idPrefix}-provider` / `-model` / `-mode`. */
 	idPrefix: string;
-	/** Layout container className. Defaults to a responsive row (stacks on narrow). */
+	/** Classes for the picker's outer box (sizing inside the parent's own row).
+	 *  The field rails themselves are owned by the picker. */
 	className?: string;
+	/** Render the per-field labels ("Favorites / Provider / Model / Mode").
+	 *  Pass `false` when the parent shows them once above a list of pickers
+	 *  (LaunchVariantsModal) — the labels then stay in the DOM as the controls'
+	 *  accessible names and reappear when the fields stack, where no header
+	 *  is shown. */
+	showLabels?: boolean;
 	/** Whether the experimental pxpipe token-saving proxy is enabled. When false
 	 *  (the default), the gated Model group ("Fable 5 (cost trick)") is shown in
 	 *  the Model dropdown but rendered disabled; clicking it nudges the user to
@@ -78,7 +109,8 @@ function AgentConfigPicker({
 	onChange,
 	agentAvailability = [],
 	idPrefix,
-	className = "flex flex-col sm:flex-row gap-3",
+	className = "",
+	showLabels = true,
 	pxpipeProxyEnabled = false,
 	showFavorites = false,
 	favorites = [],
@@ -90,27 +122,11 @@ function AgentConfigPicker({
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
 	// Favorites popover (anchored to the leading star trigger). Per-picker so the
 	// global list is never duplicated across variant rows (decision 125).
+	// Escape closes the favorites menu before the surrounding modal: the menu is
+	// portalled and registers itself in the overlay-layer stack, which dismisses
+	// the innermost layer first (utils/overlay-layers.ts).
 	const [favMenuOpen, setFavMenuOpen] = useState(false);
 	const favCaretRef = useRef<HTMLButtonElement>(null);
-	const favMenuOpenRef = useRef(favMenuOpen);
-	favMenuOpenRef.current = favMenuOpen;
-
-	// Escape closes the favorites menu FIRST, without also closing the surrounding
-	// modal. useEscapeKey is capture-phase + stopImmediatePropagation, so whichever
-	// listener registers first wins; this picker is a child of the launch modal, so
-	// its mount-time effect registers before the modal's own Escape handler. The
-	// listener is a no-op while the menu is closed (returns without consuming), so
-	// Escape then falls through to the modal as normal. (See useEscapeKey docs.)
-	useEffect(() => {
-		function onKey(e: KeyboardEvent) {
-			if (e.key !== "Escape" || !favMenuOpenRef.current) return;
-			e.preventDefault();
-			e.stopImmediatePropagation();
-			setFavMenuOpen(false);
-		}
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
-	}, []);
 
 	function handleGatedConfigClick() {
 		// The preset is visible but off. Tell the user and offer a one-click jump
@@ -158,99 +174,115 @@ function AgentConfigPicker({
 	const favoriteChips = showFavorites ? resolveFavoriteChips(favorites, agents) : [];
 	const currentIsFavorite = !!(agentId && configId && isFavorite(favorites, agentId, configId));
 
-	const cascade = (
-		<div className={className}>
-			{/* Favorites — a compact leading column (peer to Provider/Model/Mode).
-			    The narrow star trigger opens the FavoritesMenu popover; the star
-			    fills when the current combo is saved. Always present (even with 0
-			    favorites) so "Save this combo" stays reachable. Per-picker, so the
-			    global list is never duplicated across variant rows (decision 125). */}
-			{showFavorites && (
-				<div className="flex flex-col flex-shrink-0">
-					<label htmlFor={`${idPrefix}-favorites`} className="text-xs text-fg-3 block mb-1">
-						{t("launch.favorites")}
-					</label>
-					<button
-						id={`${idPrefix}-favorites`}
-						ref={favCaretRef}
-						type="button"
-						aria-haspopup="menu"
-						aria-expanded={favMenuOpen}
-						title={t("launch.favorites")}
-						onClick={() => setFavMenuOpen((o) => !o)}
-						className={`h-[34px] px-3 flex items-center justify-center gap-2 bg-elevated rounded-lg border transition-colors outline-none ${
-							favMenuOpen ? "border-accent" : "border-edge hover:border-edge-active"
-						}`}
-					>
-						<StarGlyph
-							filled={currentIsFavorite}
-							className={`text-base ${currentIsFavorite ? "text-favorite" : "text-fg-3"}`}
-						/>
-						<svg
-							className={`w-3 h-3 text-fg-3 flex-shrink-0 transition-transform duration-150 ${favMenuOpen ? "rotate-180" : ""}`}
-							viewBox="0 0 12 12"
-							fill="none"
-							stroke="currentColor"
-							strokeWidth="1.8"
-							strokeLinecap="round"
-							strokeLinejoin="round"
+	// Labels stay in the DOM even when the parent renders them once above a list
+	// of pickers: they are the controls' accessible names (Select renders a
+	// <button>, which `htmlFor` labels), and they become visible again where the
+	// fields stack and no header is shown.
+	const labelClass = showLabels
+		? "text-xs text-fg-3 block mb-1"
+		: "text-xs text-fg-3 block mb-1 [@container_(min-width:34rem)]:sr-only";
+
+	return (
+		<div className={`[container-type:inline-size] ${className}`}>
+			<div className={pickerFieldsGridClass(showFavorites)}>
+				{/* Favorites — a compact leading column (peer to Provider/Model/Mode).
+				    The narrow star trigger opens the FavoritesMenu popover; the star
+				    fills when the current combo is saved. Always present (even with 0
+				    favorites) so "Save this combo" stays reachable. Per-picker, so the
+				    global list is never duplicated across variant rows (decision 125). */}
+				{showFavorites && (
+					<div className="min-w-0">
+						<label htmlFor={`${idPrefix}-favorites`} className={labelClass}>
+							{t("launch.favorites")}
+						</label>
+						{/* w-fit: the cell is full width while the fields stack, the
+						    trigger must not stretch into a giant empty box. */}
+						<button
+							id={`${idPrefix}-favorites`}
+							ref={favCaretRef}
+							type="button"
+							aria-haspopup="menu"
+							aria-expanded={favMenuOpen}
+							title={t("launch.favorites")}
+							onClick={() => setFavMenuOpen((o) => !o)}
+							className={`h-[34px] w-fit px-3 flex items-center justify-center gap-2 bg-elevated rounded-lg border transition-colors outline-none ${
+								favMenuOpen ? "border-accent" : "border-edge hover:border-edge-active"
+							}`}
 						>
-							<polyline points="2,4 6,8 10,4" />
-						</svg>
-					</button>
+							<StarGlyph
+								filled={currentIsFavorite}
+								className={`text-base ${currentIsFavorite ? "text-favorite" : "text-fg-3"}`}
+							/>
+							<svg
+								className={`w-3 h-3 text-fg-3 flex-shrink-0 transition-transform duration-150 ${favMenuOpen ? "rotate-180" : ""}`}
+								viewBox="0 0 12 12"
+								fill="none"
+								stroke="currentColor"
+								strokeWidth="1.8"
+								strokeLinecap="round"
+								strokeLinejoin="round"
+							>
+								<polyline points="2,4 6,8 10,4" />
+							</svg>
+						</button>
+					</div>
+				)}
+
+				{/* Provider */}
+				<div className="min-w-0">
+					<label htmlFor={`${idPrefix}-provider`} className={labelClass}>
+						{t("launch.provider")}
+					</label>
+					<Select
+						id={`${idPrefix}-provider`}
+						value={agentId ?? ""}
+						options={agents.map((a) => ({ value: a.id, label: a.name }))}
+						onChange={(val) => handleProviderChange(val || null)}
+						renderOption={renderAgentOption}
+					/>
 				</div>
-			)}
 
-			{/* Provider */}
-			<div className="flex-1 min-w-0">
-				<label htmlFor={`${idPrefix}-provider`} className="text-xs text-fg-3 block mb-1">
-					{t("launch.provider")}
-				</label>
-				<Select
-					id={`${idPrefix}-provider`}
-					value={agentId ?? ""}
-					options={agents.map((a) => ({ value: a.id, label: a.name }))}
-					onChange={(val) => handleProviderChange(val || null)}
-					renderOption={renderAgentOption}
-				/>
-				{/* Progressive disclosure: renders only when the selected provider has
-				    managed accounts (Settings → Agent Accounts). With onAccountChange
-				    it is a local per-launch selector; without it, the global default switcher. */}
-				<AgentAccountIndicator agent={selectedAgent} value={accountId} onSelect={onAccountChange} />
-			</div>
+				{/* Model */}
+				<div className="min-w-0">
+					<label htmlFor={`${idPrefix}-model`} className={labelClass}>
+						{t("launch.model")}
+					</label>
+					<Select
+						id={`${idPrefix}-model`}
+						value={currentGroupLabel}
+						options={groups.map((g) => ({
+							value: g.label,
+							label: g.label,
+							disabled: groupRequiresPxpipeProxy(g) && !pxpipeProxyEnabled,
+						}))}
+						onChange={handleModelChange}
+						onOptionDisabledClick={handleGatedConfigClick}
+					/>
+				</div>
 
-			{/* Model */}
-			<div className="flex-1 min-w-0">
-				<label htmlFor={`${idPrefix}-model`} className="text-xs text-fg-3 block mb-1">
-					{t("launch.model")}
-				</label>
-				<Select
-					id={`${idPrefix}-model`}
-					value={currentGroupLabel}
-					options={groups.map((g) => ({
-						value: g.label,
-						label: g.label,
-						disabled: groupRequiresPxpipeProxy(g) && !pxpipeProxyEnabled,
-					}))}
-					onChange={handleModelChange}
-					onOptionDisabledClick={handleGatedConfigClick}
-				/>
-			</div>
+				{/* Mode */}
+				<div className="min-w-0">
+					<label htmlFor={`${idPrefix}-mode`} className={labelClass}>
+						{t("launch.mode")}
+					</label>
+					<Select
+						id={`${idPrefix}-mode`}
+						value={configId ?? ""}
+						options={modeConfigs.map((c) => ({
+							value: c.id,
+							label: getModeLeafLabel(c),
+						}))}
+						onChange={handleModeChange}
+					/>
+				</div>
 
-			{/* Mode */}
-			<div className="flex-1 min-w-0">
-				<label htmlFor={`${idPrefix}-mode`} className="text-xs text-fg-3 block mb-1">
-					{t("launch.mode")}
-				</label>
-				<Select
-					id={`${idPrefix}-mode`}
-					value={configId ?? ""}
-					options={modeConfigs.map((c) => ({
-						value: c.id,
-						label: getModeLeafLabel(c),
-					}))}
-					onChange={handleModeChange}
-				/>
+				{/* The account belongs to the whole selection, not to Provider: its own
+				    full-width line keeps the field columns the same height. Progressive
+				    disclosure — the indicator renders only when the provider has managed
+				    accounts, and `empty:hidden` then drops this line entirely. */}
+				<div className="col-span-full min-w-0 empty:hidden">
+					<AgentAccountIndicator agent={selectedAgent} value={accountId} onSelect={onAccountChange} />
+				</div>
 			</div>
 
 			{showFavorites && favMenuOpen && favCaretRef.current && (
@@ -264,6 +296,7 @@ function AgentConfigPicker({
 						if (agentId && configId) onToggleFavorite?.(agentId, configId);
 					}}
 					anchorEl={favCaretRef.current}
+					triggerRef={favCaretRef}
 					onApply={(a, c) => {
 						onChange({ agentId: a, configId: c });
 						setFavMenuOpen(false);
@@ -274,8 +307,6 @@ function AgentConfigPicker({
 			)}
 		</div>
 	);
-
-	return cascade;
 }
 
 export default AgentConfigPicker;

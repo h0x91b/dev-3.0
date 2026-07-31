@@ -10,6 +10,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getSystemMemory: vi.fn().mockResolvedValue(null),
 			spawnVariants: vi.fn(),
+			scheduleTaskLaunch: vi.fn(),
 			addAttempts: vi.fn(),
 			toggleTaskWatch: vi.fn(),
 			listAgentAccounts: vi.fn().mockResolvedValue({
@@ -240,8 +241,8 @@ describe("LaunchVariantsModal", () => {
 				</I18nProvider>,
 			);
 
-			// Model-less custom configs collapse to one "Default" group; mode = first.
-			expect(getSelectedText(getModelButtons()[0])).toBe("Default");
+			// Model-less custom configs collapse to one "agent's own default" group; mode = first.
+			expect(getSelectedText(getModelButtons()[0])).toBe("Agent's own default");
 			expect(getSelectedText(getModeButtons()[0])).toBe("Alpha");
 		});
 
@@ -356,7 +357,7 @@ describe("LaunchVariantsModal", () => {
 
 			expect(getProviderButtons()).toHaveLength(1);
 
-			await user.click(screen.getByText("+ Add Variant"));
+			await user.click(screen.getByText("+ Add variant"));
 
 			expect(getProviderButtons()).toHaveLength(2);
 			expect(getSelectedText(getProviderButtons()[1])).toBe("Claude");
@@ -370,7 +371,7 @@ describe("LaunchVariantsModal", () => {
 
 			expect(screen.queryByTitle("Remove")).not.toBeInTheDocument();
 
-			await user.click(screen.getByText("+ Add Variant"));
+			await user.click(screen.getByText("+ Add variant"));
 
 			expect(screen.getAllByTitle("Remove")).toHaveLength(2);
 		});
@@ -379,7 +380,7 @@ describe("LaunchVariantsModal", () => {
 			const user = userEvent.setup();
 			renderModal(makeProject());
 
-			await user.click(screen.getByText("+ Add Variant"));
+			await user.click(screen.getByText("+ Add variant"));
 			expect(getProviderButtons()).toHaveLength(2);
 
 			await user.click(screen.getAllByTitle("Remove")[0]);
@@ -391,7 +392,7 @@ describe("LaunchVariantsModal", () => {
 			const project = makeProject({ kind: "virtual" });
 			renderModal(project);
 
-			expect(screen.queryByText("+ Add Variant")).not.toBeInTheDocument();
+			expect(screen.queryByText("+ Add variant")).not.toBeInTheDocument();
 			expect(getProviderButtons()).toHaveLength(1);
 		});
 	});
@@ -454,7 +455,7 @@ describe("LaunchVariantsModal", () => {
 			await user.click(screen.getByText("Launch"));
 
 			await vi.waitFor(() => {
-				expect(screen.getByText(/Failed to launch.*boom/)).toBeInTheDocument();
+				expect(screen.getByText(/Unable to launch\..*boom/)).toBeInTheDocument();
 			});
 		});
 	});
@@ -500,7 +501,7 @@ describe("LaunchVariantsModal", () => {
 			const onClose = vi.fn();
 			renderModal(makeProject(), { onClose });
 
-			const backdrop = screen.getByText("Launch Task").closest(".fixed");
+			const backdrop = screen.getByText("Launch task").closest(".fixed");
 			if (backdrop) await user.click(backdrop);
 
 			expect(onClose).toHaveBeenCalled();
@@ -654,6 +655,25 @@ describe("LaunchVariantsModal", () => {
 			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
 		});
 
+		// Regression: Enter used to always launch, so pressing it with the Schedule
+		// panel open discarded the schedule and spawned paid agents immediately.
+		it("Enter with the Schedule panel open schedules instead of spawning", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			mockedApi.request.scheduleTaskLaunch.mockResolvedValue(baseTask);
+			renderModal(makeProject());
+
+			await user.click(screen.getByRole("button", { name: /Launch later/ }));
+			// Enter is ignored while a control is focused — act as an "implicit" Enter.
+			(screen.getByRole("dialog") as HTMLElement).focus();
+			await user.keyboard("{Enter}");
+
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+			await vi.waitFor(() => {
+				expect(mockedApi.request.scheduleTaskLaunch).toHaveBeenCalled();
+			});
+		});
+
 		it("Cmd/Ctrl/Shift+Enter do not trigger launch", async () => {
 			mockedApi.request.spawnVariants.mockResolvedValue([]);
 			renderModal(makeProject());
@@ -663,6 +683,49 @@ describe("LaunchVariantsModal", () => {
 			await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
 
 			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("accessibility", () => {
+		it("names the dialog after its heading", () => {
+			renderModal(makeProject());
+			expect(screen.getByRole("dialog", { name: "Launch task" })).toBeInTheDocument();
+		});
+
+		it("labels every variant row as its own group", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+
+			expect(screen.getByRole("group", { name: "Variant 1" })).toBeInTheDocument();
+
+			await user.click(screen.getByText("+ Add variant"));
+
+			expect(screen.getByRole("group", { name: "Variant 1" })).toBeInTheDocument();
+			expect(screen.getByRole("group", { name: "Variant 2" })).toBeInTheDocument();
+		});
+
+		it("renders the field labels once above the list, keeping each row's own labels as accessible names", () => {
+			renderModal(makeProject());
+
+			// One visible header label per field…
+			expect(document.querySelectorAll(".\\[container-type\\:inline-size\\] > .hidden").length).toBe(1);
+			// …while the row's own label still names the control and only hides itself
+			// where the header takes over (fields in a row).
+			const rowLabel = document.querySelector('label[for="variant-0-provider"]');
+			expect(rowLabel?.className).toContain("sr-only");
+			expect(screen.getByRole("combobox", { name: "Provider" })).toBe(document.getElementById("variant-0-provider"));
+		});
+
+		it("announces a failed launch and moves focus to it", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.spawnVariants.mockRejectedValue(new Error("boom"));
+			renderModal(makeProject());
+
+			await user.click(screen.getByText("Launch"));
+
+			const alert = await screen.findByRole("alert");
+			expect(alert).toHaveTextContent(/Unable to launch/);
+			expect(document.activeElement).toBe(alert);
 		});
 	});
 

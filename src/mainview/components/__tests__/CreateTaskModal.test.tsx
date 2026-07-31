@@ -188,7 +188,7 @@ describe("CreateTaskModal", () => {
 		expect(projectSelector).toHaveTextContent("Test Project");
 
 		await userEvent.click(projectSelector);
-		expect(screen.getByRole("button", { name: "Other Project" })).toBeInTheDocument();
+		expect(screen.getByRole("option", { name: "Other Project" })).toBeInTheDocument();
 	});
 
 	it("creates the task in the selected project and passes it to Save & Start", async () => {
@@ -199,7 +199,7 @@ describe("CreateTaskModal", () => {
 		renderModal({ projects: [mockProject, otherProject], dispatch, onCreateAndRun });
 
 		await userEvent.click(screen.getByLabelText("Project"));
-		await userEvent.click(screen.getByRole("button", { name: "Other Project" }));
+		await userEvent.click(screen.getByRole("option", { name: "Other Project" }));
 		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Task for another project");
 		await userEvent.click(screen.getByText("Save & Start"));
 

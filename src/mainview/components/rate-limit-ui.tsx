@@ -128,7 +128,9 @@ export function WindowBarRow({
 		<div className="flex flex-col gap-[0.1875rem]">
 			<div className="flex items-baseline gap-2">
 				<span className="min-w-0 truncate font-medium text-fg-3">{label}</span>
-				{reset && <span className="ml-auto shrink-0 text-fg-muted">{t("rateLimits.resetsIn", { time: reset })}</span>}
+				{reset && (
+					<span className="ml-auto shrink-0 tabular-nums text-fg-muted">{t("rateLimits.resetsIn", { time: reset })}</span>
+				)}
 				<span className={`shrink-0 font-medium tabular-nums ${reset ? "" : "ml-auto"} ${severityText(percent)}`}>
 					{t("rateLimits.percentUsed", { percent })}
 				</span>
@@ -177,11 +179,12 @@ export function AccountCard({
 				{displayName && <span className="min-w-0 truncate text-fg-3 streamer-private">{displayName}</span>}
 				{showOrg && <span className="text-fg-muted whitespace-nowrap shrink-0 streamer-private">· {account?.organization}</span>}
 				{account?.planLabel && (
-					<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">{account.planLabel}</span>
+					<span className="text-accent text-micro px-1 py-px bg-accent/10 rounded shrink-0">{account.planLabel}</span>
 				)}
-				{account?.isApi && <span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>}
+				{/* API is an auth kind, not a warning — neutral chip, same as the workspace chip. */}
+				{account?.isApi && <span className="text-fg-3 text-micro px-1 py-px bg-raised rounded shrink-0">API</span>}
 				{unlimited && (
-					<span className="ml-auto text-success text-[0.625rem] px-1 py-px bg-success/10 rounded shrink-0 font-medium">
+					<span className="ml-auto text-success-strong text-micro px-1 py-px bg-success/10 rounded shrink-0 font-medium">
 						{t("rateLimits.unlimited")}
 					</span>
 				)}
@@ -222,7 +225,7 @@ export function CapturedNote({ capturedAt, now }: { capturedAt: number; now: num
 	const stale = age > STALE_AFTER_MS;
 	const label = age < 60_000 ? t("rateLimits.capturedNow") : t("rateLimits.captured", { time: formatAge(age) });
 	return (
-		<span className={`flex items-center gap-1 text-[0.625rem] ${stale ? "text-warning" : "text-fg-muted"}`}>
+		<span className={`flex items-center gap-1 text-xs tabular-nums ${stale ? "text-warning" : "text-fg-3"}`}>
 			{label}
 		</span>
 	);
