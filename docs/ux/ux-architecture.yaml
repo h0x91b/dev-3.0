@@ -296,10 +296,15 @@ ux_architecture:
       evidence: ["src/mainview/components/TaskDiffViewer.tsx", "src/mainview/components/task-inline-diff.ts", "src/mainview/components/TaskDiffViewer.css"]
     modal:
       purpose: "Focused create/confirm flows."
-      allowed: ["create_flow", "confirm", "destructive_confirm", "focused_config"]
+      allowed: ["create_flow", "confirm", "destructive_confirm", "focused_config", "agent_request"]
       forbidden: ["primary_navigation", "persistent_dashboard"]
-      observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "GitPullErrorModal", "TmuxCheatSheetModal", "FolderPickerModal"]
-      evidence: ["src/mainview/components/*Modal.tsx"]
+      observed: ["CreateTaskModal", "AddProjectModal", "TaskDetailModal", "LaunchVariantsModal", "SpawnAgentModal", "AgentLaunchRequestModal", "GitPullErrorModal", "TmuxCheatSheetModal", "FolderPickerModal"]
+      agent_request:
+        rule: "An agent asking the user to act carries the SAME identity treatment wherever it appears: accent border, AI-agent-request badge, refusing button autofocused. Severity is a separate axis, decided by what the action does — destructive role only when it destroys state. A request needing input beyond yes/no gets its own modal (confirm() stays boolean); one dialog at a time, queued."
+        identity: ["accent border", "AI agent request badge", "autofocused decline"]
+        severity_by_action: { destroys_state: "destructive", creates_state: "primary" }
+        observed: ["agentCompletionRequested → confirm() (destructive)", "agentLaunchRequested → AgentLaunchRequestModal (primary)"]
+      evidence: ["src/mainview/components/*Modal.tsx", "src/mainview/confirm.tsx"]
     popover:
       purpose: "Lightweight contextual preview/hint anchored to an element."
       allowed: ["preview", "hint", "quick_action", "remediation"]

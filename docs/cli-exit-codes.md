@@ -14,6 +14,7 @@ Public `dev3` CLI exit codes are defined in `src/shared/cli-exit-codes.ts`.
 | `7` | `CLI_EXIT_CODE_DOCTOR_PROBLEMS` | `dev3 doctor` found at least one problem (a check with status "fail"). Warnings alone still exit 0. |
 | `8` | `CLI_EXIT_CODE_RENDERER_UNAVAILABLE` | The desktop launch created a window but no renderer ever reported dom-ready within the readiness budget — a missing or broken WebView2 runtime, or no interactive desktop (SSH / session 0). The process prints an actionable diagnostic and leaves instead of running without a UI. |
 | `9` | `CLI_EXIT_CODE_TASK_IS_DRAFT` | `dev3 task move` was asked to start a task the user saved as a draft. A draft is deliberately unfinished, so no launch path may start it — the human must finish its description and save it as a normal task first. |
+| `10` | `CLI_EXIT_CODE_LAUNCH_DECLINED` | An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) and the user declined the approval dialog. Nothing was launched and the target task stays where it was. |
 
 `--tolerate-app-offline` turns code `2` into code `0` for a single invocation: the
 "app not running" notice is still written to stderr, but the process exits

@@ -45,8 +45,11 @@ export {
 	_setScheduleRandomForTest,
 } from "./lifecycle/activities";
 export {
+	createScratchTask,
+	deleteTask,
 	handleBellAutoStatus,
 	isTaskInProgress,
+	launchTaskWithAgentChoice,
 	moveTask,
 } from "./rpc-handlers/task-lifecycle";
 export { activateTask, runCleanupScript, emitTaskSound } from "./lifecycle/executor";

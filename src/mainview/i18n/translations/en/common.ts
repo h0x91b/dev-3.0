@@ -22,6 +22,15 @@ const common = {
 	"app.agentCompletionConfirm": "Complete task",
 	"app.agentCompletionCancel": "Keep session",
 
+	// An agent asking to start another task (or a throwaway scratch peer)
+	"agentLaunch.title": "Agent wants to start this task",
+	"agentLaunch.titleScratch": "Agent wants a scratch task",
+	"agentLaunch.requestedBy": "Asked by task #{seq} — {title}",
+	"agentLaunch.scratchHasNoPrompt": "Starts with no prompt. The asking agent sends it instructions once it is up.",
+	"agentLaunch.launch": "Launch",
+	"agentLaunch.launching": "Launching...",
+	"agentLaunch.decline": "Decline",
+
 	// Vimium-style hint navigation
 	"hint.legend.jump": "jump",
 	"hint.legend.undo": "undo",

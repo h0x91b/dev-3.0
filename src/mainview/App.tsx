@@ -5,7 +5,7 @@ import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNoti
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchRequest, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { hasAppModifier, isRemote } from "./utils/platform";
@@ -39,6 +39,7 @@ import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/Keyboard
 import UpdatePopoverSimulatorModal from "./components/UpdatePopoverSimulatorModal";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm } from "./confirm";
+import AgentLaunchRequestModal from "./components/AgentLaunchRequestModal";
 import AboutModal from "./components/AboutModal";
 import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
@@ -248,6 +249,9 @@ function App() {
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
 	const [dontShowAgain, setDontShowAgain] = useState(false);
+
+	// Pending agent-initiated launch requests; only the head is on screen.
+	const [launchRequests, setLaunchRequests] = useState<AgentLaunchRequest[]>([]);
 
 	// The bun `before-quit` gate asks us to confirm before the app actually quits
 	// (Cmd+Q, menu Quit, dock Quit). We just open the dialog; the real quit
@@ -1577,6 +1581,34 @@ function App() {
 		return () => window.removeEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
 	}, [dispatch, navigate, t]);
 
+	// An agent wants to set another task running. Queued, never stacked: two
+	// agents can ask at once, and overlapping dialogs would make the user answer
+	// the wrong one. The head of the queue is on screen; the rest wait their turn.
+	useEffect(() => {
+		function onAgentLaunchRequested(e: Event) {
+			const request = (e as CustomEvent).detail as AgentLaunchRequest;
+			setLaunchRequests((queue) => (
+				queue.some((r) => r.requestId === request.requestId) ? queue : [...queue, request]
+			));
+		}
+		window.addEventListener("rpc:agentLaunchRequested", onAgentLaunchRequested);
+		return () => window.removeEventListener("rpc:agentLaunchRequested", onAgentLaunchRequested);
+	}, []);
+
+	const respondToLaunchRequest = useCallback((
+		requestId: string,
+		approved: boolean,
+		launch?: { agentId: string | null; configId: string | null; accountId?: string | null },
+	) => {
+		setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
+		if (approved) trackEvent("task_moved", { to_status: "in-progress", agent_requested: true });
+		api.request.respondToAgentLaunchRequest({
+			requestId,
+			approved,
+			...(approved && launch ? { launch } : {}),
+		}).catch((err) => console.error("respondToAgentLaunchRequest failed:", err));
+	}, []);
+
 	// Listen for silent update ready notification
 	useEffect(() => {
 		function onUpdateAvailable(e: Event) {
@@ -2503,6 +2535,13 @@ function App() {
 			/>
 			{updatePreviewOpen && <UpdatePopoverSimulatorModal onClose={() => setUpdatePreviewOpen(false)} />}
 			<ConfirmHost />
+			{launchRequests[0] && (
+				<AgentLaunchRequestModal
+					key={launchRequests[0].requestId}
+					request={launchRequests[0]}
+					onRespond={(approved, launch) => respondToLaunchRequest(launchRequests[0]!.requestId, approved, launch)}
+				/>
+			)}
 			{imageViewer && (
 				<TaskImageViewer
 					taskId={imageViewer.taskId}

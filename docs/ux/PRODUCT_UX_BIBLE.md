@@ -255,6 +255,9 @@ Rules specific to this surface:
 | destructive | delete task, remove project, cancel, reset terminal, hard refresh | overflow, context menu, confirm dialog, danger zone | destructive (`text-danger`/`bg-danger`), confirmation required |
 | expert_shortcut | rare known action (debug screens, tmux cheat sheet, zoom, gauge/viewport lab) | menu `View`/`Debug`, keyboard | neutral |
 | onboarding_help | explains a surface/section (help topics, tips, shortcuts reference) | HelpSpot in section headers, help-mode overlay, menu `Help`, TipCard | ghost icon; accent reused for informational emphasis |
+| agent_request | an agent asks the user to let it act (complete a task, launch another task) | blocking dialog, never a toast — `confirm()` for yes/no, own modal when the answer needs input | **identity is fixed, severity is not**: always accent border + AI-agent-request badge + autofocused decline; the accepting button is `destructive` only when the action destroys state (completion), `primary` when it creates state (launch) |
+
+**Why identity and severity are separate axes (§6, `agent_request`):** the badge answers *who asked*, the button color answers *what it costs*. Painting a constructive agent request red to signal "an AI wants this" spends the danger token on a reversible action and trains the user to click through red — so the AI-origin signal lives entirely in the border, badge, and focus placement, and never in the accept button's role.
 
 ## 7. Design token & variant policy — `Observed`
 

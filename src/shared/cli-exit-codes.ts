@@ -8,6 +8,7 @@ export const CLI_EXIT_CODE_COMPLETION_DECLINED = 6;
 export const CLI_EXIT_CODE_DOCTOR_PROBLEMS = 7;
 export const CLI_EXIT_CODE_RENDERER_UNAVAILABLE = 8;
 export const CLI_EXIT_CODE_TASK_IS_DRAFT = 9;
+export const CLI_EXIT_CODE_LAUNCH_DECLINED = 10;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -64,5 +65,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_TASK_IS_DRAFT,
 		description:
 			"`dev3 task move` was asked to start a task the user saved as a draft. A draft is deliberately unfinished, so no launch path may start it — the human must finish its description and save it as a normal task first.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_LAUNCH_DECLINED",
+		code: CLI_EXIT_CODE_LAUNCH_DECLINED,
+		description:
+			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) and the user declined the approval dialog. Nothing was launched and the target task stays where it was.",
 	},
 ] as const;

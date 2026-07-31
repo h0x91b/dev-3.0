@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Label, TaskPriority } from "../shared/types";
-import LabelChip from "./components/LabelChip";
-import PriorityBadge from "./components/PriorityBadge";
+import TaskDialogSubjectCard from "./components/TaskDialogSubjectCard";
 import { useT } from "./i18n";
 import { useFocusTrap } from "./utils/useFocusTrap";
 
@@ -250,65 +249,21 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 					<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
 				)}
 				{pending.info && (
-					<div className={`rounded-xl border px-4 py-3 ${pending.outcomeCards ? "bg-elevated/70 border-edge" : "bg-accent/10 border-accent/30"}`}>
-						{/* Identity row: which project/task this prompt is about. */}
-						{(pending.info.seqLabel || pending.info.projectName || pending.info.priority) && (
-							<div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-2 text-fg-3 text-xs">
-								{pending.info.seqLabel && (
-									<span className="font-mono text-fg-2">{`#${pending.info.seqLabel}`}</span>
-								)}
-								{pending.info.projectName && (
-									<>
-										{pending.info.seqLabel && <span aria-hidden>·</span>}
-										<span className="truncate max-w-[12rem]">{pending.info.projectName}</span>
-									</>
-								)}
-								{pending.info.priority && (
-									<PriorityBadge priority={pending.info.priority} size="sm" className="ml-auto" />
-								)}
-							</div>
-						)}
-						<div className="flex items-start gap-2">
-							<span
-								className={`${pending.outcomeCards ? "text-fg-3" : "text-accent"} text-[1.0625rem] leading-snug`}
-								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-							>
-								{"\u{F0AE2}"}
-							</span>
-							{/* `text-base` is unusable here: the project defines a `base` color
-							    token, so Tailwind also emits text-base as a COLOR utility that
-							    overrides text-accent. Use an arbitrary font-size instead. */}
-							{pending.info.onClick ? (
-								<button
-									type="button"
-									onClick={() => {
-										close(false);
-										pending.info?.onClick?.();
-									}}
-									aria-label={pending.info.title}
-									className={`${pending.outcomeCards ? "text-fg" : "text-accent"} min-w-0 rounded-sm text-left text-[1.0625rem] font-semibold leading-snug underline-offset-2 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60`}
-								>
-									{pending.info.title}
-								</button>
-							) : (
-								<div className={`${pending.outcomeCards ? "text-fg" : "text-accent"} text-[1.0625rem] font-semibold leading-snug`}>
-									{pending.info.title}
-								</div>
-							)}
-						</div>
-						{pending.info.body && (
-							<div className="text-fg-2 text-sm leading-relaxed mt-1.5 whitespace-pre-line">
-								{pending.info.body}
-							</div>
-						)}
-						{pending.info.labels && pending.info.labels.length > 0 && (
-							<div className="flex items-center flex-wrap gap-1 mt-2">
-								{pending.info.labels.map((label) => (
-									<LabelChip key={label.id} label={label} size="sm" />
-								))}
-							</div>
-						)}
-					</div>
+					<TaskDialogSubjectCard
+						title={pending.info.title}
+						body={pending.info.body}
+						seqLabel={pending.info.seqLabel}
+						projectName={pending.info.projectName}
+						priority={pending.info.priority}
+						labels={pending.info.labels}
+						tone={pending.outcomeCards ? "neutral" : "accent"}
+						{...(pending.info.onClick ? {
+							onTitleClick: () => {
+								close(false);
+								pending.info?.onClick?.();
+							},
+						} : {})}
+					/>
 				)}
 				{pending.outcomeCards && (
 					<div className="flex min-w-0 items-center gap-2 rounded-lg border border-success/25 bg-success/10 px-3 py-2 text-xs">

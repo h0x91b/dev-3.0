@@ -1,6 +1,6 @@
 import type { CliResponse, Task, TaskStatus, TaskHistoryEntry, TaskNote } from "../../shared/types";
-import { STATUS_LABELS, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, getTaskTitle, getTaskOverview, normalizePriority } from "../../shared/types";
-import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
+import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, getTaskTitle, getTaskOverview, normalizePriority } from "../../shared/types";
+import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
@@ -17,8 +17,9 @@ import { handleTasks } from "./tasks";
 const DESTRUCTIVE_STATUSES: TaskStatus[] = ["completed", "cancelled"];
 const CLI_ALLOWED_STATUSES = ALL_STATUSES.filter((s) => !DESTRUCTIVE_STATUSES.includes(s));
 
-// How long the CLI waits for the user to answer the approval dialog.
+// How long the CLI waits for the user to answer an approval dialog.
 const COMPLETION_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
+const LAUNCH_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
 function formatDate(iso: string): string {
 	const d = new Date(iso);
@@ -147,10 +148,28 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "title", "description"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "scratch", "run"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
+	}
+
+	const scratch = args.flags.scratch === "true";
+	const run = args.flags.run === "true";
+	if (scratch !== run) {
+		exitUsage(
+			"--scratch and --run go together: `dev3 task create --scratch --run` asks the user to launch a throwaway peer agent.\n" +
+			"A scratch task has no prompt — talk to it with `dev3 message --task seq:<N>` once it starts.",
+		);
+	}
+	if (scratch) {
+		if (args.positional[0] || args.flags.title || args.flags.description) {
+			exitUsage(
+				"A scratch task takes no title or description — it has no prompt by design.\n" +
+				"Create a normal task instead, or send instructions with `dev3 message --task seq:<N>` after it starts.",
+			);
+		}
+		return createScratchAndRun(projectId, socketPath, context);
 	}
 
 	// A literal "-" is the conventional CLI sentinel for reading the value
@@ -295,6 +314,89 @@ async function requestCompletion(
 	);
 }
 
+/**
+ * `dev3 task create --scratch --run`: ask the user to spin up a throwaway peer
+ * agent. Blocks on the same approval dialog as an agent-initiated launch; the
+ * app discards the placeholder task if the user declines.
+ */
+async function createScratchAndRun(
+	projectId: string,
+	socketPath: string,
+	context: CliContext | null,
+): Promise<void> {
+	if (!context?.taskId) {
+		exitUsage("Run this from inside a task worktree — the new scratch task reports back to yours.");
+	}
+
+	let resp: CliResponse;
+	try {
+		resp = await sendRequest(socketPath, "task.createScratchAndRun", {
+			projectId,
+			sourceTaskId: context.taskId,
+		}, { timeoutMs: LAUNCH_APPROVAL_TIMEOUT_MS });
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith("Socket timeout")) {
+			exitError(
+				"Timed out waiting for the user's decision",
+				"The approval dialog may still be open in the app — if the user approves later, the scratch task starts anyway.",
+			);
+		}
+		throw err;
+	}
+	if (!resp.ok) exitError(resp.error || "Failed to request a scratch task");
+	if (!isLaunchApprovalOutcome(resp.data)) exitError("Unexpected response to the scratch launch request");
+	reportLaunchOutcome(resp.data, false);
+}
+
+/** What the app returns once an agent-initiated launch went through the dialog. */
+interface LaunchApprovalOutcome {
+	approved: boolean;
+	seq?: number;
+	title?: string;
+	replyCommand?: string;
+}
+
+function isLaunchApprovalOutcome(data: unknown): data is LaunchApprovalOutcome {
+	return typeof data === "object" && data !== null && "approved" in data;
+}
+
+/**
+ * True when this move is an agent asking to set a DIFFERENT task running — the
+ * shape that detours through the approval dialog. A `seq:N` or id-prefix ref the
+ * CLI cannot match against its own task counts as foreign: guessing "foreign"
+ * only costs a longer socket timeout on a move that answers instantly anyway,
+ * while guessing "own" would time the dialog out after 30 seconds.
+ */
+function movesForeignTaskIntoActiveColumn(
+	taskRef: string,
+	newStatus: string,
+	context: CliContext | null,
+): boolean {
+	if (!context?.taskId) return false;
+	if (!ACTIVE_STATUSES.includes(newStatus as TaskStatus)) return false;
+	return taskRef !== context.taskId;
+}
+
+/** Print the result of an approved/declined launch, or exit with the decline code. */
+function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: boolean): void {
+	if (!outcome.approved) {
+		exitError(
+			"User declined the launch request",
+			"The task stays where it was and no agent was started.\nAsk the user what they want to change before requesting it again.",
+			CLI_EXIT_CODE_LAUNCH_DECLINED,
+		);
+	}
+	if (codexStopHook) {
+		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
+		return;
+	}
+	process.stdout.write(
+		`User approved — task seq:${outcome.seq} is starting: ${outcome.title ?? ""}\n` +
+		`Talk to it with: ${outcome.replyCommand ?? `dev3 message --task seq:${outcome.seq} "your message"`}\n` +
+		"It knows you started it and will report back to this task.\n",
+	);
+}
+
 async function moveTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
 	// `--tolerate-app-offline` only changes the app-offline exit code, which is
 	// decided before dispatch (main.ts) — accepted and ignored here.
@@ -334,8 +436,16 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	if (ifStatusNot) params.ifStatusNot = ifStatusNot;
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
+	// Running inside a worktree means an agent is moving the card. The app needs
+	// to know which one: moving somebody else's task into a running column is a
+	// launch, and a launch needs the user's approval and agent pick.
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 
-	const resp = await sendRequest(socketPath, "task.move", params);
+	// The approval dialog can sit open for minutes, so a move that might turn
+	// into one waits on the long timeout. A silent move still answers instantly.
+	const resp = movesForeignTaskIntoActiveColumn(taskId, newStatus, context)
+		? await sendRequest(socketPath, "task.move", params, { timeoutMs: LAUNCH_APPROVAL_TIMEOUT_MS })
+		: await sendRequest(socketPath, "task.move", params);
 	if (!resp.ok) {
 		// A draft was deliberately parked by the human — give it its own exit code
 		// so an agent can tell "not ready yet" apart from a real failure.
@@ -347,6 +457,12 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 			);
 		}
 		exitError(resp.error || "Failed to move task");
+	}
+
+	// The server answered with an approval outcome, not a moved task: this move
+	// was an agent-initiated launch and went through the dialog.
+	if (isLaunchApprovalOutcome(resp.data)) {
+		return reportLaunchOutcome(resp.data, codexStopHook);
 	}
 
 	const task = resp.data as Task;

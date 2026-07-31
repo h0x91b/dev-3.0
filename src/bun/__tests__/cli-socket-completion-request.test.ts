@@ -86,7 +86,7 @@ vi.mock("node:fs", () => ({
 
 import * as data from "../data";
 import { moveTask, getPushMessage } from "../rpc-handlers";
-import { resolveCompletionRequest, _resetCompletionRequestsForTests } from "../completion-requests";
+import { resolveAgentRequest, _resetAgentRequestsForTests } from "../agent-requests";
 
 const { handleRequest } = await import("../cli-socket-server");
 
@@ -138,7 +138,7 @@ function setupTask(task: Task): void {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	_resetCompletionRequestsForTests();
+	_resetAgentRequestsForTests();
 });
 
 describe("task.requestCompletion", () => {
@@ -186,7 +186,7 @@ describe("task.requestCompletion", () => {
 		expect(payload.subject.priority).toBe("P3");
 		expect(payload.subject.labels).toEqual([]);
 
-		resolveCompletionRequest(payload.requestId, true);
+		resolveAgentRequest(payload.requestId, { approved: true });
 
 		const resp = await respPromise;
 		expect(resp.ok).toBe(true);
@@ -203,7 +203,7 @@ describe("task.requestCompletion", () => {
 		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
 
 		const payload = pushFn.mock.calls[0][1] as { requestId: string };
-		resolveCompletionRequest(payload.requestId, false);
+		resolveAgentRequest(payload.requestId, { approved: false });
 
 		const resp = await respPromise;
 		expect(resp.ok).toBe(true);
@@ -224,7 +224,7 @@ describe("task.requestCompletion", () => {
 		expect(pushFn).toHaveBeenCalledTimes(1);
 
 		const payload = pushFn.mock.calls[0][1] as { requestId: string };
-		resolveCompletionRequest(payload.requestId, false);
+		resolveAgentRequest(payload.requestId, { approved: false });
 
 		const [respA, respB] = await Promise.all([first, second]);
 		expect(respA.data).toEqual({ approved: false });

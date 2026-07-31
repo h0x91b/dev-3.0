@@ -3,14 +3,15 @@ import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, 
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getTaskTitle, normalizePriority, titleFromDescription } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
-import { createCompletionRequest } from "./completion-requests";
+import { createAgentRequest, type AgentLaunchChoice } from "./agent-requests";
+import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
-import { getPushMessage, getPushMessageLocal, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
+import { createScratchTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout, tmuxSessionExists } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
@@ -196,6 +197,71 @@ async function resolveAgentMessageSource(
 	return { taskId: found.task.id, seq: found.task.seq, title: getTaskTitle(found.task) };
 }
 
+/** Result of the agent-initiated launch approval flow. */
+type LaunchApprovalOutcome =
+	| { approved: false }
+	| { approved: true; task: Task; seq: number; title: string; replyCommand: string };
+
+/**
+ * Ask the user to approve an agent-initiated launch, then perform it with the
+ * agent/config/account they picked in the dialog. Blocks until the user answers,
+ * exactly like the completion approval — the requesting CLI waits on the socket.
+ *
+ * The launched task's first message tells it who started it (`deliverLaunchHandoff`),
+ * so the two agents can talk over the existing cross-task envelope.
+ */
+async function requestAgentLaunchApproval(opts: {
+	project: Project;
+	task: Task;
+	targetStatus: TaskStatus;
+	requester: AgentMessageSource;
+}): Promise<LaunchApprovalOutcome> {
+	const { project, task, targetStatus, requester } = opts;
+	const push = getPushMessage();
+	if (!push) {
+		throw new Error("No app window is connected — cannot ask the user for approval");
+	}
+
+	const { requestId, decision, isNew } = createAgentRequest("launch", task.id, project.id);
+	if (isNew) {
+		push("agentLaunchRequested", {
+			requestId,
+			taskId: task.id,
+			projectId: project.id,
+			taskTitle: getTaskTitle(task),
+			targetStatus,
+			scratch: task.scratch === true,
+			requesterSeq: requester.seq,
+			requesterTitle: requester.title,
+			// Same read-only context card as the completion dialog, so the user
+			// recognizes which task an agent wants to set running.
+			subject: buildTaskDialogSubject(task, project),
+		});
+	}
+
+	const answer = await decision;
+	if (!answer.approved) return { approved: false };
+
+	const choice: AgentLaunchChoice = answer.launch ?? { agentId: null, configId: null };
+	const launched = await launchTaskWithAgentChoice({
+		taskId: task.id,
+		projectId: project.id,
+		targetStatus,
+		choice,
+	});
+	// Fire-and-forget: the handoff waits for the child's agent pane, which takes
+	// far longer than the requesting agent should sit blocked on a socket.
+	void deliverLaunchHandoff({ projectId: project.id, childTaskId: task.id, source: requester });
+
+	return {
+		approved: true,
+		task: launched,
+		seq: launched.seq,
+		title: getTaskTitle(launched),
+		replyCommand: `dev3 message --task seq:${launched.seq} "your message"`,
+	};
+}
+
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
 
 // An approval temporarily moves a task to user-questions. Remember which
@@ -368,6 +434,42 @@ const handlers: Record<string, Handler> = {
 		}
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 		return task;
+	},
+
+	// `dev3 task create --scratch --run`: an agent asking for a throwaway peer.
+	// Creates the bare scratch task, then reuses the launch approval dialog — so
+	// the user still picks the agent and can decline. Only agents reach this path
+	// (a human has the "Scratch Task" button); without a source task there is
+	// nobody to hand the new task off to, hence the hard requirement.
+	"task.createScratchAndRun": async (params) => {
+		const projectId = params.projectId as string;
+		if (!projectId) throw new Error("projectId is required");
+		const sourceTaskId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+		if (!sourceTaskId) {
+			throw new Error("Launching a scratch task requires running inside a task worktree");
+		}
+
+		const project = await data.getProject(projectId);
+		const task = await createScratchTask(project.id);
+		const requester = await resolveAgentMessageSource(params, task.id);
+		if (!requester) {
+			await deleteTask({ taskId: task.id, projectId: project.id });
+			throw new Error(`Unknown requesting task "${sourceTaskId}" — cannot attribute the scratch task`);
+		}
+
+		const outcome = await requestAgentLaunchApproval({
+			project,
+			task,
+			targetStatus: "in-progress",
+			requester,
+		});
+		// A declined scratch task has no reason to exist — it was created only to
+		// have something for the dialog to launch. Leaving it would litter To Do
+		// with empty placeholders every time the user says no.
+		if (!outcome.approved) {
+			await deleteTask({ taskId: task.id, projectId: project.id });
+		}
+		return outcome;
 	},
 
 	"task.update": async (params) => {
@@ -967,6 +1069,17 @@ const handlers: Record<string, Handler> = {
 			throw new Error(`Invalid status: "${newStatus}". Valid built-in statuses: ${ALL_STATUSES.join(", ")}${validCustomIds}`);
 		}
 
+		// An agent setting SOMEONE ELSE'S task running is a launch, not a board
+		// move: it creates a worktree and boots an agent. That needs the user's
+		// explicit go-ahead plus their agent pick, so it detours through the
+		// approval dialog. An agent moving its OWN task (every status hook) and a
+		// human at a terminal (no sourceTaskId) both stay on the silent path.
+		const requester = await resolveAgentMessageSource(params, task.id);
+		const isActivation = !ACTIVE_STATUSES.includes(task.status) && ACTIVE_STATUSES.includes(builtinStatus);
+		if (requester && isActivation && !isStatusGuardBlocked(task.status, { ifStatus, ifStatusNot })) {
+			return requestAgentLaunchApproval({ project, task, targetStatus: builtinStatus, requester });
+		}
+
 		return moveTask({
 			taskId: task.id,
 			projectId: project.id,
@@ -991,7 +1104,7 @@ const handlers: Record<string, Handler> = {
 			throw new Error("No app window is connected — cannot ask the user for approval");
 		}
 
-		const { requestId, decision, isNew } = createCompletionRequest(task.id, project.id);
+		const { requestId, decision, isNew } = createAgentRequest("complete", task.id, project.id);
 		if (isNew) {
 			push("agentCompletionRequested", {
 				requestId,
@@ -1004,7 +1117,7 @@ const handlers: Record<string, Handler> = {
 			});
 		}
 
-		const approved = await decision;
+		const { approved } = await decision;
 		if (!approved) {
 			return { approved: false };
 		}

@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-31 — An agent request keeps one identity, but borrows its severity from the action
+
+- **Rule:** Every agent-initiated request wears the same identity (accent border, AI-agent-request badge, autofocused decline) while the accepting button takes its role from what the action does — `destructive` for completion, `primary` for a launch; a request needing more than yes/no gets its own modal and `confirm()` stays boolean. Bible §6 row `agent_request`, yaml `surfaces.modal.agent_request`.
+- **Why:** the 2026-06-10 completion rule bundled identity and severity, so a second instance (an agent asking to *start* a task, which is reversible and creates state) would have shipped a red button for a safe action and spent the danger token on nothing. Rejected: extending `confirm()` to host the agent picker — that turns a boolean service into a form host.
+- **Status:** Implemented. Evidence: `AgentLaunchRequestModal.tsx`, `TaskDialogSubjectCard.tsx`, `confirm.tsx`, `agent-requests.ts`, `cli-socket-server.ts`. Extends the 2026-06-10 entry.
+
 ## 2026-07-30 — Hibernated is a card state, not a column or a card action
 
 A hibernated task keeps its column and renders inert everywhere it is listed (greyed +

@@ -4,7 +4,7 @@ import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { Task, CliResponse } from "../../shared/types";
 import { DRAFT_TASK_ACTIVATION_ERROR } from "../../shared/types";
-import { CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 
 vi.mock("../stdin", () => ({
 	readStdin: vi.fn(),
@@ -1398,5 +1398,103 @@ describe("task list (alias for tasks list)", () => {
 			expect.objectContaining({ projectId: "proj-001" }),
 		);
 		expect(stdoutOutput).toContain("Fix the login bug");
+	});
+});
+
+// ─── agent-initiated launch approval ─────────────────────────────────────────
+
+describe("task move — agent asking to start another task", () => {
+	const OTHER = "bbbbbbbb-1111-2222-3333-444444444444";
+
+	it("tells the app which task is asking, so a foreign activation can be gated", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other task", replyCommand: 'dev3 message --task seq:77 "your message"' }));
+
+		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.sourceTaskId).toBe(CTX.taskId);
+		// The dialog can sit open for minutes, so this call waits far longer than
+		// the default socket timeout.
+		expect(mockSend.mock.calls[0]![3]).toEqual({ timeoutMs: 10 * 60 * 1000 });
+	});
+
+	it("prints the new task's seq and how to talk to it on approval", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other task", replyCommand: 'dev3 message --task seq:77 "your message"' }));
+
+		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("seq:77");
+		expect(stdoutOutput).toContain("dev3 message --task seq:77");
+	});
+
+	it("exits with the launch-declined code when the user says no", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false }));
+
+		await expect(
+			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
+		expect(stderrOutput).toContain("declined the launch request");
+	});
+
+	it("keeps the agent's OWN status move on the fast path", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "review-by-ai" as const }));
+
+		await handleTask("move", args([], { status: "review-by-ai" }), SOCKET, CTX);
+
+		// No approval possible for your own task: no long timeout, no source hint
+		// beyond the one the app uses to recognise "this is me".
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", {
+			taskId: CTX.taskId,
+			newStatus: "review-by-ai",
+			projectId: "proj-001",
+			sourceTaskId: CTX.taskId,
+		});
+	});
+});
+
+describe("task create --scratch --run", () => {
+	it("requires --scratch and --run together", async () => {
+		await expect(
+			handleTask("create", args([], { scratch: "true", project: "proj-001" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--scratch and --run go together");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("refuses a title or description — a scratch task has no prompt", async () => {
+		await expect(
+			handleTask("create", args(["do the thing"], { scratch: "true", run: "true", project: "proj-001" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("no title or description");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("refuses to run outside a task worktree", async () => {
+		await expect(
+			handleTask("create", args([], { scratch: "true", run: "true", project: "proj-001" }), SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("inside a task worktree");
+	});
+
+	it("requests the scratch launch and reports the approved peer", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: true, seq: 91, title: "Scratch — 14:32", replyCommand: 'dev3 message --task seq:91 "your message"' }));
+
+		await handleTask("create", args([], { scratch: "true", run: "true" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(
+			SOCKET,
+			"task.createScratchAndRun",
+			{ projectId: "proj-001", sourceTaskId: CTX.taskId },
+			{ timeoutMs: 10 * 60 * 1000 },
+		);
+		expect(stdoutOutput).toContain("seq:91");
+	});
+
+	it("exits with the launch-declined code when the scratch request is refused", async () => {
+		mockSend.mockResolvedValue(okResp({ approved: false }));
+
+		await expect(
+			handleTask("create", args([], { scratch: "true", run: "true" }), SOCKET, CTX),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
 	});
 });

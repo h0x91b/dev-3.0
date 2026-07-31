@@ -1,7 +1,7 @@
 import type { LaunchVariant, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
-import { resolveCompletionRequest } from "../completion-requests";
+import { resolveAgentRequest, type AgentLaunchChoice } from "../agent-requests";
 import { loadSettings, recordFavoriteUsages } from "../settings";
 import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
@@ -153,6 +153,22 @@ async function createTask(params: { projectId: string; description: string; stat
 	return task;
 }
 
+/**
+ * A bare scratch task parked in To Do, ready for the agent-launch approval
+ * dialog to pick an agent for it. Same shape the "Scratch Task" button produces:
+ * the `Scratch — HH:mm` placeholder as description and `scratch: true`, which is
+ * what makes the launch path blank the prompt instead of feeding the placeholder
+ * to the agent. A scratch task has no prompt by definition — whoever asked for it
+ * drives it with messages afterwards.
+ */
+export async function createScratchTask(projectId: string): Promise<Task> {
+	const project = await data.getProject(projectId);
+	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	log.info("← createScratchTask", { taskId: task.id.slice(0, 8) });
+	return task;
+}
+
 function getSourceTaskBranch(task: Task, project: Project): string | undefined {
 	if (task.existingBranch) {
 		return task.existingBranch;
@@ -193,6 +209,54 @@ export async function moveTask(params: {
 		clientPlayedSound: params.clientPlayedSound,
 		enforceAllowedTransition: params.enforceAllowedTransition,
 	});
+}
+
+/**
+ * Activate a task with an explicitly picked agent/config/account, the way the
+ * launch modal does — but for a single task, with no variant group. Used by the
+ * approved agent-initiated launch (see the `task.move` approval branch in
+ * cli-socket-server.ts): a bare `moveTask` would fall back to the user's default
+ * agent and silently ignore what they chose in the dialog.
+ *
+ * Returns as soon as preparation is dispatched; the worktree + agent come up
+ * asynchronously, exactly like a launch from the board.
+ */
+export async function launchTaskWithAgentChoice(params: {
+	taskId: string;
+	projectId: string;
+	targetStatus: TaskStatus;
+	choice: AgentLaunchChoice;
+}): Promise<Task> {
+	log.info("→ launchTaskWithAgentChoice", { taskId: params.taskId.slice(0, 8), status: params.targetStatus });
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const existingBranch = getSourceTaskBranch(task, project);
+	const { agentId, configId, accountId } = params.choice;
+
+	const launched = await dispatchLifecycleEvent(project.id, task.id, {
+		type: "moveRequested",
+		runId: crypto.randomUUID(),
+		target: { status: params.targetStatus, customColumnId: null },
+		enforceAllowedTransition: true,
+		taskPatch: {
+			agentId,
+			configId,
+			accountId,
+			existingBranch,
+			worktreePath: null,
+			branchName: null,
+			scheduledLaunch: null,
+			preparationError: null,
+		},
+		preparation: {
+			launch: { label: "agent-request", agentId, configId, existingBranch },
+			awaitCompletion: false,
+			publishColumn: true,
+		},
+	}, { project, task });
+
+	log.info("← launchTaskWithAgentChoice dispatched", { taskId: task.id.slice(0, 8) });
+	return launched;
 }
 
 async function cancelTaskPreparation(params: { taskId: string; projectId: string }): Promise<Task> {
@@ -248,7 +312,7 @@ async function hibernateTask(params: { taskId: string; projectId: string }): Pro
 	return { task: updated, freedRssBytes };
 }
 
-async function deleteTask(params: { taskId: string; projectId: string }): Promise<void> {
+export async function deleteTask(params: { taskId: string; projectId: string }): Promise<void> {
 	log.info("→ deleteTask", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -701,9 +765,28 @@ async function setTaskManualCompletion(params: { taskId: string; projectId: stri
 }
 
 async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean }): Promise<void> {
-	const known = resolveCompletionRequest(params.requestId, params.approved);
+	const known = resolveAgentRequest(params.requestId, { approved: params.approved });
 	if (!known) {
 		log.debug("respondToAgentCompletionRequest: request expired or unknown", { requestId: params.requestId });
+	}
+}
+
+/**
+ * Renderer answers an `agentLaunchRequested` dialog. On approval it hands back
+ * the agent/config/account the user picked in the dialog; the waiting CLI
+ * handler performs the actual launch with that choice.
+ */
+async function respondToAgentLaunchRequest(params: {
+	requestId: string;
+	approved: boolean;
+	launch?: AgentLaunchChoice;
+}): Promise<void> {
+	const known = resolveAgentRequest(params.requestId, {
+		approved: params.approved,
+		...(params.approved && params.launch ? { launch: params.launch } : {}),
+	});
+	if (!known) {
+		log.debug("respondToAgentLaunchRequest: request expired or unknown", { requestId: params.requestId });
 	}
 }
 
@@ -898,4 +981,5 @@ export const taskLifecycleHandlers = {
 	cancelScheduledLaunch,
 	startScheduledLaunchNow,
 	respondToAgentCompletionRequest,
+	respondToAgentLaunchRequest,
 };

@@ -67,13 +67,16 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -]',
-				summary: "Create a new task in the To Do column.",
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] | dev3 task create --scratch --run',
+				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
 					"--description <text>  Longer description (optional); use - to read it from stdin.",
 					"Positional content (or @file) becomes the description; its first line",
 					"is used as the title when --title is omitted.",
+					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
+					"                      no prompt. Blocks up to 10 min on their approval in the",
+					"                      app; exit 10 if declined. Drive it with `dev3 message`.",
 				],
 			},
 			{
@@ -101,6 +104,8 @@ const COMMANDS: CommandHelp[] = [
 					"                         running, instead of exit 2. For generated hooks.",
 					"Built-in: todo, in-progress, user-questions, review-by-ai, review-by-user.",
 					'"completed" asks the user for approval; "cancelled" is forbidden via CLI.',
+					"Starting SOMEONE ELSE'S task (--task <other> + an active status) also asks",
+					"the user, who picks the agent; exit 10 if they decline.",
 				],
 			},
 		],

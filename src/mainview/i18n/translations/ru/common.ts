@@ -22,6 +22,15 @@ const common = {
 	"app.agentCompletionConfirm": "Завершить задачу",
 	"app.agentCompletionCancel": "Оставить сессию",
 
+	// Агент просит запустить другую задачу (или одноразовый scratch)
+	"agentLaunch.title": "Агент хочет запустить эту задачу",
+	"agentLaunch.titleScratch": "Агент просит scratch-задачу",
+	"agentLaunch.requestedBy": "Просит задача #{seq} — {title}",
+	"agentLaunch.scratchHasNoPrompt": "Запускается без промпта. Инструкции пришлёт агент, который её попросил.",
+	"agentLaunch.launch": "Запустить",
+	"agentLaunch.launching": "Запускаю...",
+	"agentLaunch.decline": "Отказать",
+
 	// Навигация в стиле Vimium
 	"hint.legend.jump": "перейти",
 	"hint.legend.undo": "стереть",

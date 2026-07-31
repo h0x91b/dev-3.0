@@ -1854,6 +1854,25 @@ export interface TaskDialogSubject {
 }
 
 /**
+ * An agent asking the user to set ANOTHER task running — the payload of the
+ * `agentLaunchRequested` push. Carries who asked (`requesterSeq`/`requesterTitle`)
+ * so the dialog can name the agent, and the same read-only subject card the
+ * completion dialog uses. `scratch` marks the throwaway-peer case, which has no
+ * prompt by design.
+ */
+export interface AgentLaunchRequest {
+	requestId: string;
+	taskId: string;
+	projectId: string;
+	taskTitle: string;
+	targetStatus: TaskStatus;
+	scratch: boolean;
+	requesterSeq: number;
+	requesterTitle: string;
+	subject: TaskDialogSubject;
+}
+
+/**
  * Build the {@link TaskDialogSubject} for a task from its project. Pure: resolves
  * `task.labelIds` against `project.labels`, falls back to {@link DEFAULT_PRIORITY}
  * for legacy tasks, and reuses {@link taskSeqLabel}/{@link getTaskOverview}.
@@ -3631,6 +3650,19 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			/**
+			 * Renderer answers an `agentLaunchRequested` dialog. Approval hands back
+			 * the agent/config/account the user picked, and the blocked CLI request
+			 * launches the task with it; decline releases it with a refusal.
+			 */
+			respondToAgentLaunchRequest: {
+				params: {
+					requestId: string;
+					approved: boolean;
+					launch?: { agentId: string | null; configId: string | null; accountId?: string | null };
+				};
+				response: void;
+			};
+			/**
 			 * Cheap liveness probe for the desktop RPC bridge watchdog. The renderer
 			 * pings this on wake/focus with a short timeout; a missed ping means the
 			 * Electrobun localhost socket has jammed and the bridge needs recovery.
@@ -3695,6 +3727,15 @@ export type AppRPCSchema = {
 			 * on `subject.overview`).
 			 */
 			agentCompletionRequested: { requestId: string; taskId: string; projectId: string; taskTitle: string; subject: TaskDialogSubject };
+			/**
+			 * Emitted when an agent asks to set ANOTHER task running — either
+			 * `dev3 task move --task <other> --status <active>` or
+			 * `dev3 task create --scratch --run`. The CLI blocks on the user's
+			 * decision; the renderer shows the launch dialog (task context + agent
+			 * picker) and answers via `respondToAgentLaunchRequest`. `requesterSeq`
+			 * names the asking task so the user can see who wants this.
+			 */
+			agentLaunchRequested: AgentLaunchRequest;
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };

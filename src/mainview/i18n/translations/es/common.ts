@@ -22,6 +22,15 @@ const common = {
 	"app.agentCompletionConfirm": "Completar tarea",
 	"app.agentCompletionCancel": "Mantener sesión",
 
+	// Un agente pide iniciar otra tarea (o una tarea scratch desechable)
+	"agentLaunch.title": "El agente quiere iniciar esta tarea",
+	"agentLaunch.titleScratch": "El agente pide una tarea scratch",
+	"agentLaunch.requestedBy": "Solicitado por la tarea #{seq} — {title}",
+	"agentLaunch.scratchHasNoPrompt": "Se inicia sin prompt. El agente que la pidió le enviará instrucciones.",
+	"agentLaunch.launch": "Iniciar",
+	"agentLaunch.launching": "Iniciando...",
+	"agentLaunch.decline": "Rechazar",
+
 	// Navegación estilo Vimium
 	"hint.legend.jump": "ir",
 	"hint.legend.undo": "borrar",
