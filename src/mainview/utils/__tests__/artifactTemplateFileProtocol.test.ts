@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
@@ -19,17 +19,22 @@ const tempDir = mkdtempSync(join(tmpdir(), "dev3-artifact-file-protocol-"));
 afterAll(() => rmSync(tempDir, { recursive: true, force: true }));
 
 /**
- * Startup of a real browser is ~2s idle but has been measured spiking past 20s
- * when several test suites and other headless browsers share the machine, so a
- * single fixed timeout makes this suite flaky for reasons unrelated to the
- * artifact template. Retrying with a wider budget keeps every assertion intact
- * while removing the load sensitivity.
+ * The browser needs the user's real HOME, and that is the whole reason this test
+ * used to be flaky. test-setup redirects HOME into a per-run sandbox to isolate
+ * worktrees, which leaves the browser with no profile — and a cold profile was
+ * measured never finishing (>50s, with or without keychain and first-run flags)
+ * where the warm one returns in 0.6s. Measured side by side in one test process:
+ * sandbox HOME timed out at 20s, real HOME answered in 616ms.
  *
- * Deliberately NO `--user-data-dir`: a throwaway profile pays first-run
- * initialisation and was measured timing out at 40s where the shared profile
- * returns in 0.6s.
+ * `userInfo().homedir` reads the passwd entry rather than $HOME, so it survives
+ * the sandboxing. Only this spawn sees it; the test's own writes stay in tmpdir.
+ *
+ * `killSignal: "SIGKILL"` is load-bearing too: under the default SIGTERM the
+ * browser's process tree holds the stdout pipe open while it shuts down, and
+ * `execFileSync` was measured overshooting a 300ms budget by 1.7s — an overshoot
+ * that scales with load and would turn the retry below into a hang.
  */
-const BROWSER_TIMEOUTS_MS = [30_000, 90_000];
+const BROWSER_TIMEOUTS_MS = [20_000, 40_000];
 
 function dumpDom(url: string): string {
 	let lastError: unknown;
@@ -49,7 +54,13 @@ function dumpDom(url: string): string {
 					"--dump-dom",
 					url,
 				],
-				{ encoding: "utf8", timeout, stdio: ["ignore", "pipe", "ignore"] },
+				{
+					encoding: "utf8",
+					timeout,
+					killSignal: "SIGKILL",
+					stdio: ["ignore", "pipe", "ignore"],
+					env: { ...process.env, HOME: userInfo().homedir },
+				},
 			);
 		} catch (err) {
 			lastError = err;
