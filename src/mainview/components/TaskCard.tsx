@@ -619,10 +619,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative p-3.5 glass-card rounded-xl transition-all border border-l-[3px] ${isDraft ? "border-dashed" : ""} ${isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isDraft ? "border-edge-active" : "border-transparent"} ${
+			className={`group relative p-3.5 glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border border-l-[3px] ${isDraft ? "border-dashed" : ""} ${isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isDraft ? "border-edge-active" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled
-					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
-					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
+					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover"
+					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-card-hover"
 			} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated ? "grayscale opacity-60" : ""}`}
 			style={{ borderLeftColor: isCompleting || isShuttingDown ? "#888" : color }}
 			onClick={handleClick}
@@ -694,11 +694,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<Tooltip content={isCancelled ? t("task.delete") : t("task.cancel")} detail={isCancelled ? t("ttip.task.delete") : t("ttip.task.cancel")}>
 					<button
 						onClick={handleDismiss}
-						className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md bg-fg/5 text-fg-3 hover:bg-danger/15 hover:text-danger transition-all"
+						className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md bg-fg/5 text-fg-3 hover:bg-danger/15 hover:text-danger transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
 						aria-label={isCancelled ? t("task.delete") : t("task.cancel")}
 						disabled={isDisabled}
 					>
-						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
 							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
@@ -904,9 +904,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								e.stopPropagation();
 								setPickerOpen(true);
 							}}
-							className="opacity-0 group-hover:opacity-70 hover:!opacity-100 flex items-center gap-1 px-1.5 py-0.5 rounded-md text-fg-3 hover:text-fg hover:bg-fg/8 transition-all flex-shrink-0"
+							className="opacity-0 group-hover:opacity-70 hover:!opacity-100 flex items-center gap-1 px-1.5 py-0.5 rounded-md text-fg-3 hover:text-fg hover:bg-fg/8 transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] flex-shrink-0"
 						>
-							<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+							<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
 								<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 							</svg>
 							<span className="text-[0.625rem] font-medium leading-none">Add label</span>
@@ -939,7 +939,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 										// Toggle failed silently — secondary action
 									}
 								}}
-								className={`flex-shrink-0 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs transition-all hover:bg-fg/5 ${
+								className={`flex-shrink-0 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-fg/5 ${
 									task.watched
 										? "text-accent"
 										: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
@@ -997,17 +997,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 										onClick={handleQuickComplete}
 										disabled={quickCompleting}
 										aria-label={t("pipeline.completeTooltip")}
-										className={`mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success transition-all ${
+										className={`mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success transition-[opacity,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] ${
 											quickCompleting
 												? "bg-success/25 opacity-100"
 												: "opacity-50 hover:bg-success/20 hover:opacity-100 group-hover:opacity-80"
 										}`}
 									>
-										{quickCompleting ? (
-											<span className="h-3 w-3 animate-spin rounded-full border-2 border-success/30 border-t-success" />
-										) : (
-											<CompleteCheckIcon className="w-3 h-3" />
-										)}
+										{/* Both glyphs stay mounted and cross-fade — a hard swap on a
+										    5px-wide target reads as a flicker. */}
+										<span className="relative flex h-3 w-3 items-center justify-center">
+											<span className={`absolute inset-0 h-3 w-3 animate-spin rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${quickCompleting ? "opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`} />
+											<CompleteCheckIcon className={`absolute inset-0 h-3 w-3 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${quickCompleting ? "opacity-0 scale-[0.25] blur-[4px]" : "opacity-100 scale-100 blur-0"}`} />
+										</span>
 									</button>
 								</Tooltip>
 							)}
@@ -1130,11 +1131,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 									e.stopPropagation();
 									onLaunchVariants(task, "in-progress");
 								}}
-								className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500"
+								className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-green-900/30 transition-[background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-green-500"
 								disabled={isDisabled}
 							>
+								{/* Play triangle centred on the viewBox — the usual 8→19 path sits
+								    1.5px right of centre and opens a gap before the label. */}
 								<svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
-									<path d="M8 5v14l11-7z" />
+									<path d="M6 4.5v15l12-7.5z" />
 								</svg>
 								{t("task.run")}
 							</button>
@@ -1168,7 +1171,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 										setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
 										setCtxMenuOpen(true);
 									}}
-									className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-all hover:bg-accent/15"
+									className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-accent/15"
 									aria-label={t("openIn.menuTitle")}
 								>
 									<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
@@ -1190,7 +1193,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 										// Toggle failed silently — secondary action
 									}
 								}}
-								className={`flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-all hover:bg-fg/5 ${
+								className={`flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-fg/5 ${
 									task.watched
 										? "text-accent font-medium"
 										: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
@@ -1213,7 +1216,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								preview.close();
 								onAddAttempts(task);
 							}}
-							className="flex flex-shrink-0 justify-self-end items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-all hover:bg-accent/15"
+							className="flex flex-shrink-0 justify-self-end items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-accent/15"
 							disabled={isDisabled}
 						>
 							{t("task.addVariant")}

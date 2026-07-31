@@ -603,7 +603,7 @@ function KanbanBoard({
 			key="add-column"
 			type="button"
 			onClick={handleCreateCustomColumn}
-			className="group/addcol flex-shrink-0 self-stretch w-11 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-edge text-fg-3 hover:text-accent hover:border-accent/40 hover:bg-accent/5 transition-colors"
+			className="group/addcol flex-shrink-0 self-stretch w-11 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-edge text-fg-3 hover:text-accent hover:border-accent/40 hover:bg-accent/5 transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
 			aria-label={t("customColumns.addColumnAria")}
 			title={t("customColumns.addColumnAria")}
 		>

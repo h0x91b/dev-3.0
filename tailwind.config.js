@@ -50,6 +50,10 @@ export default {
 				"stat-gold": "rgb(var(--stat-gold) / <alpha-value>)",
 				"stat-fire": "rgb(var(--stat-fire) / <alpha-value>)",
 			},
+			boxShadow: {
+				// Theme-aware card lift: neutral black in dark, soft blue-grey in light
+				"card-hover": "var(--shadow-card-hover)",
+			},
 			keyframes: {
 				"slide-in-right": {
 					"0%": { transform: "translateX(100%)", opacity: "0" },

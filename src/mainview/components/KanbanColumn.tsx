@@ -366,7 +366,7 @@ function KanbanColumn({
 		return (
 			<>
 			<div
-				className={`group/col relative flex flex-col flex-shrink-0 w-12 glass-column column-glow rounded-2xl border cursor-pointer select-none ${
+				className={`group/col relative flex flex-col flex-shrink-0 w-12 glass-column column-glow rounded-2xl border cursor-pointer select-none transition-[background-color,border-color,box-shadow,opacity] duration-150 ease-out ${
 					showDropHighlight
 						? "border-accent bg-accent/5 shadow-lg shadow-accent/10"
 						: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
@@ -428,7 +428,7 @@ function KanbanColumn({
 					<div className="flex justify-center pb-3">
 						<button
 							onClick={(e) => { e.stopPropagation(); onAddTask(); }}
-							className="text-fg-3 hover:text-accent transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 text-base leading-none"
+							className="text-fg-3 hover:text-accent transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] w-7 h-7 flex items-center justify-center rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 text-base leading-none"
 							aria-label={t("kanban.newTask")}
 							title={t("kanban.newTask")}
 						>
@@ -444,7 +444,7 @@ function KanbanColumn({
 	return (
 		<>
 		<div
-			className={`group/col relative flex flex-col flex-shrink-0 glass-column column-glow rounded-2xl border transition-colors ${
+			className={`group/col relative flex flex-col flex-shrink-0 glass-column column-glow rounded-2xl border transition-[background-color,border-color,box-shadow,opacity,width] duration-150 ease-out ${
 				fullWidth ? "w-full" : isCompactNarrow ? "w-[6.125rem]" : "w-[17.5rem]"
 			} ${
 				showDropHighlight
@@ -536,7 +536,7 @@ function KanbanColumn({
 					{!editing && onRenameColumn && !isCompactNarrow && (
 						<button
 							onClick={startEditing}
-							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+							className="text-fg-muted hover:text-fg-3 transition-[color,opacity] duration-150 ease-out w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-label={t("kanban.renameColumn")}
 							title={t("kanban.renameColumn")}
@@ -573,7 +573,7 @@ function KanbanColumn({
 					{onCollapseToggle && !isCompactNarrow && (
 						<button
 							onClick={(e) => { e.stopPropagation(); onCollapseToggle(); }}
-							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-sm leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+							className="text-fg-muted hover:text-fg-3 transition-[color,opacity] duration-150 ease-out w-4 h-4 flex items-center justify-center text-sm leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-label={t("kanban.collapseColumn")}
 							title={t("kanban.collapseColumn")}
@@ -597,7 +597,7 @@ function KanbanColumn({
 				{visibleTasks.map((task, index) => (
 					<div key={task.id} data-task-id={task.id}>
 						{isSameColumnDrag && dropIndex === index && task.id !== draggedTaskId && (
-							<div className="h-0.5 bg-accent rounded-full mx-1 mb-2 transition-all" />
+							<div className="h-0.5 bg-accent rounded-full mx-1 mb-2" />
 						)}
 						<TaskCard
 							task={task}
@@ -624,13 +624,13 @@ function KanbanColumn({
 					</div>
 				))}
 				{isSameColumnDrag && dropIndex === visibleTasks.length && (
-					<div className="h-0.5 bg-accent rounded-full mx-1 mt-0 transition-all" />
+					<div className="h-0.5 bg-accent rounded-full mx-1 mt-0" />
 				)}
 
 				{hiddenCount > 0 && (
 					<button
 						onClick={() => setExpanded(true)}
-						className="w-full text-fg-muted hover:text-fg-2 text-xs text-center py-2 mt-1 rounded-lg hover:bg-raised-hover transition-colors"
+						className="w-full text-fg-muted hover:text-fg-2 text-xs text-center py-2 mt-1 rounded-lg hover:bg-raised-hover transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
 					>
 						{t("kanban.showMore", { count: String(hiddenCount) })}
 					</button>
@@ -667,7 +667,7 @@ function KanbanColumn({
 				<div className="px-3 pb-3 flex-shrink-0">
 					<button
 						onClick={onAddTask}
-						className="w-full text-fg-3 hover:text-accent text-sm font-medium text-center py-2.5 rounded-xl hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 transition-all"
+						className="w-full text-fg-3 hover:text-accent text-sm font-medium text-center py-2.5 rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
 					>
 						{t("kanban.newTask")}
 					</button>
