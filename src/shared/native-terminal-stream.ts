@@ -48,6 +48,13 @@ export interface NativeStreamAttachHeader {
 	resumed: boolean;
 	/** Set only when `resumed` is false, so the client can clear before writing. */
 	reset?: NativeStreamResetReason;
+	/**
+	 * The PTY's own size. An observer must render at THIS geometry, not at its
+	 * container's: the bytes were laid out for the writer's width, so a viewer
+	 * that reflows them to its own width wraps every long line wrongly.
+	 */
+	cols?: number;
+	rows?: number;
 }
 
 /** One batch of live output; the payload is the raw terminal bytes. */
@@ -64,6 +71,9 @@ export interface NativeStreamRoleHeader {
 	role: NativeStreamRole;
 	/** Set when the server refused this client's input or resize. */
 	refused?: boolean;
+	/** The PTY's size, so an observer keeps following the writer's geometry. */
+	cols?: number;
+	rows?: number;
 }
 
 export type NativeStreamServerHeader =
@@ -155,12 +165,17 @@ export function outputMessage(seq: number, payload: string): string {
 	return encodeNativeStreamMessage({ t: "o", v: NATIVE_STREAM_PROTOCOL_VERSION, seq }, payload);
 }
 
-export function roleMessage(role: NativeStreamRole, refused = false): string {
+export function roleMessage(
+	role: NativeStreamRole,
+	refused = false,
+	geometry?: { cols: number; rows: number } | null,
+): string {
 	return encodeNativeStreamMessage({
 		t: "role",
 		v: NATIVE_STREAM_PROTOCOL_VERSION,
 		role,
 		...(refused ? { refused: true } : {}),
+		...(geometry ? { cols: geometry.cols, rows: geometry.rows } : {}),
 	});
 }
 

@@ -1077,10 +1077,22 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
 	return hostRole === null || hostRole === "writer" ? "writer" : "observer";
 }
 
+/**
+ * The PTY's current size, which an observer renders at instead of its own —
+ * the bytes are laid out for the writer's width, so reflowing them locally
+ * mangles every line that reaches the right edge.
+ */
+function nativePtyGeometry(session: PtySession): { cols: number; rows: number } | null {
+	const { appliedCols, appliedRows } = session;
+	if (!appliedCols || !appliedRows) return null;
+	return { cols: appliedCols, rows: appliedRows };
+}
+
 /** Re-issue every viewer's role after the host's verdict becomes known. */
 function broadcastNativeRoles(session: PtySession): void {
+	const geometry = nativePtyGeometry(session);
 	for (const client of session.clients) {
-		sendToClient(client, roleMessage(effectiveNativeRole(session, client)));
+		sendToClient(client, roleMessage(effectiveNativeRole(session, client), false, geometry));
 	}
 }
 
@@ -1107,6 +1119,7 @@ function attachNativeClient(session: PtySession, ws: any, since: number | null):
 				shellPid: session.native?.shellPid ?? -1,
 				resumed: replay.resumed,
 				...(replay.reset ? { reset: replay.reset } : {}),
+				...nativePtyGeometry(session),
 			},
 			replay.data,
 		),
@@ -1204,6 +1217,8 @@ function applyClientSizes(session: PtySession): void {
 
 	session.appliedCols = minCols;
 	session.appliedRows = minRows;
+	// The writer just changed the shape every observer has to render at.
+	if (session.backend === "native") broadcastNativeRoles(session);
 	try {
 		term.resize(minCols, minRows);
 	} catch (err) {

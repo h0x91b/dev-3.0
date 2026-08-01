@@ -136,6 +136,13 @@ class Viewer {
 		return lastCall(this.roles());
 	}
 
+	/** The whole role frame, including the PTY geometry an observer renders at. */
+	get lastRoleHeader(): { role: string; cols?: number; rows?: number } | undefined {
+		return lastCall(
+			this.frames.filter((f) => f.header.t === "role").map((f) => f.header),
+		) as { role: string; cols?: number; rows?: number } | undefined;
+	}
+
 	get watermark(): number {
 		for (let i = this.frames.length - 1; i >= 0; i--) {
 			const header = this.frames[i].header as { seq?: number };
@@ -389,6 +396,25 @@ describe("writer and observer", () => {
 		handlers.message(browser, claimMessage());
 
 		expect(lastCall(shell.resize.mock.calls)).toEqual([80, 24]);
+	});
+
+	// An observer that reflows the stream to its own width wraps every long line in
+	// the wrong place, which is what a second window actually looked like.
+	it("tells a viewer the PTY's geometry so an observer can render at the writer's shape", () => {
+		const desktop = connect();
+		handlers.message(desktop, encodeResizeSequence(200, 50));
+
+		const browser = connect();
+
+		expect(browser.attach).toMatchObject({ role: "observer", cols: 200, rows: 50 });
+	});
+
+	it("republishes the geometry to observers when the writer reshapes the PTY", () => {
+		const desktop = connect();
+		const browser = connect();
+		handlers.message(desktop, encodeResizeSequence(180, 44));
+
+		expect(browser.lastRoleHeader).toMatchObject({ role: "observer", cols: 180, rows: 44 });
 	});
 
 	it("tells its own viewers they are read-only when ANOTHER app process holds the host lease", () => {

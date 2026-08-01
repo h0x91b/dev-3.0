@@ -1488,6 +1488,61 @@ describe("TerminalView – native stream framing", () => {
 		expect(onNativeStatus).toHaveBeenLastCalledWith({ role: "writer", refused: false });
 	});
 
+	// An observer does not own the PTY. Reflowing the writer's bytes to its own
+	// container width wraps every long line in the wrong place — the garbled
+	// bottom rows a second window actually showed.
+	it("renders an observer at the PTY's geometry, not its own container's", async () => {
+		await renderNative();
+		mockTermInstance.resize.mockClear();
+
+		deliver(frame({
+			t: "attach", seq: 1, role: "observer", sessionId: "s", paneId: "s:0",
+			hostPid: 1, shellPid: 2, resumed: true, cols: 200, rows: 50,
+		}));
+
+		expect(mockTermInstance.resize).toHaveBeenCalledWith(200, 50);
+	});
+
+	it("follows the writer when it reshapes the PTY mid-session", async () => {
+		await renderNative();
+		deliver(frame({
+			t: "attach", seq: 1, role: "observer", sessionId: "s", paneId: "s:0",
+			hostPid: 1, shellPid: 2, resumed: true, cols: 200, rows: 50,
+		}));
+		mockTermInstance.resize.mockClear();
+
+		deliver(frame({ t: "role", role: "observer", cols: 120, rows: 30 }));
+
+		expect(mockTermInstance.resize).toHaveBeenCalledWith(120, 30);
+	});
+
+	it("goes back to fitting its own container once it becomes the writer", async () => {
+		await renderNative();
+		deliver(frame({
+			t: "attach", seq: 1, role: "observer", sessionId: "s", paneId: "s:0",
+			hostPid: 1, shellPid: 2, resumed: true, cols: 200, rows: 50,
+		}));
+		fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 80, rows: 24 }));
+		mockTermInstance.resize.mockClear();
+
+		deliver(frame({ t: "role", role: "writer", cols: 200, rows: 50 }));
+
+		expect(mockTermInstance.resize).toHaveBeenCalledWith(80, 24);
+	});
+
+	it("keeps a writer on its own container even when told the PTY geometry", async () => {
+		await renderNative();
+		fitAddonHolder.current!.proposeDimensions = vi.fn(() => ({ cols: 80, rows: 24 }));
+		mockTermInstance.resize.mockClear();
+
+		deliver(frame({
+			t: "attach", seq: 1, role: "writer", sessionId: "s", paneId: "s:0",
+			hostPid: 1, shellPid: 2, resumed: true, cols: 200, rows: 50,
+		}));
+
+		expect(mockTermInstance.resize).not.toHaveBeenCalledWith(200, 50);
+	});
+
 	it("sends a claim through the handle so a viewer can take over", async () => {
 		let handle: TerminalHandle | null = null;
 		await act(async () => {

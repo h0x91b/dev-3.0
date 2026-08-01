@@ -270,6 +270,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	// must survive the socket — a tmux session never sets either of these.
 	const nativeSeqRef = useRef<number | null>(null);
 	const nativeRoleRef = useRef<NativeStreamRole | null>(null);
+	/** The PTY's size, which an observer renders at instead of its container's. */
+	const ptyGeometryRef = useRef<{ cols: number; rows: number } | null>(null);
+	/** Set by the terminal-setup effect; re-runs the fit after geometry or role changes. */
+	const refitRef = useRef<(() => void) | null>(null);
 	const onNativeStatusRef = useRef(onNativeStatus);
 	onNativeStatusRef.current = onNativeStatus;
 	const onSessionLostRef = useRef(onSessionLost);
@@ -727,12 +731,24 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// until a remount (re-opening the task). We drive the fit ourselves
 			// and call term.resize directly, which carries no such drop window.
 			function refitToContainer() {
-				if (disposed || !fitAddon) return;
+				if (disposed) return;
+				// An observer does not own the PTY, so it must not reflow the stream to
+				// its own width: those bytes were laid out for the writer's geometry and
+				// every line reaching the right edge would wrap in the wrong place.
+				// Adopt the PTY's shape instead and letterbox inside the container.
+				const pty = ptyGeometryRef.current;
+				if (pty && nativeRoleRef.current === "observer") {
+					try { term.resize(pty.cols, pty.rows); } catch { /* disposed */ }
+					return;
+				}
+				if (!fitAddon) return;
 				let dims: { cols: number; rows: number } | undefined;
 				try { dims = fitAddon.proposeDimensions(); } catch { return; /* disposed */ }
 				if (!dims) return;
 				try { term.resize(dims.cols, dims.rows); } catch { /* disposed */ }
 			}
+
+			refitRef.current = refitToContainer;
 			let refitScheduled = false;
 			function scheduleRefit() {
 				if (refitScheduled) return;
@@ -1186,8 +1202,21 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 		/** Publish the writer/observer role, and whether the server just refused input. */
 		function reportNativeRole(role: NativeStreamRole, refused: boolean): void {
+			const changed = nativeRoleRef.current !== role;
 			nativeRoleRef.current = role;
 			onNativeStatusRef.current?.({ role, refused });
+			// Becoming an observer means following the PTY's shape; becoming the writer
+			// means going back to fitting our own container.
+			if (changed) refitRef.current?.();
+		}
+
+		/** Follow the writer's PTY shape; a writer keeps fitting its own container. */
+		function adoptPtyGeometry(cols?: number, rows?: number): void {
+			if (!cols || !rows) return;
+			const previous = ptyGeometryRef.current;
+			if (previous?.cols === cols && previous.rows === rows) return;
+			ptyGeometryRef.current = { cols, rows };
+			refitRef.current?.();
 		}
 
 		/**
@@ -1199,12 +1228,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		function handleNativeFrame(header: NativeStreamHeader, payload: string): void {
 			if (header.t === "role") {
 				reportNativeRole(header.role, header.refused === true);
+				adoptPtyGeometry(header.cols, header.rows);
 				return;
 			}
 			let reset = "";
 			if (header.t === "attach") {
 				nativeSeqRef.current = header.seq;
 				reportNativeRole(header.role, false);
+				adoptPtyGeometry(header.cols, header.rows);
 				// RIS in the SAME batch as the replay, so the screen is replaced in one
 				// write instead of briefly showing an empty terminal.
 				if (!header.resumed) reset = "\x1bc";
