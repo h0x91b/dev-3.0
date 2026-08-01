@@ -14,6 +14,7 @@
 import { createLogger } from "./logger";
 import { NativeSessionClient } from "./native-terminal-registry/client";
 import { readRecord } from "./native-terminal-registry/record";
+import type { ClientRole } from "./native-terminal-registry/writer-ownership";
 
 const log = createLogger("native-task-terminal");
 
@@ -33,6 +34,16 @@ export interface NativeTaskTerminal {
 	readonly shellPid: number;
 	write(data: string): void;
 	resize(cols: number, rows: number): void;
+	/**
+	 * What the HOST granted this app process — not what our own viewers agreed
+	 * among themselves. Another dev3 instance may hold the lease, and everything
+	 * an observer writes is dropped on the floor.
+	 */
+	hostRole(): ClientRole;
+	/** Ask the host for the lease. Refused while another process still holds it. */
+	claimHostWriter(): Promise<ClientRole>;
+	/** Which app process holds the lease; `null` = vacant, `undefined` = unknown. */
+	writerPid(): Promise<number | null | undefined>;
 	/** Drop our client. The host, shell, and agent keep running. */
 	detach(): void;
 }
@@ -87,6 +98,27 @@ function bindClient(
 		},
 		resize(cols, rows) {
 			client.resize(cols, rows);
+		},
+		hostRole() {
+			// A client that never got a role yet cannot be assumed to own the pane.
+			return client.getRole() ?? "observer";
+		},
+		async claimHostWriter() {
+			if (client.getRole() === "writer") return "writer";
+			try {
+				return (await client.claimWriter()).role;
+			} catch (err) {
+				log.warn("Claiming the native writer lease failed", { sessionId, error: String(err) });
+				return client.getRole() ?? "observer";
+			}
+		},
+		async writerPid() {
+			try {
+				return (await client.status()).writerPid;
+			} catch (err) {
+				log.warn("Reading the native writer pid failed", { sessionId, error: String(err) });
+				return undefined;
+			}
 		},
 		detach() {
 			closed = true;

@@ -103,6 +103,38 @@ describe("native-session protocol v1", () => {
 		expect(wrongSession).toMatchObject({ ok: false, error: { code: "not-found", id: 6 } });
 	});
 
+	// Owner routing (seq 1377): several app processes share one host, and a peer
+	// that only observes has to learn WHICH process may type before forwarding.
+	it("carries the client's app pid through hello, and omits it when unknown", () => {
+		expect(decodeHello(encodeControl(helloMessage("alpha", 3, 4711)))).toEqual({
+			v: V, type: "hello", sessionId: "alpha", id: 3, clientPid: 4711,
+		});
+		expect(decodeHello(encodeControl(helloMessage("alpha", 3)))).not.toHaveProperty("clientPid");
+	});
+
+	it("drops a nonsense client pid rather than passing it on as an owner", () => {
+		for (const bad of [0, -1, 1.5, "4711"]) {
+			const frame = JSON.stringify({ v: V, type: "hello", sessionId: "alpha", id: 3, clientPid: bad });
+			expect(decodeHello(frame)).not.toHaveProperty("clientPid");
+		}
+	});
+
+	it("hands the client pid to the host through the hello verdict", () => {
+		expect(evaluateHello(encodeControl(helloMessage("alpha", 9, 4711)), "alpha")).toEqual({
+			ok: true, id: 9, clientPid: 4711,
+		});
+	});
+
+	it("keeps writerPid on a status reply, including an explicit vacant lease", () => {
+		for (const writerPid of [4711, null]) {
+			const reply = {
+				v: V, type: "status" as const, id: 1, sessionId: "alpha", paneId: "alpha:0",
+				hostPid: 1, shellPid: 2, cols: 80, rows: 24, alive: true, startedAt: "now", writerPid,
+			};
+			expect(decodeControl(encodeControl(reply))).toEqual(reply);
+		}
+	});
+
 	it("flags an oversized control frame without parsing it", () => {
 		expect(exceedsControlFrameLimit("small")).toBe(false);
 		expect(exceedsControlFrameLimit("x".repeat(MAX_CONTROL_FRAME_BYTES + 1))).toBe(true);

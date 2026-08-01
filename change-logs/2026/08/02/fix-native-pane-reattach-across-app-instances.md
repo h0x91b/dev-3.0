@@ -1,0 +1,3 @@
+Short: Native panes reattach in every window
+
+A task running on the native terminal backend showed "no terminal session — Unknown session" for its first pane in any window other than the one that launched it, while its other panes rendered live output. The first pane now rebinds on demand from any app process, and a pane whose host is really gone shows the same exited state everywhere instead of a dead socket. Native panes also stop pretending to be writable: when another dev3 process holds the terminal's write lease, the read-only strip says so and Take control asks that process instead of cutting it off mid-keystroke.

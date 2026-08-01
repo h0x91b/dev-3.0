@@ -11,6 +11,7 @@ import {
 	roleMessage,
 	NATIVE_STREAM_SINCE_PARAM,
 } from "../shared/native-terminal-stream";
+import type { NativeStreamRole } from "../shared/native-terminal-stream";
 import { NativeBridgeJournal, NativeClientLease } from "./native-terminal-bridge";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
@@ -433,6 +434,9 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		}
 		session.native = native;
 		applyClientSizes(session);
+		// The host has now ruled on who may type; viewers attached during the bind
+		// were told the optimistic role and need the real one.
+		broadcastNativeRoles(session);
 		return true;
 	} finally {
 		session.nativeAttaching = false;
@@ -499,6 +503,7 @@ export async function ensureNativePanePtySession(
 			paneId,
 		);
 		if (!session.native) sessions.delete(key);
+		else broadcastNativeRoles(session);
 	} finally {
 		session.nativeAttaching = false;
 	}
@@ -686,6 +691,28 @@ export async function destroySessionAwaited(taskId: string, fallbackSocket?: str
 
 export function hasSession(taskId: string): boolean {
 	return sessions.has(taskId);
+}
+
+/**
+ * This process's live binding to one native pane, or null when it holds none.
+ *
+ * A binding is NOT permission to write — the host grants the writer lease to a
+ * single client across all app processes. Pass the result to
+ * `resolvePaneOwner` (native-pane-owner.ts) before delivering anything.
+ *
+ * The task's first pane lives under the bare task key and the rest under
+ * composite keys, so both are checked and the pane identity is verified rather
+ * than assumed from the key.
+ */
+export function nativePaneTerminal(taskId: string, paneId?: string): NativeTaskTerminal | null {
+	const keys = paneId ? [paneSessionKey(taskId, paneId), taskId] : [taskId];
+	for (const key of keys) {
+		const session = sessions.get(key);
+		if (session?.backend !== "native" || !session.native) continue;
+		if (paneId && session.native.paneId !== paneId) continue;
+		return session.native;
+	}
+	return null;
 }
 
 /** Which backend owns a registered session, or null when there is none. */
@@ -1022,12 +1049,48 @@ function sendToClient(client: any, text: string): void {
  * off the bounded journal is answered with the whole tail and an explicit reset
  * rather than a silently corrupt screen.
  */
+/**
+ * The role a viewer really has: our own lease decides which of THIS app's
+ * viewers may type, but the host decides whether this app process may type at
+ * all. Another dev3 instance holding the lease makes every local viewer an
+ * observer, and saying otherwise produces a terminal that looks live and
+ * silently eats keystrokes.
+ */
+/**
+ * What the host granted THIS app process, or null while that is not yet known —
+ * no binding, or a binding that predates the role being reported. Callers stay
+ * optimistic on null: the usual case is that we own the pane, and every viewer
+ * is corrected by broadcastNativeRoles once the bind lands. Forcing "read-only"
+ * on an unknown would flash the strip on every launch.
+ */
+function nativeHostRole(session: PtySession): NativeStreamRole | null {
+	const native = session.native;
+	if (!native || typeof native.hostRole !== "function") return null;
+	return native.hostRole();
+}
+
+function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
+	const lease = session.nativeLease;
+	if (!lease) return "observer";
+	if (lease.roleOf(ws) !== "writer") return "observer";
+	const hostRole = nativeHostRole(session);
+	return hostRole === null || hostRole === "writer" ? "writer" : "observer";
+}
+
+/** Re-issue every viewer's role after the host's verdict becomes known. */
+function broadcastNativeRoles(session: PtySession): void {
+	for (const client of session.clients) {
+		sendToClient(client, roleMessage(effectiveNativeRole(session, client)));
+	}
+}
+
 function attachNativeClient(session: PtySession, ws: any, since: number | null): void {
 	const journal = session.nativeStream;
 	const lease = session.nativeLease;
 	if (!journal || !lease) return;
 	settleNativeStream(session);
-	const role = lease.attach(ws);
+	lease.attach(ws);
+	const role = effectiveNativeRole(session, ws);
 	const replay = journal.replayFrom(since);
 	// sessionId always identifies the TASK coordinator (no -pane-N suffix);
 	// paneId carries the logical pane identity so callers can distinguish panes.
@@ -1063,11 +1126,34 @@ function attachNativeClient(session: PtySession, ws: any, since: number | null):
 function handleNativeOwnership(session: PtySession, ws: any, action: "claim" | "release"): void {
 	const lease = session.nativeLease;
 	if (!lease) return;
+	// Taking control inside this app is worthless while the host's lease belongs to
+	// another dev3 process, so ask for that one first. A refusal is reported as a
+	// refused keystroke rather than a lease move — the process currently typing
+	// keeps it, and this viewer learns why it is still read-only.
+	if (action === "claim" && session.native?.claimHostWriter && nativeHostRole(session) === "observer") {
+		void session.native.claimHostWriter().then((role) => {
+			if (role !== "writer") {
+				sendToClient(ws, roleMessage("observer", true));
+				log.info("Take control refused; another app process holds the host lease", {
+					taskId: shortId(session.taskId),
+				});
+				return;
+			}
+			handleNativeOwnership(session, ws, "claim");
+		});
+		return;
+	}
 	const change = action === "claim" ? lease.claim(ws) : lease.release(ws);
-	if (!change) return;
-	if (change.previous) sendToClient(change.previous, roleMessage(lease.roleOf(change.previous)));
-	if (change.writer) sendToClient(change.writer, roleMessage("writer"));
-	if (action === "release") sendToClient(ws, roleMessage(lease.roleOf(ws)));
+	if (!change) {
+		// Already the local writer and now the host writer too: confirm the upgrade.
+		if (action === "claim" && effectiveNativeRole(session, ws) === "writer") {
+			sendToClient(ws, roleMessage("writer"));
+		}
+		return;
+	}
+	if (change.previous) sendToClient(change.previous, roleMessage(effectiveNativeRole(session, change.previous)));
+	if (change.writer) sendToClient(change.writer, roleMessage(effectiveNativeRole(session, change.writer)));
+	if (action === "release") sendToClient(ws, roleMessage(effectiveNativeRole(session, ws)));
 	// The new writer's viewport now owns the PTY geometry.
 	applyClientSizes(session);
 	log.info("Native writer lease moved", { taskId: shortId(session.taskId), action, viewers: lease.size });
@@ -1633,8 +1719,10 @@ const ptyServer = Bun.serve({
 						}
 						return;
 					}
-					if (!session.nativeLease?.canWrite(ws)) {
-						// Say so explicitly — silently swallowed keystrokes read as a hung shell.
+					// Both leases must agree: ours picks the viewer, the host's decides
+					// whether this app process may type at all. Say so explicitly —
+					// silently swallowed keystrokes read as a hung shell.
+					if (effectiveNativeRole(session, ws) !== "writer") {
 						sendToClient(ws, roleMessage("observer", true));
 						return;
 					}

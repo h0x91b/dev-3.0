@@ -150,6 +150,11 @@ interface FakeShell {
 	resize: ReturnType<typeof vi.fn>;
 	detach: ReturnType<typeof vi.fn>;
 	emit: (data: string) => void;
+	/** What the HOST granted this app process — another dev3 instance may own it. */
+	hostRole: "writer" | "observer";
+	/** Whether a cross-process claim succeeds; false = the other process keeps it. */
+	grantClaim: boolean;
+	claimHostWriter: ReturnType<typeof vi.fn>;
 }
 
 const FIRST_PANE_SESSION_ID = `${SESSION_ID}-pane-1`;
@@ -161,6 +166,12 @@ function fakeShell(): FakeShell {
 		resize: vi.fn(),
 		detach: vi.fn(),
 		emit: (data) => emit(data),
+		hostRole: "writer",
+		grantClaim: true,
+		claimHostWriter: vi.fn(async () => {
+			if (shell.grantClaim) shell.hostRole = "writer";
+			return shell.hostRole;
+		}),
 	};
 	vi.mocked(startNativeTaskPanes).mockResolvedValue({
 		taskId: TASK_ID,
@@ -178,6 +189,9 @@ function fakeShell(): FakeShell {
 			write: shell.write,
 			resize: shell.resize,
 			detach: shell.detach,
+			hostRole: () => shell.hostRole,
+			claimHostWriter: shell.claimHostWriter,
+			writerPid: async () => (shell.hostRole === "writer" ? process.pid : 4711),
 		} as unknown as Awaited<ReturnType<typeof bindNativeTaskPane>>;
 	});
 	return shell;
@@ -377,6 +391,51 @@ describe("writer and observer", () => {
 		expect(lastCall(shell.resize.mock.calls)).toEqual([80, 24]);
 	});
 
+	it("tells its own viewers they are read-only when ANOTHER app process holds the host lease", () => {
+		shell.hostRole = "observer";
+
+		const desktop = connect();
+
+		expect(desktop.attach.role).toBe("observer");
+	});
+
+	it("never writes to the shell from a process the host made an observer", () => {
+		shell.hostRole = "observer";
+		const desktop = connect();
+
+		handlers.message(desktop, "would vanish\r");
+
+		expect(shell.write).not.toHaveBeenCalled();
+		expect(desktop.lastRole).toEqual({ role: "observer", refused: true });
+	});
+
+	it("take control asks the HOST first and reports a refusal without moving anything", async () => {
+		shell.hostRole = "observer";
+		shell.grantClaim = false; // the other process keeps typing
+		const desktop = connect();
+
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+
+		expect(shell.claimHostWriter).toHaveBeenCalledTimes(1);
+		expect(desktop.lastRole).toEqual({ role: "observer", refused: true });
+		handlers.message(desktop, "still refused\r");
+		expect(shell.write).not.toHaveBeenCalled();
+	});
+
+	it("take control promotes the viewer once the host hands the lease over", async () => {
+		shell.hostRole = "observer";
+		shell.grantClaim = true; // the other process had already released it
+		const desktop = connect();
+
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+
+		expect(desktop.lastRole).toEqual({ role: "writer", refused: false });
+		handlers.message(desktop, "mine now\r");
+		expect(shell.write).toHaveBeenCalledWith("mine now\r");
+	});
+
 	it("hands the lease back on an explicit release", () => {
 		const desktop = connect();
 		const browser = connect();
@@ -462,6 +521,28 @@ describe("attach frame identity — pane-1 and composite pane-2", () => {
 		expect(viewer.attach.paneId).toBe(SECOND_PANE_ID);
 		expect(viewer.attach.hostPid).toBe(SECOND_PANE_HOST_PID);
 		expect(viewer.attach.shellPid).toBe(SECOND_PANE_SHELL_PID);
+	});
+});
+
+// The lookup owner routing starts from: a caller resolves a binding here, then
+// asks the HOST who may write before delivering anything through it.
+describe("nativePaneTerminal", () => {
+	it("finds the first pane under the bare task key", () => {
+		expect(pty.nativePaneTerminal(TASK_ID)?.paneId).toBe("pane-1");
+		expect(pty.nativePaneTerminal(TASK_ID, "pane-1")?.paneId).toBe("pane-1");
+	});
+
+	it("refuses to pass off pane-1 as another pane", () => {
+		expect(pty.nativePaneTerminal(TASK_ID, "pane-2")).toBeNull();
+	});
+
+	it("has nothing for a task this process never bound", () => {
+		expect(pty.nativePaneTerminal("11111111-2222-3333-4444-555555555555")).toBeNull();
+	});
+
+	it("hands back a binding whose host role can be interrogated", () => {
+		shell.hostRole = "observer";
+		expect(pty.nativePaneTerminal(TASK_ID)?.hostRole()).toBe("observer");
 	});
 });
 
