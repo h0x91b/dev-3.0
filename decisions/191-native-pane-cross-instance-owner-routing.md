@@ -49,6 +49,25 @@ own picks the viewer, the host's decides whether this process may type at all.
 rather than moving a lease it does not own. While a bind is in flight the role is
 unknown and stays optimistic, then `broadcastNativeRoles` corrects every viewer.
 
+**Vacancy notice** — found by QA'ing a live task from a second instance: that
+instance took the free lease, quit, and left the first window read-only against a
+host with no writer at all — resize dropped, `Take control` a no-op, and a strip
+blaming a viewer that no longer existed. The host cleared the writer on socket
+close but told nobody, and `NativeSessionClient` discarded unsolicited ownership
+frames as "no pending request". `WriterOwnership.detach` now returns the survivors
+and the host notifies them; the client applies the frame and raises `onRoleChange`.
+The lease itself still never moves implicitly — decision 158 stands, and the
+existing "observers stay unpromoted until one explicitly claims" test with it.
+`writerAttached` rides the attach/role frames so the strip can say *the slot is
+free* instead of *someone else is typing*.
+
+**Observer geometry** — an observer rendered the writer's byte stream at its own
+container width, wrapping every line that reached the right edge (visibly garbled
+bottom rows). `pty-server.ts` already promised "observers letterbox"; the client
+had no geometry to do it with. The attach and role frames now carry the PTY's
+`cols`/`rows`, republished on every writer resize, and `refitToContainer` adopts
+them for an observer instead of calling `proposeDimensions`.
+
 ## Risks
 
 - A viewer is briefly told `writer` during the bind window and corrected on
@@ -58,6 +77,9 @@ unknown and stays optimistic, then `broadcastNativeRoles` corrects every viewer.
   `unknown` there. Callers must surface that as unproven delivery, not silently
   write locally.
 - Forwarding costs one peer round trip (10s timeout) on the non-owning path.
+- An observer whose window is narrower than the writer's PTY now CLIPS the grid
+  rather than scaling it: content is correct but cropped. Completing the letterbox
+  with a CSS scale is deliberately left out of this change.
 
 ## Alternatives considered
 
