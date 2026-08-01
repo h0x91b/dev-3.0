@@ -129,7 +129,7 @@ function FavoritesMenu({
 			ref={menuRef}
 			role="menu"
 			aria-label={t("launch.favorites")}
-			className={`fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden py-1 max-w-[calc(100vw-1rem)] origin-top ${
+			className={`fixed z-[10000] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden py-1 max-w-[calc(100vw-1rem)] origin-top ${
 				reducedMotion ? "" : "transition-[opacity,transform] duration-150"
 			} ${entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]"}`}
 			style={{ top: pos.top, left: pos.left, width: 360 }}

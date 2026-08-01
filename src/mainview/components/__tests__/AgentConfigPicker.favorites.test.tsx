@@ -161,6 +161,14 @@ describe("AgentConfigPicker — favorites", () => {
 		expect(menu()).toHaveStyle({ width: "360px" });
 	});
 
+	it("keeps the favorites menu above its surrounding modal", async () => {
+		const user = userEvent.setup();
+		({ container } = render(<Harness initial={{ agentId: "builtin-claude", configId: "fable-auto-medium" }} />));
+
+		await user.click(trigger()!);
+		expect(menu()).toHaveClass("z-[10000]");
+	});
+
 	it("clicking a menu item selects that combo (does not launch) and closes the menu", async () => {
 		const user = userEvent.setup();
 		const onChange = vi.fn();
