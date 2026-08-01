@@ -4,7 +4,7 @@ import type { Project, Task } from "../../shared/types";
 const codec = await vi.hoisted(async () => await import("../../shared/terminal-backend-identity"));
 
 const setTaskTerminalBackend = vi.hoisted(() => vi.fn());
-const nativeTaskTerminalAlive = vi.hoisted(() => vi.fn());
+const nativeTaskPanesAlive = vi.hoisted(() => vi.fn());
 const tmuxSessionExists = vi.hoisted(() => vi.fn());
 const resolveNativeHostRuntime = vi.hoisted(() => vi.fn());
 
@@ -12,7 +12,7 @@ vi.mock("../data", () => ({
 	readTaskTerminalBackend: (task: unknown) => codec.decodeTerminalBackend(task),
 	setTaskTerminalBackend,
 }));
-vi.mock("../native-task-terminal", () => ({ nativeTaskTerminalAlive }));
+vi.mock("../native-task-panes", () => ({ nativeTaskPanesAlive }));
 vi.mock("../pty-server", () => ({ tmuxSessionExists }));
 vi.mock("../native-host-runtime", async () => {
 	const actual = await vi.importActual<typeof import("../native-host-runtime")>("../native-host-runtime");
@@ -36,7 +36,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 
 /** No session anywhere — the "stopped task" baseline. */
 function noLiveSession(): void {
-	nativeTaskTerminalAlive.mockResolvedValue(false);
+	nativeTaskPanesAlive.mockResolvedValue(false);
 	tmuxSessionExists.mockResolvedValue(false);
 }
 
@@ -52,10 +52,10 @@ describe("liveTaskTerminalBackend", () => {
 	it("reports whichever backend owns a session, and null when both are stopped", async () => {
 		expect(await liveTaskTerminalBackend(makeTask())).toBeNull();
 
-		nativeTaskTerminalAlive.mockResolvedValue(true);
+		nativeTaskPanesAlive.mockResolvedValue(true);
 		expect(await liveTaskTerminalBackend(makeTask())).toBe("native");
 
-		nativeTaskTerminalAlive.mockResolvedValue(false);
+		nativeTaskPanesAlive.mockResolvedValue(false);
 		tmuxSessionExists.mockResolvedValue(true);
 		expect(await liveTaskTerminalBackend(makeTask())).toBe("tmux");
 	});
@@ -71,7 +71,7 @@ describe("readTaskTerminalBackendState", () => {
 	});
 
 	it("reports an explicit identity together with the live owner", async () => {
-		nativeTaskTerminalAlive.mockResolvedValue(true);
+		nativeTaskPanesAlive.mockResolvedValue(true);
 		expect(await readTaskTerminalBackendState(makeTask({ terminalBackend: "native" }))).toEqual({
 			backend: "native",
 			explicit: true,
@@ -105,7 +105,7 @@ describe("switchTaskTerminalBackend", () => {
 		{ live: "native" as const, from: "native" as const, to: "tmux" as const },
 		{ live: "tmux" as const, from: "tmux" as const, to: "native" as const },
 	])("refuses to switch away from a live $live session and mutates nothing", async ({ live, from, to }) => {
-		nativeTaskTerminalAlive.mockResolvedValue(live === "native");
+		nativeTaskPanesAlive.mockResolvedValue(live === "native");
 		tmuxSessionExists.mockResolvedValue(live === "tmux");
 		const task = makeTask({ terminalBackend: from });
 
@@ -127,7 +127,7 @@ describe("switchTaskTerminalBackend", () => {
 	});
 
 	it("allows re-selecting the backend a live session already runs on — it changes nothing", async () => {
-		nativeTaskTerminalAlive.mockResolvedValue(true);
+		nativeTaskPanesAlive.mockResolvedValue(true);
 		await switchTaskTerminalBackend(project, makeTask({ terminalBackend: "native" }), "native");
 		expect(setTaskTerminalBackend).toHaveBeenCalledWith(project, expect.any(String), "native");
 	});
