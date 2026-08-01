@@ -161,6 +161,8 @@ interface FakeShell {
 	hostRole: "writer" | "observer";
 	/** Whether a cross-process claim succeeds; false = the other process keeps it. */
 	grantClaim: boolean;
+	/** Whether ANY process holds the lease, as the host reports it. */
+	writerAttached: boolean;
 	claimHostWriter: ReturnType<typeof vi.fn>;
 }
 
@@ -175,6 +177,7 @@ function fakeShell(): FakeShell {
 		emit: (data) => emit(data),
 		hostRole: "writer",
 		grantClaim: true,
+		writerAttached: true,
 		claimHostWriter: vi.fn(async () => {
 			if (shell.grantClaim) shell.hostRole = "writer";
 			return shell.hostRole;
@@ -197,6 +200,7 @@ function fakeShell(): FakeShell {
 			resize: shell.resize,
 			detach: shell.detach,
 			hostRole: () => shell.hostRole,
+			hostWriterAttached: () => shell.writerAttached,
 			claimHostWriter: shell.claimHostWriter,
 			writerPid: async () => (shell.hostRole === "writer" ? process.pid : 4711),
 		} as unknown as Awaited<ReturnType<typeof bindNativeTaskPane>>;
@@ -433,6 +437,27 @@ describe("writer and observer", () => {
 
 		expect(shell.write).not.toHaveBeenCalled();
 		expect(desktop.lastRole).toEqual({ role: "observer", refused: true });
+	});
+
+	// The exact strand: a second dev3 window took the free lease, then quit. The
+	// remaining window was left saying "another viewer is typing" with nobody
+	// there, and neither resize nor take control did anything.
+	it("says the lease is free once nobody holds it, instead of blaming a phantom viewer", () => {
+		shell.hostRole = "observer";
+		shell.writerAttached = false;
+
+		const desktop = connect();
+
+		expect(desktop.attach).toMatchObject({ role: "observer", writerAttached: false });
+	});
+
+	it("still reports a real writer as attached", () => {
+		shell.hostRole = "observer";
+		shell.writerAttached = true;
+
+		const desktop = connect();
+
+		expect(desktop.attach).toMatchObject({ role: "observer", writerAttached: true });
 	});
 
 	it("take control asks the HOST first and reports a refusal without moving anything", async () => {

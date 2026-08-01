@@ -349,6 +349,7 @@ export async function createNativeTaskSession(
 			{
 				onOutput: (bytes) => ingestPtyOutput(session, bytes),
 				onClosed: () => markNativeClosed(session),
+				onRoleChange: () => broadcastNativeRoles(session),
 			},
 			firstPane.paneId,
 		);
@@ -417,6 +418,7 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 			{
 				onOutput: (bytes) => ingestPtyOutput(session, bytes),
 				onClosed: () => markNativeClosed(session),
+				onRoleChange: () => broadcastNativeRoles(session),
 			},
 			firstPane.paneId,
 		);
@@ -491,6 +493,7 @@ export async function ensureNativePanePtySession(
 			paneSessionId,
 			{
 				onOutput: (bytes) => ingestPtyOutput(session, bytes),
+				onRoleChange: () => broadcastNativeRoles(session),
 				onClosed: () => {
 					session.native = null;
 					session.appliedCols = undefined;
@@ -1082,17 +1085,20 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
  * the bytes are laid out for the writer's width, so reflowing them locally
  * mangles every line that reaches the right edge.
  */
-function nativePtyGeometry(session: PtySession): { cols: number; rows: number } | null {
+function nativePtyGeometry(session: PtySession): { cols?: number; rows?: number; writerAttached?: boolean } {
 	const { appliedCols, appliedRows } = session;
-	if (!appliedCols || !appliedRows) return null;
-	return { cols: appliedCols, rows: appliedRows };
+	const attached = session.native?.hostWriterAttached?.();
+	return {
+		...(appliedCols && appliedRows ? { cols: appliedCols, rows: appliedRows } : {}),
+		...(typeof attached === "boolean" ? { writerAttached: attached } : {}),
+	};
 }
 
 /** Re-issue every viewer's role after the host's verdict becomes known. */
 function broadcastNativeRoles(session: PtySession): void {
-	const geometry = nativePtyGeometry(session);
+	const extra = nativePtyGeometry(session);
 	for (const client of session.clients) {
-		sendToClient(client, roleMessage(effectiveNativeRole(session, client), false, geometry));
+		sendToClient(client, roleMessage(effectiveNativeRole(session, client), false, extra));
 	}
 }
 

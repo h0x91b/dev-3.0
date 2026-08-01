@@ -227,7 +227,7 @@ interface TerminalViewProps {
 	 * Native backend only: this viewer's write role, and whether the server just
 	 * refused something it typed. Never fires for a tmux session.
 	 */
-	onNativeStatus?: (status: { role: NativeStreamRole; refused: boolean }) => void;
+	onNativeStatus?: (status: { role: NativeStreamRole; refused: boolean; writerAttached?: boolean }) => void;
 	/**
 	 * The app refused this socket outright (missing/unknown session). Supplying it
 	 * hands recovery to the owner, which renders one shared exited state; without
@@ -1201,10 +1201,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		}
 
 		/** Publish the writer/observer role, and whether the server just refused input. */
-		function reportNativeRole(role: NativeStreamRole, refused: boolean): void {
+		function reportNativeRole(role: NativeStreamRole, refused: boolean, writerAttached?: boolean): void {
 			const changed = nativeRoleRef.current !== role;
 			nativeRoleRef.current = role;
-			onNativeStatusRef.current?.({ role, refused });
+			onNativeStatusRef.current?.({ role, refused, writerAttached });
 			// Becoming an observer means following the PTY's shape; becoming the writer
 			// means going back to fitting our own container.
 			if (changed) refitRef.current?.();
@@ -1227,14 +1227,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		 */
 		function handleNativeFrame(header: NativeStreamHeader, payload: string): void {
 			if (header.t === "role") {
-				reportNativeRole(header.role, header.refused === true);
+				reportNativeRole(header.role, header.refused === true, header.writerAttached);
 				adoptPtyGeometry(header.cols, header.rows);
 				return;
 			}
 			let reset = "";
 			if (header.t === "attach") {
 				nativeSeqRef.current = header.seq;
-				reportNativeRole(header.role, false);
+				reportNativeRole(header.role, false, header.writerAttached);
 				adoptPtyGeometry(header.cols, header.rows);
 				// RIS in the SAME batch as the replay, so the screen is replaced in one
 				// write instead of briefly showing an empty terminal.

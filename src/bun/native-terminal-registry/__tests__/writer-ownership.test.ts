@@ -40,6 +40,45 @@ describe("native-session writer ownership", () => {
 		expect(ownership.canMutatePty(second)).toBe(false);
 	});
 
+	// The survivors are NOT promoted (write authority never moves implicitly), but
+	// they must be handed back so the host can tell them the slot opened. Without
+	// that notice they sit read-only forever against a host with no writer at all.
+	it("names the survivors when the writer leaves, so they can be told the slot is free", () => {
+		const ownership = new WriterOwnership<object>();
+		const writer = {};
+		const observerA = {};
+		const observerB = {};
+		ownership.attach(writer);
+		ownership.attach(observerA);
+		ownership.attach(observerB);
+
+		const survivors = ownership.detach(writer);
+
+		expect(survivors).toEqual([observerA, observerB]);
+		expect(ownership.hasWriter()).toBe(false);
+		expect(ownership.roleOf(observerA)).toBe("observer");
+	});
+
+	it("names nobody when a mere observer leaves — the lease never moved", () => {
+		const ownership = new WriterOwnership<object>();
+		const writer = {};
+		const observer = {};
+		ownership.attach(writer);
+		ownership.attach(observer);
+
+		expect(ownership.detach(observer)).toEqual([]);
+		expect(ownership.canMutatePty(writer)).toBe(true);
+	});
+
+	it("names nobody when the last client leaves", () => {
+		const ownership = new WriterOwnership<object>();
+		const writer = {};
+		ownership.attach(writer);
+
+		expect(ownership.detach(writer)).toEqual([]);
+		expect(ownership.hasWriter()).toBe(false);
+	});
+
 	it("leaves observers unpromoted after writer disconnect until one explicitly claims", () => {
 		const ownership = new WriterOwnership<object>();
 		const writer = {};

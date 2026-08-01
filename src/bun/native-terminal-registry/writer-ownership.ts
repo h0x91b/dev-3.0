@@ -23,9 +23,19 @@ export class WriterOwnership<Client> {
 		return this.roleOf(client) ?? "observer";
 	}
 
-	detach(client: Client): void {
-		if (this.writer === client) this.writer = null;
+	/**
+	 * Drop a client. The lease is deliberately NOT handed on when the writer
+	 * leaves — write authority never moves between processes implicitly — but the
+	 * survivors are returned so the caller can tell them the slot is now free.
+	 * Without that they keep believing someone else is typing and never claim it,
+	 * which strands them read-only against a host that has no writer at all.
+	 */
+	detach(client: Client): Client[] {
+		const wasWriter = this.writer === client;
 		this.clients.delete(client);
+		if (!wasWriter) return [];
+		this.writer = null;
+		return [...this.clients];
 	}
 
 	roleOf(client: Client): ClientRole | null {

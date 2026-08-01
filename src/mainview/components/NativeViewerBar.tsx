@@ -22,10 +22,15 @@ interface NativeViewerBarProps {
 	role: NativeStreamRole;
 	/** Bumped each time the server refused this viewer's input, to flash the strip. */
 	refusedAt: number;
+	/**
+	 * Whether anyone holds the write lease. False means the slot is free — saying
+	 * "another viewer is typing" then is simply untrue, and the fix is one click.
+	 */
+	writerAttached?: boolean;
 	onTakeControl: () => void;
 }
 
-function NativeViewerBar({ role, refusedAt, onTakeControl }: NativeViewerBarProps) {
+function NativeViewerBar({ role, refusedAt, writerAttached, onTakeControl }: NativeViewerBarProps) {
 	const t = useT();
 	const [flashing, setFlashing] = useState(false);
 
@@ -46,7 +51,9 @@ function NativeViewerBar({ role, refusedAt, onTakeControl }: NativeViewerBarProp
 				flashing ? "border-danger/40 bg-danger/15 text-danger" : "border-edge bg-raised text-fg-3"
 			}`}
 		>
-			<span className="truncate">{t(flashing ? "nativeViewer.refused" : "nativeViewer.readOnly")}</span>
+			<span className="truncate">
+				{t(flashing || writerAttached === false ? "nativeViewer.refused" : "nativeViewer.readOnly")}
+			</span>
 			<Tooltip content={t("nativeViewer.takeControlHint")} placement="bottom">
 				<button
 					type="button"

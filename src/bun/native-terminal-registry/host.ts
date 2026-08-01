@@ -310,7 +310,14 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			},
 			close(ws) {
 				clients.delete(ws);
-				writerOwnership.detach(ws);
+				// Unsolicited (id 0): the writer left, so the lease is free. The role
+				// itself does not move — a survivor still has to claim — but it has to
+				// LEARN the slot opened, or it stays read-only forever with nobody typing.
+				for (const survivor of writerOwnership.detach(ws)) {
+					try {
+						survivor.send(encodeControl(ownershipReply(0, writerOwnership.roleOf(survivor) ?? "observer", false)));
+					} catch { /* that survivor died too */ }
+				}
 				// Detach boundary: make the reconstructable state current on disk.
 				pipeline?.flush();
 			},

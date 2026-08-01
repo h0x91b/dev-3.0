@@ -88,6 +88,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const paneRolesRef = useRef<Map<string, { role: NativeStreamRole; refusedAt: number }>>(new Map());
 	const [focusedPaneRole, setFocusedPaneRole] = useState<NativeStreamRole>("writer");
 	const [focusedPaneRefusedAt, setFocusedPaneRefusedAt] = useState(0);
+	/** Whether ANY process holds the lease; undefined until the host reports it. */
+	const [focusedPaneWriterAttached, setFocusedPaneWriterAttached] = useState<boolean | undefined>(undefined);
 
 	// A host that is gone never comes back, so a pane stays marked until it leaves
 	// the pane set — re-asking every poll would just hammer a dead session.
@@ -424,10 +426,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		const focusPaneId = clientFocusPaneId ?? nativePaneState?.activePaneId ?? panes[0]?.paneId ?? null;
 
 		function makePaneNativeStatusHandler(paneId: string) {
-			return ({ role, refused }: { role: NativeStreamRole; refused: boolean }) => {
+			return ({ role, refused, writerAttached }: { role: NativeStreamRole; refused: boolean; writerAttached?: boolean }) => {
 				paneRolesRef.current.set(paneId, { role, refusedAt: refused ? Date.now() : (paneRolesRef.current.get(paneId)?.refusedAt ?? 0) });
 				if (paneId === focusPaneId) {
 					setFocusedPaneRole(role);
+					setFocusedPaneWriterAttached(writerAttached);
 					if (refused) setFocusedPaneRefusedAt(Date.now());
 				}
 			};
@@ -554,6 +557,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						<NativeViewerBar
 							role={focusedPaneRole}
 							refusedAt={focusedPaneRefusedAt}
+							writerAttached={focusedPaneWriterAttached}
 							onTakeControl={() => paneHandlesRef.current.get(focusPaneId)?.claimWriter()}
 						/>
 					)}
@@ -595,6 +599,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<NativeViewerBar
 						role={focusedPaneRole}
 						refusedAt={focusedPaneRefusedAt}
+						writerAttached={focusedPaneWriterAttached}
 						onTakeControl={() => paneHandlesRef.current.get(focusPaneId)?.claimWriter()}
 					/>
 				)}

@@ -44,6 +44,7 @@ export class NativeSessionClient {
 	private readonly outputCbs = new Set<(bytes: Uint8Array) => void>();
 	private readonly errorCbs: Array<(error: ErrorMessage) => void> = [];
 	private readonly disconnectCbs: Array<() => void> = [];
+	private readonly roleCbs: Array<(role: ClientRole) => void> = [];
 	private readonly bufferedOutput: Uint8Array[] = [];
 	private bufferedOutputBytes = 0;
 	private readonly statusPending = new Map<number, Pending<StatusReply>>();
@@ -52,6 +53,8 @@ export class NativeSessionClient {
 	private readonly exitPending = new Set<Pending<number | null>>();
 	private helloPending: Pending<void> | null = null;
 	private currentRole: ClientRole | null = null;
+	/** Whether ANY client holds the lease; null until the host has said. */
+	private writerAttachedKnown: boolean | null = null;
 	private exitObserved = false;
 	private exitCode: number | null = null;
 
@@ -70,8 +73,18 @@ export class NativeSessionClient {
 		this.disconnectCbs.push(cb);
 	}
 
+	/** The host changed our role without being asked — usually a promotion. */
+	onRoleChange(cb: (role: ClientRole) => void): void {
+		this.roleCbs.push(cb);
+	}
+
 	getRole(): ClientRole | null {
 		return this.currentRole;
+	}
+
+	/** True/false once the host has reported it; null while still unknown. */
+	getWriterAttached(): boolean | null {
+		return this.writerAttachedKnown;
 	}
 
 	async connect(record: NativeSessionRecord, token: string, opts: { timeoutMs?: number } = {}): Promise<void> {
@@ -194,11 +207,17 @@ export class NativeSessionClient {
 			} else if (msg.type === "ownership" && "role" in msg) {
 				const reply = msg as OwnershipReply;
 				const pending = this.ownershipPending.get(reply.id);
+				// An unsolicited reply means the host handed us the lease because the
+				// previous writer disconnected. Dropping it (as "no pending request")
+				// leaves us believing we are read-only while the host waits for input.
+				this.currentRole = reply.role;
+				this.writerAttachedKnown = reply.writerAttached;
 				if (pending) {
 					clearTimeout(pending.timer);
 					this.ownershipPending.delete(reply.id);
-					this.currentRole = reply.role;
 					pending.resolve(reply);
+				} else {
+					for (const cb of this.roleCbs) cb(reply.role);
 				}
 			} else if (msg.type === "stopping") {
 				for (const r of this.stopResolvers.splice(0)) r();

@@ -23,6 +23,12 @@ export interface NativeTaskTerminalHooks {
 	onOutput: (bytes: Uint8Array) => void;
 	/** The shell exited or the host went away — the terminal is dead. */
 	onClosed: () => void;
+	/**
+	 * The host changed this process's role on its own — it inherited the lease
+	 * because the previous writer disconnected. Viewers are still showing the old
+	 * role until someone republishes it.
+	 */
+	onRoleChange?: (role: ClientRole) => void;
 }
 
 /** The app's live write/resize/read binding to one native pane. */
@@ -40,6 +46,8 @@ export interface NativeTaskTerminal {
 	 * an observer writes is dropped on the floor.
 	 */
 	hostRole(): ClientRole;
+	/** Whether ANY process holds the lease; null while the host has not said. */
+	hostWriterAttached(): boolean | null;
 	/** Ask the host for the lease. Refused while another process still holds it. */
 	claimHostWriter(): Promise<ClientRole>;
 	/** Which app process holds the lease; `null` = vacant, `undefined` = unknown. */
@@ -88,6 +96,13 @@ function bindClient(
 		log.warn("Native host refused a pane request", { sessionId, code: error.code, message: error.message ?? "" });
 	});
 	client.onDisconnect(close);
+	if (hooks.onRoleChange) {
+		const notify = hooks.onRoleChange;
+		client.onRoleChange((role) => {
+			log.info("Native host changed this process's role", { sessionId, role });
+			notify(role);
+		});
+	}
 	return {
 		sessionId,
 		paneId: paneId || record?.paneId || `${sessionId}:0`,
@@ -102,6 +117,9 @@ function bindClient(
 		hostRole() {
 			// A client that never got a role yet cannot be assumed to own the pane.
 			return client.getRole() ?? "observer";
+		},
+		hostWriterAttached() {
+			return client.getWriterAttached();
 		},
 		async claimHostWriter() {
 			if (client.getRole() === "writer") return "writer";
