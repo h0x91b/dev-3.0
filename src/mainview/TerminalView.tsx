@@ -229,6 +229,13 @@ interface TerminalViewProps {
 	 */
 	onNativeStatus?: (status: { role: NativeStreamRole; refused: boolean }) => void;
 	/**
+	 * The app refused this socket outright (missing/unknown session). Supplying it
+	 * hands recovery to the owner, which renders one shared exited state; without
+	 * it the terminal keeps printing the refusal into the canvas, which is what
+	 * every tmux session still does.
+	 */
+	onSessionLost?: (reason: string) => void;
+	/**
 	 * Touch compose mode (mobile/tablet in browser mode): the terminal must NOT
 	 * summon the on-screen keyboard — taps neither focus the hidden textarea nor
 	 * forward touch→mouse to the canvas. Text entry goes through TerminalComposer;
@@ -237,7 +244,7 @@ interface TerminalViewProps {
 	touchComposeMode?: boolean;
 }
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, touchComposeMode }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode }: TerminalViewProps) {
 	const t = useT();
 	// Mirror t in a ref so the long-lived terminal-setup effect's closures
 	// (e.g. the select-to-copy hint) always read the latest translator.
@@ -265,6 +272,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, touc
 	const nativeRoleRef = useRef<NativeStreamRole | null>(null);
 	const onNativeStatusRef = useRef(onNativeStatus);
 	onNativeStatusRef.current = onNativeStatus;
+	const onSessionLostRef = useRef(onSessionLost);
+	onSessionLostRef.current = onSessionLost;
 	// Mouse-copy keeps tmux copy mode alive so the scrollback viewport does not
 	// jump to live output. Remember when that mode may be active so the next
 	// plain click can return to live input without requiring Escape.
@@ -1290,7 +1299,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, touc
 					return;
 				}
 				if (isFinalPtyCloseCode(event.code)) {
-					try { term.writeln(`\r\n\x1b[2m[no terminal session — ${event.reason || "rejected by the app"}]\x1b[0m`); } catch { /* disposed */ }
+					const reason = event.reason || "rejected by the app";
+					const owner = onSessionLostRef.current;
+					if (owner) {
+						owner(reason);
+						return;
+					}
+					try { term.writeln(`\r\n\x1b[2m[no terminal session — ${reason}]\x1b[0m`); } catch { /* disposed */ }
 					return;
 				}
 				schedulePtyReconnect(term, fit);

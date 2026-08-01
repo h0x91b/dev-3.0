@@ -198,7 +198,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	const windowsJob = await createWindowsJobContainment(token);
 	mkdirSync(sessionDir(sessionId), { recursive: true, mode: 0o700 });
 
-	type ClientData = { helloDone: boolean };
+	type ClientData = { helloDone: boolean; clientPid?: number };
 	type HostClient = Bun.ServerWebSocket<ClientData>;
 	const clients = new Set<HostClient>();
 	const writerOwnership = new WriterOwnership<HostClient>();
@@ -343,6 +343,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 					return;
 				}
 				ws.data.helloDone = true;
+				ws.data.clientPid = verdict.clientPid;
 				const role = writerOwnership.attach(ws);
 				ws.send(encodeControl(welcomeMessage(verdict.id, sessionId, role)));
 				// Same synchronous turn: replay ends before later PTY callbacks fan out live bytes.
@@ -408,6 +409,10 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	}
 
 	function currentStatus(ws: HostClient, id: number): StatusReply {
+		const writer = writerOwnership.writerClient();
+		// Absent (not null) when the writer's client predates `clientPid`: callers
+		// must read that as "unknown owner", never as "the slot is free".
+		const writerPid = writer ? writer.data.clientPid : null;
 		return {
 			v: NATIVE_SESSION_PROTOCOL_VERSION,
 			type: "status",
@@ -422,6 +427,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			startedAt,
 			clientRole: writerOwnership.roleOf(ws) ?? "observer",
 			writerAttached: writerOwnership.hasWriter(),
+			...(writerPid !== undefined ? { writerPid } : {}),
 		};
 	}
 

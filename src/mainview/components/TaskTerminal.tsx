@@ -77,6 +77,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// ── Native multi-pane state ─────────────────────────────────────────────────
 	const [nativePaneState, setNativePaneState] = useState<TaskPaneState | null>(null);
 	const [paneUrls, setPaneUrls] = useState<Map<string, string>>(() => new Map());
+	// Panes whose host this viewer could not attach to. Kept next to `alive` so a
+	// lost socket and a dead pane render the SAME recovery block in every viewer,
+	// instead of one window showing live output and another an unknown-session line.
+	const [gonePaneIds, setGonePaneIds] = useState<Set<string>>(() => new Set());
 	// Client-local focus: clicking/typing into a pane focuses it here, not on the server.
 	const [clientFocusPaneId, setClientFocusPaneId] = useState<string | null>(null);
 	// Per-pane handles and roles for NativeViewerBar.
@@ -84,6 +88,12 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const paneRolesRef = useRef<Map<string, { role: NativeStreamRole; refusedAt: number }>>(new Map());
 	const [focusedPaneRole, setFocusedPaneRole] = useState<NativeStreamRole>("writer");
 	const [focusedPaneRefusedAt, setFocusedPaneRefusedAt] = useState(0);
+
+	// A host that is gone never comes back, so a pane stays marked until it leaves
+	// the pane set — re-asking every poll would just hammer a dead session.
+	function markPaneGone(paneId: string) {
+		setGonePaneIds((prev) => (prev.has(paneId) ? prev : new Set(prev).add(paneId)));
+	}
 
 	async function classifyAndSetError() {
 		const worktreePath = task?.worktreePath;
@@ -135,6 +145,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				const state = await api.request.taskPaneState({ taskId });
 				if (cancelled) return;
 				setNativePaneState(state);
+				// Forget panes the coordinator has since reconciled away.
+				setGonePaneIds((prev) => {
+					if (prev.size === 0) return prev;
+					const live = new Set(state.panes.map((p) => p.paneId));
+					const next = new Set([...prev].filter((id) => live.has(id)));
+					return next.size === prev.size ? prev : next;
+				});
 				// Set initial client focus to the server-active pane.
 				setClientFocusPaneId((prev) => {
 						const next = prev ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null);
@@ -156,15 +173,19 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		for (const pane of nativePaneState.panes) {
 			if (!paneUrls.has(pane.paneId)) {
 				api.request.getPanePtyUrl({ taskId, paneId: pane.paneId })
-					.then(({ url }) => {
+					.then((result) => {
+						if ("gone" in result) {
+							markPaneGone(pane.paneId);
+							return;
+						}
 						setPaneUrls((prev) => {
 							if (prev.has(pane.paneId)) return prev; // already added
 							const next = new Map(prev);
-							next.set(pane.paneId, url);
+							next.set(pane.paneId, result.url);
 							return next;
 						});
 					})
-					.catch(() => {});
+					.catch(() => markPaneGone(pane.paneId));
 			}
 		}
 	}, [nativePaneState?.panes.map((p) => p.paneId).join(",")]);
@@ -446,8 +467,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			const paneInfo = panes.find((p) => p.paneId === paneId);
 			const isFocused = paneId === focusPaneId;
 
-			// Pane whose host is gone: show a danger-toned recovery line.
-			if (paneInfo && paneInfo.alive === false) {
+			// Pane whose host is gone: show a danger-toned recovery line. Reached both
+			// when the coordinator reports it dead and when this viewer could not
+			// attach, so every viewer lands on the same state rather than one of them
+			// staring at a live-looking canvas.
+			if (paneInfo && (paneInfo.alive === false || gonePaneIds.has(paneId))) {
 				const paneIndex = (paneInfo.index ?? 0) + 1;
 				return (
 					<div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-raised">
@@ -476,6 +500,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 								if (isFocused) setTermHandle(handle);
 							}}
 							onNativeStatus={isFocused ? makePaneNativeStatusHandler(paneId) : undefined}
+							onSessionLost={() => markPaneGone(paneId)}
 							touchComposeMode={touchInput && !rawMode}
 						/>
 					) : (
@@ -506,6 +531,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						setTermHandle(handle);
 					}}
 					onNativeStatus={focusPaneId ? makePaneNativeStatusHandler(focusPaneId) : undefined}
+					onSessionLost={focusPaneId ? () => markPaneGone(focusPaneId) : undefined}
 					touchComposeMode={touchInput && !rawMode}
 				/>
 			) : (

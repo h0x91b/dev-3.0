@@ -58,4 +58,9 @@ export class WriterOwnership<Client> {
 	hasWriter(): boolean {
 		return this.writer !== null;
 	}
+
+	/** The client holding the lease, so the host can report WHO owns it. */
+	writerClient(): Client | null {
+		return this.writer;
+	}
 }

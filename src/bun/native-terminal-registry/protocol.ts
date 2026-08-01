@@ -40,6 +40,12 @@ export interface HelloMessage {
 	type: "hello";
 	sessionId: string;
 	id: number;
+	/**
+	 * Additive: the OS pid of the app process behind this client. Several dev3 app
+	 * processes share one host, and only the writer's input lands — a peer needs to
+	 * know which process to route a write to. Absent from older clients.
+	 */
+	clientPid?: number;
 }
 export interface ResizeMessage {
 	v: number;
@@ -98,6 +104,13 @@ export interface StatusReply {
 	/** Per-connection ephemeral ownership state; never persisted in record.json. */
 	clientRole?: ClientRole;
 	writerAttached?: boolean;
+	/**
+	 * Additive: pid of the app process holding the writer lease, so a non-owning
+	 * peer can route a write instead of silently losing it. `null` when the slot is
+	 * vacant; absent when the writer's client predates `clientPid`, which callers
+	 * must treat as "unknown", never as "vacant".
+	 */
+	writerPid?: number | null;
 }
 export interface OwnershipReply {
 	v: number;
@@ -122,8 +135,14 @@ export type HostControl = WelcomeMessage | ErrorMessage | StatusReply | Ownershi
 export type ControlMessage = ClientControl | HostControl;
 
 // ── Builders ──────────────────────────────────────────────────────────
-export function helloMessage(sessionId: string, id: number): HelloMessage {
-	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "hello", sessionId, id };
+export function helloMessage(sessionId: string, id: number, clientPid?: number): HelloMessage {
+	return {
+		v: NATIVE_SESSION_PROTOCOL_VERSION,
+		type: "hello",
+		sessionId,
+		id,
+		...(clientPid !== undefined ? { clientPid } : {}),
+	};
 }
 export function welcomeMessage(id: number, sessionId: string, role?: ClientRole): WelcomeMessage {
 	return {
@@ -192,7 +211,12 @@ export function decodeHello(text: string): HelloMessage | null {
 	const obj = parseObject(text);
 	if (!obj || obj.type !== "hello") return null;
 	if (typeof obj.v !== "number" || typeof obj.sessionId !== "string" || typeof obj.id !== "number") return null;
-	return { v: obj.v, type: "hello", sessionId: obj.sessionId, id: obj.id };
+	const hello: HelloMessage = { v: obj.v, type: "hello", sessionId: obj.sessionId, id: obj.id };
+	// Rebuilt field-by-field, so an additive field survives only if copied here.
+	if (typeof obj.clientPid === "number" && Number.isInteger(obj.clientPid) && obj.clientPid > 0) {
+		hello.clientPid = obj.clientPid;
+	}
+	return hello;
 }
 
 /**
@@ -252,7 +276,7 @@ export function decodeControl(text: string): ControlMessage | null {
 }
 
 /** The host's verdict on a first (hello) frame — pure, so it is unit-testable. */
-export type HelloVerdict = { ok: true; id: number } | { ok: false; error: ErrorMessage };
+export type HelloVerdict = { ok: true; id: number; clientPid?: number } | { ok: false; error: ErrorMessage };
 
 /**
  * Decide whether a first frame is an acceptable v1 hello for `expectedSessionId`.
@@ -269,5 +293,5 @@ export function evaluateHello(text: string, expectedSessionId: string): HelloVer
 	if (hello.sessionId !== expectedSessionId) {
 		return { ok: false, error: errorMessage("not-found", hello.id, "session id does not match this host") };
 	}
-	return { ok: true, id: hello.id };
+	return { ok: true, id: hello.id, ...(hello.clientPid !== undefined ? { clientPid: hello.clientPid } : {}) };
 }

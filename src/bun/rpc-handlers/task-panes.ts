@@ -520,7 +520,7 @@ async function tmuxNewWindow(params: { taskId: string }): Promise<void> {
 
 // ── Handler: getPanePtyUrl ────────────────────────────────────────────────────
 
-async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promise<{ url: string }> {
+async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promise<{ url: string } | { gone: true }> {
 	log.info("→ getPanePtyUrl", { taskId: params.taskId.slice(0, 8), paneId: params.paneId });
 	const { task: foundTask, project: foundProject } = await findTaskAcrossProjects(params.taskId);
 	if (!foundTask || !foundProject) {
@@ -544,10 +544,29 @@ async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promis
 		? params.taskId
 		: paneSessionKey(params.taskId, params.paneId);
 
-	if (!isFirstPane) {
-		if (!foundTask.worktreePath) {
-			throw new Error(`Task ${params.taskId.slice(0, 8)} has no worktree path`);
+	if (!foundTask.worktreePath) {
+		throw new Error(`Task ${params.taskId.slice(0, 8)} has no worktree path`);
+	}
+
+	if (isFirstPane) {
+		// The bare key is registered by the launch path, which only ever ran in the
+		// app process that STARTED the task. Any other viewer — a second app
+		// instance, or this one after a restart — finds nothing in the sessions map
+		// and the socket is refused as an unknown session, while panes 2..N attach
+		// fine because they are registered lazily right here. Rebind on demand so
+		// every pane is discoverable from every process. Never spawns.
+		if (!pty.hasSession(params.taskId)) {
+			const reattached = await pty.reattachNativeTaskSession(
+				params.taskId,
+				foundProject.id,
+				foundTask.worktreePath,
+			);
+			if (!reattached) {
+				log.info("← getPanePtyUrl: first pane host is gone", { taskId: params.taskId.slice(0, 8) });
+				return { gone: true };
+			}
 		}
+	} else {
 		await pty.ensureNativePanePtySession(
 			params.taskId,
 			params.paneId,
@@ -555,6 +574,10 @@ async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promis
 			foundProject.id,
 			foundTask.worktreePath,
 		);
+		if (!pty.hasSession(sessionKey)) {
+			log.info("← getPanePtyUrl: pane host is gone", { paneId: params.paneId });
+			return { gone: true };
+		}
 	}
 
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;

@@ -122,7 +122,9 @@ export class NativeSessionClient {
 				reject(new Error("hello timeout"));
 			}, timeoutMs);
 			this.helloPending = { resolve: () => resolve(), reject, timer };
-			ws.send(encodeControl(helloMessage(sessionId, id)));
+			// Announce which app process we are: the host grants one writer, and a
+			// peer that is only observing needs a pid to route its writes to.
+			ws.send(encodeControl(helloMessage(sessionId, id, process.pid)));
 		});
 	}
 

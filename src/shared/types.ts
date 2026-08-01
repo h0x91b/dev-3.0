@@ -3213,7 +3213,9 @@ export type AppRPCSchema = {
 			};
 			getPanePtyUrl: {
 				params: { taskId: string; paneId: string };
-				response: { url: string };
+				/** `gone` when the pane's host is no longer attachable, so every viewer
+				 *  converges on the exited state instead of a dead socket. */
+				response: { url: string } | { gone: true };
 			};
 			resumeTask: {
 				params: { taskId: string };

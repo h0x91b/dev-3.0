@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
 	getTmuxLayout: vi.fn(),
 	getPtyPort: vi.fn(() => 9999),
 	ensureNativePanePtySession: vi.fn(),
+	hasSession: vi.fn((_key: string) => true),
+	reattachNativeTaskSession: vi.fn(async () => true),
 	// tmux singleton methods
 	tmuxSelectPane: vi.fn(),
 	tmuxSelectPaneDirection: vi.fn(),
@@ -53,6 +55,8 @@ vi.mock("../../pty-server", () => ({
 	getTmuxLayout: mocks.getTmuxLayout,
 	getPtyPort: mocks.getPtyPort,
 	ensureNativePanePtySession: mocks.ensureNativePanePtySession,
+	hasSession: mocks.hasSession,
+	reattachNativeTaskSession: mocks.reattachNativeTaskSession,
 }));
 
 vi.mock("../../tmux", () => ({
@@ -183,6 +187,8 @@ beforeEach(() => {
 	mocks.tmuxResizePaneDirection.mockResolvedValue(undefined);
 	mocks.tmuxNewWindow.mockResolvedValue(undefined);
 	mocks.ensureNativePanePtySession.mockResolvedValue(undefined);
+	mocks.hasSession.mockReturnValue(true);
+	mocks.reattachNativeTaskSession.mockResolvedValue(true);
 	mocks.nativeTaskPanesState.mockResolvedValue(makeTwoPaneNativeState());
 	mocks.splitNativeTaskPane.mockImplementation(async () => {
 		const state = makeTwoPaneNativeState();
@@ -747,13 +753,55 @@ describe("getPanePtyUrl", () => {
 
 	it("returns a ws:// URL for the first pane using the bare taskId", async () => {
 		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
-		expect(result.url).toBe(`ws://localhost:9999?session=${TASK_ID}`);
+		expect(result).toEqual({ url: `ws://localhost:9999?session=${TASK_ID}` });
+		expect(mocks.ensureNativePanePtySession).not.toHaveBeenCalled();
+	});
+
+	// The bug: only the process that LAUNCHED the task holds the bare-key session,
+	// so every other viewer got `Unknown session` for pane-1 while panes 2..N —
+	// registered lazily on this very call — attached fine.
+	it("rebinds the first pane when this app process did not launch the task", async () => {
+		mocks.hasSession.mockReturnValue(false);
+		mocks.reattachNativeTaskSession.mockResolvedValue(true);
+
+		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
+
+		expect(mocks.reattachNativeTaskSession).toHaveBeenCalledWith(TASK_ID, "proj-1", "/tmp/wt");
+		expect(result).toEqual({ url: `ws://localhost:9999?session=${TASK_ID}` });
+	});
+
+	it("does not rebind the first pane when this process already holds the session", async () => {
+		mocks.hasSession.mockReturnValue(true);
+		await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
+		expect(mocks.reattachNativeTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("reports the first pane gone when its host cannot be rebound — never a dead URL", async () => {
+		mocks.hasSession.mockReturnValue(false);
+		mocks.reattachNativeTaskSession.mockResolvedValue(false);
+
+		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
+
+		expect(result).toEqual({ gone: true });
+	});
+
+	it("reports a non-first pane gone when its host cannot be bound", async () => {
+		mocks.hasSession.mockImplementation((key: string) => key !== `${TASK_ID}~pane-2`);
+		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-2" });
+		expect(result).toEqual({ gone: true });
+	});
+
+	it("never spawns a replacement while rebinding", async () => {
+		mocks.hasSession.mockReturnValue(false);
+		mocks.reattachNativeTaskSession.mockResolvedValue(true);
+		await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-1" });
+		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
 		expect(mocks.ensureNativePanePtySession).not.toHaveBeenCalled();
 	});
 
 	it("returns a composite-key URL for a non-first pane", async () => {
 		const result = await taskPanesHandlers.getPanePtyUrl({ taskId: TASK_ID, paneId: "pane-2" });
-		expect(result.url).toBe(`ws://localhost:9999?session=${TASK_ID}~pane-2`);
+		expect(result).toEqual({ url: `ws://localhost:9999?session=${TASK_ID}~pane-2` });
 	});
 
 	it("calls ensureNativePanePtySession for non-first panes", async () => {
