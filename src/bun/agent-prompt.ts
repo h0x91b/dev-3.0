@@ -121,6 +121,27 @@ export async function resolveAgentPromptTargetPane(
 	return activePane;
 }
 
+/**
+ * Schedule the single submit keypress that ends a prompt delivery. Exactly one
+ * per delivery: callers invoke it only from the success path of the paste, and
+ * it never retries — a re-sent Enter would submit whatever the agent's input
+ * box holds at that moment.
+ */
+export function scheduleAgentPromptSubmit(send: () => void | Promise<void>, context: Record<string, string>): void {
+	setTimeout(() => {
+		// `send` runs synchronously inside the timer — a `.then(send)` hop would
+		// defer it by a microtask, which is a real behavior change for callers that
+		// drive the clock (and for how promptly the agent sees the submit).
+		try {
+			void Promise.resolve(send()).catch((err) =>
+				log.warn("agent prompt submit failed", { ...context, error: String(err) }),
+			);
+		} catch (err) {
+			log.warn("agent prompt submit threw", { ...context, error: String(err) });
+		}
+	}, AGENT_PROMPT_ENTER_DELAY_MS);
+}
+
 /** Type `text` into `pane`, then send Enter as a discrete keypress after a short delay. */
 async function pasteThenEnter(socket: string, pane: string, text: string): Promise<boolean> {
 	try {
@@ -132,11 +153,7 @@ async function pasteThenEnter(socket: string, pane: string, text: string): Promi
 		log.warn("send-keys paste failed", { paneId: pane, error: String(err) });
 		return false;
 	}
-	setTimeout(() => {
-		tmux.sendKeys(pane, ["Enter"], { socket, bestEffort: true }).catch((err) => {
-			log.warn("send-keys Enter failed", { paneId: pane, error: String(err) });
-		});
-	}, AGENT_PROMPT_ENTER_DELAY_MS);
+	scheduleAgentPromptSubmit(() => tmux.sendKeys(pane, ["Enter"], { socket, bestEffort: true }), { paneId: pane });
 	return true;
 }
 

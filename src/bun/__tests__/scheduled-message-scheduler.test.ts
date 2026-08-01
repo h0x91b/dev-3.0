@@ -13,6 +13,10 @@ vi.mock("../agent-prompt", () => ({
 	sendPromptToAgentPane: vi.fn(async () => true),
 	sendPromptToPane: vi.fn(async () => true),
 }));
+vi.mock("../agent-prompt-native", () => ({
+	sendPromptToNativeAgentPane: vi.fn(async () => true),
+	sendPromptToNativePane: vi.fn(async () => true),
+}));
 vi.mock("../pty-server", () => ({ DEFAULT_TMUX_SOCKET: "dev3" }));
 const pushFn = vi.fn();
 vi.mock("../rpc-handlers", () => ({
@@ -26,6 +30,7 @@ vi.mock("../logger", () => ({
 
 import * as data from "../data";
 import { sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
+import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
 import {
 	startScheduledMessageScheduler,
 	stopScheduledMessageScheduler,
@@ -84,6 +89,8 @@ beforeEach(() => {
 	pushFn.mockClear();
 	vi.mocked(sendPromptToAgentPane).mockResolvedValue(true);
 	vi.mocked(sendPromptToPane).mockResolvedValue(true);
+	vi.mocked(sendPromptToNativeAgentPane).mockResolvedValue(true);
+	vi.mocked(sendPromptToNativePane).mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -268,5 +275,57 @@ describe("cancel / send-now / immediate", () => {
 		vi.mocked(sendPromptToAgentPane).mockResolvedValue(false);
 		const task = makeTask();
 		await expect(sendMessageImmediately(task as never, "hello")).rejects.toThrow(/no live agent/i);
+	});
+});
+
+// Both entry points — the immediate `dev3 message` send and the queued
+// "Send later" fire — go through ONE seam (deliverToTarget → deliverAgentPrompt),
+// so a native task must reach the native adapter from either of them.
+describe("scheduled-message scheduler — native-backend tasks", () => {
+	const nativeTask = (overrides: Record<string, unknown> = {}) =>
+		makeTask({ terminalBackend: "native", worktreePath: "/tmp/worktree", ...overrides });
+
+	it("sendMessageImmediately delivers through the native adapter, not tmux", async () => {
+		const task = nativeTask();
+		await sendMessageImmediately(task as never, "hello now");
+		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(
+			expect.objectContaining({ id: task.id }),
+			"hello now",
+		);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("sendMessageImmediately still fails honestly when no native agent is live", async () => {
+		vi.mocked(sendPromptToNativeAgentPane).mockResolvedValue(false);
+		await expect(sendMessageImmediately(nativeTask() as never, "hello")).rejects.toThrow(/no live agent/i);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("a due queued message fires through the native adapter and leaves the queue", async () => {
+		const task = nativeTask();
+		mockUpdateTaskWith(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
+		startScheduledMessageScheduler();
+		await flush();
+		expect(sendPromptToNativeAgentPane).toHaveBeenCalledTimes(1);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("an undeliverable queued message drops with the no-live-agent notice", async () => {
+		vi.mocked(sendPromptToNativeAgentPane).mockResolvedValue(false);
+		const message = makeMessage();
+		const task = nativeTask({ scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		const { delivered } = await fireScheduledMessage(project, task as never, message as never, { late: false });
+		expect(delivered).toBe(false);
+		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "error" }));
+	});
+
+	it("wraps a cross-task message in the envelope on the native path too", async () => {
+		const task = nativeTask();
+		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
+		const text = vi.mocked(sendPromptToNativeAgentPane).mock.calls[0]![1];
+		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(text).toContain("hello now");
 	});
 });

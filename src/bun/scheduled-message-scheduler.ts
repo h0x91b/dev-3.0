@@ -10,8 +10,7 @@ import {
 	MAX_SCHEDULED_MESSAGE_LENGTH,
 } from "../shared/types";
 import * as data from "./data";
-import { DEFAULT_TMUX_SOCKET, taskSessionName } from "./tmux";
-import { sendPromptToAgentPane, sendPromptToPane } from "./agent-prompt";
+import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
@@ -52,21 +51,20 @@ function messagePreview(text: string): string {
 }
 
 /**
- * Resolve the delivery target and type the text (send-keys paste + delayed
- * Enter) into it. `agent` resolves the live agent pane dynamically; `pane`
- * targets a concrete live pane. Returns false when nothing usable is live —
- * the caller then takes the drop-with-notice path.
+ * Resolve the delivery target and type the text into it, then submit it.
+ * `agent` resolves the live agent pane dynamically; `pane` targets a concrete
+ * live pane. Backend-neutral — the tmux/native split lives behind
+ * {@link deliverAgentPrompt}. Returns false when nothing usable is live: the
+ * caller then takes the drop-with-notice path.
+ *
+ * The ONE seam shared by immediate `dev3 message` sends and queued
+ * "Send later" fires, so the two can never drift apart again.
  */
 async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<boolean> {
-	const tmuxSession = taskSessionName(task.id);
-	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
 	const text = message.source ? wrapAgentMessage(message.text, message.source) : message.text;
-	if (message.target.kind === "pane") {
-		return sendPromptToPane(tmuxSession, socket, message.target.paneId, text);
-	}
-	return sendPromptToAgentPane(tmuxSession, socket, text, task.sessionState?.panes);
+	return deliverAgentPrompt(task, text, message.target);
 }
 
 /** Toast + attention for a late-fire or drop. Silent path never calls this. */

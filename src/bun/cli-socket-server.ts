@@ -15,6 +15,7 @@ import { createScratchTask, deleteTask, getPushMessage, getPushMessageLocal, lau
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
+import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
 import { getUserIdleSeconds } from "./user-activity";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
@@ -1175,6 +1176,19 @@ const handlers: Record<string, Handler> = {
 		const source = await resolveAgentMessageSource(params, task.id);
 		await sendMessageImmediately(task, text, null, source);
 		return { delivered: true, taskId: task.id, projectId: project.id };
+	},
+
+	// Owner-routed half of native prompt delivery: another dev-3.0 instance
+	// resolved US as the holder of this pane's writer lease and handed over the
+	// whole delivery. Performs it here, exactly once, and never forwards again
+	// (see agent-prompt-native.ts) — a stale owner answer cannot start a hop loop.
+	[NATIVE_PROMPT_DELIVERY_METHOD]: async (params) => {
+		const delivered = await deliverNativePromptAsOwner({
+			taskId: (params.taskId as string) ?? "",
+			paneId: (params.paneId as string) ?? "",
+			text: ((params.text as string) ?? "").toString(),
+		});
+		return { delivered };
 	},
 
 	// `dev3 message --in <dur> | --at <hh:mm> "text"`: queue a scheduled message on

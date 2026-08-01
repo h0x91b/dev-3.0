@@ -14,7 +14,7 @@ import * as git from "../git";
 import * as github from "../github";
 import { tmux, DEFAULT_TMUX_SOCKET, TmuxError, taskSessionName, PANE_ID_FORMAT, PANE_START_COMMAND_FORMAT } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
-import { sendPromptToAgentPane } from "../agent-prompt";
+import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import {
 	scheduleMessage as scheduleMessageCore,
 	cancelScheduledMessage as cancelScheduledMessageCore,
@@ -548,11 +548,8 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 
 	assertGitTask(project, task);
 
-	const tmuxSession = taskSessionName(task.id);
-	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-
 	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
-	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, prompt, task.sessionState?.panes);
+	const handedOff = await deliverAgentPrompt(task, prompt);
 	if (!handedOff) {
 		log.info("← createPullRequest skipped — no active pane", { taskId: task.id.slice(0, 8) });
 		return;
@@ -577,10 +574,7 @@ async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; c
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
-	const tmuxSession = taskSessionName(task.id);
-	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-
-	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, rebaseConflictAgentPrompt(rebaseTarget), task.sessionState?.panes);
+	const handedOff = await deliverAgentPrompt(task, rebaseConflictAgentPrompt(rebaseTarget));
 	log.info("← rebaseTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
 	return { handedOff };
 }
@@ -598,10 +592,7 @@ async function commitTaskViaAgent(params: { taskId: string; projectId: string })
 
 	assertGitTask(project, task);
 
-	const tmuxSession = taskSessionName(task.id);
-	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-
-	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, COMMIT_AGENT_PROMPT, task.sessionState?.panes);
+	const handedOff = await deliverAgentPrompt(task, COMMIT_AGENT_PROMPT);
 	log.info("← commitTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
 	return { handedOff };
 }
