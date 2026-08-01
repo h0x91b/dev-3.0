@@ -258,6 +258,14 @@ ux_architecture:
         rows:
           row1: "Drive — what the task is + how I control its session"
           row2: "Outputs — what the work produces (branch/PR + running server/ports)"
+    native_terminal_panes:
+      purpose: "The native (non-tmux) task terminal canvas: SplitTree panes tiled from normalized rects, plus the boundaries between them."
+      allowed: ["pane_terminal_canvas", "focus_on_click", "split_resize_divider", "zoom_overlay_exit", "close_pane_picker"]
+      forbidden: ["content_toolbar", "resize_button_or_field", "renderer_only_layout_state", "any_tmux_path_change"]
+      split_resize_divider: "One role=separator strip per split branch, centred on the boundary, >=9px hit target, resting grip visible, accent on hover/focus/drag, col-resize/row-resize cursor, ghost line during drag, single commit on pointer-up through taskPaneAction setSplitRatio (persisted by the backend, survives redraw and restart). Arrow keys step the ratio; Escape and pointercancel abort. Rendered only when the split is visible: never for a single pane, a zoomed pane, or the narrow carousel."
+      responsive: "Narrow (<768) falls to MobilePaneCarousel — one pane at a time, no dividers (there is no visible boundary to grab)."
+      status: "observed"
+      evidence: ["src/mainview/components/TaskTerminal.tsx", "src/mainview/components/NativePaneDividers.tsx", "src/shared/split-tree.ts", "src/bun/rpc-handlers/task-panes.ts"]
     terminal_immersive_fullscreen:
       purpose: "Ephemeral task-bound terminal workspace for focused tmux work."
       allowed: ["task_terminal", "tmux_windows_and_panes", "dev3_brand", "exit_fullscreen"]

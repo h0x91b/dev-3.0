@@ -557,6 +557,53 @@ describe("taskPaneAction (native)", () => {
 		expect(mocks.setNativeTaskPaneLayout).toHaveBeenCalled();
 	});
 
+	it("setSplitRatio persists the dragged ratio through setNativeTaskPaneLayout", async () => {
+		const { restoreSplitTree: restore } = await import("../../../shared/split-tree");
+		const splitId = (restore(makeTwoPaneNativeState().layout)! as { root: { id: string } }).root.id;
+
+		await taskPanesHandlers.taskPaneAction({
+			taskId: TASK_ID,
+			action: { kind: "setSplitRatio", splitId, ratio: 0.72 },
+		});
+
+		const tree = mocks.setNativeTaskPaneLayout.mock.calls[0][1];
+		expect(tree.root.ratio).toBeCloseTo(0.72, 5);
+	});
+
+	it("setSplitRatio clamps past the minimum pane ratio", async () => {
+		const { restoreSplitTree: restore } = await import("../../../shared/split-tree");
+		const splitId = (restore(makeTwoPaneNativeState().layout)! as { root: { id: string } }).root.id;
+
+		await taskPanesHandlers.taskPaneAction({
+			taskId: TASK_ID,
+			action: { kind: "setSplitRatio", splitId, ratio: 0.001 },
+		});
+
+		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].root.ratio).toBe(0.1);
+	});
+
+	it("setSplitRatio on an unknown split writes nothing", async () => {
+		await taskPanesHandlers.taskPaneAction({
+			taskId: TASK_ID,
+			action: { kind: "setSplitRatio", splitId: "split-does-not-exist", ratio: 0.7 },
+		});
+		expect(mocks.setNativeTaskPaneLayout).not.toHaveBeenCalled();
+	});
+
+	it("advertises resizeSplit only once there is a boundary to drag", async () => {
+		const multi = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(multi.capabilities).toContain("resizeSplit");
+
+		const twoPane = makeTwoPaneNativeState();
+		mocks.nativeTaskPanesState.mockResolvedValue({
+			...twoPane,
+			panes: [twoPane.panes[0]],
+			layout: serializeSplitTree(createSplitTree()),
+		});
+		const single = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+		expect(single.capabilities).not.toContain("resizeSplit");
+	});
+
 	it("native path issues NO tmux call — ever", async () => {
 		// Exercise the most common native actions and verify the tmux singleton is untouched
 		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitH" } });

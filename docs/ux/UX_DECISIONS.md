@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-08-01 — Split resize lives on the boundary, never in a toolbar
+
+- **Rule:** Native terminal split boundaries carry a `role="separator"` grab strip (resting grip, ≥9px hit target, `col-resize`/`row-resize`, ghost line, commit on release, Arrow-key steps) and no control anywhere else; absent for a single pane, a zoomed pane, and the narrow carousel. Bible §10 row `layout boundary manipulation`, yaml `surfaces.native_terminal_panes`.
+- **Why:** the boundary is a direct-manipulation object, so a "Resize panes" button would be chrome on the one canvas the app keeps chrome-free, and an invisible boundary is undiscoverable without a resting grip. Rejected: keyboard-only resize (it already existed and nobody found it) and per-pointermove commits (SIGWINCH storm repainting every TUI).
+- **Status:** Implemented. Evidence: `NativePaneDividers.tsx`, `TaskTerminal.tsx`, `split-tree.ts (getSplitBoundaries)`, `rpc-handlers/task-panes.ts (setSplitRatio)`.
+
 ## 2026-07-31 — An agent request keeps one identity, but borrows its severity from the action
 
 - **Rule:** Every agent-initiated request wears the same identity (accent border, AI-agent-request badge, autofocused decline) while the accepting button takes its role from what the action does — `destructive` for completion, `primary` for a launch; a request needing more than yes/no gets its own modal and `confirm()` stays boolean. Bible §6 row `agent_request`, yaml `surfaces.modal.agent_request`.

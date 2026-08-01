@@ -12,6 +12,8 @@ const panes = {
 	"panes.exitedClose": "Close pane",
 	"panes.hostGone": "Terminal host is gone — use the recovery controls below",
 	"panes.unsupportedOnBackend": "Not supported on this backend",
+	"panes.resizeDivider": "Resize the boundary between {first} and {second}",
+	"panes.resizeDividerValue": "{percent}% for the first pane",
 } as const;
 
 export default panes;

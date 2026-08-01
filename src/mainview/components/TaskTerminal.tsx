@@ -21,7 +21,8 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
 import type { TaskPaneState } from "../../shared/task-panes";
-import { getPaneRects, restoreSplitTree } from "../../shared/split-tree";
+import { getPaneRects, restoreSplitTree, serializeSplitTree, setSplitRatio } from "../../shared/split-tree";
+import NativePaneDividers from "./NativePaneDividers";
 import { publishNativePaneFocus } from "../native-pane-focus";
 
 interface TaskTerminalProps {
@@ -419,6 +420,21 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			setFocusedPaneRefusedAt(stored?.refusedAt ?? 0);
 		}
 
+		// A drag commits once, on release. Paint the new ratio locally first so the
+		// panes do not sit at the old size until the round-trip lands; the server's
+		// reply (which owns the persisted tree) then replaces it.
+		function handleCommitRatio(splitId: string, ratio: number) {
+			if (parsedTree) {
+				const optimistic = setSplitRatio(parsedTree, splitId, ratio);
+				if (optimistic !== parsedTree) {
+					setNativePaneState((prev) => (prev ? { ...prev, layout: serializeSplitTree(optimistic) } : prev));
+				}
+			}
+			api.request.taskPaneAction({ taskId, action: { kind: "setSplitRatio", splitId, ratio } })
+				.then(setNativePaneState)
+				.catch(() => {});
+		}
+
 		function closeFocusedPane(paneId: string) {
 			api.request.taskPaneAction({ taskId, action: { kind: "close", paneId } })
 				.then(setNativePaneState)
@@ -606,6 +622,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 								</div>
 							);
 						})}
+						{parsedTree && panes.length > 1 && (
+							<NativePaneDividers
+								tree={parsedTree}
+								paneIndexById={new Map(panes.map((p) => [p.paneId, (p.index ?? 0) + 1]))}
+								onCommitRatio={handleCommitRatio}
+							/>
+						)}
 						<ClosePanePicker taskId={taskId} />
 					</div>
 				) : (

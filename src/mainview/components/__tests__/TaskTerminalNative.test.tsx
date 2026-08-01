@@ -14,7 +14,7 @@
  * 10. MobilePaneCarousel used for native on narrow viewport.
  */
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Task, Project } from "../../../shared/types";
 import type { TaskPaneState } from "../../../shared/task-panes";
@@ -273,5 +273,39 @@ describe("TaskTerminal (native multi-pane)", () => {
 				action: { kind: "zoom", mode: "off" },
 			}),
 		);
+	});
+
+	it("renders a resize separator per boundary and drives it through setSplitRatio", async () => {
+		renderTaskTerminal(NATIVE_TASK);
+		const strip = await waitFor(() => screen.getByTestId("pane-divider-split-1"));
+		fireEvent.keyDown(strip, { key: "ArrowRight" });
+		await waitFor(() =>
+			expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+				taskId: TASK_ID,
+				action: { kind: "setSplitRatio", splitId: "split-1", ratio: expect.closeTo(0.52, 5) },
+			}),
+		);
+	});
+
+	it("has no separator with a single pane, a zoomed pane, or on narrow", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeNativePaneState(["pane-1"]));
+		const single = renderTaskTerminal(NATIVE_TASK);
+		await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(1));
+		expect(screen.queryByTestId("native-pane-dividers")).toBeNull();
+		single.unmount();
+
+		vi.mocked(api.request.taskPaneState).mockResolvedValue({
+			...makeNativePaneState(["pane-1", "pane-2"]),
+			zoomedPaneId: "pane-2",
+		});
+		const zoomed = renderTaskTerminal(NATIVE_TASK);
+		await waitFor(() => expect(screen.getByRole("button", { name: "Unzoom" })).toBeInTheDocument());
+		expect(screen.queryByTestId("native-pane-dividers")).toBeNull();
+		zoomed.unmount();
+
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeNativePaneState(["pane-1", "pane-2"]));
+		renderTaskTerminal(NATIVE_TASK, true);
+		await waitFor(() => expect(screen.getByTestId("mobile-pane-carousel")).toBeInTheDocument());
+		expect(screen.queryByTestId("native-pane-dividers")).toBeNull();
 	});
 });

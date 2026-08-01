@@ -12,6 +12,8 @@ const panes = {
 	"panes.exitedClose": "Cerrar panel",
 	"panes.hostGone": "El host del terminal no está disponible — use los controles de recuperación",
 	"panes.unsupportedOnBackend": "No compatible con este backend",
+	"panes.resizeDivider": "Redimensionar el límite entre {first} y {second}",
+	"panes.resizeDividerValue": "{percent}% para el primer panel",
 } as const;
 
 export default panes;

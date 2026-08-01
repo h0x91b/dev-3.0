@@ -68,6 +68,8 @@ export type TaskPaneCapability =
 	| "close"
 	| "closePick"
 	| "resize"
+	/** Boundaries are addressable and can be set to an absolute ratio (native only). */
+	| "resizeSplit"
 	| "layoutPreset"
 	| "layoutCycle"
 	| "newWindow";
@@ -92,6 +94,13 @@ export type TaskPaneAction =
 	| { kind: "zoom"; paneId?: string; mode?: "toggle" | "on" | "off" }
 	| { kind: "close"; paneId?: string; force?: boolean }
 	| { kind: "resize"; direction: SplitDirection; amount?: number; paneId?: string }
+	/**
+	 * Set one boundary to an absolute ratio — what a divider drag produces. Direction
+	 * plus an amount cannot express it: a drag knows the split it grabbed and where it
+	 * let go, not how many steps that was. Backends without addressable boundaries
+	 * (tmux) do not advertise `resizeSplit` and ignore it.
+	 */
+	| { kind: "setSplitRatio"; splitId: string; ratio: number }
 	| { kind: "layoutPreset"; preset: TaskPaneLayoutPreset }
 	| { kind: "layoutCycle" };
 

@@ -41,6 +41,7 @@ import {
 	listPaneIds,
 	restoreSplitTree,
 	resizeSplit,
+	setSplitRatio,
 	toggleZoom,
 	unzoomPane,
 	zoomPane,
@@ -205,7 +206,7 @@ function nativeStateToTaskPaneState(
 	const count = panes.length;
 	const capabilities: TaskPaneCapability[] = ["split", "zoom", "resize"];
 	if (count > 1) {
-		capabilities.push("focus", "focusDirection", "close", "closePick", "layoutPreset", "layoutCycle");
+		capabilities.push("focus", "focusDirection", "close", "closePick", "layoutPreset", "layoutCycle", "resizeSplit");
 	} else if (count === 1) {
 		capabilities.push("close");
 	}
@@ -466,6 +467,15 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 					? (action.amount ?? 5) / 100
 					: -(action.amount ?? 5) / 100;
 			const newTree = resizeSplit(tree, splitId, delta);
+			updatedState = await setNativeTaskPaneLayout(taskId, newTree);
+			break;
+		}
+		case "setSplitRatio": {
+			if (!tree) break;
+			// setSplitRatio clamps to MIN/MAX_SPLIT_RATIO and no-ops on an unknown id,
+			// so a stale divider from a layout that changed mid-drag cannot corrupt the tree.
+			const newTree = setSplitRatio(tree, action.splitId, action.ratio);
+			if (newTree === tree) break;
 			updatedState = await setNativeTaskPaneLayout(taskId, newTree);
 			break;
 		}

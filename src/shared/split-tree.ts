@@ -113,6 +113,10 @@ function firstPaneId(node: SplitNode): string {
 	return node.type === "pane" ? node.id : firstPaneId(node.first);
 }
 
+function lastPaneId(node: SplitNode): string {
+	return node.type === "pane" ? node.id : lastPaneId(node.second);
+}
+
 function removePane(node: SplitNode, paneId: string): RemoveResult {
 	if (node.type === "pane") {
 		return node.id === paneId
@@ -185,6 +189,63 @@ export function getPaneRects(tree: SplitTree): Map<string, SplitPaneRect> {
 	const rects = new Map<string, SplitPaneRect>();
 	collectPaneRects(tree.root, { x: 0, y: 0, width: 1, height: 1 }, rects);
 	return rects;
+}
+
+/** One draggable boundary: the divider a split branch draws between its two children. */
+export interface SplitBoundary {
+	splitId: string;
+	orientation: SplitOrientation;
+	ratio: number;
+	/** Where the divider sits along the split axis (x when horizontal, y when vertical). */
+	position: number;
+	/** The branch's own box, so a caller can turn the ratio into pixels. */
+	rect: SplitPaneRect;
+	firstPaneId: string;
+	secondPaneId: string;
+}
+
+function collectSplitBoundaries(node: SplitNode, rect: SplitPaneRect, out: SplitBoundary[]): void {
+	if (node.type === "pane") return;
+	const horizontal = node.orientation === "horizontal";
+	out.push({
+		splitId: node.id,
+		orientation: node.orientation,
+		ratio: node.ratio,
+		position: horizontal ? rect.x + rect.width * node.ratio : rect.y + rect.height * node.ratio,
+		rect,
+		firstPaneId: lastPaneId(node.first),
+		secondPaneId: firstPaneId(node.second),
+	});
+	if (horizontal) {
+		const firstWidth = rect.width * node.ratio;
+		collectSplitBoundaries(node.first, { ...rect, width: firstWidth }, out);
+		collectSplitBoundaries(node.second, {
+			x: rect.x + firstWidth,
+			y: rect.y,
+			width: rect.width - firstWidth,
+			height: rect.height,
+		}, out);
+		return;
+	}
+	const firstHeight = rect.height * node.ratio;
+	collectSplitBoundaries(node.first, { ...rect, height: firstHeight }, out);
+	collectSplitBoundaries(node.second, {
+		x: rect.x,
+		y: rect.y + firstHeight,
+		width: rect.width,
+		height: rect.height - firstHeight,
+	}, out);
+}
+
+/**
+ * Every visible draggable boundary, in depth-first order. A zoomed tree shows one
+ * pane full-screen, so none of its boundaries are on screen to grab.
+ */
+export function getSplitBoundaries(tree: SplitTree): SplitBoundary[] {
+	if (tree.zoomedPaneId !== null) return [];
+	const boundaries: SplitBoundary[] = [];
+	collectSplitBoundaries(tree.root, { x: 0, y: 0, width: 1, height: 1 }, boundaries);
+	return boundaries;
 }
 
 function rangesOverlap(startA: number, sizeA: number, startB: number, sizeB: number): boolean {
