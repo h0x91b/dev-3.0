@@ -388,6 +388,7 @@ const {
 	tmuxPaneNavigate,
 } = await import("../rpc-handlers/tmux-pty");
 const { AuxPaneUnavailableError } = await import("../task-aux-panes");
+const { dev3TaskTempPath } = await import("../temp-paths");
 const { _resetLifecycleActorsForTest } = await import("../lifecycle/service");
 
 beforeEach(async () => {
@@ -11448,6 +11449,82 @@ describe("triggerColumnAgentIfNeeded", () => {
 		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
 
 		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	/** Every tmux invocation the code made after `from`, as flat argv strings. */
+	function tmuxArgvSince(from: number): string[] {
+		return mockSpawn.mock.calls
+			.slice(from)
+			.map((call) => (Array.isArray(call[0]) ? call[0].join(" ") : String(call[0])))
+			.filter((argv) => /tmux/.test(argv));
+	}
+
+	// Seq 1395, through the ACTUAL AI Review entry point: this is the bug. The review
+	// agent used to be launched with a raw `tmux split-window` into a session a native
+	// task does not have, so nothing ran and nothing was said.
+	describe("on a native task", () => {
+		const nativeTask = () => makeTask({
+			status: "review-by-ai",
+			worktreePath: "/tmp/wt",
+			terminalBackend: "native",
+		} as any);
+
+		beforeEach(() => {
+			mockNativePanes.nativeTaskPanesState.mockResolvedValue({
+				taskId: "task-1",
+				panes: [{ paneId: "pane-1", sessionId: "s1", hostPid: 1, shellPid: 2, cols: 80, rows: 24, alive: true }],
+				layout: null,
+				activePaneId: "pane-1",
+			} as any);
+			mockNativePanes.nativeTaskPaneCommands.mockResolvedValue([]);
+			mockNativePanes.splitNativeTaskPane.mockResolvedValue({ paneId: "pane-2", state: null } as any);
+		});
+
+		it("opens a real native pane and touches no tmux at all", async () => {
+			const before = mockSpawn.mock.calls.length;
+			const project = makeProject();
+			vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+
+			await triggerColumnAgentIfNeeded("review-by-ai", project, nativeTask());
+
+			const [, anchor, orientation, viewSpec] = mockNativePanes.splitNativeTaskPane.mock.calls[0] as any[];
+			expect(anchor).toBe("pane-1");
+			expect(orientation).toBe("horizontal");
+			expect(viewSpec.launch.argv[0]).toContain("col-agent.sh");
+			// The tmux client is real over the shared spawn mock, so "no tmux" is
+			// provable at the process level: no tmux argv at all, hence no socket.
+			expect(tmuxArgvSince(before)).toEqual([]);
+		});
+
+		it("replaces the pane a previous activation owns, so two clicks cannot yield two agents", async () => {
+			const project = makeProject();
+			vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+			const task = nativeTask();
+			mockNativePanes.nativeTaskPaneCommands.mockResolvedValue([
+				{ paneId: "pane-9", sessionId: "s9", command: ["/bin/bash", dev3TaskTempPath(task.id, "col-agent.sh")], shellPid: 3, alive: true },
+			] as any);
+
+			await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+			expect(mockNativePanes.closeNativeTaskPane).toHaveBeenCalledWith(task.id, "pane-9");
+			expect(mockNativePanes.splitNativeTaskPane).toHaveBeenCalledTimes(1);
+		});
+
+		it("reports terminal-not-running instead of silently doing nothing when the terminal is down", async () => {
+			const before = mockSpawn.mock.calls.length;
+			const project = makeProject();
+			vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+			mockNativePanes.nativeTaskPanesState.mockResolvedValue(null as any);
+			mockTaskWrites(nativeTask());
+			const push = vi.fn();
+			setPushMessage(push);
+
+			await triggerColumnAgentIfNeeded("review-by-ai", project, nativeTask());
+
+			const payload = push.mock.calls.find((call) => call[0] === "columnAgentFailed")?.[1];
+			expect(payload).toMatchObject({ reason: "terminal-not-running", movedTo: "review-by-user" });
+			expect(tmuxArgvSince(before)).toEqual([]);
+		});
 	});
 
 	it("keeps review-agent launch failure best-effort when its fallback move cannot persist", async () => {

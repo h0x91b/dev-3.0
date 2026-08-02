@@ -280,7 +280,117 @@ describe("native pane lookup by launch-command marker", () => {
 	it("auxPurposeOfCommand labels a command only by its own marker", () => {
 		expect(auxPurposeOfCommand(TASK_ID, ["/bin/bash", DEV_MARKER])).toBe("devServer");
 		expect(auxPurposeOfCommand(TASK_ID, ["/bin/bash", auxPaneMarker(TASK_ID, "gitOp") + "rebase.sh"])).toBe("gitOp");
+		expect(auxPurposeOfCommand(TASK_ID, ["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")])).toBe("columnAgent");
 		expect(auxPurposeOfCommand(TASK_ID, ["/bin/zsh"])).toBeNull();
+	});
+
+	// Seq 1395: the column agent's pane is owned by purpose, so its identity is
+	// re-derived from the launch command after a restart — the pane-id file it
+	// replaced was lost exactly then.
+	it("owns the column-agent pane by its own marker, distinct from every other purpose", () => {
+		const marker = auxPaneMarker(TASK_ID, "columnAgent");
+		expect(marker).toContain("col-agent.sh");
+		expect(marker).not.toBe(auxPaneMarker(TASK_ID, "devServer"));
+		expect(marker).not.toBe(auxPaneMarker(TASK_ID, "gitOp"));
+	});
+});
+
+// ── The column-agent purpose (AI Review + custom column agents, seq 1395) ──────
+
+describe("openAuxPane (columnAgent)", () => {
+	const COL_MARKER = auxPaneMarker(TASK_ID, "columnAgent");
+
+	function columnSpec(task: Task) {
+		return spec(task, {
+			purpose: "columnAgent" as const,
+			placement: "right" as const,
+			size: "40%",
+			title: "AI Review",
+			tmuxCommand: `bash "${COL_MARKER}"`,
+			nativeLaunch: { executable: "/bin/bash", argv: [COL_MARKER] },
+		});
+	}
+
+	it("opens a real native pane and makes ZERO tmux calls", async () => {
+		const handle = await openAuxPane(columnSpec(nativeTask));
+
+		expect(handle).toEqual({ backend: "native", paneId: "pane-2" });
+		expect(mocks.splitNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1", "horizontal", {
+			cwd: "/tmp/wt",
+			env: { DEV3_TASK_SEQ: "1383", DEV3_TASK_ID: TASK_ID },
+			launch: { executable: "/bin/bash", argv: [COL_MARKER] },
+		});
+		for (const method of TMUX_METHODS) expect(method).not.toHaveBeenCalled();
+		expect(spawn).not.toHaveBeenCalled();
+	});
+
+	// The duplicate-activation guarantee: a second run must REPLACE the review
+	// agent, never leave two of them competing for the same worktree.
+	it("replaces a review pane a previous activation already owns", async () => {
+		mocks.nativeTaskPaneCommands.mockResolvedValue([
+			nativePane("pane-1", ["/bin/zsh"]),
+			nativePane("pane-9", ["/bin/bash", COL_MARKER]),
+		]);
+
+		await openAuxPane(columnSpec(nativeTask));
+
+		expect(mocks.closeNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-9");
+		expect(mocks.splitNativeTaskPane).toHaveBeenCalledTimes(1);
+	});
+
+	// A pane whose agent already exited lingers as a dead native pane; a fresh
+	// activation must sweep it rather than split beside a corpse.
+	it("sweeps a review pane whose agent already exited", async () => {
+		mocks.nativeTaskPaneCommands.mockResolvedValue([
+			nativePane("pane-9", ["/bin/bash", COL_MARKER], false),
+		]);
+
+		await openAuxPane(columnSpec(nativeTask));
+
+		expect(mocks.closeNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-9");
+	});
+
+	it("leaves another purpose's pane alone", async () => {
+		mocks.nativeTaskPaneCommands.mockResolvedValue([nativePane("pane-5", ["/bin/bash", DEV_MARKER])]);
+
+		await openAuxPane(columnSpec(nativeTask));
+
+		expect(mocks.closeNativeTaskPane).not.toHaveBeenCalled();
+	});
+
+	it("refuses rather than falling back to tmux when the native terminal is down", async () => {
+		mocks.nativeTaskPanesState.mockResolvedValue(null);
+
+		await expect(openAuxPane(columnSpec(nativeTask))).rejects.toBeInstanceOf(AuxPaneUnavailableError);
+		for (const method of TMUX_METHODS) expect(method).not.toHaveBeenCalled();
+	});
+
+	it("still splits the tmux session to the right at 40% on a tmux task", async () => {
+		const handle = await openAuxPane(columnSpec(tmuxTask));
+
+		expect(mocks.tmuxSplitWindow).toHaveBeenCalledWith({
+			target: SESSION,
+			orientation: "horizontal",
+			size: "40%",
+			printPaneId: true,
+			env: { DEV3_TASK_SEQ: "1383", DEV3_TASK_ID: TASK_ID },
+			cwd: "/tmp/wt",
+			command: `bash "${COL_MARKER}"`,
+			socket: SOCKET,
+		});
+		expect(handle).toEqual({ backend: "tmux", paneId: "%7" });
+		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
+	});
+
+	it("re-finds and kills its tmux pane by launch command, not a remembered id", async () => {
+		mocks.tmuxListPanes.mockResolvedValue([
+			{ paneId: "%1", startCommand: "/bin/zsh" },
+			{ paneId: "%4", startCommand: `bash "${COL_MARKER}"` },
+		]);
+
+		await openAuxPane(columnSpec(tmuxTask));
+
+		expect(mocks.tmuxKillPane).toHaveBeenCalledWith("%4", { socket: SOCKET, bestEffort: true });
 	});
 });
 

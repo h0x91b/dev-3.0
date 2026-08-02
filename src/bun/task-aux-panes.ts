@@ -7,7 +7,8 @@
  * purpose.
  *
  * An auxiliary pane is a visible pane in the task's own terminal that one action
- * owns while it runs: the dev-server output, a git operation. Before this module
+ * owns while it runs: the dev-server output, a git operation, a column agent such
+ * as the built-in AI Review. Before this module
  * every such pane was a raw `tmux split-window` against `dev3-task-<id>`, so on a
  * native task the split hit a session that does not exist — the git panes threw,
  * and the dev-server pane failed inside a best-effort catch, leaving the dev
@@ -48,7 +49,7 @@ import { createLogger } from "./logger";
 const log = createLogger("task-aux-panes");
 
 /** Which action owns the pane. One live pane per purpose per task, at most. */
-export type AuxPanePurpose = "devServer" | "gitOp";
+export type AuxPanePurpose = "devServer" | "gitOp" | "columnAgent";
 
 /** Where the new pane lands relative to the pane it splits off. */
 export type AuxPanePlacement = "right" | "below";
@@ -100,14 +101,16 @@ function backendOf(task: Task): TaskPaneBackendKind {
  * a stable, per-task, per-purpose marker.
  */
 export function auxPaneMarker(taskId: string, purpose: AuxPanePurpose): string {
-	return purpose === "devServer"
-		? dev3TaskTempPath(taskId, "dev.sh")
-		: `${dev3TaskTempPath(taskId, "git-")}`;
+	if (purpose === "devServer") return dev3TaskTempPath(taskId, "dev.sh");
+	if (purpose === "columnAgent") return dev3TaskTempPath(taskId, "col-agent.sh");
+	return dev3TaskTempPath(taskId, "git-");
 }
 
 /** The English label shown for an auxiliary pane in the pager and pane picker. */
 export function auxPaneTitle(purpose: AuxPanePurpose): string {
-	return purpose === "devServer" ? "Dev Server" : "Git";
+	if (purpose === "devServer") return "Dev Server";
+	if (purpose === "columnAgent") return "Column Agent";
+	return "Git";
 }
 
 /**
@@ -117,6 +120,7 @@ export function auxPaneTitle(purpose: AuxPanePurpose): string {
 export function auxPurposeOfCommand(taskId: string, command: string[]): AuxPanePurpose | null {
 	const joined = command.join(" ");
 	if (joined.includes(auxPaneMarker(taskId, "devServer"))) return "devServer";
+	if (joined.includes(auxPaneMarker(taskId, "columnAgent"))) return "columnAgent";
 	if (joined.includes(auxPaneMarker(taskId, "gitOp"))) return "gitOp";
 	return null;
 }

@@ -940,43 +940,33 @@ export async function launchColumnAgent(
 		onExitCommand: options.onExitCommand,
 	}));
 
-	const paneFile = dev3TaskTempPath(task.id, "col-agent-pane");
-	try {
-		const oldPaneId = (await Bun.file(paneFile).text()).trim();
-		if (oldPaneId) {
-			log.info("launchColumnAgent: killing old pane", { paneId: oldPaneId });
-			await tmux.killPane(oldPaneId, { socket, bestEffort: true });
-		}
-	} catch {}
+	// The seam owns placement and dedup. The `columnAgent` purpose has at most one
+	// live pane per task, re-found by the command it was launched with — that is what
+	// makes a repeated activation REPLACE the review agent instead of stacking a
+	// second one, and unlike the pane-id file it replaces, it survives an app
+	// restart. A native task never reaches tmux from here.
+	const handle = await openAuxPane({
+		task,
+		purpose: "columnAgent",
+		placement: "right",
+		size: "40%",
+		cwd: worktreePath,
+		env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: worktreePath },
+		socket,
+		title: options.paneTitle,
+		tmuxCommand: `bash "${scriptPath}"`,
+		nativeLaunch: { executable: "/bin/bash", argv: [scriptPath] },
+	});
 
-	let newPaneId: string | null;
-	try {
-		({ paneId: newPaneId } = await tmux.splitWindow({
-			target: tmuxSession,
-			orientation: "horizontal",
-			size: "40%",
-			printPaneId: true,
-			env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: worktreePath },
-			cwd: worktreePath,
-			command: `bash "${scriptPath}"`,
-			socket,
-		}));
-	} catch (err) {
-		if (!(err instanceof TmuxError)) throw err;
-		log.error("launchColumnAgent: tmux split-window failed", { exitCode: err.exitCode, stderr: err.stderr });
-		throw new Error(`tmux split-window failed: ${err.stderr || "unknown error"}`);
+	// tmux hands focus to the freshly split pane; the agent (pane 0) keeps it, as it
+	// always has. The native path restores focus inside the seam.
+	if (handle.backend === "tmux") {
+		try {
+			await tmux.selectPane(`${tmuxSession}:.0`, { socket, bestEffort: true });
+		} catch {}
 	}
 
-	if (newPaneId) {
-		await Bun.write(paneFile, newPaneId);
-		log.info("launchColumnAgent: pane created", { paneId: newPaneId });
-	}
-
-	try {
-		await tmux.selectPane(`${tmuxSession}:.0`, { socket, bestEffort: true });
-	} catch {}
-
-	log.info("launchColumnAgent DONE", { taskId: task.id.slice(0, 8) });
+	log.info("launchColumnAgent DONE", { taskId: task.id.slice(0, 8), backend: handle.backend, paneId: handle.paneId });
 }
 
 export function cleanupTaskTmuxState(taskId: string): void {
