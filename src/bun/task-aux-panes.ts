@@ -149,13 +149,25 @@ function orientationFor(placement: AuxPanePlacement): SplitOrientation {
 
 // ── Finding an existing pane ──────────────────────────────────────────────────
 
-async function findTmuxAuxPanes(task: Task, purpose: AuxPanePurpose, socket: string): Promise<string[]> {
+/**
+ * `strict` decides what a FAILED lookup means. Best-effort callers read a tmux
+ * error as "no session, so no pane" — a task whose tmux session is gone genuinely
+ * owns nothing. A caller that is about to open a replacement cannot afford that
+ * reading: "I could not look" is not "there is nothing there", and treating it as
+ * such is how a second review agent gets to run beside the first.
+ */
+async function findTmuxAuxPanes(
+	task: Task,
+	purpose: AuxPanePurpose,
+	socket: string,
+	strict = false,
+): Promise<string[]> {
 	const marker = auxPaneMarker(task.id, purpose);
 	try {
 		const rows = await tmux.listPanes(PANE_START_COMMAND_FORMAT, { target: taskSessionName(task.id), socket });
 		return rows.filter((row) => row.startCommand.includes(marker)).map((row) => row.paneId);
 	} catch (err) {
-		if (err instanceof TmuxError) return [];
+		if (err instanceof TmuxError && !strict) return [];
 		throw err;
 	}
 }
@@ -176,12 +188,19 @@ async function findNativeAuxPanes(
  * instance, or a close that quietly failed can leave more, and a caller that only
  * looked at the first would keep replacing one of them forever.
  */
-export async function findAuxPanes(task: Task, purpose: AuxPanePurpose, socket: string): Promise<AuxPaneHandle[]> {
+export async function findAuxPanes(
+	task: Task,
+	purpose: AuxPanePurpose,
+	socket: string,
+	/** Fail instead of reporting an empty list when the lookup itself cannot run. */
+	options?: { strict?: boolean },
+): Promise<AuxPaneHandle[]> {
 	if (backendOf(task) === "native") {
+		// The native lookup already propagates: an unreadable pane set throws.
 		const found = await findNativeAuxPanes(task, purpose);
 		return found.map(({ paneId }) => ({ backend: "native" as const, paneId }));
 	}
-	const paneIds = await findTmuxAuxPanes(task, purpose, socket);
+	const paneIds = await findTmuxAuxPanes(task, purpose, socket, options?.strict === true);
 	return paneIds.map((paneId) => ({ backend: "tmux" as const, paneId }));
 }
 
@@ -232,6 +251,21 @@ export async function closeAuxPane(task: Task, purpose: AuxPanePurpose, socket: 
  * owns, so opening another one would leave two of them running. The launch is
  * refused instead.
  */
+/**
+ * The pane set could not be read, so whether this purpose already owns a pane is
+ * unknown. Refusing is the only safe answer: assuming "none" is what lets a second
+ * agent run beside the first.
+ */
+export class AuxPaneUndecidableError extends Error {
+	constructor(readonly purpose: AuxPanePurpose, cause: unknown) {
+		super(
+			`could not check whether this task already has a ${purpose} pane, so the launch was refused: ` +
+				`${cause instanceof Error ? cause.message : String(cause)}`,
+		);
+		this.name = "AuxPaneUndecidableError";
+	}
+}
+
 export class AuxPaneReplaceError extends Error {
 	constructor(readonly purpose: AuxPanePurpose, readonly remaining: string[], cause?: unknown) {
 		super(
@@ -245,12 +279,12 @@ export class AuxPaneReplaceError extends Error {
 
 /**
  * Close every pane the purpose owns and PROVE they are gone. Unlike
- * {@link closeAuxPane} this never swallows a failure: the caller is about to open
- * a replacement, and "one agent" is a guarantee it cannot make on a best-effort
- * close.
+ * {@link closeAuxPane}, nothing here is best-effort — not the close, and not the
+ * LOOKUP: only an observed empty list may let a replacement open, so a lookup
+ * that could not run fails the launch instead of reading as "there was nothing".
  */
 async function replaceAuxPanes(task: Task, purpose: AuxPanePurpose, socket: string): Promise<void> {
-	const existing = await findAuxPanes(task, purpose, socket);
+	const existing = await findOwnedPanesStrictly(task, purpose, socket);
 	for (const handle of existing) {
 		try {
 			await closeTaskPane(task, handle, socket);
@@ -261,9 +295,22 @@ async function replaceAuxPanes(task: Task, purpose: AuxPanePurpose, socket: stri
 	}
 	// Re-read rather than trusting the closes: the pane set is the authority, and
 	// a pane that reappears (or was never listed) must still block the launch.
-	const remaining = await findAuxPanes(task, purpose, socket);
+	const remaining = await findOwnedPanesStrictly(task, purpose, socket);
 	if (remaining.length > 0) {
 		throw new AuxPaneReplaceError(purpose, remaining.map((handle) => handle.paneId));
+	}
+}
+
+/** The purpose's panes, where a failed lookup is a failure and not an empty set. */
+async function findOwnedPanesStrictly(
+	task: Task,
+	purpose: AuxPanePurpose,
+	socket: string,
+): Promise<AuxPaneHandle[]> {
+	try {
+		return await findAuxPanes(task, purpose, socket, { strict: true });
+	} catch (err) {
+		throw new AuxPaneUndecidableError(purpose, err);
 	}
 }
 

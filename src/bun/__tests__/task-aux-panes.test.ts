@@ -67,6 +67,7 @@ import {
 	auxPurposeOfCommand,
 	AuxPaneReplaceError,
 	AuxPaneUnavailableError,
+	AuxPaneUndecidableError,
 	closeAuxPane,
 	findAuxPane,
 	nativeAuxPaneShellPid,
@@ -445,6 +446,37 @@ describe("openAuxPane (columnAgent)", () => {
 		expect(mocks.tmuxSplitWindow).toHaveBeenCalledTimes(1);
 	});
 
+	// A lookup that could not RUN is not a lookup that found nothing. Reading a
+	// transient tmux failure as "no existing pane" is what would let the previous
+	// review agent keep running beside the new one.
+	it("refuses to open a tmux pane when it cannot tell whether one already exists", async () => {
+		mocks.tmuxListPanes.mockRejectedValue(new FakeTmuxError(["list-panes"], 1, "server exited unexpectedly"));
+
+		await expect(openAuxPane(columnSpec(tmuxTask))).rejects.toBeInstanceOf(AuxPaneUndecidableError);
+		expect(mocks.tmuxSplitWindow).not.toHaveBeenCalled();
+		expect(mocks.tmuxKillPane).not.toHaveBeenCalled();
+	});
+
+	it("refuses when the VERIFYING lookup fails, after the close appeared to work", async () => {
+		let looks = 0;
+		mocks.tmuxListPanes.mockImplementation(async () => {
+			looks += 1;
+			if (looks === 1) return [{ paneId: "%4", startCommand: `bash "${COL_MARKER}"` }];
+			throw new FakeTmuxError(["list-panes"], 1, "server exited unexpectedly");
+		});
+
+		await expect(openAuxPane(columnSpec(tmuxTask))).rejects.toBeInstanceOf(AuxPaneUndecidableError);
+		expect(mocks.tmuxKillPane).toHaveBeenCalledWith("%4", { socket: SOCKET });
+		expect(mocks.tmuxSplitWindow).not.toHaveBeenCalled();
+	});
+
+	it("refuses when a native pane set cannot be read at all", async () => {
+		mocks.nativeTaskPaneCommands.mockRejectedValue(new Error("pane records unreadable"));
+
+		await expect(openAuxPane(columnSpec(nativeTask))).rejects.toBeInstanceOf(AuxPaneUndecidableError);
+		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
+	});
+
 	it("refuses to open a second tmux pane when the kill fails", async () => {
 		mocks.tmuxListPanes.mockResolvedValue([{ paneId: "%4", startCommand: `bash "${COL_MARKER}"` }]);
 		mocks.tmuxKillPane.mockRejectedValue(new FakeTmuxError(["kill-pane"], 1, "no such pane"));
@@ -455,6 +487,17 @@ describe("openAuxPane (columnAgent)", () => {
 });
 
 // ── tmux backend (regression guard: behaviour must be unchanged) ──────────────
+
+describe("best-effort purposes keep their old tolerance", () => {
+	it("still opens a dev-server pane when the pane lookup fails", async () => {
+		mocks.tmuxListPanes.mockRejectedValue(new FakeTmuxError(["list-panes"], 1, "no server running"));
+
+		const handle = await openAuxPane(spec(tmuxTask));
+
+		expect(handle).toEqual({ backend: "tmux", paneId: "%7" });
+		expect(mocks.tmuxSplitWindow).toHaveBeenCalledTimes(1);
+	});
+});
 
 describe("openAuxPane (tmux)", () => {
 	it("splits the task session below at the requested size", async () => {
