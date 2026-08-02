@@ -96,7 +96,21 @@ function coordinatorId(taskId: string): string {
  * `null` means no pane survived — the same verdict `describeSession` returns.
  */
 async function buildState(taskId: string): Promise<NativeTaskPanesState | null> {
-	const paneSet = await getBackend().readPaneSet(coordinatorId(taskId));
+	return shapeState(taskId, await getBackend().readPaneSet(coordinatorId(taskId)));
+}
+
+/**
+ * {@link buildState} that does not hide an undecidable read: `null` means recovery
+ * ran and no pane survived, while a throw means the pane set could not be read.
+ */
+async function buildStateStrict(taskId: string): Promise<NativeTaskPanesState | null> {
+	return shapeState(taskId, await getBackend().readPaneSetStrict(coordinatorId(taskId)));
+}
+
+/** Derived from the backend method so this module keeps its single import seam. */
+type ReadPaneSet = Awaited<ReturnType<NativeTerminalBackend["readPaneSet"]>>;
+
+function shapeState(taskId: string, paneSet: ReadPaneSet): NativeTaskPanesState | null {
 	if (!paneSet) return null;
 	return {
 		taskId,
@@ -341,6 +355,40 @@ export function nativeTaskPaneCommandsOf(state: NativeTaskPanesState): NativeTas
 export async function nativeTaskPaneCommands(taskId: string): Promise<NativeTaskPaneCommand[]> {
 	const state = await nativeTaskPanesState(taskId);
 	return state ? nativeTaskPaneCommandsOf(state) : [];
+}
+
+/**
+ * What a caller learns when "I could not tell" must not be reported as "there is
+ * nothing". `absent` is a real answer — recovery ran and this task owns no pane
+ * set. Anything it could not determine throws instead, and a pane whose own record
+ * is unreadable is listed in `unreadable`: its launch command is unknown, so no
+ * caller may claim the pane is not theirs.
+ */
+export type NativeTaskPaneCommandsRead =
+	| { kind: "absent" }
+	| { kind: "read"; panes: NativeTaskPaneCommand[]; unreadable: string[] };
+
+export async function nativeTaskPaneCommandsStrict(taskId: string): Promise<NativeTaskPaneCommandsRead> {
+	const state = await buildStateStrict(taskId);
+	if (!state) return { kind: "absent" };
+	const panes = state.panes.map((pane) => {
+		const record = readRecord(pane.sessionId);
+		return {
+			pane: {
+				paneId: pane.paneId,
+				sessionId: pane.sessionId,
+				command: record?.shell.command ?? [],
+				shellPid: pane.shellPid,
+				alive: pane.alive,
+			},
+			readable: record !== null,
+		};
+	});
+	return {
+		kind: "read",
+		panes: panes.map((entry) => entry.pane),
+		unreadable: panes.filter((entry) => !entry.readable).map((entry) => entry.pane.paneId),
+	};
 }
 
 /**

@@ -239,18 +239,28 @@ export class NativeTerminalBackend implements TerminalBackend {
 	 * Returns `null` on the same condition as `describeSession`: no pane survives.
 	 */
 	async readPaneSet(id: TerminalSessionId): Promise<{ panes: PaneSnapshot[]; layout: SplitTree } | null> {
-		if (!isTerminalSessionId(id)) return null;
 		try {
-			const recovered = await NativeMultipaneCoordinator.recoverPaneSet(id, this.deps);
-			if (!recovered) {
-				this.coordinators.delete(id);
-				return null;
-			}
-			this.coordinators.set(id, recovered.coordinator);
-			return { panes: recovered.panes, layout: recovered.coordinator.layout };
+			return await this.readPaneSetStrict(id);
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * {@link readPaneSet} without the catch: `null` means recovery RAN and found no
+	 * surviving pane, while a throw means it could not tell. Callers that are about
+	 * to replace a pane need that difference — treating "could not read" as "nothing
+	 * there" is how a second agent gets opened beside a live one.
+	 */
+	async readPaneSetStrict(id: TerminalSessionId): Promise<{ panes: PaneSnapshot[]; layout: SplitTree } | null> {
+		if (!isTerminalSessionId(id)) return null;
+		const recovered = await NativeMultipaneCoordinator.recoverPaneSet(id, this.deps);
+		if (!recovered) {
+			this.coordinators.delete(id);
+			return null;
+		}
+		this.coordinators.set(id, recovered.coordinator);
+		return { panes: recovered.panes, layout: recovered.coordinator.layout };
 	}
 
 	/** Per-pane host/shell pids, size, and liveness — not expressible via the contract. */

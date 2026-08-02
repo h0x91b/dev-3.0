@@ -76,8 +76,16 @@ vi.mock("../native-task-panes", async (importOriginal) => {
 	return {
 		...actual,
 		nativeTaskPanesState: vi.fn(async () => state()),
-		// REAL: reads each pane's launch command back from its on-disk record.
+		// REAL: both reads take each pane's launch command back off its on-disk record.
 		nativeTaskPaneCommands: vi.fn(async () => actual.nativeTaskPaneCommandsOf(state())),
+		nativeTaskPaneCommandsStrict: vi.fn(async () => {
+			const panes = actual.nativeTaskPaneCommandsOf(state());
+			return {
+				kind: "read" as const,
+				panes,
+				unreadable: panes.filter((pane) => pane.command.length === 0).map((pane) => pane.paneId),
+			};
+		}),
 		splitNativeTaskPane: vi.fn(async () => ({ paneId: "pane-new", state: state() })),
 		// A real close: the record leaves the disk, so the verification re-read has
 		// something honest to look at.

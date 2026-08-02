@@ -159,6 +159,10 @@ const mockNativePanes = {
 	nativeTaskPaneLayout: vi.fn(async (..._args: any[]) => null as any),
 	nativeTaskPanesAlive: vi.fn(async () => false),
 	nativeTaskPaneCommands: vi.fn(async () => [] as any[]),
+	// Serves the same fake pane list as the tolerant read; the undecidable and
+	// unreadable-record cases run against the real discovery path in
+	// column-agent-strict-discovery.test.ts.
+	nativeTaskPaneCommandsStrict: vi.fn(async () => ({ kind: "read", panes: await mockNativePanes.nativeTaskPaneCommands(), unreadable: [] as string[] })),
 	nativeTaskPaneCommandsOf: vi.fn(() => [] as any[]),
 	splitNativeTaskPane: vi.fn(async (..._args: any[]) => null as any),
 	closeNativeTaskPane: vi.fn(async (..._args: any[]) => ({ sessionTornDown: false, state: null }) as any),

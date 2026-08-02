@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
 	// native-task-panes
 	nativeTaskPanesState: vi.fn(),
 	nativeTaskPaneCommands: vi.fn(),
+	nativeTaskPaneCommandsStrict: vi.fn(),
 	splitNativeTaskPane: vi.fn(),
 	closeNativeTaskPane: vi.fn(),
 	focusNativeTaskPane: vi.fn(),
@@ -56,6 +57,10 @@ vi.mock("../tmux", () => ({
 vi.mock("../native-task-panes", () => ({
 	nativeTaskPanesState: mocks.nativeTaskPanesState,
 	nativeTaskPaneCommands: mocks.nativeTaskPaneCommands,
+	// The strict read answers from the same fake pane list; the cases that make it
+	// throw or report an unreadable record live in column-agent-strict-discovery,
+	// where the production discovery path runs for real.
+	nativeTaskPaneCommandsStrict: mocks.nativeTaskPaneCommandsStrict,
 	splitNativeTaskPane: mocks.splitNativeTaskPane,
 	closeNativeTaskPane: mocks.closeNativeTaskPane,
 	focusNativeTaskPane: mocks.focusNativeTaskPane,
@@ -128,6 +133,11 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.nativeTaskPanesState.mockResolvedValue(nativeState(["pane-1"], "pane-1"));
 	mocks.nativeTaskPaneCommands.mockResolvedValue([]);
+	mocks.nativeTaskPaneCommandsStrict.mockImplementation(async () => ({
+		kind: "read",
+		panes: await mocks.nativeTaskPaneCommands(),
+		unreadable: [],
+	}));
 	mocks.splitNativeTaskPane.mockResolvedValue({ paneId: "pane-2", state: nativeState(["pane-1", "pane-2"], "pane-2") });
 	mocks.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: false, state: nativeState(["pane-1"], "pane-1") });
 	mocks.focusNativeTaskPane.mockResolvedValue(nativeState(["pane-1", "pane-2"], "pane-1"));

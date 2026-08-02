@@ -26,6 +26,10 @@ const mocks = vi.hoisted(() => ({
 	// native pane runtime
 	nativeTaskPanesState: vi.fn(),
 	nativeTaskPaneCommands: vi.fn(async () => [] as any[]),
+	// Serves the same fake pane list as the tolerant read; the undecidable and
+	// unreadable-record cases run against the real discovery path in
+	// column-agent-strict-discovery.test.ts.
+	nativeTaskPaneCommandsStrict: vi.fn(async () => ({ kind: "read", panes: await mocks.nativeTaskPaneCommands(), unreadable: [] as string[] })),
 	nativeTaskPaneCommandsOf: vi.fn(() => [] as any[]),
 	splitNativeTaskPane: vi.fn(),
 	closeNativeTaskPane: vi.fn(),
@@ -99,6 +103,7 @@ vi.mock("../artifact-template", () => ({ ensureArtifactTemplateEnv: () => ({}) }
 vi.mock("../native-task-panes", () => ({
 	nativeTaskPanesState: mocks.nativeTaskPanesState,
 	nativeTaskPaneCommands: mocks.nativeTaskPaneCommands,
+	nativeTaskPaneCommandsStrict: mocks.nativeTaskPaneCommandsStrict,
 	nativeTaskPaneCommandsOf: mocks.nativeTaskPaneCommandsOf,
 	splitNativeTaskPane: mocks.splitNativeTaskPane,
 	closeNativeTaskPane: mocks.closeNativeTaskPane,

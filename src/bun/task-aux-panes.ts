@@ -39,8 +39,10 @@ import {
 	closeNativeTaskPane,
 	focusNativeTaskPane,
 	nativeTaskPaneCommands,
+	nativeTaskPaneCommandsStrict,
 	nativeTaskPanesState,
 	splitNativeTaskPane,
+	type NativeTaskPaneCommand,
 } from "./native-task-panes";
 import { TASK_SEQ_ENV } from "./native-terminal-registry/process-naming";
 import { dev3TaskTempPath } from "./temp-paths";
@@ -175,12 +177,34 @@ async function findTmuxAuxPanes(
 async function findNativeAuxPanes(
 	task: Task,
 	purpose: AuxPanePurpose,
+	strict = false,
 ): Promise<{ paneId: string; shellPid: number; alive: boolean }[]> {
 	const marker = auxPaneMarker(task.id, purpose);
-	const panes = await nativeTaskPaneCommands(task.id);
+	const panes = strict
+		? await readNativePanesStrictly(task)
+		: await nativeTaskPaneCommands(task.id);
 	return panes
 		.filter((pane) => pane.command.join(" ").includes(marker))
 		.map((pane) => ({ paneId: pane.paneId, shellPid: pane.shellPid, alive: pane.alive }));
+}
+
+/**
+ * The pane list for a decision that must not guess. Three outcomes collapse into
+ * an empty list on the tolerant path and are kept apart here: no pane set at all
+ * (a real "owns nothing"), a pane set that could not be read (throws from the
+ * strict read), and a pane whose OWN record is unreadable — its launch command is
+ * unknown, so nobody may claim it is not the pane they are looking for.
+ */
+async function readNativePanesStrictly(task: Task): Promise<NativeTaskPaneCommand[]> {
+	const read = await nativeTaskPaneCommandsStrict(task.id);
+	if (read.kind === "absent") return [];
+	if (read.unreadable.length > 0) {
+		throw new Error(
+			`the launch command of pane ${read.unreadable.join(", ")} is unreadable, `
+			+ "so it cannot be told apart from the pane being replaced",
+		);
+	}
+	return read.panes;
 }
 
 /**
@@ -196,8 +220,7 @@ export async function findAuxPanes(
 	options?: { strict?: boolean },
 ): Promise<AuxPaneHandle[]> {
 	if (backendOf(task) === "native") {
-		// The native lookup already propagates: an unreadable pane set throws.
-		const found = await findNativeAuxPanes(task, purpose);
+		const found = await findNativeAuxPanes(task, purpose, options?.strict === true);
 		return found.map(({ paneId }) => ({ backend: "native" as const, paneId }));
 	}
 	const paneIds = await findTmuxAuxPanes(task, purpose, socket, options?.strict === true);
@@ -247,11 +270,6 @@ export async function closeAuxPane(task: Task, purpose: AuxPanePurpose, socket: 
 }
 
 /**
- * A purpose whose replacement must be proven could not clear the panes it already
- * owns, so opening another one would leave two of them running. The launch is
- * refused instead.
- */
-/**
  * The pane set could not be read, so whether this purpose already owns a pane is
  * unknown. Refusing is the only safe answer: assuming "none" is what lets a second
  * agent run beside the first.
@@ -266,6 +284,11 @@ export class AuxPaneUndecidableError extends Error {
 	}
 }
 
+/**
+ * A purpose whose replacement must be proven could not clear the panes it already
+ * owns, so opening another one would leave two of them running. The launch is
+ * refused instead.
+ */
 export class AuxPaneReplaceError extends Error {
 	constructor(readonly purpose: AuxPanePurpose, readonly remaining: string[], cause?: unknown) {
 		super(
