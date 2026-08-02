@@ -147,6 +147,7 @@ ux_architecture:
       rules:
         - "Text click navigates; chevron toggles the project-switcher dropdown."
         - "Breadcrumbs show place, not bulk actions."
+        - "The task segment also carries the passive native_backend_mark (see identity_markers.native_backend_mark) — identity, not an action."
       status: "observed"
       evidence: ["src/mainview/components/GlobalHeader.tsx (BreadcrumbSegment, project switcher)"]
     tabs:
@@ -210,7 +211,7 @@ ux_architecture:
       evidence: ["src/mainview/components/KanbanBoard.tsx", "src/mainview/components/KanbanColumn.tsx", "src/mainview/components/LabelFilterBar.tsx"]
     task_card:
       purpose: "Compact object summary on the board with the most relevant per-task affordances."
-      allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge", "deferred_timer_chip"]
+      allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge", "deferred_timer_chip", "native_backend_mark"]
       forbidden: ["full_settings", "global_destination"]
       deferred_timer_chip: "One shared countdown-chip slot (popover with cancel / run-now, 30s re-render) for deferred agent interactions. Content depends on state and the two NEVER coexist: scheduledLaunch on a `todo` card, scheduledMessages on a live-agent card. Do not add a second timer badge class."
       variant_dots: "Max 3 status dots (self — ring-highlighted — + lowest-variantIndex siblings; NO +N counter), always a clickable button opening SiblingPopover — the group overview: per-variant title, agent/config, status, current-variant marker; dead variants greyed, non-navigable. Same pattern on sidebar cards; do not fork the mechanic per surface."
@@ -336,11 +337,15 @@ ux_architecture:
       evidence: ["src/mainview/components/GlobalSettings.tsx", "src/mainview/components/ProjectSettings.tsx (59.9K)", "src/mainview/components/global-settings/*"]
     sidebar:
       purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."
-      allowed: ["destination", "task_jump", "terminal_hover_preview", "search", "variant_dots"]
+      allowed: ["destination", "task_jump", "terminal_hover_preview", "search", "variant_dots", "native_backend_mark"]
       forbidden: ["durable_configuration"]
       variant_dots: "Same capped clickable dots + SiblingPopover as task_card (see surfaces.task_card.variant_dots); placed in the card's bottom status row, mirroring the kanban card position."
       queue_policy: "Readiness tiers are NEEDS YOU (review-by-user, user-questions, review-by-colleague) → project custom columns → WAITING (in-progress, review-by-ai). Per-task bells are visual notifications and never alter tier membership."
       evidence: ["src/mainview/components/ActiveTasksSidebar.tsx"]
+    identity_markers:
+      native_backend_mark: "One shared non-interactive glyph next to the task title on task_card, sidebar and the breadcrumb task segment. It states the task's PERSISTED terminal-backend identity (explicit `native`) and nothing else — never liveness, health, focus or writer lease. Explicit tmux and legacy records with no field render nothing; an unknown value never guesses. Identity is read only through the shared terminal-backend-identity codec. Accent-toned, no new token, no action slot, no shortcut/setting/tip. Localized tooltip + accessible name (en/ru/es); on the sidebar the row is role=button with its own aria-label, so the backend label is appended to THAT name."
+      status: "observed"
+      evidence: ["src/mainview/components/NativeBackendMark.tsx", "src/mainview/components/TaskCard.tsx", "src/mainview/components/ActiveTasksSidebar.tsx", "src/mainview/components/GlobalHeader.tsx"]
     stats_dashboard:
       purpose: "Read-only full-screen 'Velocity Cockpit' proving how much the user ships: hero speedometer gauges (tasks shipped, lines changed, velocity, completion rate, streak), SVG bar/area charts over time, a per-project gauge wall, and a counters strip — all re-scoped by a Day/Week/Month/All time range and browsable across past periods via a prev/next stepper."
       feature_class: ["destination", "data_visualization"]

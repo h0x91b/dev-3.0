@@ -90,7 +90,7 @@ Mechanism: `GlobalHeader` breadcrumbs (`Dashboard > Project > Task`) + back/forw
 
 ### Breadcrumbs — `Observed`
 
-Show location only. Text click navigates; the project chevron opens a **project-switcher dropdown**. No commands in breadcrumbs.
+Show location only. Text click navigates; the project chevron opens a **project-switcher dropdown**. No commands in breadcrumbs. The task segment also carries the passive **native-backend marker** (§5.6) — identity, not an action.
 
 Evidence: `GlobalHeader.tsx`.
 
@@ -109,7 +109,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
 | Application menu (native) | Canonical home for the full action taxonomy | every action type | — | `application-menu.ts`, `menu-actions.ts` |
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, task filter (token-DSL search + funnel; label chips are a view of it) | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx`, `LabelFilterBar.tsx`, `FilterFunnel.tsx` |
-| Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge | full settings, global destination, unbounded dot rows | `TaskCard.tsx` (large — watch density) |
+| Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge, native-backend marker (§5.6) | full settings, global destination, unbounded dot rows | `TaskCard.tsx` (large — watch density) |
 | Task info panel (inspector) | Active-task control: git, dev server, scripts, notes, tmux, open-in | object/git/dev-server actions, metadata, notes | global destination, cross-project action | `TaskInfoPanel.tsx` (densest surface) |
 | Terminal immersive fullscreen | Ephemeral task-bound terminal workspace for focused tmux work | tmux terminal, existing tmux window/pane controls, `dev3` brand, one wide Exit full screen action | global/app header, task switching UI, inspector controls, route persistence, any tmux pane/layout mutation | `App.tsx`, `TaskInfoPanel.tsx` |
 | Diff review viewer | Full-screen read + inline-review of a task's diff | view-mode toggle, file-tree nav, search, mark-read, per-file copy-path, inline comments, review export/copy/reset | task lifecycle action, git mutation, global destination | `TaskDiffViewer.tsx` (see 5.3) |
@@ -119,7 +119,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Popover | Contextual preview/hint | preview, hint, quick action, remediation | multi-step flow, primary destination | `*Popover.tsx` |
 | Context menu | Right-click object actions | object action, open-in, destructive | global destination | `OpenInMenu.tsx` |
 | Settings | Durable configuration | configuration, preference, integration, scripts | daily operational action | `GlobalSettings.tsx`, `ProjectSettings.tsx` |
-| Sidebar | Active-task jump list (readiness-tier work queue: NEEDS YOU = Your Review, Has Questions, PR Review → custom columns → WAITING = Agent is Working, AI Review; priority-sorted, visible `P{n}` badge) | destination, task jump, priority re-order (badge picker), terminal preview, search + token-DSL task filter (funnel, active-statuses pool), variant dots (≤3, clickable → sibling popover, bottom row) | durable config | `ActiveTasksSidebar.tsx`, `sidebarTiers.ts`, `FilterFunnel.tsx` |
+| Sidebar | Active-task jump list (readiness-tier work queue: NEEDS YOU = Your Review, Has Questions, PR Review → custom columns → WAITING = Agent is Working, AI Review; priority-sorted, visible `P{n}` badge) | destination, task jump, priority re-order (badge picker), terminal preview, search + token-DSL task filter (funnel, active-statuses pool), variant dots (≤3, clickable → sibling popover, bottom row), native-backend marker (§5.6) | durable config | `ActiveTasksSidebar.tsx`, `sidebarTiers.ts`, `FilterFunnel.tsx` |
 | Command palette (Cmd+K nav / Cmd+Shift+P actions) | Type-to-find nav + type-to-run commands (two modes, one shell) | destination, fuzzy search, object jump, command runner (action mode, via handleMenuAction) | destructive action, modal/inline flow, durable config without friction, dense filters | `PaletteShell.tsx`, `ProjectQuickSwitchModal.tsx`, `CommandPaletteModal.tsx`, `commands.ts` |
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
@@ -241,6 +241,16 @@ Rules specific to this surface:
 **Hard rules:** the crash fallback and pre-React loader use inline/neutral styling and no providers (they must survive a broken theme/i18n). The diagnostics entry point is earned, not permanent — never a toolbar/header button, never a nav destination. All surfaces are pure React (no native dialog). See `UX_DECISIONS.md` (2026-07-10, 2026-07-25).
 
 **Owed by every transport-fed screen (data-fetch states):** a fetch over the remote transport may hang or die, so the screen must show a **delayed skeleton** (~200 ms, so local fetches don't flash) instead of its empty state, an **error panel** that names the transport cause and offers Retry, and a **self-heal refetch** when `rpcState` returns to `connected`. **Cached data always wins** — a background refetch or a reconnect must never blank a board the user is already reading. Reference implementation: `ProjectView` + `KanbanBoardSkeleton` / `BoardLoadFailed`; an empty board where a load failed is a bug, not an empty state.
+
+### 5.6 Identity markers — native terminal backend — `Observed`
+
+One shared, non-interactive glyph (`NativeBackendMark`) sits next to the task title on the **three task-identity surfaces**: Kanban card, Active Tasks row, Task View breadcrumb. It states the task's **persisted terminal-backend identity** and nothing else — never that a terminal is running, connected, healthy, focused, or owns a writer lease.
+
+- **Renders only for an explicit `native` record.** Explicit `tmux` and legacy records with no field render nothing, so the dense surfaces stay quiet; an unknown value never guesses. Identity comes only from the shared `terminal-backend-identity` codec — never a raw field check, platform sniff, or session-liveness inference.
+- **Consumes no action slot and no budget:** not focusable, no shortcut, no setting, no menu item, no tip. Accent-toned, no new design token.
+- **Never colour-only:** localized tooltip + accessible name in en/ru/es. On the sidebar the row is a `role="button"` with its own `aria-label`, which overrides descendants — so the backend label is appended to **that** name, not left on the inner span.
+
+Evidence: `NativeBackendMark.tsx`, `TaskCard.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
 
 ## 6. Action taxonomy — `Observed`
 

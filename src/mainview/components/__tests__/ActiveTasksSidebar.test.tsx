@@ -1144,18 +1144,27 @@ describe("ActiveTasksSidebar — native terminal backend mark", () => {
 	it("marks a native-backed task next to its title", () => {
 		renderSidebar(makeTask({ terminalBackend: "native" }));
 
-		expect(screen.getByTestId("sidebar-native-backend-t1")).toHaveAttribute(
-			"aria-label",
-			"Native terminal backend",
-		);
+		expect(screen.getByTestId("sidebar-native-backend-t1")).toBeInTheDocument();
+	});
+
+	// The row is a role=button with its own aria-label, which overrides every
+	// descendant — so the marker only reaches assistive tech through that name.
+	it("announces the backend in the row's accessible name", () => {
+		renderSidebar(makeTask({ terminalBackend: "native" }));
+
+		expect(
+			screen.getByRole("button", { name: "Привет! как сам? — Native terminal backend" }),
+		).toBeInTheDocument();
 	});
 
 	it("stays quiet for an explicit tmux task and for a legacy unmarked one", () => {
 		const { unmount } = renderSidebar(makeTask({ terminalBackend: "tmux" }));
 		expect(screen.queryByTestId("sidebar-native-backend-t1")).toBeNull();
+		expect(screen.getByRole("button", { name: "Привет! как сам?" })).toBeInTheDocument();
 		unmount();
 
 		renderSidebar(makeTask());
 		expect(screen.queryByTestId("sidebar-native-backend-t1")).toBeNull();
+		expect(screen.getByRole("button", { name: "Привет! как сам?" })).toBeInTheDocument();
 	});
 });
