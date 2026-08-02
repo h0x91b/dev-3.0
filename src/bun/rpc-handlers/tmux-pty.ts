@@ -2710,36 +2710,37 @@ export function nativeHunterColumnRatios(count: number): number[] {
  * Even out the hunter column of a native task, touching only the splits this
  * launch created. `anchors[i]` is the pane that was split to open hunter `i + 2`,
  * which is how each split is re-found without remembering generated split ids.
+ *
+ * Throws rather than settling for whatever geometry it found: a column reported
+ * as launched but drawn 50/25/25 is a silently wrong result, and the caller can
+ * still undo the whole launch at this point.
  */
 async function equalizeNativeHunterColumn(taskId: string, anchors: string[]): Promise<void> {
 	const tree = await nativeTaskPaneLayout(taskId);
-	if (!tree) return;
+	if (!tree) throw new Error("the task's native pane layout could not be read back");
 	const ratios = nativeHunterColumnRatios(anchors.length + 1);
 	let equalized = tree;
 	anchors.forEach((anchor, i) => {
 		const split = splitCreatedBySplitting(equalized, anchor);
-		if (!split) {
-			log.warn("Hunter column: could not re-find the split created off a pane", { taskId: taskId.slice(0, 8), anchor });
-			return;
-		}
+		if (!split) throw new Error(`the split opened off ${anchor} is no longer in the layout`);
 		equalized = setSplitRatio(equalized, split.id, ratios[i]);
 	});
-	if (equalized !== tree) await setNativeTaskPaneLayout(taskId, equalized);
+	await setNativeTaskPaneLayout(taskId, equalized);
 }
 
 /**
- * Undo a native launch that could not open every hunter, and build the error the
- * user sees. A close that fails is NAMED in that error — claiming "none were
- * kept" while panes are still on screen is the one outcome this must never
- * produce.
+ * Undo a native launch that went wrong, and build the error the user sees.
+ * `headline` says what actually failed; this adds what the cleanup achieved.
+ *
+ * A close that fails is NAMED — claiming the launch was rolled back while panes
+ * are still on screen is the one outcome this must never produce.
  */
 async function rollBackNativeHunters(
 	task: Task,
 	handles: AuxPaneHandle[],
 	socket: string,
 	focusedBefore: string | null,
-	requestedCount: number,
-	cause: unknown,
+	headline: string,
 ): Promise<Error> {
 	const stuck: string[] = [];
 	for (const handle of handles) {
@@ -2756,17 +2757,13 @@ async function rollBackNativeHunters(
 	}
 	if (focusedBefore) await focusNativeTaskPane(task.id, focusedBefore).catch(() => {});
 
-	const opened = handles.length;
 	if (stuck.length > 0) {
 		return new Error(
-			`Only ${opened} of ${requestedCount} bug hunters could be started (${String(cause)}), ` +
-				`and ${stuck.length} of the panes already opened could not be closed again — ` +
-				`${stuck.join(", ")} ${stuck.length === 1 ? "is" : "are"} still open. Close ${stuck.length === 1 ? "it" : "them"} by hand.`,
+			`${headline}; the rollback could not close ${stuck.join(", ")} — ` +
+				`${stuck.length === 1 ? "that pane is" : "those panes are"} still open, close ${stuck.length === 1 ? "it" : "them"} by hand.`,
 		);
 	}
-	return new Error(
-		`Only ${opened} of ${requestedCount} bug hunters could be started, so none were kept: ${String(cause)}`,
-	);
+	return new Error(`${headline}; launch rolled back.`);
 }
 
 async function spawnBugHuntersInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number; accountId?: string | null }): Promise<{ spawned: number }> {
@@ -2849,7 +2846,13 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				opened: handles.length,
 				error: String(err),
 			});
-			throw await rollBackNativeHunters(task, handles, socket, focusedBefore, requestedCount, err);
+			throw await rollBackNativeHunters(
+				task,
+				handles,
+				socket,
+				focusedBefore,
+				`Only ${handles.length} of ${requestedCount} bug hunters could be started (${String(err)})`,
+			);
 		}
 	}
 
@@ -2858,12 +2861,21 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	// ratios of exactly the splits this launch created — the agent's own pane and
 	// anything that was open before keep their geometry untouched.
 	if (native && nativeAnchors.length > 0) {
-		await equalizeNativeHunterColumn(params.taskId, nativeAnchors).catch((err) =>
-			log.warn("Could not even out the native bug hunter column", {
+		try {
+			await equalizeNativeHunterColumn(params.taskId, nativeAnchors);
+		} catch (err) {
+			log.error("Could not even out the native bug hunter column — rolling the launch back", {
 				taskId: params.taskId.slice(0, 8),
 				error: String(err),
-			}),
-		);
+			});
+			throw await rollBackNativeHunters(
+				task,
+				handles,
+				socket,
+				focusedBefore,
+				`All ${handles.length} hunter panes opened, but the column could not be laid out evenly (${String(err)})`,
+			);
+		}
 	}
 
 	// After the agents have had time to boot, paste the branch-scoped bug-hunter
@@ -2905,8 +2917,8 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				handles,
 				socket,
 				focusedBefore,
-				requestedCount,
-				`the hunt prompt never reached ${undelivered.join(", ")}`,
+				`All ${handles.length} hunter ${handles.length === 1 ? "pane" : "panes"} opened, ` +
+					`but the hunt prompt never reached ${undelivered.join(", ")}`,
 			);
 		}
 	} else {

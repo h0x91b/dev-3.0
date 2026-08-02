@@ -10,6 +10,7 @@ import {
 	getPaneRects,
 	listPaneIds,
 	serializeSplitTree,
+	setSplitRatio,
 	splitPane,
 	type SplitOrientation,
 	type SplitTree,
@@ -8670,8 +8671,17 @@ describe("handlers.spawnBugHuntersInTask on a native task", () => {
 	 * layout is a REAL SplitTree driven by the shared split-tree functions, so the
 	 * geometry assertions measure what the app would draw.
 	 */
-	function arrangeNativePaneSet(opts: { failAtSplit?: number; closeAlwaysFails?: boolean } = {}) {
-		let tree = createSplitTree();
+	function arrangeNativePaneSet(opts: {
+		failAtSplit?: number;
+		closeAlwaysFails?: boolean;
+		/** A pane set the task already had before Find bugs was clicked. */
+		seed?: SplitTree;
+		/** The layout read-back returns nothing, as if the coordinator vanished. */
+		layoutUnreadable?: boolean;
+		/** Publishing the evened-out column fails. */
+		publishFails?: boolean;
+	} = {}) {
+		let tree = opts.seed ?? createSplitTree();
 		const state = () => ({
 			taskId: TASK_ID,
 			panes: listPaneIds(tree).map((paneId) => ({ paneId, sessionId: `${paneId}-s`, hostPid: 1, shellPid: 2, cols: 80, rows: 24, alive: true })),
@@ -8679,8 +8689,9 @@ describe("handlers.spawnBugHuntersInTask on a native task", () => {
 			activePaneId: tree.activePaneId,
 		});
 		mockNativePanes.nativeTaskPanesState.mockImplementation(async () => state() as any);
-		mockNativePanes.nativeTaskPaneLayout.mockImplementation(async () => tree as any);
+		mockNativePanes.nativeTaskPaneLayout.mockImplementation(async () => (opts.layoutUnreadable ? null : (tree as any)));
 		mockNativePanes.setNativeTaskPaneLayout.mockImplementation(async (_taskId: string, next: SplitTree) => {
+			if (opts.publishFails) throw new Error("coordinator refused the geometry");
 			tree = next;
 			return state() as any;
 		});
@@ -8707,6 +8718,7 @@ describe("handlers.spawnBugHuntersInTask on a native task", () => {
 			paneIds: () => listPaneIds(tree),
 			activePaneId: () => tree.activePaneId,
 			rects: () => getPaneRects(tree),
+			tree: () => tree,
 		};
 	}
 
@@ -8815,7 +8827,10 @@ describe("handlers.spawnBugHuntersInTask on a native task", () => {
 		const set = arrangeNativePaneSet();
 		mockSendPromptToNativePane.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
-		await expect(launchHunters(2)).rejects.toThrow(/the hunt prompt never reached pane-3/);
+		// Not "only 2 of 2 could be started" — the panes DID open, the prompt did not land.
+		await expect(launchHunters(2)).rejects.toThrow(
+			"All 2 hunter panes opened, but the hunt prompt never reached pane-3; launch rolled back.",
+		);
 
 		expect(set.paneIds()).toEqual(["pane-1"]);
 		expect(set.activePaneId()).toBe("pane-1");
@@ -8844,17 +8859,79 @@ describe("handlers.spawnBugHuntersInTask on a native task", () => {
 		expect(set.activePaneId()).toBe("pane-1");
 	});
 
-	// "None were kept" must never be printed over panes that are still on screen.
+	// "Rolled back" must never be printed over panes that are still on screen.
 	it("names the panes it could not close when the rollback itself fails", async () => {
 		arrangeNativeTask();
 		const set = arrangeNativePaneSet({ failAtSplit: 3, closeAlwaysFails: true });
 
 		await expect(launchHunters(4)).rejects.toThrow(
-			/2 of the panes already opened could not be closed again — pane-2, pane-3 are still open/,
+			/the rollback could not close pane-2, pane-3 — those panes are still open, close them by hand\./,
 		);
 
 		expect(set.paneIds()).toEqual(["pane-1", "pane-2", "pane-3"]);
 		expect(set.activePaneId()).toBe("pane-1");
+	});
+
+	// Geometry is part of the result, not a nice-to-have: reporting a launched
+	// column that is actually drawn 50/25/25 is the silent wrong answer.
+	it("fails the launch when the layout cannot be read back", async () => {
+		arrangeNativeTask();
+		const set = arrangeNativePaneSet({ layoutUnreadable: true });
+
+		await expect(launchHunters(3)).rejects.toThrow(
+			"All 3 hunter panes opened, but the column could not be laid out evenly " +
+				"(Error: the task's native pane layout could not be read back); launch rolled back.",
+		);
+
+		expect(set.paneIds()).toEqual(["pane-1"]);
+		expect(set.activePaneId()).toBe("pane-1");
+	});
+
+	it("fails the launch when the evened-out column cannot be published", async () => {
+		arrangeNativeTask();
+		const set = arrangeNativePaneSet({ publishFails: true });
+
+		await expect(launchHunters(3)).rejects.toThrow(
+			/the column could not be laid out evenly \(Error: coordinator refused the geometry\); launch rolled back\./,
+		);
+
+		expect(set.paneIds()).toEqual(["pane-1"]);
+		expect(set.activePaneId()).toBe("pane-1");
+	});
+
+	it("fails the launch when a split it made is gone from the layout", async () => {
+		arrangeNativeTask();
+		const set = arrangeNativePaneSet();
+		// The layout read-back no longer contains the hunter panes at all.
+		mockNativePanes.nativeTaskPaneLayout.mockResolvedValue(createSplitTree() as any);
+
+		await expect(launchHunters(3)).rejects.toThrow(/the split opened off pane-2 is no longer in the layout/);
+
+		expect(set.paneIds()).toEqual(["pane-1"]);
+	});
+
+	it("evens out its own column without moving a pane the task already had", async () => {
+		arrangeNativeTask();
+		// The task already runs a dev-server pane below the agent, at a ratio the user
+		// dragged to 70/30 — nothing about this launch may touch it.
+		let seed = splitPane(createSplitTree(), "pane-1", "vertical");
+		const existingSplit = (seed.root as { id: string }).id;
+		seed = setSplitRatio(seed, existingSplit, 0.7);
+		seed = activatePane(seed, "pane-1");
+		const before = getPaneRects(seed).get("pane-2");
+		const set = arrangeNativePaneSet({ seed });
+
+		await launchHunters(3);
+
+		const rects = set.rects();
+		// The pre-existing pane and its split ratio are byte-identical.
+		expect(rects.get("pane-2")).toEqual(before);
+		expect((set.tree().root as { ratio: number }).ratio).toBe(0.7);
+		// …while the hunter column this launch opened is exactly equal.
+		const hunterHeights = ["pane-3", "pane-4", "pane-5"].map((id) => rects.get(id)!.height);
+		expect(hunterHeights[0]).toBeCloseTo(hunterHeights[1], 10);
+		expect(hunterHeights[1]).toBeCloseTo(hunterHeights[2], 10);
+		expect(hunterHeights[0] * 3).toBeCloseTo(0.7, 10);
 	});
 
 	it("reports honestly when the native terminal is not running", async () => {
