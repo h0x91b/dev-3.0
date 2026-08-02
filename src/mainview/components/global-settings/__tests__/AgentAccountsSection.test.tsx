@@ -158,7 +158,7 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		await screen.findByText("System login (~/.claude)");
 
-		const addButtons = screen.getAllByText("+ Add account");
+		const addButtons = screen.getAllByText("Add account");
 		await user.click(addButtons[0]);
 
 		expect(await screen.findByText("CLAUDE_CONFIG_DIR='/x' claude /login")).toBeTruthy();
@@ -179,7 +179,7 @@ describe("AgentAccountsSection", () => {
 		const user = userEvent.setup();
 		renderSection();
 		await screen.findByText("System login (~/.claude)");
-		await user.click(screen.getAllByText("+ Add account")[0]);
+		await user.click(screen.getAllByText("Add account")[0]);
 		await screen.findByText("CLAUDE_CONFIG_DIR='/x' claude /login");
 
 		await user.click(screen.getByText("Cancel"));
@@ -221,7 +221,7 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		await screen.findByText("System login (~/.claude)");
 
-		await user.click(screen.getByText("+ API profile"));
+		await user.click(screen.getByText("Add API profile"));
 		await user.type(screen.getByPlaceholderText("https://openrouter.ai/api"), "https://openrouter.ai/api");
 		await user.type(screen.getByPlaceholderText("sk-ant-…"), "sk-or-123");
 		await user.type(screen.getByPlaceholderText(/CLAUDE_CODE_USE_BEDROCK/), "AWS_REGION=us-east-1");
@@ -245,7 +245,7 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		await screen.findByText("System login (~/.claude)");
 
-		await user.click(screen.getByText("+ API profile"));
+		await user.click(screen.getByText("Add API profile"));
 		expect((screen.getByText("Add profile") as HTMLButtonElement).disabled).toBe(true);
 		expect(mockedApi.request.addAgentApiProfile).not.toHaveBeenCalled();
 	});
@@ -318,7 +318,7 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 
 		await screen.findByText("OpenRouter");
-		await user.click(screen.getByLabelText("Edit API profile"));
+		await user.click(screen.getByLabelText("Edit API profile — OpenRouter"));
 
 		// Form is prefilled from the draft, including the (masked) key value.
 		// Master field is the one carrying the current model value (its placeholder
@@ -354,7 +354,7 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		await screen.findByText("System login (~/.claude)");
 
-		await user.click(screen.getByText("+ API profile"));
+		await user.click(screen.getByText("Add API profile"));
 		// The Haiku slot's Model ID placeholder is a deepseek example.
 		const haikuId = screen.getByPlaceholderText("deepseek/deepseek-v4-flash");
 		await user.type(haikuId, "provider/my-fast-model");
@@ -396,7 +396,7 @@ describe("AgentAccountsSection", () => {
 		const user = userEvent.setup();
 		renderSection();
 		await screen.findByText("OpenRouter");
-		await user.click(screen.getByLabelText("Edit API profile"));
+		await user.click(screen.getByLabelText("Edit API profile — OpenRouter"));
 
 		const keyInput = (await screen.findByPlaceholderText("sk-ant-…")) as HTMLInputElement;
 		expect(keyInput.type).toBe("password");

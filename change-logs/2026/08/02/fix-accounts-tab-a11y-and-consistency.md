@@ -1,0 +1,1 @@
+Improve the Accounts settings tab: account rows now use proper radio-group semantics with arrow-key navigation and account-specific accessible names for the Remove/Rename/Edit-API actions; the slot grids collapse on narrow widths; and several action buttons gain the app's standard press-scale feedback.

@@ -155,14 +155,28 @@ function AccountRow({
 			className={`flex flex-wrap items-center gap-2.5 px-3 py-2 bg-elevated border rounded-lg transition-colors ${
 				isActive ? "border-accent/50" : "border-edge"
 			} ${onActivate && !isActive ? "cursor-pointer hover:bg-elevated-hover" : ""}`}
-			role={onActivate ? "button" : undefined}
-			tabIndex={onActivate ? 0 : undefined}
+			role="radio"
+			aria-checked={isActive}
+			// One tab stop for the group (the checked row); the rest come in via the arrows.
+			tabIndex={isActive ? 0 : -1}
 			onClick={onActivate}
 			onKeyDown={(event) => {
-				if (onActivate && (event.key === "Enter" || event.key === " ")) {
-					event.preventDefault();
-					onActivate();
+				if (event.key === "Enter" || event.key === " ") {
+					if (onActivate) {
+						event.preventDefault();
+						onActivate();
+					}
+					return;
 				}
+				if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+				event.preventDefault();
+				const radios = Array.from(
+					event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="radio"]') ?? [],
+				);
+				if (!radios.length) return;
+				const idx = radios.indexOf(event.currentTarget);
+				const next = radios[(idx + (event.key === "ArrowDown" ? 1 : -1) + radios.length) % radios.length];
+				next?.focus();
 			}}
 		>
 			<span
@@ -212,9 +226,9 @@ function AccountRow({
 							event.stopPropagation();
 							onEditApi();
 						}}
-						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-colors shrink-0"
+						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
 						title={t("settings.accountsEditApi")}
-						aria-label={t("settings.accountsEditApi")}
+						aria-label={t("settings.accountsEditApiFor", { label })}
 					>
 						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\uf044"}
@@ -228,9 +242,9 @@ function AccountRow({
 							setDraft(label);
 							setEditing(true);
 						}}
-						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-colors shrink-0"
+						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
 						title={t("settings.accountsRename")}
-						aria-label={t("settings.accountsRename")}
+						aria-label={t("settings.accountsRenameFor", { label })}
 					>
 						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\uf044"}
@@ -244,7 +258,8 @@ function AccountRow({
 							event.stopPropagation();
 							onRemove();
 						}}
-						className="text-danger text-xs hover:bg-danger/10 px-1.5 py-0.5 rounded transition-colors shrink-0"
+						className="text-danger text-xs hover:bg-danger/10 px-1.5 py-0.5 rounded transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
+						aria-label={t("settings.accountsRemoveFor", { label })}
 					>
 						{t("settings.accountsRemove")}
 					</button>
@@ -281,7 +296,7 @@ function LoginFlowCard({
 						setCopied(true);
 						setTimeout(() => setCopied(false), 2000);
 					}}
-					className="px-2.5 py-1.5 rounded bg-elevated border border-edge text-fg-2 text-xs hover:bg-elevated-hover transition-colors shrink-0"
+					className="px-2.5 py-1.5 rounded bg-elevated border border-edge text-fg-2 text-xs hover:bg-elevated-hover transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] shrink-0"
 				>
 					{copied ? t("settings.accountsCopied") : t("settings.accountsCopy")}
 				</button>
@@ -291,7 +306,7 @@ function LoginFlowCard({
 					type="button"
 					onClick={onVerify}
 					disabled={flow.verifying}
-					className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors"
+					className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
 				>
 					{flow.verifying ? t("settings.accountsVerifying") : t("settings.accountsVerify")}
 				</button>
@@ -299,7 +314,7 @@ function LoginFlowCard({
 					type="button"
 					onClick={onCancel}
 					disabled={flow.verifying}
-					className="px-3 py-1.5 rounded-lg text-fg-3 text-xs hover:text-fg hover:bg-elevated transition-colors disabled:opacity-50"
+					className="px-3 py-1.5 rounded-lg text-fg-3 text-xs hover:text-fg hover:bg-elevated transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
 				>
 					{t("settings.accountsCancelAdd")}
 				</button>
@@ -415,7 +430,7 @@ function SlotOverrideCard({
 				}}
 				className={API_INPUT_CLASS}
 			/>
-			<div className="grid grid-cols-2 gap-1.5">
+			<div className="grid grid-cols-1 [@container_(min-width:34rem)]:grid-cols-2 gap-1.5">
 				<input
 					type="text"
 					value={draft.name}
@@ -475,7 +490,7 @@ function ApiProfileFormCard({
 	}
 
 	return (
-		<div className="bg-base border border-accent/30 rounded-lg p-3 space-y-2.5">
+		<div className="bg-base border border-accent/30 rounded-lg p-3 space-y-2.5 [container-type:inline-size]">
 			<p className="text-fg-2 text-xs">{t("settings.accountsApiHint")}</p>
 			{field(t("settings.accountsApiLabel"), "label", "OpenRouter", t("settings.accountsApiLabelHint"))}
 			{field(t("settings.accountsApiBaseUrl"), "baseUrl", "https://openrouter.ai/api", t("settings.accountsApiBaseUrlHint"))}
@@ -492,7 +507,7 @@ function ApiProfileFormCard({
 					<button
 						type="button"
 						onClick={() => setShowKey((v) => !v)}
-						className="absolute inset-y-0 right-0 flex items-center px-2.5 text-fg-muted hover:text-fg transition-colors"
+						className="absolute inset-y-0 right-0 flex items-center px-2.5 text-fg-muted hover:text-fg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
 						title={showKey ? t("settings.accountsApiKeyHide") : t("settings.accountsApiKeyShow")}
 						aria-label={showKey ? t("settings.accountsApiKeyHide") : t("settings.accountsApiKeyShow")}
 					>
@@ -517,7 +532,7 @@ function ApiProfileFormCard({
 					text={masterActive ? t("settings.accountsApiSlotsDisabled") : t("settings.accountsApiSlotsTitle")}
 					body={t("settings.accountsApiSlotsHint")}
 				/>
-				<div className="grid grid-cols-2 gap-1.5">
+				<div className="grid grid-cols-1 [@container_(min-width:34rem)]:grid-cols-2 gap-1.5">
 					{CLAUDE_MODEL_SLOTS.map((slot) => (
 						<SlotOverrideCard
 							key={slot}
@@ -545,7 +560,7 @@ function ApiProfileFormCard({
 					type="button"
 					onClick={onSave}
 					disabled={!canSave}
-					className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors"
+					className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
 				>
 					{editing ? t("settings.accountsApiSave") : t("settings.accountsApiCreate")}
 				</button>
@@ -553,7 +568,7 @@ function ApiProfileFormCard({
 					type="button"
 					onClick={onCancel}
 					disabled={saving}
-					className="px-3 py-1.5 rounded-lg text-fg-3 text-xs hover:text-fg hover:bg-elevated transition-colors disabled:opacity-50"
+					className="px-3 py-1.5 rounded-lg text-fg-3 text-xs hover:text-fg hover:bg-elevated transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
 				>
 					{t("settings.accountsCancelAdd")}
 				</button>
@@ -745,7 +760,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 						type="button"
 						onClick={() => handleImport(kind)}
 						disabled={busy}
-						className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-colors disabled:opacity-50"
+						className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
 					>
 						{t("settings.accountsImportCurrent")}
 					</button>
@@ -753,22 +768,23 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 						type="button"
 						onClick={() => handleStartAdd(kind)}
 						disabled={busy || addFlow !== null || apiForm !== null}
-						className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-colors disabled:opacity-50"
+						className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
 					>
-						+ {t("settings.accountsAdd")}
+						{t("settings.accountsAdd")}
 					</button>
 					{kind === "claude" ? (
 						<button
 							type="button"
 							onClick={() => setApiForm(EMPTY_API_FORM)}
 							disabled={busy || addFlow !== null || apiForm !== null}
-							className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-colors disabled:opacity-50"
+							className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
 						>
-							+ {t("settings.accountsAddApi")}
+							{t("settings.accountsAddApiButton")}
 						</button>
 					) : null}
 				</div>
 				<div className="space-y-1.5">
+					<div role="radiogroup" aria-label={title} className="space-y-1.5">
 					{extraRows}
 					{accounts.map((account) => (
 						<AccountRow
@@ -785,6 +801,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							t={t}
 						/>
 					))}
+					</div>
 					{accounts.length === 0 && !extraRows && !emptyHint ? (
 						<p className="text-fg-muted text-xs">{t("settings.accountsNoneYet")}</p>
 					) : null}
