@@ -55,12 +55,27 @@ function launchSpec() {
 	return { executable: "/bin/zsh", argv: ["/tmp/dev3/run.sh"], cwd: "/tmp/wt", env: { DEV3_TASK_ID: "aabbccdd" } };
 }
 
+/**
+ * `nativeHostLauncher` builds the child env by spreading `process.env`, so any
+ * DEV3_NATIVE_SESSION_* variable already in the ambient environment lands in the
+ * assertion. A shell running inside a dev3 NATIVE pane (not tmux) has exactly
+ * those exported by its host, which made this suite fail for an agent working in
+ * one and pass everywhere else — read as pre-existing repo breakage twice before
+ * the cause was found. The environment is the test's to control, not the run's.
+ */
+function clearAmbientNativeSessionEnv(): void {
+	for (const key of Object.keys(process.env)) {
+		if (key.indexOf("DEV3_NATIVE_SESSION") === 0) delete process.env[key];
+	}
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(existsSync).mockImplementation(realFs.existsSync);
 	vi.mocked(realpathSync).mockImplementation(realFs.realpathSync as never);
 	mkdirSync(TEST_ROOT, { recursive: true });
 	writeFileSync(ENTRYPOINT, "// built host bundle\n");
+	clearAmbientNativeSessionEnv();
 	delete process.env[NATIVE_HOST_ENTRYPOINT_ENV];
 	delete process.env[NATIVE_HOST_RUNTIME_ENV];
 });
