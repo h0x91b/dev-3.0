@@ -302,6 +302,25 @@ function findSplit(node: SplitNode, splitId: string): SplitBranchNode | null {
 	return findSplit(node.first, splitId) ?? findSplit(node.second, splitId);
 }
 
+function findSplitByFirstPane(node: SplitNode, paneId: string): SplitBranchNode | null {
+	if (node.type === "pane") return null;
+	if (node.first.type === "pane" && node.first.id === paneId) return node;
+	return findSplitByFirstPane(node.first, paneId) ?? findSplitByFirstPane(node.second, paneId);
+}
+
+/**
+ * The split that was created by splitting `paneId` — the one holding it as its
+ * FIRST child. {@link splitPane} always puts the pane it split there and the new
+ * pane second, and later splits replace a pane node deeper in the tree, so this
+ * stays the same branch for as long as that pane is not split again.
+ *
+ * A caller that opened several panes in a row can therefore re-find each split it
+ * made and set its ratio, without having to remember generated split ids.
+ */
+export function splitCreatedBySplitting(tree: SplitTree, paneId: string): SplitBranchNode | null {
+	return findSplitByFirstPane(tree.root, paneId);
+}
+
 export function setSplitRatio(tree: SplitTree, splitId: string, ratio: number): SplitTree {
 	if (!Number.isFinite(ratio) || !findSplit(tree.root, splitId)) return tree;
 	const bounded = Math.min(MAX_SPLIT_RATIO, Math.max(MIN_SPLIT_RATIO, ratio));

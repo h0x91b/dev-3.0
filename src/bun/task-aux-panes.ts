@@ -58,9 +58,9 @@ export interface AuxPaneHandle {
 	paneId: string;
 }
 
-export interface OpenAuxPaneSpec {
+/** What a new pane runs and where — shared by every way of opening one. */
+export interface TaskPaneLaunch {
 	task: Task;
-	purpose: AuxPanePurpose;
 	placement: AuxPanePlacement;
 	/** tmux-only pane size (e.g. "50%"); the native SplitTree always splits evenly. */
 	size: string;
@@ -72,6 +72,10 @@ export interface OpenAuxPaneSpec {
 	/** What each backend runs. Often the same script, but not always. */
 	tmuxCommand: string;
 	nativeLaunch: TerminalLaunchSpec;
+}
+
+export interface OpenAuxPaneSpec extends TaskPaneLaunch {
+	purpose: AuxPanePurpose;
 }
 
 /**
@@ -217,19 +221,7 @@ export async function openAuxPane(spec: OpenAuxPaneSpec): Promise<AuxPaneHandle>
 
 // ── The backend-neutral primitive ─────────────────────────────────────────────
 
-export interface SplitTaskPaneSpec {
-	task: Task;
-	placement: AuxPanePlacement;
-	/** tmux-only pane size (e.g. "50%"); the native SplitTree always splits evenly. */
-	size: string;
-	cwd: string;
-	env?: Record<string, string>;
-	socket: string;
-	/** English pane title; tmux sets it on the pane, native derives it back from the command. */
-	title?: string;
-	/** What each backend runs. Often the same script, but not always. */
-	tmuxCommand: string;
-	nativeLaunch: TerminalLaunchSpec;
+export interface SplitTaskPaneSpec extends TaskPaneLaunch {
 	/** tmux split target — a session name or a pane id. Defaults to the task session. */
 	tmuxTarget?: string;
 	/** Native pane to split off. Defaults to the pane that currently has focus. */
@@ -302,17 +294,20 @@ export async function splitTaskPane(spec: SplitTaskPaneSpec): Promise<AuxPaneHan
 	}
 }
 
-/** Close one pane the caller opened, on whichever backend it lives. Best-effort. */
+/**
+ * Close one pane the caller opened, on whichever backend it lives, and PROVE it
+ * is gone. Deliberately not best-effort: the caller undoing a half-finished
+ * launch has to be able to say whether the panes really went away, and a
+ * swallowed failure there turns into a user-facing lie ("none were kept" while
+ * two panes are still on screen).
+ */
 export async function closeTaskPane(task: Task, handle: AuxPaneHandle, socket: string): Promise<void> {
 	if (handle.backend === "native") {
-		await closeNativeTaskPane(task.id, handle.paneId).catch((err) =>
-			log.warn("closeTaskPane: native pane close failed", {
-				taskId: task.id.slice(0, 8),
-				paneId: handle.paneId,
-				error: String(err),
-			}),
-		);
+		const { state } = await closeNativeTaskPane(task.id, handle.paneId);
+		if (state?.panes.some((pane) => pane.paneId === handle.paneId)) {
+			throw new Error(`native pane ${handle.paneId} is still in the pane set after closing it`);
+		}
 		return;
 	}
-	await tmux.killPane(handle.paneId, { socket, bestEffort: true });
+	await tmux.killPane(handle.paneId, { socket });
 }

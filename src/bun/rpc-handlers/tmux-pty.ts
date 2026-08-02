@@ -43,7 +43,14 @@ import {
 import { markAgentPane } from "../agent-prompt";
 import { dev3TaskTempPath } from "../temp-paths";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
-import { focusNativeTaskPane, nativeTaskPanesAlive, nativeTaskPanesState } from "../native-task-panes";
+import {
+	focusNativeTaskPane,
+	nativeTaskPaneLayout,
+	nativeTaskPanesAlive,
+	nativeTaskPanesState,
+	setNativeTaskPaneLayout,
+} from "../native-task-panes";
+import { setSplitRatio, splitCreatedBySplitting } from "../../shared/split-tree";
 import { sendPromptToNativePane } from "../agent-prompt-native";
 import {
 	auxPaneAlive,
@@ -2531,6 +2538,10 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 const BUG_HUNTER_AUTOTYPE_DELAY_MS = 5000;
 const BUG_HUNTER_ENTER_DELAY_MS = 800;
 
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // Resolve the comparison ref for bug-hunter scoping, mirroring the renderer's
 // getDefaultTaskCompareRef (src/mainview/components/task-info-panel/useTaskBranchStatus.ts)
 // so the lightbox path honors the project's configured compare ref instead of
@@ -2683,6 +2694,81 @@ async function spawnSingleBugHunterPane(opts: {
 	return { handle, baseCmd: resolvedBaseCmd };
 }
 
+/**
+ * The ratio each split of a hunter column needs so the panes end up equal.
+ *
+ * The splits form a right-nested chain: the first one holds hunter 1 against
+ * everything below it, the next holds hunter 2 against what is left, and so on.
+ * So split `i` (0-based) must give its first child `1 / (count - i)` of what it
+ * received. For 3 hunters → 1/3 then 1/2; for 6 → 1/6, 1/5, 1/4, 1/3, 1/2.
+ */
+export function nativeHunterColumnRatios(count: number): number[] {
+	return Array.from({ length: Math.max(0, count - 1) }, (_, i) => 1 / (count - i));
+}
+
+/**
+ * Even out the hunter column of a native task, touching only the splits this
+ * launch created. `anchors[i]` is the pane that was split to open hunter `i + 2`,
+ * which is how each split is re-found without remembering generated split ids.
+ */
+async function equalizeNativeHunterColumn(taskId: string, anchors: string[]): Promise<void> {
+	const tree = await nativeTaskPaneLayout(taskId);
+	if (!tree) return;
+	const ratios = nativeHunterColumnRatios(anchors.length + 1);
+	let equalized = tree;
+	anchors.forEach((anchor, i) => {
+		const split = splitCreatedBySplitting(equalized, anchor);
+		if (!split) {
+			log.warn("Hunter column: could not re-find the split created off a pane", { taskId: taskId.slice(0, 8), anchor });
+			return;
+		}
+		equalized = setSplitRatio(equalized, split.id, ratios[i]);
+	});
+	if (equalized !== tree) await setNativeTaskPaneLayout(taskId, equalized);
+}
+
+/**
+ * Undo a native launch that could not open every hunter, and build the error the
+ * user sees. A close that fails is NAMED in that error — claiming "none were
+ * kept" while panes are still on screen is the one outcome this must never
+ * produce.
+ */
+async function rollBackNativeHunters(
+	task: Task,
+	handles: AuxPaneHandle[],
+	socket: string,
+	focusedBefore: string | null,
+	requestedCount: number,
+	cause: unknown,
+): Promise<Error> {
+	const stuck: string[] = [];
+	for (const handle of handles) {
+		try {
+			await closeTaskPane(task, handle, socket);
+		} catch (err) {
+			stuck.push(handle.paneId);
+			log.error("Rolling back a bug hunter pane failed — it is still open", {
+				taskId: task.id.slice(0, 8),
+				paneId: handle.paneId,
+				error: String(err),
+			});
+		}
+	}
+	if (focusedBefore) await focusNativeTaskPane(task.id, focusedBefore).catch(() => {});
+
+	const opened = handles.length;
+	if (stuck.length > 0) {
+		return new Error(
+			`Only ${opened} of ${requestedCount} bug hunters could be started (${String(cause)}), ` +
+				`and ${stuck.length} of the panes already opened could not be closed again — ` +
+				`${stuck.join(", ")} ${stuck.length === 1 ? "is" : "are"} still open. Close ${stuck.length === 1 ? "it" : "them"} by hand.`,
+		);
+	}
+	return new Error(
+		`Only ${opened} of ${requestedCount} bug hunters could be started, so none were kept: ${String(cause)}`,
+	);
+}
+
 async function spawnBugHuntersInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number; accountId?: string | null }): Promise<{ spawned: number }> {
 	log.info("→ spawnBugHuntersInTask", { taskId: params.taskId.slice(0, 8), count: params.count, agentId: params.agentId });
 
@@ -2725,8 +2811,9 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	// would also shrink the main left pane to 1/N of the window, which broke the
 	// layout in the first iteration). Formula: at split i (1-indexed, 1..N-1), the
 	// new pane takes (N-i)/(N-i+1) of the target's current size. For N=3 → 67, 50.
-	// For N=6 → 83, 80, 75, 67, 50. The native SplitTree always splits evenly, so
-	// the size is ignored there.
+	// For N=6 → 83, 80, 75, 67, 50. The native SplitTree ignores the size and always
+	// halves, which is why the native path re-publishes the column ratios below.
+	const nativeAnchors: string[] = [];
 	for (let i = 1; i < requestedCount; i++) {
 		const previous = handles[handles.length - 1] ?? first.handle;
 		if (!previous.paneId) break;
@@ -2744,7 +2831,10 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				accountId: params.accountId,
 				split: { placement: "below", size: `${percent}%`, tmuxTarget: previous.paneId, nativeAnchor: previous.paneId },
 			});
-			if (handle.paneId) handles.push(handle);
+			if (handle.paneId) {
+				nativeAnchors.push(previous.paneId);
+				handles.push(handle);
+			}
 		} catch (err) {
 			if (!native) {
 				// tmux: a failed split leaves nothing behind, and the panes that did
@@ -2759,48 +2849,27 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				opened: handles.length,
 				error: String(err),
 			});
-			for (const handle of handles) await closeTaskPane(task, handle, socket);
-			if (focusedBefore) await focusNativeTaskPane(params.taskId, focusedBefore).catch(() => {});
-			throw new Error(
-				`Only ${handles.length} of ${requestedCount} bug hunters could be started, so none were kept: ${String(err)}`,
-			);
+			throw await rollBackNativeHunters(task, handles, socket, focusedBefore, requestedCount, err);
 		}
+	}
+
+	// Native only: the SplitTree halves whatever it splits, so the chain above lands
+	// at 50/25/25 instead of the equal thirds the tmux path produces. Re-publish the
+	// ratios of exactly the splits this launch created — the agent's own pane and
+	// anything that was open before keep their geometry untouched.
+	if (native && nativeAnchors.length > 0) {
+		await equalizeNativeHunterColumn(params.taskId, nativeAnchors).catch((err) =>
+			log.warn("Could not even out the native bug hunter column", {
+				taskId: params.taskId.slice(0, 8),
+				error: String(err),
+			}),
+		);
 	}
 
 	// After the agents have had time to boot, paste the branch-scoped bug-hunter
 	// slash command into each pane. The scope clause is mandatory: hunters must
 	// only inspect files changed in this branch, never the whole codebase.
-	//
-	// On tmux the paste and the Enter are TWO separate send-keys calls with a delay
-	// — Claude Code's input layer can treat a fast send-keys "prompt Enter" sequence
-	// as a single bracketed paste (where the trailing Enter becomes a newline inside
-	// the paste, not a submit). Splitting them guarantees Enter arrives as a discrete
-	// keypress after the paste buffer has been processed. The native path gets the
-	// same two-step delivery from sendPromptToNativePane, which also resolves the
-	// pane's writer lease first.
 	const prompt = buildBugHunterPrompt(task, project, resolvedBaseCmd);
-	for (const handle of handles) {
-		const paneId = handle.paneId;
-		setTimeout(() => {
-			if (handle.backend === "native") {
-				sendPromptToNativePane(task, paneId, prompt).then(
-					(delivered) => {
-						if (!delivered) log.warn("Bug hunter prompt was not delivered to the native pane", { paneId });
-					},
-					(err) => log.warn("Bug hunter prompt delivery to the native pane failed", { paneId, error: String(err) }),
-				);
-				return;
-			}
-			tmux.sendKeys(paneId, [prompt], { socket, bestEffort: true }).catch((err) => {
-				log.warn("send-keys paste for bug hunter pane failed", { paneId, error: String(err) });
-			});
-			setTimeout(() => {
-				tmux.sendKeys(paneId, ["Enter"], { socket, bestEffort: true }).catch((err) => {
-					log.warn("send-keys Enter for bug hunter pane failed", { paneId, error: String(err) });
-				});
-			}, BUG_HUNTER_ENTER_DELAY_MS);
-		}, BUG_HUNTER_AUTOTYPE_DELAY_MS);
-	}
 
 	// The agent keeps the keyboard: a hunter pane became active on every split, and
 	// the main agent must not lose input just because hunters started.
@@ -2811,6 +2880,52 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				error: String(err),
 			}),
 		);
+	}
+
+	if (native) {
+		// A native delivery can be PROVEN — sendPromptToNativePane resolves the pane's
+		// writer lease and reports whether the text landed. So its verdict decides the
+		// launch: a hunter sitting at an empty prompt is not a hunter.
+		await sleep(BUG_HUNTER_AUTOTYPE_DELAY_MS);
+		const undelivered: string[] = [];
+		for (const handle of handles) {
+			try {
+				if (!(await sendPromptToNativePane(task, handle.paneId, prompt))) undelivered.push(handle.paneId);
+			} catch (err) {
+				undelivered.push(`${handle.paneId} (${String(err)})`);
+			}
+		}
+		if (undelivered.length > 0) {
+			log.error("Bug hunter prompt was not delivered — rolling the launch back", {
+				taskId: params.taskId.slice(0, 8),
+				undelivered,
+			});
+			throw await rollBackNativeHunters(
+				task,
+				handles,
+				socket,
+				focusedBefore,
+				requestedCount,
+				`the hunt prompt never reached ${undelivered.join(", ")}`,
+			);
+		}
+	} else {
+		// tmux cannot prove a delivery, so it stays fire-and-forget on the original
+		// timers. Paste and Enter are two send-keys calls: Claude Code's input layer
+		// reads a fast "prompt Enter" as one paste, newline included, and never submits.
+		for (const handle of handles) {
+			const paneId = handle.paneId;
+			setTimeout(() => {
+				tmux.sendKeys(paneId, [prompt], { socket, bestEffort: true }).catch((err) => {
+					log.warn("send-keys paste for bug hunter pane failed", { paneId, error: String(err) });
+				});
+				setTimeout(() => {
+					tmux.sendKeys(paneId, ["Enter"], { socket, bestEffort: true }).catch((err) => {
+						log.warn("send-keys Enter for bug hunter pane failed", { paneId, error: String(err) });
+					});
+				}, BUG_HUNTER_ENTER_DELAY_MS);
+			}, BUG_HUNTER_AUTOTYPE_DELAY_MS);
+		}
 	}
 
 	// Bump favorite usage — one per hunter actually spawned (all share the combo). Best-effort.

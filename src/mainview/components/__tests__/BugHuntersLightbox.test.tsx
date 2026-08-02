@@ -83,10 +83,6 @@ describe("BugHuntersLightbox", () => {
 		expect(screen.getByText("Review the latest [bug-hunt] notes on this task and work through the findings.")).toBeInTheDocument();
 	});
 
-	// The seq-1394 regression entered exactly here: the picker's defaults, one
-	// click on Launch hunters, and the backend then split a tmux pane on a native
-	// task. The dialog must send the launch and must show a failure instead of
-	// closing on one.
 	it("launches the picker's default hunter count and closes", async () => {
 		vi.mocked(api.request.spawnBugHuntersInTask).mockResolvedValue({ spawned: 3 });
 		const onClose = vi.fn();
