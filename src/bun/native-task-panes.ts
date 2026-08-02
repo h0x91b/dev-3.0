@@ -89,28 +89,38 @@ function coordinatorId(taskId: string): string {
 	return nativeTaskSessionId(taskId);
 }
 
-async function buildState(taskId: string): Promise<NativeTaskPanesState> {
-	const backend = getBackend();
-	const coordId = coordinatorId(taskId);
-	const [snapshots, layout] = await Promise.all([
-		backend.listPanes(coordId),
-		backend.paneLayout(coordId),
-	]);
-	const panes: NativeTaskPane[] = (snapshots ?? []).map((snap) => ({
-		paneId: snap.paneId,
-		sessionId: snap.sessionId,
-		hostPid: snap.hostPid,
-		shellPid: snap.shellPid,
-		cols: snap.cols,
-		rows: snap.rows,
-		alive: snap.state !== "dead",
-	}));
+/**
+ * The task's pane set from ONE ownership sweep. Recovery reconciles dead panes
+ * exactly as before and hands back the snapshots it just proved, so the panes and
+ * the layout come from the same instant instead of two consecutive `ps` passes.
+ * `null` means no pane survived — the same verdict `describeSession` returns.
+ */
+async function buildState(taskId: string): Promise<NativeTaskPanesState | null> {
+	const paneSet = await getBackend().readPaneSet(coordinatorId(taskId));
+	if (!paneSet) return null;
 	return {
 		taskId,
-		panes,
-		layout: layout ? serializeSplitTree(layout) : "",
-		activePaneId: layout?.activePaneId ?? "",
+		panes: paneSet.panes.map((snap) => ({
+			paneId: snap.paneId,
+			sessionId: snap.sessionId,
+			hostPid: snap.hostPid,
+			shellPid: snap.shellPid,
+			cols: snap.cols,
+			rows: snap.rows,
+			alive: snap.state !== "dead",
+		})),
+		layout: serializeSplitTree(paneSet.layout),
+		activePaneId: paneSet.layout.activePaneId ?? "",
 	};
+}
+
+/** {@link buildState} for the paths that just mutated the set, so it must exist. */
+async function requireState(taskId: string, operation: string): Promise<NativeTaskPanesState> {
+	const state = await buildState(taskId);
+	if (!state) {
+		throw new Error(`native pane set for task ${taskId.slice(0, 8)} vanished during ${operation}`);
+	}
+	return state;
 }
 
 /**
@@ -152,7 +162,7 @@ export async function startNativeTaskPanes(spec: StartNativeTaskPanesSpec): Prom
 
 	await backend.openSession({ id: coordId, cwd, env, launch, size: { cols, rows } });
 
-	const state = await buildState(taskId);
+	const state = await requireState(taskId, "start");
 	log.info("Native task panes started", {
 		taskId: taskId.slice(0, 8),
 		paneCount: state.panes.length,
@@ -166,19 +176,11 @@ export async function startNativeTaskPanes(spec: StartNativeTaskPanesSpec): Prom
  * Returns `null` when no coordinator record exists for this task.
  */
 export async function recoverNativeTaskPanes(taskId: string): Promise<NativeTaskPanesState | null> {
-	const backend = getBackend();
-	const coordId = coordinatorId(taskId);
-	const sessionState = await backend.describeSession(coordId);
-	if (!sessionState) return null;
 	return buildState(taskId);
 }
 
 /** Current pane set state; returns `null` when no live coordinator exists. */
 export async function nativeTaskPanesState(taskId: string): Promise<NativeTaskPanesState | null> {
-	const backend = getBackend();
-	const coordId = coordinatorId(taskId);
-	const sessionState = await backend.describeSession(coordId);
-	if (!sessionState) return null;
 	return buildState(taskId);
 }
 
@@ -248,8 +250,7 @@ export async function splitNativeTaskPane(
 	}
 
 	const second = await backend.splitView(coordId, fromPaneId, viewSpec);
-	const state = await buildState(taskId);
-	return { paneId: second.id, state };
+	return { paneId: second.id, state: await requireState(taskId, "split") };
 }
 
 /** Close a single pane. Closing the last pane tears the pane set down. */
@@ -260,11 +261,9 @@ export async function closeNativeTaskPane(
 	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
 	await backend.closeView(coordId, paneId);
-	const after = await backend.describeSession(coordId);
-	if (!after) {
-		return { sessionTornDown: true, state: null };
-	}
-	return { sessionTornDown: false, state: await buildState(taskId) };
+	// A null state IS the teardown signal: no pane of the set survived the close.
+	const state = await buildState(taskId);
+	return state ? { sessionTornDown: false, state } : { sessionTornDown: true, state: null };
 }
 
 /** Publish a geometry-only layout change (same pane set, new ratios/shape). */
@@ -272,7 +271,7 @@ export async function setNativeTaskPaneLayout(taskId: string, tree: SplitTree): 
 	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
 	await backend.publishPaneGeometry(coordId, tree);
-	return buildState(taskId);
+	return requireState(taskId, "setLayout");
 }
 
 /** Set the shared active pane (shared focus, not client-local). */
@@ -280,7 +279,7 @@ export async function focusNativeTaskPane(taskId: string, paneId: string): Promi
 	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
 	await backend.focusView(coordId, paneId);
-	return buildState(taskId);
+	return requireState(taskId, "focus");
 }
 
 /** Type into one native pane, exactly as a viewer's keystrokes would. */

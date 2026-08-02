@@ -232,6 +232,27 @@ export class NativeTerminalBackend implements TerminalBackend {
 
 	// ── Native-only methods (not on TerminalBackend; callers hold the concrete type) ──
 
+	/**
+	 * The whole pane set from ONE ownership sweep: per-pane snapshots and the
+	 * layout they were proved against. `describeSession` + `listPanes` answers the
+	 * same question with two sweeps, i.e. four `ps` probes per pane (seq 1388).
+	 * Returns `null` on the same condition as `describeSession`: no pane survives.
+	 */
+	async readPaneSet(id: TerminalSessionId): Promise<{ panes: PaneSnapshot[]; layout: SplitTree } | null> {
+		if (!isTerminalSessionId(id)) return null;
+		try {
+			const recovered = await NativeMultipaneCoordinator.recoverPaneSet(id, this.deps);
+			if (!recovered) {
+				this.coordinators.delete(id);
+				return null;
+			}
+			this.coordinators.set(id, recovered.coordinator);
+			return { panes: recovered.panes, layout: recovered.coordinator.layout };
+		} catch {
+			return null;
+		}
+	}
+
 	/** Per-pane host/shell pids, size, and liveness — not expressible via the contract. */
 	async listPanes(id: TerminalSessionId): Promise<PaneSnapshot[] | null> {
 		const coordinator = await this.getOrRecover(id);
