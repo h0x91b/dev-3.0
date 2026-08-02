@@ -161,33 +161,63 @@ function collectDescendants(rootPid: number): number[] {
 	}
 }
 
-function killTree(
+/**
+ * Signal the shell tree. `shellSignal` addresses the shell and its foreground
+ * group; `descendantSignal` addresses the individually-collected descendants.
+ *
+ * They differ on the graceful pass because an INTERACTIVE shell on a PTY ignores
+ * SIGTERM outright — measured: zsh survives it indefinitely and does not reap its
+ * jobs, so every graceful stop burned the full grace window and then SIGKILLed.
+ * SIGHUP is the hangup the shell is built to honour: it exits at once and HUPs its
+ * own jobs. Descendants keep SIGTERM so a server that traps it still gets the
+ * notification it got before.
+ */
+export interface KillTreeEffects {
+	signal: (pid: number, sig: NodeJS.Signals) => void;
+	descendants: (rootPid: number) => number[];
+}
+
+const defaultKillTreeEffects: KillTreeEffects = {
+	signal: (pid, sig) => process.kill(pid, sig),
+	descendants: collectDescendants,
+};
+
+export function killTree(
 	shellPid: number,
 	proc: { kill: (signal?: number | NodeJS.Signals) => void },
-	signal: NodeJS.Signals,
+	shellSignal: NodeJS.Signals,
+	descendantSignal: NodeJS.Signals = shellSignal,
+	effects: KillTreeEffects = defaultKillTreeEffects,
 ): void {
-	for (const pid of collectDescendants(shellPid)) {
+	for (const pid of effects.descendants(shellPid)) {
 		try {
-			process.kill(pid, signal);
+			effects.signal(pid, descendantSignal);
 		} catch {
 			// already gone
 		}
 	}
 	try {
-		process.kill(-shellPid, signal); // foreground process group
+		effects.signal(-shellPid, shellSignal); // foreground process group
 	} catch {
 		// no such group
 	}
 	try {
-		process.kill(shellPid, signal);
+		effects.signal(shellPid, shellSignal);
 	} catch {
 		try {
-			proc.kill(signal);
+			proc.kill(shellSignal);
 		} catch {
 			// already gone
 		}
 	}
 }
+
+/**
+ * The signals one graceful stop uses, named so the choice is testable without a
+ * real PTY. Reverting `shell` to SIGTERM is the regression this pair guards: an
+ * interactive PTY shell ignores it, so the whole grace window is wasted.
+ */
+export const GRACEFUL_STOP_SIGNALS = { shell: "SIGHUP", descendants: "SIGTERM" } as const;
 
 /**
  * Boot the host. Resolves once shell + transport are up and the record/token are
@@ -513,9 +543,10 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			process.exit(exitCode);
 			return;
 		}
-		killTree(shellPid, proc, "SIGTERM");
+		killTree(shellPid, proc, GRACEFUL_STOP_SIGNALS.shell, GRACEFUL_STOP_SIGNALS.descendants);
 		const exitedGracefully = await Promise.race([proc.exited.then(() => true), delay(1500).then(() => false)]);
 		if (!exitedGracefully) {
+			// Shell traps or ignores SIGHUP — the bounded escalation still applies.
 			killTree(shellPid, proc, "SIGKILL");
 			await Promise.race([proc.exited, delay(1000)]);
 		}

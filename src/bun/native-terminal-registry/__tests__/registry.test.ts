@@ -277,4 +277,17 @@ describe("native-session registry", () => {
 	it("stop of a missing session is idempotently true", async () => {
 		expect(await stop("nope", {}, deps(async () => "dead"))).toBe(true);
 	});
+
+	it("stop attributes its own phases to the observer", async () => {
+		writeToken("phased", "tp");
+		writeRecordAtomic(fakeRecord("phased", process.pid));
+		const seen: string[] = [];
+		await stop(
+			"phased",
+			{ timeoutMs: 1000, onPhase: (phase) => seen.push(phase) },
+			deps(async () => "reused"),
+		);
+		// A non-owned session never signals, so classify is the only phase it reaches.
+		expect(seen).toEqual(["classify"]);
+	});
 });

@@ -51,6 +51,9 @@ import {
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const CLEANUP_LOCK_TIMEOUT_MS = 5000;
+/** Exit-observation poll, backing off from responsive to cheap. */
+const STOP_POLL_MIN_MS = 5;
+const STOP_POLL_MAX_MS = 100;
 const CLEANUP_LOCK_STALE_THRESHOLD_MS = 60 * 60_000;
 
 export interface HostSpawnOptions {
@@ -124,6 +127,16 @@ export interface RegistryDeps {
 	classify: (record: NativeSessionRecord, token: string | null) => Promise<OwnershipVerdict>;
 	resolveLaunch: (spec: ShellLaunchSpec) => ShellLaunchSpec;
 }
+
+/** Named segments of one `stop()`, so a slow teardown can be attributed instead of guessed. */
+export type StopPhase =
+	| "classify"
+	| "handshake"
+	| "exitWait"
+	| "forceTerm"
+	| "forceKill";
+
+export type StopPhaseObserver = (phase: StopPhase, ms: number) => void;
 
 function hostEntry(): string {
 	return fileURLToPath(new URL("./cli.ts", import.meta.url));
@@ -366,14 +379,23 @@ export async function recoverSessions(
  */
 export async function stop(
 	sessionId: string,
-	opts: { timeoutMs?: number } = {},
+	opts: { timeoutMs?: number; onPhase?: StopPhaseObserver } = {},
 	deps: RegistryDeps = defaultDeps,
 ): Promise<boolean> {
+	const observe = opts.onPhase;
+	let mark = performance.now();
+	const phase = (name: StopPhase): void => {
+		if (!observe) return;
+		const now = performance.now();
+		observe(name, now - mark);
+		mark = now;
+	};
 	if (!isValidSessionId(sessionId)) return true;
 	const record = readRecord(sessionId);
 	if (!record) return true;
 	const token = readToken(sessionId);
 	const verdict = await deps.classify(record, token);
+	phase("classify");
 
 	// Not (or no longer) ours: never signal the PID — just drop token-matched state.
 	if (verdict !== "owned") {
@@ -406,16 +428,29 @@ export async function stop(
 		await client.connect(record, token as string, { timeoutMs: 3000 });
 		await client.requestStop({ timeoutMs: 3000 });
 		client.close();
+		phase("handshake");
 	} catch {
+		phase("handshake");
 		await forceOwnedTree(false);
+		phase("forceTerm");
 	}
 
 	const stateGone = (): boolean => readRecord(sessionId) === null || readToken(sessionId) !== token;
 	const deadline = Date.now() + (opts.timeoutMs ?? 8000);
+	// A healthy host is gone within a few ms of the handshake, so a flat 100 ms tick
+	// spent almost the whole observed close waiting on an already-dead process. Back
+	// off from 5 ms to the same 100 ms ceiling: identical deadline and exit condition,
+	// the common case just stops paying a full tick to notice.
+	let tick = STOP_POLL_MIN_MS;
 	while (Date.now() < deadline) {
-		if (stateGone() && !isProcessAlive(record.host.pid) && !isProcessAlive(record.shell.pid)) return true;
-		await delay(100);
+		if (stateGone() && !isProcessAlive(record.host.pid) && !isProcessAlive(record.shell.pid)) {
+			phase("exitWait");
+			return true;
+		}
+		await delay(tick);
+		tick = Math.min(tick * 2, STOP_POLL_MAX_MS);
 	}
+	phase("exitWait");
 
 	await forceOwnedTree(true);
 	const forceDeadline = Date.now() + 1500;
@@ -425,6 +460,7 @@ export async function stop(
 	}
 	const dead = !isProcessAlive(record.host.pid) && !isProcessAlive(record.shell.pid);
 	if (dead) removeSessionState(sessionId, token);
+	phase("forceKill");
 	return dead;
 }
 
