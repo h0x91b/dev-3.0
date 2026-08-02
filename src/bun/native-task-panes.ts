@@ -183,6 +183,20 @@ export async function nativeTaskPanesState(taskId: string): Promise<NativeTaskPa
 }
 
 /**
+ * The layout half of the state only: the shared tree plus its active pane. Skips
+ * the per-pane `ps` ownership sweep that {@link buildState} needs, which no pane
+ * ACTION reads — every action decides from the tree. Recovery still runs, so dead
+ * panes are reconciled exactly as before.
+ */
+export async function nativeTaskPaneLayout(taskId: string): Promise<SplitTree | null> {
+	const backend = getBackend();
+	const coordId = coordinatorId(taskId);
+	const sessionState = await backend.describeSession(coordId);
+	if (!sessionState) return null;
+	return backend.paneLayout(coordId);
+}
+
+/**
  * Split an existing pane, spawning a new independent shell in the task's own
  * cwd and env — both required, so a split can never land in `/tmp` with an empty
  * environment.
@@ -303,11 +317,19 @@ export async function stopNativeTaskPanes(taskId: string): Promise<void> {
  * Panes whose record is unreadable are reported with an empty command rather
  * than dropped, so the caller still sees the pane exists.
  */
-export async function nativeTaskPaneCommands(
-	taskId: string,
-): Promise<Array<{ paneId: string; sessionId: string; command: string[]; shellPid: number; alive: boolean }>> {
-	const state = await nativeTaskPanesState(taskId);
-	if (!state) return [];
+export interface NativeTaskPaneCommand {
+	paneId: string;
+	sessionId: string;
+	command: string[];
+	shellPid: number;
+	alive: boolean;
+}
+
+/**
+ * Same, from a state the caller already read. A pane action rebuilds the state once
+ * and needs the labels off it; re-reading would double the ownership sweep.
+ */
+export function nativeTaskPaneCommandsOf(state: NativeTaskPanesState): NativeTaskPaneCommand[] {
 	return state.panes.map((pane) => ({
 		paneId: pane.paneId,
 		sessionId: pane.sessionId,
@@ -315,6 +337,11 @@ export async function nativeTaskPaneCommands(
 		shellPid: pane.shellPid,
 		alive: pane.alive,
 	}));
+}
+
+export async function nativeTaskPaneCommands(taskId: string): Promise<NativeTaskPaneCommand[]> {
+	const state = await nativeTaskPanesState(taskId);
+	return state ? nativeTaskPaneCommandsOf(state) : [];
 }
 
 /**

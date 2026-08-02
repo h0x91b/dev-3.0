@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { NativeTaskPanesState } from "../../native-task-panes";
-import { createSplitTree, serializeSplitTree } from "../../../shared/split-tree";
+import { createSplitTree, restoreSplitTree, serializeSplitTree } from "../../../shared/split-tree";
 import { applySplitLayout } from "../../../shared/split-tree-layouts";
 
 // ── Mocks (hoisted so vi.mock factories can reference them) ──────────────────
@@ -32,7 +32,8 @@ const mocks = vi.hoisted(() => ({
 	taskTerminalBackendIdentity: vi.fn(),
 	// native-task-panes
 	nativeTaskPanesState: vi.fn(),
-	nativeTaskPaneCommands: vi.fn(async () => []),
+	nativeTaskPaneCommandsOf: vi.fn(() => []),
+	nativeTaskPaneLayout: vi.fn(),
 	splitNativeTaskPane: vi.fn(),
 	closeNativeTaskPane: vi.fn(),
 	focusNativeTaskPane: vi.fn(),
@@ -90,7 +91,8 @@ vi.mock("../../task-terminal-backend", () => ({
 
 vi.mock("../../native-task-panes", () => ({
 	nativeTaskPanesState: mocks.nativeTaskPanesState,
-	nativeTaskPaneCommands: mocks.nativeTaskPaneCommands,
+	nativeTaskPaneCommandsOf: mocks.nativeTaskPaneCommandsOf,
+	nativeTaskPaneLayout: mocks.nativeTaskPaneLayout,
 	splitNativeTaskPane: mocks.splitNativeTaskPane,
 	closeNativeTaskPane: mocks.closeNativeTaskPane,
 	focusNativeTaskPane: mocks.focusNativeTaskPane,
@@ -192,6 +194,12 @@ beforeEach(() => {
 	mocks.hasSession.mockReturnValue(true);
 	mocks.reattachNativeTaskSession.mockResolvedValue(true);
 	mocks.nativeTaskPanesState.mockResolvedValue(makeTwoPaneNativeState());
+	// The action path reads the layout only; in production it is the same tree the
+	// full state serializes, so derive it from whatever a case set up.
+	mocks.nativeTaskPaneLayout.mockImplementation(async () => {
+		const state = await mocks.nativeTaskPanesState();
+		return state?.layout ? restoreSplitTree(state.layout) : null;
+	});
 	mocks.splitNativeTaskPane.mockImplementation(async () => {
 		const state = makeTwoPaneNativeState();
 		return { paneId: "pane-2", state };
@@ -736,6 +744,65 @@ describe("tmuxNewWindow", () => {
 		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
 		await taskPanesHandlers.tmuxNewWindow({ taskId: TASK_ID });
 		expect(mocks.tmuxNewWindow).not.toHaveBeenCalled();
+	});
+});
+
+// ── Redundant work on the action path (seq 1382) ──────────────────────────────
+
+describe("native pane action reads only the layout", () => {
+	beforeEach(() => {
+		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
+		mocks.getTask.mockResolvedValue({ id: TASK_ID, terminalBackend: "native", worktreePath: "/tmp/wt" } as any);
+		// Serve the tree directly, so a call to the full-state read can only come
+		// from the handler itself.
+		mocks.nativeTaskPaneLayout.mockResolvedValue(restoreSplitTree(makeTwoPaneNativeState().layout));
+		mocks.nativeTaskPanesState.mockClear();
+	});
+
+	it("does not run the per-pane ownership sweep for a layout preset", async () => {
+		await taskPanesHandlers.taskPaneAction({
+			taskId: TASK_ID,
+			action: { kind: "layoutPreset", preset: "evenV" },
+		});
+		expect(mocks.nativeTaskPaneLayout).toHaveBeenCalledWith(TASK_ID);
+		expect(mocks.nativeTaskPanesState).not.toHaveBeenCalled();
+	});
+
+	it("does not run it for a layout cycle either", async () => {
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "layoutCycle" } });
+		expect(mocks.nativeTaskPanesState).not.toHaveBeenCalled();
+	});
+
+	it("does not run it for a split", async () => {
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "splitH" } });
+		expect(mocks.nativeTaskPanesState).not.toHaveBeenCalled();
+	});
+
+	// PR #1222 gave aux panes real titles; an action must return them too, or a split
+	// would blank "Dev Server" back to "Pane 2" until the next poll.
+	it("keeps auxiliary pane labels in the state an action returns", async () => {
+		mocks.nativeTaskPaneCommandsOf.mockReturnValue([
+			{ paneId: "pane-2", sessionId: "s2", command: ["/bin/bash", "dev-server"], shellPid: 2, alive: true },
+		]);
+		const result = await taskPanesHandlers.taskPaneAction({
+			taskId: TASK_ID,
+			action: { kind: "layoutCycle" },
+		});
+		expect(mocks.nativeTaskPaneCommandsOf).toHaveBeenCalled();
+		expect(result.panes.map((p) => p.paneId)).toContain("pane-2");
+	});
+
+	it("still reports the full state for an action that changed nothing", async () => {
+		mocks.nativeTaskPanesState.mockResolvedValue(makeSingleNativeState());
+		mocks.nativeTaskPaneLayout.mockImplementation(async () => {
+			const state = await mocks.nativeTaskPanesState();
+			return state?.layout ? restoreSplitTree(state.layout) : null;
+		});
+		const result = await taskPanesHandlers.taskPaneAction({
+			taskId: TASK_ID,
+			action: { kind: "close" },
+		});
+		expect(result.panes).toHaveLength(1);
 	});
 });
 

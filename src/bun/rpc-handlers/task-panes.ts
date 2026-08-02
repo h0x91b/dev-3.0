@@ -20,12 +20,14 @@ import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { buildTaskLifecycleEnv } from "./shared-pure";
 import { auxPaneTitle, auxPurposeOfCommand } from "../task-aux-panes";
 import {
-	nativeTaskPaneCommands,
+	nativeTaskPaneCommandsOf,
+	nativeTaskPaneLayout,
 	nativeTaskPanesState,
 	splitNativeTaskPane,
 	closeNativeTaskPane,
 	focusNativeTaskPane,
 	setNativeTaskPaneLayout,
+	type NativeTaskPanesState,
 } from "../native-task-panes";
 import {
 	readPaneLayout,
@@ -188,9 +190,9 @@ function detectLayoutPreset(tree: SplitTree): TaskPaneLayoutPreset | null {
  * pane's launch command — nothing is stored, so a label survives an app restart
  * exactly as long as the pane itself does.
  */
-async function nativeAuxPaneLabels(taskId: string): Promise<Map<string, string>> {
+function nativeAuxPaneLabels(taskId: string, state: NativeTaskPanesState): Map<string, string> {
 	const labels = new Map<string, string>();
-	for (const pane of await nativeTaskPaneCommands(taskId)) {
+	for (const pane of nativeTaskPaneCommandsOf(state)) {
 		const purpose = auxPurposeOfCommand(taskId, pane.command);
 		if (purpose) labels.set(pane.paneId, auxPaneTitle(purpose));
 	}
@@ -280,7 +282,7 @@ async function taskPaneState(params: { taskId: string }): Promise<TaskPaneState>
 			};
 		}
 		const tree = nativeState.layout ? restoreSplitTree(nativeState.layout) : null;
-		return nativeStateToTaskPaneState(nativeState, tree, await nativeAuxPaneLabels(params.taskId));
+		return nativeStateToTaskPaneState(nativeState, tree, nativeAuxPaneLabels(params.taskId, nativeState));
 	}
 
 	return tmuxTaskPaneState(params.taskId);
@@ -389,18 +391,19 @@ async function splitContext(taskId: string): Promise<{ cwd: string; env: Record<
 }
 
 async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise<TaskPaneState> {
-	// Read current state first — most actions need the active pane id or tree
-	const nativeState = await nativeTaskPanesState(taskId);
-	if (!nativeState) throw new Error(`No native pane set for task ${taskId.slice(0, 8)}`);
-
-	const tree = nativeState.layout ? restoreSplitTree(nativeState.layout) : null;
-	let updatedState = nativeState;
+	// Every action decides from the tree, so read the layout only: the per-pane
+	// ownership sweep the full state carries would be a second `ps` pass per pane
+	// that nothing here reads (seq 1382).
+	const tree = await nativeTaskPaneLayout(taskId);
+	if (!tree) throw new Error(`No native pane set for task ${taskId.slice(0, 8)}`);
+	const activePaneId = tree.activePaneId ?? "";
+	let updatedState: NativeTaskPanesState | null = null;
 
 	switch (action.kind) {
 		case "splitH":
 		case "splitV": {
 			const orientation = paneActionToSplitOrientation(action.kind);
-			const fromPaneId = action.paneId ?? nativeState.activePaneId;
+			const fromPaneId = action.paneId ?? activePaneId;
 			if (!fromPaneId) throw new Error("No active pane to split from");
 			const { state } = await splitNativeTaskPane(taskId, fromPaneId, orientation, await splitContext(taskId));
 			updatedState = state;
@@ -411,10 +414,9 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 			break;
 		}
 		case "focusStep": {
-			if (!tree) break;
 			const ids = listPaneIds(tree);
 			if (ids.length < 2) break;
-			const activeIdx = ids.indexOf(nativeState.activePaneId);
+			const activeIdx = ids.indexOf(activePaneId);
 			let nextIdx: number;
 			if (action.step === "next") {
 				nextIdx = (activeIdx + 1) % ids.length;
@@ -425,7 +427,6 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 			break;
 		}
 		case "focusDirection": {
-			if (!tree) break;
 			const focused = focusPane(tree, action.direction);
 			if (focused.activePaneId !== tree.activePaneId) {
 				updatedState = await focusNativeTaskPane(taskId, focused.activePaneId);
@@ -433,7 +434,6 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 			break;
 		}
 		case "zoom": {
-			if (!tree) break;
 			let newTree: SplitTree;
 			if (!action.mode || action.mode === "toggle") {
 				newTree = toggleZoom(tree, action.paneId ?? tree.activePaneId);
@@ -446,14 +446,12 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 			break;
 		}
 		case "close": {
-			const paneId = action.paneId ?? nativeState.activePaneId;
+			const paneId = action.paneId ?? activePaneId;
 			if (!paneId) throw new Error("No pane to close");
 
-			const paneCount = nativeState.panes.length;
-			if (paneCount <= 1 && !action.force) {
-				// Refuse to close last pane without force — return unchanged state
-				const currentTree = tree;
-				return nativeStateToTaskPaneState(nativeState, currentTree);
+			if (listPaneIds(tree).length <= 1 && !action.force) {
+				// Refuse to close the last pane without force — report state unchanged.
+				break;
 			}
 
 			const { state } = await closeNativeTaskPane(taskId, paneId);
@@ -473,12 +471,10 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 			break;
 		}
 		case "resize": {
-			if (!tree) break;
 			// left/right → horizontal split axis; up/down → vertical split axis
 			const orientation: SplitOrientation =
 				action.direction === "left" || action.direction === "right" ? "horizontal" : "vertical";
-			const activePaneId = action.paneId ?? nativeState.activePaneId;
-			const splitId = findSplitForResize(tree.root, activePaneId, orientation);
+			const splitId = findSplitForResize(tree.root, action.paneId ?? activePaneId, orientation);
 			if (!splitId) break;
 			const delta =
 				action.direction === "right" || action.direction === "down"
@@ -489,7 +485,6 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 			break;
 		}
 		case "setSplitRatio": {
-			if (!tree) break;
 			// setSplitRatio clamps to MIN/MAX_SPLIT_RATIO and no-ops on an unknown id,
 			// so a stale divider from a layout that changed mid-drag cannot corrupt the tree.
 			const newTree = setSplitRatio(tree, action.splitId, action.ratio);
@@ -498,14 +493,12 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 			break;
 		}
 		case "layoutPreset": {
-			if (!tree) break;
 			const splitPreset = paneLayoutPresetToSplitPreset(action.preset);
 			const newTree = applySplitLayout(tree, splitPreset);
 			updatedState = await setNativeTaskPaneLayout(taskId, newTree);
 			break;
 		}
 		case "layoutCycle": {
-			if (!tree) break;
 			const currentPreset = detectLayoutPreset(tree);
 			const nextPreset = nextTaskPaneLayoutPreset(currentPreset);
 			const splitPreset = paneLayoutPresetToSplitPreset(nextPreset);
@@ -515,8 +508,12 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 		}
 	}
 
-	const updatedTree = updatedState.layout ? restoreSplitTree(updatedState.layout) : null;
-	return nativeStateToTaskPaneState(updatedState, updatedTree);
+	// A no-op action (nothing to focus, last pane refused) still owes the caller the
+	// current state, and that one DOES carry per-pane liveness.
+	const finalState = updatedState ?? (await nativeTaskPanesState(taskId));
+	if (!finalState) throw new Error(`No native pane set for task ${taskId.slice(0, 8)}`);
+	const updatedTree = finalState.layout ? restoreSplitTree(finalState.layout) : null;
+	return nativeStateToTaskPaneState(finalState, updatedTree, nativeAuxPaneLabels(taskId, finalState));
 }
 
 // ── Handler: tmuxNewWindow ────────────────────────────────────────────────────

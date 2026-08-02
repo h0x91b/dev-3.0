@@ -6,6 +6,7 @@ import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { CLOSE_PANE_PICKER_EVENT } from "../../close-pane-picker";
+import { _resetPaneStateBus, subscribePaneState } from "../../pane-state-bus";
 import type { TaskPaneState } from "../../../shared/task-panes";
 
 function makeState(
@@ -69,6 +70,7 @@ function renderControls(taskId = "task-1") {
 describe("TaskPaneControls", () => {
 	beforeEach(() => {
 		localStorage.clear();
+		_resetPaneStateBus();
 		mockNarrow = false;
 		vi.mocked(api.request.taskPaneAction).mockReset();
 		vi.mocked(api.request.taskPaneState).mockReset().mockResolvedValue(TMUX_TWO_PANE);
@@ -287,6 +289,90 @@ describe("TaskPaneControls", () => {
 		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
 		await new Promise((r) => setTimeout(r, 20));
 		expect(screen.getByTitle("tmux Shortcuts")).toBeInTheDocument();
+	});
+
+	// ── Immediate feedback + duplicate suppression (seq 1382) ─────────────────
+
+	it("holds every mutating control while a split is in flight, then releases them", async () => {
+		const user = userEvent.setup();
+		let releaseAction!: (state: TaskPaneState) => void;
+		vi.mocked(api.request.taskPaneAction).mockReturnValue(
+			new Promise<TaskPaneState>((resolve) => { releaseAction = resolve; }),
+		);
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_TWO_PANE);
+		renderControls();
+		await waitFor(() => expect(screen.getByLabelText("Cycle layouts")).not.toBeDisabled());
+
+		await user.click(screen.getByLabelText("Split horizontally"));
+
+		expect(screen.getByLabelText("Split horizontally")).toBeDisabled();
+		expect(screen.getByLabelText("Split vertically")).toBeDisabled();
+		expect(screen.getByLabelText("Zoom pane (toggle)")).toBeDisabled();
+		expect(screen.getByLabelText("Cycle layouts")).toBeDisabled();
+		expect(screen.getByLabelText("Close pane")).toBeDisabled();
+
+		releaseAction(TMUX_TWO_PANE);
+		await waitFor(() => expect(screen.getByLabelText("Split horizontally")).not.toBeDisabled());
+	});
+
+	it("does not say 'needs two panes' for a layout button that is merely busy", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.taskPaneAction).mockReturnValue(new Promise<TaskPaneState>(() => {}));
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_TWO_PANE);
+		renderControls();
+		await waitFor(() => expect(screen.getByLabelText("Cycle layouts")).not.toBeDisabled());
+
+		await user.click(screen.getByLabelText("Split horizontally"));
+
+		const layoutBtn = screen.getByLabelText("Cycle layouts");
+		expect(layoutBtn).toBeDisabled();
+		expect(layoutBtn).not.toHaveAttribute("title", expect.stringContaining("2"));
+	});
+
+	it("issues exactly one action for a double click on split", async () => {
+		const user = userEvent.setup();
+		let releaseAction!: (state: TaskPaneState) => void;
+		vi.mocked(api.request.taskPaneAction).mockReturnValue(
+			new Promise<TaskPaneState>((resolve) => { releaseAction = resolve; }),
+		);
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_TWO_PANE);
+		renderControls();
+		await waitFor(() => expect(screen.getByLabelText("Cycle layouts")).not.toBeDisabled());
+
+		await user.dblClick(screen.getByLabelText("Split horizontally"));
+
+		expect(api.request.taskPaneAction).toHaveBeenCalledTimes(1);
+		releaseAction(TMUX_TWO_PANE);
+	});
+
+	it("marks the control group busy while an action runs", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.taskPaneAction).mockReturnValue(new Promise<TaskPaneState>(() => {}));
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_TWO_PANE);
+		renderControls();
+		await waitFor(() => expect(screen.getByLabelText("Cycle layouts")).not.toBeDisabled());
+		const group = screen.getByLabelText("Split horizontally").closest("[aria-busy]")!;
+		expect(group).toHaveAttribute("aria-busy", "false");
+
+		await user.click(screen.getByLabelText("Split horizontally"));
+
+		expect(group).toHaveAttribute("aria-busy", "true");
+	});
+
+	it("broadcasts the action's own response so other pane subscribers see it at once", async () => {
+		const user = userEvent.setup();
+		const nextState = makeState(3, { backend: "native" });
+		vi.mocked(api.request.taskPaneAction).mockResolvedValue(nextState);
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(NATIVE_TWO_PANE);
+		renderControls();
+		await waitFor(() => expect(screen.getByLabelText("Cycle layouts")).not.toBeDisabled());
+		const seen = vi.fn();
+		const stop = subscribePaneState("task-1", seen);
+
+		await user.click(screen.getByLabelText("Split horizontally"));
+
+		await waitFor(() => expect(seen).toHaveBeenCalledWith(nextState));
+		stop();
 	});
 
 	it("hints button has localized title for a native task", async () => {

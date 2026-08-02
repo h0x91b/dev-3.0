@@ -5,6 +5,7 @@ import { confirm } from "../confirm";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { CLOSE_PANE_PICKER_EVENT, type ClosePanePickerDetail } from "../close-pane-picker";
+import { fetchPaneState, runPaneAction } from "../pane-state-bus";
 
 interface ClosePanePickerProps {
 	taskId: string;
@@ -57,7 +58,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 		// cell/status-bar math below — and tmuxLayout would fail on them outright.
 		let paneState;
 		try {
-			paneState = await api.request.taskPaneState({ taskId });
+			paneState = await fetchPaneState(taskId);
 		} catch {
 			toast.error(t("tmux.pickPaneError"), { taskId });
 			return;
@@ -199,7 +200,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 			}
 			setBusy(true);
 			try {
-				await api.request.taskPaneAction({ taskId, action: { kind: "close", paneId: box.paneId, force: true } });
+				await runPaneAction(taskId, { kind: "close", paneId: box.paneId, force: true });
 			} catch {
 				toast.error(t("tmux.pickPaneError"), { taskId });
 			}
@@ -208,7 +209,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 		}
 		setBusy(true);
 		try {
-			await api.request.taskPaneAction({ taskId, action: { kind: "close", paneId: box.paneId } });
+			await runPaneAction(taskId, { kind: "close", paneId: box.paneId });
 		} catch {
 			toast.error(t("tmux.pickPaneError"), { taskId });
 		}

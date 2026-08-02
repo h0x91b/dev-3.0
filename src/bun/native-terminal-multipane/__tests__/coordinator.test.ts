@@ -325,3 +325,58 @@ describe("native multipane coordinator capturePane", () => {
 		await expect(coordinator.capturePane("ghost", false)).rejects.toBeInstanceOf(PaneNotFoundError);
 	});
 });
+
+// ── Ownership fan-out on the click path (seq 1382) ────────────────────────────
+
+describe("native multipane coordinator ownership fan-out", () => {
+	let root: string;
+	let deps: FakeRegistry;
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-multipane-fanout-"));
+		process.env[NATIVE_MULTIPANE_DIR_ENV] = root;
+		deps = createFakeRegistry();
+	});
+
+	afterEach(() => {
+		delete process.env[NATIVE_MULTIPANE_DIR_ENV];
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	/** Count how many classifications are in flight at the same moment. */
+	function gateClassify(deps: FakeRegistry): { peak: () => number; release: () => void } {
+		const original = deps.classifyPane;
+		let inFlight = 0;
+		let peak = 0;
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		deps.classifyPane = async (record, token) => {
+			inFlight++;
+			peak = Math.max(peak, inFlight);
+			await gate;
+			inFlight--;
+			return original(record, token);
+		};
+		return { peak: () => peak, release };
+	}
+
+	it("classifies every pane at once when listing a 6-pane set", async () => {
+		const coordinator = await createWithPanes(deps, 6);
+		const gate = gateClassify(deps);
+		const listing = coordinator.listPanes();
+		await Promise.resolve();
+		expect(gate.peak()).toBe(6);
+		gate.release();
+		expect(await listing).toHaveLength(6);
+	});
+
+	it("classifies every pane at once while recovering a 6-pane set", async () => {
+		await createWithPanes(deps, 6);
+		const gate = gateClassify(deps);
+		const recovering = NativeMultipaneCoordinator.recover(ID, deps);
+		await Promise.resolve();
+		expect(gate.peak()).toBe(6);
+		gate.release();
+		expect((await recovering)?.paneIds()).toHaveLength(6);
+	});
+});

@@ -211,10 +211,13 @@ export class NativeMultipaneCoordinator {
 				const tree = restoreSplitTree(record.layout);
 				if (!tree) return null;
 
-				const dead: MultipanePaneEntry[] = [];
-				for (const pane of record.panes) {
-					if (!(await isPaneOwned(pane.sessionId, deps))) dead.push(pane);
-				}
+				// One classification per pane, all in flight at once: each probe shells out
+				// to `ps`, so doing them in sequence made recovery cost grow linearly with
+				// the pane count on the click path (seq 1382).
+				const ownership = await Promise.all(
+					record.panes.map(async (pane) => ({ pane, owned: await isPaneOwned(pane.sessionId, deps) })),
+				);
+				const dead = ownership.filter((entry) => !entry.owned).map((entry) => entry.pane);
 				if (dead.length === 0) {
 					return new NativeMultipaneCoordinator(coordinatorId, record.epoch, tree, deps);
 				}
@@ -252,26 +255,27 @@ export class NativeMultipaneCoordinator {
 
 	/** Per-pane host/shell identity, read from each pane's own registry record. */
 	async listPanes(): Promise<PaneSnapshot[]> {
-		const out: PaneSnapshot[] = [];
-		for (const paneId of this.paneIds()) {
-			const sessionId = paneSessionId(this.coordinatorId, paneId);
-			const record = this.deps.readPaneRecord(sessionId);
-			if (!record) {
-				out.push({ paneId, sessionId, hostPid: -1, shellPid: -1, cols: 0, rows: 0, state: "dead" });
-				continue;
-			}
-			const verdict = await this.deps.classifyPane(record, this.deps.readPaneToken(sessionId));
-			out.push({
-				paneId,
-				sessionId,
-				hostPid: record.host.pid,
-				shellPid: record.shell.pid,
-				cols: record.cols,
-				rows: record.rows,
-				state: verdict === "owned" ? "running" : verdict,
-			});
-		}
-		return out;
+		// Fan out over the pane set, bounded by the pane count: every snapshot needs
+		// its own `ps` probe, and in sequence that dominated every pane action.
+		return Promise.all(
+			this.paneIds().map(async (paneId): Promise<PaneSnapshot> => {
+				const sessionId = paneSessionId(this.coordinatorId, paneId);
+				const record = this.deps.readPaneRecord(sessionId);
+				if (!record) {
+					return { paneId, sessionId, hostPid: -1, shellPid: -1, cols: 0, rows: 0, state: "dead" };
+				}
+				const verdict = await this.deps.classifyPane(record, this.deps.readPaneToken(sessionId));
+				return {
+					paneId,
+					sessionId,
+					hostPid: record.host.pid,
+					shellPid: record.shell.pid,
+					cols: record.cols,
+					rows: record.rows,
+					state: verdict === "owned" ? "running" : verdict,
+				};
+			}),
+		);
 	}
 
 	/**

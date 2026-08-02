@@ -308,8 +308,10 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 
 	const startedAt = new Date().toISOString();
 	const shellPid = proc.pid;
-	const hostStartSignature = readProcessStartSignature(process.pid);
-	const shellStartSignature = readProcessStartSignature(shellPid);
+	const [hostStartSignature, shellStartSignature] = await Promise.all([
+		readProcessStartSignature(process.pid),
+		readProcessStartSignature(shellPid),
+	]);
 
 	// One v1 hello must complete per connection before input/commands are honoured.
 	const server = Bun.serve<ClientData>({

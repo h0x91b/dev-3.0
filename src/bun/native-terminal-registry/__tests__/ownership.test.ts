@@ -48,6 +48,33 @@ describe("classifyOwnership — POSIX start signatures", () => {
 	it("reused when a PID is alive but its start signature changed", async () => {
 		expect(await classifyOwnership(rec, "tok", probes({ readSignature: (pid) => `${pid}@LATER` }))).toBe("reused");
 	});
+
+	// The real probe shells out to `ps` and is async so a whole pane set can be
+	// classified in one round trip instead of N (seq 1382).
+	it("accepts an async signature probe", async () => {
+		expect(
+			await classifyOwnership(rec, "tok", probes({ readSignature: async (pid) => `${pid}@t0` })),
+		).toBe("owned");
+	});
+
+	it("starts the host and shell probes together rather than in sequence", async () => {
+		const started: number[] = [];
+		let releaseFirst!: () => void;
+		const gate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+		const verdict = classifyOwnership(rec, "tok", probes({
+			readSignature: async (pid) => {
+				started.push(pid);
+				// The FIRST probe blocks. If the second only started after it resolved,
+				// releasing the gate below would deadlock the assertion.
+				if (started.length === 1) await gate;
+				return `${pid}@t0`;
+			},
+		}));
+		await Promise.resolve();
+		expect(started).toEqual([100, 200]);
+		releaseFirst();
+		expect(await verdict).toBe("owned");
+	});
 });
 
 describe("classifyOwnership — Windows Job membership", () => {

@@ -24,6 +24,7 @@ import type { TaskPaneState } from "../../shared/task-panes";
 import { getPaneRects, restoreSplitTree, serializeSplitTree, setSplitRatio } from "../../shared/split-tree";
 import NativePaneDividers from "./NativePaneDividers";
 import { publishNativePaneFocus } from "../native-pane-focus";
+import { fetchPaneState, runPaneAction, subscribePaneState } from "../pane-state-bus";
 
 interface TaskTerminalProps {
 	projectId: string;
@@ -138,34 +139,44 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		return () => { cancelled = true; };
 	}, [taskId, isPreparing, isNative]);
 
-	// ── Native pane state polling ──────────────────────────────────────────────
+	// ── Native pane state ──────────────────────────────────────────────────────
+	// Every arrival — this poll, the inspector toolbar's poll, or any pane action's
+	// own response — comes through the bus, so a toolbar click repaints the canvas
+	// as soon as the server answers instead of on the next poll tick.
+	useEffect(() => {
+		if (!isNative || isPreparing) return;
+		return subscribePaneState(taskId, (state) => {
+			setNativePaneState(state);
+			// Forget panes the coordinator has since reconciled away.
+			setGonePaneIds((prev) => {
+				if (prev.size === 0) return prev;
+				const live = new Set(state.panes.map((p) => p.paneId));
+				const next = new Set([...prev].filter((id) => live.has(id)));
+				return next.size === prev.size ? prev : next;
+			});
+			// Set initial client focus to the server-active pane.
+			setClientFocusPaneId((prev) => {
+				const next = prev ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null);
+				if (next) publishNativePaneFocus(taskId, next);
+				return next;
+			});
+		});
+	}, [taskId, isPreparing, isNative]);
+
+	// Reconciliation only: the server owns the tree, and a failed read is how this
+	// view learns the session died.
 	useEffect(() => {
 		if (!isNative || isPreparing) return;
 		let cancelled = false;
 		const fetch = async () => {
 			try {
-				const state = await api.request.taskPaneState({ taskId });
-				if (cancelled) return;
-				setNativePaneState(state);
-				// Forget panes the coordinator has since reconciled away.
-				setGonePaneIds((prev) => {
-					if (prev.size === 0) return prev;
-					const live = new Set(state.panes.map((p) => p.paneId));
-					const next = new Set([...prev].filter((id) => live.has(id)));
-					return next.size === prev.size ? prev : next;
-				});
-				// Set initial client focus to the server-active pane.
-				setClientFocusPaneId((prev) => {
-						const next = prev ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null);
-						if (next) publishNativePaneFocus(taskId, next);
-						return next;
-					});
+				await fetchPaneState(taskId);
 			} catch {
 				if (!cancelled) await classifyAndSetError();
 			}
 		};
-		fetch();
-		const timer = setInterval(fetch, NATIVE_PANE_POLL_MS);
+		void fetch();
+		const timer = setInterval(() => { void fetch(); }, NATIVE_PANE_POLL_MS);
 		return () => { cancelled = true; clearInterval(timer); };
 	}, [taskId, isPreparing, isNative]);
 
@@ -454,15 +465,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					setNativePaneState((prev) => (prev ? { ...prev, layout: serializeSplitTree(optimistic) } : prev));
 				}
 			}
-			api.request.taskPaneAction({ taskId, action: { kind: "setSplitRatio", splitId, ratio } })
-				.then(setNativePaneState)
-				.catch(() => {});
+			void runPaneAction(taskId, { kind: "setSplitRatio", splitId, ratio }).catch(() => {});
 		}
 
 		function closeFocusedPane(paneId: string) {
-			api.request.taskPaneAction({ taskId, action: { kind: "close", paneId } })
-				.then(setNativePaneState)
-				.catch(() => {});
+			void runPaneAction(taskId, { kind: "close", paneId }).catch(() => {});
 		}
 
 		function renderNativePane(paneId: string): ReactNode {
@@ -618,7 +625,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						<button
 							className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[0.625rem] font-medium bg-accent/20 text-accent border border-accent/40 hover:bg-accent/30 transition-colors"
 							onClick={() => {
-								api.request.taskPaneAction({ taskId, action: { kind: "zoom", mode: "off" } })
+								runPaneAction(taskId, { kind: "zoom", mode: "off" })
 									.then(setNativePaneState)
 									.catch(() => {});
 							}}

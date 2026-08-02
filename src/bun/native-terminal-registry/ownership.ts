@@ -24,7 +24,7 @@ export type OwnershipVerdict = "owned" | "dead" | "reused";
 
 export interface OwnershipProbes {
 	isAlive: (pid: number) => boolean;
-	readSignature: (pid: number) => string;
+	readSignature: (pid: number) => Promise<string> | string;
 	isInJob: (token: string, pid: number) => Promise<boolean>;
 }
 
@@ -57,8 +57,13 @@ export async function classifyOwnership(
 		return hostOwned && shellOwned ? "owned" : "reused";
 	}
 
-	const hostMatches = startSignaturesMatch(record.host.startSignature, probes.readSignature(record.host.pid));
-	const shellMatches = startSignaturesMatch(record.shell.startSignature, probes.readSignature(record.shell.pid));
+	// Both probes fork a `ps`; started together they cost one round trip, not two.
+	const [hostSignature, shellSignature] = await Promise.all([
+		probes.readSignature(record.host.pid),
+		probes.readSignature(record.shell.pid),
+	]);
+	const hostMatches = startSignaturesMatch(record.host.startSignature, hostSignature);
+	const shellMatches = startSignaturesMatch(record.shell.startSignature, shellSignature);
 	return hostMatches && shellMatches ? "owned" : "reused";
 }
 

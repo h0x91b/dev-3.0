@@ -26,6 +26,7 @@ import {
 import type { TaskPaneState } from "../../../shared/task-panes";
 import { taskPaneSupports } from "../../../shared/task-panes";
 import { currentNativePaneFocus } from "../../native-pane-focus";
+import { fetchPaneState, runPaneAction, subscribePaneState } from "../../pane-state-bus";
 import { toast } from "../../toast";
 
 interface TaskPaneControlsProps {
@@ -49,6 +50,7 @@ type PaneAction =
 
 type LayoutAction = "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV";
 
+/** Reconciliation only: every action delivers its own state through the bus. */
 const PANE_STATE_POLL_MS = 3000;
 
 export default function TaskPaneControls({ taskId, compact = false }: TaskPaneControlsProps) {
@@ -56,6 +58,10 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [keymapPreset, setKeymapPresetState] = useState(() => getKeymapPreset());
 	const [paneState, setPaneState] = useState<TaskPaneState | null>(null);
+	// An action is in flight. Set before awaiting, so the click is acknowledged on the
+	// next rendered frame and a second click cannot start a duplicate mutation.
+	const [actionBusy, setActionBusy] = useState(false);
+	const actionBusyRef = useRef(false);
 	const [hintsOpen, setHintsOpen] = useState(false);
 	const [hintsPos, setHintsPos] = useState({ top: 0, left: 0 });
 	const [hintsVisible, setHintsVisible] = useState(false);
@@ -71,17 +77,15 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	const layoutMenuRef = useRef<HTMLDivElement>(null);
 	const layoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	// Fetch pane state on mount and periodically.
+	// Every state arrival — this component's poll, the canvas's poll, or any action's
+	// own response — reaches us through the bus, so both surfaces move together.
+	useEffect(() => subscribePaneState(taskId, setPaneState), [taskId]);
+
 	useEffect(() => {
-		let cancelled = false;
-		const fetch = () => {
-			api.request.taskPaneState({ taskId }).then((s) => {
-				if (!cancelled) setPaneState(s);
-			}).catch(() => {});
-		};
+		const fetch = () => { void fetchPaneState(taskId).catch(() => {}); };
 		fetch();
 		const timer = setInterval(fetch, PANE_STATE_POLL_MS);
-		return () => { cancelled = true; clearInterval(timer); };
+		return () => clearInterval(timer);
 	}, [taskId]);
 
 	useEffect(() => {
@@ -203,7 +207,21 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 
 	/** Re-read pane state after any mutating action so capabilities stay fresh. */
 	function refreshState() {
-		api.request.taskPaneState({ taskId }).then(setPaneState).catch(() => {});
+		void fetchPaneState(taskId).catch(() => {});
+	}
+
+	/**
+	 * Hold the controls for the duration of one action. The flag is a ref as well as
+	 * state because two clicks in the same frame would both read a stale `actionBusy`.
+	 */
+	function withBusy<T>(run: () => Promise<T>): Promise<T | undefined> {
+		if (actionBusyRef.current) return Promise.resolve(undefined);
+		actionBusyRef.current = true;
+		setActionBusy(true);
+		return run().finally(() => {
+			actionBusyRef.current = false;
+			setActionBusy(false);
+		});
 	}
 
 	const handleAction = (action: PaneAction) => async (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -215,7 +233,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		if (action === "close") {
 			let count = 0;
 			try {
-				const state = paneState ?? await api.request.taskPaneState({ taskId });
+				const state = paneState ?? await fetchPaneState(taskId);
 				count = state.panes.length;
 			} catch {
 				count = 0;
@@ -232,11 +250,11 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 					confirmed = false;
 				}
 				if (!confirmed) return;
-				api.request.taskPaneAction({ taskId, action: { kind: "close", force: true } }).catch(() => {}).finally(refreshState);
+				void withBusy(() => runPaneAction(taskId, { kind: "close", force: true }).catch(() => {}).finally(refreshState));
 				return;
 			}
 			const closeTarget = paneState?.backend === "native" ? currentNativePaneFocus(taskId) ?? undefined : undefined;
-			api.request.taskPaneAction({ taskId, action: { kind: "close", paneId: closeTarget } }).catch(() => {}).finally(refreshState);
+			void withBusy(() => runPaneAction(taskId, { kind: "close", paneId: closeTarget }).catch(() => {}).finally(refreshState));
 			return;
 		}
 		// Native focus is client-local, so the viewer tells us which pane to act on;
@@ -255,9 +273,11 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		};
 		const paneAction = actionMap[action];
 		if (paneAction) {
-			api.request.taskPaneAction({ taskId, action: paneAction })
-				.then(setPaneState)
-				.catch((err) => toast.error(t("panes.actionFailed", { error: String(err) })));
+			void withBusy(() =>
+				runPaneAction(taskId, paneAction).catch((err) =>
+					toast.error(t("panes.actionFailed", { error: String(err) })),
+				),
+			);
 		}
 	};
 
@@ -283,17 +303,25 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	};
 
 	// Capability checks (fall back to permissive defaults while state loads).
-	const canSplit = paneState === null || taskPaneSupports(paneState, "split");
-	const canZoom = paneState === null || taskPaneSupports(paneState, "zoom");
-	const canClose = paneState === null || taskPaneSupports(paneState, "close");
+	const supportsSplit = paneState === null || taskPaneSupports(paneState, "split");
+	const supportsZoom = paneState === null || taskPaneSupports(paneState, "zoom");
+	const supportsClose = paneState === null || taskPaneSupports(paneState, "close");
 	const canLayoutCycle = paneState !== null && taskPaneSupports(paneState, "layoutCycle");
 	const canLayoutPreset = paneState !== null && taskPaneSupports(paneState, "layoutPreset");
 	const showNewWindow = paneState !== null && taskPaneSupports(paneState, "newWindow");
 	const isNative = paneState?.backend === "native";
 
+	// An in-flight action withholds every mutating control, not just the one clicked:
+	// they all rewrite the same tree. Capability stays separate so the "needs two
+	// panes" tooltip never fires for a control that is merely busy.
+	const canSplit = supportsSplit && !actionBusy;
+	const canZoom = supportsZoom && !actionBusy;
+	const canClose = supportsClose && !actionBusy;
+
 	// Layout button is disabled when the backend has no layoutCycle capability (1 pane).
-	const layoutDisabled = !canLayoutCycle && !canLayoutPreset;
-	const layoutDisabledReason = layoutDisabled && paneState !== null
+	const layoutUnsupported = !canLayoutCycle && !canLayoutPreset;
+	const layoutDisabled = layoutUnsupported || actionBusy;
+	const layoutDisabledReason = layoutUnsupported && paneState !== null
 		? t("panes.layoutNeedsTwoPanes")
 		: undefined;
 
@@ -328,7 +356,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 
 	return (
 		<>
-			<div className="flex items-center gap-1.5 flex-shrink-0">
+			<div className="flex items-center gap-1.5 flex-shrink-0" aria-busy={actionBusy}>
 				<Tooltip content={t("tmux.splitHDesc")} detail={t("ttip.tmux.splitH")}>
 					<button
 						className={canSplit ? tmuxBtnClass : tmuxBtnDisabledClass}
@@ -365,8 +393,8 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 				<Tooltip content={layoutDisabledReason ?? ""} detail={!layoutDisabled ? undefined : undefined}>
 					<div
 						className={`flex items-stretch rounded ${layoutDisabled ? "opacity-50 cursor-not-allowed" : "text-accent bg-accent/10 border border-accent/25"} overflow-hidden`}
-						onMouseEnter={!layoutDisabled ? showLayout : undefined}
-						onMouseLeave={!layoutDisabled ? hideLayout : undefined}
+						onMouseEnter={!layoutUnsupported ? showLayout : undefined}
+						onMouseLeave={!layoutUnsupported ? hideLayout : undefined}
 					>
 						<button
 							className={`tmux-anim px-1.5 py-1 text-[0.625rem] font-medium transition-colors ${layoutDisabled ? "text-fg-muted bg-elevated/50 border border-edge/50 cursor-not-allowed" : "text-accent hover:bg-accent/20"} flex items-center gap-1`}
@@ -378,10 +406,11 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 							{cycleIcon}
 							{!compact && <span>{t("panes.layoutLabel")}</span>}
 						</button>
-						{!layoutDisabled && (
+						{!layoutUnsupported && (
 							<button
 								ref={layoutTriggerRef}
 								className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
+								disabled={actionBusy}
 								onClick={(event) => {
 									event.stopPropagation();
 									showLayout();
@@ -438,7 +467,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 				</Tooltip>
 			</div>
 
-			{!layoutDisabled && layoutOpen && createPortal(
+			{!layoutUnsupported && layoutOpen && createPortal(
 				<div
 					ref={layoutMenuRef}
 					role="menu"
