@@ -14,11 +14,23 @@
  *     pane (an OBSERVER, because A holds the lease) and calls the production seam
  *     `deliverAgentPrompt(task, text)`.
  *
+ * The delivery is then driven a SECOND time through the full outside-in path
+ * (seq 1381): app B runs its own real `startSocketServer()`, a real project and
+ * task are persisted to the isolated `$HOME`, and the request arrives over B's
+ * CLI socket as the production `message.send` handler — the exact transport
+ * `dev3 message` uses. Calling `deliverAgentPrompt` directly proves the seam;
+ * only this proves the seam is actually REACHED from the CLI in a non-owning
+ * process, with task resolution, envelope handling and the handler's reply in
+ * the loop. The task's `tmuxSocket` points at the throwaway sentinel socket, so
+ * a silent tmux fallback anywhere in that chain would show up as a session on a
+ * socket whose list is asserted byte-identical.
+ *
  * What it asserts: the lease really lives in A; `deliverAgentPrompt` reports true
- * in B; the token lands in native pane-1 with its submit CR; it occurs EXACTLY
- * once and is still exactly once well past the submit delay; the bytes were
- * written by A and never by B; host/shell pids are unchanged; no second native
- * session or host was spawned; and no tmux session was created or mutated.
+ * in B; `message.send` entering B over its own socket answers delivered; each
+ * token lands in native pane-1 with its submit CR; each occurs EXACTLY once and
+ * is still exactly once well past the submit delay; the bytes were written by A
+ * and never by B; host/shell pids are unchanged; no second native session or
+ * host was spawned; and no tmux session was created or mutated.
  *
  * Isolation: `$HOME` is a tmpdir — set BEFORE the first `src/` import, because
  * `DEV3_HOME` (and `native-pane-owner`'s sockets dir) are module-load constants.
@@ -32,7 +44,7 @@
  * Both halves own listeners and timers, so each ends in an explicit process.exit.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,6 +71,58 @@ function occurrences(text: string, needle: string): number {
 /** A shell that never echoes, so one written line produces exactly one output line. */
 function catShellLaunch(): { executable: string; argv: string[] } {
 	return { executable: "/bin/bash", argv: ["--norc", "--noprofile", "-lc", "stty -echo; exec cat"] };
+}
+
+/**
+ * Persist a real project + task into the isolated `$HOME`, so the production
+ * `message.send` handler can resolve them the way it does for a live board.
+ * Only the fields the resolution path actually reads are set; `rawLoadTasks`
+ * backfills the rest on load.
+ *
+ * `tmuxSocket` deliberately points at the throwaway sentinel socket rather than
+ * the developer's real one: if any part of this chain ever fell back to tmux,
+ * the session would land there and the sentinel's byte-identical session-list
+ * assertion below would catch it instead of it passing unnoticed.
+ */
+function writeAppData(home: string, opts: { projectPath: string; slug: string; worktreePath: string; tmuxSocket: string }): void {
+	const now = new Date(0).toISOString();
+	writeFileSync(
+		join(home, ".dev3.0", "projects.json"),
+		JSON.stringify([
+			{
+				id: PROJECT_ID,
+				name: "native owner routing e2e",
+				path: opts.projectPath,
+				setupScript: "",
+				devScript: "",
+				cleanupScript: "",
+				defaultBaseBranch: "main",
+				createdAt: now,
+			},
+		]),
+	);
+	const dataDir = join(home, ".dev3.0", "data", opts.slug);
+	mkdirSync(dataDir, { recursive: true });
+	writeFileSync(
+		join(dataDir, "tasks.json"),
+		JSON.stringify([
+			{
+				id: TASK_ID,
+				seq: 1,
+				projectId: PROJECT_ID,
+				title: "native owner routing e2e",
+				description: "native owner routing e2e",
+				status: "in-progress",
+				baseBranch: "main",
+				worktreePath: opts.worktreePath,
+				branchName: "e2e/native-owner-routing",
+				createdAt: now,
+				updatedAt: now,
+				tmuxSocket: opts.tmuxSocket,
+				terminalBackend: "native",
+			},
+		]),
+	);
 }
 
 // ── app A: the process that owns the pane and answers `_native.deliverPrompt` ──
@@ -190,6 +254,9 @@ async function runSender(): Promise<void> {
 
 	const { spawn } = await import("../spawn");
 	const { deliverAgentPrompt } = await import("../agent-prompt-delivery");
+	const { projectStorageKey } = await import("../../shared/project-storage-key");
+	const { startSocketServer } = await import("../cli-socket-server");
+	const { sendRequest } = await import("../../cli/socket-client");
 	const { AGENT_PROMPT_ENTER_DELAY_MS } = await import("../agent-prompt");
 	const { resolvePaneOwner } = await import("../native-pane-owner");
 	const { NativeSessionClient } = await import("../native-terminal-registry/client");
@@ -211,6 +278,8 @@ async function runSender(): Promise<void> {
 	};
 
 	const token = `NMORT-${process.pid}-${Date.now()}`;
+	/** Second delivery, driven outside-in through B's real CLI socket. */
+	const cliToken = `NMORT-CLI-${process.pid}-${Date.now()}`;
 	console.log(`  info - platform=${process.platform} bun=${Bun.version} pane=${PANE_SESSION_ID}`);
 
 	const sentinelSocket = `dev3-native-message-e2e-${process.pid}`;
@@ -219,6 +288,18 @@ async function runSender(): Promise<void> {
 	let sentinelSocketSessionsBefore = "";
 	let child: ReturnType<typeof spawn> | null = null;
 	let observer: Awaited<ReturnType<typeof NativeSessionClient.discover>> | null = null;
+
+	// A real board on disk, so `message.send` resolves this task the way it does
+	// in the app instead of being handed a synthesized object.
+	const projectPath = join(root, "repo");
+	mkdirSync(projectPath, { recursive: true });
+	mkdirSync(join(root, ".dev3.0"), { recursive: true });
+	writeAppData(root, {
+		projectPath,
+		slug: projectStorageKey(projectPath),
+		worktreePath: work,
+		tmuxSocket: sentinelSocket,
+	});
 
 	try {
 		try {
@@ -325,6 +406,66 @@ async function runSender(): Promise<void> {
 		check(
 			before?.shell.pid === ready.shellPid && after?.shell.pid === ready.shellPid,
 			"the pane's shell pid is unchanged before vs after the delivery",
+		);
+
+		// ── 6b. the SAME journey, entered from outside through B's own CLI socket ──
+		// Everything above proves the seam. This proves the seam is reached: the
+		// request arrives over the transport `dev3 message` uses, hits the real
+		// `message.send` handler in the process that owns NOTHING, resolves the task
+		// off disk, and comes out the other end as one delivery performed by A.
+		const bEndpoint = startSocketServer();
+		check(typeof bEndpoint === "string" && bEndpoint.length > 0, "app B is listening on its own CLI socket");
+		check(bEndpoint !== ready.endpoint, "app A and app B listen on two DIFFERENT CLI endpoints");
+
+		const ownerWritesBeforeCli = childLines.filter((line) => line.startsWith(WRITE_PREFIX)).length;
+		const localWritesBeforeCli = localWrites;
+
+		const response = await sendRequest(bEndpoint, "message.send", {
+			taskId: TASK_ID,
+			projectId: PROJECT_ID,
+			text: cliToken,
+		});
+		check(response.ok === true, `message.send through app B's socket succeeded${response.ok ? "" : `: ${response.error}`}`);
+		check(
+			(response.data as { delivered?: boolean } | undefined)?.delivered === true,
+			"the CLI handler reported the message delivered",
+		);
+
+		const cliDeadline = Date.now() + 15_000;
+		while (Date.now() < cliDeadline && !paneOutput.includes(cliToken)) await delay(50);
+		check(
+			new RegExp(`(^|[\\r\\n])${cliToken}[\\r\\n]`).test(paneOutput),
+			"the CLI-entered token came back from native pane-1 on its own line — the submit CR arrived",
+		);
+		const cliFirstCount = occurrences(paneOutput, cliToken);
+		check(cliFirstCount === 1, `the CLI-entered token occurs exactly once in the pane output (got ${cliFirstCount})`);
+		await delay(AGENT_PROMPT_ENTER_DELAY_MS + 4000);
+		const cliSettledCount = occurrences(paneOutput, cliToken);
+		check(cliSettledCount === 1, `no late duplicate of the CLI-entered token (got ${cliSettledCount})`);
+
+		const cliOwnerWrites = childLines
+			.filter((line) => line.startsWith(WRITE_PREFIX))
+			.slice(ownerWritesBeforeCli)
+			.map((line) => JSON.parse(line.slice(WRITE_PREFIX.length)) as string);
+		check(
+			cliOwnerWrites.filter((data) => data.includes(cliToken)).length === 1,
+			`app A performed the CLI-entered delivery exactly once (${cliOwnerWrites.length} owner write(s) in this round)`,
+		);
+		check(
+			cliOwnerWrites.filter((data) => data === "\r").length === 1,
+			"app A sent exactly one submit CR for the CLI-entered delivery",
+		);
+		check(
+			localWrites === localWritesBeforeCli,
+			"app B still never wrote a byte into the pane, even entering through its own CLI socket",
+		);
+		// The first token must not have been replayed by the second journey.
+		check(occurrences(paneOutput, token) === 1, "the earlier token is still present exactly once after the CLI delivery");
+
+		const afterCli = readRecord(PANE_SESSION_ID);
+		check(
+			afterCli?.host.pid === ready.hostPid && afterCli?.shell.pid === ready.shellPid,
+			"host and shell identity survive the CLI-entered delivery too",
 		);
 
 		// ── 7. nothing was respawned ──

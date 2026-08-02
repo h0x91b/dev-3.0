@@ -123,6 +123,17 @@ jobs:
         timeout-minutes: 5
         run: bun run test:native-owner-routing-e2e
 
+      # Seq 1371 + 1381 PRODUCT proof of the same routing, entered from outside:
+      # a `message.send` request arrives over the non-owning app's own CLI socket,
+      # resolves a real task off disk, routes to the owning app and lands in native
+      # pane-1 exactly once. POSIX only — the pane's shell is `stty -echo; exec cat`,
+      # which has no PowerShell equivalent, so the Windows leg of owner routing is
+      # covered by the E2E above instead.
+      - name: Native message owner-routing E2E
+        if: runner.os != 'Windows'
+        timeout-minutes: 6
+        run: bun run test:native-message-e2e
+
       # Seq 1292 PRODUCT proof: a task's primary terminal driven through
       # startNativeTaskTerminal/attach/stop — create, shell round-trip, resize,
       # detach, controller restart, observer refusal, owned-tree cleanup with a
