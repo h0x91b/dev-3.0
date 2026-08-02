@@ -56,6 +56,11 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 	// Keep the live count available to the touch/wheel handlers without re-binding.
 	const countRef = useRef(0);
 	countRef.current = info.count;
+	// Same for the pane ids `navigate` resolves an index against. Reading them from
+	// state would rebuild `navigate` on every poll — and the poll effect depends on
+	// `navigate`, so that turned a 2.5s poll into a ~30 Hz read loop (seq 1382).
+	const paneIdsRef = useRef<string[]>([]);
+	paneIdsRef.current = info.paneIds;
 
 	/** Read current pane info and update state; optionally navigate and/or enforce zoom. */
 	const navigate = useCallback(
@@ -67,7 +72,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 					await runPaneAction(taskId, { kind: "focusStep", step: opts.step });
 				} else if (typeof opts?.index === "number") {
 					// Resolve index to paneId from current info (best-effort)
-					const targetPaneId = info.paneIds[opts.index];
+					const targetPaneId = paneIdsRef.current[opts.index];
 					if (targetPaneId) {
 						await runPaneAction(taskId, { kind: "focus", paneId: targetPaneId });
 					}
@@ -94,7 +99,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 				busyRef.current = false;
 			}
 		},
-		[taskId, info.paneIds],
+		[taskId],
 	);
 
 	// Create / close panes and windows from the sheet. The ⌃B prefix is the only

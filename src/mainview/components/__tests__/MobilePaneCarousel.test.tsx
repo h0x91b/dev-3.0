@@ -306,4 +306,20 @@ describe("MobilePaneCarousel", () => {
 			})),
 		);
 	});
+
+	// The poll effect depends on `navigate`; a state-derived identity for it made
+	// every read schedule another one (seq 1382).
+	it("reads pane state once per poll interval, not in a loop", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(3, 0, true));
+		renderCarousel();
+		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
+		const afterMount = vi.mocked(api.request.taskPaneState).mock.calls.length;
+
+		// Give React many frames with no timer advance: a stable `navigate` means the
+		// poll effect does not re-run, so the read count cannot climb.
+		for (let frame = 0; frame < 20; frame++) await Promise.resolve();
+		await new Promise((resolve) => setTimeout(resolve, 60));
+
+		expect(vi.mocked(api.request.taskPaneState).mock.calls.length).toBeLessThanOrEqual(afterMount + 1);
+	});
 });

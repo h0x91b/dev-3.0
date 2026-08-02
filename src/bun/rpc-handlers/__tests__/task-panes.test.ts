@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
 	taskTerminalBackendIdentity: vi.fn(),
 	// native-task-panes
 	nativeTaskPanesState: vi.fn(),
-	nativeTaskPaneCommandsOf: vi.fn(() => []),
+	nativeTaskPaneCommandsOf: vi.fn<(state: unknown) => Array<{ paneId: string; sessionId: string; command: string[]; shellPid: number; alive: boolean }>>(() => []),
 	nativeTaskPaneLayout: vi.fn(),
 	splitNativeTaskPane: vi.fn(),
 	closeNativeTaskPane: vi.fn(),
