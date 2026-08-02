@@ -25,9 +25,10 @@ const REPS = Number(process.env.DEV3_PANE_LATENCY_REPS ?? 5);
 interface Stats { n: number; min: number; p50: number; p95: number; max: number }
 
 /**
- * Count `ps` executions — the load-independent half of the measurement, since
- * every ownership probe forks exactly one. A shim first on PATH tallies them, so
- * nothing in the product knows it is being measured.
+ * Count `ps` SUBPROCESS INVOCATIONS — the load-independent half of the
+ * measurement. A shim first on PATH appends one line per exec, so the number
+ * reported is real forked processes, not probe requests or bytes of tally.
+ * Nothing in the product knows it is being measured.
  */
 function installProbeCounter(root: string): () => number {
 	const bin = join(root, "bin");
@@ -37,7 +38,7 @@ function installProbeCounter(root: string): () => number {
 	writeFileSync(join(bin, "ps"), `#!/bin/sh\necho . >> ${JSON.stringify(tally)}\nexec /bin/ps "$@"\n`);
 	chmodSync(join(bin, "ps"), 0o755);
 	process.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
-	return () => readFileSync(tally, "utf8").length;
+	return () => readFileSync(tally, "utf8").split("\n").length - 1;
 }
 
 function stats(samples: number[]): Stats {

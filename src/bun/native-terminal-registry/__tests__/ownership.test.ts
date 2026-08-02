@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { classifyOwnership, type OwnershipProbes } from "../ownership";
+import {
+	classifyOwnership,
+	classifyOwnershipBatch,
+	type BatchOwnershipProbes,
+	type OwnershipProbes,
+} from "../ownership";
 import { NATIVE_SESSION_SCHEMA_VERSION, type NativeSessionRecord } from "../record";
 
 // A well-formed 48-hex session token (the Windows Job Object name requires it).
@@ -123,5 +128,170 @@ describe("classifyOwnership — Windows Job membership", () => {
 		);
 		expect(verdict).toBe("dead");
 		expect(jobConsulted).toBe(false);
+	});
+});
+
+// ── One `ps` for a whole pane set (seq 1388) ──────────────────────────────────
+
+describe("classifyOwnershipBatch — one probe, per-pid evidence", () => {
+	/** A pane record with its own pid pair, so evidence can never be confused. */
+	function pane(index: number, evidenceKind: "posix-start-signature" | "windows-job" = "posix-start-signature") {
+		const base = record(evidenceKind);
+		return {
+			...base,
+			sessionId: `pane-${index}`,
+			host: { ...base.host, pid: 100 * index, startSignature: `${100 * index}@t0` },
+			shell: { ...base.shell, pid: 100 * index + 1, startSignature: `${100 * index + 1}@t0` },
+		};
+	}
+
+	function batchProbes(overrides: Partial<BatchOwnershipProbes> = {}): BatchOwnershipProbes {
+		return {
+			isAlive: () => true,
+			readSignatures: async (pids) => new Map(pids.map((pid) => [pid, `${pid}@t0`])),
+			isInJob: async () => true,
+			...overrides,
+		};
+	}
+
+	it("asks once for a six-pane set and answers in input order", async () => {
+		const calls: number[][] = [];
+		const entries = [1, 2, 3, 4, 5, 6].map((i) => ({ record: pane(i), token: "tok" }));
+
+		const verdicts = await classifyOwnershipBatch(
+			entries,
+			batchProbes({
+				readSignatures: async (pids) => {
+					calls.push([...pids]);
+					return new Map(pids.map((pid) => [pid, `${pid}@t0`]));
+				},
+			}),
+		);
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toHaveLength(12); // host + shell for each of six panes
+		expect(verdicts).toEqual(Array(6).fill("owned"));
+	});
+
+	it("gives the same verdict as the single-record classifier, per pane", async () => {
+		const entries = [1, 2, 3].map((i) => ({ record: pane(i), token: "tok" }));
+		const single = await Promise.all(
+			entries.map(({ record: rec, token }) => classifyOwnership(rec, token, probes({}))),
+		);
+		expect(await classifyOwnershipBatch(entries, batchProbes())).toEqual(single);
+	});
+
+	it("marks only the pane whose pid is missing from the answer", async () => {
+		const entries = [1, 2, 3].map((i) => ({ record: pane(i), token: "tok" }));
+		const verdicts = await classifyOwnershipBatch(
+			entries,
+			// Pane 2's shell never came back — nothing else may inherit that.
+			batchProbes({
+				readSignatures: async (pids) =>
+					new Map(pids.filter((pid) => pid !== 201).map((pid) => [pid, `${pid}@t0`])),
+			}),
+		);
+		expect(verdicts).toEqual(["owned", "reused", "owned"]);
+	});
+
+	it("marks only the pane whose pid was reused", async () => {
+		const entries = [1, 2].map((i) => ({ record: pane(i), token: "tok" }));
+		const verdicts = await classifyOwnershipBatch(
+			entries,
+			batchProbes({
+				readSignatures: async (pids) =>
+					new Map(pids.map((pid) => [pid, pid === 100 ? `${pid}@LATER` : `${pid}@t0`])),
+			}),
+		);
+		expect(verdicts).toEqual(["reused", "owned"]);
+	});
+
+	it("reports a dead pane without asking for a signature for it", async () => {
+		const entries = [1, 2].map((i) => ({ record: pane(i), token: "tok" }));
+		const asked: number[] = [];
+		const verdicts = await classifyOwnershipBatch(
+			entries,
+			batchProbes({
+				isAlive: (pid) => pid !== 200,
+				readSignatures: async (pids) => {
+					asked.push(...pids);
+					return new Map(pids.map((pid) => [pid, `${pid}@t0`]));
+				},
+			}),
+		);
+		expect(verdicts).toEqual(["owned", "dead"]);
+		expect(asked).toEqual([100, 101]);
+	});
+
+	it("treats an unavailable or failed ps as unverifiable, never as owned", async () => {
+		const entries = [1, 2].map((i) => ({ record: pane(i), token: "tok" }));
+		const verdicts = await classifyOwnershipBatch(
+			entries,
+			batchProbes({ readSignatures: async () => new Map() }),
+		);
+		expect(verdicts).toEqual(["reused", "reused"]);
+	});
+
+	it("verifies a record whose host and shell share one pid without duplicating evidence", async () => {
+		const base = pane(1);
+		const shared = { ...base, shell: { ...base.shell, pid: base.host.pid, startSignature: base.host.startSignature } };
+		let requested: readonly number[] = [];
+		const verdicts = await classifyOwnershipBatch(
+			[{ record: shared, token: "tok" }],
+			batchProbes({
+				readSignatures: async (pids) => {
+					requested = pids;
+					return new Map(pids.map((pid) => [pid, `${pid}@t0`]));
+				},
+			}),
+		);
+		expect(verdicts).toEqual(["owned"]);
+		expect(requested).toEqual([100, 100]);
+	});
+
+	it("never runs the POSIX probe for Windows records", async () => {
+		let posixProbed = false;
+		const entries = [1, 2].map((i) => ({ record: pane(i, "windows-job"), token: VALID_TOKEN }));
+
+		const verdicts = await classifyOwnershipBatch(
+			entries,
+			batchProbes({
+				readSignatures: async () => {
+					posixProbed = true;
+					return new Map();
+				},
+			}),
+		);
+
+		expect(posixProbed).toBe(false);
+		expect(verdicts).toEqual(["owned", "owned"]);
+	});
+
+	it("keeps Windows job verdicts per record while POSIX siblings batch", async () => {
+		const entries = [
+			{ record: pane(1), token: "tok" },
+			{ record: pane(2, "windows-job"), token: VALID_TOKEN },
+			{ record: pane(3, "windows-job"), token: null },
+		];
+		const verdicts = await classifyOwnershipBatch(
+			entries,
+			batchProbes({ isInJob: async (_token, pid) => pid !== 201 }),
+		);
+		expect(verdicts).toEqual(["owned", "reused", "reused"]);
+	});
+
+	it("does not probe at all for an empty pane set", async () => {
+		let probed = false;
+		const verdicts = await classifyOwnershipBatch(
+			[],
+			batchProbes({
+				readSignatures: async () => {
+					probed = true;
+					return new Map();
+				},
+			}),
+		);
+		expect(verdicts).toEqual([]);
+		expect(probed).toBe(false);
 	});
 });

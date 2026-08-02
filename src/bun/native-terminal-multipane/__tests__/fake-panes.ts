@@ -24,6 +24,8 @@ export interface FakeRegistry extends CoordinatorDeps {
 	panes: Map<string, FakePane>;
 	startCalls: string[];
 	stopCalls: string[];
+	/** One entry per ownership sweep, holding the session ids it classified. */
+	classifySweeps: string[][];
 	kill(sessionId: string): void;
 }
 
@@ -59,11 +61,13 @@ export function createFakeRegistry(): FakeRegistry {
 	const panes = new Map<string, FakePane>();
 	const startCalls: string[] = [];
 	const stopCalls: string[] = [];
+	const classifySweeps: string[][] = [];
 
 	const registry: FakeRegistry = {
 		panes,
 		startCalls,
 		stopCalls,
+		classifySweeps,
 		kill(sessionId) {
 			const pane = panes.get(sessionId);
 			if (pane) pane.alive = false;
@@ -97,10 +101,13 @@ export function createFakeRegistry(): FakeRegistry {
 			const pane = panes.get(sessionId);
 			return pane?.alive ? pane.token : null;
 		},
-		async classifyPane(record, token): Promise<OwnershipVerdict> {
-			const pane = panes.get(record.sessionId);
-			if (!pane || !pane.alive) return "dead";
-			return pane.token === token ? "owned" : "reused";
+		async classifyPanes(entries): Promise<OwnershipVerdict[]> {
+			classifySweeps.push(entries.map(({ record }) => record.sessionId));
+			return entries.map(({ record, token }) => {
+				const pane = panes.get(record.sessionId);
+				if (!pane || !pane.alive) return "dead";
+				return pane.token === token ? "owned" : "reused";
+			});
 		},
 		async connectPane(record): Promise<PaneConnection> {
 			const pane = panes.get(record.sessionId);
