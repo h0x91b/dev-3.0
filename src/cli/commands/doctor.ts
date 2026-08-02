@@ -7,6 +7,7 @@ import { BUILD_VERSION } from "../../shared/build-info.generated";
 import { CLI_EXIT_CODE_DOCTOR_PROBLEMS, CLI_EXIT_CODE_SUCCESS } from "../../shared/cli-exit-codes";
 import type { ParsedArgs } from "../args";
 import { isExecutableFile } from "../../bun/executable";
+import { collectNativeProcesses, realProcessInventoryDeps, renderNativeProcesses } from "./doctor-processes";
 
 // `dev3 doctor` — install health check. Deliberately works WITHOUT the app
 // running (and without the socket): its whole purpose is diagnosing installs
@@ -419,6 +420,15 @@ export function renderChecks(results: CheckResult[]): string {
 }
 
 export async function handleDoctor(args: ParsedArgs, deps: DoctorDeps = realDoctorDeps()): Promise<void> {
+	// `--processes` is an inventory, not a health check: it has no pass/fail and
+	// always exits 0, so scripting it never trips the doctor problem exit code.
+	if (args.flags?.processes) {
+		const rows = collectNativeProcesses(realProcessInventoryDeps());
+		process.stdout.write(
+			args.flags?.json ? `${JSON.stringify({ nativeProcesses: rows }, null, 2)}\n` : renderNativeProcesses(rows),
+		);
+		process.exit(CLI_EXIT_CODE_SUCCESS);
+	}
 	const results = collectChecks(deps);
 	if (args.flags?.json) {
 		process.stdout.write(JSON.stringify({ checks: results }, null, 2) + "\n");

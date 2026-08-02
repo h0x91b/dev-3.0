@@ -36,6 +36,53 @@ function sample(overrides: Partial<NativeSessionRecord> = {}): NativeSessionReco
 	};
 }
 
+describe("native-session record — optional identity (seq 1383)", () => {
+	it("round-trips a task-owned identity", () => {
+		const record = sample({ identity: { seq: "1383", paneId: "pane-1" } });
+		expect(parseRecord(serializeRecord(record))).toEqual(record);
+	});
+
+	it("stays absent for a session started outside a task", () => {
+		expect(parseRecord(serializeRecord(sample()))).not.toHaveProperty("identity");
+	});
+
+	it("is readable by a build that never wrote it — no schema bump", () => {
+		// A pre-1383 dev3 parses the same schemaVersion 1 whitelist, so an unknown
+		// key must never make a record unreadable-and-not-ours.
+		const raw = JSON.parse(serializeRecord(sample())) as Record<string, unknown>;
+		raw.identity = { seq: "1383", paneId: "pane-1" };
+		raw.somethingFromTheFuture = { nested: true };
+		const parsed = parseRecord(JSON.stringify(raw));
+		expect(parsed?.sessionId).toBe("alpha");
+		expect(parsed).not.toHaveProperty("somethingFromTheFuture");
+	});
+
+	it("drops a malformed identity instead of losing the whole session", () => {
+		for (const identity of [
+			"1383",
+			42,
+			null,
+			{ seq: 1383 },
+			{ seq: "Fix the auth race" },
+			{ seq: "../../etc/passwd" },
+			{ paneId: "pane 1; rm -rf /" },
+			{},
+		]) {
+			const raw = JSON.parse(serializeRecord(sample())) as Record<string, unknown>;
+			raw.identity = identity;
+			const parsed = parseRecord(JSON.stringify(raw));
+			expect(parsed?.sessionId).toBe("alpha");
+			expect(parsed?.identity).toBeUndefined();
+		}
+	});
+
+	it("keeps a half-known identity rather than discarding the readable half", () => {
+		const raw = JSON.parse(serializeRecord(sample())) as Record<string, unknown>;
+		raw.identity = { seq: "1383", paneId: 7 };
+		expect(parseRecord(JSON.stringify(raw))?.identity).toEqual({ seq: "1383" });
+	});
+});
+
 describe("native-session record (pure)", () => {
 	it("round-trips a valid record", () => {
 		expect(parseRecord(serializeRecord(sample()))).toEqual(sample());

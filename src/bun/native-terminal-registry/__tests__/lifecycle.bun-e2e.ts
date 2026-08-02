@@ -35,6 +35,7 @@ import {
 	type NativeSessionRecord,
 } from "../record";
 import { cleanupStale, list, start, stop } from "../registry";
+import { TASK_SEQ_ENV } from "../process-naming";
 import {
 	defaultNativeShellLaunchSpec,
 	defineShellLaunchSpec,
@@ -48,6 +49,29 @@ import {
 	sendUntilObserved,
 	SHELL_WARMUP_PROBE,
 } from "./command-roundtrip";
+
+/**
+ * What a process viewer would print for `pid`: the POSIX command column, or the
+ * Windows Details tab's "Command line" (both of which carry argv0). "" when the
+ * process is gone or the query fails.
+ */
+function liveProcessCommandLine(pid: number): string {
+	try {
+		const res =
+			process.platform === "win32"
+				? spawnSync([
+						"powershell.exe",
+						"-NoProfile",
+						"-NonInteractive",
+						"-Command",
+						`(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
+					])
+				: spawnSync(["ps", "-p", String(pid), "-o", "args="]);
+		return res.success ? new TextDecoder().decode(res.stdout).trim() : "";
+	} catch {
+		return "";
+	}
+}
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -414,7 +438,37 @@ async function run(): Promise<void> {
 		check(isProcessAlive(tmuxGuard.pid), "cleanup did NOT signal the unrelated reused PID (tmux guard alive)");
 		check(isProcessAlive(bravo.hostPid), "cleanup did NOT touch the live bravo host");
 
-		// ── 9. the registry never invoked tmux ──
+		// ── 9. a task-owned host is human-readable in a real process viewer (seq 1383) ──
+		const namedId = "dev3-task-11111111-2222-3333-4444-555555555555-pane-1";
+		const namedLaunch = defineShellLaunchSpec({ ...launch, env: { ...launch.env, [TASK_SEQ_ENV]: "1383" } });
+		const named = await start(namedId, { launch: namedLaunch, timeoutMs: 15_000 });
+		const expectedName = "dev3-terminal-host seq:1383 pane:1";
+		check(
+			named.record.identity?.seq === "1383" && named.record.identity?.paneId === "pane-1",
+			"record carries the same identity the host's argv0 does",
+		);
+		check(
+			!JSON.stringify(named.record.identity).includes("11111111"),
+			"record identity carries the human number, not the task UUID",
+		);
+		check(
+			liveProcessCommandLine(named.record.host.pid).includes(expectedName),
+			`host shows "${expectedName}" to the operating system`,
+		);
+		check(
+			!named.record.host.executable.includes("seq:"),
+			"the recorded host executable stays a real path — no renamed or copied binary",
+		);
+		// Naming must not have cost the ownership + cleanup guarantees this file exists for.
+		check(await stop(namedId, { timeoutMs: 8000 }), "the named session stops through its own ownership boundary");
+		check(readRecord(namedId) === null, "the named session's record is gone after stop");
+		check(
+			!isProcessAlive(named.record.host.pid) && !isProcessAlive(named.record.shell.pid),
+			"the named session's host + shell are both gone after stop",
+		);
+		check(isProcessAlive(bravo.hostPid), "stopping the named session did NOT touch bravo");
+
+		// ── 10. the registry never invoked tmux ──
 		check(!existsSync(sentinel), "registry NEVER invoked tmux (PATH shim sentinel absent)");
 	} finally {
 		try {

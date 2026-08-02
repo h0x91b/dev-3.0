@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
-import { deriveTestRunRoot, testWorktreeId } from "../../../test-isolation";
+import { INHERITED_TASK_CONTEXT_ENV, deriveTestRunRoot, testWorktreeId } from "../../../test-isolation";
 
 describe("test process isolation", () => {
 	it("derives different roots for different worktrees", () => {
@@ -29,5 +29,31 @@ describe("test process isolation", () => {
 		expect(process.env.DEV3_LOG_DIR).toContain(root);
 		expect(process.env.XDG_CONFIG_HOME).toContain(root);
 		expect(process.env.XDG_RUNTIME_DIR).toContain(root);
+	});
+
+	it("scrubs the task context of the agent that started this run", () => {
+		// These suites usually run INSIDE a dev3 task pane. Leaving DEV3_TASK_SEQ or
+		// DEV3_PANE_ID set would let a module quietly pick up the agent's own task
+		// and produce a different verdict locally than in CI.
+		for (const key of INHERITED_TASK_CONTEXT_ENV) expect(process.env[key]).toBeUndefined();
+	});
+
+	it("scrubs the native session config of the pane this run started in", () => {
+		// An agent pane on the native backend exports its own host's
+		// DEV3_NATIVE_SESSION_* — which a launcher test would otherwise read as if
+		// the launcher had set it.
+		expect(Object.keys(process.env).filter((key) => key.startsWith("DEV3_NATIVE_SESSION_"))).toEqual([]);
+	});
+
+	it("names every task-context var dev3 injects into a pane", () => {
+		// A new injected var must be added to the scrub list in the same change.
+		expect([...INHERITED_TASK_CONTEXT_ENV]).toEqual([
+			"DEV3_TASK_ID",
+			"DEV3_TASK_SEQ",
+			"DEV3_TASK_TITLE",
+			"DEV3_PANE_ID",
+			"DEV3_WORKTREE_PATH",
+			"DEV3_BRANCH_NAME",
+		]);
 	});
 });

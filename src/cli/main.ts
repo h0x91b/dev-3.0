@@ -77,6 +77,7 @@ Commands:
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
   dev3 doctor [--json]                   Check install health (app bundle, tmux shim, brew state); works without the app running
+  dev3 doctor --processes [--json]       Which task owns each native terminal host/shell (seq, pane, role, pid, liveness)
   dev3 install-hooks                     Install Claude worktree hooks and stable Codex user hooks
   dev3 install-skills                    Install agent skills globally
   dev3 projects list                    List all projects

@@ -31,6 +31,7 @@ import { NativeSessionClient } from "./client";
 import { classifyOwnership, type OwnershipVerdict } from "./ownership";
 import { isValidSessionId, logFile, recordFile, sessionDir, sessionsRootDir } from "./paths";
 import { isProcessAlive } from "./process-identity";
+import { nativeHostProcessName } from "./process-naming";
 import { inspectRecordFile, readRecord, readToken, removeSessionState, type NativeSessionRecord } from "./record";
 import {
 	isLostState,
@@ -139,6 +140,10 @@ function hostLogTail(sessionId: string, maxLength = 4000): string {
 /** Real launcher: spawn a detached child that re-enters this CLI in host mode. */
 export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, logFd: number): HostLaunch {
 	const child = spawnChild(process.execPath, [hostEntry(), "__host", sessionId], {
+		// Human-readable identity in process viewers (seq 1383). argv0 only — the
+		// child's own process.argv is untouched, so verb/session-id parsing and the
+		// entrypoint assertion in native-terminal-host/main.ts still see argv[1..3].
+		argv0: nativeHostProcessName(sessionId, opts.launch.env),
 		stdio: ["ignore", logFd, logFd],
 		detached: true,
 		env: {

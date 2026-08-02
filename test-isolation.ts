@@ -26,6 +26,31 @@ export function deriveTestRunRoot(
 }
 
 /**
+ * Task-context vars dev3 injects into every agent pane. A suite run BY an agent
+ * inherits the agent's OWN task, so anything reading them would silently test
+ * that task instead of its fixture — passing locally and failing in CI, or the
+ * reverse. Scrubbed so every suite starts from "no task in scope"; a test that
+ * wants one sets it explicitly.
+ */
+export const INHERITED_TASK_CONTEXT_ENV = [
+	"DEV3_TASK_ID",
+	"DEV3_TASK_SEQ",
+	"DEV3_TASK_TITLE",
+	"DEV3_PANE_ID",
+	"DEV3_WORKTREE_PATH",
+	"DEV3_BRANCH_NAME",
+] as const;
+
+/**
+ * Same problem, worse blast radius: an agent pane on the native terminal backend
+ * exports its host's own `DEV3_NATIVE_SESSION_*` config, and a launcher test
+ * asserting "this flag is absent unless requested" then reads the pane's value
+ * out of the inherited environment. `DEV3_NATIVE_SESSIONS_DIR` (plural) is a
+ * test-owned override and deliberately does not match this prefix.
+ */
+const INHERITED_NATIVE_SESSION_ENV_PREFIX = "DEV3_NATIVE_SESSION_";
+
+/**
  * Move every implicit user/global path used by a test process into a sandbox.
  * The worktree hash prevents parallel worktrees from sharing resources; the
  * suite and PID also isolate concurrently repeated runs in one worktree.
@@ -44,6 +69,11 @@ export function configureTestIsolation(suite: string, worktreeRoot = process.cwd
 
 	for (const dir of [home, dev3Home, temp, runtime, xdgConfig, xdgCache, xdgData, xdgState]) {
 		mkdirSync(dir, { recursive: true });
+	}
+
+	for (const key of INHERITED_TASK_CONTEXT_ENV) delete process.env[key];
+	for (const key of Object.keys(process.env)) {
+		if (key.startsWith(INHERITED_NATIVE_SESSION_ENV_PREFIX)) delete process.env[key];
 	}
 
 	Object.assign(process.env, {

@@ -31,10 +31,28 @@ export interface NativeSessionEndpoint {
 	port: number;
 }
 
+/**
+ * The human-readable ownership the host also carries in its argv0 (seq 1383).
+ * Numbers only by construction — `process-naming.ts` is the single validator,
+ * and nothing free-form (title, prompt, path, token) can reach this field.
+ */
+export interface NativeSessionIdentity {
+	/** Human task number, e.g. `1383` or `1383-1`. */
+	seq?: string;
+	/** The coordinator's logical pane id, e.g. `pane-1`. */
+	paneId?: string;
+}
+
 export interface NativeSessionRecord {
 	schemaVersion: typeof NATIVE_SESSION_SCHEMA_VERSION;
 	sessionId: string;
 	paneId: string;
+	/**
+	 * ADDITIVE and optional at schemaVersion 1, so there is no migration: parsing
+	 * is a whitelist, so a dev3 that predates this field reads such a record
+	 * unchanged and ignores it. Absent for sessions started outside a task.
+	 */
+	identity?: NativeSessionIdentity;
 	protocolVersion: number;
 	hostArtifactVersion: string;
 	runtimeVersion: string;
@@ -55,6 +73,25 @@ export function serializeRecord(record: NativeSessionRecord): string {
 
 function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+/**
+ * Read the optional identity block. A malformed or unexpected value is DROPPED,
+ * never rejected: identity is a display convenience, and refusing the whole
+ * record over it would turn a cosmetic field into a lost session.
+ */
+function parseIdentity(value: unknown): NativeSessionIdentity | null {
+	if (!value || typeof value !== "object") return null;
+	const raw = value as Record<string, unknown>;
+	const identity: NativeSessionIdentity = {};
+	if (typeof raw.seq === "string" && isSafeIdentityValue(raw.seq)) identity.seq = raw.seq;
+	if (typeof raw.paneId === "string" && isSafeIdentityValue(raw.paneId)) identity.paneId = raw.paneId;
+	return identity.seq || identity.paneId ? identity : null;
+}
+
+/** Belt-and-braces: only the shapes `process-naming.ts` can produce are surfaced. */
+function isSafeIdentityValue(value: string): boolean {
+	return /^[A-Za-z0-9-]{1,32}$/.test(value);
 }
 
 /** Parse + strictly validate a record, or null if unreadable / not this schema. */
@@ -102,10 +139,12 @@ export function parseRecord(text: string): NativeSessionRecord | null {
 	}
 	// Refuse to surface a token even if a malformed writer smuggled one in.
 	if ("token" in r) return null;
+	const identity = parseIdentity(r.identity);
 	return {
 		schemaVersion: NATIVE_SESSION_SCHEMA_VERSION,
 		sessionId: r.sessionId,
 		paneId: r.paneId,
+		...(identity ? { identity } : {}),
 		protocolVersion: r.protocolVersion,
 		hostArtifactVersion: r.hostArtifactVersion,
 		runtimeVersion: r.runtimeVersion,

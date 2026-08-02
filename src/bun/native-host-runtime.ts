@@ -36,6 +36,7 @@ import { hostImageRootForPackagedCli } from "./native-terminal-registry/host-ima
 import type { PackagedHostImageExpectations } from "./native-terminal-registry/host-images/packaged-image-manifest";
 import type { HostLaunch, HostLauncher, HostSpawnOptions } from "./native-terminal-registry/registry";
 import { encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "./native-terminal-registry/shell-launch";
+import { nativeHostProcessName } from "./native-terminal-registry/process-naming";
 
 const log = createLogger("native-host-runtime");
 
@@ -229,6 +230,10 @@ export function nativeHostLauncher(runtime: NativeHostRuntime): HostLauncher {
 			runtime.runtimePath,
 			[runtime.entrypointPath, runtime.sessionVerb, sessionId],
 			{
+				// Human-readable identity in process viewers (seq 1383). The executable
+				// still IS `runtime.runtimePath`, so the packaged carrier's image name —
+				// and every contract keyed on it — is unchanged; only argv0 differs.
+				argv0: nativeHostProcessName(sessionId, opts.launch.env),
 				stdio: ["ignore", logFd, logFd],
 				detached: true,
 				env: {

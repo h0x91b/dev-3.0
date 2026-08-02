@@ -74,6 +74,13 @@ jobs:
       - name: Native shell launch pure tests
         run: bun run test:native-shell-launch
 
+      # Seq 1383: what each OS actually shows for an argv0-named host. The
+      # per-platform assertions ARE the contract in decision 192, so they have to
+      # run on all three runners — negative ones included (macOS Activity Monitor
+      # and the Windows image-name column stay basename-only).
+      - name: Process naming visibility (${{ matrix.os }})
+        run: bun run test:process-naming
+
       # Real loopback proof for the Windows CLI control transport: round-trip,
       # two instances, stale record, token rejection, and the loopback-only
       # network boundary against this runner's real interfaces.

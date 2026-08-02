@@ -42,13 +42,21 @@ const soakRoot = resolve(sourceRoot, "bun/native-terminal-soak");
 // The platform launch dialect is the fifth: it owns the `ShellLaunchSpec`
 // vocabulary for every generated wrapper script, and reuses this module's
 // pure spec/validation helpers rather than restating them.
+// Seq 1383 adds two, both for the process-naming contract only: the auxiliary
+// pane seam, which stamps the task number every purpose's pane is named after,
+// and read-only diagnostics — `dev3 doctor --processes` parses session records to
+// answer "which dev3 task owns this pid" on the platforms whose process viewer
+// cannot show it. Diagnostics reads and never starts, stops, or writes anything,
+// and it is the ONLY CLI file allowed in here.
 const SANCTIONED_PRODUCT_CALLERS = [
 	"bun/native-host-runtime.ts",
 	"bun/native-task-panes.ts",
 	"bun/native-task-terminal.ts",
 	"bun/native-terminal-host/main.ts",
+	"bun/task-aux-panes.ts",
 	"bun/task-terminal-backend.ts",
 	"bun/terminal-backend/native-backend.ts",
+	"cli/commands/doctor-processes.ts",
 	"shared/platform-launch.ts",
 ];
 

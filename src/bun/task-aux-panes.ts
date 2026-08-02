@@ -23,6 +23,7 @@
  */
 
 import type { Task } from "../shared/types";
+import { taskSeqLabel } from "../shared/types";
 import type { TaskPaneBackendKind } from "../shared/task-panes";
 import type { SplitOrientation } from "../shared/split-tree";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
@@ -35,6 +36,7 @@ import {
 	nativeTaskPanesState,
 	splitNativeTaskPane,
 } from "./native-task-panes";
+import { TASK_SEQ_ENV } from "./native-terminal-registry/process-naming";
 import { dev3TaskTempPath } from "./temp-paths";
 import { createLogger } from "./logger";
 
@@ -196,7 +198,11 @@ export async function closeAuxPane(task: Task, purpose: AuxPanePurpose, socket: 
  * because a dev server started.
  */
 export async function openAuxPane(spec: OpenAuxPaneSpec): Promise<AuxPaneHandle> {
-	const { task, purpose, placement, size, cwd, env, socket, title } = spec;
+	const { task, purpose, placement, size, cwd, socket, title } = spec;
+	// Every purpose's pane gets the task number, so a native auxiliary host is as
+	// readable in a process viewer as the agent's own (seq 1383). Set here rather
+	// than at each call site: a future purpose inherits it by construction.
+	const env = { [TASK_SEQ_ENV]: taskSeqLabel(task), ...spec.env };
 	await closeAuxPane(task, purpose, socket);
 
 	if (backendOf(task) === "native") {
@@ -207,7 +213,7 @@ export async function openAuxPane(spec: OpenAuxPaneSpec): Promise<AuxPaneHandle>
 
 		const { paneId } = await splitNativeTaskPane(task.id, anchor, orientationFor(placement), {
 			cwd,
-			env: env ?? {},
+			env,
 			launch: spec.nativeLaunch,
 		});
 

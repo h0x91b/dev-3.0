@@ -44,6 +44,7 @@ import {
 	writeToken,
 	type NativeSessionRecord,
 } from "./record";
+import { deriveNativeProcessIdentity, PANE_ID_ENV, type NativeProcessIdentity } from "./process-naming";
 import { createWindowsJobContainment } from "./windows-job";
 import { WriterOwnership } from "./writer-ownership";
 import {
@@ -86,6 +87,7 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 export interface RecordFields {
 	sessionId: string;
 	paneId: string;
+	identity: NativeProcessIdentity;
 	hostPid: number;
 	hostExecutable: string;
 	hostStartSignature: string;
@@ -103,10 +105,17 @@ export interface RecordFields {
 
 /** Build a versioned record from live host state (pure — no token ever enters it). */
 export function buildRecord(fields: RecordFields): NativeSessionRecord {
+	const identity = {
+		...(fields.identity.seq ? { seq: fields.identity.seq } : {}),
+		...(fields.identity.paneId ? { paneId: fields.identity.paneId } : {}),
+	};
 	return {
 		schemaVersion: NATIVE_SESSION_SCHEMA_VERSION,
 		sessionId: fields.sessionId,
 		paneId: fields.paneId,
+		// Omitted entirely when nothing is known, so a non-task session's record
+		// keeps exactly the shape it had before seq 1383.
+		...(identity.seq || identity.paneId ? { identity } : {}),
 		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
 		hostArtifactVersion: NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 		runtimeVersion: fields.runtimeVersion,
@@ -192,6 +201,9 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	const { sessionId } = config;
 	const paneId = `${sessionId}:0`;
 	const token = randomBytes(24).toString("hex");
+	// Same pure derivation the launcher used for argv0, from the same two inputs,
+	// so what a process viewer shows and what the record says cannot drift.
+	const identity = deriveNativeProcessIdentity(sessionId, config.launch.env);
 
 	// Self-enrol BEFORE Bun.spawn so Windows children inherit the non-breakaway
 	// job atomically at process creation (no root-shell assignment race).
@@ -265,7 +277,15 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 					},
 				},
 				cwd: config.launch.cwd,
-				env: { ...process.env, TERM: "xterm-256color", ...config.launch.env },
+				// The shell's own argv is left exactly as the launch spec defines it —
+				// rewriting argv0 would change `$0` and the leading-dash login-shell
+				// convention. Its pane is exported instead (seq 1383).
+				env: {
+					...process.env,
+					TERM: "xterm-256color",
+					...config.launch.env,
+					...(identity.paneId ? { [PANE_ID_ENV]: identity.paneId } : {}),
+				},
 			});
 		} catch (cause) {
 			throw nativeTerminalSpawnError({ platform: process.platform, bunVersion, command: config.launch.executable, cause });
@@ -443,6 +463,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			buildRecord({
 				sessionId,
 				paneId,
+				identity,
 				hostPid: process.pid,
 				hostExecutable: process.execPath,
 				hostStartSignature,

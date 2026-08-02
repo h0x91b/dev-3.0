@@ -1,0 +1,3 @@
+Short: See which task owns each terminal
+
+Native terminal hosts now name themselves after the task that owns them, so a system process viewer shows `dev3-terminal-host seq:1383 pane:1` instead of a wall of identical rows — visible in `ps`, in `ps aux`, and in the Windows Task Manager command-line column. Where a viewer can only ever show the executable name (macOS Activity Monitor, the Windows image-name column), `dev3 doctor --processes` prints the same ownership: task, pane, role, pid and parent, executable, and whether it is still alive. Task panes also export `$DEV3_TASK_SEQ` and `$DEV3_PANE_ID`.

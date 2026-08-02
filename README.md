@@ -367,6 +367,16 @@ dev3 doctor
 
 It works while the app is closed and checks the app/CLI versions, the saved tmux path, the managed shim, the tmux binary (bundled / keg / PATH), and Homebrew state. Follow the commands printed under the failed check. Do not create `~/.dev3.0/bin/tmux` yourself — dev-3.0 owns and recreates that shim.
 
+### Which task owns this process?
+
+Native terminal hosts name themselves after their task, so `ps aux` (macOS, Linux) and the Windows Task Manager **Details → Command line** column show `dev3-terminal-host seq:1383 pane:1`. Two views can only ever show the executable name — macOS **Activity Monitor**'s Process Name column and the Windows Task Manager **image-name** column — so for those, ask dev3 directly:
+
+```sh
+dev3 doctor --processes        # add --json for scripts
+```
+
+It lists every native terminal host and shell with its task number, pane, role, pid and parent pid, executable, and whether it is still alive. Read-only, works with the app closed, and prints nothing that is unsafe to paste into a bug report.
+
 ### tmux is missing or terminals do not start
 
 macOS releases bundle a self-contained pinned tmux inside the app (`Contents/Resources/app/tmux/tmux`) and the CLI tarball, so no Homebrew or Command Line Tools are needed for it. If `dev3 doctor` reports that no usable tmux binary exists, reinstall the app (or update to the latest version); as an alternative remedy the pinned Homebrew keg still works:

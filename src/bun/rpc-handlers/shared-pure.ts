@@ -4,7 +4,7 @@
  * in standalone bun scripts (e.g. e2e tests) without triggering native deps.
  */
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS } from "../../shared/types";
+import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS, taskSeqLabel } from "../../shared/types";
 import {
 	assertPosixLaunchDialect,
 	getLaunchShellPath,
@@ -379,6 +379,9 @@ export function buildTaskLifecycleEnv(
 		DEV3_PROJECT_PATH: project.path,
 		DEV3_PROJECT_NAME: project.name,
 		DEV3_TASK_ID: task.id,
+		// The human task number (`1383`, `1383-1`). Also the ONLY task-identifying
+		// value allowed into a native host's world-visible process name (seq 1383).
+		DEV3_TASK_SEQ: taskSeqLabel(task),
 		DEV3_TASK_TITLE: task.title,
 		DEV3_WORKTREE_PATH: worktreePath,
 		DEV3_BRANCH_NAME: branchName ?? task.branchName ?? "",

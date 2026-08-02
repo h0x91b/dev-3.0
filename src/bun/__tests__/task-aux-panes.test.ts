@@ -79,8 +79,8 @@ const TASK_ID = "aaaaaaaa-0000-0000-0000-000000000001";
 const SESSION = `dev3-${TASK_ID.slice(0, 8)}`;
 const SOCKET = "dev3-sock";
 
-const nativeTask = { id: TASK_ID, terminalBackend: "native" } as unknown as Task;
-const tmuxTask = { id: TASK_ID } as unknown as Task;
+const nativeTask = { id: TASK_ID, seq: 1383, terminalBackend: "native" } as unknown as Task;
+const tmuxTask = { id: TASK_ID, seq: 1383 } as unknown as Task;
 
 const DEV_MARKER = auxPaneMarker(TASK_ID, "devServer");
 
@@ -142,7 +142,7 @@ describe("openAuxPane (native)", () => {
 
 		expect(mocks.splitNativeTaskPane).toHaveBeenCalledWith(TASK_ID, "pane-1", "vertical", {
 			cwd: "/tmp/wt",
-			env: { DEV3_TASK_ID: TASK_ID },
+			env: { DEV3_TASK_SEQ: "1383", DEV3_TASK_ID: TASK_ID },
 			launch: { executable: "/bin/bash", argv: [DEV_MARKER] },
 		});
 		expect(handle).toEqual({ backend: "native", paneId: "pane-2" });
@@ -153,6 +153,34 @@ describe("openAuxPane (native)", () => {
 
 		for (const method of TMUX_METHODS) expect(method).not.toHaveBeenCalled();
 		expect(spawn).not.toHaveBeenCalled();
+	});
+
+	// Seq 1383: an auxiliary host must be as readable in a process viewer as the
+	// agent's own pane, and the seam is the one place that guarantees it.
+	it("gives every purpose's pane the task number, even one the caller did not pass", async () => {
+		await openAuxPane(spec(nativeTask, { purpose: "gitOp", env: undefined }));
+		const [, , , viewSpec] = mocks.splitNativeTaskPane.mock.calls[0];
+		expect(viewSpec.env).toEqual({ DEV3_TASK_SEQ: "1383" });
+	});
+
+	it("lets the caller's own env win, so pane identity never overwrites task context", async () => {
+		await openAuxPane(spec(nativeTask, { env: { DEV3_TASK_SEQ: "explicit", FOO: "bar" } }));
+		const [, , , viewSpec] = mocks.splitNativeTaskPane.mock.calls[0];
+		expect(viewSpec.env).toEqual({ DEV3_TASK_SEQ: "explicit", FOO: "bar" });
+	});
+
+	it("carries a variant's suffix", async () => {
+		const variant = { id: TASK_ID, seq: 1383, variantIndex: 2, terminalBackend: "native" } as unknown as Task;
+		await openAuxPane(spec(variant, { env: undefined }));
+		const [, , , viewSpec] = mocks.splitNativeTaskPane.mock.calls[0];
+		expect(viewSpec.env.DEV3_TASK_SEQ).toBe("1383-2");
+	});
+
+	it("does not put anything else about the task into the pane env", async () => {
+		const titled = { ...nativeTask, title: "Rotate the prod secret", worktreePath: "/private/wt" } as Task;
+		await openAuxPane(spec(titled, { env: undefined }));
+		const [, , , viewSpec] = mocks.splitNativeTaskPane.mock.calls[0];
+		expect(Object.keys(viewSpec.env)).toEqual(["DEV3_TASK_SEQ"]);
 	});
 
 	it("hands focus back to the pane that had it before the split", async () => {
@@ -267,7 +295,7 @@ describe("openAuxPane (tmux)", () => {
 			orientation: "vertical",
 			size: "20%",
 			printPaneId: true,
-			env: { DEV3_TASK_ID: TASK_ID },
+			env: { DEV3_TASK_SEQ: "1383", DEV3_TASK_ID: TASK_ID },
 			cwd: "/tmp/wt",
 			command: `bash ${DEV_MARKER}`,
 			socket: SOCKET,

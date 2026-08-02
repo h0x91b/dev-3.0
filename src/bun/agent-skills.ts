@@ -182,6 +182,7 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    | \`$DEV3_PROJECT_PATH\` | Project root directory (the original repo checkout) |
    | \`$DEV3_PROJECT_NAME\` | Project name |
    | \`$DEV3_TASK_ID\` | Task UUID |
+   | \`$DEV3_TASK_SEQ\` | The task's human number, variant suffix included (\`1383\`, \`1383-1\`) — the \`seq:\` address every \`dev3 --task seq:<N>\` flag takes |
    | \`$DEV3_TASK_TITLE\` | Task title |
    | \`$DEV3_WORKTREE_PATH\` | This task's worktree directory |
    | \`$DEV3_BRANCH_NAME\` | The task's git branch |
