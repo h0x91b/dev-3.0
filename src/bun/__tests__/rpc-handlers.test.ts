@@ -387,6 +387,7 @@ const {
 	tmuxPaneCount,
 	tmuxPaneNavigate,
 } = await import("../rpc-handlers/tmux-pty");
+const { AuxPaneUnavailableError } = await import("../task-aux-panes");
 const { _resetLifecycleActorsForTest } = await import("../lifecycle/service");
 
 beforeEach(async () => {
@@ -11489,12 +11490,31 @@ describe("triggerColumnAgentIfNeeded", () => {
 			movedTo: "review-by-user",
 		});
 		expect(String(payload.error)).toContain("boom");
+		// An unrecognised failure carries no reason code — the renderer then shows the
+		// error string as diagnostics instead of claiming to know what happened.
+		expect(payload.reason).toBeUndefined();
 		expect(data.updateTask).toHaveBeenCalledWith(
 			project,
 			task.id,
 			expect.objectContaining({ status: "review-by-user", customColumnId: null }),
 			{ dropPosition: "top", ifStatus: "review-by-ai" },
 		);
+	});
+
+	it("carries terminal-not-running as a structured reason so the toast can be localized", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+		vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(
+			new AuxPaneUnavailableError("terminal-not-running"),
+		);
+		mockTaskWrites(task);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+		const payload = push.mock.calls.find((call) => call[0] === "columnAgentFailed")?.[1];
+		expect(payload).toMatchObject({ columnName: "AI Review", reason: "terminal-not-running", movedTo: "review-by-user" });
 	});
 
 	it("falls back to review-by-user when review-agent configuration cannot resolve", async () => {

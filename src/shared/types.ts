@@ -313,6 +313,14 @@ export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
 	return autoReviewEnabled ? "review-by-ai" : "review-by-user";
 }
 
+/**
+ * A column-agent launch failure the app recognises and can explain in the user's
+ * own language. Carried as a stable code so the renderer never has to read the
+ * English `error` string; anything unrecognised has no reason and falls back to
+ * showing that string as diagnostics.
+ */
+export type ColumnAgentFailureReason = "terminal-not-running";
+
 // ---- Coding Agents ----
 
 export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan" | "auto";
@@ -3924,6 +3932,7 @@ export type AppRPCSchema = {
 				columnName: string;
 				error: string;
 				movedTo?: TaskStatus;
+				reason?: ColumnAgentFailureReason;
 			};
 			/**
 			 * Emitted when background worktree/PTY preparation for a task fails (e.g.

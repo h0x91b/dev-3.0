@@ -4,6 +4,7 @@ import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
 import { statusKey } from "./i18n/status";
+import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
@@ -1725,14 +1726,13 @@ function App() {
 	// task in Your Review; a custom column leaves it where it is.
 	useEffect(() => {
 		function onColumnAgentFailed(e: Event) {
-			const { taskId, columnName, error, movedTo } = (e as CustomEvent).detail as
-				AppRPCSchema["bun"]["messages"]["columnAgentFailed"];
-			// Say where the task ended up, so the card moving on its own is explained
-			// instead of reading as "the action did nothing".
-			const message = movedTo
-				? t("kanban.columnAgentFailedMoved", { columnName, status: t(statusKey(movedTo)), error })
-				: t("kanban.columnAgentFailed", { columnName, error });
-			toast.error(message, { taskId });
+			const payload = (e as CustomEvent).detail as AppRPCSchema["bun"]["messages"]["columnAgentFailed"];
+			// Copy is chosen from the failure's structural `reason` and whether the task
+			// was moved — never by reading the backend's English error string. Saying
+			// where the task ended up is what stops a card moving on its own from
+			// reading as "the action did nothing".
+			const copy = columnAgentFailureCopy(payload, (status) => t(statusKey(status)));
+			toast.error(t(copy.key, copy.params), { taskId: payload.taskId });
 		}
 		window.addEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
 		return () => window.removeEventListener("rpc:columnAgentFailed", onColumnAgentFailed);

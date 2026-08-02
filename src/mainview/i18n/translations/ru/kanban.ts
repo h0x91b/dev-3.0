@@ -8,6 +8,8 @@ const kanban = {
 	"kanban.createdButFollowUpFailed": "Задача создана, но не удалось применить заголовок/метки: {error}",
 	"kanban.columnAgentFailed": "Не удалось запустить агента для колонки «{columnName}»: {error}",
 	"kanban.columnAgentFailedMoved": "Не удалось запустить агента для колонки «{columnName}» — задача перемещена в «{status}»: {error}",
+	"kanban.columnAgentNoTerminal": "Не запустить агента колонки «{columnName}»: терминал этой задачи не работает. Откройте задачу, чтобы его запустить, и повторите.",
+	"kanban.columnAgentNoTerminalMoved": "Не запустить агента колонки «{columnName}»: терминал этой задачи не работает, поэтому задача перемещена в «{status}». Откройте задачу, запустите терминал и верните её обратно.",
 	"kanban.taskPreparationFailed": "Не удалось подготовить «{taskTitle}» — задача возвращена в To Do: {error}",
 	"task.launchFailed": "Ошибка запуска: {error}",
 	"kanban.failedReorderColumns": "Не удалось изменить порядок колонок: {error}",

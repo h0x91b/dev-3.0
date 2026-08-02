@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import type {
 	ColumnAgentConfig,
+	ColumnAgentFailureReason,
 	CompletedDiffStats,
 	CustomColumn,
 	AppRPCSchema,
@@ -30,6 +31,7 @@ import {
 } from "../preparation-runtime";
 import * as pty from "../pty-server";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
+import { AuxPaneUnavailableError } from "../task-aux-panes";
 import * as repoConfig from "../repo-config";
 import { loadSettings, loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
@@ -449,11 +451,25 @@ export async function launchLifecycleColumnAgent(
 		return {
 			type: "columnAgentFailed",
 			columnName,
-			// This lands in a user-facing toast, so drop the "Error: " that String()
-			// prepends and show the sentence the thrower actually wrote.
+			// The diagnostic half: whatever the thrower wrote, minus the "Error: " that
+			// String() would prepend. Never parsed — only ever shown.
 			error: error instanceof Error ? error.message : String(error),
+			// The explainable half. A recognised failure travels as a code so the UI can
+			// say it in the user's language instead of matching on English.
+			reason: columnAgentFailureReason(error),
 		};
 	}
+}
+
+/**
+ * The stable code for a failure the app knows how to explain, or `undefined` for
+ * anything it can only report verbatim.
+ */
+function columnAgentFailureReason(error: unknown): ColumnAgentFailureReason | undefined {
+	if (error instanceof AuxPaneUnavailableError && error.reason === "terminal-not-running") {
+		return "terminal-not-running";
+	}
+	return undefined;
 }
 
 async function launchColumnAgentEffect(
@@ -573,6 +589,7 @@ function pushEffect(effect: Extract<LifecycleEffect, { type: "push" }>, ctx: Lif
 				columnName: failure.columnName,
 				error: failure.error,
 				movedTo: failure.movedTo,
+				reason: failure.reason,
 			};
 			push("columnAgentFailed", payload);
 			return;

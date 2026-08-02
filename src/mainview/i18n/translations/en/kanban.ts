@@ -8,6 +8,8 @@ const kanban = {
 	"kanban.createdButFollowUpFailed": "Task created, but its title/labels couldn't be applied: {error}",
 	"kanban.columnAgentFailed": "Column agent failed to launch for \"{columnName}\": {error}",
 	"kanban.columnAgentFailedMoved": "Column agent failed to launch for \"{columnName}\" — moved to {status}: {error}",
+	"kanban.columnAgentNoTerminal": "Can't start the \"{columnName}\" agent: this task's terminal isn't running. Open the task to start it, then try again.",
+	"kanban.columnAgentNoTerminalMoved": "Can't start the \"{columnName}\" agent: this task's terminal isn't running, so the task was moved to {status}. Open the task to start its terminal, then move it back.",
 	"kanban.taskPreparationFailed": "Couldn't prepare \"{taskTitle}\" — moved back to To Do: {error}",
 	"task.launchFailed": "Launch failed: {error}",
 	"kanban.failedReorderColumns": "Failed to reorder columns: {error}",

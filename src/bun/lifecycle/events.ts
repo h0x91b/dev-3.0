@@ -1,4 +1,4 @@
-import type { AppRPCSchema, PreparingStage, Task, TaskStatus } from "../../shared/types";
+import type { AppRPCSchema, ColumnAgentFailureReason, PreparingStage, Task, TaskStatus } from "../../shared/types";
 
 export interface LifecycleColumn {
 	status: TaskStatus;
@@ -166,6 +166,8 @@ export type LifecycleEvent =
 		type: "columnAgentFailed";
 		columnName: string;
 		error: string;
+		/** Set only for a failure the app recognises, so the UI can localize it. */
+		reason?: ColumnAgentFailureReason;
 	}
 	| {
 		type: "bootObserved";
