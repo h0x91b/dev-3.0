@@ -8416,6 +8416,145 @@ describe("handlers.spawnAgentInTask", () => {
 		// 3rd arg is the per-launch accountId (undefined here → registry default).
 		expect(agents.ensureClaudeTrust).toHaveBeenCalledWith("/tmp/wt", project.path, undefined);
 	});
+
+	// The tmux pane registry is what recovery reconciles against live tmux panes,
+	// so the tmux path must keep appending to it (the native path must not).
+	it("appends the new pane to sessionState on a tmux task", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: "%7\n", exited: Promise.resolve(0) });
+
+		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
+
+		const write = (data.updateTask as any).mock.calls.find((c: any[]) => c[2]?.sessionState);
+		expect(write).toBeDefined();
+		expect(write[2].sessionState.panes).toHaveLength(1);
+		expect(write[2].sessionState.panes[0]).toMatchObject({ paneId: "%7", agentId: "builtin-claude", configId: "claude-default" });
+	});
+});
+
+// ================================================================
+// handlers.spawnAgentInTask on a NATIVE task (seq 1397)
+//
+// Same "+ Agent" entry point the Spawn Agent dialog calls, on a task whose
+// terminal is native rather than tmux. It used to split `dev3-<id>` blindly,
+// so on a native task there was no such session and the launch died.
+// ================================================================
+
+describe("handlers.spawnAgentInTask on a native task", () => {
+	const TASK_ID = "abcd1234-full-id";
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
+		mockNativePanes.focusNativeTaskPane.mockResolvedValue(null as any);
+	});
+
+	/** A live native pane set (the agent's own pane) backed by a real SplitTree. */
+	function arrangeNativePaneSet(opts: { splitFails?: boolean } = {}) {
+		let tree = createSplitTree();
+		const state = () => ({
+			taskId: TASK_ID,
+			panes: listPaneIds(tree).map((paneId) => ({ paneId, sessionId: `${paneId}-s`, hostPid: 1, shellPid: 2, cols: 80, rows: 24, alive: true })),
+			layout: serializeSplitTree(tree),
+			activePaneId: tree.activePaneId,
+		});
+		mockNativePanes.nativeTaskPanesState.mockImplementation(async () => state() as any);
+		mockNativePanes.splitNativeTaskPane.mockImplementation(async (_taskId: string, fromPaneId: string, orientation: SplitOrientation) => {
+			if (opts.splitFails) throw new Error("host would not start");
+			const paneId = `pane-${tree.nextPaneOrdinal}`;
+			tree = splitPane(tree, fromPaneId, orientation);
+			return { paneId, state: state() } as any;
+		});
+		return { paneIds: () => listPaneIds(tree), activePaneId: () => tree.activePaneId };
+	}
+
+	function arrangeNativeTask() {
+		const project = makeProject();
+		const task = makeTask({ id: TASK_ID, worktreePath: "/tmp/wt", terminalBackend: "native" } as any);
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(data.updateTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({
+			command: "claude",
+			extraEnv: {},
+			agent: { id: "builtin-claude", baseCommand: "claude" },
+			config: { id: "claude-default" },
+		});
+		return { project, task };
+	}
+
+	function spawn() {
+		return handlers.spawnAgentInTask({ taskId: TASK_ID, projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
+	}
+
+	it("opens one real native pane to the right and never calls tmux", async () => {
+		arrangeNativeTask();
+		const set = arrangeNativePaneSet();
+
+		await spawn();
+
+		expect(mockNativePanes.splitNativeTaskPane).toHaveBeenCalledTimes(1);
+		const [, anchor, orientation, launchOpts] = mockNativePanes.splitNativeTaskPane.mock.calls[0] as any[];
+		expect([anchor, orientation]).toEqual(["pane-1", "horizontal"]);
+		expect(launchOpts.launch.executable).toBe("/bin/bash");
+		expect(launchOpts.launch.argv).toEqual([expect.stringContaining("spawn-")]);
+		expect(launchOpts.cwd).toBe("/tmp/wt");
+		expect(launchOpts.env).toMatchObject({ DEV3_TASK_ID: TASK_ID, DEV3_WORKTREE_ROOT: "/tmp/wt" });
+		expect(set.paneIds()).toEqual(["pane-1", "pane-2"]);
+		// Zero tmux process spawns — no split-window, and no probe of the default socket.
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	// tmux's own split-window leaves the new pane active; the native path must not
+	// hand focus back, or "+ Agent" would land the user in the wrong pane.
+	it("leaves the new agent pane focused, like the tmux path", async () => {
+		arrangeNativeTask();
+		const set = arrangeNativePaneSet();
+
+		await spawn();
+
+		expect(set.activePaneId()).toBe("pane-2");
+		expect(mockNativePanes.focusNativeTaskPane).not.toHaveBeenCalled();
+	});
+
+	// sessionState.panes is reconciled against live TMUX panes, so a native entry
+	// there would be a phantom no pane can ever match.
+	it("records the launched agent without writing a phantom tmux pane", async () => {
+		arrangeNativeTask();
+		arrangeNativePaneSet();
+
+		await spawn();
+
+		const writes = (data.updateTask as any).mock.calls;
+		expect(writes).toHaveLength(1);
+		expect(writes[0][2]).toEqual({ agentId: "builtin-claude", configId: "claude-default" });
+		expect(writes[0][2].sessionState).toBeUndefined();
+	});
+
+	it("reports honestly when the native terminal is not running", async () => {
+		arrangeNativeTask();
+		mockNativePanes.nativeTaskPanesState.mockResolvedValue(null as any);
+
+		await expect(spawn()).rejects.toThrow("the task terminal is not running");
+		expect(mockNativePanes.splitNativeTaskPane).not.toHaveBeenCalled();
+		expect(mockSpawn).not.toHaveBeenCalled();
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("surfaces a failed native split as an actionable error and leaves no pane behind", async () => {
+		arrangeNativeTask();
+		const set = arrangeNativePaneSet({ splitFails: true });
+
+		await expect(spawn()).rejects.toThrow("Failed to spawn agent: host would not start");
+
+		expect(set.paneIds()).toEqual(["pane-1"]);
+		expect(data.updateTask).not.toHaveBeenCalled();
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
 });
 
 // ================================================================

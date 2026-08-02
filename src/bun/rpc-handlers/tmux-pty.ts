@@ -61,6 +61,7 @@ import {
 	nativeAuxPaneShellPid,
 	openAuxPane,
 	splitTaskPane,
+	AuxPaneUnavailableError,
 	type AuxPaneHandle,
 	type AuxPanePlacement,
 } from "../task-aux-panes";
@@ -2476,27 +2477,41 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env));
 
 	const socket = pty.getSessionSocket(params.taskId);
-	const tmuxSession = taskSessionName(params.taskId);
-	let newPaneId: string | null;
+
+	// One extra pane in the task's own terminal, on whichever backend it runs. The
+	// tmux split is the same one this path always did (right half, no -l); the
+	// native path opens a real coordinator pane and never touches tmux.
+	//
+	// The bare primitive, NOT an auxiliary purpose: "+ Agent" is the user asking for
+	// one more agent beside whatever is already there, so several of these panes
+	// coexist by design, while a purpose owns at most one pane and replaces it.
+	let handle: AuxPaneHandle;
 	try {
-		({ paneId: newPaneId } = await tmux.splitWindow({
-			target: tmuxSession,
-			orientation: "horizontal",
-			printPaneId: true,
-			env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
+		handle = await splitTaskPane({
+			task,
+			placement: "right",
+			size: "",
 			cwd: task.worktreePath,
-			command: `bash "${scriptPath}"`,
+			env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
 			socket,
-		}));
+			tmuxCommand: `bash "${scriptPath}"`,
+			nativeLaunch: { executable: "/bin/bash", argv: [scriptPath] },
+		});
 	} catch (err) {
-		if (!(err instanceof TmuxError)) throw err;
-		log.error("spawnAgentInTask failed", { exitCode: err.exitCode, stderr: err.stderr });
-		throw new Error(`Failed to spawn agent: ${err.stderr || "unknown error"}`);
+		log.error("spawnAgentInTask failed", { taskId: params.taskId.slice(0, 8), error: String(err) });
+		throw new Error(
+			err instanceof AuxPaneUnavailableError
+				? "Failed to spawn agent: the task terminal is not running, so there is no pane to split — start the task first."
+				: `Failed to spawn agent: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 
-	if (newPaneId) void markAgentPane(socket, newPaneId);
+	const newPaneId = handle.paneId || null;
+	if (handle.backend === "tmux" && newPaneId) void markAgentPane(socket, newPaneId);
 
-	// Append this pane to sessionState for recovery
+	// sessionState.panes is the tmux pane registry — recovery and `handlePaneExited`
+	// reconcile it against live tmux panes. A native pane is owned by the coordinator
+	// record instead, so writing it here would leave a phantom entry forever.
 	const paneEntry = {
 		paneId: newPaneId,
 		agentCmd: resolvedBaseCmd,
@@ -2510,10 +2525,14 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		const updated = await data.updateTask(project, task.id, {
 			agentId: launchedAgentId,
 			configId: launchedConfigId,
-			sessionState: { panes: [...existingPanes, paneEntry] },
+			...(handle.backend === "tmux" ? { sessionState: { panes: [...existingPanes, paneEntry] } } : {}),
 		});
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		log.info("Appended pane to sessionState", { taskId: params.taskId.slice(0, 8), paneCount: existingPanes.length + 1 });
+		log.info("Recorded the spawned agent", {
+			taskId: params.taskId.slice(0, 8),
+			backend: handle.backend,
+			paneCount: handle.backend === "tmux" ? existingPanes.length + 1 : existingPanes.length,
+		});
 	} catch (err) {
 		log.error("Failed to append pane to sessionState (non-fatal)", { error: String(err) });
 	}
