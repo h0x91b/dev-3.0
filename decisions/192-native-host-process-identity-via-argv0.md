@@ -44,7 +44,9 @@ Two findings settled the mechanism:
   | Windows | accepted | reads/writes the **console title** (`before` came back as `Administrator: Windows PowerShell`), nothing to do with the process at all |
 
   A host that set its own title would be fighting its own name, so production code
-  never writes it — the test only records the probe.
+  never writes it — the test only records the probe. This applies to every spawn
+  in the repo, not just this one, so it has its own record:
+  [decision 195](195-process-title-is-not-a-process-name.md).
 
 ## Decision
 
@@ -91,7 +93,8 @@ The carrier is the detached host's **`argv0`**, formatted by one pure function.
   The full path is still argv[1], and the record keeps `host.executable`.
 - `DEV3_TASK_SEQ` / `DEV3_PANE_ID` are new ambient vars inside task panes.
   `configureTestIsolation` scrubs the whole injected task context so a suite run
-  by an agent cannot silently read the agent's own task.
+  by an agent cannot silently read the agent's own task —
+  [decision 196](196-test-isolation-scrubs-inherited-task-env.md).
 
 ## Alternatives considered
 
