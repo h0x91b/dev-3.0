@@ -265,6 +265,7 @@ async function runSender(): Promise<void> {
 	const { isProcessAlive } = await import("../native-terminal-registry/process-identity");
 	const { tmux, taskSessionName } = await import("../tmux");
 	const { SESSION_OVERVIEW_FORMAT } = await import("../tmux/formats");
+	const { hasTmuxSessionOrAbsent } = await import("./tmux-session-probe");
 	const pty = await import("../pty-server");
 	type Task = import("../../shared/types").Task;
 
@@ -278,21 +279,17 @@ async function runSender(): Promise<void> {
 	};
 
 	/**
-	 * Does this tmux session exist — with "tmux is not installed at all" reported as
-	 * a plain no rather than an exception. On a machine with no tmux binary
-	 * `hasSession` throws ENOENT, which used to abort the whole run on its very last
-	 * line AFTER every check had passed (seq 1381, first CI run on a tmux-less
-	 * runner). A missing binary is the strongest possible evidence that no tmux
-	 * session was created, so it belongs on the passing side, exactly as the
-	 * `listSessions` helper above already treats an unreachable server.
+	 * Does this tmux session exist — with "tmux is not installed at all" reported
+	 * as a plain no rather than an exception, because on a tmux-less runner
+	 * `hasSession` throws ENOENT and used to abort the whole run on its very last
+	 * line AFTER every check had passed (seq 1381, first CI run on such a runner).
+	 *
+	 * Deliberately NOT a blanket catch: only an unlaunchable tmux is absorbed, and
+	 * every other failure still fails the caller. The boundary is pinned by
+	 * `tmux-session-probe.test.ts`, so it cannot be widened unnoticed.
 	 */
-	const hasSessionOrAbsent = async (name: string, socket?: string): Promise<boolean> => {
-		try {
-			return await tmux.hasSession(name, socket ? { socket } : undefined);
-		} catch {
-			return false;
-		}
-	};
+	const hasSessionOrAbsent = (name: string, socket?: string): Promise<boolean> =>
+		hasTmuxSessionOrAbsent((session, opts) => tmux.hasSession(session, opts), name, socket);
 
 	const token = `NMORT-${process.pid}-${Date.now()}`;
 	/** Second delivery, driven outside-in through B's real CLI socket. */
