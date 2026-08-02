@@ -247,6 +247,17 @@ describe("ClosePanePicker (native backend)", () => {
 		expect(toast.error).not.toHaveBeenCalled();
 	});
 
+	it("names an app-owned auxiliary pane instead of the Pane N fallback", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue({
+			...NATIVE_STATE,
+			panes: [NATIVE_STATE.panes[0], { ...NATIVE_STATE.panes[1], label: "Dev Server" }],
+		});
+		renderPicker();
+		startClosePanePicker("task-1");
+		await waitFor(() => expect(screen.getByLabelText("Close Dev Server")).toBeInTheDocument());
+		expect(screen.queryByLabelText("Close Pane 2")).toBeNull();
+	});
+
 	it("draws a single full-cover box while a native pane is zoomed", async () => {
 		vi.mocked(api.request.taskPaneState).mockResolvedValue({ ...NATIVE_STATE, zoomedPaneId: "pane-2" });
 		renderPicker();

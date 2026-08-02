@@ -118,6 +118,15 @@ describe("MobilePaneCarousel", () => {
 		})));
 	});
 
+	it("names an app-owned auxiliary pane instead of the Pane N fallback", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(2, 1, true, ["claude", "Dev Server"]));
+		renderCarousel();
+		await waitFor(() => expect(screen.getByLabelText("Switch pane")).toBeInTheDocument());
+
+		expect(screen.getByLabelText("Switch pane")).toHaveTextContent("2. Dev Server");
+		expect(screen.queryByText(/Pane 2/)).not.toBeInTheDocument();
+	});
+
 	it("the pane overview button opens a spatial map that jumps by pane id", async () => {
 		// PaneMapSheet now calls taskPaneState (not tmuxLayout)
 		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(2, 0, true, ["claude", "bash"]));
