@@ -629,13 +629,20 @@ describe("task lifecycle transition table", () => {
 			columnName: "AI Review",
 			error: "launch failed",
 		});
-		expect(failedReview.effects[0]).toMatchObject({
+		expect(failedReview.effects.find((candidate) => candidate.type === "sendEvent")).toMatchObject({
 			type: "sendEvent",
 			event: {
 				type: "moveRequested",
 				cause: "column-agent-fallback",
 				target: { status: "review-by-user" },
 			},
+		});
+		// The fallback move on its own is silent — that is how seq 1395 shipped as
+		// "AI Review does nothing". The failure must be reported too.
+		expect(failedReview.effects.find((candidate) => candidate.type === "push")).toMatchObject({
+			type: "push",
+			message: "columnAgentFailed",
+			payload: { columnName: "AI Review", error: "launch failed", movedTo: "review-by-user" },
 		});
 	});
 });

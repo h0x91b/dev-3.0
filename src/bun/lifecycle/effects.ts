@@ -42,7 +42,8 @@ type LifecyclePushEffect = (
 	| {
 		type: "push";
 		message: "columnAgentFailed";
-		payload: Extract<LifecycleEvent, { type: "columnAgentFailed" }>;
+		/** `movedTo` is set when the machine also parks the task in another column. */
+		payload: Extract<LifecycleEvent, { type: "columnAgentFailed" }> & { movedTo?: TaskStatus };
 	}
 	| {
 		type: "push";

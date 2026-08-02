@@ -3913,8 +3913,18 @@ export type AppRPCSchema = {
 			 * by the `progressId` the renderer passed to `cloneAndAddProject`.
 			 */
 			cloneProgress: { progressId: string; lines: string[] };
-			/** Emitted when a column-agent launch fails (custom columns have no automatic fallback). */
-			columnAgentFailed: { taskId: string; projectId: string; columnName: string; error: string };
+			/**
+			 * Emitted when a column-agent launch fails. `movedTo` is the column the task
+			 * was parked in as a fallback (built-in AI Review only); absent means the task
+			 * stayed put, which is what a custom column does.
+			 */
+			columnAgentFailed: {
+				taskId: string;
+				projectId: string;
+				columnName: string;
+				error: string;
+				movedTo?: TaskStatus;
+			};
 			/**
 			 * Emitted when background worktree/PTY preparation for a task fails (e.g.
 			 * empty repo, missing base branch). The task is reverted to todo so it is

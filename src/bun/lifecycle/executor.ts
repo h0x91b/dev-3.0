@@ -449,7 +449,9 @@ export async function launchLifecycleColumnAgent(
 		return {
 			type: "columnAgentFailed",
 			columnName,
-			error: String(error),
+			// This lands in a user-facing toast, so drop the "Error: " that String()
+			// prepends and show the sentence the thrower actually wrote.
+			error: error instanceof Error ? error.message : String(error),
 		};
 	}
 }
@@ -570,6 +572,7 @@ function pushEffect(effect: Extract<LifecycleEffect, { type: "push" }>, ctx: Lif
 				projectId: ctx.project.id,
 				columnName: failure.columnName,
 				error: failure.error,
+				movedTo: failure.movedTo,
 			};
 			push("columnAgentFailed", payload);
 			return;

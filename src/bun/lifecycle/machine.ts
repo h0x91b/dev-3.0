@@ -746,9 +746,17 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 		}
 		case "columnAgentFailed":
 			if (state.column.status === "review-by-ai" && state.column.customColumnId === null) {
+				// The fallback move is not a substitute for telling the user: a card that
+				// hops back to Your Review on its own with no message reads as "AI Review
+				// does nothing" (seq 1395). Report AND park.
 				return {
 					next: state,
 					effects: [
+						effect({
+							type: "push",
+							message: "columnAgentFailed",
+							payload: { ...event, movedTo: "review-by-user" },
+						}),
 						effect({
 							type: "sendEvent",
 							event: {

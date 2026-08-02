@@ -11469,6 +11469,34 @@ describe("triggerColumnAgentIfNeeded", () => {
 		);
 	});
 
+	it("tells the user when the AI Review agent cannot launch, alongside the fallback move", async () => {
+		// Seq 1395: the fallback move used to be the ONLY effect, so a failed review
+		// launch looked like the action did nothing at all.
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+		vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(new Error("boom: review agent missing"));
+		mockTaskWrites(task);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+		const payload = push.mock.calls.find((call) => call[0] === "columnAgentFailed")?.[1];
+		expect(payload).toMatchObject({
+			taskId: task.id,
+			projectId: project.id,
+			columnName: "AI Review",
+			movedTo: "review-by-user",
+		});
+		expect(String(payload.error)).toContain("boom");
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			task.id,
+			expect.objectContaining({ status: "review-by-user", customColumnId: null }),
+			{ dropPosition: "top", ifStatus: "review-by-ai" },
+		);
+	});
+
 	it("falls back to review-by-user when review-agent configuration cannot resolve", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });

@@ -7,6 +7,7 @@ const kanban = {
 	"kanban.failedCreate": "Failed to create task: {error}",
 	"kanban.createdButFollowUpFailed": "Task created, but its title/labels couldn't be applied: {error}",
 	"kanban.columnAgentFailed": "Column agent failed to launch for \"{columnName}\": {error}",
+	"kanban.columnAgentFailedMoved": "Column agent failed to launch for \"{columnName}\" — moved to {status}: {error}",
 	"kanban.taskPreparationFailed": "Couldn't prepare \"{taskTitle}\" — moved back to To Do: {error}",
 	"task.launchFailed": "Launch failed: {error}",
 	"kanban.failedReorderColumns": "Failed to reorder columns: {error}",
