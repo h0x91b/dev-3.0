@@ -277,7 +277,8 @@ describe("a state read sweeps ownership once (seq 1388)", () => {
 			rows: 24,
 		});
 		while (state.panes.length < count) {
-			({ state } = await splitNativeTaskPane(TASK_ID, state.panes.at(-1)!.paneId, "horizontal", {
+			const last = state.panes[state.panes.length - 1]!;
+			({ state } = await splitNativeTaskPane(TASK_ID, last.paneId, "horizontal", {
 				cwd: "/work",
 				env: {},
 			}));
