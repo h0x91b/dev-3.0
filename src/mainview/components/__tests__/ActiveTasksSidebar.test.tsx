@@ -1122,3 +1122,40 @@ function makeTask(overrides?: Partial<Task>): Task {
 		);
 	});
 });
+
+describe("ActiveTasksSidebar — native terminal backend mark", () => {
+	function renderSidebar(task: Task) {
+		return render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[task]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	it("marks a native-backed task next to its title", () => {
+		renderSidebar(makeTask({ terminalBackend: "native" }));
+
+		expect(screen.getByTestId("sidebar-native-backend-t1")).toHaveAttribute(
+			"aria-label",
+			"Native terminal backend",
+		);
+	});
+
+	it("stays quiet for an explicit tmux task and for a legacy unmarked one", () => {
+		const { unmount } = renderSidebar(makeTask({ terminalBackend: "tmux" }));
+		expect(screen.queryByTestId("sidebar-native-backend-t1")).toBeNull();
+		unmount();
+
+		renderSidebar(makeTask());
+		expect(screen.queryByTestId("sidebar-native-backend-t1")).toBeNull();
+	});
+});

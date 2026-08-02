@@ -30,6 +30,7 @@ export const tooltips = {
 	"ttip.task.ci": "Live CI status of this task's pull request. Click to open the checks on GitHub.",
 	"ttip.task.review": "Review state of the pull request — approved, changes requested, or still waiting for a reviewer.",
 	"ttip.task.showDescription": "Read the full task description without opening the task.",
+	"ttip.task.nativeBackendMark": "This task's terminal runs on the native backend instead of tmux. It says nothing about whether a terminal is running right now.",
 	"ttip.task.cancel":
 		"Stops the agent and removes the task's worktree (after the cleanup script runs). The card moves to Cancelled.",
 	"ttip.task.delete": "Removes this cancelled task from the board for good.",

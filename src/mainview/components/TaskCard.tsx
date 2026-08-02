@@ -18,6 +18,7 @@ import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
+import NativeBackendMark from "./NativeBackendMark";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -797,6 +798,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						{"\u{F0150}"}
 					</span>
 				)}
+				<NativeBackendMark task={task} className="w-3.5 h-3.5 mr-1.5" testId="task-card-native-backend" />
 				{displayTitle}
 			</div>
 			{hasLongDescription && !isTodo && (

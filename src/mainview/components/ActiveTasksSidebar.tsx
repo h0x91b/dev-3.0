@@ -21,6 +21,7 @@ import { useTipRotation } from "../hooks/useTipRotation";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
+import NativeBackendMark from "./NativeBackendMark";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import Tooltip from "./Tooltip";
@@ -778,6 +779,7 @@ function ActiveTasksSidebar({
 												<div className={`text-xs leading-snug break-words ${
 													isActive ? "text-fg font-medium" : "text-fg-2"
 												}`}>
+													<NativeBackendMark task={task} className="w-3 h-3 mr-1" testId={`sidebar-native-backend-${task.id}`} />
 													{displayTitle}
 												</div>
 

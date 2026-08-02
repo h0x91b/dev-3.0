@@ -28,6 +28,7 @@ export const tooltips = {
 	"ttip.task.ci": "Estado en vivo del CI del pull request de esta tarea. Clic para abrir las comprobaciones en GitHub.",
 	"ttip.task.review": "Estado de revisión del pull request — aprobado, cambios solicitados o aún esperando revisor.",
 	"ttip.task.showDescription": "Lee la descripción completa de la tarea sin abrirla.",
+	"ttip.task.nativeBackendMark": "El terminal de esta tarea usa el backend nativo en lugar de tmux. No indica si hay un terminal en ejecución ahora mismo.",
 	"ttip.task.cancel":
 		"Detiene al agente y elimina el worktree de la tarea (tras ejecutar el script de limpieza). La tarjeta pasa a Cancelled.",
 	"ttip.task.delete": "Elimina definitivamente esta tarea cancelada del tablero.",

@@ -1113,3 +1113,55 @@ describe("GlobalHeader — remote access button", () => {
 		}
 	});
 });
+
+describe("GlobalHeader — native terminal backend mark", () => {
+	const breadcrumbTask: Task = {
+		id: "t1",
+		seq: 42,
+		projectId: "p1",
+		title: "My Task Title",
+		description: "",
+		status: "in-progress",
+		baseBranch: "main",
+		worktreePath: "/tmp/wt",
+		branchName: "feat/test",
+		groupId: null,
+		variantIndex: null,
+		agentId: null,
+		configId: null,
+		createdAt: "2025-01-01T00:00:00Z",
+		updatedAt: "2025-01-01T00:00:00Z",
+	};
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	it("marks a native-backed task in the breadcrumb", () => {
+		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], vi.fn(), [
+			{ ...breadcrumbTask, terminalBackend: "native" },
+		]);
+
+		expect(screen.getByTestId("breadcrumb-native-backend")).toHaveAttribute(
+			"aria-label",
+			"Native terminal backend",
+		);
+	});
+
+	it("stays quiet for an explicit tmux task and for a legacy unmarked one", () => {
+		const { unmount } = renderHeader(
+			{ screen: "task", projectId: "p1", taskId: "t1" },
+			[project1],
+			vi.fn(),
+			[{ ...breadcrumbTask, terminalBackend: "tmux" }],
+		);
+		expect(screen.queryByTestId("breadcrumb-native-backend")).toBeNull();
+		unmount();
+
+		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], vi.fn(), [
+			breadcrumbTask,
+		]);
+		expect(screen.queryByTestId("breadcrumb-native-backend")).toBeNull();
+	});
+});

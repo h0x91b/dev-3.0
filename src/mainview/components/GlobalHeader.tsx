@@ -10,6 +10,7 @@ import { subscribeFullscreen, isFullscreenActive, isFullscreenSupported, toggleF
 import { toast } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
+import NativeBackendMark from "./NativeBackendMark";
 import GitPullButton from "./GitPullButton";
 import UpdateReadyPopover, { UpdateWhatsNew } from "./UpdateReadyPopover";
 import PreventSleepToggle from "./PreventSleepToggle";
@@ -503,6 +504,13 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 							<span className="flex items-baseline gap-1.5 min-w-0 overflow-hidden">
 								{seg.badge && (
 									<span className="font-mono text-[0.6875rem] text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
+								)}
+								{seg.task && (
+									<NativeBackendMark
+										task={seg.task}
+										className="w-3.5 h-3.5"
+										testId="breadcrumb-native-backend"
+									/>
 								)}
 								{seg.task ? (
 									<InlineRename

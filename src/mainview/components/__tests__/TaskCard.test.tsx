@@ -2103,3 +2103,23 @@ describe("hibernated card", () => {
 		expect(screen.queryByTestId("task-card-hibernated-badge")).toBeNull();
 	});
 });
+
+describe("TaskCard — native terminal backend mark", () => {
+	it("marks a native-backed task next to its title", () => {
+		renderCard(makeTask({ terminalBackend: "native" }));
+
+		expect(screen.getByTestId("task-card-native-backend")).toHaveAttribute(
+			"aria-label",
+			"Native terminal backend",
+		);
+	});
+
+	it("stays quiet for an explicit tmux task and for a legacy unmarked one", () => {
+		const { unmount } = renderCard(makeTask({ terminalBackend: "tmux" }));
+		expect(screen.queryByTestId("task-card-native-backend")).toBeNull();
+		unmount();
+
+		renderCard(makeTask());
+		expect(screen.queryByTestId("task-card-native-backend")).toBeNull();
+	});
+});

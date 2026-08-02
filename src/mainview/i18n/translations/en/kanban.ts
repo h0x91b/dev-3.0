@@ -128,6 +128,7 @@ const kanban = {
 	"task.terminalBackendNativeUnavailable": "This build cannot launch a native terminal host.",
 	"task.terminalBackendWindows": "tmux does not run on Windows.",
 	"task.terminalBackendFailed": "Could not switch the terminal backend: {error}",
+	"task.nativeBackendMark": "Native terminal backend",
 	"task.resetTitle": "Reset to auto",
 	"task.failedRename": "Failed to rename task: {error}",
 	"task.reopenTo": "Reopen as",

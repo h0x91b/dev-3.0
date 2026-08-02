@@ -128,6 +128,7 @@ const kanban = {
 	"task.terminalBackendNativeUnavailable": "Эта сборка не может запустить нативный терминальный хост.",
 	"task.terminalBackendWindows": "tmux не работает на Windows.",
 	"task.terminalBackendFailed": "Не удалось переключить терминальный бэкенд: {error}",
+	"task.nativeBackendMark": "Нативный терминальный бэкенд",
 	"task.resetTitle": "Сбросить на авто",
 	"task.failedRename": "Не удалось переименовать: {error}",
 	"task.reopenTo": "Переоткрыть как",
