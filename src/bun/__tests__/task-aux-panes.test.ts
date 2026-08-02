@@ -65,11 +65,13 @@ import {
 	auxPaneAlive,
 	auxPaneMarker,
 	auxPurposeOfCommand,
+	AuxPaneReplaceError,
 	AuxPaneUnavailableError,
 	closeAuxPane,
 	findAuxPane,
 	nativeAuxPaneShellPid,
 	openAuxPane,
+	splitTaskPane,
 } from "../task-aux-panes";
 import { spawn } from "../spawn";
 
@@ -284,9 +286,6 @@ describe("native pane lookup by launch-command marker", () => {
 		expect(auxPurposeOfCommand(TASK_ID, ["/bin/zsh"])).toBeNull();
 	});
 
-	// Seq 1395: the column agent's pane is owned by purpose, so its identity is
-	// re-derived from the launch command after a restart — the pane-id file it
-	// replaced was lost exactly then.
 	it("owns the column-agent pane by its own marker, distinct from every other purpose", () => {
 		const marker = auxPaneMarker(TASK_ID, "columnAgent");
 		expect(marker).toContain("col-agent.sh");
@@ -295,7 +294,7 @@ describe("native pane lookup by launch-command marker", () => {
 	});
 });
 
-// ── The column-agent purpose (AI Review + custom column agents, seq 1395) ──────
+// ── The column-agent purpose (AI Review + custom column agents) ────────────────
 
 describe("openAuxPane (columnAgent)", () => {
 	const COL_MARKER = auxPaneMarker(TASK_ID, "columnAgent");
@@ -311,6 +310,35 @@ describe("openAuxPane (columnAgent)", () => {
 		});
 	}
 
+	/**
+	 * A pane set that answers honestly: panes it owns are listed until closed, and
+	 * gone afterwards. A static list would let a launch through without the close
+	 * ever having worked, which is exactly the hole this purpose must not have.
+	 */
+	function ownedNativePanes(paneIds: string[]) {
+		const owned = new Set(paneIds);
+		mocks.nativeTaskPaneCommands.mockImplementation(async () =>
+			[...owned].map((paneId) => nativePane(paneId, ["/bin/bash", COL_MARKER])),
+		);
+		mocks.closeNativeTaskPane.mockImplementation(async (_taskId: string, paneId: string) => {
+			owned.delete(paneId);
+			return { sessionTornDown: false, state: nativeState(["pane-1"], "pane-1") };
+		});
+		return owned;
+	}
+
+	function ownedTmuxPanes(paneIds: string[]) {
+		const owned = new Set(paneIds);
+		mocks.tmuxListPanes.mockImplementation(async () => [
+			{ paneId: "%1", startCommand: "/bin/zsh" },
+			...[...owned].map((paneId) => ({ paneId, startCommand: `bash "${COL_MARKER}"` })),
+		]);
+		mocks.tmuxKillPane.mockImplementation(async (paneId: string) => {
+			owned.delete(paneId);
+		});
+		return owned;
+	}
+
 	it("opens a real native pane and makes ZERO tmux calls", async () => {
 		const handle = await openAuxPane(columnSpec(nativeTask));
 
@@ -324,13 +352,8 @@ describe("openAuxPane (columnAgent)", () => {
 		expect(spawn).not.toHaveBeenCalled();
 	});
 
-	// The duplicate-activation guarantee: a second run must REPLACE the review
-	// agent, never leave two of them competing for the same worktree.
-	it("replaces a review pane a previous activation already owns", async () => {
-		mocks.nativeTaskPaneCommands.mockResolvedValue([
-			nativePane("pane-1", ["/bin/zsh"]),
-			nativePane("pane-9", ["/bin/bash", COL_MARKER]),
-		]);
+	it("replaces a pane a previous activation already owns", async () => {
+		ownedNativePanes(["pane-9"]);
 
 		await openAuxPane(columnSpec(nativeTask));
 
@@ -338,12 +361,42 @@ describe("openAuxPane (columnAgent)", () => {
 		expect(mocks.splitNativeTaskPane).toHaveBeenCalledTimes(1);
 	});
 
-	// A pane whose agent already exited lingers as a dead native pane; a fresh
-	// activation must sweep it rather than split beside a corpse.
-	it("sweeps a review pane whose agent already exited", async () => {
-		mocks.nativeTaskPaneCommands.mockResolvedValue([
-			nativePane("pane-9", ["/bin/bash", COL_MARKER], false),
-		]);
+	it("clears EVERY pane it owns, not just the first", async () => {
+		ownedNativePanes(["pane-7", "pane-8", "pane-9"]);
+
+		await openAuxPane(columnSpec(nativeTask));
+
+		for (const paneId of ["pane-7", "pane-8", "pane-9"]) {
+			expect(mocks.closeNativeTaskPane).toHaveBeenCalledWith(TASK_ID, paneId);
+		}
+		expect(mocks.splitNativeTaskPane).toHaveBeenCalledTimes(1);
+	});
+
+	it("refuses to open a second pane when a close is rejected", async () => {
+		mocks.nativeTaskPaneCommands.mockResolvedValue([nativePane("pane-9", ["/bin/bash", COL_MARKER])]);
+		mocks.closeNativeTaskPane.mockRejectedValue(new Error("host refused to close the pane"));
+
+		await expect(openAuxPane(columnSpec(nativeTask))).rejects.toBeInstanceOf(AuxPaneReplaceError);
+		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
+	});
+
+	it("refuses to open a second pane when the closed one is still listed", async () => {
+		mocks.nativeTaskPaneCommands.mockResolvedValue([nativePane("pane-9", ["/bin/bash", COL_MARKER])]);
+		mocks.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: false, state: nativeState(["pane-1"], "pane-1") });
+
+		await expect(openAuxPane(columnSpec(nativeTask))).rejects.toThrow(/still present/);
+		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
+	});
+
+	it("sweeps a pane whose agent already exited", async () => {
+		const owned = new Set(["pane-9"]);
+		mocks.nativeTaskPaneCommands.mockImplementation(async () =>
+			[...owned].map((paneId) => nativePane(paneId, ["/bin/bash", COL_MARKER], false)),
+		);
+		mocks.closeNativeTaskPane.mockImplementation(async (_taskId: string, paneId: string) => {
+			owned.delete(paneId);
+			return { sessionTornDown: false, state: nativeState(["pane-1"], "pane-1") };
+		});
 
 		await openAuxPane(columnSpec(nativeTask));
 
@@ -382,15 +435,22 @@ describe("openAuxPane (columnAgent)", () => {
 		expect(mocks.splitNativeTaskPane).not.toHaveBeenCalled();
 	});
 
-	it("re-finds and kills its tmux pane by launch command, not a remembered id", async () => {
-		mocks.tmuxListPanes.mockResolvedValue([
-			{ paneId: "%1", startCommand: "/bin/zsh" },
-			{ paneId: "%4", startCommand: `bash "${COL_MARKER}"` },
-		]);
+	it("re-finds and kills its tmux panes by launch command, not a remembered id", async () => {
+		ownedTmuxPanes(["%4", "%6"]);
 
 		await openAuxPane(columnSpec(tmuxTask));
 
-		expect(mocks.tmuxKillPane).toHaveBeenCalledWith("%4", { socket: SOCKET, bestEffort: true });
+		expect(mocks.tmuxKillPane).toHaveBeenCalledWith("%4", { socket: SOCKET });
+		expect(mocks.tmuxKillPane).toHaveBeenCalledWith("%6", { socket: SOCKET });
+		expect(mocks.tmuxSplitWindow).toHaveBeenCalledTimes(1);
+	});
+
+	it("refuses to open a second tmux pane when the kill fails", async () => {
+		mocks.tmuxListPanes.mockResolvedValue([{ paneId: "%4", startCommand: `bash "${COL_MARKER}"` }]);
+		mocks.tmuxKillPane.mockRejectedValue(new FakeTmuxError(["kill-pane"], 1, "no such pane"));
+
+		await expect(openAuxPane(columnSpec(tmuxTask))).rejects.toBeInstanceOf(AuxPaneReplaceError);
+		expect(mocks.tmuxSplitWindow).not.toHaveBeenCalled();
 	});
 });
 
@@ -466,3 +526,39 @@ describe("closeAuxPane", () => {
 		expect(mocks.tmuxKillPane).not.toHaveBeenCalled();
 	});
 });
+
+// ── Focus ordering (tmux) ─────────────────────────────────────────────────────
+
+describe("splitTaskPane focus ordering (tmux)", () => {
+	it("finishes titling the new pane before returning, so a caller's own focus wins", async () => {
+		// `select-pane -t` sets the title AND activates that pane. A fire-and-forget
+		// title call can land after the caller focused the pane it wants, silently
+		// stealing focus back — so the title must be settled before the split returns.
+		const order: string[] = [];
+		let releaseTitle: (() => void) | undefined;
+		const titleSettled = new Promise<void>((resolve) => { releaseTitle = resolve; });
+		mocks.tmuxSelectPane.mockImplementation(async (target: string) => {
+			if (target === "%7") {
+				await titleSettled;
+				order.push("title");
+				return;
+			}
+			order.push(`focus:${target}`);
+		});
+
+		const opening = splitTaskPane(spec(tmuxTask, { title: "AI Review" }));
+		// Nothing may have completed while the title call is still in flight.
+		expect(order).toEqual([]);
+		releaseTitle?.();
+		await opening;
+		// Only now may the caller focus its own pane; it must be last.
+		await tmuxCaretFocus();
+
+		expect(order).toEqual(["title", "focus:dev3-aaaaaaaa:.0"]);
+	});
+});
+
+/** What `launchColumnAgent` does after the split: focus the agent pane. */
+async function tmuxCaretFocus(): Promise<void> {
+	await mocks.tmuxSelectPane(`${SESSION}:.0`, { socket: SOCKET, bestEffort: true });
+}

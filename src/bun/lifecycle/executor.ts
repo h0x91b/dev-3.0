@@ -3,6 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import type {
 	ColumnAgentConfig,
 	ColumnAgentFailureReason,
+	ColumnAgentIdentity,
 	CompletedDiffStats,
 	CustomColumn,
 	AppRPCSchema,
@@ -433,15 +434,10 @@ export async function launchLifecycleColumnAgent(
 	column: LifecycleColumn,
 	customColumn?: CustomColumn,
 ): Promise<Extract<LifecycleEvent, { type: "columnAgentFailed" }> | null> {
-	let columnName = column.status === "review-by-ai" && column.customColumnId === null
-		? "AI Review"
-		: customColumn?.name
-			?? project.customColumns?.find((candidate) => candidate.id === column.customColumnId)?.name
-			?? column.status;
+	const identity = columnAgentIdentity(project, column, customColumn);
 	try {
 		const configured = await columnAgentConfig(project, task, column, customColumn);
 		if (!configured) return null;
-		columnName = configured.paneTitle;
 		await launchColumnAgent(project, task, configured.config, {
 			paneTitle: configured.paneTitle,
 			onExitCommand: configured.onExitCommand,
@@ -450,7 +446,7 @@ export async function launchLifecycleColumnAgent(
 	} catch (error) {
 		return {
 			type: "columnAgentFailed",
-			columnName,
+			column: identity,
 			// The diagnostic half: whatever the thrower wrote, minus the "Error: " that
 			// String() would prepend. Never parsed — only ever shown.
 			error: error instanceof Error ? error.message : String(error),
@@ -459,6 +455,22 @@ export async function launchLifecycleColumnAgent(
 			reason: columnAgentFailureReason(error),
 		};
 	}
+}
+
+/**
+ * Which column the agent belonged to, in a shape the UI can name in the user's
+ * language: a built-in column as its status, a custom one as the name the user
+ * typed for it.
+ */
+function columnAgentIdentity(
+	project: Project,
+	column: LifecycleColumn,
+	customColumn?: CustomColumn,
+): ColumnAgentIdentity {
+	if (column.customColumnId === null) return { kind: "builtin", status: column.status };
+	const name = customColumn?.name
+		?? project.customColumns?.find((candidate) => candidate.id === column.customColumnId)?.name;
+	return name ? { kind: "custom", name } : { kind: "builtin", status: column.status };
 }
 
 /**
@@ -586,7 +598,7 @@ function pushEffect(effect: Extract<LifecycleEffect, { type: "push" }>, ctx: Lif
 			const payload: BunMessagePayload<"columnAgentFailed"> = {
 				taskId: ctx.task.id,
 				projectId: ctx.project.id,
-				columnName: failure.columnName,
+				column: failure.column,
 				error: failure.error,
 				movedTo: failure.movedTo,
 				reason: failure.reason,

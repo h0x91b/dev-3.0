@@ -626,24 +626,57 @@ describe("task lifecycle transition table", () => {
 
 		const failedReview = transition(state("review-by-ai"), {
 			type: "columnAgentFailed",
-			columnName: "AI Review",
+			column: { kind: "builtin", status: "review-by-ai" },
 			error: "launch failed",
 		});
-		expect(failedReview.effects.find((candidate) => candidate.type === "sendEvent")).toMatchObject({
+		const fallback = failedReview.effects.find((candidate) => candidate.type === "sendEvent");
+		expect(fallback).toMatchObject({
 			type: "sendEvent",
 			event: {
 				type: "moveRequested",
 				cause: "column-agent-fallback",
 				target: { status: "review-by-user" },
+				columnAgentFailure: { column: { kind: "builtin", status: "review-by-ai" }, error: "launch failed" },
 			},
 		});
-		// The fallback move on its own is silent — that is how seq 1395 shipped as
-		// "AI Review does nothing". The failure must be reported too.
-		expect(failedReview.effects.find((candidate) => candidate.type === "push")).toMatchObject({
-			type: "push",
-			message: "columnAgentFailed",
-			payload: { columnName: "AI Review", error: "launch failed", movedTo: "review-by-user" },
+		// The failure rides on the move rather than being pushed here, so the report
+		// cannot claim a move that never landed.
+		expect(failedReview.effects.some((candidate) => candidate.type === "push")).toBe(false);
+	});
+
+	it("reports a fallback move only after the column write, and claims the column it wrote", () => {
+		const moved = transition(state("review-by-ai"), {
+			type: "moveRequested",
+			target: { status: "review-by-user", customColumnId: null },
+			cause: "column-agent-fallback",
+			guards: { ifStatus: "review-by-ai" },
+			columnAgentFailure: {
+				column: { kind: "builtin", status: "review-by-ai" },
+				error: "launch failed",
+				reason: "terminal-not-running",
+			},
 		});
+		const persistIndex = moved.effects.findIndex((candidate) => candidate.type === "persistColumn");
+		const reportIndex = moved.effects.findIndex(
+			(candidate) => candidate.type === "push" && candidate.message === "columnAgentFailed",
+		);
+		expect(persistIndex).toBeGreaterThanOrEqual(0);
+		// A rejected or failed column write stops the effect run, so ordering is what
+		// keeps the toast honest.
+		expect(reportIndex).toBeGreaterThan(persistIndex);
+		expect(moved.effects[reportIndex]).toMatchObject({
+			payload: { reason: "terminal-not-running", movedTo: "review-by-user" },
+		});
+	});
+
+	it("says nothing extra on an ordinary move", () => {
+		const moved = transition(state("review-by-ai"), {
+			type: "moveRequested",
+			target: { status: "review-by-user", customColumnId: null },
+		});
+		expect(
+			moved.effects.some((candidate) => candidate.type === "push" && candidate.message === "columnAgentFailed"),
+		).toBe(false);
 	});
 });
 

@@ -2141,6 +2141,14 @@ describe("handlers.pullProjectMain", () => {
 // handlers.moveTask
 // ================================================================
 
+/** Every tmux invocation the code made after `from`, as flat argv strings. */
+function tmuxArgvSince(from: number): string[] {
+	return mockSpawn.mock.calls
+		.slice(from)
+		.map((call) => (Array.isArray(call[0]) ? call[0].join(" ") : String(call[0])))
+		.filter((argv) => /tmux/.test(argv));
+}
+
 describe("handlers.moveTask", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -11451,17 +11459,8 @@ describe("triggerColumnAgentIfNeeded", () => {
 		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
 	});
 
-	/** Every tmux invocation the code made after `from`, as flat argv strings. */
-	function tmuxArgvSince(from: number): string[] {
-		return mockSpawn.mock.calls
-			.slice(from)
-			.map((call) => (Array.isArray(call[0]) ? call[0].join(" ") : String(call[0])))
-			.filter((argv) => /tmux/.test(argv));
-	}
-
-	// Seq 1395, through the ACTUAL AI Review entry point: this is the bug. The review
-	// agent used to be launched with a raw `tmux split-window` into a session a native
-	// task does not have, so nothing ran and nothing was said.
+	// A native task has no tmux session, so the review agent must reach a real pane
+	// of the task's own terminal and nothing else.
 	describe("on a native task", () => {
 		const nativeTask = () => makeTask({
 			status: "review-by-ai",
@@ -11478,6 +11477,15 @@ describe("triggerColumnAgentIfNeeded", () => {
 			} as any);
 			mockNativePanes.nativeTaskPaneCommands.mockResolvedValue([]);
 			mockNativePanes.splitNativeTaskPane.mockResolvedValue({ paneId: "pane-2", state: null } as any);
+		});
+
+		// clearAllMocks only clears calls; these doubles are shared with every other
+		// suite in this file, so their implementations must be handed back.
+		afterEach(() => {
+			mockNativePanes.nativeTaskPanesState.mockReset();
+			mockNativePanes.nativeTaskPaneCommands.mockReset();
+			mockNativePanes.splitNativeTaskPane.mockReset();
+			mockNativePanes.closeNativeTaskPane.mockReset();
 		});
 
 		it("opens a real native pane and touches no tmux at all", async () => {
@@ -11500,12 +11508,92 @@ describe("triggerColumnAgentIfNeeded", () => {
 			const project = makeProject();
 			vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
 			const task = nativeTask();
-			mockNativePanes.nativeTaskPaneCommands.mockResolvedValue([
-				{ paneId: "pane-9", sessionId: "s9", command: ["/bin/bash", dev3TaskTempPath(task.id, "col-agent.sh")], shellPid: 3, alive: true },
-			] as any);
+			// The pane set answers honestly: the pane is there until it is closed, and
+			// gone afterwards. A static list would let a launch pass without the close
+			// ever having worked.
+			const owned = new Set(["pane-9"]);
+			mockNativePanes.nativeTaskPaneCommands.mockImplementation(async () =>
+				[...owned].map((paneId) => ({
+					paneId,
+					sessionId: `s-${paneId}`,
+					command: ["/bin/bash", dev3TaskTempPath(task.id, "col-agent.sh")],
+					shellPid: 3,
+					alive: true,
+				})) as any,
+			);
+			mockNativePanes.closeNativeTaskPane.mockImplementation(async (_taskId: any, paneId: any) => {
+				owned.delete(paneId);
+				return { sessionTornDown: false, state: { taskId: task.id, panes: [], layout: null, activePaneId: "pane-1" } } as any;
+			});
 
 			await triggerColumnAgentIfNeeded("review-by-ai", project, task);
 
+			expect(mockNativePanes.closeNativeTaskPane).toHaveBeenCalledWith(task.id, "pane-9");
+			expect(mockNativePanes.splitNativeTaskPane).toHaveBeenCalledTimes(1);
+		});
+
+		it("refuses to launch when a pane it must replace cannot be closed", async () => {
+			const project = makeProject();
+			vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+			const task = nativeTask();
+			mockNativePanes.nativeTaskPaneCommands.mockResolvedValue([
+				{ paneId: "pane-9", sessionId: "s9", command: ["/bin/bash", dev3TaskTempPath(task.id, "col-agent.sh")], shellPid: 3, alive: true },
+			] as any);
+			mockNativePanes.closeNativeTaskPane.mockRejectedValue(new Error("host refused to close the pane"));
+			mockTaskWrites(task);
+			const push = vi.fn();
+			setPushMessage(push);
+
+			await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+			// No second agent, and the user is told rather than left with one stale pane.
+			expect(mockNativePanes.splitNativeTaskPane).not.toHaveBeenCalled();
+			const payload = push.mock.calls.find((call) => call[0] === "columnAgentFailed")?.[1];
+			expect(String(payload.error)).toContain("could not close the columnAgent pane");
+		});
+
+		it("refuses to launch when the pane it closed is still present afterwards", async () => {
+			const project = makeProject();
+			vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+			const task = nativeTask();
+			// Close resolves, but the pane set still lists it — a silent survivor.
+			mockNativePanes.nativeTaskPaneCommands.mockResolvedValue([
+				{ paneId: "pane-9", sessionId: "s9", command: ["/bin/bash", dev3TaskTempPath(task.id, "col-agent.sh")], shellPid: 3, alive: true },
+			] as any);
+			mockNativePanes.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: false, state: null } as any);
+			mockTaskWrites(task);
+			const push = vi.fn();
+			setPushMessage(push);
+
+			await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+			expect(mockNativePanes.splitNativeTaskPane).not.toHaveBeenCalled();
+			const payload = push.mock.calls.find((call) => call[0] === "columnAgentFailed")?.[1];
+			expect(String(payload.error)).toContain("still present");
+		});
+
+		it("clears every duplicate pane a previous run left behind, not just the first", async () => {
+			const project = makeProject();
+			vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+			const task = nativeTask();
+			const owned = new Set(["pane-8", "pane-9"]);
+			mockNativePanes.nativeTaskPaneCommands.mockImplementation(async () =>
+				[...owned].map((paneId) => ({
+					paneId,
+					sessionId: `s-${paneId}`,
+					command: ["/bin/bash", dev3TaskTempPath(task.id, "col-agent.sh")],
+					shellPid: 3,
+					alive: true,
+				})) as any,
+			);
+			mockNativePanes.closeNativeTaskPane.mockImplementation(async (_taskId: any, paneId: any) => {
+				owned.delete(paneId);
+				return { sessionTornDown: false, state: { taskId: task.id, panes: [], layout: null, activePaneId: "pane-1" } } as any;
+			});
+
+			await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+			expect(mockNativePanes.closeNativeTaskPane).toHaveBeenCalledWith(task.id, "pane-8");
 			expect(mockNativePanes.closeNativeTaskPane).toHaveBeenCalledWith(task.id, "pane-9");
 			expect(mockNativePanes.splitNativeTaskPane).toHaveBeenCalledTimes(1);
 		});
@@ -11548,8 +11636,6 @@ describe("triggerColumnAgentIfNeeded", () => {
 	});
 
 	it("tells the user when the AI Review agent cannot launch, alongside the fallback move", async () => {
-		// Seq 1395: the fallback move used to be the ONLY effect, so a failed review
-		// launch looked like the action did nothing at all.
 		const project = makeProject();
 		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
 		vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(new Error("boom: review agent missing"));
@@ -11563,7 +11649,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 		expect(payload).toMatchObject({
 			taskId: task.id,
 			projectId: project.id,
-			columnName: "AI Review",
+			column: { kind: "builtin", status: "review-by-ai" },
 			movedTo: "review-by-user",
 		});
 		expect(String(payload.error)).toContain("boom");
@@ -11591,7 +11677,11 @@ describe("triggerColumnAgentIfNeeded", () => {
 		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
 
 		const payload = push.mock.calls.find((call) => call[0] === "columnAgentFailed")?.[1];
-		expect(payload).toMatchObject({ columnName: "AI Review", reason: "terminal-not-running", movedTo: "review-by-user" });
+		expect(payload).toMatchObject({
+			column: { kind: "builtin", status: "review-by-ai" },
+			reason: "terminal-not-running",
+			movedTo: "review-by-user",
+		});
 	});
 
 	it("falls back to review-by-user when review-agent configuration cannot resolve", async () => {
@@ -11638,7 +11728,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 		expect(payload).toMatchObject({
 			taskId: task.id,
 			projectId: project.id,
-			columnName: "Security Review",
+			column: { kind: "custom", name: "Security Review" },
 		});
 		expect(String(payload.error)).toContain("boom");
 	});

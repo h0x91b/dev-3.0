@@ -321,6 +321,15 @@ export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
  */
 export type ColumnAgentFailureReason = "terminal-not-running";
 
+/**
+ * Which column's agent this is, in a form the UI can name in the user's language.
+ * A built-in column travels as its status (the renderer localizes it); only a
+ * custom column, whose name the user typed, travels as a literal string.
+ */
+export type ColumnAgentIdentity =
+	| { kind: "builtin"; status: TaskStatus }
+	| { kind: "custom"; name: string };
+
 // ---- Coding Agents ----
 
 export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan" | "auto";
@@ -3929,7 +3938,7 @@ export type AppRPCSchema = {
 			columnAgentFailed: {
 				taskId: string;
 				projectId: string;
-				columnName: string;
+				column: ColumnAgentIdentity;
 				error: string;
 				movedTo?: TaskStatus;
 				reason?: ColumnAgentFailureReason;

@@ -940,11 +940,10 @@ export async function launchColumnAgent(
 		onExitCommand: options.onExitCommand,
 	}));
 
-	// The seam owns placement and dedup. The `columnAgent` purpose has at most one
-	// live pane per task, re-found by the command it was launched with — that is what
-	// makes a repeated activation REPLACE the review agent instead of stacking a
-	// second one, and unlike the pane-id file it replaces, it survives an app
-	// restart. A native task never reaches tmux from here.
+	// The seam owns placement and dedup: the `columnAgent` purpose keeps at most one
+	// live pane per task, re-found by the command it was launched with, so a repeated
+	// activation REPLACES the review agent — and refuses to launch if it cannot prove
+	// the old one is gone. A native task never reaches tmux from here.
 	const handle = await openAuxPane({
 		task,
 		purpose: "columnAgent",

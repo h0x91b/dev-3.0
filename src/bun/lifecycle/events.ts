@@ -1,4 +1,4 @@
-import type { AppRPCSchema, ColumnAgentFailureReason, PreparingStage, Task, TaskStatus } from "../../shared/types";
+import type { AppRPCSchema, ColumnAgentFailureReason, ColumnAgentIdentity, PreparingStage, Task, TaskStatus } from "../../shared/types";
 
 export interface LifecycleColumn {
 	status: TaskStatus;
@@ -75,6 +75,11 @@ export type LifecycleEvent =
 		type: "moveRequested";
 		target: { status?: TaskStatus; customColumnId?: string | null };
 		cause?: "pr-promotion" | "column-agent-fallback";
+		/**
+		 * Set on a `column-agent-fallback` move: the failure that caused it, reported
+		 * to the user only once this move's own column write has actually landed.
+		 */
+		columnAgentFailure?: Omit<Extract<LifecycleEvent, { type: "columnAgentFailed" }>, "type">;
 		enforceAllowedTransition?: boolean;
 		guards?: MoveGuards;
 		force?: boolean;
@@ -164,7 +169,7 @@ export type LifecycleEvent =
 	}
 	| {
 		type: "columnAgentFailed";
-		columnName: string;
+		column: ColumnAgentIdentity;
 		error: string;
 		/** Set only for a failure the app recognises, so the UI can localize it. */
 		reason?: ColumnAgentFailureReason;
