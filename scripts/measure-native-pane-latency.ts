@@ -11,7 +11,7 @@
  * Everything lands in a tmpdir, so `~/.dev3.0/` is never touched.
  */
 
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NATIVE_MULTIPANE_DIR_ENV } from "../src/bun/native-terminal-multipane/paths";
@@ -19,9 +19,26 @@ import { NATIVE_MULTIPANE_DIR_ENV } from "../src/bun/native-terminal-multipane/p
 /** Fixed id so repeated runs address the same deterministic session id. */
 const TASK_ID = "00000000-0000-4000-8000-00000013820f";
 const PANE_COUNTS = [1, 2, 4, 6];
-const REPS = 5;
+/** Wall clock on a loaded dev machine is noisy; more reps buy a steadier p50. */
+const REPS = Number(process.env.DEV3_PANE_LATENCY_REPS ?? 5);
 
 interface Stats { n: number; min: number; p50: number; p95: number; max: number }
+
+/**
+ * Count `ps` executions — the load-independent half of the measurement, since
+ * every ownership probe forks exactly one. A shim first on PATH tallies them, so
+ * nothing in the product knows it is being measured.
+ */
+function installProbeCounter(root: string): () => number {
+	const bin = join(root, "bin");
+	mkdirSync(bin, { recursive: true });
+	const tally = join(root, "ps-probes.log");
+	writeFileSync(tally, "");
+	writeFileSync(join(bin, "ps"), `#!/bin/sh\necho . >> ${JSON.stringify(tally)}\nexec /bin/ps "$@"\n`);
+	chmodSync(join(bin, "ps"), 0o755);
+	process.env.PATH = `${bin}:${process.env.PATH ?? ""}`;
+	return () => readFileSync(tally, "utf8").length;
+}
 
 function stats(samples: number[]): Stats {
 	const sorted = [...samples].sort((a, b) => a - b);
@@ -40,6 +57,7 @@ async function main(): Promise<void> {
 	const root = mkdtempSync(join(tmpdir(), "dev3-native-pane-latency-"));
 	const work = join(root, "work");
 	mkdirSync(work, { recursive: true });
+	const probeCount = installProbeCounter(root);
 	process.env.DEV3_NATIVE_SESSIONS_DIR = join(root, "native-sessions");
 	process.env[NATIVE_MULTIPANE_DIR_ENV] = join(root, "native-multipane");
 	process.env.DEV3_NATIVE_HOST_IMAGES_DIR = join(root, "host-images");
@@ -72,10 +90,13 @@ async function main(): Promise<void> {
 			const readState: number[] = [];
 			const layoutPreset: number[] = [];
 			const layoutCycle: number[] = [];
+			let readStateProbes = 0;
 			for (let rep = 0; rep < REPS; rep++) {
+				const probesBefore = probeCount();
 				let mark = performance.now();
 				const state = await panes.nativeTaskPanesState(TASK_ID);
 				readState.push(performance.now() - mark);
+				readStateProbes = probeCount() - probesBefore;
 				const tree = restoreSplitTree(state!.layout)!;
 				if (state!.panes.length < 2) continue;
 
@@ -105,6 +126,8 @@ async function main(): Promise<void> {
 
 			byPaneCount[String(target)] = {
 				readState: stats(readState),
+				/** `ps` forks one state read costs: 2 per pane per ownership sweep. */
+				readStateProbes,
 				layoutPreset: layoutPreset.length ? stats(layoutPreset) : null,
 				layoutCycle: layoutCycle.length ? stats(layoutCycle) : null,
 				split: stats(splitSamples),

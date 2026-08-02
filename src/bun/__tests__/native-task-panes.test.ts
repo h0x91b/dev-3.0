@@ -50,6 +50,8 @@ let tmpRoot = "";
 const startedPanes: Array<{ sessionId: string; opts: unknown }> = [];
 const stoppedPanes: string[] = [];
 const paneRecords = new Map<string, { record: unknown; token: string; alive: boolean }>();
+/** One entry per ownership probe — a state read must sweep each pane once. */
+const classifyCalls: string[] = [];
 
 vi.mock("../task-terminal-backend", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../task-terminal-backend")>();
@@ -101,7 +103,8 @@ vi.mock("../task-terminal-backend", async (importOriginal) => {
 						const e = paneRecords.get(sessionId);
 						return e?.alive ? e.token : null;
 					},
-					classifyPane: async (_record, token) => {
+					classifyPane: async (record, token) => {
+						classifyCalls.push(record.sessionId);
 						const entry = [...paneRecords.values()].find((e) => e.token === token);
 						return entry?.alive ? ("owned" as const) : ("dead" as const);
 					},
@@ -126,6 +129,8 @@ import {
 	closeNativeTaskPane,
 	stopNativeTaskPanes,
 	nativeTaskPanesAlive,
+	nativeTaskPanesState,
+	type NativeTaskPanesState,
 } from "../native-task-panes";
 import { spawn } from "../spawn";
 
@@ -137,6 +142,7 @@ beforeEach(() => {
 	process.env[NATIVE_MULTIPANE_DIR_ENV] = tmpRoot;
 	startedPanes.length = 0;
 	stoppedPanes.length = 0;
+	classifyCalls.length = 0;
 	paneRecords.clear();
 	_resetBackendForTests();
 });
@@ -257,6 +263,50 @@ describe("nativeTaskPanesAlive is read-only (fix #4)", () => {
 		await startNativeTaskPanes({ taskId: TASK_ID, cwd: "/work", env: {}, launch: LAUNCH, cols: 80, rows: 24 });
 		const alive = await nativeTaskPanesAlive(TASK_ID);
 		expect(alive).toBe(true);
+	});
+});
+
+describe("a state read sweeps ownership once (seq 1388)", () => {
+	async function growTo(count: number): Promise<NativeTaskPanesState> {
+		let state = await startNativeTaskPanes({
+			taskId: TASK_ID,
+			cwd: "/work",
+			env: {},
+			launch: LAUNCH,
+			cols: 80,
+			rows: 24,
+		});
+		while (state.panes.length < count) {
+			({ state } = await splitNativeTaskPane(TASK_ID, state.panes.at(-1)!.paneId, "horizontal", {
+				cwd: "/work",
+				env: {},
+			}));
+		}
+		return state;
+	}
+
+	it("classifies each of six panes exactly once — recover plus listPanes did it twice", async () => {
+		await growTo(6);
+
+		classifyCalls.length = 0;
+		const state = await nativeTaskPanesState(TASK_ID);
+
+		expect(state!.panes).toHaveLength(6);
+		expect(classifyCalls).toHaveLength(6);
+		expect(new Set(classifyCalls).size).toBe(6);
+		expect(state!.panes.every((pane) => pane.alive)).toBe(true);
+	});
+
+	it("still reconciles a pane whose host died out of the state and the layout", async () => {
+		const before = await growTo(3);
+		const doomed = before.panes[1]!;
+		paneRecords.get(doomed.sessionId)!.alive = false;
+
+		const after = await nativeTaskPanesState(TASK_ID);
+
+		expect(after!.panes.map((pane) => pane.paneId)).not.toContain(doomed.paneId);
+		expect(after!.panes).toHaveLength(2);
+		expect(after!.layout).not.toContain(doomed.paneId);
 	});
 });
 

@@ -95,6 +95,46 @@ describe("native multipane coordinator", () => {
 		expect(deps.startCalls).toHaveLength(startsBefore);
 	});
 
+	it("recoverPaneSet classifies each pane once and answers what listPanes would", async () => {
+		const first = await createWithPanes(deps, 6);
+		const expected = await first.listPanes();
+		first.detach();
+
+		let classifications = 0;
+		const counted: FakeRegistry = {
+			...deps,
+			classifyPane: (record, token) => {
+				classifications++;
+				return deps.classifyPane(record, token);
+			},
+		};
+		const recovered = await NativeMultipaneCoordinator.recoverPaneSet(ID, counted);
+
+		// One sweep for six panes — recover-then-listPanes classified each twice.
+		expect(classifications).toBe(6);
+		expect(recovered!.panes).toEqual(expected);
+		expect(recovered!.panes.map((pane) => pane.paneId)).toEqual(recovered!.coordinator.paneIds());
+	});
+
+	it("recoverPaneSet drops a dead pane from both the layout and the snapshots", async () => {
+		const coordinator = await createWithPanes(deps, 3);
+		const [, second] = coordinator.paneIds();
+		deps.kill(`mp-${second}`);
+
+		const recovered = await NativeMultipaneCoordinator.recoverPaneSet(ID, deps);
+
+		expect(recovered!.coordinator.paneIds()).not.toContain(second);
+		expect(recovered!.panes.map((pane) => pane.paneId)).toEqual(recovered!.coordinator.paneIds());
+		expect(recovered!.panes.every((pane) => pane.state === "running")).toBe(true);
+	});
+
+	it("recoverPaneSet reports the same gone verdict as recover when every host died", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		for (const paneId of coordinator.paneIds()) deps.kill(`mp-${paneId}`);
+		expect(await NativeMultipaneCoordinator.recoverPaneSet(ID, deps)).toBeNull();
+		expect(existsSync(coordinatorRecordFile(ID))).toBe(false);
+	});
+
 	it("reconciles a host that died while the controller was gone", async () => {
 		const coordinator = await createWithPanes(deps, 3);
 		const [, second] = coordinator.paneIds();
