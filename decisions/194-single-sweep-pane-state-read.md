@@ -12,9 +12,26 @@ and tree work — the read was entirely probe-bound.
 
 ## Investigation
 
-Measured with `scripts/measure-native-pane-latency.ts`, which now counts real
-`ps` invocations through a shim first on `PATH`. Six-pane read: 24 `ps` before,
-12 after collapsing the duplicate. Wall clock on an idle machine: p50 209 → 107 ms.
+Measured with `scripts/measure-native-pane-latency.ts`, real hosts, macOS. It
+answers two different questions and they must not be mixed:
+
+**Deterministic probe count (counting on).** A shim first on `PATH` tallies every
+`ps` exec. Six-pane read: **24 `ps` processes before, 12 after** — two sweeps
+versus one, two pids per pane. Per pane count, before → after: 1 pane 4 → 2,
+2 panes 8 → 4, 4 panes 16 → 8. This number is load-independent and is the real
+evidence. Its wall clock is **not** usable: the shim forks a `/bin/sh` per probe
+and roughly doubles both arms (it read p50 209 → 107 ms, an inflated figure).
+
+**True latency (`DEV3_PANE_LATENCY_COUNT_PROBES=0`).** No shim, base and fix
+interleaved in one run, n=15 per point, machine load 3–6, two rounds:
+
+| Six-pane state read | Before | After |
+|---|---|---|
+| p50 | 75.5 / 82.3 ms | **40.4 / 38.1 ms** |
+| p95 | 140.2 / 128.4 ms | 60.3 / 83.3 ms |
+| min | 64.8 / 65.2 ms | 31.0 / 32.3 ms |
+
+One sweep is the floor, and it sits at ~38–40 ms p50 for six panes on macOS.
 
 The obvious next step — one batched `ps -p <csv> -o pid=,lstart=` per sweep
 instead of 2N single-pid forks — was implemented, covered and then **dropped**,
@@ -27,9 +44,12 @@ because on macOS `ps` with a pid list is pathologically slow:
 | `ps -p <pid> -p <pid> -o pid=,lstart=` | ~120 ms |
 | `ps -ax -o pid=,lstart=` | ~50 ms |
 
-One batched call therefore cost more than twelve single-pid forks: measured
-six-pane read p50 148 ms batched versus 107 ms unbatched, and 150 ms versus
-26 ms for a single pane, where the batch is pure overhead.
+One batched call therefore cost more than twelve single-pid forks. Measured in
+the same counting-on round, so both figures carry the shim's inflation and only
+their ratio matters: six-pane read p50 148.8 ms batched versus 107.2 ms
+unbatched, and 150.4 versus 25.8 ms at a single pane, where the batch is pure
+overhead. The probe count did drop to exactly 1 `ps` per sweep — the batch
+worked, it was simply slower.
 
 ## Decision
 
