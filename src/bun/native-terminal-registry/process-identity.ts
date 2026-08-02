@@ -40,39 +40,6 @@ export function formatStartSignature(pid: number, rawStart: string): string {
 }
 
 /**
- * Parse one batched `ps -p <csv> -o pid=,lstart=` output into signatures, in the
- * exact same format {@link formatStartSignature} produces for a single pid.
- *
- * FAIL CLOSED PER PID: only a line that parses cleanly AND was actually asked
- * for yields a signature. `ps` prints rows pid-sorted rather than in request
- * order, omits pids that are gone, and exits non-zero when none matched — so
- * absence is the signal that matters and an unusable line simply leaves its pid
- * out. Rows that disagree about one pid drop it entirely: no pid may inherit
- * another pid's evidence.
- */
-export function parseStartSignatures(requested: readonly number[], raw: string): Map<number, string> {
-	const wanted = new Set(requested.filter((pid) => Number.isInteger(pid) && pid > 0));
-	const signatures = new Map<number, string>();
-	const ambiguous = new Set<number>();
-	for (const line of raw.split("\n")) {
-		const match = /^\s*(\d+)\s+(\S.*)$/.exec(line);
-		if (!match) continue;
-		const pid = Number(match[1]);
-		if (!wanted.has(pid) || ambiguous.has(pid)) continue;
-		const signature = formatStartSignature(pid, match[2]!);
-		if (!signature) continue;
-		const seen = signatures.get(pid);
-		if (seen === undefined) {
-			signatures.set(pid, signature);
-		} else if (seen !== signature) {
-			signatures.delete(pid);
-			ambiguous.add(pid);
-		}
-	}
-	return signatures;
-}
-
-/**
  * Two POSIX start signatures identify the same process only when both are
  * non-empty and byte-identical. An empty recorded signature never matches — a
  * record without ownership evidence must not be treated as owned.

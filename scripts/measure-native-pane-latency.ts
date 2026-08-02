@@ -21,6 +21,8 @@ const TASK_ID = "00000000-0000-4000-8000-00000013820f";
 const PANE_COUNTS = [1, 2, 4, 6];
 /** Wall clock on a loaded dev machine is noisy; more reps buy a steadier p50. */
 const REPS = Number(process.env.DEV3_PANE_LATENCY_REPS ?? 5);
+/** Counting forks a shell per probe, which inflates the latency beside it. */
+const COUNT_PROBES = process.env.DEV3_PANE_LATENCY_COUNT_PROBES !== "0";
 
 interface Stats { n: number; min: number; p50: number; p95: number; max: number }
 
@@ -31,6 +33,9 @@ interface Stats { n: number; min: number; p50: number; p95: number; max: number 
  * Nothing in the product knows it is being measured.
  */
 function installProbeCounter(root: string): () => number {
+	// The shim costs a /bin/sh per probe, so it inflates the wall clock it is
+	// measured next to: set DEV3_PANE_LATENCY_COUNT_PROBES=0 for true latency.
+	if (!COUNT_PROBES) return () => 0;
 	const bin = join(root, "bin");
 	mkdirSync(bin, { recursive: true });
 	const tally = join(root, "ps-probes.log");
@@ -127,8 +132,8 @@ async function main(): Promise<void> {
 
 			byPaneCount[String(target)] = {
 				readState: stats(readState),
-				/** `ps` forks one state read costs: 2 per pane per ownership sweep. */
-				readStateProbes,
+				/** `ps` processes one state read forks; null when counting is off. */
+				readStateProbes: COUNT_PROBES ? readStateProbes : null,
 				layoutPreset: layoutPreset.length ? stats(layoutPreset) : null,
 				layoutCycle: layoutCycle.length ? stats(layoutCycle) : null,
 				split: stats(splitSamples),

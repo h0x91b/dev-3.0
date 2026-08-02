@@ -4,7 +4,7 @@
  */
 
 import { spawn } from "../spawn";
-import { formatStartSignature, parseStartSignatures } from "./process-identity";
+import { formatStartSignature } from "./process-identity";
 
 /**
  * Read a stable start signature for `pid` via `ps -p PID -o lstart=`, or "" when
@@ -28,30 +28,5 @@ export async function readProcessStartSignature(pid: number): Promise<string> {
 		return formatStartSignature(pid, raw.trim());
 	} catch {
 		return "";
-	}
-}
-
-/**
- * Start signatures for a whole pane-set sweep in ONE `ps`, keyed by pid. Every
- * pid is asked for once; a pid that is missing from the answer is absent from
- * the map, which reads as "unverifiable" downstream — exactly what the per-pid
- * probe returns for the same process (seq 1388).
- *
- * The exit code is deliberately not a gate: `ps` reports non-zero when ANY
- * requested pid is gone, and discarding the whole batch for one dead pid would
- * un-verify its live siblings and reconcile them out of the layout.
- */
-export async function readProcessStartSignatures(pids: readonly number[]): Promise<Map<number, string>> {
-	const wanted = [...new Set(pids.filter((pid) => Number.isInteger(pid) && pid > 0))];
-	if (wanted.length === 0 || process.platform === "win32") return new Map();
-	try {
-		const proc = spawn(["ps", "-p", wanted.join(","), "-o", "pid=,lstart="], {
-			stdout: "pipe",
-			stderr: "ignore",
-		});
-		const [raw] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-		return parseStartSignatures(wanted, raw);
-	} catch {
-		return new Map();
 	}
 }

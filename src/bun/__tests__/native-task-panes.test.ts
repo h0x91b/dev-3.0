@@ -50,8 +50,8 @@ let tmpRoot = "";
 const startedPanes: Array<{ sessionId: string; opts: unknown }> = [];
 const stoppedPanes: string[] = [];
 const paneRecords = new Map<string, { record: unknown; token: string; alive: boolean }>();
-/** One entry per ownership sweep, holding the session ids it classified. */
-const classifySweeps: string[][] = [];
+/** One entry per ownership probe — a state read must sweep each pane once. */
+const classifyCalls: string[] = [];
 
 vi.mock("../task-terminal-backend", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../task-terminal-backend")>();
@@ -103,12 +103,10 @@ vi.mock("../task-terminal-backend", async (importOriginal) => {
 						const e = paneRecords.get(sessionId);
 						return e?.alive ? e.token : null;
 					},
-					classifyPanes: async (entries) => {
-						classifySweeps.push(entries.map(({ record }) => record.sessionId));
-						return entries.map(({ token }) => {
-							const entry = [...paneRecords.values()].find((e) => e.token === token);
-							return entry?.alive ? ("owned" as const) : ("dead" as const);
-						});
+					classifyPane: async (record, token) => {
+						classifyCalls.push(record.sessionId);
+						const entry = [...paneRecords.values()].find((e) => e.token === token);
+						return entry?.alive ? ("owned" as const) : ("dead" as const);
 					},
 					connectPane: async (_record) => ({
 						role: () => "writer" as const,
@@ -144,7 +142,7 @@ beforeEach(() => {
 	process.env[NATIVE_MULTIPANE_DIR_ENV] = tmpRoot;
 	startedPanes.length = 0;
 	stoppedPanes.length = 0;
-	classifySweeps.length = 0;
+	classifyCalls.length = 0;
 	paneRecords.clear();
 	_resetBackendForTests();
 });
@@ -288,15 +286,15 @@ describe("a state read sweeps ownership once (seq 1388)", () => {
 		return state;
 	}
 
-	it("classifies six panes in one sweep — recover plus listPanes ran two", async () => {
+	it("classifies each of six panes exactly once — recover plus listPanes did it twice", async () => {
 		await growTo(6);
 
-		classifySweeps.length = 0;
+		classifyCalls.length = 0;
 		const state = await nativeTaskPanesState(TASK_ID);
 
 		expect(state!.panes).toHaveLength(6);
-		expect(classifySweeps).toHaveLength(1);
-		expect(new Set(classifySweeps[0]).size).toBe(6);
+		expect(classifyCalls).toHaveLength(6);
+		expect(new Set(classifyCalls).size).toBe(6);
 		expect(state!.panes.every((pane) => pane.alive)).toBe(true);
 	});
 

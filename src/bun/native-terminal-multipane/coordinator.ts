@@ -20,7 +20,7 @@
 import { listPaneIds, restoreSplitTree, serializeSplitTree, splitPane, closePane as closeTreePane, createSplitTree, validateSplitTree, type SplitOrientation, type SplitTree } from "../../shared/split-tree";
 import { withFileLock } from "../file-lock";
 import { NativeSessionClient } from "../native-terminal-registry/client";
-import { classifyOwnershipBatch, type OwnershipVerdict } from "../native-terminal-registry/ownership";
+import { classifyOwnership, type OwnershipVerdict } from "../native-terminal-registry/ownership";
 import type { ClientRole } from "../native-terminal-registry/writer-ownership";
 import { readRecord, readToken, type NativeSessionRecord } from "../native-terminal-registry/record";
 import { start, stop, type StartOptions, type StartResult } from "../native-terminal-registry/registry";
@@ -104,10 +104,7 @@ export interface CoordinatorDeps {
 	stopPane(sessionId: string, opts?: { timeoutMs?: number }): Promise<boolean>;
 	readPaneRecord(sessionId: string): NativeSessionRecord | null;
 	readPaneToken(sessionId: string): string | null;
-	/** Whole-sweep seam: verdicts in input order, one probe for the pane set. */
-	classifyPanes(
-		entries: readonly { record: NativeSessionRecord; token: string | null }[],
-	): Promise<OwnershipVerdict[]>;
+	classifyPane(record: NativeSessionRecord, token: string | null): Promise<OwnershipVerdict>;
 	connectPane(record: NativeSessionRecord, token: string): Promise<PaneConnection>;
 }
 
@@ -116,7 +113,7 @@ export const defaultCoordinatorDeps: CoordinatorDeps = {
 	stopPane: (sessionId, opts) => stop(sessionId, opts ?? {}),
 	readPaneRecord: readRecord,
 	readPaneToken: readToken,
-	classifyPanes: classifyOwnershipBatch,
+	classifyPane: classifyOwnership,
 	async connectPane(record, token) {
 		const client = new NativeSessionClient();
 		await client.connect(record, token, { timeoutMs: 5000 });
@@ -238,10 +235,10 @@ export class NativeMultipaneCoordinator {
 				const tree = restoreSplitTree(record.layout);
 				if (!tree) return null;
 
-				// One classification for the whole pane set: the verdicts come back from a
-				// single probe, so recovery no longer costs a `ps` fork per pane (seq 1382,
-				// 1388).
-				const probes = await probePanes(record.panes, deps);
+				// One classification per pane, all in flight at once: each probe shells out
+				// to `ps`, so doing them in sequence made recovery cost grow linearly with
+				// the pane count on the click path (seq 1382).
+				const probes = await Promise.all(record.panes.map((pane) => probePane(pane, deps)));
 				const dead = probes.filter((probe) => probe.verdict !== "owned");
 				if (dead.length === 0) {
 					return {
@@ -291,11 +288,14 @@ export class NativeMultipaneCoordinator {
 	 * {@link NativeMultipaneCoordinator.recoverPaneSet}; calling both classifies twice.
 	 */
 	async listPanes(): Promise<PaneSnapshot[]> {
-		const panes = this.paneIds().map((paneId) => ({
-			paneId,
-			sessionId: paneSessionId(this.coordinatorId, paneId),
-		}));
-		return (await probePanes(panes, this.deps)).map(snapshotOf);
+		// Fan out over the pane set, bounded by the pane count: every snapshot needs
+		// its own `ps` probe, and in sequence that dominated every pane action.
+		return Promise.all(
+			this.paneIds().map(async (paneId): Promise<PaneSnapshot> => {
+				const pane = { paneId, sessionId: paneSessionId(this.coordinatorId, paneId) };
+				return snapshotOf(await probePane(pane, this.deps));
+			}),
+		);
 	}
 
 	/**
@@ -485,30 +485,11 @@ interface PaneProbe {
 	verdict: OwnershipVerdict;
 }
 
-/**
- * One sweep over a pane set: read every record, classify the ones that still
- * have a record in a single probe, and keep the results in pane order.
- */
-async function probePanes(
-	panes: readonly MultipanePaneEntry[],
-	deps: CoordinatorDeps,
-): Promise<PaneProbe[]> {
-	const records = panes.map((pane) => ({ pane, record: deps.readPaneRecord(pane.sessionId) }));
+async function probePane(pane: MultipanePaneEntry, deps: CoordinatorDeps): Promise<PaneProbe> {
+	const record = deps.readPaneRecord(pane.sessionId);
 	// A missing record is proof enough: there is nothing left to verify against.
-	const classifiable = records.filter(
-		(entry): entry is { pane: MultipanePaneEntry; record: NativeSessionRecord } => entry.record !== null,
-	);
-	const verdicts = classifiable.length
-		? await deps.classifyPanes(
-				classifiable.map(({ pane, record }) => ({ record, token: deps.readPaneToken(pane.sessionId) })),
-			)
-		: [];
-	const byPaneId = new Map(classifiable.map(({ pane }, index) => [pane.paneId, verdicts[index] ?? "reused"]));
-	return records.map(({ pane, record }) => ({
-		pane,
-		record,
-		verdict: record ? (byPaneId.get(pane.paneId) ?? "reused") : "dead",
-	}));
+	if (!record) return { pane, record: null, verdict: "dead" };
+	return { pane, record, verdict: await deps.classifyPane(record, deps.readPaneToken(pane.sessionId)) };
 }
 
 function snapshotOf({ pane, record, verdict }: PaneProbe): PaneSnapshot {
@@ -525,8 +506,17 @@ function snapshotOf({ pane, record, verdict }: PaneProbe): PaneSnapshot {
 	};
 }
 
+async function isPaneOwned(sessionId: string, deps: CoordinatorDeps): Promise<boolean> {
+	const record = deps.readPaneRecord(sessionId);
+	if (!record) return false;
+	return (await deps.classifyPane(record, deps.readPaneToken(sessionId))) === "owned";
+}
+
 async function hasLivePane(record: NativeMultipaneRecord, deps: CoordinatorDeps): Promise<boolean> {
-	return (await probePanes(record.panes, deps)).some((probe) => probe.verdict === "owned");
+	for (const pane of record.panes) {
+		if (await isPaneOwned(pane.sessionId, deps)) return true;
+	}
+	return false;
 }
 
 /** Release each pane's registry state through the registry's own ownership guard. */
