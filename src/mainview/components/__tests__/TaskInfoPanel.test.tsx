@@ -180,6 +180,7 @@ const defaultDevServerStatus: DevServerStatus = {
 	hasDevScript: true,
 	worktreePath: "/tmp/wt/t1",
 	tmuxSocket: "dev3",
+	backend: "tmux",
 	taskSessionName: "dev3-t1",
 	devSessionName: "dev3-dev-t1",
 	viewerPaneId: "%17",

@@ -30,7 +30,6 @@ export interface LifecycleActorRuntime {
 	prPending?: boolean;
 	prPromoted?: boolean;
 	prSignalKey?: string;
-	gitOpPaneId?: string;
 	branchChecks?: Map<string, Promise<BranchStatus>>;
 	activeActivities?: Set<LifecycleActivity>;
 }
@@ -230,7 +229,6 @@ class LifecycleService {
 				clearTaskRuntime: (id) => {
 					const runtime = this.actors.runtime(id);
 					delete runtime.mergePromptReservation;
-					delete runtime.gitOpPaneId;
 					runtime.branchChecks?.clear();
 					delete runtime.branchChecks;
 					delete runtime.mergeNextDue;

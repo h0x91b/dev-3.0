@@ -154,16 +154,21 @@ describe("destroyTaskPty", () => {
 });
 
 describe("killDevServer", () => {
-	it("is skipped for a native task, which owns no tmux dev session", async () => {
-		await executeLifecycleEffect(effect("killDevServer"), context(task({ terminalBackend: "native" })));
+	// A native task hosts its dev server in an auxiliary pane rather than a tmux
+	// session, so teardown must still run — skipping it here leaked the whole
+	// dev-server process tree, ports included.
+	it("tears the dev server down for a native task too", async () => {
+		const nativeTask = task({ terminalBackend: "native" });
+		await executeLifecycleEffect(effect("killDevServer"), context(nativeTask));
 
-		expect(killDevServerSession).not.toHaveBeenCalled();
+		expect(killDevServerSession).toHaveBeenCalledWith(nativeTask, "dev3", "/tmp/wt");
 	});
 
 	it("still tears the dev session down for an unmarked task", async () => {
-		await executeLifecycleEffect(effect("killDevServer"), context(task()));
+		const tmuxTask = task();
+		await executeLifecycleEffect(effect("killDevServer"), context(tmuxTask));
 
-		expect(killDevServerSession).toHaveBeenCalledWith(TASK_ID, "dev3", "/tmp/wt");
+		expect(killDevServerSession).toHaveBeenCalledWith(tmuxTask, "dev3", "/tmp/wt");
 	});
 });
 

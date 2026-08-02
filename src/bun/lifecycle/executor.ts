@@ -763,11 +763,11 @@ export async function executeLifecycleEffect(
 			}
 			return {};
 		case "killDevServer":
-			// A dev server is a tmux session; a native task has none, and probing tmux
-			// for it is exactly what the native path must never do.
-			if (taskTerminalBackendIdentity(ctx.sourceTask) === "native") return {};
+			// Both backends host a dev server (tmux: a nested session, native: an
+			// auxiliary pane), and killDevServerSession picks the right one. Skipping
+			// native here used to leak the whole dev-server process tree on teardown.
 			await killDevServerSession(
-				ctx.sourceTask.id,
+				ctx.sourceTask,
 				ctx.sourceTask.tmuxSocket ?? DEFAULT_TMUX_SOCKET,
 				ctx.sourceTask.worktreePath,
 			);

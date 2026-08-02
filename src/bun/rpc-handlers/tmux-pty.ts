@@ -44,6 +44,7 @@ import { markAgentPane } from "../agent-prompt";
 import { dev3TaskTempPath } from "../temp-paths";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { nativeTaskPanesAlive } from "../native-task-panes";
+import { auxPaneAlive, auxPaneTitle, closeAuxPane, findAuxPane, nativeAuxPaneShellPid, openAuxPane } from "../task-aux-panes";
 import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, log, resolveBinaryPath, shellQuote, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -91,13 +92,20 @@ function isSelfHostedByTask(taskId: string): boolean {
 // that the session is gone before anyone re-inspects it.
 const SELF_HOSTED_STOP_ACK_MS = 500;
 
-async function isDevServerRunning(taskId: string, socket: string): Promise<boolean> {
-	const devSession = devServerSessionName(taskId);
+/**
+ * Is this task's dev server up? A tmux task hosts it in its own nested session;
+ * a native task runs it directly in the auxiliary pane, so the pane being alive
+ * IS the dev server being alive.
+ */
+async function isDevServerRunning(task: Task, socket: string): Promise<boolean> {
+	if (taskTerminalBackendIdentity(task) === "native") {
+		return auxPaneAlive(task, "devServer", socket);
+	}
 	// A launch-time tmux failure surfaces as a typed TmuxSpawnError (clear
 	// FDA-pointing message) instead of a raw `posix_spawn ENOENT`. This is
 	// the first — and gating — tmux call in the status path, so catching it in
 	// buildDevServerStatus covers the whole read.
-	return tmux.hasSession(devSession, { socket });
+	return tmux.hasSession(devServerSessionName(task.id), { socket });
 }
 
 async function findDevServerViewerPaneId(taskId: string, taskSession: string, devSession: string, socket: string): Promise<string | null> {
@@ -139,6 +147,18 @@ async function killDevServerViewerPane(taskId: string, taskSession: string, devS
 const DEV_SERVER_TERM_GRACE_MS = 1500;
 const DEV_SERVER_KILL_WAIT_MS = 2000;
 const DEV_SERVER_PORT_RELEASE_WAIT_MS = 3000;
+
+/**
+ * The dev-server process tree of a NATIVE task: the pane's own shell plus every
+ * descendant, from the same single `ps` snapshot the tmux walk uses (see the
+ * note on collectDevServerTreePids for why `pgrep` is unusable here).
+ */
+async function collectNativeDevServerTreePids(task: Task): Promise<number[]> {
+	const rootPid = await nativeAuxPaneShellPid(task, "devServer");
+	if (rootPid === null || rootPid <= 0) return [];
+	const processTree = await buildProcessTree();
+	return [rootPid, ...collectDescendants(rootPid, processTree)];
+}
 
 async function collectDevServerTreePids(devSession: string, socket: string): Promise<number[]> {
 	const panePids = await getSessionPanePids(socket, devSession);
@@ -227,17 +247,21 @@ async function findOrphanedPortHolders(
 	return { orphanPids: [...orphanPids], foreignHolders };
 }
 
-export async function killDevServerSession(taskId: string, socket: string, worktreePath?: string | null): Promise<void> {
+export async function killDevServerSession(task: Task, socket: string, worktreePath?: string | null): Promise<void> {
+	const taskId = task.id;
+	const native = taskTerminalBackendIdentity(task) === "native";
 	const devSession = devServerSessionName(taskId);
 	const taskSession = taskSessionName(taskId);
-	// Snapshot the process tree while the dev session still exists — afterwards
-	// its pane PIDs are unreachable via tmux.
-	const treePids = await collectDevServerTreePids(devSession, socket);
+	// Snapshot the process tree while the dev server is still up — afterwards its
+	// root pid is unreachable (tmux forgets the session; the native pane is gone).
+	const treePids = native
+		? await collectNativeDevServerTreePids(task)
+		: await collectDevServerTreePids(devSession, socket);
 	// Detached/daemonized devScript children are missed by the tree walk — find
 	// them by pool-port ownership. Processes in the TASK session tree (agent
 	// panes) are excluded: an agent-launched server on a pool port is not the
 	// dev server's to kill.
-	const taskTreePids = await collectTaskPids(socket, taskSession);
+	const taskTreePids = native ? new Set<number>() : await collectTaskPids(socket, taskSession);
 	for (const pid of treePids) taskTreePids.add(pid);
 	const { orphanPids, foreignHolders } = await findOrphanedPortHolders(taskId, worktreePath ?? undefined, taskTreePids);
 	if (orphanPids.length > 0) {
@@ -247,8 +271,14 @@ export async function killDevServerSession(taskId: string, socket: string, workt
 		log.warn("Assigned ports held by foreign processes — not killing", { taskId: taskId.slice(0, 8), foreignHolders });
 	}
 
-	await killDevServerViewerPane(taskId, taskSession, devSession, socket);
-	await tmux.killSession(devSession, { socket, bestEffort: true });
+	if (native) {
+		// The pane IS the dev server: closing it kills the script, and the reap
+		// below finishes off anything it left behind. No tmux is touched.
+		await closeAuxPane(task, "devServer", socket);
+	} else {
+		await killDevServerViewerPane(taskId, taskSession, devSession, socket);
+		await tmux.killSession(devSession, { socket, bestEffort: true });
+	}
 	const leftovers = await reapDevServerTree([...treePids, ...orphanPids], devSession);
 
 	// "Stop returned" must mean "the next start can bind": wait for the pool
@@ -282,9 +312,10 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	// the read-only status with a raw `posix_spawn ENOENT`. Degrade instead: keep
 	// the tmux-free facts, mark the live state unknown, and carry the diagnostic
 	// in `tmuxError` for the caller to surface. Non-tmux errors still propagate.
+	const native = taskTerminalBackendIdentity(task) === "native";
 	let running: boolean;
 	try {
-		running = await isDevServerRunning(task.id, resolvedSocket);
+		running = await isDevServerRunning(task, resolvedSocket);
 	} catch (err) {
 		if (!isTmuxSpawnError(err)) throw err;
 		log.error("dev-server status degraded — tmux unreachable", {
@@ -300,6 +331,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 			tmuxSocket: resolvedSocket,
 			taskSessionName: taskSession,
 			devSessionName: devSession,
+			backend: "tmux",
 			viewerPaneId: null,
 			panePids: [],
 			assignedPorts,
@@ -311,14 +343,25 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	}
 
 	const viewerPaneId = running
-		? await findDevServerViewerPaneId(task.id, taskSession, devSession, resolvedSocket)
+		? native
+			? (await findAuxPane(task, "devServer", resolvedSocket))?.paneId ?? null
+			: await findDevServerViewerPaneId(task.id, taskSession, devSession, resolvedSocket)
 		: null;
-	const panePids = running ? await getSessionPanePids(resolvedSocket, devSession) : [];
+	const nativeRootPid = running && native ? await nativeAuxPaneShellPid(task, "devServer") : null;
+	const panePids = running
+		? native
+			? (nativeRootPid ? [nativeRootPid] : [])
+			: await getSessionPanePids(resolvedSocket, devSession)
+		: [];
 	// One live lsof snapshot shared by the dev-port scan, the conflict check,
 	// and the whole-task-session fallback below. Skipped entirely when there is
 	// nothing to look at (stopped + no assigned ports).
 	const lsofOutput = running || assignedPorts.length > 0 ? await getLsofOutput() : "";
-	const devTreePids = running ? await collectTaskPids(resolvedSocket, devSession) : new Set<number>();
+	const devTreePids = running
+		? native
+			? new Set(await collectNativeDevServerTreePids(task))
+			: await collectTaskPids(resolvedSocket, devSession)
+		: new Set<number>();
 	const devPorts = running && lsofOutput ? parseLsofOutput(lsofOutput, devTreePids) : [];
 	// An assigned pool port bound by a PID outside the dev-server tree is a
 	// conflict: either a foreign squatter, or (when stopped) a leftover that
@@ -329,7 +372,10 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	const ports = running
 		? await (async () => {
 			const cached = getPortsForTask(task.id);
-			return cached.length > 0 ? cached : scanTaskPorts(resolvedSocket, taskSession, lsofOutput);
+			if (cached.length > 0) return cached;
+			// The fallback scan walks a tmux session; a native task has none, so its
+			// dev-port scan above is already the whole answer.
+			return native ? devPorts : scanTaskPorts(resolvedSocket, taskSession, lsofOutput);
 		})()
 		: [];
 	const resourceUsage = running ? getResourceUsage(task.id) : undefined;
@@ -341,8 +387,9 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 		hasDevScript,
 		worktreePath: task.worktreePath ?? null,
 		tmuxSocket: resolvedSocket,
-		taskSessionName: taskSession,
-		devSessionName: devSession,
+		taskSessionName: native ? "" : taskSession,
+		devSessionName: native ? "" : devSession,
+		backend: native ? "native" : "tmux",
 		viewerPaneId,
 		panePids,
 		assignedPorts,
@@ -920,9 +967,8 @@ export function cleanupTaskTmuxState(taskId: string): void {
 
 export async function runDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
 	log.info("→ runDevServer", params);
-	// The dev server lives in a tmux session with an attached viewer pane; the
-	// wrapper below is bash and the viewer is a tmux re-attach loop.
-	assertPosixLaunchDialect("the dev-server tmux session");
+	// Both backends run the same bash wrapper; only its host differs.
+	assertPosixLaunchDialect("the dev-server pane");
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
@@ -931,11 +977,12 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 		if (!resolved.devScript.trim()) throw new Error("No dev script configured");
 		if (!task.worktreePath) throw new Error("Task has no worktree");
 
+		const native = taskTerminalBackendIdentity(task) === "native";
 		const devSession = devServerSessionName(task.id);
 		const devScriptPath = dev3TaskTempPath(task.id, "dev.sh");
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
-		if (await isDevServerRunning(task.id, socket)) {
+		if (await isDevServerRunning(task, socket)) {
 			if (isSelfHostedByTask(task.id)) {
 				throw new Error(
 					"The running dev server hosts the dev3 app instance serving this request "
@@ -944,7 +991,7 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 					+ "\"dev3 dev-server stop\" first and then \"dev3 dev-server start\".",
 				);
 			}
-			await killDevServerSession(task.id, socket, task.worktreePath);
+			await killDevServerSession(task, socket, task.worktreePath);
 		}
 
 		// Ensure pool ports exist for this task before launching. allocatePorts is
@@ -1001,13 +1048,37 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			`  echo "Process exited with code $EXIT_CODE. Press any key to close."`,
 			`  read -n 1 -s`,
 			`fi`,
-			`# Detach the outer viewer pane before this pane closes so inner tmux redraws`,
-			`# without a watching client — prevents escape sequence corruption in outer tmux.`,
-			`# Use the app-resolved binary: a PATH tmux of a different version cannot`,
-			`# talk to this server at all ("server exited unexpectedly").`,
-			`"${tmux.binaryPath()}" detach-client 2>/dev/null || true`,
+			// Detaching the outer viewer pane before this pane closes lets the inner
+			// tmux redraw without a watching client — it prevents escape-sequence
+			// corruption in the outer tmux. A native pane has no nesting and no
+			// tmux binary to call, so the line is tmux-only.
+			// Use the app-resolved binary: a PATH tmux of a different version cannot
+			// talk to this server at all ("server exited unexpectedly").
+			...(native ? [] : [`"${tmux.binaryPath()}" detach-client 2>/dev/null || true`]),
 		].join("\n") + "\n";
 		await writeLaunchScript(devScriptPath, wrappedScript);
+
+		// A native task has no tmux anything. The dev script runs directly in a
+		// real auxiliary pane of the task's own terminal: that pane IS the dev
+		// server, so its output is live, closing it stops the server, and a second
+		// viewer of the same task sees the same pane. The seam replaces any pane
+		// this task already owns, so repeated starts never stack two.
+		if (native) {
+			const handle = await openAuxPane({
+				task,
+				purpose: "devServer",
+				placement: "right",
+				size: "50%",
+				cwd: task.worktreePath,
+				env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
+				socket,
+				title: auxPaneTitle("devServer"),
+				tmuxCommand: `bash "${devScriptPath}"`,
+				nativeLaunch: { executable: "/bin/bash", argv: [devScriptPath] },
+			});
+			log.info("← runDevServer done (native pane)", { paneId: handle.paneId });
+			return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
+		}
 
 		try {
 			// Client cwd is pinned inside newSessionDetached — never a mortal
@@ -1085,7 +1156,7 @@ async function checkDevServer(params: { taskId: string; projectId: string }): Pr
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-		const running = await isDevServerRunning(task.id, socket);
+		const running = await isDevServerRunning(task, socket);
 		log.info("← checkDevServer", { running });
 		return { running };
 	} catch {
@@ -1101,6 +1172,12 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const taskSession = taskSessionName(task.id);
+		const native = taskTerminalBackendIdentity(task) === "native";
+		// The pane border only exists to title the tmux viewer split.
+		const clearPaneBorder = () =>
+			native
+				? Promise.resolve()
+				: tmux.setOption(taskSession, "pane-border-status", "off", { socket });
 
 		if (isSelfHostedByTask(task.id)) {
 			// Tearing the session down now would reap this very process before the
@@ -1112,15 +1189,15 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 			});
 			const status = await buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 			setTimeout(() => {
-				killDevServerSession(task.id, socket, task.worktreePath)
-					.then(() => tmux.setOption(taskSession, "pane-border-status", "off", { socket }))
+				killDevServerSession(task, socket, task.worktreePath)
+					.then(clearPaneBorder)
 					.catch((err) => log.error("Deferred self-hosted dev-server teardown failed", { error: String(err) }));
 			}, SELF_HOSTED_STOP_ACK_MS);
 			return { ...status, running: false, viewerPaneId: null, panePids: [], devPorts: [], resourceUsage: undefined };
 		}
 
-		await killDevServerSession(task.id, socket, task.worktreePath);
-		tmux.setOption(taskSession, "pane-border-status", "off", { socket }).catch(() => {});
+		await killDevServerSession(task, socket, task.worktreePath);
+		clearPaneBorder().catch(() => {});
 		log.info("← stopDevServer done");
 		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 	} catch (err) {
@@ -2217,12 +2294,14 @@ async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panes
 	const devSession = devServerSessionName(params.taskId);
 
 	// dev-server lives in a separate tmux session (dev3-dev-<id>) — the user's
-	// scroll-mode is typically there, not in the agent session. Hit both.
+	// scroll-mode is typically there, not in the agent session. Hit both. Copy
+	// mode is a tmux concept, so a native task has neither session to visit and
+	// this whole handler is a no-op for it.
 	const sessions: string[] = [];
 	if (await pty.tmuxSessionExists(params.taskId, socket)) {
 		sessions.push(taskSession);
 	}
-	if (await isDevServerRunning(params.taskId, socket)) {
+	if (await tmux.hasSession(devSession, { socket })) {
 		sessions.push(devSession);
 	}
 

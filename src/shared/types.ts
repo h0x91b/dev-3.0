@@ -3,7 +3,7 @@ import type { ConversationMatch } from "./conversation-search-core";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
-import type { TaskPaneState, TaskPaneAction } from "./task-panes";
+import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-panes";
 
 // ---- Changelog ----
 
@@ -2531,8 +2531,12 @@ export interface DevServerStatus {
 	hasDevScript: boolean;
 	worktreePath: string | null;
 	tmuxSocket: string;
+	/** tmux only — empty on a native task, which has no tmux session of any kind. */
 	taskSessionName: string;
+	/** tmux only — empty on a native task, whose dev server runs in its pane. */
 	devSessionName: string;
+	/** Which terminal backend hosts this dev server. */
+	backend: TaskPaneBackendKind;
 	viewerPaneId: string | null;
 	panePids: number[];
 	assignedPorts: number[];

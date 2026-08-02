@@ -103,12 +103,16 @@ function printStatusLine(action: string, status: DevServerStatus): void {
 }
 
 function printStatusDetails(status: DevServerStatus): void {
+	// A native task hosts the dev server in a pane of its own terminal, so it has
+	// no tmux session and no socket to report.
+	const native = status.backend === "native";
 	const fields: Array<[string, string]> = [
 		["State:", status.tmuxError ? "unknown (tmux unavailable)" : status.running ? "running" : "stopped"],
 		["Task:", status.taskId.slice(0, 8)],
-		["Session:", status.devSessionName],
-		["Viewer Pane:", status.viewerPaneId ?? "(none)"],
-		["Socket:", status.tmuxSocket],
+		["Backend:", status.backend],
+		...(native ? [] : [["Session:", status.devSessionName] as [string, string]]),
+		["Pane:", status.viewerPaneId ?? "(none)"],
+		...(native ? [] : [["Socket:", status.tmuxSocket] as [string, string]]),
 		["Worktree:", status.worktreePath ?? "(none)"],
 		["Pane PIDs:", formatPids(status)],
 		["Assigned Ports:", formatAssignedPorts(status)],

@@ -269,6 +269,11 @@ export async function focusNativeTaskPane(taskId: string, paneId: string): Promi
 	return buildState(taskId);
 }
 
+/** Type into one native pane, exactly as a viewer's keystrokes would. */
+export async function writeNativeTaskPane(taskId: string, paneId: string, data: string): Promise<void> {
+	await getBackend().writePane(coordinatorId(taskId), paneId, data);
+}
+
 /**
  * Tear down every pane in a task's pane set and VERIFY they are gone.
  * Always verifies — an unconfirmed teardown throws whether or not this process
@@ -286,6 +291,30 @@ export async function stopNativeTaskPanes(taskId: string): Promise<void> {
 		);
 	}
 	log.info("Native task panes stopped", { taskId: taskId.slice(0, 8) });
+}
+
+/**
+ * The launch command behind every pane of a task, read from the per-pane
+ * registry records.
+ *
+ * This is the native counterpart of tmux's `#{pane_start_command}` listing: it
+ * lets a caller re-find a pane it started earlier — after an app restart, when
+ * no in-memory ownership map survives — by matching the command it launched.
+ * Panes whose record is unreadable are reported with an empty command rather
+ * than dropped, so the caller still sees the pane exists.
+ */
+export async function nativeTaskPaneCommands(
+	taskId: string,
+): Promise<Array<{ paneId: string; sessionId: string; command: string[]; shellPid: number; alive: boolean }>> {
+	const state = await nativeTaskPanesState(taskId);
+	if (!state) return [];
+	return state.panes.map((pane) => ({
+		paneId: pane.paneId,
+		sessionId: pane.sessionId,
+		command: readRecord(pane.sessionId)?.shell.command ?? [],
+		shellPid: pane.shellPid,
+		alive: pane.alive,
+	}));
 }
 
 /**

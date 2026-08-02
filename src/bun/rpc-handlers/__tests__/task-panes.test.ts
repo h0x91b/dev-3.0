@@ -32,6 +32,7 @@ const mocks = vi.hoisted(() => ({
 	taskTerminalBackendIdentity: vi.fn(),
 	// native-task-panes
 	nativeTaskPanesState: vi.fn(),
+	nativeTaskPaneCommands: vi.fn(async () => []),
 	splitNativeTaskPane: vi.fn(),
 	closeNativeTaskPane: vi.fn(),
 	focusNativeTaskPane: vi.fn(),
@@ -89,6 +90,7 @@ vi.mock("../../task-terminal-backend", () => ({
 
 vi.mock("../../native-task-panes", () => ({
 	nativeTaskPanesState: mocks.nativeTaskPanesState,
+	nativeTaskPaneCommands: mocks.nativeTaskPaneCommands,
 	splitNativeTaskPane: mocks.splitNativeTaskPane,
 	closeNativeTaskPane: mocks.closeNativeTaskPane,
 	focusNativeTaskPane: mocks.focusNativeTaskPane,

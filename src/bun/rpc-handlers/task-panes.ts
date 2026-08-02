@@ -18,7 +18,9 @@ import {
 } from "../tmux";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { buildTaskLifecycleEnv } from "./shared-pure";
+import { auxPaneTitle, auxPurposeOfCommand } from "../task-aux-panes";
 import {
+	nativeTaskPaneCommands,
 	nativeTaskPanesState,
 	splitNativeTaskPane,
 	closeNativeTaskPane,
@@ -180,10 +182,26 @@ function detectLayoutPreset(tree: SplitTree): TaskPaneLayoutPreset | null {
 	return null;
 }
 
+/**
+ * Titles for the native panes an action owns, so the pane pager and the
+ * close-pane picker can name "Dev Server" instead of "Pane 2". Derived from each
+ * pane's launch command — nothing is stored, so a label survives an app restart
+ * exactly as long as the pane itself does.
+ */
+async function nativeAuxPaneLabels(taskId: string): Promise<Map<string, string>> {
+	const labels = new Map<string, string>();
+	for (const pane of await nativeTaskPaneCommands(taskId)) {
+		const purpose = auxPurposeOfCommand(taskId, pane.command);
+		if (purpose) labels.set(pane.paneId, auxPaneTitle(purpose));
+	}
+	return labels;
+}
+
 /** Build TaskPaneState from a NativeTaskPanesState. */
 function nativeStateToTaskPaneState(
 	nativeState: import("../native-task-panes").NativeTaskPanesState,
 	tree: SplitTree | null,
+	labels?: Map<string, string>,
 ): TaskPaneState {
 	const rects = tree ? getPaneRects(tree) : new Map<string, SplitPaneRect>();
 	const zoomedPaneId = tree?.zoomedPaneId ?? null;
@@ -193,7 +211,7 @@ function nativeStateToTaskPaneState(
 	const panes: TaskPaneInfo[] = nativeState.panes.map((p, i) => ({
 		paneId: p.paneId,
 		index: i,
-		label: "",
+		label: labels?.get(p.paneId) ?? "",
 		active: p.paneId === activePaneId,
 		zoomed: p.paneId === zoomedPaneId,
 		rect: rects.get(p.paneId) ?? { x: 0, y: 0, width: 1, height: 1 },
@@ -262,7 +280,7 @@ async function taskPaneState(params: { taskId: string }): Promise<TaskPaneState>
 			};
 		}
 		const tree = nativeState.layout ? restoreSplitTree(nativeState.layout) : null;
-		return nativeStateToTaskPaneState(nativeState, tree);
+		return nativeStateToTaskPaneState(nativeState, tree, await nativeAuxPaneLabels(params.taskId));
 	}
 
 	return tmuxTaskPaneState(params.taskId);

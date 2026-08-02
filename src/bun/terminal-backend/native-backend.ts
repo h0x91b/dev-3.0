@@ -246,6 +246,13 @@ export class NativeTerminalBackend implements TerminalBackend {
 		return coordinator.layout;
 	}
 
+	/** Type into one pane without attaching a view (agent hand-off prompts). */
+	async writePane(id: TerminalSessionId, viewId: TerminalViewId, data: string): Promise<void> {
+		const coordinator = await this.getOrRecover(id);
+		if (!coordinator) throw sessionNotFound(id);
+		await this.guard("writePane", id, () => coordinator.writePane(viewId, data));
+	}
+
 	/** Publish a geometry-only layout change via the coordinator. */
 	async publishPaneGeometry(id: TerminalSessionId, tree: SplitTree): Promise<void> {
 		const coordinator = await this.getOrRecover(id);
