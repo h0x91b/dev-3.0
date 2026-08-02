@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import BugHuntersLightbox from "../BugHuntersLightbox";
 import { I18nProvider } from "../../i18n";
@@ -80,5 +81,48 @@ describe("BugHuntersLightbox", () => {
 		expect(await screen.findByText("What happens next")).toBeInTheDocument();
 		expect(screen.getByText(/Hunters add confirmed findings as notes/)).toBeInTheDocument();
 		expect(screen.getByText("Review the latest [bug-hunt] notes on this task and work through the findings.")).toBeInTheDocument();
+	});
+
+	// The seq-1394 regression entered exactly here: the picker's defaults, one
+	// click on Launch hunters, and the backend then split a tmux pane on a native
+	// task. The dialog must send the launch and must show a failure instead of
+	// closing on one.
+	it("launches the picker's default hunter count and closes", async () => {
+		vi.mocked(api.request.spawnBugHuntersInTask).mockResolvedValue({ spawned: 3 });
+		const onClose = vi.fn();
+		render(
+			<I18nProvider>
+				<BugHuntersLightbox task={task} project={project} onClose={onClose} />
+			</I18nProvider>,
+		);
+
+		await userEvent.click(await screen.findByRole("button", { name: /Launch 3 hunters/ }));
+
+		expect(api.request.spawnBugHuntersInTask).toHaveBeenCalledWith({
+			taskId: task.id,
+			projectId: project.id,
+			agentId: "builtin-claude",
+			configId: "claude-default",
+			count: 3,
+			accountId: undefined,
+		});
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("shows the backend's failure and stays open instead of pretending hunters started", async () => {
+		vi.mocked(api.request.spawnBugHuntersInTask).mockRejectedValue(
+			new Error("the task terminal is not running, so it has no pane to split"),
+		);
+		const onClose = vi.fn();
+		render(
+			<I18nProvider>
+				<BugHuntersLightbox task={task} project={project} onClose={onClose} />
+			</I18nProvider>,
+		);
+
+		await userEvent.click(await screen.findByRole("button", { name: /Launch 3 hunters/ }));
+
+		expect(await screen.findByText(/the task terminal is not running/)).toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
 	});
 });

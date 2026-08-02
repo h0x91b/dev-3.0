@@ -139,6 +139,32 @@ vi.mock("../system-clipboard", () => ({
 	writeSystemClipboard: vi.fn(() => "pbcopy"),
 }));
 
+// The native pane runtime spawns real host processes, so it is mocked wholesale.
+// Unmarked tasks are tmux and never reach it; the native suites drive these
+// doubles directly.
+const mockNativePanes = {
+	nativeTaskPanesState: vi.fn(async () => null as any),
+	nativeTaskPaneLayout: vi.fn(async () => null as any),
+	nativeTaskPanesAlive: vi.fn(async () => false),
+	nativeTaskPaneCommands: vi.fn(async () => [] as any[]),
+	nativeTaskPaneCommandsOf: vi.fn(() => [] as any[]),
+	splitNativeTaskPane: vi.fn(async (..._args: any[]) => null as any),
+	closeNativeTaskPane: vi.fn(async (..._args: any[]) => ({ sessionTornDown: false, state: null }) as any),
+	focusNativeTaskPane: vi.fn(async (..._args: any[]) => null as any),
+	setNativeTaskPaneLayout: vi.fn(async () => null as any),
+};
+vi.mock("../native-task-panes", () => mockNativePanes);
+
+const mockSendPromptToNativePane = vi.fn(async () => true);
+vi.mock("../agent-prompt-native", () => ({
+	sendPromptToNativePane: (...args: any[]) => mockSendPromptToNativePane(...(args as [])),
+	sendPromptToNativeAgentPane: vi.fn(async () => true),
+	resolveNativeAgentPane: vi.fn(async () => null),
+	deliverNativePromptAsOwner: vi.fn(async () => true),
+	NATIVE_AGENT_PANE_ID: "pane-1",
+	NATIVE_PROMPT_DELIVERY_METHOD: "_native.deliverPrompt",
+}));
+
 vi.mock("../agents", () => ({
 	ensureClaudeTrust: vi.fn(),
 	ensureCodexTrust: vi.fn(),
@@ -8602,6 +8628,153 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		await expect(
 			handlers.spawnBugHuntersInTask({ taskId: "task-1", projectId: "proj-1", agentId: null, configId: null, count: 3 }),
 		).rejects.toThrow("no worktree");
+	});
+});
+
+// ================================================================
+// handlers.spawnBugHuntersInTask on a NATIVE task (seq 1394)
+//
+// The regression: this path used to call `tmux split-window` against
+// `dev3-task-<id>` unconditionally, so on a native task it hit the default tmux
+// socket and died with "Socket operation on non-socket". Every case here asserts
+// on the SAME entry point the Find bugs dialog calls.
+// ================================================================
+
+describe("handlers.spawnBugHuntersInTask on a native task", () => {
+	const TASK_ID = "abcd1234-full-id";
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.useFakeTimers();
+		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
+		mockSendPromptToNativePane.mockResolvedValue(true);
+		mockNativePanes.focusNativeTaskPane.mockResolvedValue(null as any);
+		mockNativePanes.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: false, state: null } as any);
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/** A pane set that starts with the agent's pane and grows on every split. */
+	function arrangeNativePaneSet(opts: { failAtSplit?: number } = {}) {
+		const paneIds = ["pane-1"];
+		let active = "pane-1";
+		const state = () => ({
+			taskId: TASK_ID,
+			panes: paneIds.map((paneId) => ({ paneId, sessionId: `${paneId}-s`, hostPid: 1, shellPid: 2, cols: 80, rows: 24, alive: true })),
+			layout: "{}",
+			activePaneId: active,
+		});
+		mockNativePanes.nativeTaskPanesState.mockImplementation(async () => state() as any);
+		mockNativePanes.focusNativeTaskPane.mockImplementation(async (_taskId: string, paneId: string) => {
+			active = paneId;
+			return state() as any;
+		});
+		mockNativePanes.closeNativeTaskPane.mockImplementation(async (_taskId: string, paneId: string) => {
+			paneIds.splice(paneIds.indexOf(paneId), 1);
+			return { sessionTornDown: paneIds.length === 0, state: state() } as any;
+		});
+		let splitCount = 0;
+		mockNativePanes.splitNativeTaskPane.mockImplementation(async () => {
+			splitCount += 1;
+			if (opts.failAtSplit === splitCount) throw new Error("host would not start");
+			const paneId = `pane-${paneIds.length + 1}`;
+			paneIds.push(paneId);
+			active = paneId;
+			return { paneId, state: state() } as any;
+		});
+		return { paneIds, activePaneId: () => active };
+	}
+
+	function arrangeNativeTask() {
+		const project = makeProject();
+		const task = makeTask({ id: TASK_ID, worktreePath: "/tmp/wt", terminalBackend: "native" } as any);
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {}, agent: { baseCommand: "claude" } });
+		return { project, task };
+	}
+
+	it("opens the requested number of native panes and never calls tmux", async () => {
+		arrangeNativeTask();
+		const set = arrangeNativePaneSet();
+
+		const result = await handlers.spawnBugHuntersInTask({
+			taskId: TASK_ID, projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 3,
+		});
+
+		expect(result).toEqual({ spawned: 3 });
+		expect(mockNativePanes.splitNativeTaskPane).toHaveBeenCalledTimes(3);
+		// Zero tmux process spawns — no split-window, and no probe of the default socket.
+		expect(mockSpawn).not.toHaveBeenCalled();
+
+		// First hunter splits off the agent's pane to the right; each later hunter
+		// splits the previous hunter's pane downwards, so the right column stacks.
+		const anchors = mockNativePanes.splitNativeTaskPane.mock.calls.map((c: any[]) => [c[1], c[2]]);
+		expect(anchors).toEqual([
+			["pane-1", "horizontal"],
+			["pane-2", "vertical"],
+			["pane-3", "vertical"],
+		]);
+		expect(set.paneIds).toEqual(["pane-1", "pane-2", "pane-3", "pane-4"]);
+		// The agent keeps the keyboard: the last split made a hunter pane active.
+		expect(set.activePaneId()).toBe("pane-1");
+	});
+
+	it("delivers the hunter prompt through the native pane, not through send-keys", async () => {
+		arrangeNativeTask();
+		arrangeNativePaneSet();
+
+		await handlers.spawnBugHuntersInTask({
+			taskId: TASK_ID, projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 2,
+		});
+		await vi.advanceTimersByTimeAsync(5100);
+
+		expect(mockSendPromptToNativePane).toHaveBeenCalledTimes(2);
+		const [, paneId, prompt] = mockSendPromptToNativePane.mock.calls[0] as any[];
+		expect(paneId).toBe("pane-2");
+		expect(prompt).toContain("/dev3-bug-hunter");
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("rolls the whole launch back when a later split fails, instead of leaving a partial set", async () => {
+		arrangeNativeTask();
+		const set = arrangeNativePaneSet({ failAtSplit: 3 });
+
+		await expect(
+			handlers.spawnBugHuntersInTask({
+				taskId: TASK_ID, projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 4,
+			}),
+		).rejects.toThrow("Only 2 of 4 bug hunters could be started");
+
+		// Both panes that did open were closed again; the agent's pane is untouched.
+		expect(mockNativePanes.closeNativeTaskPane.mock.calls.map((c: any[]) => c[1])).toEqual(["pane-2", "pane-3"]);
+		expect(set.paneIds).toEqual(["pane-1"]);
+		expect(set.activePaneId()).toBe("pane-1");
+	});
+
+	it("reports honestly when the native terminal is not running", async () => {
+		arrangeNativeTask();
+		mockNativePanes.nativeTaskPanesState.mockResolvedValue(null as any);
+
+		await expect(
+			handlers.spawnBugHuntersInTask({
+				taskId: TASK_ID, projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 3,
+			}),
+		).rejects.toThrow("the task terminal is not running");
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("writes no tmux pane entry into sessionState", async () => {
+		arrangeNativeTask();
+		arrangeNativePaneSet();
+
+		await handlers.spawnBugHuntersInTask({
+			taskId: TASK_ID, projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 2,
+		});
+
+		const sessionStateWrites = (data.updateTask as any).mock.calls.filter((c: any[]) => c[2]?.sessionState);
+		expect(sessionStateWrites).toHaveLength(0);
 	});
 });
 
