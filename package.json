@@ -24,6 +24,7 @@
 		"test:native-crash-e2e": "bun src/bun/native-terminal-registry/__tests__/crash-recovery.bun-e2e.ts",
 		"test:native-multi-client-e2e": "bun src/bun/native-terminal-registry/__tests__/multi-client.bun-e2e.ts",
 		"test:native-app-restart-e2e": "bun src/bun/native-terminal-registry/__tests__/app-restart.bun-e2e.ts",
+		"test:native-owner-routing-e2e": "bun src/bun/native-terminal-registry/__tests__/owner-routing.bun-e2e.ts",
 		"test:native-multipane-e2e": "bun src/bun/native-terminal-multipane/__tests__/multipane.bun-e2e.ts",
 		"test:native-task-terminal-e2e": "bun src/bun/__tests__/native-task-terminal.bun-e2e.ts",
 		"test:native-message-e2e": "bun src/bun/__tests__/native-message-owner-routing.bun-e2e.ts",

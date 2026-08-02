@@ -114,6 +114,15 @@ jobs:
       - name: Native-session app-restart reattach E2E
         run: bun run test:native-app-restart-e2e
 
+      # Seq 1381 cross-instance owner-routing proof for #1218. THREE separate
+      # processes against one host: A holds the writer lease and serves the CLI's
+      # NDJSON protocol, B binds the same pane as an observer and forwards one
+      # delivery to A, C reopens and counts what reached the PTY. Windows exercises
+      # the loopback `<pid>.endpoint.json` transport, POSIX the `<pid>.sock` one.
+      - name: Native-pane cross-instance owner-routing E2E
+        timeout-minutes: 5
+        run: bun run test:native-owner-routing-e2e
+
       # Seq 1292 PRODUCT proof: a task's primary terminal driven through
       # startNativeTaskTerminal/attach/stop — create, shell round-trip, resize,
       # detach, controller restart, observer refusal, owned-tree cleanup with a
