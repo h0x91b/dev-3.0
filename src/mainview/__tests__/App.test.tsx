@@ -392,6 +392,9 @@ describe("App keyboard shortcuts", () => {
 		});
 
 		it("Ctrl+, navigates to the settings screen", async () => {
+			// The app modifier is platform-exact: Ctrl combos are the LINUX keymap.
+			// On macOS ⌃, belongs to the terminal, so this must run as Linux.
+			fakePlatform("linux");
 			await renderApp();
 			await userEvent.keyboard("{Control>},{/Control}");
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
@@ -409,7 +412,7 @@ describe("App keyboard shortcuts", () => {
 	describe("history navigation aliases", () => {
 		it("uses Ctrl+- for back and Ctrl+Shift+- for forward", async () => {
 			await renderApp();
-			await userEvent.keyboard("{Control>},{/Control}");
+			await userEvent.keyboard("{Meta>},{/Meta}");
 			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
 
 			await userEvent.keyboard("{Control>}-{/Control}");
@@ -565,6 +568,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
 			expect(screen.getByTestId("task-screen")).toHaveAttribute("data-immersive", "true");
 
+			fakePlatform("linux");
 			await userEvent.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
 			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
 		});
@@ -1331,6 +1335,9 @@ describe("App keyboard shortcuts", () => {
 		});
 
 		it("Ctrl+Shift+N opens a new window", async () => {
+			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
+			fakePlatform("linux");
+
 			vi.mocked(api.request.openNewWindow).mockResolvedValue(undefined);
 			await renderApp();
 			await userEvent.keyboard("{Control>}{Shift>}n{/Shift}{/Control}");
@@ -1542,6 +1549,9 @@ describe("App keyboard shortcuts", () => {
 		});
 
 		it("Ctrl+= calls adjustZoom with +ZOOM_STEP", async () => {
+			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
+			fakePlatform("linux");
+
 			await renderApp();
 			await userEvent.keyboard("{Control>}={/Control}");
 			expect(mockedAdjustZoom).toHaveBeenCalledWith(ZOOM_STEP);
@@ -1554,6 +1564,9 @@ describe("App keyboard shortcuts", () => {
 		});
 
 		it("Ctrl+Alt+- calls adjustZoom with -ZOOM_STEP", async () => {
+			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
+			fakePlatform("linux");
+
 			await renderApp();
 			await userEvent.keyboard("{Control>}{Alt>}-{/Alt}{/Control}");
 			expect(mockedAdjustZoom).toHaveBeenCalledWith(-ZOOM_STEP);
@@ -1567,6 +1580,9 @@ describe("App keyboard shortcuts", () => {
 		});
 
 		it("Ctrl+Shift+0 calls applyZoom with DEFAULT_ZOOM", async () => {
+			// Ctrl combos are the Linux keymap — the app modifier is platform-exact.
+			fakePlatform("linux");
+
 			await renderApp();
 			await userEvent.keyboard("{Control>}{Shift>}0{/Shift}{/Control}");
 			expect(mockedApplyZoom).toHaveBeenCalledWith(DEFAULT_ZOOM);

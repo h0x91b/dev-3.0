@@ -104,6 +104,9 @@ const help = {
 	"help.settings.tasks.title": "Tareas y tablero",
 	"help.settings.tasks.body":
 		"Comportamiento por defecto del tablero y las tareas: dónde cae una tarjeta arrastrada en su columna, el sonido al completar una tarea, el modo concentración, el seguimiento por defecto y los consejos de funciones.",
+	"help.settings.keyboard.title": "Teclado",
+	"help.settings.keyboard.body":
+		"Todos los atajos de la app y el preset de teclas de tmux en un solo sitio. Pulsa Cambiar en una fila y teclea la combinación que quieras; si otro atajo ya la tiene, se te dice cuál antes de quitársela. Unos pocos quedan fijos — secuencias como `g d`, la familia ⌘1–9, el conmutador de tareas que se mantiene pulsado y Esc — y cada uno explica por qué.",
 	"help.settings.terminal.title": "Terminal",
 	"help.settings.terminal.body":
 		"Cómo se siente la terminal: el preajuste de teclado (estándar o estilo iTerm2), la velocidad de desplazamiento y el restablecimiento del zoom. También qué backend de terminal reciben las tareas NUEVAS en este equipo: tmux (el predeterminado actual) o el terminal nativo experimental; las tareas existentes no cambian.",

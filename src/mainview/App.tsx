@@ -10,7 +10,10 @@ import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
-import { hasAppModifier, isRemote } from "./utils/platform";
+import { isRemote } from "./utils/platform";
+import { isTypingContext } from "./utils/typing-context";
+import { matchesShortcut } from "./keymap";
+import { setShortcutOverrides } from "./keymap-store";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import { useMobileDenseZoom } from "./hooks/useMobileDenseZoom";
@@ -84,29 +87,10 @@ function isRemoteTunnelActive(tunnelState?: string): boolean {
 	return tunnelState === "starting" || tunnelState === "connected";
 }
 
-/**
- * True when keystrokes should go to a focused field or the terminal rather than
- * trigger a bare-key shortcut (used to gate the Vimium-style hint hotkey).
- */
-function isTypingContext(): boolean {
-	const el = document.activeElement as HTMLElement | null;
-	if (!el) return false;
-	const tag = el.tagName;
-	if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-	if (el.isContentEditable) return true;
-	if (el.closest('[data-terminal="true"]')) return true;
-	return false;
-}
-
 /** Parse a 1–9 project index from a physical digit code (`"Digit3"` → 3), layout-independent. */
 function digitFromCode(code: string): number | null {
 	const m = /^Digit([1-9])$/.exec(code);
 	return m ? Number(m[1]) : null;
-}
-
-/** Match the physical minus key, including shifted layouts where `key` is `_`. */
-function isMinusKey(event: KeyboardEvent): boolean {
-	return event.code === "Minus" || event.key === "-" || event.key === "_";
 }
 
 /** First on-screen search input (board label filter, sidebar search), for the bare `/` shortcut. */
@@ -401,6 +385,12 @@ function App() {
 	useEffect(() => {
 		setTaskCompletionSoundEnabled(globalSettings.playSoundOnTaskComplete !== false);
 	}, [globalSettings.playSoundOnTaskComplete]);
+
+	// Mirror user shortcut rebinds into the keymap store — the keydown dispatcher
+	// reads it synchronously, so it cannot go through React state.
+	useEffect(() => {
+		setShortcutOverrides(globalSettings.keyboardShortcuts);
+	}, [globalSettings.keyboardShortcuts]);
 
 	const checkRequirements = useCallback(async () => {
 		setReqChecking(true);
@@ -778,13 +768,13 @@ function App() {
 	}, [openCreateTaskModal, openAddProject]);
 
 	// Global app shortcuts — capture phase so the terminal can't swallow them.
+	//
+	// Every condition below is `matchesShortcut(e, "<keymap.ts id>")`: the registry
+	// owns the combos, so a user rebind in Settings → Keyboard lands here for free.
+	// Never hand-write a modifier condition — add the binding to `keymap.ts`.
 	useGlobalShortcut(
 		(e) => {
-			const isTerminalFullscreenShortcut =
-				!e.repeat &&
-				((e.key === "F11" && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) ||
-					((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f"));
-			if (isTerminalFullscreenShortcut) {
+			if (!e.repeat && matchesShortcut(e, "terminal-fullscreen")) {
 				if (!isTaskTerminalRoute(state.route)) return;
 				e.preventDefault();
 				e.stopPropagation();
@@ -793,165 +783,163 @@ function App() {
 			}
 			// While hint mode is active the overlay owns every keystroke.
 			if (hintMode) return;
+
+			// ── A `g …` go-to sequence in flight owns the next keystroke, ahead of
+			// every combo below — otherwise `g` then `c` would create a task instead
+			// of cancelling. Structural (a key sequence, not a combo), so it stays
+			// hand-written and non-remappable; see keymap.ts `go-to`. Matched on
+			// `e.code` so it works on every layout (Cyrillic, Hebrew, …). ──
+			if (goToModeRef.current && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !isTypingContext()) {
+				const mode = goToModeRef.current;
+				clearGoTo();
+				if (mode.stage === "verb") {
+					if (e.code === "KeyD") {
+						e.preventDefault();
+						e.stopPropagation();
+						return navigate({ screen: "dashboard" });
+					}
+					if (e.code === "KeyS") {
+						e.preventDefault();
+						e.stopPropagation();
+						return navigate({ screen: "settings" });
+					}
+					if (e.code === "KeyP" || e.code === "KeyT") {
+						e.preventDefault();
+						e.stopPropagation();
+						return armGoToIndex(e.code === "KeyT" ? "task" : "project");
+					}
+					const n = digitFromCode(e.code);
+					if (n !== null) {
+						// `g <digit>` — jump to project N keeping the current view.
+						e.preventDefault();
+						e.stopPropagation();
+						return goToProjectIndex(n, "preserve");
+					}
+					return; // anything else cancels
+				}
+				// stage === "index": an optional digit picks project N in this view;
+				// otherwise fall back to the current project.
+				e.preventDefault();
+				e.stopPropagation();
+				const n = digitFromCode(e.code);
+				if (n !== null) goToProjectIndex(n, mode.view);
+				else goToCurrentProject(mode.view);
+				return;
+			}
 			// In browser remote mode the native menu is gone and the browser claims
-			// several modifier combos. Drop-fated shortcuts (shell-level or
-			// browser-owned) bail BEFORE preventDefault so the browser keeps its
-			// native behavior; aliased ones (⌘1–9 → `G then 1–9`, ⌘N → `C`) fall back
-			// to their bare-key path. Source of truth: `keymap.ts` scope/remoteKeys.
+			// several modifier combos. `scope: "desktop"` shortcuts and `desktopOnly`
+			// bindings simply stop matching there, so the browser keeps its native
+			// behavior; aliased ones (⌘1–9 → `G then 1–9`, ⌘N → `C`) fall back to
+			// their bare-key path. Source of truth: `keymap.ts`.
 			const remote = isRemote();
-			if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "q") {
-				if (remote) return; // ⌘Q quits the browser — leave it to the browser.
+			if (matchesShortcut(e, "quit")) {
 				// WKWebView swallows the native menu Cmd+Q accelerator while a
 				// terminal has focus, so we catch it here (capture phase) and ask
 				// the main process to start the quit. The `before-quit` gate then
 				// pushes `showQuitDialog` back, or quits if the user opted out.
-				// Platform-exact modifier: ⌃Q is XON, it unfreezes terminal output.
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.requestQuit().catch(() => {});
-			} else if (hasAppModifier(e) && e.key === "h") {
-				// Platform-exact modifier: ⌃H is backspace in readline.
-				if (remote) return; // ⌘H hides the browser — leave it to the browser.
+			} else if (matchesShortcut(e, "hide")) {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});
-			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "o") {
-				// Cmd/Ctrl+O — open the current project/worktree in the selected app,
-				// or the "Open in..." picker when nothing is chosen yet. In remote mode
-				// Cmd+O is the browser's Open-File dialog, so yield to it (scope: desktop).
-				// Platform-exact modifier: ⌃O belongs to the terminal on macOS.
-				if (remote) return;
+			} else if (matchesShortcut(e, "open-in")) {
+				// Open the current project/worktree in the selected app, or the
+				// "Open in..." picker when nothing is chosen yet.
 				e.preventDefault();
 				e.stopPropagation();
 				openInCurrent();
-			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
-				// Cmd+Shift+N — open a new window (the native menu item has no
-				// accelerator because Electrobun can't bind chord shortcuts; see
-				// decision 044). Cmd+N (no shift) opens a new task instead.
-				if (remote) return; // No second app window over one browser tab.
+			} else if (matchesShortcut(e, "new-window")) {
+				// The native menu item has no accelerator because Electrobun can't bind
+				// chord shortcuts (decision 044), so the renderer owns this one.
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.openNewWindow().catch(() => {});
-			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
-				// ⌘N opens a new browser window in remote (not cancelable) — fall back
-				// to the bare `C` shortcut there. See keymap.ts `new-task` remoteKeys.
-				// Platform-exact modifier: ⌃N is next-history in the shell.
-				if (remote) return;
+			} else if (matchesShortcut(e, "new-task")) {
 				if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
 				if (!openCreateTaskModal()) return;
 				e.preventDefault();
 				e.stopPropagation();
-			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
-				// Cmd/Ctrl+P — Add Project. Platform-exact modifier: ⌃P is previous-history.
+			} else if (matchesShortcut(e, "add-project")) {
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog) return;
 				openAddProject();
-			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
-				// Cmd/Ctrl+K — open the project quick-switch palette (Slack/Linear/VSCode
-				// "go to anything" convention). Not Cmd+T: that's the universal new-tab key
-				// and the live terminal underneath (ghostty/tmux) intercepts it.
-				// Platform-exact modifier: ⌃K is kill-to-end-of-line in the shell.
+			} else if (matchesShortcut(e, "go-to-project")) {
+				// Project quick-switch palette (Slack/Linear/VSCode "go to anything").
+				// Not Cmd+T: that's the universal new-tab key and the live terminal
+				// underneath (ghostty/tmux) intercepts it.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
 				setShowProjectSwitch((open) => !open);
-			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "p") {
-				// Cmd/Ctrl+Shift+P — open the action (command) palette (VSCode
-				// convention). The navigation sibling is Cmd+K.
+			} else if (matchesShortcut(e, "command-palette")) {
+				// The action (command) palette (VSCode convention). The navigation
+				// sibling is `go-to-project`.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
 				setShowCommandPalette((open) => !open);
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "/") {
-				// Cmd/Ctrl+/ — toggle the keyboard-shortcuts reference overlay (App tab).
+			} else if (matchesShortcut(e, "keyboard-shortcuts")) {
 				// Capture phase so the live terminal underneath can't swallow it. Bare
 				// `?` is intentionally NOT used — the terminal must still receive it.
 				e.preventDefault();
 				e.stopPropagation();
 				setShortcutsModal((s) => (s.open ? { ...s, open: false } : { open: true, tab: "app" }));
-			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "Slash") {
-				// Cmd/Ctrl+Shift+/ — toggle help mode ("Explain this screen"): every
-				// data-help-id zone gets an (i) badge with a HelpCard. `e.code` because
-				// Shift+/ yields "?" in `e.key`. Sibling of ⌘/ (shortcuts reference).
+			} else if (matchesShortcut(e, "help-mode")) {
+				// Help mode ("Explain this screen"): every data-help-id zone gets an (i)
+				// badge with a HelpCard. Sibling of the shortcuts reference overlay.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog) return;
 				setHelpMode((open) => !open);
-			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+			} else if (matchesShortcut(e, "settings")) {
 				e.preventDefault();
 				e.stopPropagation();
 				navigate({ screen: "settings" });
-			} else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) {
-				if (remote) return; // Yield to the browser's native page zoom in remote.
+			} else if (matchesShortcut(e, "zoom-in")) {
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(ZOOM_STEP);
-			} else if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && isMinusKey(e)) {
-				// Ctrl+- — VS Code-style alias for navigating back. Match the physical
-				// minus key because Shift+- reports `_` in the US keyboard layout.
-				e.preventDefault();
-				e.stopPropagation();
-				dispatch({ type: "goBack" });
-			} else if (e.ctrlKey && !e.metaKey && e.shiftKey && !e.altKey && isMinusKey(e)) {
-				// Ctrl+Shift+- — VS Code-style alias for navigating forward.
-				e.preventDefault();
-				e.stopPropagation();
-				dispatch({ type: "goForward" });
-			} else if (
-				(e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && isMinusKey(e)) ||
-				(e.ctrlKey && !e.metaKey && !e.shiftKey && e.altKey && isMinusKey(e))
-			) {
-				if (remote) return; // Yield to the browser's native page zoom in remote.
+			} else if (matchesShortcut(e, "zoom-out")) {
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(-ZOOM_STEP);
-			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "Digit0") {
-				// Cmd+Shift+0 — reset zoom to 100%. Relocated from Cmd+0, which now
-				// jumps to the built-in Operations board (see below). `e.code` because
-				// Shift+0 yields ")" in `e.key`.
-				if (remote) return; // Yield to the browser's native zoom reset in remote.
+			} else if (matchesShortcut(e, "zoom-reset")) {
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "0") {
-				// Cmd+0 — jump to the built-in Operations board (the special "slot 0"
-				// of the Cmd+digit project family; Cmd+1..9 address ordinary projects).
+			} else if (matchesShortcut(e, "jump-operations")) {
+				// The built-in Operations board is the special "slot 0" of the
+				// Cmd+digit project family; Cmd+1..9 address ordinary projects.
 				const ops = state.projects.find((p) => p.builtin && p.kind === "virtual" && !p.deleted);
 				if (ops) {
 					e.preventDefault();
 					e.stopPropagation();
 					navigateToProject(ops.id);
 				}
-			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "BracketLeft") {
-				// Shift+Cmd+[ — switch to the previous live variant. Match the
-				// physical key because Shift+bracket produces layout-dependent braces.
+			} else if (matchesShortcut(e, "previous-variant")) {
 				if (!cycleVariant(-1)) return;
 				e.preventDefault();
 				e.stopPropagation();
-			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "BracketRight") {
-				// Shift+Cmd+] — switch to the next live variant.
+			} else if (matchesShortcut(e, "next-variant")) {
 				if (!cycleVariant(1)) return;
 				e.preventDefault();
 				e.stopPropagation();
-			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.key === "[") {
-				// Cmd+[ — navigate back through route history. Platform-exact modifier:
-				// ⌃[ is Escape in a terminal; the Ctrl+- alias above covers mac Ctrl users.
+			} else if (matchesShortcut(e, "back")) {
 				e.preventDefault();
 				e.stopPropagation();
 				dispatch({ type: "goBack" });
-			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "]") {
-				// Cmd+] — navigate forward through route history
+			} else if (matchesShortcut(e, "forward")) {
 				e.preventDefault();
 				e.stopPropagation();
 				dispatch({ type: "goForward" });
-			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === "~") {
-				// Cmd+Shift+` — open/focus the Quick shell operation (key="~" because Shift+` produces ~)
+			} else if (matchesShortcut(e, "open-quick-shell")) {
 				e.preventDefault();
 				e.stopPropagation();
 				void openQuickShell();
-			} else if ((e.metaKey || e.ctrlKey) && e.key === "`") {
-				// Cmd+` — toggle project terminal
+			} else if (matchesShortcut(e, "toggle-project-terminal")) {
 				const { route } = state;
 				if (route.screen === "project-terminal") {
 					e.preventDefault();
@@ -1018,86 +1006,28 @@ function App() {
 					e.stopPropagation();
 					navigateToProject(available[idx].id);
 				}
-			} else if (hasAppModifier(e) && !e.shiftKey && !e.altKey && e.code === "KeyG") {
-				// Cmd/Ctrl+G — Mac-friendly chord alias for the bare-`f` hint mode.
-				// Platform-exact modifier: ⌃G aborts the current shell input.
-				if (isTypingContext()) return;
+			} else if (matchesShortcut(e, "task-hints")) {
+				// Vimium-style hint navigation. Works on any screen that has hint
+				// targets ([data-hint-id]); the overlay self-closes if nothing is
+				// actually visible (e.g. a modal covers the board).
 				if (!document.querySelector("[data-hint-id]")) return;
 				e.preventDefault();
 				e.stopPropagation();
 				setHintMode(true);
-			} else if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-				// ── Bare-key shortcuts. Matched on `e.code` (physical key) so they
-				// work on every keyboard layout (Cyrillic, Hebrew, …), and only when
-				// no field/terminal has focus. ──
-				if (isTypingContext()) return;
-
-				// Advance / resolve a `g …` go-to sequence.
-				if (goToModeRef.current) {
-					const mode = goToModeRef.current;
-					clearGoTo();
-					if (mode.stage === "verb") {
-						if (e.code === "KeyD") {
-							e.preventDefault();
-							e.stopPropagation();
-							return navigate({ screen: "dashboard" });
-						}
-						if (e.code === "KeyS") {
-							e.preventDefault();
-							e.stopPropagation();
-							return navigate({ screen: "settings" });
-						}
-						if (e.code === "KeyP" || e.code === "KeyT") {
-							e.preventDefault();
-							e.stopPropagation();
-							return armGoToIndex(e.code === "KeyT" ? "task" : "project");
-						}
-						const n = digitFromCode(e.code);
-						if (n !== null) {
-							// `g <digit>` — jump to project N keeping the current view (like Cmd+N).
-							e.preventDefault();
-							e.stopPropagation();
-							return goToProjectIndex(n, "preserve");
-						}
-						return; // anything else cancels
-					}
-					// stage === "index": an optional digit picks project N in this view;
-					// otherwise fall back to the current project.
-					e.preventDefault();
-					e.stopPropagation();
-					const n = digitFromCode(e.code);
-					if (n !== null) goToProjectIndex(n, mode.view);
-					else goToCurrentProject(mode.view);
-					return;
-				}
-
-				if (e.code === "KeyF") {
-					// `f` — Vimium-style hint navigation. Works on any screen that has
-					// hint targets ([data-hint-id]); the overlay self-closes if nothing
-					// is actually visible (e.g. a modal covers the board).
-					if (!document.querySelector("[data-hint-id]")) return;
-					e.preventDefault();
-					e.stopPropagation();
-					setHintMode(true);
-				} else if (e.code === "KeyG") {
-					// `g` — arm a "go to" sequence; the next key picks d/p/t/s or a project digit.
+			} else if (matchesShortcut(e, "focus-search")) {
+				// Focus the visible search input (Linear/Gmail convention).
+				const input = findVisibleSearchInput();
+				if (!input) return;
+				e.preventDefault();
+				e.stopPropagation();
+				input.focus();
+			} else if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !isTypingContext()) {
+				// `g` arms a "go to" sequence; the next key picks d/p/t/s or a project
+				// digit. Consumption of that next key happens at the top of this handler.
+				if (e.code === "KeyG") {
 					e.preventDefault();
 					e.stopPropagation();
 					armGoToVerb();
-				} else if (e.code === "KeyC") {
-					// `c` — new task (Linear `C` = create); bare-key alias of Cmd/Ctrl+N.
-					// No-op off a project route (openCreateTaskModal returns false).
-					if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
-					if (!openCreateTaskModal()) return;
-					e.preventDefault();
-					e.stopPropagation();
-				} else if (e.code === "Slash") {
-					// `/` — focus the visible search input (Linear/Gmail convention).
-					const input = findVisibleSearchInput();
-					if (!input) return;
-					e.preventDefault();
-					e.stopPropagation();
-					input.focus();
 				}
 			}
 		},

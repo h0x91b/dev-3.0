@@ -402,11 +402,23 @@ ux_architecture:
       purpose: "Read-only keymap reference overlay (Modal). ONE component with two tabs — App (renders from the keymap.ts registry) and Terminal (tmux) (folds in the tmux cheat sheet). onboarding/help + expert_shortcut content, same shell as TmuxCheatSheetModal."
       allowed: ["shortcut_reference", "tab_switch"]
       forbidden: ["command_runner", "object_action", "durable_configuration", "primary_navigation", "toolbar_button"]
-      source_of_truth: "src/mainview/keymap.ts — every app-level shortcut declared as data (id, per-platform keys, descKey, category). DOCUMENTS the keymap; does NOT drive dispatch (App.tsx if-else stays the executor; a vitest test guards drift). Same data renders the README table + website (docs/index.html)."
+      source_of_truth: "src/mainview/keymap.ts — every app-level shortcut declared as data (id, machine-readable defaults bindings, descKey, category, remappable). DRIVES dispatch via matchesShortcut(e, id); display strings are derived from bindings, never authored twice. Same data renders the README table + website (docs/index.html). Renders the RESOLVED combo (defaults + user overrides), never the raw default."
       entry_points: ["application_menu.Help (Keyboard Shortcuts — wires the currently-dead help-keyboard-shortcuts action; Tmux Cheat Sheet opens the Terminal tab)", "keyboard: Cmd+/ (Ctrl+/ on Linux), App.tsx capture-phase handler, label shows (⌘/)", "command_palette ⇧⌘P via commands.ts entry"]
       rationale: "No toolbar/header button (toolbar-button-creep is the #1 anti-pattern); not a nav destination (ephemeral reference ≠ a place; nav budget ≤7). One modal with tabs per the user's 'единый вид'; tab split keeps ~40 tmux bindings from drowning ~25 app shortcuts. Cmd+/ over bare ? because the live terminal must receive a bare ?."
-      observed: ["KeyboardShortcutsModal (planned)", "keymap.ts (planned)", "TmuxCheatSheetModal"]
-      evidence: ["UX_DECISIONS 2026-06-19", "src/bun/application-menu.ts (helpKeyboardShortcuts)", "src/mainview/components/TmuxCheatSheetModal.tsx"]
+      editing: "FORBIDDEN here — rebinding is durable configuration and lives in settings.keyboard_shortcuts_editor. The overlay may carry exactly ONE link ('Customize…') to that editor and no inline edit affordance."
+      observed: ["KeyboardShortcutsModal", "keymap.ts", "TmuxCheatSheetModal"]
+      evidence: ["UX_DECISIONS 2026-06-19", "UX_DECISIONS 2026-08-02", "src/bun/application-menu.ts (helpKeyboardShortcuts)", "src/mainview/components/TmuxCheatSheetModal.tsx"]
+    keyboard_shortcuts_editor:
+      purpose: "Durable rebinding of app-level shortcuts. A Settings section (Keyboard category), NOT an overlay. One row per keymap.ts entry, grouped by shortcut category, with an inline key-capture recorder."
+      allowed: ["configuration", "preference", "reset_to_default", "filter"]
+      forbidden: ["command_runner", "object_action", "primary_navigation", "toolbar_button"]
+      interaction: "The resolved combo IS the control — key chips wrapped in a button, clicked to start recording. NO per-row 'Change' button: 33 rows x one button each is button creep, and the chips already say what to click. Recording swallows every keystroke (capture phase, app shortcuts suspended), Esc cancels, a complete chord commits. A combo already owned by another shortcut shows an inline conflict warning naming the owner; committing steals it and unbinds the loser, which then renders as 'Unassigned'."
+      non_remappable: "Chord sequences (g-prefix), digit families (Cmd+1-9, Cmd+Shift+1-9), the hold-modifier task switcher, and Esc render as read-only rows with a one-line reason — greyed WITH a why, never hidden."
+      reset: "Per-row reset (ghost-danger icon button, only when overridden, no confirm — one click to undo) and a section-level 'Reset all shortcuts' (ghost-danger + confirm(), only when >=1 override exists). An overridden row also carries a small accent dot before its name."
+      layout: "Fixed-height toolbar and a reserved reset slot on EVERY row (including read-only ones), so no combo shifts when a row gains a reset button or the toolbar gains the changed-count. The filter matches the rendered combo as well as the name."
+      storage: "GlobalSettings.keyboardShortcuts — sparse Record<shortcutId, binding[]>; only overrides are persisted, so a changed default reaches every user who never touched that row."
+      rationale: "Settings owns durable configuration; the Cmd+/ overlay is help content and the manifest forbids configuration there. A new eighth Settings category rather than a Terminal/Appearance tenant, because 'where do I change a key' deserves one destination — it also absorbs the terminal keymap preset, so the category consolidates rather than merely adds."
+      evidence: ["UX_DECISIONS 2026-08-02", "src/mainview/components/global-settings/KeyboardSettingsSection.tsx", "src/mainview/keymap.ts", "src/mainview/settings-registry.ts"]
     task_switcher:
       purpose: "Transient keyboard-summoned HUD overlay for hold-cycle jumping between active tasks (Option+Tab project / Option+Shift+Tab global). A presentation of the sidebar's task_jump action, not a command palette."
       allowed: ["task_jump", "terminal_preview"]
@@ -564,7 +576,7 @@ ux_architecture:
       actions: "object + git + dev-server actions, scoped to the task"
     settings_screen:
       example: "GlobalSettings, ProjectSettings"
-      grouping: "GlobalSettings uses a left-nav list of seven Settings categories (Appearance, Tasks & Board, Terminal, Agents, Accounts, Workspace, System); ProjectSettings keeps its existing tabs"
+      grouping: "GlobalSettings uses a left-nav list of eight Settings categories (Appearance, Tasks & Board, Keyboard, Terminal, Agents, Accounts, Workspace, System); ProjectSettings keeps its existing tabs. The Keyboard category owns every binding surface — the app-shortcut editor and the terminal keymap preset moved out of Terminal — so a user hunting for 'where do I change a key' has one destination"
       registry: "src/mainview/settings-registry.ts is the declarative metadata source for Settings entries, localized search copy, category membership, anchors, and GlobalSettings field integrity"
       search: "localized title + description search groups matches by Settings category and jumps to the registered anchor"
       deep_links: "Route.section accepts current category ids plus legacy appearance/behavior/workspace/agents/proxy/developer ids, normalized by LEGACY_SETTINGS_CATEGORY_MAP"

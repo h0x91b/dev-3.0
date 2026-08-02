@@ -1064,7 +1064,7 @@ describe("GlobalSettings", () => {
 
 		it("renders the iTerm2 compatibility toggle", async () => {
 			setupMocks();
-			renderGlobalSettings("terminal");
+			renderGlobalSettings("keyboard");
 			await waitForLoad();
 
 			expect(getKeymapToggle()).toBeInTheDocument();
@@ -1072,7 +1072,7 @@ describe("GlobalSettings", () => {
 
 		it("toggle is active by default (iTerm2 ships on)", async () => {
 			setupMocks();
-			renderGlobalSettings("terminal");
+			renderGlobalSettings("keyboard");
 			await waitForLoad();
 
 			expect(getKeymapToggle().className).toContain("border-accent");
@@ -1081,7 +1081,7 @@ describe("GlobalSettings", () => {
 		it("clicking the toggle opts out, saving terminalKeymap default to backend", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings("terminal");
+			renderGlobalSettings("keyboard");
 			await waitForLoad();
 
 			await user.click(getKeymapToggle());
@@ -1094,7 +1094,7 @@ describe("GlobalSettings", () => {
 		it("clicking the toggle persists the default (opt-out) preset to localStorage", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings("terminal");
+			renderGlobalSettings("keyboard");
 			await waitForLoad();
 
 			await user.click(getKeymapToggle());
@@ -1105,7 +1105,7 @@ describe("GlobalSettings", () => {
 		it("clicking the toggle from an explicit opt-out turns iTerm2 back on", async () => {
 			setupMocks(mockAgents, { ...mockGlobalSettings, terminalKeymap: "default" });
 			const user = userEvent.setup();
-			renderGlobalSettings("terminal");
+			renderGlobalSettings("keyboard");
 			await waitForLoad();
 
 			await user.click(getKeymapToggle());
@@ -1152,7 +1152,6 @@ describe("GlobalSettings", () => {
 			await user.click(screen.getByRole("button", { name: /Terminal scroll speed/ }));
 
 			expect(document.getElementById("settings-category-title")).toHaveTextContent("Terminal");
-			expect(screen.getByText("Terminal Keymap")).toBeInTheDocument();
 			expect(screen.getByRole("slider", { name: "Terminal scroll speed" })).toHaveValue("2");
 		});
 

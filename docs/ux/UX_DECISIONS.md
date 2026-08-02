@@ -10,6 +10,12 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** reviewers want a comment delivered the moment they write it, and a batch that still carries already-sent comments makes the agent re-handle them. Rejected: keeping send batch-only (the reported pain) and hiding sent comments from the card (they must stay visible and re-readable).
 - **Status:** Decided. Evidence: `src/mainview/components/TaskDiffViewer.tsx`, `src/mainview/components/pr-review/GithubThreadView.tsx`.
 
+## 2026-08-02 — The keymap registry now dispatches, and rebinding lives in Settings, not the ⌘/ overlay
+
+- **Rule:** `keymap.ts` holds machine-readable bindings and drives dispatch (`matchesShortcut(e, id)`); rebinding is `configuration` and belongs to a new eighth Settings category **Keyboard** (which also absorbs the terminal keymap preset), while the ⌘/ overlay stays read-only reference showing the *resolved* combo plus one "Customize…" link. Structural bindings (g-chords, ⌘1–9 families, hold-modifier switcher, Esc) render read-only **with a stated reason**. Bible §5.2, yaml `surfaces.keyboard_shortcuts_editor`.
+- **Why:** the 2026-06-19 "registry documents, does not dispatch" split made user rebinding impossible without editing two places, so it had to be reversed; a per-shortcut matcher confines the risk that entry feared to one tested function instead of a rewrite. Rejected: editing inside the ⌘/ overlay (durable configuration in a help surface), and hiding non-remappable rows (an editor that silently omits a third of the keymap reads as broken).
+- **Status:** Implemented. Evidence: `keymap.ts`, `keymap-bindings.ts`, `KeyboardSettingsSection.tsx`, `ShortcutRow.tsx`, `settings-registry.ts`, `App.tsx`. Supersedes the dispatch half of the 2026-06-19 entry.
+
 ## 2026-08-01 — Split resize lives on the boundary, never in a toolbar
 
 - **Rule:** Native terminal split boundaries carry a `role="separator"` grab strip (resting grip, ≥9px hit target, `col-resize`/`row-resize`, ghost line, commit on release, Arrow-key steps) and no control anywhere else; absent for a single pane, a zoomed pane, and the narrow carousel. Bible §10 row `layout boundary manipulation`, yaml `surfaces.native_terminal_panes`.

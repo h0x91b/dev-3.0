@@ -4,6 +4,7 @@ const keymap = {
 	"keymap.subtitle": "All app and terminal shortcuts in one place",
 	"keymap.tab.app": "App",
 	"keymap.tab.terminal": "Terminal (tmux)",
+	"keymap.customize": "Customize shortcuts…",
 	"keymap.footerEscape": "Esc to close",
 	"keymap.remoteNotice":
 		"You're in the browser. Some combos (⌘1–9, ⌘N, zoom, refresh) are reserved by your browser — use the shown alternatives or the Command Palette (⇧⌘P).",
@@ -49,6 +50,34 @@ const keymap = {
 	"keymap.shortcut.terminalSearch": "Search in the focused terminal (tmux scrollback)",
 	"keymap.shortcut.quit": "Quit",
 	"keymap.shortcut.hide": "Hide app",
+
+	// Why a shortcut cannot be rebound (Settings → Keyboard)
+	"keymap.fixed.digitFamily": "One binding covers nine keys, so it can only move as a whole.",
+	"keymap.fixed.holdModifier": "Cycling needs a modifier you hold down, which a plain combo can't express.",
+	"keymap.fixed.chordSequence": "A sequence of keys pressed one after another, not a combo.",
+	"keymap.fixed.reserved": "Reserved — it is how you get out of every dialog and mode.",
+	"keymap.fixed.shellOwned": "Owned by the app shell, not by the page.",
+
+	// Shortcut editor (Settings → Keyboard → App shortcuts)
+	"keymap.edit.save": "Save",
+	"keymap.edit.cancel": "Cancel",
+	"keymap.edit.record": "Change",
+	"keymap.edit.recording": "Press a combo…",
+	"keymap.edit.recordingHint": "Esc cancels",
+	"keymap.edit.a11yRecord": "Change the shortcut for: {name}",
+	"keymap.edit.unassigned": "Unassigned",
+	"keymap.edit.customized": "Changed",
+	"keymap.edit.reset": "Restore default",
+	"keymap.edit.resetAll": "Restore all defaults",
+	"keymap.edit.resetAllTitle": "Restore all keyboard shortcuts?",
+	"keymap.edit.resetAllMessage": "Your {count} changed shortcuts go back to their defaults. This cannot be undone.",
+	"keymap.edit.conflict": "{name} already uses this. Saving takes it away from that one.",
+	"keymap.edit.stolen": "{name} lost its shortcut and is now unassigned.",
+	"keymap.edit.rejectedReserved": "That key is reserved by the app — pick another one.",
+	"keymap.edit.filterPlaceholder": "Filter shortcuts…",
+	"keymap.edit.noMatches": "No shortcut matches that.",
+	"keymap.edit.desktopOnly": "Desktop app only",
+	"keymap.edit.changedCount": "{count} changed",
 } as const;
 
 export default keymap;

@@ -3,6 +3,7 @@ const keymap = {
 	"keymap.subtitle": "Todos los atajos de la app y del terminal en un solo lugar",
 	"keymap.tab.app": "App",
 	"keymap.tab.terminal": "Terminal (tmux)",
+	"keymap.customize": "Personalizar atajos…",
 	"keymap.footerEscape": "Esc para cerrar",
 	"keymap.remoteNotice":
 		"Estás en el navegador. Algunas combinaciones (⌘1–9, ⌘N, zoom, recargar) están reservadas por tu navegador: usa las alternativas indicadas o la Paleta de Comandos (⇧⌘P).",
@@ -46,6 +47,34 @@ const keymap = {
 	"keymap.shortcut.terminalSearch": "Buscar en el terminal activo (historial de tmux)",
 	"keymap.shortcut.quit": "Salir",
 	"keymap.shortcut.hide": "Ocultar app",
+
+	// Por qué un atajo no se puede reasignar (Ajustes → Teclado)
+	"keymap.fixed.digitFamily": "Una asignación cubre nueve teclas, así que solo se mueve entera.",
+	"keymap.fixed.holdModifier": "El ciclo necesita un modificador mantenido, algo que una combinación no expresa.",
+	"keymap.fixed.chordSequence": "Una secuencia de teclas una tras otra, no una combinación.",
+	"keymap.fixed.reserved": "Reservado: es la salida de cualquier diálogo o modo.",
+	"keymap.fixed.shellOwned": "Pertenece al shell de la app, no a la página.",
+
+	// Editor de atajos (Ajustes → Teclado → Atajos de la app)
+	"keymap.edit.save": "Guardar",
+	"keymap.edit.cancel": "Cancelar",
+	"keymap.edit.record": "Cambiar",
+	"keymap.edit.recording": "Pulsa una combinación…",
+	"keymap.edit.recordingHint": "Esc cancela",
+	"keymap.edit.a11yRecord": "Cambiar el atajo de: {name}",
+	"keymap.edit.unassigned": "Sin asignar",
+	"keymap.edit.customized": "Cambiado",
+	"keymap.edit.reset": "Restaurar el predeterminado",
+	"keymap.edit.resetAll": "Restaurar todos los atajos",
+	"keymap.edit.resetAllTitle": "¿Restaurar todos los atajos?",
+	"keymap.edit.resetAllMessage": "Tus {count} atajos cambiados vuelven a sus valores por defecto. No se puede deshacer.",
+	"keymap.edit.conflict": "{name} ya lo usa. Al guardar, se lo quitas.",
+	"keymap.edit.stolen": "{name} se quedó sin atajo.",
+	"keymap.edit.rejectedReserved": "Esa tecla está reservada por la app: elige otra.",
+	"keymap.edit.filterPlaceholder": "Filtrar atajos…",
+	"keymap.edit.noMatches": "Ningún atajo coincide.",
+	"keymap.edit.desktopOnly": "Solo en la app de escritorio",
+	"keymap.edit.changedCount": "{count} cambiados",
 };
 
 export default keymap;

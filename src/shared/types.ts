@@ -851,7 +851,22 @@ export interface GlobalSettings {
 	 * See src/shared/favorites.ts. Undefined ⇒ none.
 	 */
 	favorites?: FavoriteAgentConfig[];
+	/**
+	 * User rebinds of app-level keyboard shortcuts, keyed by `keymap.ts` shortcut
+	 * id. Sparse on purpose — only rows the user actually changed are stored, so a
+	 * changed default still reaches everyone who left that row alone. An empty
+	 * array means "deliberately unbound". See `src/mainview/keymap-store.ts`.
+	 */
+	keyboardShortcuts?: ShortcutOverrides;
 }
+
+/**
+ * Serialized key bindings per shortcut id. Each entry is
+ * `"<Mod|Meta|Ctrl|Alt|Shift>+…+<KeyboardEvent.code>"`, e.g. `"Mod+Shift+KeyP"`.
+ * The string form (rather than a struct) keeps settings.json diffable and lets an
+ * unparsable entry be dropped instead of corrupting the whole keymap.
+ */
+export type ShortcutOverrides = Record<string, string[]>;
 
 /**
  * Live state of the optional local `pxpipe-proxy` (token-saving image proxy),

@@ -3,6 +3,7 @@ const keymap = {
 	"keymap.subtitle": "Все клавиатурные сокращения приложения и терминала в одном месте",
 	"keymap.tab.app": "Приложение",
 	"keymap.tab.terminal": "Терминал (tmux)",
+	"keymap.customize": "Настроить хоткеи…",
 	"keymap.footerEscape": "Esc — закрыть",
 	"keymap.remoteNotice":
 		"Вы в браузере. Часть комбинаций (⌘1–9, ⌘N, зум, обновление) занята браузером — используйте показанные альтернативы или палитру команд (⇧⌘P).",
@@ -46,6 +47,34 @@ const keymap = {
 	"keymap.shortcut.terminalSearch": "Поиск в активном терминале (история tmux)",
 	"keymap.shortcut.quit": "Выйти",
 	"keymap.shortcut.hide": "Скрыть приложение",
+
+	// Почему хоткей нельзя переназначить (Настройки → Клавиатура)
+	"keymap.fixed.digitFamily": "Одна привязка покрывает девять клавиш, поэтому двигается только целиком.",
+	"keymap.fixed.holdModifier": "Для перебора нужен зажатый модификатор — обычной комбинацией это не выразить.",
+	"keymap.fixed.chordSequence": "Последовательность клавиш одна за другой, а не комбинация.",
+	"keymap.fixed.reserved": "Зарезервировано — это выход из любого диалога и режима.",
+	"keymap.fixed.shellOwned": "Принадлежит оболочке приложения, а не странице.",
+
+	// Редактор хоткеев (Настройки → Клавиатура → Хоткеи приложения)
+	"keymap.edit.save": "Сохранить",
+	"keymap.edit.cancel": "Отмена",
+	"keymap.edit.record": "Изменить",
+	"keymap.edit.recording": "Нажмите комбинацию…",
+	"keymap.edit.recordingHint": "Esc — отмена",
+	"keymap.edit.a11yRecord": "Изменить хоткей: {name}",
+	"keymap.edit.unassigned": "Не назначен",
+	"keymap.edit.customized": "Изменён",
+	"keymap.edit.reset": "Вернуть по умолчанию",
+	"keymap.edit.resetAll": "Сбросить все хоткеи",
+	"keymap.edit.resetAllTitle": "Сбросить все хоткеи?",
+	"keymap.edit.resetAllMessage": "Изменённых хоткеев: {count}. Все вернутся к значениям по умолчанию. Отменить нельзя.",
+	"keymap.edit.conflict": "Занято хоткеем «{name}». Если сохранить, он его лишится.",
+	"keymap.edit.stolen": "«{name}» остался без хоткея.",
+	"keymap.edit.rejectedReserved": "Эта клавиша зарезервирована приложением — выберите другую.",
+	"keymap.edit.filterPlaceholder": "Фильтр хоткеев…",
+	"keymap.edit.noMatches": "Ничего не найдено.",
+	"keymap.edit.desktopOnly": "Только в десктоп-приложении",
+	"keymap.edit.changedCount": "изменено: {count}",
 };
 
 export default keymap;

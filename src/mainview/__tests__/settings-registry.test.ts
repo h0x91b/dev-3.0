@@ -18,6 +18,7 @@ describe("settings registry", () => {
 		expect(SETTINGS_CATEGORIES.map((category) => category.id)).toEqual([
 			"appearance",
 			"tasks",
+			"keyboard",
 			"terminal",
 			"agents",
 			"accounts",

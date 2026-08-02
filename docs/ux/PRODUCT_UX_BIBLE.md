@@ -153,23 +153,38 @@ Rules:
 - **Tight bars fold, they never overflow:** each bar is boxed (`min-w-0 overflow-hidden`) so its contents cannot paint over the neighbouring bar or the pinned chrome, and the fold order is driven by the **panel's own width** (`useContainerWidth`, not `useCompact`): `< 1280px` folds the label strip to its `+k` chip, clamps the branch name and drops the text labels of the tmux-layout and Runtime controls; `< 900px` also drops the label strip and the include-tests toggle. Long sentence labels are banned from a bar — the chip carries the short label, the sentence lives in the tooltip (see decision 164).
 - Per-bar visible-action budget stays at the toolbar default (≤ 4 visible, then overflow). **Explicit exception:** the Runtime bar may additionally show separate `Images` and `Artifacts` controls when those outputs exist; both are conditional, user-selected identities rather than permanent chrome. Do not use this exception for unrelated controls.
 
-### 5.2 Keyboard-shortcut registry + reference overlay — `Proposed`
+### 5.2 Keyboard-shortcut registry, editor + reference overlay — `Observed`
 
 Keyboard shortcuts are the app's primary interaction model, so they get a **single source of truth**:
-`src/mainview/keymap.ts` declares every **app-level** shortcut as data (`id`, per-platform `keys`,
-`descKey`, `category`). This registry **documents**; it does not drive dispatch — the `App.tsx`
-`useGlobalShortcut` if-else stays the executor (refactoring it was rejected as a risky rewrite of
-edge-case-heavy code), with a vitest test guarding drift.
+`src/mainview/keymap.ts` declares every **app-level** shortcut as data (`id`, machine-readable
+`defaults` bindings, `descKey`, `category`, `remappable`). The registry **drives dispatch**: handlers
+ask `matchesShortcut(e, id)` instead of hand-writing modifier conditions, so a user rebind takes
+effect everywhere at once. Display strings are *derived* from the bindings, never authored twice.
 
-The user-facing reference is **one** `KeyboardShortcutsModal` (Modal surface, same shell as
-`TmuxCheatSheetModal`) with two tabs — **App** (renders from `keymap.ts`) and **Terminal (tmux)**
-(the folded-in tmux cheat sheet). It is `onboarding/help` + `expert_shortcut` content, reached only
-via **Help → Keyboard Shortcuts**, the **⌘/ (Ctrl+/)** chord, and the **⇧⌘P** palette — never a
-toolbar/header button (toolbar-button-creep) and never a navigation destination (ephemeral reference
-≠ a place). The same `keymap.ts` data renders the README table and the website
-(`docs/index.html`) section. Adding a new app-level shortcut **must** add a `keymap.ts` entry.
+**Three consumers, one registry — each with its own job:**
 
-See `UX_DECISIONS.md` (2026-06-19).
+| Surface | Job | Rule |
+|---|---|---|
+| `keymap.ts` + `resolveKeymap()` | data + dispatch | the only place a combo is defined; overrides layer on top of `defaults` |
+| `KeyboardShortcutsModal` (⌘/) | ephemeral **reference** | read-only; shows the *resolved* combo, never the default; no edit affordance |
+| Settings → **Keyboard** category | durable **configuration** | the only place a binding is changed |
+
+Reference and editor are **not duplicates** — they are different action classes (`onboarding/help`
+vs `configuration`), and the manifest forbids durable configuration inside the reference overlay. The
+overlay may carry exactly **one** `link` to the editor ("Customize…"), never inline editing.
+
+The overlay is reached only via **Help → Keyboard Shortcuts**, the **⌘/ (Ctrl+/)** chord, and the
+**⇧⌘P** palette — never a toolbar/header button (toolbar-button-creep) and never a navigation
+destination (ephemeral reference ≠ a place). The same `keymap.ts` data renders the README table and
+the website (`docs/index.html`). Adding a new app-level shortcut **must** add a `keymap.ts` entry.
+
+**Not every shortcut is remappable, and the UI must say so rather than hide it.** Structural
+bindings — the `g`-prefix chord sequences, the `⌘1–9` / `⇧⌘1–9` digit families, the hold-modifier
+task switcher, and `Esc` — stay fixed and render as read-only rows with a one-line reason. Hiding
+them would make the editor read as an incomplete keymap; greying them out with a *why* is the honest
+form.
+
+See `UX_DECISIONS.md` (2026-06-19, 2026-08-02).
 
 ### 5.3 Diff review viewer — `Observed`
 
@@ -304,7 +319,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 
 - **List screen** (dashboard, board): header with create entry; label filter (board) / search (sidebar); per-item context menu; open navigates; compact empty states (decision 047).
 - **Detail screen** (task): two-row task header; `TaskInfoPanel` inspector; task-scoped object/git/dev-server actions; full-screen or split terminal.
-- **Settings screen** (Global / Project): Global Settings uses a left-nav master-detail layout with seven Settings categories, localized entry search, and immediate RPC/local persistence; Project Settings keeps its existing tabs; destructive removal stays behind confirmation.
+- **Settings screen** (Global / Project): Global Settings uses a left-nav master-detail layout with eight Settings categories, localized entry search, and immediate RPC/local persistence; Project Settings keeps its existing tabs; destructive removal stays behind confirmation.
 
 Global Settings vocabulary is deliberate: a left-nav item is a **Settings category**, and each searchable/anchored setting is a **Settings entry** registered in `src/mainview/settings-registry.ts`. The registry documents metadata and integrity, while existing bespoke controls own rendering and CRUD behavior. Legacy deep-link ids remain accepted and map through `LEGACY_SETTINGS_CATEGORY_MAP`; Project Settings' internal `global` tab remains labeled “Board” in its UI (known collision, out of scope).
 
@@ -468,7 +483,7 @@ Shared UX vocabulary, specialized for this project (was `UX_GLOSSARY.md`).
 - **Primary action** — the one main safe action for the current screen/flow. Styled `bg-accent`. Max one visible per screen.
 - **Destructive action** — delete, remove, cancel, reset, hard refresh. Styled `text-danger`/`bg-danger`, requires confirmation, never primary styling.
 - **Configuration** — a durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account). Lives in Global or Project Settings.
-- **Settings category** — one of the seven Global Settings navigation items: Appearance, Tasks & Board, Terminal, Agents, Accounts, Workspace, or System.
+- **Settings category** — one of the eight Global Settings navigation items: Appearance, Tasks & Board, Keyboard, Terminal, Agents, Accounts, Workspace, or System.
 - **Settings entry** — a registry-described individual setting with localized title/description metadata and an optional scroll anchor; its bespoke control remains owned by the category surface.
 - **Complexity budget** — a project-specific cap on visible controls per surface (e.g. ≤2 inline actions on a task card, ≤4 visible toolbar actions); exists because of dev-3.0's documented toolbar-button-creep history.
 - **Inspector** — the `TaskInfoPanel`: the contextual control surface for the active task (git, dev server, scripts, notes, tmux, open-in). The densest surface in the app.

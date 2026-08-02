@@ -14,6 +14,11 @@ export const SETTINGS_CATEGORIES = [
 		descriptionKey: "settings.categoryTasksDesc",
 	},
 	{
+		id: "keyboard",
+		labelKey: "settings.categoryKeyboard",
+		descriptionKey: "settings.categoryKeyboardDesc",
+	},
+	{
 		id: "terminal",
 		labelKey: "settings.categoryTerminal",
 		descriptionKey: "settings.categoryTerminalDesc",
@@ -204,8 +209,17 @@ export const SETTINGS_ENTRIES = [
 		storage: "local",
 	},
 	{
+		id: "app-shortcuts",
+		category: "keyboard",
+		titleKey: "settings.appShortcuts",
+		descriptionKey: "settings.appShortcutsDesc",
+		anchor: "app-shortcuts",
+		globalField: "keyboardShortcuts",
+		storage: "global",
+	},
+	{
 		id: "terminal-keymap",
-		category: "terminal",
+		category: "keyboard",
 		titleKey: "settings.terminalKeymap",
 		descriptionKey: "settings.terminalKeymapDesc",
 		anchor: "terminal-keymap",
@@ -388,6 +402,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"favorites",
+	"keyboardShortcuts",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 type RegisteredGlobalSettingsField = (typeof SETTINGS_ENTRIES)[number] extends infer Entry

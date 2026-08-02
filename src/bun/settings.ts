@@ -17,6 +17,22 @@ const SETTINGS_FILE = `${DEV3_HOME}/settings.json`;
 // `tipsDisabled` on load and then erased it from disk on the next save.
 export type { GlobalSettings };
 
+/**
+ * Keep only well-shaped shortcut rebinds. The renderer owns the combo grammar
+ * (`src/mainview/keymap-bindings.ts`) and drops entries it cannot parse, so this
+ * side only guards the container: a garbled settings.json must not take the
+ * whole keymap with it. An empty array is kept — it means "deliberately unbound".
+ */
+function sanitizeShortcutOverrides(raw: unknown): GlobalSettings["keyboardShortcuts"] {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+	const out: Record<string, string[]> = {};
+	for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+		if (!Array.isArray(value)) continue;
+		out[id] = value.filter((entry): entry is string => typeof entry === "string");
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
 	defaultConfigId: "claude-auto-opus5-medium",
@@ -99,6 +115,8 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
 			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
 			favorites: sanitizeFavorites(data.favorites),
+			// User shortcut rebinds; sparse by design — absent means "all defaults".
+			keyboardShortcuts: sanitizeShortcutOverrides(data.keyboardShortcuts),
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -205,6 +223,8 @@ export function loadSettingsSync(): GlobalSettings {
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
 			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
 			favorites: sanitizeFavorites(data.favorites),
+			// User shortcut rebinds; sparse by design — absent means "all defaults".
+			keyboardShortcuts: sanitizeShortcutOverrides(data.keyboardShortcuts),
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

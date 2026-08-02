@@ -6,7 +6,7 @@ import {
 	MIN_SCROLL_SPEED,
 	SCROLL_SPEED_STEP,
 } from "../../scroll-speed";
-import type { NativeTerminalAvailability, TerminalKeymapPreset } from "../../../shared/types";
+import type { NativeTerminalAvailability } from "../../../shared/types";
 import type { TerminalBackendIdentity } from "../../../shared/terminal-backend-identity";
 import SettingsEntry from "./SettingsEntry";
 import TerminalBackendSetting from "./TerminalBackendSetting";
@@ -14,19 +14,15 @@ import SettingsSection from "./SettingsSection";
 
 export default function TerminalSettingsSection({
 	t,
-	keymapPreset,
 	scrollSpeed,
 	newTaskTerminalBackend,
 	nativeTerminalAvailability,
-	onKeymapChange,
 	onNewTaskTerminalBackendChange,
 }: {
 	t: TFunction;
-	keymapPreset: TerminalKeymapPreset;
 	scrollSpeed: number;
 	newTaskTerminalBackend: TerminalBackendIdentity | undefined;
 	nativeTerminalAvailability: NativeTerminalAvailability | null;
-	onKeymapChange: (preset: TerminalKeymapPreset) => void;
 	onNewTaskTerminalBackendChange: (backend: TerminalBackendIdentity) => void;
 }) {
 	return (
@@ -38,56 +34,6 @@ export default function TerminalSettingsSection({
 					availability={nativeTerminalAvailability}
 					onChange={onNewTaskTerminalBackendChange}
 				/>
-			</SettingsEntry>
-
-			<SettingsEntry anchor="terminal-keymap">
-				<div>
-					<label className="block text-fg text-sm font-semibold mb-2">
-						{t("settings.terminalKeymap")}
-					</label>
-					<p className="text-fg-3 text-sm mb-3">
-						{t("settings.terminalKeymapDesc")}
-					</p>
-					<button
-						type="button"
-						onClick={() =>
-							onKeymapChange(keymapPreset === "iterm2" ? "default" : "iterm2")
-						}
-						className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
-							keymapPreset === "iterm2"
-								? "border-accent shadow-lg shadow-accent/10"
-								: "border-edge hover:border-edge-active"
-						}`}
-					>
-						<div
-							className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-								keymapPreset === "iterm2"
-									? "border-accent bg-accent"
-									: "border-edge-active"
-							}`}
-						>
-							{keymapPreset === "iterm2" ? (
-								<svg width="10" height="8" viewBox="0 0 10 8" fill="none" aria-hidden="true">
-									<path
-										d="M1 4L3.5 6.5L9 1"
-										stroke="white"
-										strokeWidth="1.5"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-									/>
-								</svg>
-							) : null}
-						</div>
-						<div>
-							<div className="text-fg text-sm font-semibold">
-								{t("settings.keymapIterm2")}
-							</div>
-							<div className="text-fg-3 text-xs mt-0.5">
-								{t("settings.keymapIterm2Desc")}
-							</div>
-						</div>
-					</button>
-				</div>
 			</SettingsEntry>
 
 			<SettingsEntry anchor="terminal-scroll-speed">

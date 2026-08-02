@@ -147,6 +147,7 @@ describe("saveSettings", () => {
 			customBinaryPaths: { git: "/usr/bin/git" },
 			agentBinaryPaths: { "builtin-codex": "/usr/bin/codex" },
 			terminalKeymap: "iterm2",
+			keyboardShortcuts: { "go-to-project": ["Mod+KeyJ"] },
 			playSoundOnTaskComplete: false,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,

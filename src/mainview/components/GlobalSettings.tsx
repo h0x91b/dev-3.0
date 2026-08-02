@@ -17,6 +17,7 @@ import type {
 	ExternalApp,
 	GlobalSettings as GlobalSettingsType,
 	NativeTerminalAvailability,
+	ShortcutOverrides,
 	TerminalKeymapPreset,
 } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
@@ -28,6 +29,7 @@ import { getInitialThemeState, getWindowInjectedThemeState } from "../theme-boot
 import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
+import { setShortcutOverrides } from "../keymap-store";
 import { trackEvent } from "../analytics";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
 import AgentRateLimitSettingsSection from "./global-settings/AgentRateLimitSettingsSection";
@@ -35,6 +37,7 @@ import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
+import KeyboardSettingsSection from "./global-settings/KeyboardSettingsSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
 import SystemSettingsSection from "./global-settings/SystemSettingsSection";
 import TerminalSettingsSection from "./global-settings/TerminalSettingsSection";
@@ -276,6 +279,16 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 			setKeymapPresetState(preset);
 			setKeymapPreset(preset);
 			persistSettingChange({ terminalKeymap: preset });
+		},
+		[persistSettingChange],
+	);
+
+	const handleShortcutsChange = useCallback(
+		(next: ShortcutOverrides) => {
+			// Mirror into the keymap store first so the new combo is live in the same
+			// frame; the RPC round-trip only makes it durable.
+			setShortcutOverrides(next);
+			persistSettingChange({ keyboardShortcuts: next });
 		},
 		[persistSettingChange],
 	);
@@ -595,15 +608,22 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						onTipsReset={handleTipsReset}
 					/>
 				);
+			case "keyboard":
+				return (
+					<KeyboardSettingsSection
+						t={t}
+						keymapPreset={keymapPreset}
+						onKeymapChange={handleKeymapChange}
+						onShortcutsChange={handleShortcutsChange}
+					/>
+				);
 			case "terminal":
 				return (
 					<TerminalSettingsSection
 						t={t}
-						keymapPreset={keymapPreset}
 						scrollSpeed={scrollSpeed}
 						newTaskTerminalBackend={newTaskTerminalBackend}
 						nativeTerminalAvailability={nativeTerminalAvailability}
-						onKeymapChange={handleKeymapChange}
 						onNewTaskTerminalBackendChange={handleNewTaskTerminalBackendChange}
 					/>
 				);
