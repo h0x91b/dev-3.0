@@ -13,6 +13,7 @@ import {
 	WINDOW_SWITCHER_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 } from "../formats";
+import { activeTmuxConfigPath } from "../config";
 import { DEV3_HOME } from "../../paths";
 
 // The client is constructed with an INJECTED fake spawn — the only seam its
@@ -235,7 +236,7 @@ describe("splitWindow / newWindow", () => {
 });
 
 describe("newSessionDetached", () => {
-	it("starts detached with env flags and pins the client cwd to DEV3_HOME", async () => {
+	it("starts detached with -f, env flags, and pins the client cwd to DEV3_HOME", async () => {
 		const { client, spawnFn } = makeClient({ stderr: "" });
 		const { stderr } = await client.newSessionDetached({
 			sessionName: "dev3-dev-abc",
@@ -245,7 +246,7 @@ describe("newSessionDetached", () => {
 		});
 		expect(stderr).toBe("");
 		expect(argvOf(spawnFn)).toEqual([
-			"tmux", "-L", "dev3", "new-session", "-d",
+			"tmux", "-L", "dev3", "-f", activeTmuxConfigPath(), "new-session", "-d",
 			"-e", "DEV3_TASK_ID=t1",
 			"-s", "dev3-dev-abc", "-c", "/wt", "bash dev.sh",
 		]);

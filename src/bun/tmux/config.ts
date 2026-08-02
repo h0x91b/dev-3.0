@@ -76,11 +76,8 @@ export function setActiveTmuxTheme(theme: "dark" | "light"): string {
 
 // Shared functional settings (not theme-related)
 const TMUX_CONFIG_FUNCTIONAL = String.raw`
-# Source system and user tmux configs first, so personal keybindings
-# and preferences are preserved. Our settings below override as needed.
-if-shell "test -f /etc/tmux.conf" "source-file /etc/tmux.conf"
-if-shell "test -f ~/.tmux.conf" "source-file ~/.tmux.conf"
-if-shell "test -f ~/.config/tmux/tmux.conf" "source-file ~/.config/tmux/tmux.conf"
+# System and user tmux configs are deliberately NOT sourced: the dev3 server
+# runs exclusively on this config. See decisions/197-isolate-tmux-config.md.
 
 # Mouse support
 setw -g mouse on

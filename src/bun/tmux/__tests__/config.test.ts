@@ -72,6 +72,15 @@ describe("buildThemeConfig", () => {
 		);
 	});
 
+	it("never sources the system or user tmux configs", () => {
+		for (const flavor of ["mocha", "latte"] as const) {
+			const config = buildThemeConfig(flavor);
+			expect(config).not.toContain("/etc/tmux.conf");
+			expect(config).not.toContain("~/.tmux.conf");
+			expect(config).not.toContain("~/.config/tmux/tmux.conf");
+		}
+	});
+
 	it("selects the requested Catppuccin flavor", () => {
 		expect(buildThemeConfig("mocha")).toContain('@catppuccin_flavor "mocha"');
 		expect(buildThemeConfig("latte")).toContain('@catppuccin_flavor "latte"');

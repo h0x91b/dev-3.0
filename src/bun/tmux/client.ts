@@ -23,7 +23,7 @@ import {
 	selectTmuxBinary,
 } from "./binary";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
-import { tmuxClientCwd } from "./config";
+import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
 import { TmuxError, TmuxSpawnError } from "./errors";
 import type { TmuxFormat } from "./formats";
 import { PANE_ID_FORMAT } from "./formats";
@@ -173,7 +173,10 @@ export class TmuxClient {
 		env?: Record<string, string>;
 		command?: string;
 	} & SocketOpt): Promise<{ stderr: string }> {
-		const args = ["new-session", "-d"];
+		// `-f` on every server-starting command: without it tmux falls back to
+		// /etc/tmux.conf + ~/.tmux.conf and the user's personal settings leak
+		// into the dev3 server (decisions/197-isolate-tmux-config.md).
+		const args = ["-f", activeTmuxConfigPath(), "new-session", "-d"];
 		for (const [key, value] of Object.entries(opts.env ?? {})) {
 			args.push("-e", `${key}=${value}`);
 		}
