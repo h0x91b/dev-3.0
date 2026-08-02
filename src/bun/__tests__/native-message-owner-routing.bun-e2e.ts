@@ -277,6 +277,23 @@ async function runSender(): Promise<void> {
 		}
 	};
 
+	/**
+	 * Does this tmux session exist — with "tmux is not installed at all" reported as
+	 * a plain no rather than an exception. On a machine with no tmux binary
+	 * `hasSession` throws ENOENT, which used to abort the whole run on its very last
+	 * line AFTER every check had passed (seq 1381, first CI run on a tmux-less
+	 * runner). A missing binary is the strongest possible evidence that no tmux
+	 * session was created, so it belongs on the passing side, exactly as the
+	 * `listSessions` helper above already treats an unreachable server.
+	 */
+	const hasSessionOrAbsent = async (name: string, socket?: string): Promise<boolean> => {
+		try {
+			return await tmux.hasSession(name, socket ? { socket } : undefined);
+		} catch {
+			return false;
+		}
+	};
+
 	const token = `NMORT-${process.pid}-${Date.now()}`;
 	/** Second delivery, driven outside-in through B's real CLI socket. */
 	const cliToken = `NMORT-CLI-${process.pid}-${Date.now()}`;
@@ -506,7 +523,7 @@ async function runSender(): Promise<void> {
 			console.log("  SKIP - tmux sentinel checks (tmux unavailable on this machine)");
 		}
 		check(
-			!(await tmux.hasSession(taskSessionName(TASK_ID))),
+			!(await hasSessionOrAbsent(taskSessionName(TASK_ID))),
 			"no tmux session named for this task exists on the default socket either",
 		);
 	} finally {
