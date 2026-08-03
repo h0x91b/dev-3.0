@@ -163,7 +163,7 @@ client gets exactly one `version-mismatch` error. See
 
 ## Live parser (seq 1228)
 
-Opt-in proof stage: `start <id> --live-parser` (env
+Opt-in proof stage: `start <id> --capture-mode semantic` (env
 `DEV3_NATIVE_SESSION_CAPTURE_MODE=semantic`) makes the host maintain a real Ghostty
 screen while the shell runs. Three hard boundaries, recorded in
 [decision 155](../../../decisions/155-live-parser-outside-terminal-callback.md):

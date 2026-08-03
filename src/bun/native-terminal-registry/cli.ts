@@ -3,7 +3,7 @@
  * Manual driver + host re-entry for the native-session registry (seq 1214).
  * NOT wired into the production `dev3` CLI (src/cli/main.ts) — a dev-only driver.
  *
- *   bun src/bun/native-terminal-registry/cli.ts start <id> [--live-parser] [--state-tap]
+ *   bun src/bun/native-terminal-registry/cli.ts start <id> [--capture-mode <mode>] [--state-tap]
  *   bun src/bun/native-terminal-registry/cli.ts list                # discover all sessions
  *   bun src/bun/native-terminal-registry/cli.ts status <id>         # discover + query one
  *   bun src/bun/native-terminal-registry/cli.ts attach <id>         # interactive attach (Ctrl-] detaches)
@@ -14,7 +14,12 @@
  *   bun src/bun/native-terminal-registry/cli.ts __host <id>         # internal: the detached host
  */
 
-import { parseCaptureMode } from "./capture-mode";
+import { CLI_EXIT_CODE_USAGE_ERROR } from "../../shared/cli-exit-codes";
+import {
+	NATIVE_CAPTURE_MODES,
+	requireNativeCaptureMode,
+	type NativeCaptureMode,
+} from "./capture-mode";
 import { NativeSessionClient } from "./client";
 import { resolveHostConfig, runHost } from "./host";
 import { readParserState } from "./parser-state";
@@ -50,6 +55,21 @@ function hasFlag(flag: string): boolean {
 function flagValue(flag: string): string | undefined {
 	const index = process.argv.indexOf(flag);
 	return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+/**
+ * Strict: an omitted flag means `none`, but a flag with a wrong value FAILS. The
+ * tolerant env parser must never see typed user input, or a typo silently turns
+ * capture off.
+ */
+function captureModeArg(): NativeCaptureMode {
+	if (!process.argv.includes("--capture-mode")) return "none";
+	try {
+		return requireNativeCaptureMode(flagValue("--capture-mode"));
+	} catch (err) {
+		process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+		process.exit(CLI_EXIT_CODE_USAGE_ERROR);
+	}
 }
 
 function cliShellLaunch(): ShellLaunchSpec {
@@ -135,7 +155,7 @@ async function main(): Promise<void> {
 			const id = requireId();
 			const result = await start(id, {
 				launch: cliShellLaunch(),
-				captureMode: parseCaptureMode(flagValue("--capture-mode")),
+				captureMode: captureModeArg(),
 				stateTap: hasFlag("--state-tap"),
 			});
 			const r = result.record;
@@ -178,7 +198,9 @@ async function main(): Promise<void> {
 			// Fresh-client reconstruction path: read the bounded semantic snapshot.
 			const state = readParserState(requireId());
 			if (!state) {
-				process.stderr.write("no parser state (was the session started with --live-parser?)\n");
+				process.stderr.write(
+					"no parser state (was the session started with --capture-mode semantic or semantic-and-compact?)\n",
+				);
 				process.exit(1);
 			}
 			process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
@@ -221,7 +243,8 @@ async function main(): Promise<void> {
 		}
 		default:
 			process.stdout.write(
-				"usage: cli.ts start [--live-parser] [--state-tap]|list|status|attach|parser-state|recover [--cleanup]|cleanup-stale|stop <sessionId>\n",
+				`usage: cli.ts start [--capture-mode ${NATIVE_CAPTURE_MODES.join("|")}] [--state-tap]` +
+					"|list|status|attach|parser-state|recover [--cleanup]|cleanup-stale|stop <sessionId>\n",
 			);
 			process.exit(2);
 	}

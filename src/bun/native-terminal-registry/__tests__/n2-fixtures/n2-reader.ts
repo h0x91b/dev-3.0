@@ -10,56 +10,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** The record fields that build validated, in its own whitelist style. */
-export interface N2Record {
-	sessionId: string;
-	paneId: string;
-	hostPid: number;
-	shellPid: number;
-	cols: number;
-	rows: number;
-	endpointPort: number;
-}
-
-/** That build's parse: a whitelist, so unknown keys are ignored, not rejected. */
-export function n2ParseRecord(text: string): N2Record | null {
-	let raw: unknown;
-	try {
-		raw = JSON.parse(text);
-	} catch {
-		return null;
-	}
-	if (!raw || typeof raw !== "object") return null;
-	const r = raw as Record<string, unknown>;
-	if (r.schemaVersion !== 1) return null;
-	const host = r.host as Record<string, unknown> | undefined;
-	const shell = r.shell as Record<string, unknown> | undefined;
-	const endpoint = r.endpoint as Record<string, unknown> | undefined;
-	if (
-		typeof r.sessionId !== "string" ||
-		typeof r.paneId !== "string" ||
-		!host ||
-		typeof host.pid !== "number" ||
-		!shell ||
-		typeof shell.pid !== "number" ||
-		typeof r.cols !== "number" ||
-		typeof r.rows !== "number" ||
-		!endpoint ||
-		typeof endpoint.port !== "number"
-	) {
-		return null;
-	}
-	if ("token" in r) return null;
-	return {
-		sessionId: r.sessionId,
-		paneId: r.paneId,
-		hostPid: host.pid,
-		shellPid: shell.pid,
-		cols: r.cols,
-		rows: r.rows,
-		endpointPort: endpoint.port,
-	};
-}
+export { n2ParseRecord, type N2SessionRecord } from "./n2-record-parser";
 
 /**
  * That build's ONLY product-reachable capture path: read `parser-state.json`,

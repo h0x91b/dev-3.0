@@ -247,17 +247,45 @@ describe("nativeHostLauncher", () => {
 		}
 	});
 
-	it("omits the mode entirely for `none`, so an old host degrades to no parser", () => {
-		nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec(), captureMode: "none" }, 7);
-		expect(vi.mocked(spawn).mock.calls[0][2]?.env).not.toHaveProperty("DEV3_NATIVE_SESSION_CAPTURE_MODE");
+	it("STATES none rather than omitting it, so an ambient mode cannot activate capture", () => {
+		// The child inherits this process's environment. Omitting the variable let an
+		// inherited DEV3_NATIVE_SESSION_CAPTURE_MODE turn the parser on for every
+		// ordinary task host — production activation was never actually forced off.
+		process.env.DEV3_NATIVE_SESSION_CAPTURE_MODE = "semantic-and-compact";
+		process.env.DEV3_NATIVE_SESSION_STATE_TAP = "1";
+		try {
+			nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec() }, 7);
+			const env = vi.mocked(spawn).mock.calls[0][2]?.env ?? {};
+			expect(env.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("none");
+			expect(env.DEV3_NATIVE_SESSION_STATE_TAP).toBe("");
+
+			vi.mocked(spawn).mockClear();
+			nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec(), captureMode: "none" }, 7);
+			expect(vi.mocked(spawn).mock.calls[0][2]?.env?.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("none");
+		} finally {
+			delete process.env.DEV3_NATIVE_SESSION_CAPTURE_MODE;
+			delete process.env.DEV3_NATIVE_SESSION_STATE_TAP;
+		}
 	});
 
-	it("omits the opt-in proof flags when they were not requested", () => {
+	it("still honours a mode the call site intentionally supplies under a hostile parent env", () => {
+		process.env.DEV3_NATIVE_SESSION_CAPTURE_MODE = "compact";
+		try {
+			nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec(), captureMode: "semantic" }, 7);
+			expect(vi.mocked(spawn).mock.calls[0][2]?.env?.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("semantic");
+		} finally {
+			delete process.env.DEV3_NATIVE_SESSION_CAPTURE_MODE;
+		}
+	});
+
+	it("states the opt-in flags OFF rather than omitting them, and omits geometry", () => {
 		nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec() }, 7);
 
 		const env = vi.mocked(spawn).mock.calls[0][2]?.env ?? {};
-		expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_CAPTURE_MODE");
-		expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_STATE_TAP");
+		// Stated, not omitted: an inherited value must not decide what a host does.
+		expect(env.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("none");
+		expect(env.DEV3_NATIVE_SESSION_STATE_TAP).toBe("");
+		// Geometry genuinely has a host-side default, so absence is meaningful there.
 		expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_COLS");
 	});
 });

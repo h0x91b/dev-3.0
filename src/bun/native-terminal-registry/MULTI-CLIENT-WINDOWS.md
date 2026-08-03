@@ -10,7 +10,7 @@ In **PowerShell A**:
 
 ```powershell
 $env:DEV3_NATIVE_SESSIONS_DIR = Join-Path $env:TEMP "dev3-native-ownership-manual"
-bun src/bun/native-terminal-registry/cli.ts start ownership-demo --live-parser
+bun src/bun/native-terminal-registry/cli.ts start ownership-demo --capture-mode semantic
 bun src/bun/native-terminal-registry/cli.ts attach ownership-demo
 ```
 

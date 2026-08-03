@@ -1,71 +1,116 @@
 /**
- * Guards the two claims the compact-only mode rests on: nothing product-reachable
- * consumes the legacy per-cell artifact, and host/app version skew can only ever
- * degrade toward publishing nothing.
+ * What the compatibility claim actually rests on.
+ *
+ * The claim is narrow on purpose: production published NEITHER capture artifact
+ * before this change, so compact-only removes nothing an older build could read.
+ * That is a statement about disk state, not reachability — the semantic surface IS
+ * reachable from the seam and stays a supported fallback. The walk below measures
+ * which entrypoints can reach the per-cell reader, so the claim is stated against a
+ * real import graph rather than a grep over an allowlist.
  */
 
-import { readdirSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseCaptureMode } from "../capture-mode";
 import { parseRecord, serializeRecord, type NativeSessionRecord } from "../record";
 
 const sourceRoot = resolve(fileURLToPath(new URL("../../../", import.meta.url))); // repo/src
-const moduleRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
 
-function sourceFiles(directory: string): string[] {
-	const files: string[] = [];
-	for (const entry of readdirSync(directory, { withFileTypes: true })) {
-		const path = join(directory, entry.name);
-		if (entry.isDirectory()) files.push(...sourceFiles(path));
-		else if (/\.(?:ts|tsx)$/.test(entry.name)) files.push(path);
+/** The real entrypoints a user's dev3 runs. */
+const ENTRYPOINTS = ["bun/index.ts", "cli/main.ts", "bun/native-terminal-host/main.ts"];
+
+const IMPORT_PATTERN = /(?:from|import)\s*\(?\s*["'](\.[^"']+)["']/g;
+
+function isFile(path: string): boolean {
+	try {
+		return statSync(path).isFile();
+	} catch {
+		return false;
 	}
-	return files;
 }
 
-/**
- * Everything allowed to read the per-cell snapshot. All of it is either inside the
- * registry, or a module that proves in its OWN isolation test that the app does
- * not import it. Add an entry here only with the compatibility argument to match:
- * a product consumer would mean compact-only removes something reachable.
- */
-const SANCTIONED_SEMANTIC_CONSUMERS = [
-	"bun/native-terminal-adapter/adapter.ts",
-	"bun/native-terminal-adapter/view-reconstruction.ts",
-	"bun/native-terminal-multipane/coordinator.ts",
-	"bun/native-terminal-soak/metrics.ts",
-	"bun/native-terminal-soak/soak-controller.ts",
-];
+function resolveImport(fromFile: string, spec: string): string | null {
+	const base = resolve(dirname(fromFile), spec);
+	for (const candidate of [`${base}.ts`, `${base}.tsx`, base, join(base, "index.ts")]) {
+		if (isFile(candidate)) return candidate;
+	}
+	return null;
+}
 
-describe("compact-only reachability", () => {
-	it("has no product consumer of the legacy per-cell artifact", () => {
-		const consumers = sourceFiles(sourceRoot)
-			.filter((path) => !path.startsWith(moduleRoot))
-			.filter((path) => !path.includes("__tests__"))
-			.filter((path) => {
-				const text = readFileSync(path, "utf8");
-				return text.includes("readParserState") || text.includes("parserStateFile");
-			})
-			.map((path) => path.slice(sourceRoot.length + 1).replaceAll("\\", "/"))
-			.sort();
-		expect(consumers).toEqual(SANCTIONED_SEMANTIC_CONSUMERS);
+/** Every file reachable by relative import from the given entrypoints. */
+function reachableFiles(entrypoints: string[]): Set<string> {
+	const seen = new Set<string>();
+	const queue = entrypoints.map((entry) => resolve(sourceRoot, entry)).filter(isFile);
+	while (queue.length > 0) {
+		const file = queue.pop()!;
+		if (seen.has(file)) continue;
+		seen.add(file);
+		for (const match of readFileSync(file, "utf8").matchAll(IMPORT_PATTERN)) {
+			const target = resolveImport(file, match[1]!);
+			if (target && !seen.has(target)) queue.push(target);
+		}
+	}
+	return seen;
+}
+
+function relative(file: string): string {
+	return file.slice(sourceRoot.length + 1).replaceAll("\\", "/");
+}
+
+describe("per-cell artifact reachability", () => {
+	const reachable = reachableFiles(ENTRYPOINTS);
+
+	it("reaches the app and CLI entrypoints at all, so the walk proves something", () => {
+		// A resolver that silently found nothing would make every claim below vacuous.
+		expect(reachable.size).toBeGreaterThan(50);
+		expect([...reachable].map(relative)).toContain("bun/task-terminal-backend.ts");
 	});
 
-	it("keeps the retired flags and their env vars gone, with no shim left behind", () => {
-		const offenders = sourceFiles(sourceRoot)
-			.filter((path) => path !== fileURLToPath(import.meta.url))
-			.filter((path) => {
+	it("reaches the per-cell reader ONLY through the capture seam's semantic fallback", () => {
+		const readers = [...reachable]
+			.filter((file) => /\breadParserState\b|\bparserStateFile\b/.test(readFileSync(file, "utf8")))
+			.map(relative)
+			.sort();
+		// The honest result: the seam's own fallback is the one product consumer, which
+		// is why semantic stays supported rather than unreachable legacy, and why the
+		// compatibility claim is about what production PUBLISHED, not about reach.
+		// The real graph names two files the earlier allowlist-plus-grep missed: the
+		// adapter's renderer, reached through the coordinator, and the record module,
+		// which knows the path in order to CLEAN it up.
+		expect(readers).toEqual([
+			"bun/native-terminal-adapter/view-reconstruction.ts",
+			"bun/native-terminal-multipane/coordinator.ts",
+			"bun/native-terminal-registry/parser-state.ts",
+			"bun/native-terminal-registry/paths.ts",
+			"bun/native-terminal-registry/record.ts",
+		]);
+	});
+
+	it("keeps the retired flags and their env spellings gone, in every form", () => {
+		const RETIRED = [
+			"DEV3_NATIVE_SESSION_LIVE_PARSER",
+			"DEV3_NATIVE_SESSION_CAPTURE_PROJECTION",
+			"--live-parser",
+		];
+		const offenders: string[] = [];
+		const walk = (directory: string): void => {
+			for (const entry of readdirSync(directory, { withFileTypes: true })) {
+				const path = join(directory, entry.name);
+				if (entry.isDirectory()) {
+					walk(path);
+					continue;
+				}
+				if (!/\.(?:ts|tsx|md)$/.test(entry.name)) continue;
+				if (path === fileURLToPath(import.meta.url)) continue;
 				const text = readFileSync(path, "utf8");
-				return (
-					text.includes("DEV3_NATIVE_SESSION_LIVE_PARSER") ||
-					text.includes("DEV3_NATIVE_SESSION_CAPTURE_PROJECTION") ||
-					/\bliveParser\b/.test(text) ||
-					/\bcaptureProjection\b/.test(text)
-				);
-			})
-			.map((path) => path.slice(sourceRoot.length + 1));
-		expect(offenders).toEqual([]);
+				const camel = /\bliveParser\b|\bcaptureProjection\b/.test(text);
+				if (camel || RETIRED.some((spelling) => text.includes(spelling))) offenders.push(relative(path));
+			}
+		};
+		walk(sourceRoot);
+		expect(offenders.sort()).toEqual([]);
 	});
 });
 
@@ -89,19 +134,15 @@ describe("host and app version skew", () => {
 	});
 
 	it("never lets a new app read an OLD host as capture-enabled", () => {
-		// An old host writes no capabilities block, whatever env it was handed.
 		const parsed = parseRecord(serializeRecord(oldHostRecord()));
 		expect(parsed).not.toHaveProperty("capabilities");
 		expect(parsed?.capabilities?.capture ?? []).toEqual([]);
 	});
 
-	it("degrades an old host to `none` when it is handed the new mode env", () => {
-		// The old host read DEV3_NATIVE_SESSION_LIVE_PARSER === "1" and nothing else,
-		// so the new variable is simply not seen: no parser, no artifact, no claim.
+	it("degrades an unrecognised ambient mode to none in either direction", () => {
 		expect(parseCaptureMode("semantic")).toBe("semantic");
 		expect(parseCaptureMode(undefined)).toBe("none");
-		// And the reverse: a NEW host handed the retired boolean value reads `none`,
-		// so a stale launcher cannot switch a parser on by accident either.
+		// The retired boolean value a stale launcher might still pass.
 		expect(parseCaptureMode("1")).toBe("none");
 	});
 });

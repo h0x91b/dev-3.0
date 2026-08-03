@@ -43,15 +43,8 @@ import {
 	writeCaptureRecordAtomic,
 	type CaptureProducer,
 } from "./capture-record";
+import { NATIVE_CAPTURE_MODE_ENV, captureModePlan, parseCaptureMode } from "./capture-mode";
 import {
-	NATIVE_CAPTURE_MODE_ENV,
-	modePersistsCompact,
-	modePersistsSemantic,
-	modeRunsParser,
-	parseCaptureMode,
-} from "./capture-mode";
-import {
-	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 	NATIVE_SESSION_SCHEMA_VERSION,
@@ -283,12 +276,9 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	// independent, so selecting the compact one can never make the per-cell one
 	// unreachable.
 	const captureMode = parseCaptureMode(process.env[NATIVE_CAPTURE_MODE_ENV]);
-	const publishesSemantic = modePersistsSemantic(captureMode);
-	const publishesCompact = modePersistsCompact(captureMode);
-	const publishedSurfaces: NativeSessionCaptureSurface[] = [
-		...(publishesSemantic ? [NATIVE_SESSION_CAPTURE_CAPABILITY] : []),
-		...(publishesCompact ? [NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY] : []),
-	];
+	const plan = captureModePlan(captureMode);
+	const publishesSemantic = plan.semantic;
+	const publishesCompact = plan.compact;
 	// A projection write needs the producer's identity, which only exists after the
 	// shell is spawned and its signature probed. Until then the sink reports "not
 	// ready" so the pipeline keeps the write retryable instead of throwing into a
@@ -318,10 +308,10 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	}
 
 	const advertisedSurfaces = (): NativeSessionCaptureSurface[] =>
-		publishedSurfaces.filter(
+		plan.surfaces.filter(
 			(surface) => surface !== NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY || producerIdentity !== null,
 		);
-	if (modeRunsParser(captureMode)) {
+	if (plan.runsParser) {
 		try {
 			pipeline = await LiveParserPipeline.create({
 				sessionId,

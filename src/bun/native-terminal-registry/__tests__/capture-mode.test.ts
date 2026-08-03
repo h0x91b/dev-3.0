@@ -3,13 +3,14 @@
  * persist sinks, and the N-2 compatibility claim the compact-only mode rests on.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+	CAPTURE_MODE_PLAN,
+	InvalidCaptureModeError,
 	NATIVE_CAPTURE_MODES,
-	modePersistsCompact,
-	modePersistsSemantic,
-	modeRunsParser,
+	captureModePlan,
 	parseCaptureMode,
+	requireNativeCaptureMode,
 	type NativeCaptureMode,
 } from "../capture-mode";
 import {
@@ -54,7 +55,8 @@ const MATRIX: Array<{
 		parser: true,
 		semantic: true,
 		compact: true,
-		surfaces: [NATIVE_SESSION_CAPTURE_CAPABILITY, NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY],
+		// Compact first: a reader prefers the cheap surface and falls back.
+		surfaces: [NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY, NATIVE_SESSION_CAPTURE_CAPABILITY],
 	},
 ];
 
@@ -64,18 +66,42 @@ describe("capture mode — the four-mode matrix", () => {
 	});
 
 	it.each(MATRIX)("$mode runs the parser: $parser, semantic: $semantic, compact: $compact", (row) => {
-		expect(modeRunsParser(row.mode)).toBe(row.parser);
-		expect(modePersistsSemantic(row.mode)).toBe(row.semantic);
-		expect(modePersistsCompact(row.mode)).toBe(row.compact);
-		// Compact must never make semantic unreachable: the two are independent.
-		if (row.mode === "semantic-and-compact") expect(row.semantic && row.compact).toBe(true);
+		// Against the PRODUCTION table, not a re-implementation of it.
+		const plan = captureModePlan(row.mode);
+		expect(plan.runsParser).toBe(row.parser);
+		expect(plan.semantic).toBe(row.semantic);
+		expect(plan.compact).toBe(row.compact);
+		expect(plan.surfaces).toEqual(row.surfaces);
 	});
 
-	it("never lets compact suppress semantic in any mode", () => {
+	it("has no mode that runs a parser with nowhere to publish", () => {
+		// The hole three independent predicates left open: a fifth mode could compile
+		// into parser-on with no sink. The table cannot express that unnoticed.
 		for (const mode of NATIVE_CAPTURE_MODES) {
-			if (!modePersistsSemantic(mode)) continue;
-			expect(modePersistsSemantic(mode)).toBe(true); // holds with compact on or off
+			const plan = captureModePlan(mode);
+			expect(plan.runsParser).toBe(plan.semantic || plan.compact);
 		}
+	});
+
+	it("advertises a surface only for a sink it actually writes", () => {
+		for (const mode of NATIVE_CAPTURE_MODES) {
+			const plan = captureModePlan(mode);
+			expect(plan.surfaces.length).toBe(Number(plan.semantic) + Number(plan.compact));
+		}
+	});
+
+	it("covers every mode in the table itself, so a new one cannot be forgotten", () => {
+		expect(Object.keys(CAPTURE_MODE_PLAN).sort()).toEqual([...NATIVE_CAPTURE_MODES].sort());
+	});
+
+	it("rejects typed user input instead of silently disabling capture", () => {
+		// The tolerant parser is for ambient env only; a CLI typo must fail loudly.
+		for (const bad of ["compcat", "", undefined, "1", "SEMANTIC"]) {
+			expect(() => requireNativeCaptureMode(bad)).toThrow(InvalidCaptureModeError);
+		}
+		for (const mode of NATIVE_CAPTURE_MODES) expect(requireNativeCaptureMode(mode)).toBe(mode);
+		const err = new InvalidCaptureModeError("compcat");
+		for (const mode of NATIVE_CAPTURE_MODES) expect(err.message).toContain(mode);
 	});
 
 	it("reads an unknown or absent mode as none, the publish-nothing side", () => {
@@ -84,35 +110,6 @@ describe("capture mode — the four-mode matrix", () => {
 		expect(parseCaptureMode("compact-ish")).toBe("none");
 		expect(parseCaptureMode("1")).toBe("none"); // the retired boolean env value
 		for (const mode of NATIVE_CAPTURE_MODES) expect(parseCaptureMode(mode)).toBe(mode);
-	});
-});
-
-describe("capture mode — independent persist sinks", () => {
-	/** A pipeline stand-in exercising exactly the sink wiring the host performs. */
-	function sinksFor(mode: NativeCaptureMode) {
-		const persistState = vi.fn();
-		const persistProjection = vi.fn();
-		const options = {
-			...(modePersistsSemantic(mode) ? { persistState } : {}),
-			...(modePersistsCompact(mode) ? { persistProjection } : {}),
-		};
-		return { persistState, persistProjection, options };
-	}
-
-	it.each(MATRIX)("$mode wires exactly the sinks it promises", (row) => {
-		const { options } = sinksFor(row.mode);
-		expect("persistState" in options).toBe(row.semantic);
-		expect("persistProjection" in options).toBe(row.compact);
-	});
-
-	it("advertises surfaces in a stable order for each mode", () => {
-		for (const row of MATRIX) {
-			const surfaces: NativeSessionCaptureSurface[] = [
-				...(row.semantic ? [NATIVE_SESSION_CAPTURE_CAPABILITY] : []),
-				...(row.compact ? [NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY] : []),
-			];
-			expect(surfaces).toEqual(row.surfaces);
-		}
 	});
 });
 
@@ -138,19 +135,31 @@ describe("capture mode — N-2 compatibility of the compact-only mode", () => {
 		};
 	}
 
-	it("the frozen N-2 reader still reads a record from every mode", () => {
+	it("the frozen N-2 parser accepts a record from every mode, unchanged", () => {
+		// The vendored 3228bbd parser validates all 17 fields the old build did, so a
+		// record it accepts is genuinely readable by that build — not by a subset of it.
 		for (const row of MATRIX) {
 			const parsed = n2ParseRecord(serializeRecord(newRecord(row.surfaces)));
-			expect(parsed).toEqual({
-				sessionId: "alpha",
-				paneId: "alpha:0",
-				hostPid: 4242,
-				shellPid: 4243,
-				cols: 120,
-				rows: 40,
-				endpointPort: 51234,
-			});
+			expect(parsed).not.toBeNull();
+			expect(parsed?.sessionId).toBe("alpha");
+			expect(parsed?.host).toEqual({ pid: 4242, executable: "/bin/bun", startSignature: "h" });
+			expect(parsed?.shell).toEqual({ pid: 4243, command: ["/bin/bash"], startSignature: "s" });
+			expect(parsed?.endpoint).toEqual({ transport: "ws", address: "127.0.0.1", port: 51234 });
+			expect(parsed?.ownership).toEqual({ evidenceKind: "posix-start-signature" });
+			expect(parsed?.cols).toBe(120);
+			expect(parsed?.rows).toBe(40);
+			// The capability block is simply not in the old shape — ignored, not rejected.
+			expect(parsed).not.toHaveProperty("capabilities");
 		}
+	});
+
+	it("the frozen parser rejects what the old build rejected, so it is not a rubber stamp", () => {
+		const raw = JSON.parse(serializeRecord(newRecord([]))) as Record<string, unknown>;
+		expect(n2ParseRecord(JSON.stringify({ ...raw, schemaVersion: 2 }))).toBeNull();
+		expect(n2ParseRecord(JSON.stringify({ ...raw, ownership: { evidenceKind: "vibes" } }))).toBeNull();
+		expect(n2ParseRecord(JSON.stringify({ ...raw, endpoint: { transport: "tcp", address: "x", port: 1 } }))).toBeNull();
+		expect(n2ParseRecord(JSON.stringify({ ...raw, shell: { pid: 1, command: "not-an-array", startSignature: "s" } }))).toBeNull();
+		expect(n2ParseRecord(JSON.stringify({ ...raw, token: "leaked" }))).toBeNull();
 	});
 
 	it("a compact-only session looks EXACTLY like parser-off to the frozen reader", () => {

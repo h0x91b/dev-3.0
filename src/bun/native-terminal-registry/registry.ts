@@ -166,10 +166,11 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 			[NATIVE_SESSION_LAUNCH_ENV]: encodeShellLaunchSpec(opts.launch),
 			...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),
 			...(opts.rows ? { DEV3_NATIVE_SESSION_ROWS: String(opts.rows) } : {}),
-			...(opts.captureMode && opts.captureMode !== "none"
-				? { [NATIVE_CAPTURE_MODE_ENV]: opts.captureMode }
-				: {}),
-			...(opts.stateTap ? { DEV3_NATIVE_SESSION_STATE_TAP: "1" } : {}),
+			// Always stated, never merely added: the child inherits this process's
+			// environment, so an ambient mode would otherwise activate capture on every
+			// host nobody asked to. Absent call-site intent means `none`.
+			[NATIVE_CAPTURE_MODE_ENV]: opts.captureMode ?? "none",
+			DEV3_NATIVE_SESSION_STATE_TAP: opts.stateTap ? "1" : "",
 		},
 	});
 	let exited = false;
