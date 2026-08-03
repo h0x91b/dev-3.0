@@ -7,7 +7,7 @@
  * idempotent cleanup, and the typed failure taxonomy. Multi-view is asserted per
  * adapter: tmux splits, native returns the typed `unsupported` result.
  *
- * The read-only capture block (seq 1412) is the reason this suite runs against
+ * The read-only capture block is the reason this suite runs against
  * both worlds at all: viewport/history separation, the fixed order of loss, the
  * identity bracket, and the six availabilities must read the SAME on tmux and on
  * native, or a coordinator cannot trust either.

@@ -91,7 +91,7 @@ export interface PaneSnapshot {
 	cols: number;
 	rows: number;
 	state: "running" | "reused" | "dead";
-	/** True when the host advertises a capture surface (seq 1412). */
+	/** True when the host advertises a capture surface. */
 	publishesScreen: boolean;
 }
 
@@ -134,7 +134,7 @@ export type ParserStateInspection =
 
 /** Where a read-only capture of one pane can source its text, or why it cannot. */
 export type PaneCaptureSource =
-	/** The compact plain-text projection — the cheap surface (seq 1412). */
+	/** The compact plain-text projection — the cheap surface. */
 	| { kind: "capture-record"; record: CaptureRecord }
 	| { kind: "snapshot"; snapshot: ParserStateSnapshot; state: NativeSemanticState }
 	/** Capturable, nothing observed yet. */
@@ -536,7 +536,7 @@ export class NativeMultipaneCoordinator {
 	}
 
 	/**
-	 * The read-only capture source for one pane (seq 1412): the host's bounded
+	 * The read-only capture source for one pane: the host's bounded
 	 * parser snapshot, straight off disk.
 	 *
 	 * It deliberately does NOT connect. The host publishes `parser-state.json`

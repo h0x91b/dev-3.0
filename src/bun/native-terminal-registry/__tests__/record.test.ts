@@ -37,7 +37,7 @@ function sample(overrides: Partial<NativeSessionRecord> = {}): NativeSessionReco
 	};
 }
 
-describe("native-session record — optional capture capability (seq 1412)", () => {
+describe("native-session record — optional capture capability", () => {
 	it("round-trips the capability a parser-enabled host advertises", () => {
 		const record = sample({ capabilities: { capture: [NATIVE_SESSION_CAPTURE_CAPABILITY] } });
 		expect(parseRecord(serializeRecord(record))?.capabilities).toEqual({

@@ -1,11 +1,7 @@
 /**
  * The compact plain-text capture artifact: bounded rows plus the producer's
- * identity and health, and nothing a capture discards (no cells, colours, cursor,
- * modes, command or environment).
- *
- * Bounded BEFORE it is built, written atomically under a producer-scoped temp
- * name, and only ever renamed into place by the producer that still owns the
- * session — a stale producer's delayed rename must not overwrite a live one.
+ * identity and health. Bounded before it is built, written under a
+ * producer-scoped temp name, and renamed only by the producer that still owns it.
  */
 
 import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";

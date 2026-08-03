@@ -45,7 +45,7 @@ export function renderSnapshotText(state: NativeSemanticState, includeHistory: b
 
 /**
  * The same semantic screen as {@link renderSnapshotText}, but with the visible
- * screen and the scrolled-off lines kept APART (seq 1412). A read-only pane
+ * screen and the scrolled-off lines kept APART. A read-only pane
  * capture has to say which lines are on screen right now and which already
  * scrolled past, so joining them into one blob first and re-splitting later
  * would throw away exactly the distinction the caller needs.

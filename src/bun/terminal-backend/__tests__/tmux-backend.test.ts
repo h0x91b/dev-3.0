@@ -85,7 +85,7 @@ describe("TmuxTerminalBackend", () => {
 	});
 });
 
-// ── Read-only capture (seq 1412) ──────────────────────────────────────────────
+// ── Read-only capture ──────────────────────────────────────────────
 
 describe("TmuxTerminalBackend read-only capture", () => {
 	it("reports history as absent by nature while a full-screen program owns the pane", async () => {

@@ -88,7 +88,7 @@ export function parserStateFile(id: string): string {
 }
 
 /**
- * Compact plain-text capture projection (seq 1412) — bounded, atomic. Sibling of
+ * Compact plain-text capture projection — bounded, atomic. Sibling of
  * the per-cell snapshot, not a replacement for it: reconnect still wants cells,
  * a capture only wants rows.
  */

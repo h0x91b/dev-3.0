@@ -126,7 +126,7 @@ describe.skipIf(!TMUX_VERSION || process.platform === "win32")(
 			await backend.closeView(SESSION, second.id);
 			expect((await backend.describeSession(SESSION))?.views).toHaveLength(1);
 
-			// Read-only capture against the real server (seq 1412): the split of
+			// Read-only capture against the real server: the split of
 			// viewport vs scrollback is tmux grammar the in-memory world cannot prove,
 			// because `-S -N -E -1` addressing is tmux's own line numbering.
 			const attach = await backend.attachView(SESSION, created.views[0].id);

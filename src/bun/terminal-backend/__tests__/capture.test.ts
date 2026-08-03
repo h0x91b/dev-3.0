@@ -1,5 +1,5 @@
 /**
- * The pure shaping rules of a read-only pane capture (seq 1412).
+ * The pure shaping rules of a read-only pane capture.
  *
  * These are the invariants both adapters inherit rather than re-implement, so
  * they are asserted once, here, without a backend: the content boundary, the

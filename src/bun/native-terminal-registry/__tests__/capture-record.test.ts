@@ -1,5 +1,5 @@
 /**
- * The compact plain-text capture record (seq 1412): bounding, atomicity, and
+ * The compact plain-text capture record: bounding, atomicity, and
  * fail-closed parsing. These are the properties that let a reader trust one file
  * read without defending itself.
  */

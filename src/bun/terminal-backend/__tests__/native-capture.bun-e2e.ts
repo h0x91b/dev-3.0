@@ -1,22 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Real-host proof of read-only pane capture on the NATIVE backend (seq 1412).
- *
- * Starts a REAL registry-owned host and shell through the product seam, drives
- * real PTY output, and reads it back with `captureView` — no fakes anywhere in
- * the capture path. Two things it must prove that a fake cannot:
- *
- *  • a pane whose host runs the live parser is capturable end to end, viewport
- *    and history apart, with the snapshot's own timestamp behind the read;
- *  • a pane publishing the COMPACT plain-text projection is capturable through the
- *    same seam, with a kilobyte-scale artifact and no per-cell snapshot on disk;
- *  • a pane whose host runs NO parser reports `not-enabled` — which is exactly
- *    what production does today, because the parser is off by default. The verdict
- *    comes from the host's OWN advertised capability in its record, not from a
- *    timer, so this also proves the capability is actually written and absent.
- *
- * The parser is enabled HERE ONLY, by overriding the coordinator's pane start.
- * Nothing in this file changes what production launches (decision 202).
+ * Real-host proof of read-only capture: a pane publishing the per-cell snapshot, a
+ * pane publishing the compact record, and a pane publishing neither — which is
+ * production's shape, and must read as `not-enabled` on the first try.
  */
 
 import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";

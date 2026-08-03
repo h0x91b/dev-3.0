@@ -17,7 +17,7 @@ without an explicit `native` marker. See `decisions/171-*`.
 | File | Role |
 |------|------|
 | `contract.ts` | The vocabulary: session/view lifecycle, attach, input, resize, capture, focus, split, close, cleanup. Ids are opaque product strings; one portable session-id rule for both backends. |
-| `capture.ts` | Read-only pane capture (seq 1412): the result shape plus ALL of its pure shaping — sanitizing, bounding, freshness, identity drift. Both adapters share it so their answers cannot drift. |
+| `capture.ts` | Read-only pane capture: the result shape plus ALL of its pure shaping — sanitizing, bounding, freshness, identity drift. Both adapters share it so their answers cannot drift. |
 | `errors.ts` | `TerminalBackendError` with a discriminated `code` — the whole failure taxonomy of the seam. Backend errors are wrapped in `backend-failure` with the original on `cause`. |
 | `tmux-port.ts` | The **only** file that speaks tmux: names, `%pane` ids, `-F` formats, sockets, and argv stay behind this narrow port over the typed `TmuxClient`. |
 | `tmux-backend.ts` | Product logic for the tmux backend: validation, presence/membership checks, focus, error mapping. |
@@ -44,7 +44,7 @@ which has no attach handle, no resize, no error taxonomy, and a test-shaped
 - **`dispose()` never kills sessions** — sessions are persistent; only
   `cleanupSession` tears one down.
 
-## Read-only pane capture (seq 1412)
+## Read-only pane capture
 
 `captureView(sessionId, viewId, request?)` is the backend-neutral replacement for
 `tmux capture-pane`: one bounded textual view of ONE named pane. It never
@@ -64,6 +64,9 @@ already-published parser snapshot off disk.
   only for a backend that reads the pane itself (tmux). A producer that publishes on
   change offers no heartbeat, so its freshness is honestly `unknown` — a quiet pane
   is not a stale one.
+- **Nothing is mutated.** Reads use a non-reconciling inspection, and every
+  outcome — miss included — is bracketed by two identity observations, so a pane
+  replaced mid-read reports `replaced` rather than the miss it would have been.
 - **Physical rows, not logical lines.** Nothing reflows or unwraps.
 - **Fixed order of loss:** history beyond the request (oldest first) → history
   that does not fit the byte budget (oldest first) → the viewport's top rows, and
@@ -71,18 +74,20 @@ already-published parser snapshot off disk.
 - **Plain text only.** Every escape sequence and control byte is stripped at the
   seam. History is off by default. No pid, cwd, command, or environment.
 
-**Two native producer surfaces, one consumer.** `capabilities.capture` in the
-pane's record names which artifact the host publishes: `semantic-snapshot-v1` (the
-per-cell `parser-state.json`, the reconnect contract) or `plain-text-capture-v1`
-(the compact `capture.json` — rows, health, producer identity). The seam reduces
-both to one observation and a conformance test asserts they answer identically. The
-compact surface exists because the per-cell one costs +230 MiB RSS per pane and
-23 MiB/s of writes on six busy panes, against +58 MiB and 27 KiB/s for the
-projection.
+**Two native producer surfaces, one consumer.** A host's `captureMode`
+(`none | semantic | compact | semantic-and-compact`) decides which artifacts it
+publishes, and `capabilities.capture` in its record advertises them as an
+independent list: `semantic-snapshot-v1` (the per-cell `parser-state.json`, which
+is also the reconnect contract) and `plain-text-capture-v1` (the compact
+`capture.json` — rows, health, producer identity). The seam reduces both to one
+observation, a conformance test asserts they answer identically, and the two
+persist sinks are independent so compact can never disable semantic. The compact
+surface exists because publishing the per-cell one on a busy pane costs orders of
+magnitude more bytes; `bun run test:capture-cost-e2e` measures it.
 
-**Native reports `not-enabled` in production today** — the live parser is off by
-default, so no surface is advertised. The verdict comes from the host's own record,
-never from a timer, so it is correct on the first read. The real-host proof (`bun run test:native-capture-e2e`) covers a
+**Native reports `not-enabled` in production today** — production runs `none`, so
+no surface is advertised. The verdict comes from the host's own record, never from
+a timer, so it is correct on the first read. The real-host proof (`bun run test:native-capture-e2e`) covers a
 parser-enabled pane and a parser-less one, and
 `bun run test:capture-cost-e2e` measures what turning the parser on would cost.
 See `decisions/202-*`.

@@ -136,12 +136,13 @@ function inspectLine(
 }
 
 /**
- * A pane's screen as PLAIN TEXT rows and nothing else (seq 1412).
+ * A pane's screen as PLAIN TEXT rows and nothing else.
  *
- * The per-cell {@link NativeSemanticState} costs multiple MiB per pane to build
- * and to serialise; a read-only capture needs none of it — no colours, no
- * attributes, no cursor, no modes. This is the whole payload a capture actually
- * uses, and building it allocates row strings instead of one object per cell.
+ * The per-cell {@link NativeSemanticState} costs multiple MiB per pane to build and
+ * to serialise; a capture needs none of it — no colours, attributes, cursor or
+ * modes. This avoids the copied semantic state and the multi-MiB JSON, NOT all
+ * per-cell allocation: `getViewport` and `getScrollbackLine` still hand back a cell
+ * array per read, which this walks without building an object per cell.
  */
 export interface NativeTextProjection {
 	activeBuffer: "normal" | "alternate";
@@ -285,7 +286,7 @@ export interface LiveParserCore {
 	resize(cols: number, rows: number): void;
 	readResponses(): string[];
 	inspect(scrollbackCap: number): NativeSemanticState;
-	/** The same screen as {@link inspect}, as plain rows only (seq 1412). */
+	/** The same screen as {@link inspect}, as plain rows only. */
 	project(scrollbackCap: number): NativeTextProjection;
 	dispose(): void;
 }

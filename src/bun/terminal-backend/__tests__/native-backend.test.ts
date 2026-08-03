@@ -164,7 +164,7 @@ describe("NativeTerminalBackend", () => {
 	});
 });
 
-// ── Read-only capture (seq 1412) ──────────────────────────────────────────────
+// ── Read-only capture ──────────────────────────────────────────────
 
 describe("NativeTerminalBackend read-only capture", () => {
 	let world: FakeCoordinatorWorld | null = null;
@@ -308,7 +308,7 @@ describe("NativeTerminalBackend read-only capture", () => {
 	});
 });
 
-// ── The compact plain-text capture surface (seq 1412, Fork 1) ─────────────────
+// ── The compact plain-text capture surface ─────────────────
 
 describe("NativeTerminalBackend capture over the compact surface", () => {
 	let world: FakeCoordinatorWorld | null = null;

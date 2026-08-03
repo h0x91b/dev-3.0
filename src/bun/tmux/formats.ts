@@ -201,7 +201,7 @@ export const PANE_GEOMETRY_FORMAT = tmuxFormat()
 
 /**
  * Everything a read-only pane capture must report about a pane, in one sweep
- * (seq 1412). No free-text field, so there is no tail slot: a capture
+ *. No free-text field, so there is no tail slot: a capture
  * deliberately carries no title, command, or any other process fact.
  */
 export const PANE_CAPTURE_FORMAT = tmuxFormat()

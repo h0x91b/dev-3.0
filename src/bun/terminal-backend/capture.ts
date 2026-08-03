@@ -1,38 +1,7 @@
 /**
- * Read-only pane capture: the backend-neutral replacement for `capture-pane`
- * (CAP-001, seq 1412).
- *
- * ONE bounded textual view of ONE explicitly named pane. Capturing is a pure
- * read: it never focuses a task, injects input, resizes a PTY, moves writer
- * ownership, or waits for the pane's agent to cooperate. Both backends satisfy
- * it from state they already keep — tmux by asking the server for the pane's
- * rows, native by reading the host's bounded parser snapshot off disk.
- *
- * Four properties are load-bearing, and every field below serves one of them:
- *
- *  1. **Honest availability.** A missing session, a missing pane, a pane whose
- *     backend publishes nothing to capture, a pane with nothing observed yet,
- *     unreadable state, and a pane replaced mid-read are six different answers.
- *     None of them is an empty string, because "the screen is blank" and "we
- *     did not look" lead to opposite decisions. A pane that really shows nothing
- *     is a SUCCESSFUL capture with empty text.
- *  2. **Stable identity.** Every capture carries an opaque pane incarnation and
- *     the session's opaque epoch, both checked before AND after the read. A pane
- *     replaced underneath the read is reported, never silently returned as the
- *     same pane.
- *  3. **Honest bounds.** Hard ceilings, and everything the ceilings cut is
- *     counted. Loss order is fixed: oldest history first, viewport last and
- *     never without saying so. Cuts land on whole lines, so no line and no
- *     code point is ever split.
- *  4. **A deliberate content boundary.** Plain text only, history off by
- *     default, no escape sequences, no process facts.
- *
- * Deliberately absent: colours and escape sequences (see {@link sanitizeCaptureLine}),
- * rate or progress (one capture is one point in time; a caller diffs two of them),
- * subscriptions, and every process fact — pid, cwd, command, environment. Those
- * belong to `native-terminal-diagnostics`, a separate contract on purpose; this
- * module also defines its own fact and issue vocabulary rather than borrowing
- * that module's, so the two can evolve without dragging each other along.
+ * Read-only pane capture: one bounded textual view of one named pane, with every
+ * outcome named, every bound reported, and plain text only. Both adapters share
+ * the shaping below so their answers cannot drift.
  */
 
 import { createHash } from "node:crypto";
