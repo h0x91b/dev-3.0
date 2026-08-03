@@ -381,8 +381,8 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 		// The rows on disk came from the shell that ran BEFORE this one.
 		const { backend, view, pane } = await textSurfaceHarness((registry) => {
 			const inner = registry.inspectPaneCaptureRecord!.bind(registry);
-			registry.inspectPaneCaptureRecord = (sessionId) => {
-				const inspection = inner(sessionId);
+			registry.inspectPaneCaptureRecord = (sessionId, digest) => {
+				const inspection = inner(sessionId, digest);
 				if (inspection.kind !== "present") return inspection;
 				const record = inspection.record;
 				return {
@@ -403,8 +403,8 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 	it("reports the producer's dropped output and resync gaps from the compact record", async () => {
 		const { backend, view } = await textSurfaceHarness((registry) => {
 			const inner = registry.inspectPaneCaptureRecord!.bind(registry);
-			registry.inspectPaneCaptureRecord = (sessionId) => {
-				const inspection = inner(sessionId);
+			registry.inspectPaneCaptureRecord = (sessionId, digest) => {
+				const inspection = inner(sessionId, digest);
 				if (inspection.kind !== "present") return inspection;
 				return {
 					kind: "present",

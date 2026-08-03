@@ -17,9 +17,19 @@
  * only node:fs/node:path so the pure logic is unit-testable under vitest.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import {
-	captureRecordFile,
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmdirSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import {
+	CAPTURE_RECORD_PATTERN,
 	journalFile,
 	logFile,
 	parserStateFile,
@@ -299,16 +309,25 @@ export function readToken(sessionId: string): string | null {
  * concurrent start cannot observe a half-cleared session. Returns false when the
  * token guard rejects the removal.
  */
+/**
+ * Every capture artifact of this session, whichever producers wrote them. The path
+ * is producer-scoped, so cleanup matches the bounded family instead of one name —
+ * and it stays inside the session directory, matching nothing else.
+ */
+function captureFamilyFiles(sessionId: string): string[] {
+	try {
+		return readdirSync(sessionDir(sessionId))
+			.filter((entry) => CAPTURE_RECORD_PATTERN.test(entry))
+			.map((entry) => join(sessionDir(sessionId), entry));
+	} catch {
+		return [];
+	}
+}
+
 export function removeSessionState(sessionId: string, expectedToken: string | null): boolean {
 	if (expectedToken === null || readToken(sessionId) !== expectedToken) return false;
 	const record = readRecord(sessionId);
-	const atomicFiles = [
-		journalFile(sessionId),
-		parserStateFile(sessionId),
-		captureRecordFile(sessionId),
-		tokenFile(sessionId),
-		recordFile(sessionId),
-	];
+	const atomicFiles = [journalFile(sessionId), parserStateFile(sessionId), tokenFile(sessionId), recordFile(sessionId)];
 	if (record && Number.isInteger(record.host.pid) && record.host.pid > 0) {
 		for (const file of atomicFiles) {
 			try {
@@ -321,7 +340,7 @@ export function removeSessionState(sessionId: string, expectedToken: string | nu
 	const files = [
 		journalFile(sessionId),
 		parserStateFile(sessionId),
-		captureRecordFile(sessionId),
+		...captureFamilyFiles(sessionId),
 		streamTapFile(sessionId),
 		logFile(sessionId),
 		tokenFile(sessionId),

@@ -4,7 +4,7 @@
  * read without defending itself.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -18,8 +18,8 @@ import {
 	inspectCaptureRecordText,
 	readCaptureRecord,
 	serializeCaptureRecord,
-	StaleProducerError,
 	captureContentIdentity,
+	captureProducerDigest,
 	writeCaptureRecordAtomic,
 	type CaptureRecord,
 } from "../capture-record";
@@ -167,6 +167,7 @@ describe("capture record — bounding", () => {
 
 describe("capture record — on disk", () => {
 	let root = "";
+	const digest = () => captureProducerDigest(sample().producer);
 
 	beforeEach(() => {
 		root = mkdtempSync(join(tmpdir(), "dev3-capture-record-"));
@@ -178,83 +179,49 @@ describe("capture record — on disk", () => {
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it("writes atomically under a producer-scoped temp name, and reads back", () => {
+	it("publishes to a producer-scoped path and leaves no temp behind", () => {
 		writeCaptureRecordAtomic(sample());
-		// The convention the registry's cleanup sweep matches.
-		expect(existsSync(`${captureRecordFile("alpha")}.${sample().producer.hostPid}.tmp`)).toBe(false);
-		expect(readCaptureRecord("alpha")).toEqual(sample());
+		expect(existsSync(`${captureRecordFile("alpha", digest())}.tmp`)).toBe(false);
+		expect(readCaptureRecord("alpha", digest())).toEqual(sample());
 	});
 
-	it("refuses to publish once the producer no longer owns the session", () => {
-		writeCaptureRecordAtomic(sample({ watermarkSeq: 1 }));
-		// A stale producer whose delayed rename must not overwrite its successor.
-		expect(() => writeCaptureRecordAtomic(sample({ watermarkSeq: 99 }), () => false)).toThrow(StaleProducerError);
-		expect(readCaptureRecord("alpha")?.watermarkSeq).toBe(1);
-		expect(existsSync(`${captureRecordFile("alpha")}.${sample().producer.hostPid}.tmp`)).toBe(false);
+	it("cannot overwrite another producer's artifact, however late its write lands", () => {
+		const older = { hostPid: 1001, hostStartSignature: "h-old", shellPid: 1002, shellStartSignature: "s-old" };
+		const newer = { hostPid: 2001, hostStartSignature: "h-new", shellPid: 2002, shellStartSignature: "s-new" };
+		writeCaptureRecordAtomic(sample({ producer: newer, viewport: ["successor-rows"] }));
+		// The stale producer publishes AFTER its successor. There is no shared name to
+		// race for, so there is no ownership check left to get wrong.
+		writeCaptureRecordAtomic(sample({ producer: older, viewport: ["stale-rows"] }));
+		expect(readCaptureRecord("alpha", captureProducerDigest(newer))?.viewport).toEqual(["successor-rows"]);
+		expect(captureProducerDigest(newer)).not.toBe(captureProducerDigest(older));
 	});
 
-	it("tells absent, corrupt, and oversized apart instead of collapsing them", () => {
-		expect(inspectCaptureRecord("nobody")).toEqual({ kind: "absent" });
+	it("leaves no temp file behind on any exit path", () => {
+		writeCaptureRecordAtomic(sample());
+		expect(existsSync(`${captureRecordFile("alpha", digest())}.tmp`)).toBe(false);
+		// A write into a directory that cannot be created fails before the rename; the
+		// finally still runs, and nothing is left in the session directory.
+		process.env[NATIVE_SESSIONS_DIR_ENV] = "/dev/null/nope";
+		expect(() => writeCaptureRecordAtomic(sample())).toThrow();
+		process.env[NATIVE_SESSIONS_DIR_ENV] = root;
+		expect(readdirSync(sessionDir("alpha")).filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
+	});
+
+	it("tells absent, corrupt, and oversized apart through ONE descriptor", () => {
+		expect(inspectCaptureRecord("nobody", digest())).toEqual({ kind: "absent" });
 
 		writeCaptureRecordAtomic(sample());
-		writeFileSync(captureRecordFile("alpha"), "{ truncated");
-		const corrupt = inspectCaptureRecord("alpha");
+		const file = captureRecordFile("alpha", digest());
+		writeFileSync(file, "{ truncated");
+		const corrupt = inspectCaptureRecord("alpha", digest());
 		expect(corrupt.kind).toBe("rejected");
 		if (corrupt.kind === "rejected") expect(corrupt.problem).toContain("not valid JSON");
 
-		// An oversized file is rejected from its stat, never loaded.
-		writeFileSync(captureRecordFile("alpha"), "x".repeat(CAPTURE_RECORD_MAX_BYTES + 1));
-		const huge = inspectCaptureRecord("alpha");
+		writeFileSync(file, "x".repeat(CAPTURE_RECORD_MAX_BYTES + 1));
+		const huge = inspectCaptureRecord("alpha", digest());
 		expect(huge.kind).toBe("rejected");
 		if (huge.kind === "rejected") expect(huge.problem).toContain("over the");
 		expect(existsSync(sessionDir("alpha"))).toBe(true);
-	});
-});
-
-describe("capture record — overlapping producers", () => {
-	let root = "";
-
-	beforeEach(() => {
-		root = mkdtempSync(join(tmpdir(), "dev3-capture-race-"));
-		process.env[NATIVE_SESSIONS_DIR_ENV] = root;
-	});
-
-	afterEach(() => {
-		delete process.env[NATIVE_SESSIONS_DIR_ENV];
-		rmSync(root, { recursive: true, force: true });
-	});
-
-	it("lets an old producer's DELAYED rename lose to the current one", () => {
-		const old = { hostPid: 1001, hostStartSignature: "h-old", shellPid: 1002, shellStartSignature: "s-old" };
-		const current = { hostPid: 2001, hostStartSignature: "h-new", shellPid: 2002, shellStartSignature: "s-new" };
-		let ownerPid = old.hostPid;
-
-		// The old producer serialises its rows while it still owns the session…
-		const stillOwned = (producerPid: number) => () => ownerPid === producerPid;
-		writeCaptureRecordAtomic(sample({ producer: old, viewport: ["old-rows"] }), stillOwned(old.hostPid));
-		expect(readCaptureRecord("alpha")?.viewport).toEqual(["old-rows"]);
-
-		// …ownership moves, and the successor publishes.
-		ownerPid = current.hostPid;
-		writeCaptureRecordAtomic(sample({ producer: current, viewport: ["new-rows"] }), stillOwned(current.hostPid));
-
-		// …and only NOW does the old producer's delayed write reach its rename.
-		expect(() =>
-			writeCaptureRecordAtomic(sample({ producer: old, viewport: ["stale-rows"] }), stillOwned(old.hostPid)),
-		).toThrow(StaleProducerError);
-		expect(readCaptureRecord("alpha")?.viewport).toEqual(["new-rows"]);
-	});
-
-	it("gives each producer its own temp path, so two of them cannot collide", () => {
-		const first = { hostPid: 1001, hostStartSignature: "h1", shellPid: 1002, shellStartSignature: "s1" };
-		const second = { hostPid: 2001, hostStartSignature: "h2", shellPid: 2002, shellStartSignature: "s2" };
-		// Both fail at the rename, so both temp files are the ones left to inspect.
-		for (const producer of [first, second]) {
-			expect(() => writeCaptureRecordAtomic(sample({ producer }), () => false)).toThrow(StaleProducerError);
-		}
-		// Each cleaned up ITS OWN temp file, and neither touched the other's.
-		expect(existsSync(`${captureRecordFile("alpha")}.${first.hostPid}.tmp`)).toBe(false);
-		expect(existsSync(`${captureRecordFile("alpha")}.${second.hostPid}.tmp`)).toBe(false);
 	});
 });
 
@@ -269,6 +236,12 @@ describe("capture record — content identity", () => {
 		expect(captureContentIdentity(other)).toBe(captureContentIdentity(a));
 	});
 
+	it("ignores the transport watermark, which advances without changing a row", () => {
+		// It is not publicly observable and it moves on events that change nothing, so
+		// letting it in reset the content timestamp on a quiet pane.
+		expect(captureContentIdentity(sample({ watermarkSeq: 42 }))).toBe(captureContentIdentity(sample()));
+	});
+
 	it("changes for every observable field a reader can see", () => {
 		const base = captureContentIdentity(sample());
 		const variants: Array<Partial<CaptureRecord>> = [
@@ -277,7 +250,6 @@ describe("capture record — content identity", () => {
 			{ cols: 80 },
 			{ rows: 24 },
 			{ historyTotal: 99 },
-			{ watermarkSeq: 42 },
 			{ activeBuffer: "alternate" },
 			{ viewportRowsOmitted: 3 },
 			{ health: { status: "overflowed", droppedBytes: 0, droppedChunks: 0, resyncGaps: 0 } },

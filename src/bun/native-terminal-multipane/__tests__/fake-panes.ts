@@ -173,7 +173,7 @@ export function createFakeRegistry(): FakeRegistry {
 			const pane = panes.get(sessionId);
 			return pane?.alive ? pane.token : null;
 		},
-		inspectPaneCaptureRecord(sessionId): CaptureRecordInspection {
+		inspectPaneCaptureRecord(sessionId, _producerDigest): CaptureRecordInspection {
 			const pane = panes.get(sessionId);
 			if (!pane) return { kind: "absent" };
 			if (pane.parserState === "absent") return { kind: "absent" };

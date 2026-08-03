@@ -88,13 +88,16 @@ export function parserStateFile(id: string): string {
 }
 
 /**
- * Compact plain-text capture projection — bounded, atomic. Sibling of
- * the per-cell snapshot, not a replacement for it: reconnect still wants cells,
- * a capture only wants rows.
+ * Compact plain-text capture artifact, one path per PRODUCER. Scoping the path is
+ * what makes a stale producer physically unable to publish over its successor:
+ * there is no shared name to race for, so no ownership check to get wrong.
  */
-export function captureRecordFile(id: string): string {
-	return join(sessionDir(id), "capture.json");
+export function captureRecordFile(id: string, producerDigest: string): string {
+	return join(sessionDir(id), `capture.${producerDigest}.json`);
 }
+
+/** Matches the whole capture family of a session, for cleanup. */
+export const CAPTURE_RECORD_PATTERN = /^capture\.[0-9a-f]{16}\.json(?:\.tmp)?$/;
 
 /** Ordered ground-truth stream tap (seq 1228) — proof runs only, env-gated. */
 export function streamTapFile(id: string): string {

@@ -48,7 +48,6 @@ import {
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 	NATIVE_SESSION_SCHEMA_VERSION,
-	readRecord,
 	removeSessionState,
 	writeRecordAtomic,
 	writeToken,
@@ -293,19 +292,13 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 		if (!producerIdentity) throw new ProducerNotReadyError(sessionId);
 		const record = captureRecordOf(sessionId, producerIdentity, projection);
 		const identity = captureContentIdentity(record);
-		const updatedAt = published?.identity === identity ? published.updatedAt : record.updatedAt;
-		// Only THIS host may publish: a superseded producer's delayed rename must not
-		// overwrite its successor's rows.
-		writeCaptureRecordAtomic({ ...record, updatedAt }, () => stillOwnsSession());
+		const updatedAt = published !== null && published.identity === identity ? published.updatedAt : record.updatedAt;
+		// The artifact path is scoped to this producer, so publishing cannot collide
+		// with a successor and needs no ownership check to get wrong.
+		writeCaptureRecordAtomic({ ...record, updatedAt });
 		published = { identity, updatedAt };
 	}
 
-	/** True while the discoverable record still names this host as the owner. */
-	function stillOwnsSession(): boolean {
-		const current = readRecord(sessionId);
-		if (!current) return true; // nothing has superseded us yet
-		return current.host.pid === process.pid && current.host.startSignature === hostStartSignature;
-	}
 
 	const advertisedSurfaces = (): NativeSessionCaptureSurface[] =>
 		plan.surfaces.filter(

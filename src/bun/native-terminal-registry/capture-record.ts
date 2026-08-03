@@ -4,7 +4,8 @@
  * producer-scoped temp name, and renamed only by the producer that still owns it.
  */
 
-import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, fstatSync, mkdirSync, openSync, readSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { captureRecordFile, sessionDir } from "./paths";
 
 export const CAPTURE_RECORD_SCHEMA = "dev3-native-capture-record" as const;
@@ -18,6 +19,29 @@ export const CAPTURE_RECORD_VERSION = 1 as const;
 export const CAPTURE_RECORD_MAX_BYTES = 256 * 1024;
 
 export type CaptureProducerHealth = "live" | "overflowed" | "failed";
+
+/** Bounds on the variable strings, so the envelope cannot grow without limit. */
+export const CAPTURE_SIGNATURE_MAX = 128;
+export const CAPTURE_ERROR_MAX = 512;
+/** A pane cannot legitimately be wider or taller than this, nor hold more rows. */
+export const CAPTURE_GEOMETRY_MAX = 10_000;
+export const CAPTURE_ROWS_MAX = 4_000;
+
+/**
+ * Opaque, bounded identity of ONE producer, used as the artifact's path segment.
+ * Scoping the path is what removes the publish race: a producer can only ever
+ * address its own object, so there is nothing to check before renaming.
+ */
+export function captureProducerDigest(producer: CaptureProducer): string {
+	return createHash("sha256")
+		.update(
+			[producer.hostPid, producer.hostStartSignature, producer.shellPid, producer.shellStartSignature].join(
+				"\u0000",
+			),
+		)
+		.digest("hex")
+		.slice(0, 16);
+}
 
 /**
  * Who wrote these rows. The same evidence ownership classification uses, so a
@@ -77,49 +101,50 @@ export function serializeCaptureRecord(record: CaptureRecord): string {
 	return `${JSON.stringify(record)}\n`;
 }
 
-const encoder = new TextEncoder();
-
-function utf8Bytes(value: string): number {
-	return encoder.encode(value).length;
-}
 
 /**
- * Fit the rows to the byte budget in ONE pass over each list, newest first, so a
- * huge screen cannot make bounding quadratic. Every cut lands on a whole physical
- * row: no row and no code point is ever split. The viewport is trimmed only after
- * all history is gone, and then from its TOP rows so the newest output survives.
+ * Admit rows newest-first against the EXACT serialized cost, in one pass per list.
+ * JSON escapes quotes, backslashes and control characters — a row of 200 quotes is
+ * 200 raw bytes and 402 serialized — so budgeting raw bytes let the producer write
+ * a record its own reader then rejected as oversized. Every cut lands on a whole
+ * row, and a row-count ceiling bounds the work even when rows cost nothing.
  */
-function fitRows(
+function fitRowsSerialized(
 	viewport: readonly string[],
 	history: readonly string[],
 	budget: number,
 ): { viewport: string[]; history: string[]; viewportRowsOmitted: number } {
-	const keptViewport: string[] = [];
-	let used = 0;
-	for (let i = viewport.length - 1; i >= 0; i--) {
-		const cost = utf8Bytes(viewport[i]!) + 1;
-		if (used + cost > budget) break;
-		used += cost;
-		keptViewport.unshift(viewport[i]!);
-	}
-	const keptHistory: string[] = [];
-	for (let i = history.length - 1; i >= 0; i--) {
-		const cost = utf8Bytes(history[i]!) + 1;
-		if (used + cost > budget) break;
-		used += cost;
-		keptHistory.unshift(history[i]!);
-	}
+	const cost = (row: string): number => Buffer.byteLength(JSON.stringify(row), "utf8") + 1; // + comma
+	const admit = (rows: readonly string[], remaining: number, limit: number): { kept: string[]; used: number } => {
+		const kept: string[] = [];
+		let used = 0;
+		for (let i = rows.length - 1; i >= 0 && kept.length < limit; i--) {
+			const rowCost = cost(rows[i]!);
+			if (used + rowCost > remaining) break;
+			used += rowCost;
+			kept.push(rows[i]!);
+		}
+		kept.reverse(); // built newest-first; unshifting per row would be quadratic
+		return { kept, used };
+	};
+
+	// The viewport is the last thing cut, so it claims the budget first.
+	const keptViewport = admit(viewport, budget, CAPTURE_ROWS_MAX);
+	const keptHistory = admit(history, budget - keptViewport.used, CAPTURE_ROWS_MAX);
 	return {
-		viewport: keptViewport,
-		history: keptHistory,
-		viewportRowsOmitted: viewport.length - keptViewport.length,
+		viewport: keptViewport.kept,
+		history: keptHistory.kept,
+		viewportRowsOmitted: viewport.length - keptViewport.kept.length,
 	};
 }
 
+function boundedString(value: string, max: number): string {
+	return value.length <= max ? value : value.slice(0, max);
+}
+
 /**
- * Build the record already inside its budget. Bounding happens on the ROWS, never
- * by serialising a multi-megabyte candidate and trimming it afterwards, so an
- * absurd geometry or one enormous row costs a single pass.
+ * Build the record already inside its budget, measured on the REAL serialized
+ * envelope rather than a reserved guess, with every variable string bounded.
  */
 export function captureRecordOf(
 	sessionId: string,
@@ -140,38 +165,51 @@ export function captureRecordOf(
 	},
 	updatedAt: string = new Date().toISOString(),
 ): CaptureRecord {
-	// The envelope's own JSON costs a few hundred bytes; reserve generously rather
-	// than measure it, so the result is bounded without a second serialise.
-	const budget = CAPTURE_RECORD_MAX_BYTES - 4096;
-	const fitted = fitRows(projection.viewport, projection.history, budget);
-	return {
+	const envelope: CaptureRecord = {
 		schema: CAPTURE_RECORD_SCHEMA,
 		version: CAPTURE_RECORD_VERSION,
 		sessionId,
-		producer,
+		producer: {
+			hostPid: producer.hostPid,
+			hostStartSignature: boundedString(producer.hostStartSignature, CAPTURE_SIGNATURE_MAX),
+			shellPid: producer.shellPid,
+			shellStartSignature: boundedString(producer.shellStartSignature, CAPTURE_SIGNATURE_MAX),
+		},
 		updatedAt,
 		watermarkSeq: projection.watermarkSeq,
 		activeBuffer: projection.activeBuffer,
 		cols: projection.cols,
 		rows: projection.rows,
-		viewport: fitted.viewport,
-		history: fitted.history,
+		viewport: [],
+		history: [],
 		historyTotal: projection.historyTotal,
-		viewportRowsOmitted: fitted.viewportRowsOmitted,
+		viewportRowsOmitted: 0,
 		health: {
 			status: projection.status,
-			...(projection.error ? { error: projection.error } : {}),
+			...(projection.error ? { error: boundedString(projection.error, CAPTURE_ERROR_MAX) } : {}),
 			droppedBytes: projection.droppedBytes,
 			droppedChunks: projection.droppedChunks,
 			resyncGaps: projection.resyncGaps,
 		},
 	};
+	const budget = CAPTURE_RECORD_MAX_BYTES - Buffer.byteLength(serializeCaptureRecord(envelope), "utf8");
+	const fitted = fitRowsSerialized(projection.viewport, projection.history, budget);
+	return {
+		...envelope,
+		viewport: fitted.viewport,
+		history: fitted.history,
+		// The producer HOLDS this much history; the record carries what fitted.
+		historyTotal: Math.max(projection.historyTotal, fitted.history.length),
+		viewportRowsOmitted: fitted.viewportRowsOmitted,
+	};
 }
 
 /**
- * Everything a reader can OBSERVE in a record, except the timestamp and the
- * producer. Two records with the same identity say the same thing about the pane,
- * so a forced re-write of one must not claim the content just changed.
+ * Everything a reader can OBSERVE, except the timestamp and the producer. Two
+ * records with the same identity say the same thing about the pane, so a forced
+ * durable re-write of one must not claim the content just changed. Deliberately
+ * EXCLUDES the transport watermark: it advances on events that change no row and is
+ * not publicly observable, so letting it in reset the content timestamp.
  */
 export function captureContentIdentity(record: CaptureRecord): string {
 	return [
@@ -180,7 +218,6 @@ export function captureContentIdentity(record: CaptureRecord): string {
 		record.rows,
 		record.historyTotal,
 		record.viewportRowsOmitted,
-		record.watermarkSeq,
 		record.health.status,
 		record.health.error ?? "",
 		record.health.droppedBytes,
@@ -283,63 +320,70 @@ export function inspectCaptureRecordText(text: string, sessionId: string): Captu
 }
 
 /**
- * Read with a size gate: an oversized file is rejected by its `stat`, never
- * loaded, so a runaway or hostile producer cannot make a reader allocate it.
+ * Read through ONE file descriptor: fstat the open object, reject on its size, then
+ * read from that same descriptor into a buffer capped at the ceiling. Stat-by-path
+ * followed by read-by-path let an atomic publish swap the inode between the two, so
+ * the object that passed the ceiling was not the object allocated — which made the
+ * bound decorative. The post-read length check covers a file that grew mid-read.
  */
-export function inspectCaptureRecord(sessionId: string): CaptureRecordInspection {
-	const file = captureRecordFile(sessionId);
-	let size: number;
+export function inspectCaptureRecordAt(file: string, sessionId: string): CaptureRecordInspection {
+	let fd: number;
 	try {
-		size = statSync(file).size;
+		fd = openSync(file, "r");
 	} catch {
 		return { kind: "absent" };
 	}
-	if (size > CAPTURE_RECORD_MAX_BYTES) {
-		return { kind: "rejected", problem: `the file is ${size} bytes, over the ${CAPTURE_RECORD_MAX_BYTES} ceiling` };
-	}
 	try {
-		return inspectCaptureRecordText(readFileSync(file, "utf8"), sessionId);
+		const size = fstatSync(fd).size;
+		if (size > CAPTURE_RECORD_MAX_BYTES) {
+			return { kind: "rejected", problem: `the file is ${size} bytes, over the ${CAPTURE_RECORD_MAX_BYTES} ceiling` };
+		}
+		const buffer = Buffer.allocUnsafe(Math.min(size, CAPTURE_RECORD_MAX_BYTES) + 1);
+		const read = readSync(fd, buffer, 0, buffer.length, 0);
+		if (read > CAPTURE_RECORD_MAX_BYTES) {
+			return { kind: "rejected", problem: `the file grew past the ${CAPTURE_RECORD_MAX_BYTES} ceiling while being read` };
+		}
+		return inspectCaptureRecordText(buffer.toString("utf8", 0, read), sessionId);
 	} catch (err) {
 		return { kind: "rejected", problem: err instanceof Error ? err.message : String(err) };
+	} finally {
+		try {
+			closeSync(fd);
+		} catch {
+			// already closed
+		}
 	}
 }
 
-export function readCaptureRecord(sessionId: string): CaptureRecord | null {
-	const inspection = inspectCaptureRecord(sessionId);
+export function inspectCaptureRecord(sessionId: string, producerDigest: string): CaptureRecordInspection {
+	return inspectCaptureRecordAt(captureRecordFile(sessionId, producerDigest), sessionId);
+}
+
+export function readCaptureRecord(sessionId: string, producerDigest: string): CaptureRecord | null {
+	const inspection = inspectCaptureRecord(sessionId, producerDigest);
 	return inspection.kind === "present" ? inspection.record : null;
 }
 
 /**
- * Publish atomically, under a producer-scoped temp name matching the registry's
- * cleanup convention, and only while this producer still owns the session. The
- * ownership re-check immediately before the rename is what stops a stale
- * producer's delayed write from overwriting its successor's rows.
+ * Publish atomically to a path only THIS producer can address. There is no
+ * ownership check before the rename, because there is nothing to race for: a stale
+ * producer's delayed write lands on its own dead artifact, never on its successor's.
+ * The temp file is removed on every exit, including a failed or partial write.
  */
-export function writeCaptureRecordAtomic(
-	record: CaptureRecord,
-	stillOwned: () => boolean = () => true,
-): void {
-	const target = captureRecordFile(record.sessionId);
-	const tmp = `${target}.${record.producer.hostPid}.tmp`;
+export function writeCaptureRecordAtomic(record: CaptureRecord): void {
+	const digest = captureProducerDigest(record.producer);
+	const target = captureRecordFile(record.sessionId, digest);
+	const tmp = `${target}.tmp`;
 	mkdirSync(sessionDir(record.sessionId), { recursive: true });
-	writeFileSync(tmp, serializeCaptureRecord(record), { mode: 0o600 });
 	try {
-		if (!stillOwned()) throw new StaleProducerError(record.sessionId);
+		writeFileSync(tmp, serializeCaptureRecord(record), { mode: 0o600 });
 		renameSync(tmp, target);
-	} catch (err) {
+	} finally {
 		try {
 			unlinkSync(tmp);
 		} catch {
-			// nothing to clean up
+			// renamed away on success, or never created on an early failure
 		}
-		throw err;
 	}
 }
 
-/** The producer lost ownership before it could publish; its rows are dropped. */
-export class StaleProducerError extends Error {
-	constructor(readonly sessionId: string) {
-		super(`capture record for ${sessionId} was not published: this producer no longer owns the session`);
-		this.name = "StaleProducerError";
-	}
-}

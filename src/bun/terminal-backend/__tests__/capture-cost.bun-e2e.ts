@@ -25,9 +25,9 @@ import { join } from "node:path";
 import { defaultCoordinatorDeps, type CoordinatorDeps } from "../../native-terminal-multipane/coordinator";
 import { NATIVE_MULTIPANE_DIR_ENV } from "../../native-terminal-multipane/paths";
 import type { NativeCaptureMode } from "../../native-terminal-registry/capture-mode";
-import { readCaptureRecord } from "../../native-terminal-registry/capture-record";
+import { captureProducerDigest, readCaptureRecord } from "../../native-terminal-registry/capture-record";
 import { readParserState } from "../../native-terminal-registry/parser-state";
-import { captureRecordFile, parserStateFile } from "../../native-terminal-registry/paths";
+import { parserStateFile } from "../../native-terminal-registry/paths";
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { spawnSync } from "../../spawn";
 import { isCapturedPane } from "../capture";
@@ -219,10 +219,9 @@ async function runOnce(round: number, panes: number, load: Load, mode: NativeCap
 		}
 
 		const hostPids = paneSet.map((pane) => pane.hostPid).filter((pid) => pid > 0);
-		const artifacts = paneSet.flatMap((pane) => [
-			captureRecordFile(pane.sessionId),
-			parserStateFile(pane.sessionId),
-		]);
+		// The compact artifact is producer-scoped, so the harness watches the session
+		// directory's whole capture family rather than one fixed name.
+		const artifacts = paneSet.map((pane) => parserStateFile(pane.sessionId));
 
 		// One echo per tick per pane, every write awaited and counted. A `while true`
 		// in the shell would peg a core and swamp the delta being measured.
@@ -293,7 +292,12 @@ async function runOnce(round: number, panes: number, load: Load, mode: NativeCap
 		// comparison is between two different observations.
 		if (mode === "semantic-and-compact") {
 			for (const pane of paneSet) {
-				const compact = readCaptureRecord(pane.sessionId);
+				const compact = readCaptureRecord(pane.sessionId, captureProducerDigest({
+					hostPid: pane.hostPid,
+					hostStartSignature: pane.hostStartSignature,
+					shellPid: pane.shellPid,
+					shellStartSignature: pane.shellStartSignature,
+				}));
 				const snapshot = readParserState(pane.sessionId);
 				if (!compact || !snapshot?.state) {
 					throw new RunAborted(`dual mode published only one artifact for ${pane.paneId}`);

@@ -24,8 +24,10 @@ import { NativeSessionClient } from "../native-terminal-registry/client";
 import { classifyOwnership, type OwnershipVerdict } from "../native-terminal-registry/ownership";
 import type { ClientRole } from "../native-terminal-registry/writer-ownership";
 import {
+	captureProducerDigest,
 	inspectCaptureRecord,
 	type CaptureRecord,
+	type CaptureProducer,
 	type CaptureRecordInspection,
 } from "../native-terminal-registry/capture-record";
 import {
@@ -143,6 +145,16 @@ export type PaneCaptureSource =
 	| { kind: "disabled"; reason: string }
 	| { kind: "unreadable"; reason: string };
 
+/** The producer identity a pane's record currently names. */
+function producerOf(record: NativeSessionRecord): CaptureProducer {
+	return {
+		hostPid: record.host.pid,
+		hostStartSignature: record.host.startSignature,
+		shellPid: record.shell.pid,
+		shellStartSignature: record.shell.startSignature,
+	};
+}
+
 function inspectParserStateFile(sessionId: string): ParserStateInspection {
 	if (!existsSync(parserStateFile(sessionId))) return { kind: "absent" };
 	const snapshot = readParserState(sessionId);
@@ -172,7 +184,7 @@ export interface CoordinatorDeps {
 	 * How the compact capture artifact reads, for a host advertising that surface.
 	 * Optional so an in-memory double need not model the file.
 	 */
-	inspectPaneCaptureRecord?(sessionId: string): CaptureRecordInspection;
+	inspectPaneCaptureRecord?(sessionId: string, producerDigest: string): CaptureRecordInspection;
 	classifyPane(record: NativeSessionRecord, token: string | null): Promise<OwnershipVerdict>;
 	connectPane(record: NativeSessionRecord, token: string): Promise<PaneConnection>;
 }
@@ -582,7 +594,9 @@ export class NativeMultipaneCoordinator {
 		// Prefer the compact surface; fall back to the per-cell one.
 		if (surfaces.includes(NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY)) {
 			const inspect = deps.inspectPaneCaptureRecord ?? inspectCaptureRecord;
-			const inspection = inspect(sessionId);
+			// The reader derives the CURRENT producer's path from the session record, so a
+			// dead producer's artifact is not merely rejected — it is never even addressed.
+			const inspection = inspect(sessionId, captureProducerDigest(producerOf(record)));
 			if (inspection.kind === "present") return { kind: "capture-record", record: inspection.record };
 			if (inspection.kind === "rejected") {
 				return { kind: "unreadable", reason: `the pane's capture record could not be believed: ${inspection.problem}` };

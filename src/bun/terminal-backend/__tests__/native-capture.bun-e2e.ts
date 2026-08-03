@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultCoordinatorDeps, type CoordinatorDeps } from "../../native-terminal-multipane/coordinator";
 import { NATIVE_MULTIPANE_DIR_ENV } from "../../native-terminal-multipane/paths";
+import { captureProducerDigest } from "../../native-terminal-registry/capture-record";
 import { captureRecordFile, parserStateFile } from "../../native-terminal-registry/paths";
 import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
@@ -176,7 +177,19 @@ async function main(): Promise<void> {
 			readRecord(paneSessionId)?.capabilities?.capture?.includes(NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY) === true,
 			"the host advertises the plain-text capture surface, not the per-cell one",
 		);
-		const artifactBytes = statSync(captureRecordFile(paneSessionId)).size;
+		const paneRecordNow = readRecord(paneSessionId);
+		if (!paneRecordNow) throw new Error("pane record vanished");
+		const artifactBytes = statSync(
+			captureRecordFile(
+				paneSessionId,
+				captureProducerDigest({
+					hostPid: paneRecordNow.host.pid,
+					hostStartSignature: paneRecordNow.host.startSignature,
+					shellPid: paneRecordNow.shell.pid,
+					shellStartSignature: paneRecordNow.shell.startSignature,
+				}),
+			),
+		).size;
 		// The per-cell snapshot is 2.5-4.8 MiB at this geometry; this is the whole point.
 		check(artifactBytes < 64 * 1024, `the published artifact is small (${artifactBytes} bytes)`);
 		check(
