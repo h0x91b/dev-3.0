@@ -64,6 +64,10 @@ const terminal = {
 	// Native terminal: one viewer types, the rest watch until they take over
 	"nativeViewer.readOnly": "Solo lectura — otro cliente está escribiendo",
 	"nativeViewer.refused": "Solo lectura — toma el control para escribir aquí",
+	"nativeViewer.hostTooOld": "No se puede tomar el control — host antiguo",
+	"nativeViewer.hostTooOldHint": "El host de terminal de este panel es anterior a la transferencia de control. Reinicia la terminal o espera a que la otra ventana lo libere.",
+	"nativeViewer.transferFailed": "No se pudo tomar el control — la terminal no respondió",
+	"nativeViewer.transferFailedHint": "El host de terminal no confirmó la transferencia. Comprueba que la terminal sigue viva e inténtalo de nuevo.",
 	"nativeViewer.takeControl": "Tomar el control",
 	"nativeViewer.takeControlHint": "Escribirás tú; el otro cliente pasará a solo lectura",
 

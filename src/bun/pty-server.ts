@@ -128,8 +128,16 @@ interface PtySession {
 	proc: ReturnType<typeof Bun.spawn> | null;
 	/** The app's single writer binding to a native host, when `backend` is native. */
 	native: NativeTaskTerminal | null;
+	/**
+	 * The key this session is registered under. Auxiliary panes use `taskId~paneId`, so
+	 * anything that unregisters a session MUST use this rather than the bare taskId —
+	 * deleting `taskId` for pane 2 would drop pane 1 instead.
+	 */
+	registryKey: string;
 	/** Guards against two concurrent reattach attempts for one native session. */
 	nativeAttaching: boolean;
+	/** The host binding is being replaced; no viewer may be told it is the writer. */
+	nativeRecovering: boolean;
 	/** Bounded mirror of broadcast output, so a late/reconnecting viewer sees the screen. */
 	nativeStream: NativeBridgeJournal | null;
 	/** Which viewer may type into the shell. Native only — tmux arbitrates its own clients. */
@@ -217,7 +225,9 @@ export function createSession(
 		backend: "tmux",
 		proc: null,
 		native: null,
+		registryKey: taskId,
 		nativeAttaching: false,
+		nativeRecovering: false,
 		nativeStream: null,
 		nativeLease: null,
 		clients: new Set(),
@@ -310,7 +320,9 @@ export async function createNativeTaskSession(
 		backend: "native",
 		proc: null,
 		native: null,
+		registryKey: taskId,
 		nativeAttaching: false,
+		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
 		nativeLease: new NativeClientLease(),
 		clients: new Set(),
@@ -350,6 +362,7 @@ export async function createNativeTaskSession(
 				onOutput: (bytes) => ingestPtyOutput(session, bytes),
 				onClosed: () => markNativeClosed(session),
 				onRoleChange: () => broadcastNativeRoles(session),
+				onGeometry: (size) => applyNativeGeometry(session, size),
 			},
 			firstPane.paneId,
 		);
@@ -384,7 +397,9 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		backend: "native",
 		proc: null,
 		native: null,
+		registryKey: taskId,
 		nativeAttaching: false,
+		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
 		nativeLease: new NativeClientLease(),
 		clients: new Set(),
@@ -419,6 +434,7 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 				onOutput: (bytes) => ingestPtyOutput(session, bytes),
 				onClosed: () => markNativeClosed(session),
 				onRoleChange: () => broadcastNativeRoles(session),
+				onGeometry: (size) => applyNativeGeometry(session, size),
 			},
 			firstPane.paneId,
 		);
@@ -471,7 +487,9 @@ export async function ensureNativePanePtySession(
 		backend: "native",
 		proc: null,
 		native: null,
+		registryKey: key,
 		nativeAttaching: false,
+		nativeRecovering: false,
 		nativeStream: new NativeBridgeJournal(),
 		nativeLease: new NativeClientLease(),
 		clients: new Set(),
@@ -494,6 +512,7 @@ export async function ensureNativePanePtySession(
 			{
 				onOutput: (bytes) => ingestPtyOutput(session, bytes),
 				onRoleChange: () => broadcastNativeRoles(session),
+				onGeometry: (size) => applyNativeGeometry(session, size),
 				onClosed: () => {
 					session.native = null;
 					session.appliedCols = undefined;
@@ -1076,8 +1095,17 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
 	const lease = session.nativeLease;
 	if (!lease) return "observer";
 	if (lease.roleOf(ws) !== "writer") return "observer";
+	// Recovery is never optimistic: the binding is being replaced, so no viewer may be
+	// told it can type until authoritative state is back.
+	if (session.nativeRecovering) return "observer";
 	const hostRole = nativeHostRole(session);
-	return hostRole === null || hostRole === "writer" ? "writer" : "observer";
+	if (hostRole === "writer") return "writer";
+	// `null` means two opposite things and must not be collapsed. While a bind is in
+	// FLIGHT it means "not known yet", and optimism avoids flashing the strip on every
+	// launch (decision 191). Once no bind is pending it means "no binding at all" — a
+	// detached or dead host — and claiming `writer` there promises a shell that is gone.
+	if (hostRole === null) return session.nativeAttaching ? "writer" : "observer";
+	return "observer";
 }
 
 /**
@@ -1086,12 +1114,32 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
  * mangles every line that reaches the right edge.
  */
 function nativePtyGeometry(session: PtySession): { cols?: number; rows?: number; writerAttached?: boolean } {
-	const { appliedCols, appliedRows } = session;
 	const attached = session.native?.hostWriterAttached?.();
+	// Whose number is the truth depends on who owns the lease. We own it → our applied
+	// size IS the PTY's, and the host's cache may lag our newest resize because the host
+	// skips the sender when it broadcasts. We do NOT own it → the resize happened in
+	// another process, so only the host's number is real; `appliedCols` here is just
+	// whatever our own local viewer asked for and would reflow the stream at our width.
+	const host = session.native?.hostPtyGeometry?.();
+	const ownsLease = nativeHostRole(session) === "writer";
+	const cols = (ownsLease ? session.appliedCols ?? host?.cols : host?.cols ?? session.appliedCols);
+	const rows = (ownsLease ? session.appliedRows ?? host?.rows : host?.rows ?? session.appliedRows);
 	return {
-		...(appliedCols && appliedRows ? { cols: appliedCols, rows: appliedRows } : {}),
+		...(cols && rows ? { cols, rows } : {}),
 		...(typeof attached === "boolean" ? { writerAttached: attached } : {}),
 	};
+}
+
+/**
+ * The writer — in this process or another one — published a new canonical grid.
+ * Every local viewer has to be told: an observer renders AT that grid, and a stale
+ * one wraps every line the writer's bytes push past its own right edge.
+ */
+function applyNativeGeometry(session: PtySession, size: { cols: number; rows: number }): void {
+	if (session.appliedCols === size.cols && session.appliedRows === size.rows) return;
+	session.appliedCols = size.cols;
+	session.appliedRows = size.rows;
+	broadcastNativeRoles(session);
 }
 
 /** Re-issue every viewer's role after the host's verdict becomes known. */
@@ -1142,24 +1190,83 @@ function attachNativeClient(session: PtySession, ws: any, since: number | null):
 }
 
 /** Move the writer lease between viewers and tell both sides, in one step. */
-function handleNativeOwnership(session: PtySession, ws: any, action: "claim" | "release"): void {
+function handleNativeOwnership(session: PtySession, ws: any, action: "claim" | "release", hostSettled = false): void {
 	const lease = session.nativeLease;
 	if (!lease) return;
 	// Taking control inside this app is worthless while the host's lease belongs to
-	// another dev3 process, so ask for that one first. A refusal is reported as a
-	// refused keystroke rather than a lease move — the process currently typing
-	// keeps it, and this viewer learns why it is still read-only.
-	if (action === "claim" && session.native?.claimHostWriter && nativeHostRole(session) === "observer") {
-		void session.native.claimHostWriter().then((role) => {
-			if (role !== "writer") {
-				sendToClient(ws, roleMessage("observer", true));
-				log.info("Take control refused; another app process holds the host lease", {
+	// another dev3 process, so move that one first. `Take control` is an explicit
+	// user gesture, so it TAKES OVER rather than claiming a vacant slot: the host
+	// swaps the lease atomically and tells the displaced process it is now an
+	// observer. Ordinary attachment still only claims, and so never steals.
+	// EVERY explicit gesture asks the host — even when our own cache says we are already
+	// the writer. That cache can be stale (another process may have taken the lease and
+	// our demotion frame may still be in flight), and skipping the request would make an
+	// explicit click silently do nothing. The host's takeover is idempotent for the true
+	// current writer, so asking always is free.
+	if (action === "claim" && !hostSettled && session.native?.takeoverHostWriter) {
+		const paneKey = nativePaneKey(session);
+		if (nativeTakeoverInFlight.has(paneKey)) {
+			log.debug("A host takeover is already in flight for this pane; not starting another", {
+				taskId: shortId(session.taskId),
+			});
+			return;
+		}
+		nativeTakeoverInFlight.add(paneKey);
+		// The key is released only AFTER the continuation finishes. Releasing it first (a
+		// `.finally` chained BEFORE `.then`) would let the continuation re-enter and the
+		// bound would be no bound at all.
+		void session.native.takeoverHostWriter().then(async (result) => {
+			// Branch on the DISCRIMINANT, never on a role: a cached role can say `writer`
+			// while the host has already moved the lease, which read as success and skipped
+			// compensation altogether.
+			if (!result.ok) {
+				log.warn("Take control did not transfer the host lease", {
 					taskId: shortId(session.taskId),
+					reason: result.refusal,
 				});
+				// A TIMEOUT is ambiguous in a way a refusal is not: the host may still commit
+				// the takeover after we gave up. Compensation is AWAITED, so the pane's
+				// in-flight guard is still held while it releases, detaches and rebinds —
+				// otherwise a second gesture could overlap the recovery. The refusal is
+				// published by compensation's final verdict, not before it.
+				if (result.timedOut) {
+					await compensateHostOwnership(session, "request-timed-out", ws, result.refusal);
+					return;
+				}
+				if (session.clients.has(ws)) {
+					sendToClient(ws, roleMessage("observer", true, { refusedReason: result.refusal }));
+				}
 				return;
 			}
-			handleNativeOwnership(session, ws, "claim");
-		});
+			// The host round trip is async, so the viewer that asked may have closed its
+			// tab meanwhile. We now hold the host lease on its behalf: giving it to a
+			// detached socket would leave every surviving viewer a local observer with the
+			// lease stranded in this process, and nobody able to type anywhere.
+			// `hostSettled` — the host lease is already ours, so this pass only moves the
+			// LOCAL lease. Without it the continuation re-enters this same branch and asks
+			// the host again forever, never reaching the local move.
+			if (session.clients.has(ws)) {
+				handleNativeOwnership(session, ws, "claim", true);
+				// A vacant-slot takeover changes `writerAttached` for everyone without changing
+				// anyone's role, so a role-change-driven publish reaches nobody and other local
+				// viewers keep showing the slot as free. Publish the full snapshot to ALL of them
+				// after every settlement, not only to the requester.
+				broadcastNativeRoles(session);
+				return;
+			}
+			const survivor = session.clients.values().next().value;
+			if (survivor) {
+				log.info("Take control requester left; handing the lease to a surviving viewer", {
+					taskId: shortId(session.taskId),
+				});
+				promoteLocalWriter(session, survivor);
+				return;
+			}
+			// Nobody left to receive it: hand it back rather than hold a lease this process
+			// cannot use, which locks every other dev3 window out. Awaited, so the pane's
+			// in-flight guard covers release, detach and rebind and no second gesture overlaps.
+			await compensateHostOwnership(session, "requester-gone", null);
+		}).finally(() => nativeTakeoverInFlight.delete(paneKey));
 		return;
 	}
 	const change = action === "claim" ? lease.claim(ws) : lease.release(ws);
@@ -1178,6 +1285,151 @@ function handleNativeOwnership(session: PtySession, ws: any, action: "claim" | "
 	log.info("Native writer lease moved", { taskId: shortId(session.taskId), action, viewers: lease.size });
 }
 
+/**
+ * Give the local lease to `client` and publish the result. Always publishes the
+ * EFFECTIVE role: announcing a raw `writer` while this process is only a host observer
+ * would tell a viewer it can type when the host will drop everything it sends.
+ */
+function promoteLocalWriter(session: PtySession, client: any): void {
+	session.nativeLease?.claim(client);
+	// One FULL snapshot to every viewer: a per-viewer reply would omit `writerAttached` and
+	// geometry from the others, leaving them stale about a slot that is no longer free.
+	broadcastNativeRoles(session);
+	applyClientSizes(session);
+}
+
+/**
+ * Compensate for an ownership request we can no longer complete honestly.
+ *
+ * Two entries, one exit: the requester vanished mid-round-trip, or its request timed out
+ * while the host may still commit it. Either way this process may hold — or be about to
+ * hold — a lease with no viewer able to use it. Holding it locks every other dev3 window
+ * out of the pane; guessing is worse, because a late commit would arrive unobserved.
+ *
+ * The ambiguous connection is closed and immediately REBOUND, so authoritative state is
+ * obtained by construction rather than inferred. `retainedContext` is the local viewer
+ * that initiated the gesture: if the rebind lands as writer, that success is published to
+ * THAT viewer, never silently handed to whoever happens to be first in the lease.
+ */
+async function compensateHostOwnership(
+	session: PtySession,
+	reason: "requester-gone" | "request-timed-out",
+	retainedContext: any | null,
+	/** Told to the retained viewer once recovery settles — never before its verdict. */
+	pendingRefusal?: "host-too-old" | "transfer-failed",
+): Promise<void> {
+	const paneSessionId = session.native?.sessionId ?? null;
+	const paneId = session.native?.paneId ?? "pane-1";
+	log.info("Compensating an ambiguous host ownership request", {
+		taskId: shortId(session.taskId),
+		reason,
+		hasRetainedContext: retainedContext !== null,
+	});
+
+	// DEMOTE FIRST. From here the binding is about to be replaced, so nobody may hold a
+	// writer role: input accepted against a doomed connection would vanish silently. A
+	// viewer arriving mid-recovery gets the same honest observer snapshot, because
+	// `nativeRecovering` blocks the optimistic-writer path in effectiveNativeRole.
+	session.nativeRecovering = true;
+	session.nativeLease?.release(retainedContext ?? session.clients.values().next().value);
+	broadcastNativeRoles(session);
+
+	// A timed-out request is ambiguous whatever our cached role says, so the release is
+	// ALWAYS attempted and its outcome decides whether the socket must go.
+	const released = await session.native?.releaseHostWriter?.();
+	if (released !== false) {
+		session.nativeRecovering = false;
+		publishCompensationVerdict(session, retainedContext, pendingRefusal);
+		return;
+	}
+
+	log.warn("Host never confirmed the release; dropping the connection so the lease cannot stay stranded", {
+		taskId: shortId(session.taskId),
+	});
+	try {
+		session.native?.detach();
+	} catch { /* already gone */ }
+	session.native = null;
+
+	// NO viewers left: stop here. Rebinding would re-acquire a lease nobody is watching,
+	// which is the hidden ownership acquisition this must not perform.
+	if (!paneSessionId || session.clients.size === 0) {
+		session.nativeRecovering = false;
+		log.info("Compensation finished with no viewers; no rebind and no claim performed", {
+			taskId: shortId(session.taskId),
+		});
+		// A registered session with no binding can never be rebound by a later WS open, so
+		// drop it: the next open then rebuilds the session through the normal path.
+		if (session.clients.size === 0) {
+			// The EXACT registered key: an auxiliary pane lives under `taskId~paneId`, and
+			// deleting the bare taskId here would unregister pane 1 while leaving pane 2's
+			// dead entry in place.
+			sessions.delete(session.registryKey);
+			log.info("Dropped the bindingless session so a later viewer rebuilds it", {
+				taskId: shortId(session.taskId),
+				registryKey: session.registryKey,
+			});
+		}
+		return;
+	}
+
+	// Viewers remain, so rebind BEFORE publishing any role — otherwise a viewer would be
+	// told `writer` off a null binding, promising a shell that is not there.
+	session.nativeAttaching = true;
+	try {
+		session.native = await bindNativeTaskPane(
+			paneSessionId,
+			{
+				onOutput: (bytes) => ingestPtyOutput(session, bytes),
+				onClosed: () => markNativeClosed(session),
+				onRoleChange: () => broadcastNativeRoles(session),
+				onGeometry: (size) => applyNativeGeometry(session, size),
+			},
+			paneId,
+			// The bridge journal survived the detach, so the host's replay is a duplicate.
+			{ discardReplay: true },
+		);
+	} catch (err) {
+		log.error("Rebind after compensation failed; the pane has no binding", {
+			taskId: shortId(session.taskId),
+			error: String(err),
+		});
+	} finally {
+		session.nativeAttaching = false;
+	}
+
+	// Authoritative status, then ONE full snapshot to every viewer. A rebind may have
+	// legitimately taken a vacant slot; that success belongs to the viewer that asked for
+	// control, never to whoever the local lease happens to point at.
+	session.nativeRecovering = false;
+	const ownsAfterRebind = session.native?.hostRole?.() === "writer";
+	if (ownsAfterRebind && retainedContext && session.clients.has(retainedContext)) {
+		promoteLocalWriter(session, retainedContext);
+		return;
+	}
+	publishCompensationVerdict(session, retainedContext, pendingRefusal);
+}
+
+/**
+ * One snapshot to everyone, and the refusal only now. Publishing it before recovery ran
+ * told the viewer why it failed and then immediately cleared that with the next snapshot.
+ */
+function publishCompensationVerdict(
+	session: PtySession,
+	retainedContext: any | null,
+	pendingRefusal?: "host-too-old" | "transfer-failed",
+): void {
+	broadcastNativeRoles(session);
+	if (!pendingRefusal || !retainedContext || !session.clients.has(retainedContext)) return;
+	sendToClient(
+		retainedContext,
+		roleMessage(effectiveNativeRole(session, retainedContext), true, {
+			...nativePtyGeometry(session),
+			refusedReason: pendingRefusal,
+		}),
+	);
+}
+
 /** The native writer's last reported viewport, or null while it has not sent one. */
 function writerClientSize(session: PtySession): { cols: number; rows: number } | null {
 	const writer = session.nativeLease?.writer as { ptyCols?: number; ptyRows?: number } | null | undefined;
@@ -1185,9 +1437,37 @@ function writerClientSize(session: PtySession): { cols: number; rows: number } |
 	return { cols: writer.ptyCols, rows: writer.ptyRows };
 }
 
+/** The geometry each native pane has asked the host for and not yet heard back on. */
+const nativeResizeInFlight = new Map<string, string>();
+
+/**
+ * Panes with a host takeover already in flight.
+ *
+ * The `hostSettled` parameter stops the success continuation re-entering the request, but
+ * it is one boolean an edit can drop — and when it was dropped the loop ran at ~12k
+ * takeovers/second and buried the log under 540k lines in three minutes. This makes the
+ * bound structural: a second gesture for the same pane cannot start another round trip
+ * while one is outstanding, which also absorbs a user clicking the button repeatedly.
+ */
+const nativeTakeoverInFlight = new Set<string>();
+
+/** Identifies a pane INCARNATION, so two panes of one task never share a key. */
+function nativePaneKey(session: PtySession): string {
+	return `${session.taskId}::${session.native?.sessionId ?? "unbound"}::${session.native?.paneId ?? "pane-1"}`;
+}
+
+/** How many takeovers are outstanding — the invariant tests assert on this. */
+export function _nativeTakeoversInFlightForTests(): number {
+	return nativeTakeoverInFlight.size;
+}
+
 function applyClientSizes(session: PtySession): void {
 	const term = sessionShell(session);
 	if (!term) return;
+	// Only the process holding the HOST lease may size the shared PTY. Without this a
+	// non-owning process both fired a resize the host refuses AND recorded its own
+	// viewer's width in `appliedCols`, which every local viewer then rendered at.
+	if (session.backend === "native" && nativeHostRole(session) !== "writer") return;
 	// Native: the WRITER alone sizes the PTY. A native host has no client-size
 	// negotiation of its own, so clamping to the smallest viewer would let any
 	// remote tab (a phone in portrait, say) shrink the writer's shell out from
@@ -1221,10 +1501,44 @@ function applyClientSizes(session: PtySession): void {
 		return;
 	}
 
+	// Native: the host is the authority, and its verdict is asynchronous. Publishing the
+	// size we merely ASKED for would broadcast a refused or stale-generation resize as
+	// canonical — the exact poisoning the ack exists to prevent. tmux keeps the direct
+	// path: it has no ack and resizes synchronously.
+	if (session.backend === "native") {
+		const native = session.native;
+		if (!native?.resizeAwaited) return;
+		// The applied size is now written by the ACK callback, so the dedup guard above no
+		// longer sees an in-flight request and every repeat would fire another host round
+		// trip for a size already on its way. Track the target we are asking for.
+		const target = `${minCols}x${minRows}`;
+		// Keyed by pane INCARNATION: keying by taskId let two panes of one task collide, so
+		// an equal-size resize on the second pane was silently dropped.
+		const resizeKey = nativePaneKey(session);
+		if (nativeResizeInFlight.get(resizeKey) === target) return;
+		nativeResizeInFlight.set(resizeKey, target);
+		void native.resizeAwaited(minCols, minRows).then(
+			(applied) => {
+				if (nativeResizeInFlight.get(resizeKey) === target) nativeResizeInFlight.delete(resizeKey);
+				session.appliedCols = applied.cols;
+				session.appliedRows = applied.rows;
+				broadcastNativeRoles(session);
+			},
+			(err) => {
+				if (nativeResizeInFlight.get(resizeKey) === target) nativeResizeInFlight.delete(resizeKey);
+				// Refused or unanswered: the old canonical size stands, and viewers keep
+				// rendering at a grid the PTY actually has.
+				log.debug("Native resize was not applied; canonical geometry unchanged", {
+					taskId: shortId(session.taskId),
+					error: String(err),
+				});
+			},
+		);
+		return;
+	}
+
 	session.appliedCols = minCols;
 	session.appliedRows = minRows;
-	// The writer just changed the shape every observer has to render at.
-	if (session.backend === "native") broadcastNativeRoles(session);
 	try {
 		term.resize(minCols, minRows);
 	} catch (err) {
@@ -1786,7 +2100,15 @@ const ptyServer = Bun.serve({
 					// closing only releases its own lease.
 					const promoted = session.nativeLease?.detach(ws as any) ?? null;
 					session.clients.delete(ws as any);
-					if (promoted?.writer) sendToClient(promoted.writer, roleMessage("writer"));
+					// EFFECTIVE role, never a raw `writer`: another app process may hold the host
+					// lease, and telling this viewer it can type means it discovers otherwise
+					// only when its first keystroke is refused.
+					if (promoted?.writer) {
+						sendToClient(
+							promoted.writer,
+							roleMessage(effectiveNativeRole(session, promoted.writer), false, nativePtyGeometry(session)),
+						);
+					}
 					// A viewer left: the smallest-size constraint may have relaxed,
 					// so grow the PTY back to the smallest of the remaining clients.
 					applyClientSizes(session);

@@ -66,6 +66,14 @@ export interface NativeStreamOutputHeader {
 	seq: number;
 }
 
+/**
+ * Why an explicit `Take control` did not transfer the lease. Two honest outcomes only:
+ * the host cannot transfer at all, or it never confirmed. There is no "lost a race" — the
+ * host serializes takeovers and the last explicit one wins. Defined here because both the
+ * backend result type and the viewer wire frame carry it.
+ */
+export type WriterTakeoverRefusal = "host-too-old" | "transfer-failed";
+
 /** The client's role changed (takeover, or promotion after the writer left). */
 export interface NativeStreamRoleHeader {
 	t: "role";
@@ -73,6 +81,8 @@ export interface NativeStreamRoleHeader {
 	role: NativeStreamRole;
 	/** Set when the server refused this client's input or resize. */
 	refused?: boolean;
+	/** Why an explicit `Take control` did not transfer the lease. */
+	refusedReason?: WriterTakeoverRefusal;
 	/** The PTY's size, so an observer keeps following the writer's geometry. */
 	cols?: number;
 	rows?: number;
@@ -82,6 +92,57 @@ export interface NativeStreamRoleHeader {
 	 * else is typing" and must not be shown as the same one.
 	 */
 	writerAttached?: boolean;
+}
+
+/**
+ * What a native viewer publishes upward after every role frame: the role itself,
+ * whether this frame was a refusal, and — for a refused `Take control` — why, so
+ * the strip can distinguish "try again" from "this host cannot transfer at all".
+ */
+export interface NativeViewerStatus {
+	role: NativeStreamRole;
+	refused: boolean;
+	writerAttached?: boolean;
+	refusedReason?: NativeStreamRoleHeader["refusedReason"];
+}
+
+/**
+ * A viewer's FULL ownership snapshot. Every frame is normalized into one of these at a
+ * single boundary ({@link mergeViewerStatus}), so no consumer merges fields itself — that
+ * is how the stored and displayed values came to disagree, and how a stale refusal
+ * diagnosis outlived the condition that caused it.
+ */
+export interface ViewerSnapshot {
+	role: NativeStreamRole;
+	/** 0 = never refused. Bumped only by a refusal, so it can drive a flash. */
+	refusedAt: number;
+	refusedReason?: NativeStreamRoleHeader["refusedReason"];
+	writerAttached?: boolean;
+}
+
+/**
+ * Fold one frame into the previous snapshot.
+ *
+ * A refusal records its reason. Any NON-refused frame is an authoritative verdict about
+ * the current state and CLEARS the diagnosis — success, vacancy and a new host all arrive
+ * this way, and preserving the old reason across them is what left dead guidance on
+ * screen. `writerAttached` is the one genuinely partial field: the protocol omits it when
+ * the host has not said, so a known value survives a frame that does not mention it.
+ */
+export function mergeViewerStatus(previous: ViewerSnapshot | null, status: NativeViewerStatus): ViewerSnapshot {
+	if (!status.refused) {
+		return {
+			role: status.role,
+			refusedAt: 0,
+			writerAttached: status.writerAttached ?? previous?.writerAttached,
+		};
+	}
+	return {
+		role: status.role,
+		refusedAt: Date.now(),
+		refusedReason: status.refusedReason,
+		writerAttached: status.writerAttached ?? previous?.writerAttached,
+	};
 }
 
 export type NativeStreamServerHeader =
@@ -176,13 +237,19 @@ export function outputMessage(seq: number, payload: string): string {
 export function roleMessage(
 	role: NativeStreamRole,
 	refused = false,
-	extra?: { cols?: number; rows?: number; writerAttached?: boolean } | null,
+	extra?: {
+		cols?: number;
+		rows?: number;
+		writerAttached?: boolean;
+		refusedReason?: NativeStreamRoleHeader["refusedReason"];
+	} | null,
 ): string {
 	return encodeNativeStreamMessage({
 		t: "role",
 		v: NATIVE_STREAM_PROTOCOL_VERSION,
 		role,
 		...(refused ? { refused: true } : {}),
+		...(extra?.refusedReason ? { refusedReason: extra.refusedReason } : {}),
 		...(extra?.cols && extra.rows ? { cols: extra.cols, rows: extra.rows } : {}),
 		...(typeof extra?.writerAttached === "boolean" ? { writerAttached: extra.writerAttached } : {}),
 	});

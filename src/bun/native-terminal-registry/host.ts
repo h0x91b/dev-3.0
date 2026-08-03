@@ -30,7 +30,10 @@ import {
 	exceedsControlFrameLimit,
 	exitEvent,
 	NATIVE_SESSION_PROTOCOL_VERSION,
+	HOST_CAPABILITIES,
 	ownershipReply,
+	replayedEvent,
+	resizedReply,
 	stoppingEvent,
 	welcomeMessage,
 	type StatusReply,
@@ -427,7 +430,12 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				// LEARN the slot opened, or it stays read-only forever with nobody typing.
 				for (const survivor of writerOwnership.detach(ws)) {
 					try {
-						survivor.send(encodeControl(ownershipReply(0, writerOwnership.roleOf(survivor) ?? "observer", false)));
+						survivor.send(encodeControl(ownershipReply(
+							0,
+							writerOwnership.roleOf(survivor) ?? "observer",
+							false,
+							writerOwnership.writerGeneration(),
+						)));
 					} catch { /* that survivor died too */ }
 				}
 				// Detach boundary: make the reconstructable state current on disk.
@@ -464,9 +472,20 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				ws.data.helloDone = true;
 				ws.data.clientPid = verdict.clientPid;
 				const role = writerOwnership.attach(ws);
-				ws.send(encodeControl(welcomeMessage(verdict.id, sessionId, role)));
+				// Capabilities are announced, never inferred: a client must not have to time
+				// out an unknown action to discover whether this host understands it.
+				ws.send(encodeControl(welcomeMessage(verdict.id, sessionId, role, {
+					capabilities: HOST_CAPABILITIES,
+					writerGeneration: writerOwnership.writerGeneration(),
+				})));
 				// Same synchronous turn: replay ends before later PTY callbacks fan out live bytes.
 				for (const bytes of journal.replay()) ws.send(bytes);
+				// Same synchronous turn as the replay it terminates, so no live byte can slip
+				// in front of it.
+				ws.send(encodeControl(replayedEvent()));
+				// A first client becoming writer IS a real transition, so the survivors of an
+				// earlier vacancy must learn the slot is taken again.
+				if (role === "writer") broadcastOwnership(ws);
 				return;
 			}
 			const dupHello = decodeHello(message);
@@ -478,7 +497,14 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			if (!msg) return; // drop unparseable / forward-additive control quietly
 			if (msg.type === "resize") {
 				if (!writerOwnership.canMutatePty(ws)) {
-					ws.send(encodeControl(errorMessage("conflict", undefined, "observer cannot resize the PTY")));
+					ws.send(encodeControl(errorMessage("conflict", msg.id, "observer cannot resize the PTY")));
+					return;
+				}
+				// A writer whose belief about the lease is stale must not resize the PTY it
+				// no longer owns. It tells us which generation it thinks is current; if the
+				// lease has moved since, this resize is refused rather than applied.
+				if (msg.expectedGeneration !== undefined && msg.expectedGeneration !== writerOwnership.writerGeneration()) {
+					ws.send(encodeControl(errorMessage("conflict", msg.id, "writer generation is stale")));
 					return;
 				}
 				currentCols = msg.cols;
@@ -492,9 +518,25 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				tap?.recordResize(msg.cols, msg.rows);
 				pipeline?.onResize(msg.cols, msg.rows);
 				void persist().catch(() => {});
+				// Acknowledge to the sender: only an APPLIED resize may update its cached
+				// canonical grid, never the hopeful value it sent.
+				if (msg.id !== undefined) {
+					ws.send(encodeControl(resizedReply(msg.id, currentCols, currentRows, writerOwnership.writerGeneration())));
+				}
+				// Unsolicited (id 0): the writer owns the canonical grid, and an observer in
+				// ANOTHER app process has no other way to learn it — its own process never saw
+				// this resize. Without it that observer renders the writer's byte stream at its
+				// own width and wraps every line that reaches the right edge.
+				for (const other of clients) {
+					if (other === ws || !other.data.helloDone) continue;
+					try {
+						other.send(encodeControl(currentStatus(other, 0)));
+					} catch { /* dead client */ }
+				}
 			} else if (msg.type === "status") {
 				ws.send(encodeControl(currentStatus(ws, msg.id)));
 			} else if (msg.type === "ownership" && "action" in msg) {
+				const generationBefore = writerOwnership.writerGeneration();
 				const result = writerOwnership.request(ws, msg.action);
 				if (!result.ok) {
 					const message =
@@ -506,7 +548,13 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 					ws.send(encodeControl(errorMessage("conflict", msg.id, message)));
 					return;
 				}
-				ws.send(encodeControl(ownershipReply(msg.id, result.role, result.writerAttached)));
+				// Order is the invariant, and each client hears about a transition EXACTLY
+				// once. Every non-winner — the displaced writer included — is told first, so
+				// no turn exists in which two clients believe they may write; the winner's
+				// confirmation goes last. A separate explicit send to the displaced client
+				// would duplicate the same transition and generation it gets here.
+				if (result.generation !== generationBefore) broadcastOwnership(ws);
+				ws.send(encodeControl(ownershipReply(msg.id, result.role, result.writerAttached, result.generation)));
 			} else if (msg.type === "stop") {
 				for (const c of clients) {
 					try {
@@ -525,6 +573,21 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			return;
 		}
 		proc.terminal?.write(message);
+	}
+
+	/** Tell every client EXCEPT `origin` the lease state after a real transition. */
+	function broadcastOwnership(origin: HostClient | null): void {
+		for (const other of clients) {
+			if (other === origin || !other.data.helloDone) continue;
+			try {
+				other.send(encodeControl(ownershipReply(
+					0,
+					writerOwnership.roleOf(other) ?? "observer",
+					writerOwnership.hasWriter(),
+					writerOwnership.writerGeneration(),
+				)));
+			} catch { /* dead client */ }
+		}
 	}
 
 	function currentStatus(ws: HostClient, id: number): StatusReply {
@@ -546,6 +609,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			startedAt,
 			clientRole: writerOwnership.roleOf(ws) ?? "observer",
 			writerAttached: writerOwnership.hasWriter(),
+			writerGeneration: writerOwnership.writerGeneration(),
 			...(writerPid !== undefined ? { writerPid } : {}),
 		};
 	}

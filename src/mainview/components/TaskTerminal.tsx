@@ -16,7 +16,12 @@ import MobileWindowCarousel from "./MobileWindowCarousel";
 import PaneZoomBadge from "./PaneZoomBadge";
 import ClosePanePicker from "./ClosePanePicker";
 import NativeViewerBar from "./NativeViewerBar";
-import type { NativeStreamRole } from "../../shared/native-terminal-stream";
+import {
+	mergeViewerStatus,
+	type NativeStreamRole,
+	type NativeViewerStatus,
+	type ViewerSnapshot,
+} from "../../shared/native-terminal-stream";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
@@ -61,9 +66,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [nativeRole, setNativeRole] = useState<NativeStreamRole>("writer");
 	const [refusedAt, setRefusedAt] = useState(0);
-	const handleNativeStatus = useCallback(({ role, refused }: { role: NativeStreamRole; refused: boolean }) => {
-		setNativeRole(role);
-		if (refused) setRefusedAt(Date.now());
+	const [refusedReason, setRefusedReason] = useState<NativeViewerStatus["refusedReason"]>(undefined);
+	const [writerAttached, setWriterAttached] = useState<boolean | undefined>(undefined);
+	const handleNativeStatus = useCallback((status: NativeViewerStatus) => {
+		const snapshot = mergeViewerStatus(null, status);
+		setNativeRole(snapshot.role);
+		setWriterAttached(snapshot.writerAttached);
+		setRefusedAt(snapshot.refusedAt);
+		setRefusedReason(snapshot.refusedReason);
 	}, []);
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
@@ -86,9 +96,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [clientFocusPaneId, setClientFocusPaneId] = useState<string | null>(null);
 	// Per-pane handles and roles for NativeViewerBar.
 	const paneHandlesRef = useRef<Map<string, TerminalHandle>>(new Map());
-	const paneRolesRef = useRef<Map<string, { role: NativeStreamRole; refusedAt: number }>>(new Map());
+	// Every MOUNTED pane's full snapshot, not just the focused one: a pane keeps producing
+	// role/writerAttached frames while another pane has focus, and recording only the
+	// focused one made a focus switch restore defaults or stale state.
+	const paneRolesRef = useRef<Map<string, ViewerSnapshot>>(new Map());
 	const [focusedPaneRole, setFocusedPaneRole] = useState<NativeStreamRole>("writer");
 	const [focusedPaneRefusedAt, setFocusedPaneRefusedAt] = useState(0);
+	const [focusedPaneRefusedReason, setFocusedPaneRefusedReason] = useState<NativeViewerStatus["refusedReason"]>(undefined);
 	/** Whether ANY process holds the lease; undefined until the host reports it. */
 	const [focusedPaneWriterAttached, setFocusedPaneWriterAttached] = useState<boolean | undefined>(undefined);
 
@@ -437,22 +451,30 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		const focusPaneId = clientFocusPaneId ?? nativePaneState?.activePaneId ?? panes[0]?.paneId ?? null;
 
 		function makePaneNativeStatusHandler(paneId: string) {
-			return ({ role, refused, writerAttached }: { role: NativeStreamRole; refused: boolean; writerAttached?: boolean }) => {
-				paneRolesRef.current.set(paneId, { role, refusedAt: refused ? Date.now() : (paneRolesRef.current.get(paneId)?.refusedAt ?? 0) });
-				if (paneId === focusPaneId) {
-					setFocusedPaneRole(role);
-					setFocusedPaneWriterAttached(writerAttached);
-					if (refused) setFocusedPaneRefusedAt(Date.now());
-				}
+			return (status: NativeViewerStatus) => {
+				// Recorded for EVERY mounted pane. Focus decides what is displayed, never
+				// whether ownership truth is written down.
+				const snapshot = mergeViewerStatus(paneRolesRef.current.get(paneId) ?? null, status);
+				paneRolesRef.current.set(paneId, snapshot);
+				if (paneId !== focusPaneId) return;
+				// One atomic replacement, so a non-refused authoritative frame clears the
+				// diagnosis instead of leaving stale guidance on screen.
+				setFocusedPaneRole(snapshot.role);
+				setFocusedPaneWriterAttached(snapshot.writerAttached);
+				setFocusedPaneRefusedAt(snapshot.refusedAt);
+				setFocusedPaneRefusedReason(snapshot.refusedReason);
 			};
 		}
 
 		function handleFocusPane(paneId: string) {
 			setClientFocusPaneId(paneId);
 			publishNativePaneFocus(taskId, paneId);
+			// Restored from the pane's own recorded snapshot — no extra frame required.
 			const stored = paneRolesRef.current.get(paneId);
 			setFocusedPaneRole(stored?.role ?? "writer");
 			setFocusedPaneRefusedAt(stored?.refusedAt ?? 0);
+			setFocusedPaneRefusedReason(stored?.refusedReason);
+			setFocusedPaneWriterAttached(stored?.writerAttached);
 		}
 
 		// A drag commits once, on release. Paint the new ratio locally first so the
@@ -509,7 +531,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 								// Use focused pane's handle for touch composer.
 								if (isFocused) setTermHandle(handle);
 							}}
-							onNativeStatus={isFocused ? makePaneNativeStatusHandler(paneId) : undefined}
+							onNativeStatus={makePaneNativeStatusHandler(paneId)}
 							onSessionLost={() => markPaneGone(paneId)}
 							touchComposeMode={touchInput && !rawMode}
 						/>
@@ -564,6 +586,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						<NativeViewerBar
 							role={focusedPaneRole}
 							refusedAt={focusedPaneRefusedAt}
+							refusedReason={focusedPaneRefusedReason}
 							writerAttached={focusedPaneWriterAttached}
 							onTakeControl={() => paneHandlesRef.current.get(focusPaneId)?.claimWriter()}
 						/>
@@ -606,6 +629,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<NativeViewerBar
 						role={focusedPaneRole}
 						refusedAt={focusedPaneRefusedAt}
+							refusedReason={focusedPaneRefusedReason}
 						writerAttached={focusedPaneWriterAttached}
 						onTakeControl={() => paneHandlesRef.current.get(focusPaneId)?.claimWriter()}
 					/>
@@ -728,6 +752,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				<NativeViewerBar
 					role={nativeRole}
 					refusedAt={refusedAt}
+					refusedReason={refusedReason}
+					writerAttached={writerAttached}
 					onTakeControl={() => termHandle?.claimWriter()}
 				/>
 			)}

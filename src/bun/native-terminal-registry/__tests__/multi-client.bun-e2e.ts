@@ -173,6 +173,7 @@ async function run(): Promise<void> {
 		const writerSink = sinks[writerIndex]!;
 		const observerSink = sinks[observerIndex]!;
 		const observerErrors = errorSinks[observerIndex]!;
+		const writerErrors = errorSinks[writerIndex]!;
 
 		const syncStart = `SYNC-START-${nonce}`;
 		const syncBody = `SYNC-BODY-${nonce}`;
@@ -216,8 +217,143 @@ async function run(): Promise<void> {
 		const writerCols = beforeResize.cols + 3;
 		const writerRows = beforeResize.rows + 2;
 		writer.resize(writerCols, writerRows);
+		// The sender's cache follows the host's ACKNOWLEDGEMENT, never the value it merely
+		// sent — an unowned resize is refused, and caching it optimistically would hand
+		// every viewer a size the PTY never had. The host skips the sender in its geometry
+		// broadcast, so the ack is the only thing that can refresh this; no status call is
+		// made here, which is what proves it.
+		const ackDeadline = Date.now() + 4000;
+		while (Date.now() < ackDeadline) {
+			const cached = writer.getPtyGeometry();
+			if (cached?.cols === writerCols && cached.rows === writerRows) break;
+			await new Promise((r) => setTimeout(r, 25));
+		}
+		const senderCache = writer.getPtyGeometry();
+		check(
+			senderCache?.cols === writerCols && senderCache?.rows === writerRows,
+			"the writer's cached grid follows the host's resize ACK, with no status round trip",
+		);
 		const resized = await writer.status();
 		check(resized.cols === writerCols && resized.rows === writerRows, "the current writer controls the PTY dimensions");
+
+		// A FRESH observer must know the canonical grid before the writer ever resizes:
+		// `welcome` carries the role but no size, so without the attach-time status read
+		// it would reflow the writer's byte stream at its own width.
+		const fresh = new NativeSessionClient();
+		makeSink(fresh);
+		await fresh.connect(started.record, token);
+		clients.push(fresh);
+		check(fresh.getRole() === "observer", "a third attach is an observer, so it does not own the grid");
+		const freshGeometry = fresh.getPtyGeometry();
+		check(
+			freshGeometry?.cols === writerCols && freshGeometry?.rows === writerRows,
+			`a freshly attached observer already knows the writer's grid (${writerCols}x${writerRows}) with no resize involved`,
+		);
+		// An observer's own viewport must never move the shared PTY.
+		fresh.resize(writerCols + 31, writerRows + 13);
+		const afterObserverResize = await writer.status();
+		check(
+			afterObserverResize.cols === writerCols && afterObserverResize.rows === writerRows,
+			"an observer's viewport never changes the canonical PTY size",
+		);
+		await disconnect(fresh);
+		clients.pop();
+
+		// ── explicit takeover of a LIVE writer ──
+		// A plain claim is refused here by design; the explicit action is the only way a
+		// lease moves while someone is typing. The ordering that matters is that the
+		// displaced client is already an observer by the time the winner is confirmed —
+		// otherwise there is a window in which both believe they own the one PTY.
+		const preTakeoverErrors = observerErrors.all().length;
+		const liveTakeover = await observer.takeoverWriter();
+		check(
+			liveTakeover.role === "writer" && liveTakeover.writerAttached,
+			"an explicit takeover moves the lease while the previous writer is still attached",
+		);
+		// Frame arrival order across two sockets is NOT guaranteed, so asserting the
+		// displaced client's own cached role at this instant would be a scheduling bet.
+		// Ask the HOST instead: it decides, and its answer per connection is authoritative
+		// the moment the swap happened. That is also the property that actually matters —
+		// enforcement is host-side, not in either client's belief about itself.
+		const winnerView = await observer.status();
+		const loserView = await writer.status();
+		check(
+			winnerView.clientRole === "writer" && loserView.clientRole === "observer" && loserView.writerAttached === true,
+			"the HOST reports exactly one writer immediately after the swap — the displaced connection is an observer to it",
+		);
+		check(observerErrors.all().length === preTakeoverErrors, "the takeover produced no error frame");
+		const displacedRejected = `DISPLACED-${nonce}`;
+		const beforeDisplacedErr = writerErrors.all().length;
+		send(writer, outputCommand(displacedRejected));
+		const displacedConflict = await writerErrors.waitFor("conflict", beforeDisplacedErr);
+		check(displacedConflict !== null, "the displaced client's input is refused by the host in turn");
+		// Over the real wire: a client whose cached role is STALE still gestures. The
+		// displaced client here believes it is the writer until it processes its demotion,
+		// so its explicit takeover must be SENT and must win — last explicit wins.
+		const staleGeneration = writer.getWriterGeneration();
+		// NO status call before the stale resize: a status round trip is a same-socket
+		// barrier behind the demotion frame AND refreshes the generation, which would make
+		// the request perfectly current. The grid and cache come from what the displaced
+		// client already knows, so the resize goes out on its OLD generation.
+		const gridBeforeStaleResize = writer.getPtyGeometry();
+		const staleErrBefore = writerErrors.all().length;
+		const staleResize = writer.resizeAwaited(writerCols + 40, 20).catch((err) => err as Error);
+		const staleResizeRefused = await writerErrors.waitFor("conflict", staleErrBefore);
+		const staleOutcome = await staleResize;
+		check(
+			staleResizeRefused !== null && staleResizeRefused.code === "conflict",
+			`a stale writer's resize is refused with a conflict (reason: ${staleResizeRefused?.message ?? "none"})`,
+		);
+		// A stale writer that takes over becomes the writer again, so `canMutatePty` passes,
+		// while its cached generation is still the pre-takeover one because the takeover
+		// reply has not been processed yet. Sending both without awaiting the first is what
+		// reaches the host's generation validation.
+		const genErrBefore = writerErrors.all().length;
+		const generationBeforeRetake = writer.getWriterGeneration();
+		const retake = writer.takeoverWriter();
+		const resizeOnStaleGeneration = writer.resizeAwaited(writerCols + 11, writerRows + 7).catch((e) => e as Error);
+		await retake;
+		const generationRefusal = await writerErrors.waitFor("conflict", genErrBefore);
+		const staleGenOutcome = await resizeOnStaleGeneration;
+		check(
+			generationRefusal !== null && generationRefusal.message?.includes("generation") === true,
+			`the host rejects a resize carrying a STALE generation, by that exact reason (got ${generationRefusal?.message ?? "none"})`,
+		);
+		check(
+			staleGenOutcome instanceof Error && writer.getWriterGeneration() !== generationBeforeRetake,
+			"the stale-generation resize settles as a failure while the lease itself moved on",
+		);
+		const afterGenerationRefusal = await observer.status();
+		check(
+			afterGenerationRefusal.cols === writerCols && afterGenerationRefusal.rows === writerRows,
+			"a generation-rejected resize leaves the canonical PTY size untouched",
+		);
+		check(
+			staleOutcome instanceof Error && /conflict/.test(staleOutcome.message),
+			"the refusal settles the SENDER'S OWN correlated request rather than leaking to another",
+		);
+		check(
+			writer.getPtyGeometry()?.cols === gridBeforeStaleResize?.cols
+				&& writer.getPtyGeometry()?.rows === gridBeforeStaleResize?.rows,
+			"a refused resize does NOT poison the sender's cached canonical grid",
+		);
+		// Only NOW is a status call safe: the canonical size must be unchanged host-side too.
+		const afterStaleResize = await observer.status();
+		check(
+			afterStaleResize.cols === writerCols && afterStaleResize.rows === writerRows,
+			`the canonical PTY size is untouched by the refused resize (${writerCols}x${writerRows})`,
+		);
+
+		// Hand it back so the release/claim assertions below keep their original subject.
+		const handedBack = await writer.takeoverWriter();
+		check(
+			typeof staleGeneration === "number" && handedBack.writerGeneration === staleGeneration + 1,
+			"the explicit gesture from a client with a STALE cached role still wins, and bumps the generation",
+		);
+		check(
+			handedBack.role === "writer" && observer.getRole() === "observer",
+			"a takeover works in both directions — the transfer is not one-way",
+		);
 
 		const released = await writer.releaseWriter();
 		check(released.role === "observer" && !released.writerAttached, "writer release leaves one explicit vacant writer slot");

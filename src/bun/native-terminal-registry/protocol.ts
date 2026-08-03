@@ -7,12 +7,16 @@
  *
  * This is a deliberately small LOCAL protocol, not an RPC framework. A client
  * opens with a version-agnostic `hello`; the host replies `welcome` (accept) or
- * one explicit `error{code:"version-mismatch"}` and leaves the shell alive. Only
- * the three request/response pairs (hello→welcome, status→status, and
- * ownership→ownership) carry a request
- * `id`; every other frame is a fire-and-forget command or an unsolicited event.
+ * one explicit `error{code:"version-mismatch"}` and leaves the shell alive. The
+ * request/response pairs — hello→welcome, status→status, ownership→ownership and
+ * resize→resized — carry a request `id` from one connection-wide space; every other frame
+ * is a fire-and-forget command or an unsolicited event.
  * Unknown ADDITIVE fields on a known type are ignored; a future breaking change
  * bumps NATIVE_SESSION_PROTOCOL_VERSION rather than negotiating in-band.
+ *
+ * Two reply types double as unsolicited EVENTS when their `id` is 0: `ownership`
+ * (the lease moved without this client asking) and `status` (the writer resized the
+ * canonical grid). A client with no pending request must apply them, not drop them.
  *
  * Pure module: no Bun/Node runtime deps, trivially unit-testable.
  */
@@ -20,6 +24,17 @@
 import type { ClientRole, WriterAction } from "./writer-ownership";
 
 export const NATIVE_SESSION_PROTOCOL_VERSION = 1;
+
+/**
+ * What THIS host build can do, announced on `welcome`. Capabilities are how a client
+ * knows a feature exists instead of inferring it from a timeout: an older host simply
+ * omits the field, and a client must read that as "not supported", never as "broken".
+ */
+// ONE literal tuple is the source of truth; the union is derived so the two cannot
+// drift. A capability earns its place only when a caller actually negotiates on it —
+// `writerGeneration` rides every reply as a plain field and needs no announcement.
+export const HOST_CAPABILITIES = ["takeover", "resize-ack", "replay-boundary"] as const;
+export type HostCapability = (typeof HOST_CAPABILITIES)[number];
 
 /** Control (TEXT) frames are tiny JSON; anything larger is rejected, never parsed. */
 export const MAX_CONTROL_FRAME_BYTES = 64 * 1024;
@@ -52,6 +67,14 @@ export interface ResizeMessage {
 	type: "resize";
 	cols: number;
 	rows: number;
+	/** Additive: correlates the `resized` acknowledgement. Absent = fire-and-forget. */
+	id?: number;
+	/**
+	 * Additive: the writer generation the sender BELIEVES is current. The host refuses
+	 * the resize when it no longer matches, which is what stops a client whose role
+	 * cache is stale from resizing a PTY it no longer owns.
+	 */
+	expectedGeneration?: number;
 }
 export interface StatusRequest {
 	v: number;
@@ -70,6 +93,19 @@ export interface StopRequest {
 }
 export type ClientControl = HelloMessage | ResizeMessage | StatusRequest | OwnershipRequest | StopRequest;
 
+/**
+ * The host APPLIED a resize. Its own name (not a `resize` echo) so request and
+ * acknowledgement can never be confused for one another on a shared channel.
+ */
+export interface ResizedReply {
+	v: number;
+	type: "resized";
+	id: number;
+	cols: number;
+	rows: number;
+	writerGeneration: number;
+}
+
 // ── Host → Client ─────────────────────────────────────────────────────
 /** Accepts a hello; echoes the hello's request id. */
 export interface WelcomeMessage {
@@ -80,6 +116,10 @@ export interface WelcomeMessage {
 	protocolVersion: number;
 	/** Additive in v1; absent hosts predate explicit writer ownership. */
 	role?: ClientRole;
+	/** Additive: what this host supports. Absent = an old host; assume nothing. */
+	capabilities?: readonly HostCapability[];
+	/** Additive: the writer generation at attach time. */
+	writerGeneration?: number;
 }
 export interface ErrorMessage {
 	v: number;
@@ -111,6 +151,8 @@ export interface StatusReply {
 	 * must treat as "unknown", never as "vacant".
 	 */
 	writerPid?: number | null;
+	/** Additive: monotonic count of real lease transitions on this host. */
+	writerGeneration?: number;
 }
 export interface OwnershipReply {
 	v: number;
@@ -118,7 +160,20 @@ export interface OwnershipReply {
 	id: number;
 	role: ClientRole;
 	writerAttached: boolean;
+	/** Additive: the generation AFTER this reply's transition, if any. */
+	writerGeneration?: number;
 }
+/**
+ * Marks the end of the journal replay that follows `welcome`. Everything before it is
+ * history the client may already hold; everything after is LIVE. Without this boundary a
+ * client cannot tell replay from output produced while its handshake was still finishing,
+ * so it must either duplicate history or risk dropping real bytes.
+ */
+export interface ReplayedEvent {
+	v: number;
+	type: "replayed";
+}
+
 /** Sent to every client just before the host tears itself down. */
 export interface StoppingEvent {
 	v: number;
@@ -130,7 +185,15 @@ export interface ExitEvent {
 	type: "exit";
 	code: number | null;
 }
-export type HostControl = WelcomeMessage | ErrorMessage | StatusReply | OwnershipReply | StoppingEvent | ExitEvent;
+export type HostControl =
+	| WelcomeMessage
+	| ErrorMessage
+	| StatusReply
+	| OwnershipReply
+	| ResizedReply
+	| ReplayedEvent
+	| StoppingEvent
+	| ExitEvent;
 
 export type ControlMessage = ClientControl | HostControl;
 
@@ -144,7 +207,12 @@ export function helloMessage(sessionId: string, id: number, clientPid?: number):
 		...(clientPid !== undefined ? { clientPid } : {}),
 	};
 }
-export function welcomeMessage(id: number, sessionId: string, role?: ClientRole): WelcomeMessage {
+export function welcomeMessage(
+	id: number,
+	sessionId: string,
+	role?: ClientRole,
+	extra?: { capabilities?: readonly HostCapability[]; writerGeneration?: number },
+): WelcomeMessage {
 	return {
 		v: NATIVE_SESSION_PROTOCOL_VERSION,
 		type: "welcome",
@@ -152,6 +220,8 @@ export function welcomeMessage(id: number, sessionId: string, role?: ClientRole)
 		sessionId,
 		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
 		...(role ? { role } : {}),
+		...(extra?.capabilities ? { capabilities: extra.capabilities } : {}),
+		...(extra?.writerGeneration !== undefined ? { writerGeneration: extra.writerGeneration } : {}),
 	};
 }
 export function errorMessage(code: ErrorCode, id?: number, message?: string): ErrorMessage {
@@ -160,8 +230,22 @@ export function errorMessage(code: ErrorCode, id?: number, message?: string): Er
 	if (message !== undefined) msg.message = message;
 	return msg;
 }
-export function resizeMessage(cols: number, rows: number): ResizeMessage {
-	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "resize", cols, rows };
+export function resizeMessage(
+	cols: number,
+	rows: number,
+	correlation?: { id?: number; expectedGeneration?: number },
+): ResizeMessage {
+	return {
+		v: NATIVE_SESSION_PROTOCOL_VERSION,
+		type: "resize",
+		cols,
+		rows,
+		...(correlation?.id !== undefined ? { id: correlation.id } : {}),
+		...(correlation?.expectedGeneration !== undefined ? { expectedGeneration: correlation.expectedGeneration } : {}),
+	};
+}
+export function resizedReply(id: number, cols: number, rows: number, writerGeneration: number): ResizedReply {
+	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "resized", id, cols, rows, writerGeneration };
 }
 export function statusRequest(id: number): StatusRequest {
 	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "status", id };
@@ -169,11 +253,26 @@ export function statusRequest(id: number): StatusRequest {
 export function ownershipRequest(id: number, action: WriterAction): OwnershipRequest {
 	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "ownership", id, action };
 }
-export function ownershipReply(id: number, role: ClientRole, writerAttached: boolean): OwnershipReply {
-	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "ownership", id, role, writerAttached };
+export function ownershipReply(
+	id: number,
+	role: ClientRole,
+	writerAttached: boolean,
+	writerGeneration?: number,
+): OwnershipReply {
+	return {
+		v: NATIVE_SESSION_PROTOCOL_VERSION,
+		type: "ownership",
+		id,
+		role,
+		writerAttached,
+		...(writerGeneration !== undefined ? { writerGeneration } : {}),
+	};
 }
 export function stopRequest(): StopRequest {
 	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "stop" };
+}
+export function replayedEvent(): ReplayedEvent {
+	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "replayed" };
 }
 export function stoppingEvent(): StoppingEvent {
 	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "stopping" };
@@ -248,12 +347,20 @@ export function decodeControl(text: string): ControlMessage | null {
 		case "resize":
 			if (typeof obj.cols !== "number" || typeof obj.rows !== "number") return null;
 			return obj as unknown as ResizeMessage;
+		case "resized":
+			if (typeof obj.id !== "number" || typeof obj.cols !== "number") return null;
+			if (typeof obj.rows !== "number" || typeof obj.writerGeneration !== "number") return null;
+			return obj as unknown as ResizedReply;
 		case "status":
 			if (typeof obj.id !== "number") return null;
 			return obj as unknown as StatusRequest | StatusReply;
 		case "ownership":
 			if (typeof obj.id !== "number") return null;
-			if (obj.action === "claim" || obj.action === "release") return obj as unknown as OwnershipRequest;
+			// `takeover` is additive in v1: a host staged before it drops the frame as
+			// unparseable, which the client reads as a timeout, never as a success.
+			if (obj.action === "claim" || obj.action === "release" || obj.action === "takeover") {
+				return obj as unknown as OwnershipRequest;
+			}
 			if ((obj.role === "writer" || obj.role === "observer") && typeof obj.writerAttached === "boolean") {
 				return obj as unknown as OwnershipReply;
 			}
@@ -261,11 +368,13 @@ export function decodeControl(text: string): ControlMessage | null {
 		case "welcome":
 			if (typeof obj.id !== "number") return null;
 			if (obj.role !== undefined && obj.role !== "writer" && obj.role !== "observer") return null;
+			if (obj.capabilities !== undefined && !Array.isArray(obj.capabilities)) return null;
 			return obj as unknown as WelcomeMessage;
 		case "error":
 			return decodeError(text);
 		case "stop":
 		case "stopping":
+		case "replayed":
 			return obj as unknown as ControlMessage;
 		case "exit":
 			if (obj.code !== null && (typeof obj.code !== "number" || !Number.isInteger(obj.code))) return null;

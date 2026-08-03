@@ -64,6 +64,10 @@ const terminal = {
 	// Native terminal: one viewer types, the rest watch until they take over
 	"nativeViewer.readOnly": "Read-only — another viewer is typing",
 	"nativeViewer.refused": "Read-only — take control to type here",
+	"nativeViewer.hostTooOld": "Can't take control — terminal host too old",
+	"nativeViewer.hostTooOldHint": "This pane's terminal host predates control transfer. Restart the terminal, or wait for the other window to release it.",
+	"nativeViewer.transferFailed": "Couldn't take control — no answer from the terminal",
+	"nativeViewer.transferFailedHint": "The terminal host did not confirm the transfer. Check the terminal is still alive, then try again.",
 	"nativeViewer.takeControl": "Take control",
 	"nativeViewer.takeControlHint": "Type in this terminal; the other viewer becomes read-only",
 

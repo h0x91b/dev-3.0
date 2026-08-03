@@ -11,6 +11,7 @@ import {
 	ptyUrlWithSince,
 	type NativeStreamHeader,
 	type NativeStreamRole,
+	type NativeViewerStatus,
 } from "../shared/native-terminal-stream";
 // TEMP DIAGNOSTIC: remove these imports after the terminal copy bug is fixed.
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
@@ -233,7 +234,7 @@ interface TerminalViewProps {
 	 * Native backend only: this viewer's write role, and whether the server just
 	 * refused something it typed. Never fires for a tmux session.
 	 */
-	onNativeStatus?: (status: { role: NativeStreamRole; refused: boolean; writerAttached?: boolean }) => void;
+	onNativeStatus?: (status: NativeViewerStatus) => void;
 	/**
 	 * The app refused this socket outright (missing/unknown session). Supplying it
 	 * hands recovery to the owner, which renders one shared exited state; without
@@ -280,6 +281,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const ptyGeometryRef = useRef<{ cols: number; rows: number } | null>(null);
 	/** Set by the terminal-setup effect; re-runs the fit after geometry or role changes. */
 	const refitRef = useRef<(() => void) | null>(null);
+	/** Re-fit on a settled layout — see the assignment for why two frames are needed. */
+	const refitAfterLayoutRef = useRef<(() => void) | null>(null);
 	const onNativeStatusRef = useRef(onNativeStatus);
 	onNativeStatusRef.current = onNativeStatus;
 	const onSessionLostRef = useRef(onSessionLost);
@@ -761,6 +764,23 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 
 			refitRef.current = refitToContainer;
+			/**
+			 * Re-fit only AFTER the browser has laid the container out again.
+			 *
+			 * Winning the writer lease removes the read-only strip above the canvas, so
+			 * the container grows by exactly that strip's height. Measuring in the same
+			 * turn as the role frame reads the PRE-removal box and publishes a PTY one
+			 * row too short — then the ResizeObserver corrects it, so the shell sees two
+			 * resizes and repaints twice. Two frames is what it takes for React to
+			 * commit the removal and the browser to finish layout.
+			 */
+			refitAfterLayoutRef.current = () => {
+				if (disposed) return;
+				requestAnimationFrame(() => {
+					if (disposed) return;
+					requestAnimationFrame(() => refitToContainer());
+				});
+			};
 			let refitScheduled = false;
 			function scheduleRefit() {
 				if (refitScheduled) return;
@@ -1213,13 +1233,18 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		}
 
 		/** Publish the writer/observer role, and whether the server just refused input. */
-		function reportNativeRole(role: NativeStreamRole, refused: boolean, writerAttached?: boolean): void {
-			const changed = nativeRoleRef.current !== role;
-			nativeRoleRef.current = role;
-			onNativeStatusRef.current?.({ role, refused, writerAttached });
-			// Becoming an observer means following the PTY's shape; becoming the writer
-			// means going back to fitting our own container.
-			if (changed) refitRef.current?.();
+		function reportNativeRole(status: NativeViewerStatus): void {
+			const previousRole = nativeRoleRef.current;
+			const changed = previousRole !== status.role;
+			nativeRoleRef.current = status.role;
+			onNativeStatusRef.current?.(status);
+			if (!changed) return;
+			// Becoming the writer: this viewer now OWNS the canonical geometry, so it
+			// publishes its own container's size once — but only after the strip above the
+			// canvas is gone and layout has settled. Becoming an observer needs no layout
+			// pass at all: it adopts the PTY's shape and ignores its own container.
+			if (status.role === "writer") refitAfterLayoutRef.current?.();
+			else refitRef.current?.();
 		}
 
 		/** Follow the writer's PTY shape; a writer keeps fitting its own container. */
@@ -1239,14 +1264,19 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		 */
 		function handleNativeFrame(header: NativeStreamHeader, payload: string): void {
 			if (header.t === "role") {
-				reportNativeRole(header.role, header.refused === true, header.writerAttached);
+				reportNativeRole({
+					role: header.role,
+					refused: header.refused === true,
+					writerAttached: header.writerAttached,
+					refusedReason: header.refusedReason,
+				});
 				adoptPtyGeometry(header.cols, header.rows);
 				return;
 			}
 			let reset = "";
 			if (header.t === "attach") {
 				nativeSeqRef.current = header.seq;
-				reportNativeRole(header.role, false, header.writerAttached);
+				reportNativeRole({ role: header.role, refused: false, writerAttached: header.writerAttached });
 				adoptPtyGeometry(header.cols, header.rows);
 				// RIS in the SAME batch as the replay, so the screen is replaced in one
 				// write instead of briefly showing an empty terminal.

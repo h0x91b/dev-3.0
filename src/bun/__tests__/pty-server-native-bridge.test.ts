@@ -127,12 +127,16 @@ class Viewer {
 		return this.frames
 			.filter((f) => f.header.t === "role")
 			.map((f) => {
-				const header = f.header as { role: string; refused?: boolean };
-				return { role: header.role, refused: header.refused === true };
+				const header = f.header as { role: string; refused?: boolean; refusedReason?: string };
+				return {
+					role: header.role,
+					refused: header.refused === true,
+					...(header.refusedReason ? { refusedReason: header.refusedReason } : {}),
+				};
 			});
 	}
 
-	get lastRole(): { role: string; refused: boolean } | undefined {
+	get lastRole(): { role: string; refused: boolean; refusedReason?: string } | undefined {
 		return lastCall(this.roles());
 	}
 
@@ -161,9 +165,27 @@ interface FakeShell {
 	hostRole: "writer" | "observer";
 	/** Whether a cross-process claim succeeds; false = the other process keeps it. */
 	grantClaim: boolean;
+	/** Set when the host cannot transfer at all (a host staged before `takeover`). */
+	takeoverUnsupported: boolean;
+	/** Make the host round trip block until `settleTakeover()` is called. */
+	holdTakeover: boolean;
+	/** False models a host that never confirms the release. */
+	releaseConfirms: boolean;
+	/** True models the host never answering, so the caller must compensate. */
+	takeoverTimesOut: boolean;
+	/** Block the release round trip until `settleRelease()` is called. */
+	holdRelease: boolean;
+	settleRelease: (() => void) | null;
+	/** False models the host REFUSING a resize (stale generation). */
+	resizeApplies: boolean;
 	/** Whether ANY process holds the lease, as the host reports it. */
 	writerAttached: boolean;
 	claimHostWriter: ReturnType<typeof vi.fn>;
+	takeoverHostWriter: ReturnType<typeof vi.fn>;
+	releaseHostWriter: ReturnType<typeof vi.fn>;
+	resizeAwaited: ReturnType<typeof vi.fn>;
+	/** Resolve the pending host round trip by hand, to model a slow host. */
+	settleTakeover: (() => void) | null;
 }
 
 const FIRST_PANE_SESSION_ID = `${SESSION_ID}-pane-1`;
@@ -177,10 +199,47 @@ function fakeShell(): FakeShell {
 		emit: (data) => emit(data),
 		hostRole: "writer",
 		grantClaim: true,
+		takeoverUnsupported: false,
+		holdTakeover: false,
+		releaseConfirms: true,
+		takeoverTimesOut: false,
+		holdRelease: false,
+		settleRelease: null,
+		resizeApplies: true,
 		writerAttached: true,
 		claimHostWriter: vi.fn(async () => {
 			if (shell.grantClaim) shell.hostRole = "writer";
 			return shell.hostRole;
+		}),
+		// The explicit gesture: it displaces a live writer, so `grantClaim` (which models
+		// a NON-stealing claim) does not gate it — only a host too old to transfer does.
+		settleTakeover: null,
+		resizeAwaited: vi.fn(async (cols: number, rows: number) => {
+			if (!shell.resizeApplies) throw new Error("writer generation is stale");
+			(shell.resize as unknown as (c: number, r: number) => void)(cols, rows);
+			return { cols, rows };
+		}),
+		releaseHostWriter: vi.fn(async () => {
+			if (shell.holdRelease) await new Promise<void>((resolve) => { shell.settleRelease = resolve; });
+			if (!shell.releaseConfirms) return false;
+			shell.hostRole = "observer";
+			return true;
+		}),
+		takeoverHostWriter: vi.fn(async () => {
+			// A real takeover is a round trip to another process; tests that care about
+			// what happens DURING it install a gate here.
+			const gate = new Promise<void>((resolve) => {
+				if (shell.holdTakeover) shell.settleTakeover = resolve;
+				else resolve();
+			});
+			await gate;
+			if (shell.takeoverTimesOut) return { ok: false, refusal: "transfer-failed", timedOut: true };
+			if (!shell.takeoverUnsupported) {
+				shell.hostRole = "writer";
+				return { ok: true };
+			}
+			if (shell.grantClaim) shell.hostRole = "writer";
+			return shell.hostRole === "writer" ? { ok: true } : { ok: false, refusal: "host-too-old" };
 		}),
 	};
 	vi.mocked(startNativeTaskPanes).mockResolvedValue({
@@ -202,6 +261,9 @@ function fakeShell(): FakeShell {
 			hostRole: () => shell.hostRole,
 			hostWriterAttached: () => shell.writerAttached,
 			claimHostWriter: shell.claimHostWriter,
+			takeoverHostWriter: shell.takeoverHostWriter,
+			releaseHostWriter: shell.releaseHostWriter,
+			resizeAwaited: shell.resizeAwaited,
 			writerPid: async () => (shell.hostRole === "writer" ? process.pid : 4711),
 		} as unknown as Awaited<ReturnType<typeof bindNativeTaskPane>>;
 	});
@@ -376,11 +438,15 @@ describe("writer and observer", () => {
 		expect(shell.resize.mock.calls).toEqual([[200, 50]]);
 	});
 
-	it("moves the lease atomically on an explicit takeover", () => {
+	// The gesture always asks the host first now (see the stale-cache test above), so it
+	// is inherently async — the ATOMICITY being asserted is that both sides flip in the
+	// same step, not that the step is synchronous.
+	it("moves the lease atomically on an explicit takeover", async () => {
 		const desktop = connect();
 		const browser = connect();
 
 		handlers.message(browser, claimMessage());
+		await delay(FLUSH_MS);
 
 		expect(browser.lastRole).toEqual({ role: "writer", refused: false });
 		expect(desktop.lastRole).toEqual({ role: "observer", refused: false });
@@ -391,32 +457,35 @@ describe("writer and observer", () => {
 		expect(shell.write).toHaveBeenCalledTimes(1);
 	});
 
-	it("re-sizes the PTY to the new writer's viewport after a takeover", () => {
+	it("re-sizes the PTY to the new writer's viewport after a takeover", async () => {
 		const desktop = connect();
 		const browser = connect();
 		handlers.message(desktop, encodeResizeSequence(200, 50));
 		handlers.message(browser, encodeResizeSequence(80, 24));
 
 		handlers.message(browser, claimMessage());
+		await delay(FLUSH_MS);
 
 		expect(lastCall(shell.resize.mock.calls)).toEqual([80, 24]);
 	});
 
 	// An observer that reflows the stream to its own width wraps every long line in
 	// the wrong place, which is what a second window actually looked like.
-	it("tells a viewer the PTY's geometry so an observer can render at the writer's shape", () => {
+	it("tells a viewer the PTY's geometry so an observer can render at the writer's shape", async () => {
 		const desktop = connect();
 		handlers.message(desktop, encodeResizeSequence(200, 50));
+		await delay(FLUSH_MS); // canonical geometry lands with the host's ACK, not the request
 
 		const browser = connect();
 
 		expect(browser.attach).toMatchObject({ role: "observer", cols: 200, rows: 50 });
 	});
 
-	it("republishes the geometry to observers when the writer reshapes the PTY", () => {
+	it("republishes the geometry to observers when the writer reshapes the PTY", async () => {
 		const desktop = connect();
 		const browser = connect();
 		handlers.message(desktop, encodeResizeSequence(180, 44));
+		await delay(FLUSH_MS);
 
 		expect(browser.lastRoleHeader).toMatchObject({ role: "observer", cols: 180, rows: 44 });
 	});
@@ -460,23 +529,26 @@ describe("writer and observer", () => {
 		expect(desktop.attach).toMatchObject({ role: "observer", writerAttached: true });
 	});
 
-	it("take control asks the HOST first and reports a refusal without moving anything", async () => {
+	// A plain `claim` is refused while another dev3 process is typing, so the explicit
+	// gesture must take over instead.
+	it("take control TAKES OVER the host lease from another app process, not merely claims it", async () => {
 		shell.hostRole = "observer";
-		shell.grantClaim = false; // the other process keeps typing
+		shell.grantClaim = false; // a live peer holds it — a plain claim would be refused
 		const desktop = connect();
 
 		handlers.message(desktop, claimMessage());
 		await delay(FLUSH_MS);
 
-		expect(shell.claimHostWriter).toHaveBeenCalledTimes(1);
-		expect(desktop.lastRole).toEqual({ role: "observer", refused: true });
-		handlers.message(desktop, "still refused\r");
-		expect(shell.write).not.toHaveBeenCalled();
+		expect(shell.takeoverHostWriter).toHaveBeenCalledTimes(1);
+		expect(shell.claimHostWriter).not.toHaveBeenCalled();
+		expect(desktop.lastRole).toEqual({ role: "writer", refused: false });
+		handlers.message(desktop, "mine now\r");
+		expect(shell.write).toHaveBeenCalledWith("mine now\r");
 	});
 
-	it("take control promotes the viewer once the host hands the lease over", async () => {
+	it("take control promotes the viewer when the host slot was already vacant", async () => {
 		shell.hostRole = "observer";
-		shell.grantClaim = true; // the other process had already released it
+		shell.writerAttached = false;
 		const desktop = connect();
 
 		handlers.message(desktop, claimMessage());
@@ -487,10 +559,344 @@ describe("writer and observer", () => {
 		expect(shell.write).toHaveBeenCalledWith("mine now\r");
 	});
 
-	it("hands the lease back on an explicit release", () => {
+	// A host that cannot transfer at all: the viewer must be told THAT, not left to
+	// click a button that will never work.
+	it("reports host-too-old when the host cannot transfer and a peer still holds the lease", async () => {
+		shell.hostRole = "observer";
+		shell.takeoverUnsupported = true;
+		shell.grantClaim = false;
+		const desktop = connect();
+
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+
+		expect(desktop.lastRole).toEqual({ role: "observer", refused: true, refusedReason: "host-too-old" });
+		handlers.message(desktop, "still refused\r");
+		expect(shell.write).not.toHaveBeenCalled();
+	});
+
+	// The host round trip is async, so the requester can close its
+	// tab mid-flight. Winning the lease for a socket that is gone would leave this process
+	// owning the host lease while every surviving viewer is a local observer — nobody able
+	// to type, in any window, and the lease stranded until the process dies.
+	it("gives the lease to a surviving viewer when the requester leaves mid-takeover", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		const leaving = connect();
+		const staying = connect();
+
+		handlers.message(leaving, claimMessage());
+		await delay(FLUSH_MS);
+		disconnect(leaving); // tab closed while the host was still deciding
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+
+		expect(staying.lastRole).toEqual({ role: "writer", refused: false });
+		handlers.message(staying, "mine now\r");
+		expect(shell.write).toHaveBeenCalledWith("mine now\r");
+		expect(shell.releaseHostWriter).not.toHaveBeenCalled();
+	});
+
+	// An unconfirmed release is worse than no release: the lease stays held by a process
+	// that cannot use it, locking every other dev3 window out. Dropping the connection
+	// makes the host free it, because it clears the writer on socket close.
+	it("detaches the host client when the release is never confirmed", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		shell.releaseConfirms = false;
+		const leaving = connect();
+
+		handlers.message(leaving, claimMessage());
+		await delay(FLUSH_MS);
+		disconnect(leaving);
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+
+		expect(shell.releaseHostWriter).toHaveBeenCalledTimes(1);
+		expect(shell.detach).toHaveBeenCalled();
+	});
+
+	// A stale local cache must not stop the gesture reaching the host.
+	it("asks the host even when this process already believes it is the writer", async () => {
+		shell.hostRole = "writer";
+		const desktop = connect();
+
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+
+		expect(shell.takeoverHostWriter).toHaveBeenCalledTimes(1);
+	});
+
+	it("releases the host lease instead of stranding it when no viewer remains", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		const leaving = connect();
+
+		handlers.message(leaving, claimMessage());
+		await delay(FLUSH_MS);
+		disconnect(leaving);
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+
+		// Holding it would lock every other dev3 window out of a pane nobody is watching.
+		expect(shell.releaseHostWriter).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not answer a refusal to a viewer that already left", async () => {
+		shell.hostRole = "observer";
+		shell.takeoverUnsupported = true;
+		shell.grantClaim = false;
+		shell.holdTakeover = true;
+		const leaving = connect();
+
+		handlers.message(leaving, claimMessage());
+		await delay(FLUSH_MS);
+		const framesBefore = leaving.frames.length;
+		disconnect(leaving);
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+
+		expect(leaving.frames.length).toBe(framesBefore);
+	});
+
+	// Canonical geometry may only change once the HOST has applied the resize.
+	// Publishing what we asked for would broadcast a refused resize as the truth.
+	it("does not publish canonical geometry when the host refuses the resize", async () => {
+		shell.resizeApplies = false;
+		const desktop = connect();
+		const before = desktop.lastRoleHeader;
+
+		handlers.message(desktop, encodeResizeSequence(200, 50));
+		await delay(FLUSH_MS);
+
+		expect(shell.resize).not.toHaveBeenCalledWith(200, 50);
+		expect(desktop.lastRoleHeader).toEqual(before);
+	});
+
+	it("publishes canonical geometry only after the host applies it", async () => {
+		const desktop = connect();
+
+		handlers.message(desktop, encodeResizeSequence(140, 45));
+		await delay(FLUSH_MS);
+
+		expect(shell.resizeAwaited).toHaveBeenCalledWith(140, 45);
+		expect(desktop.lastRoleHeader).toMatchObject({ cols: 140, rows: 45 });
+	});
+
+	// A survivor promoted by a DISCONNECT must be told its effective role. If
+	// another process owns the host lease, calling it `writer` is a lie until it types.
+	it("promotes a disconnect survivor to its EFFECTIVE role, not a raw writer", async () => {
+		shell.hostRole = "observer";
+		const leaving = connect();
+		const staying = connect();
+
+		disconnect(leaving);
+		await delay(FLUSH_MS);
+
+		expect(staying.lastRole).toEqual({ role: "observer", refused: false });
+	});
+
+	it("promotes a disconnect survivor to writer when this process DOES own the lease", async () => {
+		shell.hostRole = "writer";
+		const leaving = connect();
+		const staying = connect();
+
+		disconnect(leaving);
+		await delay(FLUSH_MS);
+
+		expect(staying.lastRole).toEqual({ role: "writer", refused: false });
+	});
+
+	// With the re-entry guard removed this path ran at
+	// ~12k takeovers/second and wrote 540k log lines in three minutes. The bound is now
+	// structural, so a burst of gestures cannot multiply into host round trips.
+	it("asks the host at most ONCE per gesture, however many arrive", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		const desktop = connect();
+
+		for (let i = 0; i < 50; i++) handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+		// One outstanding request for this pane, not fifty.
+		expect(pty._nativeTakeoversInFlightForTests()).toBe(1);
+		expect(shell.takeoverHostWriter).toHaveBeenCalledTimes(1);
+
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+		expect(pty._nativeTakeoversInFlightForTests()).toBe(0);
+		expect(shell.takeoverHostWriter).toHaveBeenCalledTimes(1);
+		expect(desktop.lastRole).toEqual({ role: "writer", refused: false });
+	});
+
+	it("settling a takeover never re-enters the host request", async () => {
+		shell.hostRole = "observer";
+		const desktop = connect();
+
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+		await delay(FLUSH_MS);
+
+		// The success continuation moves only the LOCAL lease; re-entering here is what
+		// produced the livelock.
+		expect(shell.takeoverHostWriter).toHaveBeenCalledTimes(1);
+		expect(pty._nativeTakeoversInFlightForTests()).toBe(0);
+	});
+
+	// A vacant-slot takeover changes writerAttached without changing anyone's
+	// role, so a role-change-driven publish would tell the OTHER viewer nothing.
+	it("tells every local viewer the slot is taken, even though their role did not change", async () => {
+		shell.hostRole = "observer";
+		shell.writerAttached = false;
+		const first = connect();
+		const second = connect();
+		expect(first.attach).toMatchObject({ writerAttached: false });
+
+		shell.writerAttached = true; // the host grants it to `second`
+		handlers.message(second, claimMessage());
+		await delay(FLUSH_MS);
+
+		expect(first.lastRoleHeader).toMatchObject({ role: "observer", writerAttached: true });
+	});
+
+	// Nothing may look like a writer while the binding is going away,
+	// and with no viewers left there must be NO rebind and NO claim.
+	it("demotes before detaching and performs no hidden rebind when no viewer remains", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		shell.releaseConfirms = false;
+		const leaving = connect();
+
+		handlers.message(leaving, claimMessage());
+		await delay(FLUSH_MS);
+		disconnect(leaving);
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+
+		expect(shell.releaseHostWriter).toHaveBeenCalledTimes(1);
+		expect(shell.detach).toHaveBeenCalled();
+		// No rebind: bindNativeTaskPane is only ever called for the initial session here.
+		expect(vi.mocked(bindNativeTaskPane)).toHaveBeenCalledTimes(1);
+		// And the bindingless session is GONE, so a later viewer rebuilds it instead of
+		// attaching to a registered session that can never be rebound.
+		expect(pty.hasSession(TASK_ID)).toBe(false);
+	});
+
+	it("keeps a viewer that arrives DURING recovery honest — never an optimistic writer", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		shell.releaseConfirms = false;
+		const leaving = connect();
+		handlers.message(leaving, claimMessage());
+		await delay(FLUSH_MS);
+		disconnect(leaving);
+
+		// Settle the host round trip and attach a viewer while the binding is being replaced.
+		shell.settleTakeover?.();
+		const arriving = connect();
+
+		expect(arriving.attach).toMatchObject({ role: "observer" });
+		await delay(FLUSH_MS);
+	});
+
+	// A throwing listener must not be able to strand a request, which would turn a
+	// clean refusal into a timeout and then into an unnecessary compensation.
+	it("settles a refused takeover even when the host error listener throws", async () => {
+		shell.hostRole = "observer";
+		shell.takeoverUnsupported = true;
+		shell.grantClaim = false;
+		const desktop = connect();
+
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+
+		// The refusal still reached the viewer, so settlement was not blocked.
+		expect(desktop.lastRole).toMatchObject({ refused: true });
+	});
+
+	// The in-flight guard must be held for the WHOLE recovery. Releasing it when the host
+	// request settles lets a second gesture overlap the release/rebind and the recovering
+	// window, which is exactly what an unawaited compensation allows.
+	it("holds the pane's in-flight guard until compensation itself finishes", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		shell.holdRelease = true;
+		shell.takeoverTimesOut = true;
+		const desktop = connect();
+
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+		// Let the host round trip TIME OUT, which is what triggers compensation.
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+		expect(shell.releaseHostWriter).toHaveBeenCalledTimes(1);
+
+		// Compensation is mid-flight. A second gesture must not start another host request.
+		const takeoversSoFar = shell.takeoverHostWriter.mock.calls.length;
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+		expect(shell.takeoverHostWriter).toHaveBeenCalledTimes(takeoversSoFar);
+		expect(pty._nativeTakeoversInFlightForTests()).toBe(1);
+
+		shell.settleRelease?.();
+		await delay(FLUSH_MS);
+		expect(pty._nativeTakeoversInFlightForTests()).toBe(0);
+	});
+
+	// The refusal is a VERDICT, so it must arrive with recovery's outcome. Publishing it
+	// first meant the next snapshot immediately cleared the diagnosis.
+	it("publishes the timeout refusal only after compensation settles", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		shell.holdRelease = true;
+		shell.takeoverTimesOut = true;
+		const desktop = connect();
+
+		handlers.message(desktop, claimMessage());
+		await delay(FLUSH_MS);
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+
+		// Recovery is still running: nothing may claim to know why it failed yet.
+		expect(desktop.lastRole?.refused).not.toBe(true);
+
+		shell.settleRelease?.();
+		await delay(FLUSH_MS);
+		expect(desktop.lastRole).toMatchObject({ refused: true, refusedReason: "transfer-failed" });
+	});
+
+	// The requester-gone path holds the pane's guard for the whole recovery, so a second
+	// gesture cannot overlap release, detach or rebind.
+	it("holds the guard through requester-gone compensation too", async () => {
+		shell.hostRole = "observer";
+		shell.holdTakeover = true;
+		shell.holdRelease = true;
+		const leaving = connect();
+
+		handlers.message(leaving, claimMessage());
+		await delay(FLUSH_MS);
+		disconnect(leaving); // the requester's tab closes mid-round-trip, leaving nobody
+		shell.settleTakeover?.();
+		await delay(FLUSH_MS);
+		expect(shell.releaseHostWriter).toHaveBeenCalledTimes(1);
+
+		// A viewer arrives WHILE recovery runs and gestures: no second host request.
+		const arriving = connect();
+		const before = shell.takeoverHostWriter.mock.calls.length;
+		handlers.message(arriving, claimMessage());
+		await delay(FLUSH_MS);
+		expect(shell.takeoverHostWriter).toHaveBeenCalledTimes(before);
+		expect(pty._nativeTakeoversInFlightForTests()).toBe(1);
+
+		shell.settleRelease?.();
+		await delay(FLUSH_MS);
+		expect(pty._nativeTakeoversInFlightForTests()).toBe(0);
+	});
+
+	it("hands the lease back on an explicit release", async () => {
 		const desktop = connect();
 		const browser = connect();
 		handlers.message(browser, claimMessage());
+		await delay(FLUSH_MS);
 
 		handlers.message(browser, releaseMessage());
 
@@ -572,6 +978,54 @@ describe("attach frame identity — pane-1 and composite pane-2", () => {
 		expect(viewer.attach.paneId).toBe(SECOND_PANE_ID);
 		expect(viewer.attach.hostPid).toBe(SECOND_PANE_HOST_PID);
 		expect(viewer.attach.shellPid).toBe(SECOND_PANE_SHELL_PID);
+	});
+
+	// Auxiliary panes are registered under `taskId~paneId`. Cleaning up pane 2 must delete
+	// THAT key: deleting the bare taskId would unregister pane 1 and leave pane 2's dead
+	// entry behind, so pane 1's viewers lose their session and pane 2 can never rebind.
+	it("cleans up pane 2 by its composite key, leaving pane 1 registered", async () => {
+		// A holder, not a bare `let`: TS narrows a callback-assigned local back to null.
+		const paneGate: { settle: (() => void) | null } = { settle: null };
+		const paneShell = {
+			sessionId: SECOND_PANE_SESSION_ID,
+			paneId: SECOND_PANE_ID,
+			hostPid: 5060,
+			shellPid: 5061,
+			write: vi.fn(),
+			resize: vi.fn(),
+			detach: vi.fn(),
+			hostRole: () => "observer",
+			hostWriterAttached: () => true,
+			hostPtyGeometry: () => null,
+			takeoverHostWriter: vi.fn(async () => {
+				// Park the round trip so the viewer can leave BEFORE compensation decides.
+				await new Promise<void>((resolve) => { paneGate.settle = resolve; });
+				return { ok: false, refusal: "transfer-failed", timedOut: true };
+			}),
+			releaseHostWriter: vi.fn(async () => false),
+			resizeAwaited: vi.fn(async (cols: number, rows: number) => ({ cols, rows })),
+			claimHostWriter: vi.fn(async () => "observer"),
+			claimHostWriterDiscriminated: vi.fn(async () => ({ outcome: "failed" })),
+			writerPid: vi.fn(async () => 4711),
+		};
+		vi.mocked(bindNativeTaskPane).mockImplementation(async () => paneShell as never);
+		await ensureNativePanePtySession(TASK_ID, SECOND_PANE_ID, SECOND_PANE_SESSION_ID, "proj-1", "/tmp/wt");
+
+		// Pane 2's only viewer gestures, then leaves mid-round-trip: compensation runs with
+		// no viewers, which is the path that unregisters the session.
+		const paneViewer = connectForPane(SECOND_PANE_ID);
+		handlers.message(paneViewer, claimMessage());
+		await delay(FLUSH_MS);
+		disconnect(paneViewer); // leaves while the host round trip is still parked
+		paneGate.settle?.();
+		await delay(FLUSH_MS);
+		await delay(FLUSH_MS);
+
+		expect(pty.hasSession(paneSessionKey(TASK_ID, SECOND_PANE_ID))).toBe(false);
+		expect(pty.hasSession(TASK_ID)).toBe(true); // pane 1 untouched
+		// A later pane-2 open reconstructs it.
+		await ensureNativePanePtySession(TASK_ID, SECOND_PANE_ID, SECOND_PANE_SESSION_ID, "proj-1", "/tmp/wt");
+		expect(pty.hasSession(paneSessionKey(TASK_ID, SECOND_PANE_ID))).toBe(true);
 	});
 });
 

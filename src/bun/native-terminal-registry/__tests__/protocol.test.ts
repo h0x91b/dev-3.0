@@ -18,6 +18,8 @@ import {
 	stoppingEvent,
 	stopRequest,
 	welcomeMessage,
+	resizedReply,
+	HOST_CAPABILITIES,
 } from "../protocol";
 
 const V = NATIVE_SESSION_PROTOCOL_VERSION;
@@ -28,6 +30,9 @@ describe("native-session protocol v1", () => {
 			resizeMessage(120, 40),
 			statusRequest(7),
 			ownershipRequest(8, "claim"),
+			ownershipRequest(9, "release"),
+			ownershipRequest(10, "takeover"),
+			resizedReply(11, 120, 40, 7),
 			ownershipReply(8, "writer", true),
 			stopRequest(),
 			welcomeMessage(1, "alpha", "writer"),
@@ -40,6 +45,43 @@ describe("native-session protocol v1", () => {
 		}
 		// hello is version-agnostic and parsed by its own decoder, not decodeControl.
 		expect(decodeHello(encodeControl(helloMessage("alpha", 1)))).toEqual(helloMessage("alpha", 1));
+	});
+
+	// `takeover` is additive in v1: a host staged before it must DROP the frame (so the
+	// client times out and can say so) rather than misread it as a non-stealing claim.
+	// The client must LEARN what a host can do instead of timing out an unknown action.
+	it("announces capabilities and the writer generation on welcome", () => {
+		const welcome = welcomeMessage(1, "alpha", "writer", { capabilities: HOST_CAPABILITIES, writerGeneration: 3 });
+		const decoded = decodeControl(encodeControl(welcome));
+
+		expect(decoded).toEqual(welcome);
+		expect(HOST_CAPABILITIES).toContain("takeover");
+		// An OLD host omits the field entirely; that must decode fine and mean "unknown".
+		const old = welcomeMessage(1, "alpha", "writer");
+		expect(decodeControl(encodeControl(old))).toEqual(old);
+		expect((decodeControl(encodeControl(old)) as { capabilities?: unknown }).capabilities).toBeUndefined();
+	});
+
+	it("carries the sender's expected generation on a resize, so a stale one can be refused", () => {
+		const msg = resizeMessage(100, 30, { id: 4, expectedGeneration: 9 });
+		expect(decodeControl(encodeControl(msg))).toEqual(msg);
+		// Uncorrelated resize stays valid — older clients send exactly this.
+		expect(decodeControl(encodeControl(resizeMessage(100, 30)))).toEqual(resizeMessage(100, 30));
+	});
+
+	it("rejects a malformed resize acknowledgement rather than half-applying it", () => {
+		for (const bad of [
+			{ v: V, type: "resized", id: 1, cols: 80, rows: 24 },
+			{ v: V, type: "resized", id: 1, cols: 80, writerGeneration: 2 },
+			{ v: V, type: "resized", cols: 80, rows: 24, writerGeneration: 2 },
+		]) {
+			expect(decodeControl(JSON.stringify(bad))).toBeNull();
+		}
+	});
+
+	it("rejects an ownership action it does not know", () => {
+		expect(decodeControl(JSON.stringify({ v: V, type: "ownership", id: 3, action: "steal" }))).toBeNull();
+		expect(decodeControl(JSON.stringify({ v: V, type: "ownership", id: 3 }))).toBeNull();
 	});
 
 	it("preserves exact shell exit codes", () => {

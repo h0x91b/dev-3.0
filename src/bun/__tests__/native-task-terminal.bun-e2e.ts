@@ -31,6 +31,12 @@
  *      atomically, the new writer reaches the SAME shell while both viewers receive
  *      its output, geometry follows the WRITER only, a reconnect resumes at its
  *      watermark, and `destroySessionAwaited` kills the tree;
+ *  11. CROSS-INSTANCE `Take control`: a SECOND real app process attaches
+ *      to the SAME host as an observer and clicks Take control through the product
+ *      frame — the lease transfers, the first process is demoted authoritatively by
+ *      the host, the peer's input reaches the same shell EXACTLY once, PTY geometry
+ *      follows the new writer, host/shell pids never change, and the lease comes
+ *      back to the first process once the peer lets go;
  *  10. LIFECYCLE teardown (seq 1298): `pty.destroyNativeTaskSession` on a task with
  *      NO in-memory session (the app-restart shape) resolves only after its host,
  *      shell and NESTED CHILD are gone, leaves a sibling native session and the tmux
@@ -49,7 +55,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "../spawn";
+import { spawn, spawnSync } from "../spawn";
 import { bindNativeTaskPane, type NativeTaskTerminal } from "../native-task-terminal";
 import {
 	startNativeTaskPanes,
@@ -90,7 +96,9 @@ const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 const isWindows = process.platform === "win32";
 const lineEnd = isWindows ? "\r" : "\n";
 const controllerEntry = fileURLToPath(new URL("./native-task-terminal-controller.ts", import.meta.url));
+const takeoverPeerEntry = fileURLToPath(new URL("./native-takeover-peer.ts", import.meta.url));
 const JSON_SENTINEL = "__TASK_TERMINAL_JSON__";
+const TAKEOVER_SENTINEL = "__NATIVE_TAKEOVER_JSON__";
 
 // A fixed task id keeps the session id deterministic across runs, which is the
 // property the reattach path depends on.
@@ -109,6 +117,10 @@ const LC_FIRST_PANE_SESSION_ID = `${LC_SESSION_ID}-pane-1`;
 const SIB_TASK_ID = "00000000-0000-4000-8000-0000000e2e78";
 const SIB_SESSION_ID = nativeTaskSessionId(SIB_TASK_ID);
 const SIB_FIRST_PANE_SESSION_ID = `${SIB_SESSION_ID}-pane-1`;
+// The cross-instance Take-control section: ONE host, two real app processes.
+const XP_TASK_ID = "00000000-0000-4000-8000-0000000e2e9a";
+const XP_SESSION_ID = nativeTaskSessionId(XP_TASK_ID);
+const XP_FIRST_PANE_SESSION_ID = `${XP_SESSION_ID}-pane-1`;
 
 interface Sink {
 	text: () => string;
@@ -307,11 +319,97 @@ function nestedChildProbe(pidFile: string): { command: string; read: () => numbe
 	return { command: `sleep 600 & echo $! > '${pidFile}'`, read };
 }
 
+/**
+ * Every gesture in this file is deliberate and countable. A generous ceiling still fails
+ * loudly on a livelock, which is the failure mode this guards: three orders of magnitude
+ * of headroom, and the observed regression was five.
+ */
+const MAX_EXPECTED_TAKEOVERS = 50;
+
+/** Count matching lines across a log tree, so an invariant can assert on log VOLUME. */
+function countLogLines(logDir: string, needle: string): number {
+	let total = 0;
+	const walk = (dir: string): void => {
+		let entries: Array<{ name: string; isDirectory: () => boolean }>;
+		try {
+			entries = readdirSync(dir, { withFileTypes: true }) as unknown as typeof entries;
+		} catch {
+			return;
+		}
+		for (const entry of entries) {
+			const full = join(dir, entry.name);
+			if (entry.isDirectory()) {
+				walk(full);
+				continue;
+			}
+			if (!entry.name.endsWith(".log")) continue;
+			try {
+				for (const line of readFileSync(full, "utf8").split("\n")) {
+					if (line.includes(needle)) total++;
+				}
+			} catch {
+				// unreadable mid-write; the ceiling is generous enough to absorb it
+			}
+		}
+	};
+	walk(logDir);
+	return total;
+}
+
 function sessionDirCount(): number {
 	try {
 		return readdirSync(sessionsRootDir(), { withFileTypes: true }).filter((entry) => entry.isDirectory()).length;
 	} catch {
 		return 0;
+	}
+}
+
+/**
+ * Await ONE sentinel-prefixed JSON line from a live stream, leaving the process running.
+ * Deliberately not `new Response(stream).text()`: that waits for EOF, i.e. for the child
+ * to exit, which destroys the very state a cross-process assertion needs.
+ */
+async function readSentinelLine(
+	child: { stdout: ReadableStream<Uint8Array>; kill: (signal?: NodeJS.Signals) => void },
+	sentinel: string,
+	timeoutMs: number,
+): Promise<Record<string, unknown> | null> {
+	const reader = child.stdout.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	const deadline = Date.now() + timeoutMs;
+	let found: Record<string, unknown> | null = null;
+	try {
+		while (Date.now() < deadline) {
+			// Race EVERY read: a bare `await reader.read()` on a silent child hangs past the
+			// deadline, so the loop condition alone does not bound this.
+			const step = await Promise.race([
+				reader.read(),
+				new Promise<"timeout">((r) => setTimeout(() => r("timeout"), Math.max(1, deadline - Date.now()))),
+			]);
+			if (step === "timeout") break;
+			if (step.done) break;
+			buffer += decoder.decode(step.value, { stream: true });
+			for (const line of buffer.split("\n")) {
+				if (!line.startsWith(sentinel)) continue;
+				try {
+					found = JSON.parse(line.slice(sentinel.length)) as Record<string, unknown>;
+				} catch {
+					found = null;
+				}
+				return found;
+			}
+		}
+		return null;
+	} finally {
+		reader.releaseLock();
+		// Never leave the child running when we gave up on it — an orphan peer keeps the
+		// writer lease and poisons every later assertion in this file.
+		if (!found) {
+			try {
+				child.kill("SIGKILL");
+			} catch { /* already gone */ }
+		}
 	}
 }
 
@@ -658,6 +756,189 @@ async function run(): Promise<void> {
 			check(await tmux.hasSession(sentinelSession, { socket: sentinelSocket }), "the tmux sentinel session survived the renderer-transport teardown too");
 		}
 
+		// ── 11. cross-instance Take control: ONE host, TWO real app processes ──
+		// The bug this section exists for: the host grants its single writer lease to
+		// the FIRST client across every app process, so a viewer in any other dev3
+		// instance was permanently read-only — `Take control` reached the host and came
+		// back refused. Two viewers inside one process cannot show this at all, which
+		// is why the second half runs in a genuinely separate OS process.
+		await pty.createNativeTaskSession(XP_TASK_ID, "e2e-project", work, taskLaunch(work), {}, { cols: 100, rows: 30 });
+		const xpRecord = readRecord(XP_FIRST_PANE_SESSION_ID);
+		const xpHostPid = xpRecord?.host.pid ?? -1;
+		const xpShellPid = xpRecord?.shell.pid ?? -1;
+		check(isProcessAlive(xpHostPid) && isProcessAlive(xpShellPid), "the cross-instance session has its own live host + shell");
+
+		const rendererX = await openRenderer(port, XP_TASK_ID);
+		renderers.push(rendererX);
+		check(rendererX.attach()?.role === "writer", "the FIRST app process holds the writer lease");
+		check(
+			pty.nativePaneTerminal(XP_TASK_ID)?.hostRole() === "writer",
+			"the first process holds the HOST's lease, not merely its own local one",
+		);
+		// A deliberately different geometry, so "the peer's size won" cannot be a
+		// coincidence of both processes asking for the same thing.
+		rendererX.send(encodeResizeSequence(100, 30));
+		const xpWarmup = markerProbe(`${nonce}x`, xpShellPid);
+		for (const line of xpWarmup.setup) rendererX.send(`${line}${lineEnd}`);
+		const xpWarmupSeen = await sendUntilObserved({
+			send: () => rendererX.send(`${xpWarmup.command}${lineEnd}`),
+			observe: () => (rendererX.sink.text().includes(xpWarmup.expected) ? xpWarmup.expected : null),
+			...SHELL_WARMUP_PROBE,
+		});
+		check(xpWarmupSeen !== null, "the first process drives the shell before the peer arrives");
+
+		// A second viewer in the SAME process as the writer. It is a local observer, so it
+		// must follow the canonical grid through the whole A→B→A transfer — its own
+		// process never performs B's resize, so nothing local can tell it the new size.
+		const rendererX2 = await openRenderer(port, XP_TASK_ID);
+		renderers.push(rendererX2);
+		check(rendererX2.attach()?.role === "observer", "a second viewer in the owning process is a local observer");
+		check(
+			rendererX2.attach()?.cols === 100 && rendererX2.attach()?.rows === 30,
+			"the second local viewer is handed the canonical grid on attach, before any transfer",
+		);
+
+		const xpPeerCols = 132;
+		const xpPeerRows = 43;
+		const peerProbe = markerProbe(`${nonce}p`, xpShellPid);
+		const xpTextBefore = rendererX.sink.text();
+		const peer = spawn([process.execPath, takeoverPeerEntry, XP_TASK_ID, work], {
+			env: {
+				...process.env,
+				DEV3_TAKEOVER_SETUP: JSON.stringify(peerProbe.setup),
+				DEV3_TAKEOVER_COMMAND: peerProbe.command,
+				DEV3_TAKEOVER_EXPECTED: peerProbe.expected,
+				DEV3_TAKEOVER_COLS: String(xpPeerCols),
+				DEV3_TAKEOVER_ROWS: String(xpPeerRows),
+				// Generous hold: every live-peer assertion below must land while the peer
+				// still owns the lease, or a disconnect vacancy could satisfy them instead.
+				DEV3_TAKEOVER_HOLD_MS: "20000",
+			},
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		// Read the verdict line WITHOUT waiting for EOF. Consuming the whole stream would
+		// block until the peer EXITS, and then every demotion assertion below could have
+		// been satisfied by the peer's disconnect-vacancy notice rather than by the
+		// takeover — which is the bug this section exists to prove.
+		const peerVerdict = await readSentinelLine(peer, TAKEOVER_SENTINEL, 60_000);
+		check(peerVerdict !== null, "the peer app process produced a verdict");
+		const peerPid = num(peerVerdict, "peerPid");
+		// Everything from here until the explicit `await peer.exited` runs against a LIVE
+		// peer that still holds the lease.
+		check(isProcessAlive(peerPid), "the peer is still alive and holding the lease while its takeover is asserted");
+		check(peerPid !== process.pid, `the peer was a genuinely separate OS process (pid ${peerPid})`);
+		check(
+			peerVerdict?.hostRoleBefore === "observer" && peerVerdict?.attachedRole === "observer",
+			"attaching from a second instance does NOT steal the lease — it observes",
+		);
+		check(
+			peerVerdict?.promoted === true && peerVerdict?.roleAfterTakeControl === "writer",
+			"an explicit Take control from a second app process TRANSFERS the writer lease",
+		);
+		check(peerVerdict?.refused !== true, `Take control was not refused (reason: ${String(peerVerdict?.refusedReason ?? "none")})`);
+		check(
+			num(peerVerdict, "hostPid") === xpHostPid && num(peerVerdict, "shellPid") === xpShellPid,
+			"the peer took over the SAME host and shell — nothing respawned",
+		);
+		check(peerVerdict?.echoedThroughShell === true, "the new writer's input reached the shell");
+		check(
+			num(peerVerdict, "countedCommandSends") === 1,
+			"the peer sent the counted command EXACTLY once, so the parent's occurrence count is meaningful",
+		);
+
+		// The displaced process learns its new role FROM THE HOST, not from a guess — and
+		// the frame must be a TAKEOVER demotion, not the vacancy notice a disconnect would
+		// send. The two are distinguishable without any ack or epoch: a takeover says
+		// someone else holds the lease (`writerAttached: true`), a vacancy says nobody does.
+		const xDemoted = await rendererX.awaitHeader(
+			(h) => h.t === "role" && h.role === "observer" && "writerAttached" in h && h.writerAttached === true,
+			8000,
+		);
+		check(
+			xDemoted && isProcessAlive(peerPid),
+			"the displaced process was demoted BY THE TAKEOVER while the new writer was still alive — not by its exit",
+		);
+		check(
+			pty.nativePaneTerminal(XP_TASK_ID)?.hostRole() === "observer",
+			"the displaced process's HOST role followed the transfer, so it stops pretending it can type",
+		);
+		const xpOccurrences = rendererX.sink.text().split(peerProbe.expected).length - 1;
+		check(
+			!xpTextBefore.includes(peerProbe.expected) && xpOccurrences === 1,
+			`the peer's input landed on the shared shell EXACTLY once (saw ${xpOccurrences})`,
+		);
+		// The displaced viewer must be TOLD the new canonical geometry, not left rendering
+		// the stream at its own width — those bytes are laid out for the new writer now.
+		const xGeometryTold = await rendererX.awaitHeader(
+			(h) => h.t === "role" && "cols" in h && h.cols === xpPeerCols && h.rows === xpPeerRows,
+			8000,
+		);
+		check(xGeometryTold, "the displaced viewer was handed the NEW writer's PTY geometry to render at");
+		const x2FollowedB = await rendererX2.awaitHeader(
+			(h) => h.t === "role" && "cols" in h && h.cols === xpPeerCols && h.rows === xpPeerRows,
+			8000,
+		);
+		check(x2FollowedB, "a SECOND local viewer in the displaced process also follows the new owner's grid");
+		const peerStderr = await new Response(peer.stderr).text();
+		await peer.exited;
+		if (peerStderr.trim()) console.log(`       [peer stderr] ${peerStderr.trim().split("\n").slice(-3).join(" | ")}`);
+		const xpAfterRecord = readRecord(XP_FIRST_PANE_SESSION_ID);
+		check(
+			xpAfterRecord?.cols === xpPeerCols && xpAfterRecord?.rows === xpPeerRows,
+			`PTY geometry followed the NEW writer (${xpPeerCols}x${xpPeerRows}, not the displaced 100x30)`,
+		);
+		check(
+			isProcessAlive(xpHostPid) && isProcessAlive(xpShellPid) && !isProcessAlive(peerPid),
+			"host and shell survived the transfer with the same pids, and the peer is gone",
+		);
+		if (sentinelAlive) {
+			check(await tmux.hasSession(sentinelSession, { socket: sentinelSocket }), "the tmux sentinel session is untouched by the writer transfer");
+		}
+
+		// The lease comes BACK: with the peer gone the slot is vacant, and the same
+		// production frame recovers it — a transfer must not be one-way.
+		rendererX.send(claimMessage());
+		const xRegained = await rendererX.awaitHeader((h) => h.t === "role" && h.role === "writer", 8000);
+		check(xRegained, "the first process takes control back once the peer lets go");
+		// Geometry follows the lease back too: A owns it again, so A's size is canonical
+		// and the second local viewer must be told, not left on B's grid.
+		const backCols = 118;
+		const backRows = 36;
+		rendererX.send(encodeResizeSequence(backCols, backRows));
+		const x2FollowedBack = await rendererX2.awaitHeader(
+			(h) => h.t === "role" && "cols" in h && h.cols === backCols && h.rows === backRows,
+			8000,
+		);
+		const backRecord = readRecord(XP_FIRST_PANE_SESSION_ID);
+		check(
+			x2FollowedBack && backRecord?.cols === backCols && backRecord?.rows === backRows,
+			`geometry follows the lease BACK to the first process (${backCols}x${backRows})`,
+		);
+
+		const xpBack = markerProbe(`${nonce}r`, xpShellPid);
+		for (const line of xpBack.setup) rendererX.send(`${line}${lineEnd}`);
+		const xpBackSeen = await sendUntilObserved({
+			send: () => rendererX.send(`${xpBack.command}${lineEnd}`),
+			observe: () => (rendererX.sink.text().includes(xpBack.expected) ? xpBack.expected : null),
+			...SHELL_WARMUP_PROBE,
+		});
+		check(xpBackSeen !== null, "after taking control back the first process drives the SAME shell again");
+
+		// This whole section performs a handful of
+		// deliberate gestures. A re-entrant takeover once turned that into ~12k/second and
+		// 540k log lines, so the COUNT is asserted, not just the outcome.
+		const takeoverLogLines = countLogLines(join(root, "logs"), "Took over the native writer lease");
+		check(
+			takeoverLogLines <= MAX_EXPECTED_TAKEOVERS,
+			`the whole run performed at most ${MAX_EXPECTED_TAKEOVERS} host takeovers (saw ${takeoverLogLines})`,
+		);
+
+		await pty.destroySessionAwaited(XP_TASK_ID);
+		const xpStopDeadline = Date.now() + 5000;
+		while (Date.now() < xpStopDeadline && (isProcessAlive(xpHostPid) || isProcessAlive(xpShellPid))) await delay(50);
+		check(!isProcessAlive(xpHostPid) && !isProcessAlive(xpShellPid), "the cross-instance host + shell tree is dead");
+
 		// ── 10. lifecycle teardown: an AWAITED stop of an unattached tree with a nested child ──
 		// Both sessions are created through the product path but never registered with
 		// pty-server, which is exactly the state after an app restart: the lifecycle has
@@ -723,6 +1004,7 @@ async function run(): Promise<void> {
 			await stopNativeTaskPanes(WS_TASK_ID);
 			await stopNativeTaskPanes(LC_TASK_ID);
 			await stopNativeTaskPanes(SIB_TASK_ID);
+			await stopNativeTaskPanes(XP_TASK_ID);
 		} catch {
 			// best-effort
 		}

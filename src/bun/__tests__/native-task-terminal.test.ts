@@ -11,6 +11,12 @@ const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), er
 const client = vi.hoisted(() => ({
 	getRole: vi.fn(() => "writer" as string | null),
 	claimWriter: vi.fn(async () => ({ role: "writer" as string })),
+	takeoverWriter: vi.fn(async () => ({ role: "writer" as string })),
+	resizeAwaited: vi.fn(async (cols: number, rows: number) => ({ cols, rows })),
+	releaseWriter: vi.fn(async () => ({ role: "observer" as string })),
+	// Capability negotiation replaces timeout inference: a host that does not ANNOUNCE
+	// `takeover` is the only thing that may ever yield `host-too-old`.
+	supports: vi.fn((capability: string) => capability === "takeover"),
 	onOutput: vi.fn(),
 	onError: vi.fn(),
 	onDisconnect: vi.fn(),
@@ -21,8 +27,32 @@ const client = vi.hoisted(() => ({
 
 vi.mock("../logger", () => ({ createLogger: () => log }));
 
+const OwnershipTimeoutError = vi.hoisted(
+	() =>
+		class OwnershipTimeoutError extends Error {
+			constructor(readonly action: string) {
+				super(`ownership ${action} timeout`);
+				this.name = "OwnershipTimeoutError";
+			}
+		},
+);
+
+// Shaped like the real class: the verdict is decided by `instanceof` plus `code`, so a
+// looser stub would let a message-matching regression pass.
+const HostRefusedError = vi.hoisted(
+	() =>
+		class HostRefusedError extends Error {
+			constructor(readonly code: string, message?: string) {
+				super(`native session error: ${code}${message ? ` (${message})` : ""}`);
+				this.name = "HostRefusedError";
+			}
+		},
+);
+
 vi.mock("../native-terminal-registry/client", () => ({
 	NativeSessionClient: { discover: vi.fn(async () => client) },
+	OwnershipTimeoutError,
+	HostRefusedError,
 }));
 
 vi.mock("../native-terminal-registry/record", () => ({
@@ -39,6 +69,9 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	client.getRole.mockReturnValue("writer");
 	client.claimWriter.mockResolvedValue({ role: "writer" });
+	client.takeoverWriter.mockResolvedValue({ role: "writer" });
+	client.releaseWriter.mockResolvedValue({ role: "observer" });
+	client.supports.mockImplementation((capability: string) => capability === "takeover");
 	vi.mocked(NativeSessionClient.discover).mockResolvedValue(client as never);
 });
 
@@ -100,5 +133,132 @@ describe("bindNativeTaskPane", () => {
 		terminal!.detach();
 		expect(client.close).toHaveBeenCalled();
 		expect(hooks.onClosed).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * The explicit `Take control` gesture. The invariant that must survive
+ * every change here: ATTACHING never steals, and only a takeover-frame timeout —
+ * the one honest signal of a host too old to transfer — may fall back to a claim.
+ */
+describe("takeoverHostWriter", () => {
+	it("is never used by implicit attachment — that path only ever claims", async () => {
+		client.getRole.mockReturnValue("observer");
+		await bindNativeTaskPane(SESSION_ID, hooks);
+		expect(client.claimWriter).toHaveBeenCalledTimes(1);
+		expect(client.takeoverWriter).not.toHaveBeenCalled();
+	});
+
+	it("sends ONE takeover frame and reports the writer role", async () => {
+		client.getRole.mockReturnValue("observer");
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		client.claimWriter.mockClear();
+
+		await expect(terminal!.takeoverHostWriter()).resolves.toEqual({ ok: true });
+		expect(client.takeoverWriter).toHaveBeenCalledTimes(1);
+		expect(client.claimWriter).not.toHaveBeenCalled();
+	});
+
+	// P1-1: our cached role can be STALE — another process may already hold the lease and
+	// our demotion frame may be in flight — so an explicit gesture must always reach the
+	// host. Skipping it would make a deliberate click silently do nothing. The host's
+	// takeover is idempotent for the true current writer, so asking is free.
+	it("still asks the host even when our cached role says we are the writer", async () => {
+		client.getRole.mockReturnValue("writer");
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+
+		await expect(terminal!.takeoverHostWriter()).resolves.toEqual({ ok: true });
+		expect(client.takeoverWriter).toHaveBeenCalledTimes(1);
+	});
+
+	// Capability negotiation, not timeout inference: only a host that does not ANNOUNCE
+	// `takeover` may ever produce `host-too-old`.
+	it("falls back to a claim on a host that does not announce takeover, winning a vacant slot", async () => {
+		client.getRole.mockReturnValue("observer");
+		client.supports.mockReturnValue(false);
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		client.claimWriter.mockResolvedValue({ role: "writer" });
+
+		await expect(terminal!.takeoverHostWriter()).resolves.toEqual({ ok: true });
+		expect(client.takeoverWriter).not.toHaveBeenCalled();
+	});
+
+	it("reports host-too-old only when an unannounced host still has a live writer", async () => {
+		client.getRole.mockReturnValue("observer");
+		client.supports.mockReturnValue(false);
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		client.claimWriter.mockResolvedValue({ role: "observer" });
+
+		await expect(terminal!.takeoverHostWriter()).resolves.toEqual({ ok: false, refusal: "host-too-old" });
+	});
+
+	it("keeps a takeover TIMEOUT as transfer-failed on a capable host — no old-host inference", async () => {
+		client.getRole.mockReturnValue("observer");
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		client.claimWriter.mockClear();
+		client.takeoverWriter.mockRejectedValue(new OwnershipTimeoutError("takeover"));
+
+		// A timeout also carries `timedOut`, because the host may still commit it and the
+		// caller has to COMPENSATE rather than just report a failure.
+		await expect(terminal!.takeoverHostWriter()).resolves.toEqual({
+			ok: false,
+			refusal: "transfer-failed",
+			timedOut: true,
+		});
+		expect(client.claimWriter).not.toHaveBeenCalled();
+	});
+
+	// Only the host's own authoritative conflict may mean host-too-old. Anything
+	// we could not interpret says NOTHING about who owns the lease.
+	it.each([
+		["a disconnect", new Error("connection closed before ownership reply"), "transfer-failed"],
+		["an auth failure", new HostRefusedError("unauthorized"), "transfer-failed"],
+		["a timeout", new OwnershipTimeoutError("claim"), "transfer-failed"],
+		["an unparseable reply", new Error("native session sent an unparseable reply"), "transfer-failed"],
+		["a non-conflict host refusal", new HostRefusedError("internal-error"), "transfer-failed"],
+		["an authoritative writer-active conflict", new HostRefusedError("conflict", "another client is already the writer"), "host-too-old"],
+	])("maps %s to the right verdict on a host that cannot transfer", async (_label, failure, expected) => {
+		client.getRole.mockReturnValue("observer");
+		client.supports.mockReturnValue(false);
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		client.claimWriter.mockRejectedValue(failure);
+
+		const result = await terminal!.takeoverHostWriter();
+
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.refusal).toBe(expected);
+	});
+
+	it("reports an unconfirmed release so the caller can drop the connection", async () => {
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		client.releaseWriter.mockRejectedValue(new Error("host went away"));
+
+		await expect(terminal!.releaseHostWriter()).resolves.toBe(false);
+	});
+
+	// The mutation this guards against: widening the fallback to "any failure", or to
+	// "any timeout". Either would tell the user to restart a terminal that is fine,
+	// and would fire a claim the caller never asked for. `transfer-failed` stays
+	// generic on purpose — the real cause is logged, never guessed at in the UI.
+	it.each([
+		["a disconnect", new Error("connection closed before ownership reply")],
+		["an auth failure", new Error("native session error: unauthorized")],
+		["a host conflict frame", new Error("native session error: conflict (client has not completed attach)")],
+		["a stale-generation conflict", new Error("native session error: conflict (writer generation is stale)")],
+		["an unrelated timeout", new OwnershipTimeoutError("release")],
+		["a non-Error rejection", "socket exploded"],
+	])("surfaces %s as itself instead of relabelling it host-too-old", async (_label, failure) => {
+		client.getRole.mockReturnValue("observer");
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		client.claimWriter.mockClear();
+		client.takeoverWriter.mockRejectedValue(failure);
+
+		const result = await terminal!.takeoverHostWriter();
+
+		// `timedOut` rides along only for the timeout case, since that alone needs
+		// compensation; every other class is a plain transfer-failed.
+		expect(result.ok).toBe(false);
+		expect(result.ok === false && result.refusal).toBe("transfer-failed");
+		expect(client.claimWriter).not.toHaveBeenCalled();
 	});
 });

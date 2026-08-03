@@ -66,6 +66,10 @@ const terminal = {
 	// Native terminal: one viewer types, the rest watch until they take over
 	"nativeViewer.readOnly": "Только чтение — печатает другой клиент",
 	"nativeViewer.refused": "Только чтение — возьмите управление, чтобы печатать",
+	"nativeViewer.hostTooOld": "Управление не передать — старый хост",
+	"nativeViewer.hostTooOldHint": "Хост терминала этой панели не умеет передавать управление. Перезапустите терминал или дождитесь, пока другое окно его освободит.",
+	"nativeViewer.transferFailed": "Не удалось взять управление — терминал не ответил",
+	"nativeViewer.transferFailedHint": "Хост терминала не подтвердил передачу управления. Проверьте, жив ли терминал, и попробуйте снова.",
 	"nativeViewer.takeControl": "Взять управление",
 	"nativeViewer.takeControlHint": "Печатать будете вы, другой клиент перейдёт в режим чтения",
 
