@@ -489,6 +489,12 @@ bar make red decorative). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskI
 - **Why:** The menu enumerates every action; DOM surfaces are intentionally partial to control density.
 - **Status:** Observed. Evidence: `src/shared/application-menu.ts`.
 
+## 2026-08-03 — Task card is governed by five zones, and the left rail owns lifecycle
+
+- **Rule:** The board card is a 3px status strip + a full-width identity header + a 38px vertical lifecycle rail (status control) + a body whose segmented bottom bar carries grouped signals above a reserved action strip; each zone has one admission rule (`surfaces.task_card.zone_model`).
+- **Why:** Nothing was zoned, so every feature added a badge row and the status control — the most important button on the card — read as a text label; the rejected alternative was a right-hand indicator rail (constant height, but a bare counter hides severity).
+- **Status:** Implemented. Evidence: `src/mainview/components/TaskCard.tsx`, `src/mainview/components/TaskCardRail.tsx`.
+
 ## 2026-05-29 — Button variants documented as role → token, not as a prop
 
 - **Rule:** Button semantics are documented as semantic role mapped to Tailwind token classes (`bg-accent` = primary, `text-danger`/`bg-danger` = destructive, ghost = hover surface) — there is no `<Button variant>` API.

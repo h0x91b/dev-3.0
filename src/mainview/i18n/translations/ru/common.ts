@@ -68,6 +68,17 @@ const common = {
 	"status.completed": "Завершено",
 	"status.cancelled": "Отменено",
 
+	// Короткие формы для вертикального рельса карточки. Максимум 8 букв —
+	// полное название остаётся в доступном имени рельса.
+	"status.rail.todo": "ТУДУ",
+	"status.rail.inProgress": "РАБОТА",
+	"status.rail.userQuestions": "ВОПРОС",
+	"status.rail.reviewByAi": "ИИ",
+	"status.rail.reviewByUser": "РЕВЬЮ",
+	"status.rail.reviewByColleague": "PR",
+	"status.rail.completed": "ГОТОВО",
+	"status.rail.cancelled": "ОТМЕНА",
+
 	// Status descriptions (info tooltips for column headers)
 	"status.todo.desc": "Задачи, ожидающие назначения агенту.",
 	"status.inProgress.desc": "ИИ-агент активно работает над задачей.",

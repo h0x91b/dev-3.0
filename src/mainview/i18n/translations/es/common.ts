@@ -68,6 +68,17 @@ const common = {
 	"status.completed": "Completado",
 	"status.cancelled": "Cancelado",
 
+	// Formas cortas para el riel vertical de la tarjeta. Máximo 8 letras —
+	// el nombre completo permanece en el nombre accesible del riel.
+	"status.rail.todo": "TODO",
+	"status.rail.inProgress": "TRABAJA",
+	"status.rail.userQuestions": "PREGUNTA",
+	"status.rail.reviewByAi": "IA",
+	"status.rail.reviewByUser": "REVISIÓN",
+	"status.rail.reviewByColleague": "PR",
+	"status.rail.completed": "LISTO",
+	"status.rail.cancelled": "CANCELA",
+
 	// Status descriptions (info tooltips for column headers)
 	"status.todo.desc": "Tareas esperando ser asignadas a un agente.",
 	"status.inProgress.desc": "Un agente de IA está trabajando activamente en esta tarea.",

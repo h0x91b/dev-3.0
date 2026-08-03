@@ -213,6 +213,15 @@ ux_architecture:
       purpose: "Compact object summary on the board with the most relevant per-task affordances."
       allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge", "deferred_timer_chip", "native_backend_mark"]
       forbidden: ["full_settings", "global_destination"]
+      zone_model:
+        rationale: "The card had no zoning: identity, content, state, signals and actions stacked at one visual weight across up to three badge rows, and every feature added a row. Five zones, each with one admission rule, give a new feature a home instead of a new row."
+        order: ["lifecycle", "identity", "content", "signals", "actions"]
+        lifecycle: "The 3px top status strip plus the vertical left rail (TaskCardRail.tsx). Owns ONLY things that change or report which column the task is in: pipeline ring, short upright status name, attention-bell count, quick-complete. Clicking the rail opens Move-to. Nothing informational may enter it."
+        identity: "One full-width header row above the rail: priority (frozen PriorityBadge), #seq, attempt, agent + config, variant dots, scratch/automation/native marks, dismiss. Full width is deliberate — the agent config string had 182px next to a rail and now has 244px. Never grows past one line; overflow goes to the tooltip."
+        content: "Epic (future), title (3-line clamp), label chips. The only zone allowed to be the card's visual focus. The show-description affordance is an icon on the label row, never its own row."
+        signals: "Read-only facts in the segmented bottom bar, sub-grouped git / run / time with 1px dividers between groups. This is where new badges land."
+        actions: "A reserved strip at the very bottom of the bar (min-height 36px) so signals can never squeeze actions out. Max 4 visible, rest to the context menu."
+      rail_label: "Short uppercase status form, max 8 upright letters (status.rail.* keys per locale; custom columns clipped to 8 chars). Upright means writing-mode: vertical-rl + text-orientation: upright — never rotated 90deg. The full column label lives in the rail's accessible name and tooltip."
       deferred_timer_chip: "One shared countdown-chip slot (popover with cancel / run-now, 30s re-render) for deferred agent interactions. Content depends on state and the two NEVER coexist: scheduledLaunch on a `todo` card, scheduledMessages on a live-agent card. Do not add a second timer badge class."
       variant_dots: "Max 3 status dots (self — ring-highlighted — + lowest-variantIndex siblings; NO +N counter), always a clickable button opening SiblingPopover — the group overview: per-variant title, agent/config, status, current-variant marker; dead variants greyed, non-navigable. Same pattern on sidebar cards; do not fork the mechanic per surface."
       visible_budget:

@@ -68,6 +68,17 @@ const common = {
 	"status.completed": "Completed",
 	"status.cancelled": "Cancelled",
 
+	// Short uppercase forms for the task card's vertical lifecycle rail. Max 8
+	// upright letters — the full label stays in the rail's accessible name.
+	"status.rail.todo": "TODO",
+	"status.rail.inProgress": "WORKING",
+	"status.rail.userQuestions": "ASKING",
+	"status.rail.reviewByAi": "AI",
+	"status.rail.reviewByUser": "REVIEW",
+	"status.rail.reviewByColleague": "PR",
+	"status.rail.completed": "DONE",
+	"status.rail.cancelled": "CANCEL",
+
 	// Status descriptions (info tooltips for column headers)
 	"status.todo.desc": "Tasks waiting to be picked up by an agent.",
 	"status.inProgress.desc": "An AI agent is actively working on this task.",

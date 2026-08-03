@@ -10,7 +10,6 @@ import { useT } from "../i18n";
 import type { TranslationKey } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { formatCountdown } from "../../shared/duration";
-import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
@@ -23,8 +22,8 @@ import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TaskDetailModal from "./TaskDetailModal";
-import PipelineRing, { CompleteCheckIcon } from "./PipelineRing";
 import PipelineDropdown, { PipelineMenuAction } from "./PipelineDropdown";
+import TaskCardRail from "./TaskCardRail";
 import BottomSheet from "./BottomSheet";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -609,6 +608,190 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	const showDismissButton = isTodo || isCancelled;
 
+	// ---- LIFECYCLE zone inputs ----------------------------------------------
+	const activeCol = task.customColumnId
+		? (project.customColumns ?? []).find((c) => c.id === task.customColumnId)
+		: null;
+	// The rail's ✓ is now a 44px touch target on narrow, so it no longer has to be
+	// desktop-only. Deliberately NOT gated on `isHibernated`: finishing a parked
+	// task must not require waking it first.
+	const canQuickComplete = !isDisabled && getAllowedTransitions(task.status).includes("completed");
+	const railColor = isCompleting || isShuttingDown ? "#888" : activeCol ? activeCol.color : color;
+
+	// ---- IDENTITY zone inputs -----------------------------------------------
+	const agent = task.agentId ? agents.find((a) => a.id === task.agentId) : null;
+	const agentConfig = agent && task.configId
+		? agent.configurations.find((c) => c.id === task.configId)
+		: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
+	const configLabel = agentConfig
+		? (agentConfig.model ? `${agentConfig.name} · ${agentConfig.model}` : agentConfig.name)
+		: agent?.name ?? "";
+	const seqLabel = task.variantIndex !== null
+		? `#${task.seq} · ${t("task.attempt", { n: String(task.variantIndex) })}`
+		: `#${task.seq}`;
+	const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
+
+	// ---- SIGNALS zone: read-only facts, grouped git / run / time -------------
+	const gitSignals = [prBadge, mergeBadge, reviewBadge, commentBadge].filter(Boolean);
+	const runSignals: React.ReactNode[] = [];
+	if (isActive && ports && ports.length > 0) {
+		runSignals.push(
+			<Tooltip key="ports" content={t.plural("ports.count", ports.length)} detail={t("ttip.task.ports")}>
+				<button
+					ref={portsAnchorRef}
+					onClick={(e) => {
+						e.stopPropagation();
+						if (!portsPopoverOpen && portsAnchorRef.current) {
+							const rect = portsAnchorRef.current.getBoundingClientRect();
+							setPortsPopoverPos({ top: rect.bottom + 6, left: rect.left });
+							setPortsPopoverVisible(false);
+						}
+						setPortsPopoverOpen(!portsPopoverOpen);
+					}}
+					className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 font-mono text-[0.625rem] text-accent transition-colors hover:bg-accent/20"
+					aria-label={t.plural("ports.count", ports.length)}
+				>
+					<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+					{ports.length}
+				</button>
+			</Tooltip>,
+		);
+	}
+	if (isActive && resourceUsage) {
+		runSignals.push(
+			<span
+				key="res"
+				className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 font-mono text-[0.625rem] ${
+					resourceUsage.rss > 4 * 1024 * 1024 * 1024
+						? "text-red-400 bg-red-500/10"
+						: resourceUsage.rss > 2 * 1024 * 1024 * 1024
+							? "text-yellow-400 bg-yellow-500/10"
+							: "text-fg-3 bg-fg/5"
+				}`}
+				title={t("resources.details", { cpu: resourceUsage.cpu.toFixed(1), memory: formatBytes(resourceUsage.rss) })}
+			>
+				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+					{"\u{F035B}"}
+				</span>
+				{formatBytes(resourceUsage.rss)}
+				{resourceUsage.cpu >= 1 && (
+					<>
+						<span className="text-fg-muted">·</span>
+						{resourceUsage.cpu.toFixed(0)}%
+					</>
+				)}
+			</span>,
+		);
+	}
+	const timeSignals: React.ReactNode[] = [];
+	if (sched) {
+		timeSignals.push(
+			<div key="sched" className="relative flex-shrink-0">
+				<Tooltip content={t("task.scheduledTooltip")}>
+					<button
+						data-testid="task-card-scheduled-badge"
+						onClick={(e) => { e.stopPropagation(); setSchedPopoverOpen(!schedPopoverOpen); }}
+						className="flex h-5 items-center gap-1 rounded px-1.5 text-[0.6875rem] text-accent transition-colors hover:bg-fg/5"
+					>
+						<ClockIcon className="w-3 h-3" />
+						{formatCountdown(new Date(sched.at).getTime() - Date.now())}
+					</button>
+				</Tooltip>
+				{schedPopoverOpen && (
+					<div
+						className="absolute bottom-full left-0 mb-1 z-30 min-w-[10rem] rounded-lg border border-edge bg-elevated shadow-lg py-1"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<button
+							onClick={handleStartScheduledNow}
+							className="w-full text-left px-3 py-1.5 text-xs text-fg hover:bg-fg/5 transition-colors"
+						>
+							{t("task.startNow")}
+						</button>
+						<button
+							onClick={handleCancelSchedule}
+							className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-fg/5 transition-colors"
+						>
+							{t("task.cancelSchedule")}
+						</button>
+					</div>
+				)}
+			</div>,
+		);
+	}
+	if (!isTodo) {
+		timeSignals.push(
+			<ScheduledMessagesChip key="msgs" task={task} project={project} dispatch={dispatch} placement="up" />,
+		);
+	}
+	const variantDots = (
+		<VariantDots
+			groupMembers={groupMembers}
+			currentTaskId={task.id}
+			statusColors={statusColors}
+			agents={agents}
+			navigate={navigate}
+			projectId={project.id}
+			onOpen={preview.close}
+			testId={`variant-indicator-${task.id}`}
+		/>
+	);
+
+	// A group separator, so compartments read apart without extra colour.
+	const groupDivider = <span aria-hidden="true" className="h-4 w-px flex-shrink-0 bg-edge" />;
+	const signalGroups: React.ReactNode[] = [];
+	if (gitSignals.length) {
+		signalGroups.push(
+			<div key="git" data-testid="task-card-status-badges" className="flex min-w-0 flex-wrap items-center gap-1">
+				{gitSignals}
+			</div>,
+		);
+	}
+	if (runSignals.length) {
+		signalGroups.push(
+			<div key="run" data-testid="task-card-run-signals" className="flex min-w-0 flex-wrap items-center gap-1">
+				{runSignals}
+			</div>,
+		);
+	}
+	if (timeSignals.length) {
+		signalGroups.push(
+			<div key="time" data-testid="task-card-time-signals" className="flex min-w-0 flex-wrap items-center gap-1">
+				{timeSignals}
+			</div>,
+		);
+	}
+
+	const watchButton = (
+		<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")} detail={t("ttip.task.watch")}>
+			<button
+				onClick={async (e) => {
+					e.stopPropagation();
+					try {
+						const updated = await api.request.toggleTaskWatch({
+							taskId: task.id,
+							projectId: project.id,
+							watched: !task.watched,
+						});
+						dispatch({ type: "updateTask", task: updated });
+					} catch {
+						// Toggle failed silently — secondary action
+					}
+				}}
+				className={`flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-fg/5 ${
+					task.watched ? "text-accent font-medium" : "text-fg-3 hover:text-fg"
+				}`}
+				aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+				disabled={isDisabled}
+			>
+				<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+					{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+				</span>
+				<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
+			</button>
+		</Tooltip>
+	);
+
 	return (
 		<div
 			ref={cardRef}
@@ -620,12 +803,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative p-3.5 glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border border-l-[3px] ${isDraft ? "border-dashed" : ""} ${isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isDraft ? "border-edge-active" : "border-transparent"} ${
+			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-card-hover"
 			} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated ? "grayscale opacity-60" : ""}`}
-			style={{ borderLeftColor: isCompleting || isShuttingDown ? "#888" : color }}
 			onClick={handleClick}
 		>
 			{/* Moving spinner overlay */}
@@ -690,99 +872,46 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{/* Shared teardown feedback used by the active-task surfaces too. */}
 			{isShuttingDown && <TaskShutdownOverlay />}
 
-			{/* Dismiss button — top-right, visible on hover */}
-			{showDismissButton && (
-				<Tooltip content={isCancelled ? t("task.delete") : t("task.cancel")} detail={isCancelled ? t("ttip.task.delete") : t("ttip.task.cancel")}>
-					<button
-						onClick={handleDismiss}
-						className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md bg-fg/5 text-fg-3 hover:bg-danger/15 hover:text-danger transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
-						aria-label={isCancelled ? t("task.delete") : t("task.cancel")}
-						disabled={isDisabled}
-					>
-						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-						</svg>
-					</button>
-				</Tooltip>
-			)}
-
-			{/* Bell badge — macOS Dock style, peeking outside the card */}
-			{bellCount > 0 && (
-				<div
-					className="absolute -top-1.5 -right-1.5 z-10 min-w-[1.25rem] h-5 flex items-center justify-center px-1.5 rounded-full bg-red-500 shadow-lg shadow-red-500/40"
-				>
-					<span className="text-[0.6875rem] font-bold text-white leading-none">
-						{bellCount > 9 ? "9+" : bellCount}
-					</span>
-				</div>
-			)}
-
-			{/* Seq + variant badge */}
-			{task.variantIndex !== null ? (() => {
-				const agent = task.agentId ? agents.find((a) => a.id === task.agentId) : null;
-				const config = agent && task.configId
-					? agent.configurations.find((c) => c.id === task.configId)
-					: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
-				const configLabel = config
-					? (config.model ? `${config.name} · ${config.model}` : config.name)
-					: "";
-				const prefixLabel = `#${task.seq} · ${t("task.attempt", { n: String(task.variantIndex) })}`;
-				const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
-				const topLabel = agent && !hasLauncherIcon ? `${prefixLabel} · ${agent.name}` : prefixLabel;
-				return (
-					<div className="text-xs text-accent font-semibold mb-1.5 flex flex-col items-start gap-0.5">
-						<span className="inline-flex items-center gap-1.5">
-							<PriorityBadge priority={task.priority} onChange={handleSetPriority} />
-							<span className="bg-accent/15 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center gap-1.5">
-								{agent && hasLauncherIcon && <AgentLauncherBadge agent={agent} />}
-								<span>{topLabel}</span>
-							</span>
-						</span>
-						{configLabel && (
-							<span className="pl-1 text-[0.6875rem] font-medium leading-tight text-accent/80">
-								{configLabel}
-							</span>
-						)}
-					</div>
-				);
-			})() : (
-				<div className="mb-1 flex items-center gap-1.5">
-					<PriorityBadge priority={task.priority} onChange={handleSetPriority} />
-					<span className="text-[0.625rem] text-fg-muted font-mono">#{task.seq}</span>
-					{isDraft && (
-						<span
-							data-testid="task-card-draft-badge"
-							title={t("task.draftHint")}
-							className="inline-flex items-center rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-3"
-						>
-							{t("task.draftBadge")}
-						</span>
-					)}
-				</div>
-			)}
-
-			{/* Hibernated label — greyness alone must not have to carry the meaning. */}
-			{isHibernated && (
-				<div className="mb-1.5 flex items-center gap-1.5">
-					<span
-						data-testid="task-card-hibernated-badge"
-						title={t("task.hibernatedHint")}
-						className="inline-flex items-center rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
-					>
-						{t("task.hibernatedBadge")}
-					</span>
-				</div>
-			)}
-
-			{/* Title + description expand */}
+			{/* LIFECYCLE — a 3px status strip on the top edge. The rail below no longer
+			    reaches the top corner, and without this the card's column stops being
+			    readable while scanning a column from the top. */}
 			<div
-				className={`text-fg text-sm leading-relaxed break-words font-medium pr-5 ${isTodo ? "cursor-pointer hover:text-fg-2" : ""}`}
-				onClick={handleTitleClick}
-				title={isTodo && hasLongDescription ? task.description : undefined}
+				data-testid="task-card-status-strip"
+				aria-hidden="true"
+				className="h-[3px] w-full flex-shrink-0"
+				style={{ background: railColor }}
+			/>
+
+			{/* IDENTITY — one line, full card width: which task is this and who runs it.
+			    Full width is the point: the rail starts a row lower so the agent and
+			    config string get the whole card instead of 182px next to a rail. */}
+			<div
+				data-testid="task-card-identity"
+				className="flex min-w-0 items-center gap-1.5 border-b border-edge px-2.5 py-1.5"
 			>
+				<PriorityBadge priority={task.priority} onChange={handleSetPriority} />
+				<span className="flex-shrink-0 font-mono text-[0.6875rem] font-semibold text-accent">{seqLabel}</span>
+				{agent && hasLauncherIcon && <AgentLauncherBadge agent={agent} />}
+				{/* No launcher icon means the agent is unidentifiable from the glyph
+				    alone, so its name has to be spelled out. */}
+				{agent && !hasLauncherIcon && (
+					<span className="flex-shrink-0 font-mono text-[0.625rem] font-medium text-accent/80">{agent.name}</span>
+				)}
+				{configLabel && (
+					<span
+						className="min-w-[3rem] flex-1 truncate font-mono text-[0.625rem] font-medium text-accent/80"
+						title={configLabel}
+					>
+						{configLabel}
+					</span>
+				)}
+				{variantDots}
+				{/* Only when there is no config to absorb the slack — otherwise a spacer
+				    would starve the string this full-width header exists for. */}
+				{!configLabel && <div className="flex-1" />}
 				{task.scratch && (
 					<span
-						className="text-fg-3 mr-1.5"
+						className="flex-shrink-0 text-fg-3"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						title={t("task.scratchSession")}
 					>
@@ -791,47 +920,270 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 				{task.automationId && (
 					<span
-						className="text-fg-3 mr-1.5"
+						className="flex-shrink-0 text-fg-3"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						title={t("task.automationRun")}
 					>
 						{"\u{F0150}"}
 					</span>
 				)}
-				<NativeBackendMark task={task} className="w-3.5 h-3.5 mr-1.5" testId="task-card-native-backend" />
-				{displayTitle}
-			</div>
-			{hasLongDescription && !isTodo && (
-				<Tooltip content={t("task.showDescription")} detail={t("ttip.task.showDescription")}>
-					<button
-						onClick={handleShowDescription}
-						className="mt-1 text-[0.6875rem] text-fg-muted hover:text-accent transition-colors flex items-center gap-1"
-					>
-						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
-						</svg>
-						{t("task.showDescription")}
-					</button>
-				</Tooltip>
-			)}
-			{isTodo && task.preparationError && (
-				<div
-					role="alert"
-					className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger"
-				>
+				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
+				{isDraft && (
 					<span
-						className="mt-0.5 flex-shrink-0 leading-none"
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						data-testid="task-card-draft-badge"
+						title={t("task.draftHint")}
+						className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-3"
 					>
-						{"\uf071"}
+						{t("task.draftBadge")}
 					</span>
-					<span className="line-clamp-2 break-words">
-						{t("task.launchFailed", { error: task.preparationError })}
+				)}
+				{isHibernated && (
+					<span
+						data-testid="task-card-hibernated-badge"
+						title={t("task.hibernatedHint")}
+						className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
+					>
+						{t("task.hibernatedBadge")}
 					</span>
-				</div>
-			)}
+				)}
+				{showDismissButton && (
+					<Tooltip content={isCancelled ? t("task.delete") : t("task.cancel")} detail={isCancelled ? t("ttip.task.delete") : t("ttip.task.cancel")}>
+						<button
+							onClick={handleDismiss}
+							className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-fg/5 text-fg-3 opacity-0 transition-[opacity,color,background-color,transform] duration-150 ease-out group-hover:opacity-100 hover:bg-danger/15 hover:text-danger motion-safe:active:scale-[0.96]"
+							aria-label={isCancelled ? t("task.delete") : t("task.cancel")}
+							disabled={isDisabled}
+						>
+							<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+							</svg>
+						</button>
+					</Tooltip>
+				)}
+			</div>
 
-			{/* Task detail modal — portal to body so it's not clipped by card */}
+			{/* Rail + body */}
+			<div className="flex min-w-0 items-stretch">
+				<TaskCardRail
+					status={task.status}
+					project={project}
+					customColumn={activeCol ? { name: activeCol.name, color: activeCol.color } : null}
+					color={railColor}
+					bellCount={bellCount}
+					disabled={isDisabled || isHibernated}
+					canComplete={canQuickComplete}
+					completing={quickCompleting}
+					onOpenMenu={toggleMenu}
+					onComplete={handleQuickComplete}
+					menuTriggerRef={triggerRef}
+					touch={narrow}
+				/>
+
+				<div className="flex min-w-0 flex-1 flex-col px-3 pt-2.5">
+					{/* CONTENT */}
+					<div>
+						<div
+							className={`break-words text-sm font-medium leading-relaxed text-fg line-clamp-3 ${isTodo ? "cursor-pointer hover:text-fg-2" : ""}`}
+							onClick={handleTitleClick}
+							title={isTodo && hasLongDescription ? task.description : undefined}
+						>
+							{displayTitle}
+						</div>
+						{isTodo && task.preparationError && (
+							<div
+								role="alert"
+								className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger"
+							>
+								<span
+									className="mt-0.5 flex-shrink-0 leading-none"
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								>
+									{""}
+								</span>
+								<span className="line-clamp-2 break-words">
+									{t("task.launchFailed", { error: task.preparationError })}
+								</span>
+							</div>
+						)}
+
+						{/* Label chips — always rendered so "+" stays discoverable on hover */}
+						{(() => {
+							const projectLabels = project.labels ?? [];
+							const taskLabelIds = task.labelIds ?? [];
+							const assignedLabels = taskLabelIds
+								.map((id) => projectLabels.find((l) => l.id === id))
+								.filter(Boolean) as typeof projectLabels;
+
+							async function removeLabel(labelId: string) {
+								try {
+									const updated = await api.request.setTaskLabels({
+										taskId: task.id,
+										projectId: project.id,
+										labelIds: taskLabelIds.filter((id) => id !== labelId),
+									});
+									dispatch({ type: "updateTask", task: updated });
+								} catch {
+									// ignore
+								}
+							}
+
+							async function toggleLabel(labelId: string) {
+								const newIds = taskLabelIds.includes(labelId)
+									? taskLabelIds.filter((id) => id !== labelId)
+									: [...taskLabelIds, labelId];
+								try {
+									const updated = await api.request.setTaskLabels({
+										taskId: task.id,
+										projectId: project.id,
+										labelIds: newIds,
+									});
+									dispatch({ type: "updateTask", task: updated });
+								} catch {
+									// ignore
+								}
+							}
+
+							return (
+								<div className="mt-2 flex min-h-[1.125rem] items-start gap-2">
+								<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+									{assignedLabels.map((label) => (
+										<LabelChip
+											key={label.id}
+											label={label}
+											size="xs"
+											onClick={(e) => {
+												e.stopPropagation();
+												setPickerOpen(true);
+											}}
+											onRemove={(e) => {
+												e.stopPropagation();
+												removeLabel(label.id);
+											}}
+										/>
+									))}
+									<button
+										ref={pickerAnchorRef}
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											setPickerOpen(true);
+										}}
+										className="flex flex-shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-fg-3 opacity-0 transition-[opacity,color,background-color,transform] duration-150 ease-out group-hover:opacity-70 hover:!opacity-100 hover:bg-fg/8 hover:text-fg motion-safe:active:scale-[0.96]"
+									>
+										<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+											<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+										</svg>
+										<span className="text-[0.625rem] font-medium leading-none">Add label</span>
+									</button>
+									{pickerOpen && pickerAnchorRef.current && (
+										<LabelPicker
+											project={project}
+											dispatch={dispatch}
+											taskId={task.id}
+											onClose={() => setPickerOpen(false)}
+											anchorEl={pickerAnchorRef.current}
+											selectedIds={taskLabelIds}
+											onToggle={toggleLabel}
+										/>
+									)}
+								</div>
+								{/* The description affordance rides the label row instead of
+								    claiming a row of its own — it was ~20px on most cards. */}
+								{hasLongDescription && !isTodo && (
+									<Tooltip content={t("task.showDescription")} detail={t("ttip.task.showDescription")}>
+										<button
+											onClick={handleShowDescription}
+											aria-label={t("task.showDescription")}
+											className="flex h-[1.125rem] w-[1.125rem] flex-shrink-0 items-center justify-center rounded text-fg-muted transition-colors hover:bg-fg/8 hover:text-accent"
+										>
+											<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+												<path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+											</svg>
+										</button>
+									</Tooltip>
+								)}
+								</div>
+							);
+						})()}
+					</div>
+
+					{/* SIGNALS + ACTIONS — one segmented bar welded to the bottom edge.
+					    mt-auto is what keeps it there when the rail is the taller column. */}
+					<div className="-mx-3 mt-auto border-t border-edge bg-black/20">
+						{signalGroups.length > 0 && (
+							<div
+								data-testid="task-card-signals"
+								className="flex min-w-0 flex-wrap items-center gap-1.5 px-2.5 py-1.5"
+							>
+								{signalGroups.flatMap((group, i) => (i === 0 ? [group] : [<span key={`d${i}`}>{groupDivider}</span>, group]))}
+							</div>
+						)}
+						{/* Actions get a reserved strip, so signals can never squeeze them
+						    out. min-h-9 is what the 22px buttons plus their hover fill need. */}
+						<div
+							data-testid="task-card-action-row"
+							className={`flex min-h-9 min-w-0 items-center gap-1 px-2 py-1.5 ${signalGroups.length > 0 ? "border-t border-edge" : ""}`}
+						>
+							{isActive && task.worktreePath && (
+								<Tooltip content={t("openIn.menuTitle")} detail={t("ttip.openIn.menu")}>
+									<button
+										onClick={(e) => {
+											e.stopPropagation();
+											const rect = (e.target as HTMLElement).getBoundingClientRect();
+											setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
+											setCtxMenuOpen(true);
+										}}
+										className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-accent/15"
+										aria-label={t("openIn.menuTitle")}
+									>
+										<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+									</button>
+								</Tooltip>
+							)}
+							{watchButton}
+							<div className="flex-1" />
+							{isActive && (
+								<Tooltip content={t("task.addVariant")} detail={t("ttip.task.addVariant")}>
+									<button
+										onClick={(e) => {
+											e.stopPropagation();
+											preview.close();
+											onAddAttempts(task);
+										}}
+										className="flex flex-shrink-0 items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-accent/15"
+										disabled={isDisabled}
+									>
+										{t("task.addVariant")}
+									</button>
+								</Tooltip>
+							)}
+							{/* A draft has nothing to run yet; the lifecycle machine would
+							    refuse the launch anyway. */}
+							{isTodo && !isDraft && (
+								<Tooltip content={t("task.run")} detail={t("ttip.task.run")}>
+									<button
+										onClick={(e) => {
+											e.stopPropagation();
+											onLaunchVariants(task, "in-progress");
+										}}
+										className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-green-900/30 transition-[background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-green-500"
+										disabled={isDisabled}
+									>
+										{/* Play triangle centred on the viewBox — the usual 8→19 path
+										    sits 1.5px right of centre and opens a gap before the label. */}
+										<svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
+											<path d="M6 4.5v15l12-7.5z" />
+										</svg>
+										{t("task.run")}
+									</button>
+								</Tooltip>
+							)}
+						</div>
+					</div>
+				</div>
+			</div>
+
+			{/* Task detail modal — portal to body so it's not clipped by the card */}
 			{detailOpen && createPortal(
 				<TaskDetailModal
 					task={task}
@@ -842,389 +1194,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					onLaunchVariants={onLaunchVariants}
 				/>,
 				document.body
-			)}
-
-			{/* Label chips row — always rendered so "+" is discoverable on hover */}
-			{(() => {
-				const projectLabels = project.labels ?? [];
-				const taskLabelIds = task.labelIds ?? [];
-				const assignedLabels = taskLabelIds
-					.map((id) => projectLabels.find((l) => l.id === id))
-					.filter(Boolean) as typeof projectLabels;
-
-				async function removeLabel(labelId: string) {
-					try {
-						const updated = await api.request.setTaskLabels({
-							taskId: task.id,
-							projectId: project.id,
-							labelIds: taskLabelIds.filter((id) => id !== labelId),
-						});
-						dispatch({ type: "updateTask", task: updated });
-					} catch {
-						// ignore
-					}
-				}
-
-				async function toggleLabel(labelId: string) {
-					const newIds = taskLabelIds.includes(labelId)
-						? taskLabelIds.filter((id) => id !== labelId)
-						: [...taskLabelIds, labelId];
-					try {
-						const updated = await api.request.setTaskLabels({
-							taskId: task.id,
-							projectId: project.id,
-							labelIds: newIds,
-						});
-						dispatch({ type: "updateTask", task: updated });
-					} catch {
-						// ignore
-					}
-				}
-
-				return (
-					<div className="flex items-start mt-2 min-h-[1.125rem] gap-2">
-					<div className="flex items-center flex-wrap gap-1 min-w-0 flex-1">
-						{assignedLabels.map((label) => (
-							<LabelChip
-								key={label.id}
-								label={label}
-								size="xs"
-								onClick={(e) => {
-									e.stopPropagation();
-									setPickerOpen(true);
-								}}
-								onRemove={(e) => {
-									e.stopPropagation();
-									removeLabel(label.id);
-								}}
-							/>
-						))}
-						<button
-							ref={pickerAnchorRef}
-							type="button"
-							onClick={(e) => {
-								e.stopPropagation();
-								setPickerOpen(true);
-							}}
-							className="opacity-0 group-hover:opacity-70 hover:!opacity-100 flex items-center gap-1 px-1.5 py-0.5 rounded-md text-fg-3 hover:text-fg hover:bg-fg/8 transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] flex-shrink-0"
-						>
-							<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-								<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-							</svg>
-							<span className="text-[0.625rem] font-medium leading-none">Add label</span>
-						</button>
-						{pickerOpen && pickerAnchorRef.current && (
-							<LabelPicker
-								project={project}
-								dispatch={dispatch}
-								taskId={task.id}
-								onClose={() => setPickerOpen(false)}
-								anchorEl={pickerAnchorRef.current}
-								selectedIds={taskLabelIds}
-								onToggle={toggleLabel}
-							/>
-						)}
-					</div>
-					{!isActive && (
-						<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")} detail={t("ttip.task.watch")}>
-							<button
-								onClick={async (e) => {
-									e.stopPropagation();
-									try {
-										const updated = await api.request.toggleTaskWatch({
-											taskId: task.id,
-											projectId: project.id,
-											watched: !task.watched,
-										});
-										dispatch({ type: "updateTask", task: updated });
-									} catch {
-										// Toggle failed silently — secondary action
-									}
-								}}
-								className={`flex-shrink-0 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-fg/5 ${
-									task.watched
-										? "text-accent"
-										: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
-								}`}
-								aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
-								disabled={isDisabled}
-							>
-								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-									{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
-								</span>
-								<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
-							</button>
-						</Tooltip>
-					)}
-				</div>
-				);
-			})()}
-
-			{/* Bottom row — pipeline + badges */}
-			<div data-testid="task-card-footer" className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-				{/* Status control: pipeline ring + label opens "Move to"; the ✓ half is
-				    the same lifecycle control, not a second card action. Desktop only —
-				    on narrow the sheet's promoted Completed row is the ≥44px touch path. */}
-				{(() => {
-					const activeCol = task.customColumnId
-						? (project.customColumns ?? []).find((c) => c.id === task.customColumnId)
-						: null;
-					// Deliberately NOT gated on `isHibernated`: finishing a parked task
-					// must not require waking it first.
-					const canQuickComplete = !narrow && !isDisabled && getAllowedTransitions(task.status).includes("completed");
-					return (
-						<div className="flex min-w-0 items-center rounded-lg transition-colors hover:bg-fg/5">
-							<button
-								ref={triggerRef}
-								onClick={toggleMenu}
-								className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1"
-								disabled={isDisabled || isHibernated}
-							>
-								{activeCol ? (
-									<div
-										className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-										style={{ background: activeCol.color, boxShadow: `0 0 6px ${activeCol.color}60` }}
-									/>
-								) : (
-									<PipelineRing status={task.status} />
-								)}
-								<span className="min-w-0 truncate text-xs text-fg-2">
-									{activeCol ? activeCol.name : getStatusLabel(task.status, t, project)}
-								</span>
-							</button>
-							{canQuickComplete && (
-								<Tooltip content={t("pipeline.completeTooltip")} disabled={quickCompleting}>
-									<button
-										data-testid="task-card-quick-complete"
-										onClick={handleQuickComplete}
-										disabled={quickCompleting}
-										aria-label={t("pipeline.completeTooltip")}
-										className={`mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success transition-[opacity,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] ${
-											quickCompleting
-												? "bg-success/25 opacity-100"
-												: "opacity-50 hover:bg-success/20 hover:opacity-100 group-hover:opacity-80"
-										}`}
-									>
-										{/* Both glyphs stay mounted and cross-fade — a hard swap on a
-										    5px-wide target reads as a flicker. */}
-										<span className="relative flex h-3 w-3 items-center justify-center">
-											<span className={`absolute inset-0 h-3 w-3 animate-spin rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${quickCompleting ? "opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`} />
-											<CompleteCheckIcon className={`absolute inset-0 h-3 w-3 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${quickCompleting ? "opacity-0 scale-[0.25] blur-[4px]" : "opacity-100 scale-100 blur-0"}`} />
-										</span>
-									</button>
-								</Tooltip>
-							)}
-						</div>
-					);
-				})()}
-
-				{/* Deferred-launch countdown badge (todo cards with a pending "Start in…") */}
-				{sched && (
-					<div className="relative flex-shrink-0">
-						<Tooltip content={t("task.scheduledTooltip")}>
-							<button
-								data-testid="task-card-scheduled-badge"
-								onClick={(e) => { e.stopPropagation(); setSchedPopoverOpen(!schedPopoverOpen); }}
-								className="flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-accent transition-colors hover:bg-fg/5"
-							>
-								<ClockIcon className="w-3 h-3" />
-								{formatCountdown(new Date(sched.at).getTime() - Date.now())}
-							</button>
-						</Tooltip>
-						{schedPopoverOpen && (
-							<div
-								className="absolute bottom-full left-0 mb-1 z-30 min-w-[10rem] rounded-lg border border-edge bg-elevated shadow-lg py-1"
-								onClick={(e) => e.stopPropagation()}
-							>
-								<button
-									onClick={handleStartScheduledNow}
-									className="w-full text-left px-3 py-1.5 text-xs text-fg hover:bg-fg/5 transition-colors"
-								>
-									{t("task.startNow")}
-								</button>
-								<button
-									onClick={handleCancelSchedule}
-									className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-fg/5 transition-colors"
-								>
-									{t("task.cancelSchedule")}
-								</button>
-							</div>
-						)}
-					</div>
-				)}
-
-				{/* Scheduled-message countdown chip (live-agent cards with a pending "Send later") */}
-				{!isTodo && <ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="up" />}
-
-				{/* PR + merge/review badges for non-active cards */}
-				{!isActive && prBadge}
-				{!isActive && mergeBadge}
-				{!isActive && reviewBadge}
-				{!isActive && commentBadge}
-
-				{/* Sibling variant dots */}
-				<VariantDots
-					groupMembers={groupMembers}
-					currentTaskId={task.id}
-					statusColors={statusColors}
-					agents={agents}
-					navigate={navigate}
-					projectId={project.id}
-					onOpen={preview.close}
-					testId={`variant-indicator-${task.id}`}
-				/>
-
-				{/* Port indicator for active tasks */}
-				{isActive && ports && ports.length > 0 && (
-					<Tooltip content={t.plural("ports.count", ports.length)} detail={t("ttip.task.ports")}>
-						<button
-							ref={portsAnchorRef}
-							onClick={(e) => {
-								e.stopPropagation();
-								if (!portsPopoverOpen && portsAnchorRef.current) {
-									const rect = portsAnchorRef.current.getBoundingClientRect();
-									setPortsPopoverPos({ top: rect.bottom + 6, left: rect.left });
-									setPortsPopoverVisible(false);
-								}
-								setPortsPopoverOpen(!portsPopoverOpen);
-							}}
-							className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[0.625rem] text-accent transition-colors hover:bg-accent/20"
-							aria-label={t.plural("ports.count", ports.length)}
-						>
-							<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
-							{ports.length}
-						</button>
-					</Tooltip>
-				)}
-
-				{/* Resource usage badge */}
-				{isActive && resourceUsage && (
-					<span
-						className={`inline-flex flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] ${
-							resourceUsage.rss > 4 * 1024 * 1024 * 1024
-								? "text-red-400 bg-red-500/10"
-								: resourceUsage.rss > 2 * 1024 * 1024 * 1024
-									? "text-yellow-400 bg-yellow-500/10"
-									: "text-fg-3 bg-fg/5"
-						}`}
-						title={t("resources.details", { cpu: resourceUsage.cpu.toFixed(1), memory: formatBytes(resourceUsage.rss) })}
-					>
-						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-							{"\u{F035B}"}
-						</span>
-						{formatBytes(resourceUsage.rss)}
-						{resourceUsage.cpu >= 1 && (
-							<>
-								<span className="text-fg-muted">·</span>
-								{resourceUsage.cpu.toFixed(0)}%
-							</>
-						)}
-					</span>
-				)}
-
-				{/* Run button for TODO cards — right-aligned. A draft has nothing to run
-				    yet; the lifecycle machine would refuse the launch anyway. */}
-				{isTodo && !isDraft && (
-					<>
-						<div className="flex-1" />
-						<Tooltip content={t("task.run")} detail={t("ttip.task.run")}>
-							<button
-								onClick={(e) => {
-									e.stopPropagation();
-									onLaunchVariants(task, "in-progress");
-								}}
-								className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-green-900/30 transition-[background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-green-500"
-								disabled={isDisabled}
-							>
-								{/* Play triangle centred on the viewBox — the usual 8→19 path sits
-								    1.5px right of centre and opens a gap before the label. */}
-								<svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
-									<path d="M6 4.5v15l12-7.5z" />
-								</svg>
-								{t("task.run")}
-							</button>
-						</Tooltip>
-					</>
-				)}
-			</div>
-
-			{/* PR / CI / review status badges — their own row so they don't crowd the
-			    action row's Watch / + Variant controls (which previously squeezed them
-			    onto one overflowing line). */}
-			{isActive && (prBadge || mergeBadge || reviewBadge || commentBadge) && (
-				<div data-testid="task-card-status-badges" className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-					{prBadge}
-					{mergeBadge}
-					{reviewBadge}
-					{commentBadge}
-				</div>
-			)}
-
-			{/* Action row for active tasks — Open in... | Watch | + Variant */}
-			{isActive && (
-				<div data-testid="task-card-action-row" className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
-					<div className="flex min-w-0 items-center gap-1">
-						{task.worktreePath && (
-							<Tooltip content={t("openIn.menuTitle")} detail={t("ttip.openIn.menu")}>
-								<button
-									onClick={(e) => {
-										e.stopPropagation();
-										const rect = (e.target as HTMLElement).getBoundingClientRect();
-										setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
-										setCtxMenuOpen(true);
-									}}
-									className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-accent/15"
-									aria-label={t("openIn.menuTitle")}
-								>
-									<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
-								</button>
-							</Tooltip>
-						)}
-						<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")} detail={t("ttip.task.watch")}>
-							<button
-								onClick={async (e) => {
-									e.stopPropagation();
-									try {
-										const updated = await api.request.toggleTaskWatch({
-											taskId: task.id,
-											projectId: project.id,
-											watched: !task.watched,
-										});
-										dispatch({ type: "updateTask", task: updated });
-									} catch {
-										// Toggle failed silently — secondary action
-									}
-								}}
-								className={`flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-fg/5 ${
-									task.watched
-										? "text-accent font-medium"
-										: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
-								}`}
-								aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
-								disabled={isDisabled}
-							>
-								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-									{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
-								</span>
-								<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
-							</button>
-						</Tooltip>
-					</div>
-					<div className="min-w-0" />
-					<Tooltip content={t("task.addVariant")} detail={t("ttip.task.addVariant")}>
-						<button
-							onClick={(e) => {
-								e.stopPropagation();
-								preview.close();
-								onAddAttempts(task);
-							}}
-							className="flex flex-shrink-0 justify-self-end items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-accent/15"
-							disabled={isDisabled}
-						>
-							{t("task.addVariant")}
-						</button>
-					</Tooltip>
-				</div>
 			)}
 
 
