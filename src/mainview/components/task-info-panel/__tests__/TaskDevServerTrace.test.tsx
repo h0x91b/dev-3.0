@@ -119,6 +119,71 @@ describe("Dev Server action correlation", () => {
 		});
 	});
 
+	it("traces a real Stop click, and calls its paint optimistic rather than settled", async () => {
+		vi.mocked(api.request.checkDevServer).mockResolvedValue({ running: true });
+		renderDevServer();
+		// Running state: the button opens the menu instead of starting.
+		const button = await waitFor(() => screen.getByLabelText(/Dev server running/i));
+		await userEvent.click(button);
+		await userEvent.click(await waitFor(() => screen.getByText("Stop")));
+
+		await waitFor(() => expect(api.request.stopDevServer).toHaveBeenCalledTimes(1));
+		const [params] = vi.mocked(api.request.stopDevServer).mock.calls[0]!;
+		expect(params).toMatchObject({ taskId: TASK.id, projectId: PROJECT.id });
+		expect(params.opId).toMatch(/^[0-9a-f]{8}$/);
+
+		const tracedMessages = () =>
+			new Set(
+				vi
+					.mocked(api.request.logRendererDiagnostic)
+					.mock.calls.map(([p]) => p)
+					.filter((p) => p.extra?.opId === params.opId)
+					.map((p) => String(p.message)),
+			);
+		// A Set, and one boundary per wait: the four arrive across separate ticks, so a
+		// single sample of all four is a race under load.
+		for (const boundary of ["gesture", "sent", "optimistic-rendered", "settled"]) {
+			await waitFor(() => expect(tracedMessages()).toContain(`stopDevServer ${boundary}`), {
+				timeout: 3_000,
+			});
+		}
+		// Stop paints "stopped" before the backend agrees, so a settle-relative render
+		// number would be a fiction.
+		expect(tracedMessages()).not.toContain("stopDevServer rendered");
+		const optimistic = vi
+			.mocked(api.request.logRendererDiagnostic)
+			.mock.calls.map(([p]) => p)
+			.find((p) => p.message === "stopDevServer optimistic-rendered")!;
+		expect(optimistic.extra).toHaveProperty("gestureToRenderMs");
+		expect(optimistic.extra).not.toHaveProperty("settleToRenderMs");
+	});
+
+	it("reports a poll that never settles once it crosses the stall threshold", async () => {
+		vi.useFakeTimers();
+		try {
+			// A request that simply never comes back — the incident's own signature.
+			vi.mocked(api.request.checkDevServer).mockReturnValue(new Promise(() => {}) as never);
+			renderDevServer();
+			await vi.advanceTimersByTimeAsync(200);
+			const stalledBefore = vi
+				.mocked(api.request.logRendererDiagnostic)
+				.mock.calls.map(([p]) => p)
+				.filter((p) => p.message === "checkDevServer stalled");
+			expect(stalledBefore).toEqual([]);
+
+			await vi.advanceTimersByTimeAsync(9_000);
+			const stalled = vi
+				.mocked(api.request.logRendererDiagnostic)
+				.mock.calls.map(([p]) => p)
+				.filter((p) => p.message === "checkDevServer stalled");
+			expect(stalled.length).toBeGreaterThan(0);
+			expect(stalled[0]!.level).toBe("warn");
+			expect(stalled[0]!.extra?.opId).toMatch(/^[0-9a-f]{8}$/);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("gives every start a distinct opId across repeated clicks", async () => {
 		renderDevServer();
 		const button = await waitFor(() => screen.getByLabelText(/Dev server stopped/i));

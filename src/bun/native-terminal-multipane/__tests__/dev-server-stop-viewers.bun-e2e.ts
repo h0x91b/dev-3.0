@@ -61,6 +61,19 @@ function bump(counter: Map<string, number>, key: string): void {
 	counter.set(key, (counter.get(key) ?? 0) + 1);
 }
 
+/**
+ * Close a viewer connection and record it only once it is OBSERVABLY released —
+ * `role()` reports null only after the client has dropped its socket. Counting the
+ * intent instead of the effect is exactly how a no-op close would pass a balance
+ * check. A connection whose pane the host already tore down is already released, and
+ * counting that is correct: the ledger tracks released connections, not who released
+ * them.
+ */
+function closeAndRecord(counter: Map<string, number>, key: string, connection: PaneConnection): void {
+	connection.close();
+	if (connection.role() === null) bump(counter, key);
+}
+
 function shellSpec(root: string, paneId: string, command?: string): PaneLaunchSpec {
 	const base: ShellLaunchSpec = isWindows
 		? { executable: "powershell.exe", argv: ["-NoLogo", "-NoProfile", "-NoExit"], cwd: root, env: {} }
@@ -165,12 +178,12 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 			const closeMs = performance.now() - closeStartedAt;
 
 			// The closing viewer's own connection to the gone pane must be released.
-			auxConn.close();
-			bump(ledger.closed, auxSession);
+			closeAndRecord(ledger.closed, auxSession, auxConn);
 			for (const extra of extras) {
-				for (const conn of extra.conns) conn.close();
-				bump(ledger.closed, auxSession);
-				bump(ledger.closed, agentSession);
+				// conns[0] is the agent pane, conns[1] the aux pane — same order they
+				// were opened in, so each close is recorded against its own session.
+				closeAndRecord(ledger.closed, agentSession, extra.conns[0]!);
+				closeAndRecord(ledger.closed, auxSession, extra.conns[1]!);
 				extra.controller.detach();
 			}
 
@@ -202,8 +215,7 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 			}
 		}
 
-		agentConn.close();
-		bump(ledger.closed, agentSession);
+		closeAndRecord(ledger.closed, agentSession, agentConn);
 
 		// ── verdicts ────────────────────────────────────────────────────────────
 		const ran = stats.length;

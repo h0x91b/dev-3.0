@@ -75,7 +75,8 @@ function alive(pid: number): boolean {
 }
 
 async function portHolders(port: number): Promise<string[]> {
-	const proc = Bun.spawn(["lsof", `-ti:${port}`], { stdout: "pipe", stderr: "ignore" });
+	const { spawn } = await import("../../spawn");
+	const proc = spawn(["lsof", `-ti:${port}`], { stdout: "pipe", stderr: "ignore" });
 	const out = await new Response(proc.stdout).text();
 	await proc.exited;
 	return out.trim().split("\n").filter(Boolean);
@@ -178,6 +179,11 @@ async function run(): Promise<void> {
 		executable: "/bin/bash",
 		argv: ["--norc", "--noprofile"],
 	});
+	// The task's native host is detached by design, so it outlives this process unless
+	// it is explicitly destroyed. Remember its pids and prove they are gone at the end.
+	const nativePanes = await import("../../native-task-panes");
+	const agentPane = (await nativePanes.nativeTaskPanesState(TASK_ID))?.panes[0];
+	if (!agentPane) throw new Error("the task's own native pane never came up");
 
 	const stopDurations: number[] = [];
 	try {
@@ -229,6 +235,18 @@ async function run(): Promise<void> {
 		} catch {
 			/* already stopped */
 		}
+		// Tear the task's own native session down BEFORE the temp state disappears —
+		// afterwards the records it needs are gone and the host would be orphaned.
+		try {
+			await pty.destroyNativeTaskSession(TASK_ID);
+		} catch (err) {
+			console.error("  destroyNativeTaskSession failed:", String(err));
+		}
+		const reaped = await waitUntil(
+			() => !alive(agentPane.hostPid) && !alive(agentPane.shellPid),
+			10_000,
+		);
+		check(reaped, "the task's own native host and shell are gone after teardown");
 		try {
 			rmSync(root, { recursive: true, force: true });
 		} catch {

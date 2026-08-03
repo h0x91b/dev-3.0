@@ -304,24 +304,35 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const resolvedThemeRef = useRef(resolvedTheme);
 	resolvedThemeRef.current = resolvedTheme;
 
+	/**
+	 * Narrow renderer→backend diagnostic (decision 199). Same-bridge limitation
+	 * applies: if the RPC bridge is dead these lines never arrive, so the console
+	 * mirror at each call site is what a post-mortem actually reads. The sink is what
+	 * survives a RESTART, which the console does not.
+	 */
+	function logDiagnostic(
+		tag: string,
+		level: "debug" | "info" | "warn" | "error",
+		message: string,
+		extra?: Record<string, string | number | boolean | null>,
+	) {
+		const request = api.request.logRendererDiagnostic({
+			level,
+			tag,
+			message,
+			extra: { taskId: taskId.slice(0, 8), ...(extra ?? {}) },
+		});
+		if (request && typeof (request as Promise<void>).catch === "function") {
+			request.catch(() => {});
+		}
+	}
+
 	function logCopyEvent(
 		level: "debug" | "info" | "warn" | "error",
 		message: string,
 		extra?: Record<string, string | number | boolean | null>,
 	) {
-		// TEMP DIAGNOSTIC: renderer->backend logging for the terminal copy investigation.
-		const request = api.request.logRendererDiagnostic({
-			level,
-			tag: "terminal-copy",
-			message,
-			extra: {
-				taskId: taskId.slice(0, 8),
-				...(extra ?? {}),
-			},
-		});
-		if (request && typeof (request as Promise<void>).catch === "function") {
-			request.catch(() => {});
-		}
+		logDiagnostic("terminal-copy", level, message, extra);
 	}
 
 	useEffect(() => {
@@ -1463,7 +1474,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// matching "finished" line is the signature of a teardown that never
 			// returned (seq 1407).
 			const disposeStartedAt = performance.now();
+			// Dispatched BEFORE any synchronous dispose runs, so a teardown that never
+			// returns still leaves a "started" line with no matching "finished" — the
+			// only evidence a permanent hang can produce. Console AND the durable sink:
+			// the console does not survive a restart, and the sink does not survive a
+			// dead bridge (decision 199).
 			console.debug("[TerminalView] cleanup started", { taskId: taskId.slice(0, 8) });
+			logDiagnostic("terminal-dispose", "debug", "cleanup started");
 			disposed = true;
 			document.removeEventListener("visibilitychange", reconnectPtyOnResume);
 			window.removeEventListener("pageshow", reconnectPtyOnResume);
@@ -1519,9 +1536,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			const disposeMs = Math.round(performance.now() - disposeStartedAt);
 			console.debug("[TerminalView] cleanup finished", { taskId: taskId.slice(0, 8), disposeMs });
+			logDiagnostic("terminal-dispose", "debug", "cleanup finished", { disposeMs });
 			if (disposeMs >= TERMINAL_DISPOSE_BUDGET_MS) {
 				console.warn("[TerminalView] cleanup exceeded its budget", {
 					taskId: taskId.slice(0, 8),
+					disposeMs,
+					budgetMs: TERMINAL_DISPOSE_BUDGET_MS,
+				});
+				logDiagnostic("terminal-dispose", "warn", "cleanup exceeded its budget", {
 					disposeMs,
 					budgetMs: TERMINAL_DISPOSE_BUDGET_MS,
 				});
