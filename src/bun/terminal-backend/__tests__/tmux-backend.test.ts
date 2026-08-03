@@ -138,10 +138,10 @@ describe("TmuxTerminalBackend read-only capture", () => {
 		const backend = new TmuxTerminalBackend({
 			port: {
 				...port,
-				async captureViewport(target) {
+				async capturePane(target, historyLines) {
 					// The pane's process is swapped exactly between the two identity checks.
 					if (target === paneId) world.replacePaneProcess(target);
-					return port.captureViewport(target);
+					return port.capturePane(target, historyLines);
 				},
 			},
 		});
@@ -161,9 +161,9 @@ describe("TmuxTerminalBackend read-only capture", () => {
 		const backend = new TmuxTerminalBackend({
 			port: {
 				...port,
-				async captureViewport(target) {
+				async capturePane(target, historyLines) {
 					if (target === paneId) world.killPaneProcess(target);
-					return port.captureViewport(target);
+					return port.capturePane(target, historyLines);
 				},
 			},
 		});
@@ -174,16 +174,57 @@ describe("TmuxTerminalBackend read-only capture", () => {
 		expect(capture.availability).toBe("view-absent");
 	});
 
+	it("reports a rejected hasSession as unreadable, never as session-absent", async () => {
+		const world = new FakeTmuxWorld();
+		const backend = new TmuxTerminalBackend({
+			port: { ...world.port(), hasSession: () => Promise.reject(new Error("no server running")) },
+		});
+		const capture = await backend.captureView(SESSION, "%0");
+		expect(capture.availability).toBe("unreadable");
+		if (capture.availability === "captured") throw new Error("must not carry content");
+		expect(capture.reason).toContain("no server running");
+	});
+
+	it("keeps the viewport and the history contiguous when output lands mid-capture", async () => {
+		const world = new FakeTmuxWorld();
+		const port = world.port();
+		let paneId = "";
+		const backend = new TmuxTerminalBackend({
+			port: {
+				...port,
+				async capturePane(target, historyLines) {
+					const captured = await port.capturePane(target, historyLines);
+					// Output arriving at the OLD two-call boundary: with two independent
+					// reads this shifted the split and duplicated or dropped a row.
+					if (target === paneId) await port.writePane(target, "late-row\r");
+					return captured;
+				},
+			},
+		});
+		const created = await backend.openSession({ id: SESSION, cwd: "/tmp" });
+		paneId = created.views[0].id;
+		const attachment = await backend.attachView(SESSION, paneId);
+		for (let i = 0; i < 40; i++) await attachment.write(`row-${i}\r`);
+
+		const capture = await backend.captureView(SESSION, paneId, { historyLines: 100 });
+		if (capture.availability !== "captured") throw new Error(capture.reason);
+		const rows = [...capture.content.history, ...capture.content.viewport].filter((row) => row.trim() !== "");
+		// Every row appears exactly once, and the sequence has no hole.
+		expect(new Set(rows).size).toBe(rows.length);
+		const numbers = rows.filter((row) => row.startsWith("row-")).map((row) => Number(row.slice(4)));
+		for (let i = 1; i < numbers.length; i++) expect(numbers[i]).toBe(numbers[i - 1]! + 1);
+	});
+
 	it("reports a tmux read failure as unreadable rather than throwing at a caller", async () => {
 		const world = new FakeTmuxWorld();
 		const backend = new TmuxTerminalBackend({
-			port: { ...world.port(), observePane: () => Promise.reject(new Error("no server running")) },
+			port: { ...world.port(), observePane: () => Promise.reject(new Error("list-panes exploded")) },
 		});
 		await backend.openSession({ id: SESSION, cwd: "/tmp" });
 		const state = await backend.describeSession(SESSION);
 		const capture = await backend.captureView(SESSION, state!.views[0].id);
 		expect(capture.availability).toBe("unreadable");
 		if (capture.availability === "captured") throw new Error("must not carry content");
-		expect(capture.reason).toContain("no server running");
+		expect(capture.reason).toContain("list-panes exploded");
 	});
 });

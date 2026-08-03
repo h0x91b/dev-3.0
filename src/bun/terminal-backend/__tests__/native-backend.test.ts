@@ -11,6 +11,8 @@ import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 } from "../../native-terminal-registry/record";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { coordinatorRecordFile } from "../../native-terminal-multipane/paths";
 import { FakeCoordinatorWorld } from "./fake-coordinator-world";
 
 const SESSION = "task-native";
@@ -262,7 +264,7 @@ describe("NativeTerminalBackend read-only capture", () => {
 		expect(capture.availability).toBe("unreadable");
 	});
 
-	it("reports output the parser dropped as a sequence gap", async () => {
+	it("refuses to invent zero gaps for the per-cell surface, which cannot prove them", async () => {
 		const h = harness();
 		world = h.world;
 		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
@@ -271,22 +273,12 @@ describe("NativeTerminalBackend read-only capture", () => {
 
 		const capture = await h.backend.captureView(SESSION, view);
 		if (capture.availability !== "captured") throw new Error(capture.reason);
-		expect(capture.gaps).toEqual({
-			known: true,
-			value: { droppedBytes: 4096, droppedChunks: 1, resyncGaps: 0, degraded: false },
-		});
-		expect(capture.issues.map((issue) => issue.code)).toContain("sequence-gap");
-	});
-
-	it("says plainly that a screen reset cannot be told from history that scrolled off", async () => {
-		const h = harness();
-		world = h.world;
-		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
-		const capture = await h.backend.captureView(SESSION, created.views[0].id);
-		if (capture.availability !== "captured") throw new Error(capture.reason);
-		expect(capture.issues.some((issue) => issue.code === "unknown" && issue.detail.includes("reset"))).toBe(
-			true,
-		);
+		// The per-cell artifact carries no resync accounting, so its loss evidence is
+		// incomplete — and incomplete evidence is unknown, never a reassuring zero.
+		expect(capture.gaps.known).toBe(false);
+		if (capture.gaps.known) return;
+		expect(capture.gaps.reason).toContain("resync");
+		expect(capture.issues.some((issue) => issue.code === "unknown")).toBe(true);
 	});
 
 	it("reports a pane replaced mid-capture instead of returning its successor's screen", async () => {
@@ -433,5 +425,143 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 		const codes = capture.issues.map((issue) => issue.code);
 		expect(codes).toContain("sequence-gap");
 		expect(codes).toContain("parser-failed");
+	});
+});
+
+// ── Capturing must be purely observational ───────────────────────────────────
+
+describe("NativeTerminalBackend capture mutates nothing", () => {
+	let world: FakeCoordinatorWorld | null = null;
+
+	afterEach(() => {
+		world?.cleanup();
+		world = null;
+	});
+
+	/** Bytes and mtime of the coordinator record, so a rewrite cannot hide. */
+	function coordinatorState(coordinatorId: string): { bytes: string; mtimeMs: number } {
+		const file = coordinatorRecordFile(coordinatorId);
+		return { bytes: readFileSync(file, "utf8"), mtimeMs: statSync(file).mtimeMs };
+	}
+
+	it("starts and stops nothing, and leaves the coordinator record byte-identical", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const second = await h.backend.splitView(SESSION, created.views[0].id, { cwd: CWD });
+		const before = coordinatorState(SESSION);
+		h.world.registry.startCalls.length = 0;
+		h.world.registry.stopCalls.length = 0;
+
+		// Twice, because the identity bracket reads the pane set on both sides.
+		await h.backend.captureView(SESSION, created.views[0].id, { historyLines: 20 });
+		await h.backend.captureView(SESSION, second.id);
+
+		expect(h.world.registry.startCalls).toEqual([]);
+		expect(h.world.registry.stopCalls).toEqual([]);
+		expect(coordinatorState(SESSION)).toEqual(before);
+	});
+
+	it("does not reconcile a DEAD pane out of the session, it reports it", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const second = await h.backend.splitView(SESSION, created.views[0].id, { cwd: CWD });
+		// Kill one pane behind the backend's back: recovery would stop it and rewrite
+		// the record; a capture may do neither.
+		h.world.killViewProcess(SESSION, second.id);
+		const before = coordinatorState(SESSION);
+		h.world.registry.startCalls.length = 0;
+		h.world.registry.stopCalls.length = 0;
+
+		const dead = await h.backend.captureView(SESSION, second.id);
+		const alive = await h.backend.captureView(SESSION, created.views[0].id);
+
+		expect(h.world.registry.stopCalls).toEqual([]);
+		expect(h.world.registry.startCalls).toEqual([]);
+		expect(coordinatorState(SESSION)).toEqual(before);
+		// The dead pane is still addressable and reported as dead, not as absent.
+		expect(dead.liveness).toBe("dead");
+		expect(alive.availability).not.toBe("session-absent");
+	});
+
+	it("does not remove the coordinator record when EVERY pane is dead", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		h.world.killViewProcess(SESSION, created.views[0].id);
+		const before = coordinatorState(SESSION);
+
+		const capture = await h.backend.captureView(SESSION, created.views[0].id);
+
+		// Recovery would have dropped the pane and deleted the record here.
+		expect(existsSync(coordinatorRecordFile(SESSION))).toBe(true);
+		expect(coordinatorState(SESSION)).toEqual(before);
+		expect(h.world.registry.stopCalls).toEqual([]);
+		expect(capture.liveness).toBe("dead");
+	});
+});
+
+describe("NativeTerminalBackend identity bracket on every outcome", () => {
+	let world: FakeCoordinatorWorld | null = null;
+
+	afterEach(() => {
+		world?.cleanup();
+		world = null;
+	});
+
+	/**
+	 * A pane replaced DURING the read, for each miss class. Every one of them must
+	 * report `replaced` rather than the miss it would otherwise have been.
+	 */
+	const MISS_CLASSES: Array<{ name: string; parserState: "absent" | "rejected"; capability: boolean }> = [
+		{ name: "not-enabled", parserState: "absent", capability: false },
+		{ name: "unavailable", parserState: "absent", capability: true },
+		{ name: "unreadable", parserState: "rejected", capability: true },
+	];
+
+	it.each(MISS_CLASSES)("reports replacement during a $name miss as replaced", async (miss) => {
+		const w = new FakeCoordinatorWorld();
+		world = w;
+		let armed = false;
+		const innerRecord = w.registry.readPaneRecord.bind(w.registry);
+		w.registry.readPaneRecord = (sessionId) => {
+			const record = innerRecord(sessionId);
+			if (armed && record) {
+				// The pane's shell is replaced between the two identity observations.
+				record.shell.startSignature = `s-${Math.random()}`;
+			}
+			return record;
+		};
+		const backend = new NativeTerminalBackend({ deps: w.deps() });
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		const pane = w.registry.panes.get(`${SESSION}-${view}`);
+		if (!pane) throw new Error("fake pane missing");
+		pane.parserState = miss.parserState;
+		if (!miss.capability) delete pane.record.capabilities;
+		armed = true;
+
+		const capture = await backend.captureView(SESSION, view);
+		expect(capture.availability).toBe("replaced");
+	});
+
+	it("reports a pane set that cannot be believed as unreadable, never as session-absent", async () => {
+		const w = new FakeCoordinatorWorld();
+		world = w;
+		// Armed AFTER the session exists, so the failure is a read failure over real
+		// state rather than a missing session.
+		let armed = false;
+		const inner = w.registry.classifyPane.bind(w.registry);
+		w.registry.classifyPane = (record, token) =>
+			armed ? Promise.reject(new Error("ps exploded")) : inner(record, token);
+		const backend = new NativeTerminalBackend({ deps: w.deps() });
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		armed = true;
+
+		const capture = await backend.captureView(SESSION, created.views[0].id);
+		expect(capture.availability).toBe("unreadable");
+		if (capture.availability === "captured") throw new Error("must not carry content");
+		expect(capture.reason).toContain("ps exploded");
 	});
 });

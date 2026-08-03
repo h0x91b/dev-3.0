@@ -362,6 +362,43 @@ export class TmuxClient {
 		return (await this.runChecked(opts.socket, args)).stdout;
 	}
 
+	/**
+	 * ONE contiguous point-in-time capture: the pane's facts and its rows from a
+	 * single server turn, by chaining `display-message` and `capture-pane` in one
+	 * invocation. Two separate calls let output land between them, which can
+	 * duplicate or drop a row while the result still claims to be one moment.
+	 *
+	 * The caller splits the rows using `historySize` from the SAME turn, counting
+	 * from the front — `capture-pane` trims trailing blank rows, so counting the
+	 * viewport from the end would silently eat history on a partly-blank screen.
+	 */
+	async capturePaneWithFacts<T>(
+		format: TmuxFormat<T>,
+		opts: { target: string; startLine?: number } & SocketOpt,
+	): Promise<{ facts: T; rows: string[] } | null> {
+		const args = [
+			"display-message",
+			"-p",
+			"-t",
+			opts.target,
+			"-F",
+			format.formatString,
+			";",
+			"capture-pane",
+			"-p",
+			"-t",
+			opts.target,
+		];
+		if (opts.startLine !== undefined) args.push("-S", String(opts.startLine), "-E", "-");
+		const { stdout } = await this.runChecked(opts.socket, args);
+		const newline = stdout.indexOf("\n");
+		if (newline < 0) return null;
+		const facts = format.parseLine(stdout.slice(0, newline));
+		if (facts === null) return null;
+		const body = stdout.slice(newline + 1).replace(/\n$/, "");
+		return { facts, rows: body === "" ? [] : body.split("\n") };
+	}
+
 	// ── Selection, layout, input ───────────────────────────────────────
 
 	/** `select-pane -t` — also sets the pane title when `title` is given (`-T`). */

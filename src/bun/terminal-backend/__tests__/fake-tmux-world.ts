@@ -5,7 +5,13 @@
  * and `tmux-backend.live-e2e.test.ts` (a real tmux server).
  */
 
-import type { TmuxBackendPort, TmuxLaunch, TmuxPane, TmuxPaneObservation } from "../tmux-port";
+import type {
+	TmuxBackendPort,
+	TmuxContiguousCapture,
+	TmuxLaunch,
+	TmuxPane,
+	TmuxPaneObservation,
+} from "../tmux-port";
 
 interface FakePane {
 	paneId: string;
@@ -100,17 +106,30 @@ export class FakeTmuxWorld {
 				};
 			},
 
-			async captureViewport(paneId) {
-				const found = world.sessionOfPane(paneId);
-				return world.lines(world.pane(paneId)).slice(-found.rows);
-			},
-
-			async captureHistory(paneId, lines) {
-				if (lines <= 0) return [];
-				const found = world.sessionOfPane(paneId);
-				const all = world.lines(world.pane(paneId));
+			async capturePane(paneId, historyLines): Promise<TmuxContiguousCapture | null> {
+				const session = world.sessionForPaneId(paneId);
+				if (!session) return null;
+				const found = world.sessions.get(session)!;
+				const pane = found.panes.find((entry) => entry.paneId === paneId);
+				if (!pane) return null;
+				// One turn: the rows and the facts come from the same observation.
+				const all = world.lines(pane);
+				const viewport = all.slice(-found.rows);
 				const history = all.slice(0, Math.max(0, all.length - found.rows));
-				return history.slice(-lines);
+				return {
+					pane: {
+						paneId: pane.paneId,
+						cols: found.cols,
+						rows: found.rows,
+						dead: false,
+						pid: pane.pid,
+						serverEpoch: world.serverEpoch,
+						historySize: history.length,
+						alternateScreen: pane.alternateScreen,
+					},
+					viewport,
+					history: historyLines > 0 ? history.slice(-historyLines) : [],
+				};
 			},
 
 			async killPane(paneId, bestEffort) {
@@ -173,7 +192,7 @@ export class FakeTmuxWorld {
 		return found;
 	}
 
-	private sessionForPaneId(paneId: string): string | null {
+	sessionForPaneId(paneId: string): string | null {
 		for (const [name, session] of this.sessions) {
 			if (session.panes.some((pane) => pane.paneId === paneId)) return name;
 		}

@@ -42,8 +42,11 @@ import {
 	paneIdentityDrift,
 	TERMINAL_CAPTURE_VERSION,
 	unknownFact,
+	type TerminalCaptureFact,
 	type TerminalCaptureIssue,
 	type TerminalPaneCapture,
+	type TerminalPaneCaptureContent,
+	type TerminalPaneCaptureGaps,
 	type TerminalPaneCaptureIdentity,
 	type TerminalPaneCaptureRequest,
 	type TerminalPaneLiveness,
@@ -136,6 +139,7 @@ function captureIdentityOf(
 
 /** One observation, whichever surface the pane's host publishes. */
 interface PaneObservation {
+	gaps: TerminalCaptureFact<TerminalPaneCaptureGaps>;
 	updatedAt: string;
 	activeBuffer: "normal" | "alternate";
 	cols: number;
@@ -145,9 +149,6 @@ interface PaneObservation {
 	historyTotal: number;
 	status: "live" | "overflowed" | "failed";
 	error?: string;
-	droppedBytes: number;
-	droppedChunks: number;
-	resyncGaps: number;
 }
 
 function observationOf(source: Extract<PaneCaptureSource, { kind: "capture-record" | "snapshot" }>): PaneObservation {
@@ -163,9 +164,12 @@ function observationOf(source: Extract<PaneCaptureSource, { kind: "capture-recor
 			historyTotal: record.historyTotal,
 			status: record.health.status,
 			...(record.health.error ? { error: record.health.error } : {}),
-			droppedBytes: record.health.droppedBytes,
-			droppedChunks: record.health.droppedChunks,
-			resyncGaps: record.health.resyncGaps,
+			gaps: knownFact({
+				droppedBytes: record.health.droppedBytes,
+				droppedChunks: record.health.droppedChunks,
+				resyncGaps: record.health.resyncGaps,
+				degraded: record.health.status !== "live",
+			}),
 		};
 	}
 	const { snapshot, state } = source;
@@ -180,11 +184,12 @@ function observationOf(source: Extract<PaneCaptureSource, { kind: "capture-recor
 		historyTotal: state.scrollbackLength,
 		status: snapshot.health.status,
 		...(snapshot.health.error ? { error: snapshot.health.error } : {}),
-		droppedBytes: snapshot.health.overflow.droppedBytes,
-		droppedChunks: snapshot.health.overflow.droppedChunks,
-		// The per-cell snapshot carries no resync accounting, so the only gaps it can
-		// prove are the ones the queue dropped.
-		resyncGaps: 0,
+		// The per-cell artifact does not carry resync accounting at all, so its loss
+		// evidence is INCOMPLETE. Reporting a zero here would be the fake zero this
+		// contract exists to forbid, so the whole fact is unknown.
+		gaps: unknownFact(
+			"the per-cell snapshot carries no resync accounting, so output loss cannot be established from it",
+		),
 	};
 }
 
@@ -290,7 +295,42 @@ export class NativeTerminalBackend implements TerminalBackend {
 		if (!isTerminalSessionId(id)) {
 			return paneCaptureMiss(blind, "session-absent", `session id ${JSON.stringify(id)} is not portable`);
 		}
-		const before = await this.readPaneSet(id);
+
+		// EVERY outcome, miss or not, is bracketed by the same two identity checks, so
+		// a pane replaced during a miss is reported as replaced rather than as whatever
+		// the miss happened to be.
+		const bracket = async <T extends TerminalPaneCapture>(
+			identity: TerminalPaneCaptureIdentity,
+			liveness: TerminalPaneLiveness,
+			outcome: () => T | Promise<T>,
+		): Promise<TerminalPaneCapture> => {
+			const result = await outcome();
+			let after: Awaited<ReturnType<typeof this.inspectPaneSet>>;
+			try {
+				after = await this.inspectPaneSet(id);
+			} catch (err) {
+				return paneCaptureMiss(identity, "unreadable", `the pane set could not be re-read: ${reasonOf(err)}`, liveness);
+			}
+			if (!after) return result;
+			const afterPane = after.panes.find((entry) => entry.paneId === viewId);
+			if (!afterPane) return result;
+			const drift = paneIdentityDrift(identity, captureIdentityOf(this.kind, id, after.epoch, afterPane));
+			return drift
+				? paneCaptureMiss(identity, "replaced", `the pane was replaced mid-capture: ${drift}`, liveness)
+				: result;
+		};
+
+		// Purely observational: this inspection probes ownership and reads state, and
+		// it never stops a pane, rewrites the coordinator record, or reconciles the
+		// layout. A read that mutates runtime or persisted membership is not a read.
+		let before: Awaited<ReturnType<typeof this.inspectPaneSet>>;
+		try {
+			before = await this.inspectPaneSet(id);
+		} catch (err) {
+			// A session whose state exists but cannot be believed is unreadable. Only a
+			// successfully observed absence may be reported as absent.
+			return paneCaptureMiss(blind, "unreadable", `the pane set could not be read: ${reasonOf(err)}`);
+		}
 		if (!before) {
 			return paneCaptureMiss(blind, "session-absent", `no native session ${JSON.stringify(id)} is owned by this app`);
 		}
@@ -298,122 +338,114 @@ export class NativeTerminalBackend implements TerminalBackend {
 		if (!pane) {
 			return paneCaptureMiss(blind, "view-absent", `pane ${JSON.stringify(viewId)} is not part of the session`);
 		}
-		const coordinator = this.coordinators.get(id);
-		if (!coordinator) {
-			return paneCaptureMiss(blind, "unreadable", "the session's pane set was read but its controller was lost");
-		}
 
-		const identity = captureIdentityOf(this.kind, id, coordinator.epoch, pane);
+		const identity = captureIdentityOf(this.kind, id, before.epoch, pane);
 		const liveness: TerminalPaneLiveness = pane.state === "dead" ? "dead" : "live";
-		let source: ReturnType<NativeMultipaneCoordinator["readPaneCaptureSource"]>;
-		try {
-			source = coordinator.readPaneCaptureSource(viewId);
-		} catch (err) {
-			return paneCaptureMiss(identity, "unreadable", `the pane's capture source failed: ${reasonOf(err)}`, liveness);
-		}
-		if (source.kind === "disabled") return paneCaptureMiss(identity, "not-enabled", source.reason, liveness);
-		if (source.kind === "unreadable") return paneCaptureMiss(identity, "unreadable", source.reason, liveness);
-		if (source.kind === "empty") return paneCaptureMiss(identity, "unavailable", source.reason, liveness);
-
-		// The snapshot was read between the two identity checks, so a pane replaced
-		// underneath it cannot hand back its successor's screen under the old name.
-		const after = await this.readPaneSet(id);
-		const afterPane = after?.panes.find((entry) => entry.paneId === viewId);
-		if (!after || !afterPane) {
-			return paneCaptureMiss(identity, "view-absent", `pane ${JSON.stringify(viewId)} disappeared mid-capture`, liveness);
-		}
-		const afterCoordinator = this.coordinators.get(id);
-		const drift = paneIdentityDrift(
-			identity,
-			captureIdentityOf(this.kind, id, afterCoordinator?.epoch ?? coordinator.epoch, afterPane),
-		);
-		if (drift) return paneCaptureMiss(identity, "replaced", `the pane was replaced mid-capture: ${drift}`, liveness);
-
-		// The compact record names its own producer, so the rows can be checked against
-		// the pane directly instead of only against a second ownership sweep: text
-		// written by a previous incarnation is caught even if both sweeps agree.
-		if (source.kind === "capture-record") {
-			const producer = source.record.producer;
-			const wrote = captureIncarnation(
-				source.record.sessionId,
-				producer.hostPid,
-				producer.hostStartSignature,
-				producer.shellPid,
-				producer.shellStartSignature,
-			);
-			if (identity.incarnation.known && identity.incarnation.value !== wrote) {
-				return paneCaptureMiss(
-					identity,
-					"replaced",
-					"the capture record was written by a different incarnation of this pane",
-					liveness,
-				);
+		return bracket(identity, liveness, async () => {
+			let source: PaneCaptureSource;
+			try {
+				source = this.captureSourceOf(id, viewId);
+			} catch (err) {
+				return paneCaptureMiss(identity, "unreadable", `the pane's capture source failed: ${reasonOf(err)}`, liveness);
 			}
-		}
+			if (source.kind === "disabled") return paneCaptureMiss(identity, "not-enabled", source.reason, liveness);
+			if (source.kind === "unreadable") return paneCaptureMiss(identity, "unreadable", source.reason, liveness);
+			if (source.kind === "empty") return paneCaptureMiss(identity, "unavailable", source.reason, liveness);
 
-		const readAt = new Date().toISOString();
-		// Both surfaces reduce to the same four things: rows, total history depth,
-		// which buffer, and the producer's health. Everything downstream is shared, so
-		// the two backends' answers cannot drift by surface either.
-		const observed = observationOf(source);
-		const alternate = observed.activeBuffer === "alternate";
-		const bounded = boundCaptureLines(
-			{
-				viewport: observed.viewport,
-				history: alternate ? [] : observed.history,
-				// The producer caps its own scrollback, so the total depth it HOLDS is the
-				// honest availability figure — not the capped slice we were handed.
-				historyAvailable: alternate ? 0 : observed.historyTotal,
-			},
-			{ historyLines: clampHistoryLines(request.historyLines), maxBytes: clampMaxBytes(request.maxBytes) },
-		);
-		const sourceUpdatedAt = knownFact(observed.updatedAt);
-		const gaps = {
-			droppedBytes: observed.droppedBytes,
-			droppedChunks: observed.droppedChunks,
-			resyncGaps: observed.resyncGaps,
-			degraded: observed.status !== "live",
-		};
-		const issues: TerminalCaptureIssue[] = [...bounded.issues];
-		if (gaps.droppedChunks > 0 || gaps.droppedBytes > 0 || gaps.resyncGaps > 0) {
-			issues.push({
-				code: "sequence-gap",
-				detail:
-					`the pane's parser dropped ${gaps.droppedBytes} byte(s) in ${gaps.droppedChunks} chunk(s) ` +
-					`and resynced across ${gaps.resyncGaps} gap(s) before this capture`,
-			});
-		}
-		if (observed.status !== "live") {
-			issues.push({
-				code: "parser-failed",
-				detail: observed.error ?? `the pane's parser is ${observed.status}`,
-			});
-		}
-		issues.push({
-			code: "unknown",
-			detail: "a screen clear or terminal reset is indistinguishable from history that scrolled off",
+			// The compact record names its own producer, so its rows are checked against
+			// the pane directly — text written by a previous incarnation is caught even
+			// when both ownership observations agree.
+			if (source.kind === "capture-record") {
+				const producer = source.record.producer;
+				const wrote = captureIncarnation(
+					source.record.sessionId,
+					producer.hostPid,
+					producer.hostStartSignature,
+					producer.shellPid,
+					producer.shellStartSignature,
+				);
+				if (identity.incarnation.known && identity.incarnation.value !== wrote) {
+					return paneCaptureMiss(
+						identity,
+						"replaced",
+						"the capture record was written by a different incarnation of this pane",
+						liveness,
+					);
+				}
+			}
+
+			const readAt = new Date().toISOString();
+			// Both surfaces reduce to the same observation, so no consumer branches on
+			// which artifact a host happens to publish.
+			const observed = observationOf(source);
+			const alternate = observed.activeBuffer === "alternate";
+			const bounded = boundCaptureLines(
+				{
+					viewport: observed.viewport,
+					history: alternate ? [] : observed.history,
+					historyAvailable: alternate ? 0 : observed.historyTotal,
+				},
+				{ historyLines: clampHistoryLines(request.historyLines), maxBytes: clampMaxBytes(request.maxBytes) },
+			);
+			const sourceUpdatedAt = knownFact(observed.updatedAt);
+			const issues: TerminalCaptureIssue[] = [...bounded.issues];
+			if (observed.gaps.known) {
+				const gaps = observed.gaps.value;
+				if (gaps.droppedChunks > 0 || gaps.droppedBytes > 0 || gaps.resyncGaps > 0) {
+					issues.push({
+						code: "sequence-gap",
+						detail:
+							`the pane's parser dropped ${gaps.droppedBytes} byte(s) in ${gaps.droppedChunks} chunk(s) ` +
+							`and resynced across ${gaps.resyncGaps} gap(s) before this capture`,
+					});
+				}
+			} else {
+				issues.push({ code: "unknown", detail: observed.gaps.reason });
+			}
+			if (observed.status !== "live") {
+				issues.push({
+					code: "parser-failed",
+					detail: observed.error ?? `the pane's parser is ${observed.status}`,
+				});
+			}
+			return {
+				version: TERMINAL_CAPTURE_VERSION,
+				identity,
+				readAt,
+				availability: "captured",
+				sourceUpdatedAt,
+				lastChangeAgeMs: lastChangeAge(sourceUpdatedAt, readAt),
+				// The producer publishes on change and offers no heartbeat, so a quiet pane
+				// and a wedged parser look identical from here. Unknown is the only honest
+				// answer; an age threshold would call every idle pane stale.
+				freshness: unknownFact(
+					"the pane's producer publishes on change and offers no heartbeat, so currency cannot be established",
+				),
+				liveness,
+				size: knownFact({ cols: observed.cols, rows: observed.rows }),
+				screen: knownFact(alternate ? "alternate" : "normal"),
+				content: bounded.content,
+				bounds: bounded.bounds,
+				gaps: observed.gaps,
+				issues,
+			} satisfies TerminalPaneCaptureContent;
 		});
-		return {
-			version: TERMINAL_CAPTURE_VERSION,
-			identity,
-			readAt,
-			availability: "captured",
-			sourceUpdatedAt,
-			lastChangeAgeMs: lastChangeAge(sourceUpdatedAt, readAt),
-			// The host writes on CHANGE and sends no heartbeat, so a quiet pane and a
-			// wedged parser look identical from here. Saying "unknown" is the only
-			// honest answer; an age threshold would have called every idle pane stale.
-			freshness: unknownFact(
-				"the pane's producer publishes on change and offers no heartbeat, so currency cannot be established",
-			),
-			liveness,
-			size: knownFact({ cols: observed.cols, rows: observed.rows }),
-			screen: knownFact(alternate ? "alternate" : "normal"),
-			content: bounded.content,
-			bounds: bounded.bounds,
-			gaps: knownFact(gaps),
-			issues,
-		};
+	}
+
+	/**
+	 * The pane set as OBSERVED: same probes as recovery, none of its consequences.
+	 * Recovery may stop panes and rewrite the coordinator record; a capture may not.
+	 */
+	private async inspectPaneSet(
+		id: TerminalSessionId,
+	): Promise<{ epoch: string; panes: PaneSnapshot[] } | null> {
+		if (!isTerminalSessionId(id)) return null;
+		return NativeMultipaneCoordinator.inspectPaneSet(id, this.deps);
+	}
+
+	/** Read one pane's capture source without constructing a reconciling controller. */
+	private captureSourceOf(id: TerminalSessionId, viewId: TerminalViewId): PaneCaptureSource {
+		return NativeMultipaneCoordinator.inspectPaneCaptureSource(id, viewId, this.deps);
 	}
 
 	async attachView(id: TerminalSessionId, viewId?: TerminalViewId): Promise<TerminalAttachment> {

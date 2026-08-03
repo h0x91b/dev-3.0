@@ -50,6 +50,13 @@ const PARSER_SESSION = "capture-parser";
 const PLAIN_SESSION = "capture-plain";
 const COMPACT_SESSION = "capture-compact";
 
+/** One command that prints `prefix-0` … `prefix-(count-1)`, so the wait is one turn. */
+function seqEcho(prefix: string, count: number): string {
+	return isWindows
+		? `0..${count - 1} | ForEach-Object { Write-Output "${prefix}-$_" }`
+		: `for i in $(seq 0 ${count - 1}); do echo ${prefix}-$i; done`;
+}
+
 function shell(cwd: string) {
 	const base = isWindows
 		? { executable: "powershell.exe", argv: ["-NoLogo", "-NoProfile", "-NoExit"], cwd, env: {} }
@@ -103,10 +110,9 @@ async function main(): Promise<void> {
 		});
 		const view = created.views[0]!.id;
 
-		// Enough output that some of it must scroll off a 24-row screen.
-		for (let i = 0; i < 60; i++) {
-			await parserBackend.writePane(PARSER_SESSION, view, `echo capture-line-${i}${lineEnd}`);
-		}
+		// One shell command, 60 rows: 60 sequential writePane round-trips made the
+		// wait time depend on machine load, which is how this gate went flaky.
+		await parserBackend.writePane(PARSER_SESSION, view, `${seqEcho("capture-line", 60)}${lineEnd}`);
 
 		const sawNewest = await eventually("the newest line on the visible screen", async () => {
 			const capture = await parserBackend.captureView(PARSER_SESSION, view);
@@ -171,9 +177,7 @@ async function main(): Promise<void> {
 			size: { cols: 120, rows: 40 },
 		});
 		const view = created.views[0]!.id;
-		for (let i = 0; i < 80; i++) {
-			await compactBackend.writePane(COMPACT_SESSION, view, `echo compact-line-${i}${lineEnd}`);
-		}
+		await compactBackend.writePane(COMPACT_SESSION, view, `${seqEcho("compact-line", 80)}${lineEnd}`);
 
 		const sawNewest = await eventually("the newest line via the compact surface", async () => {
 			const capture = await compactBackend.captureView(COMPACT_SESSION, view);

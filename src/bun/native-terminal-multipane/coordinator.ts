@@ -297,6 +297,26 @@ export class NativeMultipaneCoordinator {
 	 * twice, so the returned snapshots and the returned layout describe the same
 	 * instant rather than two consecutive `ps` passes.
 	 */
+	/**
+	 * Read the pane set WITHOUT reconciling anything: same probes as recovery, none
+	 * of its consequences. No pane is stopped, no record is written, no layout is
+	 * republished, and a coordinator record is never removed. Panes whose ownership
+	 * is disproven or unknown are REPORTED as evidence instead of being swept —
+	 * because an observation that mutates runtime or persisted membership is not an
+	 * observation.
+	 */
+	static async inspectPaneSet(
+		coordinatorId: string,
+		deps: CoordinatorDeps = defaultCoordinatorDeps,
+	): Promise<{ epoch: string; panes: PaneSnapshot[]; layout: SplitTree } | null> {
+		const record = readMultipaneRecord(coordinatorId);
+		if (!record) return null;
+		const tree = restoreSplitTree(record.layout);
+		if (!tree) return null;
+		const probes = await Promise.all(record.panes.map((pane) => probePane(pane, deps)));
+		return { epoch: record.epoch, panes: probes.map(snapshotOf), layout: tree };
+	}
+
 	static async recoverPaneSet(
 		coordinatorId: string,
 		deps: CoordinatorDeps = defaultCoordinatorDeps,
@@ -530,8 +550,21 @@ export class NativeMultipaneCoordinator {
 	 */
 	readPaneCaptureSource(paneId: string): PaneCaptureSource {
 		this.assertPane(paneId);
-		const sessionId = paneSessionId(this.coordinatorId, paneId);
-		const record = this.deps.readPaneRecord(sessionId);
+		return NativeMultipaneCoordinator.inspectPaneCaptureSource(this.coordinatorId, paneId, this.deps);
+	}
+
+	/**
+	 * Read one pane's capture source WITHOUT a controller and without reconciling
+	 * anything — the observational path a capture uses. Static because constructing
+	 * a coordinator is a recovery, and a recovery is allowed to mutate.
+	 */
+	static inspectPaneCaptureSource(
+		coordinatorId: string,
+		paneId: string,
+		deps: CoordinatorDeps = defaultCoordinatorDeps,
+	): PaneCaptureSource {
+		const sessionId = paneSessionId(coordinatorId, paneId);
+		const record = deps.readPaneRecord(sessionId);
 		if (!record) {
 			return { kind: "unreadable", reason: "the pane's record could not be read" };
 		}
@@ -548,7 +581,7 @@ export class NativeMultipaneCoordinator {
 
 		// Prefer the compact surface; fall back to the per-cell one.
 		if (surfaces.includes(NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY)) {
-			const inspect = this.deps.inspectPaneCaptureRecord ?? inspectCaptureRecord;
+			const inspect = deps.inspectPaneCaptureRecord ?? inspectCaptureRecord;
 			const inspection = inspect(sessionId);
 			if (inspection.kind === "present") return { kind: "capture-record", record: inspection.record };
 			if (inspection.kind === "rejected") {
@@ -559,7 +592,7 @@ export class NativeMultipaneCoordinator {
 			}
 		}
 
-		const inspect = this.deps.inspectPaneParserState ?? inspectParserStateFile;
+		const inspect = deps.inspectPaneParserState ?? inspectParserStateFile;
 		const inspection = inspect(sessionId);
 		if (inspection.kind === "rejected") {
 			return {

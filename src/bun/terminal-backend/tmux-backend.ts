@@ -136,7 +136,16 @@ export class TmuxTerminalBackend implements TerminalBackend {
 		if (!isTerminalSessionId(id)) {
 			return paneCaptureMiss(blind, "session-absent", `session id ${JSON.stringify(id)} is not portable`);
 		}
-		if (!(await this.presentForCapture(id))) {
+		// Only a SUCCESSFULLY observed absence is an absence. A server that cannot be
+		// asked is unreadable, because "we could not look" and "it is not there" lead
+		// to opposite decisions.
+		let present: boolean;
+		try {
+			present = await this.port.hasSession(id);
+		} catch (err) {
+			return paneCaptureMiss(blind, "unreadable", `tmux could not be asked about the session: ${reasonOf(err)}`);
+		}
+		if (!present) {
 			return paneCaptureMiss(blind, "session-absent", `tmux has no session ${JSON.stringify(id)}`);
 		}
 
@@ -154,58 +163,51 @@ export class TmuxTerminalBackend implements TerminalBackend {
 		const liveness: TerminalPaneLiveness = before.dead ? "dead" : "live";
 		const historyLines = clampHistoryLines(request.historyLines);
 		const maxBytes = clampMaxBytes(request.maxBytes);
+
+		// ONE server turn for the facts AND the rows, so no output can land between
+		// them and duplicate or drop a row while the result claims to be one moment.
+		let captured: Awaited<ReturnType<TmuxBackendPort["capturePane"]>>;
+		try {
+			captured = await this.port.capturePane(viewId, historyLines);
+		} catch (err) {
+			return paneCaptureMiss(identity, "unreadable", `tmux capture failed: ${reasonOf(err)}`, liveness);
+		}
+		if (!captured) {
+			return paneCaptureMiss(identity, "view-absent", `pane ${JSON.stringify(viewId)} disappeared mid-capture`, liveness);
+		}
+
+		const pane = captured.pane;
+		const drift = paneIdentityDrift(identity, this.captureIdentityOf(id, pane));
+		if (drift) return paneCaptureMiss(identity, "replaced", `the pane was replaced mid-capture: ${drift}`, liveness);
+
 		// A full-screen program owns the screen and freezes the pane's scrollback, so
 		// history there is not recent output — it is whatever was on screen before that
 		// program started. Report it absent by nature rather than as stale activity.
-		const alternate = before.alternateScreen;
-
-		let viewport: string[];
-		let history: string[];
-		try {
-			viewport = await this.port.captureViewport(viewId);
-			history = alternate ? [] : await this.port.captureHistory(viewId, historyLines);
-		} catch (err) {
-			if (await this.paneIsGone(id, viewId)) {
-				return paneCaptureMiss(identity, "view-absent", `pane ${JSON.stringify(viewId)} disappeared mid-capture`);
-			}
-			return paneCaptureMiss(identity, "unreadable", `tmux capture failed: ${reasonOf(err)}`, liveness);
-		}
-
-		let after: TmuxPaneObservation | null;
-		try {
-			after = await this.port.observePane(id, viewId);
-		} catch (err) {
-			return paneCaptureMiss(identity, "unreadable", `the pane could not be re-checked: ${reasonOf(err)}`, liveness);
-		}
-		if (!after) {
-			return paneCaptureMiss(identity, "view-absent", `pane ${JSON.stringify(viewId)} disappeared mid-capture`, liveness);
-		}
-		const drift = paneIdentityDrift(identity, this.captureIdentityOf(id, after));
-		if (drift) return paneCaptureMiss(identity, "replaced", `the pane was replaced mid-capture: ${drift}`, liveness);
-
+		const alternate = pane.alternateScreen;
 		const readAt = new Date().toISOString();
-		const sourceUpdatedAt = knownFact(readAt);
 		const bounded = boundCaptureLines(
-			{ viewport, history, historyAvailable: alternate ? 0 : after.historySize },
+			{
+				viewport: captured.viewport,
+				history: alternate ? [] : captured.history,
+				historyAvailable: alternate ? 0 : pane.historySize,
+			},
 			{ historyLines, maxBytes },
-		);
-		// The read IS the observation, so there is nothing to age.
-		const lastChangeAgeMs = unknownFact<number>(
-			"tmux reports the live screen, not when it last changed",
 		);
 		return {
 			version: TERMINAL_CAPTURE_VERSION,
 			identity,
 			readAt,
 			availability: "captured",
-			sourceUpdatedAt,
-			lastChangeAgeMs,
+			sourceUpdatedAt: knownFact(readAt),
+			// tmux reports the live screen, not a change log, so it cannot say when that
+			// screen last changed — and claiming "just now" would be the same lie.
+			lastChangeAgeMs: unknownFact("tmux reports the live screen, not when it last changed"),
 			freshness: knownFact("current" as const),
 			liveness,
-			size: knownFact({ cols: after.cols, rows: after.rows }),
+			size: knownFact({ cols: pane.cols, rows: pane.rows }),
 			screen: knownFact(alternate ? "alternate" : "normal"),
 			content: bounded.content,
-			bounds: bounded.bounds,
+			bounds: alternate ? { ...bounded.bounds, historyLinesAvailable: knownFact(0) } : bounded.bounds,
 			gaps: unknownFact("tmux keeps no account of output it dropped"),
 			issues: [
 				...bounded.issues,
@@ -307,24 +309,6 @@ export class TmuxTerminalBackend implements TerminalBackend {
 		this.attachments.clear();
 	}
 
-	/** Presence for a capture: a failed probe is "cannot see it", never a throw. */
-	private async presentForCapture(id: TerminalSessionId): Promise<boolean> {
-		try {
-			return await this.port.hasSession(id);
-		} catch {
-			return false;
-		}
-	}
-
-	private async paneIsGone(id: TerminalSessionId, viewId: TerminalViewId): Promise<boolean> {
-		try {
-			if (!(await this.port.hasSession(id))) return true;
-			const panes = await this.port.listPanes(id);
-			return !panes.some((pane) => pane.paneId === viewId);
-		} catch {
-			return false; // cannot prove it is gone — keep the original diagnosis
-		}
-	}
 
 	private async present(id: TerminalSessionId): Promise<boolean> {
 		if (!isTerminalSessionId(id)) return false;

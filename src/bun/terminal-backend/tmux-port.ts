@@ -35,6 +35,13 @@ export interface TmuxPaneObservation {
 	readonly alternateScreen: boolean;
 }
 
+/** One point-in-time capture: rows plus the facts observed in the same turn. */
+export interface TmuxContiguousCapture {
+	readonly pane: TmuxPaneObservation;
+	readonly viewport: string[];
+	readonly history: string[];
+}
+
 export interface TmuxLaunch {
 	readonly cwd: string;
 	readonly env?: Readonly<Record<string, string>>;
@@ -54,25 +61,35 @@ export interface TmuxBackendPort {
 	resize(session: string, cols: number, rows: number): Promise<void>;
 	/** Geometry, liveness, incarnation, and history depth — no content. */
 	observePane(session: string, paneId: string): Promise<TmuxPaneObservation | null>;
-	/** The visible screen, one entry per row, top row first. */
-	captureViewport(paneId: string): Promise<string[]>;
-	/** Up to `lines` scrolled-off lines ending immediately above the screen, oldest first. */
-	captureHistory(paneId: string, lines: number): Promise<string[]>;
+	/**
+	 * ONE contiguous capture: the pane's facts and its rows from a single server
+	 * turn, already split into history and viewport. `null` when the pane is gone.
+	 */
+	capturePane(paneId: string, historyLines: number): Promise<TmuxContiguousCapture | null>;
 	killPane(paneId: string, bestEffort: boolean): Promise<void>;
 	killSession(session: string, bestEffort: boolean): Promise<void>;
 }
 
-/**
- * `capture-pane` line numbering: `0` is the top visible row, so a negative
- * start reaches into scrollback and `-1` is the last line above the screen.
- * Splitting the two reads is what lets the seam report viewport and history
- * separately instead of handing back one ambiguous blob.
- */
-const LAST_HISTORY_LINE = -1;
-
-function captureLines(stdout: string): string[] {
-	const text = stdout.replace(/\n$/, "");
-	return text === "" ? [] : text.split("\n");
+function paneFrom(row: {
+	paneId: string;
+	width: number;
+	height: number;
+	dead: boolean;
+	pid: number;
+	serverEpoch: number;
+	historySize: number;
+	alternateScreen: boolean;
+}): TmuxPaneObservation {
+	return {
+		paneId: row.paneId,
+		cols: row.width,
+		rows: row.height,
+		dead: row.dead,
+		pid: row.pid,
+		serverEpoch: row.serverEpoch,
+		historySize: row.historySize,
+		alternateScreen: row.alternateScreen,
+	};
 }
 
 /** The production port over the typed tmux client singleton. */
@@ -118,28 +135,25 @@ export function tmuxBackendPort(client: TmuxClient = tmux): TmuxBackendPort {
 		async observePane(session, paneId) {
 			const rows = await client.listPanes(PANE_CAPTURE_FORMAT, { target: session, scope: "session" });
 			const row = rows.find((entry) => entry.paneId === paneId);
-			if (!row) return null;
+			return row ? paneFrom(row) : null;
+		},
+
+		async capturePane(paneId, historyLines) {
+			const captured = await client.capturePaneWithFacts(PANE_CAPTURE_FORMAT, {
+				target: paneId,
+				...(historyLines > 0 ? { startLine: -historyLines } : {}),
+			});
+			if (!captured) return null;
+			const pane = paneFrom(captured.facts);
+			// Split from the FRONT by the history depth observed in the same turn:
+			// `capture-pane` trims trailing blank rows, so counting the viewport from the
+			// end would eat history on a partly-blank screen.
+			const historyRows = historyLines > 0 ? Math.min(pane.historySize, historyLines) : 0;
 			return {
-				paneId: row.paneId,
-				cols: row.width,
-				rows: row.height,
-				dead: row.dead,
-				pid: row.pid,
-				serverEpoch: row.serverEpoch,
-				historySize: row.historySize,
-				alternateScreen: row.alternateScreen,
+				pane,
+				history: captured.rows.slice(0, historyRows),
+				viewport: captured.rows.slice(historyRows),
 			};
-		},
-
-		async captureViewport(paneId) {
-			return captureLines(await client.capturePane({ target: paneId }));
-		},
-
-		async captureHistory(paneId, lines) {
-			if (lines <= 0) return [];
-			return captureLines(
-				await client.capturePane({ target: paneId, startLine: -lines, endLine: LAST_HISTORY_LINE }),
-			);
 		},
 
 		killPane: (paneId, bestEffort) => client.killPane(paneId, { bestEffort }),
