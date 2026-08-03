@@ -176,7 +176,7 @@ const infoPanel = {
 	"infoPanel.diffReviewExportSend": "Send to Agent",
 	"infoPanel.diffReviewExportSendSending": "Sending\u2026",
 	"infoPanel.diffReviewExportSendSent": "Sent",
-	"infoPanel.diffReviewExportSendSuccess": "Review sent to the agent",
+	"infoPanel.diffReviewExportSendSuccess": "Review sent to the agent — comments cleared",
 	"infoPanel.diffReviewExportSendFailed": "Could not send the review to the agent: {error}",
 	"infoPanel.diffReviewExportCopyTooltipTitle": "Copy review as a prompt",
 	"infoPanel.diffReviewExportCopyTooltip": "Copy the review as an XML prompt to your clipboard — paste it into any agent yourself.",

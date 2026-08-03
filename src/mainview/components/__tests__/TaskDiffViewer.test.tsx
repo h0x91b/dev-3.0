@@ -1807,16 +1807,6 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByRole("button", { name: "Copy to Clipboard" })).toHaveClass("w-full");
 		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeEnabled();
 
-		await user.click(screen.getByRole("button", { name: "Send to Agent" }));
-		await waitFor(() => {
-			expect(api.request.sendAgentMessageNow).toHaveBeenCalledWith({
-				taskId: "t1",
-				projectId: "p1",
-				text: expect.stringContaining(`<comment>${longComment}</comment>`),
-			});
-		});
-		expect(screen.getByRole("button", { name: "Sent" })).toBeInTheDocument();
-
 		await user.click(screen.getByRole("button", { name: "Comment 1" }));
 		await waitFor(() => {
 			expect(scrollIntoViewMock).toHaveBeenCalled();
@@ -2473,6 +2463,56 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(screen.queryAllByText("kill me")).toHaveLength(0);
 		});
+		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
+		expect(localStorage.getItem(reviewKey)).toBeNull();
+	});
+
+	it("clears the review after a successful send, and keeps it when the send fails", async () => {
+		const user = userEvent.setup();
+		const reviewKey = "dev3-inline-diff-review-v1:t1";
+		const showConfirm = vi.mocked(confirm);
+		vi.mocked(api.request.sendAgentMessageNow).mockRejectedValueOnce(new Error("no agent"));
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "send me");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		await waitFor(() => {
+			expect(localStorage.getItem(reviewKey)).toContain("send me");
+		});
+
+		// Failed send: the comments must survive so the reviewer can retry.
+		await user.click(screen.getByTestId("review-send-button"));
+		await waitFor(() => {
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				text: expect.stringContaining("<comment>send me</comment>"),
+			});
+		});
+		expect(screen.getAllByText("send me").length).toBeGreaterThan(0);
+		expect(localStorage.getItem(reviewKey)).toContain("send me");
+
+		// Successful send: comments are delivered, so they clear without a confirm.
+		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValueOnce(undefined as never);
+		await user.click(screen.getByTestId("review-send-button"));
+
+		await waitFor(() => {
+			expect(screen.queryAllByText("send me")).toHaveLength(0);
+		});
+		expect(showConfirm).not.toHaveBeenCalled();
 		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
 		expect(localStorage.getItem(reviewKey)).toBeNull();
 	});

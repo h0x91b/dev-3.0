@@ -2330,6 +2330,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: snapshot })
 			.then(() => {
 				setReviewSendState("sent");
+				// Delivered comments are dead weight: clear them here so the reviewer
+				// never has to run the destructive "Reset review" as a routine step.
+				setInlineComments({});
+				setEditingCommentId(null);
 				toast.success(t("infoPanel.diffReviewExportSendSuccess"));
 			})
 			.catch((err) => {

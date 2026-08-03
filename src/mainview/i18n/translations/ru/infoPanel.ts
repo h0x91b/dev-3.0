@@ -186,7 +186,7 @@ const infoPanel = {
 	"infoPanel.diffReviewExportSend": "Отправить агенту",
 	"infoPanel.diffReviewExportSendSending": "Отправка\u2026",
 	"infoPanel.diffReviewExportSendSent": "Отправлено",
-	"infoPanel.diffReviewExportSendSuccess": "Ревью отправлено агенту",
+	"infoPanel.diffReviewExportSendSuccess": "Ревью отправлено агенту — комментарии очищены",
 	"infoPanel.diffReviewExportSendFailed": "Не удалось отправить ревью агенту: {error}",
 	"infoPanel.diffReviewExportCopyTooltipTitle": "Скопировать ревью как промпт",
 	"infoPanel.diffReviewExportCopyTooltip": "Скопировать ревью как XML-промпт в буфер обмена — вставите в любого агента сами.",
