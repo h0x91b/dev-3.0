@@ -117,7 +117,18 @@ function captureIdentityOf(
 		backend,
 		sessionId,
 		viewId: pane.paneId,
-		incarnation: knownFact(captureIncarnation(pane.sessionId, pane.hostPid, pane.shellPid)),
+		// Pids alone would compare EQUAL after pid reuse under the same session id,
+		// so the host's and shell's start signatures ride along — the same evidence
+		// ownership classification trusts.
+		incarnation: knownFact(
+			captureIncarnation(
+				pane.sessionId,
+				pane.hostPid,
+				pane.hostStartSignature,
+				pane.shellPid,
+				pane.shellStartSignature,
+			),
+		),
 		epoch: knownFact(captureIncarnation(epoch)),
 	};
 }
@@ -205,7 +216,7 @@ export class NativeTerminalBackend implements TerminalBackend {
 	 *
 	 * TODAY, in production, this returns `not-enabled` for every native pane: the
 	 * host's live parser is off by default, so there is no snapshot to read. That is
-	 * the honest answer, not a placeholder — see decision 199.
+	 * the honest answer, not a placeholder — see decision 202.
 	 */
 	async captureView(
 		id: TerminalSessionId,

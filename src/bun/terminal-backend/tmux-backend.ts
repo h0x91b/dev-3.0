@@ -214,7 +214,12 @@ export class TmuxTerminalBackend implements TerminalBackend {
 		};
 	}
 
-	/** tmux's pane id plus its process — hashed, so no pid leaves the seam. */
+	/**
+	 * tmux's pane id, its process, and the server's epoch — hashed, so no pid
+	 * leaves the seam. The epoch is there because tmux has no per-process start
+	 * signature: without it a reused pid under a restarted server (where `%N` ids
+	 * begin again) would compare equal to a completely different pane.
+	 */
 	private captureIdentityOf(
 		id: TerminalSessionId,
 		pane: TmuxPaneObservation,
@@ -223,7 +228,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
 			backend: this.kind,
 			sessionId: id,
 			viewId: pane.paneId,
-			incarnation: knownFact(captureIncarnation(pane.paneId, pane.pid)),
+			incarnation: knownFact(captureIncarnation(pane.serverEpoch, pane.paneId, pane.pid)),
 			// tmux has no pane-set generation: panes come and go without any counter the
 			// server exposes, so an epoch here would be invented rather than observed.
 			epoch: unknownFact("tmux publishes no pane-set generation"),

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { journalFile, NATIVE_SESSIONS_DIR_ENV, parserStateFile, recordFile, sessionDir, tokenFile } from "../paths";
 import {
+	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_SCHEMA_VERSION,
 	parseRecord,
 	readRecord,
@@ -35,6 +36,49 @@ function sample(overrides: Partial<NativeSessionRecord> = {}): NativeSessionReco
 		...overrides,
 	};
 }
+
+describe("native-session record — optional capture capability (seq 1412)", () => {
+	it("round-trips the capability a parser-enabled host advertises", () => {
+		const record = sample({ capabilities: { capture: NATIVE_SESSION_CAPTURE_CAPABILITY } });
+		expect(parseRecord(serializeRecord(record))?.capabilities).toEqual({
+			capture: NATIVE_SESSION_CAPTURE_CAPABILITY,
+		});
+	});
+
+	it("stays absent for a host that publishes no screen — which IS the answer", () => {
+		// Absence is the load-bearing half: it is how a reader says "not enabled" as
+		// a fact rather than inferring it from silence.
+		expect(parseRecord(serializeRecord(sample()))).not.toHaveProperty("capabilities");
+	});
+
+	it("is readable by a build that predates the field — no schema bump, no migration", () => {
+		const raw = JSON.parse(serializeRecord(sample())) as Record<string, unknown>;
+		raw.capabilities = { capture: NATIVE_SESSION_CAPTURE_CAPABILITY };
+		const parsed = parseRecord(JSON.stringify(raw));
+		expect(parsed?.schemaVersion).toBe(NATIVE_SESSION_SCHEMA_VERSION);
+		expect(parsed?.sessionId).toBe("alpha");
+		expect(parsed?.host.startSignature).toBe("4242@t0");
+	});
+
+	it("drops an unrecognised capability instead of losing the whole session", () => {
+		for (const capabilities of [
+			{ capture: "semantic-snapshot-v2" },
+			{ capture: true },
+			{ capture: "" },
+			"not-an-object",
+			42,
+			null,
+		]) {
+			const raw = JSON.parse(serializeRecord(sample())) as Record<string, unknown>;
+			raw.capabilities = capabilities;
+			const parsed = parseRecord(JSON.stringify(raw));
+			// The session survives; the unknown capability lands on "not enabled",
+			// which is the safe side — a caller reads less than the host can do.
+			expect(parsed?.sessionId).toBe("alpha");
+			expect(parsed).not.toHaveProperty("capabilities");
+		}
+	});
+});
 
 describe("native-session record — optional identity (seq 1383)", () => {
 	it("round-trips a task-owned identity", () => {

@@ -210,6 +210,10 @@ export const PANE_CAPTURE_FORMAT = tmuxFormat()
 	.number("height", "pane_height")
 	.flag("dead", "pane_dead")
 	.number("pid", "pane_pid")
+	// tmux exposes no per-process start time (`pane_start_time` is empty), so the
+	// server's session-creation epoch is the closest thing to a start signature:
+	// it changes when the whole server does, which is when `%N` ids restart.
+	.number("serverEpoch", "session_created")
 	.number("historySize", "history_size")
 	.flag("alternateScreen", "alternate_on")
 	.build();

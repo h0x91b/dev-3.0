@@ -43,6 +43,21 @@ export interface NativeSessionIdentity {
 	paneId?: string;
 }
 
+/**
+ * The capture surface a host publishes, when it publishes one (seq 1412).
+ *
+ * `semantic-snapshot-v1` means this host runs the live parser and therefore
+ * writes a bounded semantic screen to `parser-state.json`. Its ABSENCE is the
+ * load-bearing half: a host built before this field, or one launched without the
+ * parser, simply has no capture surface — so a reader can say "not enabled"
+ * as a fact instead of inferring it from silence and a timer.
+ */
+export const NATIVE_SESSION_CAPTURE_CAPABILITY = "semantic-snapshot-v1" as const;
+
+export interface NativeSessionCapabilities {
+	capture?: typeof NATIVE_SESSION_CAPTURE_CAPABILITY;
+}
+
 export interface NativeSessionRecord {
 	schemaVersion: typeof NATIVE_SESSION_SCHEMA_VERSION;
 	sessionId: string;
@@ -53,6 +68,13 @@ export interface NativeSessionRecord {
 	 * unchanged and ignores it. Absent for sessions started outside a task.
 	 */
 	identity?: NativeSessionIdentity;
+	/**
+	 * ADDITIVE and optional at schemaVersion 1, on the same terms as `identity`:
+	 * an older dev3 parses such a record unchanged and ignores this field, and a
+	 * record without it is not a downgrade — it is the honest statement that the
+	 * host has no capture surface. No migration, no schema break.
+	 */
+	capabilities?: NativeSessionCapabilities;
 	protocolVersion: number;
 	hostArtifactVersion: string;
 	runtimeVersion: string;
@@ -87,6 +109,21 @@ function parseIdentity(value: unknown): NativeSessionIdentity | null {
 	if (typeof raw.seq === "string" && isSafeIdentityValue(raw.seq)) identity.seq = raw.seq;
 	if (typeof raw.paneId === "string" && isSafeIdentityValue(raw.paneId)) identity.paneId = raw.paneId;
 	return identity.seq || identity.paneId ? identity : null;
+}
+
+/**
+ * Read the optional capabilities block. Like {@link parseIdentity}, an
+ * unrecognised value is DROPPED rather than rejected — a capability a newer host
+ * advertises must never cost an older dev3 the whole session. Dropping it lands
+ * on "not enabled", which is the safe side: a caller reads less than the host can
+ * do, never more.
+ */
+function parseCapabilities(value: unknown): NativeSessionCapabilities | null {
+	if (!value || typeof value !== "object") return null;
+	const raw = value as Record<string, unknown>;
+	return raw.capture === NATIVE_SESSION_CAPTURE_CAPABILITY
+		? { capture: NATIVE_SESSION_CAPTURE_CAPABILITY }
+		: null;
 }
 
 /** Belt-and-braces: only the shapes `process-naming.ts` can produce are surfaced. */
@@ -140,11 +177,13 @@ export function parseRecord(text: string): NativeSessionRecord | null {
 	// Refuse to surface a token even if a malformed writer smuggled one in.
 	if ("token" in r) return null;
 	const identity = parseIdentity(r.identity);
+	const capabilities = parseCapabilities(r.capabilities);
 	return {
 		schemaVersion: NATIVE_SESSION_SCHEMA_VERSION,
 		sessionId: r.sessionId,
 		paneId: r.paneId,
 		...(identity ? { identity } : {}),
+		...(capabilities ? { capabilities } : {}),
 		protocolVersion: r.protocolVersion,
 		hostArtifactVersion: r.hostArtifactVersion,
 		runtimeVersion: r.runtimeVersion,

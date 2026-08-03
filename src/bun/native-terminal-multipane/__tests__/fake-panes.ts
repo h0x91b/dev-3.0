@@ -5,7 +5,10 @@
  */
 
 import type { OwnershipVerdict } from "../../native-terminal-registry/ownership";
-import type { NativeSessionRecord } from "../../native-terminal-registry/record";
+import {
+	NATIVE_SESSION_CAPTURE_CAPABILITY,
+	type NativeSessionRecord,
+} from "../../native-terminal-registry/record";
 import type { StartOptions, StartResult } from "../../native-terminal-registry/registry";
 import type { ClientRole } from "../../native-terminal-registry/writer-ownership";
 import type { NativeSemanticLine, NativeSemanticState } from "../../native-terminal-registry/ghostty-live";
@@ -56,6 +59,9 @@ function fakeRecord(sessionId: string, opts: StartOptions): NativeSessionRecord 
 			startSignature: `shell-${shellPid}`,
 		},
 		endpoint: { transport: "ws", address: "127.0.0.1", port: 40000 + shellPid },
+		// A fake host advertises a capture surface by default; a test that wants a
+		// parser-less pane clears it, exactly as an older or plain host would.
+		capabilities: { capture: NATIVE_SESSION_CAPTURE_CAPABILITY },
 		ownership: { evidenceKind: "posix-start-signature" },
 		cols: opts.cols ?? 80,
 		rows: opts.rows ?? 24,

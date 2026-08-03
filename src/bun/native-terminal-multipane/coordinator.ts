@@ -25,6 +25,7 @@ import { classifyOwnership, type OwnershipVerdict } from "../native-terminal-reg
 import type { ClientRole } from "../native-terminal-registry/writer-ownership";
 import {
 	inspectRecordFile,
+	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	readRecord,
 	readToken,
 	type NativeSessionRecord,
@@ -73,9 +74,19 @@ export interface PaneSnapshot {
 	sessionId: string;
 	hostPid: number;
 	shellPid: number;
+	/**
+	 * The host's and shell's start signatures — the same evidence ownership
+	 * classification uses. A pid alone cannot identify a process incarnation,
+	 * because the OS reuses pids; the signature pins the actual start. Empty
+	 * strings for a dead pane, whose record is already gone.
+	 */
+	hostStartSignature: string;
+	shellStartSignature: string;
 	cols: number;
 	rows: number;
 	state: "running" | "reused" | "dead";
+	/** True when the host advertises a capture surface (seq 1412). */
+	publishesScreen: boolean;
 }
 
 /**
@@ -123,13 +134,6 @@ export type PaneCaptureSource =
 	/** The host publishes no screen at all — a configuration fact, not a failure. */
 	| { kind: "disabled"; reason: string }
 	| { kind: "unreadable"; reason: string };
-
-/**
- * How long after a host is recorded its parser is still allowed to have
- * published nothing. The parser persists on a 250 ms debounce (decision 169),
- * so this is generous on purpose: past it, silence means no parser.
- */
-const PARSER_FIRST_SNAPSHOT_GRACE_MS = 3_000;
 
 function inspectParserStateFile(sessionId: string): ParserStateInspection {
 	if (!existsSync(parserStateFile(sessionId))) return { kind: "absent" };
@@ -513,33 +517,40 @@ export class NativeMultipaneCoordinator {
 	readPaneCaptureSource(paneId: string): PaneCaptureSource {
 		this.assertPane(paneId);
 		const sessionId = paneSessionId(this.coordinatorId, paneId);
+		const record = this.deps.readPaneRecord(sessionId);
+		if (!record) {
+			return { kind: "unreadable", reason: "the pane's record could not be read" };
+		}
+		// The host SAYS whether it publishes a screen. Absence covers both a host
+		// launched without the parser and a host built before the capability existed,
+		// and both mean the same thing: there is nothing to capture, ever, for this
+		// pane. Nothing here is inferred from silence or from a timer.
+		if (record.capabilities?.capture !== NATIVE_SESSION_CAPTURE_CAPABILITY) {
+			return {
+				kind: "disabled",
+				reason: "this pane's host publishes no screen to capture (no live parser)",
+			};
+		}
+
 		const inspect = this.deps.inspectPaneParserState ?? inspectParserStateFile;
 		const inspection = inspect(sessionId);
-		if (inspection.kind === "present") {
-			const snapshot = inspection.snapshot;
-			if (!snapshot.state) {
-				const detail = snapshot.health.error ?? `parser is ${snapshot.health.status}`;
-				return { kind: "empty", reason: `the pane's parser has published no screen yet (${detail})` };
-			}
-			return { kind: "snapshot", snapshot, state: snapshot.state };
-		}
 		if (inspection.kind === "rejected") {
-			return { kind: "unreadable", reason: `the pane's parser snapshot could not be believed: ${inspection.problem}` };
+			return {
+				kind: "unreadable",
+				reason: `the pane's parser snapshot could not be believed: ${inspection.problem}`,
+			};
 		}
-		// Absent. A host that has been up longer than the parser's own first-write
-		// window and still published nothing is not running a parser at all; inside
-		// that window the honest answer is "not yet", so a booting pane is never
-		// mislabelled as permanently incapable.
-		const record = this.deps.readPaneRecord(sessionId);
-		const createdAt = record ? Date.parse(record.createdAt) : Number.NaN;
-		const bootingStill = Number.isFinite(createdAt) && Date.now() - createdAt < PARSER_FIRST_SNAPSHOT_GRACE_MS;
-		if (bootingStill) {
-			return { kind: "empty", reason: "the pane's host is still starting and has published no screen yet" };
+		if (inspection.kind === "absent") {
+			// The host advertises a capture surface but has not written its first
+			// snapshot yet — genuinely "not yet", so a caller should come back.
+			return { kind: "empty", reason: "the pane's parser has not published its first screen yet" };
 		}
-		return {
-			kind: "disabled",
-			reason: "this pane's host runs no live parser, so it publishes no screen to capture",
-		};
+		const snapshot = inspection.snapshot;
+		if (!snapshot.state) {
+			const detail = snapshot.health.error ?? `parser is ${snapshot.health.status}`;
+			return { kind: "empty", reason: `the pane's parser has published no screen yet (${detail})` };
+		}
+		return { kind: "snapshot", snapshot, state: snapshot.state };
 	}
 
 	/**
@@ -680,15 +691,31 @@ function paneRecordPresentButUnreadable(pane: MultipanePaneEntry, deps: Coordina
 
 function snapshotOf({ pane, record, verdict }: PaneProbe): PaneSnapshot {
 	const { paneId, sessionId } = pane;
-	if (!record) return { paneId, sessionId, hostPid: -1, shellPid: -1, cols: 0, rows: 0, state: "dead" };
+	if (!record) {
+		return {
+			paneId,
+			sessionId,
+			hostPid: -1,
+			shellPid: -1,
+			hostStartSignature: "",
+			shellStartSignature: "",
+			cols: 0,
+			rows: 0,
+			state: "dead",
+			publishesScreen: false,
+		};
+	}
 	return {
 		paneId,
 		sessionId,
 		hostPid: record.host.pid,
 		shellPid: record.shell.pid,
+		hostStartSignature: record.host.startSignature,
+		shellStartSignature: record.shell.startSignature,
 		cols: record.cols,
 		rows: record.rows,
 		state: verdict === "owned" ? "running" : verdict,
+		publishesScreen: record.capabilities?.capture === NATIVE_SESSION_CAPTURE_CAPABILITY,
 	};
 }
 

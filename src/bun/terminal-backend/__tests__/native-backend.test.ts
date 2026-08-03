@@ -194,14 +194,15 @@ describe("NativeTerminalBackend read-only capture", () => {
 		expect(capture.identity.epoch.known).toBe(true);
 	});
 
-	it("reports a parser-less pane as not-enabled, which is production today", async () => {
+	it("reports a host with no capture capability as not-enabled, which is production today", async () => {
 		const h = harness();
 		world = h.world;
 		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
 		const view = created.views[0].id;
 		const pane = paneOf(world, view);
+		// Exactly what an old record or a parser-less host looks like on disk.
+		delete pane.record.capabilities;
 		pane.parserState = "absent";
-		pane.record.createdAt = new Date(Date.now() - 60_000).toISOString();
 
 		const capture = await h.backend.captureView(SESSION, view);
 		expect(capture.availability).toBe("not-enabled");
@@ -212,15 +213,35 @@ describe("NativeTerminalBackend read-only capture", () => {
 		expect(capture.liveness).toBe("live");
 	});
 
-	it("reports a still-booting host as unavailable, not as permanently incapable", async () => {
+	it("reports a capable host that has not published yet as unavailable, not as incapable", async () => {
 		const h = harness();
 		world = h.world;
 		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
 		const view = created.views[0].id;
-		paneOf(world, view).parserState = "absent"; // createdAt is "just now"
+		// Capability advertised, first snapshot not written: come back later.
+		paneOf(world, view).parserState = "absent";
 
 		const capture = await h.backend.captureView(SESSION, view);
 		expect(capture.availability).toBe("unavailable");
+	});
+
+	it("does not compare equal after pid reuse, because start signatures ride along", async () => {
+		const w = new FakeCoordinatorWorld();
+		world = w;
+		const backend = new NativeTerminalBackend({ deps: w.deps() });
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		const first = await backend.captureView(SESSION, view);
+
+		// A brand-new shell that happens to land on the SAME pid — pids alone would
+		// call this the same pane, which is exactly the mistake to prevent.
+		const pane = paneOf(w, view);
+		pane.record.shell.startSignature = "shell-restarted";
+		const second = await backend.captureView(SESSION, view);
+
+		expect(first.identity.incarnation.known && second.identity.incarnation.known).toBe(true);
+		if (!first.identity.incarnation.known || !second.identity.incarnation.known) return;
+		expect(second.identity.incarnation.value).not.toBe(first.identity.incarnation.value);
 	});
 
 	it("reports an unbelievable snapshot as unreadable rather than as a blank screen", async () => {

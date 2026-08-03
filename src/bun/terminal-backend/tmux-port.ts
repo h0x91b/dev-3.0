@@ -21,8 +21,14 @@ export interface TmuxPaneObservation {
 	readonly cols: number;
 	readonly rows: number;
 	readonly dead: boolean;
-	/** The pane's foreground process group leader — the capture's incarnation key. */
+	/** The pane's foreground process group leader — part of the incarnation key. */
 	readonly pid: number;
+	/**
+	 * The tmux server's session-creation epoch. tmux publishes no per-process start
+	 * signature, so this is what keeps a reused pid from comparing equal across a
+	 * server restart, which is exactly when `%N` pane ids begin again.
+	 */
+	readonly serverEpoch: number;
 	/** Scrollback lines the server currently holds for this pane. */
 	readonly historySize: number;
 	/** True while a full-screen program owns the pane, so its history is frozen. */
@@ -119,6 +125,7 @@ export function tmuxBackendPort(client: TmuxClient = tmux): TmuxBackendPort {
 				rows: row.height,
 				dead: row.dead,
 				pid: row.pid,
+				serverEpoch: row.serverEpoch,
 				historySize: row.historySize,
 				alternateScreen: row.alternateScreen,
 			};

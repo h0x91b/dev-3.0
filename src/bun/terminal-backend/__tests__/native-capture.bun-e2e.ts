@@ -9,10 +9,12 @@
  *  • a pane whose host runs the live parser is capturable end to end, viewport
  *    and history apart, with the snapshot's own timestamp behind the read;
  *  • a pane whose host runs NO parser reports `not-enabled` — which is exactly
- *    what production does today, because the parser is off by default.
+ *    what production does today, because the parser is off by default. The verdict
+ *    comes from the host's OWN advertised capability in its record, not from a
+ *    timer, so this also proves the capability is actually written and absent.
  *
  * The parser is enabled HERE ONLY, by overriding the coordinator's pane start.
- * Nothing in this file changes what production launches (decision 199).
+ * Nothing in this file changes what production launches (decision 202).
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -20,6 +22,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultCoordinatorDeps, type CoordinatorDeps } from "../../native-terminal-multipane/coordinator";
 import { NATIVE_MULTIPANE_DIR_ENV } from "../../native-terminal-multipane/paths";
+import { NATIVE_SESSION_CAPTURE_CAPABILITY, readRecord } from "../../native-terminal-registry/record";
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { NativeTerminalBackend } from "../native-backend";
 import { isCapturedPane, type TerminalPaneCapture } from "../capture";
@@ -136,6 +139,12 @@ async function main(): Promise<void> {
 			"the same pane keeps its incarnation across captures",
 		);
 
+		const paneRecord = readRecord(`${PARSER_SESSION}-${view}`);
+		check(
+			paneRecord?.capabilities?.capture === NATIVE_SESSION_CAPTURE_CAPABILITY,
+			"a parser-enabled host advertises its capture surface in its own record",
+		);
+
 		const ghostPane = await parserBackend.captureView(PARSER_SESSION, "pane-99");
 		check(ghostPane.availability === "view-absent", "an unknown pane reads as view-absent");
 	} finally {
@@ -155,14 +164,18 @@ async function main(): Promise<void> {
 		const view = created.views[0]!.id;
 		await plainBackend.writePane(PLAIN_SESSION, view, `echo invisible${lineEnd}`);
 
-		// The grace window has to elapse before silence means "no parser" rather
-		// than "not yet" — that distinction is the point of the test.
-		const settled = await eventually("the not-enabled verdict to settle", async () => {
-			const capture = await plainBackend.captureView(PLAIN_SESSION, view);
-			return capture.availability === "not-enabled";
-		});
+		const plainRecord = readRecord(`${PLAIN_SESSION}-${view}`);
+		check(
+			plainRecord !== null && plainRecord.capabilities === undefined,
+			"a parser-less host advertises NO capture surface in its record",
+		);
+		// No settling, no waiting: the verdict is the host's own statement, so it is
+		// correct on the very first read.
 		const capture = await plainBackend.captureView(PLAIN_SESSION, view);
-		check(settled, "a parser-less native pane reports not-enabled, not an empty screen");
+		check(
+			capture.availability === "not-enabled",
+			"a parser-less native pane reports not-enabled immediately, not an empty screen",
+		);
 		check(!isCapturedPane(capture), "a parser-less pane carries no content at all");
 		check(
 			capture.availability !== "captured" && capture.identity.incarnation.known,

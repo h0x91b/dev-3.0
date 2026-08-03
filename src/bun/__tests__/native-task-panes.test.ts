@@ -20,6 +20,9 @@ vi.mock("../logger", () => ({
 vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
 vi.mock("../native-terminal-registry/record", () => ({
+	// The coordinator reads this constant to decide whether a host publishes a
+	// capturable screen; a mock without it fails to link and reads as "pane gone".
+	NATIVE_SESSION_CAPTURE_CAPABILITY: "semantic-snapshot-v1",
 	readRecord: vi.fn(() => null),
 	readToken: vi.fn(() => null),
 	// Neither a record nor a session directory: a pane that is genuinely gone, which

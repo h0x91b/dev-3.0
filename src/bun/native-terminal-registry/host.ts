@@ -37,6 +37,7 @@ import {
 	type StatusReply,
 } from "./protocol";
 import {
+	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 	NATIVE_SESSION_SCHEMA_VERSION,
 	removeSessionState,
@@ -99,6 +100,8 @@ export interface RecordFields {
 	rows: number;
 	runtimeVersion: string;
 	platform: string;
+	/** True only while this host actually runs the live parser (seq 1412). */
+	publishesSemanticSnapshot?: boolean;
 	startedAt: string;
 	updatedAt: string;
 }
@@ -116,6 +119,11 @@ export function buildRecord(fields: RecordFields): NativeSessionRecord {
 		// Omitted entirely when nothing is known, so a non-task session's record
 		// keeps exactly the shape it had before seq 1383.
 		...(identity.seq || identity.paneId ? { identity } : {}),
+		// Advertised only when the parser is live, so absence stays the honest
+		// "this host has no capture surface" rather than an unset flag.
+		...(fields.publishesSemanticSnapshot
+			? { capabilities: { capture: NATIVE_SESSION_CAPTURE_CAPABILITY } }
+			: {}),
 		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
 		hostArtifactVersion: NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 		runtimeVersion: fields.runtimeVersion,
@@ -507,6 +515,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				rows: currentRows,
 				runtimeVersion: bunVersion,
 				platform: process.platform,
+				publishesSemanticSnapshot: pipeline !== null,
 				startedAt,
 				updatedAt: new Date().toISOString(),
 			}),

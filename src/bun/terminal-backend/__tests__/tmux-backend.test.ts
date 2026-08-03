@@ -117,6 +117,20 @@ describe("TmuxTerminalBackend read-only capture", () => {
 		expect(capture.identity.epoch.known).toBe(false);
 	});
 
+	it("does not compare equal across a server restart that reuses the pane id and pid", async () => {
+		const { world, backend } = harness();
+		const created = await backend.openSession({ id: SESSION, cwd: "/tmp" });
+		const view = created.views[0].id;
+		const before = await backend.captureView(SESSION, view);
+		// Same pane id, same pid, different tmux server — pane ids begin again after
+		// a restart, so the id and pid alone would call this the same pane.
+		world.serverEpoch += 1;
+		const after = await backend.captureView(SESSION, view);
+		expect(before.identity.incarnation.known && after.identity.incarnation.known).toBe(true);
+		if (!before.identity.incarnation.known || !after.identity.incarnation.known) return;
+		expect(after.identity.incarnation.value).not.toBe(before.identity.incarnation.value);
+	});
+
 	it("reports a pane replaced mid-capture instead of returning its successor's screen", async () => {
 		const world = new FakeTmuxWorld();
 		const port = world.port();

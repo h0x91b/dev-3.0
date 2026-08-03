@@ -361,14 +361,41 @@ describe("native multipane coordinator capture source", () => {
 		expect(source.state.screen.map((line) => line.text).join("\n")).toContain("hello");
 	});
 
-	it("reports a pane whose host publishes no snapshot as disabled, not as an empty screen", async () => {
+	it("reports a host that advertises no capture surface as disabled", async () => {
 		const coordinator = await createWithPanes(deps, 2);
 		const pane = deps.panes.get(`${coordinator.coordinatorId}-pane-1`);
 		if (!pane) throw new Error("fake pane missing");
+		// What an OLD record looks like: no capabilities block at all. The verdict
+		// comes from the host's own statement, never from a timer.
+		delete pane.record.capabilities;
 		pane.parserState = "absent";
-		// Past the first-snapshot grace window, silence means "no parser", not "not yet".
-		pane.record.createdAt = new Date(Date.now() - 60_000).toISOString();
 		expect(coordinator.readPaneCaptureSource("pane-1").kind).toBe("disabled");
+	});
+
+	it("reports a host that advertises capture but has not published yet as empty", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		const pane = deps.panes.get(`${coordinator.coordinatorId}-pane-1`);
+		if (!pane) throw new Error("fake pane missing");
+		pane.parserState = "absent"; // capability still advertised — genuinely "not yet"
+		const source = coordinator.readPaneCaptureSource("pane-1");
+		expect(source.kind).toBe("empty");
+		if (source.kind !== "empty") throw new Error("expected empty");
+		expect(source.reason).toContain("not published its first screen");
+	});
+
+	it("does not read a snapshot at all for a host with no capture capability", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		const pane = deps.panes.get(`${coordinator.coordinatorId}-pane-1`);
+		if (!pane) throw new Error("fake pane missing");
+		delete pane.record.capabilities;
+		let inspected = 0;
+		const inner = deps.inspectPaneParserState!.bind(deps);
+		deps.inspectPaneParserState = (sessionId) => {
+			inspected++;
+			return inner(sessionId);
+		};
+		expect(coordinator.readPaneCaptureSource("pane-1").kind).toBe("disabled");
+		expect(inspected).toBe(0);
 	});
 
 	it("reports an unbelievable snapshot as unreadable", async () => {

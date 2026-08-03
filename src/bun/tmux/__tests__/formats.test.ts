@@ -81,7 +81,7 @@ describe("format declarations", () => {
 	});
 
 	it("PANE_CAPTURE_FORMAT reports geometry, liveness, and history depth with no free text", () => {
-		const rows = PANE_CAPTURE_FORMAT.parse("%1\t120\t40\t0\t7788\t1500\t0\n");
+		const rows = PANE_CAPTURE_FORMAT.parse("%1\t120\t40\t0\t7788\t1785758259\t1500\t0\n");
 		expect(rows).toEqual([
 			{
 				paneId: "%1",
@@ -89,6 +89,7 @@ describe("format declarations", () => {
 				height: 40,
 				dead: false,
 				pid: 7788,
+				serverEpoch: 1785758259,
 				historySize: 1500,
 				alternateScreen: false,
 			},
@@ -100,7 +101,7 @@ describe("format declarations", () => {
 	});
 
 	it("PANE_CAPTURE_FORMAT reads a dead pane inside an alternate screen", () => {
-		const rows = PANE_CAPTURE_FORMAT.parse("%9\t80\t24\t1\t0\t0\t1\n");
+		const rows = PANE_CAPTURE_FORMAT.parse("%9\t80\t24\t1\t0\t1785758259\t0\t1\n");
 		expect(rows[0]).toMatchObject({ dead: true, alternateScreen: true, historySize: 0 });
 	});
 

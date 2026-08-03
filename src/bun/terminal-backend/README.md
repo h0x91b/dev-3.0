@@ -69,9 +69,12 @@ already-published parser snapshot off disk.
   seam. History is off by default. No pid, cwd, command, or environment.
 
 **Native reports `not-enabled` in production today** — the host's live parser is
-off by default, so there is no snapshot to read. That is the honest answer, not a
-placeholder; the real-host proof (`bun run test:native-capture-e2e`) covers both a
-parser-enabled pane and a parser-less one. See `decisions/199-*`.
+off by default, so there is no snapshot to read. The verdict comes from the host's
+own `capabilities.capture` in its record, never from a timer, so it is correct on
+the first read. The real-host proof (`bun run test:native-capture-e2e`) covers a
+parser-enabled pane and a parser-less one, and
+`bun run test:capture-cost-e2e` measures what turning the parser on would cost.
+See `decisions/202-*`.
 
 ## Backend differences (deliberate, not negotiated)
 
@@ -100,6 +103,7 @@ unsupported product operation fails with the typed `unsupported` code.
 bun run test                     # contract conformance (both adapters) + capture shaping + port + isolation
 bun run test:full                # + tmux-backend.live-e2e against a real tmux server
 bun run test:native-capture-e2e  # capture against a REAL native host (parser on in the test only)
+bun run test:capture-cost-e2e    # incremental live-parser cost, parser off vs on, 1/4/6 real panes
 ```
 
 `__tests__/contract-conformance.test.ts` is ONE suite run against BOTH adapters:

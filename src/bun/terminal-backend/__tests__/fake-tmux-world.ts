@@ -26,6 +26,8 @@ interface FakeSession {
 
 export class FakeTmuxWorld {
 	readonly sessions = new Map<string, FakeSession>();
+	/** Bump to model a whole tmux server restart, where `%N` pane ids begin again. */
+	serverEpoch = 1_700_000_000;
 	private paneCounter = 0;
 
 	/** A fresh controller over the SAME world (models a reconnecting process). */
@@ -92,6 +94,7 @@ export class FakeTmuxWorld {
 					rows: found.rows,
 					dead: false,
 					pid: pane.pid,
+					serverEpoch: world.serverEpoch,
 					historySize: Math.max(0, world.lines(pane).length - found.rows),
 					alternateScreen: pane.alternateScreen,
 				};

@@ -71,7 +71,13 @@ export type TerminalCaptureIssueCode =
 	| "sequence-gap"
 	/** The producer of the text is degraded, so the screen may be behind reality. */
 	| "parser-failed"
-	/** The content is older than {@link TERMINAL_CAPTURE_STALE_AFTER_MS}. */
+	/**
+	 * The read could not vouch that the content is current: the source has not
+	 * been updated for longer than {@link TERMINAL_CAPTURE_STALE_AFTER_MS}. On a
+	 * snapshot-backed pane this is USUALLY just a quiet pane — but a wedged
+	 * producer looks exactly the same from outside, which is why it is reported
+	 * rather than assumed benign.
+	 */
 	| "stale"
 	/** The pane's screen was cleared or reset, so what is missing did not scroll off. */
 	| "reset"
@@ -89,7 +95,16 @@ export const TERMINAL_CAPTURE_MAX_BYTES = 256 * 1024;
 /** Defaults: the visible screen only, in a budget a coordination glance fits. */
 export const TERMINAL_CAPTURE_DEFAULT_HISTORY_LINES = 0;
 export const TERMINAL_CAPTURE_DEFAULT_MAX_BYTES = 64 * 1024;
-/** Past this age, content is reported `stale` — one rule, so both backends agree. */
+/**
+ * Past this age a capture can no longer vouch that its content is current, and
+ * says so with a `stale` issue. One rule, so both backends agree.
+ *
+ * A backend that reads the pane synchronously (tmux) is never stale. A backend
+ * that reads a snapshot the producer writes ON CHANGE (native) goes "stale" as
+ * soon as the pane falls quiet for this long — which is the honest statement: a
+ * quiet pane and a wedged parser are indistinguishable from the outside, so a
+ * caller is told what is knowable and left to decide.
+ */
 export const TERMINAL_CAPTURE_STALE_AFTER_MS = 5_000;
 
 export interface TerminalPaneCaptureRequest {
@@ -201,6 +216,11 @@ export interface TerminalPaneCaptureContent extends TerminalPaneCaptureBase {
 	 * from `readAt` on purpose — conflating them makes every capture look fresh.
 	 */
 	readonly sourceUpdatedAt: TerminalCaptureFact<string>;
+	/**
+	 * How long ago the source last CHANGED, not how long ago we looked. A large
+	 * age on a snapshot backend usually means the pane has been quiet that long —
+	 * which is often the most useful thing a coordinator can learn.
+	 */
 	readonly ageMs: TerminalCaptureFact<number>;
 	/** `dead` WITH content is a real answer: the pane's final screen. */
 	readonly liveness: TerminalPaneLiveness;
@@ -395,7 +415,14 @@ export function captureAge(
 	const ageMs = Math.max(0, read - updated);
 	const issues: TerminalCaptureIssue[] =
 		ageMs > TERMINAL_CAPTURE_STALE_AFTER_MS
-			? [{ code: "stale", detail: `the content is ${ageMs}ms old, past the ${TERMINAL_CAPTURE_STALE_AFTER_MS}ms ceiling` }]
+			? [
+					{
+						code: "stale",
+						detail:
+							`the source has not changed for ${ageMs}ms, past the ${TERMINAL_CAPTURE_STALE_AFTER_MS}ms ceiling, ` +
+							"so this read cannot vouch that it is current — usually a quiet pane, possibly a wedged producer",
+					},
+				]
 			: [];
 	return { ageMs: knownFact(ageMs), issues };
 }
