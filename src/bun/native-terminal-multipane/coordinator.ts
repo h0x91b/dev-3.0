@@ -23,9 +23,14 @@ import { withFileLock } from "../file-lock";
 import { NativeSessionClient } from "../native-terminal-registry/client";
 import { classifyOwnership, type OwnershipVerdict } from "../native-terminal-registry/ownership";
 import type { ClientRole } from "../native-terminal-registry/writer-ownership";
-import { readCaptureRecord, type CaptureRecord } from "../native-terminal-registry/capture-record";
+import {
+	inspectCaptureRecord,
+	type CaptureRecord,
+	type CaptureRecordInspection,
+} from "../native-terminal-registry/capture-record";
 import {
 	inspectRecordFile,
+	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 	readRecord,
 	readToken,
@@ -164,10 +169,10 @@ export interface CoordinatorDeps {
 	 */
 	inspectPaneParserState?(sessionId: string): ParserStateInspection;
 	/**
-	 * The compact capture record, for a host advertising the plain-text surface.
+	 * How the compact capture artifact reads, for a host advertising that surface.
 	 * Optional so an in-memory double need not model the file.
 	 */
-	readPaneCaptureRecord?(sessionId: string): CaptureRecord | null;
+	inspectPaneCaptureRecord?(sessionId: string): CaptureRecordInspection;
 	classifyPane(record: NativeSessionRecord, token: string | null): Promise<OwnershipVerdict>;
 	connectPane(record: NativeSessionRecord, token: string): Promise<PaneConnection>;
 }
@@ -179,7 +184,7 @@ export const defaultCoordinatorDeps: CoordinatorDeps = {
 	inspectPaneRecord: inspectRecordFile,
 	readPaneToken: readToken,
 	inspectPaneParserState: inspectParserStateFile,
-	readPaneCaptureRecord: readCaptureRecord,
+	inspectPaneCaptureRecord: inspectCaptureRecord,
 	classifyPane: classifyOwnership,
 	async connectPane(record, token) {
 		const client = new NativeSessionClient();
@@ -530,28 +535,28 @@ export class NativeMultipaneCoordinator {
 		if (!record) {
 			return { kind: "unreadable", reason: "the pane's record could not be read" };
 		}
-		// The host SAYS whether it publishes a screen. Absence covers both a host
-		// launched without the parser and a host built before the capability existed,
-		// and both mean the same thing: there is nothing to capture, ever, for this
-		// pane. Nothing here is inferred from silence or from a timer.
-		const surface = record.capabilities?.capture;
-		if (!surface) {
+		// The host SAYS which surfaces it publishes. An empty or absent list covers a
+		// host launched without a parser and a host built before the field, and both
+		// mean the same thing: there is nothing to capture for this pane, ever.
+		const surfaces = record.capabilities?.capture ?? [];
+		if (surfaces.length === 0) {
 			return {
 				kind: "disabled",
 				reason: "this pane's host publishes no screen to capture (no live parser)",
 			};
 		}
 
-		if (surface === NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY) {
-			const read = this.deps.readPaneCaptureRecord ?? readCaptureRecord;
-			const captureRecord = read(sessionId);
-			if (!captureRecord) {
-				// The host advertises the compact surface; either it has not written its
-				// first record yet, or the one on disk could not be believed. Both are
-				// "come back", never "there is nothing here".
-				return { kind: "empty", reason: "the pane's host has not published a readable capture record yet" };
+		// Prefer the compact surface; fall back to the per-cell one.
+		if (surfaces.includes(NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY)) {
+			const inspect = this.deps.inspectPaneCaptureRecord ?? inspectCaptureRecord;
+			const inspection = inspect(sessionId);
+			if (inspection.kind === "present") return { kind: "capture-record", record: inspection.record };
+			if (inspection.kind === "rejected") {
+				return { kind: "unreadable", reason: `the pane's capture record could not be believed: ${inspection.problem}` };
 			}
-			return { kind: "capture-record", record: captureRecord };
+			if (!surfaces.includes(NATIVE_SESSION_CAPTURE_CAPABILITY)) {
+				return { kind: "empty", reason: "the pane's host has not published its first capture record yet" };
+			}
 		}
 
 		const inspect = this.deps.inspectPaneParserState ?? inspectParserStateFile;
@@ -563,8 +568,6 @@ export class NativeMultipaneCoordinator {
 			};
 		}
 		if (inspection.kind === "absent") {
-			// The host advertises a capture surface but has not written its first
-			// snapshot yet — genuinely "not yet", so a caller should come back.
 			return { kind: "empty", reason: "the pane's parser has not published its first screen yet" };
 		}
 		const snapshot = inspection.snapshot;
@@ -737,7 +740,7 @@ function snapshotOf({ pane, record, verdict }: PaneProbe): PaneSnapshot {
 		cols: record.cols,
 		rows: record.rows,
 		state: verdict === "owned" ? "running" : verdict,
-		publishesScreen: record.capabilities?.capture !== undefined,
+		publishesScreen: (record.capabilities?.capture?.length ?? 0) > 0,
 	};
 }
 

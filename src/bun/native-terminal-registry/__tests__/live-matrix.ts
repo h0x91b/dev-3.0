@@ -95,7 +95,7 @@ export async function runLiveMatrixTarget(spec: LiveMatrixSpec): Promise<LiveMat
 		launch: defineShellLaunchSpec({ executable, argv, cwd: process.cwd(), env: {} }),
 		cols: spec.cols,
 		rows: spec.rows,
-		liveParser: true,
+		captureMode: "semantic",
 		stateTap: true,
 		timeoutMs: 30_000,
 	});

@@ -9,6 +9,7 @@ import {
 	CAPTURE_RECORD_SCHEMA,
 	CAPTURE_RECORD_VERSION,
 	type CaptureRecord,
+	type CaptureRecordInspection,
 } from "../../native-terminal-registry/capture-record";
 import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
@@ -66,7 +67,7 @@ function fakeRecord(sessionId: string, opts: StartOptions): NativeSessionRecord 
 		endpoint: { transport: "ws", address: "127.0.0.1", port: 40000 + shellPid },
 		// A fake host advertises a capture surface by default; a test that wants a
 		// parser-less pane clears it, exactly as an older or plain host would.
-		capabilities: { capture: NATIVE_SESSION_CAPTURE_CAPABILITY },
+		capabilities: { capture: [NATIVE_SESSION_CAPTURE_CAPABILITY] },
 		ownership: { evidenceKind: "posix-start-signature" },
 		cols: opts.cols ?? 80,
 		rows: opts.rows ?? 24,
@@ -172,12 +173,14 @@ export function createFakeRegistry(): FakeRegistry {
 			const pane = panes.get(sessionId);
 			return pane?.alive ? pane.token : null;
 		},
-		readPaneCaptureRecord(sessionId): CaptureRecord | null {
+		inspectPaneCaptureRecord(sessionId): CaptureRecordInspection {
 			const pane = panes.get(sessionId);
-			if (!pane || pane.parserState !== "publishing") return null;
+			if (!pane) return { kind: "absent" };
+			if (pane.parserState === "absent") return { kind: "absent" };
+			if (pane.parserState === "rejected") return { kind: "rejected", problem: "fake rejection" };
 			const snapshot = fakeParserState(pane);
 			const state = snapshot.state!;
-			return {
+			const record: CaptureRecord = {
 				schema: CAPTURE_RECORD_SCHEMA,
 				version: CAPTURE_RECORD_VERSION,
 				sessionId,
@@ -195,6 +198,7 @@ export function createFakeRegistry(): FakeRegistry {
 				viewport: state.screen.map((line) => line.text),
 				history: state.scrollback.map((line) => line.text),
 				historyTotal: state.scrollbackLength,
+				viewportRowsOmitted: 0,
 				health: {
 					status: snapshot.health.status,
 					droppedBytes: snapshot.health.overflow.droppedBytes,
@@ -202,6 +206,7 @@ export function createFakeRegistry(): FakeRegistry {
 					resyncGaps: 0,
 				},
 			};
+			return { kind: "present", record };
 		},
 		inspectPaneParserState(sessionId): ParserStateInspection {
 			const pane = panes.get(sessionId);

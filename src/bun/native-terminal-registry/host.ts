@@ -19,8 +19,8 @@ import { assertNativeTerminalRuntime, nativeTerminalSpawnError } from "../../sha
 import { journalFile, sessionDir, streamTapFile } from "./paths";
 import { readProcessStartSignature } from "./process-identity-native";
 import { JournalWriter } from "./journal";
-import { LiveParserPipeline } from "./live-parser";
-import { bootFailedParserState, writeParserStateAtomic } from "./parser-state";
+import { LiveParserPipeline, type LiveParserProjection } from "./live-parser";
+import { bootFailedParserState, writeParserStateAtomic, type ParserStateSnapshot } from "./parser-state";
 import { StreamTapWriter } from "./stream-tap";
 import {
 	decodeControl,
@@ -37,10 +37,18 @@ import {
 	type StatusReply,
 } from "./protocol";
 import {
-	CAPTURE_RECORD_SCHEMA,
-	CAPTURE_RECORD_VERSION,
+	ProducerNotReadyError,
+	captureRecordOf,
 	writeCaptureRecordAtomic,
+	type CaptureProducer,
 } from "./capture-record";
+import {
+	NATIVE_CAPTURE_MODE_ENV,
+	modePersistsCompact,
+	modePersistsSemantic,
+	modeRunsParser,
+	parseCaptureMode,
+} from "./capture-mode";
 import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
@@ -107,8 +115,8 @@ export interface RecordFields {
 	rows: number;
 	runtimeVersion: string;
 	platform: string;
-	/** Which capture surface this host actually publishes right now (seq 1412). */
-	captureSurface?: NativeSessionCaptureSurface | null;
+	/** Capture surfaces this host is actually publishing right now. */
+	captureSurfaces?: readonly NativeSessionCaptureSurface[];
 	startedAt: string;
 	updatedAt: string;
 }
@@ -126,9 +134,9 @@ export function buildRecord(fields: RecordFields): NativeSessionRecord {
 		// Omitted entirely when nothing is known, so a non-task session's record
 		// keeps exactly the shape it had before seq 1383.
 		...(identity.seq || identity.paneId ? { identity } : {}),
-		// Advertised only when a surface is actually being written, so absence stays
-		// the honest "this host has no capture surface" rather than an unset flag.
-		...(fields.captureSurface ? { capabilities: { capture: fields.captureSurface } } : {}),
+		// Advertised only for surfaces actually being written, so absence stays the
+		// honest "this host publishes nothing" rather than an unset flag.
+		...(fields.captureSurfaces?.length ? { capabilities: { capture: [...fields.captureSurfaces] } } : {}),
 		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
 		hostArtifactVersion: NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 		runtimeVersion: fields.runtimeVersion,
@@ -269,15 +277,26 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	tap?.start();
 	let terminalRef: { write(data: string | Uint8Array): void } | null = null;
 	let pipeline: LiveParserPipeline | null = null;
-	// Which surface this host publishes for capture (seq 1412). The compact
-	// projection exists because the per-cell snapshot costs multi-MiB writes for
-	// data a capture throws away; when it is selected the snapshot is not written
-	// AND not built, so the cost disappears rather than moving.
-	const captureProjection = process.env.DEV3_NATIVE_SESSION_CAPTURE_PROJECTION === "1";
-	const captureSurface: NativeSessionCaptureSurface = captureProjection
-		? NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY
-		: NATIVE_SESSION_CAPTURE_CAPABILITY;
-	if (process.env.DEV3_NATIVE_SESSION_LIVE_PARSER === "1") {
+	// One exhaustive mode decides which artifacts exist; the two sinks below are
+	// independent, so selecting the compact one can never make the per-cell one
+	// unreachable.
+	const captureMode = parseCaptureMode(process.env[NATIVE_CAPTURE_MODE_ENV]);
+	const publishesSemantic = modePersistsSemantic(captureMode);
+	const publishesCompact = modePersistsCompact(captureMode);
+	const publishedSurfaces: NativeSessionCaptureSurface[] = [
+		...(publishesSemantic ? [NATIVE_SESSION_CAPTURE_CAPABILITY] : []),
+		...(publishesCompact ? [NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY] : []),
+	];
+	// A projection write needs the producer's identity, which only exists after the
+	// shell is spawned and its signature probed. Until then the sink reports "not
+	// ready" so the pipeline keeps the write retryable instead of throwing into a
+	// swallowed catch (findings 12 and 14).
+	let producerIdentity: CaptureProducer | null = null;
+	const advertisedSurfaces = (): NativeSessionCaptureSurface[] =>
+		publishedSurfaces.filter(
+			(surface) => surface !== NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY || producerIdentity !== null,
+		);
+	if (modeRunsParser(captureMode)) {
 		try {
 			pipeline = await LiveParserPipeline.create({
 				sessionId,
@@ -293,38 +312,15 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 						// terminal already closed
 					}
 				},
-				persistState: (snapshot) => writeParserStateAtomic(sessionId, snapshot),
-				...(captureProjection
+				...(publishesSemantic
+					? { persistState: (snapshot: ParserStateSnapshot) => writeParserStateAtomic(sessionId, snapshot) }
+					: {}),
+				...(publishesCompact
 					? {
-							persistProjection: (projection) =>
-								writeCaptureRecordAtomic({
-									schema: CAPTURE_RECORD_SCHEMA,
-									version: CAPTURE_RECORD_VERSION,
-									sessionId,
-									// Read at write time, not at pipeline creation: the shell has not
-									// been spawned yet when this callback is built.
-									producer: {
-										hostPid: process.pid,
-										hostStartSignature,
-										shellPid,
-										shellStartSignature,
-									},
-									updatedAt: new Date().toISOString(),
-									watermarkSeq: projection.watermarkSeq,
-									activeBuffer: projection.activeBuffer,
-									cols: projection.cols,
-									rows: projection.rows,
-									viewport: projection.viewport,
-									history: projection.history,
-									historyTotal: projection.historyTotal,
-									health: {
-										status: projection.status,
-										...(projection.error ? { error: projection.error } : {}),
-										droppedBytes: projection.droppedBytes,
-										droppedChunks: projection.droppedChunks,
-										resyncGaps: projection.resyncGaps,
-									},
-								}),
+							persistProjection: (projection: LiveParserProjection) => {
+								if (!producerIdentity) throw new ProducerNotReadyError(sessionId);
+								writeCaptureRecordAtomic(captureRecordOf(sessionId, producerIdentity, projection));
+							},
 						}
 					: {}),
 				fault: process.env.DEV3_NATIVE_SESSION_PARSER_FAULT === "ingest" ? "ingest" : null,
@@ -561,7 +557,9 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				rows: currentRows,
 				runtimeVersion: bunVersion,
 				platform: process.platform,
-				captureSurface: pipeline === null ? null : captureSurface,
+				// Compact is advertised only once its producer identity exists, so a reader
+				// never sees the capability before a record can be written.
+				captureSurfaces: pipeline === null ? [] : advertisedSurfaces(),
 				startedAt,
 				updatedAt: new Date().toISOString(),
 			}),
@@ -628,6 +626,25 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 
 	for (const sig of ["SIGTERM", "SIGINT"] as const) {
 		process.on(sig, () => void shutdown(0));
+	}
+
+	// The producer's identity is complete only here, so this is the first moment a
+	// capture record CAN be written. Publish an initial one (blank is fine) before
+	// the session record advertises the surface, so a reader never sees a capability
+	// with nothing behind it.
+	producerIdentity = {
+		hostPid: process.pid,
+		hostStartSignature,
+		shellPid,
+		shellStartSignature,
+	};
+	if (publishesCompact && pipeline) {
+		try {
+			writeCaptureRecordAtomic(captureRecordOf(sessionId, producerIdentity, pipeline.projection()));
+		} catch {
+			// A capture artifact that cannot be written must never take the host down;
+			// the pipeline retries on its own cadence.
+		}
 	}
 
 	// Readiness signal: publish the private token first, then the discoverable

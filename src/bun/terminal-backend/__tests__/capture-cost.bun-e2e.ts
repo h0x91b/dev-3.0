@@ -32,6 +32,7 @@ import {
 	type PaneSnapshot,
 } from "../../native-terminal-multipane/coordinator";
 import { NATIVE_MULTIPANE_DIR_ENV } from "../../native-terminal-multipane/paths";
+import type { NativeCaptureMode } from "../../native-terminal-registry/capture-mode";
 import { captureRecordFile, parserStateFile } from "../../native-terminal-registry/paths";
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { spawnSync } from "../../spawn";
@@ -47,8 +48,8 @@ const SAMPLE_MS = 50;
 const FLOOD_LINES_PER_SECOND = 100;
 
 /** Which capture surface the pane's host publishes, if any. */
-type Arm = "off" | "snapshot" | "projection";
-const ARMS: Arm[] = ["off", "snapshot", "projection"];
+type Arm = "off" | "snapshot" | "projection" | "dual";
+const ARMS: Arm[] = ["off", "snapshot", "projection", "dual"];
 
 type Mode = (typeof MODES)[number];
 
@@ -85,15 +86,18 @@ function shellLaunch(cwd: string) {
 	return defineShellLaunchSpec(base);
 }
 
+const ARM_MODES: Record<Arm, NativeCaptureMode> = {
+	off: "none",
+	snapshot: "semantic",
+	projection: "compact",
+	dual: "semantic-and-compact",
+};
+
 function armDeps(arm: Arm): Partial<CoordinatorDeps> {
-	if (arm === "off") return {};
+	const captureMode = ARM_MODES[arm];
+	if (captureMode === "none") return {};
 	return {
-		startPane: (sessionId, opts) =>
-			defaultCoordinatorDeps.startPane(sessionId, {
-				...opts,
-				liveParser: true,
-				captureProjection: arm === "projection",
-			}),
+		startPane: (sessionId, opts) => defaultCoordinatorDeps.startPane(sessionId, { ...opts, captureMode }),
 	};
 }
 

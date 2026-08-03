@@ -125,7 +125,7 @@ async function run(): Promise<void> {
 	if (isWindows) check(Bun.version === "1.3.14", "native Windows proof runs on Bun 1.3.14");
 
 	try {
-		const started = await start(sessionId, { launch, liveParser: true, timeoutMs: 15_000 });
+		const started = await start(sessionId, { launch, captureMode: "semantic", timeoutMs: 15_000 });
 		const crashedRecord = started.record;
 		const crashedToken = readToken(sessionId);
 		check(started.status === "started", "one isolated native session started");

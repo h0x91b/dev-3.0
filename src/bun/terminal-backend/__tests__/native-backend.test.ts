@@ -339,7 +339,7 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 		const view = created.views[0].id;
 		const pane = w.registry.panes.get(`${SESSION}-${view}`);
 		if (!pane) throw new Error("fake pane missing");
-		pane.record.capabilities = { capture: NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY };
+		pane.record.capabilities = { capture: [NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY] };
 		return { w, backend, view, pane };
 	}
 
@@ -367,7 +367,7 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 		const { backend, view, pane } = await textSurfaceHarness();
 		await backend.writePane(SESSION, view, "same-answer\r");
 		const compact = await backend.captureView(SESSION, view, { historyLines: 10 });
-		pane.record.capabilities = { capture: NATIVE_SESSION_CAPTURE_CAPABILITY };
+		pane.record.capabilities = { capture: [NATIVE_SESSION_CAPTURE_CAPABILITY] };
 		const perCell = await backend.captureView(SESSION, view, { historyLines: 10 });
 		if (compact.availability !== "captured" || perCell.availability !== "captured") {
 			throw new Error("both surfaces must carry content");
@@ -388,12 +388,15 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 	it("refuses a record written by a different incarnation of the pane", async () => {
 		// The rows on disk came from the shell that ran BEFORE this one.
 		const { backend, view, pane } = await textSurfaceHarness((registry) => {
-			const inner = registry.readPaneCaptureRecord!.bind(registry);
-			registry.readPaneCaptureRecord = (sessionId) => {
-				const record = inner(sessionId);
-				return record
-					? { ...record, producer: { ...record.producer, shellStartSignature: "s-previous-life" } }
-					: null;
+			const inner = registry.inspectPaneCaptureRecord!.bind(registry);
+			registry.inspectPaneCaptureRecord = (sessionId) => {
+				const inspection = inner(sessionId);
+				if (inspection.kind !== "present") return inspection;
+				const record = inspection.record;
+				return {
+					kind: "present",
+					record: { ...record, producer: { ...record.producer, shellStartSignature: "s-previous-life" } },
+				};
 			};
 		});
 		await backend.writePane(SESSION, view, "stale-writer\r");
@@ -407,12 +410,17 @@ describe("NativeTerminalBackend capture over the compact surface", () => {
 
 	it("reports the producer's dropped output and resync gaps from the compact record", async () => {
 		const { backend, view } = await textSurfaceHarness((registry) => {
-			const inner = registry.readPaneCaptureRecord!.bind(registry);
-			registry.readPaneCaptureRecord = (sessionId) => {
-				const record = inner(sessionId);
-				return record
-					? { ...record, health: { status: "overflowed" as const, droppedBytes: 900, droppedChunks: 3, resyncGaps: 2 } }
-					: null;
+			const inner = registry.inspectPaneCaptureRecord!.bind(registry);
+			registry.inspectPaneCaptureRecord = (sessionId) => {
+				const inspection = inner(sessionId);
+				if (inspection.kind !== "present") return inspection;
+				return {
+					kind: "present",
+					record: {
+						...inspection.record,
+						health: { status: "overflowed" as const, droppedBytes: 900, droppedChunks: 3, resyncGaps: 2 },
+					},
+				};
 			};
 		});
 

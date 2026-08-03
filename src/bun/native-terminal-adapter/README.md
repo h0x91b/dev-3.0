@@ -23,7 +23,7 @@ the test-only corpus (a test proves conformance and the decoupling):
 
 | ParityRunner op | Native mapping |
 |---|---|
-| `createSession` | `registry.start(id, { launch, liveParser })`; first view id = `record.paneId` |
+| `createSession` | `registry.start(id, { launch, captureMode })`; first view id = `record.paneId` |
 | `isSessionPresent` / `listViews` / `activeViewId` | `readRecord` + passive `classifyOwnership` (owned ⇒ one active view) |
 | `sendInput` | attach a writer client, write `text + CR` to the PTY |
 | `capture` | render the host's BOUNDED parser-state snapshot to text (see below) |

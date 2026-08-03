@@ -398,7 +398,7 @@ describe("LiveParserPipeline persistence budget", () => {
 		expect(last(h.snapshots)?.ingested.frames).toBe(2);
 	});
 
-	it("counts a failing write without taking the host down", async () => {
+	it("counts a failing write, keeps the host up, and stays retryable", async () => {
 		const h = await makeHarness({
 			persistState: () => {
 				throw new Error("disk full");
@@ -407,8 +407,31 @@ describe("LiveParserPipeline persistence budget", () => {
 		h.pipeline.onOutput(encoder.encode("a"));
 		h.runScheduled();
 		expect(() => h.runTimers()).not.toThrow();
-		expect(h.pipeline.persistenceCounters().failures).toBe(1);
+		// A failure must NOT advance the identical-write identity: identical content
+		// after a transient failure has to be written again, or one bad write silences
+		// the pane forever. Draining the fake timers therefore shows repeated attempts
+		// — in real time they are one per cadence interval.
+		expect(h.pipeline.persistenceCounters().failures).toBeGreaterThan(1);
 		expect(h.pipeline.healthStatus).toBe("live");
+	});
+
+	it("writes identical content again after a transient failure, then settles", async () => {
+		let attempts = 0;
+		const h = await makeHarness({
+			persistState: () => {
+				attempts++;
+				if (attempts === 1) throw new Error("transient");
+			},
+		});
+		h.pipeline.onOutput(encoder.encode("quiet"));
+		h.runScheduled();
+		h.runTimers();
+		// The retry landed, so the identity finally advanced and the pane stops writing.
+		expect(attempts).toBeGreaterThan(1);
+		expect(h.pipeline.persistenceCounters().failures).toBe(1);
+		const settled = attempts;
+		h.runTimers();
+		expect(attempts).toBe(settled);
 	});
 
 	it("accounts serialized snapshot bytes per write", async () => {

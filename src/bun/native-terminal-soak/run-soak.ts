@@ -326,7 +326,7 @@ async function main(): Promise<SoakSummary> {
 		// ── 1. fan out N concurrent sessions and warm every shell ──────────────
 		for (let index = 0; index < sessionCount; index++) {
 			const sessionId = `soak-${index}`;
-			const started = await start(sessionId, { launch, liveParser: true, cols: COLS, rows: ROWS, timeoutMs: 20_000 });
+			const started = await start(sessionId, { launch, captureMode: "semantic", cols: COLS, rows: ROWS, timeoutMs: 20_000 });
 			const token = readToken(sessionId);
 			if (started.status !== "started" || !token) throw new Error(`session ${sessionId} did not start`);
 			const client = new NativeSessionClient();
@@ -580,7 +580,7 @@ async function main(): Promise<SoakSummary> {
 		registryDirsBaseline = sessionDirCount();
 		const dirsBeforeChurn = registryDirsBaseline;
 		for (let cycle = 1; cycle <= createStopCycles; cycle++) {
-			const started = await start(churnId, { launch, liveParser: true, cols: COLS, rows: ROWS, timeoutMs: 20_000 });
+			const started = await start(churnId, { launch, captureMode: "semantic", cols: COLS, rows: ROWS, timeoutMs: 20_000 });
 			const token = readToken(churnId);
 			if (!token) throw new Error(`churn cycle ${cycle} published no token`);
 			const client = new NativeSessionClient();

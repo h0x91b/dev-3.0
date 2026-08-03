@@ -18,7 +18,16 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { journalFile, logFile, parserStateFile, recordFile, sessionDir, streamTapFile, tokenFile } from "./paths";
+import {
+	captureRecordFile,
+	journalFile,
+	logFile,
+	parserStateFile,
+	recordFile,
+	sessionDir,
+	streamTapFile,
+	tokenFile,
+} from "./paths";
 
 export const NATIVE_SESSION_SCHEMA_VERSION = 1 as const;
 export const NATIVE_SESSION_HOST_ARTIFACT_VERSION = "1" as const;
@@ -44,18 +53,9 @@ export interface NativeSessionIdentity {
 }
 
 /**
- * The capture surface a host publishes, when it publishes one (seq 1412).
- *
- * Two surfaces, and which one a host advertises tells a reader which file to read
- * and what it will cost:
- *  - `semantic-snapshot-v1` — the per-cell `parser-state.json`. Complete, and
- *    expensive: 2.5–4.6 MiB per pane per write at 120×40.
- *  - `plain-text-capture-v1` — the compact `capture.json`: physical rows, health,
- *    producer identity, nothing else. Kilobytes.
- *
- * ABSENCE is the load-bearing case: a host built before this field, or one
- * launched with no parser, has no capture surface at all — so a reader states
- * "not enabled" as a fact instead of inferring it from silence and a timer.
+ * Capture surfaces a host publishes. Each is INDEPENDENT: a host may advertise
+ * either, both, or neither, and an empty list is omitted entirely. Absence is the
+ * load-bearing case — it is how a reader states "not enabled" as a fact.
  */
 export const NATIVE_SESSION_CAPTURE_CAPABILITY = "semantic-snapshot-v1" as const;
 export const NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY = "plain-text-capture-v1" as const;
@@ -64,8 +64,13 @@ export type NativeSessionCaptureSurface =
 	| typeof NATIVE_SESSION_CAPTURE_CAPABILITY
 	| typeof NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY;
 
+const CAPTURE_SURFACES: readonly NativeSessionCaptureSurface[] = [
+	NATIVE_SESSION_CAPTURE_CAPABILITY,
+	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
+];
+
 export interface NativeSessionCapabilities {
-	capture?: NativeSessionCaptureSurface;
+	capture?: NativeSessionCaptureSurface[];
 }
 
 export interface NativeSessionRecord {
@@ -122,20 +127,16 @@ function parseIdentity(value: unknown): NativeSessionIdentity | null {
 }
 
 /**
- * Read the optional capabilities block. Like {@link parseIdentity}, an
- * unrecognised value is DROPPED rather than rejected — a capability a newer host
- * advertises must never cost an older dev3 the whole session. Dropping it lands
- * on "not enabled", which is the safe side: a caller reads less than the host can
- * do, never more.
+ * Read the optional capabilities block. An unrecognised surface is DROPPED, never
+ * rejected: a capability a newer host advertises must not cost an older dev3 the
+ * whole session, and dropping lands on "fewer capabilities", the safe side.
  */
 function parseCapabilities(value: unknown): NativeSessionCapabilities | null {
 	if (!value || typeof value !== "object") return null;
-	const raw = value as Record<string, unknown>;
-	if (raw.capture === NATIVE_SESSION_CAPTURE_CAPABILITY) return { capture: NATIVE_SESSION_CAPTURE_CAPABILITY };
-	if (raw.capture === NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY) {
-		return { capture: NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY };
-	}
-	return null;
+	const raw = (value as Record<string, unknown>).capture;
+	if (!Array.isArray(raw)) return null;
+	const capture = CAPTURE_SURFACES.filter((surface) => raw.includes(surface));
+	return capture.length > 0 ? { capture } : null;
 }
 
 /** Belt-and-braces: only the shapes `process-naming.ts` can produce are surfaced. */
@@ -301,7 +302,13 @@ export function readToken(sessionId: string): string | null {
 export function removeSessionState(sessionId: string, expectedToken: string | null): boolean {
 	if (expectedToken === null || readToken(sessionId) !== expectedToken) return false;
 	const record = readRecord(sessionId);
-	const atomicFiles = [journalFile(sessionId), parserStateFile(sessionId), tokenFile(sessionId), recordFile(sessionId)];
+	const atomicFiles = [
+		journalFile(sessionId),
+		parserStateFile(sessionId),
+		captureRecordFile(sessionId),
+		tokenFile(sessionId),
+		recordFile(sessionId),
+	];
 	if (record && Number.isInteger(record.host.pid) && record.host.pid > 0) {
 		for (const file of atomicFiles) {
 			try {
@@ -314,6 +321,7 @@ export function removeSessionState(sessionId: string, expectedToken: string | nu
 	const files = [
 		journalFile(sessionId),
 		parserStateFile(sessionId),
+		captureRecordFile(sessionId),
 		streamTapFile(sessionId),
 		logFile(sessionId),
 		tokenFile(sessionId),

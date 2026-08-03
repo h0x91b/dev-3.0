@@ -20,6 +20,7 @@
  * and the task launch fails with it.
  */
 
+import { NATIVE_CAPTURE_MODE_ENV } from "./native-terminal-registry/capture-mode";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -242,9 +243,8 @@ export function nativeHostLauncher(runtime: NativeHostRuntime): HostLauncher {
 					[NATIVE_SESSION_LAUNCH_ENV]: encodeShellLaunchSpec(opts.launch),
 					...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),
 					...(opts.rows ? { DEV3_NATIVE_SESSION_ROWS: String(opts.rows) } : {}),
-					...(opts.liveParser ? { DEV3_NATIVE_SESSION_LIVE_PARSER: "1" } : {}),
-					...(opts.liveParser && opts.captureProjection
-						? { DEV3_NATIVE_SESSION_CAPTURE_PROJECTION: "1" }
+					...(opts.captureMode && opts.captureMode !== "none"
+						? { [NATIVE_CAPTURE_MODE_ENV]: opts.captureMode }
 						: {}),
 					...(opts.stateTap ? { DEV3_NATIVE_SESSION_STATE_TAP: "1" } : {}),
 				},

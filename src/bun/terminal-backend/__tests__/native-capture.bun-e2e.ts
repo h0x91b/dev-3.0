@@ -30,6 +30,7 @@ import {
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 	readRecord,
 } from "../../native-terminal-registry/record";
+import type { NativeCaptureMode } from "../../native-terminal-registry/capture-mode";
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { NativeTerminalBackend } from "../native-backend";
 import { isCapturedPane, type TerminalPaneCapture } from "../capture";
@@ -56,11 +57,10 @@ function shell(cwd: string) {
 	return defineShellLaunchSpec(base);
 }
 
-/** The ONLY difference from production: the pane's host runs the live parser. */
-function withLiveParser(captureProjection = false): Partial<CoordinatorDeps> {
+/** The ONLY difference from production: this pane's host publishes a capture artifact. */
+function withCaptureMode(captureMode: NativeCaptureMode): Partial<CoordinatorDeps> {
 	return {
-		startPane: (sessionId, opts) =>
-			defaultCoordinatorDeps.startPane(sessionId, { ...opts, liveParser: true, captureProjection }),
+		startPane: (sessionId, opts) => defaultCoordinatorDeps.startPane(sessionId, { ...opts, captureMode }),
 	};
 }
 
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
 	process.env[NATIVE_MULTIPANE_DIR_ENV] = join(root, "multipane");
 
 	console.log("native capture — a real host running the live parser");
-	const parserBackend = new NativeTerminalBackend({ deps: withLiveParser() });
+	const parserBackend = new NativeTerminalBackend({ deps: withCaptureMode("semantic") });
 	try {
 		const created = await parserBackend.openSession({
 			id: PARSER_SESSION,
@@ -150,7 +150,7 @@ async function main(): Promise<void> {
 
 		const paneRecord = readRecord(`${PARSER_SESSION}-${view}`);
 		check(
-			paneRecord?.capabilities?.capture === NATIVE_SESSION_CAPTURE_CAPABILITY,
+			paneRecord?.capabilities?.capture?.includes(NATIVE_SESSION_CAPTURE_CAPABILITY) === true,
 			"a parser-enabled host advertises its capture surface in its own record",
 		);
 
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
 	}
 
 	console.log("native capture — a real host publishing the COMPACT projection");
-	const compactBackend = new NativeTerminalBackend({ deps: withLiveParser(true) });
+	const compactBackend = new NativeTerminalBackend({ deps: withCaptureMode("compact") });
 	try {
 		const created = await compactBackend.openSession({
 			id: COMPACT_SESSION,
@@ -183,7 +183,7 @@ async function main(): Promise<void> {
 
 		const paneSessionId = `${COMPACT_SESSION}-${view}`;
 		check(
-			readRecord(paneSessionId)?.capabilities?.capture === NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
+			readRecord(paneSessionId)?.capabilities?.capture?.includes(NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY) === true,
 			"the host advertises the plain-text capture surface, not the per-cell one",
 		);
 		const artifactBytes = statSync(captureRecordFile(paneSessionId)).size;

@@ -123,12 +123,15 @@ export interface LiveParserPipelineOptions {
 	 * Persist a snapshot (atomic file write in the host). Failures are contained.
 	 * May return a promise; only one write is ever in flight per pipeline.
 	 */
-	persistState: (snapshot: ParserStateSnapshot) => void | Promise<void>;
 	/**
-	 * Publish the compact plain-text projection instead of the per-cell snapshot
-	 * (seq 1412). When set, {@link persistState} is never called and the per-cell
-	 * state is never built OR serialised — which is the whole point: the multi-MiB
-	 * JSON was the dominant cost, not the parsing.
+	 * Publish the per-cell snapshot. INDEPENDENT of {@link persistProjection}:
+	 * either, both, or neither may be set, and one being absent can never disable
+	 * the other.
+	 */
+	persistState?: (snapshot: ParserStateSnapshot) => void | Promise<void>;
+	/**
+	 * Publish the compact plain-text projection. Set on its own, the per-cell state
+	 * is never built OR serialised — that JSON, not the parsing, is the cost.
 	 */
 	persistProjection?: (projection: LiveParserProjection) => void | Promise<void>;
 	/** Test seams — production uses the defaults. */
@@ -186,6 +189,28 @@ export interface LiveParserProjection {
 	resyncGaps: number;
 }
 
+/**
+ * Everything a reader can observe in a published record, EXCEPT the timestamp and
+ * the producer. Identical rows with a resize, a new scrollback depth, an advanced
+ * watermark, or a health transition are NOT identical writes.
+ */
+function projectionIdentity(projection: LiveParserProjection): string {
+	return [
+		projection.status,
+		projection.error ?? "",
+		projection.activeBuffer,
+		projection.cols,
+		projection.rows,
+		projection.historyTotal,
+		projection.watermarkSeq,
+		projection.droppedBytes,
+		projection.droppedChunks,
+		projection.resyncGaps,
+		projection.viewport.join("\n"),
+		projection.history.join("\n"),
+	].join("\u0000");
+}
+
 export class LiveParserPipeline {
 	private readonly queue: ParserEventQueue;
 	private status: ParserHealthStatus = "live";
@@ -212,9 +237,11 @@ export class LiveParserPipeline {
 		lastWriteAtMs: null as number | null,
 	};
 	/** Serialized semantic payload of the last write — the identical-skip key. */
-	private lastPersistedKey: string | null = null;
 	private writeInFlight = false;
 	private lastProjection: NativeTextProjection | null = null;
+	private coreReleased = false;
+	private lastStateKey: string | null = null;
+	private lastProjectionKey: string | null = null;
 	/** A newer state is waiting for the in-flight write to settle. */
 	private persistDirty = false;
 
@@ -318,11 +345,29 @@ export class LiveParserPipeline {
 		this.schedulePersist();
 	}
 
-	/** Overflow/failure end state: parsing stops, the verdict is persisted once. */
+	/**
+	 * Overflow/failure end state: parsing stops and the verdict is persisted once.
+	 * A FAILED parser is fatal — it will never produce another screen — so its
+	 * Ghostty/WASM instance is released here instead of being held until session
+	 * teardown. Overflow stays alive: its last good screen is still the truth, and
+	 * it can be read for as long as the pane lives.
+	 */
 	private enterTerminalState(status: ParserHealthStatus): void {
 		this.status = status;
 		this.queue.clear();
 		this.persistNow(true);
+		if (status === "failed") this.releaseCore();
+	}
+
+	/** Free the parser core once, keeping the last published verdict readable. */
+	private releaseCore(): void {
+		if (this.coreReleased) return;
+		this.coreReleased = true;
+		try {
+			this.core.dispose();
+		} catch {
+			// a core that cannot be freed must not take the host down
+		}
 	}
 
 	/**
@@ -360,48 +405,81 @@ export class LiveParserPipeline {
 			this.persistDirty = true;
 			return;
 		}
-		const payload = this.opts.persistProjection ? this.projection() : this.snapshot();
-		// Dedup on what actually gets written. In projection mode that is a handful of
-		// row strings; stringifying the per-cell state here would reintroduce the very
-		// multi-MiB allocation the projection exists to avoid.
-		const key = this.opts.persistProjection
-			? `${this.status}|${(payload as LiveParserProjection).activeBuffer}|` +
-				`${(payload as LiveParserProjection).viewport.join("\n")}|${(payload as LiveParserProjection).history.join("\n")}`
-			: `${this.status}|${JSON.stringify((payload as ParserStateSnapshot).state)}`;
-		if (!force && this.opts.persistSkipIdentical !== false && key === this.lastPersistedKey) {
-			this.persist.skippedIdentical++;
-			this.persistDirty = false;
-			return;
+		// Two INDEPENDENT sinks, each with its own identical-write identity, so
+		// publishing one can never suppress the other. An identity advances only
+		// after its write has actually landed: a transient failure has to stay
+		// retryable, or one bad write silences a quiet pane forever.
+		const sinks: Array<{ write: () => void | Promise<void>; commit: () => void; bytes: number }> = [];
+		if (this.opts.persistState) {
+			const snapshot = this.snapshot();
+			const key = `${this.status}|${JSON.stringify(snapshot.state)}`;
+			if (force || this.opts.persistSkipIdentical === false || key !== this.lastStateKey) {
+				sinks.push({
+					write: () => this.opts.persistState?.(snapshot),
+					commit: () => {
+						this.lastStateKey = key;
+					},
+					bytes: Buffer.byteLength(key, "utf8"),
+				});
+			} else {
+				this.persist.skippedIdentical++;
+			}
 		}
-		const bytes = Buffer.byteLength(key, "utf8");
-		this.lastPersistedKey = key;
+		if (this.opts.persistProjection) {
+			const projection = this.projection();
+			const key = projectionIdentity(projection);
+			if (force || this.opts.persistSkipIdentical === false || key !== this.lastProjectionKey) {
+				sinks.push({
+					write: () => this.opts.persistProjection?.(projection),
+					commit: () => {
+						this.lastProjectionKey = key;
+					},
+					bytes: Buffer.byteLength(key, "utf8"),
+				});
+			} else {
+				this.persist.skippedIdentical++;
+			}
+		}
 		this.persistDirty = false;
+		if (sinks.length === 0) return;
+
+		const bytes = sinks.reduce((total, sink) => total + sink.bytes, 0);
 		this.writeInFlight = true;
 		this.persist.writes++;
 		this.persist.lastBytes = bytes;
 		this.persist.totalBytes += bytes;
 		if (bytes > this.persist.maxBytes) this.persist.maxBytes = bytes;
 		this.persist.lastWriteAtMs = (this.opts.now ?? Date.now)();
+
+		let outstanding = sinks.length;
 		const settle = (): void => {
+			if (--outstanding > 0) return;
 			this.writeInFlight = false;
 			if (this.persistDirty && !this.disposed) this.schedulePersist();
 		};
-		try {
-			const result = this.opts.persistProjection
-				? this.opts.persistProjection(payload as LiveParserProjection)
-				: this.opts.persistState(payload as ParserStateSnapshot);
-			if (result && typeof (result as Promise<void>).then === "function") {
-				(result as Promise<void>).then(settle, () => {
-					this.persist.failures++;
-					settle();
-				});
-				return;
-			}
-		} catch {
-			// a failed snapshot write must never take the host down
+		const failed = (): void => {
 			this.persist.failures++;
+			this.persistDirty = true;
+			settle();
+		};
+		for (const sink of sinks) {
+			try {
+				const result = sink.write();
+				if (result && typeof (result as Promise<void>).then === "function") {
+					// Resolution runs commit and settle in ONE hop, so an async sink costs
+					// exactly the microtask depth a single sink always did.
+					(result as Promise<void>).then(() => {
+						sink.commit();
+						settle();
+					}, failed);
+					continue;
+				}
+				sink.commit();
+				settle();
+			} catch {
+				failed();
+			}
 		}
-		settle();
 	}
 
 	/**

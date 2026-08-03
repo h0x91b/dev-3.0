@@ -227,7 +227,7 @@ describe("nativeHostLauncher", () => {
 
 		nativeHostLauncher(resolveNativeHostRuntime())(
 			SESSION_ID,
-			{ launch: spec, cols: 120, rows: 40, liveParser: true },
+			{ launch: spec, cols: 120, rows: 40, captureMode: "semantic" },
 			7,
 		);
 
@@ -236,14 +236,27 @@ describe("nativeHostLauncher", () => {
 		expect(env[NATIVE_SESSION_LAUNCH_ENV]).toBe(encodeShellLaunchSpec(spec));
 		expect(env.DEV3_NATIVE_SESSION_COLS).toBe("120");
 		expect(env.DEV3_NATIVE_SESSION_ROWS).toBe("40");
-		expect(env.DEV3_NATIVE_SESSION_LIVE_PARSER).toBe("1");
+		expect(env.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe("semantic");
+	});
+
+	it("carries every capture mode verbatim, and never a boolean", () => {
+		for (const mode of ["semantic", "compact", "semantic-and-compact"] as const) {
+			vi.mocked(spawn).mockClear();
+			nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec(), captureMode: mode }, 7);
+			expect(vi.mocked(spawn).mock.calls[0][2]?.env?.DEV3_NATIVE_SESSION_CAPTURE_MODE).toBe(mode);
+		}
+	});
+
+	it("omits the mode entirely for `none`, so an old host degrades to no parser", () => {
+		nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec(), captureMode: "none" }, 7);
+		expect(vi.mocked(spawn).mock.calls[0][2]?.env).not.toHaveProperty("DEV3_NATIVE_SESSION_CAPTURE_MODE");
 	});
 
 	it("omits the opt-in proof flags when they were not requested", () => {
 		nativeHostLauncher(resolveNativeHostRuntime())(SESSION_ID, { launch: launchSpec() }, 7);
 
 		const env = vi.mocked(spawn).mock.calls[0][2]?.env ?? {};
-		expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_LIVE_PARSER");
+		expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_CAPTURE_MODE");
 		expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_STATE_TAP");
 		expect(env).not.toHaveProperty("DEV3_NATIVE_SESSION_COLS");
 	});

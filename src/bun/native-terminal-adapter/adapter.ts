@@ -140,7 +140,7 @@ export class NativeSingleViewAdapter {
 				launch,
 				cols: opts.cols ?? DEFAULT_COLS,
 				rows: opts.rows ?? DEFAULT_ROWS,
-				liveParser: true,
+				captureMode: "semantic",
 			},
 			this.deps.registryDeps,
 		);

@@ -21,6 +21,7 @@
  * deterministically unit-testable without real processes.
  */
 
+import { NATIVE_CAPTURE_MODE_ENV, type NativeCaptureMode } from "./capture-mode";
 import { spawn as spawnChild } from "node:child_process";
 import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, rmdirSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
@@ -60,13 +61,8 @@ export interface HostSpawnOptions {
 	launch: ShellLaunchSpec;
 	cols?: number;
 	rows?: number;
-	/** Opt-in live-parser proof stage (seq 1228); default off keeps the host lean. */
-	liveParser?: boolean;
-	/**
-	 * Publish the compact plain-text capture projection instead of the per-cell
-	 * snapshot (seq 1412). Requires {@link liveParser}; ignored without it.
-	 */
-	captureProjection?: boolean;
+	/** Which capture artifacts the host publishes. Defaults to `none` — no parser. */
+	captureMode?: NativeCaptureMode;
 	/** Opt-in unbounded ground-truth stream tap — proof runs only. */
 	stateTap?: boolean;
 }
@@ -170,9 +166,8 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 			[NATIVE_SESSION_LAUNCH_ENV]: encodeShellLaunchSpec(opts.launch),
 			...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),
 			...(opts.rows ? { DEV3_NATIVE_SESSION_ROWS: String(opts.rows) } : {}),
-			...(opts.liveParser ? { DEV3_NATIVE_SESSION_LIVE_PARSER: "1" } : {}),
-			...(opts.liveParser && opts.captureProjection
-				? { DEV3_NATIVE_SESSION_CAPTURE_PROJECTION: "1" }
+			...(opts.captureMode && opts.captureMode !== "none"
+				? { [NATIVE_CAPTURE_MODE_ENV]: opts.captureMode }
 				: {}),
 			...(opts.stateTap ? { DEV3_NATIVE_SESSION_STATE_TAP: "1" } : {}),
 		},
@@ -257,8 +252,7 @@ export async function start(
 					launch: launchSpec,
 					cols: opts.cols,
 					rows: opts.rows,
-					liveParser: opts.liveParser,
-					captureProjection: opts.captureProjection,
+					captureMode: opts.captureMode,
 					stateTap: opts.stateTap,
 				},
 				logFd,

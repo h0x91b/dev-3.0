@@ -39,9 +39,9 @@ function sample(overrides: Partial<NativeSessionRecord> = {}): NativeSessionReco
 
 describe("native-session record — optional capture capability (seq 1412)", () => {
 	it("round-trips the capability a parser-enabled host advertises", () => {
-		const record = sample({ capabilities: { capture: NATIVE_SESSION_CAPTURE_CAPABILITY } });
+		const record = sample({ capabilities: { capture: [NATIVE_SESSION_CAPTURE_CAPABILITY] } });
 		expect(parseRecord(serializeRecord(record))?.capabilities).toEqual({
-			capture: NATIVE_SESSION_CAPTURE_CAPABILITY,
+			capture: [NATIVE_SESSION_CAPTURE_CAPABILITY],
 		});
 	});
 
@@ -53,7 +53,7 @@ describe("native-session record — optional capture capability (seq 1412)", () 
 
 	it("is readable by a build that predates the field — no schema bump, no migration", () => {
 		const raw = JSON.parse(serializeRecord(sample())) as Record<string, unknown>;
-		raw.capabilities = { capture: NATIVE_SESSION_CAPTURE_CAPABILITY };
+		raw.capabilities = { capture: [NATIVE_SESSION_CAPTURE_CAPABILITY] };
 		const parsed = parseRecord(JSON.stringify(raw));
 		expect(parsed?.schemaVersion).toBe(NATIVE_SESSION_SCHEMA_VERSION);
 		expect(parsed?.sessionId).toBe("alpha");
@@ -62,9 +62,10 @@ describe("native-session record — optional capture capability (seq 1412)", () 
 
 	it("drops an unrecognised capability instead of losing the whole session", () => {
 		for (const capabilities of [
-			{ capture: "semantic-snapshot-v2" },
+			{ capture: ["semantic-snapshot-v2"] },
+			{ capture: "semantic-snapshot-v1" },
+			{ capture: [] },
 			{ capture: true },
-			{ capture: "" },
 			"not-an-object",
 			42,
 			null,

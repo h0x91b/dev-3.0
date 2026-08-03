@@ -14,6 +14,7 @@
  *   bun src/bun/native-terminal-registry/cli.ts __host <id>         # internal: the detached host
  */
 
+import { parseCaptureMode } from "./capture-mode";
 import { NativeSessionClient } from "./client";
 import { resolveHostConfig, runHost } from "./host";
 import { readParserState } from "./parser-state";
@@ -43,6 +44,12 @@ function positionalArgs(): string[] {
 
 function hasFlag(flag: string): boolean {
 	return process.argv.includes(flag);
+}
+
+/** `--capture-mode compact` — the value after the flag, if any. */
+function flagValue(flag: string): string | undefined {
+	const index = process.argv.indexOf(flag);
+	return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
 function cliShellLaunch(): ShellLaunchSpec {
@@ -128,7 +135,7 @@ async function main(): Promise<void> {
 			const id = requireId();
 			const result = await start(id, {
 				launch: cliShellLaunch(),
-				liveParser: hasFlag("--live-parser"),
+				captureMode: parseCaptureMode(flagValue("--capture-mode")),
 				stateTap: hasFlag("--state-tap"),
 			});
 			const r = result.record;

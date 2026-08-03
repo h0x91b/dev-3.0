@@ -119,7 +119,7 @@ describe("NativeSingleViewAdapter — lifecycle mapping", () => {
 		expect(handle).toEqual({ id: "alpha", firstViewId: "alpha:0" });
 		expect(h.start).toHaveBeenCalledWith(
 			"alpha",
-			expect.objectContaining({ liveParser: true, cols: 80, rows: 24 }),
+			expect.objectContaining({ captureMode: "semantic", cols: 80, rows: 24 }),
 			undefined,
 		);
 		const [, opts] = h.start.mock.calls[0];
