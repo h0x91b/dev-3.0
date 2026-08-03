@@ -169,8 +169,6 @@ export const MENU_ACTIONS = {
 	// ── Terminal — misc ──
 	termToggleProjectTerminal: "term-toggle-project-terminal",
 	termOpenQuickShell: "term-open-quick-shell",
-	termKeymapDefault: "term-keymap-default",
-	termKeymapIterm2: "term-keymap-iterm2",
 	termCheatSheet: "term-cheat-sheet",
 	termClearBuffer: "term-clear-buffer",
 	termSoftReset: "terminal-soft-reset",
@@ -294,8 +292,6 @@ const NOT_YET_IMPLEMENTED: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	MENU_ACTIONS.termSaveBuffer,
 	MENU_ACTIONS.termClearBuffers,
 	MENU_ACTIONS.termToggleMouse,
-	MENU_ACTIONS.termKeymapDefault,
-	MENU_ACTIONS.termKeymapIterm2,
 	MENU_ACTIONS.termResumeRestart,
 	MENU_ACTIONS.termClearBuffer,
 
@@ -450,8 +446,6 @@ const REQUIRES_TERMINAL: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	MENU_ACTIONS.termSaveBuffer,
 	MENU_ACTIONS.termClearBuffers,
 	MENU_ACTIONS.termToggleMouse,
-	MENU_ACTIONS.termKeymapDefault,
-	MENU_ACTIONS.termKeymapIterm2,
 	MENU_ACTIONS.termResumeRestart,
 	MENU_ACTIONS.termClearBuffer,
 	MENU_ACTIONS.termSoftReset,
@@ -811,13 +805,6 @@ function terminalMenu(): ApplicationMenuItemConfig {
 			item({ label: "Toggle Project Terminal", action: MENU_ACTIONS.termToggleProjectTerminal, accelerator: "`" }),
 			item({ label: "Quick Shell", action: MENU_ACTIONS.termOpenQuickShell }),
 			SEP,
-			{
-				label: "Keyboard Mode",
-				submenu: [
-					item({ label: "Default", action: MENU_ACTIONS.termKeymapDefault }),
-					item({ label: "iTerm2", action: MENU_ACTIONS.termKeymapIterm2 }),
-				],
-			},
 			item({ label: "Show Tmux Cheat Sheet", action: MENU_ACTIONS.termCheatSheet }),
 			SEP,
 			item({ label: "Clear Scrollback Buffer", action: MENU_ACTIONS.termClearBuffer, accelerator: "k" }),

@@ -67,22 +67,6 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).importShellEnv).toBeUndefined();
 	});
 
-	it("defaults terminalKeymap to iTerm2 (undefined) and preserves an explicit opt-out", async () => {
-		// No file → undefined means "iTerm2 on" (the renderer treats a missing
-		// preset as the iterm2 default).
-		expect((await loadSettings()).terminalKeymap).toBeUndefined();
-
-		// Explicit "default" is a real opt-out and must survive a round-trip —
-		// collapsing it to undefined would silently re-enable the hotkeys.
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ terminalKeymap: "default" }), null, 2), "utf-8");
-		expect((await loadSettings()).terminalKeymap).toBe("default");
-		expect(loadSettingsSync().terminalKeymap).toBe("default");
-
-		// Explicit "iterm2" is preserved as well.
-		writeFileSync(settingsPath, JSON.stringify(makeSettings({ terminalKeymap: "iterm2" }), null, 2), "utf-8");
-		expect((await loadSettings()).terminalKeymap).toBe("iterm2");
-	});
-
 	it("reads tipsDisabled back from disk (async + sync)", async () => {
 		// User toggled "Disable feature tips" → the flag lives in settings.json.
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ tipsDisabled: true }), null, 2), "utf-8");
@@ -126,6 +110,38 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).defaultConfigId).toBe("my-custom-config");
 	});
 
+	it("keeps only string-or-null shortcut slots and drops garbage from untrusted input", async () => {
+		// The renderer (or a hand-edited file) can put anything here; a slot is a
+		// serialized combo or an explicit null, everything else is discarded.
+		writeFileSync(settingsPath, JSON.stringify({
+			...makeSettings(),
+			keyboardShortcuts: {
+				"go-to-project": { primary: "Mod+KeyJ", alias: null },
+				"a-number": { primary: 42 },
+				"an-array": { primary: ["Mod+KeyJ"] },
+				"a-nested-object": { primary: { code: "KeyJ" } },
+				"mixed": { primary: 7, alias: "Mod+KeyB" },
+				"not-an-object": "Mod+KeyJ",
+				"a-list": ["Mod+KeyJ"],
+			},
+		}, null, 2), "utf-8");
+
+		const loaded = await loadSettings();
+		expect(loaded.keyboardShortcuts).toEqual({
+			"go-to-project": { primary: "Mod+KeyJ", alias: null },
+			mixed: { alias: "Mod+KeyB" },
+		});
+		expect(loadSettingsSync().keyboardShortcuts).toEqual(loaded.keyboardShortcuts);
+	});
+
+	it("drops the whole keyboardShortcuts map when nothing in it is valid", async () => {
+		writeFileSync(settingsPath, JSON.stringify({
+			...makeSettings(),
+			keyboardShortcuts: { "go-to-project": { primary: 42 }, other: [] },
+		}, null, 2), "utf-8");
+		expect((await loadSettings()).keyboardShortcuts).toBeUndefined();
+	});
+
 	it("preserves every GlobalSettings field across a save→load round-trip (drift guard + downgrade safety)", async () => {
 		// `Required<>` forces this object to enumerate EVERY field of the shared
 		// GlobalSettings type. Adding a field to the type without handling it in
@@ -146,8 +162,7 @@ describe("saveSettings", () => {
 			cloneBaseDirectory: "/tmp/clones",
 			customBinaryPaths: { git: "/usr/bin/git" },
 			agentBinaryPaths: { "builtin-codex": "/usr/bin/codex" },
-			terminalKeymap: "iterm2",
-			keyboardShortcuts: { "go-to-project": ["Mod+KeyJ"] },
+			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			playSoundOnTaskComplete: false,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,

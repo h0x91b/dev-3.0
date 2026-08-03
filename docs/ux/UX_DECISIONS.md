@@ -10,6 +10,12 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** reviewers want a comment delivered the moment they write it, and a batch that still carries already-sent comments makes the agent re-handle them. Rejected: keeping send batch-only (the reported pain) and hiding sent comments from the card (they must stay visible and re-readable).
 - **Status:** Decided. Evidence: `src/mainview/components/TaskDiffViewer.tsx`, `src/mainview/components/pr-review/GithubThreadView.tsx`.
 
+## 2026-08-03 — A shortcut has a primary slot and an alias slot; presets are not a way to turn shortcuts off
+
+- **Rule:** every shortcut carries two independently-editable slots (primary + optional alias) rather than a flat binding list, and a per-shortcut editor replaces any "compatibility preset" toggle — the iTerm2 preset and its three checkboxes (Settings, ⓘ popover, native Terminal ▸ Keyboard Mode) are deleted, its four ⌘ combos are now plain `terminal`-group registry rows. The ⓘ button opens the ⌘/ overlay's Terminal tab instead of a partial popover. Yaml `surfaces.keyboard_shortcuts_editor`.
+- **Why:** a preset that only exists to disable four shortcuts is redundant once each row can be unbound, and duplicating that switch in three surfaces is how the same setting drifts; slots make "the second way to press it" a thing the user sets rather than an artifact of list order. Rejected: keeping the checkbox alongside the editor (two mechanisms, one outcome), and teaching the matcher that terminal shortcuts outrank app ones (the ⌘[ collision it would fix disappears once the redundant bindings go — tmux already owns ⌥+arrows).
+- **Status:** Implemented. Evidence: `decisions/196-shortcut-slots-and-no-iterm2-preset.md`, `keymap.ts`, `ShortcutRow.tsx`, `TerminalView.tsx`, `shared/application-menu.ts`.
+
 ## 2026-08-02 — The keymap registry now dispatches, and rebinding lives in Settings, not the ⌘/ overlay
 
 - **Rule:** `keymap.ts` holds machine-readable bindings and drives dispatch (`matchesShortcut(e, id)`); rebinding is `configuration` and belongs to a new eighth Settings category **Keyboard** (which also absorbs the terminal keymap preset), while the ⌘/ overlay stays read-only reference showing the *resolved* combo plus one "Customize…" link. Structural bindings (g-chords, ⌘1–9 families, hold-modifier switcher, Esc) render read-only **with a stated reason**. Bible §5.2, yaml `surfaces.keyboard_shortcuts_editor`.

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { TFunction } from "../../i18n";
+import type { ShortcutSlot } from "../../../shared/types";
 import {
 	bindingChips,
 	bindingFromEvent,
@@ -7,11 +8,11 @@ import {
 	type Binding,
 } from "../../keymap-bindings";
 import {
-	bindingsFor,
 	findConflict,
 	isRemappable,
 	shortcutById,
 	shortcutKeysForMode,
+	slotBindings,
 	type ShortcutSpec,
 } from "../../keymap";
 import { hasOverride, setKeymapCapture } from "../../keymap-store";
@@ -21,14 +22,12 @@ import { isMac } from "../../utils/platform";
 const PRESS =
 	"outline-none focus-visible:ring-2 focus-visible:ring-accent/50 transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]";
 
-/** Keeps the combo column from shifting when chips swap for the recording pill. */
-const COMBO_COL = "shrink-0 flex items-center justify-end gap-1.5 min-w-[10.5rem]";
+type ChipTone = "normal" | "live";
 
-/** One key pill. `tone` follows the row's state, not a separate palette. */
-function Chip({ children, tone }: { children: string; tone: "normal" | "muted" | "live" }) {
+/** One key pill. `tone` follows the slot's state, not a separate palette. */
+function Chip({ children, tone }: { children: string; tone: ChipTone }) {
 	const skin = {
 		normal: "bg-raised border-edge text-fg-2",
-		muted: "bg-base border-edge/50 text-fg-muted",
 		live: "bg-accent/15 border-accent/40 text-fg",
 	}[tone];
 	return (
@@ -41,7 +40,7 @@ function Chip({ children, tone }: { children: string; tone: "normal" | "muted" |
 }
 
 /** A combo as key pills (`⇧` `⌘` `P`), so it reads as keys rather than as text. */
-function Combo({ chips, tone }: { chips: string[]; tone: "normal" | "muted" | "live" }) {
+function Combo({ chips, tone }: { chips: string[]; tone: ChipTone }) {
 	return (
 		<span className="inline-flex items-center gap-1">
 			{chips.map((chip, i) => (
@@ -71,48 +70,51 @@ interface ShortcutRowProps {
 	spec: ShortcutSpec;
 	t: TFunction;
 	remote: boolean;
-	/** Commit a rebind. `null` restores the default. */
-	onRebind: (id: string, bindings: Binding[] | null) => void;
+	/** Commit a rebind of one slot. `null` empties it; `undefined` restores its default. */
+	onRebind: (id: string, slot: ShortcutSlot, binding: Binding | null) => void;
+	/** Restore both slots of this shortcut to their defaults. */
+	onReset: (id: string) => void;
 }
 
-export default function ShortcutRow({ spec, t, remote, onRebind }: ShortcutRowProps) {
+export default function ShortcutRow({ spec, t, remote, onRebind, onReset }: ShortcutRowProps) {
 	const mac = isMac();
-	const [recording, setRecording] = useState(false);
+	const [recording, setRecording] = useState<ShortcutSlot | null>(null);
 	const [candidate, setCandidate] = useState<Binding | null>(null);
 	const [rejected, setRejected] = useState(false);
-	const comboRef = useRef<HTMLButtonElement>(null);
+	const primaryRef = useRef<HTMLButtonElement>(null);
+	const aliasRef = useRef<HTMLButtonElement>(null);
 
 	const remappable = isRemappable(spec);
-	const bindings = bindingsFor(spec);
 	const overridden = hasOverride(spec.id);
 	const conflict = candidate ? findConflict(spec.id, candidate) : null;
 	const conflictSpec = conflict ? shortcutById(conflict.ownerId) : undefined;
 
 	// The recorder owns the keyboard while it is open — see `setKeymapCapture`.
 	useEffect(() => {
-		setKeymapCapture(recording);
+		setKeymapCapture(recording !== null);
 		return () => setKeymapCapture(false);
 	}, [recording]);
 
-	function stopRecording() {
-		setRecording(false);
+	function stopRecording(slot: ShortcutSlot | null) {
+		setRecording(null);
 		setCandidate(null);
 		setRejected(false);
+		(slot === "alias" ? aliasRef : primaryRef).current?.focus();
 	}
 
 	/**
-	 * While recording, this row owns the keyboard: every keystroke is a candidate
+	 * While recording, this slot owns the keyboard: every keystroke is a candidate
 	 * combo, not a command. Capture phase, because the app dispatcher also listens
 	 * on window and would otherwise fire the very shortcut being rebound.
 	 */
 	useEffect(() => {
 		if (!recording) return;
+		const slot = recording;
 		function onKeyDown(e: KeyboardEvent) {
 			e.preventDefault();
 			e.stopPropagation();
 			if (e.code === "Escape") {
-				stopRecording();
-				comboRef.current?.focus();
+				stopRecording(slot);
 				return;
 			}
 			const next = bindingFromEvent(e, mac);
@@ -130,10 +132,9 @@ export default function ShortcutRow({ spec, t, remote, onRebind }: ShortcutRowPr
 	}, [recording, mac]);
 
 	function commit() {
-		if (!candidate) return;
-		onRebind(spec.id, [candidate]);
-		stopRecording();
-		comboRef.current?.focus();
+		if (!candidate || !recording) return;
+		onRebind(spec.id, recording, candidate);
+		stopRecording(recording);
 	}
 
 	const description = t(spec.descKey);
@@ -148,15 +149,16 @@ export default function ShortcutRow({ spec, t, remote, onRebind }: ShortcutRowPr
 				<div className="min-w-0">
 					<div className="text-fg-3 text-sm">{description}</div>
 					{spec.fixedReasonKey ? (
-						<div className="text-fg-muted text-xs mt-0.5">{t(spec.fixedReasonKey)}</div>
+						<div className="text-fg-3 text-xs mt-0.5">{t(spec.fixedReasonKey)}</div>
 					) : null}
 				</div>
-				<div className={COMBO_COL}>
-					<span className="px-2 h-7 inline-flex items-center rounded-md border border-edge/50 bg-base text-fg-muted text-xs">
+				<div className="shrink-0 flex items-center justify-end gap-1.5">
+					<span className="px-2 h-7 inline-flex items-center rounded-md border border-edge text-fg-3 text-xs">
 						{shortcutKeysForMode(spec, mac, remote)}
 					</span>
-					{/* Matches the reset slot on editable rows, so every combo in the list
-					    ends on the same vertical line. */}
+					{/* Matches the alias + reset slots on editable rows, so nothing in the
+					    combo column wanders off the shared vertical lines. */}
+					<span className="w-[7.5rem]" />
 					<span className="w-7 h-7" />
 				</div>
 			</div>
@@ -172,6 +174,102 @@ export default function ShortcutRow({ spec, t, remote, onRebind }: ShortcutRowPr
 		: spec.scope === "desktop"
 			? { text: t("keymap.edit.desktopOnly"), danger: false }
 			: null;
+
+	/**
+	 * One slot. The chips ARE the control — a separate "Change" button on every
+	 * slot of every row is button creep, and the keys already say what to click.
+	 */
+	function Slot({ slot }: { slot: ShortcutSlot }) {
+		const bindings = slotBindings(spec, slot);
+		const isAlias = slot === "alias";
+		const live = recording === slot;
+
+		if (live && candidate) {
+			return (
+				<span className="inline-flex items-center gap-1.5">
+					<Combo chips={bindingChips(candidate, mac)} tone="live" />
+					<button
+						type="button"
+						onClick={commit}
+						className={`px-2.5 h-7 rounded-md bg-accent-fill hover:bg-accent-fill-hover text-white text-xs font-medium ${PRESS}`}
+					>
+						{t("keymap.edit.save")}
+					</button>
+					<button
+						type="button"
+						onClick={() => stopRecording(slot)}
+						className={`px-2.5 h-7 rounded-md border border-edge text-fg-3 text-xs hover:border-edge-active ${PRESS}`}
+					>
+						{t("keymap.edit.cancel")}
+					</button>
+				</span>
+			);
+		}
+		if (live) {
+			return (
+				<span className="inline-flex items-center gap-1.5">
+					<span className="px-2.5 h-7 inline-flex items-center rounded-md border border-accent/50 bg-accent/10 text-fg-2 text-xs">
+						{t("keymap.edit.recording")}
+					</span>
+					<button
+						type="button"
+						onClick={() => stopRecording(slot)}
+						className={`px-2.5 h-7 rounded-md border border-edge text-fg-3 text-xs hover:border-edge-active ${PRESS}`}
+					>
+						{t("keymap.edit.cancel")}
+					</button>
+				</span>
+			);
+		}
+
+		const label = isAlias
+			? t("keymap.edit.a11yRecordAlias", { name: description })
+			: t("keymap.edit.a11yRecord", { name: description });
+
+		return (
+			<span className="inline-flex items-center gap-1">
+				<button
+					ref={isAlias ? aliasRef : primaryRef}
+					type="button"
+					title={isAlias ? t("keymap.edit.aliasHint") : t("keymap.edit.record")}
+					aria-label={label}
+					onClick={() => {
+						setCandidate(null);
+						setRejected(false);
+						setRecording(slot);
+					}}
+					className={`px-1 py-0.5 -mx-1 rounded-lg border border-transparent hover:border-edge-active hover:bg-raised ${PRESS}`}
+				>
+					{bindings.length > 0 ? (
+						// More than one entry here means platform variants, never an alias —
+						// only one of them can apply, so they never both render.
+						<Combo chips={bindingChips(bindings[0], mac)} tone="normal" />
+					) : isAlias ? (
+						// An empty alias is the normal resting state, so it stays quiet: a
+						// dashed "+" that only firms up on hover.
+						<span className="w-7 h-7 grid place-items-center rounded-md border border-dashed border-edge/70 text-fg-muted text-xs group-hover:border-edge-active">
+							+
+						</span>
+					) : (
+						<span className="px-1.5 h-7 inline-flex items-center rounded-md border border-dashed border-edge text-fg-3 text-xs italic">
+							{t("keymap.edit.unassigned")}
+						</span>
+					)}
+				</button>
+				{bindings.length > 0 && isAlias ? (
+					<button
+						type="button"
+						title={t("keymap.edit.clearAlias")}
+						aria-label={t("keymap.edit.clearAlias")}
+						onClick={() => onRebind(spec.id, slot, null)}
+						className={`w-5 h-5 grid place-items-center rounded text-fg-3 hover:text-danger hover:bg-danger/10 text-xs leading-none ${PRESS}`}
+					>
+						×
+					</button>
+				) : null}
+			</span>
+		);
+	}
 
 	return (
 		<div className={`${rowBase} ${recording ? "bg-accent/5" : "hover:bg-raised/50"}`}>
@@ -189,7 +287,7 @@ export default function ShortcutRow({ spec, t, remote, onRebind }: ShortcutRowPr
 				</div>
 				{meta ? (
 					<div
-						className={`text-xs mt-0.5 ${meta.danger ? "text-danger" : "text-fg-muted"}`}
+						className={`text-xs mt-0.5 ${meta.danger ? "text-danger" : "text-fg-3"}`}
 						role={recording ? "status" : undefined}
 						aria-live={recording ? "polite" : undefined}
 					>
@@ -198,80 +296,27 @@ export default function ShortcutRow({ spec, t, remote, onRebind }: ShortcutRowPr
 				) : null}
 			</div>
 
-			<div className={COMBO_COL}>
-				{recording && candidate ? (
-					<>
-						<Combo chips={bindingChips(candidate, mac)} tone="live" />
+			<div className="shrink-0 flex items-center justify-end gap-1.5">
+				<Slot slot="primary" />
+				{/* The alias column keeps its width whether or not it holds anything, so
+				    the primary combos stay on one vertical line down the whole list. */}
+				<span className="w-[7.5rem] flex items-center justify-end">
+					{recording === "primary" ? null : <Slot slot="alias" />}
+				</span>
+				{/* Reserved even with nothing to restore — same reason. */}
+				<span className="w-7 h-7 flex items-center justify-center">
+					{overridden && !recording ? (
 						<button
 							type="button"
-							onClick={commit}
-							className={`px-2.5 h-7 rounded-md bg-accent-fill hover:bg-accent-fill-hover text-white text-xs font-medium ${PRESS}`}
+							title={t("keymap.edit.reset")}
+							aria-label={t("keymap.edit.reset")}
+							onClick={() => onReset(spec.id)}
+							className={`w-7 h-7 grid place-items-center rounded-md text-fg-3 hover:text-danger hover:bg-danger/10 focus-visible:ring-danger/50 ${PRESS}`}
 						>
-							{t("keymap.edit.save")}
+							<ResetIcon />
 						</button>
-					</>
-				) : recording ? (
-					<span className="px-2.5 h-7 inline-flex items-center rounded-md border border-accent/50 bg-accent/10 text-fg-2 text-xs">
-						{t("keymap.edit.recording")}
-					</span>
-				) : (
-					// The combo itself is the control — 33 rows with a separate "Change"
-					// button each is button creep, and the chips already say what to click.
-					<button
-						ref={comboRef}
-						type="button"
-						title={t("keymap.edit.record")}
-						aria-label={t("keymap.edit.a11yRecord", { name: description })}
-						onClick={() => setRecording(true)}
-						className={`px-1 py-0.5 -mx-1 rounded-lg border border-transparent hover:border-edge-active hover:bg-raised ${PRESS}`}
-					>
-						{bindings.length > 0 ? (
-							// Alternatives need a visible break — two adjacent chip runs read
-							// as one long combo (`⌘ [ ⌃ -` instead of `⌘[` or `⌃-`).
-							<span className="inline-flex items-center gap-1.5">
-								{bindings.map((b, i) => (
-									<span key={i} className="inline-flex items-center gap-1.5">
-										{i > 0 ? <span className="text-fg-muted text-xs">/</span> : null}
-										<Combo chips={bindingChips(b, mac)} tone="normal" />
-									</span>
-								))}
-							</span>
-						) : (
-							<span className="px-1.5 h-7 inline-flex items-center rounded-md border border-dashed border-edge text-fg-muted text-xs italic">
-								{t("keymap.edit.unassigned")}
-							</span>
-						)}
-					</button>
-				)}
-
-				{recording ? (
-					<button
-						type="button"
-						onClick={() => {
-							stopRecording();
-							comboRef.current?.focus();
-						}}
-						className={`px-2.5 h-7 rounded-md border border-edge text-fg-3 text-xs hover:border-edge-active ${PRESS}`}
-					>
-						{t("keymap.edit.cancel")}
-					</button>
-				) : (
-					// Reserve the slot even when there is nothing to restore, so the combo
-					// column stays on one vertical line down the whole list.
-					<span className="w-7 h-7 flex items-center justify-center">
-						{overridden ? (
-							<button
-								type="button"
-								title={t("keymap.edit.reset")}
-								aria-label={t("keymap.edit.reset")}
-								onClick={() => onRebind(spec.id, null)}
-								className={`w-7 h-7 grid place-items-center rounded-md text-fg-muted hover:text-danger hover:bg-danger/10 focus-visible:ring-danger/50 ${PRESS}`}
-							>
-								<ResetIcon />
-							</button>
-						) : null}
-					</span>
-				)}
+					) : null}
+				</span>
 			</div>
 		</div>
 	);

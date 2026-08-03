@@ -218,15 +218,6 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
-		id: "terminal-keymap",
-		category: "keyboard",
-		titleKey: "settings.terminalKeymap",
-		descriptionKey: "settings.terminalKeymapDesc",
-		anchor: "terminal-keymap",
-		globalField: "terminalKeymap",
-		storage: "global",
-	},
-	{
 		id: "terminal-backend-new-tasks",
 		category: "terminal",
 		titleKey: "settings.terminalBackend",
@@ -386,7 +377,6 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"cloneBaseDirectory",
 	"customBinaryPaths",
 	"agentBinaryPaths",
-	"terminalKeymap",
 	"playSoundOnTaskComplete",
 	"externalApps",
 	"tipsDisabled",

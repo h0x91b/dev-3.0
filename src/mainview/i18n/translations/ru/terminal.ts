@@ -97,11 +97,11 @@ const terminal = {
 	"tmux.closePaneConfirmMessage": "Это единственная оставшаяся панель — её закрытие уничтожит весь tmux-сеанс и завершит работу агента. Уверены?",
 	"tmux.selectPaneDesc": "Кликните на панель для выбора",
 	"tmux.resizePaneDesc": "Перетащите границу для ресайза",
-	"tmux.keyboardMode": "Режим клавиш",
 
 	// Tmux Cheat Sheet (full modal)
 	"cheatSheet.title": "Шпаргалка по Tmux",
 	"cheatSheet.subtitle": "Префикс — Ctrl+B (стандарт tmux). Нажмите его, затем клавишу действия.",
+	"cheatSheet.section.paneShortcuts": "Хоткеи панелей",
 	"cheatSheet.section.panes": "Панели",
 	"cheatSheet.section.layout": "Раскладки",
 	"cheatSheet.section.window": "Окна",

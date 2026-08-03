@@ -721,8 +721,6 @@ export const DEPRECATED_DEFAULT_CONFIG_REMAP: Record<string, string> = {
 	"claude-fable5-cost-trick": "claude-fable5-cost-trick-bypass-medium",
 };
 
-export type TerminalKeymapPreset = "default" | "iterm2";
-
 // ---- External Apps ("Open in...") ----
 
 export interface ExternalApp {
@@ -799,7 +797,6 @@ export interface GlobalSettings {
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>; // requirementId â custom binary path
 	agentBinaryPaths?: Record<string, string>; // agentId â resolved binary path
-	terminalKeymap?: TerminalKeymapPreset;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
@@ -854,19 +851,29 @@ export interface GlobalSettings {
 	/**
 	 * User rebinds of app-level keyboard shortcuts, keyed by `keymap.ts` shortcut
 	 * id. Sparse on purpose — only rows the user actually changed are stored, so a
-	 * changed default still reaches everyone who left that row alone. An empty
-	 * array means "deliberately unbound". See `src/mainview/keymap-store.ts`.
+	 * changed default still reaches everyone who left that row alone. A slot set to
+	 * `null` means "deliberately unbound". See `src/mainview/keymap-store.ts`.
 	 */
 	keyboardShortcuts?: ShortcutOverrides;
 }
 
+/** Every shortcut has one main combo and one optional second way to press it. */
+export type ShortcutSlot = "primary" | "alias";
+
 /**
- * Serialized key bindings per shortcut id. Each entry is
- * `"<Mod|Meta|Ctrl|Alt|Shift>+…+<KeyboardEvent.code>"`, e.g. `"Mod+Shift+KeyP"`.
- * The string form (rather than a struct) keeps settings.json diffable and lets an
- * unparsable entry be dropped instead of corrupting the whole keymap.
+ * A user override for one shortcut. A slot that is absent keeps its default; a
+ * slot set to `null` was deliberately emptied by the user. Bindings serialize as
+ * `"<Mod|Meta|Ctrl|Alt|Shift>+…+<KeyboardEvent.code>"`, e.g. `"Mod+Shift+KeyP"` —
+ * the string form keeps settings.json diffable and lets an unparsable entry be
+ * dropped instead of corrupting the whole keymap.
  */
-export type ShortcutOverrides = Record<string, string[]>;
+export interface ShortcutOverride {
+	primary?: string | null;
+	alias?: string | null;
+}
+
+/** Sparse: only shortcuts the user actually touched appear here. */
+export type ShortcutOverrides = Record<string, ShortcutOverride>;
 
 /**
  * Live state of the optional local `pxpipe-proxy` (token-saving image proxy),

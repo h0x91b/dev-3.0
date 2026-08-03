@@ -6,7 +6,9 @@ import {
 	SHORTCUT_CATEGORY_KEY,
 	SHORTCUT_CATEGORY_ORDER,
 	appShortcutsForMode,
+	shortcutById,
 	shortcutKeysForMode,
+	type ShortcutSpec,
 } from "../keymap";
 import { isMac, isRemote } from "../utils/platform";
 import { useKeymapVersion } from "../keymap-store";
@@ -63,13 +65,23 @@ function buildAppSections(t: T, mac: boolean, remote: boolean): Section[] {
 }
 
 /**
- * Tmux prefix-keyed bindings shown on the Terminal tab. Sourced from the actual
- * key bindings configured in `src/bun/tmux-config.ts` and the iTerm2-compatible
- * keymap preset (this is the former standalone TmuxCheatSheetModal content,
- * folded into the unified shortcuts overlay).
+ * The Terminal tab: tmux's own prefix-keyed bindings (from `src/bun/tmux/config.ts`),
+ * led by dev3's ⌘-key pane shortcuts. Those four live in the keymap registry, so
+ * they render whatever the user rebound them to — and they lead because they are
+ * what someone opening this from the terminal toolbar is looking for.
  */
-function buildTmuxSections(t: T): Section[] {
+function buildTmuxSections(t: T, mac: boolean, remote: boolean): Section[] {
+	const paneIds = ["pane-split-vertical", "pane-split-horizontal", "pane-close", "tmux-new-window"];
+	const paneRows = paneIds
+		.map((id) => shortcutById(id))
+		.filter((spec): spec is ShortcutSpec => spec !== undefined)
+		.map((spec) => ({
+			keys: spaceModifierGlyphs(shortcutKeysForMode(spec, mac, remote)),
+			desc: t(spec.descKey),
+		}))
+		.filter((row) => row.keys.length > 0);
 	return [
+		{ title: t("cheatSheet.section.paneShortcuts"), rows: paneRows },
 		{
 			title: t("cheatSheet.section.panes"),
 			rows: [
@@ -175,7 +187,7 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 	if (!open) return null;
 
 	const remote = isRemote();
-	const sections = tab === "app" ? buildAppSections(t, isMac(), remote) : buildTmuxSections(t);
+	const sections = tab === "app" ? buildAppSections(t, isMac(), remote) : buildTmuxSections(t, isMac(), remote);
 	const showRemoteNotice = remote && tab === "app";
 	const tabs: ShortcutsTab[] = ["app", "terminal"];
 	const tabLabel: Record<ShortcutsTab, string> = {

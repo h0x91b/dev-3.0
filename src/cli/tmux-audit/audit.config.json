@@ -682,14 +682,6 @@
 			"consumer": "Comment: accumulates pixels into one tmux scroll-wheel event.",
 			"deletionPrerequisite": "Native capture/search/copy features restored (STATE-008) and routed through the backend contract."
 		},
-		"src/mainview/terminal-keymaps.ts": {
-			"category": "pane-layout",
-			"roadmapItem": "LAY-006",
-			"depth": "caller",
-			"dependencyKind": "active",
-			"consumer": "tmux-native keymap entries mapping keys to tmux actions.",
-			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
-		},
 		"src/mainview/shift-key-sequences.ts": {
 			"category": "agent-control",
 			"roadmapItem": "INT-002",

@@ -18,7 +18,6 @@ import type {
 	GlobalSettings as GlobalSettingsType,
 	NativeTerminalAvailability,
 	ShortcutOverrides,
-	TerminalKeymapPreset,
 } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
@@ -28,7 +27,6 @@ import { openFolderPicker } from "../folder-picker";
 import { getInitialThemeState, getWindowInjectedThemeState } from "../theme-bootstrap";
 import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
-import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
 import { setShortcutOverrides } from "../keymap-store";
 import { trackEvent } from "../analytics";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
@@ -93,9 +91,6 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	const [zoomLevel, setZoomLevel] = useState(() => getZoom());
 	const [scrollSpeed, setScrollSpeed] = useState(() => getScrollSpeed());
 	const [cliInstallStatus, setCliInstallStatus] = useState<string | null>(null);
-	const [keymapPreset, setKeymapPresetState] = useState<TerminalKeymapPreset>(
-		() => getKeymapPreset(),
-	);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>(
 		DEFAULT_GLOBAL_SETTINGS,
@@ -201,10 +196,6 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then((settings) => {
 			setGlobalSettingsState(settings);
-			if (settings.terminalKeymap) {
-				setKeymapPresetState(settings.terminalKeymap);
-				setKeymapPreset(settings.terminalKeymap);
-			}
 			if (settings.taskOpenMode === "fullscreen") {
 				localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			} else {
@@ -270,15 +261,6 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 					},
 				},
 			);
-		},
-		[persistSettingChange],
-	);
-
-	const handleKeymapChange = useCallback(
-		(preset: TerminalKeymapPreset) => {
-			setKeymapPresetState(preset);
-			setKeymapPreset(preset);
-			persistSettingChange({ terminalKeymap: preset });
 		},
 		[persistSettingChange],
 	);
@@ -612,8 +594,6 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 				return (
 					<KeyboardSettingsSection
 						t={t}
-						keymapPreset={keymapPreset}
-						onKeymapChange={handleKeymapChange}
 						onShortcutsChange={handleShortcutsChange}
 					/>
 				);

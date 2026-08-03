@@ -18,7 +18,8 @@ import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getEffectiveZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer } from "./wheel-pacer";
-import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
+import type { TaskPaneAction } from "../shared/task-panes";
+import { matchesShortcut } from "./keymap";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { writeClipboardText } from "./utils/clipboard-write";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
@@ -1522,49 +1523,32 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		return () => window.removeEventListener("keydown", handleTerminalCopyShortcut, { capture: true });
 	}, [taskId]);
 
-	// Terminal keymap shortcuts (configurable preset).
-	// Uses capture phase so ghostty-web can't swallow the events.
-	// Only fires when the terminal container has focus, to avoid
-	// accidental triggers while typing in other UI fields.
-	const keymapRef = useRef(getKeymapPreset());
-	useEffect(() => {
-		function onKeymapChanged(e: Event) {
-			keymapRef.current = (e as CustomEvent).detail;
-		}
-		window.addEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
-		return () => window.removeEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
-	}, []);
-
+	// Pane shortcuts (⌘D / ⌘⇧D / ⌘W / ⌘T), rebindable via the keymap registry.
+	// Capture phase so ghostty-web can't swallow the events, and gated on focus
+	// being inside THIS terminal — these combos are only ours while a terminal has
+	// focus, which is what lets them share keys with app-level shortcuts.
 	useEffect(() => {
 		function handleKeydown(e: KeyboardEvent) {
 			const container = containerRef.current;
 			if (!container) return;
 			if (!container.contains(document.activeElement) && document.activeElement !== container) return;
 
-			const bindings = TERMINAL_KEYMAPS[keymapRef.current] ?? [];
-			const binding = bindings.find(
-				(b) =>
-					b.code === e.code &&
-					!!b.meta === e.metaKey &&
-					!!b.ctrl === e.ctrlKey &&
-					(b.shift === undefined || b.shift === e.shiftKey),
-			);
-			if (!binding) return;
+			// `typing: false` — focus IS a terminal here, and that is exactly where
+			// these must fire; the flag only exists to protect bare-key bindings.
+			const ctx = { typing: false };
+			const fire = (run: () => void) => {
+				e.preventDefault();
+				e.stopPropagation();
+				run();
+			};
+			const pane = (action: TaskPaneAction) =>
+				fire(() => void api.request.taskPaneAction({ taskId, action }).catch(() => {}));
 
-			e.preventDefault();
-			e.stopPropagation();
-			const a = binding.action;
-			if (a === "newWindow") {
-				api.request.tmuxNewWindow({ taskId }).catch(() => {});
-			} else if (a === "close") {
-				api.request.taskPaneAction({ taskId, action: { kind: "close" } }).catch(() => {});
-			} else if (a === "focusStep:next") {
-				api.request.taskPaneAction({ taskId, action: { kind: "focusStep", step: "next" } }).catch(() => {});
-			} else if (a === "focusStep:prev") {
-				api.request.taskPaneAction({ taskId, action: { kind: "focusStep", step: "prev" } }).catch(() => {});
-			} else {
-				// splitH, splitV, zoom
-				api.request.taskPaneAction({ taskId, action: { kind: a } }).catch(() => {});
+			if (matchesShortcut(e, "pane-close", ctx)) pane({ kind: "close" });
+			else if (matchesShortcut(e, "pane-split-vertical", ctx)) pane({ kind: "splitV" });
+			else if (matchesShortcut(e, "pane-split-horizontal", ctx)) pane({ kind: "splitH" });
+			else if (matchesShortcut(e, "tmux-new-window", ctx)) {
+				fire(() => void api.request.tmuxNewWindow({ taskId }).catch(() => {}));
 			}
 		}
 		window.addEventListener("keydown", handleKeydown, { capture: true });

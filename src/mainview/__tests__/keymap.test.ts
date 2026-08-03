@@ -3,6 +3,7 @@ import {
 	APP_SHORTCUTS,
 	SHORTCUT_CATEGORY_KEY,
 	SHORTCUT_CATEGORY_ORDER,
+	SHORTCUT_SLOTS,
 	appShortcutsForMode,
 	bindingsFor,
 	findConflict,
@@ -12,6 +13,8 @@ import {
 	shortcutKeysFor,
 	shortcutKeysForMode,
 	shortcutsInCategory,
+	slotBindings,
+	slotDefaults,
 } from "../keymap";
 import { serializeBinding } from "../keymap-bindings";
 import { setShortcutOverrides } from "../keymap-store";
@@ -58,7 +61,7 @@ describe("keymap registry", () => {
 	it("a remappable shortcut has bindings and a fixed one has a stated reason", () => {
 		for (const s of APP_SHORTCUTS) {
 			if (isRemappable(s)) {
-				expect(s.defaults.length, `${s.id} is remappable but has no default binding`).toBeGreaterThan(0);
+				expect(slotDefaults(s, "primary").length, `${s.id} is remappable but has no primary binding`).toBeGreaterThan(0);
 			} else {
 				expect(s.display, `${s.id} is fixed but has no display text`).toBeTruthy();
 				expect(s.fixedReasonKey, `${s.id} is fixed without saying why`).toBeTruthy();
@@ -69,10 +72,24 @@ describe("keymap registry", () => {
 
 	it("no two shortcuts ship the same default binding within a conflict group", () => {
 		for (const spec of APP_SHORTCUTS) {
-			for (const binding of spec.defaults) {
-				const clash = findConflict(spec.id, binding);
-				expect(clash, `${spec.id} clashes with ${clash?.ownerId} on ${serializeBinding(binding)}`).toBeNull();
+			for (const slot of SHORTCUT_SLOTS) {
+				for (const binding of slotDefaults(spec, slot)) {
+					const clash = findConflict(spec.id, binding);
+					expect(
+						clash,
+						`${spec.id} (${slot}) clashes with ${clash?.ownerId} (${clash?.ownerSlot}) on ${serializeBinding(binding)}`,
+					).toBeNull();
+				}
 			}
+		}
+	});
+
+	it("an alias only exists where a second combo is genuinely offered", () => {
+		const withAlias = APP_SHORTCUTS.filter((s) => slotDefaults(s, "alias").length > 0).map((s) => s.id);
+		expect(withAlias).toEqual(["back", "forward", "task-hints", "new-task", "terminal-fullscreen"]);
+		// A slot never carries platform variants of its own beyond the primary's.
+		for (const s of APP_SHORTCUTS) {
+			expect(slotDefaults(s, "alias").length, `${s.id} has more than one alias`).toBeLessThanOrEqual(1);
 		}
 	});
 
@@ -197,37 +214,115 @@ describe("matchesShortcut", () => {
 	});
 });
 
+const specFor = (id: string) => APP_SHORTCUTS.find((s) => s.id === id)!;
+
 describe("user overrides", () => {
-	it("an override replaces the defaults wholesale", () => {
-		setShortcutOverrides({ "go-to-project": ["Mod+KeyJ"] });
+	it("an override replaces the slot's default wholesale", () => {
+		setShortcutOverrides({ "go-to-project": { primary: "Mod+KeyJ" } });
 		expect(matchesShortcut(key("KeyJ", { meta: true }), "go-to-project", desktopMac)).toBe(true);
 		expect(matchesShortcut(key("KeyK", { meta: true }), "go-to-project", desktopMac)).toBe(false);
-		expect(shortcutKeysFor(APP_SHORTCUTS.find((s) => s.id === "go-to-project")!, true)).toBe("⌘J");
+		expect(shortcutKeysFor(specFor("go-to-project"), true)).toBe("⌘J");
 	});
 
-	it("an empty override means deliberately unbound", () => {
-		setShortcutOverrides({ "go-to-project": [] });
+	it("a nulled slot means deliberately unbound", () => {
+		setShortcutOverrides({ "go-to-project": { primary: null } });
 		expect(matchesShortcut(key("KeyK", { meta: true }), "go-to-project", desktopMac)).toBe(false);
-		expect(bindingsFor(APP_SHORTCUTS.find((s) => s.id === "go-to-project")!)).toEqual([]);
+		expect(bindingsFor(specFor("go-to-project"))).toEqual([]);
 	});
 
 	it("an unparsable stored binding is dropped, not fatal", () => {
-		setShortcutOverrides({ "go-to-project": ["Bogus+KeyJ", "Mod+KeyJ"] });
-		expect(bindingsFor(APP_SHORTCUTS.find((s) => s.id === "go-to-project")!)).toEqual([
-			{ code: "KeyJ", mods: ["Mod"] },
-		]);
+		setShortcutOverrides({ back: { primary: "Bogus+KeyJ" } });
+		// The junk primary empties, the untouched alias keeps firing.
+		expect(slotBindings(specFor("back"), "primary")).toEqual([]);
+		expect(bindingsFor(specFor("back"))).toEqual([{ code: "Minus", mods: ["Ctrl"] }]);
 	});
 
 	it("a fixed shortcut ignores an override that somehow reached the store", () => {
-		setShortcutOverrides({ escape: ["Mod+KeyE"] });
-		expect(bindingsFor(APP_SHORTCUTS.find((s) => s.id === "escape")!)).toEqual([]);
+		setShortcutOverrides({ escape: { primary: "Mod+KeyE" } });
+		expect(bindingsFor(specFor("escape"))).toEqual([]);
+	});
+
+	it("overriding the alias leaves the primary on its default", () => {
+		setShortcutOverrides({ back: { alias: "Mod+KeyB" } });
+		expect(slotBindings(specFor("back"), "primary")).toEqual(slotDefaults(specFor("back"), "primary"));
+		expect(matchesShortcut(key("BracketLeft", { meta: true }), "back", desktopMac)).toBe(true);
+		expect(matchesShortcut(key("KeyB", { meta: true }), "back", desktopMac)).toBe(true);
+		expect(matchesShortcut(key("Minus", { ctrl: true }), "back", desktopMac)).toBe(false);
+	});
+
+	it("overriding the primary leaves the alias on its default", () => {
+		setShortcutOverrides({ back: { primary: "Mod+KeyB" } });
+		expect(slotBindings(specFor("back"), "alias")).toEqual(slotDefaults(specFor("back"), "alias"));
+		expect(matchesShortcut(key("KeyB", { meta: true }), "back", desktopMac)).toBe(true);
+		expect(matchesShortcut(key("BracketLeft", { meta: true }), "back", desktopMac)).toBe(false);
+		expect(matchesShortcut(key("Minus", { ctrl: true }), "back", desktopMac)).toBe(true);
+	});
+
+	it("a nulled slot goes silent while the other slot still fires", () => {
+		setShortcutOverrides({ "new-task": { primary: null } });
+		expect(matchesShortcut(key("KeyN", { meta: true }), "new-task", desktopMac)).toBe(false);
+		expect(matchesShortcut(key("KeyC"), "new-task", desktopMac)).toBe(true);
+		expect(shortcutKeysFor(specFor("new-task"), true)).toBe("C");
 	});
 
 	it("findConflict sees a rebind, and stays inside the conflict group", () => {
-		setShortcutOverrides({ "go-to-project": ["Mod+Comma"] });
-		expect(findConflict("settings", { code: "Comma", mods: ["Mod"] })?.ownerId).toBe("go-to-project");
+		setShortcutOverrides({ "go-to-project": { primary: "Mod+Comma" } });
+		const clash = findConflict("settings", { code: "Comma", mods: ["Mod"] });
+		expect(clash?.ownerId).toBe("go-to-project");
+		expect(clash?.ownerSlot).toBe("primary");
 		// ⌘F is the terminal search and the artifact search at once — different
 		// groups, so neither steals from the other.
 		expect(findConflict("terminal-search", { code: "KeyF", mods: ["Mod"] })).toBeNull();
+	});
+
+	it("findConflict names the alias slot when the alias holds the combo", () => {
+		// ⌃- is `back`'s alternative, not its main combo — stealing it must empty
+		// only that slot, so the caller has to be told which one it is.
+		expect(findConflict("settings", { code: "Minus", mods: ["Ctrl"] })).toEqual({
+			ownerId: "back",
+			ownerSlot: "alias",
+			binding: { code: "Minus", mods: ["Ctrl"] },
+		});
+
+		setShortcutOverrides({ "task-hints": { alias: "Mod+KeyJ" } });
+		const rebound = findConflict("go-to-project", { code: "KeyJ", mods: ["Mod"] });
+		expect(rebound?.ownerId).toBe("task-hints");
+		expect(rebound?.ownerSlot).toBe("alias");
+	});
+});
+
+describe("terminal pane shortcuts", () => {
+	const paneIds = ["pane-close", "pane-split-vertical", "pane-split-horizontal", "tmux-new-window"];
+
+	it("are registered as always-on terminal-group shortcuts", () => {
+		for (const id of paneIds) {
+			const spec = specFor(id);
+			expect(spec, `${id} missing from the registry`).toBeTruthy();
+			expect(spec.category).toBe("terminal");
+			expect(spec.conflictGroup).toBe("terminal");
+			expect(isRemappable(spec)).toBe(true);
+		}
+		expect(shortcutKeysFor(specFor("pane-close"), true)).toBe("⌘W");
+		expect(shortcutKeysFor(specFor("pane-split-vertical"), true)).toBe("⌘D");
+		expect(shortcutKeysFor(specFor("pane-split-horizontal"), true)).toBe("⇧⌘D");
+		expect(shortcutKeysFor(specFor("tmux-new-window"), true)).toBe("⌘T");
+	});
+
+	it("do not compete with the app-level combo space", () => {
+		// They fire only while a terminal has focus, so an app-group shortcut is
+		// free to claim ⌘W / ⌘D / ⌘T without a conflict warning.
+		for (const binding of [
+			{ code: "KeyW", mods: ["Mod"] as const },
+			{ code: "KeyD", mods: ["Mod"] as const },
+			{ code: "KeyD", mods: ["Mod", "Shift"] as const },
+			{ code: "KeyT", mods: ["Mod"] as const },
+		]) {
+			expect(
+				findConflict("go-to-project", { code: binding.code, mods: [...binding.mods] }),
+				`${serializeBinding({ code: binding.code, mods: [...binding.mods] })} leaked into the app group`,
+			).toBeNull();
+		}
+		// Inside the terminal group they still guard each other.
+		expect(findConflict("terminal-search", { code: "KeyW", mods: ["Mod"] })?.ownerId).toBe("pane-close");
 	});
 });

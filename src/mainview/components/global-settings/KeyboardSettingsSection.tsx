@@ -1,21 +1,23 @@
 import { useCallback, useMemo, useState } from "react";
 import type { TFunction } from "../../i18n";
-import type { ShortcutOverrides, TerminalKeymapPreset } from "../../../shared/types";
+import type { ShortcutOverride, ShortcutOverrides, ShortcutSlot } from "../../../shared/types";
 import {
 	appShortcutsForMode,
 	findConflict,
 	isRemappable,
 	shortcutById,
 	shortcutKeysForMode,
+	slotDefaults,
 	SHORTCUT_CATEGORY_KEY,
 	SHORTCUT_CATEGORY_ORDER,
+	SHORTCUT_SLOTS,
 	type ShortcutSpec,
 } from "../../keymap";
-import { serializeBinding, type Binding } from "../../keymap-bindings";
+import { parseBinding, type Binding } from "../../keymap-bindings";
 import {
 	overrideCount,
 	useKeymapVersion,
-	withOverride,
+	withSlotOverride,
 	withoutOverride,
 } from "../../keymap-store";
 import { confirm } from "../../confirm";
@@ -24,17 +26,27 @@ import { isMac, isRemote } from "../../utils/platform";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import ShortcutRow from "./ShortcutRow";
-import TerminalKeymapSetting from "./TerminalKeymapSetting";
+
+/**
+ * What `spec` would still fire on if `pending` were its override. Used to tell a
+ * theft that merely dropped an alias from one that left the shortcut unusable.
+ */
+function bindingsAfter(spec: ShortcutSpec, pending: ShortcutOverride): Binding[] {
+	return SHORTCUT_SLOTS.flatMap((slot) => {
+		if (slot in pending) {
+			const raw = pending[slot];
+			const parsed = raw ? parseBinding(raw) : null;
+			return parsed ? [parsed] : [];
+		}
+		return slotDefaults(spec, slot);
+	});
+}
 
 export default function KeyboardSettingsSection({
 	t,
-	keymapPreset,
-	onKeymapChange,
 	onShortcutsChange,
 }: {
 	t: TFunction;
-	keymapPreset: TerminalKeymapPreset;
-	onKeymapChange: (preset: TerminalKeymapPreset) => void;
 	onShortcutsChange: (next: ShortcutOverrides) => void;
 }) {
 	// Re-render on every rebind: the rows read the resolved keymap from a module
@@ -60,31 +72,27 @@ export default function KeyboardSettingsSection({
 	}, [query, remote, t]);
 
 	const rebind = useCallback(
-		(id: string, bindings: Binding[] | null) => {
-			if (bindings === null) {
-				onShortcutsChange(withoutOverride(id));
-				return;
-			}
-			// Stealing a combo unbinds its previous owner rather than letting two
+		(id: string, slot: ShortcutSlot, binding: Binding | null) => {
+			let next = withSlotOverride(id, slot, binding);
+			// Stealing a combo empties the slot that held it, rather than letting two
 			// shortcuts answer one key — and says whose it was.
-			let next = withOverride(id, bindings);
-			for (const binding of bindings) {
+			if (binding) {
 				const clash = findConflict(id, binding);
-				if (!clash) continue;
-				const loser = shortcutById(clash.ownerId);
-				if (!loser || !isRemappable(loser)) continue;
-				const kept = (next[clash.ownerId] ?? loser.defaults.map(serializeBinding)).filter(
-					(entry) => entry !== serializeBinding(binding),
-				);
-				next = { ...next, [clash.ownerId]: kept };
-				if (kept.length === 0) {
-					toast.info(t("keymap.edit.stolen", { name: t(loser.descKey) }));
+				const loser = clash ? shortcutById(clash.ownerId) : undefined;
+				if (clash && loser && isRemappable(loser)) {
+					const kept = { ...(next[clash.ownerId] ?? {}), [clash.ownerSlot]: null };
+					next = { ...next, [clash.ownerId]: kept };
+					if (bindingsAfter(loser, kept).length === 0) {
+						toast.info(t("keymap.edit.stolen", { name: t(loser.descKey) }));
+					}
 				}
 			}
 			onShortcutsChange(next);
 		},
 		[onShortcutsChange, t],
 	);
+
+	const reset = useCallback((id: string) => onShortcutsChange(withoutOverride(id)), [onShortcutsChange]);
 
 	const resetAll = useCallback(async () => {
 		const ok = await confirm({
@@ -132,7 +140,7 @@ export default function KeyboardSettingsSection({
 					</div>
 
 					{groups.length === 0 ? (
-						<p className="text-fg-muted text-sm py-4">{t("keymap.edit.noMatches")}</p>
+						<p className="text-fg-3 text-sm py-4">{t("keymap.edit.noMatches")}</p>
 					) : (
 						groups.map(({ category, specs }) => (
 							<div key={category} className="mt-5 first:mt-1">
@@ -147,6 +155,7 @@ export default function KeyboardSettingsSection({
 										t={t}
 										remote={remote}
 										onRebind={rebind}
+										onReset={reset}
 									/>
 								))}
 							</div>
@@ -155,9 +164,6 @@ export default function KeyboardSettingsSection({
 				</div>
 			</SettingsEntry>
 
-			<SettingsEntry anchor="terminal-keymap">
-				<TerminalKeymapSetting t={t} keymapPreset={keymapPreset} onKeymapChange={onKeymapChange} />
-			</SettingsEntry>
 		</SettingsSection>
 	);
 }

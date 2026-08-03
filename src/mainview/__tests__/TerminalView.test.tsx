@@ -2,7 +2,6 @@ import { render, act, fireEvent, waitFor } from "@testing-library/react";
 import TerminalView, { type TerminalHandle, buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
-import { KEYMAP_LS_KEY } from "../terminal-keymaps";
 import type { NativeStreamRole } from "../../shared/native-terminal-stream";
 
 // ── Hoisted mocks (must be before vi.mock factories) ─────────────────────────
@@ -505,17 +504,32 @@ function dispatchDrop(target: Element, files: File[]) {
 	});
 }
 
+const realNavigator = globalThis.navigator;
+
+/** The pane combos are the macOS keymap (`Mod` = ⌘) — happy-dom is not a Mac. */
+function fakeMacPlatform() {
+	Object.defineProperty(globalThis, "navigator", {
+		value: { platform: "MacIntel", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)" },
+		writable: true,
+		configurable: true,
+	});
+}
+
 describe("TerminalView – keymap shortcuts", () => {
 	beforeEach(() => {
 		localStorage.clear();
+		fakeMacPlatform();
 		mockedTaskPaneAction.mockClear();
 		mockedTaskPaneAction.mockResolvedValue(undefined as any);
 		mockedUploadFileBase64.mockReset();
 		lastWebSocket = null;
 	});
 
-	it("iterm2 mode: Cmd+W calls taskPaneAction with close", async () => {
-		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
+	afterEach(() => {
+		Object.defineProperty(globalThis, "navigator", { value: realNavigator, writable: true, configurable: true });
+	});
+
+	it("Cmd+W calls taskPaneAction with close", async () => {
 		await renderAndSetup();
 		const target = focusInsideTerminal();
 
@@ -527,8 +541,7 @@ describe("TerminalView – keymap shortcuts", () => {
 		target.remove();
 	});
 
-	it("iterm2 mode: Cmd+D (no shift) calls splitV", async () => {
-		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
+	it("Cmd+D (no shift) calls splitV", async () => {
 		await renderAndSetup();
 		const target = focusInsideTerminal();
 
@@ -540,8 +553,7 @@ describe("TerminalView – keymap shortcuts", () => {
 		target.remove();
 	});
 
-	it("iterm2 mode: Shift+Cmd+D calls splitH", async () => {
-		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
+	it("Shift+Cmd+D calls splitH", async () => {
 		await renderAndSetup();
 		const target = focusInsideTerminal();
 
@@ -553,47 +565,7 @@ describe("TerminalView – keymap shortcuts", () => {
 		target.remove();
 	});
 
-	it("default preset (nothing stored): Cmd+W calls taskPaneAction (iTerm2 is the default)", async () => {
-		// No localStorage entry — iTerm2 hotkeys ship on by default.
-		await renderAndSetup();
-		const target = focusInsideTerminal();
-
-		await act(async () => {
-			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
-		});
-
-		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "close" } });
-		target.remove();
-	});
-
-	it("default mode (explicit opt-out): Cmd+W does NOT call taskPaneAction", async () => {
-		localStorage.setItem(KEYMAP_LS_KEY, "default");
-		await renderAndSetup();
-		const target = focusInsideTerminal();
-
-		await act(async () => {
-			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
-		});
-
-		expect(mockedTaskPaneAction).not.toHaveBeenCalled();
-		target.remove();
-	});
-
-	it("tmux-native mode: Cmd+W does NOT call taskPaneAction", async () => {
-		localStorage.setItem(KEYMAP_LS_KEY, "tmux-native");
-		await renderAndSetup();
-		const target = focusInsideTerminal();
-
-		await act(async () => {
-			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
-		});
-
-		expect(mockedTaskPaneAction).not.toHaveBeenCalled();
-		target.remove();
-	});
-
 	it("does NOT fire when terminal container does not have focus", async () => {
-		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
 		await renderAndSetup();
 		// Do NOT focus inside the container — activeElement remains document.body
 

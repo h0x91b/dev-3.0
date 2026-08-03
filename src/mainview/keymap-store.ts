@@ -8,11 +8,13 @@
  * `useKeymapVersion()` to re-render their key chips.
  *
  * Only overrides are persisted (`GlobalSettings.keyboardShortcuts`), so changing
- * a default still reaches every user who never touched that row.
+ * a default still reaches every user who never touched that row. Each shortcut has
+ * two independent slots — a primary combo and an optional alias — and each is
+ * overridden on its own.
  */
 
 import { useSyncExternalStore } from "react";
-import type { ShortcutOverrides } from "../shared/types";
+import type { ShortcutOverrides, ShortcutSlot } from "../shared/types";
 import { parseBinding, serializeBinding, type Binding } from "./keymap-bindings";
 
 let overrides: ShortcutOverrides = {};
@@ -41,29 +43,43 @@ function serializeOverrides(value: ShortcutOverrides): string {
 }
 
 /**
- * The bindings in force for one shortcut. An override replaces the defaults
- * wholesale — a stored empty array means the user deliberately unbound it.
+ * The bindings in force for one slot of one shortcut. An override replaces that
+ * slot's default; a stored `null` means the user deliberately emptied it.
  */
-export function resolvedBindings(id: string, defaults: Binding[]): Binding[] {
+export function resolvedSlot(id: string, slot: ShortcutSlot, defaults: Binding[]): Binding[] {
 	const stored = overrides[id];
-	if (!stored) return defaults;
-	return stored.map(parseBinding).filter((b): b is Binding => b !== null);
+	if (!stored || !(slot in stored)) return defaults;
+	const raw = stored[slot];
+	if (!raw) return [];
+	const parsed = parseBinding(raw);
+	return parsed ? [parsed] : [];
 }
 
+/** True when either slot of this shortcut carries a user override. */
 export function hasOverride(id: string): boolean {
-	return overrides[id] !== undefined;
+	const stored = overrides[id];
+	return !!stored && ("primary" in stored || "alias" in stored);
+}
+
+export function hasSlotOverride(id: string, slot: ShortcutSlot): boolean {
+	const stored = overrides[id];
+	return !!stored && slot in stored;
 }
 
 export function overrideCount(): number {
-	return Object.keys(overrides).length;
+	return Object.keys(overrides).filter(hasOverride).length;
 }
 
-/** Build the next override set with one shortcut rebound. */
-export function withOverride(id: string, bindings: Binding[]): ShortcutOverrides {
-	return { ...overrides, [id]: bindings.map(serializeBinding) };
+/**
+ * Build the next override set with one slot rebound. `null` empties the slot
+ * (deliberately unbound), which is different from restoring its default.
+ */
+export function withSlotOverride(id: string, slot: ShortcutSlot, binding: Binding | null): ShortcutOverrides {
+	const current = overrides[id] ?? {};
+	return { ...overrides, [id]: { ...current, [slot]: binding ? serializeBinding(binding) : null } };
 }
 
-/** Build the next override set with one shortcut back on its defaults. */
+/** Build the next override set with one shortcut back on both its defaults. */
 export function withoutOverride(id: string): ShortcutOverrides {
 	const next = { ...overrides };
 	delete next[id];

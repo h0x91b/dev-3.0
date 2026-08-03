@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { useT } from "../../i18n";
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
-import { getKeymapPreset, KEYMAP_CHANGED_EVENT, setKeymapPreset } from "../../terminal-keymaps";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
@@ -56,18 +55,11 @@ const PANE_STATE_POLL_MS = 3000;
 export default function TaskPaneControls({ taskId, compact = false }: TaskPaneControlsProps) {
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const [keymapPreset, setKeymapPresetState] = useState(() => getKeymapPreset());
 	const [paneState, setPaneState] = useState<TaskPaneState | null>(null);
 	// An action is in flight. Set before awaiting, so the click is acknowledged on the
 	// next rendered frame and a second click cannot start a duplicate mutation.
 	const [actionBusy, setActionBusy] = useState(false);
 	const actionBusyRef = useRef(false);
-	const [hintsOpen, setHintsOpen] = useState(false);
-	const [hintsPos, setHintsPos] = useState({ top: 0, left: 0 });
-	const [hintsVisible, setHintsVisible] = useState(false);
-	const hintsTriggerRef = useRef<HTMLButtonElement>(null);
-	const hintsPopoverRef = useRef<HTMLDivElement>(null);
-	const hintsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const [layoutOpen, setLayoutOpen] = useState(false);
 	const [layoutPos, setLayoutPos] = useState({ top: 0, left: 0 });
@@ -87,66 +79,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		const timer = setInterval(fetch, PANE_STATE_POLL_MS);
 		return () => clearInterval(timer);
 	}, [taskId]);
-
-	useEffect(() => {
-		function onKeymapChanged(event: Event) {
-			setKeymapPresetState((event as CustomEvent).detail);
-		}
-		window.addEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
-		return () => window.removeEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
-	}, []);
-
-	function clearHintsTimeout() {
-		if (hintsTimeoutRef.current) {
-			clearTimeout(hintsTimeoutRef.current);
-			hintsTimeoutRef.current = null;
-		}
-	}
-
-	function showHints() {
-		clearHintsTimeout();
-		if (!hintsOpen && hintsTriggerRef.current) {
-			const rect = hintsTriggerRef.current.getBoundingClientRect();
-			setHintsPos({ top: rect.bottom + 6, left: rect.right });
-			setHintsVisible(false);
-			setHintsOpen(true);
-		}
-	}
-
-	function hideHints() {
-		clearHintsTimeout();
-		hintsTimeoutRef.current = setTimeout(() => {
-			setHintsOpen(false);
-			setHintsVisible(false);
-		}, 200);
-	}
-
-	useEffect(() => clearHintsTimeout, []);
-
-	useEscapeKey(
-		() => {
-			setHintsOpen(false);
-			setHintsVisible(false);
-		},
-		{ enabled: hintsOpen },
-	);
-
-	useLayoutEffect(() => {
-		if (!hintsOpen || !hintsPopoverRef.current || !hintsTriggerRef.current) return;
-		const menu = hintsPopoverRef.current.getBoundingClientRect();
-		const trigger = hintsTriggerRef.current.getBoundingClientRect();
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		const pad = 8;
-		let top = trigger.bottom + 6;
-		let left = trigger.right - menu.width;
-		if (top + menu.height > vh - pad) top = trigger.top - menu.height - 6;
-		if (left + menu.width > vw - pad) left = vw - menu.width - pad;
-		if (left < pad) left = pad;
-		if (top < pad) top = pad;
-		setHintsPos({ top, left });
-		setHintsVisible(true);
-	}, [hintsOpen]);
 
 	function clearLayoutTimeout() {
 		if (layoutTimeoutRef.current) {
@@ -199,11 +131,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		setLayoutPos({ top, left });
 		setLayoutVisible(true);
 	}, [layoutOpen]);
-
-	function toggleItermCompat(event: ReactMouseEvent<HTMLButtonElement>) {
-		event.stopPropagation();
-		setKeymapPreset(keymapPreset === "iterm2" ? "default" : "iterm2");
-	}
 
 	/** Re-read pane state after any mutating action so capabilities stay fresh. */
 	function refreshState() {
@@ -330,9 +257,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	const tmuxNewWindowBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-success hover:bg-success/20 bg-success/10 border border-success/35 flex items-center gap-1";
 	const tmuxIconBtnClass = "tmux-anim px-1.5 py-1 rounded text-fg-muted hover:text-fg-2 hover:bg-elevated border border-edge transition-colors flex items-center justify-center flex-shrink-0";
 	const tmuxSvgClass = "w-4 h-4";
-	const popoverKbd = "font-mono text-xs text-fg-2 min-w-[3.5rem]";
-	const popoverDesc = "text-xs text-fg-3";
-	const popoverSection = "text-[0.625rem] text-fg-muted uppercase tracking-wider font-semibold mb-1.5";
 
 	const cycleIcon: ReactNode = <CycleLayoutIcon className={tmuxSvgClass} />;
 
@@ -439,14 +363,13 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 				</Tooltip>
 
 				<button
-					ref={hintsTriggerRef}
 					className={tmuxIconBtnClass}
 					onClick={(event) => {
 						event.stopPropagation();
-						setHintsOpen((open) => !open);
+						// The ⌘/ overlay's Terminal tab is the same cheat sheet, only complete
+						// and searchable — so this opens that instead of a partial popover.
+						window.dispatchEvent(new Event("menu:show-tmux-cheat-sheet"));
 					}}
-					onMouseEnter={showHints}
-					onMouseLeave={hideHints}
 					title={hintsTitle}
 					aria-label={hintsTitle}
 				>
@@ -520,77 +443,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 				document.body,
 			)}
 
-			{hintsOpen && createPortal(
-				<div
-					ref={hintsPopoverRef}
-					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active p-4 min-w-[18.75rem]"
-					style={{ top: hintsPos.top, left: hintsPos.left, visibility: hintsVisible ? "visible" : "hidden" }}
-					onMouseEnter={showHints}
-					onMouseLeave={hideHints}
-				>
-					<div className="text-xs font-semibold text-fg mb-3">{hintsTitle}</div>
-
-					{isNative ? (
-						<>
-							<div className={popoverSection}>{t("tmux.panes")}</div>
-							<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-								<span className={`${popoverDesc} col-span-2 text-fg-muted`}>{t("panes.nativeNoPrefixKeys")}</span>
-							</div>
-							<div className="mt-3 pt-2 border-t border-edge">
-								<span className={`${popoverDesc} text-fg-muted block`}>{t("panes.nativeWindowsUnavailable")}</span>
-							</div>
-						</>
-					) : (
-						<>
-							<div className={popoverSection}>{t("tmux.panes")}</div>
-							<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-								<kbd className={popoverKbd}>⌃B -</kbd><span className={popoverDesc}>{t("tmux.splitHDesc")}</span>
-								<kbd className={popoverKbd}>⌃B |</kbd><span className={popoverDesc}>{t("tmux.splitVDesc")}</span>
-								<kbd className={popoverKbd}>⌃B z</kbd><span className={popoverDesc}>{t("tmux.zoomDesc")}</span>
-								<kbd className={popoverKbd}>⌃B ␣</kbd><span className={popoverDesc}>{t("tmux.nextLayoutDesc")}</span>
-								<kbd className={popoverKbd}>⌃B x</kbd><span className={popoverDesc}>{t("tmux.closePaneDesc")}</span>
-								<kbd className={popoverKbd}>⌃D</kbd><span className={popoverDesc}>{t("tmux.closePaneEofDesc")}</span>
-								<kbd className={popoverKbd}>⌃B M-1</kbd><span className={popoverDesc}>{t("tmux.layoutEvenHDesc")}</span>
-								<kbd className={popoverKbd}>⌃B M-2</kbd><span className={popoverDesc}>{t("tmux.layoutEvenVDesc")}</span>
-								<kbd className={popoverKbd}>⌃B M-3</kbd><span className={popoverDesc}>{t("tmux.layoutMainHDesc")}</span>
-								<kbd className={popoverKbd}>⌃B M-4</kbd><span className={popoverDesc}>{t("tmux.layoutMainVDesc")}</span>
-								<kbd className={popoverKbd}>⌃B M-5</kbd><span className={popoverDesc}>{t("tmux.layoutTiledDesc")}</span>
-								<span className={`${popoverDesc} col-span-2 mt-1.5 text-fg-muted`}>{t("tmux.selectPaneDesc")}</span>
-								<span className={`${popoverDesc} col-span-2 text-fg-muted`}>{t("tmux.resizePaneDesc")}</span>
-							</div>
-						</>
-					)}
-
-					<div className="border-t border-edge mt-3 pt-3">
-						<div className={popoverSection}>{t("tmux.keyboardMode")}</div>
-						<button
-							onClick={toggleItermCompat}
-							className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
-								keymapPreset === "iterm2"
-									? "bg-accent/10 border border-accent/20"
-									: "hover:bg-elevated border border-transparent"
-							}`}
-						>
-							<div className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 border transition-colors ${
-								keymapPreset === "iterm2" ? "border-accent bg-accent" : "border-edge-active"
-							}`}>
-								{keymapPreset === "iterm2" && (
-									<svg width="7" height="6" viewBox="0 0 7 6" fill="none">
-										<path d="M0.5 3L2.5 5L6.5 1" stroke="white" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-									</svg>
-								)}
-							</div>
-							<div>
-								<div className={`text-xs font-medium ${keymapPreset === "iterm2" ? "text-accent" : "text-fg-2"}`}>
-									{t("settings.keymapIterm2")}
-								</div>
-								<div className="text-[0.625rem] text-fg-muted mt-0.5">{t("settings.keymapIterm2Desc")}</div>
-							</div>
-						</button>
-					</div>
-				</div>,
-				document.body,
-			)}
 		</>
 	);
 }

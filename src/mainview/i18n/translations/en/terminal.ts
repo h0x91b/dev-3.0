@@ -95,11 +95,11 @@ const terminal = {
 	"tmux.closePaneConfirmMessage": "This is the only remaining pane — closing it will tear down the whole tmux session and terminate the agent. Are you sure?",
 	"tmux.selectPaneDesc": "Click on a pane to select it",
 	"tmux.resizePaneDesc": "Drag pane border to resize",
-	"tmux.keyboardMode": "Keyboard Mode",
 
 	// Tmux Cheat Sheet (full modal)
 	"cheatSheet.title": "Tmux Cheat Sheet",
 	"cheatSheet.subtitle": "Prefix is Ctrl+B (tmux default). Press once, then the binding key.",
+	"cheatSheet.section.paneShortcuts": "Pane shortcuts",
 	"cheatSheet.section.panes": "Panes",
 	"cheatSheet.section.layout": "Layout",
 	"cheatSheet.section.window": "Windows",

@@ -95,11 +95,11 @@ const terminal = {
 	"tmux.closePaneConfirmMessage": "Este es el único panel restante — cerrarlo destruirá toda la sesión de tmux y terminará el agente. ¿Estás seguro?",
 	"tmux.selectPaneDesc": "Haz clic en un panel para seleccionarlo",
 	"tmux.resizePaneDesc": "Arrastra el borde del panel para redimensionar",
-	"tmux.keyboardMode": "Modo de teclado",
 
 	// Tmux Cheat Sheet (full modal)
 	"cheatSheet.title": "Chuleta de Tmux",
 	"cheatSheet.subtitle": "El prefijo es Ctrl+B (estándar de tmux). Pulsa el prefijo, luego la tecla de la acción.",
+	"cheatSheet.section.paneShortcuts": "Atajos de paneles",
 	"cheatSheet.section.panes": "Paneles",
 	"cheatSheet.section.layout": "Disposición",
 	"cheatSheet.section.window": "Ventanas",

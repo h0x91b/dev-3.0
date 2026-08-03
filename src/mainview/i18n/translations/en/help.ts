@@ -112,10 +112,10 @@ const help = {
 		"Board and task behavior defaults: where a dropped card lands in its column, the task-completion sound, focus mode, watch-by-default, and feature tips.",
 	"help.settings.keyboard.title": "Keyboard",
 	"help.settings.keyboard.body":
-		"Every app-level shortcut, and the tmux keymap preset, in one place. Press Change on a row and type the combo you want; if another shortcut already owns it, you are told whose it is before you take it. A few stay fixed — key sequences like `g d`, the ⌘1–9 project family, the hold-to-cycle task switcher and Esc — and each says why.",
+		"Every app-level shortcut in one place. Click the keys shown on a row and type the combo you want; if another shortcut already owns it, you are told whose it is before you take it. Each shortcut also has an optional second combo. A few stay fixed — key sequences like `g d`, the ⌘1–9 project family, the hold-to-cycle task switcher and Esc — and each says why.",
 	"help.settings.terminal.title": "Terminal",
 	"help.settings.terminal.body":
-		"How the terminal feels: the keyboard preset (Default or iTerm2-style), scroll speed, and zoom reset. Also which terminal backend NEW tasks on this computer get — tmux (today's default) or the experimental native terminal; existing tasks are never changed.",
+		"How the terminal feels: scroll speed and zoom reset. Also which terminal backend NEW tasks on this computer get — tmux (today's default) or the experimental native terminal; existing tasks are never changed. Key bindings live under Keyboard.",
 	"help.settings.accounts.title": "Agent accounts",
 	"help.settings.accounts.body":
 		"Sign in to multiple accounts per agent (Claude Code, Codex), switch which one is active, and manage API-key profiles.",
