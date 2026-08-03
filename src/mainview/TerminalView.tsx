@@ -83,6 +83,12 @@ const LIGHT_TERMINAL_THEME = {
 };
 
 const TERMINAL_BASE_FONT_SIZE = 14;
+/**
+ * A terminal teardown longer than this blocked the renderer for that long: every
+ * dispose on the path is synchronous. One frame at 60 Hz is 16 ms, so 50 ms is
+ * already three dropped frames — worth a line, while staying quiet in normal use.
+ */
+const TERMINAL_DISPOSE_BUDGET_MS = 50;
 
 // ghostty-web 0.4.0 FitAddon reserves 15px on width for a native scrollbar
 // that never appears — ghostty draws its scrollbar overlaid on the canvas.
@@ -1450,6 +1456,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 		return () => {
 			console.log("[TerminalView] Cleanup (unmount/re-render)", { taskId: taskId.slice(0, 8) });
+			// term.dispose() and fitAddon.dispose() are synchronous, so a slow one
+			// blocks the renderer for its whole duration. Only a cleanup that
+			// actually crossed the budget is reported (seq 1407).
+			const disposeStartedAt = performance.now();
 			disposed = true;
 			document.removeEventListener("visibilitychange", reconnectPtyOnResume);
 			window.removeEventListener("pageshow", reconnectPtyOnResume);
@@ -1502,6 +1512,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					console.error("[TerminalView] term.dispose() failed:", err);
 				}
 				termRef.current = null;
+			}
+			const disposeMs = Math.round(performance.now() - disposeStartedAt);
+			if (disposeMs >= TERMINAL_DISPOSE_BUDGET_MS) {
+				console.warn("[TerminalView] cleanup exceeded its budget", {
+					taskId: taskId.slice(0, 8),
+					disposeMs,
+					budgetMs: TERMINAL_DISPOSE_BUDGET_MS,
+				});
 			}
 		};
 	}, [ptyUrl, taskId]);

@@ -253,8 +253,24 @@ export async function nativeAuxPaneShellPid(task: Task, purpose: AuxPanePurpose)
  * Close every pane this purpose owns. Idempotent, and best-effort by design:
  * a pane that is already gone is the desired end state, not an error.
  */
-export async function closeAuxPane(task: Task, purpose: AuxPanePurpose, socket: string): Promise<void> {
-	for (const handle of await findAuxPanes(task, purpose, socket)) {
+export async function closeAuxPane(
+	task: Task,
+	purpose: AuxPanePurpose,
+	socket: string,
+	opId?: string,
+): Promise<void> {
+	const handles = await findAuxPanes(task, purpose, socket);
+	if (handles.length === 0) {
+		// A stop that owned nothing used to be completely silent, which left "there
+		// was no pane" and "the close never ran" indistinguishable in the log (seq 1407).
+		log.info("Closed auxiliary pane: nothing owned this purpose", {
+			taskId: task.id.slice(0, 8),
+			...(opId ? { opId } : {}),
+			purpose,
+		});
+		return;
+	}
+	for (const handle of handles) {
 		if (handle.backend === "native") {
 			await closeNativeTaskPane(task.id, handle.paneId).catch((err) =>
 				log.warn("closeAuxPane: native pane close failed", { taskId: task.id.slice(0, 8), purpose, error: String(err) }),
@@ -262,7 +278,13 @@ export async function closeAuxPane(task: Task, purpose: AuxPanePurpose, socket: 
 		} else {
 			await tmux.killPane(handle.paneId, { socket, bestEffort: true });
 		}
-		log.info("Closed auxiliary pane", { taskId: task.id.slice(0, 8), purpose, backend: handle.backend, paneId: handle.paneId });
+		log.info("Closed auxiliary pane", {
+			taskId: task.id.slice(0, 8),
+			...(opId ? { opId } : {}),
+			purpose,
+			backend: handle.backend,
+			paneId: handle.paneId,
+		});
 	}
 }
 
@@ -276,6 +298,7 @@ export class AuxPaneUndecidableError extends Error {
 		super(
 			`could not check whether this task already has a ${purpose} pane, so the launch was refused: ` +
 				`${cause instanceof Error ? cause.message : String(cause)}`,
+			{ cause },
 			{ cause },
 		);
 		this.name = "AuxPaneUndecidableError";

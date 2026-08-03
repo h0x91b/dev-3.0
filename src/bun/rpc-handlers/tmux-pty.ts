@@ -267,7 +267,12 @@ async function findOrphanedPortHolders(
 	return { orphanPids: [...orphanPids], foreignHolders };
 }
 
-export async function killDevServerSession(task: Task, socket: string, worktreePath?: string | null): Promise<void> {
+export async function killDevServerSession(
+	task: Task,
+	socket: string,
+	worktreePath?: string | null,
+	opId?: string,
+): Promise<void> {
 	const taskId = task.id;
 	const native = taskTerminalBackendIdentity(task) === "native";
 	const devSession = devServerSessionName(taskId);
@@ -294,7 +299,7 @@ export async function killDevServerSession(task: Task, socket: string, worktreeP
 	if (native) {
 		// The pane IS the dev server: closing it kills the script, and the reap
 		// below finishes off anything it left behind. No tmux is touched.
-		await closeAuxPane(task, "devServer", socket);
+		await closeAuxPane(task, "devServer", socket, opId);
 	} else {
 		await killDevServerViewerPane(taskId, taskSession, devSession, socket);
 		await tmux.killSession(devSession, { socket, bestEffort: true });
@@ -313,6 +318,7 @@ export async function killDevServerSession(task: Task, socket: string, worktreeP
 	clearPortDataForTask(taskId);
 	log.info("Killed dev server session", {
 		taskId: taskId.slice(0, 8),
+		...(opId ? { opId } : {}),
 		devSession,
 		reaped: treePids.length + orphanPids.length,
 		leftovers: leftovers.length,
@@ -1174,7 +1180,10 @@ async function checkDevServer(params: { taskId: string; projectId: string }): Pr
 }
 
 export async function stopDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
-	log.info("→ stopDevServer", params);
+	// One id joins request → aux-pane close → reap → reply across the log, so a
+	// stop that half-finished is readable without guessing from timestamps (seq 1407).
+	const opId = crypto.randomUUID().slice(0, 8);
+	log.info("→ stopDevServer", { ...params, opId });
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
@@ -1198,16 +1207,16 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 			});
 			const status = await buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 			setTimeout(() => {
-				killDevServerSession(task, socket, task.worktreePath)
+				killDevServerSession(task, socket, task.worktreePath, opId)
 					.then(clearPaneBorder)
 					.catch((err) => log.error("Deferred self-hosted dev-server teardown failed", { error: String(err) }));
 			}, SELF_HOSTED_STOP_ACK_MS);
 			return { ...status, running: false, viewerPaneId: null, panePids: [], devPorts: [], resourceUsage: undefined };
 		}
 
-		await killDevServerSession(task, socket, task.worktreePath);
+		await killDevServerSession(task, socket, task.worktreePath, opId);
 		clearPaneBorder().catch(() => {});
-		log.info("← stopDevServer done");
+		log.info("← stopDevServer done", { opId });
 		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 	} catch (err) {
 		log.error("stopDevServer FAILED", {

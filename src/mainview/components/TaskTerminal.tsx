@@ -168,9 +168,20 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				const next = new Set([...prev].filter((id) => live.has(id)));
 				return next.size === prev.size ? prev : next;
 			});
-			// Set initial client focus to the server-active pane.
+			// Client focus is ours to keep correct: the server never corrects it
+			// (decision 179), so a focused pane that left the set — a dev-server pane
+			// closing is the usual way — has to hand focus to a pane that is still here.
+			const live = new Set(state.panes.map((p) => p.paneId));
+			setPaneUrls((prev) => {
+				const stale = [...prev.keys()].filter((paneId) => !live.has(paneId));
+				if (stale.length === 0) return prev;
+				const next = new Map(prev);
+				for (const paneId of stale) next.delete(paneId);
+				return next;
+			});
 			setClientFocusPaneId((prev) => {
-				const next = prev ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null);
+				const kept = prev && live.has(prev) ? prev : null;
+				const next = kept ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null);
 				if (next) publishNativePaneFocus(taskId, next);
 				return next;
 			});

@@ -241,7 +241,9 @@ describe("stopDevServer", () => {
 
 		await stopDevServer({ taskId: TASK_ID, projectId: PROJECT.id });
 
-		expect(mocks.closeAuxPane).toHaveBeenCalledWith(TASK, "devServer", "dev3");
+		// The 4th argument is the stop's correlation id, which has to reach the
+		// aux-pane close or the log cannot join request → close → reply (seq 1407).
+		expect(mocks.closeAuxPane).toHaveBeenCalledWith(TASK, "devServer", "dev3", expect.stringMatching(/^[0-9a-f]{8}$/));
 		expect(mocks.tmuxKillSession).not.toHaveBeenCalled();
 		expect(liveness.alive()).toBe(false);
 	});

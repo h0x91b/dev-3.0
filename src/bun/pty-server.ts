@@ -803,6 +803,16 @@ function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }
 
+/**
+ * Which pane a WS session key belongs to. `shortId` truncates a composite key to
+ * its task prefix, so a line carrying only `taskId` cannot tell two panes of one
+ * task apart — which is what made a connect/disconnect imbalance unreadable in the
+ * logs (seq 1407). Log it next to the task id on every native viewer transition.
+ */
+function paneIdOfSessionKey(key: string): string {
+	return parsePaneSessionKey(key)?.paneId ?? "pane-1";
+}
+
 // ── Pane helpers ─────────────────────────────────────────────────────
 
 /**
@@ -1180,6 +1190,8 @@ function attachNativeClient(session: PtySession, ws: any, since: number | null):
 	);
 	log.info("Native viewer attached", {
 		taskId: shortId(session.taskId),
+		paneId: session.native?.paneId ?? "pane-1",
+		sessionId,
 		role,
 		since,
 		seq: replay.seq,
@@ -1954,6 +1966,7 @@ const ptyServer = Bun.serve({
 
 				log.info("WS connected", {
 					taskId: shortId(sessionId),
+					paneId: paneIdOfSessionKey(sessionId),
 					hasExistingProc: !!session.proc,
 					procPid: session.proc?.pid ?? null,
 					cwd: session.cwd,
@@ -2091,7 +2104,10 @@ const ptyServer = Bun.serve({
 				const sessionId = (ws as any).sessionId as string | undefined;
 				if (!sessionId) return;
 
-				log.info("WS disconnected", { taskId: shortId(sessionId) });
+				log.info("WS disconnected", {
+					taskId: shortId(sessionId),
+					paneId: paneIdOfSessionKey(sessionId),
+				});
 
 				const session = sessions.get(sessionId);
 				if (session) {
