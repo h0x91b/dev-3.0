@@ -184,6 +184,93 @@ describe("Dev Server action correlation", () => {
 		}
 	});
 
+	it("emits BOTH render boundaries for a deferred start, in order", async () => {
+		let resolveStart: ((v: unknown) => void) | null = null;
+		vi.mocked(api.request.runDevServer).mockReturnValue(
+			new Promise((resolve) => {
+				resolveStart = resolve;
+			}) as never,
+		);
+		renderDevServer();
+		await userEvent.click(await waitFor(() => screen.getByLabelText(/Dev server stopped/i)));
+
+		await waitFor(() => expect(api.request.runDevServer).toHaveBeenCalledTimes(1));
+		const opId = vi.mocked(api.request.runDevServer).mock.calls[0]![0].opId;
+		const lines = () =>
+			vi
+				.mocked(api.request.logRendererDiagnostic)
+				.mock.calls.map(([p]) => p)
+				.filter((p) => p.extra?.opId === opId);
+
+		// While the request is still in flight, only the optimistic paint exists.
+		await waitFor(() =>
+			expect(lines().map((p) => p.message)).toContain("runDevServer optimistic-rendered"),
+		);
+		expect(lines().map((p) => p.message)).not.toContain("runDevServer rendered");
+
+		resolveStart!({ running: true });
+		await waitFor(() => expect(lines().map((p) => p.message)).toContain("runDevServer rendered"));
+
+		const messages = lines().map((p) => String(p.message));
+		// Order matters: the optimistic paint happened first and must be reported first.
+		expect(messages.indexOf("runDevServer optimistic-rendered")).toBeLessThan(
+			messages.indexOf("runDevServer rendered"),
+		);
+		const optimistic = lines().find((p) => p.message === "runDevServer optimistic-rendered")!;
+		const settled = lines().find((p) => p.message === "runDevServer rendered")!;
+		expect(optimistic.extra).toHaveProperty("gestureToRenderMs");
+		expect(optimistic.extra).not.toHaveProperty("settleToRenderMs");
+		expect(settled.extra).toHaveProperty("settleToRenderMs");
+		expect(settled.extra).not.toHaveProperty("gestureToRenderMs");
+	});
+
+	it("keeps one poll in flight and stops emitting once unmounted", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.mocked(api.request.checkDevServer).mockReturnValue(new Promise(() => {}) as never);
+			const view = renderDevServer();
+			await vi.advanceTimersByTimeAsync(30_000);
+			// The interval keeps firing, but a hung request must not stack more.
+			expect(vi.mocked(api.request.checkDevServer).mock.calls).toHaveLength(1);
+
+			view.unmount();
+			const before = vi.mocked(api.request.logRendererDiagnostic).mock.calls.length;
+			await vi.advanceTimersByTimeAsync(60_000);
+			// The armed stall timer belongs to a component that is gone.
+			expect(vi.mocked(api.request.logRendererDiagnostic).mock.calls.length).toBe(before);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("reports how long a stalled request really took, not the threshold", async () => {
+		vi.useFakeTimers();
+		const realNow = performance.now.bind(performance);
+		try {
+			vi.mocked(api.request.checkDevServer).mockReturnValue(new Promise(() => {}) as never);
+			renderDevServer();
+			await vi.advanceTimersByTimeAsync(100);
+			// Fake timers run a callback at its DUE time, so they cannot model a blocked
+			// event loop. Move the clock the timer reads instead: the callback now runs
+			// 49 s after it was armed, which is what a jammed loop looks like.
+			const offset = 49_000;
+			vi.spyOn(performance, "now").mockImplementation(() => realNow() + offset);
+			await vi.advanceTimersByTimeAsync(8_100);
+
+			const stalled = vi
+				.mocked(api.request.logRendererDiagnostic)
+				.mock.calls.map(([p]) => p)
+				.find((p) => p.message === "checkDevServer stalled")!;
+			expect(stalled).toBeDefined();
+			// The lateness IS the finding — a hardcoded threshold would hide it.
+			expect(Number(stalled.extra?.unsettledForMs)).toBeGreaterThanOrEqual(40_000);
+			expect(stalled.extra?.thresholdMs).toBe(8_000);
+		} finally {
+			vi.mocked(performance.now).mockRestore?.();
+			vi.useRealTimers();
+		}
+	});
+
 	it("gives every start a distinct opId across repeated clicks", async () => {
 		renderDevServer();
 		const button = await waitFor(() => screen.getByLabelText(/Dev server stopped/i));

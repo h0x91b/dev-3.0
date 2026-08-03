@@ -316,14 +316,22 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		message: string,
 		extra?: Record<string, string | number | boolean | null>,
 	) {
-		const request = api.request.logRendererDiagnostic({
-			level,
-			tag,
-			message,
-			extra: { taskId: taskId.slice(0, 8), ...(extra ?? {}) },
-		});
-		if (request && typeof (request as Promise<void>).catch === "function") {
-			request.catch(() => {});
+		// The whole invocation is guarded, not just the promise: cleanup calls this
+		// FIRST, so a synchronous throw here would abort every disposer after it and
+		// leak the terminal, its sockets and its listeners. Diagnostics must never be
+		// able to break the thing they describe.
+		try {
+			const request = api.request.logRendererDiagnostic({
+				level,
+				tag,
+				message,
+				extra: { taskId: taskId.slice(0, 8), ...(extra ?? {}) },
+			});
+			if (request && typeof (request as Promise<void>).catch === "function") {
+				request.catch(() => {});
+			}
+		} catch {
+			/* diagnostics only */
 		}
 	}
 
@@ -1480,7 +1488,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// the console does not survive a restart, and the sink does not survive a
 			// dead bridge (decision 199).
 			console.debug("[TerminalView] cleanup started", { taskId: taskId.slice(0, 8) });
-			logDiagnostic("terminal-dispose", "debug", "cleanup started");
+			// info, not debug: prod/staging/canary run the logger at a minimum of info,
+			// so a debug line never reaches the file and the marker would not be durable.
+			logDiagnostic("terminal-dispose", "info", "cleanup started");
 			disposed = true;
 			document.removeEventListener("visibilitychange", reconnectPtyOnResume);
 			window.removeEventListener("pageshow", reconnectPtyOnResume);
@@ -1536,7 +1546,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			const disposeMs = Math.round(performance.now() - disposeStartedAt);
 			console.debug("[TerminalView] cleanup finished", { taskId: taskId.slice(0, 8), disposeMs });
-			logDiagnostic("terminal-dispose", "debug", "cleanup finished", { disposeMs });
+			logDiagnostic("terminal-dispose", "info", "cleanup finished", { disposeMs });
 			if (disposeMs >= TERMINAL_DISPOSE_BUDGET_MS) {
 				console.warn("[TerminalView] cleanup exceeded its budget", {
 					taskId: taskId.slice(0, 8),

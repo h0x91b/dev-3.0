@@ -2,55 +2,41 @@
 
 ## Context
 
-A native task froze its entire UI when the user clicked Stop Dev Server. The backend
-was demonstrably fine: `stopDevServer` finished in 539 ms, closed the pane, reaped 8
-processes verified dead, left no stuck ports, and the main process kept logging for
-another 49 s until the user quit. The renderer went silent instead.
-
-Diagnosing that from `~/.dev3.0/logs` was impossible, because **the renderer's console
-never reaches those logs**. The only renderer lines in the whole incident came from a
-helper introduced for an unrelated terminal-copy investigation, explicitly marked
-`TEMP DIAGNOSTIC`: `logRendererEvent`. Everything else the renderer knew — including
-the RPC bridge watchdog deciding the bridge was dead — existed only in a console
-nobody was watching.
+A native task froze its whole UI on Stop Dev Server. The backend was demonstrably
+fine — `stopDevServer` finished in 539 ms and the main process kept logging for another
+49 s — while the renderer went silent. Diagnosing that from `~/.dev3.0/logs` was
+impossible, because the renderer's console never reaches those logs. The only renderer
+lines in the entire incident came from a helper added for an unrelated terminal-copy
+investigation and marked `TEMP DIAGNOSTIC`.
 
 ## Decision
 
-`logRendererEvent` is renamed to `logRendererDiagnostic` and promoted from a
-single-investigation hack to a **scoped** sink, documented on its schema entry in
-`src/shared/types.ts` and implemented in `src/bun/rpc-handlers/shared.ts`. `tag`
-namespaces each caller (`terminal-copy`, `dev-server`, `rpc-watchdog`).
+`logRendererEvent` becomes `logRendererDiagnostic`: a **scoped** sink, documented on its
+schema entry in `src/shared/types.ts` and implemented in `src/bun/rpc-handlers/shared.ts`,
+where `tag` namespaces each caller. It is not a general console bridge and must not
+become one — every call site is a named investigation, expected to be deleted when that
+investigation closes. Four exist today: `terminal-copy`, `dev-server`, `rpc-watchdog`
+and `terminal-dispose`; `src/mainview/dev-server-trace.ts` is the reference shape.
 
-It is deliberately **not** a general console bridge and must not become one. Every
-call site is a named investigation and is expected to be deleted when that
-investigation closes. Three exist today; `src/mainview/dev-server-trace.ts` is the
-reference shape for a new one.
-
-Volume is the caller's problem, not the sink's. `dev-server-trace.ts` traces user
-gestures always but a `checkDevServer` poll only when it fails — a poll runs every few
-seconds for every open task, and tracing its happy path would bury the gestures it
-exists to explain.
+Volume and level are the caller's problem. A `checkDevServer` poll only emits when it
+stalls or rejects, since a healthy poll every few seconds would bury the gestures it
+exists to explain. Anything meant to be durable must be `info` or higher: prod, staging
+and canary run the logger at a minimum of `info`, so a `debug` line is dropped before it
+is ever appended.
 
 ## Risks
 
-**The sink is itself an RPC, so it cannot report a dead bridge.** This is the honest
-limit of the whole approach: when the transport stops carrying traffic, the traces
-stop with it. It is not useless — the last correlation id present on either side
-brackets the moment delivery stopped, and the renderer console still holds the tail
-for a live post-mortem — but no trace emitted this way can *prove* bridge death. A
-durable, transport-independent boundary (a file the renderer can reach without RPC)
-would be needed for that, and is not built.
-
-Second risk: a promoted helper invites unrelated callers. Mitigated only by
-convention and review, since nothing enforces the tag namespace.
+**The sink is itself an RPC, so it cannot report a dead bridge.** When the transport
+stops carrying traffic the traces stop with it, so no line emitted this way can *prove*
+bridge death — only bracket it, by the last correlation id present on either side. A
+transport-independent boundary would be needed for proof and is not built. Second risk:
+a promoted helper invites unrelated callers, mitigated only by convention and review.
 
 ## Alternatives considered
 
-- **A 1 Hz renderer heartbeat plus global per-RPC logging.** Rejected as too noisy and
-  too cross-cutting to land on suspicion alone: it would write to the log forever to
-  catch an event seen once.
-- **Leave `logRendererEvent` as the terminal-copy temp helper and add a second sink for
-  Dev Server.** Rejected — two identical bridges with different names is worse than one
-  named honestly.
-- **Delete the sink and rely on the console.** Rejected: the console is exactly what
-  was missing when the incident was investigated.
+A 1 Hz renderer heartbeat with global per-RPC logging was rejected as too noisy and too
+cross-cutting to land on suspicion — it would write forever to catch an event seen once.
+A second sink alongside the terminal-copy helper was rejected because two identical
+bridges under different names is worse than one named honestly. Deleting the sink and
+relying on the console was rejected: the console is exactly what was missing when this
+incident was investigated.

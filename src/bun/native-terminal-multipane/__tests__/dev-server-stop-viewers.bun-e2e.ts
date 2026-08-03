@@ -61,17 +61,66 @@ function bump(counter: Map<string, number>, key: string): void {
 	counter.set(key, (counter.get(key) ?? 0) + 1);
 }
 
+/** How long a socket may take to actually close before we call it unreleased. */
+const DISCONNECT_BUDGET_MS = 5_000;
+/** How long owned pane trees may take to die after cleanup before we force it. */
+const CLEANUP_BUDGET_MS = 10_000;
+
+async function waitUntil(predicate: () => boolean, budgetMs: number): Promise<boolean> {
+	const deadline = Date.now() + budgetMs;
+	for (;;) {
+		if (predicate()) return true;
+		if (Date.now() >= deadline) return false;
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	}
+}
+
 /**
- * Close a viewer connection and record it only once it is OBSERVABLY released —
- * `role()` reports null only after the client has dropped its socket. Counting the
- * intent instead of the effect is exactly how a no-op close would pass a balance
- * check. A connection whose pane the host already tore down is already released, and
- * counting that is correct: the ledger tracks released connections, not who released
- * them.
+ * A viewer connection plus the only trustworthy evidence that it went away.
+ *
+ * `role()` is NOT evidence: `NativeSessionClient.close()` sets `currentRole = null`
+ * synchronously, long before the socket's close event, so a socket that never closes
+ * still reads as released. `onDisconnect` fires from the socket's own close event —
+ * but it must be subscribed at CONNECT time, because a callback registered after the
+ * socket has already gone never fires at all. That also makes a host-initiated
+ * teardown (the pane closing under us) count correctly: the ledger tracks released
+ * connections, not who released them.
  */
-function closeAndRecord(counter: Map<string, number>, key: string, connection: PaneConnection): void {
-	connection.close();
-	if (connection.role() === null) bump(counter, key);
+interface TrackedConnection {
+	readonly sessionId: string;
+	readonly connection: PaneConnection;
+	/** Resolves true once the socket really closed, false if it never did in time. */
+	closeAndAwaitRelease(): Promise<boolean>;
+}
+
+function track(sessionId: string, connection: PaneConnection): TrackedConnection {
+	let released = false;
+	let resolveReleased: (() => void) | null = null;
+	const releasedSignal = new Promise<void>((resolve) => {
+		resolveReleased = resolve;
+	});
+	connection.onDisconnect(() => {
+		released = true;
+		resolveReleased?.();
+	});
+	return {
+		sessionId,
+		connection,
+		async closeAndAwaitRelease() {
+			connection.close();
+			if (!released) {
+				await Promise.race([
+					releasedSignal,
+					new Promise((resolve) => setTimeout(resolve, DISCONNECT_BUDGET_MS)),
+				]);
+			}
+			return released;
+		},
+	};
+}
+
+async function closeAndRecord(counter: Map<string, number>, tracked: TrackedConnection): Promise<void> {
+	if (await tracked.closeAndAwaitRelease()) bump(counter, tracked.sessionId);
 }
 
 function shellSpec(root: string, paneId: string, command?: string): PaneLaunchSpec {
@@ -144,30 +193,30 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 		const agentPaneId = coordinator.paneIds()[0]!;
 		const agentSession = paneSessionId(coordinatorId, agentPaneId);
 		const agentSnapshot = (await coordinator.listPanes()).find((p) => p.paneId === agentPaneId)!;
-		const agentConn = await coordinator.connect(agentPaneId);
+		const agentConn = track(agentSession, await coordinator.connect(agentPaneId));
 		bump(ledger.opened, agentSession);
-		const agentSink = sinkOf(agentConn);
+		const agentSink = sinkOf(agentConn.connection);
 
 		for (let cycle = 1; cycle <= cycles; cycle++) {
 			// ── start: the dev-server aux pane, running something long-lived ────────
 			const auxPaneId = await coordinator.split(agentPaneId, "vertical", shellSpec(root, `aux-${cycle}`));
 			const auxSession = paneSessionId(coordinatorId, auxPaneId);
 			const auxSnapshot = (await coordinator.listPanes()).find((p) => p.paneId === auxPaneId)!;
-			const auxConn = await coordinator.connect(auxPaneId);
+			const auxConn = track(auxSession, await coordinator.connect(auxPaneId));
 			bump(ledger.opened, auxSession);
 			// A dev server is a process that does not exit on its own.
 			await coordinator.writePane(auxPaneId, `sleep 3600 &${lineEnd}`);
 
 			// ── extra independent viewers on the SAME pane sessions ─────────────────
-			const extras: Array<{ controller: NativeMultipaneCoordinator; conns: PaneConnection[] }> = [];
+			const extras: Array<{ controller: NativeMultipaneCoordinator; conns: TrackedConnection[] }> = [];
 			for (let v = 0; v < extraViewers; v++) {
 				const observer = await NativeMultipaneCoordinator.recover(coordinatorId);
 				if (!observer) continue;
-				const conns: PaneConnection[] = [];
+				const conns: TrackedConnection[] = [];
 				for (const paneId of [agentPaneId, auxPaneId]) {
-					const conn = await observer.connect(paneId);
-					bump(ledger.opened, paneSessionId(coordinatorId, paneId));
-					conns.push(conn);
+					const sessionId = paneSessionId(coordinatorId, paneId);
+					conns.push(track(sessionId, await observer.connect(paneId)));
+					bump(ledger.opened, sessionId);
 				}
 				extras.push({ controller: observer, conns });
 			}
@@ -178,12 +227,9 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 			const closeMs = performance.now() - closeStartedAt;
 
 			// The closing viewer's own connection to the gone pane must be released.
-			closeAndRecord(ledger.closed, auxSession, auxConn);
+			await closeAndRecord(ledger.closed, auxConn);
 			for (const extra of extras) {
-				// conns[0] is the agent pane, conns[1] the aux pane — same order they
-				// were opened in, so each close is recorded against its own session.
-				closeAndRecord(ledger.closed, agentSession, extra.conns[0]!);
-				closeAndRecord(ledger.closed, auxSession, extra.conns[1]!);
+				for (const conn of extra.conns) await closeAndRecord(ledger.closed, conn);
 				extra.controller.detach();
 			}
 
@@ -215,7 +261,7 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 			}
 		}
 
-		closeAndRecord(ledger.closed, agentSession, agentConn);
+		await closeAndRecord(ledger.closed, agentConn);
 
 		// ── verdicts ────────────────────────────────────────────────────────────
 		const ran = stats.length;
@@ -247,11 +293,33 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 		);
 		return stats;
 	} finally {
+		// Swallowing this used to hide a leaked host and then delete the records the
+		// teardown needed. Retain the pane pids first, fail loudly, and prove the trees
+		// are gone under a deadline before anything is removed.
+		const owned = await coordinator.listPanes().catch(() => []);
 		try {
 			await coordinator.cleanup();
-		} catch {
-			// best-effort
+		} catch (err) {
+			check(false, `${label}: coordinator.cleanup() threw — ${String(err)}`);
 		}
+		const gone = await waitUntil(
+			() => owned.every((pane) => !isProcessAlive(pane.shellPid) && !isProcessAlive(pane.hostPid)),
+			CLEANUP_BUDGET_MS,
+		);
+		if (!gone) {
+			for (const pane of owned) {
+				for (const pid of [pane.shellPid, pane.hostPid]) {
+					if (isProcessAlive(pid)) {
+						try {
+							process.kill(pid, "SIGKILL");
+						} catch {
+							/* already gone */
+						}
+					}
+				}
+			}
+		}
+		check(gone, `${label}: every owned pane process tree is gone after cleanup`);
 	}
 }
 

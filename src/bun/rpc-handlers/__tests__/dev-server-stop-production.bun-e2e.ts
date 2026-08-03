@@ -179,17 +179,27 @@ async function run(): Promise<void> {
 		executable: "/bin/bash",
 		argv: ["--norc", "--noprofile"],
 	});
-	// The task's native host is detached by design, so it outlives this process unless
-	// it is explicitly destroyed. Remember its pids and prove they are gone at the end.
-	const nativePanes = await import("../../native-task-panes");
-	const agentPane = (await nativePanes.nativeTaskPanesState(TASK_ID))?.panes[0];
-	if (!agentPane) throw new Error("the task's own native pane never came up");
 
+	// Ownership starts HERE, not after the reads below: the task's native host is
+	// detached by design, so anything that throws between creation and the finally
+	// would orphan a host and a shell. Every pid we learn about goes into `ownedPids`
+	// as soon as it is known, and the finally reaps whatever is in there.
+	const ownedPids = new Set<number>();
+	const ownedPorts = new Set<number>();
 	const stopDurations: number[] = [];
 	try {
+		const nativePanes = await import("../../native-task-panes");
+		const agentPane = (await nativePanes.nativeTaskPanesState(TASK_ID))?.panes[0];
+		if (!agentPane) throw new Error("the task's own native pane never came up");
+		ownedPids.add(agentPane.hostPid);
+		ownedPids.add(agentPane.shellPid);
+		if (process.env.DEV3_STOP_E2E_INJECT === "after-session") {
+			throw new Error("injected failure right after the native session came up");
+		}
 		for (let cycle = 1; cycle <= cycles; cycle++) {
 			rmSync(join(worktree, "pids.txt"), { force: true });
 			await runDevServer({ taskId: TASK_ID, projectId: PROJECT_ID, opId: `start${cycle}` });
+			for (const allocated of portPool.getPortAssignments(TASK_ID)) ownedPorts.add(allocated);
 
 			// Prove it is genuinely up first, or the stop assertions are vacuous.
 			if (!(await waitUntil(() => recordedPids() !== null, START_BUDGET_MS))) {
@@ -197,6 +207,12 @@ async function run(): Promise<void> {
 				break;
 			}
 			const pids = recordedPids()!;
+			ownedPids.add(pids.server);
+			ownedPids.add(pids.background);
+			ownedPids.add(pids.detached);
+			if (process.env.DEV3_STOP_E2E_INJECT === "after-start") {
+				throw new Error("injected failure with the dev server up");
+			}
 			const port = portPool.getPortAssignments(TASK_ID)[0]!;
 			if (!(await waitUntil(async () => (await portHolders(port)).length > 0, 15_000))) {
 				check(false, `cycle ${cycle}: nothing ever bound pool port ${port}`);
@@ -230,27 +246,40 @@ async function run(): Promise<void> {
 		check(again.running === false, "stopping an already-stopped dev server is idempotent");
 		check(!existsSync(sentinel), "the whole native start/stop path NEVER invokes tmux");
 	} finally {
+		// Everything below runs on EVERY path, including an injected failure, and a
+		// cleanup step that fails is reported rather than swallowed.
 		try {
 			await stopDevServer({ taskId: TASK_ID, projectId: PROJECT_ID });
-		} catch {
-			/* already stopped */
+		} catch (err) {
+			check(false, `final stopDevServer threw — ${String(err)}`);
 		}
-		// Tear the task's own native session down BEFORE the temp state disappears —
-		// afterwards the records it needs are gone and the host would be orphaned.
+		// Destroy the task's own session BEFORE the temp state disappears: afterwards
+		// the records the teardown needs are gone and the host would be orphaned.
 		try {
 			await pty.destroyNativeTaskSession(TASK_ID);
 		} catch (err) {
-			console.error("  destroyNativeTaskSession failed:", String(err));
+			check(false, `destroyNativeTaskSession threw — ${String(err)}`);
 		}
-		const reaped = await waitUntil(
-			() => !alive(agentPane.hostPid) && !alive(agentPane.shellPid),
-			10_000,
-		);
-		check(reaped, "the task's own native host and shell are gone after teardown");
+		const survivors = () => [...ownedPids].filter((pid) => alive(pid));
+		const reaped = await waitUntil(() => survivors().length === 0, 10_000);
+		check(reaped, `every owned pid is gone after teardown${reaped ? "" : ` — alive: ${survivors()}`}`);
+		// Force-terminate before deleting state, so a bug here cannot leak a detached
+		// host into the developer's machine on top of failing the check above.
+		for (const pid of survivors()) {
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {
+				/* already gone */
+			}
+		}
+		for (const port of ownedPorts) {
+			const held = await portHolders(port);
+			check(held.length === 0, `no process still holds pool port ${port} after teardown`);
+		}
 		try {
 			rmSync(root, { recursive: true, force: true });
-		} catch {
-			/* best effort */
+		} catch (err) {
+			check(false, `removing temp state threw — ${String(err)}`);
 		}
 	}
 }

@@ -4,6 +4,9 @@ import { createPortal } from "react-dom";
 import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { traceDevServerOp, type DevServerTrace } from "../../dev-server-trace";
+
+/** Whether a paint happened before the request settled, or after it. */
+type RenderBoundary = "optimistic" | "settled";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useReducedMotion } from "../../utils/useReducedMotion";
@@ -127,20 +130,22 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 	// settle-to-render has to be measured AFTER React commits, not after the setState
 	// call returns — otherwise it reports the time to schedule a render, which is
 	// always near zero and says nothing about what the user saw (seq 1407).
-	const pendingRenderRef = useRef<{ trace: DevServerTrace; optimistic: boolean } | null>(null);
-	/** `optimistic` means the paint happens BEFORE the request settles. */
-	function markRendered(trace: DevServerTrace, optimistic: boolean) {
-		pendingRenderRef.current = { trace, optimistic };
+	// A QUEUE, not a slot: an already-resolved request can arm the post-settle intent
+	// before the first effect runs, and a single slot would drop the optimistic one.
+	// Both paints happened, so both are reported, in the order they were armed.
+	const pendingRendersRef = useRef<Array<{ trace: DevServerTrace; boundary: RenderBoundary }>>([]);
+	function markRendered(trace: DevServerTrace, boundary: RenderBoundary) {
+		pendingRendersRef.current.push({ trace, boundary });
 	}
-	// Fires after the FIRST commit following the gesture and reports whatever state was
+	// Runs after the FIRST commit following each gesture and reports whatever state was
 	// actually committed. Waiting for a specific state instead would lose the trace
 	// whenever a poll tick lands in the same batch and overwrites the optimistic value.
 	useEffect(() => {
-		const pending = pendingRenderRef.current;
-		if (!pending) return;
-		pendingRenderRef.current = null;
-		if (pending.optimistic) pending.trace.optimisticRendered(devState);
-		else pending.trace.rendered(devState);
+		const pending = pendingRendersRef.current.splice(0);
+		for (const entry of pending) {
+			if (entry.boundary === "optimistic") entry.trace.optimisticRendered(devState);
+			else entry.trace.rendered(devState);
+		}
 	});
 
 	// Track the live running state so the button can reflect it without a click.
@@ -153,8 +158,14 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			return;
 		}
 		let cancelled = false;
+		// One poll in flight at a time. The interval is a few seconds but a single RPC
+		// can hang for two minutes, so an ungated poll stacks dozens of requests (and
+		// dozens of armed stall timers) against a bridge that has stopped answering.
+		let inFlight: DevServerTrace | null = null;
 		async function poll() {
+			if (inFlight) return;
 			const trace = traceDevServerOp("checkDevServer", task.id);
+			inFlight = trace;
 			try {
 				trace.sent();
 				const res = await api.request.checkDevServer({
@@ -168,6 +179,8 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			} catch (err) {
 				// Keep the last known state on a transient RPC error.
 				trace.rejected(err);
+			} finally {
+				if (inFlight === trace) inFlight = null;
 			}
 		}
 		poll();
@@ -178,6 +191,10 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		return () => {
 			cancelled = true;
 			clearInterval(id);
+			// A request that never settles would otherwise keep its stall timer armed
+			// after this component is gone, and emit for a task nobody is looking at.
+			inFlight?.cancel();
+			inFlight = null;
 		};
 	}, [task.id, project.id, hasDevScript, isTaskActive]);
 
@@ -192,7 +209,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 	async function startDevServerNow() {
 		const trace = traceDevServerOp("runDevServer", task.id);
 		setDevState("starting");
-		markRendered(trace, true);
+		markRendered(trace, "optimistic");
 		try {
 			trace.sent();
 			const status = await api.request.runDevServer({
@@ -203,11 +220,11 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			trace.settled();
 			const next = status?.running === false ? "stopped" : "running";
 			setDevState(next);
-			markRendered(trace, false);
+			markRendered(trace, "settled");
 		} catch (err) {
 			trace.rejected(err);
 			setDevState("stopped");
-			markRendered(trace, false);
+			markRendered(trace, "settled");
 			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
@@ -294,7 +311,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		// optimistic and is measured from the gesture — there is no settle to measure
 		// from yet, and the trace is the only record of whether the request landed.
 		setDevState("stopped");
-		markRendered(trace, true);
+		markRendered(trace, "optimistic");
 		try {
 			trace.sent();
 			await api.request.stopDevServer({ taskId: task.id, projectId: project.id, opId: trace.opId });

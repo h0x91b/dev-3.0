@@ -96,6 +96,8 @@ function emit(
 
 export interface DevServerTrace {
 	readonly opId: string;
+	/** Drop any armed stall timer — for a caller that is going away (unmount). */
+	cancel(): void;
 	/** Right before the request object leaves the renderer. Arms the stall timer. */
 	sent(): void;
 	/** The promise resolved. */
@@ -130,14 +132,24 @@ export function traceDevServerOp(op: DevServerOp, taskId: string): DevServerTrac
 
 	return {
 		opId,
+		cancel() {
+			clearStallTimer();
+		},
 		sent() {
 			sentAt = performance.now();
 			emit("info", op, "sent", { ...base, clickToSendMs: Math.round(sentAt - gestureAt) });
 			clearStallTimer();
+			const armedAt = sentAt;
 			stallTimer = setTimeout(() => {
 				stallTimer = null;
 				if (settledAt !== null) return;
-				emit("warn", op, "stalled", { ...base, unsettledForMs: STALL_THRESHOLD_MS });
+				// Actual elapsed, not the threshold: a blocked event loop can fire this
+				// timer tens of seconds late, and that lateness is the finding.
+				emit("warn", op, "stalled", {
+					...base,
+					unsettledForMs: Math.round(performance.now() - armedAt),
+					thresholdMs: STALL_THRESHOLD_MS,
+				});
 			}, STALL_THRESHOLD_MS);
 		},
 		settled() {
