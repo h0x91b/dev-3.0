@@ -2374,9 +2374,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		const prompt = buildThreadFixPrompt(thread, locateThread(visibleFiles, thread));
 		setThreadSendStates((current) => ({ ...current, [thread.id]: "sending" }));
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: prompt })
-			.then(() => {
+			.then((result) => {
 				setThreadSendStates((current) => ({ ...current, [thread.id]: "sent" }));
-				toast.success(t("infoPanel.prSendToAgentSuccess"));
+				toast.success(result?.spilledPath
+					? t("infoPanel.prSendToAgentSuccessFile", { path: result.spilledPath })
+					: t("infoPanel.prSendToAgentSuccess"));
 			})
 			.catch((err) => {
 				setThreadSendStates((current) => ({ ...current, [thread.id]: undefined }));
@@ -2392,12 +2394,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		const prompt = buildInlineReviewXml([entry]);
 		setSendingCommentIds((current) => ({ ...current, [commentId]: true }));
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: prompt })
-			.then(() => {
+			.then((result) => {
 				setInlineComments((current) => mapInlineComment(current, commentId, (comment) => ({
 					...comment,
 					sentAt: new Date().toISOString(),
 				})));
-				toast.success(t("infoPanel.diffReviewSendCommentSuccess"));
+				toast.success(result?.spilledPath
+					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
+					: t("infoPanel.diffReviewSendCommentSuccess"));
 			})
 			.catch((err) => {
 				toast.error(t("infoPanel.diffReviewSendCommentFailed", { error: String(err) }));
@@ -2426,13 +2430,15 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		const snapshot = reviewExportXml;
 		setReviewSendState("sending");
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: snapshot })
-			.then(() => {
+			.then((result) => {
 				setReviewSendState("sent");
 				// Delivered comments are dead weight: clear them here so the reviewer
 				// never has to run the destructive "Reset review" as a routine step.
 				setInlineComments({});
 				setEditingCommentId(null);
-				toast.success(t("infoPanel.diffReviewExportSendSuccess"));
+				toast.success(result?.spilledPath
+					? t("infoPanel.diffReviewExportSendSuccessFile", { path: result.spilledPath })
+					: t("infoPanel.diffReviewExportSendSuccess"));
 			})
 			.catch((err) => {
 				setReviewSendState(undefined);

@@ -1,6 +1,9 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { AGENT_MESSAGE_SPILL_THRESHOLD } from "../../shared/types";
 import type { PRReviewComment, PRReviewThread, PRReviewThreadSide, Project, Task, TaskPRCommentsPayload } from "../../shared/types";
 import * as data from "../data";
 import * as github from "../github";
+import { taskDir } from "../git";
 import { sendMessageImmediately } from "../scheduled-message-scheduler";
 import { createLogger } from "../logger";
 import { parseGitHubPullRequestUrl } from "./pr-status";
@@ -218,10 +221,42 @@ async function getTaskPrComments(params: { taskId: string; projectId: string; fo
 	return payload;
 }
 
-async function sendAgentMessageNow(params: { taskId: string; projectId: string; text: string }): Promise<void> {
+/**
+ * Sibling of the git worktree, never inside it — a review dump under
+ * `<worktree>/` would show up untracked in `git status` and in the diff viewer
+ * that produced it. Dies with the task directory on cleanup.
+ */
+function reviewSpillPath(project: Project, task: Task): string {
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+	return `${taskDir(project, task)}/reviews/review-${stamp}.md`;
+}
+
+function spillPointerText(path: string): string {
+	return [
+		"The review below was too large to paste into the terminal, so it was written to a file.",
+		`Read it and act on it: ${path}`,
+	].join("\n");
+}
+
+/**
+ * Type text into the task's live agent pane right now. Payloads over
+ * {@link AGENT_MESSAGE_SPILL_THRESHOLD} are written to a file and the agent is
+ * sent that path instead — the raw text would be rejected by the message-length
+ * guard in `sendMessageImmediately`.
+ */
+async function sendAgentMessageNow(params: { taskId: string; projectId: string; text: string }): Promise<{ spilledPath: string | null }> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
-	await sendMessageImmediately(task, params.text);
+	if (params.text.trim().length <= AGENT_MESSAGE_SPILL_THRESHOLD) {
+		await sendMessageImmediately(task, params.text);
+		return { spilledPath: null };
+	}
+	const path = reviewSpillPath(project, task);
+	await mkdir(path.slice(0, path.lastIndexOf("/")), { recursive: true });
+	await writeFile(path, params.text, "utf8");
+	log.info("Review payload spilled to file", { taskId: task.id.slice(0, 8), chars: params.text.length, path });
+	await sendMessageImmediately(task, spillPointerText(path));
+	return { spilledPath: path };
 }
 
 export const prCommentsHandlers = {

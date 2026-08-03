@@ -21,6 +21,13 @@ vi.mock("../scheduled-message-scheduler", () => ({
 	sendMessageImmediately: (...args: unknown[]) => sendMessageImmediately(...args),
 }));
 
+const taskDirRoot = `/tmp/dev3-pr-comments-test-${process.pid}`;
+vi.mock("../git", () => ({
+	taskDir: () => taskDirRoot,
+}));
+
+import { readFile, rm } from "node:fs/promises";
+import { AGENT_MESSAGE_SPILL_THRESHOLD } from "../../shared/types";
 import { _resetPrCommentsCache, parsePrComment, parsePrReviewThread, prCommentsHandlers } from "../rpc-handlers/pr-comments";
 
 const project = { id: "p1", path: "/tmp/proj" };
@@ -243,5 +250,24 @@ describe("sendAgentMessageNow", () => {
 		sendMessageImmediately.mockRejectedValue(new Error("no live agent"));
 		await expect(prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" }))
 			.rejects.toThrow(/no live agent/);
+	});
+
+	it("returns no spill path for a payload under the threshold", async () => {
+		sendMessageImmediately.mockResolvedValue(undefined);
+		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "x".repeat(AGENT_MESSAGE_SPILL_THRESHOLD) });
+		expect(result).toEqual({ spilledPath: null });
+	});
+
+	it("writes an oversized payload to a file and sends the agent its path", async () => {
+		sendMessageImmediately.mockResolvedValue(undefined);
+		const text = "y".repeat(AGENT_MESSAGE_SPILL_THRESHOLD + 1);
+		const result = await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text });
+		expect(result.spilledPath).toMatch(new RegExp(`^${taskDirRoot}/reviews/review-.*\\.md$`));
+		expect(await readFile(result.spilledPath!, "utf8")).toBe(text);
+		const calls = sendMessageImmediately.mock.calls;
+		const [, sent] = calls[calls.length - 1];
+		expect(sent).toContain(result.spilledPath);
+		expect(sent).not.toContain(text);
+		await rm(taskDirRoot, { recursive: true, force: true });
 	});
 });

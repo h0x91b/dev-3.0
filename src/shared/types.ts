@@ -1700,6 +1700,14 @@ export const MAX_SCHEDULED_MESSAGES_PER_TASK = 20;
 /** Max length (chars) of a single scheduled message's text; longer is rejected. */
 export const MAX_SCHEDULED_MESSAGE_LENGTH = 10_000;
 
+/**
+ * Above this, `sendAgentMessageNow` writes the payload to a file and sends the
+ * agent that path instead of the raw text. Derived from
+ * {@link MAX_SCHEDULED_MESSAGE_LENGTH} with a 20% margin — that guard is the
+ * real ceiling a large review hits (decision 198).
+ */
+export const AGENT_MESSAGE_SPILL_THRESHOLD = 8_000;
+
 /** Per-task cap on retained shared images; oldest are pruned (files deleted) past this. */
 export const MAX_SHARED_IMAGES_PER_TASK = 50;
 
@@ -3534,11 +3542,13 @@ export type AppRPCSchema = {
 			/**
 			 * Type `text` + Enter into the task's live agent pane right now, without
 			 * queueing (the diff viewer's per-thread "send to agent"). Throws when the
-			 * task has no live agent session.
+			 * task has no live agent session. Payloads over
+			 * {@link AGENT_MESSAGE_SPILL_THRESHOLD} are written to a file and the agent
+			 * gets that path — `spilledPath` then names the file for the toast.
 			 */
 			sendAgentMessageNow: {
 				params: { taskId: string; projectId: string; text: string };
-				response: void;
+				response: { spilledPath: string | null };
 			};
 			addTaskNote: {
 				params: { taskId: string; projectId: string; content: string; source?: NoteSource };
