@@ -329,8 +329,6 @@ const kanban = {
 	"kanban.loadFailedDesc": "Loading this project's tasks failed. Try again.",
 	"kanban.loadFailedOffline": "dev-3.0 can't reach your computer right now. The board reloads itself once the connection is back.",
 	"kanban.loadRetry": "Retry",
-	"launch.accountShowUsage": "Show usage details",
-	"launch.accountHideUsage": "Hide usage details",
 } as const;
 
 export default kanban;

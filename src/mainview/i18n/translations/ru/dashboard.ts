@@ -146,6 +146,7 @@ const dashboard = {
 	"rateLimits.monthlyUsage": "использовано {used} / {limit} · осталось {remaining}%",
 	"rateLimits.captured": "снято {time} назад",
 	"rateLimits.capturedNow": "снято только что",
+	"rateLimits.capturedAgeNow": "только что",
 	"rateLimits.noRecentData": "нет свежих данных об использовании",
 	"rateLimits.quotaExhausted": "Лимит исчерпан — запуск будет падать до сброса.",
 

@@ -130,6 +130,7 @@ const dashboard = {
 	"rateLimits.monthlyUsage": "{used} / {limit} usados · {remaining}% restantes",
 	"rateLimits.captured": "capturado hace {time}",
 	"rateLimits.capturedNow": "capturado ahora mismo",
+	"rateLimits.capturedAgeNow": "ahora mismo",
 	"rateLimits.noRecentData": "sin datos de uso recientes",
 	"rateLimits.quotaExhausted": "Sin cuota disponible — este lanzamiento fallará hasta que se restablezca.",
 

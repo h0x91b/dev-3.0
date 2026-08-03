@@ -102,13 +102,6 @@ function makeReport(snapshots: AgentRateLimitSnapshot[]): AgentRateLimitsReport 
 	return { snapshots, generatedAt: Date.now() };
 }
 
-/** Quota bars live behind a per-row disclosure; collapsed rows only show the
- *  worst percentage. `index` picks which row's toggle to open. */
-async function expandUsage(user: ReturnType<typeof userEvent.setup>, index = 0) {
-	const toggles = await screen.findAllByLabelText("Show usage details");
-	await user.click(toggles[index]!);
-}
-
 beforeEach(() => {
 	vi.clearAllMocks();
 	mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
@@ -289,15 +282,13 @@ describe("AgentAccountIndicator", () => {
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
 
-		// Collapsed rows carry the worst percentage, phrased so the direction is
-		// explicit: 62% used (system, neutral tier) and
-		// 97% (managed account, danger tier).
+		// Every window renders its own bar line with no click: the percentages are
+		// tiered by severity (62% neutral, 97% danger) and both rows are readable
+		// side by side, which is the whole point of picking an account.
 		const okPercent = await screen.findByText("62% used");
 		expect(okPercent.className).toContain("text-fg-2");
 		const dangerPercent = screen.getByText("97% used");
 		expect(dangerPercent.className).toContain("text-danger");
-		// Expanding the system row reveals every window.
-		await expandUsage(user, 0);
 		expect(screen.getByText("34% used")).toBeTruthy();
 		expect(screen.getByText("5h")).toBeTruthy();
 	});
@@ -330,13 +321,14 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
-		await expandUsage(user, 0);
 
-		// No hover needed — the quota line and its provenance render in the row
-		// (34% shows twice: the collapsed headline and the expanded window line).
-		expect((await screen.findAllByText("34% used")).length).toBe(2);
+		// No click and no hover: the quota line, its reset countdown and the
+		// capture age all render in the row itself.
+		expect((await screen.findAllByText("34% used")).length).toBe(1);
 		expect(screen.getByText(/· resets in 2h/)).toBeTruthy();
-		expect(screen.getByText("captured 20m ago")).toBeTruthy();
+		const age = screen.getByTitle("captured 20m ago");
+		expect(age.textContent).toContain("20m");
+		expect(age.className).toContain("text-warning");
 	});
 
 	it("renders the monthly credits line when the plan exposes it", async () => {
@@ -353,9 +345,7 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
-		expect(await screen.findByText("25% used")).toBeTruthy(); // headline, collapsed
-		await expandUsage(user, 0);
-
+		expect(await screen.findByText("25% used")).toBeTruthy();
 		expect(screen.getByText("monthly credits")).toBeTruthy();
 	});
 

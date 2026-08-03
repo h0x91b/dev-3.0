@@ -329,8 +329,6 @@ const kanban = {
 	"kanban.loadFailedDesc": "No se pudieron cargar las tareas del proyecto. Inténtalo de nuevo.",
 	"kanban.loadFailedOffline": "dev-3.0 no puede alcanzar tu ordenador ahora mismo. El tablero se recargará solo cuando vuelva la conexión.",
 	"kanban.loadRetry": "Reintentar",
-	"launch.accountShowUsage": "Mostrar detalles de uso",
-	"launch.accountHideUsage": "Ocultar detalles de uso",
 };
 
 export default kanban;

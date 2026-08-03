@@ -231,6 +231,25 @@ export function CapturedNote({ capturedAt, now }: { capturedAt: number; now: num
 	);
 }
 
+/**
+ * Capture age as a dense inline suffix ("· 15h") for surfaces that cannot spend
+ * a whole line on provenance. Same honesty contract as CapturedNote: warning
+ * tint past STALE_AFTER_MS so a reading from days ago never reads as live.
+ */
+export function CapturedAgeSuffix({ capturedAt, now }: { capturedAt: number; now: number }) {
+	const t = useT();
+	const age = Math.max(0, now - capturedAt);
+	const stale = age > STALE_AFTER_MS;
+	const short = age < 60_000 ? t("rateLimits.capturedAgeNow") : formatAge(age);
+	const full = age < 60_000 ? t("rateLimits.capturedNow") : t("rateLimits.captured", { time: formatAge(age) });
+	return (
+		<span title={full} className={stale ? "text-warning" : "text-fg-3"}>
+			{" · "}
+			{short}
+		</span>
+	);
+}
+
 /** Compact age like "12m" or "3h" for the staleness note. */
 function formatAge(ms: number): string {
 	const mins = Math.round(ms / 60000);

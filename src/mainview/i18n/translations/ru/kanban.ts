@@ -335,8 +335,6 @@ const kanban = {
 	"kanban.loadFailedDesc": "Задачи проекта не загрузились. Попробуйте ещё раз.",
 	"kanban.loadFailedOffline": "dev-3.0 сейчас не видит ваш компьютер. Доска перезагрузится сама, когда связь вернётся.",
 	"kanban.loadRetry": "Повторить",
-	"launch.accountShowUsage": "Показать детали расхода",
-	"launch.accountHideUsage": "Скрыть детали расхода",
 };
 
 export default kanban;
