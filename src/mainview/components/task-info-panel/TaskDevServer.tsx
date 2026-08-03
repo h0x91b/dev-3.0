@@ -3,6 +3,7 @@ import { toast } from "../../toast";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
+import { traceDevServerOp } from "../../dev-server-trace";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useReducedMotion } from "../../utils/useReducedMotion";
@@ -134,12 +135,20 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		}
 		let cancelled = false;
 		async function poll() {
+			const trace = traceDevServerOp("checkDevServer", task.id);
 			try {
-				const res = await api.request.checkDevServer({ taskId: task.id, projectId: project.id });
+				trace.sent();
+				const res = await api.request.checkDevServer({
+					taskId: task.id,
+					projectId: project.id,
+					opId: trace.opId,
+				});
+				trace.settled();
 				if (cancelled) return;
 				setDevState((prev) => (prev === "starting" ? prev : res?.running ? "running" : "stopped"));
-			} catch {
+			} catch (err) {
 				// Keep the last known state on a transient RPC error.
+				trace.rejected(err);
 			}
 		}
 		poll();
@@ -162,12 +171,24 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 	}
 
 	async function startDevServerNow() {
+		const trace = traceDevServerOp("runDevServer", task.id);
 		setDevState("starting");
+		trace.rendered("starting");
 		try {
-			const status = await api.request.runDevServer({ taskId: task.id, projectId: project.id });
-			setDevState(status?.running === false ? "stopped" : "running");
+			trace.sent();
+			const status = await api.request.runDevServer({
+				taskId: task.id,
+				projectId: project.id,
+				opId: trace.opId,
+			});
+			trace.settled();
+			const next = status?.running === false ? "stopped" : "running";
+			setDevState(next);
+			trace.rendered(next);
 		} catch (err) {
+			trace.rejected(err);
 			setDevState("stopped");
+			trace.rendered("stopped");
 			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
@@ -248,11 +269,18 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 	}
 
 	async function handleDevServerStop() {
+		const trace = traceDevServerOp("stopDevServer", task.id);
 		setDevServerMenuOpen(false);
+		// The UI reports "stopped" before the backend confirms it, so the trace is
+		// the only record of whether the request ever landed.
 		setDevState("stopped");
+		trace.rendered("stopped");
 		try {
-			await api.request.stopDevServer({ taskId: task.id, projectId: project.id });
+			trace.sent();
+			await api.request.stopDevServer({ taskId: task.id, projectId: project.id, opId: trace.opId });
+			trace.settled();
 		} catch (err) {
+			trace.rejected(err);
 			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}

@@ -1063,10 +1063,13 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.checkDevServer).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				opId: expect.stringMatching(/^[0-9a-f]{8}$/),
 			});
+			// opId is the renderer-minted correlation id the handler echoes (seq 1407).
 			expect(mockedApi.request.runDevServer).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				opId: expect.stringMatching(/^[0-9a-f]{8}$/),
 			});
 		});
 
@@ -1149,6 +1152,7 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => expect(mockedApi.request.stopDevServer).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				opId: expect.stringMatching(/^[0-9a-f]{8}$/),
 			}));
 		});
 

@@ -299,7 +299,6 @@ export class AuxPaneUndecidableError extends Error {
 			`could not check whether this task already has a ${purpose} pane, so the launch was refused: ` +
 				`${cause instanceof Error ? cause.message : String(cause)}`,
 			{ cause },
-			{ cause },
 		);
 		this.name = "AuxPaneUndecidableError";
 	}

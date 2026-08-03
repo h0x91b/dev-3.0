@@ -980,7 +980,9 @@ export function cleanupTaskTmuxState(taskId: string): void {
 	devViewerPaneIds.delete(taskId);
 }
 
-export async function runDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
+export async function runDevServer(params: { taskId: string; projectId: string; opId?: string }): Promise<DevServerStatus> {
+	// Echo the renderer's correlation id so a click that never reached a handler is
+	// distinguishable from one that did (seq 1407).
 	log.info("→ runDevServer", params);
 	// Both backends run the same bash wrapper; only its host differs.
 	assertPosixLaunchDialect("the dev-server pane");
@@ -1091,7 +1093,11 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 				tmuxCommand: `bash "${devScriptPath}"`,
 				nativeLaunch: { executable: "/bin/bash", argv: [devScriptPath] },
 			});
-			log.info("← runDevServer done (native pane)", { paneId: handle.paneId });
+			log.info("← runDevServer done (native pane)", {
+				taskId: params.taskId,
+				...(params.opId ? { opId: params.opId } : {}),
+				paneId: handle.paneId,
+			});
 			return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 		}
 
@@ -1153,7 +1159,12 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			tmux.setOption(taskSession, "pane-border-status", "top", { socket }).catch(() => {});
 		}
 
-		log.info("← runDevServer done", { devSession, viewerPaneId });
+		log.info("← runDevServer done", {
+			taskId: params.taskId,
+			...(params.opId ? { opId: params.opId } : {}),
+			devSession,
+			viewerPaneId,
+		});
 		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 	} catch (err) {
 		log.error("runDevServer FAILED", {
@@ -1165,24 +1176,25 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 	}
 }
 
-async function checkDevServer(params: { taskId: string; projectId: string }): Promise<{ running: boolean }> {
+async function checkDevServer(params: { taskId: string; projectId: string; opId?: string }): Promise<{ running: boolean }> {
 	log.info("→ checkDevServer", params);
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const running = await isDevServerRunning(task, socket);
-		log.info("← checkDevServer", { running });
+		log.info("← checkDevServer", { taskId: params.taskId, ...(params.opId ? { opId: params.opId } : {}), running });
 		return { running };
 	} catch {
 		return { running: false };
 	}
 }
 
-export async function stopDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
-	// One id joins request → aux-pane close → reap → reply across the log, so a
-	// stop that half-finished is readable without guessing from timestamps (seq 1407).
-	const opId = crypto.randomUUID().slice(0, 8);
+export async function stopDevServer(params: { taskId: string; projectId: string; opId?: string }): Promise<DevServerStatus> {
+	// One id joins renderer gesture → request → aux-pane close → reap → reply. The
+	// renderer's id wins when it sent one, so both sides share a single value and a
+	// request lost in the bridge is an id the backend never prints (seq 1407).
+	const opId = params.opId ?? crypto.randomUUID().slice(0, 8);
 	log.info("→ stopDevServer", { ...params, opId });
 	try {
 		const project = await data.getProject(params.projectId);

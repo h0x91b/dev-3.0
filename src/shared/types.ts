@@ -3295,16 +3295,20 @@ export type AppRPCSchema = {
 				params: {};
 				response: Task;
 			};
+			// `opId` is a renderer-minted correlation id, additive and optional. It is
+			// what makes "the handler was never entered" provable: the renderer traces
+			// the id when it sends, the handler traces it when it runs, so a request
+			// that died in the bridge shows up as an id with only one side (seq 1407).
 			runDevServer: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; opId?: string };
 				response: DevServerStatus;
 			};
 			checkDevServer: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; opId?: string };
 				response: { running: boolean };
 			};
 			stopDevServer: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; opId?: string };
 				response: DevServerStatus;
 			};
 			restartDevServer: {
