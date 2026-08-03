@@ -229,7 +229,7 @@ On approval you get the new task's \`seq\` and the command to talk to it; it is 
 
 Use this when work genuinely belongs in its own session (a parallel investigation, a long build, an isolated experiment). Do NOT use it to escape your own task's scope, and do not fan out several launches at once — every request costs the user an interruption.
 
-**Talking to another task's agent** — \`dev3 message --task seq:<N> "text"\` types straight into any live task's agent, not only one you started; sent from a worktree it arrives labeled as agent traffic carrying the command to answer you, and \`--in 30m\` / \`--at 14:00\` queues it instead (aim it at yourself for a wake-up). Use it for real dependencies — hand over an interface, ask for a result, report back when yours is ready — never for chatter, and never to nag a peer that is already working. One task is one inbox: the text lands in the agent pane the user focused last, so a task running several agents cannot be addressed pane by pane.
+**Talking to another task's agent** — \`dev3 message --task seq:<N> "text"\` types straight into any live task's agent, not only one you started; sent from a worktree it arrives labeled as agent traffic carrying the command to answer you, and \`--in 30m\` / \`--at 14:00\` queues it instead (aim it at yourself for a wake-up). Use it for real dependencies — hand over an interface, ask for a result, report back when yours is ready — never for chatter, and never to nag a peer that is already working. One task is one inbox: it lands in that task's agent pane, never a shell split, so a task running several agents cannot be addressed pane by pane.
 `;
 
 // Full manual status management — for agents without hooks (Cursor, Gemini, etc.)
