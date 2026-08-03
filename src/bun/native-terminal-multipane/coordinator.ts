@@ -226,6 +226,7 @@ export class NativeMultipaneCoordinator {
 	static async recoverPaneSet(
 		coordinatorId: string,
 		deps: CoordinatorDeps = defaultCoordinatorDeps,
+		opts: { strict?: boolean } = {},
 	): Promise<RecoveredPaneSet | null> {
 		return withFileLock(
 			coordinatorRecordFile(coordinatorId),
@@ -239,6 +240,19 @@ export class NativeMultipaneCoordinator {
 				// to `ps`, so doing them in sequence made recovery cost grow linearly with
 				// the pane count on the click path (seq 1382).
 				const probes = await Promise.all(record.panes.map((pane) => probePane(pane, deps)));
+				// A strict caller is about to decide whether this task already owns a
+				// pane. Reconciling an unknown-owner pane away first would answer that
+				// question by deleting the evidence: the pane leaves the set, its shell
+				// keeps running (stop() reports success for a record it cannot read), and
+				// the caller opens a second agent beside it. So refuse BEFORE mutating
+				// anything — no drop, no record rewrite, no membership change.
+				const unknown = probes.filter((probe) => probe.ownershipUnknown);
+				if (opts.strict === true && unknown.length > 0) {
+					throw new PaneOwnershipUnknownError(
+						coordinatorId,
+						unknown.map((probe) => probe.pane.paneId),
+					);
+				}
 				const dead = probes.filter((probe) => probe.verdict !== "owned");
 				if (dead.length === 0) {
 					return {
@@ -478,18 +492,43 @@ export class NativeMultipaneCoordinator {
 	}
 }
 
+/**
+ * A pane's own record could not be read, so whether its process is still running is
+ * unknown. Thrown only by a STRICT recovery, and thrown before the sweep changes
+ * anything, so the caller sees the set exactly as it found it.
+ */
+export class PaneOwnershipUnknownError extends Error {
+	constructor(readonly coordinatorId: string, readonly paneIds: string[]) {
+		super(
+			`the record of pane ${paneIds.join(", ")} in ${coordinatorId} is missing or unreadable, `
+			+ "so whether its process is still running cannot be determined",
+		);
+		this.name = "PaneOwnershipUnknownError";
+	}
+}
+
 /** One pane's record plus its ownership verdict — the single unit of a sweep. */
 interface PaneProbe {
 	pane: MultipanePaneEntry;
 	record: NativeSessionRecord | null;
 	verdict: OwnershipVerdict;
+	/** The pane's own record was missing or unparseable, so its owner is unknown. */
+	ownershipUnknown: boolean;
 }
 
 async function probePane(pane: MultipanePaneEntry, deps: CoordinatorDeps): Promise<PaneProbe> {
 	const record = deps.readPaneRecord(pane.sessionId);
-	// A missing record is proof enough: there is nothing left to verify against.
-	if (!record) return { pane, record: null, verdict: "dead" };
-	return { pane, record, verdict: await deps.classifyPane(record, deps.readPaneToken(pane.sessionId)) };
+	// A record we cannot read is NOT proof of death — the shell may well still be
+	// running, we simply lost the only thing that identifies it. Tolerant recovery
+	// keeps treating it as dead (that is how a crashed pane is swept), but the probe
+	// records the difference so a strict caller can refuse to guess.
+	if (!record) return { pane, record: null, verdict: "dead", ownershipUnknown: true };
+	return {
+		pane,
+		record,
+		verdict: await deps.classifyPane(record, deps.readPaneToken(pane.sessionId)),
+		ownershipUnknown: false,
+	};
 }
 
 function snapshotOf({ pane, record, verdict }: PaneProbe): PaneSnapshot {

@@ -359,36 +359,40 @@ export async function nativeTaskPaneCommands(taskId: string): Promise<NativeTask
 
 /**
  * What a caller learns when "I could not tell" must not be reported as "there is
- * nothing". `absent` is a real answer — recovery ran and this task owns no pane
- * set. Anything it could not determine throws instead, and a pane whose own record
- * is unreadable is listed in `unreadable`: its launch command is unknown, so no
- * caller may claim the pane is not theirs.
+ * nothing". Exactly two outcomes, both of which a caller has to handle: `absent`
+ * means recovery ran and this task owns no pane set, `read` means every pane in the
+ * set was identified. Anything else — an unreadable coordinator record, or a pane
+ * whose own record is missing or corrupt — throws, so it cannot be ignored by
+ * forgetting to check a field.
  */
 export type NativeTaskPaneCommandsRead =
 	| { kind: "absent" }
-	| { kind: "read"; panes: NativeTaskPaneCommand[]; unreadable: string[] };
+	| { kind: "read"; panes: NativeTaskPaneCommand[] };
+
+/**
+ * A pane in the set could not be identified, so no caller may claim it is not the
+ * pane they are looking for. Distinct from the coordinator-level failure the strict
+ * read propagates from recovery.
+ */
+export class NativePaneIdentityUnknownError extends Error {
+	constructor(readonly taskId: string, readonly paneIds: string[]) {
+		super(
+			`the launch command of pane ${paneIds.join(", ")} cannot be read, `
+			+ "so it cannot be told apart from the pane being replaced",
+		);
+		this.name = "NativePaneIdentityUnknownError";
+	}
+}
 
 export async function nativeTaskPaneCommandsStrict(taskId: string): Promise<NativeTaskPaneCommandsRead> {
 	const state = await buildStateStrict(taskId);
 	if (!state) return { kind: "absent" };
-	const panes = state.panes.map((pane) => {
-		const record = readRecord(pane.sessionId);
-		return {
-			pane: {
-				paneId: pane.paneId,
-				sessionId: pane.sessionId,
-				command: record?.shell.command ?? [],
-				shellPid: pane.shellPid,
-				alive: pane.alive,
-			},
-			readable: record !== null,
-		};
-	});
-	return {
-		kind: "read",
-		panes: panes.map((entry) => entry.pane),
-		unreadable: panes.filter((entry) => !entry.readable).map((entry) => entry.pane.paneId),
-	};
+	const panes = nativeTaskPaneCommandsOf(state);
+	// Strict recovery already refuses an unreadable pane record, so reaching this
+	// with an empty command means the record was lost between the two reads.
+	const unknown = panes.filter((pane) => pane.command.length === 0).map((pane) => pane.paneId);
+	if (unknown.length > 0) throw new NativePaneIdentityUnknownError(taskId, unknown);
+	return { kind: "read", panes };
 }
 
 /**

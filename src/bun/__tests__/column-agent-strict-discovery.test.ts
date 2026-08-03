@@ -1,38 +1,50 @@
 /**
- * "I could not tell" must never read as "there is nothing there" — over the REAL
- * native discovery path.
+ * "I could not tell" must never read as "there is nothing there" — through the REAL
+ * coordinator, over REAL registry files.
  *
- * Three production behaviours each collapse an undecidable read into an empty
- * list, and any of them would let a second review agent open beside a live one:
+ * The trap is not one function but a chain, and every link is production code here:
+ * `probePane` reads a pane's record and, finding none, used to call it dead;
+ * `recoverPaneSet` then filtered that pane out of the set, rewrote the coordinator
+ * record and called `stopPane`, which reports success for a record it cannot read
+ * without ever proving the process died. So the pane vanished, its shell survived,
+ * and the strict command read never saw it — a second review agent could open
+ * beside a live unknown process.
  *
- *  • `NativeTerminalBackend.readPaneSet` catches every recovery exception and
- *    returns `null`;
- *  • `nativeTaskPaneCommands` turns a `null` pane set into `[]`;
- *  • `nativeTaskPaneCommandsOf` turns a pane whose own record is unreadable into
- *    `command: []`, so it matches no marker.
- *
- * So nothing here mocks the module under test. The registry directory is real, the
- * records are real files, and the failures are injected where they actually happen:
- * in `recoverPaneSet` and in the per-pane record on disk.
+ * Nothing about that chain is mocked. The coordinator is the real class, the
+ * coordinator and pane records are real files in real temp dirs, and record reads
+ * go through the real registry. Only three deps are controlled, because they leave
+ * the machine: pane start, pane stop, and the `ps` ownership probe — and start/stop
+ * are asserted to stay untouched, which is the point of the strict path.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NATIVE_SESSIONS_DIR_ENV, recordFile, sessionDir } from "../native-terminal-registry/paths";
+import { createSplitTree, listPaneIds, serializeSplitTree, splitPane } from "../../shared/split-tree";
+import { NATIVE_SESSIONS_DIR_ENV, sessionDir } from "../native-terminal-registry/paths";
 import {
 	NATIVE_SESSION_SCHEMA_VERSION,
 	writeRecordAtomic,
 	type NativeSessionRecord,
 } from "../native-terminal-registry/record";
+import { NATIVE_MULTIPANE_DIR_ENV } from "../native-terminal-multipane/paths";
+import {
+	NATIVE_MULTIPANE_SCHEMA_VERSION,
+	readMultipaneRecord,
+	writeMultipaneRecordAtomic,
+} from "../native-terminal-multipane/record";
 import type { Task } from "../../shared/types";
 
 const TASK_ID = "dddddddd-0000-0000-0000-000000000004";
+const COORD_ID = `dev3-task-${TASK_ID}`;
 const SOCKET = "dev3-sock";
 const nativeTask = { id: TASK_ID, seq: 909, terminalBackend: "native" } as unknown as Task;
 
-/** What the coordinator's recovery does when asked for this task's pane set. */
-let recovery: () => Promise<{ panes: { paneId: string; sessionId: string }[] } | null>;
+const mocks = vi.hoisted(() => ({
+	registryStart: vi.fn(),
+	registryStop: vi.fn(async () => true),
+	classifyOwnership: vi.fn(async () => "owned" as const),
+}));
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -56,50 +68,26 @@ vi.mock("../tmux", () => ({
 	},
 }));
 
-// The ONE injection point: the coordinator's own recovery. Everything above it —
-// readPaneSet's catch, buildState's null handling, the per-pane record read — is
-// the real production code.
-vi.mock("../native-terminal-multipane/coordinator", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../native-terminal-multipane/coordinator")>();
-	return {
-		...actual,
-		NativeMultipaneCoordinator: class {
-			static async recoverPaneSet() {
-				const recovered = await recovery();
-				if (!recovered) return null;
-				return {
-					coordinator: { layout: { activePaneId: recovered.panes[0]?.paneId ?? "", root: null } },
-					panes: recovered.panes.map(({ paneId, sessionId }) => ({
-						paneId,
-						sessionId,
-						hostPid: 1,
-						shellPid: 2,
-						cols: 80,
-						rows: 24,
-						state: "alive",
-					})),
-				};
-			}
-		},
-	};
-});
-vi.mock("../../shared/split-tree", async (importOriginal) => ({
-	...(await importOriginal<typeof import("../../shared/split-tree")>()),
-	serializeSplitTree: () => "layout",
+// Only what would leave the machine. Record reads stay real, so the coordinator
+// still decides from the files on disk.
+vi.mock("../native-terminal-registry/registry", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../native-terminal-registry/registry")>()),
+	start: mocks.registryStart,
+	stop: mocks.registryStop,
+}));
+vi.mock("../native-terminal-registry/ownership", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../native-terminal-registry/ownership")>()),
+	classifyOwnership: mocks.classifyOwnership,
 }));
 
-const {
-	auxPaneMarker,
-	findAuxPanes,
-	openAuxPane,
-	AuxPaneUndecidableError,
-} = await import("../task-aux-panes");
-const { splitNativeTaskPane } = await import("../native-task-panes");
+const { auxPaneMarker, findAuxPanes, openAuxPane, AuxPaneUndecidableError } = await import("../task-aux-panes");
 const nativePanes = await import("../native-task-panes");
+const { PaneOwnershipUnknownError } = await import("../native-terminal-multipane/coordinator");
 
 let sessionsDir: string;
+let multipaneDir: string;
 
-function record(sessionId: string, paneId: string, command: string[]): NativeSessionRecord {
+function paneRecord(sessionId: string, paneId: string, command: string[]): NativeSessionRecord {
 	return {
 		schemaVersion: NATIVE_SESSION_SCHEMA_VERSION,
 		sessionId,
@@ -108,8 +96,8 @@ function record(sessionId: string, paneId: string, command: string[]): NativeSes
 		hostArtifactVersion: "1",
 		runtimeVersion: "1.3.14",
 		platform: "darwin",
-		host: { pid: 1, executable: "/bin/bun", startSignature: "1@t0" },
-		shell: { pid: 2, command, startSignature: "2@t0" },
+		host: { pid: 4242, executable: "/bin/bun", startSignature: "4242@t0" },
+		shell: { pid: 4243, command, startSignature: "4243@t0" },
 		endpoint: { transport: "ws", address: "127.0.0.1", port: 51234 },
 		ownership: { evidenceKind: "posix-start-signature" },
 		cols: 80,
@@ -117,6 +105,31 @@ function record(sessionId: string, paneId: string, command: string[]): NativeSes
 		createdAt: "2026-08-02T00:00:00.000Z",
 		updatedAt: "2026-08-02T00:00:00.000Z",
 	};
+}
+
+/** Two panes on disk: the task's own agent, and a review agent beside it. */
+function writeTwoPaneSet(reviewCommand: string[]): void {
+	let tree = createSplitTree();
+	const agentPane = listPaneIds(tree)[0]!;
+	tree = splitPane(tree, agentPane, "horizontal");
+	const reviewPane = listPaneIds(tree).find((paneId) => paneId !== agentPane)!;
+	writeRecordAtomic(paneRecord(`${COORD_ID}-${agentPane}`, agentPane, ["/bin/zsh"]));
+	writeRecordAtomic(paneRecord(`${COORD_ID}-${reviewPane}`, reviewPane, reviewCommand));
+	writeMultipaneRecordAtomic({
+		schemaVersion: NATIVE_MULTIPANE_SCHEMA_VERSION,
+		coordinatorId: COORD_ID,
+		epoch: "epoch-1",
+		updatedAt: "2026-08-02T00:00:00.000Z",
+		layout: serializeSplitTree(tree),
+		panes: [
+			{ paneId: agentPane, sessionId: `${COORD_ID}-${agentPane}` },
+			{ paneId: reviewPane, sessionId: `${COORD_ID}-${reviewPane}` },
+		],
+	});
+}
+
+function reviewPaneSessionId(): string {
+	return readMultipaneRecord(COORD_ID)!.panes[1]!.sessionId;
 }
 
 function columnSpec() {
@@ -136,80 +149,94 @@ function columnSpec() {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	sessionsDir = mkdtempSync(join(tmpdir(), "dev3-strict-discovery-"));
+	mocks.registryStop.mockResolvedValue(true);
+	mocks.classifyOwnership.mockResolvedValue("owned");
+	sessionsDir = mkdtempSync(join(tmpdir(), "dev3-strict-sessions-"));
+	multipaneDir = mkdtempSync(join(tmpdir(), "dev3-strict-multipane-"));
 	process.env[NATIVE_SESSIONS_DIR_ENV] = sessionsDir;
+	process.env[NATIVE_MULTIPANE_DIR_ENV] = multipaneDir;
 	nativePanes._resetBackendForTests();
-	recovery = async () => null;
 });
 
 afterEach(() => {
 	delete process.env[NATIVE_SESSIONS_DIR_ENV];
+	delete process.env[NATIVE_MULTIPANE_DIR_ENV];
 	rmSync(sessionsDir, { recursive: true, force: true });
+	rmSync(multipaneDir, { recursive: true, force: true });
 });
 
-describe("strict native discovery for a proven replacement", () => {
-	it("refuses when recovery throws, instead of reading it as an empty pane set", async () => {
-		recovery = async () => {
-			throw new Error("ownership sweep failed");
-		};
+describe("strict native discovery, through the real coordinator", () => {
+	it("finds the review pane when every record is readable", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
 
-		// The tolerant read is what production does elsewhere, and it hides this.
-		await expect(nativePanes.nativeTaskPaneCommands(TASK_ID)).resolves.toEqual([]);
-		// The replacement path must not accept that answer.
-		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true })).rejects.toThrow(/ownership sweep/);
-		await expect(openAuxPane(columnSpec())).rejects.toBeInstanceOf(AuxPaneUndecidableError);
-		expect(splitNativeTaskPane).toBeDefined();
+		const found = await findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true });
+
+		expect(found).toHaveLength(1);
+		expect(mocks.registryStop).not.toHaveBeenCalled();
 	});
 
-	it("refuses when a pane's own launch command cannot be read", async () => {
-		const marker = auxPaneMarker(TASK_ID, "columnAgent");
-		writeRecordAtomic(record("sess-agent", "pane-1", ["/bin/zsh"]));
-		writeRecordAtomic(record("sess-review", "pane-9", ["/bin/bash", marker]));
-		// A record that exists but cannot be parsed — the case that silently becomes
-		// `command: []` and therefore matches no marker.
-		writeFileSync(join(sessionDir("sess-review"), "record.json"), "{ not json");
-		recovery = async () => ({
-			panes: [
-				{ paneId: "pane-1", sessionId: "sess-agent" },
-				{ paneId: "pane-9", sessionId: "sess-review" },
-			],
-		});
+	it("refuses instead of reconciling away a pane whose record is corrupt", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const reviewSession = reviewPaneSessionId();
+		const before = readMultipaneRecord(COORD_ID)!;
+		// The record file exists but no longer parses — the process it described may
+		// well still be running.
+		writeFileSync(join(sessionDir(reviewSession), "record.json"), "{ not json");
 
-		// Tolerant read: the review pane looks like it is not there at all.
+		// What tolerant recovery does with it, i.e. the trap: the pane is swept out of
+		// the set, the coordinator record is rewritten, and stop() is told to drop it.
 		const tolerant = await nativePanes.nativeTaskPaneCommands(TASK_ID);
-		expect(tolerant.find((pane) => pane.paneId === "pane-9")?.command).toEqual([]);
-		// Strict read refuses rather than opening a second agent beside it.
+		expect(tolerant.map((pane) => pane.sessionId)).not.toContain(reviewSession);
+		// Whatever tolerant recovery decides to do with it, the pane is invisible to
+		// the caller — which is precisely why the strict path may not reuse that answer.
+		expect(tolerant.map((pane) => pane.sessionId)).not.toContain(reviewSession);
+
+		// Rebuild the same situation and take the strict path instead.
+		vi.clearAllMocks();
+		mocks.registryStop.mockResolvedValue(true);
+		mocks.classifyOwnership.mockResolvedValue("owned");
+		nativePanes._resetBackendForTests();
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const rebuilt = readMultipaneRecord(COORD_ID)!;
+		writeFileSync(join(sessionDir(reviewPaneSessionId()), "record.json"), "{ not json");
+
 		await expect(openAuxPane(columnSpec())).rejects.toBeInstanceOf(AuxPaneUndecidableError);
+
+		// No new pane, no process touched, and the set is exactly as it was found.
+		expect(mocks.registryStart).not.toHaveBeenCalled();
+		expect(mocks.registryStop).not.toHaveBeenCalled();
+		expect(readMultipaneRecord(COORD_ID)).toEqual(rebuilt);
+		expect(before.panes).toHaveLength(2);
+	});
+
+	it("refuses when a pane's record file is missing outright, which the tolerant read hides", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const reviewSession = reviewPaneSessionId();
+		const snapshot = readMultipaneRecord(COORD_ID)!;
+		rmSync(sessionDir(reviewSession), { recursive: true, force: true });
+
+		// Strict first, so the assertions below describe an untouched set.
+		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true }))
+			.rejects.toBeInstanceOf(PaneOwnershipUnknownError);
+		expect(mocks.registryStart).not.toHaveBeenCalled();
+		expect(mocks.registryStop).not.toHaveBeenCalled();
+		expect(readMultipaneRecord(COORD_ID)).toEqual(snapshot);
+
+		// The tolerant read, by contrast, cannot see the pane at all — it is the answer
+		// the proven-replacement path must not reuse.
+		const tolerant = await nativePanes.nativeTaskPaneCommands(TASK_ID);
+		expect(tolerant.map((pane) => pane.sessionId)).not.toContain(reviewSession);
 	});
 
 	it("treats a genuinely absent pane set as owning nothing, not as undecidable", async () => {
-		recovery = async () => null;
-
 		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true })).resolves.toEqual([]);
 	});
 
-	it("keeps the tolerant read tolerant for the best-effort purposes", async () => {
-		recovery = async () => {
-			throw new Error("ownership sweep failed");
-		};
+	it("keeps tolerant recovery tolerant for the best-effort purposes", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "devServer")]);
+		rmSync(sessionDir(reviewPaneSessionId()), { recursive: true, force: true });
 
+		// devServer deliberately still reads a swept pane as "not there".
 		await expect(findAuxPanes(nativeTask, "devServer", SOCKET)).resolves.toEqual([]);
-	});
-
-	it("reads a healthy pane set through the real record files", async () => {
-		const marker = auxPaneMarker(TASK_ID, "columnAgent");
-		writeRecordAtomic(record("sess-agent", "pane-1", ["/bin/zsh"]));
-		writeRecordAtomic(record("sess-review", "pane-9", ["/bin/bash", marker]));
-		recovery = async () => ({
-			panes: [
-				{ paneId: "pane-1", sessionId: "sess-agent" },
-				{ paneId: "pane-9", sessionId: "sess-review" },
-			],
-		});
-
-		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true })).resolves.toEqual([
-			{ backend: "native", paneId: "pane-9" },
-		]);
-		expect(recordFile("sess-review")).toContain("sess-review");
 	});
 });

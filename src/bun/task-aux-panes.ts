@@ -189,22 +189,19 @@ async function findNativeAuxPanes(
 }
 
 /**
- * The pane list for a decision that must not guess. Three outcomes collapse into
- * an empty list on the tolerant path and are kept apart here: no pane set at all
- * (a real "owns nothing"), a pane set that could not be read (throws from the
- * strict read), and a pane whose OWN record is unreadable — its launch command is
- * unknown, so nobody may claim it is not the pane they are looking for.
+ * The pane list for a decision that must not guess. The tolerant path collapses
+ * three outcomes into an empty list; here only one of them yields one — a pane set
+ * that is genuinely absent. An unreadable set, or a pane whose own ownership cannot
+ * be established, throws out of the strict read instead.
  */
 async function readNativePanesStrictly(task: Task): Promise<NativeTaskPaneCommand[]> {
 	const read = await nativeTaskPaneCommandsStrict(task.id);
-	if (read.kind === "absent") return [];
-	if (read.unreadable.length > 0) {
-		throw new Error(
-			`the launch command of pane ${read.unreadable.join(", ")} is unreadable, `
-			+ "so it cannot be told apart from the pane being replaced",
-		);
+	switch (read.kind) {
+		case "absent":
+			return [];
+		case "read":
+			return read.panes;
 	}
-	return read.panes;
 }
 
 /**
@@ -279,6 +276,7 @@ export class AuxPaneUndecidableError extends Error {
 		super(
 			`could not check whether this task already has a ${purpose} pane, so the launch was refused: ` +
 				`${cause instanceof Error ? cause.message : String(cause)}`,
+			{ cause },
 		);
 		this.name = "AuxPaneUndecidableError";
 	}
@@ -295,6 +293,8 @@ export class AuxPaneReplaceError extends Error {
 			`could not close the ${purpose} pane${remaining.length === 1 ? "" : "s"} a previous run left behind` +
 				`${remaining.length ? ` (${remaining.join(", ")} still present)` : ""}` +
 				`${cause ? `: ${cause instanceof Error ? cause.message : String(cause)}` : ""}`,
+			// The wrapped failure stays reachable for a log or a bug report.
+			cause === undefined ? undefined : { cause },
 		);
 		this.name = "AuxPaneReplaceError";
 	}

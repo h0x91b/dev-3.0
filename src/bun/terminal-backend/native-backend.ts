@@ -240,21 +240,30 @@ export class NativeTerminalBackend implements TerminalBackend {
 	 */
 	async readPaneSet(id: TerminalSessionId): Promise<{ panes: PaneSnapshot[]; layout: SplitTree } | null> {
 		try {
-			return await this.readPaneSetStrict(id);
+			// Tolerant on BOTH counts, exactly as before: recovery may reconcile a pane
+			// it cannot identify, and a failed read reports "no pane set".
+			return await this.recoverPaneSetInto(id, false);
 		} catch {
 			return null;
 		}
 	}
 
 	/**
-	 * {@link readPaneSet} without the catch: `null` means recovery RAN and found no
-	 * surviving pane, while a throw means it could not tell. Callers that are about
-	 * to replace a pane need that difference — treating "could not read" as "nothing
-	 * there" is how a second agent gets opened beside a live one.
+	 * {@link readPaneSet} for a caller that is about to replace a pane. Two things
+	 * change: recovery refuses to reconcile a pane whose owner it cannot establish
+	 * (leaving the set exactly as found), and a failed read throws instead of
+	 * reporting an empty one. `null` still means recovery RAN and no pane survived.
 	 */
 	async readPaneSetStrict(id: TerminalSessionId): Promise<{ panes: PaneSnapshot[]; layout: SplitTree } | null> {
+		return this.recoverPaneSetInto(id, true);
+	}
+
+	private async recoverPaneSetInto(
+		id: TerminalSessionId,
+		strict: boolean,
+	): Promise<{ panes: PaneSnapshot[]; layout: SplitTree } | null> {
 		if (!isTerminalSessionId(id)) return null;
-		const recovered = await NativeMultipaneCoordinator.recoverPaneSet(id, this.deps);
+		const recovered = await NativeMultipaneCoordinator.recoverPaneSet(id, this.deps, { strict });
 		if (!recovered) {
 			this.coordinators.delete(id);
 			return null;
