@@ -39,12 +39,24 @@ export function columnAgentFailureCopy(
 ): ColumnAgentFailureCopy {
 	const { column, error, movedTo, reason } = payload;
 	const columnName = columnAgentDisplayName(column, localizedStatus);
-	if (reason === "terminal-not-running") {
+	// Unrecognised first: that is the only case allowed to quote the backend string.
+	if (reason === undefined) {
 		return movedTo
-			? { key: "kanban.columnAgentNoTerminalMoved", params: { columnName, status: localizedStatus(movedTo) } }
-			: { key: "kanban.columnAgentNoTerminal", params: { columnName } };
+			? { key: "kanban.columnAgentFailedMoved", params: { columnName, status: localizedStatus(movedTo), error } }
+			: { key: "kanban.columnAgentFailed", params: { columnName, error } };
 	}
-	return movedTo
-		? { key: "kanban.columnAgentFailedMoved", params: { columnName, status: localizedStatus(movedTo), error } }
-		: { key: "kanban.columnAgentFailed", params: { columnName, error } };
+	// Exhaustive on purpose: a new recognised reason must not compile until it has
+	// its own localized copy, instead of silently falling back to the raw error.
+	switch (reason) {
+		case "terminal-not-running":
+			return movedTo
+				? { key: "kanban.columnAgentNoTerminalMoved", params: { columnName, status: localizedStatus(movedTo) } }
+				: { key: "kanban.columnAgentNoTerminal", params: { columnName } };
+		default:
+			return assertNever(reason);
+	}
+}
+
+function assertNever(reason: never): never {
+	throw new Error(`No localized copy for column-agent failure reason: ${String(reason)}`);
 }

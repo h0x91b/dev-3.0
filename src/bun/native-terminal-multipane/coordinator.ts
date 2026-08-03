@@ -22,7 +22,13 @@ import { withFileLock } from "../file-lock";
 import { NativeSessionClient } from "../native-terminal-registry/client";
 import { classifyOwnership, type OwnershipVerdict } from "../native-terminal-registry/ownership";
 import type { ClientRole } from "../native-terminal-registry/writer-ownership";
-import { readRecord, readToken, type NativeSessionRecord } from "../native-terminal-registry/record";
+import {
+	inspectRecordFile,
+	readRecord,
+	readToken,
+	type NativeSessionRecord,
+	type RecordInspection,
+} from "../native-terminal-registry/record";
 import { start, stop, type StartOptions, type StartResult } from "../native-terminal-registry/registry";
 import type { ShellLaunchSpec } from "../native-terminal-registry/shell-launch";
 import { CoordinatorClientView } from "./client-view";
@@ -42,6 +48,7 @@ import {
 	NATIVE_MULTIPANE_SCHEMA_VERSION,
 	pruneCoordinatorDir,
 	readMultipaneRecord,
+	readMultipaneRecordStrict,
 	removeMultipaneRecord,
 	writeMultipaneRecordAtomic,
 	type MultipanePaneEntry,
@@ -103,6 +110,12 @@ export interface CoordinatorDeps {
 	startPane(sessionId: string, opts: StartOptions): Promise<StartResult>;
 	stopPane(sessionId: string, opts?: { timeoutMs?: number }): Promise<boolean>;
 	readPaneRecord(sessionId: string): NativeSessionRecord | null;
+	/**
+	 * Why a record was rejected, for the one decision that needs it: telling a
+	 * record that is gone from one that is there but unreadable. Optional so an
+	 * in-memory double need not model file problems.
+	 */
+	inspectPaneRecord?(sessionId: string): RecordInspection;
 	readPaneToken(sessionId: string): string | null;
 	classifyPane(record: NativeSessionRecord, token: string | null): Promise<OwnershipVerdict>;
 	connectPane(record: NativeSessionRecord, token: string): Promise<PaneConnection>;
@@ -112,6 +125,7 @@ export const defaultCoordinatorDeps: CoordinatorDeps = {
 	startPane: (sessionId, opts) => start(sessionId, opts),
 	stopPane: (sessionId, opts) => stop(sessionId, opts ?? {}),
 	readPaneRecord: readRecord,
+	inspectPaneRecord: inspectRecordFile,
 	readPaneToken: readToken,
 	classifyPane: classifyOwnership,
 	async connectPane(record, token) {
@@ -231,7 +245,11 @@ export class NativeMultipaneCoordinator {
 		return withFileLock(
 			coordinatorRecordFile(coordinatorId),
 			async () => {
-				const record = readMultipaneRecord(coordinatorId);
+				// A strict caller must not have "no record" invented for it: a coordinator
+				// file that exists but cannot be parsed means the pane set is unknown.
+				const record = opts.strict === true
+					? readMultipaneRecordStrict(coordinatorId)
+					: readMultipaneRecord(coordinatorId);
 				if (!record) return null;
 				const tree = restoreSplitTree(record.layout);
 				if (!tree) return null;
@@ -240,21 +258,25 @@ export class NativeMultipaneCoordinator {
 				// to `ps`, so doing them in sequence made recovery cost grow linearly with
 				// the pane count on the click path (seq 1382).
 				const probes = await Promise.all(record.panes.map((pane) => probePane(pane, deps)));
-				// A strict caller is about to decide whether this task already owns a
-				// pane. Reconciling an unknown-owner pane away first would answer that
-				// question by deleting the evidence: the pane leaves the set, its shell
-				// keeps running (stop() reports success for a record it cannot read), and
-				// the caller opens a second agent beside it. So refuse BEFORE mutating
-				// anything — no drop, no record rewrite, no membership change.
+				// A pane whose own record we cannot read is not proof of death: its shell
+				// may still be running, and `stop()` reports success for a record it
+				// cannot read without ever signalling the pid. So the EVIDENCE that such
+				// a pane exists must outlive every read, tolerant ones included — a
+				// renderer poll that swept it out of the record would answer a later
+				// strict question by having deleted the answer.
 				const unknown = probes.filter((probe) => probe.ownershipUnknown);
 				if (opts.strict === true && unknown.length > 0) {
+					// Refuse BEFORE mutating anything: no drop, no rewrite, no membership
+					// change, so the caller sees the set exactly as it was found.
 					throw new PaneOwnershipUnknownError(
 						coordinatorId,
 						unknown.map((probe) => probe.pane.paneId),
 					);
 				}
-				const dead = probes.filter((probe) => probe.verdict !== "owned");
-				if (dead.length === 0) {
+				// Only a pane whose death was actually established may be reconciled away.
+				const dead = probes.filter((probe) => probe.verdict !== "owned" && !probe.ownershipUnknown);
+				const hidden = unknown.length > 0;
+				if (dead.length === 0 && !hidden) {
 					return {
 						coordinator: new NativeMultipaneCoordinator(coordinatorId, record.epoch, tree, deps),
 						panes: probes.map(snapshotOf),
@@ -269,11 +291,17 @@ export class NativeMultipaneCoordinator {
 				for (const probe of dead) reconciled = closeTreePane(reconciled, probe.pane.paneId);
 				reconciled = normalizeSharedLayout(reconciled);
 				await dropPanes(dead.map((probe) => probe.pane), deps);
-				writeMultipaneRecordAtomic(
-					buildRecord(coordinatorId, record.epoch, reconciled, bindPanes(coordinatorId, reconciled)),
-				);
+				// An unknown-owner pane stays in the record and in the tree; it is only
+				// HIDDEN from this snapshot, so the UI does not show a pane it cannot
+				// describe while the evidence stays on disk for the next strict read.
+				if (dead.length > 0) {
+					writeMultipaneRecordAtomic(
+						buildRecord(coordinatorId, record.epoch, reconciled, bindPanes(coordinatorId, reconciled)),
+					);
+				}
+				const survivorTree = hidden ? tree : reconciled;
 				return {
-					coordinator: new NativeMultipaneCoordinator(coordinatorId, record.epoch, reconciled, deps),
+					coordinator: new NativeMultipaneCoordinator(coordinatorId, record.epoch, survivorTree, deps),
 					// Survivors keep the record's order, which is the reconciled tree's order.
 					panes: probes.filter((probe) => probe.verdict === "owned").map(snapshotOf),
 				};
@@ -518,17 +546,40 @@ interface PaneProbe {
 
 async function probePane(pane: MultipanePaneEntry, deps: CoordinatorDeps): Promise<PaneProbe> {
 	const record = deps.readPaneRecord(pane.sessionId);
-	// A record we cannot read is NOT proof of death — the shell may well still be
-	// running, we simply lost the only thing that identifies it. Tolerant recovery
-	// keeps treating it as dead (that is how a crashed pane is swept), but the probe
-	// records the difference so a strict caller can refuse to guess.
-	if (!record) return { pane, record: null, verdict: "dead", ownershipUnknown: true };
+	// A record that is GONE is proof enough: a stopped pane takes its record with it,
+	// so there is nothing left to verify against and the pane is swept as before.
+	// A record that is PRESENT but unreadable is a different animal — the shell it
+	// described may still be running and `stop()` would report success without ever
+	// signalling the pid, so its ownership is unknown rather than dead.
+	if (!record) {
+		return { pane, record: null, verdict: "dead", ownershipUnknown: paneRecordPresentButUnreadable(pane, deps) };
+	}
 	return {
 		pane,
 		record,
 		verdict: await deps.classifyPane(record, deps.readPaneToken(pane.sessionId)),
 		ownershipUnknown: false,
 	};
+}
+
+/**
+ * Whether the pane's record file exists yet cannot be interpreted. Falls back to
+ * `false` when a caller supplies no inspector, which keeps every existing
+ * in-memory dep double behaving exactly as it did.
+ */
+function paneRecordPresentButUnreadable(pane: MultipanePaneEntry, deps: CoordinatorDeps): boolean {
+	const inspection = deps.inspectPaneRecord?.(pane.sessionId);
+	if (!inspection || inspection.ok) return false;
+	switch (inspection.problem.kind) {
+		// Both mean "there is no record to read". A finished pane unlinks its record and
+		// only then tries to remove its directory, which fails whenever a sibling file
+		// survives — so a record-less directory is an ordinary dead pane, not a doubt.
+		case "absent":
+		case "missing":
+			return false;
+		default:
+			return true;
+	}
 }
 
 function snapshotOf({ pane, record, verdict }: PaneProbe): PaneSnapshot {

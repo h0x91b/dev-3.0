@@ -22,6 +22,9 @@ vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 vi.mock("../native-terminal-registry/record", () => ({
 	readRecord: vi.fn(() => null),
 	readToken: vi.fn(() => null),
+	// Neither a record nor a session directory: a pane that is genuinely gone, which
+	// is what every case here means by "the host died".
+	inspectRecordFile: vi.fn(() => ({ ok: false, problem: { kind: "absent" } })),
 }));
 
 vi.mock("../native-terminal-registry/registry", () => ({

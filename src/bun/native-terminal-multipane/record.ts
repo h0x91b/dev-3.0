@@ -112,6 +112,40 @@ export function readMultipaneRecord(coordinatorId: string): NativeMultipaneRecor
 	}
 }
 
+/**
+ * A coordinator record that exists but cannot be interpreted — corrupt bytes, or a
+ * schema this build does not know. Distinct from "no record", which is a real
+ * answer; this one means the pane set is unknown, and a caller about to open a pane
+ * must not read it as "there is nothing here".
+ */
+export class MultipaneRecordUnreadableError extends Error {
+	constructor(readonly coordinatorId: string, readonly reason: "unreadable-file" | "invalid", cause?: unknown) {
+		super(
+			`the coordinator record of ${coordinatorId} exists but is ${reason === "invalid" ? "not a record this build understands" : "unreadable"}`,
+			cause === undefined ? undefined : { cause },
+		);
+		this.name = "MultipaneRecordUnreadableError";
+	}
+}
+
+/**
+ * {@link readMultipaneRecord} that only reports `null` for a record that is
+ * genuinely ABSENT. A file that is there but unparseable throws, so the difference
+ * between "this task owns no panes" and "I cannot tell" survives the read.
+ */
+export function readMultipaneRecordStrict(coordinatorId: string): NativeMultipaneRecord | null {
+	let text: string;
+	try {
+		text = readFileSync(coordinatorRecordFile(coordinatorId), "utf8");
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+		throw new MultipaneRecordUnreadableError(coordinatorId, "unreadable-file", err);
+	}
+	const record = parseMultipaneRecord(text);
+	if (!record) throw new MultipaneRecordUnreadableError(coordinatorId, "invalid");
+	return record;
+}
+
 /** The restored shared layout of a record; null when it is not this schema. */
 export function recordLayout(record: NativeMultipaneRecord): SplitTree | null {
 	return restoreSplitTree(record.layout);

@@ -17,7 +17,7 @@
  * are asserted to stay untouched, which is the point of the strict path.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSplitTree, listPaneIds, serializeSplitTree, splitPane } from "../../shared/split-tree";
@@ -27,7 +27,7 @@ import {
 	writeRecordAtomic,
 	type NativeSessionRecord,
 } from "../native-terminal-registry/record";
-import { NATIVE_MULTIPANE_DIR_ENV } from "../native-terminal-multipane/paths";
+import { NATIVE_MULTIPANE_DIR_ENV, coordinatorRecordFile } from "../native-terminal-multipane/paths";
 import {
 	NATIVE_MULTIPANE_SCHEMA_VERSION,
 	readMultipaneRecord,
@@ -187,9 +187,10 @@ describe("strict native discovery, through the real coordinator", () => {
 		// the set, the coordinator record is rewritten, and stop() is told to drop it.
 		const tolerant = await nativePanes.nativeTaskPaneCommands(TASK_ID);
 		expect(tolerant.map((pane) => pane.sessionId)).not.toContain(reviewSession);
-		// Whatever tolerant recovery decides to do with it, the pane is invisible to
-		// the caller — which is precisely why the strict path may not reuse that answer.
-		expect(tolerant.map((pane) => pane.sessionId)).not.toContain(reviewSession);
+		// Whatever tolerant recovery decides to show, the pane's own record must stay
+		// on disk: erasing it is what would let a later strict read answer "nothing
+		// here" for a process that is still running.
+		expect(readMultipaneRecord(COORD_ID)!.panes.map((pane) => pane.sessionId)).toContain(reviewSession);
 
 		// Rebuild the same situation and take the strict path instead.
 		vi.clearAllMocks();
@@ -209,23 +210,98 @@ describe("strict native discovery, through the real coordinator", () => {
 		expect(before.panes).toHaveLength(2);
 	});
 
-	it("refuses when a pane's record file is missing outright, which the tolerant read hides", async () => {
+	it("refuses on a record written by a schema it does not understand, too", async () => {
 		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
 		const reviewSession = reviewPaneSessionId();
 		const snapshot = readMultipaneRecord(COORD_ID)!;
-		rmSync(sessionDir(reviewSession), { recursive: true, force: true });
+		// Parses fine, describes a live host, and says nothing this version can act on:
+		// another installed version of the app may own that process.
+		writeFileSync(
+			join(sessionDir(reviewSession), "record.json"),
+			JSON.stringify({ schemaVersion: NATIVE_SESSION_SCHEMA_VERSION + 7, sessionId: reviewSession }),
+		);
 
-		// Strict first, so the assertions below describe an untouched set.
-		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true }))
-			.rejects.toBeInstanceOf(PaneOwnershipUnknownError);
+		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true })).rejects.toBeInstanceOf(
+			PaneOwnershipUnknownError,
+		);
 		expect(mocks.registryStart).not.toHaveBeenCalled();
 		expect(mocks.registryStop).not.toHaveBeenCalled();
 		expect(readMultipaneRecord(COORD_ID)).toEqual(snapshot);
+	});
 
-		// The tolerant read, by contrast, cannot see the pane at all — it is the answer
-		// the proven-replacement path must not reuse.
-		const tolerant = await nativePanes.nativeTaskPaneCommands(TASK_ID);
-		expect(tolerant.map((pane) => pane.sessionId)).not.toContain(reviewSession);
+	// Where the line is drawn, and why it is not drawn at "the record is unreadable
+	// for any reason at all". A finished pane unlinks its record and then tries to
+	// remove its directory, which fails whenever a sibling file survives — so "the
+	// directory is there but holds no record" is an ORDINARY dead pane. Calling that
+	// undecidable would wedge AI Review on every task that ever closed a pane.
+	it("sweeps a pane that left its directory behind without a record", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const reviewSession = reviewPaneSessionId();
+		rmSync(join(sessionDir(reviewSession), "record.json"), { force: true });
+
+		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true })).resolves.toEqual([]);
+		expect(readMultipaneRecord(COORD_ID)!.panes.map((pane) => pane.sessionId)).not.toContain(reviewSession);
+	});
+
+	it("sweeps a pane whose session directory is gone entirely", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const reviewSession = reviewPaneSessionId();
+		rmSync(sessionDir(reviewSession), { recursive: true, force: true });
+
+		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true })).resolves.toEqual([]);
+		expect(readMultipaneRecord(COORD_ID)!.panes.map((pane) => pane.sessionId)).not.toContain(reviewSession);
+	});
+
+	// THE REAL SEQUENCE. TaskTerminal polls taskPaneState continuously, so by the time
+	// the user clicks AI Review the tolerant path has already run several times. If a
+	// poll had swept the unknown-owner pane out of the coordinator record, the strict
+	// read that follows would find a clean, empty set and open a second agent beside a
+	// process nobody can account for.
+	it("still refuses after renderer-style tolerant polling has already run", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const reviewSession = reviewPaneSessionId();
+		const snapshot = readMultipaneRecord(COORD_ID)!;
+		writeFileSync(join(sessionDir(reviewSession), "record.json"), "{ not json");
+
+		// Three polls, exactly as the terminal view would issue them.
+		for (let poll = 0; poll < 3; poll++) await nativePanes.nativeTaskPanesState(TASK_ID);
+
+		// The evidence survived every one of them.
+		expect(readMultipaneRecord(COORD_ID)).toEqual(snapshot);
+		expect(mocks.registryStop).not.toHaveBeenCalled();
+
+		// And the click that follows is refused, with nothing started.
+		await expect(openAuxPane(columnSpec())).rejects.toBeInstanceOf(AuxPaneUndecidableError);
+		expect(mocks.registryStart).not.toHaveBeenCalled();
+		expect(mocks.registryStop).not.toHaveBeenCalled();
+		expect(readMultipaneRecord(COORD_ID)).toEqual(snapshot);
+	});
+
+	it("hides the unidentifiable pane from a tolerant read without deleting it", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const reviewSession = reviewPaneSessionId();
+		writeFileSync(join(sessionDir(reviewSession), "record.json"), "{ not json");
+
+		const state = await nativePanes.nativeTaskPanesState(TASK_ID);
+
+		// The UI does not show a pane it cannot describe...
+		expect(state!.panes.map((pane) => pane.sessionId)).not.toContain(reviewSession);
+		// ...but the record still says the task owns it.
+		expect(readMultipaneRecord(COORD_ID)!.panes.map((pane) => pane.sessionId)).toContain(reviewSession);
+	});
+
+	it("refuses when the COORDINATOR record itself is corrupt, and changes nothing", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const corrupt = "{ not a coordinator record";
+		writeFileSync(coordinatorRecordFile(COORD_ID), corrupt);
+
+		// The tolerant read cannot tell this from "no pane set at all".
+		await expect(nativePanes.nativeTaskPanesState(TASK_ID)).resolves.toBeNull();
+		// The strict one refuses instead of inventing an empty set.
+		await expect(openAuxPane(columnSpec())).rejects.toBeInstanceOf(AuxPaneUndecidableError);
+		expect(mocks.registryStart).not.toHaveBeenCalled();
+		expect(mocks.registryStop).not.toHaveBeenCalled();
+		expect(readFileSync(coordinatorRecordFile(COORD_ID), "utf8")).toBe(corrupt);
 	});
 
 	it("treats a genuinely absent pane set as owning nothing, not as undecidable", async () => {
@@ -234,9 +310,9 @@ describe("strict native discovery, through the real coordinator", () => {
 
 	it("keeps tolerant recovery tolerant for the best-effort purposes", async () => {
 		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "devServer")]);
-		rmSync(sessionDir(reviewPaneSessionId()), { recursive: true, force: true });
+		writeFileSync(join(sessionDir(reviewPaneSessionId()), "record.json"), "{ not json");
 
-		// devServer deliberately still reads a swept pane as "not there".
+		// devServer deliberately still reads an undecidable pane as "not there".
 		await expect(findAuxPanes(nativeTask, "devServer", SOCKET)).resolves.toEqual([]);
 	});
 });
