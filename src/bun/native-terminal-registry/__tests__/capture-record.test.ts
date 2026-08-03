@@ -4,7 +4,7 @@
  * read without defending itself.
  */
 
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -23,6 +23,7 @@ import {
 	writeCaptureRecordAtomic,
 	type CaptureRecord,
 } from "../capture-record";
+import { InvalidProducerDigestError, asProducerDigest } from "../capture-digest";
 
 /** The parsed record, or null when the text is not believable. */
 function recordOrNull(record: CaptureRecord, sessionId: string): CaptureRecord | null {
@@ -196,15 +197,26 @@ describe("capture record — on disk", () => {
 		expect(captureProducerDigest(newer)).not.toBe(captureProducerDigest(older));
 	});
 
-	it("leaves no temp file behind on any exit path", () => {
+	it("removes its temp file when the rename fails after a COMPLETE write", () => {
 		writeCaptureRecordAtomic(sample());
-		expect(existsSync(`${captureRecordFile("alpha", digest())}.tmp`)).toBe(false);
-		// A write into a directory that cannot be created fails before the rename; the
-		// finally still runs, and nothing is left in the session directory.
-		process.env[NATIVE_SESSIONS_DIR_ENV] = "/dev/null/nope";
-		expect(() => writeCaptureRecordAtomic(sample())).toThrow();
-		process.env[NATIVE_SESSIONS_DIR_ENV] = root;
-		expect(readdirSync(sessionDir("alpha")).filter((entry) => entry.endsWith(".tmp"))).toEqual([]);
+		const target = captureRecordFile("alpha", digest());
+		const tmp = `${target}.tmp`;
+
+		// A real failing rename: the target is a non-empty directory, so the temp file
+		// is fully written and the rename is what fails — the case the earlier test
+		// missed by failing at mkdir, before anything was written at all.
+		rmSync(target);
+		mkdirSync(target);
+		writeFileSync(join(target, "occupied"), "x");
+		expect(() => writeCaptureRecordAtomic(sample({ watermarkSeq: 3 }))).toThrow();
+		expect(existsSync(tmp)).toBe(false);
+	});
+
+	it("rejects a digest that is not a full validated hex digest", () => {
+		for (const bad of ["../../escape", "abc", "", "Z".repeat(64), `${"a".repeat(63)}!`]) {
+			expect(() => asProducerDigest(bad)).toThrow(InvalidProducerDigestError);
+		}
+		expect(asProducerDigest("a".repeat(64))).toBe("a".repeat(64));
 	});
 
 	it("tells absent, corrupt, and oversized apart through ONE descriptor", () => {

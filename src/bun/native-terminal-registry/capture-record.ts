@@ -4,9 +4,18 @@
  * producer-scoped temp name, and renamed only by the producer that still owns it.
  */
 
-import { closeSync, fstatSync, mkdirSync, openSync, readSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { closeSync, constants, fstatSync, mkdirSync, openSync, readSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+	CAPTURE_SIGNATURE_MAX,
+	canonicalProducer,
+	captureProducerDigest,
+	type CaptureProducer,
+	type CaptureProducerDigest,
+} from "./capture-digest";
 import { captureRecordFile, sessionDir } from "./paths";
+import { withSessionStateLock } from "./session-lock";
+
+export { captureProducerDigest, type CaptureProducer } from "./capture-digest";
 
 export const CAPTURE_RECORD_SCHEMA = "dev3-native-capture-record" as const;
 export const CAPTURE_RECORD_VERSION = 1 as const;
@@ -20,39 +29,12 @@ export const CAPTURE_RECORD_MAX_BYTES = 256 * 1024;
 
 export type CaptureProducerHealth = "live" | "overflowed" | "failed";
 
-/** Bounds on the variable strings, so the envelope cannot grow without limit. */
-export const CAPTURE_SIGNATURE_MAX = 128;
 export const CAPTURE_ERROR_MAX = 512;
 /** A pane cannot legitimately be wider or taller than this, nor hold more rows. */
 export const CAPTURE_GEOMETRY_MAX = 10_000;
 export const CAPTURE_ROWS_MAX = 4_000;
 
-/**
- * Opaque, bounded identity of ONE producer, used as the artifact's path segment.
- * Scoping the path is what removes the publish race: a producer can only ever
- * address its own object, so there is nothing to check before renaming.
- */
-export function captureProducerDigest(producer: CaptureProducer): string {
-	return createHash("sha256")
-		.update(
-			[producer.hostPid, producer.hostStartSignature, producer.shellPid, producer.shellStartSignature].join(
-				"\u0000",
-			),
-		)
-		.digest("hex")
-		.slice(0, 16);
-}
 
-/**
- * Who wrote these rows. The same evidence ownership classification uses, so a
- * reader can prove the text and the pane belong to the same incarnation.
- */
-export interface CaptureProducer {
-	hostPid: number;
-	hostStartSignature: string;
-	shellPid: number;
-	shellStartSignature: string;
-}
 
 export interface CaptureRecord {
 	schema: typeof CAPTURE_RECORD_SCHEMA;
@@ -169,12 +151,10 @@ export function captureRecordOf(
 		schema: CAPTURE_RECORD_SCHEMA,
 		version: CAPTURE_RECORD_VERSION,
 		sessionId,
-		producer: {
-			hostPid: producer.hostPid,
-			hostStartSignature: boundedString(producer.hostStartSignature, CAPTURE_SIGNATURE_MAX),
-			shellPid: producer.shellPid,
-			shellStartSignature: boundedString(producer.shellStartSignature, CAPTURE_SIGNATURE_MAX),
-		},
+		// The ONE canonical form, so the digest, the stored record and every comparison
+		// agree; truncating here while the digest hashed raw strings made a valid
+		// artifact unreachable.
+		producer: canonicalProducer(producer),
 		updatedAt,
 		watermarkSeq: projection.watermarkSeq,
 		activeBuffer: projection.activeBuffer,
@@ -192,16 +172,27 @@ export function captureRecordOf(
 			resyncGaps: projection.resyncGaps,
 		},
 	};
-	const budget = CAPTURE_RECORD_MAX_BYTES - Buffer.byteLength(serializeCaptureRecord(envelope), "utf8");
-	const fitted = fitRowsSerialized(projection.viewport, projection.history, budget);
-	return {
-		...envelope,
-		viewport: fitted.viewport,
-		history: fitted.history,
-		// The producer HOLDS this much history; the record carries what fitted.
-		historyTotal: Math.max(projection.historyTotal, fitted.history.length),
-		viewportRowsOmitted: fitted.viewportRowsOmitted,
-	};
+	// Build, serialize, trim, recompute. The envelope's own size depends on digits
+	// that are only known after trimming (viewportRowsOmitted, historyTotal), so a
+	// single budget computed up front can be wrong by exactly those digits.
+	let budget = CAPTURE_RECORD_MAX_BYTES - Buffer.byteLength(serializeCaptureRecord(envelope), "utf8");
+	let candidate = envelope;
+	for (let attempt = 0; attempt < 4; attempt++) {
+		const fitted = fitRowsSerialized(projection.viewport, projection.history, Math.max(0, budget));
+		candidate = {
+			...envelope,
+			viewport: fitted.viewport,
+			history: fitted.history,
+			// The producer HOLDS this much history; the record carries what fitted.
+			historyTotal: Math.max(projection.historyTotal, fitted.history.length),
+			viewportRowsOmitted: fitted.viewportRowsOmitted,
+		};
+		const actual = Buffer.byteLength(serializeCaptureRecord(candidate), "utf8");
+		if (actual <= CAPTURE_RECORD_MAX_BYTES) return candidate;
+		budget -= actual - CAPTURE_RECORD_MAX_BYTES;
+	}
+	// Fail closed rather than publish something the reader will reject as oversized.
+	throw new Error(`capture record for ${sessionId} could not be bounded to ${CAPTURE_RECORD_MAX_BYTES} bytes`);
 }
 
 /**
@@ -269,6 +260,9 @@ export function inspectCaptureRecordText(text: string, sessionId: string): Captu
 	) {
 		return { kind: "rejected", problem: "the producer block is missing or incomplete" };
 	}
+	// The caps are enforced, not merely declared: a type-valid but semantically
+	// impossible record would otherwise be republished as KNOWN geometry and
+	// truncation facts.
 	if (
 		typeof r.updatedAt !== "string" ||
 		!isFiniteInt(r.watermarkSeq) ||
@@ -279,6 +273,18 @@ export function inspectCaptureRecordText(text: string, sessionId: string): Captu
 		!isStringArray(r.history) ||
 		!isFiniteInt(r.historyTotal) ||
 		!isFiniteInt(r.viewportRowsOmitted) ||
+		r.cols < 1 ||
+		r.rows < 1 ||
+		r.cols > CAPTURE_GEOMETRY_MAX ||
+		r.rows > CAPTURE_GEOMETRY_MAX ||
+		producer.hostPid < 1 ||
+		producer.shellPid < 1 ||
+		producer.hostStartSignature.length > CAPTURE_SIGNATURE_MAX ||
+		producer.shellStartSignature.length > CAPTURE_SIGNATURE_MAX ||
+		(typeof health?.error === "string" && health.error.length > CAPTURE_ERROR_MAX) ||
+		r.viewport.length > CAPTURE_ROWS_MAX ||
+		r.history.length > CAPTURE_ROWS_MAX ||
+		r.historyTotal < r.history.length ||
 		!health ||
 		(health.status !== "live" && health.status !== "overflowed" && health.status !== "failed") ||
 		!isFiniteInt(health.droppedBytes) ||
@@ -329,19 +335,37 @@ export function inspectCaptureRecordText(text: string, sessionId: string): Captu
 export function inspectCaptureRecordAt(file: string, sessionId: string): CaptureRecordInspection {
 	let fd: number;
 	try {
-		fd = openSync(file, "r");
+		// No-follow and nonblocking where supported: a symlink to a FIFO at this path
+		// would otherwise block the whole process before the size gate is ever reached.
+		const flags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+		fd = openSync(file, flags);
 	} catch {
 		return { kind: "absent" };
 	}
 	try {
-		const size = fstatSync(fd).size;
-		if (size > CAPTURE_RECORD_MAX_BYTES) {
-			return { kind: "rejected", problem: `the file is ${size} bytes, over the ${CAPTURE_RECORD_MAX_BYTES} ceiling` };
+		const stat = fstatSync(fd);
+		// Only a regular file with a single link may be read: a FIFO, a directory or a
+		// hard-linked decoy is not this producer's artifact.
+		if (!stat.isFile()) return { kind: "rejected", problem: "the capture path is not a regular file" };
+		if (stat.nlink > 1) return { kind: "rejected", problem: `the capture path has ${stat.nlink} links` };
+		if (stat.size > CAPTURE_RECORD_MAX_BYTES) {
+			return { kind: "rejected", problem: `the file is ${stat.size} bytes, over the ${CAPTURE_RECORD_MAX_BYTES} ceiling` };
 		}
-		const buffer = Buffer.allocUnsafe(Math.min(size, CAPTURE_RECORD_MAX_BYTES) + 1);
-		const read = readSync(fd, buffer, 0, buffer.length, 0);
-		if (read > CAPTURE_RECORD_MAX_BYTES) {
-			return { kind: "rejected", problem: `the file grew past the ${CAPTURE_RECORD_MAX_BYTES} ceiling while being read` };
+		const buffer = Buffer.allocUnsafe(CAPTURE_RECORD_MAX_BYTES + 1);
+		let read = 0;
+		for (;;) {
+			let chunk: number;
+			try {
+				chunk = readSync(fd, buffer, read, buffer.length - read, read);
+			} catch (err) {
+				if ((err as { code?: string }).code === "EINTR" || (err as { code?: string }).code === "EAGAIN") continue;
+				throw err;
+			}
+			if (chunk === 0) break;
+			read += chunk;
+			if (read > CAPTURE_RECORD_MAX_BYTES) {
+				return { kind: "rejected", problem: `the file grew past the ${CAPTURE_RECORD_MAX_BYTES} ceiling while being read` };
+			}
 		}
 		return inspectCaptureRecordText(buffer.toString("utf8", 0, read), sessionId);
 	} catch (err) {
@@ -355,11 +379,17 @@ export function inspectCaptureRecordAt(file: string, sessionId: string): Capture
 	}
 }
 
-export function inspectCaptureRecord(sessionId: string, producerDigest: string): CaptureRecordInspection {
+export function inspectCaptureRecord(
+	sessionId: string,
+	producerDigest: CaptureProducerDigest,
+): CaptureRecordInspection {
 	return inspectCaptureRecordAt(captureRecordFile(sessionId, producerDigest), sessionId);
 }
 
-export function readCaptureRecord(sessionId: string, producerDigest: string): CaptureRecord | null {
+export function readCaptureRecord(
+	sessionId: string,
+	producerDigest: CaptureProducerDigest,
+): CaptureRecord | null {
 	const inspection = inspectCaptureRecord(sessionId, producerDigest);
 	return inspection.kind === "present" ? inspection.record : null;
 }
@@ -371,19 +401,22 @@ export function readCaptureRecord(sessionId: string, producerDigest: string): Ca
  * The temp file is removed on every exit, including a failed or partial write.
  */
 export function writeCaptureRecordAtomic(record: CaptureRecord): void {
-	const digest = captureProducerDigest(record.producer);
-	const target = captureRecordFile(record.sessionId, digest);
+	const target = captureRecordFile(record.sessionId, captureProducerDigest(record.producer));
 	const tmp = `${target}.tmp`;
 	mkdirSync(sessionDir(record.sessionId), { recursive: true });
-	try {
-		writeFileSync(tmp, serializeCaptureRecord(record), { mode: 0o600 });
-		renameSync(tmp, target);
-	} finally {
+	// Under the session lock, so a concurrent cleanup cannot delete this artifact
+	// between its own enumeration and this rename.
+	withSessionStateLock(record.sessionId, () => {
 		try {
-			unlinkSync(tmp);
-		} catch {
-			// renamed away on success, or never created on an early failure
+			writeFileSync(tmp, serializeCaptureRecord(record), { mode: 0o600 });
+			renameSync(tmp, target);
+		} finally {
+			try {
+				unlinkSync(tmp);
+			} catch {
+				// renamed away on success, or never created on an early failure
+			}
 		}
-	}
+	});
 }
 

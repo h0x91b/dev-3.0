@@ -14,7 +14,8 @@
  * path/validation logic is unit-testable under vitest (which stubs Bun).
  */
 
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import type { CaptureProducerDigest } from "./capture-digest";
 
 export const NATIVE_SESSIONS_DIR_ENV = "DEV3_NATIVE_SESSIONS_DIR";
 
@@ -92,12 +93,25 @@ export function parserStateFile(id: string): string {
  * what makes a stale producer physically unable to publish over its successor:
  * there is no shared name to race for, so no ownership check to get wrong.
  */
-export function captureRecordFile(id: string, producerDigest: string): string {
-	return join(sessionDir(id), `capture.${producerDigest}.json`);
+export function captureRecordFile(id: string, producerDigest: CaptureProducerDigest): string {
+	const file = join(sessionDir(id), `capture.${producerDigest}.json`);
+	// The digest is validated on construction; the join is asserted anyway, because a
+	// path that escaped the session directory would be a traversal.
+	if (dirname(file) !== sessionDir(id)) throw new Error(`capture path escaped its session directory: ${file}`);
+	return file;
 }
 
 /** Matches the whole capture family of a session, for cleanup. */
-export const CAPTURE_RECORD_PATTERN = /^capture\.[0-9a-f]{16}\.json(?:\.tmp)?$/;
+export const CAPTURE_RECORD_PATTERN = /^capture\.[0-9a-f]{64}\.json(?:\.tmp)?$/;
+
+/**
+ * The per-session lock, deliberately a SIBLING of the session directory rather
+ * than a file inside it: a lock living in the directory being cleaned would keep
+ * that directory alive and defeat teardown.
+ */
+export function sessionStateLockFile(id: string): string {
+	return join(sessionsRootDir(), `${id}.state.lock`);
+}
 
 /** Ordered ground-truth stream tap (seq 1228) — proof runs only, env-gated. */
 export function streamTapFile(id: string): string {

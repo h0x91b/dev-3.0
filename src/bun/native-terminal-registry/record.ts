@@ -28,6 +28,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { withSessionStateLock } from "./session-lock";
 import {
 	CAPTURE_RECORD_PATTERN,
 	journalFile,
@@ -324,8 +325,17 @@ function captureFamilyFiles(sessionId: string): string[] {
 	}
 }
 
+
 export function removeSessionState(sessionId: string, expectedToken: string | null): boolean {
-	if (expectedToken === null || readToken(sessionId) !== expectedToken) return false;
+	if (expectedToken === null) return false;
+	// The token is verified INSIDE the lock and immediately before every deletion:
+	// checking ownership outside it let an old cleanup pass a stale check, wait, and
+	// then delete a successor's token, record and artifacts.
+	return withSessionStateLock(sessionId, () => removeOwnedSessionState(sessionId, expectedToken));
+}
+
+function removeOwnedSessionState(sessionId: string, expectedToken: string): boolean {
+	if (readToken(sessionId) !== expectedToken) return false;
 	const record = readRecord(sessionId);
 	const atomicFiles = [journalFile(sessionId), parserStateFile(sessionId), tokenFile(sessionId), recordFile(sessionId)];
 	if (record && Number.isInteger(record.host.pid) && record.host.pid > 0) {
@@ -340,12 +350,21 @@ export function removeSessionState(sessionId: string, expectedToken: string | nu
 	const files = [
 		journalFile(sessionId),
 		parserStateFile(sessionId),
-		...captureFamilyFiles(sessionId),
 		streamTapFile(sessionId),
 		logFile(sessionId),
 		tokenFile(sessionId),
 		recordFile(sessionId),
 	];
+	// Ownership was verified INSIDE the lock, and the lock is held across every
+	// deletion below, so nothing can take ownership mid-cleanup. Re-checking after the
+	// token file itself is unlinked would report failure for a cleanup that succeeded.
+	for (const file of captureFamilyFiles(sessionId)) {
+		try {
+			unlinkSync(file);
+		} catch {
+			// already gone
+		}
+	}
 	for (const file of files) {
 		try {
 			if (existsSync(file)) unlinkSync(file);
