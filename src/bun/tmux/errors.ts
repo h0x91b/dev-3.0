@@ -62,3 +62,30 @@ export class TmuxSpawnError extends Error {
 export function isTmuxSpawnError(err: unknown): err is TmuxSpawnError {
 	return err instanceof TmuxSpawnError || (err as { name?: string })?.name === "TmuxSpawnError";
 }
+
+/**
+ * Raised when a tmux command was launched but did not finish inside its budget. Whether it
+ * took effect is unknowable, so callers report uncertainty rather than failure; whether the
+ * child itself is gone is a separate fact, carried by `stopConfirmed`.
+ */
+export class TmuxTimeoutError extends Error {
+	readonly args: readonly string[];
+	readonly timeoutMs: number;
+	/** False when the child could not be confirmed gone — the caller must treat the
+	 *  pane as unsafe rather than merely uncertain. */
+	readonly stopConfirmed: boolean;
+	constructor(args: readonly string[], timeoutMs: number, stopConfirmed = true) {
+		super(
+			`tmux ${args[0] ?? ""} did not finish within ${timeoutMs}ms and was ${stopConfirmed ? "killed" : "abandoned unconfirmed"}`,
+		);
+		this.name = "TmuxTimeoutError";
+		this.args = args;
+		this.timeoutMs = timeoutMs;
+		this.stopConfirmed = stopConfirmed;
+	}
+}
+
+/** True for a killed-on-timeout tmux command. Robust across module boundaries. */
+export function isTmuxTimeoutError(err: unknown): err is TmuxTimeoutError {
+	return err instanceof TmuxTimeoutError || (err as { name?: string })?.name === "TmuxTimeoutError";
+}

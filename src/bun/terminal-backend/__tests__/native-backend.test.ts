@@ -4,14 +4,17 @@
  * the isolation invariant (no NativeSingleViewAdapter in scope).
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { NativeTerminalBackend } from "../native-backend";
 import { TerminalBackendError } from "../errors";
 import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 } from "../../native-terminal-registry/record";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createSplitTree, serializeSplitTree } from "../../../shared/split-tree";
+import { join } from "node:path";
 import { coordinatorRecordFile } from "../../native-terminal-multipane/paths";
 import { FakeCoordinatorWorld } from "./fake-coordinator-world";
 
@@ -565,3 +568,109 @@ describe("NativeTerminalBackend identity bracket on every outcome", () => {
 		expect(capture.reason).toContain("ps exploded");
 	});
 });
+describe("inspectPane classifies both processes, passively", () => {
+	const COORD = "dev3-task-11111111-2222-3333-4444-55555555aaaa";
+	const PANE_SESSION = `${COORD}-pane-1`;
+	let root = "";
+
+	/** A coordinator record plus a session record, written straight to an isolated root. */
+	function seed(opts: { recordSessionId?: string } = {}): void {
+		mkdirSync(join(root, "multipane", COORD), { recursive: true });
+		writeFileSync(
+			join(root, "multipane", COORD, "coordinator.json"),
+			JSON.stringify({
+				schemaVersion: 1,
+				coordinatorId: COORD,
+				epoch: "e1",
+				updatedAt: new Date(0).toISOString(),
+				layout: serializeSplitTree(createSplitTree()),
+				panes: [{ paneId: "pane-1", sessionId: PANE_SESSION }],
+			}),
+		);
+		mkdirSync(join(root, "sessions", PANE_SESSION), { recursive: true });
+		writeFileSync(
+			join(root, "sessions", PANE_SESSION, "record.json"),
+			JSON.stringify({
+				schemaVersion: 1,
+				sessionId: opts.recordSessionId ?? PANE_SESSION,
+				paneId: "pane-1",
+				protocolVersion: 1,
+				hostArtifactVersion: "1",
+				runtimeVersion: "1.0.0",
+				platform: process.platform,
+				host: { pid: 4242, executable: "/host", startSignature: "host-sig" },
+				shell: { pid: 4243, command: ["sh"], startSignature: "shell-sig" },
+				endpoint: { transport: "ws", address: "127.0.0.1", port: 1234 },
+				ownership: { evidenceKind: "posix-start-signature" },
+				cols: 80,
+				rows: 24,
+				createdAt: new Date(0).toISOString(),
+				updatedAt: new Date(0).toISOString(),
+			}),
+		);
+	}
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-inspect-pane-"));
+		process.env.DEV3_NATIVE_SESSIONS_DIR = join(root, "sessions");
+		process.env.DEV3_NATIVE_MULTIPANE_DIR = join(root, "multipane");
+	});
+
+	afterEach(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	/** Probes that answer without touching a real process. */
+	function probes(over: { alive?: boolean; hostSig?: string; shellSig?: string } = {}) {
+		return {
+			isAlive: () => over.alive ?? true,
+			readSignature: (pid: number) => (pid === 4242 ? (over.hostSig ?? "host-sig") : (over.shellSig ?? "shell-sig")),
+			isInJob: async () => true,
+		};
+	}
+
+	it("reports an owned pane when both processes verify", async () => {
+		seed();
+		const seen = await new NativeTerminalBackend().inspectPane(COORD, "pane-1", probes());
+		expect(seen, JSON.stringify(seen)).toMatchObject({ kind: "observed", ownership: "owned" });
+	});
+
+	// A record copied from another session describes processes this pane does not own.
+	it("refuses a record whose sessionId is not this pane's", async () => {
+		seed({ recordSessionId: "dev3-task-somebody-else-pane-1" });
+		const seen = await new NativeTerminalBackend().inspectPane(COORD, "pane-1", probes());
+		expect(seen).toMatchObject({ kind: "foreign-record", recordSessionId: "dev3-task-somebody-else-pane-1" });
+	});
+
+	it("reports dead when a process is gone — the SHELL counts too", async () => {
+		seed();
+		const backend = new NativeTerminalBackend();
+		const onlyShellGone = { ...probes(), isAlive: (pid: number) => pid !== 4243 };
+		expect(await backend.inspectPane(COORD, "pane-1", onlyShellGone)).toMatchObject({ ownership: "dead" });
+	});
+
+	// A live pid whose start signature moved on belongs to an unrelated successor.
+	it("reports reused when a pid is alive but its identity changed", async () => {
+		seed();
+		const backend = new NativeTerminalBackend();
+		expect(await backend.inspectPane(COORD, "pane-1", probes({ shellSig: "somebody-else" }))).toMatchObject({
+			ownership: "reused",
+		});
+	});
+});
+
+describe("inspectPane observes without reconciling", () => {
+	// The point of the reader: it must not adopt, recover or register anything, so a
+	// later read still sees the same nothing.
+	it("adopts no coordinator and leaves the session unchanged", async () => {
+		const backend = new NativeTerminalBackend();
+		const first = await backend.inspectPane("dev3-task-no-such-session-pane-1", "pane-1");
+		expect(["coordinator-absent", "coordinator-unreadable"]).toContain(first.kind);
+
+		// A recovering read would have created state that changes the second answer.
+		const second = await backend.inspectPane("dev3-task-no-such-session-pane-1", "pane-1");
+		expect(second).toEqual(first);
+		await expect(backend.describeSession("dev3-task-no-such-session-pane-1")).resolves.toBeNull();
+	});
+});
+

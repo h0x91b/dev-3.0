@@ -144,6 +144,18 @@ export const ALL_PANE_PIDS_FORMAT = tmuxFormat()
 	.tail("sessionName", "session_name")
 	.build();
 
+/**
+ * One atomic sighting per pane: its id, liveness, THIS server's generation token, and the
+ * session holding it. Reading the token here rather than in a second command is what stops
+ * a restart from pairing one generation's pane with another's token.
+ */
+export const PANE_SIGHTING_FORMAT = tmuxFormat()
+	.string("paneId", "pane_id")
+	.flag("dead", "pane_dead")
+	.string("serverToken", "@dev3_server_token")
+	.tail("sessionName", "session_name")
+	.build();
+
 /** Pane id + the command the pane was started with — viewer-pane discovery. */
 export const PANE_START_COMMAND_FORMAT = tmuxFormat()
 	.string("paneId", "pane_id")
@@ -200,9 +212,9 @@ export const PANE_GEOMETRY_FORMAT = tmuxFormat()
 	.build();
 
 /**
- * Everything a read-only pane capture must report about a pane, in one sweep
- *. No free-text field, so there is no tail slot: a capture
- * deliberately carries no title, command, or any other process fact.
+ * Everything a read-only pane capture must report about a pane, in one sweep. No free-text
+ * field, so there is no tail slot: a capture deliberately carries no title, command, or any
+ * other process fact.
  */
 export const PANE_CAPTURE_FORMAT = tmuxFormat()
 	.string("paneId", "pane_id")

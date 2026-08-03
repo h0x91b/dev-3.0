@@ -85,20 +85,20 @@ export function nativeTaskSessionId(taskId: string): string {
 /**
  * The native backend wired to THIS build's host runtime. The runtime is resolved
  * lazily inside the launcher so presence checks and teardown never depend on a
- * launchable host — only actually starting a session does.
- *
- * Injects a custom `startPane` that passes this build's host launcher to the
- * registry's `start` function, so the coordinator spawns the correct host binary.
+ * launchable host — only actually starting a session does, which is why the host runtime
+ * is resolved inside `startPane` rather than when this backend is constructed.
  */
 export function nativeTaskTerminalBackend(): NativeTerminalBackend {
-	const registryDeps = {
-		...nativeRegistryDeps,
-		launchHost: nativeHostLauncher(resolveNativeHostRuntime()),
-	};
 	return new NativeTerminalBackend({
 		deps: {
 			...defaultCoordinatorDeps,
-			startPane: (sessionId, opts) => registryStart(sessionId, opts, registryDeps),
+			// Resolved HERE, not when the backend is built: resolving can stage a host
+			// image or throw, and a read-only inspection must not depend on either.
+			startPane: (sessionId, opts) =>
+				registryStart(sessionId, opts, {
+					...nativeRegistryDeps,
+					launchHost: nativeHostLauncher(resolveNativeHostRuntime()),
+				}),
 		},
 	});
 }
@@ -113,3 +113,5 @@ export function resolveTaskTerminalBackend(task: Task): ResolvedTaskTerminalBack
 		backend: decoded.backend === "native" ? nativeTaskTerminalBackend() : new TmuxTerminalBackend(),
 	};
 }
+
+export type { NativePaneObservation } from "./terminal-backend/native-backend";

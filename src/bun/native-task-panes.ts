@@ -25,6 +25,7 @@ import {
 	NativeTerminalBackend,
 	nativeTaskSessionId,
 	nativeTaskTerminalBackend,
+	type NativePaneObservation,
 	type TerminalLaunchSpec,
 } from "./task-terminal-backend";
 import {
@@ -196,6 +197,15 @@ export async function recoverNativeTaskPanes(taskId: string): Promise<NativeTask
 /** Current pane set state; returns `null` when no live coordinator exists. */
 export async function nativeTaskPanesState(taskId: string): Promise<NativeTaskPanesState | null> {
 	return buildState(taskId);
+}
+
+/**
+ * OBSERVE one pane: evidence about it, with nothing started, stopped or reconciled.
+ * Every other reader here recovers, which collapses absent, dead and unprovable into one
+ * answer — a caller that must tell those apart uses this.
+ */
+export function inspectNativeTaskPane(taskId: string, paneId: string): Promise<NativePaneObservation> {
+	return getBackend().inspectPane(coordinatorId(taskId), paneId);
 }
 
 /**

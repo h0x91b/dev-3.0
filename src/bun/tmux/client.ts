@@ -24,9 +24,9 @@ import {
 } from "./binary";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
-import { TmuxError, TmuxSpawnError } from "./errors";
+import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
 import type { TmuxFormat } from "./formats";
-import { PANE_ID_FORMAT } from "./formats";
+import { PANE_ID_FORMAT, PANE_SIGHTING_FORMAT } from "./formats";
 
 type SpawnFn = typeof defaultSpawn;
 type SpawnedProcess = ReturnType<SpawnFn>;
@@ -56,6 +56,71 @@ export type TmuxLayoutName =
 	| "even-vertical"
 	| "main-horizontal"
 	| "main-vertical";
+
+/** What the server can be observed to hold for one pane, right now. */
+export type TmuxPaneSighting =
+	| { kind: "present"; sessionName: string; serverToken: string }
+	/** Listed but its process is gone — `remain-on-exit` keeps the pane addressable. */
+	| { kind: "dead"; sessionName: string; serverToken: string }
+	| { kind: "absent" }
+	/** tmux could not answer, so nothing about the pane was established. */
+	| { kind: "unusable"; detail: string };
+
+/** Printed by a guarded send if and only if the guard held and the keys went out. */
+const GUARDED_SEND_MARKER = "dev3-pane-input-sent";
+/** The server option holding this server's generation token, for its whole lifetime. */
+const SERVER_TOKEN_OPTION = "@dev3_server_token";
+/** Bound for the token command: a wedged server must not hold a session's setup open. */
+const SERVER_TOKEN_TIMEOUT_MS = 3_000;
+const TERM_GRACE_MS = 500;
+const KILL_GRACE_MS = 500;
+
+/** Whether `work` settled within `ms`. Never rejects; used only to bound a wait. */
+async function settled(work: Promise<unknown>, ms: number): Promise<boolean> {
+	return await Promise.race([
+		work.then(
+			() => true,
+			() => true,
+		),
+		new Promise<boolean>((resolve) => setTimeout(() => resolve(false), ms)),
+	]);
+}
+
+/** `work`, or `fallback` as soon as `giveUp` settles — so no wait outlives the stop. */
+function until<T>(work: Promise<T>, giveUp: Promise<unknown>, fallback: T): Promise<T> {
+	return Promise.race([work.catch(() => fallback), giveUp.then(() => fallback)]);
+}
+
+/**
+ * Read a stream with an OWN reader so the stop can cancel it: handing the stream to
+ * `Response` locks it, and an abandoned `Response` read stays pending for the life of the
+ * process with the stream locked behind it.
+ */
+async function readUntil(stream: unknown, giveUp: Promise<unknown>): Promise<string> {
+	const readable = stream as ReadableStream<Uint8Array> | undefined;
+	// Anything that is not a live stream (a string, a Response, a test double) has no
+	// reader to cancel and cannot half-open, so read it the simple way.
+	if (!readable || typeof readable.getReader !== "function") {
+		return await until(new Response(readable as unknown as BodyInit).text(), giveUp, "");
+	}
+	const reader = readable.getReader();
+	void giveUp.then(() => reader.cancel().catch(() => undefined));
+	const decoder = new TextDecoder();
+	let text = "";
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value) text += decoder.decode(value, { stream: true });
+		}
+		text += decoder.decode();
+	} catch {
+		// cancelled, or the pipe broke — whatever arrived is what we report
+	} finally {
+		reader.releaseLock();
+	}
+	return text;
+}
 
 interface RunResult {
 	stdout: string;
@@ -109,19 +174,66 @@ export class TmuxClient {
 		return [getTmuxBinary(), "-L", socket ?? this.defaultSocket, ...args];
 	}
 
-	private async run(socket: string | undefined, args: string[]): Promise<RunResult> {
+	private async run(
+		socket: string | undefined,
+		args: string[],
+		bounds?: { timeoutMs?: number; signal?: AbortSignal },
+	): Promise<RunResult> {
 		let proc: SpawnedProcess;
 		try {
 			proc = this.spawnFn(this.argv(socket, args), { stdout: "pipe", stderr: "pipe" });
 		} catch (err) {
 			throw new TmuxSpawnError(getTmuxBinary(), err);
 		}
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-			proc.exited,
-		]);
-		return { stdout, stderr, exitCode };
+
+		let resolveStopped: (confirmed: boolean) => void = () => undefined;
+		// Settles when a stop has finished, with whether the child was confirmed gone.
+		const stopped = new Promise<boolean>((resolve) => {
+			resolveStopped = resolve;
+		});
+		let stopping = false;
+		const stop = async (): Promise<void> => {
+			if (stopping) return;
+			stopping = true;
+			// TERM, a bounded wait, then KILL, then a bounded reap.
+			try {
+				proc.kill("SIGTERM");
+			} catch {
+				// already gone
+			}
+			if (await settled(proc.exited, TERM_GRACE_MS)) return resolveStopped(true);
+			try {
+				proc.kill("SIGKILL");
+			} catch {
+				// already gone
+			}
+			resolveStopped(await settled(proc.exited, KILL_GRACE_MS));
+		};
+
+		const timer = bounds?.timeoutMs === undefined ? undefined : setTimeout(() => void stop(), Math.max(0, bounds.timeoutMs));
+		const onAbort = (): void => void stop();
+		bounds?.signal?.addEventListener("abort", onAbort, { once: true });
+
+		try {
+			// Every wait here ends when the stop does, so a half-open pipe or an `exited`
+			// that never settles cannot outlive the decision to give up.
+			const collected = Promise.all([
+				readUntil(proc.stdout, stopped),
+				readUntil(proc.stderr, stopped),
+				until(proc.exited, stopped, -1),
+			]).then(([stdout, stderr, exitCode]) => ({ stdout, stderr, exitCode }));
+
+			const result = await Promise.race([
+				collected.then((value) => ({ kind: "done" as const, value })),
+				stopped.then((confirmed) => ({ kind: "stopped" as const, confirmed })),
+			]);
+			if (result.kind === "done" && !stopping) return result.value;
+			const confirmed = result.kind === "stopped" ? result.confirmed : await stopped;
+			throw new TmuxTimeoutError(args, bounds?.timeoutMs ?? 0, confirmed);
+		} finally {
+			if (timer !== undefined) clearTimeout(timer);
+			bounds?.signal?.removeEventListener("abort", onAbort);
+		}
 	}
 
 	private async runChecked(socket: string | undefined, args: string[]): Promise<RunResult> {
@@ -454,6 +566,117 @@ export class TmuxClient {
 		if (opts?.literal) args.push("-l");
 		args.push("-t", target, ...keys);
 		return this.runCommand(opts?.socket, args, opts);
+	}
+
+	/**
+	 * `move-pane -s <source> -t <target>` — move a pane to another window or session.
+	 * The pane keeps its `%id` and its process; only its parent changes, which is
+	 * exactly why a pane id alone is not an identity.
+	 */
+	movePane(opts: { source: string; target: string } & CommandOpts): Promise<void> {
+		return this.runCommand(opts.socket, ["move-pane", "-s", opts.source, "-t", opts.target], opts);
+	}
+
+	/**
+	 * OBSERVE whether a pane is on this server, and in which session. Proves absence for a
+	 * caller that must tell "gone" from "cannot say"; it is never the write guard, because
+	 * the answer is already stale when it returns.
+	 */
+	async observePane(opts: { pane: string } & SocketOpt): Promise<TmuxPaneSighting> {
+		if (!/^%\d+$/.test(opts.pane)) return { kind: "unusable", detail: `unsafe tmux pane id: ${opts.pane}` };
+		let rows: { paneId: string; dead: boolean; serverToken: string; sessionName: string }[];
+		try {
+			rows = await this.listPanes(PANE_SIGHTING_FORMAT, { scope: "server", socket: opts.socket });
+		} catch (err) {
+			// tmux could not answer, which says nothing about the pane.
+			return { kind: "unusable", detail: `listing panes failed: ${String(err)}` };
+		}
+		const found = rows.find((row) => row.paneId === opts.pane);
+		if (!found) return { kind: "absent" };
+		if (!found.serverToken) return { kind: "unusable", detail: "this tmux server has no dev3 generation token" };
+		// tmux keeps a dead pane listed under `remain-on-exit`; it stays targetable, and
+		// send-keys into it is refused while the surrounding command list succeeds.
+		if (found.dead) return { kind: "dead", sessionName: found.sessionName, serverToken: found.serverToken };
+		return { kind: "present", sessionName: found.sessionName, serverToken: found.serverToken };
+	}
+
+	/**
+	 * This server's generation token, minted once if it has none: set-if-empty and
+	 * read-back ride ONE command list, so two racers agree on whichever won. A restarted
+	 * server mints a fresh one, and every observation of a pane carries it.
+	 */
+	async ensureServerToken(opts: { candidate: string; timeoutMs?: number } & SocketOpt): Promise<string> {
+		if (!/^[A-Za-z0-9-]{1,64}$/.test(opts.candidate)) throw new Error(`unsafe tmux server token: ${opts.candidate}`);
+		const args = [
+			"if-shell",
+			"-F",
+			`#{==:#{${SERVER_TOKEN_OPTION}},}`,
+			`set-option -g ${SERVER_TOKEN_OPTION} ${opts.candidate}`,
+			";",
+			"display-message",
+			"-p",
+			`#{${SERVER_TOKEN_OPTION}}`,
+		];
+		// Bounded like every other command here: a wedged server would otherwise leave this
+		// pending forever inside a session's setup step.
+		const result = await this.run(opts.socket, args, { timeoutMs: opts.timeoutMs ?? SERVER_TOKEN_TIMEOUT_MS });
+		if (result.exitCode !== 0) throw new TmuxError(args, result.exitCode, result.stderr);
+		const token = result.stdout.trim();
+		if (!token) throw new Error("tmux did not report a server token");
+		return token;
+	}
+
+	/**
+	 * Validate the pane's incarnation and send in ONE command list, so nothing can move
+	 * the pane in between; text travels as hex, so no tmux quoting can go wrong.
+	 * `{ sent: false }` means NOTHING went out — an unknown pane included (tmux exits 0).
+	 */
+	async sendKeysGuarded(
+		opts: {
+			pane: string;
+			serverToken: string;
+			session: string;
+			/** In order: literal text, or key names from the closed neutral table. */
+			chunks: readonly ({ literal: string } | { keys: readonly string[] })[];
+			/** Kill and reap the command after this long. */
+			timeoutMs?: number;
+			/** Kill and reap the command when this aborts. */
+			signal?: AbortSignal;
+		} & SocketOpt,
+	): Promise<{ sent: boolean }> {
+		if (!/^[A-Za-z0-9_.-]+$/.test(opts.session)) throw new Error(`unsafe tmux session name: ${opts.session}`);
+		if (!/^%\d+$/.test(opts.pane)) throw new Error(`unsafe tmux pane id: ${opts.pane}`);
+		if (!/^[A-Za-z0-9-]{1,64}$/.test(opts.serverToken)) throw new Error(`unsafe tmux server token: ${opts.serverToken}`);
+
+		const commands = opts.chunks.map((chunk) => {
+			if ("literal" in chunk) {
+				const hex = Buffer.from(chunk.literal, "utf8").toString("hex").match(/../g) ?? [];
+				return `send-keys -t ${opts.pane} -H ${hex.join(" ")}`;
+			}
+			for (const key of chunk.keys) {
+				if (!/^[A-Za-z][A-Za-z-]*$/.test(key)) throw new Error(`unsafe tmux key name: ${key}`);
+			}
+			return `send-keys -t ${opts.pane} ${chunk.keys.join(" ")}`;
+		});
+		// Four conditions, all inside the one guard, because each of them is invisible to a
+		// preflight: a dead pane stays addressable, and a pane in copy mode routes send-keys
+		// through the MODE key table — measured: the marker still prints and the program
+		// receives nothing, which would be a false `delivered`.
+		const guard =
+			`#{&&:#{==:#{${SERVER_TOKEN_OPTION}},${opts.serverToken}},` +
+			`#{&&:#{==:#{session_name},${opts.session}},` +
+			`#{&&:#{==:#{pane_dead},0},#{==:#{pane_in_mode},0}}}}`;
+		const args = [
+			"if-shell",
+			"-t",
+			opts.pane,
+			"-F",
+			guard,
+			[...commands, `display-message -p ${GUARDED_SEND_MARKER}`].join(" ; "),
+		];
+		const result = await this.run(opts.socket, args, { timeoutMs: opts.timeoutMs, signal: opts.signal });
+		if (result.exitCode !== 0) throw new TmuxError(args, result.exitCode, result.stderr);
+		return { sent: result.stdout.includes(GUARDED_SEND_MARKER) };
 	}
 
 	/**

@@ -13,6 +13,7 @@ import {
 } from "../shared/native-terminal-stream";
 import type { NativeStreamRole } from "../shared/native-terminal-stream";
 import { NativeBridgeJournal, NativeClientLease } from "./native-terminal-bridge";
+import { randomUUID } from "node:crypto";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
@@ -1880,6 +1881,11 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 					stack: (err as Error)?.stack ?? "no stack",
 				});
 			}
+			// Minted once the session exists, so this never starts an empty server on the
+			// socket. The INVARIANT that keeps a pin honest is elsewhere: every observation
+			// reads the token in the same sighting as the pane, so ordering here is hygiene.
+			const token = await initializeServerToken(session.tmuxSocket);
+			log.debug("tmux session setup finished", { taskId: shortId(session.taskId), pinnable: token !== null });
 		})();
 	}, 200);
 }
@@ -1902,6 +1908,32 @@ setInterval(() => {
 		}
 	}
 }, IDLE_CHECK_INTERVAL_MS);
+
+/** Attempts and pause used to mint the generation token; a fresh server may not answer yet. */
+const SERVER_TOKEN_ATTEMPTS = 3;
+const SERVER_TOKEN_RETRY_MS = 150;
+
+/**
+ * Give this tmux server its generation token, once. Failure is not fatal: a server without
+ * a token cannot be pinned at all, so pane input refuses honestly instead of writing blind.
+ */
+async function initializeServerToken(socket: string): Promise<string | null> {
+	for (let attempt = 1; attempt <= SERVER_TOKEN_ATTEMPTS; attempt += 1) {
+		try {
+			return await tmux.ensureServerToken({ socket, candidate: randomUUID() });
+		} catch (err) {
+			if (attempt === SERVER_TOKEN_ATTEMPTS) {
+				log.warn("tmux server has no dev3 generation token; its panes cannot be pinned", {
+					socket,
+					error: String(err),
+				});
+				return null;
+			}
+			await new Promise((resolve) => setTimeout(resolve, SERVER_TOKEN_RETRY_MS));
+		}
+	}
+	return null;
+}
 
 /** Reverse lookup: find the taskId that owns a given tmux session name. */
 function findTaskIdByTmuxSession(tmuxSessionName: string): string | null {

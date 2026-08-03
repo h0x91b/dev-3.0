@@ -14,7 +14,7 @@
 import { createLogger } from "./logger";
 import { HostRefusedError, NativeSessionClient, OwnershipTimeoutError } from "./native-terminal-registry/client";
 import type { WriterTakeoverRefusal } from "../shared/native-terminal-stream";
-import { readRecord } from "./native-terminal-registry/record";
+import { nativeBoundIdentityOf, type NativeBoundIdentity } from "./native-pane-identity";
 import type { ClientRole } from "./native-terminal-registry/writer-ownership";
 
 const log = createLogger("native-task-terminal");
@@ -61,6 +61,8 @@ export interface NativeTaskTerminal {
 	readonly paneId: string;
 	readonly hostPid: number;
 	readonly shellPid: number;
+	/** Registry-proved identity captured at bind time; see {@link NativeBoundIdentity}. */
+	readonly boundIdentity: NativeBoundIdentity | null;
 	write(data: string): void;
 	resize(cols: number, rows: number): void;
 	/**
@@ -130,7 +132,9 @@ function bindClient(
 	client: NativeSessionClient,
 	hooks: NativeTaskTerminalHooks,
 ): NativeTaskTerminal {
-	const record = readRecord(sessionId);
+	// The record this socket was DIALLED with, never a fresh read: a successor's record
+	// would describe a different process than the connection actually reaches.
+	const record = client.connectedRecord();
 	let closed = false;
 	const close = (): void => {
 		if (closed) return;
@@ -163,6 +167,7 @@ function bindClient(
 		paneId: paneId || record?.paneId || `${sessionId}:0`,
 		hostPid: record?.host.pid ?? -1,
 		shellPid: record?.shell.pid ?? -1,
+		boundIdentity: nativeBoundIdentityOf(record),
 		write(data) {
 			client.input(data);
 		},

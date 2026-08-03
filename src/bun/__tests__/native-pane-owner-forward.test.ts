@@ -24,7 +24,7 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { forwardToOwner } from "../native-pane-owner";
+import { forwardToOwner, isForwardToOwnerError } from "../native-pane-owner";
 import { CLI_ENDPOINT_VERSION, CLI_LOOPBACK_HOST, serializeCliEndpointRecord } from "../../shared/cli-endpoint";
 
 const OWNER_PID = 4711;
@@ -283,6 +283,22 @@ describe("forwardToOwner over a loopback endpoint record", () => {
 		expect(peer.requests[0].token).toBe("secret-token");
 	});
 
+	// The request id is what a reply is matched against. Two concurrent forwards sharing an
+	// id could each be answered with the other's reply, which no other test would notice.
+	it("gives every request its own id, even for the same method from the same process", async () => {
+		const port = await peer.listenOnLoopback();
+		const endpoint = endpointRecord(port, "secret-token");
+
+		await Promise.all([
+			forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "a" }),
+			forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "b" }),
+		]);
+
+		const ids = peer.requests.map((request) => request.id);
+		expect(ids).toHaveLength(2);
+		expect(new Set(ids).size).toBe(2);
+	});
+
 	// A corrupted record must fail before any dialling: a bad host or port is
 	// exactly the case the record parser exists to refuse.
 	it("refuses an unusable record without opening a connection", async () => {
@@ -302,5 +318,117 @@ describe("forwardToOwner over a loopback endpoint record", () => {
 		await expect(forwardToOwner({ pid: OWNER_PID, endpoint }, "message.send", { text: "x" })).rejects.toThrow(
 			"unusable endpoint record",
 		);
+	});
+});
+
+/**
+ * The dispatch phase a failure carries is load-bearing: a caller may only treat
+ * `before-dispatch` as "nothing happened". Everything else means the owner may
+ * have performed the whole delivery, so the caller must report an indeterminate
+ * outcome instead of resending.
+ */
+describe("a forward failure says which side of dispatch it happened on", () => {
+	async function phaseOf(promise: Promise<unknown>): Promise<{ phase: string; message: string }> {
+		try {
+			await promise;
+			throw new Error("expected the forward to reject");
+		} catch (err) {
+			if (!isForwardToOwnerError(err)) throw new Error(`not a ForwardToOwnerError: ${String(err)}`);
+			return { phase: err.phase, message: err.message };
+		}
+	}
+
+	it("reports before-dispatch when the owner's socket is not there", async () => {
+		const failure = await phaseOf(
+			forwardToOwner({ pid: OWNER_PID, endpoint: join(root, "missing.sock") }, "m", { text: "x" }),
+		);
+		expect(failure.phase).toBe("before-dispatch");
+	});
+
+	it("reports before-dispatch for an unusable endpoint record, with nothing dialled", async () => {
+		await peer.listenOnLoopback();
+		const endpoint = join(root, `${OWNER_PID}.endpoint.json`);
+		writeFileSync(endpoint, "{ not a record }");
+
+		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" }));
+		expect(failure.phase).toBe("before-dispatch");
+		expect(peer.connections).toBe(0);
+	});
+
+	it("reports possibly-dispatched when the owner hangs up after taking the request", async () => {
+		const endpoint = await peer.listenOnUnixPath(socketPath());
+		peer.respond = (_request, socket) => socket.destroy();
+
+		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" }));
+		expect(failure.phase).toBe("possibly-dispatched");
+		expect(peer.requests).toHaveLength(1);
+	});
+
+	it("reports possibly-dispatched when the owner refuses the request", async () => {
+		const endpoint = await peer.listenOnUnixPath(socketPath());
+		peer.respond = (request, socket) => {
+			socket.write(`${JSON.stringify({ id: request.id, ok: false, error: "pane is gone" })}\n`);
+		};
+
+		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" }));
+		expect(failure.phase).toBe("possibly-dispatched");
+	});
+
+	it("reports possibly-dispatched for a reply it cannot parse", async () => {
+		const endpoint = await peer.listenOnUnixPath(socketPath());
+		peer.respond = (_request, socket) => socket.write("not json\n");
+
+		const failure = await phaseOf(forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" }));
+		expect(failure.phase).toBe("possibly-dispatched");
+	});
+
+	it("keeps a complete write on the dispatched side, so a later timeout is not resendable", async () => {
+		const endpoint = await peer.listenOnUnixPath(socketPath());
+		// Take the request and answer nothing; the caller's own timeout ends it.
+		peer.respond = () => undefined;
+
+		const forward = forwardToOwner({ pid: OWNER_PID, endpoint }, "m", { text: "x" });
+		// The request is on the wire; prove the phase flipped without waiting 10s.
+		await vi.waitFor(() => expect(peer.requests).toHaveLength(1));
+		peer.close();
+		const failure = await phaseOf(forward);
+		expect(failure.phase).toBe("possibly-dispatched");
+	});
+
+	/**
+	 * A short write is the one case where the phase must stay `before-dispatch`
+	 * even though the socket was open — and it can only be judged in BYTES.
+	 * `socket.write` counts bytes; a multibyte payload's string length is smaller,
+	 * so comparing against `payload.length` would call a real short write complete.
+	 */
+	it("treats a multibyte short write as before-dispatch, counting bytes not code units", async () => {
+		const bun = (globalThis as unknown as { Bun: Record<string, unknown> }).Bun;
+		const previous = bun.connect;
+		let stringLength = 0;
+		let byteLength = 0;
+		bun.connect = (options: BunConnectOptions) =>
+			new Promise((resolve) => {
+				const handle = {
+					write: (data: string) => {
+						stringLength = data.length;
+						byteLength = Buffer.byteLength(data, "utf8");
+						// Accept every byte the string LOOKS like, one short of the truth.
+						return byteLength - 1;
+					},
+				};
+				options.socket.open(handle);
+				resolve(handle);
+			});
+		try {
+			const text = "日本語のプロンプト".repeat(4);
+			const failure = await phaseOf(
+				forwardToOwner({ pid: OWNER_PID, endpoint: socketPath() }, "m", { text }),
+			);
+			expect(byteLength).toBeGreaterThan(stringLength);
+			expect(failure.phase).toBe("before-dispatch");
+			expect(failure.message).toContain(`${byteLength - 1}/${byteLength} bytes`);
+		} finally {
+			bun.connect = previous;
+		}
 	});
 });

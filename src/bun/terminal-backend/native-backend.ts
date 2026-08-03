@@ -31,6 +31,9 @@ import {
 	type ShellLaunchSpec,
 } from "../native-terminal-registry/shell-launch";
 import { snapshotCaptureLines } from "../native-terminal-adapter/view-reconstruction";
+import { MultipaneRecordUnreadableError, readMultipaneRecordStrict } from "../native-terminal-multipane/record";
+import { inspectRecordFile, readToken, type RecordProblem } from "../native-terminal-registry/record";
+import { classifyOwnership, type OwnershipProbes, type OwnershipVerdict } from "../native-terminal-registry/ownership";
 import {
 	boundCaptureLines,
 	lastChangeAge,
@@ -211,6 +214,27 @@ function buildLaunchSpec(spec: TerminalSessionSpec | TerminalViewSpec): ShellLau
 	const defaults = defaultNativeShellLaunchSpec({ platform: process.platform, cwd, env: process.env });
 	return defineShellLaunchSpec({ ...defaults, env });
 }
+
+/** Evidence about one pane, gathered without changing anything. */
+export type NativePaneObservation =
+	/** The task has no coordinator record at all. */
+	| { kind: "coordinator-absent" }
+	/** A coordinator record exists but could not be trusted: corrupt, misbound, or I/O. */
+	| { kind: "coordinator-unreadable"; detail: string }
+	/** The coordinator does not list this pane. */
+	| { kind: "pane-absent" }
+	/** The pane is listed, but its session record could not be accepted. */
+	| { kind: "session-problem"; sessionId: string; problem: RecordProblem }
+	/** The pane's record names another session, so it describes other processes. */
+	| { kind: "foreign-record"; sessionId: string; recordSessionId: string }
+	/** Records read cleanly; `ownership` classifies BOTH processes passively. */
+	| {
+			kind: "observed";
+			sessionId: string;
+			host: { pid: number; startSignature: string };
+			shell: { pid: number; startSignature: string };
+			ownership: OwnershipVerdict;
+	  };
 
 export class NativeTerminalBackend implements TerminalBackend {
 	readonly kind = "native" as const;
@@ -566,6 +590,45 @@ export class NativeTerminalBackend implements TerminalBackend {
 		}
 		this.coordinators.set(id, recovered.coordinator);
 		return { panes: recovered.panes, layout: recovered.coordinator.layout };
+	}
+
+	/**
+	 * OBSERVE one pane without touching anything: no recovery, no cleanup, no spawn. Every
+	 * other reader here reconciles, which collapses absent, dead and unprovable into one
+	 * answer; a caller that must tell those apart needs evidence instead of a verdict.
+	 */
+	async inspectPane(id: TerminalSessionId, paneId: string, probes?: OwnershipProbes): Promise<NativePaneObservation> {
+		if (!isTerminalSessionId(id)) return { kind: "coordinator-unreadable", detail: `unusable session id ${id}` };
+		let coordinator;
+		try {
+			coordinator = readMultipaneRecordStrict(id);
+		} catch (err) {
+			// Corrupt, misbound or unreadable: real evidence, not an absence.
+			const reason = err instanceof MultipaneRecordUnreadableError ? String(err.reason) : "unknown";
+			return { kind: "coordinator-unreadable", detail: `coordinator record ${String(reason)}: ${String(err)}` };
+		}
+		if (!coordinator) return { kind: "coordinator-absent" };
+		const entry = coordinator.panes.find((pane) => pane.paneId === paneId);
+		if (!entry) return { kind: "pane-absent" };
+
+		const inspection = inspectRecordFile(entry.sessionId);
+		if (!inspection.ok) return { kind: "session-problem", sessionId: entry.sessionId, problem: inspection.problem };
+		const session = inspection.record;
+		// A record copied from elsewhere names a different session: it describes processes
+		// this pane does not own, so it proves nothing about this pane.
+		if (session.sessionId !== entry.sessionId) {
+			return { kind: "foreign-record", sessionId: entry.sessionId, recordSessionId: session.sessionId };
+		}
+		// Passive classification of BOTH processes — start signatures on POSIX, the
+		// ownership Job on Windows — so a reused pid is never mistaken for the original.
+		const ownership = await classifyOwnership(session, readToken(entry.sessionId), probes);
+		return {
+			kind: "observed",
+			sessionId: session.sessionId,
+			host: { pid: session.host.pid, startSignature: session.host.startSignature },
+			shell: { pid: session.shell.pid, startSignature: session.shell.startSignature },
+			ownership,
+		};
 	}
 
 	/** Per-pane host/shell pids, size, and liveness — not expressible via the contract. */

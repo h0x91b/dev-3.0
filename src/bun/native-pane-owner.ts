@@ -13,6 +13,7 @@
  * same NDJSON request/response protocol the CLI already speaks.
  */
 
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
@@ -85,10 +86,33 @@ export async function resolvePaneOwner(terminal: NativeTaskTerminal | null): Pro
 }
 
 /**
- * Run one request inside the owning app process and return its reply.
- *
- * Exactly-once is the caller's contract to keep: forward the WHOLE delivery, not
- * the bytes, so the owner performs it once and nobody writes locally as well.
+ * How far a failed forward got. Only `before-dispatch` is safe to treat as "nothing
+ * happened"; `possibly-dispatched` starts the moment `socket.write` accepted the complete
+ * framed request, and the caller owes an indeterminate verdict rather than a resend.
+ */
+export type ForwardPhase = "before-dispatch" | "possibly-dispatched";
+
+/** A forward failure that says which side of dispatch it happened on. */
+export class ForwardToOwnerError extends Error {
+	constructor(
+		message: string,
+		readonly phase: ForwardPhase,
+		readonly ownerPid: number,
+		options?: { cause?: unknown },
+	) {
+		super(message, options);
+		this.name = "ForwardToOwnerError";
+	}
+}
+
+export function isForwardToOwnerError(err: unknown): err is ForwardToOwnerError {
+	return err instanceof ForwardToOwnerError;
+}
+
+/**
+ * Run one request inside the owning app process and return its reply. Forward the WHOLE
+ * delivery, not the bytes, so the owner performs it once. Every rejection is a
+ * {@link ForwardToOwnerError}; only its `before-dispatch` phase means "not started".
  */
 export function forwardToOwner<T = unknown>(
 	owner: { pid: number; endpoint: string },
@@ -97,28 +121,42 @@ export function forwardToOwner<T = unknown>(
 ): Promise<T> {
 	const record = isCliEndpointHandle(owner.endpoint) ? readEndpointRecord(owner.endpoint) : null;
 	if (isCliEndpointHandle(owner.endpoint) && !record) {
-		return Promise.reject(new Error(`peer ${owner.pid} has an unusable endpoint record`));
+		return Promise.reject(
+			new ForwardToOwnerError(`peer ${owner.pid} has an unusable endpoint record`, "before-dispatch", owner.pid),
+		);
 	}
-	const id = `owner-route-${process.pid}-${method}`;
+	// Unique per REQUEST: two concurrent forwards on one connection would otherwise share
+	// an id and could be matched to each other's reply.
+	const id = `owner-route-${process.pid}-${method}-${randomUUID()}`;
 	const payload = JSON.stringify({ id, method, params, ...(record ? { token: record.token } : {}) }) + "\n";
 
 	return new Promise<T>((resolve, reject) => {
 		let buffer = "";
 		let settled = false;
+		// Flipped only after socket.write accepted the COMPLETE framed request.
+		let phase: ForwardPhase = "before-dispatch";
+		const fail = (message: string, cause?: unknown): void =>
+			finish(() => reject(new ForwardToOwnerError(message, phase, owner.pid, cause === undefined ? undefined : { cause })));
 		const finish = (fn: () => void) => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
 			fn();
 		};
-		const timer = setTimeout(
-			() => finish(() => reject(new Error(`owner ${owner.pid} did not answer ${method} in time`))),
-			FORWARD_TIMEOUT_MS,
-		);
+		const timer = setTimeout(() => fail(`owner ${owner.pid} did not answer ${method} in time`), FORWARD_TIMEOUT_MS);
 
 		const handlers = {
 			open(socket: { write(data: string): unknown }) {
-				socket.write(payload);
+				// A short write leaves the request unparseable, so it stays `before-dispatch`.
+				// The comparison is in BYTES: a multibyte payload's string length is smaller,
+				// which would make a real short write look complete.
+				const total = Buffer.byteLength(payload, "utf8");
+				const written = socket.write(payload);
+				if (typeof written === "number" && written < total) {
+					fail(`owner ${owner.pid} accepted only ${written}/${total} bytes of ${method}`);
+					return;
+				}
+				phase = "possibly-dispatched";
 			},
 			data(_socket: unknown, chunk: Uint8Array) {
 				buffer += new TextDecoder().decode(chunk);
@@ -128,20 +166,20 @@ export function forwardToOwner<T = unknown>(
 				try {
 					response = JSON.parse(buffer.slice(0, newline)) as CliResponse;
 				} catch (err) {
-					finish(() => reject(new Error(`owner ${owner.pid} sent an unparseable reply: ${String(err)}`)));
+					fail(`owner ${owner.pid} sent an unparseable reply: ${String(err)}`, err);
 					return;
 				}
-				finish(() =>
-					response.ok
-						? resolve(response.data as T)
-						: reject(new Error(response.error || `owner ${owner.pid} refused ${method}`)),
-				);
+				if (response.ok) {
+					finish(() => resolve(response.data as T));
+					return;
+				}
+				fail(response.error || `owner ${owner.pid} refused ${method}`);
 			},
 			close() {
-				finish(() => reject(new Error(`owner ${owner.pid} closed before answering ${method}`)));
+				fail(`owner ${owner.pid} closed before answering ${method}`);
 			},
 			error(_socket: unknown, error: unknown) {
-				finish(() => reject(error instanceof Error ? error : new Error(String(error))));
+				fail(String(error instanceof Error ? error.message : error), error);
 			},
 			drain() { /* no-op */ },
 		};
@@ -150,9 +188,9 @@ export function forwardToOwner<T = unknown>(
 			const connecting = record
 				? Bun.connect({ hostname: record.host, port: record.port, socket: handlers } as never)
 				: Bun.connect({ unix: owner.endpoint, socket: handlers } as never);
-			connecting.catch((err) => finish(() => reject(err instanceof Error ? err : new Error(String(err)))));
+			connecting.catch((err) => fail(String(err instanceof Error ? err.message : err), err));
 		} catch (err) {
-			finish(() => reject(err instanceof Error ? err : new Error(String(err))));
+			fail(String(err instanceof Error ? err.message : err), err);
 		}
 	});
 }

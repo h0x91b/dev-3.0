@@ -17,7 +17,7 @@
 export { tmux, TmuxClient } from "./client";
 export type { TmuxClientOptions, SplitOrientation, TmuxLayoutName } from "./client";
 export { DEFAULT_TMUX_SOCKET } from "./constants";
-export { TmuxError, isTmuxError, TmuxSpawnError, isTmuxSpawnError } from "./errors";
+export { TmuxError, isTmuxError, TmuxSpawnError, isTmuxSpawnError, TmuxTimeoutError, isTmuxTimeoutError } from "./errors";
 export {
 	tmuxFormat,
 	parseWindowLayout,

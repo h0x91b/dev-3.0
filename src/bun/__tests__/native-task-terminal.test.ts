@@ -8,7 +8,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+const RECORD_A = vi.hoisted(() => ({
+	sessionId: "dev3-task-aabbccdd-1111-2222-3333-444444444444-pane-1",
+	paneId: "pane-1",
+	host: { pid: 10, startSignature: "host-sig" },
+	shell: { pid: 11, startSignature: "shell-sig" },
+}));
+
 const client = vi.hoisted(() => ({
+	// The record the socket was DIALLED with — never a fresh read.
+	connectedRecord: vi.fn((): unknown => RECORD_A),
 	getRole: vi.fn(() => "writer" as string | null),
 	claimWriter: vi.fn(async () => ({ role: "writer" as string })),
 	takeoverWriter: vi.fn(async () => ({ role: "writer" as string })),
@@ -55,9 +64,7 @@ vi.mock("../native-terminal-registry/client", () => ({
 	HostRefusedError,
 }));
 
-vi.mock("../native-terminal-registry/record", () => ({
-	readRecord: vi.fn(() => ({ host: { pid: 10 }, shell: { pid: 11 }, paneId: "pane-1" })),
-}));
+vi.mock("../native-terminal-registry/record", () => ({ readRecord: vi.fn(() => RECORD_A) }));
 
 import { NativeSessionClient } from "../native-terminal-registry/client";
 import { bindNativeTaskPane } from "../native-task-terminal";
@@ -66,6 +73,7 @@ const SESSION_ID = "dev3-task-aabbccdd-1111-2222-3333-444444444444-pane-1";
 const hooks = { onOutput: vi.fn(), onClosed: vi.fn() };
 
 beforeEach(() => {
+	client.connectedRecord.mockReturnValue(RECORD_A);
 	vi.clearAllMocks();
 	client.getRole.mockReturnValue("writer");
 	client.claimWriter.mockResolvedValue({ role: "writer" });
@@ -86,6 +94,52 @@ describe("bindNativeTaskPane", () => {
 		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
 		expect(terminal).not.toBeNull();
 		expect(terminal!.sessionId).toBe(SESSION_ID);
+	});
+
+	/**
+	 * The binding must remember what the registry proved about the pane AT BIND TIME.
+	 * Anything that re-reads the record later cannot tell a binding from a successor
+	 * that inherited the same pids.
+	 */
+	it("captures the record's session and both process signatures when it is created", async () => {
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		expect(terminal!.boundIdentity).toEqual({
+			sessionId: SESSION_ID,
+			host: { pid: 10, startSignature: "host-sig" },
+			shell: { pid: 11, startSignature: "shell-sig" },
+		});
+	});
+
+	it("captures nothing when the dialled record cannot prove both processes", async () => {
+		for (const incomplete of [
+			{ sessionId: SESSION_ID, host: { pid: 10 }, shell: { pid: 11, startSignature: "s" } },
+			{ sessionId: SESSION_ID, host: { pid: 10, startSignature: "h" }, shell: { pid: 11 } },
+			{ sessionId: SESSION_ID, host: { pid: Number.NaN, startSignature: "h" }, shell: { pid: 11, startSignature: "s" } },
+			null,
+		]) {
+			client.connectedRecord.mockReturnValue(incomplete);
+			const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+			expect(terminal!.boundIdentity, JSON.stringify(incomplete)).toBeNull();
+		}
+	});
+
+	/**
+	 * `discover` reads the record and dials it; a re-read here could see a SUCCESSOR's
+	 * record, which would describe a different process than the socket actually reaches.
+	 */
+	it("captures the record it dialled, not whatever the registry says now", async () => {
+		const successor = {
+			sessionId: SESSION_ID,
+			paneId: "pane-1",
+			host: { pid: 10, startSignature: "host-successor" },
+			shell: { pid: 11, startSignature: "shell-successor" },
+		};
+		client.connectedRecord.mockReturnValue(RECORD_A);
+		const { readRecord } = await import("../native-terminal-registry/record");
+		vi.mocked(readRecord).mockReturnValue(successor as never);
+
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		expect(terminal!.boundIdentity?.host.startSignature).toBe("host-sig");
 	});
 
 	it("does not claim the lease when the host already made us the writer", async () => {

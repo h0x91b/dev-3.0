@@ -11,7 +11,16 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
+// Resolving the host runtime can stage an image or throw, so nothing that merely READS
+// state may trigger it. It is spied here rather than stubbed away.
+const resolveNativeHostRuntime = vi.hoisted(() => vi.fn(() => ({ kind: "source-checkout", runtimePath: "bun", entry: "e" })));
+vi.mock("../native-host-runtime", () => ({
+	resolveNativeHostRuntime,
+	nativeHostLauncher: () => () => undefined,
+}));
+
 import {
+	nativeTaskTerminalBackend,
 	nativeTaskSessionId,
 	resolveTaskTerminalBackend,
 	taskRunsNativeTerminal,
@@ -136,3 +145,14 @@ describe("taskRunsNativeTerminal", () => {
 		expect(taskRunsNativeTerminal(task())).toBe(false);
 	});
 });
+
+describe("nativeTaskTerminalBackend defers launch setup", () => {
+	// Constructing the backend must not resolve the host runtime: an inspection builds one
+	// and would otherwise stage an image, or throw, while only reading state.
+	it("resolves the host runtime only when a pane is actually started", () => {
+		resolveNativeHostRuntime.mockClear();
+		nativeTaskTerminalBackend();
+		expect(resolveNativeHostRuntime).not.toHaveBeenCalled();
+	});
+});
+

@@ -48,8 +48,13 @@ const soakRoot = resolve(sourceRoot, "bun/native-terminal-soak");
 // answer "which dev3 task owns this pid" on the platforms whose process viewer
 // cannot show it. Diagnostics reads and never starts, stops, or writes anything,
 // and it is the ONLY CLI file allowed in here.
+// The native pane identity module is the seventh, and the narrowest: the host and shell
+// `startSignature` live only in the session record, and they are what make a pinned pane
+// a strict process identity. It is its own file so the boundary is checkable rather than
+// promised — see the named-import case below.
 const SANCTIONED_PRODUCT_CALLERS = [
 	"bun/native-host-runtime.ts",
+	"bun/native-pane-identity.ts",
 	"bun/native-task-panes.ts",
 	"bun/native-task-terminal.ts",
 	"bun/native-terminal-host/main.ts",
@@ -72,6 +77,26 @@ describe("native-session registry isolation", () => {
 			.map((path) => path.slice(sourceRoot.length + 1).replaceAll("\\", "/"))
 			.sort();
 		expect(importers).toEqual(SANCTIONED_PRODUCT_CALLERS);
+	});
+
+	// The door may READ a record and describe why one was rejected — nothing else. The
+	// exact named-import set is what makes that enforceable rather than promised.
+	it("lets the native pane identity module import the inspecting reader and nothing else", () => {
+		const source = readFileSync(resolve(sourceRoot, "bun/native-pane-identity.ts"), "utf8");
+		const imports = [...source.matchAll(/import\s+\{([^}]*)\}\s+from\s+["'][^"']*native-terminal-registry[^"']*["']/g)]
+			.flatMap((match) => match[1].split(","))
+			.map((name) => name.trim())
+			.filter(Boolean)
+			.sort();
+		expect(imports).toEqual(["inspectRecordFile", "type RecordProblem"]);
+		// Nothing may smuggle the rest of the module in by another route.
+		const smuggling = [
+			/import\s+(?:\*\s+as\s+\w+|\w+)\s+from\s+["'][^"']*native-terminal-registry/, // default / namespace
+			/import\s*\(\s*["'][^"']*native-terminal-registry/, // dynamic import
+			/require\s*\(\s*["'][^"']*native-terminal-registry/, // require
+			/from\s+["'][^"']*native-terminal-registry\/(?!record")/, // any sibling module
+		];
+		for (const pattern of smuggling) expect(source, String(pattern)).not.toMatch(pattern);
 	});
 
 	it("never imports the removable prototype spikes", () => {

@@ -5,7 +5,7 @@ vi.mock("../../logger", () => ({
 }));
 
 import { TmuxClient } from "../client";
-import { TmuxError, TmuxSpawnError, isTmuxError, isTmuxSpawnError } from "../errors";
+import { TmuxError, TmuxSpawnError, isTmuxError, isTmuxSpawnError, isTmuxTimeoutError } from "../errors";
 import {
 	PANE_ID_FORMAT,
 	PANE_IN_MODE_FORMAT,
@@ -375,4 +375,270 @@ describe("capturePane", () => {
 		await client.capturePane({ target: "dev3-abc" });
 		expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", "capture-pane", "-p", "-t", "dev3-abc"]);
 	});
+});
+
+describe("sendKeysGuarded — one server command list, no check/send window", () => {
+	const GUARDED = { pane: "%3", serverToken: "srv-token-1", session: "dev3-task-abc12345" };
+
+	it("puts the guard and the sends in ONE if-shell command", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent\n" });
+		const result = await client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "hi" }], socket: "s" });
+
+		const argv = argvOf(spawnFn);
+		expect(argv.slice(3, 7)).toEqual([
+			"if-shell",
+			"-t",
+			"%3",
+			"-F",
+		]);
+		// Token, session, liveness AND copy mode, all inside the one guard. The behavioural
+		// proof of this conjunction is the live e2e: each condition alone refuses a send.
+		expect(argv[7]).toBe(
+			"#{&&:#{==:#{@dev3_server_token},srv-token-1}," +
+				"#{&&:#{==:#{session_name},dev3-task-abc12345}," +
+				"#{&&:#{==:#{pane_dead},0},#{==:#{pane_in_mode},0}}}}",
+		);
+		expect(argv[8]).toBe("send-keys -t %3 -H 68 69 ; display-message -p dev3-pane-input-sent");
+		expect(result).toEqual({ sent: true });
+	});
+
+	// Hex means no tmux-level quoting exists to get wrong: text that looks like an
+	// option, a key name, or a command separator is still typed.
+	it("hex-encodes literal text, whatever it looks like", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
+		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "-N ; kill-server 'x'" }] });
+		const nested = argvOf(spawnFn)[8];
+		expect(nested).not.toContain("kill-server");
+		expect(nested).toContain(Buffer.from("-N ; kill-server 'x'", "utf8").toString("hex").match(/../g)!.join(" "));
+	});
+
+	it("keeps multibyte text byte-exact", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
+		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "日本語" }] });
+		expect(argvOf(spawnFn)[8]).toContain("e6 97 a5 e6 9c ac e8 aa 9e");
+	});
+
+	it("sends key names as names, in one send-keys per run", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
+		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ keys: ["Left", "Left"] }, { literal: "x" }] });
+		expect(argvOf(spawnFn)[8]).toBe(
+			"send-keys -t %3 Left Left ; send-keys -t %3 -H 78 ; display-message -p dev3-pane-input-sent",
+		);
+	});
+
+	// tmux answers a false guard with exit 0 and no output, so the marker IS the signal.
+	// The size budget in shared/pane-input.ts is computed from this shape, so it has to be
+	// measured against the REAL encoder rather than re-derived in a test.
+	it("spends 3 bytes of argv per byte of text, plus a fixed per-chunk prefix", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
+		const text = "abcdefghij";
+		await client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: text }, { literal: text }] });
+
+		const commands = argvOf(spawnFn)[8] ?? "";
+		// Two chunks: each is "send-keys -t %3 -H " plus 2 hex digits and a separator per
+		// byte (the last needs no separator), joined by " ; ", then the marker command.
+		const perChunk = "send-keys -t %3 -H ".length + text.length * 3 - 1;
+		expect(commands.length).toBe(perChunk * 2 + " ; ".length * 2 + "display-message -p dev3-pane-input-sent".length);
+	});
+
+	it("reports sent:false when the marker does not come back", async () => {
+		const { client } = makeClient({ stdout: "" });
+		await expect(client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }] })).resolves.toEqual({
+			sent: false,
+		});
+	});
+
+	// An unknown pane arrives as a false guard, not as an error — proved live. A non-zero
+	// exit is some OTHER tmux failure, and that is what throws.
+	it("throws a TmuxError for a tmux failure that is not a false guard", async () => {
+		const { client } = makeClient({ stdout: "", stderr: "no server running", exited: Promise.resolve(1) });
+		await expect(client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }] })).rejects.toSatisfy(isTmuxError);
+	});
+
+	it("refuses anything it cannot safely put in a tmux command", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "dev3-pane-input-sent" });
+		await expect(
+			client.sendKeysGuarded({ ...GUARDED, session: "a;kill-server", chunks: [{ literal: "x" }] }),
+		).rejects.toThrow("unsafe tmux session name");
+		await expect(client.sendKeysGuarded({ ...GUARDED, pane: "not-a-pane", chunks: [{ literal: "x" }] })).rejects.toThrow(
+			"unsafe tmux pane id",
+		);
+		await expect(
+			client.sendKeysGuarded({ ...GUARDED, serverToken: "tok;kill-server", chunks: [{ literal: "x" }] }),
+		).rejects.toThrow("unsafe tmux server token");
+		await expect(
+			client.sendKeysGuarded({ ...GUARDED, chunks: [{ keys: ["Left; kill-server"] }] }),
+		).rejects.toThrow("unsafe tmux key name");
+		expect(spawnFn).not.toHaveBeenCalled();
+	});
+
+	// The child exits but its pipe never closes. Racing the read is not enough: an
+	// abandoned reader keeps the stream locked and the read pending forever, so the stop
+	// must CANCEL it.
+	it("cancels a half-open stream instead of abandoning the read", async () => {
+		const stdout = new ReadableStream({ start() { /* never closes */ } });
+		const proc = makeProc({ stdout, exited: Promise.resolve(0), kill: vi.fn() });
+		const client = new TmuxClient({ spawn: vi.fn().mockReturnValue(proc) as never });
+
+		await expect(
+			client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }], timeoutMs: 5 }),
+		).rejects.toThrow("did not finish");
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(stdout.locked).toBe(false);
+	});
+
+	it("gives up when the child's exit never settles at all", async () => {
+		const proc = makeProc({ stdout: "", exited: new Promise<number>(() => undefined), kill: vi.fn() });
+		const client = new TmuxClient({ spawn: vi.fn().mockReturnValue(proc) as never });
+
+		const failure = await client
+			.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }], timeoutMs: 5 })
+			.catch((err: unknown) => err);
+		// Reported as unconfirmed, which is what makes the caller treat the pane as unsafe
+		// rather than merely uncertain.
+		expect((failure as { stopConfirmed?: boolean }).stopConfirmed).toBe(false);
+		expect(proc.kill).toHaveBeenCalled();
+	});
+
+	it("kills and reaps a command that overruns its budget", async () => {
+		let settle: (code: number) => void = () => undefined;
+		const exited = new Promise<number>((resolve) => {
+			settle = resolve;
+		});
+		const proc = makeProc({ stdout: "", exited, kill: vi.fn(() => settle(143)) });
+		const client = new TmuxClient({ spawn: vi.fn().mockReturnValue(proc) as never });
+
+		const promise = client.sendKeysGuarded({ ...GUARDED, chunks: [{ literal: "x" }], timeoutMs: 5 });
+
+		await expect(promise).rejects.toThrow("did not finish within 5ms");
+		// Killed AND awaited, so nothing is left as a zombie.
+		expect(proc.kill).toHaveBeenCalled();
+		await expect(exited).resolves.toBe(143);
+	});
+});
+
+describe("observePane — proves presence or absence, never writes", () => {
+	// The token rides along in the SAME answer as the pane, its liveness and its session.
+	// Split across two commands, a restart in between could pair generation A's pane with
+	// generation B's token, and a recycled pane id would then pass the guard.
+	it("reports the session, liveness and generation token of a live pane in one command", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "%3\t0\tsrv-token-1\tdev3-task-abc12345\n" });
+		await expect(client.observePane({ pane: "%3", socket: "s" })).resolves.toEqual({
+			kind: "present",
+			sessionName: "dev3-task-abc12345",
+			serverToken: "srv-token-1",
+		});
+		expect(spawnFn).toHaveBeenCalledTimes(1);
+		const argv = argvOf(spawnFn);
+		expect(argv.slice(3, 5)).toEqual(["list-panes", "-a"]);
+		expect(argv.join(" ")).toContain("#{@dev3_server_token}");
+		expect(argv).not.toContain("set-option");
+	});
+
+	// `remain-on-exit` keeps a dead pane listed and addressable, so it is its own state.
+	it("reports a listed but dead pane as dead, not present", async () => {
+		const { client } = makeClient({ stdout: "%3\t1\tsrv-token-1\tdev3-task-abc12345\n" });
+		await expect(client.observePane({ pane: "%3" })).resolves.toEqual({
+			kind: "dead",
+			sessionName: "dev3-task-abc12345",
+			serverToken: "srv-token-1",
+		});
+	});
+
+	it("reports absence when the server does not list it", async () => {
+		const { client } = makeClient({ stdout: "%9\t0\tsrv-token-1\tdev3-task-other\n" });
+		await expect(client.observePane({ pane: "%3" })).resolves.toEqual({ kind: "absent" });
+	});
+
+	// A server nothing minted a token on is not a server this app set up, so there is no
+	// generation to pin against — and observing must never write one.
+	it("reports unusable when the pane exists but its server has no dev3 token", async () => {
+		const { client } = makeClient({ stdout: "%3\t0\t\tdev3-task-abc12345\n" });
+		const seen = await client.observePane({ pane: "%3" });
+		expect(seen).toMatchObject({ kind: "unusable" });
+		expect(seen.kind === "unusable" && seen.detail).toContain("generation token");
+	});
+
+	// tmux failing to answer says nothing about the pane, so it is neither present nor gone.
+	it("reports unusable when tmux itself cannot answer", async () => {
+		const { client } = makeClient({ stdout: "", stderr: "no server running", exited: Promise.resolve(1) });
+		const seen = await client.observePane({ pane: "%3" });
+		expect(seen.kind).toBe("unusable");
+	});
+
+	it("refuses a pane id it cannot safely ask about", async () => {
+		const { client, spawnFn } = makeClient();
+		await expect(client.observePane({ pane: "not-a-pane" })).resolves.toMatchObject({ kind: "unusable" });
+		expect(spawnFn).not.toHaveBeenCalled();
+	});
+});
+
+describe("movePane", () => {
+	it("moves a pane to another target, keeping its id", async () => {
+		const { client, spawnFn } = makeClient();
+		await client.movePane({ source: "%3", target: "other:", socket: "s" });
+		expect(argvOf(spawnFn).slice(3)).toEqual(["move-pane", "-s", "%3", "-t", "other:"]);
+	});
+});
+
+describe("ensureServerToken mints once", () => {
+	// Set-if-empty and read-back in ONE command list: two racers then agree on whichever
+	// value won instead of overwriting each other.
+	it("mints the token if the server has none, and reads back the winner", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "srv-token-1\n" });
+		await expect(client.ensureServerToken({ socket: "s", candidate: "srv-token-1" })).resolves.toBe("srv-token-1");
+		expect(argvOf(spawnFn).slice(3)).toEqual([
+			"if-shell",
+			"-F",
+			"#{==:#{@dev3_server_token},}",
+			"set-option -g @dev3_server_token srv-token-1",
+			";",
+			"display-message",
+			"-p",
+			"#{@dev3_server_token}",
+		]);
+	});
+
+	// The DEFAULT bound is the one production uses; only asserting an injected 5ms would let
+	// the default be multiplied by a thousand with nothing red.
+	it("bounds the token command by 3s when no caller says otherwise", async () => {
+		const proc = makeProc({ stdout: "", exited: new Promise<number>(() => undefined), kill: vi.fn() });
+		const client = new TmuxClient({ spawn: vi.fn().mockReturnValue(proc) as never });
+		vi.useFakeTimers();
+		try {
+			const failure = client.ensureServerToken({ candidate: "srv-token-1" }).catch((err: unknown) => err);
+			// One millisecond short of the budget, nothing has been signalled yet.
+			await vi.advanceTimersByTimeAsync(2_999);
+			expect(proc.kill).not.toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(2);
+			expect(proc.kill).toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(1_100);
+			expect(await failure).toSatisfy(isTmuxTimeoutError);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// The one previously unbounded call in this client: a wedged server left the token step
+	// pending forever inside a session's setup.
+	it("kills and reaps a wedged token command instead of hanging the caller", async () => {
+		const proc = makeProc({ stdout: "", exited: new Promise<number>(() => undefined), kill: vi.fn() });
+		const client = new TmuxClient({ spawn: vi.fn().mockReturnValue(proc) as never });
+
+		const failure = await client.ensureServerToken({ candidate: "srv-token-1", timeoutMs: 5 }).catch((err: unknown) => err);
+		expect(failure).toSatisfy(isTmuxTimeoutError);
+		expect(proc.kill).toHaveBeenCalled();
+	});
+
+	it("returns the value already in the server, not the candidate", async () => {
+		const { client } = makeClient({ stdout: "srv-token-earlier" });
+		await expect(client.ensureServerToken({ candidate: "srv-token-mine" })).resolves.toBe("srv-token-earlier");
+	});
+
+	it("refuses an unusable candidate or an empty answer", async () => {
+		const { client } = makeClient({ stdout: "" });
+		await expect(client.ensureServerToken({ candidate: "tok;kill-server" })).rejects.toThrow("unsafe tmux server token");
+		await expect(client.ensureServerToken({ candidate: "srv-token-1" })).rejects.toThrow("did not report a server token");
+	});
+
 });

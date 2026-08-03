@@ -84,6 +84,8 @@ export const UNSOLICITED_ID = 0;
 
 export class NativeSessionClient {
 	private ws: WebSocket | null = null;
+	/** The record this connection was dialled with, for callers that must not re-read it. */
+	private connectedWith: NativeSessionRecord | null = null;
 	private connectionGeneration = 0;
 	/** ONE id space for every control request on this connection. Starts above 0 so an
 	 * unsolicited host event (id 0) can never be mistaken for a reply we are awaiting. */
@@ -243,6 +245,7 @@ export class NativeSessionClient {
 		const generation = ++this.connectionGeneration;
 		ws.binaryType = "arraybuffer";
 		this.ws = ws;
+		this.connectedWith = record;
 		this.exitObserved = false;
 		this.exitCode = null;
 		this.replayBoundarySeen = false;
@@ -310,6 +313,14 @@ export class NativeSessionClient {
 		const client = new NativeSessionClient();
 		await client.connect(record, token, opts);
 		return client;
+	}
+
+	/**
+	 * The record this client actually dialled. A caller that re-read the record would get
+	 * a successor's, which would describe a different process than this socket reaches.
+	 */
+	connectedRecord(): NativeSessionRecord | null {
+		return this.connectedWith;
 	}
 
 	/** Replay the persisted journal tail for a session (independent per session). */

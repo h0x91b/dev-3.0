@@ -16,6 +16,8 @@ import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } fro
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
+import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "./pane-input-native";
+import type { PaneInputProgram } from "../shared/pane-input";
 import { getUserIdleSeconds } from "./user-activity";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
@@ -1190,6 +1192,12 @@ const handlers: Record<string, Handler> = {
 		});
 		return { delivered };
 	},
+
+	// Owner-routed half of native pane input: same hop and dead-end rule as the prompt
+	// delivery above, plus two of its own — the owner deduplicates by delivery id and
+	// never claims a lease. The whole typed outcome is the reply.
+	[NATIVE_PANE_INPUT_METHOD]: async (params) =>
+		runNativePaneInputAsOwner(params as unknown as PaneInputProgram),
 
 	// `dev3 message --in <dur> | --at <hh:mm> "text"`: queue a scheduled message on
 	// the task's live agent (validation + cap live in the scheduler core).

@@ -2,14 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ---- Mocks (hoisted before imports) ----
 
-vi.mock("../logger", () => ({
-	createLogger: () => ({
-		debug: vi.fn(),
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-	}),
+// One shared logger object, so a test can read the ORDER of what was logged. Fresh vi.fn()s
+// per call would be unreachable from here.
+const { mockLog } = vi.hoisted(() => ({
+	mockLog: { lines: [] as string[] },
 }));
+vi.mock("../logger", () => {
+	const record = (level: string) => (message: string) => void mockLog.lines.push(`${level}:${message}`);
+	return {
+		createLogger: () => ({
+			debug: vi.fn(record("debug")),
+			info: vi.fn(record("info")),
+			warn: vi.fn(record("warn")),
+			error: vi.fn(record("error")),
+		}),
+	};
+});
 
 vi.mock("node:fs", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs")>();
@@ -1069,6 +1077,71 @@ describe("pty-server", () => {
 			const sourceCall = findDefaultSourceCall();
 			expect(sourceCall).toBeDefined();
 			expect(sourceCall![0]).toContain("dev3");
+
+			vi.useRealTimers();
+		});
+
+		// The order this asserts is the whole point: `new-session` first, the generation
+		// token second. Minting it first would ask a socket with no server on it, start an
+		// empty server, and race the real session onto a generation nobody observed.
+		it("mints the generation token only after new-session created the server", async () => {
+			vi.useFakeTimers();
+
+			const id = track("task-token-order");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "token-sock");
+
+			const indexOfCall = (needle: string) =>
+				mockSpawn.mock.calls.findIndex((c) => Array.isArray(c[0]) && c[0].includes("token-sock") && c[0].join(" ").includes(needle));
+
+			await vi.advanceTimersByTimeAsync(200);
+			await vi.waitFor(() => {
+				expect(indexOfCall("@dev3_server_token")).toBeGreaterThanOrEqual(0);
+			});
+
+			const sessionAt = indexOfCall("new-session");
+			const tokenAt = indexOfCall("@dev3_server_token");
+			expect(sessionAt).toBeGreaterThanOrEqual(0);
+			expect(tokenAt).toBeGreaterThan(sessionAt);
+
+			vi.useRealTimers();
+		});
+
+		// A server that never answers must not break the terminal: the pane stays usable and
+		// only pane input loses the ability to pin it.
+		it("retries a failing token a bounded number of times and still configures", async () => {
+			vi.useFakeTimers();
+
+			const id = track("task-token-retry");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "retry-sock");
+			let tokenCalls = 0;
+			mockSpawn.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.join(" ").includes("@dev3_server_token")) {
+					tokenCalls += 1;
+					throw new Error("no server running");
+				}
+				return defaultSpawnReturn() as any;
+			});
+
+			mockLog.lines.length = 0;
+			await expect(vi.advanceTimersByTimeAsync(200 + 3 * 150)).resolves.not.toThrow();
+			await vi.waitFor(() => {
+				expect(tokenCalls).toBe(3);
+			});
+			// The setup step must be AWAITING the token: its closing line comes after the
+			// last failed attempt, not before the retries have even run.
+			await vi.waitFor(() => {
+				expect(mockLog.lines).toContain("debug:tmux session setup finished");
+			});
+			const lastWarn = mockLog.lines.lastIndexOf("warn:tmux server has no dev3 generation token; its panes cannot be pinned");
+			expect(lastWarn).toBeGreaterThanOrEqual(0);
+			expect(mockLog.lines.indexOf("debug:tmux session setup finished")).toBeGreaterThan(lastWarn);
+			// Sourcing the config still happens, so the terminal is unaffected.
+			await vi.waitFor(() => {
+				const sourced = mockSpawn.mock.calls.find(
+					(c) => Array.isArray(c[0]) && c[0].includes("source-file") && c[0].includes("retry-sock"),
+				);
+				expect(sourced).toBeDefined();
+			});
 
 			vi.useRealTimers();
 		});
