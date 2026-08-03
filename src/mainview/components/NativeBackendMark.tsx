@@ -18,7 +18,8 @@ export function isNativeBackendTask(task: Pick<Task, "terminalBackend">): boolea
 	return decoded.ok && decoded.present && decoded.backend === "native";
 }
 
-/** Terminal frame with a prompt caret — same stroke style as the header/task icon sets. */
+/** Bolt in a rounded frame — "launched straight, without tmux in between". Same
+ *  stroke style as the header/task icon sets. */
 function NativeBackendIcon({ className }: { className?: string }) {
 	return (
 		<svg
@@ -31,9 +32,8 @@ function NativeBackendIcon({ className }: { className?: string }) {
 			strokeLinejoin="round"
 			aria-hidden
 		>
-			<rect x="2.75" y="4.25" width="18.5" height="15.5" rx="3" />
-			<path d="m7.5 9.5 3 2.5-3 2.5" />
-			<path d="M13 15h4" />
+			<rect x="3.5" y="3.5" width="17" height="17" rx="4" />
+			<path d="M13.2 7.2 9.4 12.6h2.9l-1.5 4.2 3.8-5.4h-2.9z" />
 		</svg>
 	);
 }

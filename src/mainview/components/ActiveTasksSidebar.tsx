@@ -760,6 +760,13 @@ function ActiveTasksSidebar({
 														priority={task.priority}
 														onChange={(p) => handleSetPriority(task, p)}
 													/>
+													{/* Backend identity sits between the priority and the agent:
+													    it qualifies the task, not the agent that runs it. */}
+													<NativeBackendMark
+														task={task}
+														className="w-3.5 h-3.5"
+														testId={`sidebar-native-backend-${task.id}`}
+													/>
 													{agent && <AgentLauncherBadge agent={agent} size={14} />}
 													{task.hibernated && (
 														<span
@@ -785,7 +792,6 @@ function ActiveTasksSidebar({
 												<div className={`text-xs leading-snug break-words ${
 													isActive ? "text-fg font-medium" : "text-fg-2"
 												}`}>
-													<NativeBackendMark task={task} className="w-3 h-3 mr-1" testId={`sidebar-native-backend-${task.id}`} />
 													{displayTitle}
 												</div>
 

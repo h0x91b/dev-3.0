@@ -244,7 +244,7 @@ Rules specific to this surface:
 
 ### 5.6 Identity markers — native terminal backend — `Observed`
 
-One shared, non-interactive glyph (`NativeBackendMark`) sits next to the task title on the **three task-identity surfaces**: Kanban card, Active Tasks row, Task View breadcrumb. It states the task's **persisted terminal-backend identity** and nothing else — never that a terminal is running, connected, healthy, focused, or owns a writer lease.
+One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded frame — marks the **three task-identity surfaces**: before the title on the Kanban card, between the `#seq` badge and the title in the Task View breadcrumb, and in the Active Tasks row's **top badge row, between the priority badge and the agent badge** (it qualifies the task, not the agent that runs it). It states the task's **persisted terminal-backend identity** and nothing else — never that a terminal is running, connected, healthy, focused, or owns a writer lease.
 
 - **Renders only for an explicit `native` record.** Explicit `tmux` and legacy records with no field render nothing, so the dense surfaces stay quiet; an unknown value never guesses. Identity comes only from the shared `terminal-backend-identity` codec — never a raw field check, platform sniff, or session-liveness inference.
 - **Consumes no action slot and no budget:** not focusable, no shortcut, no setting, no menu item, no tip. Accent-toned, no new design token.

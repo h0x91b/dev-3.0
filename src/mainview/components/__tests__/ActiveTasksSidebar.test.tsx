@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
@@ -1141,10 +1141,17 @@ describe("ActiveTasksSidebar — native terminal backend mark", () => {
 		);
 	}
 
-	it("marks a native-backed task next to its title", () => {
-		renderSidebar(makeTask({ terminalBackend: "native" }));
+	it("marks a native-backed task between the priority and the agent badge", () => {
+		renderSidebar(makeTask({ terminalBackend: "native", priority: "P2" }));
 
-		expect(screen.getByTestId("sidebar-native-backend-t1")).toBeInTheDocument();
+		const mark = screen.getByTestId("sidebar-native-backend-t1");
+		const row = mark.parentElement!;
+		const priority = within(row).getByText("P2");
+		// Position, not mere presence: the marker qualifies the task, so it sits
+		// after the priority badge and before everything the agent owns.
+		expect(row.contains(priority)).toBe(true);
+		expect(priority.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(Array.from(row.children).indexOf(mark)).toBe(1);
 	});
 
 	// The row is a role=button with its own aria-label, which overrides every
