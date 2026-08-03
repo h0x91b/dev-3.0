@@ -281,7 +281,7 @@ ux_architecture:
     diff_review_viewer:
       purpose: "Full-screen read + inline-review of a task's diff; export comments as an XML review prompt for the agent."
       reached_from: ["inspector:show_diff", "inspector:diff_summary_badge"]
-      allowed: ["view_mode_toggle", "diff_mode_toggle", "file_tree_nav", "in_diff_search", "mark_read", "copy_file_path", "inline_comment", "review_export", "review_copy", "review_reset", "github_review_layer_readonly", "pr_conversation_block", "send_thread_to_agent", "open_on_github_link"]
+      allowed: ["view_mode_toggle", "diff_mode_toggle", "file_tree_nav", "in_diff_search", "mark_read", "copy_file_path", "inline_comment", "review_export", "review_copy", "review_reset", "send_comment_to_agent", "github_review_layer_readonly", "pr_conversation_block", "send_thread_to_agent", "open_on_github_link"]
       forbidden: ["task_lifecycle_action", "git_mutation", "global_destination", "github_write_action"]
       layout: "left Files aside (collapsible, 22rem: Review-export card + Files card) + right diff stream"
       github_review_layer:
@@ -293,10 +293,18 @@ ux_architecture:
           send_to_agent:    { role: "secondary", note: "pushes the thread into the task terminal as a fix prompt; the surface primary stays review_copy" }
           open_on_github:   { role: "link",      note: "external deep link to the exact comment" }
           include_in_export: { role: "toggle",   note: "opt-in selection into the existing XML export; exported entries carry an origin marker (github vs local)" }
-      review_export_card:
-        note: "The one budgeted action cluster on this surface. One primary only."
+      inline_comment_actions:
+        note: "Actions on ONE local review comment, inside its bubble in the diff. Budget: 3 controls, no growth."
         controls:
-          copy_review:   { role: "primary",     token: "bg-accent (solid), success-tint on copied", visible: "always; disabled at 0 comments" }
+          edit_comment:  { role: "neutral",   token: "border-edge + bg-base, hover:bg-elevated-hover" }
+          delete_comment: { role: "destructive", token: "text-danger + border-danger/25 + bg-danger/10" }
+          send_to_agent: { role: "secondary", token: "border-edge + bg-base; success-tint (border-success/40 + bg-success/10 + text-success) once sent", note: "same pattern as github thread_actions.send_to_agent — pushes this one comment into the task terminal; the surface primary stays review_copy" }
+        sent_state:
+          rule: "Sending is per comment and sticky: the comment is marked Sent (persisted with the review) and leaves the review_export payload, so review_copy / batch send cover ONLY unsent comments. Sent comments stay visible and re-readable in the export card, greyed with a Sent badge; editing a sent comment clears the mark so the edited text can be delivered again."
+      review_export_card:
+        note: "The one budgeted action cluster on this surface. One primary only. Payload = unsent comments only."
+        controls:
+          copy_review:   { role: "primary",     token: "bg-accent (solid), success-tint on copied", visible: "always; disabled at 0 unsent comments" }
           reset_review:  { role: "destructive",  token: "ghost-danger: text-danger + border-danger/30 + hover:bg-danger/10", visible: "only when >=1 comment; confirm() required" }
           comment_count: { role: "status",       token: "bg-raised mono badge" }
           comment_item:  { role: "link",         token: "bg-raised/65, accent on hover; scroll-to-comment" }

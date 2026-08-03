@@ -181,12 +181,13 @@ Layout = left **Files aside** (collapsible, `22rem`) + right **diff stream**.
 - **Files aside** contains two cards: the **Review export card** (top) and the **Files card** (read-progress + expand/collapse-all + the file tree).
 - **Per-file header (diff stream):** status chip (A/M/D/R/C/T/?), path (click = expand/collapse), **copy-file-path** icon button (role `neutral`/icon), `+N/−N` stat pill, **mark-read** checkbox (success-tinted when read), expand/collapse caret.
 - **Inline comments:** drag across the gutter to select a line range (or use the hover `+` widget for a single line) → composer opens → comment is added to a per-file/per-side/per-line thread. Threads render inline and are editable/deletable in place.
+- **Per-comment actions (budget: 3, no growth):** `Edit` (`neutral`), `Delete` (`destructive`), `Send to agent` (`secondary`) — the same pattern as the GitHub thread action, pushing that single comment into the task terminal. Sending is per comment and **sticky**: the comment is marked `Sent`, persisted with the review, and leaves the export payload, so `Copy review` and the batch `Send to Agent` cover **only unsent** comments. Sent comments stay visible and re-readable in the export card (greyed, `Sent` badge); editing one clears the mark so the edited text can be delivered again.
 
 **Review export card — action hierarchy (the one budgeted cluster):**
 
 | Control | Role | Token | Visibility |
 |---|---|---|---|
-| Copy review | `primary` (the single primary here) | `bg-accent` solid, success-tint on copied | always (disabled when 0 comments) |
+| Copy review | `primary` (the single primary here) | `bg-accent` solid, success-tint on copied | always (disabled when 0 unsent comments) |
 | Reset review | `destructive`, low-emphasis | ghost-danger: `text-danger` + `border-danger/30` + `hover:bg-danger/10` | only when ≥ 1 comment; confirmation required |
 | Comment count | `status` | `bg-raised` mono badge | always |
 | Comment item | `link`-like (scroll-to) | `bg-raised/65`, accent on hover | per comment |

@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-08-03 — Local review comments send one-by-one; the batch send covers only unsent ones
+
+- **Rule:** Every local inline review comment carries its own `Send to agent` (role `secondary`, beside Edit/Delete, sending/sent states + toasts); a sent comment is marked `Sent` and leaves the Review export card's copy/batch-send payload, which is now scoped to unsent comments. Bible §5.3, yaml `surfaces.diff_review_viewer.inline_comment_actions`.
+- **Why:** reviewers want a comment delivered the moment they write it, and a batch that still carries already-sent comments makes the agent re-handle them. Rejected: keeping send batch-only (the reported pain) and hiding sent comments from the card (they must stay visible and re-readable).
+- **Status:** Decided. Evidence: `src/mainview/components/TaskDiffViewer.tsx`, `src/mainview/components/pr-review/GithubThreadView.tsx`.
+
 ## 2026-08-01 — Split resize lives on the boundary, never in a toolbar
 
 - **Rule:** Native terminal split boundaries carry a `role="separator"` grab strip (resting grip, ≥9px hit target, `col-resize`/`row-resize`, ghost line, commit on release, Arrow-key steps) and no control anywhere else; absent for a single pane, a zoomed pane, and the narrow carousel. Bible §10 row `layout boundary manipulation`, yaml `surfaces.native_terminal_panes`.

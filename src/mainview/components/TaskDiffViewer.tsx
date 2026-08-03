@@ -145,6 +145,8 @@ interface InlineDiffComment {
 	startLine: number;
 	endLine: number;
 	side: InlineCommentSideKey;
+	/** Set once the comment was sent to the agent on its own; keeps it out of the batch export. */
+	sentAt?: string;
 }
 
 interface InlineDiffCommentThread {
@@ -176,6 +178,8 @@ interface InlineReviewExportEntry {
 	origin: "local" | "github";
 	/** GitHub login of the thread's first commenter; null for local entries. */
 	author: string | null;
+	/** When this local comment was already sent to the agent on its own; null otherwise. */
+	sentAt: string | null;
 }
 
 interface DiffSearchLineCandidate {
@@ -228,6 +232,8 @@ interface TaskDiffFileSectionProps {
 	onCancelEditComment: () => void;
 	onSaveEditComment: (commentId: string, body: string) => void;
 	onDeleteComment: (commentId: string) => void;
+	onSendComment: (commentId: string) => void;
+	sendingCommentIds: Record<string, boolean>;
 	onToggleExpanded: () => void;
 	onToggleRead: () => void;
 	/** True while a markdown file renders its rendered preview instead of the source diff. */
@@ -472,6 +478,31 @@ function hasAnyInlineComments(state: InlineDiffCommentsState): boolean {
 	return false;
 }
 
+/** Rewrites one comment anywhere in the review state, leaving every other entry untouched. */
+function mapInlineComment(
+	state: InlineDiffCommentsState,
+	commentId: string,
+	transform: (comment: InlineDiffComment) => InlineDiffComment,
+): InlineDiffCommentsState {
+	const nextState: InlineDiffCommentsState = {};
+	for (const [fileId, fileComments] of Object.entries(state)) {
+		const nextFileComments = createEmptyInlineCommentFileData();
+		for (const side of ["oldFile", "newFile"] as const) {
+			for (const [lineNumber, thread] of Object.entries(fileComments[side])) {
+				nextFileComments[side][lineNumber] = {
+					data: {
+						comments: thread.data.comments.map((comment) => (
+							comment.id === commentId ? transform(comment) : comment
+						)),
+					},
+				};
+			}
+		}
+		nextState[fileId] = nextFileComments;
+	}
+	return nextState;
+}
+
 function buildInlineReviewExportEntries(
 	files: TaskDiffFile[],
 	inlineComments: InlineDiffCommentsState,
@@ -501,6 +532,7 @@ function buildInlineReviewExportEntries(
 						createdAt: comment.createdAt,
 						origin: "local",
 						author: null,
+						sentAt: comment.sentAt ?? null,
 					});
 				}
 			}
@@ -556,6 +588,7 @@ function buildGithubReviewExportEntries(
 			createdAt: thread.comments[0]?.createdAt ?? "",
 			origin: "github",
 			author: thread.comments[0]?.author ?? null,
+			sentAt: null,
 		});
 	}
 
@@ -606,6 +639,8 @@ function InlineCommentThreadView({
 	onCancelEdit,
 	onSaveEdit,
 	onDeleteComment,
+	onSendComment,
+	sendingCommentIds,
 }: {
 	thread: InlineDiffCommentThread;
 	side: InlineCommentSideKey;
@@ -616,6 +651,8 @@ function InlineCommentThreadView({
 	onCancelEdit: () => void;
 	onSaveEdit: (commentId: string, body: string) => void;
 	onDeleteComment: (commentId: string) => void;
+	onSendComment: (commentId: string) => void;
+	sendingCommentIds: Record<string, boolean>;
 }) {
 	const t = useT();
 	const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -694,6 +731,29 @@ function InlineCommentThreadView({
 								{comment.body}
 							</div>
 							<div className="flex shrink-0 items-center gap-1">
+								<button
+									type="button"
+									onClick={() => onSendComment(comment.id)}
+									disabled={sendingCommentIds[comment.id]}
+									data-testid="inline-comment-send"
+									aria-label={t("infoPanel.diffReviewSendComment")}
+									className={`dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[0.6875rem] font-semibold transition-colors ${
+										comment.sentAt
+											? "border-success/40 bg-success/10 text-success"
+											: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+									}`}
+								>
+									<span aria-hidden="true" className="text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+										{""}
+									</span>
+									<span>
+										{sendingCommentIds[comment.id]
+											? t("infoPanel.diffReviewSendCommentSending")
+											: comment.sentAt
+												? t("infoPanel.diffReviewSendCommentSent")
+												: t("infoPanel.diffReviewSendComment")}
+									</span>
+								</button>
 								<button
 									type="button"
 									onClick={() => {
@@ -1156,6 +1216,8 @@ function TaskDiffFileSection({
 	onCancelEditComment,
 	onSaveEditComment,
 	onDeleteComment,
+	onSendComment,
+	sendingCommentIds,
 	onToggleExpanded,
 	onToggleRead,
 	mdPreview,
@@ -1696,6 +1758,8 @@ function TaskDiffFileSection({
 										onCancelEdit={onCancelEditComment}
 										onSaveEdit={onSaveEditComment}
 										onDeleteComment={onDeleteComment}
+										onSendComment={onSendComment}
+										sendingCommentIds={sendingCommentIds}
 									/>
 								)}
 							</>
@@ -1767,6 +1831,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>(() => readStoredReview(task.id));
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
 	const [reviewSendState, setReviewSendState] = useState<"sending" | "sent" | undefined>();
+	// In-flight per-comment sends. The "sent" half of the state is not here: it
+	// lives on the comment itself (`sentAt`) so it survives reload with the review.
+	const [sendingCommentIds, setSendingCommentIds] = useState<Record<string, boolean>>({});
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
 	// GitHub PR review layer (read-only). Fetched once per diff open when the
 	// task carries a sticky PR; the refresh button re-fetches with force. The
@@ -1880,7 +1947,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			...buildGithubReviewExportEntries(visibleFiles, prComments?.threads ?? [], githubExportSelection),
 		].sort(compareReviewExportEntries)
 		: [];
-	const reviewExportXml = buildInlineReviewXml(reviewExportEntries);
+	// Comments already sent one-by-one stay listed (greyed, marked) but leave the
+	// payload, so a later batch send never re-delivers what the agent already has.
+	const pendingReviewExportEntries = reviewExportEntries.filter((entry) => entry.sentAt === null);
+	const sentReviewCommentCount = reviewExportEntries.length - pendingReviewExportEntries.length;
+	const reviewExportXml = buildInlineReviewXml(pendingReviewExportEntries);
 	useEffect(() => {
 		setReviewSendState(undefined);
 	}, [reviewExportXml]);
@@ -2313,6 +2384,33 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			});
 	}
 
+	function sendInlineCommentToAgent(commentId: string) {
+		const entry = reviewExportEntries.find((item) => item.id === commentId);
+		if (!entry || sendingCommentIds[commentId]) {
+			return;
+		}
+		const prompt = buildInlineReviewXml([entry]);
+		setSendingCommentIds((current) => ({ ...current, [commentId]: true }));
+		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: prompt })
+			.then(() => {
+				setInlineComments((current) => mapInlineComment(current, commentId, (comment) => ({
+					...comment,
+					sentAt: new Date().toISOString(),
+				})));
+				toast.success(t("infoPanel.diffReviewSendCommentSuccess"));
+			})
+			.catch((err) => {
+				toast.error(t("infoPanel.diffReviewSendCommentFailed", { error: String(err) }));
+			})
+			.finally(() => {
+				setSendingCommentIds((current) => {
+					const next = { ...current };
+					delete next[commentId];
+					return next;
+				});
+			});
+	}
+
 	function handleCopyReviewXml() {
 		const snapshot = reviewExportXml;
 		navigator.clipboard.writeText(snapshot).then(() => {
@@ -2322,7 +2420,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	}
 
 	function handleSendReviewToAgent() {
-		if (reviewExportEntries.length === 0) {
+		if (pendingReviewExportEntries.length === 0) {
 			return;
 		}
 		const snapshot = reviewExportXml;
@@ -2658,42 +2756,13 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			return;
 		}
 
-		setInlineComments((current) => {
-			const nextState: InlineDiffCommentsState = {};
-			for (const [fileId, fileComments] of Object.entries(current)) {
-				nextState[fileId] = {
-					oldFile: Object.fromEntries(
-						Object.entries(fileComments.oldFile).map(([lineNumber, thread]) => [
-							lineNumber,
-							{
-								data: {
-									comments: thread.data.comments.map((comment) => (
-										comment.id === commentId
-											? { ...comment, body: trimmedBody }
-											: comment
-									)),
-								},
-							},
-						]),
-					),
-					newFile: Object.fromEntries(
-						Object.entries(fileComments.newFile).map(([lineNumber, thread]) => [
-							lineNumber,
-							{
-								data: {
-									comments: thread.data.comments.map((comment) => (
-										comment.id === commentId
-											? { ...comment, body: trimmedBody }
-											: comment
-									)),
-								},
-							},
-						]),
-					),
-				};
-			}
-			return nextState;
-		});
+		// Editing revives the comment: the agent got the old text, so the new text
+		// has to be deliverable again — via its own send or the next batch.
+		setInlineComments((current) => mapInlineComment(current, commentId, (comment) => ({
+			...comment,
+			body: trimmedBody,
+			sentAt: undefined,
+		})));
 		cancelEditingComment();
 	}
 
@@ -3484,8 +3553,19 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 														: t("infoPanel.diffReviewExportEmpty")}
 												</p>
 										</div>
-										<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-[0.6875rem] font-mono text-fg-2">
-											{reviewExportEntries.length}
+										<span className="flex shrink-0 items-center gap-1">
+											<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-[0.6875rem] font-mono text-fg-2">
+												{pendingReviewExportEntries.length}
+											</span>
+											{sentReviewCommentCount > 0 && (
+												<span
+													data-testid="review-export-sent-count"
+													title={t("infoPanel.diffReviewSentCount", { count: String(sentReviewCommentCount) })}
+													className="inline-flex h-6 items-center justify-center rounded-md border border-success/40 bg-success/10 px-1.5 text-[0.6875rem] font-mono text-success"
+												>
+													{t("infoPanel.diffReviewSentCount", { count: String(sentReviewCommentCount) })}
+												</span>
+											)}
 										</span>
 										</div>
 
@@ -3511,10 +3591,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 																scrollToComment(entry.id, entry.fileId);
 															}}
 															aria-label={isEditing ? undefined : t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}
+															data-testid={entry.sentAt ? "review-export-item-sent" : "review-export-item"}
 															className={`rounded-lg border px-3 py-2 space-y-2 ${
 																isEditing
 																	? "border-accent/40 bg-accent/10"
-																	: "border-edge bg-raised/65 cursor-pointer transition-colors hover:border-accent/30 hover:bg-accent/5 focus:outline-none focus:ring-1 focus:ring-accent/40"
+																	: `border-edge bg-raised/65 cursor-pointer transition-colors hover:border-accent/30 hover:bg-accent/5 focus:outline-none focus:ring-1 focus:ring-accent/40${entry.sentAt ? " opacity-60" : ""}`
 															}`}
 														>
 															<div className="flex items-center gap-1.5 text-xs font-semibold text-fg">
@@ -3529,6 +3610,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 																			{""}
 																		</span>
 																		<span className="streamer-private">{entry.author ?? "GitHub"}</span>
+																	</span>
+																)}
+																{entry.sentAt && (
+																	<span className="inline-flex items-center rounded border border-success/40 bg-success/10 px-1 py-px text-[0.625rem] font-semibold text-success" data-testid="review-export-sent-marker">
+																		{t("infoPanel.diffReviewSendCommentSent")}
 																	</span>
 																)}
 															</div>
@@ -3553,7 +3639,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 												<button
 													type="button"
 													onClick={handleCopyReviewXml}
-													disabled={reviewExportEntries.length === 0}
+													disabled={pendingReviewExportEntries.length === 0}
 													className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
 														copiedReviewXml
 															? "border-success/40 bg-success/15 text-success"
@@ -3577,7 +3663,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 												<button
 													type="button"
 													onClick={handleSendReviewToAgent}
-													disabled={reviewExportEntries.length === 0 || reviewSendState === "sending"}
+													disabled={pendingReviewExportEntries.length === 0 || reviewSendState === "sending"}
 													data-testid="review-send-button"
 													className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
 														reviewSendState === "sent"
@@ -3785,6 +3871,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								onCancelEditComment={cancelEditingComment}
 								onSaveEditComment={updateInlineComment}
 								onDeleteComment={deleteInlineComment}
+								onSendComment={sendInlineCommentToAgent}
+								sendingCommentIds={sendingCommentIds}
 								onToggleExpanded={() => toggleFileExpanded(file.id)}
 								onToggleRead={() => toggleFileRead(file.id)}
 								mdPreview={mdPreviewFiles[file.id] ?? true}

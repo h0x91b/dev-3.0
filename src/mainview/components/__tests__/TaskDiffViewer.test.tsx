@@ -1868,6 +1868,63 @@ describe("TaskDiffViewer", () => {
 		expect(screen.queryByText("Rename this callback.")).not.toBeInTheDocument();
 	});
 
+	it("sends one inline comment on its own and keeps it out of the batch payload", async () => {
+		const user = userEvent.setup();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValue(undefined as never);
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		const appSection = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
+		await user.click(within(appSection).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Rename this callback.");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		const thread = screen.getByTestId("inline-comment-thread");
+		await user.click(within(thread).getByTestId("inline-comment-send"));
+
+		await waitFor(() => {
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledTimes(1);
+		});
+		const { text, taskId } = vi.mocked(api.request.sendAgentMessageNow).mock.calls[0][0];
+		expect(taskId).toBe("t1");
+		expect(text).toContain('<file src="src/app.ts" line=1>');
+		expect(text).toContain("<comment>Rename this callback.</comment>");
+
+		// Sent once: marked in the thread and in the export card, and the batch is empty again.
+		await waitFor(() => {
+			expect(within(screen.getByTestId("inline-comment-thread")).getByTestId("inline-comment-send")).toHaveTextContent("Sent");
+		});
+		expect(screen.getByTestId("review-export-sent-marker")).toHaveTextContent("Sent");
+		expect(screen.getByTestId("review-export-sent-count")).toHaveTextContent("1 sent");
+		expect(screen.getByTestId("review-export-item-sent")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Copy to Clipboard" })).toBeDisabled();
+
+		// Editing revives it: the new text must be deliverable again.
+		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Edit comment" }));
+		const editor = screen.getByDisplayValue("Rename this callback.");
+		await user.clear(editor);
+		await user.type(editor, "Rename it to handleSubmit.");
+		await user.click(screen.getByRole("button", { name: "Save comment" }));
+
+		expect(screen.queryByTestId("review-export-sent-marker")).not.toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeEnabled();
+		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("<comment>Rename it to handleSubmit.</comment>"));
+	});
+
 	it("keeps split view open when a comment has no extension data on the opposite side", async () => {
 		const user = userEvent.setup();
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
