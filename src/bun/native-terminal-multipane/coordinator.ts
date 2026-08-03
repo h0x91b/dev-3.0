@@ -299,9 +299,12 @@ export class NativeMultipaneCoordinator {
 						buildRecord(coordinatorId, record.epoch, reconciled, bindPanes(coordinatorId, reconciled)),
 					);
 				}
-				const survivorTree = hidden ? tree : reconciled;
+				// `reconciled` closes exactly the panes proved dead and keeps every
+				// unknown-owner one, so it is the right tree in both cases — and it is the
+				// tree just persisted. Handing back the PRE-sweep tree instead would let the
+				// backend cache a dead pane and republish it under the same epoch.
 				return {
-					coordinator: new NativeMultipaneCoordinator(coordinatorId, record.epoch, survivorTree, deps),
+					coordinator: new NativeMultipaneCoordinator(coordinatorId, record.epoch, reconciled, deps),
 					// Survivors keep the record's order, which is the reconciled tree's order.
 					panes: probes.filter((probe) => probe.verdict === "owned").map(snapshotOf),
 				};
@@ -540,7 +543,11 @@ interface PaneProbe {
 	pane: MultipanePaneEntry;
 	record: NativeSessionRecord | null;
 	verdict: OwnershipVerdict;
-	/** The pane's own record was missing or unparseable, so its owner is unknown. */
+	/**
+	 * There IS something where this pane's record should be, and it cannot be
+	 * believed — unparseable, a foreign schema, or claiming another pane's identity.
+	 * So the pane is neither owned nor provably dead.
+	 */
 	ownershipUnknown: boolean;
 }
 
@@ -553,6 +560,15 @@ async function probePane(pane: MultipanePaneEntry, deps: CoordinatorDeps): Promi
 	// signalling the pid, so its ownership is unknown rather than dead.
 	if (!record) {
 		return { pane, record: null, verdict: "dead", ownershipUnknown: paneRecordPresentButUnreadable(pane, deps) };
+	}
+	// A record found under this pane's session must also CLAIM that session. One
+	// copied from elsewhere passes every field check while describing another host's
+	// pids and another shell's command, so classifying it would answer the ownership
+	// question about the wrong process. The record is dropped, not trusted.
+	// `record.paneId` is deliberately NOT compared: the host writes its own internal
+	// pane label there (`<sessionId>:0`), never the coordinator's logical pane id.
+	if (record.sessionId !== pane.sessionId) {
+		return { pane, record: null, verdict: "dead", ownershipUnknown: true };
 	}
 	return {
 		pane,

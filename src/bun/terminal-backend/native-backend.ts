@@ -240,8 +240,9 @@ export class NativeTerminalBackend implements TerminalBackend {
 	 */
 	async readPaneSet(id: TerminalSessionId): Promise<{ panes: PaneSnapshot[]; layout: SplitTree } | null> {
 		try {
-			// Tolerant on BOTH counts, exactly as before: recovery may reconcile a pane
-			// it cannot identify, and a failed read reports "no pane set".
+			// Tolerant about the READ, not about ownership: a failed read reports "no pane
+			// set" rather than throwing, while recovery still keeps a pane it cannot
+			// identify — hidden from the snapshot, untouched on disk.
 			return await this.recoverPaneSetInto(id, false);
 		} catch {
 			return null;
@@ -249,10 +250,11 @@ export class NativeTerminalBackend implements TerminalBackend {
 	}
 
 	/**
-	 * {@link readPaneSet} for a caller that is about to replace a pane. Two things
-	 * change: recovery refuses to reconcile a pane whose owner it cannot establish
-	 * (leaving the set exactly as found), and a failed read throws instead of
-	 * reporting an empty one. `null` still means recovery RAN and no pane survived.
+	 * {@link readPaneSet} for a caller that is about to replace a pane. One thing
+	 * changes: nothing is swallowed. An unreadable record or a pane whose owner cannot
+	 * be established throws, instead of being reported as an empty set — the answer a
+	 * replacement must never act on. `null` still means recovery RAN and no pane
+	 * survived, which is a real answer.
 	 */
 	async readPaneSetStrict(id: TerminalSessionId): Promise<{ panes: PaneSnapshot[]; layout: SplitTree } | null> {
 		return this.recoverPaneSetInto(id, true);

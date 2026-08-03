@@ -72,7 +72,8 @@ vi.mock("../task-terminal-backend", async (importOriginal) => {
 						const rec = {
 							schemaVersion: 1 as const,
 							sessionId,
-							paneId: sessionId,
+							// What a real host writes here: its OWN internal pane label.
+							paneId: `${sessionId}:0`,
 							protocolVersion: 1 as const,
 							hostArtifactVersion: "1",
 							runtimeVersion: "test",

@@ -21,7 +21,13 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { listPaneIds, restoreSplitTree, type SplitTree } from "../../shared/split-tree";
 import { isValidSessionId } from "../native-terminal-registry/paths";
-import { coordinatorDir, coordinatorRecordFile, isValidCoordinatorId, multipaneRootDir } from "./paths";
+import {
+	coordinatorDir,
+	coordinatorRecordFile,
+	isValidCoordinatorId,
+	multipaneRootDir,
+	paneSessionId,
+} from "./paths";
 
 export const NATIVE_MULTIPANE_SCHEMA_VERSION = 1 as const;
 
@@ -104,12 +110,31 @@ export function parseMultipaneRecord(text: string): NativeMultipaneRecord | null
 	};
 }
 
-export function readMultipaneRecord(coordinatorId: string): NativeMultipaneRecord | null {
+/**
+ * Whether a record is actually BOUND to the coordinator it was read for. Every
+ * field can be valid and the record still describe someone else's processes: it
+ * may have been copied from another coordinator, or a pane may have been bound to
+ * a session id that coordinator never derives. So the id it carries must be the id
+ * we asked for, and each pane's session must be exactly `paneSessionId` of it.
+ */
+export function isBoundTo(coordinatorId: string, record: NativeMultipaneRecord): boolean {
+	if (record.coordinatorId !== coordinatorId) return false;
 	try {
-		return parseMultipaneRecord(readFileSync(coordinatorRecordFile(coordinatorId), "utf8"));
+		return record.panes.every((pane) => pane.sessionId === paneSessionId(coordinatorId, pane.paneId));
+	} catch {
+		// A pane id that maps to no valid session id at all is misbound by definition.
+		return false;
+	}
+}
+
+export function readMultipaneRecord(coordinatorId: string): NativeMultipaneRecord | null {
+	let record: NativeMultipaneRecord | null;
+	try {
+		record = parseMultipaneRecord(readFileSync(coordinatorRecordFile(coordinatorId), "utf8"));
 	} catch {
 		return null;
 	}
+	return record && isBoundTo(coordinatorId, record) ? record : null;
 }
 
 /**
@@ -119,14 +144,24 @@ export function readMultipaneRecord(coordinatorId: string): NativeMultipaneRecor
  * must not read it as "there is nothing here".
  */
 export class MultipaneRecordUnreadableError extends Error {
-	constructor(readonly coordinatorId: string, readonly reason: "unreadable-file" | "invalid", cause?: unknown) {
+	constructor(
+		readonly coordinatorId: string,
+		readonly reason: "unreadable-file" | "invalid" | "misbound",
+		cause?: unknown,
+	) {
 		super(
-			`the coordinator record of ${coordinatorId} exists but is ${reason === "invalid" ? "not a record this build understands" : "unreadable"}`,
+			`the coordinator record of ${coordinatorId} exists but is ${MISBIND_REASONS[reason]}`,
 			cause === undefined ? undefined : { cause },
 		);
 		this.name = "MultipaneRecordUnreadableError";
 	}
 }
+
+const MISBIND_REASONS = {
+	"unreadable-file": "unreadable",
+	invalid: "not a record this build understands",
+	misbound: "bound to a different coordinator or to panes it does not own",
+} as const;
 
 /**
  * {@link readMultipaneRecord} that only reports `null` for a record that is
@@ -143,6 +178,10 @@ export function readMultipaneRecordStrict(coordinatorId: string): NativeMultipan
 	}
 	const record = parseMultipaneRecord(text);
 	if (!record) throw new MultipaneRecordUnreadableError(coordinatorId, "invalid");
+	// Structurally valid is not the same as ours: a same-schema record naming another
+	// coordinator, or panes whose sessions this coordinator never derives, points at
+	// processes we cannot account for — refuse instead of adopting them.
+	if (!isBoundTo(coordinatorId, record)) throw new MultipaneRecordUnreadableError(coordinatorId, "misbound");
 	return record;
 }
 

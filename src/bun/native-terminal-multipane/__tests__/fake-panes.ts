@@ -35,7 +35,9 @@ function fakeRecord(sessionId: string, opts: StartOptions): NativeSessionRecord 
 	return {
 		schemaVersion: 1,
 		sessionId,
-		paneId: sessionId,
+		// What a real host writes here: its OWN internal pane label, not the
+		// coordinator's logical pane id.
+		paneId: `${sessionId}:0`,
 		protocolVersion: 1,
 		hostArtifactVersion: "1",
 		runtimeVersion: "test",
