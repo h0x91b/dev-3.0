@@ -10,7 +10,7 @@
  */
 
 import { closeSync, existsSync, mkdirSync, openSync, statSync, unlinkSync, writeSync } from "node:fs";
-import { sessionStateLockFile, sessionsRootDir } from "./paths";
+import { sessionLockFile, sessionLocksRootDir } from "./paths";
 
 /** A lock older than this belonged to a process that died before releasing it. */
 const LOCK_STALE_MS = 30_000;
@@ -39,8 +39,8 @@ function spin(ms: number): void {
  * session, while a live holder is never stolen from.
  */
 export function withSessionStateLock<T>(sessionId: string, fn: () => T): T {
-	const lock = sessionStateLockFile(sessionId);
-	mkdirSync(sessionsRootDir(), { recursive: true });
+	const lock = sessionLockFile(sessionId, "canonical");
+	mkdirSync(sessionLocksRootDir(), { recursive: true });
 	const deadline = Date.now() + LOCK_WAIT_MS;
 	for (;;) {
 		try {

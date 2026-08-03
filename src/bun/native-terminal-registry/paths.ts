@@ -21,6 +21,8 @@ export const NATIVE_SESSIONS_DIR_ENV = "DEV3_NATIVE_SESSIONS_DIR";
 
 export const NATIVE_HOST_IMAGES_DIR_ENV = "DEV3_NATIVE_HOST_IMAGES_DIR";
 
+export const NATIVE_SESSION_LOCKS_DIR_ENV = "DEV3_NATIVE_SESSION_LOCKS_DIR";
+
 function dev3HomeDir(): string {
 	return process.env.DEV3_HOME || `${process.env.HOME || process.env.USERPROFILE || "/tmp"}/.dev3.0`;
 }
@@ -30,6 +32,23 @@ export function sessionsRootDir(): string {
 	const explicit = process.env[NATIVE_SESSIONS_DIR_ENV];
 	if (explicit) return explicit;
 	return join(dev3HomeDir(), "native-sessions");
+}
+
+/**
+ * Root of the session-state lock family: its own top-level sibling, never inside
+ * `native-sessions` or a session directory — enumerators of that root read entries
+ * as sessions, and a lock living inside a directory keeps it alive through teardown.
+ *
+ * When only the SESSIONS root is overridden (tests, custom deployments), the locks
+ * root is derived beside it rather than falling back to the real home, so an
+ * isolated run cannot write lock state into a user's profile.
+ */
+export function sessionLocksRootDir(): string {
+	const explicit = process.env[NATIVE_SESSION_LOCKS_DIR_ENV];
+	if (explicit) return explicit;
+	const sessionsOverride = process.env[NATIVE_SESSIONS_DIR_ENV];
+	if (sessionsOverride) return `${sessionsOverride.replace(/[/\\]+$/, "")}-locks`;
+	return join(dev3HomeDir(), "native-session-locks");
 }
 
 /**
@@ -105,13 +124,24 @@ export function captureRecordFile(id: string, producerDigest: CaptureProducerDig
 export const CAPTURE_RECORD_PATTERN = /^capture\.[0-9a-f]{64}\.json(?:\.tmp)?$/;
 
 /**
- * The per-session lock, deliberately a SIBLING of the session directory rather
- * than a file inside it: a lock living in the directory being cleaned would keep
- * that directory alive and defeat teardown.
+ * The three members of one session's lock family, all siblings under the locks
+ * root: the published lock (`canonical`), a fully-written acquisition awaiting
+ * publication (`candidate`), and a contender's blocking claim (`claim`).
  */
-export function sessionStateLockFile(id: string): string {
-	return join(sessionsRootDir(), `${id}.state.lock`);
+export type SessionLockMember = "canonical" | "candidate" | "claim";
+
+export function sessionLockFile(id: string, member: SessionLockMember, generation = ""): string {
+	assertValidSessionId(id);
+	const suffix = generation === "" ? "" : `.${generation}`;
+	const file = join(sessionLocksRootDir(), `${id}.${member}${suffix}.lock`);
+	if (dirname(file) !== sessionLocksRootDir()) {
+		throw new Error(`session lock path escaped the locks root: ${file}`);
+	}
+	return file;
 }
+
+/** Matches every member of every session's lock family, for enumeration and cleanup. */
+export const SESSION_LOCK_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.(?:canonical|candidate|claim)(?:\.[0-9a-f]{64})?\.lock$/;
 
 /** Ordered ground-truth stream tap (seq 1228) — proof runs only, env-gated. */
 export function streamTapFile(id: string): string {

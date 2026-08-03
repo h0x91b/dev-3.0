@@ -7,7 +7,7 @@
  * track a change in the current build.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 export { n2ParseRecord, type N2SessionRecord } from "./n2-record-parser";
@@ -41,4 +41,20 @@ export function n2CaptureText(sessionDir: string, sessionId: string, includeHist
 	let end = rows.length;
 	while (end > 0 && rows[end - 1]!.trim() === "") end--;
 	return rows.slice(0, end).join("\n");
+}
+
+/**
+ * How that build enumerated sessions: the DIRECTORY entries of the sessions root,
+ * each treated as a session id. Anything else in that root becomes a phantom
+ * session, which is why lock state lives in its own tree.
+ */
+export function n2SessionDirs(root: string): string[] {
+	try {
+		return readdirSync(root, { withFileTypes: true })
+			.filter((entry) => entry.isDirectory())
+			.map((entry) => entry.name)
+			.sort();
+	} catch {
+		return [];
+	}
 }
