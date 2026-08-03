@@ -38,7 +38,6 @@ import {
 } from "./protocol";
 import {
 	ProducerNotReadyError,
-	captureContentIdentity,
 	captureRecordOf,
 	writeCaptureRecordAtomic,
 	type CaptureProducer,
@@ -283,26 +282,22 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	// ready" so the pipeline keeps the write retryable instead of throwing into a
 	// swallowed catch (findings 12 and 14).
 	let producerIdentity: CaptureProducer | null = null;
-	// The last record actually published, so a forced write of unchanged content can
-	// keep its ORIGINAL timestamp. Otherwise a viewer disconnecting from a quiet pane
-	// (detach flushes) would reset "when the content last changed" to now.
-	let published: { identity: string; updatedAt: string } | null = null;
-
 	function publishCapture(projection: LiveParserProjection): void {
 		if (!producerIdentity) throw new ProducerNotReadyError(sessionId);
-		const record = captureRecordOf(sessionId, producerIdentity, projection);
-		const identity = captureContentIdentity(record);
-		const updatedAt = published !== null && published.identity === identity ? published.updatedAt : record.updatedAt;
-		// The artifact path is scoped to this producer, so publishing cannot collide
-		// with a successor and needs no ownership check to get wrong.
-		writeCaptureRecordAtomic({ ...record, updatedAt });
-		published = { identity, updatedAt };
+		// The pipeline owns the content timestamp and the retry policy; this only writes.
+		writeCaptureRecordAtomic(captureRecordOf(sessionId, producerIdentity, projection, projection.updatedAt));
 	}
 
 
+	/**
+	 * A surface is advertised only once its sink has something readable on disk. A
+	 * capability with nothing behind it is worse than no capability.
+	 */
 	const advertisedSurfaces = (): NativeSessionCaptureSurface[] =>
-		plan.surfaces.filter(
-			(surface) => surface !== NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY || producerIdentity !== null,
+		plan.surfaces.filter((surface) =>
+			surface === NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY
+				? pipeline?.sinkState("compact") === "ready"
+				: pipeline?.sinkState("semantic") === "ready",
 		);
 	if (plan.runsParser) {
 		try {
@@ -641,9 +636,11 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 		shellPid,
 		shellStartSignature,
 	};
-	if (publishesCompact && pipeline) {
+	if (plan.runsParser && pipeline) {
 		try {
-			publishCapture(pipeline.projection());
+			// Through the pipeline, so the sink state machine records the publication —
+			// a direct write would leave the sink `pending` and the capability unadvertised.
+			pipeline.flush();
 		} catch {
 			// A capture artifact that cannot be written must never take the host down;
 			// the pipeline retries on its own cadence.

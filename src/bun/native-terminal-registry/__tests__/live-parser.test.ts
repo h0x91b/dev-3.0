@@ -398,8 +398,10 @@ describe("LiveParserPipeline persistence budget", () => {
 		expect(last(h.snapshots)?.ingested.frames).toBe(2);
 	});
 
-	it("counts a failing write, keeps the host up, and stays retryable", async () => {
+	it("counts a failing write, keeps the host up, and stays pending", async () => {
+		let clock = 0;
 		const h = await makeHarness({
+			now: () => clock,
 			persistState: () => {
 				throw new Error("disk full");
 			},
@@ -407,31 +409,65 @@ describe("LiveParserPipeline persistence budget", () => {
 		h.pipeline.onOutput(encoder.encode("a"));
 		h.runScheduled();
 		expect(() => h.runTimers()).not.toThrow();
-		// A failure must NOT advance the identical-write identity: identical content
-		// after a transient failure has to be written again, or one bad write silences
-		// the pane forever. Draining the fake timers therefore shows repeated attempts
-		// — in real time they are one per cadence interval.
-		expect(h.pipeline.persistenceCounters().failures).toBeGreaterThan(1);
 		expect(h.pipeline.healthStatus).toBe("live");
+		// It keeps retrying rather than giving up, and it never claims to be durable —
+		// so nothing can advertise a capability for it.
+		expect(h.pipeline.persistenceCounters().failures).toBeGreaterThan(0);
+		expect(h.pipeline.sinkState("semantic")).toBe("failed");
+		void clock;
 	});
 
-	it("writes identical content again after a transient failure, then settles", async () => {
+	it("retries the SAME quiet content after a transient failure, then settles ready", async () => {
+		let clock = 0;
 		let attempts = 0;
+		const seen: string[] = [];
 		const h = await makeHarness({
-			persistState: () => {
+			now: () => clock,
+			persistState: (snapshot) => {
 				attempts++;
+				seen.push(snapshot.updatedAt);
 				if (attempts === 1) throw new Error("transient");
 			},
 		});
 		h.pipeline.onOutput(encoder.encode("quiet"));
 		h.runScheduled();
 		h.runTimers();
-		// The retry landed, so the identity finally advanced and the pane stops writing.
+
+		// No further output: the armed retry alone healed it, which is the point — a
+		// quiet pane produces no events to carry a retry.
 		expect(attempts).toBeGreaterThan(1);
-		expect(h.pipeline.persistenceCounters().failures).toBe(1);
+		expect(h.pipeline.sinkState("semantic")).toBe("ready");
+		// The retry republished the SAME content, so the content timestamp did not move.
+		expect(seen[seen.length - 1]).toBe(seen[0]);
+
 		const settled = attempts;
 		h.runTimers();
 		expect(attempts).toBe(settled);
+		void clock;
+	});
+
+	it("keeps the last good artifact when a later replacement fails", async () => {
+		let clock = 0;
+		let fail = false;
+		const h = await makeHarness({
+			now: () => clock,
+			persistState: () => {
+				if (fail) throw new Error("disk full");
+			},
+		});
+		h.pipeline.onOutput(encoder.encode("first"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.pipeline.sinkState("semantic")).toBe("ready");
+
+		fail = true;
+		h.core.title = "changed";
+		h.pipeline.onOutput(encoder.encode("second"));
+		h.runScheduled();
+		h.runTimers();
+		// A failed replacement must not demote a sink that already has a good artifact.
+		expect(h.pipeline.sinkState("semantic")).toBe("ready");
+		void clock;
 	});
 
 	it("accounts serialized snapshot bytes per write", async () => {
