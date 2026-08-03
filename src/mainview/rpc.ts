@@ -191,17 +191,22 @@ function allowWatchdogReload(now: number): boolean {
  * Tell the backend the watchdog acted. Deliberately not a general RPC log hook:
  * only these two transitions explain a UI that looked frozen to the user while the
  * backend kept logging normally.
+ *
+ * Takes the raw request proxy rather than the module-level `api`, which is still in
+ * its temporal dead zone while `initElectrobunApi()` is running.
  */
-function reportWatchdogAction(action: "reinit" | "reload"): void {
+function reportWatchdogAction(rawRequest: RequestProxy, action: "reinit" | "reload"): void {
 	try {
-		const request = (api as ApiShape | undefined)?.request?.logRendererEvent?.({
+		const request = (rawRequest as unknown as {
+			logRendererEvent?: (p: unknown) => Promise<void>;
+		}).logRendererEvent?.({
 			level: "warn",
 			tag: "rpc-watchdog",
 			message: `bridge recovery: ${action}`,
 			extra: { action },
 		});
-		if (request && typeof (request as Promise<void>).catch === "function") {
-			(request as Promise<void>).catch(() => {});
+		if (request && typeof request.catch === "function") {
+			request.catch(() => {});
 		}
 	} catch {
 		/* diagnostics only */
@@ -252,7 +257,7 @@ function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestP
 					// can reach the backend at all. Without it a dead-then-revived bridge
 					// leaves no trace on the side that keeps the logs, and a frozen UI is
 					// indistinguishable from an idle one (seq 1407).
-					reportWatchdogAction("reinit");
+					reportWatchdogAction(rawRequest, "reinit");
 				} catch (err) {
 					console.error("[rpc-watchdog] socket re-init failed", err);
 				}
@@ -266,7 +271,7 @@ function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestP
 				});
 				// Best effort: the bridge is dead, so this may not land — but if the
 				// re-init above revived it briefly, it is the record of why we reloaded.
-				reportWatchdogAction("reload");
+				reportWatchdogAction(rawRequest, "reload");
 				if (allowWatchdogReload(Date.now())) window.location.reload();
 			}
 		} finally {
