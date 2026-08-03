@@ -6,18 +6,38 @@
  * resize → focus → close/cleanup), reconnect identity from a fresh controller,
  * idempotent cleanup, and the typed failure taxonomy. Multi-view is asserted per
  * adapter: tmux splits, native returns the typed `unsupported` result.
+ *
+ * The read-only capture block (seq 1412) is the reason this suite runs against
+ * both worlds at all: viewport/history separation, the fixed order of loss, the
+ * identity bracket, and the six availabilities must read the SAME on tmux and on
+ * native, or a coordinator cannot trust either.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	NativeTerminalBackend,
 	TmuxTerminalBackend,
+	isCapturedPane,
 	isTerminalBackendError,
 	type TerminalBackend,
+	type TerminalPaneCaptureContent,
 	type TerminalBackendErrorCode,
 } from "..";
 import { FakeCoordinatorWorld } from "./fake-coordinator-world";
 import { FakeTmuxWorld } from "./fake-tmux-world";
+
+/** A capture that MUST have content, with the availability asserted at the seam. */
+async function captured(
+	backend: TerminalBackend,
+	viewId: string,
+	request?: { historyLines?: number; maxBytes?: number },
+): Promise<TerminalPaneCaptureContent> {
+	const capture = await backend.captureView(SESSION, viewId, request);
+	if (!isCapturedPane(capture)) {
+		throw new Error(`expected content, got ${capture.availability}: ${capture.reason}`);
+	}
+	return capture;
+}
 
 const SESSION = "task-alpha";
 const CWD = "/tmp/dev3-seam";
@@ -119,24 +139,100 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		);
 	});
 
-	it("writes input to the attached view and reads it back with capture", async () => {
+	it("writes input to the attached view and reads it back with a read-only capture", async () => {
 		const { backend } = world();
-		await backend.openSession({ id: SESSION, cwd: CWD });
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
 		const attachment = await backend.attachView(SESSION);
 		await attachment.write("echo seam\r");
-		const capture = await attachment.capture();
-		expect(capture.viewId).toBe(attachment.viewId);
-		expect(capture.text).toContain("echo seam");
+		const capture = await captured(backend, created.views[0].id);
+		expect(capture.identity.viewId).toBe(attachment.viewId);
+		expect(capture.identity.backend).toBe(backend.kind);
+		expect(capture.content.viewport.join("\n")).toContain("echo seam");
+		expect(capture.content.lineModel).toBe("physical-rows");
+		// The default is the visible screen: history is opt-in, on both backends.
+		expect(capture.content.history).toEqual([]);
+		expect(capture.bounds.historyLinesRequested).toBe(0);
+		expect(capture.liveness).toBe("live");
+		expect(capture.identity.incarnation.known).toBe(true);
 	});
 
-	it("captures scrollback when asked", async () => {
+	it("returns history only when asked, oldest first, ending above the viewport", async () => {
 		const { backend } = world();
-		await backend.openSession({ id: SESSION, cwd: CWD });
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
 		const attachment = await backend.attachView(SESSION);
 		for (let i = 0; i < 40; i++) await attachment.write(`line-${i}\r`);
-		const capture = await attachment.capture({ includeScrollback: true });
-		expect(capture.text).toContain("line-0");
-		expect(capture.text).toContain("line-39");
+
+		const withoutHistory = await captured(backend, view);
+		expect(withoutHistory.content.history).toEqual([]);
+		expect(withoutHistory.content.viewport.join("\n")).toContain("line-39");
+
+		const withHistory = await captured(backend, view, { historyLines: 100 });
+		const history = withHistory.content.history;
+		expect(history.length).toBeGreaterThan(0);
+		expect(history.join("\n")).toContain("line-0");
+		// Oldest first, and nothing in history is also on screen.
+		expect(history.indexOf(history.find((l) => l.includes("line-0")) ?? "")).toBeLessThan(history.length - 1);
+		// No content row appears in both halves; blank rows are not content.
+		for (const line of withHistory.content.viewport) {
+			if (line.trim() !== "") expect(history).not.toContain(line);
+		}
+		expect(withHistory.bounds.historyLinesReturned).toBe(history.length);
+	});
+
+	it("keeps the newest rows and reports what a tight byte budget cut", async () => {
+		const { backend } = world();
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		const attachment = await backend.attachView(SESSION);
+		for (let i = 0; i < 40; i++) await attachment.write(`line-${i}\r`);
+
+		const tight = await captured(backend, view, { historyLines: 100, maxBytes: 40 });
+		expect(tight.bounds.bytesReturned).toBeLessThanOrEqual(40);
+		// History is discarded before the viewport, so the newest output survives.
+		expect(tight.content.viewport.join("\n")).toContain("line-39");
+		expect(tight.content.history).toEqual([]);
+		expect(tight.issues.map((issue) => issue.code)).toContain("history-truncated");
+	});
+
+	it("reports the six availabilities distinctly instead of an empty string", async () => {
+		const { backend } = world();
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		const absent = await backend.captureView("ghost-session", created.views[0].id);
+		expect(absent.availability).toBe("session-absent");
+		if (isCapturedPane(absent)) throw new Error("a ghost session must never carry content");
+		expect(absent.reason.length).toBeGreaterThan(0);
+		// Identity and readAt are present even on a miss, so it can be logged as-is.
+		expect(absent.identity.sessionId).toBe("ghost-session");
+		expect(Date.parse(absent.readAt)).not.toBeNaN();
+
+		const noView = await backend.captureView(SESSION, "%nope");
+		expect(noView.availability).toBe("view-absent");
+
+		const badId = await backend.captureView("bad:id", "%0");
+		expect(badId.availability).toBe("session-absent");
+	});
+
+	it("never focuses, writes, or resizes the pane it captures", async () => {
+		const { backend, geometry } = world();
+		const created = await backend.openSession({ id: SESSION, cwd: CWD, size: { cols: 100, rows: 30 } });
+		const before = await backend.describeSession(SESSION);
+		await captured(backend, created.views[0].id, { historyLines: 10 });
+		expect(await backend.describeSession(SESSION)).toEqual(before);
+		expect(geometry()).toEqual({ cols: 100, rows: 30 });
+	});
+
+	it("strips escape sequences out of captured text", async () => {
+		const { backend } = world();
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		const attachment = await backend.attachView(SESSION);
+		// A colour run plus an OSC title — neither may reach a caller.
+		await attachment.write("\u001B[31mred\u001B[0m\u001B]0;secret-title\u0007\r");
+		const capture = await captured(backend, created.views[0].id, { historyLines: 50 });
+		const text = [...capture.content.history, ...capture.content.viewport].join("\n");
+		expect(text).toContain("red");
+		expect(text).not.toContain("\u001B");
+		expect(text).not.toContain("secret-title");
 	});
 
 	it("applies a resize and rejects non-positive geometry", async () => {
@@ -181,7 +277,9 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		expect(rediscovered).toEqual(created);
 		const reattached = await fresh.attachView(SESSION);
 		expect(reattached.viewId).toBe(created.views[0].id);
-		expect((await reattached.capture()).text).toContain("before-reconnect");
+		expect((await captured(fresh, created.views[0].id)).content.viewport.join("\n")).toContain(
+			"before-reconnect",
+		);
 	});
 
 	it("rejects use of a released attachment and detaches idempotently", async () => {
@@ -191,7 +289,7 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		await attachment.detach();
 		await attachment.detach();
 		expect(await codeOf(() => attachment.write("x"))).toBe("detached");
-		expect(await codeOf(() => attachment.capture())).toBe("detached");
+		expect(await codeOf(() => attachment.resize({ cols: 80, rows: 24 }))).toBe("detached");
 	});
 
 	it("keeps the session alive across dispose (sessions are persistent)", async () => {

@@ -17,6 +17,7 @@ without an explicit `native` marker. See `decisions/171-*`.
 | File | Role |
 |------|------|
 | `contract.ts` | The vocabulary: session/view lifecycle, attach, input, resize, capture, focus, split, close, cleanup. Ids are opaque product strings; one portable session-id rule for both backends. |
+| `capture.ts` | Read-only pane capture (seq 1412): the result shape plus ALL of its pure shaping — sanitizing, bounding, freshness, identity drift. Both adapters share it so their answers cannot drift. |
 | `errors.ts` | `TerminalBackendError` with a discriminated `code` — the whole failure taxonomy of the seam. Backend errors are wrapped in `backend-failure` with the original on `cause`. |
 | `tmux-port.ts` | The **only** file that speaks tmux: names, `%pane` ids, `-F` formats, sockets, and argv stay behind this narrow port over the typed `TmuxClient`. |
 | `tmux-backend.ts` | Product logic for the tmux backend: validation, presence/membership checks, focus, error mapping. |
@@ -43,6 +44,35 @@ which has no attach handle, no resize, no error taxonomy, and a test-shaped
 - **`dispose()` never kills sessions** — sessions are persistent; only
   `cleanupSession` tears one down.
 
+## Read-only pane capture (seq 1412)
+
+`captureView(sessionId, viewId, request?)` is the backend-neutral replacement for
+`tmux capture-pane`: one bounded textual view of ONE named pane. It never
+focuses, writes, resizes, moves writer ownership, or needs the pane's agent to
+cooperate — tmux asks the server for the pane's rows, native reads the host's
+already-published parser snapshot off disk.
+
+- **`viewId` is required.** A capture is never aimed by focus. Get the pane list
+  from `describeSession` first.
+- **Every outcome is a result, never a `null` or a throw.** `captured`,
+  `session-absent`, `view-absent`, `not-enabled`, `unavailable`, `unreadable`,
+  `replaced`. Identity and `readAt` are on all of them; only `captured` carries
+  content, so reading text off a miss does not type-check. A pane that genuinely
+  shows nothing is a `captured` result with empty arrays.
+- **`readAt` vs `sourceUpdatedAt`.** tmux is synchronous (equal); native trails by
+  up to ~1s (decision 169) and says so.
+- **Physical rows, not logical lines.** Nothing reflows or unwraps.
+- **Fixed order of loss:** history beyond the request (oldest first) → history
+  that does not fit the byte budget (oldest first) → the viewport's top rows, and
+  never without a `viewport-truncated` issue. Whole rows only, UTF-8 bytes.
+- **Plain text only.** Every escape sequence and control byte is stripped at the
+  seam. History is off by default. No pid, cwd, command, or environment.
+
+**Native reports `not-enabled` in production today** — the host's live parser is
+off by default, so there is no snapshot to read. That is the honest answer, not a
+placeholder; the real-host proof (`bun run test:native-capture-e2e`) covers both a
+parser-enabled pane and a parser-less one. See `decisions/199-*`.
+
 ## Backend differences (deliberate, not negotiated)
 
 There is **no capability negotiation**: a caller holds one backend and an
@@ -56,12 +86,20 @@ unsupported product operation fails with the typed `unsupported` code.
 - **Ownership** — a native record owned by another app instance reads as absent
   (`describeSession` → `null`), so this seam never touches a session it does not
   own.
+- **Capture depth** — tmux offers ~3000 rows of history, native ~200 (the parser
+  snapshot's own cap). Reported through `historyLinesAvailable` /
+  `historyLinesOmitted` rather than equalised.
+- **Capture gaps** — native can prove dropped output and parser health; tmux keeps
+  no such account and returns `gaps` as unknown-with-reason, never a zero.
+- **Pane-set epoch** — native has a coordinator generation; tmux publishes none,
+  so its `epoch` is unknown rather than invented.
 
 ## Tests
 
 ```bash
-bun run test        # contract conformance (both adapters, in-memory worlds) + port + isolation
-bun run test:full   # + tmux-backend.live-e2e against a real tmux server
+bun run test                     # contract conformance (both adapters) + capture shaping + port + isolation
+bun run test:full                # + tmux-backend.live-e2e against a real tmux server
+bun run test:native-capture-e2e  # capture against a REAL native host (parser on in the test only)
 ```
 
 `__tests__/contract-conformance.test.ts` is ONE suite run against BOTH adapters:

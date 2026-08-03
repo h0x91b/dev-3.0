@@ -5,12 +5,15 @@
  * and `tmux-backend.live-e2e.test.ts` (a real tmux server).
  */
 
-import type { TmuxBackendPort, TmuxLaunch, TmuxPane } from "../tmux-port";
+import type { TmuxBackendPort, TmuxLaunch, TmuxPane, TmuxPaneObservation } from "../tmux-port";
 
 interface FakePane {
 	paneId: string;
 	active: boolean;
 	text: string[];
+	pid: number;
+	/** Flip to model a full-screen program owning the pane. */
+	alternateScreen: boolean;
 }
 
 interface FakeSession {
@@ -79,10 +82,32 @@ export class FakeTmuxWorld {
 				found.rows = rows;
 			},
 
-			async capturePane(paneId, includeScrollback) {
-				const pane = world.pane(paneId);
-				const lines = pane.text.filter((line, index) => line !== "" || index < pane.text.length - 1);
-				return (includeScrollback ? lines : lines.slice(-24)).join("\n");
+			async observePane(session, paneId): Promise<TmuxPaneObservation | null> {
+				const found = world.require(session);
+				const pane = found.panes.find((entry) => entry.paneId === paneId);
+				if (!pane) return null;
+				return {
+					paneId: pane.paneId,
+					cols: found.cols,
+					rows: found.rows,
+					dead: false,
+					pid: pane.pid,
+					historySize: Math.max(0, world.lines(pane).length - found.rows),
+					alternateScreen: pane.alternateScreen,
+				};
+			},
+
+			async captureViewport(paneId) {
+				const found = world.sessionOfPane(paneId);
+				return world.lines(world.pane(paneId)).slice(-found.rows);
+			},
+
+			async captureHistory(paneId, lines) {
+				if (lines <= 0) return [];
+				const found = world.sessionOfPane(paneId);
+				const all = world.lines(world.pane(paneId));
+				const history = all.slice(0, Math.max(0, all.length - found.rows));
+				return history.slice(-lines);
 			},
 
 			async killPane(paneId, bestEffort) {
@@ -114,13 +139,29 @@ export class FakeTmuxWorld {
 		if (entry.panes.length === 0) this.sessions.delete(session);
 	}
 
+	/** Replace a pane's process, as tmux does when a `remain-on-exit` pane respawns. */
+	replacePaneProcess(paneId: string): void {
+		this.pane(paneId).pid += 1;
+	}
+
+	/** Model a full-screen program taking over the pane. */
+	enterAlternateScreen(paneId: string): void {
+		this.pane(paneId).alternateScreen = true;
+	}
+
+	/** Non-empty rows of a pane, oldest first — the fake's whole "screen + history". */
+	lines(pane: FakePane): string[] {
+		return pane.text.filter((line, index) => line !== "" || index < pane.text.length - 1);
+	}
+
 	geometry(session: string): { cols: number; rows: number } {
 		const found = this.require(session);
 		return { cols: found.cols, rows: found.rows };
 	}
 
 	private newPane(active: boolean): FakePane {
-		return { paneId: `%${this.paneCounter++}`, active, text: [""] };
+		const index = this.paneCounter++;
+		return { paneId: `%${index}`, active, text: [""], pid: 9000 + index, alternateScreen: false };
 	}
 
 	private require(session: string): FakeSession {
@@ -136,13 +177,13 @@ export class FakeTmuxWorld {
 		return null;
 	}
 
-	private sessionOfPane(paneId: string): FakeSession {
+	sessionOfPane(paneId: string): FakeSession {
 		const name = this.sessionForPaneId(paneId);
 		if (!name) throw new Error(`no such pane ${paneId}`);
 		return this.sessions.get(name)!;
 	}
 
-	private pane(paneId: string): FakePane {
+	pane(paneId: string): FakePane {
 		const session = this.sessionOfPane(paneId);
 		return session.panes.find((pane) => pane.paneId === paneId)!;
 	}

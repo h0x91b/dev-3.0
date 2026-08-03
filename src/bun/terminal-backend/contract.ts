@@ -15,8 +15,10 @@
  *  - Ids are opaque product strings. tmux session names / `%pane` ids and native
  *    registry ids never leak through here (see each adapter).
  *  - Streaming output stays ABOVE this seam (the PTY/host layer owns bytes);
- *    the contract exposes point-in-time {@link TerminalCapture} snapshots.
+ *    the contract exposes point-in-time {@link TerminalPaneCapture} reads.
  */
+
+import type { TerminalPaneCapture, TerminalPaneCaptureRequest } from "./capture";
 
 /** Which backend implementation a handle talks to — for logs and diagnostics. */
 export type TerminalBackendKind = "tmux" | "native";
@@ -134,16 +136,6 @@ export interface TerminalSessionState {
 	readonly focusedViewId: TerminalViewId | null;
 }
 
-export interface TerminalCaptureOptions {
-	/** Include scrollback, not just the visible screen (bounded per backend). */
-	readonly includeScrollback?: boolean;
-}
-
-export interface TerminalCapture {
-	readonly viewId: TerminalViewId;
-	readonly text: string;
-}
-
 export interface TerminalTeardownOptions {
 	/** Treat "already gone" as success — makes cleanup retries idempotent. */
 	readonly ignoreMissing?: boolean;
@@ -161,7 +153,6 @@ export interface TerminalAttachment {
 	/** Deliver input verbatim — the caller includes any CR/newline it wants. */
 	write(data: string): Promise<void>;
 	resize(size: TerminalSize): Promise<void>;
-	capture(opts?: TerminalCaptureOptions): Promise<TerminalCapture>;
 	/** Release this binding. Idempotent; never tears the session down. */
 	detach(): Promise<void>;
 }
@@ -183,6 +174,23 @@ export interface TerminalBackend {
 
 	/** Bind to a view (the focused one when `viewId` is omitted). */
 	attachView(id: TerminalSessionId, viewId?: TerminalViewId): Promise<TerminalAttachment>;
+
+	/**
+	 * Read a bounded textual view of ONE named pane, without attaching. Purely
+	 * observational: it never focuses, writes, resizes, moves writer ownership, or
+	 * needs the pane's process to cooperate.
+	 *
+	 * `viewId` is required on purpose — a capture is never aimed by focus, so a
+	 * coordinator cannot accidentally read whichever pane happens to be active.
+	 * Every outcome, including "there is no such session", comes back as a
+	 * {@link TerminalPaneCapture} rather than a `null` or a throw, so the five
+	 * distinct unavailable states stay distinguishable. See `./capture`.
+	 */
+	captureView(
+		id: TerminalSessionId,
+		viewId: TerminalViewId,
+		request?: TerminalPaneCaptureRequest,
+	): Promise<TerminalPaneCapture>;
 
 	focusView(id: TerminalSessionId, viewId: TerminalViewId): Promise<void>;
 

@@ -157,3 +157,133 @@ describe("NativeTerminalBackend", () => {
 		await expect(h.backend.describeSession(SESSION)).resolves.toBeNull();
 	});
 });
+
+// ── Read-only capture (seq 1412) ──────────────────────────────────────────────
+
+describe("NativeTerminalBackend read-only capture", () => {
+	let world: FakeCoordinatorWorld | null = null;
+
+	afterEach(() => {
+		world?.cleanup();
+		world = null;
+	});
+
+	/** The pane's own registry session id — how the fake keys its panes. */
+	function paneOf(w: FakeCoordinatorWorld, viewId: string) {
+		const pane = w.registry.panes.get(`${SESSION}-${viewId}`);
+		if (!pane) throw new Error(`fake pane ${viewId} missing`);
+		return pane;
+	}
+
+	it("sources content from the parser snapshot without ever connecting", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		await h.backend.writePane(SESSION, view, "native-capture\r");
+
+		const before = world.registry.panes.get(`${SESSION}-${view}`)?.writerTaken;
+		const capture = await h.backend.captureView(SESSION, view);
+		if (capture.availability !== "captured") throw new Error(capture.reason);
+		expect(capture.content.viewport.join("\n")).toContain("native-capture");
+		// Capturing takes no writer lease and opens no new client.
+		expect(world.registry.panes.get(`${SESSION}-${view}`)?.writerTaken).toBe(before);
+		// The snapshot carries its own timestamp, kept separate from the read.
+		expect(capture.sourceUpdatedAt.known).toBe(true);
+		expect(capture.ageMs.known).toBe(true);
+		expect(capture.identity.epoch.known).toBe(true);
+	});
+
+	it("reports a parser-less pane as not-enabled, which is production today", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		const pane = paneOf(world, view);
+		pane.parserState = "absent";
+		pane.record.createdAt = new Date(Date.now() - 60_000).toISOString();
+
+		const capture = await h.backend.captureView(SESSION, view);
+		expect(capture.availability).toBe("not-enabled");
+		if (capture.availability === "captured") throw new Error("must not carry content");
+		expect(capture.reason).toContain("no live parser");
+		// A miss still identifies the pane it missed on, and reports it alive.
+		expect(capture.identity.incarnation.known).toBe(true);
+		expect(capture.liveness).toBe("live");
+	});
+
+	it("reports a still-booting host as unavailable, not as permanently incapable", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		paneOf(world, view).parserState = "absent"; // createdAt is "just now"
+
+		const capture = await h.backend.captureView(SESSION, view);
+		expect(capture.availability).toBe("unavailable");
+	});
+
+	it("reports an unbelievable snapshot as unreadable rather than as a blank screen", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		paneOf(world, view).parserState = "rejected";
+
+		const capture = await h.backend.captureView(SESSION, view);
+		expect(capture.availability).toBe("unreadable");
+	});
+
+	it("reports output the parser dropped as a sequence gap", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		paneOf(world, view).droppedBytes = 4096;
+
+		const capture = await h.backend.captureView(SESSION, view);
+		if (capture.availability !== "captured") throw new Error(capture.reason);
+		expect(capture.gaps).toEqual({
+			known: true,
+			value: { droppedBytes: 4096, droppedChunks: 1, resyncGaps: 0, degraded: false },
+		});
+		expect(capture.issues.map((issue) => issue.code)).toContain("sequence-gap");
+	});
+
+	it("says plainly that a screen reset cannot be told from history that scrolled off", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const capture = await h.backend.captureView(SESSION, created.views[0].id);
+		if (capture.availability !== "captured") throw new Error(capture.reason);
+		expect(capture.issues.some((issue) => issue.code === "unknown" && issue.detail.includes("reset"))).toBe(
+			true,
+		);
+	});
+
+	it("reports a pane replaced mid-capture instead of returning its successor's screen", async () => {
+		const w = new FakeCoordinatorWorld();
+		world = w;
+		// The swap has to be armed BEFORE the backend copies its deps, then triggered
+		// only once the pane exists: a pane replaced exactly while its snapshot is read.
+		const inspect = w.registry.inspectPaneParserState!.bind(w.registry);
+		let armed = false;
+		w.registry.inspectPaneParserState = (sessionId) => {
+			const result = inspect(sessionId);
+			if (armed) {
+				const pane = w.registry.panes.get(sessionId);
+				if (pane) pane.record.shell.pid += 1;
+			}
+			return result;
+		};
+		const backend = new NativeTerminalBackend({ deps: w.deps() });
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		armed = true;
+
+		const capture = await backend.captureView(SESSION, view);
+		expect(capture.availability).toBe("replaced");
+		if (capture.availability === "captured") throw new Error("must not carry content");
+		expect(capture.reason).toContain("incarnation changed");
+	});
+});

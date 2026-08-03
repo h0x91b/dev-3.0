@@ -74,7 +74,8 @@ describe.skipIf(!TMUX_VERSION || process.platform === "win32")(
 			rmSync(workDir, { recursive: true, force: true });
 		});
 
-		it("runs the single-view lifecycle end to end", async () => {
+		// Real tmux round-trips plus a 60-row scroll need more than the 5s default.
+		it("runs the single-view lifecycle end to end", { timeout: 30_000 }, async () => {
 			const created = await backend.openSession({
 				id: SESSION,
 				cwd: workDir,
@@ -88,7 +89,10 @@ describe.skipIf(!TMUX_VERSION || process.platform === "win32")(
 
 			const attachment = await backend.attachView(SESSION);
 			await attachment.write("echo seam-live\r");
-			await eventually(async () => (await attachment.capture()).text.includes("seam-live"));
+			await eventually(async () => {
+				const capture = await backend.captureView(SESSION, created.views[0].id);
+				return capture.availability === "captured" && capture.content.viewport.join("\n").includes("seam-live");
+			});
 
 			await attachment.resize({ cols: 120, rows: 40 });
 			const resized = await client.displayMessage(PANE_GEOMETRY_FORMAT, { target: SESSION });
@@ -101,7 +105,14 @@ describe.skipIf(!TMUX_VERSION || process.platform === "win32")(
 				created.views.map((view) => view.id),
 			);
 			const reattached = await fresh.attachView(SESSION);
-			expect((await reattached.capture()).text).toContain("seam-live");
+			expect(reattached.viewId).toBe(created.views[0].id);
+			const freshCapture = await fresh.captureView(SESSION, created.views[0].id);
+			if (freshCapture.availability !== "captured") throw new Error(`capture missed: ${freshCapture.availability}`);
+			expect(freshCapture.content.viewport.join("\n")).toContain("seam-live");
+			// Real tmux answers synchronously, so its content is never behind the read.
+			expect(freshCapture.ageMs).toEqual({ known: true, value: 0 });
+			expect(freshCapture.content.lineModel).toBe("physical-rows");
+			expect(freshCapture.identity.incarnation.known).toBe(true);
 			await fresh.dispose();
 
 			const second = await backend.splitView(SESSION, created.views[0].id, { cwd: workDir });
@@ -112,6 +123,33 @@ describe.skipIf(!TMUX_VERSION || process.platform === "win32")(
 
 			await backend.closeView(SESSION, second.id);
 			expect((await backend.describeSession(SESSION))?.views).toHaveLength(1);
+
+			// Read-only capture against the real server (seq 1412): the split of
+			// viewport vs scrollback is tmux grammar the in-memory world cannot prove,
+			// because `-S -N -E -1` addressing is tmux's own line numbering.
+			const attach = await backend.attachView(SESSION, created.views[0].id);
+			// One shell invocation, 60 rows: 60 separate send-keys against a real
+			// server is slow enough to dominate the test's whole budget.
+			await attach.write("for i in $(seq 0 59); do echo live-row-$i; done\r");
+			await attach.detach();
+			await eventually(async () => {
+				const c = await backend.captureView(SESSION, created.views[0].id);
+				return c.availability === "captured" && c.content.viewport.join("\n").includes("live-row-59");
+			});
+			const deep = await backend.captureView(SESSION, created.views[0].id, { historyLines: 200 });
+			if (deep.availability !== "captured") throw new Error(`capture missed: ${deep.availability}`);
+			expect(deep.content.history.length).toBeGreaterThan(0);
+			expect(deep.content.history.join("\n")).toContain("live-row-0");
+			// History ends immediately ABOVE the screen: no row is in both halves.
+			for (const row of deep.content.viewport) {
+				if (row.trim() !== "") expect(deep.content.history).not.toContain(row);
+			}
+			expect(deep.bounds.historyLinesAvailable.known).toBe(true);
+			expect(deep.size).toEqual({ known: true, value: { cols: 120, rows: 40 } });
+			// Real tmux output carries real escape sequences; none may reach a caller.
+			const rows = [...deep.content.history, ...deep.content.viewport];
+			expect(rows.some((row) => /[\u0000-\u001F\u007F-\u009F]/.test(row))).toBe(false);
+			expect(deep.gaps.known).toBe(false);
 
 			await backend.cleanupSession(SESSION);
 			await expect(backend.describeSession(SESSION)).resolves.toBeNull();

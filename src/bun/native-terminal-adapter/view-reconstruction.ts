@@ -44,6 +44,27 @@ export function renderSnapshotText(state: NativeSemanticState, includeHistory: b
 }
 
 /**
+ * The same semantic screen as {@link renderSnapshotText}, but with the visible
+ * screen and the scrolled-off lines kept APART (seq 1412). A read-only pane
+ * capture has to say which lines are on screen right now and which already
+ * scrolled past, so joining them into one blob first and re-splitting later
+ * would throw away exactly the distinction the caller needs.
+ *
+ * Trailing blank viewport rows are dropped (an 80x24 pane showing three lines
+ * is three lines, not three plus twenty-one empties); history is returned as-is
+ * because a blank line that really scrolled past is content.
+ */
+export function snapshotCaptureLines(state: NativeSemanticState): {
+	viewport: string[];
+	history: string[];
+} {
+	return {
+		viewport: trimTrailingBlankLines(state.screen.map(lineText)),
+		history: state.scrollback.map(lineText),
+	};
+}
+
+/**
  * A per-session capture surface over the bounded snapshot. Enforces the
  * monotonic-watermark rule: it accepts a snapshot whose `watermarkSeq` is at
  * least the last one it applied and caches the render; a stale snapshot is

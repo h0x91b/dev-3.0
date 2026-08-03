@@ -8,11 +8,25 @@
  */
 
 import { tmux, type TmuxClient } from "../tmux";
-import { PANE_SWITCHER_FORMAT } from "../tmux/formats";
+import { PANE_CAPTURE_FORMAT, PANE_SWITCHER_FORMAT } from "../tmux/formats";
 
 export interface TmuxPane {
 	readonly paneId: string;
 	readonly active: boolean;
+}
+
+/** Everything a capture needs to describe a pane, from ONE `list-panes` sweep. */
+export interface TmuxPaneObservation {
+	readonly paneId: string;
+	readonly cols: number;
+	readonly rows: number;
+	readonly dead: boolean;
+	/** The pane's foreground process group leader — the capture's incarnation key. */
+	readonly pid: number;
+	/** Scrollback lines the server currently holds for this pane. */
+	readonly historySize: number;
+	/** True while a full-screen program owns the pane, so its history is frozen. */
+	readonly alternateScreen: boolean;
 }
 
 export interface TmuxLaunch {
@@ -32,13 +46,28 @@ export interface TmuxBackendPort {
 	/** Raw text delivered to the pane's process, control bytes included. */
 	writePane(paneId: string, data: string): Promise<void>;
 	resize(session: string, cols: number, rows: number): Promise<void>;
-	capturePane(paneId: string, includeScrollback: boolean): Promise<string>;
+	/** Geometry, liveness, incarnation, and history depth — no content. */
+	observePane(session: string, paneId: string): Promise<TmuxPaneObservation | null>;
+	/** The visible screen, one entry per row, top row first. */
+	captureViewport(paneId: string): Promise<string[]>;
+	/** Up to `lines` scrolled-off lines ending immediately above the screen, oldest first. */
+	captureHistory(paneId: string, lines: number): Promise<string[]>;
 	killPane(paneId: string, bestEffort: boolean): Promise<void>;
 	killSession(session: string, bestEffort: boolean): Promise<void>;
 }
 
-/** Bounded history so a burst is fully visible without an unbounded capture. */
-const SCROLLBACK_START_LINE = -3000;
+/**
+ * `capture-pane` line numbering: `0` is the top visible row, so a negative
+ * start reaches into scrollback and `-1` is the last line above the screen.
+ * Splitting the two reads is what lets the seam report viewport and history
+ * separately instead of handing back one ambiguous blob.
+ */
+const LAST_HISTORY_LINE = -1;
+
+function captureLines(stdout: string): string[] {
+	const text = stdout.replace(/\n$/, "");
+	return text === "" ? [] : text.split("\n");
+}
 
 /** The production port over the typed tmux client singleton. */
 export function tmuxBackendPort(client: TmuxClient = tmux): TmuxBackendPort {
@@ -80,11 +109,31 @@ export function tmuxBackendPort(client: TmuxClient = tmux): TmuxBackendPort {
 
 		resize: (session, cols, rows) => client.resizeWindow({ target: session, cols, rows }),
 
-		capturePane: (paneId, includeScrollback) =>
-			client.capturePane({
-				target: paneId,
-				startLine: includeScrollback ? SCROLLBACK_START_LINE : undefined,
-			}),
+		async observePane(session, paneId) {
+			const rows = await client.listPanes(PANE_CAPTURE_FORMAT, { target: session, scope: "session" });
+			const row = rows.find((entry) => entry.paneId === paneId);
+			if (!row) return null;
+			return {
+				paneId: row.paneId,
+				cols: row.width,
+				rows: row.height,
+				dead: row.dead,
+				pid: row.pid,
+				historySize: row.historySize,
+				alternateScreen: row.alternateScreen,
+			};
+		},
+
+		async captureViewport(paneId) {
+			return captureLines(await client.capturePane({ target: paneId }));
+		},
+
+		async captureHistory(paneId, lines) {
+			if (lines <= 0) return [];
+			return captureLines(
+				await client.capturePane({ target: paneId, startLine: -lines, endLine: LAST_HISTORY_LINE }),
+			);
+		},
 
 		killPane: (paneId, bestEffort) => client.killPane(paneId, { bestEffort }),
 

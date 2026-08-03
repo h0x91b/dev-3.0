@@ -84,3 +84,92 @@ describe("TmuxTerminalBackend", () => {
 		expect(err.code).toBe("backend-failure");
 	});
 });
+
+// ── Read-only capture (seq 1412) ──────────────────────────────────────────────
+
+describe("TmuxTerminalBackend read-only capture", () => {
+	it("reports history as absent by nature while a full-screen program owns the pane", async () => {
+		const { world, backend } = harness();
+		const created = await backend.openSession({ id: SESSION, cwd: "/tmp" });
+		const view = created.views[0].id;
+		const attachment = await backend.attachView(SESSION);
+		for (let i = 0; i < 40; i++) await attachment.write(`line-${i}\r`);
+		world.enterAlternateScreen(view);
+
+		const capture = await backend.captureView(SESSION, view, { historyLines: 100 });
+		if (capture.availability !== "captured") throw new Error(capture.reason);
+		expect(capture.screen).toEqual({ known: true, value: "alternate" });
+		// The scrollback behind a TUI is not recent output, so it is not offered as
+		// history — and the absence is not reported as truncation either.
+		expect(capture.content.history).toEqual([]);
+		expect(capture.bounds.historyLinesAvailable).toEqual({ known: true, value: 0 });
+		expect(capture.issues.map((issue) => issue.code)).not.toContain("history-truncated");
+	});
+
+	it("says plainly that tmux cannot account for dropped output or a reset", async () => {
+		const { backend } = harness();
+		const created = await backend.openSession({ id: SESSION, cwd: "/tmp" });
+		const capture = await backend.captureView(SESSION, created.views[0].id);
+		if (capture.availability !== "captured") throw new Error(capture.reason);
+		expect(capture.gaps.known).toBe(false);
+		expect(capture.issues.some((issue) => issue.code === "unknown")).toBe(true);
+		// tmux has no pane-set generation, so an epoch here would be invented.
+		expect(capture.identity.epoch.known).toBe(false);
+	});
+
+	it("reports a pane replaced mid-capture instead of returning its successor's screen", async () => {
+		const world = new FakeTmuxWorld();
+		const port = world.port();
+		let paneId = "";
+		const backend = new TmuxTerminalBackend({
+			port: {
+				...port,
+				async captureViewport(target) {
+					// The pane's process is swapped exactly between the two identity checks.
+					if (target === paneId) world.replacePaneProcess(target);
+					return port.captureViewport(target);
+				},
+			},
+		});
+		const created = await backend.openSession({ id: SESSION, cwd: "/tmp" });
+		paneId = created.views[0].id;
+
+		const capture = await backend.captureView(SESSION, paneId);
+		expect(capture.availability).toBe("replaced");
+		if (capture.availability === "captured") throw new Error("must not carry content");
+		expect(capture.reason).toContain("incarnation changed");
+	});
+
+	it("reports a pane that vanished mid-capture as view-absent, not as a tmux failure", async () => {
+		const world = new FakeTmuxWorld();
+		const port = world.port();
+		let paneId = "";
+		const backend = new TmuxTerminalBackend({
+			port: {
+				...port,
+				async captureViewport(target) {
+					if (target === paneId) world.killPaneProcess(target);
+					return port.captureViewport(target);
+				},
+			},
+		});
+		const created = await backend.openSession({ id: SESSION, cwd: "/tmp" });
+		paneId = created.views[0].id;
+
+		const capture = await backend.captureView(SESSION, paneId);
+		expect(capture.availability).toBe("view-absent");
+	});
+
+	it("reports a tmux read failure as unreadable rather than throwing at a caller", async () => {
+		const world = new FakeTmuxWorld();
+		const backend = new TmuxTerminalBackend({
+			port: { ...world.port(), observePane: () => Promise.reject(new Error("no server running")) },
+		});
+		await backend.openSession({ id: SESSION, cwd: "/tmp" });
+		const state = await backend.describeSession(SESSION);
+		const capture = await backend.captureView(SESSION, state!.views[0].id);
+		expect(capture.availability).toBe("unreadable");
+		if (capture.availability === "captured") throw new Error("must not carry content");
+		expect(capture.reason).toContain("no server running");
+	});
+});

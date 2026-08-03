@@ -18,6 +18,7 @@
  */
 
 import { listPaneIds, restoreSplitTree, serializeSplitTree, splitPane, closePane as closeTreePane, createSplitTree, validateSplitTree, type SplitOrientation, type SplitTree } from "../../shared/split-tree";
+import { existsSync } from "node:fs";
 import { withFileLock } from "../file-lock";
 import { NativeSessionClient } from "../native-terminal-registry/client";
 import { classifyOwnership, type OwnershipVerdict } from "../native-terminal-registry/ownership";
@@ -32,8 +33,9 @@ import {
 import { start, stop, type StartOptions, type StartResult } from "../native-terminal-registry/registry";
 import type { ShellLaunchSpec } from "../native-terminal-registry/shell-launch";
 import { CoordinatorClientView } from "./client-view";
-import { MonotonicSnapshotView } from "../native-terminal-adapter/view-reconstruction";
-import { readParserState } from "../native-terminal-registry/parser-state";
+import type { NativeSemanticState } from "../native-terminal-registry/ghostty-live";
+import { parserStateFile } from "../native-terminal-registry/paths";
+import { readParserState, type ParserStateSnapshot } from "../native-terminal-registry/parser-state";
 import {
 	CoordinatorExistsError,
 	CoordinatorGoneError,
@@ -100,9 +102,40 @@ export interface PaneConnection {
 	onOutput(cb: (bytes: Uint8Array) => void): () => void;
 	input(data: string | Uint8Array): void;
 	resize(cols: number, rows: number): void;
-	/** Point-in-time screen capture; returns `""` when the surface has nothing. */
-	capture(includeHistory: boolean): string;
 	close(): void;
+}
+
+/**
+ * How a pane's parser-state file reads. Told apart because "the file is not
+ * there" and "the file is there and cannot be believed" are different answers,
+ * and `readParserState` collapses both into `null`.
+ */
+export type ParserStateInspection =
+	| { kind: "present"; snapshot: ParserStateSnapshot }
+	| { kind: "rejected"; problem: string }
+	| { kind: "absent" };
+
+/** Where a read-only capture of one pane can source its text, or why it cannot. */
+export type PaneCaptureSource =
+	| { kind: "snapshot"; snapshot: ParserStateSnapshot; state: NativeSemanticState }
+	/** Capturable, nothing observed yet. */
+	| { kind: "empty"; reason: string }
+	/** The host publishes no screen at all — a configuration fact, not a failure. */
+	| { kind: "disabled"; reason: string }
+	| { kind: "unreadable"; reason: string };
+
+/**
+ * How long after a host is recorded its parser is still allowed to have
+ * published nothing. The parser persists on a 250 ms debounce (decision 169),
+ * so this is generous on purpose: past it, silence means no parser.
+ */
+const PARSER_FIRST_SNAPSHOT_GRACE_MS = 3_000;
+
+function inspectParserStateFile(sessionId: string): ParserStateInspection {
+	if (!existsSync(parserStateFile(sessionId))) return { kind: "absent" };
+	const snapshot = readParserState(sessionId);
+	if (snapshot) return { kind: "present", snapshot };
+	return { kind: "rejected", problem: "schema, version, parser identity, or session id did not match" };
 }
 
 /** Injected effects, so the coordinator is unit-testable without real processes. */
@@ -117,6 +150,12 @@ export interface CoordinatorDeps {
 	 */
 	inspectPaneRecord?(sessionId: string): RecordInspection;
 	readPaneToken(sessionId: string): string | null;
+	/**
+	 * How the pane's parser snapshot reads — the read-only capture source. Optional
+	 * so an in-memory double need not model the file; it then falls back to the
+	 * real on-disk inspection, which simply reports `absent`.
+	 */
+	inspectPaneParserState?(sessionId: string): ParserStateInspection;
 	classifyPane(record: NativeSessionRecord, token: string | null): Promise<OwnershipVerdict>;
 	connectPane(record: NativeSessionRecord, token: string): Promise<PaneConnection>;
 }
@@ -127,18 +166,16 @@ export const defaultCoordinatorDeps: CoordinatorDeps = {
 	readPaneRecord: readRecord,
 	inspectPaneRecord: inspectRecordFile,
 	readPaneToken: readToken,
+	inspectPaneParserState: inspectParserStateFile,
 	classifyPane: classifyOwnership,
 	async connectPane(record, token) {
 		const client = new NativeSessionClient();
 		await client.connect(record, token, { timeoutMs: 5000 });
-		// Use the same snapshot surface the single-view adapter uses for capture.
-		const surface = new MonotonicSnapshotView(record.sessionId, readParserState);
 		return {
 			role: () => client.getRole(),
 			onOutput: (cb) => client.onOutput(cb),
 			input: (data) => client.input(data),
 			resize: (cols, rows) => client.resize(cols, rows),
-			capture: (includeHistory) => surface.capture(includeHistory) ?? "",
 			close: () => client.close(),
 		};
 	},
@@ -460,11 +497,49 @@ export class NativeMultipaneCoordinator {
 		connection.input(data);
 	}
 
-	/** Point-in-time screen capture for one pane; returns `""` when unavailable. */
-	async capturePane(paneId: string, includeHistory: boolean): Promise<string> {
+	/**
+	 * The read-only capture source for one pane (seq 1412): the host's bounded
+	 * parser snapshot, straight off disk.
+	 *
+	 * It deliberately does NOT connect. The host publishes `parser-state.json`
+	 * whether or not any client is attached, so reading it takes no writer lease,
+	 * sends no protocol message, and cannot disturb the pane — which is the whole
+	 * point of a capture. A connect here would also make an idle observer
+	 * establish a WebSocket just to read text.
+	 *
+	 * Every outcome is named, because "no snapshot" has three very different
+	 * causes and a caller acts differently on each.
+	 */
+	readPaneCaptureSource(paneId: string): PaneCaptureSource {
 		this.assertPane(paneId);
-		const connection = await this.connect(paneId);
-		return connection.capture(includeHistory);
+		const sessionId = paneSessionId(this.coordinatorId, paneId);
+		const inspect = this.deps.inspectPaneParserState ?? inspectParserStateFile;
+		const inspection = inspect(sessionId);
+		if (inspection.kind === "present") {
+			const snapshot = inspection.snapshot;
+			if (!snapshot.state) {
+				const detail = snapshot.health.error ?? `parser is ${snapshot.health.status}`;
+				return { kind: "empty", reason: `the pane's parser has published no screen yet (${detail})` };
+			}
+			return { kind: "snapshot", snapshot, state: snapshot.state };
+		}
+		if (inspection.kind === "rejected") {
+			return { kind: "unreadable", reason: `the pane's parser snapshot could not be believed: ${inspection.problem}` };
+		}
+		// Absent. A host that has been up longer than the parser's own first-write
+		// window and still published nothing is not running a parser at all; inside
+		// that window the honest answer is "not yet", so a booting pane is never
+		// mislabelled as permanently incapable.
+		const record = this.deps.readPaneRecord(sessionId);
+		const createdAt = record ? Date.parse(record.createdAt) : Number.NaN;
+		const bootingStill = Number.isFinite(createdAt) && Date.now() - createdAt < PARSER_FIRST_SNAPSHOT_GRACE_MS;
+		if (bootingStill) {
+			return { kind: "empty", reason: "the pane's host is still starting and has published no screen yet" };
+		}
+		return {
+			kind: "disabled",
+			reason: "this pane's host runs no live parser, so it publishes no screen to capture",
+		};
 	}
 
 	/**

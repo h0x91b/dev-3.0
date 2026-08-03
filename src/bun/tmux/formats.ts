@@ -200,6 +200,21 @@ export const PANE_GEOMETRY_FORMAT = tmuxFormat()
 	.build();
 
 /**
+ * Everything a read-only pane capture must report about a pane, in one sweep
+ * (seq 1412). No free-text field, so there is no tail slot: a capture
+ * deliberately carries no title, command, or any other process fact.
+ */
+export const PANE_CAPTURE_FORMAT = tmuxFormat()
+	.string("paneId", "pane_id")
+	.number("width", "pane_width")
+	.number("height", "pane_height")
+	.flag("dead", "pane_dead")
+	.number("pid", "pane_pid")
+	.number("historySize", "history_size")
+	.flag("alternateScreen", "alternate_on")
+	.build();
+
+/**
  * Pane list for the narrow-viewport pane switcher. `pane_title` defaults to
  * the hostname, so `host_short` rides along to detect an unset title.
  */

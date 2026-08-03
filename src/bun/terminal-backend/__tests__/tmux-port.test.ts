@@ -78,12 +78,20 @@ describe("tmuxBackendPort", () => {
 		expect(client.resizeWindow).toHaveBeenCalledWith({ target: "task-a", cols: 120, rows: 40 });
 	});
 
-	it("captures the visible pane by default and bounded history on request", async () => {
+	it("captures the viewport and the history as two separate bounded reads", async () => {
 		const client = stubClient();
-		await portFor(client).capturePane("%1", false);
-		expect(client.capturePane).toHaveBeenCalledWith({ target: "%1", startLine: undefined });
-		await portFor(client).capturePane("%1", true);
-		expect(client.capturePane).toHaveBeenCalledWith({ target: "%1", startLine: -3000 });
+		await portFor(client).captureViewport("%1");
+		// No -S / -E: tmux's own default is exactly the visible screen.
+		expect(client.capturePane).toHaveBeenCalledWith({ target: "%1" });
+		await portFor(client).captureHistory("%1", 50);
+		// -1 is the last line ABOVE the screen, so history never repeats the viewport.
+		expect(client.capturePane).toHaveBeenCalledWith({ target: "%1", startLine: -50, endLine: -1 });
+	});
+
+	it("asks tmux for nothing at all when no history was requested", async () => {
+		const client = stubClient();
+		expect(await portFor(client).captureHistory("%1", 0)).toEqual([]);
+		expect(client.capturePane).not.toHaveBeenCalled();
 	});
 
 	it("passes best-effort teardown through to tmux", async () => {

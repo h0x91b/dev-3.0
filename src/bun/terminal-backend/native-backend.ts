@@ -29,14 +29,30 @@ import {
 	defaultNativeShellLaunchSpec,
 	type ShellLaunchSpec,
 } from "../native-terminal-registry/shell-launch";
+import { snapshotCaptureLines } from "../native-terminal-adapter/view-reconstruction";
+import {
+	boundCaptureLines,
+	captureAge,
+	captureIncarnation,
+	clampHistoryLines,
+	clampMaxBytes,
+	knownFact,
+	paneCaptureMiss,
+	paneIdentityDrift,
+	TERMINAL_CAPTURE_VERSION,
+	unknownFact,
+	type TerminalCaptureIssue,
+	type TerminalPaneCapture,
+	type TerminalPaneCaptureIdentity,
+	type TerminalPaneCaptureRequest,
+	type TerminalPaneLiveness,
+} from "./capture";
 import {
 	isTerminalLaunchSpec,
 	isTerminalSessionId,
 	isTerminalSize,
 	type TerminalAttachment,
 	type TerminalBackend,
-	type TerminalCapture,
-	type TerminalCaptureOptions,
 	type TerminalSessionId,
 	type TerminalSessionSpec,
 	type TerminalSessionState,
@@ -81,6 +97,29 @@ function translate(
 		return backendFailure(operation, err, { sessionId, viewId });
 	}
 	return backendFailure(operation, err, { sessionId, viewId });
+}
+
+function reasonOf(err: unknown): string {
+	return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Opaque identity for one pane: its host and shell processes hashed together
+ * with the coordinator's epoch, so neither a pid nor a path leaves the seam.
+ */
+function captureIdentityOf(
+	backend: "native",
+	sessionId: TerminalSessionId,
+	epoch: string,
+	pane: PaneSnapshot,
+): TerminalPaneCaptureIdentity {
+	return {
+		backend,
+		sessionId,
+		viewId: pane.paneId,
+		incarnation: knownFact(captureIncarnation(pane.sessionId, pane.hostPid, pane.shellPid)),
+		epoch: knownFact(captureIncarnation(epoch)),
+	};
 }
 
 function buildLaunchSpec(spec: TerminalSessionSpec | TerminalViewSpec): ShellLaunchSpec {
@@ -152,6 +191,133 @@ export class NativeTerminalBackend implements TerminalBackend {
 		} catch {
 			return null;
 		}
+	}
+
+	/**
+	 * Read-only, and it does NOT connect. The pane's host publishes its bounded
+	 * parser snapshot whether or not a client is attached, so a capture is a file
+	 * read: no writer lease, no protocol message, no WebSocket for an idle observer,
+	 * and nothing the pane's agent has to cooperate with.
+	 *
+	 * The snapshot is persisted on a cadence (decision 169), so `sourceUpdatedAt`
+	 * legitimately trails `readAt` by up to about a second. That gap is reported,
+	 * never hidden: a native capture that looks instantaneous would be a lie.
+	 *
+	 * TODAY, in production, this returns `not-enabled` for every native pane: the
+	 * host's live parser is off by default, so there is no snapshot to read. That is
+	 * the honest answer, not a placeholder — see decision 199.
+	 */
+	async captureView(
+		id: TerminalSessionId,
+		viewId: TerminalViewId,
+		request: TerminalPaneCaptureRequest = {},
+	): Promise<TerminalPaneCapture> {
+		const blind: TerminalPaneCaptureIdentity = {
+			backend: this.kind,
+			sessionId: id,
+			viewId,
+			incarnation: unknownFact("the pane was not observed"),
+			epoch: unknownFact("the pane set was not observed"),
+		};
+		if (!isTerminalSessionId(id)) {
+			return paneCaptureMiss(blind, "session-absent", `session id ${JSON.stringify(id)} is not portable`);
+		}
+		const before = await this.readPaneSet(id);
+		if (!before) {
+			return paneCaptureMiss(blind, "session-absent", `no native session ${JSON.stringify(id)} is owned by this app`);
+		}
+		const pane = before.panes.find((entry) => entry.paneId === viewId);
+		if (!pane) {
+			return paneCaptureMiss(blind, "view-absent", `pane ${JSON.stringify(viewId)} is not part of the session`);
+		}
+		const coordinator = this.coordinators.get(id);
+		if (!coordinator) {
+			return paneCaptureMiss(blind, "unreadable", "the session's pane set was read but its controller was lost");
+		}
+
+		const identity = captureIdentityOf(this.kind, id, coordinator.epoch, pane);
+		const liveness: TerminalPaneLiveness = pane.state === "dead" ? "dead" : "live";
+		let source: ReturnType<NativeMultipaneCoordinator["readPaneCaptureSource"]>;
+		try {
+			source = coordinator.readPaneCaptureSource(viewId);
+		} catch (err) {
+			return paneCaptureMiss(identity, "unreadable", `the pane's capture source failed: ${reasonOf(err)}`, liveness);
+		}
+		if (source.kind === "disabled") return paneCaptureMiss(identity, "not-enabled", source.reason, liveness);
+		if (source.kind === "unreadable") return paneCaptureMiss(identity, "unreadable", source.reason, liveness);
+		if (source.kind === "empty") return paneCaptureMiss(identity, "unavailable", source.reason, liveness);
+
+		// The snapshot was read between the two identity checks, so a pane replaced
+		// underneath it cannot hand back its successor's screen under the old name.
+		const after = await this.readPaneSet(id);
+		const afterPane = after?.panes.find((entry) => entry.paneId === viewId);
+		if (!after || !afterPane) {
+			return paneCaptureMiss(identity, "view-absent", `pane ${JSON.stringify(viewId)} disappeared mid-capture`, liveness);
+		}
+		const afterCoordinator = this.coordinators.get(id);
+		const drift = paneIdentityDrift(
+			identity,
+			captureIdentityOf(this.kind, id, afterCoordinator?.epoch ?? coordinator.epoch, afterPane),
+		);
+		if (drift) return paneCaptureMiss(identity, "replaced", `the pane was replaced mid-capture: ${drift}`, liveness);
+
+		const readAt = new Date().toISOString();
+		const { snapshot, state } = source;
+		const lines = snapshotCaptureLines(state);
+		const alternate = state.activeBuffer === "alternate";
+		const bounded = boundCaptureLines(
+			{
+				viewport: lines.viewport,
+				history: alternate ? [] : lines.history,
+				// The snapshot caps its own scrollback, so the total depth the host holds is
+				// the honest availability figure — not the capped slice we were handed.
+				historyAvailable: alternate ? 0 : state.scrollbackLength,
+			},
+			{ historyLines: clampHistoryLines(request.historyLines), maxBytes: clampMaxBytes(request.maxBytes) },
+		);
+		const sourceUpdatedAt = knownFact(snapshot.updatedAt);
+		const age = captureAge(sourceUpdatedAt, readAt);
+		const overflow = snapshot.health.overflow;
+		const gaps = {
+			droppedBytes: overflow.droppedBytes,
+			droppedChunks: overflow.droppedChunks,
+			// The parser's resync accounting is not part of the persisted snapshot, so the
+			// only gaps a capture can prove are the ones the queue dropped.
+			resyncGaps: 0,
+			degraded: snapshot.health.status !== "live",
+		};
+		const issues: TerminalCaptureIssue[] = [...bounded.issues, ...age.issues];
+		if (overflow.droppedChunks > 0 || overflow.droppedBytes > 0) {
+			issues.push({
+				code: "sequence-gap",
+				detail: `the pane's parser dropped ${overflow.droppedBytes} byte(s) in ${overflow.droppedChunks} chunk(s) before this capture`,
+			});
+		}
+		if (snapshot.health.status !== "live") {
+			issues.push({
+				code: "parser-failed",
+				detail: snapshot.health.error ?? `the pane's parser is ${snapshot.health.status}`,
+			});
+		}
+		issues.push({
+			code: "unknown",
+			detail: "a screen clear or terminal reset is indistinguishable from history that scrolled off",
+		});
+		return {
+			version: TERMINAL_CAPTURE_VERSION,
+			identity,
+			readAt,
+			availability: "captured",
+			sourceUpdatedAt,
+			ageMs: age.ageMs,
+			liveness,
+			size: knownFact({ cols: state.dimensions.cols, rows: state.dimensions.rows }),
+			screen: knownFact(alternate ? "alternate" : "normal"),
+			content: bounded.content,
+			bounds: bounded.bounds,
+			gaps: knownFact(gaps),
+			issues,
+		};
 	}
 
 	async attachView(id: TerminalSessionId, viewId?: TerminalViewId): Promise<TerminalAttachment> {
@@ -374,13 +540,6 @@ class NativeMultipaneAttachment implements TerminalAttachment {
 		return this.run("resize", () =>
 			this.coordinator.resizePane(this.viewId, size.cols, size.rows),
 		);
-	}
-
-	async capture(opts: TerminalCaptureOptions = {}): Promise<TerminalCapture> {
-		const text = await this.run("capture", () =>
-			this.coordinator.capturePane(this.viewId, opts.includeScrollback ?? false),
-		);
-		return { viewId: this.viewId, text };
 	}
 
 	async detach(): Promise<void> {
