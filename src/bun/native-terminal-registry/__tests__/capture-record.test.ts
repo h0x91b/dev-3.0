@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { NATIVE_SESSIONS_DIR_ENV, captureRecordFile, sessionDir } from "../paths";
+import { NATIVE_SESSIONS_DIR_ENV, NATIVE_SESSION_LOCKS_DIR_ENV, captureRecordFile, sessionDir } from "../paths";
 import {
 	CAPTURE_RECORD_MAX_BYTES,
 	CAPTURE_RECORD_SCHEMA,
@@ -20,10 +20,17 @@ import {
 	serializeCaptureRecord,
 	captureContentIdentity,
 	captureProducerDigest,
+	CaptureSessionReplacedError,
 	writeCaptureRecordAtomic,
 	type CaptureRecord,
 } from "../capture-record";
 import { InvalidProducerDigestError, asProducerDigest } from "../capture-digest";
+import { writeToken } from "../record";
+
+const TOKEN = "capture-owner-token";
+const LOCK_OPTIONS = {
+	processEvidence: { inspect: async (pid: number) => ({ status: "alive" as const, startSignature: `${pid}@test` }) },
+};
 
 /** The parsed record, or null when the text is not believable. */
 function recordOrNull(record: CaptureRecord, sessionId: string): CaptureRecord | null {
@@ -173,32 +180,50 @@ describe("capture record — on disk", () => {
 	beforeEach(() => {
 		root = mkdtempSync(join(tmpdir(), "dev3-capture-record-"));
 		process.env[NATIVE_SESSIONS_DIR_ENV] = root;
+		process.env[NATIVE_SESSION_LOCKS_DIR_ENV] = join(root, "locks");
+		writeToken("alpha", TOKEN);
 	});
 
 	afterEach(() => {
 		delete process.env[NATIVE_SESSIONS_DIR_ENV];
+		delete process.env[NATIVE_SESSION_LOCKS_DIR_ENV];
 		rmSync(root, { recursive: true, force: true });
 	});
 
-	it("publishes to a producer-scoped path and leaves no temp behind", () => {
-		writeCaptureRecordAtomic(sample());
+	it("publishes to a producer-scoped path and leaves no temp behind", async () => {
+		await writeCaptureRecordAtomic(sample(), TOKEN, LOCK_OPTIONS);
 		expect(existsSync(`${captureRecordFile("alpha", digest())}.tmp`)).toBe(false);
 		expect(readCaptureRecord("alpha", digest())).toEqual(sample());
 	});
 
-	it("cannot overwrite another producer's artifact, however late its write lands", () => {
+	it("cannot overwrite another producer's artifact, however late its write lands", async () => {
 		const older = { hostPid: 1001, hostStartSignature: "h-old", shellPid: 1002, shellStartSignature: "s-old" };
 		const newer = { hostPid: 2001, hostStartSignature: "h-new", shellPid: 2002, shellStartSignature: "s-new" };
-		writeCaptureRecordAtomic(sample({ producer: newer, viewport: ["successor-rows"] }));
+		await writeCaptureRecordAtomic(sample({ producer: newer, viewport: ["successor-rows"] }), TOKEN, LOCK_OPTIONS);
 		// The stale producer publishes AFTER its successor. There is no shared name to
 		// race for, so there is no ownership check left to get wrong.
-		writeCaptureRecordAtomic(sample({ producer: older, viewport: ["stale-rows"] }));
+		await writeCaptureRecordAtomic(sample({ producer: older, viewport: ["stale-rows"] }), TOKEN, LOCK_OPTIONS);
 		expect(readCaptureRecord("alpha", captureProducerDigest(newer))?.viewport).toEqual(["successor-rows"]);
 		expect(captureProducerDigest(newer)).not.toBe(captureProducerDigest(older));
 	});
 
-	it("removes its temp file when the rename fails after a COMPLETE write", () => {
-		writeCaptureRecordAtomic(sample());
+	it("does not publish or recreate state after its session token is replaced", async () => {
+		const successor = sample({ viewport: ["successor"] });
+		await writeCaptureRecordAtomic(successor, TOKEN, LOCK_OPTIONS);
+		writeToken("alpha", "successor-token");
+
+		await expect(
+			writeCaptureRecordAtomic(sample({ viewport: ["stale"] }), TOKEN, LOCK_OPTIONS),
+		).rejects.toBeInstanceOf(CaptureSessionReplacedError);
+		expect(readCaptureRecord("alpha", digest())?.viewport).toEqual(["successor"]);
+
+		rmSync(sessionDir("alpha"), { recursive: true });
+		await expect(writeCaptureRecordAtomic(sample(), TOKEN, LOCK_OPTIONS)).rejects.toBeInstanceOf(CaptureSessionReplacedError);
+		expect(existsSync(sessionDir("alpha"))).toBe(false);
+	});
+
+	it("removes its temp file when the rename fails after a COMPLETE write", async () => {
+		await writeCaptureRecordAtomic(sample(), TOKEN, LOCK_OPTIONS);
 		const target = captureRecordFile("alpha", digest());
 		const tmp = `${target}.tmp`;
 
@@ -208,7 +233,7 @@ describe("capture record — on disk", () => {
 		rmSync(target);
 		mkdirSync(target);
 		writeFileSync(join(target, "occupied"), "x");
-		expect(() => writeCaptureRecordAtomic(sample({ watermarkSeq: 3 }))).toThrow();
+		await expect(writeCaptureRecordAtomic(sample({ watermarkSeq: 3 }), TOKEN, LOCK_OPTIONS)).rejects.toThrow();
 		expect(existsSync(tmp)).toBe(false);
 	});
 
@@ -219,10 +244,10 @@ describe("capture record — on disk", () => {
 		expect(asProducerDigest("a".repeat(64))).toBe("a".repeat(64));
 	});
 
-	it("tells absent, corrupt, and oversized apart through ONE descriptor", () => {
+	it("tells absent, corrupt, and oversized apart through ONE descriptor", async () => {
 		expect(inspectCaptureRecord("nobody", digest())).toEqual({ kind: "absent" });
 
-		writeCaptureRecordAtomic(sample());
+		await writeCaptureRecordAtomic(sample(), TOKEN, LOCK_OPTIONS);
 		const file = captureRecordFile("alpha", digest());
 		writeFileSync(file, "{ truncated");
 		const corrupt = inspectCaptureRecord("alpha", digest());

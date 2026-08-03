@@ -73,13 +73,15 @@ describe("session lock family paths", () => {
 	});
 
 	it("keeps every member a direct sibling under the locks root", () => {
-		for (const member of ["canonical", "candidate", "claim"] as const) {
+		for (const member of ["candidate", "claim"] as const) {
 			const file = sessionLockFile("alpha", member, GENERATION);
 			expect(dirname(file)).toBe("/tmp/locks-root");
 			expect(SESSION_LOCK_PATTERN.test(file.slice("/tmp/locks-root/".length))).toBe(true);
 		}
 		// The published lock needs no generation in its name.
 		expect(sessionLockFile("alpha", "canonical")).toBe("/tmp/locks-root/alpha.canonical.lock");
+		expect(SESSION_LOCK_PATTERN.test("alpha.canonical.lock")).toBe(true);
+		expect(SESSION_LOCK_PATTERN.test(`alpha.one.claim.${GENERATION}.lock`)).toBe(true);
 	});
 
 	it("rejects a session id that could escape the locks root", () => {
@@ -92,7 +94,15 @@ describe("session lock family paths", () => {
 		expect(SESSION_LOCK_PATTERN.test("alpha.canonical.lock")).toBe(true);
 		expect(SESSION_LOCK_PATTERN.test(`alpha.candidate.${GENERATION}.lock`)).toBe(true);
 		expect(SESSION_LOCK_PATTERN.test(`alpha.claim.${GENERATION}.lock`)).toBe(true);
-		for (const other of ["alpha", "record.json", "alpha.lock", "alpha.canonical.json", "alpha.other.lock"]) {
+		for (const other of [
+			"alpha",
+			"record.json",
+			"alpha.lock",
+			"alpha.canonical.json",
+			"alpha.other.lock",
+			"alpha.candidate.lock",
+			`alpha.canonical.${GENERATION}.lock`,
+		]) {
 			expect(SESSION_LOCK_PATTERN.test(other)).toBe(false);
 		}
 	});

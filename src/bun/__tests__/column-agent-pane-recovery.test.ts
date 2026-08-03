@@ -91,7 +91,7 @@ vi.mock("../native-task-panes", async (importOriginal) => {
 		// something honest to look at.
 		closeNativeTaskPane: vi.fn(async (_taskId: string, paneId: string) => {
 			const entry = coordinatorPanes.find((pane) => pane.paneId === paneId);
-			if (entry) removeSessionState(entry.sessionId, null);
+			if (entry) await removeSessionState(entry.sessionId, null);
 			coordinatorPanes = coordinatorPanes.filter((pane) => pane.paneId !== paneId);
 			return { sessionTornDown: false, state: state() };
 		}),

@@ -13,7 +13,7 @@ import {
 	type CaptureProducerDigest,
 } from "./capture-digest";
 import { captureRecordFile, sessionDir } from "./paths";
-import { withSessionStateLock } from "./session-lock";
+import { withOwnedSessionState, type SessionStateLockOptions } from "./session-lock";
 
 export { captureProducerDigest, type CaptureProducer } from "./capture-digest";
 
@@ -70,6 +70,13 @@ export class ProducerNotReadyError extends Error {
 	constructor(readonly sessionId: string) {
 		super(`capture producer identity for ${sessionId} is not initialized yet`);
 		this.name = "ProducerNotReadyError";
+	}
+}
+
+export class CaptureSessionReplacedError extends Error {
+	constructor(readonly sessionId: string) {
+		super(`native session ${sessionId} was replaced before capture publication`);
+		this.name = "CaptureSessionReplacedError";
 	}
 }
 
@@ -400,15 +407,20 @@ export function readCaptureRecord(
  * producer's delayed write lands on its own dead artifact, never on its successor's.
  * The temp file is removed on every exit, including a failed or partial write.
  */
-export function writeCaptureRecordAtomic(record: CaptureRecord): void {
+export async function writeCaptureRecordAtomic(
+	record: CaptureRecord,
+	expectedToken: string,
+	lockOptions: SessionStateLockOptions = {},
+): Promise<void> {
 	const target = captureRecordFile(record.sessionId, captureProducerDigest(record.producer));
 	const tmp = `${target}.tmp`;
-	mkdirSync(sessionDir(record.sessionId), { recursive: true });
-	// Under the session lock, so a concurrent cleanup cannot delete this artifact
-	// between its own enumeration and this rename.
-	withSessionStateLock(record.sessionId, () => {
+	const serialized = serializeCaptureRecord(record);
+	const result = await withOwnedSessionState(record.sessionId, expectedToken, () => {
+		// Directory creation happens only after the in-lock token decision. A queued
+		// publisher from an old host therefore cannot resurrect removed state.
+		mkdirSync(sessionDir(record.sessionId), { recursive: true });
 		try {
-			writeFileSync(tmp, serializeCaptureRecord(record), { mode: 0o600 });
+			writeFileSync(tmp, serialized, { mode: 0o600 });
 			renameSync(tmp, target);
 		} finally {
 			try {
@@ -417,6 +429,6 @@ export function writeCaptureRecordAtomic(record: CaptureRecord): void {
 				// renamed away on success, or never created on an early failure
 			}
 		}
-	});
+	}, lockOptions);
+	if (result.kind === "session-replaced") throw new CaptureSessionReplacedError(record.sessionId);
 }
-

@@ -107,7 +107,7 @@ describe("steady output", () => {
 		const rollup = aggregate(count, budgets);
 		expect(rollup.totalFrames).toBe(count * perStreamFrames);
 		expect(rollup.totalBytes).toBe(count * perStreamFrames * bytesPerFrame);
-		streams.forEach((s) => s.dispose());
+		await Promise.all(streams.map((s) => s.dispose()));
 	});
 });
 
@@ -133,7 +133,7 @@ describe("burst output", () => {
 			expect(budget.frames).toBe(shape.cycles * (shape.quietFrames + shape.burstFrames));
 			expect(budget.health).toBe("live");
 		}
-		streams.forEach((s) => s.dispose());
+		await Promise.all(streams.map((s) => s.dispose()));
 	});
 });
 
@@ -162,7 +162,7 @@ describe("stalled observer", () => {
 			expect(budget.health).toBe("live");
 			expect(budget.overflow.droppedChunks).toBe(0);
 		}
-		streams.forEach((s) => s.dispose());
+		await Promise.all(streams.map((s) => s.dispose()));
 	});
 });
 
@@ -216,8 +216,7 @@ describe("sequence gap followed by resync", () => {
 			previous = watermark;
 		}
 		expect(after.budget().health).toBe("live");
-		before.dispose();
-		after.dispose();
+		await Promise.all([before.dispose(), after.dispose()]);
 	});
 });
 
@@ -237,7 +236,7 @@ describe("bounded queue overflow", () => {
 		stream.feed({ kind: "output", bytes: steadyChunk(mulberry32(3), 8) });
 		expect(stream.drain()).toBe(0);
 		expect(stream.budget().health).toBe("overflowed");
-		stream.dispose();
+		await stream.dispose();
 	});
 
 	it("flips to overflowed on the event cap and counts the dropped chunk", async () => {
@@ -246,7 +245,7 @@ describe("bounded queue overflow", () => {
 		expect(stream.pipeline.queueCounters().overflow.droppedChunks).toBe(1);
 		stream.drain();
 		expect(stream.budget().health).toBe("overflowed");
-		stream.dispose();
+		await stream.dispose();
 	});
 
 	it("counts a dropped resize separately from dropped output on the raw queue", () => {
@@ -277,7 +276,7 @@ describe("snapshot size budget", () => {
 		expect(() => parseParserStateSnapshot(JSON.stringify(snapshot))).not.toThrow();
 		expect(snapshot.state?.scrollback.length).toBe(DEFAULT_SNAPSHOT_SCROLLBACK_CAP);
 		expect(snapshot.state?.scrollbackLength).toBe(1000);
-		stream.dispose();
+		await stream.dispose();
 	});
 });
 
@@ -293,7 +292,7 @@ describe("replies budget", () => {
 		const budget = stream.budget();
 		expect(budget.replies).toBe(2);
 		expect(stream.replies).toEqual(["\x1b[1;1R", "\x1b[1;1R"]);
-		stream.dispose();
+		await stream.dispose();
 	});
 });
 
@@ -303,7 +302,7 @@ describe("cleanup semantics", () => {
 		stream.feedAll(steadyFrames(mulberry32(5), { frames: 3, bytesPerFrame: 16 }));
 		stream.drain();
 		const framesBefore = stream.core.ingestedFrames;
-		stream.dispose();
+		await stream.dispose();
 		expect(stream.core.disposed).toBe(true);
 		stream.feed({ kind: "output", bytes: steadyChunk(mulberry32(6), 16) });
 		stream.drain();
@@ -342,7 +341,7 @@ describe("snapshot persistence budget", () => {
 		const rollup = aggregate(count, budgets);
 		expect(rollup.totalWrites).toBe(count);
 		expect(rollup.totalSkippedWrites).toBe(count * 9);
-		streams.forEach((s) => s.dispose());
+		await Promise.all(streams.map((s) => s.dispose()));
 	});
 
 	it.each(STREAM_COUNTS)("keeps each changed screen to one write per cadence window across %i stream(s)", async (count) => {
@@ -363,11 +362,12 @@ describe("snapshot persistence budget", () => {
 			expect(stream.timers.delays.slice(1).every((ms) => ms > 250)).toBe(true);
 			expect(budget.persistence.minIntervalMs).toBe(1_000);
 		}
-		streams.forEach((s) => s.dispose());
+		await Promise.all(streams.map((s) => s.dispose()));
 	});
 
 	it("never stacks writes: a dirty update during an in-flight write becomes one re-armed write", async () => {
 		let release: () => void = () => {};
+		let block = true;
 		const clock = new SteppingClock(1);
 		const scheduler = new DeterministicScheduler();
 		const core = new BudgetCore(80, 24, 0);
@@ -380,7 +380,7 @@ describe("snapshot persistence budget", () => {
 			writeReply: () => {},
 			persistState: () => {
 				writes++;
-				return new Promise<void>((resolve) => (release = resolve));
+				return block ? new Promise<void>((resolve) => (release = resolve)) : undefined;
 			},
 			createCore: () => Promise.resolve(core),
 			schedule: scheduler.schedule,
@@ -400,11 +400,13 @@ describe("snapshot persistence budget", () => {
 		}
 		expect(writes).toBe(1); // five dirty rounds, still ONE outstanding write
 		expect(pipeline.persistenceCounters().coalesced).toBe(5);
+		block = false;
 		release();
+		await Promise.resolve();
 		await Promise.resolve();
 		timers.runAll();
 		expect(writes).toBe(2);
-		pipeline.dispose();
+		await pipeline.disposeAndWait();
 	});
 });
 
@@ -415,7 +417,7 @@ describe("teardown", () => {
 			stream.feedAll(steadyFrames(mulberry32(600 + index), { frames: 8, bytesPerFrame: 96 }));
 		});
 		for (const stream of streams) {
-			stream.flush(); // drains the backlog AND forces the final write
+			await stream.flush(); // drains the backlog AND forces the final write
 			const budget = stream.budget();
 			expect(budget.frames).toBe(8);
 			expect(budget.persistence.writes).toBeGreaterThanOrEqual(1);
@@ -424,11 +426,11 @@ describe("teardown", () => {
 			expect(stream.timers.pending).toBe(0); // flush cancelled the armed debounce
 			expect(parseParserStateSnapshot(JSON.stringify(stream.snapshots[stream.snapshots.length - 1]))).toBeTruthy();
 		}
-		streams.forEach((s) => {
-			s.dispose();
+		for (const s of streams) {
+			await s.dispose();
 			expect(s.core.disposed).toBe(true);
 			expect(s.timers.pending).toBe(0);
-		});
+		}
 	});
 });
 

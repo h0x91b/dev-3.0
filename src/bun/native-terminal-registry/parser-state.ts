@@ -187,10 +187,15 @@ export function parseParserStateSnapshot(serialized: string): ParserStateSnapsho
 
 /** Atomic write (tmp+rename) so a reader never observes a torn snapshot. */
 export function writeParserStateAtomic(sessionId: string, snapshot: ParserStateSnapshot): void {
+	writeSerializedParserStateAtomic(sessionId, `${JSON.stringify(snapshot)}\n`);
+}
+
+/** Synchronous publish primitive for a snapshot serialized before lock entry. */
+export function writeSerializedParserStateAtomic(sessionId: string, serialized: string): void {
 	mkdirSync(sessionDir(sessionId), { recursive: true, mode: 0o700 });
 	const target = parserStateFile(sessionId);
 	const tmp = `${target}.${process.pid}.tmp`;
-	writeFileSync(tmp, `${JSON.stringify(snapshot)}\n`, { mode: 0o600 });
+	writeFileSync(tmp, serialized, { mode: 0o600 });
 	renameSync(tmp, target);
 }
 

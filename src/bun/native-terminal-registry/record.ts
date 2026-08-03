@@ -28,7 +28,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { withSessionStateLock } from "./session-lock";
+import { withOwnedSessionState, type SessionStateLockOptions } from "./session-lock";
 import {
 	CAPTURE_RECORD_PATTERN,
 	journalFile,
@@ -275,11 +275,16 @@ export function inspectRecordFile(sessionId: string): RecordInspection {
 
 /** Atomically publish a record (tmp write + rename) so readers never see a torn file. */
 export function writeRecordAtomic(record: NativeSessionRecord): void {
-	const dir = sessionDir(record.sessionId);
+	writeSerializedRecordAtomic(record.sessionId, serializeRecord(record));
+}
+
+/** Synchronous publish primitive for an already-serialized record. */
+export function writeSerializedRecordAtomic(sessionId: string, serialized: string): void {
+	const dir = sessionDir(sessionId);
 	mkdirSync(dir, { recursive: true, mode: 0o700 });
-	const target = recordFile(record.sessionId);
+	const target = recordFile(sessionId);
 	const tmp = `${target}.${process.pid}.tmp`;
-	writeFileSync(tmp, serializeRecord(record), { mode: 0o600 });
+	writeFileSync(tmp, serialized, { mode: 0o600 });
 	renameSync(tmp, target);
 }
 
@@ -303,14 +308,6 @@ export function readToken(sessionId: string): string | null {
 }
 
 /**
- * Remove one session's on-disk state, but ONLY when its current token matches
- * `expectedToken`. This is the ownership guard: a stale stop/cleanup cannot
- * erase a newer session that reused the same session id, and one implementation
- * only ever deletes state it can prove it owns. The record is removed last so a
- * concurrent start cannot observe a half-cleared session. Returns false when the
- * token guard rejects the removal.
- */
-/**
  * Every capture artifact of this session, whichever producers wrote them. The path
  * is producer-scoped, so cleanup matches the bounded family instead of one name —
  * and it stays inside the session directory, matching nothing else.
@@ -325,18 +322,30 @@ function captureFamilyFiles(sessionId: string): string[] {
 	}
 }
 
-
-export function removeSessionState(sessionId: string, expectedToken: string | null): boolean {
+/**
+ * Remove one session's on-disk state only when its current token matches
+ * `expectedToken`. The record is parsed before lock entry, then token, record,
+ * capture artifacts, and cleanup are mutated under one generation-owned lock.
+ */
+export async function removeSessionState(
+	sessionId: string,
+	expectedToken: string | null,
+	lockOptions: SessionStateLockOptions = {},
+): Promise<boolean> {
 	if (expectedToken === null) return false;
-	// The token is verified INSIDE the lock and immediately before every deletion:
-	// checking ownership outside it let an old cleanup pass a stale check, wait, and
-	// then delete a successor's token, record and artifacts.
-	return withSessionStateLock(sessionId, () => removeOwnedSessionState(sessionId, expectedToken));
+	// Parsing is intentionally outside the lock. The callback rereads the token once,
+	// then performs only bounded synchronous mutations while ownership is stable.
+	const record = readRecord(sessionId);
+	const result = await withOwnedSessionState(
+		sessionId,
+		expectedToken,
+		() => removeOwnedSessionState(sessionId, record),
+		lockOptions,
+	);
+	return result.kind === "applied";
 }
 
-function removeOwnedSessionState(sessionId: string, expectedToken: string): boolean {
-	if (readToken(sessionId) !== expectedToken) return false;
-	const record = readRecord(sessionId);
+function removeOwnedSessionState(sessionId: string, record: NativeSessionRecord | null): true {
 	const atomicFiles = [journalFile(sessionId), parserStateFile(sessionId), tokenFile(sessionId), recordFile(sessionId)];
 	if (record && Number.isInteger(record.host.pid) && record.host.pid > 0) {
 		for (const file of atomicFiles) {

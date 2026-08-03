@@ -154,7 +154,7 @@ async function runDeferredMode(): Promise<ProbeVerdict> {
 	if (child.exitCode === null) child.kill();
 	await child.exited;
 	await delay(200);
-	pipeline.flush();
+	await pipeline.flushAndWait();
 	const snapshot = pipeline.snapshot();
 	const lines = [...(snapshot.state?.screen ?? []), ...(snapshot.state?.scrollback ?? [])];
 	const verdict: ProbeVerdict = {
@@ -169,7 +169,7 @@ async function runDeferredMode(): Promise<ProbeVerdict> {
 		screenPlausible: lines.some((line) => line.text.includes(FINAL_MARKER)),
 		elapsedMs: Date.now() - started,
 	};
-	pipeline.dispose();
+	await pipeline.disposeAndWait();
 	return verdict;
 }
 

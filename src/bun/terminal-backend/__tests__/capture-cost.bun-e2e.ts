@@ -27,7 +27,7 @@ import { NATIVE_MULTIPANE_DIR_ENV } from "../../native-terminal-multipane/paths"
 import type { NativeCaptureMode } from "../../native-terminal-registry/capture-mode";
 import { captureProducerDigest, readCaptureRecord } from "../../native-terminal-registry/capture-record";
 import { readParserState } from "../../native-terminal-registry/parser-state";
-import { parserStateFile } from "../../native-terminal-registry/paths";
+import { NATIVE_SESSIONS_DIR_ENV, parserStateFile } from "../../native-terminal-registry/paths";
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { spawnSync } from "../../spawn";
 import { isCapturedPane } from "../capture";
@@ -371,6 +371,7 @@ async function main(): Promise<void> {
 	}
 	const root = mkdtempSync(join(tmpdir(), "dev3-capture-cost-"));
 	process.env[NATIVE_MULTIPANE_DIR_ENV] = join(root, "multipane");
+	process.env[NATIVE_SESSIONS_DIR_ENV] = join(root, "sessions");
 	console.log(
 		`capture cost — ${COLS}x${ROWS} panes, ${WINDOW_MS / 1000}s window after ${WARMUP_MS / 1000}s warmup, ` +
 			`flood paced at ${FLOOD_LINES_PER_SECOND} lines/s/pane, ${ROUNDS} rounds, arm order rotated per round`,
@@ -407,6 +408,7 @@ async function main(): Promise<void> {
 	console.log(JSON.stringify(results, null, 2));
 
 	delete process.env[NATIVE_MULTIPANE_DIR_ENV];
+	delete process.env[NATIVE_SESSIONS_DIR_ENV];
 	rmSync(root, { recursive: true, force: true });
 }
 

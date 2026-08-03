@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { journalFile, NATIVE_SESSIONS_DIR_ENV, parserStateFile, recordFile, sessionDir, tokenFile } from "../paths";
+import {
+	journalFile,
+	NATIVE_SESSIONS_DIR_ENV,
+	NATIVE_SESSION_LOCKS_DIR_ENV,
+	parserStateFile,
+	recordFile,
+	sessionDir,
+	tokenFile,
+} from "../paths";
 import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_SCHEMA_VERSION,
@@ -15,6 +23,10 @@ import {
 	writeToken,
 	type NativeSessionRecord,
 } from "../record";
+
+const LOCK_OPTIONS = {
+	processEvidence: { inspect: async (pid: number) => ({ status: "alive" as const, startSignature: `${pid}@test` }) },
+};
 
 function sample(overrides: Partial<NativeSessionRecord> = {}): NativeSessionRecord {
 	return {
@@ -159,10 +171,12 @@ describe("native-session record (on disk)", () => {
 		prev = process.env[NATIVE_SESSIONS_DIR_ENV];
 		root = mkdtempSync(join(tmpdir(), "dev3-native-record-"));
 		process.env[NATIVE_SESSIONS_DIR_ENV] = root;
+		process.env[NATIVE_SESSION_LOCKS_DIR_ENV] = join(root, "locks");
 	});
 	afterEach(() => {
 		if (prev === undefined) delete process.env[NATIVE_SESSIONS_DIR_ENV];
 		else process.env[NATIVE_SESSIONS_DIR_ENV] = prev;
+		delete process.env[NATIVE_SESSION_LOCKS_DIR_ENV];
 		rmSync(root, { recursive: true, force: true });
 	});
 
@@ -179,22 +193,22 @@ describe("native-session record (on disk)", () => {
 		expect(readFileSync(recordFile("alpha"), "utf8")).not.toContain("top-secret-token");
 	});
 
-	it("removeSessionState only deletes token-matched state", () => {
+	it("removeSessionState only deletes token-matched state", async () => {
 		writeRecordAtomic(sample());
 		writeToken("alpha", "tok-A");
 
 		// A stale caller with the wrong token cannot erase a newer session.
-		expect(removeSessionState("alpha", "tok-WRONG")).toBe(false);
+		expect(await removeSessionState("alpha", "tok-WRONG", LOCK_OPTIONS)).toBe(false);
 		expect(readRecord("alpha")).not.toBeNull();
 		expect(existsSync(tokenFile("alpha"))).toBe(true);
 
 		// The rightful owner clears everything, record removed last.
-		expect(removeSessionState("alpha", "tok-A")).toBe(true);
+		expect(await removeSessionState("alpha", "tok-A", LOCK_OPTIONS)).toBe(true);
 		expect(readRecord("alpha")).toBeNull();
 		expect(existsSync(sessionDir("alpha"))).toBe(false);
 	});
 
-	it("removes only atomic temp files owned by the recorded crashed host", () => {
+	it("removes only atomic temp files owned by the recorded crashed host", async () => {
 		writeRecordAtomic(sample());
 		writeToken("alpha", "tok-A");
 		const targets = [recordFile("alpha"), tokenFile("alpha"), journalFile("alpha"), parserStateFile("alpha")];
@@ -202,14 +216,14 @@ describe("native-session record (on disk)", () => {
 		const foreignTemp = `${journalFile("alpha")}.9999.tmp`;
 		writeFileSync(foreignTemp, "leave-me");
 
-		expect(removeSessionState("alpha", "tok-A")).toBe(true);
+		expect(await removeSessionState("alpha", "tok-A", LOCK_OPTIONS)).toBe(true);
 		for (const target of targets) expect(existsSync(`${target}.4242.tmp`)).toBe(false);
 		expect(existsSync(foreignTemp)).toBe(true);
 	});
 
-	it("removeSessionState fails closed when no expected token is available", () => {
+	it("removeSessionState fails closed when no expected token is available", async () => {
 		writeRecordAtomic(sample());
-		expect(removeSessionState("alpha", null)).toBe(false);
+		expect(await removeSessionState("alpha", null, LOCK_OPTIONS)).toBe(false);
 		expect(readRecord("alpha")).not.toBeNull();
 	});
 

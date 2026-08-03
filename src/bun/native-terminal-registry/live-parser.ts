@@ -120,13 +120,9 @@ export interface LiveParserPipelineOptions {
 	/** Write one parser-generated reply back to the SAME PTY. Must not throw. */
 	writeReply: (reply: string) => void;
 	/**
-	 * Persist a snapshot (atomic file write in the host). Failures are contained.
-	 * May return a promise; only one write is ever in flight per pipeline.
-	 */
-	/**
 	 * Publish the per-cell snapshot. INDEPENDENT of {@link persistProjection}:
-	 * either, both, or neither may be set, and one being absent can never disable
-	 * the other.
+	 * either, both, or neither may be set. Failures are contained, and one write is
+	 * ever in flight for this sink.
 	 */
 	persistState?: (snapshot: ParserStateSnapshot) => void | Promise<void>;
 	/**
@@ -134,6 +130,8 @@ export interface LiveParserPipelineOptions {
 	 * is never built OR serialised — that JSON, not the parsing, is the cost.
 	 */
 	persistProjection?: (projection: LiveParserProjection) => void | Promise<void>;
+	/** Called only when the set of durably readable sinks actually changes. */
+	onSinkReadinessChange?: () => void | Promise<void>;
 	/** Test seams — production uses the defaults. */
 	createCore?: (options: GhosttyLiveOptions) => Promise<LiveParserCore>;
 	schedule?: (fn: () => void) => void;
@@ -192,9 +190,9 @@ export interface LiveParserProjection {
 }
 
 /**
- * Everything a reader can observe in a published record, EXCEPT the timestamp and
- * the producer. Identical rows with a resize, a new scrollback depth, an advanced
- * watermark, or a health transition are NOT identical writes.
+ * Everything a reader can observe in a published record, EXCEPT the timestamp,
+ * producer, and watermark. Identical rows with a resize, a new scrollback depth,
+ * or a health transition are NOT identical writes.
  */
 function projectionIdentity(projection: LiveParserProjection): string {
 	return [
@@ -204,7 +202,6 @@ function projectionIdentity(projection: LiveParserProjection): string {
 		projection.cols,
 		projection.rows,
 		projection.historyTotal,
-		projection.watermarkSeq,
 		projection.droppedBytes,
 		projection.droppedChunks,
 		projection.resyncGaps,
@@ -219,19 +216,66 @@ export type CaptureSinkName = (typeof CAPTURE_SINKS)[number];
 
 /**
  * `disabled` — not selected. `pending` — selected, nothing durable yet.
- * `ready` — a readable artifact exists. `failed` — selected, tried, nothing durable.
+ * `ready` — a readable artifact exists. `backingOff` — a failed write will retry.
  * Only `ready` may advertise a capability.
  */
-export type CaptureSinkState = "disabled" | "pending" | "ready" | "failed";
+export type CaptureSinkState = "disabled" | "pending" | "ready" | "backingOff";
 
-interface SinkPublication {
-	state: CaptureSinkState;
-	/** Content identity of the last SUCCESSFUL publication. */
-	identity: string | null;
-	/** When that content changed, preserved across forced durable rewrites. */
-	updatedAt: string | null;
-	failures: number;
-	retryAtMs: number | null;
+interface SinkCandidate {
+	generation: number;
+	identity: string;
+	updatedAt: string;
+	bytes: number;
+	write: () => void | Promise<void>;
+}
+
+interface SinkLastGood {
+	identity: string;
+	updatedAt: string;
+}
+
+type SinkPublication =
+	| { kind: "disabled" }
+	| { kind: "pending"; candidate: SinkCandidate; lastGood?: SinkLastGood }
+	| { kind: "ready"; lastGood: SinkLastGood }
+	| { kind: "backingOff"; candidate: SinkCandidate; lastGood?: SinkLastGood; retryAtMs: number; attempt: number };
+
+type SinkPublicationEvent =
+	| { type: "candidate"; candidate: SinkCandidate }
+	| { type: "succeeded"; candidate: SinkCandidate }
+	| { type: "failed"; candidate: SinkCandidate; retryAtMs: number };
+
+function lastGoodOf(state: SinkPublication): SinkLastGood | undefined {
+	return state.kind === "ready" ? state.lastGood : state.kind === "pending" || state.kind === "backingOff" ? state.lastGood : undefined;
+}
+
+function candidateOf(state: SinkPublication): SinkCandidate | undefined {
+	return state.kind === "pending" || state.kind === "backingOff" ? state.candidate : undefined;
+}
+
+function reduceSinkPublication(state: SinkPublication, event: SinkPublicationEvent): SinkPublication {
+	const lastGood = lastGoodOf(state);
+	if (event.type === "candidate") return { kind: "pending", candidate: event.candidate, ...(lastGood ? { lastGood } : {}) };
+	const current = candidateOf(state);
+	if (event.type === "succeeded") {
+		const published = { identity: event.candidate.identity, updatedAt: event.candidate.updatedAt };
+		if (current && current.generation !== event.candidate.generation) {
+			return { kind: "pending", candidate: current, lastGood: published };
+		}
+		return { kind: "ready", lastGood: published };
+	}
+	if (current && current.generation !== event.candidate.generation) {
+		return { kind: "pending", candidate: current, ...(lastGood ? { lastGood } : {}) };
+	}
+	const candidate = current ?? event.candidate;
+	const previousAttempt = state.kind === "backingOff" ? state.attempt : 0;
+	return {
+		kind: "backingOff",
+		candidate,
+		...(lastGood ? { lastGood } : {}),
+		retryAtMs: event.retryAtMs,
+		attempt: previousAttempt + 1,
+	};
 }
 
 /** Ceiling on the retry backoff, so a broken sink neither spins nor gives up. */
@@ -243,6 +287,9 @@ export class LiveParserPipeline {
 	private failureError: string | undefined;
 	private drainScheduled = false;
 	private disposed = false;
+	private disposing = false;
+	private lifecycleGeneration = 1;
+	private disposePromise: Promise<void> | null = null;
 	private watermarkSeq = 0;
 	private readonly ingested = { frames: 0, bytes: 0, resizes: 0, replies: 0 };
 	private readonly durations: number[] = [];
@@ -263,20 +310,22 @@ export class LiveParserPipeline {
 		lastWriteAtMs: null as number | null,
 	};
 	/** Serialized semantic payload of the last write — the identical-skip key. */
-	private writeInFlight = false;
 	private lastProjection: NativeTextProjection | null = null;
 	private coreReleased = false;
 	private readonly sinks: Record<CaptureSinkName, SinkPublication> = {
-		semantic: { state: "disabled", identity: null, updatedAt: null, failures: 0, retryAtMs: null },
-		compact: { state: "disabled", identity: null, updatedAt: null, failures: 0, retryAtMs: null },
+		semantic: { kind: "disabled" },
+		compact: { kind: "disabled" },
 	};
-	/** Set once, from the sinks actually wired: selected but not yet durable. */
-	markSelectedSinks(): void {
-		if (this.opts.persistState) this.sinks.semantic.state = "pending";
-		if (this.opts.persistProjection) this.sinks.compact.state = "pending";
-	}
-	/** A newer state is waiting for the in-flight write to settle. */
-	private persistDirty = false;
+	private readonly sinkInFlight: Record<CaptureSinkName, Promise<void> | null> = {
+		semantic: null,
+		compact: null,
+	};
+	private readonly sinkRetryTimers: Record<CaptureSinkName, unknown | null> = {
+		semantic: null,
+		compact: null,
+	};
+	private readonly readinessSettlements = new Set<Promise<void>>();
+	private candidateGeneration = 0;
 
 	private constructor(
 		private readonly core: LiveParserCore,
@@ -298,20 +347,19 @@ export class LiveParserPipeline {
 			scrollbackLimit: opts.scrollbackLimit ?? 1000,
 		});
 		const pipeline = new LiveParserPipeline(core, opts);
-		pipeline.markSelectedSinks();
 		return pipeline;
 	}
 
 	/** Callback-safe: bounded enqueue + macrotask schedule. NO parsing here. */
 	onOutput(bytes: Uint8Array): void {
-		if (this.disposed || this.status !== "live") return;
+		if (this.disposed || this.disposing || this.status !== "live") return;
 		this.queue.enqueueOutput(bytes);
 		this.scheduleDrain();
 	}
 
 	/** Callback-safe: records the resize at its real position in output order. */
 	onResize(cols: number, rows: number): void {
-		if (this.disposed || this.status !== "live") return;
+		if (this.disposed || this.disposing || this.status !== "live") return;
 		this.queue.enqueueResize(cols, rows);
 		this.scheduleDrain();
 	}
@@ -319,7 +367,9 @@ export class LiveParserPipeline {
 	private scheduleDrain(): void {
 		if (this.drainScheduled) return;
 		this.drainScheduled = true;
+		const generation = this.lifecycleGeneration;
 		(this.opts.schedule ?? defaultSchedule)(() => {
+			if (this.disposed || generation !== this.lifecycleGeneration) return;
 			this.drainScheduled = false;
 			this.drainNow();
 		});
@@ -424,13 +474,15 @@ export class LiveParserPipeline {
 	 * always persists the LATEST state, so dirty updates coalesce for free.
 	 */
 	private schedulePersist(): void {
-		if (this.persistTimer || this.disposed) return;
+		if (this.persistTimer || this.disposed || this.disposing) return;
 		const debounce = this.opts.persistDebounceMs ?? DEFAULT_PERSIST_DEBOUNCE_MS;
 		const minInterval = this.opts.persistMinIntervalMs ?? DEFAULT_PERSIST_MIN_INTERVAL_MS;
 		const sinceLast =
 			this.persist.lastWriteAtMs === null ? Number.POSITIVE_INFINITY : (this.opts.now ?? Date.now)() - this.persist.lastWriteAtMs;
 		const delay = Math.max(debounce, minInterval - sinceLast);
+		const generation = this.lifecycleGeneration;
 		this.persistTimer = (this.opts.setTimer ?? defaultSetTimer)(() => {
+			if (this.disposed || this.disposing || generation !== this.lifecycleGeneration) return;
 			this.persistTimer = null;
 			this.persistNow();
 		}, delay);
@@ -443,161 +495,174 @@ export class LiveParserPipeline {
 	}
 
 	/**
-	 * Persist the latest state. `force` bypasses the identical-skip (terminal
-	 * verdicts and teardown must always land on disk). At most ONE write is ever
-	 * outstanding; anything arriving during a write is folded into a re-arm.
-	 */
-	/**
 	 * One sink's publication state. `ready` is the only state that may advertise a
 	 * capability: a caller must never see a surface with nothing readable behind it.
 	 */
 	sinkState(sink: CaptureSinkName): CaptureSinkState {
-		return this.sinks[sink].state;
+		const state = this.sinks[sink];
+		if (state.kind === "disabled") return "disabled";
+		if (state.kind === "ready") return "ready";
+		if (state.kind === "backingOff") return state.lastGood ? "ready" : "backingOff";
+		return state.lastGood ? "ready" : "pending";
+	}
+
+	private prepareSelectedCandidates(force: boolean): void {
+		const nowMs = (this.opts.now ?? Date.now)();
+		if (this.opts.persistState) this.prepareCandidate("semantic", nowMs, force);
+		if (this.opts.persistProjection) this.prepareCandidate("compact", nowMs, force);
+	}
+
+	private prepareCandidate(sink: CaptureSinkName, nowMs: number, force: boolean): void {
+		const state = this.sinks[sink];
+		let identity: string;
+		let bytes: number;
+		let writeWithTimestamp: (updatedAt: string) => void | Promise<void>;
+		if (sink === "semantic") {
+			if (!this.opts.persistState) return;
+			const snapshot = this.snapshot();
+			identity = `${this.status}|${JSON.stringify(snapshot.state)}`;
+			bytes = Buffer.byteLength(identity, "utf8");
+			writeWithTimestamp = (updatedAt) => this.opts.persistState?.({ ...snapshot, updatedAt });
+		} else {
+			if (!this.opts.persistProjection) return;
+			const projection = this.projection();
+			identity = projectionIdentity(projection);
+			bytes = Buffer.byteLength(identity, "utf8");
+			writeWithTimestamp = (updatedAt) => this.opts.persistProjection?.({ ...projection, updatedAt });
+		}
+		const existingCandidate = candidateOf(state);
+		const lastGood = lastGoodOf(state);
+		if (!force && existingCandidate?.identity === identity) return;
+		if (!force && lastGood?.identity === identity && this.opts.persistSkipIdentical !== false) {
+			this.persist.skippedIdentical++;
+			return;
+		}
+		const updatedAt =
+			existingCandidate?.identity === identity
+				? existingCandidate.updatedAt
+				: lastGood?.identity === identity
+					? lastGood.updatedAt
+					: new Date(nowMs).toISOString();
+		const candidate: SinkCandidate = {
+			generation: ++this.candidateGeneration,
+			identity,
+			updatedAt,
+			bytes,
+			write: () => writeWithTimestamp(updatedAt),
+		};
+		this.sinks[sink] = reduceSinkPublication(state, { type: "candidate", candidate });
 	}
 
 	private persistNow(force = false): void {
-		if (this.writeInFlight) {
+		if (this.disposed) return;
+		this.prepareSelectedCandidates(force);
+		for (const sink of CAPTURE_SINKS) this.startSinkAttempt(sink, force);
+	}
+
+	private startSinkAttempt(sink: CaptureSinkName, force: boolean): void {
+		if (this.sinkInFlight[sink]) {
 			this.persist.coalesced++;
-			this.persistDirty = true;
 			return;
 		}
-		const nowMs = (this.opts.now ?? Date.now)();
-		const attempts: Array<{ sink: CaptureSinkName; write: () => void | Promise<void>; identity: string; updatedAt: string; bytes: number }> = [];
-
-		if (this.opts.persistState) {
-			const snapshot = this.snapshot();
-			const identity = `${this.status}|${JSON.stringify(snapshot.state)}`;
-			const planned = this.planWrite("semantic", identity, nowMs, force);
-			if (planned) {
-				attempts.push({
-					sink: "semantic",
-					// A forced durable write of unchanged content keeps the timestamp the
-					// content actually changed at, on this surface as much as on the other.
-					write: () => this.opts.persistState?.({ ...snapshot, updatedAt: planned.updatedAt }),
-					identity,
-					updatedAt: planned.updatedAt,
-					bytes: Buffer.byteLength(identity, "utf8"),
-				});
-			}
-		}
-		if (this.opts.persistProjection) {
-			const projection = this.projection();
-			const identity = projectionIdentity(projection);
-			const planned = this.planWrite("compact", identity, nowMs, force);
-			if (planned) {
-				attempts.push({
-					sink: "compact",
-					write: () => this.opts.persistProjection?.({ ...projection, updatedAt: planned.updatedAt }),
-					identity,
-					updatedAt: planned.updatedAt,
-					bytes: Buffer.byteLength(identity, "utf8"),
-				});
-			}
-		}
-		this.persistDirty = false;
-		if (attempts.length === 0) {
-			this.scheduleRetry();
-			return;
-		}
-
-		const bytes = attempts.reduce((total, attempt) => total + attempt.bytes, 0);
-		this.writeInFlight = true;
-		this.persist.writes++;
-		this.persist.lastBytes = bytes;
-		this.persist.totalBytes += bytes;
-		if (bytes > this.persist.maxBytes) this.persist.maxBytes = bytes;
-		this.persist.lastWriteAtMs = nowMs;
-
-		let outstanding = attempts.length;
-		const settle = (): void => {
-			if (--outstanding > 0) return;
-			this.writeInFlight = false;
-			if (this.disposed) return;
-			if (this.persistDirty) this.schedulePersist();
-			else this.scheduleRetry();
-		};
-		for (const attempt of attempts) {
-			const succeeded = (): void => {
-				const state = this.sinks[attempt.sink];
-				state.state = "ready";
-				state.identity = attempt.identity;
-				state.updatedAt = attempt.updatedAt;
-				state.failures = 0;
-				state.retryAtMs = null;
-				settle();
-			};
-			const failed = (): void => {
-				const state = this.sinks[attempt.sink];
-				// The identity is NOT advanced, so the SAME content is retried; a ready sink
-				// keeps its last good artifact rather than losing it to a failed replacement.
-				state.state = state.state === "ready" ? "ready" : "failed";
-				state.failures++;
-				state.retryAtMs = (this.opts.now ?? Date.now)() + this.retryDelayMs(state.failures);
-				this.persist.failures++;
-				settle();
-			};
-			try {
-				const result = attempt.write();
-				if (result && typeof (result as Promise<void>).then === "function") {
-					(result as Promise<void>).then(succeeded, failed);
-					continue;
-				}
-				succeeded();
-			} catch {
-				failed();
-			}
-		}
-	}
-
-	/**
-	 * Decide whether this sink writes now, and with which content timestamp.
-	 * Unchanged content is skipped once the sink is `ready`; a sink that has never
-	 * published, or owes a retry, writes the same content again and keeps the
-	 * timestamp the content actually changed at.
-	 */
-	private planWrite(
-		sink: CaptureSinkName,
-		identity: string,
-		nowMs: number,
-		force: boolean,
-	): { updatedAt: string } | null {
 		const state = this.sinks[sink];
-		const changed = identity !== state.identity;
-		const owesRetry = state.retryAtMs !== null && nowMs >= state.retryAtMs;
-		const neverPublished = state.state !== "ready";
-		if (!force && !changed && !owesRetry && !neverPublished && this.opts.persistSkipIdentical !== false) {
-			this.persist.skippedIdentical++;
-			return null;
+		const candidate = candidateOf(state);
+		if (!candidate) return;
+		if (state.kind === "backingOff" && !force && (this.opts.now ?? Date.now)() < state.retryAtMs) {
+			this.scheduleSinkRetry(sink, state);
+			return;
 		}
-		if (state.retryAtMs !== null && !owesRetry && !changed && !force) return null; // backing off
-		const updatedAt = changed || state.updatedAt === null ? new Date(nowMs).toISOString() : state.updatedAt;
-		return { updatedAt };
+		this.cancelSinkRetry(sink);
+		const lifecycleGeneration = this.lifecycleGeneration;
+		this.persist.writes++;
+		this.persist.lastBytes = candidate.bytes;
+		this.persist.totalBytes += candidate.bytes;
+		if (candidate.bytes > this.persist.maxBytes) this.persist.maxBytes = candidate.bytes;
+		this.persist.lastWriteAtMs = (this.opts.now ?? Date.now)();
+
+		const succeeded = (): void => this.settleSink(sink, candidate, true, lifecycleGeneration);
+		const failed = (): void => this.settleSink(sink, candidate, false, lifecycleGeneration);
+		let result: void | Promise<void>;
+		try {
+			result = candidate.write();
+		} catch {
+			failed();
+			return;
+		}
+		if (!result || typeof (result as Promise<void>).then !== "function") {
+			succeeded();
+			return;
+		}
+		let settlement: Promise<void>;
+		settlement = Promise.resolve(result)
+			.then(succeeded, failed)
+			.finally(() => {
+				if (this.sinkInFlight[sink] === settlement) this.sinkInFlight[sink] = null;
+				if (this.disposed || lifecycleGeneration !== this.lifecycleGeneration) return;
+				const pending = candidateOf(this.sinks[sink]);
+				if (pending && pending.generation !== candidate.generation) this.schedulePersist();
+			});
+		this.sinkInFlight[sink] = settlement;
 	}
 
-	/** The earliest retry deadline any sink owes, or null when none does. */
-	private earliestRetryMs(): number | null {
-		let earliest: number | null = null;
-		for (const sink of CAPTURE_SINKS) {
-			const at = this.sinks[sink].retryAtMs;
-			if (at !== null && (earliest === null || at < earliest)) earliest = at;
+	private settleSink(
+		sink: CaptureSinkName,
+		candidate: SinkCandidate,
+		succeeded: boolean,
+		lifecycleGeneration: number,
+	): void {
+		if (this.disposed || lifecycleGeneration !== this.lifecycleGeneration) return;
+		const beforeReady = this.sinkState(sink) === "ready";
+		if (succeeded) {
+			this.sinks[sink] = reduceSinkPublication(this.sinks[sink], { type: "succeeded", candidate });
+		} else {
+			this.persist.failures++;
+			const previousAttempt = this.sinks[sink].kind === "backingOff" ? this.sinks[sink].attempt : 0;
+			const retryAtMs = (this.opts.now ?? Date.now)() + this.retryDelayMs(previousAttempt + 1);
+			this.sinks[sink] = reduceSinkPublication(this.sinks[sink], { type: "failed", candidate, retryAtMs });
+			const next = this.sinks[sink];
+			if (next.kind === "backingOff") this.scheduleSinkRetry(sink, next);
 		}
-		return earliest;
+		const afterReady = this.sinkState(sink) === "ready";
+		if (beforeReady !== afterReady) this.notifyReadinessChanged(lifecycleGeneration);
 	}
 
-	/**
-	 * Arm the retry itself, rather than waiting for new output to carry it. A quiet
-	 * pane produces no further events, so a failed publication would otherwise never
-	 * heal — which is the whole reason a failure is retryable at all.
-	 */
-	private scheduleRetry(): void {
-		if (this.persistTimer || this.disposed) return;
-		const earliest = this.earliestRetryMs();
-		if (earliest === null) return;
-		const delay = Math.max(0, earliest - (this.opts.now ?? Date.now)());
-		this.persistTimer = (this.opts.setTimer ?? defaultSetTimer)(() => {
-			this.persistTimer = null;
-			this.persistNow();
-		}, delay);
+	private notifyReadinessChanged(lifecycleGeneration: number): void {
+		if (!this.opts.onSinkReadinessChange || this.disposed || lifecycleGeneration !== this.lifecycleGeneration) return;
+		let result: void | Promise<void>;
+		try {
+			result = this.opts.onSinkReadinessChange();
+		} catch {
+			return;
+		}
+		if (!result || typeof (result as Promise<void>).then !== "function") return;
+		let settlement: Promise<void>;
+		settlement = Promise.resolve(result)
+			.catch(() => {})
+			.finally(() => this.readinessSettlements.delete(settlement));
+		this.readinessSettlements.add(settlement);
+	}
+
+	private scheduleSinkRetry(sink: CaptureSinkName, state: Extract<SinkPublication, { kind: "backingOff" }>): void {
+		if (this.sinkRetryTimers[sink] !== null || this.disposed || this.disposing) return;
+		const generation = this.lifecycleGeneration;
+		const candidateGeneration = state.candidate.generation;
+		const retryAtMs = state.retryAtMs;
+		this.sinkRetryTimers[sink] = (this.opts.setTimer ?? defaultSetTimer)(() => {
+			this.sinkRetryTimers[sink] = null;
+			if (this.disposed || this.disposing || generation !== this.lifecycleGeneration) return;
+			const current = this.sinks[sink];
+			if (current.kind !== "backingOff" || current.candidate.generation !== candidateGeneration) return;
+			// The timer firing is the due event. Test schedulers deliberately do not
+			// advance the injected clock when they execute a delayed callback.
+			this.startSinkAttempt(sink, true);
+		}, Math.max(0, retryAtMs - (this.opts.now ?? Date.now)()));
+	}
+
+	private cancelSinkRetry(sink: CaptureSinkName): void {
+		const timer = this.sinkRetryTimers[sink];
+		if (timer === null) return;
+		(this.opts.clearTimer ?? defaultClearTimer)(timer);
+		this.sinkRetryTimers[sink] = null;
 	}
 
 	/** Bounded exponential backoff, so a permanently broken sink cannot spin. */
@@ -680,11 +745,36 @@ export class LiveParserPipeline {
 	 * Bypasses both the cadence ceiling and the identical-skip so the latest
 	 * state — including final counters — is always on disk after cleanup.
 	 */
-	flush(): void {
+	async flushAndWait(): Promise<void> {
 		if (this.disposed) return;
 		this.drainNow();
 		this.cancelPersistTimer(); // the drain may have re-armed the debounce
+		for (const sink of CAPTURE_SINKS) this.cancelSinkRetry(sink);
 		this.persistNow(true);
+		const targets: Partial<Record<CaptureSinkName, number>> = {};
+		for (const sink of CAPTURE_SINKS) {
+			const candidate = candidateOf(this.sinks[sink]);
+			if (candidate) targets[sink] = candidate.generation;
+		}
+		for (;;) {
+			const inFlight = CAPTURE_SINKS.map((sink) => this.sinkInFlight[sink]).filter(
+				(value): value is Promise<void> => value !== null,
+			);
+			if (inFlight.length > 0) await Promise.allSettled(inFlight);
+			let started = false;
+			for (const sink of CAPTURE_SINKS) {
+				const target = targets[sink];
+				const state = this.sinks[sink];
+				const candidate = candidateOf(state);
+				if (target !== undefined && state.kind === "pending" && candidate?.generation === target && !this.sinkInFlight[sink]) {
+					this.startSinkAttempt(sink, true);
+					started = true;
+				}
+			}
+			if (started) continue;
+			if (this.readinessSettlements.size > 0) await Promise.allSettled([...this.readinessSettlements]);
+			return;
+		}
 	}
 
 	get healthStatus(): ParserHealthStatus {
@@ -700,7 +790,7 @@ export class LiveParserPipeline {
 	persistenceCounters(): ParserPersistenceCounters {
 		return {
 			...this.persist,
-			inFlight: this.writeInFlight,
+			inFlight: CAPTURE_SINKS.some((sink) => this.sinkInFlight[sink] !== null),
 			minIntervalMs: this.opts.persistMinIntervalMs ?? DEFAULT_PERSIST_MIN_INTERVAL_MS,
 		};
 	}
@@ -710,13 +800,28 @@ export class LiveParserPipeline {
 		return { ...this.resync };
 	}
 
-	dispose(): void {
-		if (this.disposed) return;
-		this.disposed = true;
-		this.cancelPersistTimer();
-		// Through the guarded primitive, never core.dispose() directly: a fatal failure
-		// may already have released it, and ghostty-web's free does not clear the
-		// handle, so a second free corrupts the WASM heap rather than throwing.
-		this.releaseCore();
+	disposeAndWait(): Promise<void> {
+		if (this.disposePromise) return this.disposePromise;
+		this.disposing = true;
+		this.disposePromise = (async () => {
+			try {
+				await this.flushAndWait();
+			} finally {
+				this.disposed = true;
+				this.disposing = false;
+				this.lifecycleGeneration++;
+				this.cancelPersistTimer();
+				for (const sink of CAPTURE_SINKS) this.cancelSinkRetry(sink);
+				await Promise.allSettled(
+					CAPTURE_SINKS.map((sink) => this.sinkInFlight[sink]).filter(
+						(value): value is Promise<void> => value !== null,
+					),
+				);
+				// A fatal failure may already have released Ghostty. Double-freeing its
+				// uncleared WASM handle corrupts the heap, so all teardown goes through this.
+				this.releaseCore();
+			}
+		})();
+		return this.disposePromise;
 	}
 }

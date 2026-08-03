@@ -39,6 +39,8 @@ class FakeCore implements LiveParserCore {
 	disposed = false;
 	/** Mutating this makes the next inspected screen differ byte-wise. */
 	title = "";
+	cols = 80;
+	rows = 24;
 	private pendingResponses: string[] = [];
 
 	ingest(data: Uint8Array): void {
@@ -54,6 +56,8 @@ class FakeCore implements LiveParserCore {
 	}
 
 	resize(cols: number, rows: number): void {
+		this.cols = cols;
+		this.rows = rows;
 		this.applied.push(`resize:${cols}x${rows}`);
 	}
 
@@ -63,12 +67,14 @@ class FakeCore implements LiveParserCore {
 
 	inspect(): NativeSemanticState {
 		if (this.inspectError) throw this.inspectError;
-		return emptyState(this.title);
+		const state = emptyState(this.title);
+		state.dimensions = { cols: this.cols, rows: this.rows };
+		return state;
 	}
 
 	project(): NativeTextProjection {
 		if (this.inspectError) throw this.inspectError;
-		const state = emptyState(this.title);
+		const state = this.inspect();
 		return {
 			activeBuffer: state.activeBuffer,
 			dimensions: state.dimensions,
@@ -223,10 +229,10 @@ describe("LiveParserPipeline", () => {
 		expect(last(h.snapshots)).toBe(verdict);
 	});
 
-	it("flush() force-drains pending events and persists with the watermark", async () => {
+	it("flushAndWait() force-drains pending events and persists with the watermark", async () => {
 		const h = await makeHarness();
 		h.pipeline.onOutput(encoder.encode("tail"));
-		h.pipeline.flush(); // no scheduled task ran — flush must drain by itself
+		await h.pipeline.flushAndWait(); // no scheduled task ran — flush must drain by itself
 		expect(h.core.applied).toEqual(["output:tail"]);
 		const flushed = last(h.snapshots);
 		expect(flushed?.watermarkSeq).toBe(1);
@@ -270,9 +276,9 @@ describe("LiveParserPipeline", () => {
 		expect(snapshot.state).toBeNull();
 	});
 
-	it("dispose() frees the core and further traffic is ignored", async () => {
+	it("disposeAndWait() frees the core and further traffic is ignored", async () => {
 		const h = await makeHarness();
-		h.pipeline.dispose();
+		await h.pipeline.disposeAndWait();
 		expect(h.core.disposed).toBe(true);
 		h.pipeline.onOutput(encoder.encode("late"));
 		h.runScheduled();
@@ -381,19 +387,20 @@ describe("LiveParserPipeline persistence budget", () => {
 
 		release();
 		await Promise.resolve();
+		await Promise.resolve();
 		expect(h.pipeline.persistenceCounters().inFlight).toBe(false);
 		h.runTimers(); // the coalesced backlog settles into exactly ONE further write
 		expect(h.pipeline.persistenceCounters().writes).toBe(2);
 	});
 
-	it("flush() persists the latest state even when the semantic screen is unchanged", async () => {
+	it("flushAndWait() persists the latest state even when the semantic screen is unchanged", async () => {
 		const h = await makeHarness();
 		h.pipeline.onOutput(encoder.encode("a"));
 		h.runScheduled();
 		h.runTimers();
 		expect(h.snapshots).toHaveLength(1);
 		h.pipeline.onOutput(encoder.encode("b"));
-		h.pipeline.flush(); // teardown must land the final counters regardless
+		await h.pipeline.flushAndWait(); // teardown must land the final counters regardless
 		expect(h.snapshots).toHaveLength(2);
 		expect(last(h.snapshots)?.ingested.frames).toBe(2);
 	});
@@ -413,7 +420,7 @@ describe("LiveParserPipeline persistence budget", () => {
 		// It keeps retrying rather than giving up, and it never claims to be durable —
 		// so nothing can advertise a capability for it.
 		expect(h.pipeline.persistenceCounters().failures).toBeGreaterThan(0);
-		expect(h.pipeline.sinkState("semantic")).toBe("failed");
+		expect(h.pipeline.sinkState("semantic")).toBe("backingOff");
 		void clock;
 	});
 
@@ -527,6 +534,132 @@ describe("LiveParserPipeline fatal lifecycle and independent sinks", () => {
 		// Both sinks were wired, so both saw this change.
 		expect(h.snapshots.length).toBeGreaterThan(0);
 		expect(projections.length).toBeGreaterThan(0);
+	});
+
+	it("settles each sink independently when one durable write is blocked", async () => {
+		let releaseSemantic: () => void = () => {};
+		const projections: number[] = [];
+		const h = await makeHarness({
+			persistState: () => new Promise<void>((resolve) => (releaseSemantic = resolve)),
+			persistProjection: (projection) => void projections.push(projection.watermarkSeq),
+		});
+		h.pipeline.onOutput(encoder.encode("first"));
+		h.runScheduled();
+
+		let settled = false;
+		const flush = h.pipeline.flushAndWait().then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(h.pipeline.sinkState("compact")).toBe("ready");
+		expect(h.pipeline.sinkState("semantic")).toBe("pending");
+		expect(projections).toHaveLength(1);
+		expect(settled).toBe(false);
+
+		releaseSemantic();
+		await flush;
+		expect(h.pipeline.sinkState("semantic")).toBe("ready");
+		expect(settled).toBe(true);
+	});
+
+	it("publishes a newer queued candidate immediately after an older write fails", async () => {
+		let rejectFirst: (reason?: unknown) => void = () => {};
+		const titles: string[] = [];
+		let attempts = 0;
+		const h = await makeHarness({
+			persistState: (snapshot) => {
+				titles.push(snapshot.state?.title ?? "");
+				attempts++;
+				if (attempts === 1) return new Promise<void>((_resolve, reject) => (rejectFirst = reject));
+			},
+		});
+		h.core.title = "old";
+		h.pipeline.onOutput(encoder.encode("old"));
+		h.runScheduled();
+		h.runTimers();
+		h.core.title = "new";
+		h.pipeline.onOutput(encoder.encode("new"));
+		h.runScheduled();
+
+		const flush = h.pipeline.flushAndWait();
+		rejectFirst(new Error("old write failed"));
+		await flush;
+
+		expect(titles).toEqual(["old", "new"]);
+		expect(h.pipeline.sinkState("semantic")).toBe("ready");
+	});
+
+	it("does not return from flushAndWait until the configured sink has settled", async () => {
+		let release: () => void = () => {};
+		const h = await makeHarness({ persistState: () => new Promise<void>((resolve) => (release = resolve)) });
+		let settled = false;
+		const flush = h.pipeline.flushAndWait().then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		release();
+		await flush;
+		expect(settled).toBe(true);
+	});
+
+	it("reports readiness only when the durable surface set actually changes", async () => {
+		let fail = false;
+		let readinessChanges = 0;
+		const h = await makeHarness({
+			persistState: () => {
+				if (fail) throw new Error("disk full");
+			},
+			onSinkReadinessChange: () => {
+				readinessChanges++;
+			},
+		});
+		await h.pipeline.flushAndWait();
+		expect(readinessChanges).toBe(1);
+
+		fail = true;
+		h.core.title = "replacement";
+		h.pipeline.onOutput(encoder.encode("changed"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.pipeline.sinkState("semantic")).toBe("ready");
+		expect(readinessChanges).toBe(1);
+	});
+
+	it("waits for asynchronous readiness publication before flushAndWait returns", async () => {
+		let releaseReadiness: () => void = () => {};
+		const h = await makeHarness({
+			onSinkReadinessChange: () => new Promise<void>((resolve) => (releaseReadiness = resolve)),
+		});
+		let settled = false;
+		const flush = h.pipeline.flushAndWait().then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(h.pipeline.sinkState("semantic")).toBe("ready");
+		expect(settled).toBe(false);
+
+		releaseReadiness();
+		await flush;
+		expect(settled).toBe(true);
+	});
+
+	it("fences queued drain and retry callbacks after disposeAndWait", async () => {
+		let attempts = 0;
+		const h = await makeHarness({
+			persistState: () => {
+				attempts++;
+				if (attempts === 1) throw new Error("retry me");
+			},
+		});
+		h.pipeline.onOutput(encoder.encode("queued"));
+		await h.pipeline.disposeAndWait();
+		const settledAttempts = attempts;
+		h.runScheduled();
+		h.runTimers();
+		expect(attempts).toBe(settledAttempts);
 	});
 
 	it("does not skip a projection whose rows are identical but whose metadata moved", async () => {

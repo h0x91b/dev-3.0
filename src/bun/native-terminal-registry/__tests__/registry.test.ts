@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NATIVE_SESSIONS_DIR_ENV, recordFile, sessionDir } from "../paths";
+import { NATIVE_SESSIONS_DIR_ENV, NATIVE_SESSION_LOCKS_DIR_ENV, recordFile, sessionDir } from "../paths";
 import { isProcessAlive } from "../process-identity";
 import {
 	NATIVE_SESSION_SCHEMA_VERSION,
@@ -50,12 +50,14 @@ describe("native-session registry", () => {
 		prev = process.env[NATIVE_SESSIONS_DIR_ENV];
 		root = mkdtempSync(join(tmpdir(), "dev3-native-registry-"));
 		process.env[NATIVE_SESSIONS_DIR_ENV] = root;
+		process.env[NATIVE_SESSION_LOCKS_DIR_ENV] = join(root, "locks");
 		launchCalls = 0;
 		launch = defineShellLaunchSpec({ executable: process.execPath, argv: [], cwd: root, env: {} });
 	});
 	afterEach(() => {
 		if (prev === undefined) delete process.env[NATIVE_SESSIONS_DIR_ENV];
 		else process.env[NATIVE_SESSIONS_DIR_ENV] = prev;
+		delete process.env[NATIVE_SESSION_LOCKS_DIR_ENV];
 		rmSync(root, { recursive: true, force: true });
 	});
 
@@ -63,6 +65,11 @@ describe("native-session registry", () => {
 	function deps(classify: (r: NativeSessionRecord, t: string | null) => Promise<OwnershipVerdict>): RegistryDeps {
 		return {
 			classify,
+			sessionLockOptions: {
+				processEvidence: {
+					inspect: async (pid) => ({ status: "alive", startSignature: `${pid}@test` }),
+				},
+			},
 			resolveLaunch: (spec) => spec,
 			launchHost: (sessionId) => {
 				launchCalls++;

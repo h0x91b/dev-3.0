@@ -130,9 +130,17 @@ export const CAPTURE_RECORD_PATTERN = /^capture\.[0-9a-f]{64}\.json(?:\.tmp)?$/;
  */
 export type SessionLockMember = "canonical" | "candidate" | "claim";
 
-export function sessionLockFile(id: string, member: SessionLockMember, generation = ""): string {
+export function sessionLockFile(id: string, member: "canonical"): string;
+export function sessionLockFile(id: string, member: "candidate" | "claim", generation: string): string;
+export function sessionLockFile(id: string, member: SessionLockMember, generation?: string): string {
 	assertValidSessionId(id);
-	const suffix = generation === "" ? "" : `.${generation}`;
+	if (member === "canonical" && generation !== undefined) {
+		throw new Error("the canonical session lock name has no generation suffix");
+	}
+	if (member !== "canonical" && !/^[0-9a-f]{64}$/.test(generation ?? "")) {
+		throw new Error(`${member} session lock names require a 64-character lowercase hex generation`);
+	}
+	const suffix = generation === undefined ? "" : `.${generation}`;
 	const file = join(sessionLocksRootDir(), `${id}.${member}${suffix}.lock`);
 	if (dirname(file) !== sessionLocksRootDir()) {
 		throw new Error(`session lock path escaped the locks root: ${file}`);
@@ -141,7 +149,7 @@ export function sessionLockFile(id: string, member: SessionLockMember, generatio
 }
 
 /** Matches every member of every session's lock family, for enumeration and cleanup. */
-export const SESSION_LOCK_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.(?:canonical|candidate|claim)(?:\.[0-9a-f]{64})?\.lock$/;
+export const SESSION_LOCK_PATTERN = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(?:canonical|(?:candidate|claim)\.[0-9a-f]{64})\.lock$/;
 
 /** Ordered ground-truth stream tap (seq 1228) — proof runs only, env-gated. */
 export function streamTapFile(id: string): string {

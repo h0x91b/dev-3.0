@@ -186,8 +186,8 @@ export class StreamHarness {
 	}
 
 	/** Force the pipeline to drain and persist without waiting on a scheduled task. */
-	flush(): void {
-		this.pipeline.flush();
+	flush(): Promise<void> {
+		return this.pipeline.flushAndWait();
 	}
 
 	get queueHighWaterBytes(): number {
@@ -221,8 +221,8 @@ export class StreamHarness {
 		};
 	}
 
-	dispose(): void {
-		this.pipeline.dispose();
+	dispose(): Promise<void> {
+		return this.pipeline.disposeAndWait();
 	}
 }
 

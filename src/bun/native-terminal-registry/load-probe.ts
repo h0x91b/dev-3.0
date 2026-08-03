@@ -160,13 +160,13 @@ async function runStream(streamId: string, stateDir: string, timeoutMs: number, 
 	if (child.exitCode === null) child.kill();
 	await child.exited;
 	await delay(250); // let trailing callbacks and the debounce land
-	pipeline.flush();
+	await pipeline.flushAndWait();
 	const snapshot = pipeline.snapshot();
 	const queue = pipeline.queueCounters();
 	const persistence = pipeline.persistenceCounters();
 	const lines = [...(snapshot.state?.screen ?? []), ...(snapshot.state?.scrollback ?? [])];
 	const elapsedSec = Math.max(0.001, (Date.now() - started) / 1000);
-	pipeline.dispose();
+	await pipeline.disposeAndWait();
 	return {
 		streamId,
 		callbacks,

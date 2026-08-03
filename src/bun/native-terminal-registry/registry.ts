@@ -49,6 +49,7 @@ import {
 	resolveShellLaunchSpec,
 	type ShellLaunchSpec,
 } from "./shell-launch";
+import type { SessionStateLockOptions } from "./session-lock";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const CLEANUP_LOCK_TIMEOUT_MS = 5000;
@@ -127,6 +128,7 @@ export interface RegistryDeps {
 	launchHost: HostLauncher;
 	classify: (record: NativeSessionRecord, token: string | null) => Promise<OwnershipVerdict>;
 	resolveLaunch: (spec: ShellLaunchSpec) => ShellLaunchSpec;
+	sessionLockOptions?: SessionStateLockOptions;
 }
 
 /** Named segments of one `stop()`, so a slow teardown can be attributed instead of guessed. */
@@ -227,8 +229,6 @@ export async function start(
 		// Fail fast before touching the lock path, mirroring assertValidSessionId.
 		throw new Error(`invalid native session id ${JSON.stringify(sessionId)}`);
 	}
-	mkdirSync(sessionDir(sessionId), { recursive: true, mode: 0o700 });
-
 	return withFileLock(
 		recordFile(sessionId),
 		async () => {
@@ -239,7 +239,7 @@ export async function start(
 					return { status: "already-running", record: existing };
 				}
 				// Not ours anymore (dead/reused) — drop only our token-matched state.
-				if (!removeSessionState(sessionId, token)) {
+				if (!(await removeSessionState(sessionId, token, deps.sessionLockOptions))) {
 					throw new Error(`cannot safely replace stale native session ${sessionId}: cleanup token is missing or changed`);
 				}
 				mkdirSync(sessionDir(sessionId), { recursive: true, mode: 0o700 });
@@ -403,7 +403,7 @@ export async function stop(
 
 	// Not (or no longer) ours: never signal the PID — just drop token-matched state.
 	if (verdict !== "owned") {
-		return removeSessionState(sessionId, token);
+		return removeSessionState(sessionId, token, deps.sessionLockOptions);
 	}
 
 	const forceOwnedTree = async (hard = false): Promise<void> => {
@@ -463,7 +463,7 @@ export async function stop(
 		await delay(50);
 	}
 	const dead = !isProcessAlive(record.host.pid) && !isProcessAlive(record.shell.pid);
-	if (dead) removeSessionState(sessionId, token);
+	if (dead) await removeSessionState(sessionId, token, deps.sessionLockOptions);
 	phase("forceKill");
 	return dead;
 }
@@ -490,7 +490,7 @@ export async function cleanupStale(deps: RegistryDeps = defaultDeps): Promise<Cl
 					kept.push({ sessionId, record, state: "running" });
 					return;
 				}
-				if (removeSessionState(sessionId, token)) {
+				if (await removeSessionState(sessionId, token, deps.sessionLockOptions)) {
 					removed.push(sessionId);
 					removedState = true;
 				} else kept.push({ sessionId, record, state: verdict });
