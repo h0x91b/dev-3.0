@@ -5,8 +5,11 @@
  * a later reproduction produced a "starting…" button with no handler run at all. The
  * only way to tell those two apart in a log is a correlation id the renderer mints
  * and the handler echoes — so the wiring that puts `opId` into the request params is
- * a real contract, not decoration. Without it, "the click never arrived" and "the
- * handler ran and hung" look identical after the fact.
+ * a real contract, not decoration.
+ *
+ * Scope: the RPC layer and the sink are both mocked here, so these tests prove what
+ * the component SENDS. They prove nothing about delivery, about the backend, or about
+ * a bridge that has stopped carrying traffic.
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -23,7 +26,7 @@ vi.mock("../../../rpc", () => ({
 			checkDevServer: vi.fn(),
 			runDevServer: vi.fn(),
 			stopDevServer: vi.fn(),
-			logRendererEvent: vi.fn(),
+			logRendererDiagnostic: vi.fn(),
 		},
 	},
 	isElectrobun: false,
@@ -43,7 +46,7 @@ beforeEach(() => {
 	vi.mocked(api.request.checkDevServer).mockReset().mockResolvedValue({ running: false });
 	vi.mocked(api.request.runDevServer).mockReset().mockResolvedValue({ running: true } as never);
 	vi.mocked(api.request.stopDevServer).mockReset().mockResolvedValue({ running: false } as never);
-	vi.mocked(api.request.logRendererEvent).mockReset().mockResolvedValue(undefined as never);
+	vi.mocked(api.request.logRendererDiagnostic).mockReset().mockResolvedValue(undefined as never);
 });
 
 function renderDevServer() {
@@ -61,7 +64,19 @@ describe("Dev Server action correlation", () => {
 		expect(opIdsFor("checkDevServer").every((id) => /^[0-9a-f]{8}$/.test(id))).toBe(true);
 	});
 
-	it("sends an opId when starting, and traces the gesture to the backend sink", async () => {
+	it("keeps a healthy poll out of the sink so gestures stay readable", async () => {
+		renderDevServer();
+		await waitFor(() => expect(api.request.checkDevServer).toHaveBeenCalled());
+		// The poll runs every few seconds for every open task. Only a FAILING poll is
+		// worth a line; a successful one must be silent.
+		const polled = vi
+			.mocked(api.request.logRendererDiagnostic)
+			.mock.calls.map(([p]) => p)
+			.filter((p) => p.tag === "dev-server" && String(p.message).startsWith("checkDevServer"));
+		expect(polled).toEqual([]);
+	});
+
+	it("sends an opId when starting, and passes the same id to the sink call", async () => {
 		renderDevServer();
 		const button = await waitFor(() => screen.getByLabelText(/Dev server stopped/i));
 		await userEvent.click(button);
@@ -71,11 +86,11 @@ describe("Dev Server action correlation", () => {
 		expect(params).toMatchObject({ taskId: TASK.id, projectId: PROJECT.id });
 		expect(params.opId).toMatch(/^[0-9a-f]{8}$/);
 
-		// The same id has to reach the log sink, or the backend line cannot be joined
-		// to the gesture that caused it.
+		// The sink is mocked, so this proves the component ASKS for those lines with the
+		// matching id — not that anything was written to a log.
 		await waitFor(() => {
 			const traced = vi
-				.mocked(api.request.logRendererEvent)
+				.mocked(api.request.logRendererDiagnostic)
 				.mock.calls.map(([p]) => p)
 				.filter((p) => p.tag === "dev-server" && p.extra?.opId === params.opId);
 			expect(traced.map((p) => p.message)).toEqual(
@@ -88,7 +103,7 @@ describe("Dev Server action correlation", () => {
 		});
 	});
 
-	it("reports a rejected start instead of losing it", async () => {
+	it("asks the sink to record a rejected start instead of swallowing it", async () => {
 		vi.mocked(api.request.runDevServer).mockRejectedValue(new Error("bridge gone"));
 		renderDevServer();
 		const button = await waitFor(() => screen.getByLabelText(/Dev server stopped/i));
@@ -96,7 +111,7 @@ describe("Dev Server action correlation", () => {
 
 		await waitFor(() => {
 			const rejected = vi
-				.mocked(api.request.logRendererEvent)
+				.mocked(api.request.logRendererDiagnostic)
 				.mock.calls.map(([p]) => p)
 				.filter((p) => p.tag === "dev-server" && p.message === "runDevServer rejected");
 			expect(rejected).toHaveLength(1);

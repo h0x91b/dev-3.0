@@ -198,8 +198,8 @@ function allowWatchdogReload(now: number): boolean {
 function reportWatchdogAction(rawRequest: RequestProxy, action: "reinit" | "reload"): void {
 	try {
 		const request = (rawRequest as unknown as {
-			logRendererEvent?: (p: unknown) => Promise<void>;
-		}).logRendererEvent?.({
+			logRendererDiagnostic?: (p: unknown) => Promise<void>;
+		}).logRendererDiagnostic?.({
 			level: "warn",
 			tag: "rpc-watchdog",
 			message: `bridge recovery: ${action}`,

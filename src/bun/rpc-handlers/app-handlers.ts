@@ -20,7 +20,7 @@ import { listFilesystemRoots } from "../../shared/filesystem-roots";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn, spawnSync } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
-import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground, setTerminalFocus } from "./shared";
+import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererDiagnostic, setActiveContext, setAppForeground, setTerminalFocus } from "./shared";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
 import { loadSharedArtifactContent, loadSharedArtifactDownload } from "../shared-artifacts";
 
@@ -988,8 +988,7 @@ async function copyTerminalSelection(params: { taskId: string; text: string; mou
 
 export const appHandlers = {
 	logRendererError,
-	// TEMP DIAGNOSTIC: remove with logRendererEvent after terminal copy bug cleanup.
-	logRendererEvent,
+	logRendererDiagnostic,
 	quitApp,
 	requestQuit,
 	consumePendingQuitDialog,

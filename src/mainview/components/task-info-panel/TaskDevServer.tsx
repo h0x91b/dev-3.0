@@ -3,7 +3,7 @@ import { toast } from "../../toast";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
-import { traceDevServerOp } from "../../dev-server-trace";
+import { traceDevServerOp, type DevServerTrace } from "../../dev-server-trace";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useReducedMotion } from "../../utils/useReducedMotion";
@@ -124,6 +124,20 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 	const [devServerHintPos, setDevServerHintPos] = useState({ top: 0, left: 0 });
 	const [devState, setDevState] = useState<DevServerState>("unknown");
 
+	// settle-to-render has to be measured AFTER React commits, not after the setState
+	// call returns — otherwise it reports the time to schedule a render, which is
+	// always near zero and says nothing about what the user saw (seq 1407).
+	const pendingRenderRef = useRef<{ trace: DevServerTrace; expected: DevServerState } | null>(null);
+	function markRendered(trace: DevServerTrace, expected: DevServerState) {
+		pendingRenderRef.current = { trace, expected };
+	}
+	useEffect(() => {
+		const pending = pendingRenderRef.current;
+		if (!pending || pending.expected !== devState) return;
+		pendingRenderRef.current = null;
+		pending.trace.rendered(devState);
+	}, [devState]);
+
 	// Track the live running state so the button can reflect it without a click.
 	// There are no dev-server push messages, so we poll the (cheap) tmux
 	// has-session check on mount + an interval, paused while the tab is hidden.
@@ -173,7 +187,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 	async function startDevServerNow() {
 		const trace = traceDevServerOp("runDevServer", task.id);
 		setDevState("starting");
-		trace.rendered("starting");
+		markRendered(trace, "starting");
 		try {
 			trace.sent();
 			const status = await api.request.runDevServer({
@@ -184,11 +198,11 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 			trace.settled();
 			const next = status?.running === false ? "stopped" : "running";
 			setDevState(next);
-			trace.rendered(next);
+			markRendered(trace, next);
 		} catch (err) {
 			trace.rejected(err);
 			setDevState("stopped");
-			trace.rendered("stopped");
+			markRendered(trace, "stopped");
 			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
@@ -274,7 +288,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		// The UI reports "stopped" before the backend confirms it, so the trace is
 		// the only record of whether the request ever landed.
 		setDevState("stopped");
-		trace.rendered("stopped");
+		markRendered(trace, "stopped");
 		try {
 			trace.sent();
 			await api.request.stopDevServer({ taskId: task.id, projectId: project.id, opId: trace.opId });

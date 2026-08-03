@@ -310,7 +310,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		extra?: Record<string, string | number | boolean | null>,
 	) {
 		// TEMP DIAGNOSTIC: renderer->backend logging for the terminal copy investigation.
-		const request = api.request.logRendererEvent({
+		const request = api.request.logRendererDiagnostic({
 			level,
 			tag: "terminal-copy",
 			message,
@@ -1456,10 +1456,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 		return () => {
 			console.log("[TerminalView] Cleanup (unmount/re-render)", { taskId: taskId.slice(0, 8) });
-			// term.dispose() and fitAddon.dispose() are synchronous, so a slow one
-			// blocks the renderer for its whole duration. Only a cleanup that
-			// actually crossed the budget is reported (seq 1407).
+			// term.dispose() and fitAddon.dispose() are synchronous, so a slow one blocks
+			// the renderer for its whole duration. A duration logged afterwards can only
+			// describe a cleanup that FINISHED, so a permanent hang would leave no trace
+			// at all — hence a marker before it starts as well. A "started" line with no
+			// matching "finished" line is the signature of a teardown that never
+			// returned (seq 1407).
 			const disposeStartedAt = performance.now();
+			console.debug("[TerminalView] cleanup started", { taskId: taskId.slice(0, 8) });
 			disposed = true;
 			document.removeEventListener("visibilitychange", reconnectPtyOnResume);
 			window.removeEventListener("pageshow", reconnectPtyOnResume);
@@ -1514,6 +1518,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				termRef.current = null;
 			}
 			const disposeMs = Math.round(performance.now() - disposeStartedAt);
+			console.debug("[TerminalView] cleanup finished", { taskId: taskId.slice(0, 8), disposeMs });
 			if (disposeMs >= TERMINAL_DISPOSE_BUDGET_MS) {
 				console.warn("[TerminalView] cleanup exceeded its budget", {
 					taskId: taskId.slice(0, 8),

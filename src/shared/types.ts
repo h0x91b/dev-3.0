@@ -3701,8 +3701,15 @@ export type AppRPCSchema = {
 				params: { description: string; source: "error" | "unhandledrejection" };
 				response: void;
 			};
-			// TEMP DIAGNOSTIC: remove with terminal copy investigation cleanup.
-			logRendererEvent: {
+			/**
+			 * Scoped renderer→backend diagnostic sink. The renderer's console does not
+			 * reach ~/.dev3.0/logs, so a renderer-side symptom is otherwise invisible in
+			 * the only record that survives a restart. `tag` namespaces each caller
+			 * (e.g. "terminal-copy", "dev-server", "rpc-watchdog"). Deliberately NOT a
+			 * general console bridge: every call site is a named investigation, and each
+			 * one is expected to be removed when its investigation closes.
+			 */
+			logRendererDiagnostic: {
 				params: {
 					level: RendererLogLevel;
 					tag: string;

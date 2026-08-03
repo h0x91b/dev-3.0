@@ -71,9 +71,11 @@ export function logRendererError(params: { description: string; source: "error" 
 	rendererLog.warn(`[${params.source}] ${params.description}`);
 }
 
-// TEMP DIAGNOSTIC: dedicated renderer->backend log bridge for the terminal copy bug.
-// Remove this helper after the copy issue is fixed and the diagnostic flow is deleted.
-export function logRendererEvent(params: {
+/**
+ * Scoped renderer→backend diagnostic sink. See the schema entry in shared/types.ts
+ * for the contract; `tag` namespaces the investigation that emitted the line.
+ */
+export function logRendererDiagnostic(params: {
 	level: RendererLogLevel;
 	tag: string;
 	message: string;

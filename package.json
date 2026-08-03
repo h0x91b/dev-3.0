@@ -32,6 +32,7 @@
 		"test:session-lock-e2e": "bun src/bun/native-terminal-registry/__tests__/session-lock.bun-e2e.ts",
 		"test:capture-cost-e2e": "bun src/bun/terminal-backend/__tests__/capture-cost.bun-e2e.ts",
 		"test:native-dev-server-stop-e2e": "bun src/bun/native-terminal-multipane/__tests__/dev-server-stop-viewers.bun-e2e.ts",
+		"test:dev-server-stop-e2e": "bun src/bun/rpc-handlers/__tests__/dev-server-stop-production.bun-e2e.ts",
 		"test:native-task-terminal-e2e": "bun src/bun/__tests__/native-task-terminal.bun-e2e.ts",
 		"test:native-message-e2e": "bun src/bun/__tests__/native-message-owner-routing.bun-e2e.ts",
 		"test:process-naming": "bunx vitest run --config vitest.config.bun.ts src/bun/native-terminal-registry/__tests__/process-naming.test.ts src/bun/native-terminal-registry/__tests__/process-naming-visibility.test.ts src/bun/native-terminal-registry/__tests__/host-launcher-naming.test.ts",

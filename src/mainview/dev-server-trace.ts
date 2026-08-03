@@ -1,29 +1,22 @@
 /**
  * Dev Server action tracing (seq 1407).
  *
- * A native task froze the whole UI on Stop Dev Server while the backend finished
- * its teardown in 539 ms and kept running for another 49 s. In a later reproduction
- * attempt the Start button flipped to "starting…" and NO handler ran at all, with
- * animation frames perfectly healthy — so the open question is whether a Dev Server
- * click even reaches its handler, and where it dies when it does not.
+ * Tells apart two failures that look identical after the fact: a Dev Server click
+ * whose request never reached its handler, and one whose handler ran and hung.
  *
- * This traces exactly four boundaries per operation — gesture, send, settle, and the
- * local UI state transition — and carries one renderer-minted `opId` into the RPC
- * params, which the matching handler echoes. That makes the decisive distinction
- * readable straight from the log:
+ * Four boundaries per operation — gesture, send, settle, local UI state transition —
+ * each carrying one renderer-minted `opId` that the matching handler echoes:
  *
- *   - renderer `sent` + backend `→ method` with the same opId  → the request arrived
- *   - renderer `sent` with NO backend line for that opId       → it died in transport
- *   - no renderer line at all                                  → see the caveat below
+ *   - renderer `sent` + backend `→ method`, same opId  → the request arrived
+ *   - renderer `sent`, no backend line for that opId   → it died in transport
+ *   - no renderer line at all                          → see the caveat
  *
- * Caveat, and it is load-bearing: this sink is itself an RPC. When the bridge is
- * dead, the trace cannot arrive either. That is not a blind spot so much as a
- * different signal — the last opId present on either side brackets the moment the
- * bridge stopped carrying traffic. The console mirror below is what survives in that
- * case, which is why it is not gated on the sink succeeding.
+ * Load-bearing caveat: the sink is itself an RPC, so a dead bridge stops these traces
+ * too. Nothing here can PROVE bridge death — it can only bracket it by the last opId
+ * seen on either side. The console mirror is what survives that case, which is why it
+ * is not gated on the sink succeeding. See decision 199.
  *
- * Scoped deliberately to the three Dev Server methods. This is not an RPC
- * interceptor and must not grow into one.
+ * Scoped to the three Dev Server methods on purpose. Not an RPC interceptor.
  */
 
 import { api } from "./rpc";
@@ -35,6 +28,17 @@ type Boundary = "gesture" | "sent" | "settled" | "rejected" | "rendered";
 
 /** Only the operations a user gesture starts are worth a full trace. */
 const GESTURE_OPS: ReadonlySet<DevServerOp> = new Set(["runDevServer", "stopDevServer"]);
+
+/**
+ * The state poll runs every few seconds for every open task, so tracing its happy
+ * path would bury the gestures it is meant to explain. A poll is only interesting
+ * when it FAILS or never settles, so only those reach the sink; a healthy poll is
+ * silent. Gestures are rare and always traced.
+ */
+function shouldEmit(op: DevServerOp, boundary: Boundary): boolean {
+	if (op !== "checkDevServer") return true;
+	return boundary === "rejected";
+}
 
 function mintOpId(): string {
 	const random = globalThis.crypto?.randomUUID?.();
@@ -50,10 +54,11 @@ function emit(
 ): void {
 	// The console mirror is what remains when the bridge cannot carry the sink.
 	// `debug` keeps it out of the way unless the reader is looking for it.
+	if (!shouldEmit(op, boundary)) return;
 	const consoleFn = level === "warn" ? console.warn : console.debug;
 	consoleFn(`[dev-server] ${op} ${boundary}`, extra);
 	try {
-		const request = api.request.logRendererEvent({
+		const request = api.request.logRendererDiagnostic({
 			level,
 			tag: "dev-server",
 			message: `${op} ${boundary}`,
