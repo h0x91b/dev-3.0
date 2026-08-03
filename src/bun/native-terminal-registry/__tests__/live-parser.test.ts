@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { GhosttyLiveOptions, LiveParserCore, NativeSemanticState } from "../ghostty-live";
+import type { GhosttyLiveOptions, LiveParserCore, NativeSemanticState, NativeTextProjection } from "../ghostty-live";
 import { LiveParserPipeline, type LiveParserPipelineOptions } from "../live-parser";
 import type { ParserStateSnapshot } from "../parser-state";
 
@@ -64,6 +64,18 @@ class FakeCore implements LiveParserCore {
 	inspect(): NativeSemanticState {
 		if (this.inspectError) throw this.inspectError;
 		return emptyState(this.title);
+	}
+
+	project(): NativeTextProjection {
+		if (this.inspectError) throw this.inspectError;
+		const state = emptyState(this.title);
+		return {
+			activeBuffer: state.activeBuffer,
+			dimensions: state.dimensions,
+			viewport: state.screen.map((line) => line.text),
+			history: state.scrollback.map((line) => line.text),
+			historyTotal: state.scrollbackLength,
+		};
 	}
 
 	dispose(): void {

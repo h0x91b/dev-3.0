@@ -87,6 +87,15 @@ export function parserStateFile(id: string): string {
 	return join(sessionDir(id), "parser-state.json");
 }
 
+/**
+ * Compact plain-text capture projection (seq 1412) — bounded, atomic. Sibling of
+ * the per-cell snapshot, not a replacement for it: reconnect still wants cells,
+ * a capture only wants rows.
+ */
+export function captureRecordFile(id: string): string {
+	return join(sessionDir(id), "capture.json");
+}
+
 /** Ordered ground-truth stream tap (seq 1228) — proof runs only, env-gated. */
 export function streamTapFile(id: string): string {
 	return join(sessionDir(id), "stream-tap.ndjson");

@@ -30,29 +30,37 @@ coordinator — what `NativeTerminalBackend` actually uses — does not. Every
 production native pane therefore had `capturePane` returning `""`: capture was
 dead, not merely thin.
 
-**Turning it on is expensive, measured rather than assumed.**
-`__tests__/capture-cost.bun-e2e.ts` runs every configuration twice — identical
-panes and identical shell load, parser off then on — and reports only the delta,
-because the absolute figure measures the machine, not the feature. macOS arm64,
-Bun 1.3.14, 120×40 panes, 8s window after a 2s warmup, flood paced at 100
-lines/s/pane:
+**Turning it on is expensive, measured rather than assumed — and the cost is the
+JSON, not the parsing.** `__tests__/capture-cost.bun-e2e.ts` runs every
+configuration with identical panes and identical shell load across three arms —
+parser off, parser on publishing the per-cell `parser-state.json`, and parser on
+publishing the compact projection — and reports only the delta, because the
+absolute figure measures the machine. macOS arm64, Bun 1.3.14, 120×40 panes, 8s
+window after a 2s warmup, flood paced at 100 lines/s/pane:
 
-| Panes | Load | Host RSS off → on | Δ per pane | Host CPU off → on | `parser-state` written | Snapshot |
-|---|---|---|---|---|---|---|
-| 1 | idle | 50.6 → 79.0 MiB | +28.3 MiB | 0.1% → 0.1% | 0 | — |
-| 1 | flood | 59.3 → 126.6 MiB | +67.3 MiB | 2.1% → 2.7% | 0.31 MiB/s | 2.5 MiB |
-| 4 | idle | 203.5 → 381.7 MiB | +44.6 MiB | 0.5% → 0.5% | 0 | — |
-| 4 | flood | 238.0 → 1034.8 MiB | +199.2 MiB | 7.1% → 29.9% | 13.73 MiB/s | 4.6 MiB |
-| 6 | idle | 304.8 → 585.4 MiB | +46.8 MiB | 0.5% → 0.6% | 0 | — |
-| 6 | flood | 351.8 → 1674.6 MiB | +220.5 MiB | 10.1% → 48.5% | 21.52 MiB/s | 4.6 MiB |
+| Panes | Load | Arm | Host RSS off → on | Δ/pane | Host CPU | Published | Artifact |
+|---|---|---|---|---|---|---|---|
+| 1 | idle | snapshot | 51.2 → 76.9 MiB | +25.7 MiB | 0.1% → 0.1% | 0 | — |
+| 1 | idle | projection | 51.2 → 70.7 MiB | +19.5 MiB | 0.1% → 0.1% | 0 | — |
+| 1 | flood | snapshot | 60.3 → 125.9 MiB | +65.5 MiB | 2.2% → 3.0% | 315 KiB/s | 2 549 KiB |
+| 1 | flood | projection | 60.3 → 82.5 MiB | +22.2 MiB | 2.2% → 2.9% | 0.6 KiB/s | 4.9 KiB |
+| 4 | idle | snapshot | 204.9 → 383.1 MiB | +44.5 MiB | 0.5% → 0.5% | 0 | — |
+| 4 | idle | projection | 204.9 → 292.1 MiB | +21.8 MiB | 0.5% → 0.5% | 0 | — |
+| 4 | flood | snapshot | 238.1 → 1111.8 MiB | +218.4 MiB | 7.0% → 30.7% | 14 364 KiB/s | 4 727 KiB |
+| 4 | flood | projection | 238.1 → 462.0 MiB | +56.0 MiB | 7.0% → 14.7% | 17.7 KiB/s | 6.6 KiB |
+| 6 | idle | snapshot | 305.9 → 587.7 MiB | +47.0 MiB | 0.5% → 0.7% | 0 | — |
+| 6 | idle | projection | 305.9 → 440.8 MiB | +22.5 MiB | 0.5% → 0.7% | 0 | — |
+| 6 | flood | snapshot | 355.7 → 1735.6 MiB | +230.0 MiB | 10.1% → 48.4% | 23 332 KiB/s | 4 770 KiB |
+| 6 | flood | projection | 355.7 → 706.1 MiB | +58.4 MiB | 10.1% → 22.4% | 27.0 KiB/s | 6.2 KiB |
 
-Snapshot cadence held at p50 ≈ 1 000 ms, exactly the ceiling decision 169 set, and
-observation latency (the seam's own `ageMs`) was p50 3.4–3.9 s / p95 7.1–7.4 s
-under flood. Idle costs a flat ~28–47 MiB per pane and no measurable CPU or disk.
-Under a busy six-pane task the parser adds **~1.3 GiB of resident memory, half a
-core, and 21.5 MiB/s of disk writes** — which is why it stays off until the
-activation decision is taken, and why a compact host-side projection is the
-alternative on the table.
+Cadence held at p50 ≈ 1 000 ms in both parser arms, exactly the ceiling decision
+169 set. On six busy panes the projection is **4× less resident memory
+(+350 MiB vs +1 380 MiB), half the CPU (22.4% vs 48.4%), and ~860× less written
+(27 KiB/s vs 23 MiB/s)** — the artifact goes from 4.8 MiB to 6.2 KiB. The residual
++58 MiB/pane is the parser itself: Ghostty's WASM heap and its scrollback. That is
+the number the three-arm split was for, and it is what an activation decision has
+to weigh — the multi-MiB JSON was never the parsing, it was the shape of what got
+persisted.
 
 Lazy activation is not an option: a parser started mid-control-sequence
 reconstructs a wrong screen, not a late one.
@@ -103,9 +111,20 @@ in the same change — no shim, per the repo's no-deprecation rule.
   hyperlink targets, and title strings out of a capture. History is off by
   default, ceilings are 2000 rows / 256 KiB, and no process fact (pid, cwd,
   command, environment) is carried at all.
-- **Native reports `not-enabled` from a FACT, not a timer.** The record gained an
-  optional `capabilities.capture: "semantic-snapshot-v1"`, written by the host
-  only while its live parser is actually running (`host.ts` `persist()` passes
+- **Two producer surfaces, one consumer.** `capabilities.capture` names which
+  artifact a host publishes: `semantic-snapshot-v1` (the per-cell
+  `parser-state.json`) or `plain-text-capture-v1` (the compact `capture.json` —
+  physical rows, health, producer identity, bounded to the seam's own 256 KiB).
+  In projection mode the per-cell state is neither serialised NOR built:
+  `LiveParserCore.project()` allocates row strings instead of an object per cell,
+  and the pipeline dedups on those rows, so the cost disappears rather than moving.
+  The seam reduces both surfaces to one observation, and a conformance test asserts
+  they answer identically for the same pane. The compact record also names its own
+  producer, so rows written by a previous incarnation are caught directly, not only
+  by the second ownership sweep.
+- **Native reports `not-enabled` from a FACT, not a timer.** The record gained
+  optional `capabilities.capture`, written by the host only while its live parser is
+  actually running (`host.ts` `persist()` passes
   `publishesSemanticSnapshot: pipeline !== null`). Absence is the load-bearing
   half: it covers both a parser-less host and one built before the field, and both
   mean the same thing — there is nothing to capture. Additive at
@@ -116,21 +135,27 @@ in the same change — no shim, per the repo's no-deprecation rule.
   answer is `unavailable` — genuinely "not yet". `liveParser` stays off in
   production; enabling it, or designing a compact host-side projection, is the
   next kill-tmux decision.
-- **`stale` means "this read cannot vouch that the content is current"**, not
-  "the content is old". A synchronous backend (tmux) is never stale. A
-  snapshot-backed pane goes stale as soon as it falls quiet past the ceiling,
-  because a quiet pane and a wedged producer are indistinguishable from outside —
-  the measurement made this concrete: an idle parser-enabled pane sits at
-  `ageMs` ≈ 6 s within seconds, and calling that "old content" would have been
-  wrong. `ageMs` is documented as the age of the last CHANGE, which for a
-  coordinator is usually the more useful number.
+- **No staleness is inferred from age.** There is no age threshold anywhere in
+  the contract. `lastChangeAgeMs` is plain data — how long ago the content last
+  changed — and `freshness` is a separate fact a backend must be able to prove:
+  `current` for a backend that reads the pane itself (tmux), `unknown` for one
+  that reads what a producer wrote on change, because a quiet pane and a wedged
+  producer are indistinguishable without a heartbeat. The measurement made the
+  first draft's mistake concrete: an idle parser-enabled pane sits at ~6 s within
+  seconds of falling quiet, and its screen is perfectly correct. The `stale` issue
+  code survives for a producer that gains a heartbeat; nothing emits it today.
+- **Trailing blank rows are trimmed once, at the seam**, not per surface. An
+  80×24 pane showing three lines is three rows on every backend and every producer
+  surface — a per-producer choice here is exactly how two surfaces start disagreeing
+  about the same pane.
 
 ## Risks
 
 **Native parity is contractually complete but operationally empty.** Every
-production native pane returns `not-enabled` today. This must not be read as
-"native capture works"; the seam is correct and proven against a real host with
-the parser on, and the activation decision is still open.
+production native pane returns `not-enabled` today, and `liveParser` remains off.
+This must not be read as "native capture works": the seam is correct and proven
+against real hosts on both producer surfaces, and the activation decision is still
+open. The projection makes activation affordable; it does not make it decided.
 
 **A host that lies about its capability lies to every reader.** The verdict is now
 the host's own statement, so a host that advertises `semantic-snapshot-v1` and
@@ -173,10 +198,16 @@ separate decision about coloured output, tracked with the remaining
 - **Clamp tmux history to native's 200 rows for "parity"** — throws away real
   capability to make two numbers match, and hides the difference instead of
   reporting it.
-- **Enable `liveParser` for every native pane now** — measured at +199–220 MiB
-  RSS per pane, ~48% of a core, and 21.5 MiB/s of writes across six busy panes.
-  Not a cost to take on before the activation decision weighs it against a
-  compact host-side projection.
+- **Enable the per-cell snapshot for every native pane** — measured at
+  +218–230 MiB RSS per pane, ~48% of a core, and 23 MiB/s of writes across six busy
+  panes. It fails the production bar, which is what motivated the projection.
+- **Keep one producer surface and shrink the snapshot in place** — the per-cell
+  state is the reconnect contract (decision 146); narrowing it would degrade
+  reconnect fidelity to serve a capture that does not need cells at all. Two
+  surfaces, one consumer vocabulary, is the smaller change.
+- **Derive the compact rows in the READER from the per-cell snapshot** — the
+  producer would still allocate and write multiple MiB per pane per second. The
+  cost is in publishing, so the projection has to happen before the write.
 - **Infer "no parser" from silence plus a grace timer** — what the first draft
   did. It guesses, it is racy on a slow host, and it cannot tell a parser-less
   host from a broken one. A one-field capability turns the guess into a fact.

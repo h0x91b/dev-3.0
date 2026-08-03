@@ -37,12 +37,19 @@ import {
 	type StatusReply,
 } from "./protocol";
 import {
+	CAPTURE_RECORD_SCHEMA,
+	CAPTURE_RECORD_VERSION,
+	writeCaptureRecordAtomic,
+} from "./capture-record";
+import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
+	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 	NATIVE_SESSION_SCHEMA_VERSION,
 	removeSessionState,
 	writeRecordAtomic,
 	writeToken,
+	type NativeSessionCaptureSurface,
 	type NativeSessionRecord,
 } from "./record";
 import { deriveNativeProcessIdentity, PANE_ID_ENV, type NativeProcessIdentity } from "./process-naming";
@@ -100,8 +107,8 @@ export interface RecordFields {
 	rows: number;
 	runtimeVersion: string;
 	platform: string;
-	/** True only while this host actually runs the live parser (seq 1412). */
-	publishesSemanticSnapshot?: boolean;
+	/** Which capture surface this host actually publishes right now (seq 1412). */
+	captureSurface?: NativeSessionCaptureSurface | null;
 	startedAt: string;
 	updatedAt: string;
 }
@@ -119,11 +126,9 @@ export function buildRecord(fields: RecordFields): NativeSessionRecord {
 		// Omitted entirely when nothing is known, so a non-task session's record
 		// keeps exactly the shape it had before seq 1383.
 		...(identity.seq || identity.paneId ? { identity } : {}),
-		// Advertised only when the parser is live, so absence stays the honest
-		// "this host has no capture surface" rather than an unset flag.
-		...(fields.publishesSemanticSnapshot
-			? { capabilities: { capture: NATIVE_SESSION_CAPTURE_CAPABILITY } }
-			: {}),
+		// Advertised only when a surface is actually being written, so absence stays
+		// the honest "this host has no capture surface" rather than an unset flag.
+		...(fields.captureSurface ? { capabilities: { capture: fields.captureSurface } } : {}),
 		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
 		hostArtifactVersion: NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 		runtimeVersion: fields.runtimeVersion,
@@ -264,6 +269,14 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	tap?.start();
 	let terminalRef: { write(data: string | Uint8Array): void } | null = null;
 	let pipeline: LiveParserPipeline | null = null;
+	// Which surface this host publishes for capture (seq 1412). The compact
+	// projection exists because the per-cell snapshot costs multi-MiB writes for
+	// data a capture throws away; when it is selected the snapshot is not written
+	// AND not built, so the cost disappears rather than moving.
+	const captureProjection = process.env.DEV3_NATIVE_SESSION_CAPTURE_PROJECTION === "1";
+	const captureSurface: NativeSessionCaptureSurface = captureProjection
+		? NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY
+		: NATIVE_SESSION_CAPTURE_CAPABILITY;
 	if (process.env.DEV3_NATIVE_SESSION_LIVE_PARSER === "1") {
 		try {
 			pipeline = await LiveParserPipeline.create({
@@ -281,6 +294,39 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 					}
 				},
 				persistState: (snapshot) => writeParserStateAtomic(sessionId, snapshot),
+				...(captureProjection
+					? {
+							persistProjection: (projection) =>
+								writeCaptureRecordAtomic({
+									schema: CAPTURE_RECORD_SCHEMA,
+									version: CAPTURE_RECORD_VERSION,
+									sessionId,
+									// Read at write time, not at pipeline creation: the shell has not
+									// been spawned yet when this callback is built.
+									producer: {
+										hostPid: process.pid,
+										hostStartSignature,
+										shellPid,
+										shellStartSignature,
+									},
+									updatedAt: new Date().toISOString(),
+									watermarkSeq: projection.watermarkSeq,
+									activeBuffer: projection.activeBuffer,
+									cols: projection.cols,
+									rows: projection.rows,
+									viewport: projection.viewport,
+									history: projection.history,
+									historyTotal: projection.historyTotal,
+									health: {
+										status: projection.status,
+										...(projection.error ? { error: projection.error } : {}),
+										droppedBytes: projection.droppedBytes,
+										droppedChunks: projection.droppedChunks,
+										resyncGaps: projection.resyncGaps,
+									},
+								}),
+						}
+					: {}),
 				fault: process.env.DEV3_NATIVE_SESSION_PARSER_FAULT === "ingest" ? "ingest" : null,
 			});
 		} catch (err) {
@@ -515,7 +561,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				rows: currentRows,
 				runtimeVersion: bunVersion,
 				platform: process.platform,
-				publishesSemanticSnapshot: pipeline !== null,
+				captureSurface: pipeline === null ? null : captureSurface,
 				startedAt,
 				updatedAt: new Date().toISOString(),
 			}),

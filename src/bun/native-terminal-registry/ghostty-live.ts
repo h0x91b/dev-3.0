@@ -136,6 +136,44 @@ function inspectLine(
 }
 
 /**
+ * A pane's screen as PLAIN TEXT rows and nothing else (seq 1412).
+ *
+ * The per-cell {@link NativeSemanticState} costs multiple MiB per pane to build
+ * and to serialise; a read-only capture needs none of it — no colours, no
+ * attributes, no cursor, no modes. This is the whole payload a capture actually
+ * uses, and building it allocates row strings instead of one object per cell.
+ */
+export interface NativeTextProjection {
+	activeBuffer: "normal" | "alternate";
+	dimensions: { cols: number; rows: number };
+	/** Physical rows of the visible screen, top row first. */
+	viewport: string[];
+	/** Physical rows that scrolled off, oldest first, capped by the caller. */
+	history: string[];
+	/** Total scrollback depth the parser holds, before the cap. */
+	historyTotal: number;
+}
+
+/**
+ * The text of one row, WITHOUT materialising a cell object per column. Same
+ * width and grapheme rules as {@link inspectLine} — zero-width cells are joined
+ * onto their base, a blank cell contributes its own width in spaces — so the two
+ * paths cannot disagree about what a row says.
+ */
+function projectLine(cells: GhosttyCell[] | null, graphemeAt: (col: number) => string): string {
+	if (!cells) return "";
+	let text = "";
+	for (let col = 0; col < cells.length; col++) {
+		const cell = cells[col]!;
+		if (cell.width === 0) continue;
+		const glyph =
+			cell.codepoint === 0 ? "" : cell.grapheme_len > 0 ? graphemeAt(col) : String.fromCodePoint(cell.codepoint);
+		text += glyph || " ".repeat(Math.max(1, cell.width));
+	}
+	return text.trimEnd();
+}
+
+/**
  * Title + cursor-presentation tracker. Ghostty's JS surface exposes no title
  * and the renderer derives cursor presentation from the same escape sequences,
  * so the live parser mirrors that tracking for renderer-compatible semantics.
@@ -247,6 +285,8 @@ export interface LiveParserCore {
 	resize(cols: number, rows: number): void;
 	readResponses(): string[];
 	inspect(scrollbackCap: number): NativeSemanticState;
+	/** The same screen as {@link inspect}, as plain rows only (seq 1412). */
+	project(scrollbackCap: number): NativeTextProjection;
 	dispose(): void;
 }
 
@@ -335,6 +375,31 @@ export class GhosttyLiveParser implements LiveParserCore {
 				),
 			),
 			scrollbackLength,
+		};
+	}
+
+	project(scrollbackCap: number): NativeTextProjection {
+		this.terminal.update();
+		const cols = this.terminal.cols;
+		const rows = this.terminal.rows;
+		const historyTotal = this.terminal.getScrollbackLength();
+		const historyStart = Math.max(0, historyTotal - Math.max(0, scrollbackCap));
+		// No per-cell copy: the viewport is read once and sliced in place.
+		const viewport = this.terminal.getViewport();
+		return {
+			activeBuffer: this.terminal.isAlternateScreen() ? "alternate" : "normal",
+			dimensions: this.terminal.getDimensions(),
+			viewport: Array.from({ length: rows }, (_, row) =>
+				projectLine(viewport.slice(row * cols, (row + 1) * cols), (col) =>
+					this.terminal.getGraphemeString(row, col),
+				),
+			),
+			history: Array.from({ length: historyTotal - historyStart }, (_, index) =>
+				projectLine(this.terminal.getScrollbackLine(historyStart + index), (col) =>
+					this.terminal.getScrollbackGraphemeString(historyStart + index, col),
+				),
+			),
+			historyTotal,
 		};
 	}
 

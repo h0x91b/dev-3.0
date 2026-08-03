@@ -46,16 +46,26 @@ export interface NativeSessionIdentity {
 /**
  * The capture surface a host publishes, when it publishes one (seq 1412).
  *
- * `semantic-snapshot-v1` means this host runs the live parser and therefore
- * writes a bounded semantic screen to `parser-state.json`. Its ABSENCE is the
- * load-bearing half: a host built before this field, or one launched without the
- * parser, simply has no capture surface — so a reader can say "not enabled"
- * as a fact instead of inferring it from silence and a timer.
+ * Two surfaces, and which one a host advertises tells a reader which file to read
+ * and what it will cost:
+ *  - `semantic-snapshot-v1` — the per-cell `parser-state.json`. Complete, and
+ *    expensive: 2.5–4.6 MiB per pane per write at 120×40.
+ *  - `plain-text-capture-v1` — the compact `capture.json`: physical rows, health,
+ *    producer identity, nothing else. Kilobytes.
+ *
+ * ABSENCE is the load-bearing case: a host built before this field, or one
+ * launched with no parser, has no capture surface at all — so a reader states
+ * "not enabled" as a fact instead of inferring it from silence and a timer.
  */
 export const NATIVE_SESSION_CAPTURE_CAPABILITY = "semantic-snapshot-v1" as const;
+export const NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY = "plain-text-capture-v1" as const;
+
+export type NativeSessionCaptureSurface =
+	| typeof NATIVE_SESSION_CAPTURE_CAPABILITY
+	| typeof NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY;
 
 export interface NativeSessionCapabilities {
-	capture?: typeof NATIVE_SESSION_CAPTURE_CAPABILITY;
+	capture?: NativeSessionCaptureSurface;
 }
 
 export interface NativeSessionRecord {
@@ -121,9 +131,11 @@ function parseIdentity(value: unknown): NativeSessionIdentity | null {
 function parseCapabilities(value: unknown): NativeSessionCapabilities | null {
 	if (!value || typeof value !== "object") return null;
 	const raw = value as Record<string, unknown>;
-	return raw.capture === NATIVE_SESSION_CAPTURE_CAPABILITY
-		? { capture: NATIVE_SESSION_CAPTURE_CAPABILITY }
-		: null;
+	if (raw.capture === NATIVE_SESSION_CAPTURE_CAPABILITY) return { capture: NATIVE_SESSION_CAPTURE_CAPABILITY };
+	if (raw.capture === NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY) {
+		return { capture: NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY };
+	}
+	return null;
 }
 
 /** Belt-and-braces: only the shapes `process-naming.ts` can produce are surfaced. */

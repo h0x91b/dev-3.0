@@ -23,9 +23,10 @@ import { withFileLock } from "../file-lock";
 import { NativeSessionClient } from "../native-terminal-registry/client";
 import { classifyOwnership, type OwnershipVerdict } from "../native-terminal-registry/ownership";
 import type { ClientRole } from "../native-terminal-registry/writer-ownership";
+import { readCaptureRecord, type CaptureRecord } from "../native-terminal-registry/capture-record";
 import {
 	inspectRecordFile,
-	NATIVE_SESSION_CAPTURE_CAPABILITY,
+	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 	readRecord,
 	readToken,
 	type NativeSessionRecord,
@@ -128,6 +129,8 @@ export type ParserStateInspection =
 
 /** Where a read-only capture of one pane can source its text, or why it cannot. */
 export type PaneCaptureSource =
+	/** The compact plain-text projection — the cheap surface (seq 1412). */
+	| { kind: "capture-record"; record: CaptureRecord }
 	| { kind: "snapshot"; snapshot: ParserStateSnapshot; state: NativeSemanticState }
 	/** Capturable, nothing observed yet. */
 	| { kind: "empty"; reason: string }
@@ -160,6 +163,11 @@ export interface CoordinatorDeps {
 	 * real on-disk inspection, which simply reports `absent`.
 	 */
 	inspectPaneParserState?(sessionId: string): ParserStateInspection;
+	/**
+	 * The compact capture record, for a host advertising the plain-text surface.
+	 * Optional so an in-memory double need not model the file.
+	 */
+	readPaneCaptureRecord?(sessionId: string): CaptureRecord | null;
 	classifyPane(record: NativeSessionRecord, token: string | null): Promise<OwnershipVerdict>;
 	connectPane(record: NativeSessionRecord, token: string): Promise<PaneConnection>;
 }
@@ -171,6 +179,7 @@ export const defaultCoordinatorDeps: CoordinatorDeps = {
 	inspectPaneRecord: inspectRecordFile,
 	readPaneToken: readToken,
 	inspectPaneParserState: inspectParserStateFile,
+	readPaneCaptureRecord: readCaptureRecord,
 	classifyPane: classifyOwnership,
 	async connectPane(record, token) {
 		const client = new NativeSessionClient();
@@ -525,11 +534,24 @@ export class NativeMultipaneCoordinator {
 		// launched without the parser and a host built before the capability existed,
 		// and both mean the same thing: there is nothing to capture, ever, for this
 		// pane. Nothing here is inferred from silence or from a timer.
-		if (record.capabilities?.capture !== NATIVE_SESSION_CAPTURE_CAPABILITY) {
+		const surface = record.capabilities?.capture;
+		if (!surface) {
 			return {
 				kind: "disabled",
 				reason: "this pane's host publishes no screen to capture (no live parser)",
 			};
+		}
+
+		if (surface === NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY) {
+			const read = this.deps.readPaneCaptureRecord ?? readCaptureRecord;
+			const captureRecord = read(sessionId);
+			if (!captureRecord) {
+				// The host advertises the compact surface; either it has not written its
+				// first record yet, or the one on disk could not be believed. Both are
+				// "come back", never "there is nothing here".
+				return { kind: "empty", reason: "the pane's host has not published a readable capture record yet" };
+			}
+			return { kind: "capture-record", record: captureRecord };
 		}
 
 		const inspect = this.deps.inspectPaneParserState ?? inspectParserStateFile;
@@ -715,7 +737,7 @@ function snapshotOf({ pane, record, verdict }: PaneProbe): PaneSnapshot {
 		cols: record.cols,
 		rows: record.rows,
 		state: verdict === "owned" ? "running" : verdict,
-		publishesScreen: record.capabilities?.capture === NATIVE_SESSION_CAPTURE_CAPABILITY,
+		publishesScreen: record.capabilities?.capture !== undefined,
 	};
 }
 

@@ -109,8 +109,10 @@ describe.skipIf(!TMUX_VERSION || process.platform === "win32")(
 			const freshCapture = await fresh.captureView(SESSION, created.views[0].id);
 			if (freshCapture.availability !== "captured") throw new Error(`capture missed: ${freshCapture.availability}`);
 			expect(freshCapture.content.viewport.join("\n")).toContain("seam-live");
-			// Real tmux answers synchronously, so its content is never behind the read.
-			expect(freshCapture.ageMs).toEqual({ known: true, value: 0 });
+			// Real tmux reads the live screen, so it can vouch for currency — and cannot
+			// say when that screen last changed.
+			expect(freshCapture.freshness).toEqual({ known: true, value: "current" });
+			expect(freshCapture.lastChangeAgeMs.known).toBe(false);
 			expect(freshCapture.content.lineModel).toBe("physical-rows");
 			expect(freshCapture.identity.incarnation.known).toBe(true);
 			await fresh.dispose();

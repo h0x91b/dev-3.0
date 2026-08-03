@@ -72,11 +72,11 @@ export type TerminalCaptureIssueCode =
 	/** The producer of the text is degraded, so the screen may be behind reality. */
 	| "parser-failed"
 	/**
-	 * The read could not vouch that the content is current: the source has not
-	 * been updated for longer than {@link TERMINAL_CAPTURE_STALE_AFTER_MS}. On a
-	 * snapshot-backed pane this is USUALLY just a quiet pane — but a wedged
-	 * producer looks exactly the same from outside, which is why it is reported
-	 * rather than assumed benign.
+	 * The producer is behind the pane — a real lag, PROVEN by a producer heartbeat
+	 * or health fact. It is never inferred from how long ago the content last
+	 * changed: a quiet healthy pane has an old last-change timestamp and is
+	 * perfectly current. No backend can emit this yet; see
+	 * {@link TerminalPaneCaptureContent.freshness}.
 	 */
 	| "stale"
 	/** The pane's screen was cleared or reset, so what is missing did not scroll off. */
@@ -96,16 +96,15 @@ export const TERMINAL_CAPTURE_MAX_BYTES = 256 * 1024;
 export const TERMINAL_CAPTURE_DEFAULT_HISTORY_LINES = 0;
 export const TERMINAL_CAPTURE_DEFAULT_MAX_BYTES = 64 * 1024;
 /**
- * Past this age a capture can no longer vouch that its content is current, and
- * says so with a `stale` issue. One rule, so both backends agree.
+ * Whether the read can vouch that what it returned is what the pane shows now.
  *
- * A backend that reads the pane synchronously (tmux) is never stale. A backend
- * that reads a snapshot the producer writes ON CHANGE (native) goes "stale" as
- * soon as the pane falls quiet for this long — which is the honest statement: a
- * quiet pane and a wedged parser are indistinguishable from the outside, so a
- * caller is told what is knowable and left to decide.
+ * `current` is only claimable by a backend that reads the pane itself. A backend
+ * that reads what a producer wrote ON CHANGE cannot claim it: a quiet pane and a
+ * wedged producer are indistinguishable without a heartbeat, so freshness there
+ * is `unknown` — not `lagging`, and emphatically not derived from age. That
+ * distinction is why there is no age threshold in this file.
  */
-export const TERMINAL_CAPTURE_STALE_AFTER_MS = 5_000;
+export type TerminalCaptureFreshness = "current" | "lagging";
 
 export interface TerminalPaneCaptureRequest {
 	/**
@@ -152,6 +151,8 @@ export interface TerminalPaneCaptureText {
 	 * line of 200 characters in an 80-column pane is three entries here, not one.
 	 * Nothing in this contract reflows or unwraps; a caller that wants logical
 	 * lines must join them itself, and cannot, in general, tell where to.
+	 *
+	 * Trailing blank rows are omitted: they are the pane's padding, not output.
 	 */
 	readonly viewport: readonly string[];
 	/** Physical rows that scrolled off, oldest first, ending just above `viewport[0]`. */
@@ -217,11 +218,18 @@ export interface TerminalPaneCaptureContent extends TerminalPaneCaptureBase {
 	 */
 	readonly sourceUpdatedAt: TerminalCaptureFact<string>;
 	/**
-	 * How long ago the source last CHANGED, not how long ago we looked. A large
-	 * age on a snapshot backend usually means the pane has been quiet that long —
-	 * which is often the most useful thing a coordinator can learn.
+	 * How long ago the content last CHANGED — plain data, no verdict attached. A
+	 * big number means the pane has been quiet that long, which is usually the
+	 * most useful thing a coordinator can learn from one read. It is NOT staleness:
+	 * a quiet healthy pane is current.
 	 */
-	readonly ageMs: TerminalCaptureFact<number>;
+	readonly lastChangeAgeMs: TerminalCaptureFact<number>;
+	/**
+	 * Whether this read can vouch the content is current. `unknown` is a real and
+	 * common answer — it means the producer offers no heartbeat, so freshness
+	 * cannot be established either way.
+	 */
+	readonly freshness: TerminalCaptureFact<TerminalCaptureFreshness>;
 	/** `dead` WITH content is a real answer: the pane's final screen. */
 	readonly liveness: TerminalPaneLiveness;
 	readonly size: TerminalCaptureFact<TerminalSize>;
@@ -276,6 +284,12 @@ const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/g;
 
 export function sanitizeCaptureLine(line: string): string {
 	return line.replace(ESCAPE_SEQUENCES, "").replace(CONTROL_CHARACTERS, "").trimEnd();
+}
+
+function trimTrailingBlankRows(rows: readonly string[]): string[] {
+	let end = rows.length;
+	while (end > 0 && rows[end - 1]!.trim() === "") end--;
+	return rows.slice(0, end);
 }
 
 const encoder = new TextEncoder();
@@ -338,7 +352,11 @@ export function boundCaptureLines(
 	raw: RawCaptureLines,
 	request: { readonly historyLines: number; readonly maxBytes: number },
 ): BoundedCapture {
-	const viewportAll = raw.viewport.map(sanitizeCaptureLine);
+	// Trailing blank rows are trimmed HERE, once, so every backend and every
+	// producer surface answers the same way: an 80x24 pane showing three lines is
+	// three rows, not three plus twenty-one empties. They are padding, not content,
+	// so they are not counted as omitted either.
+	const viewportAll = trimTrailingBlankRows(raw.viewport.map(sanitizeCaptureLine));
 	const historyAll = raw.history.map(sanitizeCaptureLine);
 	const available = raw.historyAvailable;
 
@@ -395,36 +413,24 @@ export function boundCaptureLines(
 	};
 }
 
-/** `sourceUpdatedAt` → age, and the `stale` issue when it is past the ceiling. */
-export function captureAge(
+/**
+ * `sourceUpdatedAt` → how long ago the content last changed. Data only: no
+ * threshold, no verdict, no `stale` issue. Deriving staleness from age was wrong
+ * — an idle pane's snapshot is legitimately old and its screen is legitimately
+ * correct — so freshness is a separate fact a backend must actually be able to
+ * prove.
+ */
+export function lastChangeAge(
 	sourceUpdatedAt: TerminalCaptureFact<string>,
 	readAt: string,
-): { ageMs: TerminalCaptureFact<number>; issues: TerminalCaptureIssue[] } {
-	if (!sourceUpdatedAt.known) {
-		return {
-			ageMs: unknownFact(sourceUpdatedAt.reason),
-			issues: [{ code: "unknown", detail: `capture age is unknown: ${sourceUpdatedAt.reason}` }],
-		};
-	}
+): TerminalCaptureFact<number> {
+	if (!sourceUpdatedAt.known) return unknownFact(sourceUpdatedAt.reason);
 	const updated = Date.parse(sourceUpdatedAt.value);
 	const read = Date.parse(readAt);
 	if (Number.isNaN(updated) || Number.isNaN(read)) {
-		const detail = "the source's update timestamp is not a parsable ISO instant";
-		return { ageMs: unknownFact(detail), issues: [{ code: "unknown", detail }] };
+		return unknownFact("the source's update timestamp is not a parsable ISO instant");
 	}
-	const ageMs = Math.max(0, read - updated);
-	const issues: TerminalCaptureIssue[] =
-		ageMs > TERMINAL_CAPTURE_STALE_AFTER_MS
-			? [
-					{
-						code: "stale",
-						detail:
-							`the source has not changed for ${ageMs}ms, past the ${TERMINAL_CAPTURE_STALE_AFTER_MS}ms ceiling, ` +
-							"so this read cannot vouch that it is current — usually a quiet pane, possibly a wedged producer",
-					},
-				]
-			: [];
-	return { ageMs: knownFact(ageMs), issues };
+	return knownFact(Math.max(0, read - updated));
 }
 
 /** Build a miss. Kept here so every adapter's misses look the same. */

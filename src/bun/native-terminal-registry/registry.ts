@@ -62,6 +62,11 @@ export interface HostSpawnOptions {
 	rows?: number;
 	/** Opt-in live-parser proof stage (seq 1228); default off keeps the host lean. */
 	liveParser?: boolean;
+	/**
+	 * Publish the compact plain-text capture projection instead of the per-cell
+	 * snapshot (seq 1412). Requires {@link liveParser}; ignored without it.
+	 */
+	captureProjection?: boolean;
 	/** Opt-in unbounded ground-truth stream tap — proof runs only. */
 	stateTap?: boolean;
 }
@@ -166,6 +171,9 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 			...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),
 			...(opts.rows ? { DEV3_NATIVE_SESSION_ROWS: String(opts.rows) } : {}),
 			...(opts.liveParser ? { DEV3_NATIVE_SESSION_LIVE_PARSER: "1" } : {}),
+			...(opts.liveParser && opts.captureProjection
+				? { DEV3_NATIVE_SESSION_CAPTURE_PROJECTION: "1" }
+				: {}),
 			...(opts.stateTap ? { DEV3_NATIVE_SESSION_STATE_TAP: "1" } : {}),
 		},
 	});
@@ -250,6 +258,7 @@ export async function start(
 					cols: opts.cols,
 					rows: opts.rows,
 					liveParser: opts.liveParser,
+					captureProjection: opts.captureProjection,
 					stateTap: opts.stateTap,
 				},
 				logFd,

@@ -50,16 +50,17 @@ export function renderSnapshotText(state: NativeSemanticState, includeHistory: b
  * scrolled past, so joining them into one blob first and re-splitting later
  * would throw away exactly the distinction the caller needs.
  *
- * Trailing blank viewport rows are dropped (an 80x24 pane showing three lines
- * is three lines, not three plus twenty-one empties); history is returned as-is
- * because a blank line that really scrolled past is content.
+ * Rows are returned exactly as the parser has them — no trimming, no padding
+ * removal. Whoever consumes this decides what counts as content; the capture seam
+ * trims trailing blank rows once, for every producer surface, so that choice
+ * cannot differ between the two.
  */
 export function snapshotCaptureLines(state: NativeSemanticState): {
 	viewport: string[];
 	history: string[];
 } {
 	return {
-		viewport: trimTrailingBlankLines(state.screen.map(lineText)),
+		viewport: state.screen.map(lineText),
 		history: state.scrollback.map(lineText),
 	};
 }

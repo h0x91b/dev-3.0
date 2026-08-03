@@ -59,8 +59,11 @@ already-published parser snapshot off disk.
   `replaced`. Identity and `readAt` are on all of them; only `captured` carries
   content, so reading text off a miss does not type-check. A pane that genuinely
   shows nothing is a `captured` result with empty arrays.
-- **`readAt` vs `sourceUpdatedAt`.** tmux is synchronous (equal); native trails by
-  up to ~1s (decision 169) and says so.
+- **`readAt`, `sourceUpdatedAt`, `lastChangeAgeMs`, `freshness`.** No staleness is
+  ever inferred from age: `lastChangeAgeMs` is data, and `freshness` is `current`
+  only for a backend that reads the pane itself (tmux). A producer that publishes on
+  change offers no heartbeat, so its freshness is honestly `unknown` — a quiet pane
+  is not a stale one.
 - **Physical rows, not logical lines.** Nothing reflows or unwraps.
 - **Fixed order of loss:** history beyond the request (oldest first) → history
   that does not fit the byte budget (oldest first) → the viewport's top rows, and
@@ -68,10 +71,18 @@ already-published parser snapshot off disk.
 - **Plain text only.** Every escape sequence and control byte is stripped at the
   seam. History is off by default. No pid, cwd, command, or environment.
 
-**Native reports `not-enabled` in production today** — the host's live parser is
-off by default, so there is no snapshot to read. The verdict comes from the host's
-own `capabilities.capture` in its record, never from a timer, so it is correct on
-the first read. The real-host proof (`bun run test:native-capture-e2e`) covers a
+**Two native producer surfaces, one consumer.** `capabilities.capture` in the
+pane's record names which artifact the host publishes: `semantic-snapshot-v1` (the
+per-cell `parser-state.json`, the reconnect contract) or `plain-text-capture-v1`
+(the compact `capture.json` — rows, health, producer identity). The seam reduces
+both to one observation and a conformance test asserts they answer identically. The
+compact surface exists because the per-cell one costs +230 MiB RSS per pane and
+23 MiB/s of writes on six busy panes, against +58 MiB and 27 KiB/s for the
+projection.
+
+**Native reports `not-enabled` in production today** — the live parser is off by
+default, so no surface is advertised. The verdict comes from the host's own record,
+never from a timer, so it is correct on the first read. The real-host proof (`bun run test:native-capture-e2e`) covers a
 parser-enabled pane and a parser-less one, and
 `bun run test:capture-cost-e2e` measures what turning the parser on would cost.
 See `decisions/202-*`.
@@ -103,7 +114,7 @@ unsupported product operation fails with the typed `unsupported` code.
 bun run test                     # contract conformance (both adapters) + capture shaping + port + isolation
 bun run test:full                # + tmux-backend.live-e2e against a real tmux server
 bun run test:native-capture-e2e  # capture against a REAL native host (parser on in the test only)
-bun run test:capture-cost-e2e    # incremental live-parser cost, parser off vs on, 1/4/6 real panes
+bun run test:capture-cost-e2e    # incremental parser cost: off vs per-cell vs compact, 1/4/6 real panes
 ```
 
 `__tests__/contract-conformance.test.ts` is ONE suite run against BOTH adapters:

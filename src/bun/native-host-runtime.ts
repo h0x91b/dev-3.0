@@ -243,6 +243,9 @@ export function nativeHostLauncher(runtime: NativeHostRuntime): HostLauncher {
 					...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),
 					...(opts.rows ? { DEV3_NATIVE_SESSION_ROWS: String(opts.rows) } : {}),
 					...(opts.liveParser ? { DEV3_NATIVE_SESSION_LIVE_PARSER: "1" } : {}),
+					...(opts.liveParser && opts.captureProjection
+						? { DEV3_NATIVE_SESSION_CAPTURE_PROJECTION: "1" }
+						: {}),
 					...(opts.stateTap ? { DEV3_NATIVE_SESSION_STATE_TAP: "1" } : {}),
 				},
 			},

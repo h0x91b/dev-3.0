@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	boundCaptureLines,
-	captureAge,
+	lastChangeAge,
 	captureIncarnation,
 	clampHistoryLines,
 	clampMaxBytes,
@@ -20,7 +20,6 @@ import {
 	TERMINAL_CAPTURE_DEFAULT_HISTORY_LINES,
 	TERMINAL_CAPTURE_MAX_BYTES,
 	TERMINAL_CAPTURE_MAX_HISTORY_LINES,
-	TERMINAL_CAPTURE_STALE_AFTER_MS,
 	unknownFact,
 	type TerminalPaneCaptureIdentity,
 } from "../capture";
@@ -161,33 +160,30 @@ describe("capture bounds", () => {
 	});
 });
 
-describe("capture freshness", () => {
-	it("reports a synchronous read as zero age and not stale", () => {
+describe("last-change age", () => {
+	it("is zero when the source changed at the moment of the read", () => {
 		const now = "2026-08-03T10:00:00.000Z";
-		const age = captureAge(knownFact(now), now);
-		expect(age.ageMs).toEqual({ known: true, value: 0 });
-		expect(age.issues).toEqual([]);
+		expect(lastChangeAge(knownFact(now), now)).toEqual({ known: true, value: 0 });
 	});
 
-	it("flags content older than the ceiling as stale", () => {
-		const age = captureAge(knownFact("2026-08-03T10:00:00.000Z"), "2026-08-03T10:00:10.000Z");
-		expect(age.ageMs).toEqual({ known: true, value: 10_000 });
-		expect(age.issues[0].code).toBe("stale");
-		const fresh = captureAge(knownFact("2026-08-03T10:00:00.000Z"), "2026-08-03T10:00:01.000Z");
-		expect(fresh.issues).toEqual([]);
-		expect(TERMINAL_CAPTURE_STALE_AFTER_MS).toBeGreaterThan(1000);
+	it("is plain data with no verdict, however old it gets", () => {
+		// The old contract called this "stale" past 5s. It was wrong: a quiet healthy
+		// pane has an ancient last-change timestamp and a perfectly current screen.
+		// Nothing here returns an issue, a threshold, or a judgement.
+		const age = lastChangeAge(knownFact("2026-08-03T10:00:00.000Z"), "2026-08-03T11:00:00.000Z");
+		expect(age).toEqual({ known: true, value: 3_600_000 });
 	});
 
 	it("never invents an age from an unknown or unparsable timestamp", () => {
-		expect(captureAge(unknownFact("no snapshot"), "2026-08-03T10:00:00.000Z").ageMs.known).toBe(false);
-		const bad = captureAge(knownFact("not-a-date"), "2026-08-03T10:00:00.000Z");
-		expect(bad.ageMs.known).toBe(false);
-		expect(bad.issues[0].code).toBe("unknown");
+		expect(lastChangeAge(unknownFact("no snapshot"), "2026-08-03T10:00:00.000Z").known).toBe(false);
+		expect(lastChangeAge(knownFact("not-a-date"), "2026-08-03T10:00:00.000Z").known).toBe(false);
 	});
 
 	it("clamps a source clock that runs ahead of the read to zero, never negative", () => {
-		const age = captureAge(knownFact("2026-08-03T10:00:05.000Z"), "2026-08-03T10:00:00.000Z");
-		expect(age.ageMs).toEqual({ known: true, value: 0 });
+		expect(lastChangeAge(knownFact("2026-08-03T10:00:05.000Z"), "2026-08-03T10:00:00.000Z")).toEqual({
+			known: true,
+			value: 0,
+		});
 	});
 });
 

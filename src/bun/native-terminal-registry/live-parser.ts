@@ -32,6 +32,7 @@ import {
 	type GhosttyLiveOptions,
 	type LiveParserCore,
 	type NativeSemanticState,
+	type NativeTextProjection,
 	LIVE_PARSER_ID,
 } from "./ghostty-live";
 import {
@@ -123,6 +124,13 @@ export interface LiveParserPipelineOptions {
 	 * May return a promise; only one write is ever in flight per pipeline.
 	 */
 	persistState: (snapshot: ParserStateSnapshot) => void | Promise<void>;
+	/**
+	 * Publish the compact plain-text projection instead of the per-cell snapshot
+	 * (seq 1412). When set, {@link persistState} is never called and the per-cell
+	 * state is never built OR serialised — which is the whole point: the multi-MiB
+	 * JSON was the dominant cost, not the parsing.
+	 */
+	persistProjection?: (projection: LiveParserProjection) => void | Promise<void>;
 	/** Test seams — production uses the defaults. */
 	createCore?: (options: GhosttyLiveOptions) => Promise<LiveParserCore>;
 	schedule?: (fn: () => void) => void;
@@ -161,6 +169,23 @@ function percentile(sorted: number[], fraction: number): number {
 	return sorted[index];
 }
 
+/** What the pipeline hands a projection consumer: the rows plus its own health. */
+export interface LiveParserProjection {
+	sessionId: string;
+	watermarkSeq: number;
+	activeBuffer: "normal" | "alternate";
+	cols: number;
+	rows: number;
+	viewport: string[];
+	history: string[];
+	historyTotal: number;
+	status: ParserHealthStatus;
+	error?: string;
+	droppedBytes: number;
+	droppedChunks: number;
+	resyncGaps: number;
+}
+
 export class LiveParserPipeline {
 	private readonly queue: ParserEventQueue;
 	private status: ParserHealthStatus = "live";
@@ -189,6 +214,7 @@ export class LiveParserPipeline {
 	/** Serialized semantic payload of the last write — the identical-skip key. */
 	private lastPersistedKey: string | null = null;
 	private writeInFlight = false;
+	private lastProjection: NativeTextProjection | null = null;
 	/** A newer state is waiting for the in-flight write to settle. */
 	private persistDirty = false;
 
@@ -334,8 +360,14 @@ export class LiveParserPipeline {
 			this.persistDirty = true;
 			return;
 		}
-		const snapshot = this.snapshot();
-		const key = `${this.status}|${JSON.stringify(snapshot.state)}`;
+		const payload = this.opts.persistProjection ? this.projection() : this.snapshot();
+		// Dedup on what actually gets written. In projection mode that is a handful of
+		// row strings; stringifying the per-cell state here would reintroduce the very
+		// multi-MiB allocation the projection exists to avoid.
+		const key = this.opts.persistProjection
+			? `${this.status}|${(payload as LiveParserProjection).activeBuffer}|` +
+				`${(payload as LiveParserProjection).viewport.join("\n")}|${(payload as LiveParserProjection).history.join("\n")}`
+			: `${this.status}|${JSON.stringify((payload as ParserStateSnapshot).state)}`;
 		if (!force && this.opts.persistSkipIdentical !== false && key === this.lastPersistedKey) {
 			this.persist.skippedIdentical++;
 			this.persistDirty = false;
@@ -355,7 +387,9 @@ export class LiveParserPipeline {
 			if (this.persistDirty && !this.disposed) this.schedulePersist();
 		};
 		try {
-			const result = this.opts.persistState(snapshot);
+			const result = this.opts.persistProjection
+				? this.opts.persistProjection(payload as LiveParserProjection)
+				: this.opts.persistState(payload as ParserStateSnapshot);
 			if (result && typeof (result as Promise<void>).then === "function") {
 				(result as Promise<void>).then(settle, () => {
 					this.persist.failures++;
@@ -368,6 +402,40 @@ export class LiveParserPipeline {
 			this.persist.failures++;
 		}
 		settle();
+	}
+
+	/**
+	 * Build the bounded plain-text projection. Same failure containment as
+	 * {@link snapshot}: a projection error degrades this pipeline to `failed`
+	 * rather than taking the host down, and the last good rows are republished.
+	 */
+	projection(): LiveParserProjection {
+		if (this.status === "live") {
+			try {
+				this.lastProjection = this.core.project(this.opts.snapshotScrollbackCap ?? DEFAULT_SNAPSHOT_SCROLLBACK_CAP);
+			} catch (err) {
+				this.failureError = err instanceof Error ? err.message : String(err);
+				this.status = "failed";
+				this.queue.clear();
+			}
+		}
+		const projected = this.lastProjection;
+		const resync = this.resyncCounters();
+		return {
+			sessionId: this.opts.sessionId,
+			watermarkSeq: this.watermarkSeq,
+			activeBuffer: projected?.activeBuffer ?? "normal",
+			cols: projected?.dimensions.cols ?? this.opts.cols,
+			rows: projected?.dimensions.rows ?? this.opts.rows,
+			viewport: projected?.viewport ?? [],
+			history: projected?.history ?? [],
+			historyTotal: projected?.historyTotal ?? 0,
+			status: this.status,
+			...(this.failureError ? { error: this.failureError } : {}),
+			droppedBytes: this.queue.overflow.droppedBytes,
+			droppedChunks: this.queue.overflow.droppedChunks,
+			resyncGaps: resync.gaps,
+		};
 	}
 
 	/** Build the bounded snapshot; inspection errors degrade to the last state. */

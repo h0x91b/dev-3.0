@@ -7,6 +7,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { NativeTerminalBackend } from "../native-backend";
 import { TerminalBackendError } from "../errors";
+import {
+	NATIVE_SESSION_CAPTURE_CAPABILITY,
+	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
+} from "../../native-terminal-registry/record";
 import { FakeCoordinatorWorld } from "./fake-coordinator-world";
 
 const SESSION = "task-native";
@@ -190,7 +194,10 @@ describe("NativeTerminalBackend read-only capture", () => {
 		expect(world.registry.panes.get(`${SESSION}-${view}`)?.writerTaken).toBe(before);
 		// The snapshot carries its own timestamp, kept separate from the read.
 		expect(capture.sourceUpdatedAt.known).toBe(true);
-		expect(capture.ageMs.known).toBe(true);
+		expect(capture.lastChangeAgeMs.known).toBe(true);
+		// A change-driven producer with no heartbeat cannot vouch for currency, and
+		// must not pretend to by turning age into a verdict.
+		expect(capture.freshness.known).toBe(false);
 		expect(capture.identity.epoch.known).toBe(true);
 	});
 
@@ -306,5 +313,117 @@ describe("NativeTerminalBackend read-only capture", () => {
 		expect(capture.availability).toBe("replaced");
 		if (capture.availability === "captured") throw new Error("must not carry content");
 		expect(capture.reason).toContain("incarnation changed");
+	});
+});
+
+// ── The compact plain-text capture surface (seq 1412, Fork 1) ─────────────────
+
+describe("NativeTerminalBackend capture over the compact surface", () => {
+	let world: FakeCoordinatorWorld | null = null;
+
+	afterEach(() => {
+		world?.cleanup();
+		world = null;
+	});
+
+	/**
+	 * A pane whose host advertises the cheap plain-text surface. `patch` runs
+	 * BEFORE the backend copies its deps — a later reassignment would be invisible.
+	 */
+	async function textSurfaceHarness(patch?: (registry: FakeCoordinatorWorld["registry"]) => void) {
+		const w = new FakeCoordinatorWorld();
+		world = w;
+		patch?.(w.registry);
+		const backend = new NativeTerminalBackend({ deps: w.deps() });
+		const created = await backend.openSession({ id: SESSION, cwd: CWD });
+		const view = created.views[0].id;
+		const pane = w.registry.panes.get(`${SESSION}-${view}`);
+		if (!pane) throw new Error("fake pane missing");
+		pane.record.capabilities = { capture: NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY };
+		return { w, backend, view, pane };
+	}
+
+	it("captures from the compact record, and never reads the per-cell snapshot", async () => {
+		let snapshotReads = 0;
+		const { backend, view } = await textSurfaceHarness((registry) => {
+			const inner = registry.inspectPaneParserState!.bind(registry);
+			registry.inspectPaneParserState = (sessionId) => {
+				snapshotReads++;
+				return inner(sessionId);
+			};
+		});
+		await backend.writePane(SESSION, view, "compact-surface\r");
+
+		const capture = await backend.captureView(SESSION, view, { historyLines: 10 });
+		if (capture.availability !== "captured") throw new Error(capture.reason);
+		expect(capture.content.viewport.join("\n")).toContain("compact-surface");
+		expect(capture.content.lineModel).toBe("physical-rows");
+		expect(capture.size.known).toBe(true);
+		// The expensive surface is not touched at all — that is the whole point.
+		expect(snapshotReads).toBe(0);
+	});
+
+	it("answers identically on both surfaces for the same pane", async () => {
+		const { backend, view, pane } = await textSurfaceHarness();
+		await backend.writePane(SESSION, view, "same-answer\r");
+		const compact = await backend.captureView(SESSION, view, { historyLines: 10 });
+		pane.record.capabilities = { capture: NATIVE_SESSION_CAPTURE_CAPABILITY };
+		const perCell = await backend.captureView(SESSION, view, { historyLines: 10 });
+		if (compact.availability !== "captured" || perCell.availability !== "captured") {
+			throw new Error("both surfaces must carry content");
+		}
+		expect(compact.content.viewport).toEqual(perCell.content.viewport);
+		expect(compact.content.history).toEqual(perCell.content.history);
+		expect(compact.size).toEqual(perCell.size);
+		expect(compact.screen).toEqual(perCell.screen);
+	});
+
+	it("reports a host that advertises the surface but has published nothing as unavailable", async () => {
+		const { backend, view, pane } = await textSurfaceHarness();
+		pane.parserState = "absent"; // no capture record on disk yet
+		const capture = await backend.captureView(SESSION, view);
+		expect(capture.availability).toBe("unavailable");
+	});
+
+	it("refuses a record written by a different incarnation of the pane", async () => {
+		// The rows on disk came from the shell that ran BEFORE this one.
+		const { backend, view, pane } = await textSurfaceHarness((registry) => {
+			const inner = registry.readPaneCaptureRecord!.bind(registry);
+			registry.readPaneCaptureRecord = (sessionId) => {
+				const record = inner(sessionId);
+				return record
+					? { ...record, producer: { ...record.producer, shellStartSignature: "s-previous-life" } }
+					: null;
+			};
+		});
+		await backend.writePane(SESSION, view, "stale-writer\r");
+
+		const capture = await backend.captureView(SESSION, view);
+		expect(capture.availability).toBe("replaced");
+		if (capture.availability === "captured") throw new Error("must not carry content");
+		expect(capture.reason).toContain("different incarnation");
+		expect(pane.record.shell.startSignature).not.toBe("s-previous-life");
+	});
+
+	it("reports the producer's dropped output and resync gaps from the compact record", async () => {
+		const { backend, view } = await textSurfaceHarness((registry) => {
+			const inner = registry.readPaneCaptureRecord!.bind(registry);
+			registry.readPaneCaptureRecord = (sessionId) => {
+				const record = inner(sessionId);
+				return record
+					? { ...record, health: { status: "overflowed" as const, droppedBytes: 900, droppedChunks: 3, resyncGaps: 2 } }
+					: null;
+			};
+		});
+
+		const capture = await backend.captureView(SESSION, view);
+		if (capture.availability !== "captured") throw new Error(capture.reason);
+		expect(capture.gaps).toEqual({
+			known: true,
+			value: { droppedBytes: 900, droppedChunks: 3, resyncGaps: 2, degraded: true },
+		});
+		const codes = capture.issues.map((issue) => issue.code);
+		expect(codes).toContain("sequence-gap");
+		expect(codes).toContain("parser-failed");
 	});
 });

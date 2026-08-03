@@ -8,6 +8,8 @@
  *
  *  • a pane whose host runs the live parser is capturable end to end, viewport
  *    and history apart, with the snapshot's own timestamp behind the read;
+ *  • a pane publishing the COMPACT plain-text projection is capturable through the
+ *    same seam, with a kilobyte-scale artifact and no per-cell snapshot on disk;
  *  • a pane whose host runs NO parser reports `not-enabled` — which is exactly
  *    what production does today, because the parser is off by default. The verdict
  *    comes from the host's OWN advertised capability in its record, not from a
@@ -17,12 +19,17 @@
  * Nothing in this file changes what production launches (decision 202).
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultCoordinatorDeps, type CoordinatorDeps } from "../../native-terminal-multipane/coordinator";
 import { NATIVE_MULTIPANE_DIR_ENV } from "../../native-terminal-multipane/paths";
-import { NATIVE_SESSION_CAPTURE_CAPABILITY, readRecord } from "../../native-terminal-registry/record";
+import { captureRecordFile, parserStateFile } from "../../native-terminal-registry/paths";
+import {
+	NATIVE_SESSION_CAPTURE_CAPABILITY,
+	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
+	readRecord,
+} from "../../native-terminal-registry/record";
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { NativeTerminalBackend } from "../native-backend";
 import { isCapturedPane, type TerminalPaneCapture } from "../capture";
@@ -40,6 +47,7 @@ const isWindows = process.platform === "win32";
 const lineEnd = isWindows ? "\r" : "\n";
 const PARSER_SESSION = "capture-parser";
 const PLAIN_SESSION = "capture-plain";
+const COMPACT_SESSION = "capture-compact";
 
 function shell(cwd: string) {
 	const base = isWindows
@@ -49,9 +57,10 @@ function shell(cwd: string) {
 }
 
 /** The ONLY difference from production: the pane's host runs the live parser. */
-function withLiveParser(): Partial<CoordinatorDeps> {
+function withLiveParser(captureProjection = false): Partial<CoordinatorDeps> {
 	return {
-		startPane: (sessionId, opts) => defaultCoordinatorDeps.startPane(sessionId, { ...opts, liveParser: true }),
+		startPane: (sessionId, opts) =>
+			defaultCoordinatorDeps.startPane(sessionId, { ...opts, liveParser: true, captureProjection }),
 	};
 }
 
@@ -118,8 +127,8 @@ async function main(): Promise<void> {
 			check(capture.liveness === "live", "a running pane reads as live");
 			check(capture.size.known && capture.size.value.rows === 24, "the pane's real geometry is reported");
 			check(
-				capture.sourceUpdatedAt.known && capture.ageMs.known,
-				"the snapshot's own update time is reported apart from the read",
+				capture.sourceUpdatedAt.known && capture.lastChangeAgeMs.known && !capture.freshness.known,
+				"the source's last-change time is reported as data, with freshness honestly unknown",
 			);
 			check(
 				capture.identity.incarnation.known && capture.identity.epoch.known,
@@ -150,6 +159,60 @@ async function main(): Promise<void> {
 	} finally {
 		await parserBackend.cleanupSession(PARSER_SESSION, { ignoreMissing: true });
 		await parserBackend.dispose();
+	}
+
+	console.log("native capture — a real host publishing the COMPACT projection");
+	const compactBackend = new NativeTerminalBackend({ deps: withLiveParser(true) });
+	try {
+		const created = await compactBackend.openSession({
+			id: COMPACT_SESSION,
+			cwd: root,
+			launch: { executable: shell(root).executable, argv: [...shell(root).argv] },
+			size: { cols: 120, rows: 40 },
+		});
+		const view = created.views[0]!.id;
+		for (let i = 0; i < 80; i++) {
+			await compactBackend.writePane(COMPACT_SESSION, view, `echo compact-line-${i}${lineEnd}`);
+		}
+
+		const sawNewest = await eventually("the newest line via the compact surface", async () => {
+			const capture = await compactBackend.captureView(COMPACT_SESSION, view);
+			return isCapturedPane(capture) && capture.content.viewport.join("\n").includes("compact-line-79");
+		});
+		check(sawNewest, "a pane publishing the compact projection is capturable");
+
+		const paneSessionId = `${COMPACT_SESSION}-${view}`;
+		check(
+			readRecord(paneSessionId)?.capabilities?.capture === NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
+			"the host advertises the plain-text capture surface, not the per-cell one",
+		);
+		const artifactBytes = statSync(captureRecordFile(paneSessionId)).size;
+		// The per-cell snapshot is 2.5-4.8 MiB at this geometry; this is the whole point.
+		check(artifactBytes < 64 * 1024, `the published artifact is small (${artifactBytes} bytes)`);
+		check(
+			!existsSync(parserStateFile(paneSessionId)),
+			"the expensive per-cell snapshot is never written in projection mode",
+		);
+
+		const capture = await compactBackend.captureView(COMPACT_SESSION, view, { historyLines: 200 });
+		if (!isCapturedPane(capture)) {
+			check(false, `compact capture carried content (got ${describeMiss(capture)})`);
+		} else {
+			check(capture.content.history.length > 0, "scrolled-off output comes back as history");
+			check(capture.size.known && capture.size.value.rows === 40, "the pane's real geometry is reported");
+			check(
+				capture.identity.incarnation.known && capture.identity.epoch.known,
+				"the compact capture carries an opaque incarnation and epoch",
+			);
+			const rows = [...capture.content.history, ...capture.content.viewport];
+			check(
+				!rows.some((row) => /[\u0000-\u001F\u007F-\u009F]/.test(row)),
+				"no escape sequence or control byte survives the compact surface",
+			);
+		}
+	} finally {
+		await compactBackend.cleanupSession(COMPACT_SESSION, { ignoreMissing: true });
+		await compactBackend.dispose();
 	}
 
 	console.log("native capture — a real host with NO parser (production's shape today)");

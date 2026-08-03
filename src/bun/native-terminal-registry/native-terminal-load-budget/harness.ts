@@ -14,7 +14,7 @@
  * socket, filesystem, or real clock.
  */
 
-import type { GhosttyLiveOptions, LiveParserCore, NativeSemanticState } from "../ghostty-live";
+import type { GhosttyLiveOptions, LiveParserCore, NativeSemanticState, NativeTextProjection } from "../ghostty-live";
 import { LiveParserPipeline, type ParserPersistenceCounters, type ParserResyncCounters } from "../live-parser";
 import type { ParserQueueOverflow, ParserQueuePressure } from "../parser-queue";
 import type { ParserHealthStatus, ParserStateSnapshot } from "../parser-state";
@@ -74,6 +74,17 @@ export class BudgetCore implements LiveParserCore {
 			scrollbackLength: this.scrollbackLength,
 			title: this.title,
 		});
+	}
+
+	project(scrollbackCap: number): NativeTextProjection {
+		const state = this.inspect(scrollbackCap);
+		return {
+			activeBuffer: state.activeBuffer,
+			dimensions: state.dimensions,
+			viewport: state.screen.map((line) => line.text),
+			history: state.scrollback.map((line) => line.text),
+			historyTotal: state.scrollbackLength,
+		};
 	}
 
 	dispose(): void {

@@ -13,7 +13,6 @@
 
 import {
 	boundCaptureLines,
-	captureAge,
 	captureIncarnation,
 	clampHistoryLines,
 	clampMaxBytes,
@@ -114,8 +113,9 @@ export class TmuxTerminalBackend implements TerminalBackend {
 	 * one pane's rows and for tmux's own accounting of that pane. `select-pane`,
 	 * `send-keys`, and `resize-window` are never on this path.
 	 *
-	 * tmux answers synchronously, so the text is true as of the read itself —
-	 * `sourceUpdatedAt` equals `readAt` and a tmux capture is never stale. What tmux
+	 * tmux answers synchronously, so the text is true as of the read itself: its
+	 * freshness is `current` by construction. It cannot say when the screen last
+	 * CHANGED, though — it reports the live screen, not a change log. What tmux
 	 * cannot answer is loss: it keeps no account of output it dropped, so `gaps`
 	 * comes back unknown-with-reason instead of a zero that would read as "nothing
 	 * was lost". The pane is observed BEFORE and AFTER the content read, so a pane
@@ -189,14 +189,18 @@ export class TmuxTerminalBackend implements TerminalBackend {
 			{ viewport, history, historyAvailable: alternate ? 0 : after.historySize },
 			{ historyLines, maxBytes },
 		);
-		const age = captureAge(sourceUpdatedAt, readAt);
+		// The read IS the observation, so there is nothing to age.
+		const lastChangeAgeMs = unknownFact<number>(
+			"tmux reports the live screen, not when it last changed",
+		);
 		return {
 			version: TERMINAL_CAPTURE_VERSION,
 			identity,
 			readAt,
 			availability: "captured",
 			sourceUpdatedAt,
-			ageMs: age.ageMs,
+			lastChangeAgeMs,
+			freshness: knownFact("current" as const),
 			liveness,
 			size: knownFact({ cols: after.cols, rows: after.rows }),
 			screen: knownFact(alternate ? "alternate" : "normal"),
@@ -205,7 +209,6 @@ export class TmuxTerminalBackend implements TerminalBackend {
 			gaps: unknownFact("tmux keeps no account of output it dropped"),
 			issues: [
 				...bounded.issues,
-				...age.issues,
 				{
 					code: "unknown" as const,
 					detail: "tmux cannot say whether output was dropped, or whether the screen was reset",

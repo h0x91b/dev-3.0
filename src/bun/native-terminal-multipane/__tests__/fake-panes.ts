@@ -6,6 +6,11 @@
 
 import type { OwnershipVerdict } from "../../native-terminal-registry/ownership";
 import {
+	CAPTURE_RECORD_SCHEMA,
+	CAPTURE_RECORD_VERSION,
+	type CaptureRecord,
+} from "../../native-terminal-registry/capture-record";
+import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	type NativeSessionRecord,
 } from "../../native-terminal-registry/record";
@@ -166,6 +171,37 @@ export function createFakeRegistry(): FakeRegistry {
 		readPaneToken(sessionId): string | null {
 			const pane = panes.get(sessionId);
 			return pane?.alive ? pane.token : null;
+		},
+		readPaneCaptureRecord(sessionId): CaptureRecord | null {
+			const pane = panes.get(sessionId);
+			if (!pane || pane.parserState !== "publishing") return null;
+			const snapshot = fakeParserState(pane);
+			const state = snapshot.state!;
+			return {
+				schema: CAPTURE_RECORD_SCHEMA,
+				version: CAPTURE_RECORD_VERSION,
+				sessionId,
+				producer: {
+					hostPid: pane.record.host.pid,
+					hostStartSignature: pane.record.host.startSignature,
+					shellPid: pane.record.shell.pid,
+					shellStartSignature: pane.record.shell.startSignature,
+				},
+				updatedAt: snapshot.updatedAt,
+				watermarkSeq: snapshot.watermarkSeq,
+				activeBuffer: state.activeBuffer,
+				cols: state.dimensions.cols,
+				rows: state.dimensions.rows,
+				viewport: state.screen.map((line) => line.text),
+				history: state.scrollback.map((line) => line.text),
+				historyTotal: state.scrollbackLength,
+				health: {
+					status: snapshot.health.status,
+					droppedBytes: snapshot.health.overflow.droppedBytes,
+					droppedChunks: snapshot.health.overflow.droppedChunks,
+					resyncGaps: 0,
+				},
+			};
 		},
 		inspectPaneParserState(sessionId): ParserStateInspection {
 			const pane = panes.get(sessionId);

@@ -13,6 +13,7 @@ import {
 	NativeMultipaneCoordinator,
 	defaultCoordinatorDeps,
 	type CoordinatorDeps,
+	type PaneCaptureSource,
 	type PaneLaunchSpec,
 	type PaneSnapshot,
 } from "../native-terminal-multipane/coordinator";
@@ -32,7 +33,7 @@ import {
 import { snapshotCaptureLines } from "../native-terminal-adapter/view-reconstruction";
 import {
 	boundCaptureLines,
-	captureAge,
+	lastChangeAge,
 	captureIncarnation,
 	clampHistoryLines,
 	clampMaxBytes,
@@ -133,6 +134,60 @@ function captureIdentityOf(
 	};
 }
 
+/** One observation, whichever surface the pane's host publishes. */
+interface PaneObservation {
+	updatedAt: string;
+	activeBuffer: "normal" | "alternate";
+	cols: number;
+	rows: number;
+	viewport: string[];
+	history: string[];
+	historyTotal: number;
+	status: "live" | "overflowed" | "failed";
+	error?: string;
+	droppedBytes: number;
+	droppedChunks: number;
+	resyncGaps: number;
+}
+
+function observationOf(source: Extract<PaneCaptureSource, { kind: "capture-record" | "snapshot" }>): PaneObservation {
+	if (source.kind === "capture-record") {
+		const record = source.record;
+		return {
+			updatedAt: record.updatedAt,
+			activeBuffer: record.activeBuffer,
+			cols: record.cols,
+			rows: record.rows,
+			viewport: record.viewport,
+			history: record.history,
+			historyTotal: record.historyTotal,
+			status: record.health.status,
+			...(record.health.error ? { error: record.health.error } : {}),
+			droppedBytes: record.health.droppedBytes,
+			droppedChunks: record.health.droppedChunks,
+			resyncGaps: record.health.resyncGaps,
+		};
+	}
+	const { snapshot, state } = source;
+	const lines = snapshotCaptureLines(state);
+	return {
+		updatedAt: snapshot.updatedAt,
+		activeBuffer: state.activeBuffer,
+		cols: state.dimensions.cols,
+		rows: state.dimensions.rows,
+		viewport: lines.viewport,
+		history: lines.history,
+		historyTotal: state.scrollbackLength,
+		status: snapshot.health.status,
+		...(snapshot.health.error ? { error: snapshot.health.error } : {}),
+		droppedBytes: snapshot.health.overflow.droppedBytes,
+		droppedChunks: snapshot.health.overflow.droppedChunks,
+		// The per-cell snapshot carries no resync accounting, so the only gaps it can
+		// prove are the ones the queue dropped.
+		resyncGaps: 0,
+	};
+}
+
 function buildLaunchSpec(spec: TerminalSessionSpec | TerminalViewSpec): ShellLaunchSpec {
 	const cwd = spec.cwd;
 	const env = (spec.env as Record<string, string> | undefined) ?? {};
@@ -211,8 +266,10 @@ export class NativeTerminalBackend implements TerminalBackend {
 	 * and nothing the pane's agent has to cooperate with.
 	 *
 	 * The snapshot is persisted on a cadence (decision 169), so `sourceUpdatedAt`
-	 * legitimately trails `readAt` by up to about a second. That gap is reported,
-	 * never hidden: a native capture that looks instantaneous would be a lie.
+	 * legitimately trails `readAt`. That gap is reported as `lastChangeAgeMs` and
+	 * never hidden — but it is NOT staleness: a quiet pane's snapshot is old and its
+	 * screen is correct, so `freshness` stays unknown until a producer heartbeat
+	 * exists to prove otherwise.
 	 *
 	 * TODAY, in production, this returns `not-enabled` for every native pane: the
 	 * host's live parser is off by default, so there is no snapshot to read. That is
@@ -272,42 +329,64 @@ export class NativeTerminalBackend implements TerminalBackend {
 		);
 		if (drift) return paneCaptureMiss(identity, "replaced", `the pane was replaced mid-capture: ${drift}`, liveness);
 
+		// The compact record names its own producer, so the rows can be checked against
+		// the pane directly instead of only against a second ownership sweep: text
+		// written by a previous incarnation is caught even if both sweeps agree.
+		if (source.kind === "capture-record") {
+			const producer = source.record.producer;
+			const wrote = captureIncarnation(
+				source.record.sessionId,
+				producer.hostPid,
+				producer.hostStartSignature,
+				producer.shellPid,
+				producer.shellStartSignature,
+			);
+			if (identity.incarnation.known && identity.incarnation.value !== wrote) {
+				return paneCaptureMiss(
+					identity,
+					"replaced",
+					"the capture record was written by a different incarnation of this pane",
+					liveness,
+				);
+			}
+		}
+
 		const readAt = new Date().toISOString();
-		const { snapshot, state } = source;
-		const lines = snapshotCaptureLines(state);
-		const alternate = state.activeBuffer === "alternate";
+		// Both surfaces reduce to the same four things: rows, total history depth,
+		// which buffer, and the producer's health. Everything downstream is shared, so
+		// the two backends' answers cannot drift by surface either.
+		const observed = observationOf(source);
+		const alternate = observed.activeBuffer === "alternate";
 		const bounded = boundCaptureLines(
 			{
-				viewport: lines.viewport,
-				history: alternate ? [] : lines.history,
-				// The snapshot caps its own scrollback, so the total depth the host holds is
-				// the honest availability figure — not the capped slice we were handed.
-				historyAvailable: alternate ? 0 : state.scrollbackLength,
+				viewport: observed.viewport,
+				history: alternate ? [] : observed.history,
+				// The producer caps its own scrollback, so the total depth it HOLDS is the
+				// honest availability figure — not the capped slice we were handed.
+				historyAvailable: alternate ? 0 : observed.historyTotal,
 			},
 			{ historyLines: clampHistoryLines(request.historyLines), maxBytes: clampMaxBytes(request.maxBytes) },
 		);
-		const sourceUpdatedAt = knownFact(snapshot.updatedAt);
-		const age = captureAge(sourceUpdatedAt, readAt);
-		const overflow = snapshot.health.overflow;
+		const sourceUpdatedAt = knownFact(observed.updatedAt);
 		const gaps = {
-			droppedBytes: overflow.droppedBytes,
-			droppedChunks: overflow.droppedChunks,
-			// The parser's resync accounting is not part of the persisted snapshot, so the
-			// only gaps a capture can prove are the ones the queue dropped.
-			resyncGaps: 0,
-			degraded: snapshot.health.status !== "live",
+			droppedBytes: observed.droppedBytes,
+			droppedChunks: observed.droppedChunks,
+			resyncGaps: observed.resyncGaps,
+			degraded: observed.status !== "live",
 		};
-		const issues: TerminalCaptureIssue[] = [...bounded.issues, ...age.issues];
-		if (overflow.droppedChunks > 0 || overflow.droppedBytes > 0) {
+		const issues: TerminalCaptureIssue[] = [...bounded.issues];
+		if (gaps.droppedChunks > 0 || gaps.droppedBytes > 0 || gaps.resyncGaps > 0) {
 			issues.push({
 				code: "sequence-gap",
-				detail: `the pane's parser dropped ${overflow.droppedBytes} byte(s) in ${overflow.droppedChunks} chunk(s) before this capture`,
+				detail:
+					`the pane's parser dropped ${gaps.droppedBytes} byte(s) in ${gaps.droppedChunks} chunk(s) ` +
+					`and resynced across ${gaps.resyncGaps} gap(s) before this capture`,
 			});
 		}
-		if (snapshot.health.status !== "live") {
+		if (observed.status !== "live") {
 			issues.push({
 				code: "parser-failed",
-				detail: snapshot.health.error ?? `the pane's parser is ${snapshot.health.status}`,
+				detail: observed.error ?? `the pane's parser is ${observed.status}`,
 			});
 		}
 		issues.push({
@@ -320,9 +399,15 @@ export class NativeTerminalBackend implements TerminalBackend {
 			readAt,
 			availability: "captured",
 			sourceUpdatedAt,
-			ageMs: age.ageMs,
+			lastChangeAgeMs: lastChangeAge(sourceUpdatedAt, readAt),
+			// The host writes on CHANGE and sends no heartbeat, so a quiet pane and a
+			// wedged parser look identical from here. Saying "unknown" is the only
+			// honest answer; an age threshold would have called every idle pane stale.
+			freshness: unknownFact(
+				"the pane's producer publishes on change and offers no heartbeat, so currency cannot be established",
+			),
 			liveness,
-			size: knownFact({ cols: state.dimensions.cols, rows: state.dimensions.rows }),
+			size: knownFact({ cols: observed.cols, rows: observed.rows }),
 			screen: knownFact(alternate ? "alternate" : "normal"),
 			content: bounded.content,
 			bounds: bounded.bounds,
