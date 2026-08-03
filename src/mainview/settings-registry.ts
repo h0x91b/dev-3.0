@@ -347,6 +347,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "experimental-terminal-bidi",
+		category: "system",
+		titleKey: "settings.terminalBidi",
+		descriptionKey: "settings.terminalBidiDesc",
+		anchor: "experimental-terminal-bidi",
+		globalField: "experimentalTerminalBidi",
+		storage: "global",
+	},
+	{
 		id: "developer-tools",
 		category: "system",
 		titleKey: "settings.devTools",
@@ -377,6 +386,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"cloneBaseDirectory",
 	"customBinaryPaths",
 	"agentBinaryPaths",
+	"experimentalTerminalBidi",
 	"playSoundOnTaskComplete",
 	"externalApps",
 	"tipsDisabled",

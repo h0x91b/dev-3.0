@@ -14,6 +14,7 @@ import { isRemote } from "./utils/platform";
 import { isTypingContext } from "./utils/typing-context";
 import { matchesShortcut } from "./keymap";
 import { setShortcutOverrides } from "./keymap-store";
+import { syncTerminalBidiFromGlobalSettings } from "./terminal-bidi/flag";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import { useMobileDenseZoom } from "./hooks/useMobileDenseZoom";
@@ -1153,6 +1154,13 @@ function App() {
 		window.addEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
 		return () => window.removeEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
 	}, []);
+
+	// Terminal panes read the BiDi flag from a module cache, not from React state —
+	// one effect here covers every path that lands settings (initial load, push,
+	// the Settings screen's own setter).
+	useEffect(() => {
+		syncTerminalBidiFromGlobalSettings(globalSettings);
+	}, [globalSettings]);
 
 	useEffect(() => {
 		function onProjectUpdated(e: Event) {

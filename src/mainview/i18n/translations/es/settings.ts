@@ -397,6 +397,16 @@ const settings = {
 	"project.selectTaskForTerminal": "Selecciona una tarea para ver su terminal",
 	"project.backToKanban": "Volver al Kanban",
 
+	// Advanced Experience — beta behaviour, every entry ships off
+	"settings.categoryAdvancedExperience": "Experiencia avanzada",
+	"settings.categoryAdvancedExperienceDesc":
+		"Comportamiento en beta: útil, pero todavía no estable. Todo aquí está desactivado por defecto.",
+	"settings.terminalBidi": "Texto de derecha a izquierda en terminales (BiDi)",
+	"settings.terminalBidiDesc":
+		"Reordena la salida en hebreo, árabe y persa para que se lea correctamente en las terminales en lugar de aparecer invertida. Se aplica de inmediato a los paneles abiertos.",
+	"settings.terminalBidiCaveat":
+		"Solo visualización: el texto copiado conserva su orden original, que es el correcto. La selección con el ratón y el paso del cursor por los enlaces en esas líneas siguen el orden original, así que el resaltado puede verse mal. Las letras árabes no se unen en su forma cursiva.",
+
 	// Token-saving proxy (pxpipe) — experimental, opt-in
 	"settings.pxpipeSection": "Proxy de ahorro de tokens (experimental)",
 	"settings.pxpipeSectionDesc": "Enruta Claude a través de un proxy local (pxpipe) que convierte el contexto voluminoso en imágenes para reducir los tokens de entrada. Desactivado por defecto.",

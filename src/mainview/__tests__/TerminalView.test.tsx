@@ -3,6 +3,11 @@ import TerminalView, { type TerminalHandle, buildResizeDance, buildCursorMoveSeq
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import type { NativeStreamRole } from "../../shared/native-terminal-stream";
+import {
+	resetTerminalBidiForTests,
+	syncTerminalBidiFromGlobalSettings,
+} from "../terminal-bidi/flag";
+import { isBidiRenderInstalled, uninstallBidiRender } from "../terminal-bidi/proxy";
 
 // ── Hoisted mocks (must be before vi.mock factories) ─────────────────────────
 
@@ -54,7 +59,10 @@ const {
 			charWidth: 8,
 			charHeight: 16,
 			remeasureFont: vi.fn(),
+			render: vi.fn(),
 		},
+		wasmTerm: {},
+		viewportY: 0,
 		write: vi.fn(),
 		writeln: vi.fn(),
 		reset: vi.fn(),
@@ -1551,5 +1559,48 @@ describe("TerminalView – native stream framing", () => {
 			document.dispatchEvent(new Event("visibilitychange"));
 		});
 		expect(webSockets[1].url).toBe(PTY_URL);
+	});
+});
+
+describe("TerminalView – right-to-left reordering (beta flag)", () => {
+	afterEach(() => {
+		uninstallBidiRender(mockTermInstance.renderer);
+		resetTerminalBidiForTests();
+	});
+
+	it("leaves the vendor renderer alone when the flag is off", async () => {
+		await renderAndSetup();
+		expect(isBidiRenderInstalled(mockTermInstance.renderer)).toBe(false);
+	});
+
+	it("installs the visual-order view when the flag is already on at mount", async () => {
+		syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: true });
+		await renderAndSetup();
+		expect(isBidiRenderInstalled(mockTermInstance.renderer)).toBe(true);
+	});
+
+	it("installs and removes it live, repainting every row each time", async () => {
+		await renderAndSetup();
+		// Installing replaces the property, so hold on to the vendor's own spy.
+		const vendorRender = mockTermInstance.renderer.render;
+		vendorRender.mockClear();
+
+		await act(async () => {
+			syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: true });
+		});
+		expect(isBidiRenderInstalled(mockTermInstance.renderer)).toBe(true);
+		// forceAll = true so already-printed output flips without reopening the task;
+		// opacity 0 keeps the scrollbar from flashing on a forced frame.
+		expect(vendorRender).toHaveBeenCalledTimes(1);
+		expect(vendorRender.mock.calls[0].slice(1)).toEqual([true, 0, expect.anything(), 0]);
+		// What it received is the visual-order view, not the raw terminal.
+		expect(vendorRender.mock.calls[0][0]).not.toBe(mockTermInstance.wasmTerm);
+
+		await act(async () => {
+			syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: false });
+		});
+		expect(isBidiRenderInstalled(mockTermInstance.renderer)).toBe(false);
+		expect(vendorRender).toHaveBeenCalledTimes(2);
+		expect(vendorRender.mock.calls[1][0]).toBe(mockTermInstance.wasmTerm);
 	});
 });

@@ -127,6 +127,9 @@ const help = {
 	"help.settings.pxpipe.title": "Proxy de ahorro de tokens",
 	"help.settings.pxpipe.body":
 		"Un proxy local experimental (pxpipe) que renderiza el contexto voluminoso como imágenes para recortar tokens de entrada — a menudo ~2× más barato, algo más lento. Desactivado por defecto; activarlo desbloquea el preset «Fable 5 (cost trick)».",
+	"help.settings.advancedExperience.title": "Experiencia avanzada",
+	"help.settings.advancedExperience.body":
+		"Comportamiento en beta: vale la pena, pero no está terminado, así que se entrega desactivado y se activa función por función. La primera es el reordenado de derecha a izquierda: los paneles de terminal pintan hebreo y árabe en orden de lectura en lugar de invertidos. Es una capa solo de visualización sobre un motor de terminal que aún no tiene soporte propio de derecha a izquierda, por lo que la selección con el ratón y el paso del cursor por los enlaces en esas líneas siguen el orden subyacente.",
 
 	// ── Project settings (tabs) ──
 	"help.projectSettings.board.title": "Configuración del tablero",

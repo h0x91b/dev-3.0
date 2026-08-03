@@ -16,6 +16,11 @@ import {
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getEffectiveZoom, ZOOM_CHANGED_EVENT } from "./zoom";
+import {
+	getTerminalBidiEnabled,
+	TERMINAL_BIDI_CHANGED_EVENT,
+} from "./terminal-bidi/flag";
+import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer } from "./wheel-pacer";
 import type { TaskPaneAction } from "../shared/task-panes";
@@ -472,6 +477,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
+
+			// Beta: paint right-to-left rows in visual order (Settings → System →
+			// Advanced Experience). The renderer exists only after term.open().
+			if (getTerminalBidiEnabled() && term.renderer) {
+				installBidiRender(term.renderer);
+			}
 
 			// ghostty marks the container contenteditable="true", so ANY focus on
 			// it (term.focus() after fit, ghostty's own canvas mousedown →
@@ -1651,6 +1662,26 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		}
 		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+	}, []);
+
+	// Apply the BiDi setting live: install or restore the visual-order view and
+	// repaint every row, so already-printed output flips without reopening the task.
+	useEffect(() => {
+		function onBidiChanged(e: Event) {
+			const term = termRef.current;
+			const renderer = term?.renderer;
+			if (!term || !renderer) return;
+			try {
+				if ((e as CustomEvent<boolean>).detail) installBidiRender(renderer);
+				else uninstallBidiRender(renderer);
+				if (term.wasmTerm) {
+					// Opacity 0 keeps the scrollbar from flashing on a forced frame.
+					renderer.render(term.wasmTerm, true, term.viewportY, term, 0);
+				}
+			} catch { /* disposed */ }
+		}
+		window.addEventListener(TERMINAL_BIDI_CHANGED_EVENT, onBidiChanged);
+		return () => window.removeEventListener(TERMINAL_BIDI_CHANGED_EVENT, onBidiChanged);
 	}, []);
 
 	// Intercept ALL paste events: images / large text blocks are saved to disk and

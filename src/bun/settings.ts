@@ -118,6 +118,8 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 			// Default-off experimental toggle — only an explicit true is a stored opt-in.
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
+			// Default-off beta toggle — only an explicit true is a stored opt-in.
+			experimentalTerminalBidi: data.experimentalTerminalBidi === true ? true : undefined,
 			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
 			favorites: sanitizeFavorites(data.favorites),
 			// User shortcut rebinds; sparse by design — absent means "all defaults".
@@ -217,6 +219,8 @@ export function loadSettingsSync(): GlobalSettings {
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 			// Default-off experimental toggle — only an explicit true is a stored opt-in.
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
+			// Default-off beta toggle — only an explicit true is a stored opt-in.
+			experimentalTerminalBidi: data.experimentalTerminalBidi === true ? true : undefined,
 			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
 			favorites: sanitizeFavorites(data.favorites),
 			// User shortcut rebinds; sparse by design — absent means "all defaults".

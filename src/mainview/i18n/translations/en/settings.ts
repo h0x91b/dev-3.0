@@ -396,6 +396,16 @@ const settings = {
 	"project.selectTaskForTerminal": "Select a task to see its terminal",
 	"project.backToKanban": "Back to Kanban",
 
+	// Advanced Experience — beta behaviour, every entry ships off
+	"settings.categoryAdvancedExperience": "Advanced Experience",
+	"settings.categoryAdvancedExperienceDesc":
+		"Beta behaviour that is useful but not stable yet. Everything here is off by default.",
+	"settings.terminalBidi": "Right-to-left text in terminals (BiDi)",
+	"settings.terminalBidiDesc":
+		"Reorder Hebrew, Arabic and Persian output so it reads correctly in terminal panes instead of appearing reversed. Applies to open panes immediately.",
+	"settings.terminalBidiCaveat":
+		"Display only: copied text keeps its original order, which is correct. Selecting with the mouse and hovering links on those lines still follow the original order, so the highlight can look wrong. Arabic letters are not joined into their cursive forms.",
+
 	// Token-saving proxy (pxpipe) — experimental, opt-in
 	"settings.pxpipeSection": "Token-saving proxy (experimental)",
 	"settings.pxpipeSectionDesc": "Route Claude through a local proxy (pxpipe) that renders bulky context as images to cut input tokens. Off by default.",

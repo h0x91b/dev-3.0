@@ -797,6 +797,12 @@ export interface GlobalSettings {
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>; // requirementId â custom binary path
 	agentBinaryPaths?: Record<string, string>; // agentId â resolved binary path
+	/**
+	 * Beta: reorder right-to-left text (Hebrew, Arabic) for display in terminal
+	 * panes. Display-only — copied text keeps its logical order, while mouse
+	 * selection and link hover on those lines stay logical too. Default off.
+	 */
+	experimentalTerminalBidi?: boolean;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;

@@ -398,6 +398,16 @@ const settings = {
 	"project.selectTaskForTerminal": "Выберите задачу, чтобы увидеть её терминал",
 	"project.backToKanban": "Назад к канбану",
 
+	// Advanced Experience — beta behaviour, every entry ships off
+	"settings.categoryAdvancedExperience": "Продвинутые возможности",
+	"settings.categoryAdvancedExperienceDesc":
+		"Бета-поведение: полезное, но ещё не стабильное. Всё здесь по умолчанию выключено.",
+	"settings.terminalBidi": "Текст справа налево в терминале (BiDi)",
+	"settings.terminalBidiDesc":
+		"Переставляет вывод на иврите, арабском и персидском так, чтобы он читался правильно, а не зеркально. Применяется к открытым панелям сразу.",
+	"settings.terminalBidiCaveat":
+		"Только отображение: скопированный текст сохраняет исходный порядок — так и правильно. Выделение мышью и наведение на ссылки на таких строках тоже идут в исходном порядке, поэтому подсветка может выглядеть неверно. Арабские буквы не соединяются в связное письмо.",
+
 	// Token-saving proxy (pxpipe) — experimental, opt-in
 	"settings.pxpipeSection": "Прокси для экономии токенов (эксперимент)",
 	"settings.pxpipeSectionDesc": "Направляет Claude через локальный прокси (pxpipe), который рендерит громоздкий контекст в изображения, чтобы снизить число входных токенов. По умолчанию выключено.",

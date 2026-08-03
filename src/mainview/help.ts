@@ -105,6 +105,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 	{ id: "settings.devtools", titleKey: "help.settings.devtools.title", bodyKey: "help.settings.devtools.body" },
 	{ id: "settings.rate-limits", titleKey: "help.settings.rateLimits.title", bodyKey: "help.settings.rateLimits.body" },
 	{ id: "settings.pxpipe", titleKey: "help.settings.pxpipe.title", bodyKey: "help.settings.pxpipe.body" },
+	{ id: "settings.advancedExperience", titleKey: "help.settings.advancedExperience.title", bodyKey: "help.settings.advancedExperience.body" },
 
 	// ── Project settings (tabs) ──
 	{ id: "project-settings.board", titleKey: "help.projectSettings.board.title", bodyKey: "help.projectSettings.board.body" },

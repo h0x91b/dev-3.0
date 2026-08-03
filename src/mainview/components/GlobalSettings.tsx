@@ -29,6 +29,7 @@ import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { setShortcutOverrides } from "../keymap-store";
 import { trackEvent } from "../analytics";
+import AdvancedExperienceSection from "./global-settings/AdvancedExperienceSection";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
 import AgentRateLimitSettingsSection from "./global-settings/AgentRateLimitSettingsSection";
 import AgentSettingsSection from "./global-settings/AgentSettingsSection";
@@ -397,6 +398,21 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
+	const handleTerminalBidiToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ experimentalTerminalBidi: enabled ? true : undefined },
+				{
+					tracking: {
+						setting: "experimental_terminal_bidi",
+						value: String(enabled),
+					},
+				},
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handlePxpipeProxyToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
@@ -653,6 +669,11 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 							t={t}
 							globalSettings={globalSettings}
 							onToggle={handlePxpipeProxyToggle}
+						/>
+						<AdvancedExperienceSection
+							t={t}
+							globalSettings={globalSettings}
+							onTerminalBidiToggle={handleTerminalBidiToggle}
 						/>
 						<DeveloperToolsSection
 							t={t}
