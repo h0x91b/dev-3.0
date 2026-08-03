@@ -7,12 +7,11 @@
  * this logger. But prod/staging/canary run at a minimum of `info`, so a `debug` line is
  * dropped before it is ever appended and the marker would be silently non-durable.
  *
- * Two halves, because either one alone is insufficient: the level policy the markers
- * rely on, and the call sites actually asking for a level that survives it.
+ * This half pins the level policy. The other half — that TerminalView actually asks for
+ * a level which survives it — is asserted behaviourally in TerminalView.test.tsx.
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { readFileSync } from "node:fs";
 import { createLogger, getMinLevel, resolveLogLevel, setMinLevel } from "../logger";
 
 const original = getMinLevel();
@@ -66,17 +65,5 @@ describe("terminal-dispose marker durability", () => {
 		expect(out).not.toContain("cleanup started");
 	});
 
-	it("TerminalView asks for a level that survives, for both markers", () => {
-		// A source check on purpose: the durability of these two lines is a property of
-		// the level the call site passes, and nothing else in the test suite would
-		// notice it silently going back to debug.
-		const source = readFileSync(
-			new URL("../../mainview/TerminalView.tsx", import.meta.url),
-			"utf8",
-		);
-		expect(source).toContain('logDiagnostic("terminal-dispose", "info", "cleanup started")');
-		expect(source).toContain('logDiagnostic("terminal-dispose", "info", "cleanup finished"');
-		expect(source).toContain('logDiagnostic("terminal-dispose", "warn", "cleanup exceeded its budget"');
-		expect(source).not.toContain('logDiagnostic("terminal-dispose", "debug"');
-	});
+
 });

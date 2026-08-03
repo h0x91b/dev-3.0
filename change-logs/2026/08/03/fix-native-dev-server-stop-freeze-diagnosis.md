@@ -1,3 +1,0 @@
-Short: Diagnose native dev-server stop freeze
-
-The UI freeze after Stop Dev Server on a native task remains unconfirmed, and nothing here changes how the dev server behaves. Closing the focused dev-server pane no longer leaves the task with no pane focused and the viewer bar bound to a pane that is gone — focus moves to a surviving pane. Diagnostics now leave more evidence wherever either the durable log or the renderer console survives — correlation ids on Dev Server actions, a report when a request never settles, pane ids on native viewer sockets, start and finish markers around terminal teardown, and a line when the desktop bridge watchdog revives the socket — though a recurrence that kills the bridge itself can still take the renderer's own traces down with it.

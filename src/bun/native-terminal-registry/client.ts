@@ -124,6 +124,13 @@ export class NativeSessionClient {
 	private writerAttachedKnown: boolean | null = null;
 	private exitObserved = false;
 	private exitCode: number | null = null;
+	/**
+	 * Sticky: once the socket has closed it stays closed for this generation. Without
+	 * it, a subscriber that arrives after the close event never learns anything, since
+	 * the callback list has already been drained (seq 1407).
+	 */
+	private disconnected = false;
+	private disconnectedResolvers: Array<() => void> = [];
 
 	/**
 	 * Drop ONLY the frames the host marked as journal replay, keeping every live byte that
@@ -169,7 +176,18 @@ export class NativeSessionClient {
 	}
 
 	onDisconnect(cb: () => void): void {
+		// An already-closed socket reports immediately, so subscribing late is safe.
+		if (this.disconnected) {
+			cb();
+			return;
+		}
 		this.disconnectCbs.push(cb);
+	}
+
+	/** Resolves when the socket has closed — immediately if it already has. */
+	whenDisconnected(): Promise<void> {
+		if (this.disconnected) return Promise.resolve();
+		return new Promise((resolve) => this.disconnectedResolvers.push(resolve));
 	}
 
 	/** The host changed our role without being asked — usually a promotion. */
@@ -230,6 +248,8 @@ export class NativeSessionClient {
 		this.replayBoundarySeen = false;
 		this.bufferedOutput.length = 0;
 		this.bufferedOutputBytes = 0;
+		// A reconnect starts a fresh generation, so the sticky flag resets with it.
+		this.disconnected = false;
 		ws.addEventListener("message", (ev) => this.onMessage(generation, ws, ev));
 		ws.addEventListener("close", () => this.onClose(generation, ws));
 		const timeoutMs = opts.timeoutMs ?? 5000;
@@ -313,6 +333,11 @@ export class NativeSessionClient {
 			this.pending.delete(id);
 		}
 		for (const r of this.stopResolvers.splice(0)) r();
+		// Sticky, and set BEFORE the fan-out, so a callback that subscribes another
+		// listener sees the closed state instead of queueing behind a socket that is
+		// already gone (seq 1407).
+		this.disconnected = true;
+		for (const resolve of this.disconnectedResolvers.splice(0)) resolve();
 		this.fanOut(this.disconnectCbs.splice(0), undefined as void);
 		for (const pending of this.exitPending) {
 			clearTimeout(pending.timer);

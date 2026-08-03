@@ -76,6 +76,25 @@ async function waitUntil(predicate: () => boolean, budgetMs: number): Promise<bo
 }
 
 /**
+ * Race a promise against its OWN deadline. Every awaited teardown step gets one: a
+ * step that never resolves must not be able to hang the harness and skip the
+ * fallbacks behind it.
+ */
+async function withDeadline<T>(promise: Promise<T>, budgetMs: number, onTimeout: T): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			promise,
+			new Promise<T>((resolve) => {
+				timer = setTimeout(() => resolve(onTimeout), budgetMs);
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
+/**
  * A viewer connection plus the only trustworthy evidence that it went away.
  *
  * `role()` is NOT evidence: `NativeSessionClient.close()` sets `currentRole = null`
@@ -94,27 +113,15 @@ interface TrackedConnection {
 }
 
 function track(sessionId: string, connection: PaneConnection): TrackedConnection {
-	let released = false;
-	let resolveReleased: (() => void) | null = null;
-	const releasedSignal = new Promise<void>((resolve) => {
-		resolveReleased = resolve;
-	});
-	connection.onDisconnect(() => {
-		released = true;
-		resolveReleased?.();
-	});
+	// The connection owns the evidence: whenDisconnected() is sticky, so it is correct
+	// whether the socket closed before or after this call.
+	const released = connection.whenDisconnected().then(() => true);
 	return {
 		sessionId,
 		connection,
 		async closeAndAwaitRelease() {
 			connection.close();
-			if (!released) {
-				await Promise.race([
-					releasedSignal,
-					new Promise((resolve) => setTimeout(resolve, DISCONNECT_BUDGET_MS)),
-				]);
-			}
-			return released;
+			return withDeadline(released, DISCONNECT_BUDGET_MS, false);
 		},
 	};
 }
@@ -188,11 +195,15 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 	const ledger: Ledger = { opened: new Map(), closed: new Map() };
 	const stats: CycleStats[] = [];
 
+	// Every pid this run is responsible for, recorded as it is observed rather than
+	// re-derived at the end: an inspection that fails must not be able to shrink it.
+	const ownedPids = new Set<number>();
 	const coordinator = await NativeMultipaneCoordinator.create(coordinatorId, shellSpec(root, "pane-1"));
 	try {
 		const agentPaneId = coordinator.paneIds()[0]!;
 		const agentSession = paneSessionId(coordinatorId, agentPaneId);
 		const agentSnapshot = (await coordinator.listPanes()).find((p) => p.paneId === agentPaneId)!;
+		ownedPids.add(agentSnapshot.hostPid).add(agentSnapshot.shellPid);
 		const agentConn = track(agentSession, await coordinator.connect(agentPaneId));
 		bump(ledger.opened, agentSession);
 		const agentSink = sinkOf(agentConn.connection);
@@ -202,6 +213,7 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 			const auxPaneId = await coordinator.split(agentPaneId, "vertical", shellSpec(root, `aux-${cycle}`));
 			const auxSession = paneSessionId(coordinatorId, auxPaneId);
 			const auxSnapshot = (await coordinator.listPanes()).find((p) => p.paneId === auxPaneId)!;
+			ownedPids.add(auxSnapshot.hostPid).add(auxSnapshot.shellPid);
 			const auxConn = track(auxSession, await coordinator.connect(auxPaneId));
 			bump(ledger.opened, auxSession);
 			// A dev server is a process that does not exit on its own.
@@ -293,33 +305,43 @@ async function runMatrix(label: string, extraViewers: number, root: string): Pro
 		);
 		return stats;
 	} finally {
-		// Swallowing this used to hide a leaked host and then delete the records the
-		// teardown needed. Retain the pane pids first, fail loudly, and prove the trees
-		// are gone under a deadline before anything is removed.
-		const owned = await coordinator.listPanes().catch(() => []);
-		try {
-			await coordinator.cleanup();
-		} catch (err) {
-			check(false, `${label}: coordinator.cleanup() threw — ${String(err)}`);
-		}
-		const gone = await waitUntil(
-			() => owned.every((pane) => !isProcessAlive(pane.shellPid) && !isProcessAlive(pane.hostPid)),
-			CLEANUP_BUDGET_MS,
+		// A last inspection is a bonus, never the source of truth: turning its failure
+		// into [] would make the every() below vacuously true. `ownedPids` was filled as
+		// each pane was observed, so it stands on its own.
+		const inspected = await withDeadline(coordinator.listPanes(), CLEANUP_BUDGET_MS, null).catch(
+			(err) => {
+				check(false, `${label}: final listPanes() failed — ${String(err)}`);
+				return null;
+			},
 		);
-		if (!gone) {
-			for (const pane of owned) {
-				for (const pid of [pane.shellPid, pane.hostPid]) {
-					if (isProcessAlive(pid)) {
-						try {
-							process.kill(pid, "SIGKILL");
-						} catch {
-							/* already gone */
-						}
-					}
-				}
+		if (inspected === null) check(false, `${label}: could not inspect the pane set before cleanup`);
+		else for (const pane of inspected) ownedPids.add(pane.shellPid).add(pane.hostPid);
+
+		// Its own deadline: a cleanup that never resolves must not skip the reap below.
+		const cleaned = await withDeadline(
+			coordinator.cleanup().then(() => true),
+			CLEANUP_BUDGET_MS,
+			false,
+		).catch((err) => {
+			check(false, `${label}: coordinator.cleanup() threw — ${String(err)}`);
+			return false;
+		});
+		if (!cleaned) check(false, `${label}: coordinator.cleanup() did not finish within its deadline`);
+
+		const survivors = () => [...ownedPids].filter((pid) => isProcessAlive(pid));
+		const goneOnItsOwn = await waitUntil(() => survivors().length === 0, CLEANUP_BUDGET_MS);
+		for (const pid of survivors()) {
+			try {
+				process.kill(pid, "SIGKILL");
+			} catch {
+				/* already gone */
 			}
 		}
-		check(gone, `${label}: every owned pane process tree is gone after cleanup`);
+		// Re-probe AFTER the force-kill and before any record is deleted: SIGKILL is not
+		// instantaneous, and "we sent a signal" is not evidence.
+		const goneAfterKill = await waitUntil(() => survivors().length === 0, CLEANUP_BUDGET_MS);
+		check(goneOnItsOwn, `${label}: cleanup reaped every owned pane tree without a force-kill`);
+		check(goneAfterKill, `${label}: no owned pid survives even the force-kill — alive: ${survivors()}`);
 	}
 }
 

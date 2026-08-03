@@ -227,11 +227,20 @@ export function createFakeRegistry(): FakeRegistry {
 			pane.writerTaken = true;
 			let closed = false;
 			const disconnectCbs: Array<() => void> = [];
+			const disconnectResolvers: Array<() => void> = [];
 			return {
 				role: () => role,
 				onOutput: () => () => undefined,
 				onDisconnect(cb) {
+					if (closed) {
+						cb();
+						return;
+					}
 					disconnectCbs.push(cb);
+				},
+				whenDisconnected() {
+					if (closed) return Promise.resolve();
+					return new Promise<void>((resolve) => disconnectResolvers.push(resolve));
 				},
 				input(data) {
 					pane.inputs.push(typeof data === "string" ? data : new TextDecoder().decode(data));
@@ -247,7 +256,14 @@ export function createFakeRegistry(): FakeRegistry {
 					if (role === "writer") pane.writerTaken = false;
 					// The real client fires this from the socket's own close event, so the
 					// fake has to fire it too or a caller awaiting a real disconnect hangs.
-					for (const cb of disconnectCbs.splice(0)) cb();
+					for (const resolve of disconnectResolvers.splice(0)) resolve();
+					for (const cb of disconnectCbs.splice(0)) {
+						try {
+							cb();
+						} catch {
+							/* isolated, like the real client */
+						}
+					}
 				},
 			};
 		},

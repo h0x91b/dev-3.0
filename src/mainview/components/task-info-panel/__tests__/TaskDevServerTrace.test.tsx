@@ -1,15 +1,8 @@
 /**
- * The Dev Server buttons must correlate with their handlers (seq 1407).
+ * Dev Server actions must correlate with their handlers, and report only real paints.
  *
- * A Stop Dev Server click froze the whole UI while the backend finished cleanly, and
- * a later reproduction produced a "starting…" button with no handler run at all. The
- * only way to tell those two apart in a log is a correlation id the renderer mints
- * and the handler echoes — so the wiring that puts `opId` into the request params is
- * a real contract, not decoration.
- *
- * Scope: the RPC layer and the sink are both mocked here, so these tests prove what
- * the component SENDS. They prove nothing about delivery, about the backend, or about
- * a bridge that has stopped carrying traffic.
+ * The RPC layer and the sink are both mocked, so these prove what the component SENDS —
+ * not delivery, not the backend, and not a bridge that stopped carrying traffic.
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -18,7 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Task, Project } from "../../../../shared/types";
 import { I18nProvider } from "../../../i18n";
 import { api } from "../../../rpc";
-import TaskDevServer from "../TaskDevServer";
+import TaskDevServer, { _resetDevServerPollRegistry } from "../TaskDevServer";
 
 vi.mock("../../../rpc", () => ({
 	api: {
@@ -43,6 +36,7 @@ function opIdsFor(method: "checkDevServer" | "runDevServer" | "stopDevServer"): 
 }
 
 beforeEach(() => {
+	_resetDevServerPollRegistry();
 	vi.mocked(api.request.checkDevServer).mockReset().mockResolvedValue({ running: false });
 	vi.mocked(api.request.runDevServer).mockReset().mockResolvedValue({ running: true } as never);
 	vi.mocked(api.request.stopDevServer).mockReset().mockResolvedValue({ running: false } as never);
@@ -224,19 +218,93 @@ describe("Dev Server action correlation", () => {
 		expect(settled.extra).not.toHaveProperty("gestureToRenderMs");
 	});
 
-	it("keeps one poll in flight and stops emitting once unmounted", async () => {
+	it("reports each render boundary at most once, against a state really committed", async () => {
+		// An already-resolved runDevServer still yields at the await, so React commits
+		// "starting" on its own and BOTH paints genuinely happen. The guarantee is not
+		// "one boundary" — it is that a boundary is only reported for a state the commit
+		// actually showed, and never twice.
+		vi.mocked(api.request.runDevServer).mockResolvedValue({ running: true } as never);
+		renderDevServer();
+		await userEvent.click(await waitFor(() => screen.getByLabelText(/Dev server stopped/i)));
+		await waitFor(() => expect(api.request.runDevServer).toHaveBeenCalledTimes(1));
+		const opId = vi.mocked(api.request.runDevServer).mock.calls[0]![0].opId;
+
+		await waitFor(() => {
+			const lines = vi
+				.mocked(api.request.logRendererDiagnostic)
+				.mock.calls.map(([p]) => p)
+				.filter((p) => p.extra?.opId === opId)
+				.map((p) => String(p.message));
+			expect(lines).toContain("runDevServer rendered");
+		});
+		const rendered = vi
+			.mocked(api.request.logRendererDiagnostic)
+			.mock.calls.map(([p]) => p)
+			.filter((p) => p.extra?.opId === opId && String(p.message).includes("rendered"));
+		const byBoundary = rendered.map((p) => String(p.message));
+		expect(new Set(byBoundary).size).toBe(byBoundary.length);
+		const optimistic = rendered.find((p) => p.message === "runDevServer optimistic-rendered");
+		const settled = rendered.find((p) => p.message === "runDevServer rendered");
+		// Each reports the state it was armed for, so neither describes a paint of the
+		// other's state.
+		if (optimistic) expect(optimistic.extra?.state).toBe("starting");
+		expect(settled?.extra?.state).toBe("running");
+	});
+
+	it("does not flush a pending render intent against a different task", async () => {
+		let resolveStart: ((v: unknown) => void) | null = null;
+		vi.mocked(api.request.runDevServer).mockReturnValue(
+			new Promise((resolve) => {
+				resolveStart = resolve;
+			}) as never,
+		);
+		const view = renderDevServer();
+		await userEvent.click(await waitFor(() => screen.getByLabelText(/Dev server stopped/i)));
+		const opId = vi.mocked(api.request.runDevServer).mock.calls[0]![0].opId;
+
+		// Swap the task prop while the request is still outstanding.
+		const OTHER = { ...TASK, id: "bbbbbbbb-cccc-dddd-eeee-ffffffffffff" } as unknown as Task;
+		view.rerender(
+			<I18nProvider>
+				<TaskDevServer task={OTHER} project={PROJECT} isTaskActive />
+			</I18nProvider>,
+		);
+		resolveStart!({ running: true });
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		const forOldTask = vi
+			.mocked(api.request.logRendererDiagnostic)
+			.mock.calls.map(([p]) => p)
+			.filter((p) => p.extra?.opId === opId && String(p.message).includes("rendered"));
+		// The old task's intent must not be reported against the new task's state.
+		expect(forOldTask.map((p) => p.extra?.taskId)).not.toContain(OTHER.id.slice(0, 8));
+	});
+
+	it("keeps one poll in flight per task across remounts, and goes quiet after unmount", async () => {
 		vi.useFakeTimers();
 		try {
-			vi.mocked(api.request.checkDevServer).mockReturnValue(new Promise(() => {}) as never);
-			const view = renderDevServer();
+			let rejectPoll: ((e: unknown) => void) | null = null;
+			vi.mocked(api.request.checkDevServer).mockReturnValue(
+				new Promise((_resolve, reject) => {
+					rejectPoll = reject;
+				}) as never,
+			);
+			const first = renderDevServer();
 			await vi.advanceTimersByTimeAsync(30_000);
-			// The interval keeps firing, but a hung request must not stack more.
 			expect(vi.mocked(api.request.checkDevServer).mock.calls).toHaveLength(1);
 
-			view.unmount();
+			// A remount (StrictMode does this too) must JOIN the outstanding request,
+			// not start a second one against a bridge that has stopped answering.
+			first.unmount();
+			const second = renderDevServer();
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(vi.mocked(api.request.checkDevServer).mock.calls).toHaveLength(1);
+
+			second.unmount();
 			const before = vi.mocked(api.request.logRendererDiagnostic).mock.calls.length;
+			// A LATE rejection for an unmounted view must emit nothing at all.
+			rejectPoll!(new Error("bridge gone, long after unmount"));
 			await vi.advanceTimersByTimeAsync(60_000);
-			// The armed stall timer belongs to a component that is gone.
 			expect(vi.mocked(api.request.logRendererDiagnostic).mock.calls.length).toBe(before);
 		} finally {
 			vi.useRealTimers();

@@ -1,13 +1,8 @@
 /**
- * Client-local native pane focus must not survive the pane it points at (seq 1407).
+ * Client-local native pane focus must not outlive the pane it points at.
  *
- * Focus is client-local by design (decision 179), so the server never corrects it.
- * That makes pruning this viewer's job: when the focused pane leaves the pane set —
- * a dev-server pane closing is the common way — focus has to move to a pane that is
- * still there. A stale focus id silently breaks three things at once: no pane draws
- * the focus ring, `NativeViewerBar` keeps offering "take control" of a dead pane, and
- * the inspector toolbar (which reads the published focus) aims split/zoom/close at a
- * pane id the coordinator no longer knows.
+ * Focus is client-local by design (decision 179), so the server never corrects it: when
+ * the focused pane leaves the set, pruning is this viewer's job.
  */
 
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";

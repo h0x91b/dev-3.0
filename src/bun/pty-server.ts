@@ -369,6 +369,15 @@ export async function createNativeTaskSession(
 		if (!session.native) throw new Error(`pane ${firstPane.paneId} vanished right after creation`);
 	} catch (err) {
 		sessions.delete(taskId);
+		// Anything that failed AFTER the coordinator spawned panes would otherwise leak
+		// a detached host and shell that no caller has a handle to: this function either
+		// returns a bound session or leaves nothing running (seq 1407).
+		await stopNativeTaskPanes(taskId).catch((cleanupErr) =>
+			log.error("Native session rollback failed — a host may have leaked", {
+				taskId: taskId.slice(0, 8),
+				error: String(cleanupErr),
+			}),
+		);
 		throw err;
 	} finally {
 		session.nativeAttaching = false;

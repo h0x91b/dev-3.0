@@ -82,6 +82,26 @@ async function portHolders(port: number): Promise<string[]> {
 	return out.trim().split("\n").filter(Boolean);
 }
 
+/** Each teardown step gets its own deadline; a hang is a reported failure, not a stall. */
+const TEARDOWN_BUDGET_MS = 15_000;
+
+async function settleStep(label: string, work: Promise<unknown>): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timedOut = Symbol("timeout");
+	try {
+		const outcome = await Promise.race([
+			work.then(() => null).catch((err) => err ?? new Error("unknown failure")),
+			new Promise<typeof timedOut>((resolve) => {
+				timer = setTimeout(() => resolve(timedOut), TEARDOWN_BUDGET_MS);
+			}),
+		]);
+		if (outcome === timedOut) check(false, `${label} did not settle within ${TEARDOWN_BUDGET_MS} ms`);
+		else if (outcome !== null) check(false, `${label} failed — ${String(outcome)}`);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
 async function waitUntil(predicate: () => boolean | Promise<boolean>, budgetMs: number): Promise<boolean> {
 	const deadline = Date.now() + budgetMs;
 	for (;;) {
@@ -175,19 +195,19 @@ async function run(): Promise<void> {
 	// has to exist first — exactly the precondition production has when the button is
 	// clickable at all. Without it openAuxPane correctly refuses with
 	// AuxPaneUnavailableError("terminal-not-running").
-	await pty.createNativeTaskSession(TASK_ID, PROJECT_ID, worktree, {
-		executable: "/bin/bash",
-		argv: ["--norc", "--noprofile"],
-	});
-
-	// Ownership starts HERE, not after the reads below: the task's native host is
-	// detached by design, so anything that throws between creation and the finally
-	// would orphan a host and a shell. Every pid we learn about goes into `ownedPids`
-	// as soon as it is known, and the finally reaps whatever is in there.
+	// Ownership opens BEFORE anything that can spawn: the task's native host is
+	// detached by design, so a factory that spawns and then throws would orphan a host
+	// and a shell with no handle to reach them. Every pid we learn about goes into
+	// `ownedPids` as soon as it is known, and the finally reaps whatever is in there —
+	// plus an unconditional teardown addressed by task id, which needs no handle at all.
 	const ownedPids = new Set<number>();
 	const ownedPorts = new Set<number>();
 	const stopDurations: number[] = [];
 	try {
+		await pty.createNativeTaskSession(TASK_ID, PROJECT_ID, worktree, {
+			executable: "/bin/bash",
+			argv: ["--norc", "--noprofile"],
+		});
 		const nativePanes = await import("../../native-task-panes");
 		const agentPane = (await nativePanes.nativeTaskPanesState(TASK_ID))?.panes[0];
 		if (!agentPane) throw new Error("the task's own native pane never came up");
@@ -246,25 +266,17 @@ async function run(): Promise<void> {
 		check(again.running === false, "stopping an already-stopped dev server is idempotent");
 		check(!existsSync(sentinel), "the whole native start/stop path NEVER invokes tmux");
 	} finally {
-		// Everything below runs on EVERY path, including an injected failure, and a
-		// cleanup step that fails is reported rather than swallowed.
-		try {
-			await stopDevServer({ taskId: TASK_ID, projectId: PROJECT_ID });
-		} catch (err) {
-			check(false, `final stopDevServer threw — ${String(err)}`);
-		}
-		// Destroy the task's own session BEFORE the temp state disappears: afterwards
-		// the records the teardown needs are gone and the host would be orphaned.
-		try {
-			await pty.destroyNativeTaskSession(TASK_ID);
-		} catch (err) {
-			check(false, `destroyNativeTaskSession threw — ${String(err)}`);
-		}
+		// Every step below runs on EVERY path and has its OWN deadline: a teardown that
+		// never resolves must not be able to hang the harness and skip the fallbacks
+		// behind it. A step that fails or times out is reported, never swallowed.
+		await settleStep("final stopDevServer", stopDevServer({ taskId: TASK_ID, projectId: PROJECT_ID }));
+		// Addressed by task id, so it needs no handle — this is what covers a factory
+		// that spawned and then threw before returning one.
+		await settleStep("destroyNativeTaskSession", pty.destroyNativeTaskSession(TASK_ID));
+		await settleStep("stopNativeTaskPanes", (await import("../../native-task-panes")).stopNativeTaskPanes(TASK_ID));
+
 		const survivors = () => [...ownedPids].filter((pid) => alive(pid));
-		const reaped = await waitUntil(() => survivors().length === 0, 10_000);
-		check(reaped, `every owned pid is gone after teardown${reaped ? "" : ` — alive: ${survivors()}`}`);
-		// Force-terminate before deleting state, so a bug here cannot leak a detached
-		// host into the developer's machine on top of failing the check above.
+		const reapedOnItsOwn = await waitUntil(() => survivors().length === 0, TEARDOWN_BUDGET_MS);
 		for (const pid of survivors()) {
 			try {
 				process.kill(pid, "SIGKILL");
@@ -272,9 +284,14 @@ async function run(): Promise<void> {
 				/* already gone */
 			}
 		}
+		// Re-probe AFTER the force-kill and BEFORE deleting records: SIGKILL is not
+		// instantaneous, and "a signal was sent" is not evidence.
+		const goneAfterKill = await waitUntil(() => survivors().length === 0, TEARDOWN_BUDGET_MS);
+		check(reapedOnItsOwn, "teardown reaped every owned pid without a force-kill");
+		check(goneAfterKill, `no owned pid survives even the force-kill — alive: ${survivors()}`);
 		for (const port of ownedPorts) {
-			const held = await portHolders(port);
-			check(held.length === 0, `no process still holds pool port ${port} after teardown`);
+			const freed = await waitUntil(async () => (await portHolders(port)).length === 0, TEARDOWN_BUDGET_MS);
+			check(freed, `pool port ${port} is free after teardown`);
 		}
 		try {
 			rmSync(root, { recursive: true, force: true });

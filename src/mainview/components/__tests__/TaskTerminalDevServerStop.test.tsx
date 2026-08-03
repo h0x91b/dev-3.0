@@ -1,14 +1,9 @@
 /**
- * Native dev-server start -> stop responsiveness probe (seq 1407).
+ * Native dev-server stop: the renderer half of the pane-set shrink.
  *
- * The incident: on a native task, clicking "Stop Dev Server" froze the whole UI
- * while the backend finished the stop in 539 ms and kept running for another 49 s.
- * So the freeze is renderer-side, in whatever the shrinking pane set triggers.
- *
- * This probe drives the real sequence the app produces — dev-server pane appears,
- * `stopDevServer` resolves, the pane set shrinks — and asserts the renderer is
- * still alive afterwards: bounded work, no RPC storm, surviving pane not remounted,
- * and the cycle repeatable without accumulating per-pane state.
+ * Drives the dev-server pane appearing, `stopDevServer` resolving and the pane set
+ * shrinking, then asserts the surviving pane is not remounted and its URL is not
+ * re-fetched. A non-regression guard, not a reproduction of the UI freeze.
  */
 
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -160,11 +155,7 @@ async function stopDevServerPane() {
 	});
 }
 
-/**
- * Renderer liveness proxy: the component tree must still service scheduled work
- * after the pane closes. A blocked/looping renderer either never settles or
- * blows React's update-depth guard (which surfaces as a thrown render error).
- */
+/** Liveness proxy: the tree must still service scheduled work after the pane closes. */
 async function assertRendererResponsive(budgetMs = 500) {
 	const before = renderCount;
 	const start = performance.now();

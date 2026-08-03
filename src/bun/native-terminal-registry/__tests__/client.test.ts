@@ -425,3 +425,74 @@ describe("NativeSessionClient socket ownership", () => {
 		expect(() => client.input("still-connected")).not.toThrow();
 	});
 });
+
+describe("NativeSessionClient disconnect evidence", () => {
+	const originalWebSocket = globalThis.WebSocket;
+
+	beforeEach(() => {
+		FakeWebSocket.instances = [];
+		globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+	});
+
+	afterEach(() => {
+		globalThis.WebSocket = originalWebSocket;
+	});
+
+	it("reports a socket that closed between connect returning and the subscription", async () => {
+		const client = new NativeSessionClient();
+		const socket = await connect(client, "late-subscribe");
+		socket.emit("close", new Event("close"));
+
+		// Subscribing after the fact must still learn: the evidence is sticky, not a
+		// one-shot callback list that has already been drained.
+		let sawCallback = false;
+		client.onDisconnect(() => {
+			sawCallback = true;
+		});
+		expect(sawCallback).toBe(true);
+		await expect(client.whenDisconnected()).resolves.toBeUndefined();
+	});
+
+	it("resolves whenDisconnected immediately for an already-closed connection", async () => {
+		const client = new NativeSessionClient();
+		const socket = await connect(client, "already-closed");
+		socket.emit("close", new Event("close"));
+
+		let resolved = false;
+		void client.whenDisconnected().then(() => {
+			resolved = true;
+		});
+		await Promise.resolve();
+		expect(resolved).toBe(true);
+	});
+
+	it("runs every disconnect callback even when one throws", async () => {
+		const client = new NativeSessionClient();
+		const socket = await connect(client, "throwing-callback");
+		const ran: string[] = [];
+		client.onDisconnect(() => {
+			ran.push("first");
+			throw new Error("subscriber exploded");
+		});
+		client.onDisconnect(() => ran.push("second"));
+		client.onDisconnect(() => ran.push("third"));
+
+		expect(() => socket.emit("close", new Event("close"))).not.toThrow();
+		expect(ran).toEqual(["first", "second", "third"]);
+	});
+
+	it("clears the sticky flag on a reconnect", async () => {
+		const client = new NativeSessionClient();
+		const first = await connect(client, "reconnects");
+		first.emit("close", new Event("close"));
+		await expect(client.whenDisconnected()).resolves.toBeUndefined();
+
+		await connect(client, "reconnects");
+		let resolved = false;
+		void client.whenDisconnected().then(() => {
+			resolved = true;
+		});
+		await Promise.resolve();
+		expect(resolved).toBe(false);
+	});
+});

@@ -124,6 +124,8 @@ export function traceDevServerOp(op: DevServerOp, taskId: string): DevServerTrac
 
 	if (GESTURE_OPS.has(op)) emit("debug", op, "gesture", base);
 
+	let cancelled = false;
+
 	function clearStallTimer(): void {
 		if (stallTimer === null) return;
 		clearTimeout(stallTimer);
@@ -133,16 +135,21 @@ export function traceDevServerOp(op: DevServerOp, taskId: string): DevServerTrac
 	return {
 		opId,
 		cancel() {
+			// Silences the whole trace, not just the timer: a request whose caller is
+			// gone can still settle or reject minutes later, and a line about a task
+			// nobody is viewing is noise at best and misleading at worst.
+			cancelled = true;
 			clearStallTimer();
 		},
 		sent() {
+			if (cancelled) return;
 			sentAt = performance.now();
 			emit("info", op, "sent", { ...base, clickToSendMs: Math.round(sentAt - gestureAt) });
 			clearStallTimer();
 			const armedAt = sentAt;
 			stallTimer = setTimeout(() => {
 				stallTimer = null;
-				if (settledAt !== null) return;
+				if (settledAt !== null || cancelled) return;
 				// Actual elapsed, not the threshold: a blocked event loop can fire this
 				// timer tens of seconds late, and that lateness is the finding.
 				emit("warn", op, "stalled", {
@@ -155,6 +162,7 @@ export function traceDevServerOp(op: DevServerOp, taskId: string): DevServerTrac
 		settled() {
 			settledAt = performance.now();
 			clearStallTimer();
+			if (cancelled) return;
 			emit("info", op, "settled", {
 				...base,
 				sendToSettleMs: Math.round(settledAt - (sentAt ?? gestureAt)),
@@ -163,6 +171,7 @@ export function traceDevServerOp(op: DevServerOp, taskId: string): DevServerTrac
 		rejected(error: unknown) {
 			settledAt = performance.now();
 			clearStallTimer();
+			if (cancelled) return;
 			emit("warn", op, "rejected", {
 				...base,
 				sendToSettleMs: Math.round(settledAt - (sentAt ?? gestureAt)),
@@ -170,6 +179,7 @@ export function traceDevServerOp(op: DevServerOp, taskId: string): DevServerTrac
 			});
 		},
 		optimisticRendered(state: string) {
+			if (cancelled) return;
 			emit("debug", op, "optimistic-rendered", {
 				...base,
 				state,
@@ -177,6 +187,7 @@ export function traceDevServerOp(op: DevServerOp, taskId: string): DevServerTrac
 			});
 		},
 		rendered(state: string) {
+			if (cancelled) return;
 			if (settledAt === null) {
 				// Refuse to invent a settle-relative number for a paint that happened
 				// first; the caller wanted optimisticRendered.

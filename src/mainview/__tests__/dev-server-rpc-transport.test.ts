@@ -1,19 +1,9 @@
 /**
- * Dev Server ops over the remote (browser) RPC transport (seq 1407).
+ * Dev Server ops over the remote (browser) RPC transport.
  *
- * Chasing the native Stop Dev Server freeze, a browser reproduction showed the Start
- * button flip to "starting…" while NO handler ran and animation frames stayed
- * perfectly healthy. That is the shape of "alive UI, dead RPC", so the question this
- * file answers is narrow and factual: over the remote transport, does a Dev Server op
- * reach the wire carrying its correlation id, and what happens to one issued while
- * the socket is down?
- *
- * The answer matters for attribution. If a down socket silently DROPS the op, the
- * freeze has a candidate cause that is shared with the desktop path. If it QUEUES and
- * later flushes, the "no handler ran" symptom is remote-transport-specific — the
- * desktop transport cannot queue at all, because Electrobun owns that socket — and
- * the freeze stays unexplained. These tests pin which of the two it is, so a future
- * reader does not have to re-derive it from the transport source.
+ * Pins whether a request issued while the socket is down is DROPPED or QUEUED: it is
+ * queued and flushed on reconnect, which makes "alive UI, no handler ran" a
+ * remote-transport behaviour that the desktop transport cannot produce.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
