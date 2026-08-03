@@ -425,6 +425,33 @@ describe("strict native discovery, through the real coordinator", () => {
 		expect(after.panes.map((pane) => pane.paneId)).toContain(review);
 	});
 
+	// CREATION is the most destructive path: it starts a pane and overwrites the
+	// coordinator file. Reading a misbound record as "nothing exists" there would
+	// leave the foreign live processes orphaned with nothing pointing at them.
+	it("refuses to create a pane set over present-but-misbound state, touching nothing", async () => {
+		writeTwoPaneSet(["/bin/bash", auxPaneMarker(TASK_ID, "columnAgent")]);
+		const foreign = { ...readMultipaneRecord(COORD_ID)!, coordinatorId: "dev3-task-eeeeeeee-0000-0000-0000-000000000009" };
+		const text = `${JSON.stringify(foreign, null, 2)}\n`;
+		writeFileSync(coordinatorRecordFile(COORD_ID), text);
+		// Both panes are alive and owned, which is exactly what makes overwriting fatal.
+		mocks.classifyOwnership.mockResolvedValue("owned");
+
+		await expect(
+			nativePanes.startNativeTaskPanes({
+				taskId: TASK_ID,
+				cwd: "/tmp/wt",
+				env: {},
+				launch: { executable: "/bin/zsh", argv: [] },
+				cols: 80,
+				rows: 24,
+			}),
+		).rejects.toThrow();
+
+		expect(mocks.registryStart).not.toHaveBeenCalled();
+		expect(mocks.registryStop).not.toHaveBeenCalled();
+		expect(readFileSync(coordinatorRecordFile(COORD_ID), "utf8")).toBe(text);
+	});
+
 	it("treats a genuinely absent pane set as owning nothing, not as undecidable", async () => {
 		await expect(findAuxPanes(nativeTask, "columnAgent", SOCKET, { strict: true })).resolves.toEqual([]);
 	});

@@ -17,7 +17,7 @@ A stopped task terminal is never resurrected (that would cut across decision 184
 
 ## Risks
 
-Each new recognised failure costs another reason value plus two keys × three locales — deliberate, because the alternatives are gluing localized fragments or matching on English. The strict read costs an extra ownership sweep on each replacement, and it refuses in cases the tolerant read would have sailed through — that is the point, but it does mean a flaky pane set now blocks AI Review instead of silently double-launching. `auxPaneTitle("columnAgent")` is the generic "Column Agent" in the native pane picker, since the label is derived from the launch command and cannot know which column launched it; the pane's own OSC title is still the real column name.
+Each new recognised failure costs another reason value plus two keys × three locales — deliberate, because the alternatives are gluing localized fragments or matching on English. The strict read costs an extra ownership sweep on each replacement, and it refuses in cases the tolerant read would have sailed through — that is the point, but it does mean a flaky pane set now blocks AI Review instead of silently double-launching. `create` is strict too, so a coordinator record that is present and unbelievable now blocks STARTING a terminal for that task rather than being silently overwritten — the sharpest edge of this change, accepted because overwriting it orphans whatever live processes it described, with nothing left pointing at them. `auxPaneTitle("columnAgent")` is the generic "Column Agent" in the native pane picker, since the label is derived from the launch command and cannot know which column launched it; the pane's own OSC title is still the real column name.
 
 ## Alternatives considered
 

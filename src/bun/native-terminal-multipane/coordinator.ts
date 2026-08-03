@@ -196,7 +196,12 @@ export class NativeMultipaneCoordinator {
 		return withFileLock(
 			coordinatorRecordFile(coordinatorId),
 			async () => {
-				const existing = readMultipaneRecord(coordinatorId);
+				// Strict, because creation is the most destructive path there is: it starts a
+				// pane and overwrites the coordinator file. Only a genuinely ABSENT record
+				// may be created over. State that is present and cannot be believed — corrupt,
+				// or bound to another coordinator — throws here, before any start or write,
+				// instead of being read as "nothing exists" and orphaning live processes.
+				const existing = readMultipaneRecordStrict(coordinatorId);
 				if (existing) {
 					if (await hasLivePane(existing, deps)) throw new CoordinatorExistsError(coordinatorId);
 					await dropPanes(existing.panes, deps);
