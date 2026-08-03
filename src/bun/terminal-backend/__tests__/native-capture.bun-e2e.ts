@@ -198,6 +198,21 @@ async function main(): Promise<void> {
 			"the expensive per-cell snapshot is never written in projection mode",
 		);
 
+		// A viewer attaching and leaving flushes the producer. On a QUIET pane that
+		// forced write must not reset "when the content last changed" to now.
+		const quiet = await compactBackend.captureView(COMPACT_SESSION, view);
+		const quietUpdatedAt = quiet.availability === "captured" ? quiet.sourceUpdatedAt : null;
+		const attachment = await compactBackend.attachView(COMPACT_SESSION, view);
+		await attachment.detach();
+		await new Promise((resolve) => setTimeout(resolve, 1500));
+		const afterDetach = await compactBackend.captureView(COMPACT_SESSION, view);
+		check(
+			afterDetach.availability === "captured" &&
+				quietUpdatedAt !== null &&
+				JSON.stringify(afterDetach.sourceUpdatedAt) === JSON.stringify(quietUpdatedAt),
+			"a viewer disconnecting from a quiet pane leaves the last-change time alone",
+		);
+
 		const capture = await compactBackend.captureView(COMPACT_SESSION, view, { historyLines: 200 });
 		if (!isCapturedPane(capture)) {
 			check(false, `compact capture carried content (got ${describeMiss(capture)})`);

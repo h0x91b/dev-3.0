@@ -34,6 +34,33 @@ const identity = (over: Partial<TerminalPaneCaptureIdentity> = {}): TerminalPane
 });
 
 describe("capture content boundary", () => {
+	it("strips 8-bit C1 sequences whole, payload included", () => {
+		// The naive version stripped the introducer and the terminator as control
+		// bytes and left the BODY visible — which is how an OSC 52 clipboard payload
+		// reaches a caller as plain text.
+		expect(sanitizeCaptureLine("x\u009D52;c;c2VjcmV0LXBheWxvYWQ=\u009Cy")).toBe("xy");
+		expect(sanitizeCaptureLine("x\u009D0;my-private-title\u009Cy")).toBe("xy");
+		expect(sanitizeCaptureLine("x\u009D8;;https://token@host/secret\u009Cy")).toBe("xy");
+		expect(sanitizeCaptureLine("a\u009B31mb")).toBe("ab"); // C1 CSI
+		expect(sanitizeCaptureLine("a\u0090q\u009Cb")).toBe("ab"); // C1 DCS
+		expect(sanitizeCaptureLine("a\u009Fpayload\u009Cb")).toBe("ab"); // C1 APC
+	});
+
+	it("survives a malformed or unterminated sequence without leaking its body", () => {
+		expect(sanitizeCaptureLine("x\u001B]52;c;c2VjcmV0")).toBe("x");
+		expect(sanitizeCaptureLine("x\u009D52;c;c2VjcmV0")).toBe("x");
+		expect(sanitizeCaptureLine("x\u001B]0;title-with-no-terminator")).toBe("x");
+		// A bare introducer with nothing after it is simply gone.
+		expect(sanitizeCaptureLine("x\u009Dy")).toBe("x");
+	});
+
+	it("accepts both BEL and ST as OSC terminators, in either encoding", () => {
+		expect(sanitizeCaptureLine("a\u001B]0;t\u0007b")).toBe("ab");
+		expect(sanitizeCaptureLine("a\u001B]0;t\u001B\\b")).toBe("ab");
+		expect(sanitizeCaptureLine("a\u001B]0;t\u009Cb")).toBe("ab");
+		expect(sanitizeCaptureLine("a\u009D0;t\u0007b")).toBe("ab");
+	});
+
 	it("strips colours, cursor moves, and every OSC payload", () => {
 		expect(sanitizeCaptureLine("\u001B[31mred\u001B[0m")).toBe("red");
 		expect(sanitizeCaptureLine("a\u001B[2Kb")).toBe("ab");
@@ -63,6 +90,31 @@ describe("capture request clamping", () => {
 		expect(clampMaxBytes(10 * TERMINAL_CAPTURE_MAX_BYTES)).toBe(TERMINAL_CAPTURE_MAX_BYTES);
 		// A non-integer is not a budget; fall back to the default rather than NaN.
 		expect(clampMaxBytes(12.5)).toBe(clampMaxBytes(undefined));
+	});
+});
+
+describe("capture bounds — cost", () => {
+	it("bounds a huge screen with a LINEAR number of byte measurements", () => {
+		// The first implementation re-measured the whole list per dropped row, which is
+		// quadratic: 4000 rows meant millions of encodings. Count the WORK rather than
+		// the wall clock, so the guard cannot go flaky on a loaded machine.
+		const rows = Array.from({ length: 4000 }, (_, i) => `${i}-${"x".repeat(200)}`);
+		let encodings = 0;
+		const originalEncode = TextEncoder.prototype.encode;
+		TextEncoder.prototype.encode = function patched(this: TextEncoder, input?: string) {
+			encodings++;
+			return originalEncode.call(this, input as string);
+		} as typeof originalEncode;
+		try {
+			boundCaptureLines(
+				{ viewport: rows.slice(0, 40), history: rows, historyAvailable: 4000 },
+				{ historyLines: 2000, maxBytes: 4096 },
+			);
+		} finally {
+			TextEncoder.prototype.encode = originalEncode;
+		}
+		// One measurement per row considered, never one per row per attempt.
+		expect(encodings).toBeLessThanOrEqual(40 + 2000 + 10);
 	});
 });
 

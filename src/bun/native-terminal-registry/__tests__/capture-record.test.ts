@@ -19,6 +19,7 @@ import {
 	readCaptureRecord,
 	serializeCaptureRecord,
 	StaleProducerError,
+	captureContentIdentity,
 	writeCaptureRecordAtomic,
 	type CaptureRecord,
 } from "../capture-record";
@@ -207,5 +208,85 @@ describe("capture record — on disk", () => {
 		expect(huge.kind).toBe("rejected");
 		if (huge.kind === "rejected") expect(huge.problem).toContain("over the");
 		expect(existsSync(sessionDir("alpha"))).toBe(true);
+	});
+});
+
+describe("capture record — overlapping producers", () => {
+	let root = "";
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-capture-race-"));
+		process.env[NATIVE_SESSIONS_DIR_ENV] = root;
+	});
+
+	afterEach(() => {
+		delete process.env[NATIVE_SESSIONS_DIR_ENV];
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("lets an old producer's DELAYED rename lose to the current one", () => {
+		const old = { hostPid: 1001, hostStartSignature: "h-old", shellPid: 1002, shellStartSignature: "s-old" };
+		const current = { hostPid: 2001, hostStartSignature: "h-new", shellPid: 2002, shellStartSignature: "s-new" };
+		let ownerPid = old.hostPid;
+
+		// The old producer serialises its rows while it still owns the session…
+		const stillOwned = (producerPid: number) => () => ownerPid === producerPid;
+		writeCaptureRecordAtomic(sample({ producer: old, viewport: ["old-rows"] }), stillOwned(old.hostPid));
+		expect(readCaptureRecord("alpha")?.viewport).toEqual(["old-rows"]);
+
+		// …ownership moves, and the successor publishes.
+		ownerPid = current.hostPid;
+		writeCaptureRecordAtomic(sample({ producer: current, viewport: ["new-rows"] }), stillOwned(current.hostPid));
+
+		// …and only NOW does the old producer's delayed write reach its rename.
+		expect(() =>
+			writeCaptureRecordAtomic(sample({ producer: old, viewport: ["stale-rows"] }), stillOwned(old.hostPid)),
+		).toThrow(StaleProducerError);
+		expect(readCaptureRecord("alpha")?.viewport).toEqual(["new-rows"]);
+	});
+
+	it("gives each producer its own temp path, so two of them cannot collide", () => {
+		const first = { hostPid: 1001, hostStartSignature: "h1", shellPid: 1002, shellStartSignature: "s1" };
+		const second = { hostPid: 2001, hostStartSignature: "h2", shellPid: 2002, shellStartSignature: "s2" };
+		// Both fail at the rename, so both temp files are the ones left to inspect.
+		for (const producer of [first, second]) {
+			expect(() => writeCaptureRecordAtomic(sample({ producer }), () => false)).toThrow(StaleProducerError);
+		}
+		// Each cleaned up ITS OWN temp file, and neither touched the other's.
+		expect(existsSync(`${captureRecordFile("alpha")}.${first.hostPid}.tmp`)).toBe(false);
+		expect(existsSync(`${captureRecordFile("alpha")}.${second.hostPid}.tmp`)).toBe(false);
+	});
+});
+
+describe("capture record — content identity", () => {
+	it("ignores the timestamp and the producer, so a forced re-write is not a change", () => {
+		const a = sample({ updatedAt: "2026-08-03T10:00:00.000Z" });
+		const b = sample({ updatedAt: "2026-08-03T11:00:00.000Z" });
+		expect(captureContentIdentity(a)).toBe(captureContentIdentity(b));
+		const other = sample({
+			producer: { hostPid: 9, hostStartSignature: "x", shellPid: 10, shellStartSignature: "y" },
+		});
+		expect(captureContentIdentity(other)).toBe(captureContentIdentity(a));
+	});
+
+	it("changes for every observable field a reader can see", () => {
+		const base = captureContentIdentity(sample());
+		const variants: Array<Partial<CaptureRecord>> = [
+			{ viewport: ["different"] },
+			{ history: ["different"] },
+			{ cols: 80 },
+			{ rows: 24 },
+			{ historyTotal: 99 },
+			{ watermarkSeq: 42 },
+			{ activeBuffer: "alternate" },
+			{ viewportRowsOmitted: 3 },
+			{ health: { status: "overflowed", droppedBytes: 0, droppedChunks: 0, resyncGaps: 0 } },
+			{ health: { status: "live", droppedBytes: 5, droppedChunks: 1, resyncGaps: 0 } },
+			{ health: { status: "live", droppedBytes: 0, droppedChunks: 0, resyncGaps: 7 } },
+			{ health: { status: "failed", error: "boom", droppedBytes: 0, droppedChunks: 0, resyncGaps: 0 } },
+		];
+		for (const overrides of variants) {
+			expect(captureContentIdentity(sample(overrides))).not.toBe(base);
+		}
 	});
 });

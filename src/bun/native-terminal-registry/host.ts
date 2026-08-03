@@ -38,6 +38,7 @@ import {
 } from "./protocol";
 import {
 	ProducerNotReadyError,
+	captureContentIdentity,
 	captureRecordOf,
 	writeCaptureRecordAtomic,
 	type CaptureProducer,
@@ -54,6 +55,7 @@ import {
 	NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_HOST_ARTIFACT_VERSION,
 	NATIVE_SESSION_SCHEMA_VERSION,
+	readRecord,
 	removeSessionState,
 	writeRecordAtomic,
 	writeToken,
@@ -292,6 +294,29 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	// ready" so the pipeline keeps the write retryable instead of throwing into a
 	// swallowed catch (findings 12 and 14).
 	let producerIdentity: CaptureProducer | null = null;
+	// The last record actually published, so a forced write of unchanged content can
+	// keep its ORIGINAL timestamp. Otherwise a viewer disconnecting from a quiet pane
+	// (detach flushes) would reset "when the content last changed" to now.
+	let published: { identity: string; updatedAt: string } | null = null;
+
+	function publishCapture(projection: LiveParserProjection): void {
+		if (!producerIdentity) throw new ProducerNotReadyError(sessionId);
+		const record = captureRecordOf(sessionId, producerIdentity, projection);
+		const identity = captureContentIdentity(record);
+		const updatedAt = published?.identity === identity ? published.updatedAt : record.updatedAt;
+		// Only THIS host may publish: a superseded producer's delayed rename must not
+		// overwrite its successor's rows.
+		writeCaptureRecordAtomic({ ...record, updatedAt }, () => stillOwnsSession());
+		published = { identity, updatedAt };
+	}
+
+	/** True while the discoverable record still names this host as the owner. */
+	function stillOwnsSession(): boolean {
+		const current = readRecord(sessionId);
+		if (!current) return true; // nothing has superseded us yet
+		return current.host.pid === process.pid && current.host.startSignature === hostStartSignature;
+	}
+
 	const advertisedSurfaces = (): NativeSessionCaptureSurface[] =>
 		publishedSurfaces.filter(
 			(surface) => surface !== NATIVE_SESSION_TEXT_CAPTURE_CAPABILITY || producerIdentity !== null,
@@ -316,12 +341,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 					? { persistState: (snapshot: ParserStateSnapshot) => writeParserStateAtomic(sessionId, snapshot) }
 					: {}),
 				...(publishesCompact
-					? {
-							persistProjection: (projection: LiveParserProjection) => {
-								if (!producerIdentity) throw new ProducerNotReadyError(sessionId);
-								writeCaptureRecordAtomic(captureRecordOf(sessionId, producerIdentity, projection));
-							},
-						}
+					? { persistProjection: (projection: LiveParserProjection) => publishCapture(projection) }
 					: {}),
 				fault: process.env.DEV3_NATIVE_SESSION_PARSER_FAULT === "ingest" ? "ingest" : null,
 			});
@@ -640,7 +660,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	};
 	if (publishesCompact && pipeline) {
 		try {
-			writeCaptureRecordAtomic(captureRecordOf(sessionId, producerIdentity, pipeline.projection()));
+			publishCapture(pipeline.projection());
 		} catch {
 			// A capture artifact that cannot be written must never take the host down;
 			// the pipeline retries on its own cadence.

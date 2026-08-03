@@ -359,6 +359,19 @@ export class LiveParserPipeline {
 		if (status === "failed") this.releaseCore();
 	}
 
+	/**
+	 * A fatal parser error, wherever it surfaces. Parsing stops and the core is
+	 * released here too — a failure found while building a screen is just as final
+	 * as one found while ingesting, and holding WASM for a parser that will never
+	 * produce another screen is pure waste.
+	 */
+	private markFailed(err: unknown): void {
+		this.failureError = err instanceof Error ? err.message : String(err);
+		this.status = "failed";
+		this.queue.clear();
+		this.releaseCore();
+	}
+
 	/** Free the parser core once, keeping the last published verdict readable. */
 	private releaseCore(): void {
 		if (this.coreReleased) return;
@@ -492,9 +505,7 @@ export class LiveParserPipeline {
 			try {
 				this.lastProjection = this.core.project(this.opts.snapshotScrollbackCap ?? DEFAULT_SNAPSHOT_SCROLLBACK_CAP);
 			} catch (err) {
-				this.failureError = err instanceof Error ? err.message : String(err);
-				this.status = "failed";
-				this.queue.clear();
+				this.markFailed(err);
 			}
 		}
 		const projected = this.lastProjection;
@@ -522,9 +533,7 @@ export class LiveParserPipeline {
 			try {
 				this.lastState = this.core.inspect(this.opts.snapshotScrollbackCap ?? DEFAULT_SNAPSHOT_SCROLLBACK_CAP);
 			} catch (err) {
-				this.failureError = err instanceof Error ? err.message : String(err);
-				this.status = "failed";
-				this.queue.clear();
+				this.markFailed(err);
 			}
 		}
 		const sorted = [...this.durations].sort((a, b) => a - b);

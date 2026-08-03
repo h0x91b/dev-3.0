@@ -71,16 +71,6 @@ export type TerminalCaptureIssueCode =
 	| "sequence-gap"
 	/** The producer of the text is degraded, so the screen may be behind reality. */
 	| "parser-failed"
-	/**
-	 * The producer is behind the pane — a real lag, PROVEN by a producer heartbeat
-	 * or health fact. It is never inferred from how long ago the content last
-	 * changed: a quiet healthy pane has an old last-change timestamp and is
-	 * perfectly current. No backend can emit this yet; see
-	 * {@link TerminalPaneCaptureContent.freshness}.
-	 */
-	| "stale"
-	/** The pane's screen was cleared or reset, so what is missing did not scroll off. */
-	| "reset"
 	/** Something this backend cannot determine at all; the detail says what. */
 	| "unknown";
 
@@ -104,7 +94,7 @@ export const TERMINAL_CAPTURE_DEFAULT_MAX_BYTES = 64 * 1024;
  * is `unknown` — not `lagging`, and emphatically not derived from age. That
  * distinction is why there is no age threshold in this file.
  */
-export type TerminalCaptureFreshness = "current" | "lagging";
+export type TerminalCaptureFreshness = "current";
 
 export interface TerminalPaneCaptureRequest {
 	/**
@@ -272,10 +262,17 @@ export function isCapturedPane(capture: TerminalPaneCapture): capture is Termina
  */
 const ESCAPE_SEQUENCES = new RegExp(
 	[
-		"\\u001B\\][^\\u0007\\u001B]*(?:\\u0007|\\u001B\\\\)?", // OSC — titles, hyperlinks, clipboard
-		"\\u001B[P^_X][^\\u001B]*(?:\\u001B\\\\)?", // DCS / PM / APC / SOS
-		"\\u001B\\[[0-?]*[ -/]*[@-~]", // CSI — colours, cursor moves, modes
-		"\\u001B[ -/]*[0-~]", // every remaining two- or three-byte escape
+		// 7-bit forms: ESC ] / P / ^ / _ / X, terminated by BEL or ST.
+		"\\u001B\\][^\\u0007\\u001B\\u009C]*(?:\\u0007|\\u001B\\\\|\\u009C)?",
+		"\\u001B[P^_X][^\\u001B\\u009C]*(?:\\u001B\\\\|\\u009C)?",
+		"\\u001B\\[[0-?]*[ -/]*[@-~]",
+		"\\u001B[ -/]*[0-~]",
+		// 8-bit C1 forms of the same sequences. Stripping the introducer alone leaves
+		// the BODY as visible text — which is how an OSC 52 clipboard payload survives
+		// a naive sanitizer.
+		"\\u009D[^\\u0007\\u009C\\u001B]*(?:\\u0007|\\u009C|\\u001B\\\\)?",
+		"[\\u0090\\u0098\\u009E\\u009F][^\\u0007\\u009C\\u001B]*(?:\\u0007|\\u009C|\\u001B\\\\)?",
+		"\\u009B[0-?]*[ -/]*[@-~]",
 	].join("|"),
 	"g",
 );
@@ -286,24 +283,16 @@ export function sanitizeCaptureLine(line: string): string {
 	return line.replace(ESCAPE_SEQUENCES, "").replace(CONTROL_CHARACTERS, "").trimEnd();
 }
 
-function trimTrailingBlankRows(rows: readonly string[]): string[] {
-	let end = rows.length;
-	while (end > 0 && rows[end - 1]!.trim() === "") end--;
-	return rows.slice(0, end);
-}
-
 const encoder = new TextEncoder();
 
 function utf8Bytes(value: string): number {
 	return encoder.encode(value).length;
 }
 
-/** Bytes a row list occupies once joined with newlines. */
-function joinedBytes(lines: readonly string[]): number {
-	if (lines.length === 0) return 0;
-	let bytes = lines.length - 1; // the newline separators
-	for (const line of lines) bytes += utf8Bytes(line);
-	return bytes;
+function trimTrailingBlankRows(rows: readonly string[]): string[] {
+	let end = rows.length;
+	while (end > 0 && rows[end - 1]!.trim() === "") end--;
+	return rows.slice(0, end);
 }
 
 export function clampHistoryLines(requested: number | undefined): number {
@@ -322,11 +311,7 @@ export interface RawCaptureLines {
 	readonly viewport: readonly string[];
 	/** Every history row the backend produced, oldest first. */
 	readonly history: readonly string[];
-	/**
-	 * History rows the backend holds in total, when it can say. Larger than
-	 * `history.length` means the backend truncated before the seam did, which must
-	 * still surface as omitted history.
-	 */
+	/** History rows the backend holds in total, when it can say. */
 	readonly historyAvailable?: number;
 }
 
@@ -337,43 +322,45 @@ export interface BoundedCapture {
 }
 
 /**
- * Sanitize, then fit the budget. The order of loss is fixed and tested:
+ * Sanitize, then fit the budget in ONE pass per list, newest row first, so a huge
+ * screen costs a linear walk rather than a slice-and-re-encode per row.
  *
- *  1. history beyond `historyLines` — oldest first;
- *  2. history that does not fit `maxBytes` — oldest first;
- *  3. only then the viewport, from its TOP rows so the newest output survives,
- *     and never without a `viewport-truncated` issue.
- *
- * Cuts always land on a whole row, so neither a line nor a code point is ever
- * split — a byte-slice ceiling would be free to halve a multi-byte character.
- * Budgets are UTF-8 bytes, never UTF-16 code units.
+ * The order of loss is fixed: history beyond `historyLines` goes first from its
+ * oldest end, then history that does not fit the bytes, and only then the
+ * viewport's TOP rows — always with a `viewport-truncated` issue. Every cut lands
+ * on a whole physical row, so neither a row nor a code point is ever split, and
+ * budgets are UTF-8 bytes. Trailing blank rows are dropped once, here, for every
+ * backend and producer surface, so none of them can disagree about the same pane.
  */
 export function boundCaptureLines(
 	raw: RawCaptureLines,
 	request: { readonly historyLines: number; readonly maxBytes: number },
 ): BoundedCapture {
-	// Trailing blank rows are trimmed HERE, once, so every backend and every
-	// producer surface answers the same way: an 80x24 pane showing three lines is
-	// three rows, not three plus twenty-one empties. They are padding, not content,
-	// so they are not counted as omitted either.
 	const viewportAll = trimTrailingBlankRows(raw.viewport.map(sanitizeCaptureLine));
 	const historyAll = raw.history.map(sanitizeCaptureLine);
 	const available = raw.historyAvailable;
 
-	// 1. line budget
-	let history = request.historyLines === 0 ? [] : historyAll.slice(-request.historyLines);
+	// The viewport is the LAST thing cut, so it claims the budget first.
+	let used = 0;
+	let viewportKept = 0;
+	for (let i = viewportAll.length - 1; i >= 0; i--) {
+		const cost = utf8Bytes(viewportAll[i]!) + (used > 0 ? 1 : 0);
+		if (used + cost > request.maxBytes) break;
+		used += cost;
+		viewportKept++;
+	}
+	const viewport = viewportAll.slice(viewportAll.length - viewportKept);
+	const viewportRowsOmitted = viewportAll.length - viewportKept;
 
-	// 2. byte budget — history goes first, oldest end first
-	let viewport = viewportAll;
-	const separator = (a: number, b: number) => (a > 0 && b > 0 ? 1 : 0);
-	const totalBytes = () =>
-		joinedBytes(history) + separator(history.length, viewport.length) + joinedBytes(viewport);
-	while (history.length > 0 && totalBytes() > request.maxBytes) history = history.slice(1);
-
-	// 3. the viewport, only if it alone still overflows
-	const viewportBefore = viewport.length;
-	while (viewport.length > 0 && joinedBytes(viewport) > request.maxBytes) viewport = viewport.slice(1);
-	const viewportRowsOmitted = viewportBefore - viewport.length;
+	const requestedRows = Math.min(request.historyLines, historyAll.length);
+	let historyKept = 0;
+	for (let i = historyAll.length - 1; i > historyAll.length - 1 - requestedRows; i--) {
+		const cost = utf8Bytes(historyAll[i]!) + (used > 0 ? 1 : 0);
+		if (used + cost > request.maxBytes) break;
+		used += cost;
+		historyKept++;
+	}
+	const history = historyKept === 0 ? [] : historyAll.slice(historyAll.length - historyKept);
 
 	const omitted =
 		available === undefined
@@ -406,7 +393,7 @@ export function boundCaptureLines(
 			historyLinesOmitted: omitted,
 			viewportRowsReturned: viewport.length,
 			viewportRowsOmitted,
-			bytesReturned: totalBytes(),
+			bytesReturned: used,
 			bytesLimit: request.maxBytes,
 		},
 		issues,

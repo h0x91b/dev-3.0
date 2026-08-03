@@ -446,3 +446,67 @@ describe("LiveParserPipeline persistence budget", () => {
 		expect(counters.minIntervalMs).toBe(1_000);
 	});
 });
+
+describe("LiveParserPipeline fatal lifecycle and independent sinks", () => {
+	it("releases the parser core on a FATAL failure instead of holding it until teardown", async () => {
+		const h = await makeHarness();
+		h.core.inspectError = new Error("parser exploded");
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.pipeline.healthStatus).toBe("failed");
+		// A failed parser will never produce another screen, so its WASM instance is
+		// freed now rather than pinned for the life of the pane.
+		expect(h.core.disposed).toBe(true);
+	});
+
+	it("keeps the core alive on overflow, whose last good screen is still the truth", async () => {
+		const h = await makeHarness({ queueMaxBytes: 4 });
+		h.pipeline.onOutput(encoder.encode("aaaaaaaaaaaaaaaaaaaa"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.pipeline.healthStatus).toBe("overflowed");
+		expect(h.core.disposed).toBe(false);
+	});
+
+	it("writes no further state after a fatal failure has been recorded", async () => {
+		const h = await makeHarness();
+		h.core.inspectError = new Error("parser exploded");
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.runScheduled();
+		h.runTimers();
+		const after = h.snapshots.length;
+		h.pipeline.onOutput(encoder.encode("more"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.snapshots.length).toBe(after);
+	});
+
+	it("publishes the two sinks independently, so neither can suppress the other", async () => {
+		const projections: number[] = [];
+		const h = await makeHarness({ persistProjection: (p) => void projections.push(p.watermarkSeq) });
+		h.pipeline.onOutput(encoder.encode("first"));
+		h.runScheduled();
+		h.runTimers();
+		// Both sinks were wired, so both saw this change.
+		expect(h.snapshots.length).toBeGreaterThan(0);
+		expect(projections.length).toBeGreaterThan(0);
+	});
+
+	it("does not skip a projection whose rows are identical but whose metadata moved", async () => {
+		const projections: Array<{ seq: number; cols: number }> = [];
+		const h = await makeHarness({
+			persistProjection: (p) => void projections.push({ seq: p.watermarkSeq, cols: p.cols }),
+		});
+		h.pipeline.onOutput(encoder.encode("same"));
+		h.runScheduled();
+		h.runTimers();
+		const first = projections.length;
+		// Same screen text, different geometry: a rows-only identity would call this a
+		// duplicate and never publish the resize.
+		h.pipeline.onResize(200, 60);
+		h.runScheduled();
+		h.runTimers();
+		expect(projections.length).toBeGreaterThan(first);
+	});
+});

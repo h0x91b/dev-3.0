@@ -191,7 +191,9 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 		expect(tight.bounds.bytesReturned).toBeLessThanOrEqual(40);
 		// History is discarded before the viewport, so the newest output survives.
 		expect(tight.content.viewport.join("\n")).toContain("line-39");
-		expect(tight.content.history).toEqual([]);
+		// Nothing with content is left in history; a zero-cost blank row may remain,
+		// because a blank line that really scrolled past is content, not padding.
+		expect(tight.content.history.filter((row) => row.trim() !== "")).toEqual([]);
 		expect(tight.issues.map((issue) => issue.code)).toContain("history-truncated");
 	});
 

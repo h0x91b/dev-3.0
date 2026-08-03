@@ -172,6 +172,29 @@ export function captureRecordOf(
 	};
 }
 
+/**
+ * Everything a reader can OBSERVE in a record, except the timestamp and the
+ * producer. Two records with the same identity say the same thing about the pane,
+ * so a forced re-write of one must not claim the content just changed.
+ */
+export function captureContentIdentity(record: CaptureRecord): string {
+	return [
+		record.activeBuffer,
+		record.cols,
+		record.rows,
+		record.historyTotal,
+		record.viewportRowsOmitted,
+		record.watermarkSeq,
+		record.health.status,
+		record.health.error ?? "",
+		record.health.droppedBytes,
+		record.health.droppedChunks,
+		record.health.resyncGaps,
+		record.viewport.join("\n"),
+		record.history.join("\n"),
+	].join("\u0000");
+}
+
 function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
