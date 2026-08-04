@@ -483,7 +483,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 							{!isEditing && (
 								<button
 									onClick={handleStartRename}
-									className="flex-shrink-0 mt-0.5 text-fg-muted hover:text-fg p-1 rounded-md hover:bg-fg/8 transition-all"
+									className="flex-shrink-0 mt-0.5 text-fg-muted hover:text-fg p-1 rounded-md hover:bg-fg/8 transition-[color,background-color]"
 									title={t("task.renameTitle")}
 								>
 									<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -541,7 +541,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 									/>
 								</div>
 								{isPasting && (
-									<span className="text-[0.6875rem] text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
+									<span className="text-micro text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
 								)}
 								<ImageAttachmentsStrip text={editValue} onRemovePath={handleRemovePath} />
 								{generatedTitle && generatedTitle !== editValue.trim() && (

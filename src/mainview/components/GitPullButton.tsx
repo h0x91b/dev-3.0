@@ -161,13 +161,13 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 			case "pulled":
 				title = t("kanban.gitPullFlashPulled", { branch: lastResult.branch });
 				// Use semantic success color — matches status-completed in STATUS_COLORS
-				stateClass = "bg-[#10b981]/15 text-[#10b981]";
+				stateClass = "bg-[#10b981]/15 text-success-strong";
 				IconComp = PullSuccessIcon;
 				label = t("kanban.gitPullFlashPulledLabel");
 				break;
 			case "up-to-date":
 				title = t("kanban.gitPullFlashUpToDate", { branch: lastResult.branch });
-				stateClass = "bg-[#10b981]/10 text-[#10b981]";
+				stateClass = "bg-[#10b981]/10 text-success-strong";
 				IconComp = PullSuccessIcon;
 				label = t("kanban.gitPullFlashUpToDateLabel");
 				break;
@@ -242,7 +242,7 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 						/>
 					)}
 				</span>
-				{!compact && <span className="text-[0.6875rem] font-medium">{label}</span>}
+				{!compact && <span className="text-micro font-medium">{label}</span>}
 			</button>
 			</Tooltip>
 			{pullError && (

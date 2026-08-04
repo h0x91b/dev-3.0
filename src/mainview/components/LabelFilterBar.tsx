@@ -49,7 +49,7 @@ function PriorityFilterChips({
 						aria-pressed={isOn}
 						aria-label={t("priority.filterAria", { level, name: t(PRIORITY_NAME_KEYS[level]) })}
 						title={t(PRIORITY_NAME_KEYS[level])}
-						className={`font-mono text-[0.6875rem] font-semibold px-1.5 py-0.5 rounded transition-colors ${
+						className={`font-mono text-micro font-semibold px-1.5 py-0.5 rounded transition-colors ${
 							isOn ? style.chipActive : style.chipIdle
 						}`}
 					>
@@ -236,7 +236,7 @@ function LabelFilterBar({
 						<button
 							type="button"
 							onClick={() => setFunnelOpen(true)}
-							className="text-[0.625rem] font-medium text-fg-3 hover:text-fg px-1.5 py-0.5 rounded-full border border-edge hover:border-edge-active transition-colors flex-shrink-0"
+							className="text-dense font-medium text-fg-3 hover:text-fg px-1.5 py-0.5 rounded-full border border-edge hover:border-edge-active transition-colors flex-shrink-0"
 						>
 							{t("labels.moreLabels", { count: String(hiddenLabelCount) })}
 						</button>

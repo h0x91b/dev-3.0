@@ -65,7 +65,7 @@ function TipCard({ tip, tipState, onChanged, compact = false }: TipCardProps) {
 				>
 					{tip.icon}
 				</span>
-				<span className="text-[0.625rem] font-semibold text-accent uppercase tracking-wider">
+				<span className="text-dense font-semibold text-accent uppercase tracking-wider">
 					{t("tip.badge")}
 				</span>
 			</div>

@@ -45,7 +45,7 @@ function ProjectActionButtons({
 			>
 				<span
 					aria-hidden="true"
-					className="text-[1rem] leading-none"
+					className="text-base leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\u{F0493}"}
@@ -64,7 +64,7 @@ function ProjectActionButtons({
 				>
 					<span
 						aria-hidden="true"
-						className="text-[1rem] leading-none"
+						className="text-base leading-none"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
 						{"\u{F115}"}
@@ -84,7 +84,7 @@ function ProjectActionButtons({
 				>
 					<span
 						aria-hidden="true"
-						className="text-[1rem] leading-none"
+						className="text-base leading-none"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
 						{"\uF489"}
@@ -104,7 +104,7 @@ function ProjectActionButtons({
 				>
 					<span
 						aria-hidden="true"
-						className="text-[1rem] leading-none"
+						className="text-base leading-none"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
 						{"\u{F0A79}"}

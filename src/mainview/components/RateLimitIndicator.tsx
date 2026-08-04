@@ -142,12 +142,12 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 					})}
 				</span>
 				{!compact && (
-					<span className="text-[0.6875rem] font-medium tabular-nums">
+					<span className="text-micro font-medium tabular-nums">
 						{unlimited ? (
 							t("rateLimits.unlimited")
 						) : (
 							<>
-								{percent}%<span className="ml-0.5 text-[0.5625rem] font-normal opacity-70">{t("rateLimits.used")}</span>
+								{percent}%<span className="ml-0.5 text-nano font-normal opacity-70">{t("rateLimits.used")}</span>
 							</>
 						)}
 					</span>

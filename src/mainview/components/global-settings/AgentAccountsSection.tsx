@@ -28,7 +28,7 @@ function FieldHint({ label, body }: { label: string; body: string }) {
 				tabIndex={0}
 				role="img"
 				aria-label={body}
-				className="text-fg-muted hover:text-fg-2 cursor-help text-[0.7rem] leading-none shrink-0 outline-none focus-visible:text-accent"
+				className="text-fg-muted hover:text-fg-2 cursor-help text-micro leading-none shrink-0 outline-none focus-visible:text-accent"
 				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 			>
 				{""}
@@ -78,7 +78,7 @@ function IdentityBadges({
 			) : null}
 			{workspace ? (
 				<span
-					className={`text-fg-3 text-[0.6875rem] px-1.5 py-0.5 bg-raised rounded max-w-full truncate streamer-private ${
+					className={`text-fg-3 text-micro px-1.5 py-0.5 bg-raised rounded max-w-full truncate streamer-private ${
 						identity.organization ? "" : "font-mono"
 					}`}
 				>
@@ -230,7 +230,7 @@ function AccountRow({
 						title={t("settings.accountsEditApi")}
 						aria-label={t("settings.accountsEditApiFor", { label })}
 					>
-						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+						<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\uf044"}
 						</span>
 					</button>
@@ -246,7 +246,7 @@ function AccountRow({
 						title={t("settings.accountsRename")}
 						aria-label={t("settings.accountsRenameFor", { label })}
 					>
-						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+						<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\uf044"}
 						</span>
 					</button>
@@ -511,7 +511,7 @@ function ApiProfileFormCard({
 						title={showKey ? t("settings.accountsApiKeyHide") : t("settings.accountsApiKeyShow")}
 						aria-label={showKey ? t("settings.accountsApiKeyHide") : t("settings.accountsApiKeyShow")}
 					>
-						<span className="text-[0.85rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+						<span className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{showKey ? "" : ""}
 						</span>
 					</button>

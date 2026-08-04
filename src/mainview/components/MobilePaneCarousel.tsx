@@ -368,7 +368,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 							<span className="truncate text-xs font-medium">
 								{active + 1}. {paneLabel(active)}
 							</span>
-							<span className="text-[0.5rem] leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
+							<span className="text-nano leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
 						</button>
 
 						{menuOpen && (
@@ -457,7 +457,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 				testId="pane-manage-sheet"
 			>
 				<div className="flex flex-col gap-1">
-					<div className="px-1 pb-1 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">
+					<div className="px-1 pb-1 text-dense font-semibold uppercase tracking-wider text-fg-muted">
 						{t("panePager.create")}
 					</div>
 					{manageActions.map(({ action, labelKey, icon }) => (
@@ -485,7 +485,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 						<span className="flex-1">{t("tmux.closePaneDesc")}</span>
 					</button>
 
-					<p className="mt-2 px-1 text-[0.6875rem] leading-snug text-fg-muted">
+					<p className="mt-2 px-1 text-micro leading-snug text-fg-muted">
 						{t("panePager.windowHint")}
 					</p>
 				</div>

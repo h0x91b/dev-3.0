@@ -682,7 +682,7 @@ function InlineCommentThreadView({
 			className="dev3-inline-comment dev3-inline-comment--thread border-t border-edge bg-base/75 px-4 py-3 space-y-2"
 			data-testid="inline-comment-thread"
 		>
-			<div className="dev3-inline-comment__meta text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+			<div className="dev3-inline-comment__meta text-micro font-semibold uppercase tracking-[0.08em] text-fg-muted">
 				{formatInlineCommentLineLabel(
 					t,
 					side,
@@ -737,13 +737,13 @@ function InlineCommentThreadView({
 									disabled={sendingCommentIds[comment.id]}
 									data-testid="inline-comment-send"
 									aria-label={t("infoPanel.diffReviewSendComment")}
-									className={`dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[0.6875rem] font-semibold transition-colors ${
+									className={`dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-micro font-semibold transition-colors ${
 										comment.sentAt
 											? "border-success/40 bg-success/10 text-success"
 											: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
 									}`}
 								>
-									<span aria-hidden="true" className="text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+									<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 										{""}
 									</span>
 									<span>
@@ -761,7 +761,7 @@ function InlineCommentThreadView({
 										onStartEdit(comment.id);
 									}}
 									aria-label={t("infoPanel.diffReviewEdit")}
-									className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+									className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-micro font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
 								>
 									{t("infoPanel.diffReviewEdit")}
 								</button>
@@ -769,7 +769,7 @@ function InlineCommentThreadView({
 									type="button"
 									onClick={() => onDeleteComment(comment.id)}
 									aria-label={t("infoPanel.diffReviewDelete")}
-									className="inline-flex h-7 items-center justify-center rounded-md border border-danger/25 bg-danger/10 px-2 text-[0.6875rem] font-semibold text-danger transition-colors hover:bg-danger/15"
+									className="inline-flex h-7 items-center justify-center rounded-md border border-danger/25 bg-danger/10 px-2 text-micro font-semibold text-danger transition-colors hover:bg-danger/15"
 								>
 									{t("infoPanel.diffReviewDelete")}
 								</button>
@@ -814,10 +814,10 @@ function InlineCommentComposer({
 			}}
 		>
 			<div className="space-y-1">
-				<div className="dev3-inline-comment__title text-[0.75rem] font-semibold text-fg">
+				<div className="dev3-inline-comment__title text-xs font-semibold text-fg">
 					{t("infoPanel.diffCommentAdd")}
 				</div>
-				<div className="dev3-inline-comment__meta text-[0.6875rem] text-fg-3">
+				<div className="dev3-inline-comment__meta text-micro text-fg-3">
 					{filePath} · {formatInlineCommentLineLabel(t, side, startLine, endLine)}
 				</div>
 			</div>
@@ -1566,7 +1566,7 @@ function TaskDiffFileSection({
 		>
 			<div className={`sticky top-0 z-10 px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 backdrop-blur ${isRead ? "bg-elevated/95" : "bg-raised/95"}`}>
 				<div className="min-w-0 flex-1 flex items-center gap-2">
-					<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-[0.6875rem] font-bold ${statusClassName(file.status)}`}>
+					<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-micro font-bold ${statusClassName(file.status)}`}>
 						{statusLabel(file.status)}
 					</span>
 
@@ -1619,7 +1619,7 @@ function TaskDiffFileSection({
 					>
 						<span
 							aria-hidden="true"
-							className="text-[1rem] leading-none"
+							className="text-base leading-none"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
 							{copiedPath ? "\uF00C" : "\uF4BB"}
@@ -1627,7 +1627,7 @@ function TaskDiffFileSection({
 					</button>
 
 					{(fileStats.insertions > 0 || fileStats.deletions > 0) && (
-						<span className="inline-flex items-center gap-1.5 rounded-md border border-edge bg-base/80 px-2 py-0.5 text-[0.6875rem] font-mono">
+						<span className="inline-flex items-center gap-1.5 rounded-md border border-edge bg-base/80 px-2 py-0.5 text-micro font-mono">
 							{fileStats.insertions > 0 && <span className="text-success">+{fileStats.insertions}</span>}
 							{fileStats.deletions > 0 && <span className="text-danger">−{fileStats.deletions}</span>}
 						</span>
@@ -1645,7 +1645,7 @@ function TaskDiffFileSection({
 					>
 						<span
 							aria-hidden="true"
-							className="text-[0.85rem] leading-none"
+							className="text-sm-plus leading-none"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
 							{"\uF06E"}
@@ -1664,7 +1664,7 @@ function TaskDiffFileSection({
 					/>
 					<span
 						aria-hidden="true"
-						className={`inline-flex h-4 w-4 items-center justify-center rounded-[4px] border text-[0.7rem] leading-none ${isRead ? "border-success bg-success text-base" : "border-edge bg-base text-transparent"}`}
+						className={`inline-flex h-4 w-4 items-center justify-center rounded-[4px] border text-micro leading-none ${isRead ? "border-success bg-success text-base" : "border-edge bg-base text-transparent"}`}
 					>
 						{"\u2713"}
 					</span>
@@ -1675,7 +1675,7 @@ function TaskDiffFileSection({
 					onClick={onToggleExpanded}
 					aria-label={expanded ? t("infoPanel.diffCollapseFile", { file: file.displayPath }) : t("infoPanel.diffExpandFile", { file: file.displayPath })}
 					aria-expanded={expanded}
-					className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-edge bg-base text-[0.95rem] leading-none text-fg-2 hover:bg-elevated-hover transition-colors"
+					className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-edge bg-base text-base-sm leading-none text-fg-2 hover:bg-elevated-hover transition-colors"
 				>
 					{expanded ? "\u25BE" : "\u25B8"}
 				</button>
@@ -2960,10 +2960,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm text-fg-2 hover:bg-elevated-hover transition-colors"
 						style={{ paddingLeft: `${depth * 0.55 + 0.35}rem` }}
 					>
-						<span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center text-[1.05rem] leading-none text-fg-muted">
+						<span className="inline-flex h-4 w-4 flex-shrink-0 items-center justify-center text-base-lg leading-none text-fg-muted">
 							{collapsed ? "\u25B8" : "\u25BE"}
 						</span>
-						<span className="text-[1rem] leading-none text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+						<span className="text-base leading-none text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{"\uF07B"}
 						</span>
 						<span className={`min-w-0 truncate font-medium${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
@@ -2998,7 +2998,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				}`}
 				style={{ paddingLeft: `${depth * 0.55 + 1.15}rem` }}
 			>
-				<span className={`inline-flex items-center justify-center min-w-[1.1rem] rounded border px-1 py-0.5 text-[0.6rem] font-bold ${statusClassName(node.status)}`}>
+				<span className={`inline-flex items-center justify-center min-w-[1.1rem] rounded border px-1 py-0.5 text-nano font-bold ${statusClassName(node.status)}`}>
 					{statusLabel(node.status)}
 				</span>
 				<span className={`min-w-0 truncate font-mono ${isRead ? "text-fg-muted line-through decoration-1" : ""} ${isSkipped ? "italic" : ""}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
@@ -3007,7 +3007,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				{isSkipped && (
 					<span
 						aria-hidden="true"
-						className="ml-auto shrink-0 text-[0.95rem] leading-none text-fg-muted"
+						className="ml-auto shrink-0 text-base-sm leading-none text-fg-muted"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						title={node.skipped === "binary"
 							? t("infoPanel.diffSkippedReasonBinary")
@@ -3058,7 +3058,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		return (
 			<button
 				onClick={onClick}
-				className={`px-2.5 ${padClass} rounded-md border text-[0.6875rem] font-semibold transition-colors ${
+				className={`px-2.5 ${padClass} rounded-md border text-micro font-semibold transition-colors ${
 					active
 						? "bg-accent-fill text-white border-accent"
 						: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
@@ -3084,7 +3084,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		return (
 			<div className="relative inline-flex">
 				<div
-					className={`inline-flex items-stretch rounded-md border text-[0.6875rem] font-semibold transition-colors ${
+					className={`inline-flex items-stretch rounded-md border text-micro font-semibold transition-colors ${
 						recentActive
 							? "bg-accent-fill text-white border-accent"
 							: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
@@ -3112,7 +3112,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						}`}
 						data-testid="diff-mode-recent-caret"
 					>
-						<span className="text-[0.7rem] leading-none">{"▾"}</span>
+						<span className="text-micro leading-none">{"▾"}</span>
 					</button>
 				</div>
 				{recentMenuOpen && (
@@ -3132,14 +3132,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									role="menuitemradio"
 									aria-checked={selected}
 									onClick={() => selectRecentCount(preset)}
-									className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[0.6875rem] font-medium transition-colors ${
+									className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-micro font-medium transition-colors ${
 										selected ? "text-accent" : "text-fg-2 hover:bg-raised-hover"
 									}`}
 									data-testid={`diff-recent-preset-${preset}`}
 								>
 									<span>{t.plural("infoPanel.diffRecentLabel", preset)}</span>
 									{selected && (
-										<span aria-hidden="true" className="text-[0.75rem] leading-none">{"✓"}</span>
+										<span aria-hidden="true" className="text-xs leading-none">{"✓"}</span>
 									)}
 								</button>
 							);
@@ -3164,7 +3164,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	function renderTestsToggle() {
 		return (
 			<label
-				className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[0.6875rem] font-mono cursor-pointer transition-colors ${
+				className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-micro font-mono cursor-pointer transition-colors ${
 					includeTests
 						? "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
 						: "bg-accent/10 text-accent border-accent/30 hover:bg-accent/20"
@@ -3183,7 +3183,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				/>
 				<span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>
 				<span
-					className="text-[0.85rem] leading-none"
+					className="text-sm-plus leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\u{F0668}"}
@@ -3199,7 +3199,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		return (
 			<>
 				{totalFileCount !== payload.summary.files && (
-					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-micro">
 						{t("infoPanel.diffShownCount", {
 							shown: String(totalFileCount),
 							total: String(payload.summary.files),
@@ -3207,17 +3207,17 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</span>
 				)}
 				{payload.fallbackReason === "no-upstream" && (
-					<span className="px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/25 text-[0.6875rem]">
+					<span className="px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/25 text-micro">
 						{t("infoPanel.diffFallbackNoUpstream", { ref: payload.compareLabel })}
 					</span>
 				)}
 				{binaryCount > 0 && (
-					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-micro">
 						{t.plural("infoPanel.diffBinaryCount", binaryCount)}
 					</span>
 				)}
 				{largeCount > 0 && (
-					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-micro">
 						{t.plural("infoPanel.diffLargeCount", largeCount)}
 					</span>
 				)}
@@ -3250,7 +3250,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				onClick={toggleSearchOpen}
 				aria-label={t("infoPanel.diffSearchOpen")}
 				title={`${t("infoPanel.diffSearchOpen")} (⌘F)`}
-				className={`inline-flex items-center justify-center rounded-md border text-[0.6875rem] font-semibold transition-colors ${
+				className={`inline-flex items-center justify-center rounded-md border text-micro font-semibold transition-colors ${
 					narrowSize ? "h-9 w-9 shrink-0" : "px-2.5 py-0.5"
 				} ${
 					isSearchOpen
@@ -3260,7 +3260,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			>
 				<span
 					aria-hidden="true"
-					className="text-[0.8125rem] leading-none"
+					className="text-sm-plus leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{""}
@@ -3281,7 +3281,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					    leaves it ~2px above the query's optical center — nudge it back down. */}
 					<span
 						aria-hidden="true"
-						className="shrink-0 translate-y-[2px] text-[0.8rem] leading-none text-fg-muted"
+						className="shrink-0 translate-y-[2px] text-sm-plus leading-none text-fg-muted"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
 						{""}
@@ -3318,7 +3318,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				</div>
 				{searchStatusLabel && (
 					<span
-						className={`inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-[0.6875rem] font-mono ${
+						className={`inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-micro font-mono ${
 							searchMatches.length > 0
 								? "border-edge bg-base text-fg-2"
 								: "border-warning/25 bg-warning/10 text-warning"
@@ -3373,11 +3373,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				type="button"
 				onClick={() => setFilesSheetOpen(true)}
 				data-testid="diff-files-sheet-trigger"
-				className={`inline-flex items-center gap-1.5 rounded-md border border-edge bg-raised text-fg-2 text-[0.6875rem] font-semibold hover:bg-elevated-hover transition-colors ${
+				className={`inline-flex items-center gap-1.5 rounded-md border border-edge bg-raised text-fg-2 text-micro font-semibold hover:bg-elevated-hover transition-colors ${
 					narrowSize ? "h-9 shrink-0 px-2.5" : "px-2.5 py-1"
 				}`}
 			>
-				<span aria-hidden="true" className="text-[0.85rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
+				<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
 				<span>{t("infoPanel.diffFiles")} ({totalFileCount})</span>
 			</button>
 		);
@@ -3387,7 +3387,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		return (
 			<div className="flex-1 min-h-0 flex items-center justify-center p-6">
 				<div className="max-w-xl w-full bg-raised border border-edge rounded-xl p-6 space-y-2 text-center">
-					<div className="text-[1.1rem] font-semibold text-fg">{message}</div>
+					<div className="text-lg font-semibold text-fg">{message}</div>
 					{extra && <p className="text-sm text-fg-3">{extra}</p>}
 				</div>
 			</div>
@@ -3413,11 +3413,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								title={t("infoPanel.backToTerminal")}
 								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
 							>
-								<span className="text-[1.05rem] leading-none" aria-hidden="true">{"\u2190"}</span>
+								<span className="text-base-lg leading-none" aria-hidden="true">{"\u2190"}</span>
 							</button>
 							<div className="min-w-0 flex-1">
 								<div className="text-sm font-semibold leading-tight text-fg">{t("infoPanel.diffViewer")}</div>
-								<div className="truncate text-[0.6875rem] leading-tight text-fg-3" data-testid="diff-narrow-subtitle">
+								<div className="truncate text-micro leading-tight text-fg-3" data-testid="diff-narrow-subtitle">
 									<span>{diffSubtitleLabel}</span>
 									{payload && (
 										<>
@@ -3448,19 +3448,19 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						onClick={requestClose}
 						className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-semibold"
 					>
-						<span className="text-[0.95rem] leading-none">{"\u2190"}</span>
+						<span className="text-base-sm leading-none">{"\u2190"}</span>
 						<span>{t("infoPanel.backToTerminal")}</span>
 					</button>
 					<div className="min-w-0 flex-1 pr-2">
 						<div className="text-sm font-semibold leading-tight text-fg">{t("infoPanel.diffViewer")}</div>
-						<div className="text-[0.6875rem] leading-tight text-fg-3">
+						<div className="text-micro leading-tight text-fg-3">
 							{diffSubtitleLabel}
 						</div>
 					</div>
 					{payload && (
 						<>
 							<span
-								className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-[0.6875rem] font-mono"
+								className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-micro font-mono"
 								data-testid="diff-toolbar-summary"
 							>
 								<span>{t.plural("infoPanel.diffFileCount", visibleSummary.files)}</span>
@@ -3468,7 +3468,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								<span className="text-danger">−{visibleSummary.deletions}</span>
 								{!includeTests && hiddenTestCount > 0 && (
 									<span
-										className="text-fg-muted text-[0.8rem] leading-none"
+										className="text-fg-muted text-sm-plus leading-none"
 										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										title={t.plural("infoPanel.diffTestsHidden", hiddenTestCount)}
 									>
@@ -3504,19 +3504,19 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					>
 						<span
 							aria-hidden="true"
-							className="text-[1rem] leading-none"
+							className="text-base leading-none"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
 							{"\u{F0645}"}
 						</span>
 						<span
 							aria-hidden="true"
-							className="text-[0.85rem] leading-none"
+							className="text-sm-plus leading-none"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
 							{"›"}
 						</span>
-						<span className="rotate-180 text-[0.625rem] font-semibold uppercase tracking-wider [writing-mode:vertical-rl]">
+						<span className="rotate-180 text-dense font-semibold uppercase tracking-wider [writing-mode:vertical-rl]">
 							{t("infoPanel.diffFiles")}
 						</span>
 					</button>
@@ -3530,11 +3530,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									aria-label={t("infoPanel.diffFilesCollapse")}
 									title={t("infoPanel.diffFilesCollapse")}
 									data-testid="diff-files-collapse-button"
-									className="mb-2 inline-flex h-7 w-full items-center justify-center gap-2 rounded-md border border-edge bg-base/60 text-[0.6875rem] font-semibold uppercase tracking-wider text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg"
+									className="mb-2 inline-flex h-7 w-full items-center justify-center gap-2 rounded-md border border-edge bg-base/60 text-micro font-semibold uppercase tracking-wider text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg"
 								>
 									<span
 										aria-hidden="true"
-										className="text-[0.95rem] leading-none"
+										className="text-base-sm leading-none"
 										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 									>
 										{"«"}
@@ -3548,31 +3548,31 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 												<div className="flex items-center gap-2">
 													<span
 														aria-hidden="true"
-														className="text-[0.95rem] leading-none text-accent"
+														className="text-base-sm leading-none text-accent"
 														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 													>
 														{"\u{F0198}"}
 													</span>
-													<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
+													<span className="text-micro uppercase tracking-wider text-fg-muted font-semibold">
 														{t("infoPanel.diffReviewExport")}
 													</span>
 													<HelpSpot topicId="diff.review" />
 												</div>
-												<p className="text-[0.6875rem] leading-snug text-fg-3">
+												<p className="text-micro leading-snug text-fg-3">
 													{reviewExportEntries.length > 0
 														? t("infoPanel.diffReviewExportBody")
 														: t("infoPanel.diffReviewExportEmpty")}
 												</p>
 										</div>
 										<span className="flex shrink-0 items-center gap-1">
-											<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-[0.6875rem] font-mono text-fg-2">
+											<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-micro font-mono text-fg-2">
 												{pendingReviewExportEntries.length}
 											</span>
 											{sentReviewCommentCount > 0 && (
 												<span
 													data-testid="review-export-sent-count"
 													title={t("infoPanel.diffReviewSentCount", { count: String(sentReviewCommentCount) })}
-													className="inline-flex h-6 items-center justify-center rounded-md border border-success/40 bg-success/10 px-1.5 text-[0.6875rem] font-mono text-success"
+													className="inline-flex h-6 items-center justify-center rounded-md border border-success/40 bg-success/10 px-1.5 text-micro font-mono text-success"
 												>
 													{t("infoPanel.diffReviewSentCount", { count: String(sentReviewCommentCount) })}
 												</span>
@@ -3612,10 +3612,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 															<div className="flex items-center gap-1.5 text-xs font-semibold text-fg">
 																<span>{t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}</span>
 																{entry.origin === "github" && (
-																	<span className="inline-flex items-center gap-1 rounded border border-edge bg-base px-1 py-px text-[0.625rem] font-semibold text-fg-3" data-testid="review-export-github-marker">
+																	<span className="inline-flex items-center gap-1 rounded border border-edge bg-base px-1 py-px text-dense font-semibold text-fg-3" data-testid="review-export-github-marker">
 																		<span
 																			aria-hidden="true"
-																			className="text-[0.7rem] leading-none"
+																			className="text-micro leading-none"
 																			style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 																		>
 																			{""}
@@ -3624,7 +3624,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 																	</span>
 																)}
 																{entry.sentAt && (
-																	<span className="inline-flex items-center rounded border border-success/40 bg-success/10 px-1 py-px text-[0.625rem] font-semibold text-success" data-testid="review-export-sent-marker">
+																	<span className="inline-flex items-center rounded border border-success/40 bg-success/10 px-1 py-px text-dense font-semibold text-success" data-testid="review-export-sent-marker">
 																		{t("infoPanel.diffReviewSendCommentSent")}
 																	</span>
 																)}
@@ -3638,7 +3638,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 												})}
 											</div>
 										) : (
-											<div className="rounded-lg border border-dashed border-edge bg-raised/35 px-3 py-2 text-[0.6875rem] leading-snug text-fg-3">
+											<div className="rounded-lg border border-dashed border-edge bg-raised/35 px-3 py-2 text-micro leading-snug text-fg-3">
 												{t("infoPanel.diffReviewExportHint")}
 											</div>
 										)}
@@ -3659,7 +3659,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 												>
 													<span
 														aria-hidden="true"
-														className="text-[0.95rem] leading-none"
+														className="text-base-sm leading-none"
 														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 													>
 														{"\u{F0198}"}
@@ -3684,7 +3684,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 												>
 													<span
 														aria-hidden="true"
-														className="text-[0.95rem] leading-none"
+														className="text-base-sm leading-none"
 														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 													>
 														{"\uf120"}
@@ -3708,7 +3708,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 											>
 												<span
 													aria-hidden="true"
-													className="text-[0.95rem] leading-none"
+													className="text-base-sm leading-none"
 													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 												>
 													{""}
@@ -3721,25 +3721,25 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									<div className="rounded-lg border border-edge bg-base px-3 py-2 space-y-1.5">
 									<div className="flex items-center justify-between gap-2 px-1">
 										<span className="flex items-center gap-1.5">
-											<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
+											<span className="text-micro uppercase tracking-wider text-fg-muted font-semibold">
 												{t("infoPanel.diffFiles")}
 											</span>
 											<HelpSpot topicId="diff.files-aside" />
 										</span>
-										<span className="text-[0.6875rem] text-fg-3 font-mono">
+										<span className="text-micro text-fg-3 font-mono">
 											{readCount}/{totalFileCount} {t("infoPanel.diffRead")}
 										</span>
 									</div>
 									<div className="grid grid-cols-2 gap-2">
 										<button
 											onClick={() => setAllFilesExpanded(!allFilesExpanded)}
-											className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.625rem] font-medium text-fg-2 transition-colors hover:bg-elevated-hover"
+											className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-dense font-medium text-fg-2 transition-colors hover:bg-elevated-hover"
 										>
 											{allFilesExpanded ? t("infoPanel.diffCollapseAll") : t("infoPanel.diffExpandAll")}
 										</button>
 										<button
 											onClick={() => setAllFilesRead(!allFilesRead)}
-											className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.625rem] font-medium text-fg-2 transition-colors hover:bg-elevated-hover"
+											className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-dense font-medium text-fg-2 transition-colors hover:bg-elevated-hover"
 										>
 											{allFilesRead ? t("infoPanel.diffMarkAllUnread") : t("infoPanel.diffMarkAllRead")}
 										</button>
@@ -3763,7 +3763,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						testId="diff-files-sheet"
 					>
 						<div className="mb-2 flex items-center justify-end px-1">
-							<span className="text-[0.6875rem] text-fg-3 font-mono">
+							<span className="text-micro text-fg-3 font-mono">
 								{readCount}/{totalFileCount} {t("infoPanel.diffRead")}
 							</span>
 						</div>
@@ -3815,7 +3815,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						data-testid="diff-only-tests-empty-state"
 					>
 						<div className="max-w-xl w-full bg-raised border border-edge rounded-xl p-6 space-y-3 text-center">
-							<div className="text-[1.1rem] font-semibold text-fg">
+							<div className="text-lg font-semibold text-fg">
 								{t("infoPanel.diffOnlyTestsTitle")}
 							</div>
 							<p className="text-sm text-fg-3">
@@ -3911,7 +3911,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 							<div className="px-3 py-2 border-b border-edge flex items-center gap-2">
 								<span
 									aria-hidden="true"
-									className="text-[1rem] leading-none text-fg-3"
+									className="text-base leading-none text-fg-3"
 									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 								>
 									{"\u{F0219}"}
@@ -3919,7 +3919,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								<span className="text-xs font-semibold text-fg">
 									{t("infoPanel.diffSkippedFilesTitle")}
 								</span>
-								<span className="text-[0.6875rem] text-fg-3 font-mono">
+								<span className="text-micro text-fg-3 font-mono">
 									{visibleSkippedFiles.length}
 								</span>
 							</div>
@@ -3933,13 +3933,13 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 											ref={(element) => {
 												sectionRefs.current[skipped.id] = element;
 											}}
-											className={`px-3 py-2 flex items-center gap-2 text-[0.75rem] ${
+											className={`px-3 py-2 flex items-center gap-2 text-xs ${
 												isActive ? "bg-accent/10" : ""
 											}`}
 										>
 											<span
 												title={statusLabelLong(skipped.status, t)}
-												className={`px-1.5 py-0.5 rounded-md border text-[0.625rem] font-bold ${statusClassName(skipped.status)}`}
+												className={`px-1.5 py-0.5 rounded-md border text-dense font-bold ${statusClassName(skipped.status)}`}
 											>
 												{statusLabel(skipped.status)}
 											</span>
@@ -3959,12 +3959,12 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 													)
 													: skipped.displayPath}
 											</span>
-											<span className="shrink-0 font-mono text-fg-3 text-[0.6875rem] tabular-nums">
+											<span className="shrink-0 font-mono text-fg-3 text-micro tabular-nums">
 												{formatSkippedSize(skipped.oldSize)}
 												<span className="mx-1.5 text-fg-muted">{"→"}</span>
 												{formatSkippedSize(skipped.newSize)}
 											</span>
-											<span className={`shrink-0 px-1.5 py-0.5 rounded-md border text-[0.625rem] ${
+											<span className={`shrink-0 px-1.5 py-0.5 rounded-md border text-dense ${
 												skipped.reason === "binary"
 													? "bg-accent/10 text-accent border-accent/25"
 													: "bg-warning/10 text-warning border-warning/25"
@@ -3973,7 +3973,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 													? t("infoPanel.diffSkippedReasonBinary")
 													: t("infoPanel.diffSkippedReasonLarge")}
 											</span>
-											<label className="shrink-0 inline-flex items-center gap-1.5 text-[0.625rem] text-fg-3 cursor-pointer select-none">
+											<label className="shrink-0 inline-flex items-center gap-1.5 text-dense text-fg-3 cursor-pointer select-none">
 												<input
 													type="checkbox"
 													checked={isRead}

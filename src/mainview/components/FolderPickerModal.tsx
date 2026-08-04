@@ -369,7 +369,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 										key={place.path}
 										type="button"
 										onClick={() => void navigateTo(place.path)}
-										className={`flex items-center gap-1.5 px-3 min-h-[44px] rounded-full whitespace-nowrap text-[13px] border transition-colors ${
+										className={`flex items-center gap-1.5 px-3 min-h-[44px] rounded-full whitespace-nowrap text-sm-plus border transition-colors ${
 											active ? "bg-accent/15 border-accent text-fg font-medium" : "bg-raised border-edge text-fg-2 hover:text-fg"
 										}`}
 									>
@@ -386,7 +386,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 										type="button"
 										onClick={() => void navigateTo(p)}
 										title={displayPath(p, home)}
-										className={`flex items-center gap-1.5 px-3 min-h-[44px] rounded-full whitespace-nowrap text-[13px] border transition-colors ${
+										className={`flex items-center gap-1.5 px-3 min-h-[44px] rounded-full whitespace-nowrap text-sm-plus border transition-colors ${
 											active ? "bg-accent/15 border-accent text-fg font-medium" : "bg-raised border-edge text-fg-2 hover:text-fg"
 										}`}
 									>
@@ -465,7 +465,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									spellCheck={false}
 									autoCorrect="off"
 									autoCapitalize="off"
-									className="w-full px-3 py-1.5 bg-raised border border-edge rounded-lg text-fg text-[13px] font-mono outline-none focus:border-accent/50 transition-colors streamer-private"
+									className="w-full px-3 py-1.5 bg-raised border border-edge rounded-lg text-fg text-sm-plus font-mono outline-none focus:border-accent/50 transition-colors streamer-private"
 								/>
 							</form>
 							<div className="relative flex items-center">
@@ -481,7 +481,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									spellCheck={false}
 									autoCorrect="off"
 									autoCapitalize="off"
-									className="w-full pl-7 pr-2 py-1.5 bg-raised border border-edge rounded-lg text-fg text-[13px] outline-none focus:border-accent/50 transition-colors"
+									className="w-full pl-7 pr-2 py-1.5 bg-raised border border-edge rounded-lg text-fg text-sm-plus outline-none focus:border-accent/50 transition-colors"
 								/>
 							</div>
 						</div>
@@ -522,7 +522,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 											autoCorrect="off"
 											autoCapitalize="off"
 											disabled={creatingFolder}
-											className="flex-1 min-w-0 px-2 py-1 bg-elevated border border-edge-active rounded-md text-fg text-[13px] font-mono outline-none focus:border-accent/50 transition-colors disabled:opacity-60"
+											className="flex-1 min-w-0 px-2 py-1 bg-elevated border border-edge-active rounded-md text-fg text-sm-plus font-mono outline-none focus:border-accent/50 transition-colors disabled:opacity-60"
 										/>
 										<button
 											type="submit"
@@ -577,7 +577,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				{/* Footer */}
 				<div className="px-5 py-3 border-t border-edge flex items-center gap-3">
 					<div className="flex-1 min-w-0">
-						<div className="text-fg-muted text-[10px] uppercase tracking-wide mb-0.5">
+						<div className="text-fg-muted text-dense uppercase tracking-wide mb-0.5">
 							{t("folderPicker.selected")}
 						</div>
 						<div className="text-fg text-xs font-mono truncate" title={selectedPath[0] ?? ""}>
@@ -615,7 +615,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 function SidebarSection({ title, children }: { title: string; children: React.ReactNode }) {
 	return (
 		<div>
-			<div className="px-3 pb-1 text-fg-muted text-[10px] uppercase tracking-wider font-medium">
+			<div className="px-3 pb-1 text-fg-muted text-dense uppercase tracking-wider font-medium">
 				{title}
 			</div>
 			<div className="flex flex-col">{children}</div>
@@ -638,7 +638,7 @@ function SidebarItem({ glyph, label, subLabel, path, active, onClick }: SidebarI
 			type="button"
 			onClick={onClick}
 			title={subLabel ?? path}
-			className={`w-full flex items-center gap-2 pl-3 pr-2 py-1.5 text-left text-[13px] transition-colors border-l-2 ${
+			className={`w-full flex items-center gap-2 pl-3 pr-2 py-1.5 text-left text-sm-plus transition-colors border-l-2 ${
 				active
 					? "bg-accent/15 text-fg border-accent font-medium"
 					: "text-fg-2 hover:bg-elevated hover:text-fg border-transparent"
@@ -772,7 +772,7 @@ function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavi
 						}}
 						onDoubleClick={() => handleDoubleClick(item)}
 						style={{ paddingLeft: `${0.25 + level * 0.9}rem` }}
-						className={`w-full flex items-center gap-2 text-left pr-2 py-1 text-[13px] transition-colors border-l-2 ${
+						className={`w-full flex items-center gap-2 text-left pr-2 py-1 text-sm-plus transition-colors border-l-2 ${
 							selected
 								? "bg-accent/10 border-accent text-fg font-medium"
 								: "text-fg-2 border-transparent hover:bg-elevated hover:text-fg"

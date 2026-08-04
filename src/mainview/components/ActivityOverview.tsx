@@ -85,7 +85,7 @@ function ActionSheetButton({
 		>
 			<span
 				aria-hidden="true"
-				className="w-5 flex-shrink-0 text-center text-[1.125rem] leading-none"
+				className="w-5 flex-shrink-0 text-center text-lg leading-none"
 				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 			>
 				{glyph}
@@ -392,7 +392,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 									>
 										<span
 											aria-hidden="true"
-											className="text-[1rem] leading-none"
+											className="text-base leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
 											{"\u{F01DB}"}
@@ -408,7 +408,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 									>
 										<span
 											aria-hidden="true"
-											className="text-[0.875rem] leading-none"
+											className="text-sm leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
 											{"\uF062"}
@@ -424,7 +424,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 									>
 										<span
 											aria-hidden="true"
-											className="text-[0.875rem] leading-none"
+											className="text-sm leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
 											{"\uF063"}
@@ -449,13 +449,13 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 											)}
 											<span className="truncate select-text" title={isBuiltinOps ? undefined : project.name}>{isBuiltinOps ? t("ops.boardName") : project.name}</span>
 											{project.kind === "virtual" && (
-												<span className="px-1.5 py-0.5 rounded bg-raised text-fg-3 text-[0.625rem] font-medium uppercase tracking-[0.06em] flex items-center gap-1 flex-shrink-0">
+												<span className="px-1.5 py-0.5 rounded bg-raised text-fg-3 text-dense font-medium uppercase tracking-[0.06em] flex items-center gap-1 flex-shrink-0">
 													<span aria-hidden="true" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 													{isBuiltinOps ? t("ops.badgeSystem") : t("ops.badge")}
 												</span>
 											)}
 											{isBuiltinOps && (
-												<span className="hidden md:inline-flex text-fg-3 text-[0.5625rem] font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
+												<span className="hidden md:inline-flex text-fg-3 text-nano font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
 											)}
 										</div>
 										{/* Subtitle (path / virtual hint) is dead weight on a phone —
@@ -502,7 +502,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										aria-label={t("activity.projectActions")}
 										aria-haspopup="dialog"
 									>
-										<span aria-hidden="true" className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
+										<span aria-hidden="true" className="text-lg leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
 									</button>
 								)}
 							</div>
@@ -550,7 +550,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 													{task.hibernated && (
 														<span
 															data-testid="activity-hibernated-badge"
-															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-[0.5625rem] font-semibold uppercase tracking-[0.06em] text-fg-3"
+															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-3"
 														>
 															{t("task.hibernatedBadge")}
 														</span>

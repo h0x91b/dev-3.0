@@ -145,7 +145,7 @@ export default function KeyboardSettingsSection({
 					) : (
 						groups.map(({ category, specs }) => (
 							<div key={category} className="mt-5 first:mt-1">
-								<h3 className="flex items-center gap-2 text-fg-3 text-[11px] font-semibold uppercase tracking-wider mb-1">
+								<h3 className="flex items-center gap-2 text-fg-3 text-micro font-semibold uppercase tracking-wider mb-1">
 									{t(SHORTCUT_CATEGORY_KEY[category])}
 									<span className="h-px flex-1 bg-edge/60" />
 								</h3>

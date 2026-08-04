@@ -131,7 +131,7 @@ function Dropdown({ nodes, onRun, side = "down" }: DropdownProps) {
 								role="menuitem"
 								aria-haspopup="menu"
 								aria-expanded={open}
-								className="flex items-center justify-between gap-6 px-3 py-1.5 text-[13px] text-fg-2 hover:bg-raised-hover hover:text-fg cursor-default"
+								className="flex items-center justify-between gap-6 px-3 py-1.5 text-sm-plus text-fg-2 hover:bg-raised-hover hover:text-fg cursor-default"
 							>
 								<span>{node.label}</span>
 								<span className="text-fg-muted">{"›"}</span>
@@ -150,7 +150,7 @@ function Dropdown({ nodes, onRun, side = "down" }: DropdownProps) {
 						aria-disabled={disabled}
 						disabled={disabled}
 						onClick={() => !disabled && onRun(node.action)}
-						className={`w-full flex items-center justify-between gap-6 px-3 py-1.5 text-left text-[13px] ${
+						className={`w-full flex items-center justify-between gap-6 px-3 py-1.5 text-left text-sm-plus ${
 							disabled ? "text-fg-muted/40 cursor-default" : "text-fg-2 hover:bg-raised-hover hover:text-fg"
 						}`}
 					>
@@ -222,7 +222,7 @@ export default function AppMenuBar({ context, onAction }: AppMenuBarProps) {
 							aria-expanded={open}
 							onClick={() => setOpenIndex(open ? null : i)}
 							onMouseEnter={() => setOpenIndex((p) => (p === null ? p : i))}
-							className={`px-2.5 h-6 rounded text-[13px] leading-none ${open ? "bg-elevated text-fg" : "text-fg-3 hover:text-fg hover:bg-elevated"}`}
+							className={`px-2.5 h-6 rounded text-sm-plus leading-none ${open ? "bg-elevated text-fg" : "text-fg-3 hover:text-fg hover:bg-elevated"}`}
 						>
 							{menu.label}
 						</button>

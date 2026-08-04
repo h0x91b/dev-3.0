@@ -62,8 +62,8 @@ function ReorderControls({
 	downTitle: string;
 	size?: "sm" | "md";
 }) {
-	const fontSize = size === "md" ? "text-[0.875rem]" : "text-[0.75rem]";
-	const gripSize = size === "md" ? "text-[1rem]" : "text-[0.875rem]";
+	const fontSize = size === "md" ? "text-sm" : "text-xs";
+	const gripSize = size === "md" ? "text-base" : "text-sm";
 	const padding = size === "md" ? "p-1.5" : "p-1";
 	return (
 		<div className="flex items-center gap-0.5 shrink-0">
@@ -1602,7 +1602,7 @@ function ModelOverrideTable({
 							/>
 							{overridden ? (
 								<>
-									<span className="text-accent text-[10px] uppercase tracking-wide shrink-0">
+									<span className="text-accent text-dense uppercase tracking-wide shrink-0">
 										{t("settings.providerModelManual")}
 									</span>
 									<button
@@ -1614,7 +1614,7 @@ function ModelOverrideTable({
 									</button>
 								</>
 							) : (
-								<span className="text-fg-muted text-[10px] uppercase tracking-wide shrink-0">
+								<span className="text-fg-muted text-dense uppercase tracking-wide shrink-0">
 									{t("settings.providerModelDefault")}
 								</span>
 							)}

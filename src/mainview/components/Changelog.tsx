@@ -149,7 +149,7 @@ function FeatureCard({
 			<span className="absolute inset-y-0 left-0 w-[3px] bg-accent/60" />
 			<div className="flex items-start gap-2.5">
 				<span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-accent/15">
-					<Glyph glyph={TYPE_GLYPHS.feature} className="text-accent text-[0.8125rem] leading-none" />
+					<Glyph glyph={TYPE_GLYPHS.feature} className="text-accent text-sm-plus leading-none" />
 				</span>
 				<span className="flex-1 min-w-0 pt-0.5">
 					{headline && <span className="block text-fg text-sm font-semibold leading-snug">{headline}</span>}
@@ -393,7 +393,7 @@ function Changelog({ navigate, goBack, canGoBack }: ChangelogProps) {
 		<div className="h-full w-full overflow-y-auto">
 			<div className="mx-auto max-w-[72rem] px-6 sm:px-8 py-8">
 				<header className="mb-5">
-					<h1 className="text-fg text-3xl font-bold tracking-tight">{t("header.changelog")}</h1>
+					<h1 className="text-fg text-2xl font-bold tracking-tight">{t("header.changelog")}</h1>
 					<p className="text-fg-3 text-sm mt-1.5">
 						{t("changelog.subtitle")}{" "}
 						<span className="text-fg-muted">· {t.plural("changelog.entries", entries.length)}</span>
@@ -440,7 +440,7 @@ function Changelog({ navigate, goBack, canGoBack }: ChangelogProps) {
 												: "border-edge bg-transparent text-fg-3 hover:border-edge-active hover:text-fg-2"
 										}`}
 									>
-										<Glyph glyph={TYPE_GLYPHS[type]} className="text-[0.6875rem] leading-none" />
+										<Glyph glyph={TYPE_GLYPHS[type]} className="text-micro leading-none" />
 										{t(`changelog.${type}` as never) || type}
 										<span className={isActive ? "opacity-70" : "text-fg-muted"}>{typeCounts.get(type)}</span>
 									</button>

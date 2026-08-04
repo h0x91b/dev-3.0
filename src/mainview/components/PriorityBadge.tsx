@@ -25,7 +25,7 @@ function PriorityBadge({ priority, onChange, size = "xs", className = "" }: Prio
 	const btnRef = useRef<HTMLButtonElement>(null);
 	const level = priority ?? DEFAULT_PRIORITY;
 	const style = PRIORITY_STYLES[level];
-	const sizeCls = size === "sm" ? "text-xs px-1.5 py-0.5 rounded-md" : "text-[0.625rem] px-1 py-0.5 rounded";
+	const sizeCls = size === "sm" ? "text-xs px-1.5 py-0.5 rounded-md" : "text-dense px-1 py-0.5 rounded";
 	const aria = t("priority.badgeAria", { level, name: t(PRIORITY_NAME_KEYS[level]) });
 
 	if (!onChange) {

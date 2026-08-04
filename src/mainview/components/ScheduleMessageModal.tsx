@@ -176,7 +176,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 					</div>
 
 					{isPasting && (
-						<span className="text-[0.6875rem] text-accent animate-pulse">
+						<span className="text-micro text-accent animate-pulse">
 							{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}
 						</span>
 					)}

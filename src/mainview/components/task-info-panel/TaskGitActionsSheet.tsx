@@ -184,7 +184,7 @@ export default function TaskGitActionsSheet({
 
 	return (
 		<section className="border-t border-edge pt-4">
-			<h3 className="mb-2 flex items-center gap-2 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">
+			<h3 className="mb-2 flex items-center gap-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">
 				{t("infoPanel.gitSection")}
 				{statusLoading && (
 					<span className="h-3 w-3 animate-spin rounded-full border-2 border-current/30 border-t-current" aria-hidden="true" />
@@ -203,7 +203,7 @@ export default function TaskGitActionsSheet({
 						<span className="flex min-w-0 flex-1 flex-col">
 							<span className="truncate text-sm font-medium">{row.label}</span>
 							{row.disabled && row.reason && (
-								<span className="truncate text-[0.6875rem] font-normal text-fg-muted">{row.reason}</span>
+								<span className="truncate text-micro font-normal text-fg-muted">{row.reason}</span>
 							)}
 						</span>
 						{row.external && !row.disabled && (

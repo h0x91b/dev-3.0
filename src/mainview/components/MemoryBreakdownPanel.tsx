@@ -39,7 +39,7 @@ interface MemoryBreakdownPanelProps {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
 	return (
-		<div className="text-[0.5625rem] font-semibold uppercase tracking-wider text-fg-muted">{children}</div>
+		<div className="text-nano font-semibold uppercase tracking-wider text-fg-muted">{children}</div>
 	);
 }
 
@@ -57,7 +57,7 @@ export default function MemoryBreakdownPanel({ snapshot, onSelectTask }: MemoryB
 			<div className="flex flex-col gap-1 px-3 py-2.5">
 				<div className="flex items-baseline justify-between gap-2">
 					<SectionLabel>{t("memory.system")}</SectionLabel>
-					<span className={`text-[0.625rem] font-medium ${pressureClass}`}>
+					<span className={`text-dense font-medium ${pressureClass}`}>
 						{t(`memory.pressure.${snapshot.pressure}` as "memory.pressure.normal")}
 					</span>
 				</div>
@@ -65,23 +65,23 @@ export default function MemoryBreakdownPanel({ snapshot, onSelectTask }: MemoryB
 					<span className="font-semibold tabular-nums">{formatBytes(snapshot.headroom)}</span>{" "}
 					<span className="text-fg-3">{t("memory.free")}</span>
 				</div>
-				<div className="text-[0.6875rem] text-fg-3 tabular-nums">
+				<div className="text-micro text-fg-3 tabular-nums">
 					{t("memory.usedOfTotal", { used: formatBytes(snapshot.used), total: formatBytes(snapshot.total) })}
 				</div>
 				{snapshot.cached > 0 && (
-					<div className="text-[0.6875rem] text-fg-muted">
+					<div className="text-micro text-fg-muted">
 						{t("memory.cached", { size: formatBytes(snapshot.cached) })}
 					</div>
 				)}
 				{snapshot.pressureEstimated && (
-					<div className="text-[0.6875rem] text-fg-muted">{t("memory.pressureEstimated")}</div>
+					<div className="text-micro text-fg-muted">{t("memory.pressureEstimated")}</div>
 				)}
 			</div>
 
 			{/* Swap — the reason everything suddenly feels slow. */}
 			<div className="flex items-baseline justify-between gap-2 border-t border-edge px-3 py-2">
 				<SectionLabel>{t("memory.swap")}</SectionLabel>
-				<div className="text-[0.6875rem] text-right">
+				<div className="text-micro text-right">
 					{snapshot.swapTotal === 0 ? (
 						<span className="text-fg-muted">{t("memory.swapNone")}</span>
 					) : (
@@ -103,7 +103,7 @@ export default function MemoryBreakdownPanel({ snapshot, onSelectTask }: MemoryB
 			<div className="flex flex-col gap-1.5 border-t border-edge px-3 py-2">
 				<SectionLabel>{t("memory.outsideDev3")}</SectionLabel>
 				{snapshot.topConsumers.length === 0 ? (
-					<div className="text-[0.6875rem] text-fg-muted">{t("memory.noConsumers")}</div>
+					<div className="text-micro text-fg-muted">{t("memory.noConsumers")}</div>
 				) : (
 					<ul className="flex flex-col gap-1.5">
 						{snapshot.topConsumers.map((consumer) => (
@@ -119,7 +119,7 @@ export default function MemoryBreakdownPanel({ snapshot, onSelectTask }: MemoryB
 									</span>
 									<Size bytes={consumer.rss} />
 								</div>
-								<span className="truncate text-[0.625rem] text-fg-muted streamer-private">{consumer.path}</span>
+								<span className="truncate text-dense text-fg-muted streamer-private">{consumer.path}</span>
 							</li>
 						))}
 					</ul>
@@ -147,7 +147,7 @@ export default function MemoryBreakdownPanel({ snapshot, onSelectTask }: MemoryB
 				</div>
 
 				{snapshot.activeTaskCount > 0 && (
-					<div className="text-[0.625rem] leading-relaxed text-fg-muted">{t("memory.approxNote")}</div>
+					<div className="text-dense leading-relaxed text-fg-muted">{t("memory.approxNote")}</div>
 				)}
 
 				{snapshot.topTasks.length > 0 && (

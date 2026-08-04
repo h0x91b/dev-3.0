@@ -451,7 +451,7 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 				</span>
 				<div className="flex-1 min-w-0 pr-1">
 					{entry.context && (
-						<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
+						<div className="text-micro font-mono text-fg-muted truncate mb-0.5">
 							{entry.context}
 						</div>
 					)}

@@ -21,15 +21,15 @@ export function FileAttachmentCard({ path, onRemove }: FileAttachmentCardProps) 
 				title={t("attachments.openFile", { name: filename })}
 			>
 				<span
-					className="text-[1.5rem] leading-none text-fg-3"
+					className="text-2xl leading-none text-fg-3"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{FILE_DOC_ICON}
 				</span>
-				<span className="text-[0.5625rem] text-fg-muted truncate max-w-[5.5rem]" title={filename}>
+				<span className="text-nano text-fg-muted truncate max-w-[5.5rem]" title={filename}>
 					{filename}
 				</span>
-				<span className="text-[0.5rem] text-fg-muted/70 uppercase tracking-wide">{ext}</span>
+				<span className="text-nano text-fg-muted/70 uppercase tracking-wide">{ext}</span>
 			</button>
 			{onRemove && (
 				<button

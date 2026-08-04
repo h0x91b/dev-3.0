@@ -14,7 +14,7 @@ export function SeriesTooltip({ active, payload, label, formatValue = (n) => Str
 	if (!active || !payload || payload.length === 0) return null;
 	return (
 		<div className="rounded-lg border border-edge bg-overlay px-2.5 py-1.5 shadow-xl pointer-events-none">
-			{label != null && <div className="text-fg-3 text-[0.625rem] mb-0.5">{label}</div>}
+			{label != null && <div className="text-fg-3 text-dense mb-0.5">{label}</div>}
 			<div className="text-fg text-xs font-semibold tabular-nums">{formatValue(payload[0].value)}</div>
 		</div>
 	);
@@ -34,10 +34,10 @@ export function PieTooltip({ active, payload, unitLabel = "", linesLabel = "" }:
 	return (
 		<div className="rounded-lg border border-edge bg-overlay px-2.5 py-1.5 shadow-xl pointer-events-none">
 			<div className="text-fg text-xs font-semibold">{d.name}</div>
-			<div className="text-fg-3 text-[0.6875rem] tabular-nums">
+			<div className="text-fg-3 text-micro tabular-nums">
 				{d.value} {unitLabel} · {d.sharePct}%
 			</div>
-			<div className="text-fg-muted text-[0.625rem] tabular-nums">
+			<div className="text-fg-muted text-dense tabular-nums">
 				{Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(d.lines)} {linesLabel}
 			</div>
 		</div>

@@ -24,11 +24,11 @@ function CommentBubble({ comment }: { comment: PRReviewComment }) {
 			<div className="flex flex-wrap items-center gap-2">
 				<span className="text-xs font-semibold text-fg streamer-private">{comment.author ?? t("infoPanel.prUnknownAuthor")}</span>
 				{comment.isBot && (
-					<span className="rounded border border-edge bg-base px-1 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-fg-3">
+					<span className="rounded border border-edge bg-base px-1 py-px text-dense font-semibold uppercase tracking-wide text-fg-3">
 						{t("infoPanel.prBotBadge")}
 					</span>
 				)}
-				<span className="text-[0.6875rem] text-fg-muted">{formatCommentTimestamp(comment.createdAt)}</span>
+				<span className="text-micro text-fg-muted">{formatCommentTimestamp(comment.createdAt)}</span>
 				<span className="flex-1" />
 				<a
 					href={comment.url}
@@ -38,7 +38,7 @@ function CommentBubble({ comment }: { comment: PRReviewComment }) {
 					title={t("infoPanel.prOpenOnGithub")}
 					className="inline-flex h-5 w-5 items-center justify-center rounded text-fg-3 transition-colors hover:bg-elevated-hover hover:text-accent"
 				>
-					<span aria-hidden="true" className="text-[0.8rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+					<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: NERD_FONT }}>
 						{EXTERNAL_LINK_GLYPH}
 					</span>
 				</a>
@@ -74,20 +74,20 @@ export function GithubThreadView({
 			data-thread-id={thread.id}
 		>
 			<div className="flex flex-wrap items-center gap-2">
-				<span aria-hidden="true" className="text-[0.9rem] leading-none text-fg-2" style={{ fontFamily: NERD_FONT }}>
+				<span aria-hidden="true" className="text-sm leading-none text-fg-2" style={{ fontFamily: NERD_FONT }}>
 					{GITHUB_GLYPH}
 				</span>
-				<span className="dev3-inline-comment__meta text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-muted">
+				<span className="dev3-inline-comment__meta text-micro font-semibold uppercase tracking-[0.08em] text-fg-muted">
 					{t("infoPanel.prReviewThread")}
 					{line !== null ? ` · ${thread.path.split("/").pop()}:${line}` : ""}
 				</span>
 				{thread.isResolved && (
-					<span className="rounded border border-success/30 bg-success/10 px-1.5 py-px text-[0.625rem] font-semibold text-success">
+					<span className="rounded border border-success/30 bg-success/10 px-1.5 py-px text-dense font-semibold text-success">
 						{t("infoPanel.prResolvedBadge")}
 					</span>
 				)}
 				{thread.isOutdated && (
-					<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-[0.625rem] font-semibold text-warning">
+					<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-dense font-semibold text-warning">
 						{t("infoPanel.prOutdatedBadge")}
 					</span>
 				)}
@@ -103,7 +103,7 @@ export function GithubThreadView({
 					onClick={() => onToggleExport(thread.id)}
 					aria-pressed={exportSelected}
 					data-testid="github-thread-export-toggle"
-					className={`dev3-inline-comment__button inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[0.6875rem] font-semibold transition-colors ${
+					className={`dev3-inline-comment__button inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-micro font-semibold transition-colors ${
 						exportSelected
 							? "border-accent/40 bg-accent/15 text-accent"
 							: "border-edge bg-base text-fg-2 hover:bg-elevated-hover"
@@ -111,7 +111,7 @@ export function GithubThreadView({
 				>
 					<span
 						aria-hidden="true"
-						className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border text-[0.6rem] leading-none ${
+						className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border text-nano leading-none ${
 							exportSelected ? "border-accent bg-accent-fill text-white" : "border-edge bg-base text-transparent"
 						}`}
 					>
@@ -124,13 +124,13 @@ export function GithubThreadView({
 					onClick={() => onSendToAgent(thread)}
 					disabled={sendState === "sending"}
 					data-testid="github-thread-send"
-					className={`dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-[0.6875rem] font-semibold transition-colors ${
+					className={`dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-micro font-semibold transition-colors ${
 						sendState === "sent"
 							? "border-success/40 bg-success/10 text-success"
 							: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
 					}`}
 				>
-					<span aria-hidden="true" className="text-[0.8rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+					<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: NERD_FONT }}>
 						{TERMINAL_GLYPH}
 					</span>
 					<span>
@@ -176,11 +176,11 @@ export function OutdatedThreadsGroup({
 				type="button"
 				onClick={onToggle}
 				aria-expanded={open}
-				className="flex w-full items-center gap-2 px-4 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-3 transition-colors hover:bg-elevated-hover"
+				className="flex w-full items-center gap-2 px-4 py-2 text-left text-micro font-semibold uppercase tracking-[0.08em] text-fg-3 transition-colors hover:bg-elevated-hover"
 			>
 				<span aria-hidden="true">{open ? "▾" : "▸"}</span>
 				<span>{t("infoPanel.prOutdatedGroup")}</span>
-				<span className="rounded bg-raised px-1.5 py-px font-mono text-[0.625rem] text-fg-3">{threads.length}</span>
+				<span className="rounded bg-raised px-1.5 py-px font-mono text-dense text-fg-3">{threads.length}</span>
 			</button>
 			{open && threads.map((thread) => (
 				<GithubThreadView

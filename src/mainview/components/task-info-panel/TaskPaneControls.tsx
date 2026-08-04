@@ -253,9 +253,9 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		? t("panes.layoutNeedsTwoPanes")
 		: undefined;
 
-	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
-	const tmuxBtnDisabledClass = "px-1.5 py-1 rounded text-[0.625rem] font-medium text-fg-muted bg-elevated/50 border border-edge/50 flex items-center gap-1 cursor-not-allowed opacity-50";
-	const tmuxNewWindowBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-success hover:bg-success/20 bg-success/10 border border-success/35 flex items-center gap-1";
+	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
+	const tmuxBtnDisabledClass = "px-1.5 py-1 rounded text-dense font-medium text-fg-muted bg-elevated/50 border border-edge/50 flex items-center gap-1 cursor-not-allowed opacity-50";
+	const tmuxNewWindowBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-success hover:bg-success/20 bg-success/10 border border-success/35 flex items-center gap-1";
 	const tmuxIconBtnClass = "tmux-anim px-1.5 py-1 rounded text-fg-muted hover:text-fg-2 hover:bg-elevated border border-edge transition-colors flex items-center justify-center flex-shrink-0";
 	const tmuxSvgClass = "w-4 h-4";
 
@@ -322,7 +322,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 						onMouseLeave={!layoutUnsupported ? hideLayout : undefined}
 					>
 						<button
-							className={`tmux-anim px-1.5 py-1 text-[0.625rem] font-medium transition-colors ${layoutDisabled ? "text-fg-muted bg-elevated/50 border border-edge/50 cursor-not-allowed" : "text-accent hover:bg-accent/20"} flex items-center gap-1`}
+							className={`tmux-anim px-1.5 py-1 text-dense font-medium transition-colors ${layoutDisabled ? "text-fg-muted bg-elevated/50 border border-edge/50 cursor-not-allowed" : "text-accent hover:bg-accent/20"} flex items-center gap-1`}
 							disabled={layoutDisabled}
 							onClick={!layoutDisabled ? cycleLayout : undefined}
 							aria-label={t("tmux.nextLayoutDesc")}
@@ -412,7 +412,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 					>
 						<span className="flex-shrink-0 text-fg-2">{cycleIcon}</span>
 						<span className="text-xs flex-1 text-fg-2">{t("tmux.nextLayoutDesc")}</span>
-						{!isNative && <kbd className="font-mono text-[0.625rem] text-fg-muted flex-shrink-0">⌃B ␣</kbd>}
+						{!isNative && <kbd className="font-mono text-dense text-fg-muted flex-shrink-0">⌃B ␣</kbd>}
 					</button>
 					<div className="my-1 border-t border-edge" />
 					{layouts.map(({ action, descKey, shortcut }) => {
@@ -436,7 +436,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 										<path d="M3 8 L6.5 11.5 L13 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
 									</svg>
 								)}
-								{!isNative && <kbd className="font-mono text-[0.625rem] text-fg-muted flex-shrink-0">{shortcut}</kbd>}
+								{!isNative && <kbd className="font-mono text-dense text-fg-muted flex-shrink-0">{shortcut}</kbd>}
 							</button>
 						);
 					})}

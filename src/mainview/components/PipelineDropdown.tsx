@@ -47,7 +47,7 @@ export function PipelineMenuAction({
 			<button
 				onClick={onClick}
 				className={`flex w-full items-center gap-2 rounded-md text-left font-medium text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg ${
-					touch ? "min-h-[2.75rem] px-2 py-2.5 text-base" : "px-1.5 py-1.5 text-[0.9375rem]"
+					touch ? "min-h-[2.75rem] px-2 py-2.5 text-base" : "px-1.5 py-1.5 text-base-sm"
 				}`}
 			>
 				<span className={`flex flex-shrink-0 items-center justify-center text-fg-3 ${touch ? "w-6" : "w-5"}`}>
@@ -79,7 +79,7 @@ export default function PipelineDropdown({
 	const sectionPad = touch ? "px-1" : "px-3";
 	// Rows are the menu's content, not fine print — 15px on desktop, medium weight
 	// (`font-semibold` on the current/Completed rows still reads as heavier).
-	const rowText = touch ? "text-base" : "text-[0.9375rem]";
+	const rowText = touch ? "text-base" : "text-base-sm";
 	const rowPad = touch ? "min-h-[2.75rem] py-2.5 px-2" : "py-1.5 px-1.5";
 
 	return (
@@ -91,14 +91,14 @@ export default function PipelineDropdown({
 						<div className="truncate text-sm font-semibold text-fg">
 							{getStatusLabel(currentStatus, t, project)}
 						</div>
-						<div className="text-[0.625rem] text-fg-3">
+						<div className="text-dense text-fg-3">
 							{t("pipeline.stageOf", {
 								current: String(getPipelineIndex(currentStatus) + 1),
 								total: String(PIPELINE_STAGES.length),
 							})}
 						</div>
 					</div>
-					<span className="flex-shrink-0 self-start text-[0.625rem] font-semibold uppercase tracking-wider text-fg-3">
+					<span className="flex-shrink-0 self-start text-dense font-semibold uppercase tracking-wider text-fg-3">
 						{t("task.moveTo")}
 					</span>
 				</div>
@@ -158,7 +158,7 @@ export default function PipelineDropdown({
 							>
 								<span className="truncate">{getStatusLabel(stage, t, project)}</span>
 								{isCurrentStage && (
-									<span className="text-[0.625rem] text-fg-3 font-normal">
+									<span className="text-dense text-fg-3 font-normal">
 										{"\u2190"} {t("pipeline.current")}
 									</span>
 								)}
@@ -206,7 +206,7 @@ export default function PipelineDropdown({
 									/>
 									{getStatusLabel(stage, t, project)}
 									{isCurrentSide && (
-										<span className="ml-1 text-[0.625rem] text-fg-3 font-normal">
+										<span className="ml-1 text-dense text-fg-3 font-normal">
 											{"\u2190"} {t("pipeline.current")}
 										</span>
 									)}
@@ -244,7 +244,7 @@ export default function PipelineDropdown({
 									/>
 									{col.name}
 									{isCurrent && (
-										<span className="ml-1 text-[0.625rem] text-fg-3 font-normal">
+										<span className="ml-1 text-dense text-fg-3 font-normal">
 											{"\u2190"} {t("pipeline.current")}
 										</span>
 									)}

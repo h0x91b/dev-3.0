@@ -61,7 +61,7 @@ export function BreakdownPie({ data, height = 200, tasksLabel, linesLabel, total
 				</ResponsiveContainer>
 				<div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
 					<div className="text-fg text-2xl font-bold tabular-nums leading-none">{total}</div>
-					<div className="text-fg-3 text-[0.625rem]">{totalLabel}</div>
+					<div className="text-fg-3 text-dense">{totalLabel}</div>
 				</div>
 			</div>
 			<div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1.5 w-full" role="list">
@@ -69,7 +69,7 @@ export function BreakdownPie({ data, height = 200, tasksLabel, linesLabel, total
 					<div key={item.id} className="flex items-start gap-1.5 min-w-0" role="listitem">
 						<span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: sliceColor(i) }} aria-hidden="true" />
 						<span className="text-fg-2 text-xs leading-tight break-words flex-1 min-w-0" title={item.name}>{item.name}</span>
-						<span className="text-fg-muted text-[0.6875rem] tabular-nums flex-shrink-0">{item.completed}</span>
+						<span className="text-fg-muted text-micro tabular-nums flex-shrink-0">{item.completed}</span>
 					</div>
 				))}
 			</div>

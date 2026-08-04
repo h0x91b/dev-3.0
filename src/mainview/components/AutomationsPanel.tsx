@@ -134,14 +134,14 @@ function AutomationsPanel({ project }: AutomationsPanelProps) {
 										onClick={() => toggleEnabled(automation)}
 										className={`relative w-8 h-[18px] rounded-full transition-colors shrink-0 ${automation.enabled ? "bg-accent" : "bg-elevated"}`}
 									>
-										<span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white transition-all ${automation.enabled ? "left-[18px]" : "left-[2px]"}`} />
+										<span className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform ${automation.enabled ? "translate-x-4" : "translate-x-0"}`} />
 									</button>
 
 									<div className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
 											<span className={`text-sm font-medium truncate ${automation.enabled ? "text-fg" : "text-fg-muted"}`}>{automation.name}</span>
 											{lastRun?.status === "failed" && (
-												<span className="text-[10px] px-1.5 py-0.5 rounded font-medium text-danger bg-danger/10">{t("automations.runFailed")}</span>
+												<span className="text-dense px-1.5 py-0.5 rounded font-medium text-danger bg-danger/10">{t("automations.runFailed")}</span>
 											)}
 										</div>
 										<div className="text-xs text-fg-muted truncate font-mono">{automation.rrule} · {automation.timezone}</div>

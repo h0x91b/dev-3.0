@@ -122,7 +122,7 @@ export default function InlineRename({
 					<button
 						onClick={() => save(null)}
 						disabled={saving}
-						className="text-[0.625rem] text-fg-3 hover:text-fg-2 transition-colors flex-shrink-0 whitespace-nowrap"
+						className="text-dense text-fg-3 hover:text-fg-2 transition-colors flex-shrink-0 whitespace-nowrap"
 					>
 						{t("task.resetTitle")}
 					</button>

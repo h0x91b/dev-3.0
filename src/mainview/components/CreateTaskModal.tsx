@@ -602,7 +602,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 										<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
 									) : (
 										<span
-											className="text-[1rem] leading-none"
+											className="text-base leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
 											{"\u{F03E2}"}
@@ -665,7 +665,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 						)}
 					</div>
 					{isPasting && (
-						<span className="text-[0.6875rem] text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
+						<span className="text-micro text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
 					)}
 					<ImageAttachmentsStrip text={description} onRemovePath={handleRemovePath} />
 					{(generatedTitle || customTitle) && (
@@ -703,7 +703,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 												setCustomTitle(null);
 												setEditingTitle(false);
 											}}
-											className="text-fg-muted hover:text-danger text-[0.625rem] flex-shrink-0 transition-colors"
+											className="text-fg-muted hover:text-danger text-dense flex-shrink-0 transition-colors"
 											title={t("task.resetTitle")}
 										>
 											✕
@@ -738,7 +738,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 				{showPrBanner && detectedPr && (
 					<div className="flex items-start gap-2.5 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5">
 						<span
-							className="text-accent text-[1.0625rem] leading-none mt-0.5 shrink-0"
+							className="text-accent text-base-lg leading-none mt-0.5 shrink-0"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
 							{"\uf407"}
@@ -799,7 +799,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 							ref={labelAnchorRef}
 							type="button"
 							onClick={() => setLabelPickerOpen(true)}
-							className="inline-flex items-center rounded-full border border-dashed border-edge-active px-2 py-0.5 text-[0.625rem] font-medium text-fg-3 hover:text-fg hover:bg-fg/5 transition-colors"
+							className="inline-flex items-center rounded-full border border-dashed border-edge-active px-2 py-0.5 text-dense font-medium text-fg-3 hover:text-fg hover:bg-fg/5 transition-colors"
 							title={t("labels.addLabel")}
 						>
 							{t("labels.addLabel")}
@@ -913,14 +913,14 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 											className="px-3 py-1.5 bg-elevated border border-edge-active text-fg-2 text-xs font-medium rounded-lg hover:bg-elevated-hover hover:text-fg transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
 										>
 											<span
-												className="text-[0.875rem] leading-none"
+												className="text-sm leading-none"
 												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 											>
 												{"\u{F018D}"}
 											</span>
 											{t("createTask.scratch")}
 										</button>
-										<span className="text-fg-muted text-[0.6875rem] leading-tight">
+										<span className="text-fg-muted text-micro leading-tight">
 											{t("createTask.scratchSubtitle")}
 										</span>
 									</div>
@@ -957,7 +957,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 									{creating ? t("createTask.creating") : t("createTask.create")}
 								</button>
 							</div>
-							<div className="flex flex-wrap items-center justify-between gap-2 text-[0.6875rem]">
+							<div className="flex flex-wrap items-center justify-between gap-2 text-micro">
 								{onOpenAutomations ? (
 									<button
 										type="button"
@@ -965,7 +965,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 										className="text-accent hover:text-accent-emphasis hover:underline transition-colors flex items-center gap-1"
 									>
 										<span
-											className="text-[0.8125rem] leading-none"
+											className="text-sm-plus leading-none"
 											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 										>
 											{"\u{F0150}"}

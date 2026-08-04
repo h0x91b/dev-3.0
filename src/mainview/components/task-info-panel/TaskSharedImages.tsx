@@ -41,8 +41,8 @@ export default function TaskSharedImages({ task, projectId, compact = false }: T
 				data-testid="shared-images-badge"
 			>
 				<ImagesIcon className={`w-[1.125rem] h-[1.125rem]${isUnread ? " task-shared-unread-icon" : ""}`} />
-				{!compact && <span className="text-[0.6875rem] font-semibold">{t("infoPanel.imagesLabel")}</span>}
-				<span className={`text-[0.6875rem] font-semibold tabular-nums ${isUnread ? "text-success" : "text-accent"}`}>{count}</span>
+				{!compact && <span className="text-micro font-semibold">{t("infoPanel.imagesLabel")}</span>}
+				<span className={`text-micro font-semibold tabular-nums ${isUnread ? "text-success" : "text-accent"}`}>{count}</span>
 			</button>
 		</Tooltip>
 	);

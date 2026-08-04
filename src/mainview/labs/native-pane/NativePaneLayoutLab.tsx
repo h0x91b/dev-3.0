@@ -132,7 +132,7 @@ function FakeTerminalPane({
 			<div
 				ref={outputRef}
 				data-testid={`fake-output-${session.paneId}`}
-				className="flex-1 min-h-0 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-[1.45] text-fg-2 whitespace-pre-wrap break-all"
+				className="flex-1 min-h-0 overflow-y-auto px-3 py-2 font-mono text-micro leading-[1.45] text-fg-2 whitespace-pre-wrap break-all"
 				aria-label={t("nativePaneLab.stream", { streamId: session.streamId })}
 			>
 				{lines.map((line, index) => <div key={`${index}-${line}`}>{line}</div>)}
@@ -311,14 +311,14 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 					<h1 className="text-lg font-bold text-fg">{t("nativePaneLab.title")}</h1>
 					<p className="text-xs text-fg-3 truncate">{t("nativePaneLab.subtitle")}</p>
 				</div>
-				<span className="shrink-0 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent">
+				<span className="shrink-0 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-micro font-semibold text-accent">
 					{t("nativePaneLab.fakeOnly")}
 				</span>
 			</header>
 
 			<div className="shrink-0 space-y-2 px-3 py-2 border-b border-edge bg-raised/70">
 				<div className={`flex items-center gap-1.5 ${narrow ? "overflow-x-auto pb-1" : "flex-wrap"}`}>
-					<span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{t("nativePaneLab.scenarios")}</span>
+					<span className="mr-1 text-micro font-semibold uppercase tracking-wider text-fg-muted">{t("nativePaneLab.scenarios")}</span>
 					{([1, 2, 6] as const).map((count) => (
 						<button
 							key={count}
@@ -382,7 +382,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 						{t(stressRunning ? "nativePaneLab.runningStress" : "nativePaneLab.runStress")}
 					</button>
 				</div>
-				<p className="text-[11px] text-fg-muted">{t("nativePaneLab.keyboard")}</p>
+				<p className="text-micro text-fg-muted">{t("nativePaneLab.keyboard")}</p>
 			</div>
 
 			{narrow && paneIds.length > 1 && !tree.zoomedPaneId && (
@@ -416,7 +416,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 						: renderNode(tree.root)}
 			</main>
 
-			<footer className="shrink-0 px-3 py-2 border-t border-edge bg-raised text-[11px] text-fg-3" aria-live="polite">
+			<footer className="shrink-0 px-3 py-2 border-t border-edge bg-raised text-micro text-fg-3" aria-live="polite">
 				{stressCopy}
 			</footer>
 		</div>

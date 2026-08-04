@@ -133,7 +133,7 @@ function TaskSwitcherOverlay({
 										)}
 									</div>
 									<p
-										className={`text-[13px] leading-snug mt-1 line-clamp-2 ${
+										className={`text-sm-plus leading-snug mt-1 line-clamp-2 ${
 											overview ? "text-fg-3" : "text-fg-muted italic"
 										}`}
 									>
@@ -153,7 +153,7 @@ function TaskSwitcherOverlay({
 						data-testid="task-switcher-scope-toggle"
 					>
 						<kbd
-							className={`px-1.5 py-0.5 rounded border text-[11px] font-semibold leading-none ${
+							className={`px-1.5 py-0.5 rounded border text-micro font-semibold leading-none ${
 								scope === "global"
 									? "border-accent/40 bg-accent/15 text-accent"
 									: "border-edge bg-elevated text-fg-2"

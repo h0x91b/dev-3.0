@@ -161,7 +161,7 @@ export default function HelpOverlay({ onExit }: HelpOverlayProps) {
 							data-help-badge={topic.id}
 							aria-label={t(topic.titleKey)}
 							onClick={() => setActiveId(active ? null : topic.id)}
-							className={`absolute w-5 h-5 flex items-center justify-center rounded-full border shadow-lg shadow-black/40 text-[0.75rem] leading-none transition-colors ${
+							className={`absolute w-5 h-5 flex items-center justify-center rounded-full border shadow-lg shadow-black/40 text-xs leading-none transition-colors ${
 								active
 									? "bg-accent-fill text-white border-accent"
 									: "bg-overlay text-accent border-accent/60 hover:bg-accent-fill hover:text-white"
@@ -192,7 +192,7 @@ export default function HelpOverlay({ onExit }: HelpOverlayProps) {
 				<span className="min-w-0 truncate">{t("help.ui.modeBanner")}</span>
 				<span className="text-fg-muted">·</span>
 				<span className="flex items-center gap-1.5 flex-shrink-0">
-					<kbd className="inline-flex items-center rounded border border-accent/60 bg-accent/15 px-1.5 py-0.5 font-mono text-[0.6875rem] font-semibold leading-none text-accent shadow-sm">
+					<kbd className="inline-flex items-center rounded border border-accent/60 bg-accent/15 px-1.5 py-0.5 font-mono text-micro font-semibold leading-none text-accent shadow-sm">
 						Esc
 					</kbd>
 					<span className="font-medium text-fg">{t("help.ui.exitHint")}</span>

@@ -166,7 +166,7 @@ function TerminalPreviewPopover({
 						{"\u{F009A}"}
 					</span>
 					<div className="min-w-0 flex-1">
-						<div className="text-[0.5625rem] font-semibold uppercase tracking-wider text-danger/80">
+						<div className="text-nano font-semibold uppercase tracking-wider text-danger/80">
 							{reasons.length > 1 ? `${t("task.attentionLabel")} (${reasons.length})` : t("task.attentionLabel")}
 						</div>
 						<div className="flex flex-col gap-0.5 mt-0.5">
@@ -185,7 +185,7 @@ function TerminalPreviewPopover({
 					<div className="flex items-center justify-between gap-2">
 						<div className="flex items-center gap-1.5 min-w-0">
 							<span
-								className={`text-[0.5625rem] font-semibold uppercase tracking-wider ${
+								className={`text-nano font-semibold uppercase tracking-wider ${
 									hasOverview ? "text-fg-3" : "text-fg-muted"
 								}`}
 							>
@@ -193,7 +193,7 @@ function TerminalPreviewPopover({
 							</span>
 							{hasUserOverride && (
 								<span
-									className="text-[0.5625rem] text-fg-muted italic"
+									className="text-nano text-fg-muted italic"
 									title={t("overview.editedByYouHint")}
 								>
 									{t("overview.editedByYou")}
@@ -250,18 +250,18 @@ function TerminalPreviewPopover({
 								rows={5}
 								disabled={saving}
 								placeholder={t("overview.editPlaceholder")}
-								className="w-full resize-none bg-base border border-edge-active rounded px-2 py-1.5 text-[0.75rem] leading-snug text-fg focus:border-accent"
+								className="w-full resize-none bg-base border border-edge-active rounded px-2 py-1.5 text-xs leading-snug text-fg focus:border-accent"
 							/>
 							<div className="flex items-center justify-between gap-2">
 								<span
-									className={`text-[0.5625rem] font-mono ${
+									className={`text-nano font-mono ${
 										overBudget ? "text-danger" : "text-fg-muted"
 									}`}
 								>
 									{value.length}/{OVERVIEW_MAX_LEN}
 								</span>
 								<div className="flex items-center gap-2">
-									<span className="text-[0.5625rem] text-fg-muted">
+									<span className="text-nano text-fg-muted">
 										{t("overview.saveHint")}
 									</span>
 									<button
@@ -293,7 +293,7 @@ function TerminalPreviewPopover({
 						</>
 					) : (
 						<p
-							className={`text-[0.75rem] leading-snug whitespace-pre-wrap break-words ${
+							className={`text-xs leading-snug whitespace-pre-wrap break-words ${
 								hasOverview ? "text-fg-2" : "text-fg-3 italic"
 							}`}
 							style={{

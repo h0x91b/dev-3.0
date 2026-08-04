@@ -98,7 +98,7 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 						onKeyDown={(e) => handleKeyDown(e, index)}
 						className={`w-full text-left px-3 py-1.5 flex items-center gap-2.5 transition-colors outline-none hover:bg-elevated-hover focus:bg-elevated-hover ${isOn ? "bg-elevated" : ""}`}
 					>
-						<span className={`font-mono text-[0.6875rem] font-semibold px-1.5 py-0.5 rounded ${style.badge}`}>
+						<span className={`font-mono text-micro font-semibold px-1.5 py-0.5 rounded ${style.badge}`}>
 							{level}
 						</span>
 						<span className="text-xs text-fg flex-1 truncate">{t(PRIORITY_NAME_KEYS[level])}</span>

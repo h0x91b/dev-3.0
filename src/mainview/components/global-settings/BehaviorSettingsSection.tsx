@@ -308,7 +308,7 @@ function DropPositionCard({
 	return (
 		<button
 			onClick={onClick}
-			className={`flex-1 p-4 rounded-xl border-2 transition-all text-left ${
+			className={`flex-1 p-4 rounded-xl border-2 transition-[border-color,box-shadow] text-left ${
 				active
 					? "border-accent shadow-lg shadow-accent/10"
 					: "border-edge hover:border-edge-active"

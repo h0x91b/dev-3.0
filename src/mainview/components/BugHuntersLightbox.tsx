@@ -119,7 +119,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 				{/* Header */}
 				<div className="px-6 py-4 border-b border-edge flex items-center gap-2">
 					<span
-						className="text-[1.25rem] leading-none text-danger"
+						className="text-xl leading-none text-danger"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						aria-hidden
 					>
@@ -202,7 +202,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 						<div className="p-3 rounded-lg bg-accent/10 border border-accent/20">
 							<p className="text-fg text-xs font-medium">{t("bugHunters.nextTitle")}</p>
 							<p className="mt-1 text-fg-2 text-xs leading-relaxed">{t("bugHunters.nextStep")}</p>
-							<p className="mt-2 rounded-md bg-elevated px-2 py-1.5 text-fg text-[0.6875rem] leading-relaxed font-mono select-text">
+							<p className="mt-2 rounded-md bg-elevated px-2 py-1.5 text-fg text-micro leading-relaxed font-mono select-text">
 								{t("bugHunters.nextPrompt")}
 							</p>
 						</div>
@@ -249,7 +249,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 						className="bg-danger-fill hover:bg-danger-fill-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
 					>
 						<span
-							className="text-[0.95rem] leading-none"
+							className="text-base-sm leading-none"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-hidden
 						>

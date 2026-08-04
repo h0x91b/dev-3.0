@@ -141,11 +141,11 @@ function MobileWindowCarousel({
 							aria-label={t("windowPager.switchWindow")}
 							className="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg px-2 text-fg-2 hover:bg-raised-hover transition-colors min-w-0"
 						>
-							<span className="text-[0.8rem] leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F05C2}"}</span>
+							<span className="text-sm-plus leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F05C2}"}</span>
 							<span className="truncate text-xs font-medium">
 								{active + 1}. {windowLabel(active)}
 							</span>
-							<span className="text-[0.5rem] leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
+							<span className="text-nano leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
 						</button>
 
 						{menuOpen && (

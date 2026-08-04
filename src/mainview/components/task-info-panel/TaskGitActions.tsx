@@ -265,7 +265,7 @@ export default function TaskGitActions({
 	];
 
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
-		<span className="flex items-center gap-1.5 text-[0.6875rem] flex-shrink-0">
+		<span className="flex items-center gap-1.5 text-micro flex-shrink-0">
 			{branchStatus.behind > 0 && branchStatus.ahead > 0 ? (
 				<span className="font-medium">
 					<span className="text-success">{branchStatus.ahead} ahead</span>
@@ -303,9 +303,9 @@ export default function TaskGitActions({
 						window.open(prInfo.url, "_blank");
 					}
 				}}
-				className="inline-flex items-center gap-1 text-[0.625rem] font-mono font-semibold text-success bg-success/10 hover:bg-success/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+				className="inline-flex items-center gap-1 text-dense font-mono font-semibold text-success bg-success/10 hover:bg-success/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
 			>
-				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+				<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
 				{t("task.prBadge", { number: String(prInfo.number) })}
 				{(prInfo.unresolvedCount ?? 0) > 0 && (
 					<span className="inline-flex items-center gap-0.5 text-warning" aria-label={t.plural("task.prUnresolvedComments", prInfo.unresolvedCount ?? 0)}>
@@ -329,7 +329,7 @@ export default function TaskGitActions({
 					}
 					setRefMenuOpen((open) => !open);
 				}}
-				className="text-[0.6875rem] text-accent font-normal hover:text-accent-emphasis transition-colors cursor-pointer flex-shrink-0"
+				className="text-micro text-accent font-normal hover:text-accent-emphasis transition-colors cursor-pointer flex-shrink-0"
 			>
 				vs {displayRef} ▾
 			</button>
@@ -356,7 +356,7 @@ export default function TaskGitActions({
 						selectCompareRef(option.value);
 						setRefMenuOpen(false);
 					}}
-					className={`block w-full text-left px-3 py-1.5 text-[0.6875rem] hover:bg-elevated-hover transition-colors cursor-pointer ${
+					className={`block w-full text-left px-3 py-1.5 text-micro hover:bg-elevated-hover transition-colors cursor-pointer ${
 						compareRef === option.value ? "text-accent font-medium" : "text-fg-2"
 					}`}
 				>
@@ -368,7 +368,7 @@ export default function TaskGitActions({
 	);
 
 	const uncommittedBadge = branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0) ? (
-		<span className="flex items-center gap-1 text-[0.6875rem] font-medium text-danger flex-shrink-0">
+		<span className="flex items-center gap-1 text-micro font-medium text-danger flex-shrink-0">
 			<span>+{branchStatus.insertions}</span>
 			<span>/</span>
 			<span>−{branchStatus.deletions}</span>
@@ -476,7 +476,7 @@ export default function TaskGitActions({
 		);
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
-		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
+		<span className="flex items-center gap-1 text-micro flex-shrink-0">
 			<GitActionTooltip content={showDiffTooltip} detail={t("ttip.infoPanel.showDiff")} disabled={showDiffDisabled}>
 				<button
 					onClick={() => onOpenInlineDiff?.({
@@ -485,7 +485,7 @@ export default function TaskGitActions({
 						compareLabel: displayRef,
 					})}
 					disabled={showDiffDisabled}
-					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
+					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-semibold transition-colors ${
 						showDiffDisabled ? disabledBtnClass : "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/30"
 					}`}
 					aria-label={t("infoPanel.showDiff")}
@@ -497,7 +497,7 @@ export default function TaskGitActions({
 					<button
 						onClick={() => void handleCommit()}
 						disabled={commitDisabled}
-						className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+						className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-medium transition-colors ${
 							commitDisabled ? disabledBtnClass : enabledBtnClass
 						}`}
 						aria-label={t("infoPanel.commit")}
@@ -509,7 +509,7 @@ export default function TaskGitActions({
 				<button
 					onClick={handleRebase}
 					disabled={rebaseDisabled}
-					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-medium transition-colors ${
 						rebaseDisabled ? disabledBtnClass : enabledBtnClass
 					}`}
 					aria-label={rebaseNeedsAgent ? t("infoPanel.rebaseViaAgent") : t("infoPanel.rebase")}
@@ -529,7 +529,7 @@ export default function TaskGitActions({
 				<button
 					onClick={handlePush}
 					disabled={pushDisabled}
-					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-medium transition-colors ${
 						pushDisabled ? disabledBtnClass : enabledBtnClass
 					}`}
 					aria-label={t("infoPanel.push")}
@@ -544,7 +544,7 @@ export default function TaskGitActions({
 						<button
 							onClick={() => void handleCreatePR(false)}
 							disabled={createPRDisabled}
-							className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+							className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-medium transition-colors ${
 								createPRDisabled ? disabledBtnClass : enabledBtnClass
 							}`}
 							aria-label={t("infoPanel.createPR")}
@@ -556,7 +556,7 @@ export default function TaskGitActions({
 						<button
 							onClick={() => void handleCreatePR(true)}
 							disabled={createPRDisabled}
-							className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+							className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-medium transition-colors ${
 								createPRDisabled ? disabledBtnClass : enabledBtnClass
 							}`}
 							aria-label={t("infoPanel.createPRAutoMerge")}
@@ -570,7 +570,7 @@ export default function TaskGitActions({
 				<button
 					onClick={handleMerge}
 					disabled={mergeDisabled}
-					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-medium transition-colors ${
 						mergeDisabled ? disabledBtnClass : enabledBtnClass
 					}`}
 					aria-label={t("infoPanel.merge")}
@@ -642,7 +642,7 @@ export default function TaskGitActions({
 					{branchStatusBadge}
 					{refDropdownButton}
 					{showLoading && statusLoading && (
-						<span className="flex items-center gap-1 text-[0.6875rem] text-fg-muted flex-shrink-0">
+						<span className="flex items-center gap-1 text-micro text-fg-muted flex-shrink-0">
 							<svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
 								<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
 								<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />

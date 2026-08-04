@@ -145,7 +145,7 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up" }: Sc
 						<div key={m.id} className="px-3 py-1.5">
 							<div className="text-xs text-fg-2 truncate" title={m.text}>{m.text}</div>
 							<div className="mt-1 flex items-center justify-between gap-2">
-								<span className="text-[0.625rem] text-fg-3">
+								<span className="text-dense text-fg-3">
 									{formatCountdown(new Date(m.at).getTime() - Date.now())}
 								</span>
 								<div className="flex items-center gap-3">

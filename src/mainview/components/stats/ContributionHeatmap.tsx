@@ -77,7 +77,7 @@ export function ContributionHeatmap({ days, maxCount, legendLess, legendMore, to
 			<div className="inline-flex flex-col gap-1">
 				{/* Month labels, column-aligned with the grid below. */}
 				<div
-					className="grid text-fg-muted text-[0.5625rem] leading-none"
+					className="grid text-fg-muted text-nano leading-none"
 					style={{ gridAutoFlow: "column", gridAutoColumns: `${CELL}px`, columnGap: `${GAP}px` }}
 				>
 					{monthLabels.map((label, i) => (
@@ -105,7 +105,7 @@ export function ContributionHeatmap({ days, maxCount, legendLess, legendMore, to
 				</div>
 
 				{/* Legend */}
-				<div className="flex items-center gap-1 mt-0.5 text-fg-muted text-[0.5625rem]">
+				<div className="flex items-center gap-1 mt-0.5 text-fg-muted text-nano">
 					<span className="mr-0.5">{legendLess}</span>
 					{LEVEL_CLASS.map((cls, i) => (
 						<div key={i} className={`rounded-[2px] ${cls}`} style={{ width: CELL, height: CELL }} />

@@ -658,7 +658,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 							{renderNativePane(zoomedPane)}
 						</div>
 						<button
-							className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[0.625rem] font-medium bg-accent/20 text-accent border border-accent/40 hover:bg-accent/30 transition-colors"
+							className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-dense font-medium bg-accent/20 text-accent border border-accent/40 hover:bg-accent/30 transition-colors"
 							onClick={() => {
 								runPaneAction(taskId, { kind: "zoom", mode: "off" })
 									.then(setNativePaneState)

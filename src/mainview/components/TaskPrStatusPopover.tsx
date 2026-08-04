@@ -407,7 +407,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 								<span className="flex min-w-0 items-center gap-2">
 									<span className={"flex-shrink-0 leading-none " + checkClass(state)} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{checkGlyph(state)}</span>
 									<span className="min-w-0 flex-1 truncate text-fg-2">{name}</span>
-									<span className={"flex-shrink-0 " + (sheet ? "text-xs " : "text-[0.625rem] ") + checkClass(state)}>{checkStatusLabel(state, t)}</span>
+									<span className={"flex-shrink-0 " + (sheet ? "text-xs " : "text-dense ") + checkClass(state)}>{checkStatusLabel(state, t)}</span>
 								</span>
 							);
 							const rowPadding = sheet ? "px-1 py-2" : "px-1 py-1";

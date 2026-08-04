@@ -14,7 +14,7 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 	return (
 		<span
 			className={`group/chip inline-flex items-center rounded-full transition-colors ${
-				isSmall ? "text-[0.625rem]" : "text-xs"
+				isSmall ? "text-dense" : "text-xs"
 			}`}
 			style={
 				active

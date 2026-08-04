@@ -76,7 +76,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 								<div className="flex items-center gap-2">
 									<span className="font-medium text-fg">{req.name}</span>
 									{req.optional && (
-										<span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-fg-muted/10 text-fg-muted">
+										<span className="text-dense px-1.5 py-0.5 rounded bg-fg-muted/10 text-fg-muted">
 											{t("requirements.optional")}
 										</span>
 									)}

@@ -129,7 +129,7 @@ export default function TaskExposedPorts({ task, rowClassName, compact = false }
 				<button ref={btnRef} type="button" onClick={openMenu} className={rowClassName} aria-label={t("tunnel.exposedPortsSection")}>
 					<PortsIcon className="h-5 w-5 shrink-0 text-fg-3" />
 					<span className="flex-1 text-sm font-medium">{t("tunnel.portsLabel")}</span>
-					{activeCount > 0 && <span className="text-[0.75rem] font-semibold text-accent tabular-nums">{activeCount}</span>}
+					{activeCount > 0 && <span className="text-xs font-semibold text-accent tabular-nums">{activeCount}</span>}
 				</button>
 				{menuOpen && createPortal(
 					<ExposedPortsMenu
@@ -168,7 +168,7 @@ export default function TaskExposedPorts({ task, rowClassName, compact = false }
 			>
 				<PortsIcon className="w-[1.125rem] h-[1.125rem]" />
 				{(!compact || activeCount > 0) && (
-					<span className="text-[0.6875rem] font-semibold">
+					<span className="text-micro font-semibold">
 						{compact ? activeCount : activeCount > 0 ? `${t("tunnel.portsLabel")} (${activeCount})` : t("tunnel.portsLabel")}
 					</span>
 				)}
@@ -343,14 +343,14 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose, 
 								<Tooltip content={t("tunnel.sharedDescription")}>
 									<button
 										onClick={() => handleAddToShared(port)}
-										className="text-[0.6875rem] text-fg-3 hover:text-fg-2 underline-offset-2 hover:underline"
+										className="text-micro text-fg-3 hover:text-fg-2 underline-offset-2 hover:underline"
 									>
 										{t("tunnel.addToShared")}
 									</button>
 								</Tooltip>
 								<button
 									onClick={() => copySsh(port)}
-									className="text-[0.6875rem] text-fg-3 hover:text-fg-2 underline-offset-2 hover:underline"
+									className="text-micro text-fg-3 hover:text-fg-2 underline-offset-2 hover:underline"
 								>
 									{t("tunnel.copySshCommand")}
 								</button>
@@ -368,7 +368,7 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose, 
 							{t("tunnel.stopExposing")}
 						</button>
 					</div>
-					<div className="text-[0.6875rem] text-fg-muted mb-1.5 leading-snug">{t("tunnel.sharedDescription")}</div>
+					<div className="text-micro text-fg-muted mb-1.5 leading-snug">{t("tunnel.sharedDescription")}</div>
 					<div className="text-xs text-fg-3 mb-1.5">{t("tunnel.portsLabel")}: {sharedTunnel.ports.join(", ")}</div>
 					{sharedTunnel.state === "connected" && sharedTunnel.url && (
 						<CopyUrlRow url={sharedTunnel.url} />
@@ -379,7 +379,7 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose, 
 				</div>
 			)}
 
-			<div className="border-t border-edge px-3 py-1.5 text-[0.6875rem] text-fg-muted">
+			<div className="border-t border-edge px-3 py-1.5 text-micro text-fg-muted">
 				{t("tunnel.publicWarning")}
 			</div>
 

@@ -24,7 +24,7 @@ export default function GhWarningBanner({ notInstalled, onDismiss }: GhWarningBa
 
 	return (
 		<div className="flex items-start gap-3 px-4 py-3 bg-elevated border-b border-edge text-sm">
-			<span className="text-[#fbbf24] mt-0.5 shrink-0" aria-hidden="true">⚠</span>
+			<span className="text-warning-strong mt-0.5 shrink-0" aria-hidden="true">⚠</span>
 			<div className="flex-1 min-w-0">
 				<span className="font-medium text-fg">{title}</span>
 				<span className="text-fg-2 ml-1.5">{message}</span>

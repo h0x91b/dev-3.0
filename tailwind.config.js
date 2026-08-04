@@ -3,12 +3,26 @@ export default {
 	content: ["./src/mainview/**/*.{html,js,ts,jsx,tsx}"],
 	theme: {
 		extend: {
-			// The rung below `text-xs` that dense chips and meta lines kept
-			// re-inventing as `text-[0.625rem]` / `text-[0.65rem]` / `text-[0.6875rem]`.
-			// Arbitrary sizes also set no line-height, so they inherited the
-			// ancestor's leading; this rung carries its own.
+			// Closed type scale — arbitrary text-[…] sizes are banned (they carry
+			// no line-height and defeat mobile-dense-factor px-pinning).
+			// px-pinned rungs (nano, dense) are immune to MOBILE_DENSE_FACTOR
+			// root-font scaling, mirroring the 44px touch-target pattern in index.css.
 			fontSize: {
-				micro: ["0.6875rem", { lineHeight: "1.4" }],
+				// ── sub-floor (px-pinned, decorative only) ──────────────────
+				nano:      ["9px",       { lineHeight: "1.4" }], // purely decorative; carries meaning → use dense
+				dense:     ["10px",      { lineHeight: "1.4" }], // dense chrome floor, px-pinned
+				// ── rem-based rungs (scale with root font) ──────────────────
+				micro:     ["0.6875rem", { lineHeight: "1.4" }], // 11px – compact meta
+				// text-xs  0.75rem  12px  (Tailwind default)
+				"sm-plus": ["0.8125rem", { lineHeight: "1.5" }], // 13px – between xs and sm
+				// text-sm  0.875rem 14px  (Tailwind default)
+				"base-sm": ["0.95rem",   { lineHeight: "1.5" }], // 15px – between sm and base
+				// text-base 1rem   16px  (Tailwind default)
+				"base-lg": ["1.0625rem", { lineHeight: "1.5" }], // 17px – between base and lg
+				// text-lg  1.125rem 18px  (Tailwind default)
+				// text-xl  1.25rem  20px  (Tailwind default)
+				"xl-sm":   ["1.375rem",  { lineHeight: "1.3" }], // 22px – between xl and 2xl
+				// text-2xl 1.5rem   24px  (Tailwind default)
 			},
 			fontFamily: {
 				mono: [

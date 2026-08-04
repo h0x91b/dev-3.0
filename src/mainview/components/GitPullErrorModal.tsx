@@ -43,7 +43,7 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 				<div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-edge">
 					<div className="flex items-center gap-2 min-w-0">
 						<span
-							className="text-[1.25rem] leading-none text-danger shrink-0"
+							className="text-xl leading-none text-danger shrink-0"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-hidden="true"
 						>
@@ -91,7 +91,7 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 						className="px-4 py-2 text-sm font-medium text-white bg-accent-fill hover:bg-accent-fill-hover rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
 					>
 						<span
-							className={`text-[1rem] leading-none${retrying ? " animate-spin inline-block" : ""}`}
+							className={`text-base leading-none${retrying ? " animate-spin inline-block" : ""}`}
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 							aria-hidden="true"
 						>

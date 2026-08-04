@@ -415,7 +415,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 					aria-busy={isStarting}
 				>
 					{devServerIcon}
-					{!compact && <span className="text-[0.6875rem] font-semibold">{devServerLabel}</span>}
+					{!compact && <span className="text-micro font-semibold">{devServerLabel}</span>}
 				</button>
 			</Tooltip>
 

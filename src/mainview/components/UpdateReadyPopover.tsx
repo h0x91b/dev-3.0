@@ -28,7 +28,7 @@ export function UpdateWhatsNew({ version, changelog, onSeeAllChanges, className 
 	if (changelog.fixCount > 0) parts.push(t.plural("update.fixCount", changelog.fixCount));
 	return (
 		<div className={`border-t border-edge pt-2.5 space-y-1.5${className ? ` ${className}` : ""}`}>
-			<div className="text-fg-3 text-[0.625rem] font-semibold uppercase tracking-wider">
+			<div className="text-fg-3 text-dense font-semibold uppercase tracking-wider">
 				{t("update.whatsNewVersion", { version })}
 			</div>
 			<div className="space-y-1">
@@ -39,7 +39,7 @@ export function UpdateWhatsNew({ version, changelog, onSeeAllChanges, className 
 					</div>
 				))}
 			</div>
-			{parts.length > 0 && <div className="text-fg-muted text-[0.6875rem]">{parts.join(" · ")}</div>}
+			{parts.length > 0 && <div className="text-fg-muted text-micro">{parts.join(" · ")}</div>}
 			<button
 				type="button"
 				onClick={onSeeAllChanges}

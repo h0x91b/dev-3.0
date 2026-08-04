@@ -82,7 +82,7 @@ export default function FilterFunnel({ query, onChange, groups, size = "sm", ope
 		<div className="py-1" data-testid="filter-funnel-groups">
 			{groups.map((group) => (
 				<div key={group.id} className="py-1">
-					<div className="px-3 pb-1 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-3">
+					<div className="px-3 pb-1 text-dense font-semibold uppercase tracking-wider text-fg-3">
 						{t(GROUP_TITLE_KEY[group.id])}
 					</div>
 					{group.options.map((opt) => {
@@ -147,7 +147,7 @@ export default function FilterFunnel({ query, onChange, groups, size = "sm", ope
 					</span>
 					{activeCount > 0 && (
 						<span
-							className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 flex items-center justify-center rounded-full bg-accent-fill text-white text-[0.625rem] font-bold leading-none"
+							className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 flex items-center justify-center rounded-full bg-accent-fill text-white text-dense font-bold leading-none"
 							data-testid="filter-funnel-badge"
 						>
 							{activeCount}

@@ -13,7 +13,7 @@ export default function TerminalImmersiveChrome({ onExit }: TerminalImmersiveChr
 			className="h-11 min-h-11 md:h-7 md:min-h-7 flex-shrink-0 flex items-center justify-between gap-2 border-b border-edge bg-raised px-2.5"
 			data-testid="terminal-immersive-chrome"
 		>
-			<span className="text-fg-3 text-[0.625rem] font-semibold tracking-wide" aria-label="dev3">dev3</span>
+			<span className="text-fg-3 text-dense font-semibold tracking-wide" aria-label="dev3">dev3</span>
 			<button
 				type="button"
 				onClick={onExit}

@@ -106,11 +106,11 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 										onSeeAllChanges={() => {}}
 									/>
 								</div>
-								<p className="text-fg-muted text-[0.6875rem]">{t("updateSim.previewNote")}</p>
+								<p className="text-fg-muted text-micro">{t("updateSim.previewNote")}</p>
 							</div>
 
 							<div className="border-t border-edge pt-3 space-y-2">
-								<div className="text-fg-3 text-[0.625rem] font-semibold uppercase tracking-wider">
+								<div className="text-fg-3 text-dense font-semibold uppercase tracking-wider">
 									{t("updateSim.diagnostics")}
 								</div>
 								<div className="flex flex-wrap items-center gap-2 text-xs">
@@ -119,7 +119,7 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 										<span className="font-mono text-fg">{diag?.prevTag ?? t("updateSim.noTag")}</span>
 									</span>
 									{diag?.usedFallback && (
-										<span className="px-1.5 py-0.5 rounded bg-raised text-fg-muted text-[0.625rem] font-medium">
+										<span className="px-1.5 py-0.5 rounded bg-raised text-fg-muted text-dense font-medium">
 											{t("updateSim.fallbackBadge")}
 										</span>
 									)}
@@ -128,9 +128,9 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 										<span className="text-fg-muted">{t("updateSim.mergedPRs", { count: String(diag.mergedPRs) })}</span>
 									)}
 								</div>
-								<p className="text-fg-muted text-[0.6875rem]">{t("updateSim.includesUncommitted")}</p>
+								<p className="text-fg-muted text-micro">{t("updateSim.includesUncommitted")}</p>
 								{typeBreakdown && (
-									<p className="text-fg-2 text-[0.6875rem]">
+									<p className="text-fg-2 text-micro">
 										{typeBreakdown} <span className="text-fg-muted">— {t("updateSim.popoverShowsNote")}</span>
 									</p>
 								)}
@@ -151,7 +151,7 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 								)}
 
 								<div className="text-fg-3 text-xs font-medium pt-1">{t("updateSim.rawPayload")}</div>
-								<pre className="text-fg-2 text-[0.6875rem] font-mono bg-base rounded-lg p-3 overflow-x-auto">
+								<pre className="text-fg-2 text-micro font-mono bg-base rounded-lg p-3 overflow-x-auto">
 									{JSON.stringify(preview.changelog, null, 2)}
 								</pre>
 							</div>

@@ -42,13 +42,13 @@ export function Milestones({ reached, next, current, format, nextLabel, tooltipR
 				>
 					<span className="text-fg-muted text-base leading-none" style={{ fontFamily: ICON }}>{TROPHY}</span>
 					<div className="flex flex-col gap-1 min-w-0 flex-1">
-						<span className="text-fg-3 text-[0.6875rem] whitespace-nowrap">
+						<span className="text-fg-3 text-micro whitespace-nowrap">
 							{nextLabel}: <span className="font-semibold text-fg-2">{format(next)}</span>
 						</span>
 						<div className="h-1 w-full rounded-full bg-elevated overflow-hidden">
 							<div className="h-full rounded-full bg-accent transition-[width] duration-700" style={{ width: `${pct}%` }} />
 						</div>
-						<span className="text-fg-muted text-[0.625rem] tabular-nums">{current} / {format(next)}</span>
+						<span className="text-fg-muted text-dense tabular-nums">{current} / {format(next)}</span>
 					</div>
 				</div>
 			)}

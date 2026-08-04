@@ -62,7 +62,7 @@ export function StatGauge({
 				<div className="text-fg-3 text-xs">{caption}</div>
 				{hasTrend && (
 					<div
-						className={`mt-0.5 inline-flex items-center gap-1 text-[0.6875rem] font-semibold tabular-nums ${
+						className={`mt-0.5 inline-flex items-center gap-1 text-micro font-semibold tabular-nums ${
 							up ? "text-success" : "text-danger"
 						}`}
 						title={trendSuffix}

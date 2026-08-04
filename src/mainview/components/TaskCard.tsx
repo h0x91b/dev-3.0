@@ -490,10 +490,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					e.stopPropagation();
 					window.open(prInfo.url, "_blank");
 				}}
-				className="inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-success transition-colors hover:bg-success/20"
+				className="inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 font-mono text-dense font-semibold leading-none text-success transition-colors hover:bg-success/20"
 				aria-label={t("task.openPR", { number: String(prInfo.number) })}
 			>
-				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+				<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
 				<span className="leading-none">{t("task.prNumber", { number: String(prInfo.number) })}</span>
 			</button>
 		</TaskPrStatusPopover>
@@ -529,10 +529,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						e.stopPropagation();
 						window.open(prInfo!.url, "_blank");
 					}}
-					className={`inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${ok ? "text-success bg-success/10 hover:bg-success/20" : "text-danger bg-danger/10 hover:bg-danger/20"}`}
+					className={`inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-dense font-semibold leading-none transition-colors ${ok ? "text-success bg-success/10 hover:bg-success/20" : "text-danger bg-danger/10 hover:bg-danger/20"}`}
 					aria-label={t(ok ? "task.mergeBadge.mergeableAria" : "task.mergeBadge.notMergeableAria")}
 				>
-					<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ok ? "\u{F0623}" : "\uf05e"}</span>
+					<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ok ? "\u{F0623}" : "\uf05e"}</span>
 					<span className="truncate leading-none">{label}</span>
 				</button>
 			</TaskPrStatusPopover>
@@ -552,7 +552,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					e.stopPropagation();
 					window.open(prInfo!.url, "_blank");
 				}}
-				className={`inline-flex flex-shrink-0 items-center rounded font-mono text-[0.625rem] font-semibold leading-none transition-colors ${reviewMeta.square ? "h-5 w-5 justify-center p-0" : "h-5 gap-1 px-1.5 py-0.5"} ${reviewMeta.cls}`}
+				className={`inline-flex flex-shrink-0 items-center rounded font-mono text-dense font-semibold leading-none transition-colors ${reviewMeta.square ? "h-5 w-5 justify-center p-0" : "h-5 gap-1 px-1.5 py-0.5"} ${reviewMeta.cls}`}
 				aria-label={t(reviewMeta.key)}
 			>
 				{reviewMeta.glyph === null ? (
@@ -571,7 +571,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<path d="m15 17 2 2 4-5" />
 					</svg>
 				) : (
-					<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{reviewMeta.glyph}</span>
+					<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{reviewMeta.glyph}</span>
 				)}
 			</button>
 		</TaskPrStatusPopover>
@@ -585,10 +585,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					e.stopPropagation();
 					window.open(prInfo.url, "_blank");
 				}}
-				className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded bg-warning/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-warning transition-colors hover:bg-warning/20"
+				className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded bg-warning/10 px-1.5 py-0.5 font-mono text-dense font-semibold leading-none text-warning transition-colors hover:bg-warning/20"
 				aria-label={t.plural("task.prUnresolvedComments", unresolvedCount)}
 			>
-				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>
+				<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>
 				<span className="leading-none">{unresolvedCount}</span>
 			</button>
 		</TaskPrStatusPopover>
@@ -654,10 +654,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						}
 						setPortsPopoverOpen(!portsPopoverOpen);
 					}}
-					className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 font-mono text-[0.625rem] text-accent transition-colors hover:bg-accent/20"
+					className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 font-mono text-dense text-accent transition-colors hover:bg-accent/20"
 					aria-label={t.plural("ports.count", ports.length)}
 				>
-					<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+					<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 					{ports.length}
 				</button>
 			</Tooltip>,
@@ -667,7 +667,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		runSignals.push(
 			<span
 				key="res"
-				className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 font-mono text-[0.625rem] ${
+				className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 font-mono text-dense ${
 					resourceUsage.rss > 4 * 1024 * 1024 * 1024
 						? "text-red-400 bg-red-500/10"
 						: resourceUsage.rss > 2 * 1024 * 1024 * 1024
@@ -676,7 +676,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				}`}
 				title={t("resources.details", { cpu: resourceUsage.cpu.toFixed(1), memory: formatBytes(resourceUsage.rss) })}
 			>
-				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+				<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 					{"\u{F035B}"}
 				</span>
 				{formatBytes(resourceUsage.rss)}
@@ -697,7 +697,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					<button
 						data-testid="task-card-scheduled-badge"
 						onClick={(e) => { e.stopPropagation(); setSchedPopoverOpen(!schedPopoverOpen); }}
-						className="flex h-5 items-center gap-1 rounded px-1.5 text-[0.6875rem] text-accent transition-colors hover:bg-fg/5"
+						className="flex h-5 items-center gap-1 rounded px-1.5 text-micro text-accent transition-colors hover:bg-fg/5"
 					>
 						<ClockIcon className="w-3 h-3" />
 						{formatCountdown(new Date(sched.at).getTime() - Date.now())}
@@ -790,10 +790,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
 				disabled={isDisabled}
 			>
-				<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+				<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 					{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
 				</span>
-				<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
+				<span className="text-micro">{task.watched ? t("task.watching") : t("task.watch")}</span>
 			</button>
 		</Tooltip>
 	);
@@ -829,7 +829,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					<div className="w-full max-w-[15.5rem] rounded-xl border border-edge bg-overlay/95 px-3 py-2.5 shadow-xl shadow-black/30">
 						<div className="flex items-center gap-2">
 							<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
-							<span className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-3">
+							<span className="text-micro font-semibold uppercase tracking-[0.08em] text-fg-3">
 								{t("task.preparing")}
 							</span>
 						</div>
@@ -855,7 +855,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								<Tooltip content={t("task.showDescription")} detail={t("ttip.task.showDescription")}>
 									<button
 										onClick={handleShowDescription}
-										className="rounded-lg border border-edge bg-elevated/90 px-2.5 py-1 text-[0.6875rem] text-fg-2 transition-colors hover:border-edge-active hover:text-fg"
+										className="rounded-lg border border-edge bg-elevated/90 px-2.5 py-1 text-micro text-fg-2 transition-colors hover:border-edge-active hover:text-fg"
 									>
 										{t("task.showDescription")}
 									</button>
@@ -865,7 +865,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								<button
 									onClick={handleCancelPreparation}
 									disabled={cancellingPreparation}
-									className="rounded-lg border border-danger/50 bg-danger/10 px-2.5 py-1 text-[0.6875rem] text-danger transition-colors hover:border-danger hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-60"
+									className="rounded-lg border border-danger/50 bg-danger/10 px-2.5 py-1 text-micro text-danger transition-colors hover:border-danger hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-60"
 								>
 									{t("task.cancel")}
 								</button>
@@ -896,7 +896,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				className="flex min-w-0 items-center gap-1.5 border-b border-edge py-1.5 pl-1.5 pr-2.5"
 			>
 				<PriorityBadge priority={task.priority} onChange={handleSetPriority} />
-				<span className="flex-shrink-0 font-mono text-[0.6875rem] font-semibold text-accent">
+				<span className="flex-shrink-0 font-mono text-micro font-semibold text-accent">
 					#{task.seq}
 					{variantFraction && (
 						<Tooltip content={t("task.attempt", { n: String(task.variantIndex) })} detail={t("ttip.task.siblings")}>
@@ -908,7 +908,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{/* No launcher icon means the agent is unidentifiable from the glyph
 				    alone, so its name has to be spelled out. */}
 				{agent && !hasLauncherIcon && (
-					<span className="flex-shrink-0 font-mono text-[0.625rem] font-medium text-accent/80">{agent.name}</span>
+					<span className="flex-shrink-0 font-mono text-dense font-medium text-accent/80">{agent.name}</span>
 				)}
 				{configLabel && (
 					// The config string is the one header item allowed to clip, so it is
@@ -918,7 +918,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						<span
 							ref={configRef}
 							data-testid="task-card-config"
-							className="min-w-[3rem] flex-1 truncate font-mono text-[0.625rem] font-medium text-accent/80"
+							className="min-w-[3rem] flex-1 truncate font-mono text-dense font-medium text-accent/80"
 						>
 							{configLabel}
 						</span>
@@ -947,7 +947,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					<Tooltip content={t("task.draftBadge")} detail={t("task.draftHint")}>
 						<span
 							data-testid="task-card-draft-badge"
-							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-3"
+							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-fg-3"
 						>
 							{t("task.draftBadge")}
 						</span>
@@ -957,7 +957,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					<Tooltip content={t("task.hibernatedBadge")} detail={t("task.hibernatedHint")}>
 						<span
 							data-testid="task-card-hibernated-badge"
-							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
+							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-fg-muted"
 						>
 							{t("task.hibernatedBadge")}
 						</span>
@@ -1090,7 +1090,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 										<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
 											<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 										</svg>
-										<span className="text-[0.625rem] font-medium leading-none">Add label</span>
+										<span className="text-dense font-medium leading-none">Add label</span>
 									</button>
 									{pickerOpen && pickerAnchorRef.current && (
 										<LabelPicker
@@ -1153,7 +1153,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 										className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-[color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] hover:bg-accent/15"
 										aria-label={t("openIn.menuTitle")}
 									>
-										<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+										<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
 									</button>
 								</Tooltip>
 							)}
@@ -1296,7 +1296,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					}}
 					onClick={(e) => e.stopPropagation()}
 				>
-					<div className="px-3 py-1.5 text-[0.625rem] text-fg-3 uppercase tracking-wider font-semibold">
+					<div className="px-3 py-1.5 text-dense text-fg-3 uppercase tracking-wider font-semibold">
 						{t("ports.title")}
 					</div>
 					{ports.map((p) => (

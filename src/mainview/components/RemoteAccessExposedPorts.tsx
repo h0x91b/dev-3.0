@@ -76,7 +76,7 @@ export default function RemoteAccessExposedPorts() {
 									{item.kind === "shared" ? t("tunnel.sharedTunnel") : `:${item.ports[0]}`}
 								</span>
 								{item.kind === "shared" && (
-									<span className="text-fg-3 text-[0.6875rem]">({item.ports.join(", ")})</span>
+									<span className="text-fg-3 text-micro">({item.ports.join(", ")})</span>
 								)}
 								{item.state === "starting" && <span className="text-fg-3">— {t("tunnel.starting")}</span>}
 								{item.state === "failed" && <span className="text-danger">— {t("tunnel.failed")}</span>}

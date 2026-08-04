@@ -212,7 +212,7 @@ function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }
 				aria-label={expanded ? t("terminal.composerCollapse") : t("terminal.composerExpand")}
 				title={expanded ? t("terminal.composerCollapse") : t("terminal.composerExpand")}
 			>
-				<span className="text-[1.125rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+				<span className="text-lg leading-none" style={{ fontFamily: NERD_FONT }}>
 					{expanded ? "\u{F0294}" : "\u{F0293}"}
 				</span>
 			</button>
@@ -226,7 +226,7 @@ function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }
 					aria-label={t("terminal.composerScheduleLater")}
 					title={t("terminal.composerScheduleLater")}
 				>
-					<span className="text-[1.125rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+					<span className="text-lg leading-none" style={{ fontFamily: NERD_FONT }}>
 						{"\u{F0954}"}
 					</span>
 				</button>
@@ -240,7 +240,7 @@ function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }
 				aria-label={t("terminal.composerInsert")}
 				title={t("terminal.composerInsert")}
 			>
-				<span className="text-[1.125rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+				<span className="text-lg leading-none" style={{ fontFamily: NERD_FONT }}>
 					{"\u{F0192}"}
 				</span>
 			</button>
@@ -253,7 +253,7 @@ function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }
 				aria-label={t("terminal.composerSend")}
 				title={t("terminal.composerSend")}
 			>
-				<span className="text-[1.125rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+				<span className="text-lg leading-none" style={{ fontFamily: NERD_FONT }}>
 					{"\u{F048A}"}
 				</span>
 			</button>

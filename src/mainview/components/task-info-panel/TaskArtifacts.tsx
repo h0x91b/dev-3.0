@@ -25,8 +25,8 @@ export default function TaskArtifacts({ task, projectId, compact = false }: { ta
 				data-testid="shared-artifacts-badge"
 			>
 				<ArtifactsIcon className={`w-[1.125rem] h-[1.125rem]${isUnread ? " task-shared-unread-icon" : ""}`} />
-				{!compact && <span className="text-[0.6875rem] font-semibold">{t("infoPanel.artifactsLabel")}</span>}
-				<span className={`text-[0.6875rem] font-semibold tabular-nums ${isUnread ? "text-success" : "text-accent"}`}>{count}</span>
+				{!compact && <span className="text-micro font-semibold">{t("infoPanel.artifactsLabel")}</span>}
+				<span className={`text-micro font-semibold tabular-nums ${isUnread ? "text-success" : "text-accent"}`}>{count}</span>
 			</button>
 		</Tooltip>
 	);

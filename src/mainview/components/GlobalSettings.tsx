@@ -814,7 +814,7 @@ function SettingsNavigation({
 			}`}
 		>
 			<div className="border-b border-edge/60 p-4 md:p-5">
-				<h1 className="text-fg text-lg font-semibold tracking-tight">
+				<h1 className="text-fg text-2xl font-semibold tracking-tight">
 					{t("settings.settingsTitle")}
 				</h1>
 				<p className="mt-1 text-xs text-fg-3">{t("settings.settingsDesc")}</p>
@@ -921,7 +921,7 @@ function SettingsSearchResults({
 									<span className="mt-0.5 block text-xs text-fg-3">
 										{t(entry.descriptionKey)}
 									</span>
-									<span className="mt-2 block text-[0.6875rem] text-fg-muted">
+									<span className="mt-2 block text-micro text-fg-muted">
 										{t("settings.searchResultCategory", {
 											category: t(group.category.labelKey),
 										})}

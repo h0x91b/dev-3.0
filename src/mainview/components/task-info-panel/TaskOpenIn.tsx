@@ -67,7 +67,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 						className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-accent hover:text-accent-emphasis hover:bg-accent/15 border border-accent/30"
 					>
 						<OpenInIcon className="w-[1.05rem] h-[1.05rem]" />
-						{!compact && <span className="text-[0.6875rem] font-semibold">{t("openIn.menuTitle")}</span>}
+						{!compact && <span className="text-micro font-semibold">{t("openIn.menuTitle")}</span>}
 					</button>
 				</Tooltip>
 				{openInMenuOpen && (

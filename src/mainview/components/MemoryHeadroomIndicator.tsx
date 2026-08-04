@@ -193,7 +193,7 @@ export default function MemoryHeadroomIndicator({ navigate }: MemoryHeadroomIndi
 					isNarrow ? "h-11 px-2" : "px-1.5 py-1"
 				} ${pressureClass}`}
 			>
-				<span className="text-[0.6875rem] font-medium leading-none tabular-nums">
+				<span className="text-micro font-medium leading-none tabular-nums">
 					{formatBytesCompact(snapshot.headroom)}
 				</span>
 				{/* The level lives in a bar under the number, not in a glyph: at header

@@ -34,7 +34,7 @@ function TaskShutdownOverlay({ strip = false }: TaskShutdownOverlayProps) {
 			>
 				<div className="h-3.5 w-3.5 flex-shrink-0 rounded-full border-2 border-fg-muted/30 border-t-fg-muted animate-spin motion-reduce:animate-none" />
 				<div className="min-w-0">
-					<div className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-3">
+					<div className="text-micro font-semibold uppercase tracking-[0.08em] text-fg-3">
 						{t("task.shuttingDown")}
 					</div>
 					<div className="truncate text-xs text-fg-muted">

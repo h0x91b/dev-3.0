@@ -225,13 +225,13 @@ export default function Tooltip({
 							<div className="flex items-center gap-2">
 								<span className={`min-w-0 ${detail ? "font-medium text-fg" : "text-fg-2"}`}>{content}</span>
 								{kbd ? (
-									<kbd className="flex-shrink-0 font-mono text-[0.625rem] text-fg-3 bg-raised border border-edge rounded px-1 py-px">
+									<kbd className="flex-shrink-0 font-mono text-dense text-fg-3 bg-raised border border-edge rounded px-1 py-px">
 										{kbd}
 									</kbd>
 								) : null}
 							</div>
 							{detail ? (
-								<div className="mt-1 text-[0.6875rem] leading-relaxed text-fg-3">{detail}</div>
+								<div className="mt-1 text-micro leading-relaxed text-fg-3">{detail}</div>
 							) : null}
 						</div>,
 						document.body,

@@ -59,7 +59,7 @@ function TaskDialogSubjectCard({
 			)}
 			<div className="flex items-start gap-2">
 				<span
-					className={`${neutral ? "text-fg-3" : "text-accent"} text-[1.0625rem] leading-snug`}
+					className={`${neutral ? "text-fg-3" : "text-accent"} text-base-lg leading-snug`}
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\u{F0AE2}"}
@@ -72,12 +72,12 @@ function TaskDialogSubjectCard({
 						type="button"
 						onClick={onTitleClick}
 						aria-label={title}
-						className={`${neutral ? "text-fg" : "text-accent"} min-w-0 rounded-sm text-left text-[1.0625rem] font-semibold leading-snug underline-offset-2 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60`}
+						className={`${neutral ? "text-fg" : "text-accent"} min-w-0 rounded-sm text-left text-base-lg font-semibold leading-snug underline-offset-2 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60`}
 					>
 						{title}
 					</button>
 				) : (
-					<div className={`${neutral ? "text-fg" : "text-accent"} text-[1.0625rem] font-semibold leading-snug`}>
+					<div className={`${neutral ? "text-fg" : "text-accent"} text-base-lg font-semibold leading-snug`}>
 						{title}
 					</div>
 				)}

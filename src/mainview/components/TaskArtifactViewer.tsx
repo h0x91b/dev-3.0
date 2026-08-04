@@ -298,7 +298,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 			<header className="flex flex-shrink-0 items-center gap-2 border-b border-edge bg-raised px-3 py-2">
 				<div className="min-w-0 flex-1">
 					<div className="truncate text-sm font-medium text-fg">{current.title}</div>
-					<div className="truncate text-[0.6875rem] text-fg-muted">{current.name}</div>
+					<div className="truncate text-micro text-fg-muted">{current.name}</div>
 				</div>
 				<HelpSpot topicId="viewer.artifact" />
 				{artifacts.length > 1 && (

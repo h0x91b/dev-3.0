@@ -151,13 +151,13 @@ function SiblingPopover({ variants, currentTaskId, agents, navigate, onClose, an
 											{config?.name ? ` (${config.name})` : ""}
 										</span>
 										{isCurrent && (
-											<span className="flex-shrink-0 rounded bg-accent/15 px-1 py-0.5 text-[0.5625rem] font-semibold uppercase tracking-wide text-accent">
+											<span className="flex-shrink-0 rounded bg-accent/15 px-1 py-0.5 text-nano font-semibold uppercase tracking-wide text-accent">
 												{t("task.currentVariant")}
 											</span>
 										)}
 									</div>
-									<div className="truncate text-[0.625rem] text-fg-2">{title}</div>
-									<div className="truncate text-[0.5625rem] text-fg-muted">{t(statusKey(variant.status))}</div>
+									<div className="truncate text-dense text-fg-2">{title}</div>
+									<div className="truncate text-nano text-fg-muted">{t(statusKey(variant.status))}</div>
 								</div>
 							</div>
 						</button>

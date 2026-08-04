@@ -217,7 +217,7 @@ function StuckPreparationPopover({ tasks, thresholdMsOverride, forcePlatformMac 
 		>
 			<div className="flex items-start gap-3 px-4 pt-4 pb-3 border-b border-edge">
 				<span
-					className="text-[1.125rem] leading-none text-danger shrink-0 mt-0.5"
+					className="text-lg leading-none text-danger shrink-0 mt-0.5"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					aria-hidden="true"
 				>

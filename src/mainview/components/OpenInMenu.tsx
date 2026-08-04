@@ -100,7 +100,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 						className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 					>
 						<span
-							className="w-4 text-center text-[0.875rem] leading-none flex-shrink-0"
+							className="w-4 text-center text-sm leading-none flex-shrink-0"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
 							{OPEN_IN_APP_ICONS[app.id] ?? OPEN_IN_APP_ICON_FALLBACK}
@@ -119,7 +119,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 				className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
 			>
 				<span
-					className="w-4 text-center text-[0.875rem] leading-none flex-shrink-0"
+					className="w-4 text-center text-sm leading-none flex-shrink-0"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{copied ? "\u{F012C}" : "\uF0C5"}

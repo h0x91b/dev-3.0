@@ -2294,7 +2294,7 @@ function App() {
 						<h2 className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
 						<p className="text-fg-2 text-sm">{t("remote.subtitle")}</p>
 						<div className="flex justify-center relative">
-							<img src={remoteQR.qrDataUrl} alt="QR Code" className={`w-56 h-56 rounded-lg transition-all duration-500 streamer-private-media ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
+							<img src={remoteQR.qrDataUrl} alt="QR Code" className={`w-56 h-56 rounded-lg transition-[opacity,filter] duration-500 streamer-private-media ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
 							{qrConsumed && (
 								<div className="absolute inset-0 flex items-center justify-center">
 									<div className="bg-base/90 rounded-lg px-4 py-2">
@@ -2311,7 +2311,7 @@ function App() {
 										<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2"
 											strokeDasharray={`${(qrCountdown / 25) * 50.3} 50.3`}
 											strokeLinecap="round"
-											className="transition-all duration-1000 ease-linear"
+											className="transition-[stroke-dasharray] duration-1000 ease-linear"
 										/>
 									</svg>
 								</div>
@@ -2471,7 +2471,7 @@ function App() {
 								}}
 								disabled={qrConsumed || remoteUrlCopyState === "copying"}
 								aria-label={t(remoteCopyLabel)}
-								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-all active:scale-[0.98] ${qrConsumed ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
+								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
 							>
 								{remoteUrlCopyState === "copying" && (
 									<svg

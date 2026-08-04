@@ -137,13 +137,16 @@ Distributed ~30° apart on the color wheel for maximum perceptual distance. Same
 
 ## 3. Typography Rules
 
-| Role | Font | Size | Weight | Notes |
-|------|------|------|--------|-------|
-| Body text | System default | 14px (`text-sm`) | 400 | Primary UI text |
-| Small text | System default | 12px (`text-xs`) | 400 | Secondary info, metadata |
-| Tiny text | System default | 10px | 500 | Badges, counters |
-| Headings | System default | 16–18px | 600–700 | Section headers |
-| Code / Terminal | JetBrainsMono Nerd Font Mono | 14px | 400/700 | Monospace for code, branches, CLI output |
+| Role | Font | Tailwind rung | Size | Weight | Notes |
+|------|------|---------------|------|--------|-------|
+| Dense chrome (px-pinned) | System default | `text-dense` | 10px | 500 | Badges, counters; immune to mobile-dense-factor scaling |
+| Compact meta | System default | `text-micro` | 11px | 400–500 | Dense labels, chips |
+| Small text | System default | `text-xs` | 12px | 400 | Secondary info, metadata |
+| Body text | System default | `text-sm` | 14px | 400 | Primary UI text |
+| Base | System default | `text-base` | 16px | 400 | Default prose |
+| Section headings | System default | `text-lg` | 18px | 600 | Panel/section headers |
+| Screen title (h1) | System default | `text-2xl` | 24px | 600–700 | Peer screen titles (Changelog, Stats, Settings) |
+| Code / Terminal | JetBrainsMono Nerd Font Mono | — | 14px | 400/700 | Monospace for code, branches, CLI output |
 
 **Fallback stack (mono):** `'JetBrainsMono Nerd Font Mono', 'SF Mono', Menlo, monospace`
 

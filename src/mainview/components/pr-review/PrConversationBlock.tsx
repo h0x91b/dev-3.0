@@ -74,20 +74,20 @@ export function PrConversationBlock({
 					data-testid="pr-conversation-toggle"
 					className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md text-left transition-colors hover:bg-raised-hover hover:text-fg"
 				>
-					<span aria-hidden="true" className="text-[1rem] leading-none text-fg-2" style={{ fontFamily: NERD_FONT }}>
+					<span aria-hidden="true" className="text-base leading-none text-fg-2" style={{ fontFamily: NERD_FONT }}>
 						{GITHUB_GLYPH}
 					</span>
 					<span className="text-xs font-semibold text-fg">{t("infoPanel.prConversationTitle")}</span>
-					<span className="rounded bg-base px-1.5 py-px font-mono text-[0.6875rem] text-fg-3">{conversation.length}</span>
-					<span aria-hidden="true" className="text-[0.8rem] text-fg-3">{expanded ? "▾" : "▸"}</span>
+					<span className="rounded bg-base px-1.5 py-px font-mono text-micro text-fg-3">{conversation.length}</span>
+					<span aria-hidden="true" className="text-sm-plus text-fg-3">{expanded ? "▾" : "▸"}</span>
 					{unresolvedCount > 0 && (
-						<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-[0.6875rem] font-semibold text-warning">
+						<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-micro font-semibold text-warning">
 							{t.plural("infoPanel.prUnresolvedCount", unresolvedCount)}
 						</span>
 					)}
 					<span className="flex-1" />
 					{payload && (
-						<span className="text-[0.6875rem] text-fg-muted" title={payload.fetchedAt}>
+						<span className="text-micro text-fg-muted" title={payload.fetchedAt}>
 							{t("infoPanel.prFetchedAt", { time: formatCommentTimestamp(payload.fetchedAt) })}
 						</span>
 					)}
@@ -101,7 +101,7 @@ export function PrConversationBlock({
 						onClick={onToggleShowResolved}
 						aria-pressed={showResolved}
 						data-testid="pr-show-resolved-toggle"
-						className={`inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-[0.6875rem] font-semibold transition-colors ${
+						className={`inline-flex h-6 items-center gap-1.5 rounded-md border px-2 text-micro font-semibold transition-colors ${
 							showResolved
 								? "border-accent/40 bg-accent/15 text-accent"
 								: "border-edge bg-base text-fg-2 hover:bg-elevated-hover"
@@ -122,7 +122,7 @@ export function PrConversationBlock({
 				>
 					<span
 						aria-hidden="true"
-						className={`text-[0.75rem] leading-none${refreshing ? " animate-spin" : ""}`}
+						className={`text-xs leading-none${refreshing ? " animate-spin" : ""}`}
 						style={{ fontFamily: NERD_FONT }}
 					>
 						{REFRESH_GLYPH}
@@ -138,7 +138,7 @@ export function PrConversationBlock({
 						title={t("infoPanel.prOpenOnGithub")}
 						className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover hover:text-accent"
 					>
-						<span aria-hidden="true" className="text-[0.75rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+						<span aria-hidden="true" className="text-xs leading-none" style={{ fontFamily: NERD_FONT }}>
 							{EXTERNAL_LINK_GLYPH}
 						</span>
 					</a>
@@ -151,7 +151,7 @@ export function PrConversationBlock({
 					<button
 						type="button"
 						onClick={onRefresh}
-						className="inline-flex h-6 items-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
+						className="inline-flex h-6 items-center rounded-md border border-edge bg-base px-2 text-micro font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
 					>
 						{t("infoPanel.prRetry")}
 					</button>
@@ -181,11 +181,11 @@ export function PrConversationBlock({
 								<div className="flex flex-wrap items-center gap-2">
 									<span className="text-xs font-semibold text-fg streamer-private">{comment.author ?? t("infoPanel.prUnknownAuthor")}</span>
 									{comment.isBot && (
-										<span className="rounded border border-edge bg-raised px-1 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-fg-3">
+										<span className="rounded border border-edge bg-raised px-1 py-px text-dense font-semibold uppercase tracking-wide text-fg-3">
 											{t("infoPanel.prBotBadge")}
 										</span>
 									)}
-									<span className="text-[0.6875rem] text-fg-muted">{formatCommentTimestamp(comment.createdAt)}</span>
+									<span className="text-micro text-fg-muted">{formatCommentTimestamp(comment.createdAt)}</span>
 									<span className="flex-1" />
 									<a
 										href={comment.url}
@@ -195,7 +195,7 @@ export function PrConversationBlock({
 										title={t("infoPanel.prOpenOnGithub")}
 										className="inline-flex h-5 w-5 items-center justify-center rounded text-fg-3 transition-colors hover:bg-elevated-hover hover:text-accent"
 									>
-										<span aria-hidden="true" className="text-[0.8rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+										<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: NERD_FONT }}>
 											{EXTERNAL_LINK_GLYPH}
 										</span>
 									</a>
@@ -213,15 +213,15 @@ export function PrConversationBlock({
 						type="button"
 						onClick={() => setUnmappedOpen((current) => !current)}
 						aria-expanded={unmappedOpen}
-						className="flex w-full items-center gap-2 px-4 py-2 text-left text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-3 transition-colors hover:bg-elevated-hover"
+						className="flex w-full items-center gap-2 px-4 py-2 text-left text-micro font-semibold uppercase tracking-[0.08em] text-fg-3 transition-colors hover:bg-elevated-hover"
 					>
 						<span aria-hidden="true">{unmappedOpen ? "▾" : "▸"}</span>
 						<span>{t("infoPanel.prUnmappedGroup")}</span>
-						<span className="rounded bg-base px-1.5 py-px font-mono text-[0.625rem] text-fg-3">{unmappedCount}</span>
+						<span className="rounded bg-base px-1.5 py-px font-mono text-dense text-fg-3">{unmappedCount}</span>
 					</button>
 					{unmappedOpen && unmappedThreads.map((group) => (
 						<div key={group.path}>
-							<div className="px-4 pt-2 font-mono text-[0.6875rem] text-fg-3">{group.path}</div>
+							<div className="px-4 pt-2 font-mono text-micro text-fg-3">{group.path}</div>
 							{group.threads.map((thread) => (
 								<GithubThreadView
 									key={thread.id}

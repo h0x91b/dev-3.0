@@ -287,7 +287,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 								onClick={() => go(-1)}
 								disabled={index === 0}
 								aria-label={t("imageViewer.prev")}
-								className="absolute left-3 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 disabled:opacity-0 disabled:cursor-default transition-all"
+								className="absolute left-3 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 disabled:opacity-0 disabled:cursor-default transition-[background-color,opacity]"
 							>
 								<span className="text-xl leading-none" style={{ fontFamily: ICON }}>{""}</span>
 							</button>
@@ -296,7 +296,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 								onClick={() => go(1)}
 								disabled={index === images.length - 1}
 								aria-label={t("imageViewer.next")}
-								className="absolute right-3 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 disabled:opacity-0 disabled:cursor-default transition-all"
+								className="absolute right-3 top-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm hover:bg-black/70 disabled:opacity-0 disabled:cursor-default transition-[background-color,opacity]"
 							>
 								<span className="text-xl leading-none" style={{ fontFamily: ICON }}>{""}</span>
 							</button>

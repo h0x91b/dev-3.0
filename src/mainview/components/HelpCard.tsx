@@ -112,7 +112,7 @@ export default function HelpCard({
 			<div className="flex items-start gap-2">
 				<span
 					aria-hidden="true"
-					className="text-accent text-[0.875rem] leading-5 flex-shrink-0"
+					className="text-accent text-sm leading-5 flex-shrink-0"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\uf05a"}
@@ -125,7 +125,7 @@ export default function HelpCard({
 					{shortcuts.map((s) => (
 						<span
 							key={s.id}
-							className="inline-flex items-center gap-1.5 text-[0.625rem] text-fg-3 bg-raised border border-edge rounded px-1.5 py-0.5"
+							className="inline-flex items-center gap-1.5 text-dense text-fg-3 bg-raised border border-edge rounded px-1.5 py-0.5"
 						>
 							<kbd className="font-mono text-fg-2">{shortcutKeysForMode(s, mac, remote)}</kbd>
 							{t(s.descKey)}

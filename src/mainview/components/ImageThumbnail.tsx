@@ -52,7 +52,7 @@ export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps)
 	if (loading) {
 		return (
 			<div className="flex-shrink-0 w-[6.25rem] h-[5rem] rounded-lg bg-elevated animate-pulse flex items-center justify-center">
-				<span className="text-[0.625rem] text-fg-muted">{t("images.loading")}</span>
+				<span className="text-dense text-fg-muted">{t("images.loading")}</span>
 			</div>
 		);
 	}
@@ -60,7 +60,7 @@ export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps)
 	if (error || !dataUrl) {
 		return (
 			<div className="relative flex-shrink-0 w-[6.25rem] h-[5rem] rounded-lg bg-elevated border border-danger/30 flex items-center justify-center group">
-				<span className="text-[0.625rem] text-danger">{t("images.loadFailed")}</span>
+				<span className="text-dense text-danger">{t("images.loadFailed")}</span>
 				{onRemove && (
 					<button
 						onClick={(e) => { e.stopPropagation(); onRemove(); }}
@@ -88,7 +88,7 @@ export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps)
 					alt={filename}
 					className="max-h-[5rem] max-w-[7.5rem] rounded-lg border border-edge group-hover:border-accent/50 transition-colors object-contain"
 				/>
-				<span className="text-[0.5625rem] text-fg-muted truncate max-w-[7.5rem]">{filename}</span>
+				<span className="text-nano text-fg-muted truncate max-w-[7.5rem]">{filename}</span>
 			</button>
 			{onRemove && (
 				<button

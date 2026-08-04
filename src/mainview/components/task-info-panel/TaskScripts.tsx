@@ -357,7 +357,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				{pickerFor ? (
 					<div className="px-3 py-4">
 						<div className="text-xs text-fg-2 mb-1">{pickerFor.name}</div>
-						<div className="text-[0.6875rem] text-fg-3 font-mono mb-3 truncate">
+						<div className="text-micro text-fg-3 font-mono mb-3 truncate">
 							{pickedEntry?.command}
 						</div>
 						<div className="grid grid-cols-5 gap-1.5">
@@ -374,7 +374,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 										}`}
 									>
 										<PlacementGlyph placement={p} />
-										<span className="text-[0.625rem] text-fg-2">{placementLabel(t, p)}</span>
+										<span className="text-dense text-fg-2">{placementLabel(t, p)}</span>
 									</button>
 								</Tooltip>
 							))}
@@ -423,7 +423,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 										<span className="text-sm text-fg font-medium truncate">{s.name}</span>
 										{s.command && <span className="text-xs text-fg-3 truncate">{s.command}</span>}
 									</span>
-									<span className="flex-shrink-0 text-[0.625rem] px-1 py-0.5 rounded border border-edge text-fg-3 font-mono">
+									<span className="flex-shrink-0 text-dense px-1 py-0.5 rounded border border-edge text-fg-3 font-mono">
 										{s.source === "make" ? "make" : (runner ?? data?.package.runner)}
 									</span>
 								</button>
@@ -462,7 +462,7 @@ function PlacementGlyph({ placement }: { placement: ScriptPlacement }) {
 	if (placement === "window") {
 		return (
 			<div className="w-8 h-6 rounded-sm border border-fg-3 flex items-center justify-center">
-				<span className="text-[0.65rem] text-fg-3">+</span>
+				<span className="text-dense text-fg-3">+</span>
 			</div>
 		);
 	}
@@ -500,7 +500,7 @@ function RunnerChip({ runner, pkg, onSelect }: { runner: ScriptRunner; pkg: Work
 			<Tooltip content={title}>
 				<button
 					onClick={() => setOpen((o) => !o)}
-					className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-elevated border border-edge text-fg-2 hover:bg-elevated-hover"
+					className="text-micro px-1.5 py-0.5 rounded bg-elevated border border-edge text-fg-2 hover:bg-elevated-hover"
 				>
 					{runner} ▾
 				</button>

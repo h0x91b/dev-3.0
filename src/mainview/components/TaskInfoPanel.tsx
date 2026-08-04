@@ -625,20 +625,20 @@ function TaskInfoPanel({
 		<button
 			type="button"
 			ref={diffFilesTriggerRef}
-			className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-elevated border border-edge text-[0.6875rem] font-mono text-fg-2 flex-shrink-0 cursor-pointer transition-colors hover:bg-elevated-hover"
+			className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-elevated border border-edge text-micro font-mono text-fg-2 flex-shrink-0 cursor-pointer transition-colors hover:bg-elevated-hover"
 			onClick={() => openBranchDiff()}
 			onMouseEnter={showDiffFilesPopover}
 			onMouseLeave={hideDiffFilesPopover}
 			title={diffBadgeTitle}
 			data-testid="diff-summary-badge"
 		>
-			<span className="text-fg-muted text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
+			<span className="text-fg-muted text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
 			<span>{visibleDiffFiles} {visibleDiffFiles === 1 ? "file" : "files"}</span>
 			<span className="text-success">+{visibleDiffInsertions}</span>
 			<span className="text-danger">−{visibleDiffDeletions}</span>
 			{!includeTests && excludedTestCount > 0 && (
 				<span
-					className="text-fg-muted text-[0.8rem] leading-none"
+					className="text-fg-muted text-sm-plus leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					title={t.plural("infoPanel.diffTestsHidden", excludedTestCount)}
 				>
@@ -653,7 +653,7 @@ function TaskInfoPanel({
 			type="button"
 			data-testid="diff-include-tests-toggle"
 			onClick={() => setIncludeTests(!includeTests)}
-			className={`git-anim inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[0.6875rem] font-mono flex-shrink-0 transition-colors ${
+			className={`git-anim inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-micro font-mono flex-shrink-0 transition-colors ${
 				includeTests
 					? "bg-elevated border-edge text-fg-2 hover:bg-elevated-hover"
 					: "bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
@@ -673,14 +673,14 @@ function TaskInfoPanel({
 			onMouseEnter={cancelHideDiffFiles}
 			onMouseLeave={hideDiffFilesPopover}
 		>
-			<div className="text-[0.625rem] text-fg-muted font-semibold uppercase tracking-wider mb-1.5">
+			<div className="text-dense text-fg-muted font-semibold uppercase tracking-wider mb-1.5">
 				{t("infoPanel.changedFiles")}
 			</div>
 			{visibleDiffFileStats.map(({ path: fileName, insertions, deletions }) => (
 				<div key={fileName} className="group/file flex items-center gap-1.5 py-0.5 leading-snug">
-					<span className="text-[0.6875rem] text-fg-2 font-mono truncate flex-1">{fileName}</span>
+					<span className="text-micro text-fg-2 font-mono truncate flex-1">{fileName}</span>
 					{(insertions > 0 || deletions > 0) && (
-						<span className="text-[0.625rem] font-mono flex-shrink-0">
+						<span className="text-dense font-mono flex-shrink-0">
 							{insertions > 0 && <span className="text-success">+{insertions}</span>}
 							{insertions > 0 && deletions > 0 && " "}
 							{deletions > 0 && <span className="text-danger">−{deletions}</span>}
@@ -730,14 +730,14 @@ function TaskInfoPanel({
 			{inlineLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 			{overflowLabels.length > 0 && (
 				<span
-					className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-elevated text-fg-3 text-[0.625rem] font-medium flex-shrink-0"
+					className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-elevated text-fg-3 text-dense font-medium flex-shrink-0"
 					title={overflowLabels.map((label) => label.name).join(", ")}
 					data-testid="label-strip-overflow"
 				>
 					{/* With no chip beside it a bare "+2" is meaningless — the tag glyph
 					    says what is being counted. */}
 					{inlineLabels.length === 0 && (
-						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04F9}"}</span>
+						<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04F9}"}</span>
 					)}
 					{inlineLabels.length === 0 ? overflowLabels.length : `+${overflowLabels.length}`}
 				</span>
@@ -760,7 +760,7 @@ function TaskInfoPanel({
 				? <WatchingIcon className="w-[0.95rem] h-[0.95rem]" />
 				: <WatchIcon className="w-[0.95rem] h-[0.95rem]" />}
 			{!compact && (
-				<span className="text-[0.6875rem] font-medium">
+				<span className="text-micro font-medium">
 					{task.watched ? t("task.watching") : t("task.watch")}
 				</span>
 			)}
@@ -789,7 +789,7 @@ function TaskInfoPanel({
 				    already carries. The sentence stays in the tooltip and in the mobile
 				    sheet row. A tight bar drops even the short label. */}
 				{!tight && (
-					<span className="text-[0.6875rem] font-medium">{t("task.manualCompletionShort")}</span>
+					<span className="text-micro font-medium">{t("task.manualCompletionShort")}</span>
 				)}
 			</button>
 		</Tooltip>
@@ -814,7 +814,7 @@ function TaskInfoPanel({
 				) : (
 					<PipelineRing status={task.status} size={narrow ? "touch" : "default"} />
 				)}
-				<span className={`font-medium text-fg-2 truncate ${narrow ? "text-sm" : "text-[0.6875rem]"}`}>
+				<span className={`font-medium text-fg-2 truncate ${narrow ? "text-sm" : "text-micro"}`}>
 					{activeCustomColumn ? activeCustomColumn.name : getStatusLabel(task.status, t, project)}
 				</span>
 				<svg className={`flex-shrink-0 text-fg-3 ${narrow ? "w-4 h-4" : "w-3 h-3"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -828,7 +828,7 @@ function TaskInfoPanel({
 						onClick={handleQuickComplete}
 						disabled={quickCompleting}
 						aria-label={t("pipeline.completeTooltip")}
-						className={`mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success transition-all ${
+						className={`mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success transition-[color,background-color,opacity] ${
 							quickCompleting ? "bg-success/25 opacity-100" : "opacity-60 hover:bg-success/20 hover:opacity-100"
 						}`}
 					>
@@ -892,7 +892,7 @@ function TaskInfoPanel({
 				aria-label={t("tmux.spawnExtraAgentDesc")}
 			>
 				<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
-				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
+				{!compact && <span className="text-micro font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
 			</button>
 	</Tooltip>
 	) : null;
@@ -945,7 +945,7 @@ function TaskInfoPanel({
 					<path d="M12 9v4l2.5 1.5" />
 					<path d="M5 3 2 6M19 3l3 3" />
 				</svg>
-				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("task.sendLaterShort")}</span>}
+				{!compact && <span className="text-micro font-semibold whitespace-nowrap">{t("task.sendLaterShort")}</span>}
 			</button>
 		</Tooltip>
 	) : null;
@@ -980,7 +980,7 @@ function TaskInfoPanel({
 						/>
 					</svg>
 				)}
-				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("task.hibernateShort")}</span>}
+				{!compact && <span className="text-micro font-semibold whitespace-nowrap">{t("task.hibernateShort")}</span>}
 			</button>
 		</Tooltip>
 	) : null;
@@ -999,7 +999,7 @@ function TaskInfoPanel({
 			aria-label={t("bugHunters.buttonTooltip")}
 		>
 			<FindBugsIcon className="w-[1.05rem] h-[1.05rem]" />
-			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
+			{!compact && <span className="text-micro font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
 		</button>
 		</Tooltip>
 	) : null;
@@ -1105,12 +1105,12 @@ function TaskInfoPanel({
 												className="flex-shrink-0 text-fg-muted hover:text-fg transition-colors"
 												aria-label={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
 											>
-												<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+												<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 													{copiedPath ? "\u{F012C}" : "\uF0C5"}
 												</span>
 											</button>
 										</Tooltip>
-										{copiedPath && <span className="text-[0.625rem] text-accent flex-shrink-0">{t("infoPanel.pathCopied")}</span>}
+										{copiedPath && <span className="text-dense text-accent flex-shrink-0">{t("infoPanel.pathCopied")}</span>}
 									</span>
 								</>
 							)}
@@ -1125,7 +1125,7 @@ function TaskInfoPanel({
 						{allocatedPorts.length > 0 && (
 							<div className="mt-3 border-t border-edge pt-3">
 								<div className="flex items-center gap-2 mb-2">
-									<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0317}"}</span>
+									<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0317}"}</span>
 									<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">{t("ports.allocated")}</span>
 								</div>
 								<div className="flex flex-wrap gap-1.5">
@@ -1135,7 +1135,7 @@ function TaskInfoPanel({
 											className="inline-flex items-center gap-1 text-xs font-mono text-fg-2 bg-raised px-2 py-1 rounded-md"
 											title={`$DEV3_PORT${index}`}
 										>
-											<span className="text-fg-muted text-[0.625rem]">DEV3_PORT{index}=</span>
+											<span className="text-fg-muted text-dense">DEV3_PORT{index}=</span>
 											<span className="font-bold">{port}</span>
 										</span>
 									))}
@@ -1152,9 +1152,9 @@ function TaskInfoPanel({
 							return (
 								<div className="mt-3 border-t border-edge pt-3">
 									<div className="flex items-center gap-2 mb-2">
-										<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+										<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
 										<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">{t("ports.title")}</span>
-										<span className="text-[0.625rem] text-fg-muted">{t.plural("ports.count", ports.length)}</span>
+										<span className="text-dense text-fg-muted">{t.plural("ports.count", ports.length)}</span>
 									</div>
 									<div className="flex flex-wrap gap-1.5">
 										{ports.map((port) => (
@@ -1164,7 +1164,7 @@ function TaskInfoPanel({
 													className="inline-flex items-center gap-1.5 text-xs font-mono text-accent bg-accent/10 hover:bg-accent/20 px-2 py-1 rounded-md transition-colors"
 												>
 													<span className="font-bold">:{port.port}</span>
-													<span className="text-fg-muted text-[0.625rem]">{port.processName}</span>
+													<span className="text-fg-muted text-dense">{port.processName}</span>
 												</button>
 											</Tooltip>
 										))}
@@ -1182,7 +1182,7 @@ function TaskInfoPanel({
 							return (
 								<div className="mt-3 border-t border-edge pt-3">
 									<div className="flex items-center gap-2 mb-2">
-										<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F035B}"}</span>
+										<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F035B}"}</span>
 										<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">{t("resources.title")}</span>
 									</div>
 									<div className="flex items-center gap-4 text-xs font-mono">
@@ -1310,7 +1310,7 @@ function TaskInfoPanel({
 								>
 									<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
 									<span className="flex-1 text-sm font-medium">{t("infoPanel.imagesLabel")}</span>
-									<span className="text-[0.75rem] font-semibold text-accent tabular-nums">{task.sharedImages?.length}</span>
+									<span className="text-xs font-semibold text-accent tabular-nums">{task.sharedImages?.length}</span>
 								</button>
 							)}
 
@@ -1327,7 +1327,7 @@ function TaskInfoPanel({
 								>
 									<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
 									<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
-									<span className="text-[0.75rem] font-semibold text-accent tabular-nums">{task.sharedArtifacts?.length}</span>
+									<span className="text-xs font-semibold text-accent tabular-nums">{task.sharedArtifacts?.length}</span>
 								</button>
 							)}
 						</div>
@@ -1345,7 +1345,7 @@ function TaskInfoPanel({
 						)}
 
 						<section className="border-t border-edge pt-4">
-							<h3 className="mb-2 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
+							<h3 className="mb-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
 							{taskDetailsBody}
 						</section>
 					</div>
@@ -1429,7 +1429,7 @@ function TaskInfoPanel({
 					<div className="flex items-center gap-1.5 min-w-0">
 						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
 							{project.kind === "virtual" ? (
-								<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+								<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
 							) : (
 								<TaskGitActions
 									task={task}
@@ -1518,7 +1518,7 @@ function TaskInfoPanel({
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
 							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar">
 								{project.kind === "virtual" ? (
-									<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+									<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
 								) : (
 									<TaskGitActions
 										task={task}

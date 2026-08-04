@@ -270,7 +270,7 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 						</section>
 					))}
 				</div>
-				<div className="px-6 py-3 border-t border-edge text-[0.7rem] text-fg-muted flex items-center justify-between">
+				<div className="px-6 py-3 border-t border-edge text-micro text-fg-muted flex items-center justify-between">
 					{/* The one edit affordance this read-only overlay carries: a link OUT
 					    to the editor. Rebinding is durable configuration and belongs in
 					    Settings — see PRODUCT_UX_BIBLE §5.2. */}

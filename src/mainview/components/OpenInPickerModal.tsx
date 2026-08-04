@@ -170,17 +170,17 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 										</span>
 									</span>
 									<span className="flex-1 min-w-0">
-										<span className="block text-[0.8125rem] font-semibold text-fg truncate">{app.name}</span>
-										<span className="block text-[0.6875rem] text-fg-muted">{t(CATEGORY_KEY[openInAppCategory(app.id)])}</span>
+										<span className="block text-sm-plus font-semibold text-fg truncate">{app.name}</span>
+										<span className="block text-micro text-fg-muted">{t(CATEGORY_KEY[openInAppCategory(app.id)])}</span>
 									</span>
 									<span className="flex items-center gap-1.5 flex-shrink-0">
 										{custom && (
-											<span className="px-1 py-0.5 rounded-[5px] bg-warning/15 text-warning text-[0.5rem] font-bold uppercase tracking-wide leading-none">
+											<span className="px-1 py-0.5 rounded-[5px] bg-warning/15 text-warning text-nano font-bold uppercase tracking-wide leading-none">
 												{t("openIn.customBadge")}
 											</span>
 										)}
 										{index < 9 && (
-											<span className="flex items-center justify-center min-w-[1rem] h-4 px-1 rounded-[5px] bg-elevated border border-edge text-fg-muted text-[0.625rem] font-semibold leading-none font-mono">
+											<span className="flex items-center justify-center min-w-[1rem] h-4 px-1 rounded-[5px] bg-elevated border border-edge text-fg-muted text-dense font-semibold leading-none font-mono">
 												{index + 1}
 											</span>
 										)}
@@ -201,7 +201,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 						</span>
 						{copied ? t("openIn.pathCopied") : t("openIn.copyPath")}
 					</button>
-					<span className="text-[0.625rem] text-fg-muted hidden sm:block">{t("openIn.openShortcutHint")}</span>
+					<span className="text-dense text-fg-muted hidden sm:block">{t("openIn.openShortcutHint")}</span>
 				</div>
 			</div>
 		</div>,

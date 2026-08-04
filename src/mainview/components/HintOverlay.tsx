@@ -11,7 +11,7 @@ interface HintTarget {
 
 /** Themed key-cap badge used in the legend. */
 const KBD =
-	"inline-flex items-center rounded border border-edge-active bg-raised px-1.5 py-0.5 font-mono text-[0.6875rem] font-semibold leading-none text-fg-2 shadow-sm";
+	"inline-flex items-center rounded border border-edge-active bg-raised px-1.5 py-0.5 font-mono text-micro font-semibold leading-none text-fg-2 shadow-sm";
 
 interface HintOverlayProps {
 	/** Called when the overlay should close (committed, cancelled, or empty). */
@@ -205,7 +205,7 @@ function HintOverlay({ onExit }: HintOverlayProps) {
 					}}
 					data-testid="hint-label"
 					data-hint={target.hint}
-					className="absolute flex items-center rounded-md border border-hint-border bg-hint px-1.5 py-0.5 font-mono text-[0.6875rem] font-bold uppercase leading-none tracking-wide text-hint-fg shadow-lg shadow-black/40"
+					className="absolute flex items-center rounded-md border border-hint-border bg-hint px-1.5 py-0.5 font-mono text-micro font-bold uppercase leading-none tracking-wide text-hint-fg shadow-lg shadow-black/40"
 					style={{ top: rect.top + 4, left: rect.left + 4 }}
 				>
 					{[...target.hint].map((ch, i) => (
@@ -228,7 +228,7 @@ function HintOverlay({ onExit }: HintOverlayProps) {
 				</span>
 				<span className="text-fg-muted">·</span>
 				<span className="flex items-center gap-1.5">
-					<kbd className="inline-flex items-center rounded border border-accent/60 bg-accent/15 px-1.5 py-0.5 font-mono text-[0.6875rem] font-semibold uppercase leading-none tracking-wide text-accent shadow-sm">
+					<kbd className="inline-flex items-center rounded border border-accent/60 bg-accent/15 px-1.5 py-0.5 font-mono text-micro font-semibold uppercase leading-none tracking-wide text-accent shadow-sm">
 						Esc
 					</kbd>
 					<span className="font-medium text-fg">{t("hint.legend.cancel")}</span>

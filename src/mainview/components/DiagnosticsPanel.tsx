@@ -110,7 +110,7 @@ export default function DiagnosticsPanel({ onClose }: { onClose: () => void }) {
 								{e.detail && (
 									<details className="mt-1.5">
 										<summary className="text-fg-3 text-xs cursor-pointer select-none">{t("diagnostics.detail")}</summary>
-										<pre className="text-fg-muted text-[0.6875rem] font-mono whitespace-pre-wrap break-words mt-1 max-h-40 overflow-auto">
+										<pre className="text-fg-muted text-micro font-mono whitespace-pre-wrap break-words mt-1 max-h-40 overflow-auto">
 											{e.detail}
 										</pre>
 									</details>
