@@ -276,13 +276,14 @@ describe("TaskCard", () => {
 	describe("scratch session indicator", () => {
 		it("renders a non-empty glyph for scratch tasks (regression: was an empty placeholder)", () => {
 			renderCard(makeTask({ scratch: true, customTitle: "Quick shell", title: "Quick shell" }));
-			const icon = screen.getByTitle("Live shell session");
-			expect(icon.textContent).toBe("\u{F018D}");
+			// The label moved from a native title= to the styled Tooltip, so the
+			// glyph itself is what identifies the indicator now.
+			expect(screen.getByText("\u{F018D}")).toBeInTheDocument();
 		});
 
 		it("shows no scratch indicator for a normal task", () => {
 			renderCard(makeTask({ scratch: false }));
-			expect(screen.queryByTitle("Live shell session")).not.toBeInTheDocument();
+			expect(screen.queryByText("\u{F018D}")).not.toBeInTheDocument();
 		});
 	});
 

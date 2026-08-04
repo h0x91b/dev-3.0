@@ -13,6 +13,7 @@ import { formatCountdown } from "../../shared/duration";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
+import { useIsTruncated } from "../hooks/useIsTruncated";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
@@ -632,6 +633,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		? `${task.variantIndex}/${groupMembers.length}`
 		: null;
 	const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
+	const [configRef, configTruncated] = useIsTruncated<HTMLSpanElement>(configLabel);
 
 	// ---- SIGNALS zone: read-only facts, grouped git / run / time -------------
 	const gitSignals = [prBadge, mergeBadge, reviewBadge, commentBadge].filter(Boolean);
@@ -895,9 +897,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<span className="flex-shrink-0 font-mono text-[0.6875rem] font-semibold text-accent">
 					#{task.seq}
 					{variantFraction && (
-						<span className="ml-0.5 font-normal text-accent/60" title={t("task.attempt", { n: String(task.variantIndex) })}>
-							{variantFraction}
-						</span>
+						<Tooltip content={t("task.attempt", { n: String(task.variantIndex) })} detail={t("ttip.task.siblings")}>
+							<span className="ml-0.5 font-normal text-accent/60">{variantFraction}</span>
+						</Tooltip>
 					)}
 				</span>
 				{agent && hasLauncherIcon && <AgentLauncherBadge agent={agent} />}
@@ -907,53 +909,57 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					<span className="flex-shrink-0 font-mono text-[0.625rem] font-medium text-accent/80">{agent.name}</span>
 				)}
 				{configLabel && (
-					<span
-						className="min-w-[3rem] flex-1 truncate font-mono text-[0.625rem] font-medium text-accent/80"
-						title={configLabel}
-					>
-						{configLabel}
-					</span>
+					// The config string is the one header item allowed to clip, so it is
+					// also the one that needs the full value back on hover — but only
+					// when it is actually clipped.
+					<Tooltip content={configLabel} disabled={!configTruncated}>
+						<span
+							ref={configRef}
+							data-testid="task-card-config"
+							className="min-w-[3rem] flex-1 truncate font-mono text-[0.625rem] font-medium text-accent/80"
+						>
+							{configLabel}
+						</span>
+					</Tooltip>
 				)}
 				{variantDots}
 				{/* Only when there is no config to absorb the slack — otherwise a spacer
 				    would starve the string this full-width header exists for. */}
 				{!configLabel && <div className="flex-1" />}
 				{task.scratch && (
-					<span
-						className="flex-shrink-0 text-fg-3"
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						title={t("task.scratchSession")}
-					>
-						{"\u{F018D}"}
-					</span>
+					<Tooltip content={t("task.scratchSession")}>
+						<span className="flex-shrink-0 text-fg-3" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\u{F018D}"}
+						</span>
+					</Tooltip>
 				)}
 				{task.automationId && (
-					<span
-						className="flex-shrink-0 text-fg-3"
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						title={t("task.automationRun")}
-					>
-						{"\u{F0150}"}
-					</span>
+					<Tooltip content={t("task.automationRun")}>
+						<span className="flex-shrink-0 text-fg-3" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\u{F0150}"}
+						</span>
+					</Tooltip>
 				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
 				{isDraft && (
-					<span
-						data-testid="task-card-draft-badge"
-						title={t("task.draftHint")}
-						className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-3"
-					>
-						{t("task.draftBadge")}
-					</span>
+					<Tooltip content={t("task.draftBadge")} detail={t("task.draftHint")}>
+						<span
+							data-testid="task-card-draft-badge"
+							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-3"
+						>
+							{t("task.draftBadge")}
+						</span>
+					</Tooltip>
 				)}
 				{isHibernated && (
-					<span
-						data-testid="task-card-hibernated-badge"
-						title={t("task.hibernatedHint")}
-						className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
-					>
-						{t("task.hibernatedBadge")}
-					</span>
+					<Tooltip content={t("task.hibernatedBadge")} detail={t("task.hibernatedHint")}>
+						<span
+							data-testid="task-card-hibernated-badge"
+							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
+						>
+							{t("task.hibernatedBadge")}
+						</span>
+					</Tooltip>
 				)}
 				{showDismissButton && (
 					<Tooltip content={isCancelled ? t("task.delete") : t("task.cancel")} detail={isCancelled ? t("ttip.task.delete") : t("ttip.task.cancel")}>
