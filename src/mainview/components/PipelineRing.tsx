@@ -15,13 +15,15 @@ export function CompleteCheckIcon({ className }: { className?: string }) {
 
 interface PipelineRingProps {
 	status: TaskStatus;
-	/** "touch" bumps the ring to a legible size inside ≥44px rows. */
-	size?: "default" | "touch";
+	/** "touch" bumps the ring to a legible size inside ≥44px rows; "compact"
+	 *  shrinks it for the narrow card rail, where 18px would leave no margin. */
+	size?: "compact" | "default" | "touch";
 	/** Off where the stage position is already spelled out next to the ring. */
 	tooltip?: boolean;
 }
 
-const RING_PX = { default: 18, touch: 22 } as const;
+const RING_PX = { compact: 14, default: 18, touch: 22 } as const;
+const DIGIT_PX = { compact: 8, default: 9, touch: 11 } as const;
 
 /**
  * Compact conic progress ring replacing the seven-dot mini pipeline: the arc is
@@ -39,7 +41,8 @@ export default function PipelineRing({ status, size = "default", tooltip = true 
 	const sideBranch = isSideBranch(status);
 	const color = statusColors[status];
 	const px = RING_PX[size];
-	const hole = px / 2 - 2.6;
+	// A thinner ring at 14px: the default 2.6px stroke would swallow the digit.
+	const hole = px / 2 - (size === "compact" ? 2.1 : 2.6);
 	const label = t("pipeline.stageOf", { current: String(stage), total: String(total) });
 
 	return (
@@ -61,7 +64,7 @@ export default function PipelineRing({ status, size = "default", tooltip = true 
 			/>
 			<span
 				className="relative font-bold tabular-nums leading-none text-fg"
-				style={{ fontSize: size === "touch" ? 11 : 9 }}
+				style={{ fontSize: DIGIT_PX[size] }}
 			>
 				{sideBranch ? "×" : stage}
 			</span>

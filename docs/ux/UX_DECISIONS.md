@@ -491,7 +491,7 @@ bar make red decorative). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskI
 
 ## 2026-08-03 — Task card is governed by five zones, and the left rail owns lifecycle
 
-- **Rule:** The board card is a 3px status strip + a full-width identity header + a 38px vertical lifecycle rail (status control) + a body whose segmented bottom bar carries grouped signals above a reserved action strip; each zone has one admission rule (`surfaces.task_card.zone_model`).
+- **Rule:** The board card is a 3px status strip + a full-width identity header + a 20px vertical lifecycle rail (44px on touch) (status control) + a body whose segmented bottom bar carries grouped signals above a reserved action strip; each zone has one admission rule (`surfaces.task_card.zone_model`).
 - **Why:** Nothing was zoned, so every feature added a badge row and the status control — the most important button on the card — read as a text label; the rejected alternative was a right-hand indicator rail (constant height, but a bare counter hides severity).
 - **Status:** Implemented. Evidence: `src/mainview/components/TaskCard.tsx`, `src/mainview/components/TaskCardRail.tsx`.
 

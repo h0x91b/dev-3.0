@@ -82,7 +82,7 @@ export default function TaskCardRail({
 	return (
 		<div
 			data-testid="task-card-rail"
-			className={`flex flex-shrink-0 flex-col items-stretch self-stretch rounded-bl-[0.6875rem] ${touch ? "w-12" : "w-[2.375rem]"}`}
+			className={`flex flex-shrink-0 flex-col items-stretch self-stretch rounded-bl-[0.6875rem] ${touch ? "w-11" : "w-5"}`}
 			style={{ background: `${color}22` }}
 		>
 			<Tooltip content={fullLabel} detail={`${stageLabel} · ${t("task.moveTo")}`}>
@@ -92,21 +92,21 @@ export default function TaskCardRail({
 					onClick={onOpenMenu}
 					disabled={disabled}
 					aria-label={`${fullLabel} — ${stageLabel}. ${t("task.moveTo")}`}
-					className="flex w-full flex-1 flex-col items-center gap-1.5 rounded-tl-none rounded-bl-none pt-2 pb-1.5 transition-[filter] duration-150 ease-out hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-60 motion-safe:active:scale-[0.97]"
+					className={`flex w-full flex-1 flex-col items-center rounded-tl-none rounded-bl-none pb-1.5 transition-[filter] duration-150 ease-out hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-60 motion-safe:active:scale-[0.97] ${touch ? "gap-1.5 pt-2" : "gap-1 pt-1.5"}`}
 				>
 					{customColumn ? (
 						<span
-							className="h-[0.9375rem] w-[0.9375rem] flex-shrink-0 rounded-full"
+							className={`flex-shrink-0 rounded-full ${touch ? "h-[0.9375rem] w-[0.9375rem]" : "h-2.5 w-2.5"}`}
 							style={{ background: color, boxShadow: `0 0 6px ${color}60` }}
 						/>
 					) : (
-						<PipelineRing status={status} tooltip={false} />
+						<PipelineRing status={status} size={touch ? "default" : "compact"} tooltip={false} />
 					)}
 
 					{bellCount > 0 && (
 						<span
 							data-testid="task-card-rail-bell"
-							className="flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-red-500 px-1 text-[0.625rem] font-bold leading-none text-white shadow-[0_2px_6px_rgb(239_68_68_/_0.45)]"
+							className={`flex flex-shrink-0 items-center justify-center rounded-full bg-red-500 font-bold leading-none text-white shadow-[0_2px_6px_rgb(239_68_68_/_0.45)] ${touch ? "h-4 min-w-4 px-1 text-[0.625rem]" : "h-3.5 min-w-3.5 px-0.5 text-[0.5625rem]"}`}
 						>
 							{bellCount > 9 ? "9+" : bellCount}
 						</span>
