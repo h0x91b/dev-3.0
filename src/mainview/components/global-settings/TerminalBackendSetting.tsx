@@ -86,7 +86,7 @@ export default function TerminalBackendSetting({
 							aria-disabled={option.disabled || undefined}
 							disabled={option.disabled || availability === null}
 							onClick={() => onChange(option.id)}
-							className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-all text-left disabled:cursor-not-allowed ${
+							className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 transition-colors text-left disabled:cursor-not-allowed ${
 								active
 									? "border-accent shadow-lg shadow-accent/10"
 									: "border-edge hover:border-edge-active"

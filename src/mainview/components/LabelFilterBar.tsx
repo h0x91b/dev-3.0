@@ -49,7 +49,7 @@ function PriorityFilterChips({
 						aria-pressed={isOn}
 						aria-label={t("priority.filterAria", { level, name: t(PRIORITY_NAME_KEYS[level]) })}
 						title={t(PRIORITY_NAME_KEYS[level])}
-						className={`font-mono text-[0.6875rem] font-semibold px-1.5 py-0.5 rounded transition-all ${
+						className={`font-mono text-[0.6875rem] font-semibold px-1.5 py-0.5 rounded transition-colors ${
 							isOn ? style.chipActive : style.chipIdle
 						}`}
 					>

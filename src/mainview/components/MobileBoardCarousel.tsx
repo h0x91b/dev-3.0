@@ -145,7 +145,7 @@ function MobileBoardCarousel({ columns, initialColumnId }: { columns: CarouselCo
 							onClick={() => goTo(i)}
 							aria-label={t("kanban.carouselGoTo", { label: col.label })}
 							aria-current={i === active}
-							className={`h-1.5 rounded-full transition-all ${
+							className={`h-1.5 rounded-full transition-[width,background-color] ${
 								i === active ? "w-4 bg-accent" : "w-1.5 bg-edge hover:bg-edge-active"
 							}`}
 						/>

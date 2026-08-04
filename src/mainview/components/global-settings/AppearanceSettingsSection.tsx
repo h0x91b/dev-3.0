@@ -179,7 +179,7 @@ function ThemeCard({
 	return (
 		<button
 			onClick={onClick}
-			className={`min-w-0 p-4 rounded-xl border-2 transition-all text-left ${
+			className={`min-w-0 p-4 rounded-xl border-2 transition-colors text-left ${
 				active
 					? "border-accent shadow-lg shadow-accent/10"
 					: "border-edge hover:border-edge-active"
@@ -237,7 +237,7 @@ function LanguageCard({
 	return (
 		<button
 			onClick={onClick}
-			className={`min-w-0 p-4 rounded-xl border-2 transition-all text-left ${
+			className={`min-w-0 p-4 rounded-xl border-2 transition-colors text-left ${
 				active
 					? "border-accent shadow-lg shadow-accent/10"
 					: "border-edge hover:border-edge-active"
