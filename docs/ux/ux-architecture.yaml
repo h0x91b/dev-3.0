@@ -784,8 +784,8 @@ ux_architecture:
       rule: "One sr-only h1 per route; document.title follows the route"
       rationale: "In remote mode the tab title is the only orientation cue"
     zoom:
-      banned: ["user-scalable=no", "maximum-scale=1"]
-      must_work_at: ["200% zoom", "320px viewport width"]
+      pinch_capped_on_purpose: "user-scalable=no + maximum-scale=1 stay on browser remote (useViewport.ts BROWSER_VIEWPORT, index.html boot value) — a live terminal owns touch and pinch fights pane geometry. Locked by hooks/__tests__/useViewport.test.tsx; do not remove as an a11y fix."
+      must_work_at: ["200% browser zoom", "320px viewport width"]
     live_regions:
       polite: "routine updates"
       assertive: "urgent errors only (role=alert reserved)"
@@ -817,8 +817,8 @@ ux_architecture:
       settings_paths: "Never spell a settings path in prose — declare it as data. Tips: set Tip.settingsSection (SettingsRouteSectionId, tips.ts); TipCard renders the link via OPEN_SETTINGS_SECTION_EVENT. Same principle for help strings."
     motion:
       transition_all: "banned — name properties explicitly"
-      hover_infinite: "banned — a resting cursor must not loop"
-      budget: "one play, <= 300ms for repeated-control hover, or nothing"
+      hover_infinite: "allowed and deliberate for the icon families (tmx-/gtx-/hdr-/th-) — the loop is the surface's personality and runs only under a resting cursor on one icon"
+      budget: "hover animation cycles stay under ~3s and never block or delay the interaction they decorate"
       reduced_motion: "honoured everywhere — index.css blocks cover toast, sheet, marching-ants, and icon families; useReducedMotion covers JS-driven animations"
       static_cue: "motion is never the only feedback channel"
     layout:

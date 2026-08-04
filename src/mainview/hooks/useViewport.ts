@@ -7,9 +7,11 @@ const DESKTOP_VIEWPORT = "width=1280";
 // Browser remote: device-width so the layout is responsive — a phone renders at its
 // real width (≈390px) and the media-query carousel kicks in; a wide desktop browser
 // renders the full board. Replaces the old fixed width=1024.
-// Zoom stays user-controllable (no user-scalable=no / maximum-scale): capping it fails
-// WCAG 1.4.4, and input focus-zoom is already handled by the 16px .browser-mode rule.
-const BROWSER_VIEWPORT = "width=device-width, initial-scale=1, interactive-widget=resizes-content, viewport-fit=cover";
+// Pinch-zoom is capped deliberately: the surface underneath is a live terminal that
+// owns touch, and browser zoom on it fights the pane geometry instead of magnifying.
+// The 16px .browser-mode input rule covers iOS focus-zoom.
+const BROWSER_VIEWPORT =
+	"width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content, viewport-fit=cover";
 const MOBILE_VIEWPORT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
 /** Screens that require desktop-width viewport even on mobile (terminal). */

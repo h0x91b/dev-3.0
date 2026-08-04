@@ -30,9 +30,13 @@ does — so on all 27 controls using the variant, keyboard focus painted a *tran
 the ring. Confirmed by grepping the built `dist/assets/*.css`, not by reasoning alone. One of them,
 `ClosePanePicker`, is a full-pane invisible button with no other affordance.
 
-Second: the browser-remote viewport carried `user-scalable=no, maximum-scale=1` — a WCAG 1.4.4
-failure on the one transport that renders on a phone — while the 16px `.browser-mode` input rule
-already solved the input focus-zoom that the cap was presumably there for.
+Two audit findings turned out to be **product decisions, not defects**, and were reverted after
+review. The browser-remote viewport caps pinch-zoom (`user-scalable=no, maximum-scale=1`) because
+the surface underneath is a live terminal that owns touch; pinch fights the pane geometry instead
+of magnifying, so reflow at 320px is the accessibility path here, not scaling. And the icon
+families loop while hovered on purpose — the loop is the personality of the surface, not an
+oversight. Both are now written into §9a as deliberate, with the zoom cap locked by a test, so a
+future sweep does not "fix" them again.
 
 ## Decision
 
@@ -42,8 +46,8 @@ already solved the input focus-zoom that the cap was presumably there for.
 2. **`focus:outline-none` is banned**, the 27 uses are removed, and
    `src/mainview/__tests__/focus-visible.test.ts` keeps it out. The bare `outline-none` utility
    stays legal. The false claim in `UX_DECISIONS.md` is corrected in place.
-3. **Zoom is never capped** (`hooks/useViewport.ts`, `src/mainview/index.html`), guarded by
-   `hooks/__tests__/useViewport.test.tsx`.
+3. **The pinch-zoom cap and the looping hover icons stay**, documented as intentional in §9a.1 and
+   §9a.5. `hooks/__tests__/useViewport.test.tsx` asserts the cap is present rather than absent.
 4. Each floor ships with the mechanism that makes it the default rather than a convention:
    `useViewportClamp` for anchored overlays, `Tip.settingsSection` for settings deep links, a
    contrast test over the real token pairs, a required `confirmLabel`.

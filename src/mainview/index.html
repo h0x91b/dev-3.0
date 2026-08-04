@@ -2,9 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Boot value only; useViewport() replaces it per transport and route. Zoom is
-         never capped here — user-scalable=no / maximum-scale=1 fails WCAG 1.4.4. -->
-    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
+    <!-- Boot value only; useViewport() replaces it per transport and route. The zoom
+         cap is deliberate — see the comment in hooks/useViewport.ts. -->
+    <meta name="viewport" content="width=1024, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content" />
     <!-- Favicon (new dev3 app icon). Absolute paths resolve against the served
          root: Vite copies src/mainview/public/* to the dist root, and the
          remote/web server (src/bun/remote-access-server.ts) serves dist at "/". -->

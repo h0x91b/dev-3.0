@@ -355,7 +355,7 @@ A gate, not a goal. Every surface passes these before shipping; a floor is not e
 | `role="tab"` | Is a promise of roving tabindex — if you will not implement it, ship plain buttons with `aria-pressed` |
 | `aria-modal` surface | Accessible name (`aria-labelledby` at its title), focus trap, focus restore; `useFocusTrap` is the one implementation |
 | Landmarks | One `sr-only` `<h1>` per route; `document.title` follows the route (the tab title is the only orientation cue in remote mode) |
-| Zoom | Never `user-scalable=no`, never `maximum-scale=1`; must render and reflow at 200% and 320px |
+| Zoom | Must render and reflow at 200% browser zoom and at a 320px viewport. **Pinch-zoom is capped on purpose** on browser remote (`user-scalable=no, maximum-scale=1`) — the surface underneath is a live terminal that owns touch, so pinch fights the pane geometry instead of magnifying. Do not "fix" it; reflow is the accessibility path here |
 | Live regions | `polite` for routine updates; `assertive` / `role="alert"` reserved for urgent errors only |
 
 **Documented exception — no skip link.** The keyboard jump layer (command palette ⇧⌘P, hint overlay `f`/⌘G, task switcher Option+Tab) replaces a skip link. Future audits must not re-flag this as missing.
@@ -403,7 +403,7 @@ Litmus test: does the text stay readable on a 390px screen with the dense-factor
 
 - **No `transition: all`** — name the properties explicitly.
 - CSS transitions for interactive state changes (interruptible); keyframes for one-shot sequences only.
-- **Motion budget:** a repeated control on hover gets at most one play, ≤300ms, or nothing. An `infinite` animation triggered by `:hover` is banned — a resting cursor must not loop.
+- **Motion budget:** a hover animation on a repeated control stays under ~3s per cycle and never blocks or delays the interaction it decorates. Looping while hovered is **allowed and deliberate** for the icon families (`tmx-`, `gtx-`, `hdr-`, `th-`): the loop is the personality of the surface, and it runs only while the cursor rests on that one icon.
 - Prefer compositable properties (`transform`, `opacity`); paint properties like `stroke-dashoffset` are for genuinely one-shot moments.
 - Motion is **never** the only feedback channel — every animated state change also has a static cue.
 - `prefers-reduced-motion` is honoured everywhere.
