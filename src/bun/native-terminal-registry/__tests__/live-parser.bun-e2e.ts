@@ -228,7 +228,10 @@ async function run(): Promise<void> {
 		check(dsr !== null, "DSR probe inside the shell completed");
 		check(dsr?.[1] === "1", `parser answered the cursor-position query EXACTLY once (got ${dsr?.[1] ?? "none"})`);
 
-		const liveDuringOutput = await pollParserState("lp-main", (s) => s.health.status === "live" && s.ingested.frames > 0);
+		const liveDuringOutput = await pollParserState(
+			"lp-main",
+			(s) => s.health.status === "live" && s.ingested.frames > 0 && (isWindows || s.ingested.replies >= 1),
+		);
 		check(liveDuringOutput !== null, "parser state stays live while output streams");
 		const replies = liveDuringOutput?.ingested.replies ?? 0;
 		if (isWindows) {
