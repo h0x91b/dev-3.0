@@ -219,11 +219,12 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="add-project-dialog-title"
 				tabIndex={-1}
 				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5 outline-none"
 			>
 				<div className="flex items-center gap-1.5">
-					<h2 className="text-fg text-lg font-semibold">
+					<h2 id="add-project-dialog-title" className="text-fg text-lg font-semibold">
 						{t("addProject.title")}
 					</h2>
 					<HelpSpot topicId="modal.add-project" />
@@ -253,8 +254,9 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 					<div className="space-y-3">
 						<p className="text-fg-3 text-sm">{t("ops.create.hint")}</p>
 						<div className="space-y-1.5">
-							<label className="text-fg-2 text-sm font-medium">{t("ops.create.nameLabel")}</label>
+							<label htmlFor="add-project-ops-name" className="text-fg-2 text-sm font-medium">{t("ops.create.nameLabel")}</label>
 							<input
+								id="add-project-ops-name"
 								type="text"
 								autoFocus
 								value={opsName}
@@ -332,10 +334,11 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 					<div className="space-y-4">
 						{/* Git URL */}
 						<div className="space-y-1.5">
-							<label className="text-fg-2 text-sm font-medium">
+							<label htmlFor="add-project-git-url" className="text-fg-2 text-sm font-medium">
 								{t("addProject.gitUrl")}
 							</label>
 							<input
+								id="add-project-git-url"
 								ref={urlInputRef}
 								type="text"
 								value={gitUrl}
@@ -352,10 +355,11 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 
 						{/* Repository Name (optional) */}
 						<div className="space-y-1.5">
-							<label className="text-fg-2 text-sm font-medium">
+							<label htmlFor="add-project-repo-name" className="text-fg-2 text-sm font-medium">
 								{t("addProject.repoName")}
 							</label>
 							<input
+								id="add-project-repo-name"
 								type="text"
 								value={repoName}
 								onChange={(e) => setRepoName(e.target.value)}
@@ -366,9 +370,9 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 
 						{/* Clone Base Directory */}
 						<div className="space-y-1.5">
-							<label className="text-fg-2 text-sm font-medium">
+							<p className="text-fg-2 text-sm font-medium">
 								{t("addProject.cloneBaseDir")}
-							</label>
+							</p>
 							<div className="flex gap-2">
 								<div className="flex-1 px-3 py-2.5 bg-raised border border-edge rounded-xl text-sm font-mono truncate">
 									{cloneBaseDir ? (

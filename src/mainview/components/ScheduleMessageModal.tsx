@@ -130,6 +130,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="schedule-message-title"
 				tabIndex={-1}
 				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-2xl mx-4 overflow-hidden outline-none max-sm:h-full max-sm:max-w-none max-sm:mx-0 max-sm:rounded-none max-sm:flex max-sm:flex-col"
 				onClick={(e) => e.stopPropagation()}
@@ -137,7 +138,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 				{/* Header */}
 				<div className="px-6 py-4 border-b border-edge">
 					<div className="flex items-center gap-1.5">
-						<h2 className="text-fg text-lg font-semibold">{t("scheduleMessage.title")}</h2>
+						<h2 id="schedule-message-title" className="text-fg text-lg font-semibold">{t("scheduleMessage.title")}</h2>
 						<HelpSpot topicId="modal.schedule-message" />
 					</div>
 					<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>

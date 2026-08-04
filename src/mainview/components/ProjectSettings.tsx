@@ -505,9 +505,9 @@ function EnvVarsEditor({ env, storageScope, onChange, onErrorChange }: {
 
 	return (
 		<div>
-			<label className="block text-fg text-sm font-semibold mb-2">
+			<p className="block text-fg text-sm font-semibold mb-2">
 				{t("projectSettings.envVars")}
-			</label>
+			</p>
 			<p className="text-fg-3 text-sm mb-3">
 				{t("projectSettings.envVarsDesc")}
 			</p>
@@ -1636,6 +1636,7 @@ function ProjectSettings({
 	const tabButtonProps = (tab: ConfigTab) => ({
 		role: "tab",
 		"aria-selected": activeTab === tab,
+		tabIndex: activeTab === tab ? 0 : -1,
 		onClick: () => setActiveTab(tab),
 		className: `flex-1 px-4 py-2 text-sm font-medium rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/60 transition-[color,background-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] ${
 			activeTab === tab
@@ -1643,6 +1644,29 @@ function ProjectSettings({
 				: "text-fg-3 hover:text-fg-2 hover:bg-elevated"
 		}`,
 	});
+
+	function handleMainTabListKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+		const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'));
+		const currentIndex = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+		let nextIndex = currentIndex;
+		if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+			nextIndex = (currentIndex + 1) % tabs.length;
+			e.preventDefault();
+		} else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+			nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+			e.preventDefault();
+		} else if (e.key === "Home") {
+			nextIndex = 0;
+			e.preventDefault();
+		} else if (e.key === "End") {
+			nextIndex = tabs.length - 1;
+			e.preventDefault();
+		} else {
+			return;
+		}
+		tabs[nextIndex].focus();
+		tabs[nextIndex].click();
+	}
 
 	const dirty = isDirty();
 	const saving = savingProject || savingWtRepo || savingWtLocal;
@@ -1694,7 +1718,7 @@ function ProjectSettings({
 
 					{/* 3-tab selector */}
 					<div>
-						<div role="tablist" aria-label={t("projectSettings.tabsAria")} className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">
+						<div role="tablist" aria-label={t("projectSettings.tabsAria")} className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1" onKeyDown={handleMainTabListKeyDown}>
 							<button type="button" {...tabButtonProps("global")}>
 								{t("projectSettings.tabGlobal")}
 							</button>
@@ -1980,7 +2004,7 @@ function ProjectSettings({
 
 									{/* Repo / Local sub-tabs */}
 									<div>
-										<div role="tablist" aria-label={t("projectSettings.worktreeSubTabsAria")} className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1">
+										<div role="tablist" aria-label={t("projectSettings.worktreeSubTabsAria")} className="flex gap-1 bg-elevated/50 rounded-xl p-1 mb-1" onKeyDown={handleMainTabListKeyDown}>
 											{([
 												{ id: "repo" as WorktreeSubTab, label: t("projectSettings.worktreeRepoTab") },
 												{ id: "local" as WorktreeSubTab, label: t("projectSettings.worktreeLocalTab") },
@@ -1990,6 +2014,7 @@ function ProjectSettings({
 													type="button"
 													role="tab"
 													aria-selected={worktreeSubTab === tab.id}
+													tabIndex={worktreeSubTab === tab.id ? 0 : -1}
 													onClick={() => setWorktreeSubTab(tab.id)}
 													className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent/60 transition-[color,background-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] ${
 														worktreeSubTab === tab.id

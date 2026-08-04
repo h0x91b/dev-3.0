@@ -66,12 +66,13 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="update-sim-dialog-title"
 				tabIndex={-1}
 				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[36rem] max-h-[85vh] flex flex-col outline-none"
 			>
 				<div className="flex items-start justify-between gap-3 p-5 border-b border-edge">
 					<div className="min-w-0">
-						<h2 className="text-fg text-base font-semibold">{t("updateSim.title")}</h2>
+						<h2 id="update-sim-dialog-title" className="text-fg text-base font-semibold">{t("updateSim.title")}</h2>
 						<p className="text-fg-3 text-xs mt-0.5">{t("updateSim.subtitle")}</p>
 					</div>
 					<button

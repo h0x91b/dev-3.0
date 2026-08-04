@@ -35,6 +35,7 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="git-pull-error-title"
 				tabIndex={-1}
 				className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[42rem] max-w-[90vw] max-h-[80vh] flex flex-col outline-none"
 				onClick={(e) => e.stopPropagation()}
@@ -48,7 +49,7 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 						>
 							{"\u{F0027}"}
 						</span>
-						<h2 className="text-fg text-lg font-semibold truncate">
+						<h2 id="git-pull-error-title" className="text-fg text-lg font-semibold truncate">
 							{t("kanban.gitPullFailedTitle", { branch })}
 						</h2>
 					</div>

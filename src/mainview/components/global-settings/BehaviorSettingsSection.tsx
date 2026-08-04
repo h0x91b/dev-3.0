@@ -58,9 +58,9 @@ export default function BehaviorSettingsSection({
 		<SettingsSection title={t("settings.categoryTasks")} helpTopicId="settings.tasks">
 			<SettingsEntry anchor="task-drop-position">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.taskDropPosition")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.taskDropPositionDesc")}
 				</p>
@@ -85,9 +85,9 @@ export default function BehaviorSettingsSection({
 
 			<SettingsEntry anchor="task-complete-sound">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.taskCompleteSound")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.taskCompleteSoundDesc")}
 				</p>
@@ -105,9 +105,9 @@ export default function BehaviorSettingsSection({
 
 			<SettingsEntry anchor="focus-mode">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.focusMode")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.focusModeDesc")}
 				</p>
@@ -123,9 +123,9 @@ export default function BehaviorSettingsSection({
 
 			<SettingsEntry anchor="watch-by-default">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.watchByDefault")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.watchByDefaultDesc")}
 				</p>
@@ -143,9 +143,9 @@ export default function BehaviorSettingsSection({
 
 			<SettingsEntry anchor="suggest-completing-after-merge">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.suggestCompletingTasksAfterMerge")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.suggestCompletingTasksAfterMergeDesc")}
 				</p>
@@ -163,9 +163,9 @@ export default function BehaviorSettingsSection({
 
 			<SettingsEntry anchor="auto-open-images">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.autoOpenImages")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.autoOpenImagesDesc")}
 				</p>
@@ -181,9 +181,9 @@ export default function BehaviorSettingsSection({
 
 			<SettingsEntry anchor="task-open-mode">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.taskOpenMode")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.taskOpenModeDesc")}
 				</p>
@@ -209,9 +209,9 @@ export default function BehaviorSettingsSection({
 
 			<SettingsEntry anchor="default-diff-view">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.defaultDiffViewMode")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.defaultDiffViewModeDesc")}
 				</p>
@@ -239,9 +239,9 @@ export default function BehaviorSettingsSection({
 
 			<SettingsEntry anchor="tips">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-3">
+				<p className="block text-fg text-sm font-semibold mb-3">
 					{t("settings.tipsSection")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.tipsDesc")}
 				</p>
@@ -249,7 +249,7 @@ export default function BehaviorSettingsSection({
 					<label className="inline-flex items-center gap-3 cursor-pointer select-none">
 						<div
 							role="switch"
-							aria-checked={globalSettings.tipsDisabled === true}
+							aria-checked={globalSettings.tipsDisabled !== true}
 							aria-label={t("settings.tipsDisabled")}
 							tabIndex={0}
 							className={`relative w-11 h-6 rounded-full transition-colors ${
@@ -269,7 +269,7 @@ export default function BehaviorSettingsSection({
 						>
 							<div
 								className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-									globalSettings.tipsDisabled ? "translate-x-5" : ""
+									globalSettings.tipsDisabled ? "" : "translate-x-5"
 								}`}
 							/>
 						</div>

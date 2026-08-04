@@ -440,7 +440,7 @@ function ActiveTasksSidebar({
 	const projectLabels = project.labels ?? [];
 
 	return (
-		<div className="h-full flex flex-col bg-base">
+		<nav className="h-full flex flex-col bg-base" aria-label={t("nav.activeTasks")}>
 			{/* Header */}
 			<div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-edge flex-shrink-0">
 				<span className="text-xs font-semibold text-fg-2 uppercase tracking-wider truncate">
@@ -544,6 +544,7 @@ function ActiveTasksSidebar({
 						ref={searchRef}
 						type="text"
 						data-search-input="true"
+						aria-label={t("sidebar.searchAriaLabel")}
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
 						onKeyDown={(e) => {
@@ -936,7 +937,7 @@ function ActiveTasksSidebar({
 					/>
 				);
 			})()}
-		</div>
+		</nav>
 	);
 }
 

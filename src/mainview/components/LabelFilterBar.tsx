@@ -120,6 +120,7 @@ function LabelFilterBar({
 						ref={inputRef}
 						type="text"
 						data-search-input="true"
+						aria-label={t("labels.searchAriaLabel")}
 						value={searchQuery}
 						onChange={(e) => onSearchChange(e.target.value)}
 						onKeyDown={(e) => {
@@ -172,6 +173,7 @@ function LabelFilterBar({
 						ref={inputRef}
 						type="text"
 						data-search-input="true"
+						aria-label={t("labels.searchAriaLabel")}
 						value={searchQuery}
 						onChange={(e) => onSearchChange(e.target.value)}
 						onKeyDown={(e) => {

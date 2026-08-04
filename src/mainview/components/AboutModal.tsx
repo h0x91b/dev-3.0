@@ -26,6 +26,7 @@ export default function AboutModal({ version, onClose }: AboutModalProps) {
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="about-dialog-title"
 				tabIndex={-1}
 				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[24rem] p-6 space-y-2 text-center outline-none"
 			>
@@ -35,7 +36,7 @@ export default function AboutModal({ version, onClose }: AboutModalProps) {
 				>
 					{"\uf489"}
 				</div>
-				<h2 className="text-fg text-lg font-semibold">dev-3.0</h2>
+				<h2 id="about-dialog-title" className="text-fg text-lg font-semibold">dev-3.0</h2>
 				<p className="text-fg-3 text-xs font-mono">{t("about.version", { version })}</p>
 				<p className="text-fg-2 text-sm pt-1">{t("about.tagline")}</p>
 				<p className="text-fg-muted text-xs">{t("about.builtWith")}</p>

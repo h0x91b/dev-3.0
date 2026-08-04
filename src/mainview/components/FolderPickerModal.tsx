@@ -335,12 +335,13 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="folder-picker-title"
 				tabIndex={-1}
 				className="bg-overlay border border-edge rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.55)] w-[56rem] max-w-[94vw] flex flex-col overflow-hidden outline-none"
 			>
 				{/* Header */}
 				<div className="px-5 py-3 border-b border-edge flex items-center justify-between gap-3">
-					<h2 className="text-fg text-base font-semibold truncate">
+					<h2 id="folder-picker-title" className="text-fg text-base font-semibold truncate">
 						{options.title ?? t("folderPicker.title")}
 					</h2>
 					<button
@@ -456,6 +457,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 							<form onSubmit={handleManualSubmit}>
 								<input
 									type="text"
+									aria-label={t("folderPicker.pathAriaLabel")}
 									value={manualPath}
 									onChange={(e) => setManualPath(e.target.value)}
 									onKeyDown={handleManualKeyDown}
@@ -466,12 +468,13 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									className="w-full px-3 py-1.5 bg-raised border border-edge rounded-lg text-fg text-[13px] font-mono outline-none focus:border-accent/50 transition-colors streamer-private"
 								/>
 							</form>
-							<label className="relative flex items-center">
+							<div className="relative flex items-center">
 								<span className="absolute left-2.5 pointer-events-none">
 									<Glyph glyph={NF.filter} size="0.8rem" className="text-fg-muted" />
 								</span>
 								<input
 									type="text"
+									aria-label={t("folderPicker.filterAriaLabel")}
 									value={filterText}
 									onChange={(e) => setFilterText(e.target.value)}
 									placeholder={t("folderPicker.filterPlaceholder")}
@@ -480,7 +483,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									autoCapitalize="off"
 									className="w-full pl-7 pr-2 py-1.5 bg-raised border border-edge rounded-lg text-fg text-[13px] outline-none focus:border-accent/50 transition-colors"
 								/>
-							</label>
+							</div>
 						</div>
 
 						{/* New folder toolbar (only when enabled by caller) */}

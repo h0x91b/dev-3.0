@@ -1,4 +1,4 @@
-import { useEffect, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT, type TranslationKey } from "../i18n";
@@ -173,16 +173,6 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 	// Rows render the RESOLVED combo, so a rebind made in Settings must repaint
 	// this overlay too — it is a reference, and a stale reference is a lie.
 	useKeymapVersion();
-	useEffect(() => {
-		if (!open) return;
-		function onKey(e: KeyboardEvent) {
-			if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-				onTabChange(tab === "app" ? "terminal" : "app");
-			}
-		}
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [open, tab, onTabChange]);
 
 	if (!open) return null;
 
@@ -194,6 +184,13 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 		app: t("keymap.tab.app"),
 		terminal: t("keymap.tab.terminal"),
 	};
+
+	function handleTabListKeyDown(e: React.KeyboardEvent) {
+		if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+			e.preventDefault();
+			onTabChange(tab === "app" ? "terminal" : "app");
+		}
+	}
 
 	const overlay = (
 		<div
@@ -227,7 +224,7 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 						</svg>
 					</button>
 				</div>
-				<div className="px-6 pt-3" role="tablist" aria-label={t("keymap.title")}>
+				<div className="px-6 pt-3" role="tablist" aria-label={t("keymap.title")} onKeyDown={handleTabListKeyDown}>
 					<div className="inline-flex rounded-lg border border-edge bg-raised p-0.5 gap-0.5">
 						{tabs.map((id) => (
 							<button
@@ -235,6 +232,7 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 								type="button"
 								role="tab"
 								aria-selected={tab === id}
+								tabIndex={tab === id ? 0 : -1}
 								className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
 									tab === id
 										? "bg-accent-fill text-white"

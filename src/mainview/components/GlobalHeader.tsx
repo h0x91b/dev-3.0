@@ -368,7 +368,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 		<>
 		<div className="relative z-30 flex items-center justify-between px-5 py-2.5 border-b border-edge flex-shrink-0 glass-header" data-collapse-on-compose>
 			{/* Breadcrumbs */}
-			<div className="flex items-center gap-2 text-sm min-w-0">
+			<nav className="flex items-center gap-2 text-sm min-w-0" aria-label={t("nav.appHeader")}>
 				{/* Back / forward navigation — segmented history control (Safari toolbar style) */}
 				<div className="flex items-stretch flex-shrink-0 -ml-1.5 rounded-md border border-edge bg-raised overflow-hidden">
 					<Tooltip content={t("header.navBack")} detail={t("ttip.header.navBack")}>
@@ -526,7 +526,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						)}
 					</Fragment>
 				))}
-			</div>
+			</nav>
 
 			{/* Actions — tmux sessions, changelog, project settings, global settings, external links */}
 			<div className="flex items-center gap-0.5 flex-shrink-0" data-help-id="header.utilities">

@@ -5,6 +5,7 @@ import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
 import { usePinchZoom } from "../hooks/usePinchZoom";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 interface TaskImageViewerProps {
 	images: SharedImage[];
@@ -46,7 +47,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 	const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 	// null = auto (decide from aspect ratio); otherwise a manual override.
 	const [fitOverride, setFitOverride] = useState<"fit" | "width" | null>(null);
-	const containerRef = useRef<HTMLDivElement>(null);
+	const containerRef = useFocusTrap<HTMLDivElement>();
 	const thumbStripRef = useRef<HTMLDivElement>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
 	// Ids whose fetch has already been kicked off — dedupes the priority effect
@@ -139,7 +140,6 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 			else if (e.key === "f" || e.key === "F") { consume(); setFullscreen((v) => !v); }
 		}
 		window.addEventListener("keydown", onKey, { capture: true });
-		containerRef.current?.focus();
 		return () => window.removeEventListener("keydown", onKey, { capture: true });
 	}, [go, onClose, images.length, fullscreen]);
 

@@ -76,9 +76,9 @@ describe("ProductivityStatsView", () => {
 		expect(await screen.findByText("Productivity")).toBeInTheDocument();
 		expect(await screen.findByText("Tasks shipped")).toBeInTheDocument();
 		expect(screen.getByText("Avg. task lifetime")).toBeInTheDocument();
-		// Time range switch options.
-		expect(screen.getByRole("tab", { name: "Week" })).toBeInTheDocument();
-		expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
+		// Time range switch options (aria-pressed toggles, not tabs).
+		expect(screen.getByRole("button", { name: "Week" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
 		// Per-project section heading.
 		expect(screen.getByText("By project")).toBeInTheDocument();
 		expect(screen.getByText("By model configuration")).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe("ProductivityStatsView", () => {
 		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
 		renderView();
 		expect(await screen.findByRole("group", { name: "Time period" })).toBeInTheDocument();
-		await userEvent.click(screen.getByRole("tab", { name: "All" }));
+		await userEvent.click(screen.getByRole("button", { name: "All" }));
 		expect(screen.queryByRole("group", { name: "Time period" })).not.toBeInTheDocument();
 	});
 

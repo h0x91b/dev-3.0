@@ -530,10 +530,10 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 			onClick={handleRequestClose}
 		>
 			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-			<div ref={trapRef} role="dialog" aria-modal="true" tabIndex={-1} data-help-id="modal.create-task" className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6 space-y-5 outline-none" onClick={(e) => e.stopPropagation()}>
+			<div ref={trapRef} role="dialog" aria-modal="true" aria-labelledby="create-task-modal-title" tabIndex={-1} data-help-id="modal.create-task" className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6 space-y-5 outline-none" onClick={(e) => e.stopPropagation()}>
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-1.5">
-						<h2 className="text-fg text-lg font-semibold">
+						<h2 id="create-task-modal-title" className="text-fg text-lg font-semibold">
 							{isDraftEdit ? t("createTask.editDraftTitle") : t("createTask.title")}
 						</h2>
 						<HelpSpot topicId="modal.create-task" />
@@ -576,7 +576,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 				{/* Description textarea + drop zone */}
 				<div className="space-y-1.5">
 					<div className="flex items-center justify-between">
-						<label className="text-fg-2 text-sm font-medium">
+						<label htmlFor="create-task-description" className="text-fg-2 text-sm font-medium">
 							{t("createTask.descriptionLabel")}
 						</label>
 						{showAttachButton && (
@@ -631,6 +631,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 							</div>
 						)}
 							<textarea
+							id="create-task-description"
 							ref={textareaRef}
 							value={description}
 							onChange={(e) => {
@@ -769,18 +770,18 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 
 				{/* Priority selector — compact badge + picker, defaults to P3. */}
 				<div className="flex items-center gap-2">
-					<label className="text-fg-2 text-sm font-medium">
+					<span className="text-fg-2 text-sm font-medium">
 						{t("priority.label")}
-					</label>
+					</span>
 					<PriorityBadge priority={priority} onChange={setPriority} size="sm" />
 				</div>
 
 				{/* Label selector — compact: only the selected labels show as chips;
 				    the picker popover (search / toggle / inline-create) owns the full list. */}
 				<div className="space-y-2">
-					<label className="text-fg-2 text-sm font-medium">
+					<span className="text-fg-2 text-sm font-medium">
 						{t("labels.taskLabels")}
-					</label>
+					</span>
 					<div className="flex flex-wrap items-center gap-1.5">
 						{selectedLabels.map((label) => (
 							<LabelChip
@@ -819,7 +820,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 				{/* Virtual ops: working-folder selector (managed temp dir by default). */}
 				{isVirtual ? (
 					<div className="space-y-1.5">
-						<label className="text-fg-2 text-sm font-medium">{t("ops.create.workDirLabel")}</label>
+						<span className="text-fg-2 text-sm font-medium">{t("ops.create.workDirLabel")}</span>
 						<div className="flex gap-2">
 							<div className="flex-1 px-3 py-2 bg-raised border border-edge rounded-xl text-sm truncate">
 								{opsFolder ? (
@@ -892,7 +893,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 								</button>
 								<button
 									onClick={onClose}
-									className="px-3 py-1 bg-danger text-white text-sm font-medium rounded-lg hover:bg-danger/80 transition-colors"
+									className="px-3 py-1 bg-danger-fill text-white text-sm font-medium rounded-lg hover:bg-danger-fill-hover transition-colors"
 								>
 									{t("createTask.discard")}
 								</button>

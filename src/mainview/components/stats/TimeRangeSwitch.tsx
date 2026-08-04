@@ -10,15 +10,14 @@ interface TimeRangeSwitchProps {
 /** Segmented control for the dashboard time range (Day / Week / Month / All). */
 export function TimeRangeSwitch({ value, onChange, labels }: TimeRangeSwitchProps) {
 	return (
-		<div className="inline-flex items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5" role="tablist">
+		<div className="inline-flex items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5">
 			{STATS_RANGES.map((r) => {
 				const active = r === value;
 				return (
 					<button
 						key={r}
 						type="button"
-						role="tab"
-						aria-selected={active}
+						aria-pressed={active}
 						onClick={() => onChange(r)}
 						className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${
 							active ? "bg-accent-fill text-white" : "text-fg-3 hover:text-fg hover:bg-elevated"
