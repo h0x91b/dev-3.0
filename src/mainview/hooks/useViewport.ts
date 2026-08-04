@@ -7,7 +7,9 @@ const DESKTOP_VIEWPORT = "width=1280";
 // Browser remote: device-width so the layout is responsive — a phone renders at its
 // real width (≈390px) and the media-query carousel kicks in; a wide desktop browser
 // renders the full board. Replaces the old fixed width=1024.
-const BROWSER_VIEWPORT = "width=device-width, initial-scale=1, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content, viewport-fit=cover";
+// Zoom stays user-controllable (no user-scalable=no / maximum-scale): capping it fails
+// WCAG 1.4.4, and input focus-zoom is already handled by the 16px .browser-mode rule.
+const BROWSER_VIEWPORT = "width=device-width, initial-scale=1, interactive-widget=resizes-content, viewport-fit=cover";
 const MOBILE_VIEWPORT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
 /** Screens that require desktop-width viewport even on mobile (terminal). */
@@ -19,7 +21,7 @@ function needsDesktopViewport(route: Route): boolean {
  * Dynamically switches the viewport meta tag based on the current route.
  * - Electrobun desktop: always 1280px.
  * - Electrobun mobile (hypothetical): device-width for UI, 1280 for terminal.
- * - Browser remote access: always 1024px (no transitions, no jumps).
+ * - Browser remote access: device-width for every screen (no transitions, no jumps).
  */
 export function useViewport(route: Route): void {
 	const isMobile = useMobile();
@@ -28,7 +30,7 @@ export function useViewport(route: Route): void {
 		const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
 		if (!meta) return;
 
-		// Browser remote access: fixed 1024px for all screens — no viewport jumps
+		// Browser remote access: device-width for all screens — no viewport jumps
 		if (!isElectrobun) {
 			meta.content = BROWSER_VIEWPORT;
 			return;

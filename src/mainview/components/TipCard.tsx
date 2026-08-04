@@ -4,6 +4,7 @@ import type { TipState } from "../../shared/types";
 import { SNOOZE_MS, ROTATION_INTERVAL_MS } from "../tips";
 import { useT } from "../i18n";
 import { api } from "../rpc";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 
 interface TipCardProps {
 	tip: Tip;
@@ -79,13 +80,29 @@ function TipCard({ tip, tipState, onChanged, compact = false }: TipCardProps) {
 				{t(tip.bodyKey)}
 			</div>
 
-			{/* Next tip link */}
-			<button
-				onClick={handleNext}
-				className="mt-2.5 text-[0.625rem] text-fg-muted hover:text-accent transition-colors"
-			>
-				{t("tip.next")} →
-			</button>
+			{/* Footer: deep link to the setting this tip is about (when it has one),
+			    then the next-tip link. The tip body never spells the path out. */}
+			<div className="mt-2.5 flex items-center gap-3">
+				{tip.settingsSection && (
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							window.dispatchEvent(
+								new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: tip.settingsSection }),
+							);
+						}}
+						className="text-micro text-accent hover:text-accent-emphasis transition-colors"
+					>
+						{t("tip.openSetting")} →
+					</button>
+				)}
+				<button
+					onClick={handleNext}
+					className="text-micro text-fg-muted hover:text-accent transition-colors"
+				>
+					{t("tip.next")} →
+				</button>
+			</div>
 
 			{/* Rotation progress bar — the animation IS the timer: when it ends we
 			    rotate. Pauses on hover; restarts (key) on every tip change. */}

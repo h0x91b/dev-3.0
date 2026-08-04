@@ -6,6 +6,7 @@ const tips = {
 	"tip.dismiss": "No mostrar este consejo",
 	"tip.snooze": "Ocultar consejos por un rato",
 	"tip.next": "Siguiente consejo",
+	"tip.openSetting": "Abrir el ajuste",
 	"tip.diffReviewPersists.title": "Tu revisión se guarda",
 	"tip.diffReviewPersists.body": "Los comentarios de revisión en línea se guardan unos días, así un descuido con el portapapeles no los pierde — reabre el diff y cópialos otra vez, o usa «Restablecer revisión».",
 	"tip.backForwardNav.title": "Salta atrás y adelante",
@@ -175,7 +176,7 @@ const tips = {
 	"tip.agentCanPingYou.title": "Los agentes pueden avisarte",
 	"tip.agentCanPingYou.body": "Un agente ejecuta `dev3 notify` o `dev3 attention` para mostrar un toast o insignia que te lleva a su tarea.",
 	"tip.focusModeMutesPings.title": "¿Te distraen los avisos?",
-	"tip.focusModeMutesPings.body": "Activa el Modo concentración en Ajustes → Comportamiento para poner en cola toasts, avisos y visores de agentes.",
+	"tip.focusModeMutesPings.body": "Activa el Modo concentración para poner en cola toasts, avisos y visores de agentes.",
 	"tip.prCiReviewBadges.title": "CI y revisión en la tarjeta",
 	"tip.prCiReviewBadges.body": "Las tareas en revisión de PR muestran insignias de CI y revisión; haz clic en una para devolver la tarea a tu revisión.",
 	"tip.operationsBoard.title": "Tablero de Operaciones",
@@ -183,7 +184,7 @@ const tips = {
 	"tip.operationsHistory.title": "Las operaciones guardan su historial",
 	"tip.operationsHistory.body": "Las operaciones completadas permanecen en Hecho con sus notas y carpeta, así ves qué ejecutaste y por qué más tarde.",
 	"tip.browserNotifications.title": "Notificaciones en el navegador",
-	"tip.browserNotifications.body": "¿Abriste dev3 en un navegador? Activa Notificaciones del navegador en Ajustes → Comportamiento para recibir avisos de escritorio de dev3 notify y tareas observadas.",
+	"tip.browserNotifications.body": "¿Abriste dev3 en un navegador? Activa Notificaciones del navegador para recibir avisos de escritorio de dev3 notify y tareas observadas.",
 	"tip.remoteDetachLifecycle.title": "Ejecuta dev3 remote en segundo plano",
 	"tip.remoteDetachLifecycle.body": "En un servidor, solo ejecuta `dev3 remote` — pasa a segundo plano solo. Gestiónalo desde cualquier sesión SSH: `url` para un QR nuevo, además de `logs`, `restart` y `stop`.",
 	"tip.productivityStats.title": "Mira cuánto entregas",
@@ -209,7 +210,7 @@ const tips = {
 	"tip.cliDoctor.title": "Diagnostica tu instalación",
 	"tip.cliDoctor.body": "¿Algo raro tras una actualización? Ejecuta `dev3 doctor` en cualquier terminal: revisa la app, tmux y Homebrew e imprime los comandos para arreglarlo.",
 	"tip.llmProvider.title": "Agentes en Amazon Bedrock",
-	"tip.llmProvider.body": "Ajustes → Coding Agents → LLM Provider apunta Claude o Codex a Amazon Bedrock — dev3 fija el modelo mapeado; las credenciales y la región quedan en tu propia configuración.",
+	"tip.llmProvider.body": "El ajuste «LLM Provider» apunta Claude o Codex a Amazon Bedrock — dev3 fija el modelo mapeado; las credenciales y la región quedan en tu propia configuración.",
 	"tip.filterTokens.title": "Filtra tareas con tokens",
 	"tip.filterTokens.body": "En la búsqueda escribe label:Bug agent:Codex status:review is:attention has:port — o usa el embudo para construirlo.",
 	"tip.cycleTaskVariants.title": "Cambia entre variantes",
@@ -219,7 +220,7 @@ const tips = {
 	"tip.terminalSearch.title": "Busca en el terminal",
 	"tip.terminalSearch.body": "Pulsa \u2318F (Ctrl+F en Linux) en un terminal para buscar en el historial de tmux \u2014 las coincidencias se resaltan en el panel.",
 	"tip.streamerMode.title": "Graba sin filtrar tu identidad",
-	"tip.streamerMode.body": "El modo streamer (Ajustes → Apariencia o ⇧⌘P) difumina correos, cuentas, rutas y URLs de túnel para tus screencasts.",
+	"tip.streamerMode.body": "El modo streamer (⇧⌘P o los ajustes de apariencia) difumina correos, cuentas, rutas y URLs de túnel para tus screencasts.",
 };
 
 export default tips;

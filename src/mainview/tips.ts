@@ -1,5 +1,6 @@
 import type { TranslationKey } from "./i18n/translations/en";
 import type { TipState } from "../shared/types";
+import type { SettingsRouteSectionId } from "./settings-registry";
 
 /**
  * Surface where a tip is most relevant. Used by selectTip() as a SORT BOOST,
@@ -41,6 +42,13 @@ export interface Tip {
 	 * Global/cross-surface tips (palette, shortcuts, sleep toggle) list several.
 	 */
 	contexts: TipContext[];
+	/**
+	 * Settings category this tip sends the reader to. Never spell a settings
+	 * path out in prose — it rots the moment a category is renamed (three tips
+	 * shipped pointing at a "Behavior" category that no longer existed).
+	 * Declare the destination here and TipCard renders the link.
+	 */
+	settingsSection?: SettingsRouteSectionId;
 }
 
 const ALL_TIPS: Tip[] = [
@@ -731,6 +739,7 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0BB0}", // nf-md-bell_off
 		score: 4,
 		contexts: ["board", "terminal"],
+		settingsSection: "tasks",
 	},
 	{
 		id: "pr-ci-review-badges",
@@ -763,6 +772,7 @@ const ALL_TIPS: Tip[] = [
 		icon: "\uF0F3", // nf-fa-bell
 		score: 4,
 		contexts: ["settings", "board"],
+		settingsSection: "system",
 	},
 	{
 		id: "remote-detach-lifecycle",
@@ -867,6 +877,7 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0E7}", // nf-fa-cloud
 		score: 4,
 		contexts: ["settings"],
+		settingsSection: "agents",
 	},
 	{
 		id: "filter-tokens",
@@ -907,6 +918,7 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0567}", // nf-md-video
 		score: 3,
 		contexts: ["settings", "board"],
+		settingsSection: "appearance",
 	},
 ];
 

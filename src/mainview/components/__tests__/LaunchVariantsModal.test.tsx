@@ -546,7 +546,7 @@ describe("LaunchVariantsModal", () => {
 
 			expect(
 				await screen.findByText(
-					"This changes only this task. To watch every new task automatically, turn on Watch tasks by default in Settings → Behavior.",
+					"This changes only this task. To watch every new task automatically, turn on the \"Watch tasks by default\" setting.",
 				),
 			).toBeInTheDocument();
 		});

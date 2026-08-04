@@ -187,7 +187,7 @@ MUST ping — one per logical event, not per step: **blocked** or waiting on a q
 
 Choosing the channel (from \`ui state\`): user focused on this task → skip the ping or \`attention\` only; active but elsewhere → a toast is enough, \`attention\` for blockers; idle/away or app backgrounded → \`notify --desktop\` and/or an \`attention\` badge (a plain toast will go unseen).
 
-Focus mode (Settings → Behavior) suppresses \`notify\`/\`attention\` with a "Focus mode is on" reply — that's expected; keep your normal status transitions so the work stays visible on the board.
+Focus mode (Settings → Tasks & Board) suppresses \`notify\`/\`attention\` with a "Focus mode is on" reply — that's expected; keep your normal status transitions so the work stays visible on the board.
 `;
 
 const SKILL_PROJECT_CONFIG_REDIRECT = `

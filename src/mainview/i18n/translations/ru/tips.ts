@@ -6,6 +6,7 @@ const tips = {
 	"tip.dismiss": "Больше не показывать",
 	"tip.snooze": "Скрыть подсказки на время",
 	"tip.next": "Следующий совет",
+	"tip.openSetting": "Открыть настройку",
 	"tip.diffReviewPersists.title": "Твоё ревью сохраняется",
 	"tip.diffReviewPersists.body": "Inline-комментарии ревью хранятся несколько дней, чтобы их не потерять при случайном затирании буфера — открой дифф и скопируй снова, или нажми «Сбросить ревью».",
 	"tip.backForwardNav.title": "Прыгай назад и вперёд",
@@ -175,7 +176,7 @@ const tips = {
 	"tip.agentCanPingYou.title": "Агенты могут позвать вас",
 	"tip.agentCanPingYou.body": "Агент вызывает `dev3 notify` или `dev3 attention` — появляется кликабельный тост или бейдж, переносящий вас на его задачу.",
 	"tip.focusModeMutesPings.title": "Пинги отвлекают?",
-	"tip.focusModeMutesPings.body": "Включите «Режим фокуса» в Настройки → Поведение, чтобы поставить тосты, звонки, события просмотра и уведомления агентов в очередь.",
+	"tip.focusModeMutesPings.body": "Включите «Режим фокуса», чтобы поставить тосты, звонки, события просмотра и уведомления агентов в очередь.",
 	"tip.prCiReviewBadges.title": "CI и ревью на карточке",
 	"tip.prCiReviewBadges.body": "Задачи на PR-ревью показывают бейджи CI и ревью; нажмите на бейдж, чтобы вернуть задачу на ваше ревью.",
 	"tip.operationsBoard.title": "Доска «Операции»",
@@ -183,7 +184,7 @@ const tips = {
 	"tip.operationsHistory.title": "Операции хранят историю",
 	"tip.operationsHistory.body": "Завершённые операции остаются в «Готово» вместе с заметками и папкой — позже видно, что и зачем вы запускали.",
 	"tip.browserNotifications.title": "Уведомления в браузере",
-	"tip.browserNotifications.body": "Открыли dev3 в браузере? Включите «Уведомления браузера» в Настройки → Поведение, чтобы получать алерты для dev3 notify и отслеживаемых задач.",
+	"tip.browserNotifications.body": "Открыли dev3 в браузере? Включите «Уведомления браузера», чтобы получать алерты для dev3 notify и отслеживаемых задач.",
 	"tip.remoteDetachLifecycle.title": "Запускайте dev3 remote в фоне",
 	"tip.remoteDetachLifecycle.body": "На сервере просто запустите `dev3 remote` — он сам уходит в фон. Управляйте из любой SSH-сессии: `url` за свежим QR, плюс `logs`, `restart` и `stop`.",
 	"tip.productivityStats.title": "Смотри, сколько ты делаешь",
@@ -209,7 +210,7 @@ const tips = {
 	"tip.cliDoctor.title": "Диагностика установки",
 	"tip.cliDoctor.body": "Что-то сломалось после обновления? Запустите `dev3 doctor` в любом терминале — проверит приложение, tmux и Homebrew и подскажет команды для починки.",
 	"tip.llmProvider.title": "Агенты через Amazon Bedrock",
-	"tip.llmProvider.body": "Настройки → Coding Agents → LLM Provider направляет Claude или Codex в Amazon Bedrock — dev3 подставит модель; учётные данные и регион остаются в вашей конфигурации.",
+	"tip.llmProvider.body": "Настройка «LLM Provider» направляет Claude или Codex в Amazon Bedrock — dev3 подставит модель; учётные данные и регион остаются в вашей конфигурации.",
 	"tip.filterTokens.title": "Фильтруйте задачи токенами",
 	"tip.filterTokens.body": "В поле поиска наберите label:Bug agent:Codex status:review is:attention has:port — или соберите фильтр кликом по воронке.",
 	"tip.cycleTaskVariants.title": "Цикл вариантов задачи",
@@ -219,7 +220,7 @@ const tips = {
 	"tip.terminalSearch.title": "Поиск по терминалу",
 	"tip.terminalSearch.body": "Нажмите \u2318F (Ctrl+F в Linux) в терминале, чтобы искать по истории tmux \u2014 совпадения подсвечиваются прямо в панели.",
 	"tip.streamerMode.title": "Записывайте экран без утечек",
-	"tip.streamerMode.body": "Режим стримера (Настройки → Внешний вид или ⇧⌘P) размывает почту, аккаунты, пути и tunnel-URL для скринкастов.",
+	"tip.streamerMode.body": "Режим стримера (⇧⌘P или настройки внешнего вида) размывает почту, аккаунты, пути и tunnel-URL для скринкастов.",
 };
 
 export default tips;

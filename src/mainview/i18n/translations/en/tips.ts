@@ -6,6 +6,7 @@ const tips = {
 	"tip.dismiss": "Don't show this tip",
 	"tip.snooze": "Hide tips for a while",
 	"tip.next": "Next tip",
+	"tip.openSetting": "Open the setting",
 	"tip.diffReviewPersists.title": "Your diff review is saved",
 	"tip.diffReviewPersists.body": "Inline review comments are kept for a few days, so a clipboard mishap won't lose them — reopen the diff to copy again, or hit \"Reset review\" to clear.",
 	"tip.backForwardNav.title": "Jump back and forward",
@@ -175,7 +176,7 @@ const tips = {
 	"tip.agentCanPingYou.title": "Agents can ping you",
 	"tip.agentCanPingYou.body": "Agents run `dev3 notify` or `dev3 attention` to raise a clickable toast or badge that jumps you to their task.",
 	"tip.focusModeMutesPings.title": "Pings distracting you?",
-	"tip.focusModeMutesPings.body": "Turn on Focus Mode in Settings → Behavior to queue agent toasts, bells, viewer events, and notifications until you return.",
+	"tip.focusModeMutesPings.body": "Turn on Focus Mode to queue agent toasts, bells, viewer events, and notifications until you return.",
 	"tip.prCiReviewBadges.title": "CI & review on the card",
 	"tip.prCiReviewBadges.body": "PR-review tasks show CI and review badges; click one to pull the task back to your review.",
 	"tip.operationsBoard.title": "Operations board",
@@ -183,7 +184,7 @@ const tips = {
 	"tip.operationsHistory.title": "Operations keep their history",
 	"tip.operationsHistory.body": "Completed operations stay in Done with their notes and folder, so you can see what you ran and why later.",
 	"tip.browserNotifications.title": "Notifications in the browser",
-	"tip.browserNotifications.body": "Opened dev3 in a browser? Enable Browser Notifications in Settings → Behavior to get desktop alerts for dev3 notify and watched tasks.",
+	"tip.browserNotifications.body": "Opened dev3 in a browser? Enable Browser Notifications to get desktop alerts for dev3 notify and watched tasks.",
 	"tip.remoteDetachLifecycle.title": "Run dev3 remote in the background",
 	"tip.remoteDetachLifecycle.body": "On a server, just run `dev3 remote` — it backgrounds itself. Manage it from any SSH session: `url` for a fresh QR, plus `logs`, `restart`, and `stop`.",
 	"tip.productivityStats.title": "See how much you ship",
@@ -209,7 +210,7 @@ const tips = {
 	"tip.cliDoctor.title": "Diagnose your install",
 	"tip.cliDoctor.body": "Something off after an update? Run `dev3 doctor` in any terminal — it checks the app, tmux and Homebrew and prints exact fix commands.",
 	"tip.llmProvider.title": "Run agents on Amazon Bedrock",
-	"tip.llmProvider.body": "Settings → Coding Agents → LLM Provider points Claude or Codex at Amazon Bedrock — dev3 pins the mapped model; credentials and region stay in your own config.",
+	"tip.llmProvider.body": "The LLM Provider setting points Claude or Codex at Amazon Bedrock — dev3 pins the mapped model; credentials and region stay in your own config.",
 	"tip.filterTokens.title": "Filter tasks with tokens",
 	"tip.filterTokens.body": "In the search box type label:Bug agent:Codex status:review is:attention has:port — or click the funnel to build it.",
 	"tip.cycleTaskVariants.title": "Cycle task variants",
@@ -219,7 +220,7 @@ const tips = {
 	"tip.terminalSearch.title": "Search the terminal",
 	"tip.terminalSearch.body": "Press \u2318F (Ctrl+F on Linux) in a terminal to search its tmux scrollback \u2014 matches highlight right in the pane.",
 	"tip.streamerMode.title": "Record without leaking identity",
-	"tip.streamerMode.body": "Streamer mode (Settings → Appearance, or ⇧⌘P) blurs emails, account names, paths, and tunnel URLs for screencasts.",
+	"tip.streamerMode.body": "Streamer mode (⇧⌘P, or the Appearance settings) blurs emails, account names, paths, and tunnel URLs for screencasts.",
 } as const;
 
 export default tips;
