@@ -17,6 +17,21 @@ function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function withDeadline<T>(operation: Promise<T>, label: string, onTimeout?: () => void): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<never>((_resolve, reject) => {
+		timer = setTimeout(() => {
+			onTimeout?.();
+			reject(new Error(`${label} timed out after ${DEADLINE_MS}ms`));
+		}, DEADLINE_MS);
+	});
+	try {
+		return await Promise.race([operation, deadline]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
+}
+
 class LineReader {
 	private readonly reader: ReadableStreamDefaultReader<Uint8Array>;
 	private pending = "";
@@ -39,12 +54,7 @@ class LineReader {
 				this.pending += new TextDecoder().decode(chunk.value, { stream: true });
 			}
 		};
-		return Promise.race([
-			read(),
-			delay(DEADLINE_MS).then(() => {
-				throw new Error(`${label} barrier timed out after ${DEADLINE_MS}ms`);
-			}),
-		]);
+		return withDeadline(read(), `${label} barrier`);
 	}
 }
 
@@ -74,13 +84,22 @@ async function signal(worker: Worker, end = false): Promise<void> {
 	if (end) stdin.end();
 }
 
-async function stop(worker: Worker | undefined): Promise<void> {
-	if (!worker || worker.exitCode !== null) return;
+function forceKill(worker: Worker): void {
+	if (worker.exitCode !== null) return;
 	try {
 		worker.kill("SIGKILL");
 	} catch {
 		// already exited
 	}
+}
+
+async function waitForExit(worker: Worker, label: string): Promise<void> {
+	await withDeadline(worker.exited, `${label} exit`, () => forceKill(worker));
+}
+
+async function stop(worker: Worker | undefined): Promise<void> {
+	if (!worker || worker.exitCode !== null) return;
+	forceKill(worker);
 	await Promise.race([worker.exited, delay(1_000)]);
 }
 
@@ -99,7 +118,7 @@ async function main(): Promise<void> {
 		check((await dWorker.lines.next("D")) === "entered", "D acquired the real cross-process lock");
 		const deadPid = d.pid;
 		d.kill("SIGKILL");
-		await d.exited;
+		await waitForExit(d, "D after SIGKILL");
 		check(!existsSync(join(root, "critical.guard")), "D died without entering another owner's guard");
 
 		const bWorker = startWorker("B", root, deadPid);
@@ -127,11 +146,11 @@ async function main(): Promise<void> {
 		const bEntered = bWorker.lines.next("B entry");
 		await release(c);
 		check((await cWorker.lines.next("C release")) === "released", "C released its generation after B moved it to a claim");
-		await c.exited;
+		await waitForExit(c, "C after release");
 		await signal(b, true);
 		check((await bEntered) === "entered", "B entered only after C released");
 		check((await bWorker.lines.next("B release")) === "released", "B released its own generation");
-		await b.exited;
+		await waitForExit(b, "B after release");
 
 		check(!existsSync(join(root, "critical.guard")), "the exclusive guard was removed");
 		check(readdirSync(join(root, "locks")).length === 0, "canonical, candidate, and claim artifacts were all retired");

@@ -129,6 +129,47 @@ describe("generation-owned native session lock", () => {
 		expect(existsSync(sessionLockFile("alpha", "claim", generation))).toBe(true);
 	});
 
+	it("does not delete a successor installed while acquisition rollback is pending", async () => {
+		const blockerGeneration = "d".repeat(64);
+		const movedOwnerClaim = sessionLockFile("alpha", "claim", "e".repeat(64));
+		const successorGeneration = "b".repeat(64);
+		const successor = staleRecord(successorGeneration, process.pid).replace(
+			`${process.pid}@old-process`,
+			SELF_SIGNATURE,
+		);
+		let insertedBlocker = false;
+		let installedSuccessor = false;
+		const runtime = new SessionLockRuntime({
+			afterClaimScanBeforeCanonicalLink: async () => {
+				if (insertedBlocker) return;
+				insertedBlocker = true;
+				writeFileSync(
+					sessionLockFile("alpha", "claim", blockerGeneration),
+					staleRecord(blockerGeneration, process.pid).replace(`${process.pid}@old-process`, SELF_SIGNATURE),
+				);
+			},
+			beforeRollbackCanonicalRetirement: async () => {
+				if (installedSuccessor) return;
+				installedSuccessor = true;
+				renameSync(sessionLockFile("alpha", "canonical"), movedOwnerClaim);
+				writeFileSync(sessionLockFile("alpha", "canonical"), successor);
+			},
+		});
+
+		await expect(
+			runtime.withSessionStateLock("alpha", () => undefined, lockOptions(evidence({ status: "dead" }))),
+		).rejects.toBeInstanceOf(SessionLockTimeoutError);
+		expect(installedSuccessor).toBe(true);
+		const preservedGenerations = readdirSync(sessionLocksRootDir()).flatMap((entry) => {
+			try {
+				return [(JSON.parse(readFileSync(join(sessionLocksRootDir(), entry), "utf8")) as { generation?: string }).generation];
+			} catch {
+				return [];
+			}
+		});
+		expect(preservedGenerations).toContain(successorGeneration);
+	});
+
 	it("fails closed when process identity cannot be established", async () => {
 		mkdirSync(sessionLocksRootDir(), { recursive: true });
 		writeFileSync(sessionLockFile("alpha", "canonical"), staleRecord());

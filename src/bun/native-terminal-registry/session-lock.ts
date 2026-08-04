@@ -251,6 +251,7 @@ async function collectStaleNoncanonical(sessionId: string, options: ResolvedLock
 /** Internal dependency seam for deterministic filesystem race barriers. */
 export interface SessionLockRuntimeHooks {
 	afterClaimScanBeforeCanonicalLink?: (sessionId: string) => Promise<void>;
+	beforeRollbackCanonicalRetirement?: (details: { sessionId: string; generation: string }) => Promise<void>;
 	afterBlockingClaimScan?: (details: {
 		sessionId: string;
 		generations: Array<string | null>;
@@ -286,6 +287,25 @@ async function claimStaleCanonical(
 	if (moved.kind !== "record" || moved.record.generation !== observed.generation) return;
 	if (!staleByAge(moved.record, options) || !(await staleByEvidence(moved.record, options))) return;
 	await unlinkIfGeneration(claim, moved.record.generation);
+}
+
+async function retireCanonicalAfterRollback(
+	sessionId: string,
+	generation: string,
+	hooks: SessionLockRuntimeHooks,
+): Promise<void> {
+	await hooks.beforeRollbackCanonicalRetirement?.({ sessionId, generation });
+	const canonical = sessionLockFile(sessionId, "canonical");
+	const rollbackClaim = sessionLockFile(sessionId, "claim", randomBytes(32).toString("hex"));
+	try {
+		await rename(canonical, rollbackClaim);
+	} catch (error) {
+		if (errorCode(error) === "ENOENT" || errorCode(error) === "EEXIST") return;
+		throw error;
+	}
+	const moved = await inspectLockFile(rollbackClaim);
+	if (moved.kind !== "record" || moved.record.generation !== generation) return;
+	await unlinkIfGeneration(rollbackClaim, generation);
 }
 
 async function acquire(
@@ -324,7 +344,7 @@ async function acquire(
 					await unlink(candidate);
 					return;
 				}
-				await unlinkIfGeneration(canonical, record.generation);
+				await retireCanonicalAfterRollback(sessionId, record.generation, hooks);
 			} catch (error) {
 				if (errorCode(error) !== "EEXIST") throw error;
 			}
