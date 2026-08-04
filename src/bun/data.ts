@@ -755,7 +755,22 @@ async function rawSaveTasks(
 	log.info(`Saved ${tasks.length} task(s)`, { projectId: project.id });
 }
 
+/**
+ * At most one pre-save snapshot per entry hour, decided with stat() rather than by
+ * reading two whole files. The hour is captured before reading, so a boundary-spanning
+ * read stays in its start hour. See decision 204.
+ */
 async function writeHourlyTasksBackup(project: Project, filePath: string): Promise<void> {
+	const backupDir = tasksBackupDir(project);
+	const backupFile = `${backupDir}/${tasksBackupFileName()}`;
+
+	try {
+		await stat(backupFile);
+		return; // This hour is already snapshotted.
+	} catch (err: any) {
+		if (err.code !== "ENOENT") throw err;
+	}
+
 	let currentContent: string;
 	try {
 		currentContent = await readFile(filePath, "utf8");
@@ -766,19 +781,8 @@ async function writeHourlyTasksBackup(project: Project, filePath: string): Promi
 		throw err;
 	}
 
-	const backupDir = tasksBackupDir(project);
-	const backupFile = `${backupDir}/${tasksBackupFileName()}`;
-
 	await mkdir(backupDir, { recursive: true });
-
-	try {
-		await readFile(backupFile, "utf8");
-	} catch (err: any) {
-		if (err.code !== "ENOENT") {
-			throw err;
-		}
-		await writeFile(backupFile, currentContent);
-	}
+	await writeFile(backupFile, currentContent);
 
 	const backupFiles = (await readdir(backupDir))
 		.filter((entry) => TASK_BACKUP_FILE_PATTERN.test(entry))
