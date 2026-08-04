@@ -106,7 +106,7 @@ export default function TaskCardRail({
 					{bellCount > 0 && (
 						<span
 							data-testid="task-card-rail-bell"
-							className={`flex flex-shrink-0 items-center justify-center rounded-full bg-red-500 font-bold leading-none text-white shadow-[0_2px_6px_rgb(239_68_68_/_0.45)] ${touch ? "h-4 min-w-4 px-1 text-[0.625rem]" : "h-3.5 min-w-3.5 px-0.5 text-[0.5625rem]"}`}
+							className={`flex flex-shrink-0 items-center justify-center rounded-full bg-red-500 font-bold leading-none text-white shadow-[0_2px_6px_rgb(239_68_68_/_0.45)] ${touch ? "h-4 min-w-4 px-1 text-dense" : "h-3.5 min-w-3.5 px-0.5 text-nano"}`}
 						>
 							{bellCount > 9 ? "9+" : bellCount}
 						</span>
@@ -117,7 +117,7 @@ export default function TaskCardRail({
 					    abbreviation is hidden from assistive tech. */}
 					<span
 						aria-hidden="true"
-						className="max-h-32 overflow-hidden font-mono text-[0.625rem] font-extrabold uppercase leading-none tracking-[0.14em] [text-orientation:upright] [writing-mode:vertical-rl]"
+						className="max-h-32 overflow-hidden font-mono text-dense font-extrabold uppercase leading-none tracking-[0.14em] [text-orientation:upright] [writing-mode:vertical-rl]"
 						style={{ color }}
 					>
 						{railLabel}

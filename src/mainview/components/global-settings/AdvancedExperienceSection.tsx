@@ -27,9 +27,11 @@ export default function AdvancedExperienceSection({
 		>
 			<SettingsEntry anchor="experimental-terminal-bidi">
 				<div>
-					<label className="block text-fg text-sm font-semibold mb-2">
+					{/* Not a <label>: the control it heads is SettingsToggle, which carries
+					    its own accessible name. A label with no association is never announced. */}
+					<p className="block text-fg text-sm font-semibold mb-2">
 						{t("settings.terminalBidi")}
-					</label>
+					</p>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.terminalBidiDesc")}</p>
 					<SettingsToggle
 						checked={bidiEnabled}

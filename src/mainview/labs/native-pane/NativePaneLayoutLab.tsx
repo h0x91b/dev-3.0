@@ -408,7 +408,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 				</nav>
 			)}
 
-			<div className={`flex flex-1 min-h-0 p-2 ${narrow ? "min-h-[24rem]" : ""}`}>
+			<div data-testid="pane-lab-canvas" className={`flex flex-1 min-h-0 p-2 ${narrow ? "min-h-[24rem]" : ""}`}>
 				{tree.zoomedPaneId
 					? renderPane(tree.zoomedPaneId)
 					: narrow
