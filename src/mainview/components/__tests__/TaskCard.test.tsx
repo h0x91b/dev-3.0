@@ -292,6 +292,24 @@ describe("TaskCard", () => {
 			expect(screen.getByText("#7")).toBeInTheDocument();
 		});
 
+		it("shows a compact N/M fraction when the group really has siblings", () => {
+			const task = makeTask({ seq: 5, variantIndex: 2, groupId: "g1" });
+			renderCard(task, {
+				siblingMap: new Map([[
+					"g1",
+					[task, makeTask({ id: "t2", seq: 5, variantIndex: 1, groupId: "g1" }), makeTask({ id: "t3", seq: 5, variantIndex: 3, groupId: "g1" })],
+				]]),
+			});
+			expect(screen.getByText("2/3")).toBeInTheDocument();
+		});
+
+		it("hides the fraction for a lone variant — 1/1 says nothing", () => {
+			const task = makeTask({ seq: 5, variantIndex: 1, groupId: "g1" });
+			renderCard(task, { siblingMap: new Map([["g1", [task]]]) });
+			expect(screen.queryByText("1/1")).not.toBeInTheDocument();
+			expect(screen.getByText("#5")).toBeInTheDocument();
+		});
+
 		it("shows badge with seq, attempt, agent name and config for variant task", () => {
 			renderCard(makeTask({
 				seq: 5,
@@ -303,7 +321,7 @@ describe("TaskCard", () => {
 				configId: "claude-default",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Variant 1")).toBeInTheDocument();
+			expect(screen.getByText("#5")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 			expect(screen.getByText("Default · sonnet")).toBeInTheDocument();
 		});
@@ -319,7 +337,7 @@ describe("TaskCard", () => {
 				configId: "codex-default",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Variant 2")).toBeInTheDocument();
+			expect(screen.getByText("#5")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Codex" })).toBeInTheDocument();
 			expect(screen.getByText("Default")).toBeInTheDocument();
 		});
@@ -335,7 +353,7 @@ describe("TaskCard", () => {
 				configId: "whatever",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Variant 3")).toBeInTheDocument();
+			expect(screen.getByText("#5")).toBeInTheDocument();
 		});
 
 		it("shows agent name without config when configId does not match", () => {
@@ -349,7 +367,7 @@ describe("TaskCard", () => {
 				configId: "nonexistent-config",
 				groupId: "g1",
 			}));
-			expect(screen.getByText("#5 · Variant 1")).toBeInTheDocument();
+			expect(screen.getByText("#5")).toBeInTheDocument();
 			expect(screen.getByRole("img", { name: "Claude" })).toBeInTheDocument();
 		});
 
@@ -386,7 +404,7 @@ describe("TaskCard", () => {
 				</I18nProvider>,
 			);
 			// Seq+attempt and the agent config are separate nodes in the identity header.
-			expect(screen.getByText("#2 · Variant 1")).toBeInTheDocument();
+			expect(screen.getByText("#2")).toBeInTheDocument();
 			expect(screen.getByText("Custom")).toBeInTheDocument();
 			expect(screen.getByText("First · fast")).toBeInTheDocument();
 		});

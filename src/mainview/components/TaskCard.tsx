@@ -626,9 +626,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const configLabel = agentConfig
 		? (agentConfig.model ? `${agentConfig.name} · ${agentConfig.model}` : agentConfig.name)
 		: agent?.name ?? "";
-	const seqLabel = task.variantIndex !== null
-		? `#${task.seq} · ${t("task.attempt", { n: String(task.variantIndex) })}`
-		: `#${task.seq}`;
+	// A lone variant is not a variant — `1/1` says nothing, and the spelled-out
+	// "Variant 1" ate the header room the config string exists for.
+	const variantFraction = task.variantIndex !== null && groupMembers.length > 1
+		? `${task.variantIndex}/${groupMembers.length}`
+		: null;
 	const hasLauncherIcon = agent ? resolveAgentLauncherIcon(agent) !== null : false;
 
 	// ---- SIGNALS zone: read-only facts, grouped git / run / time -------------
@@ -887,10 +889,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			    config string get the whole card instead of 182px next to a rail. */}
 			<div
 				data-testid="task-card-identity"
-				className="flex min-w-0 items-center gap-1.5 border-b border-edge px-2.5 py-1.5"
+				className="flex min-w-0 items-center gap-1.5 border-b border-edge py-1.5 pl-1.5 pr-2.5"
 			>
 				<PriorityBadge priority={task.priority} onChange={handleSetPriority} />
-				<span className="flex-shrink-0 font-mono text-[0.6875rem] font-semibold text-accent">{seqLabel}</span>
+				<span className="flex-shrink-0 font-mono text-[0.6875rem] font-semibold text-accent">
+					#{task.seq}
+					{variantFraction && (
+						<span className="ml-0.5 font-normal text-accent/60" title={t("task.attempt", { n: String(task.variantIndex) })}>
+							{variantFraction}
+						</span>
+					)}
+				</span>
 				{agent && hasLauncherIcon && <AgentLauncherBadge agent={agent} />}
 				{/* No launcher icon means the agent is unidentifiable from the glyph
 				    alone, so its name has to be spelled out. */}

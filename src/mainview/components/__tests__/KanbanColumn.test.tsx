@@ -593,7 +593,7 @@ describe("KanbanColumn — compact empty column on narrow viewport", () => {
 		const { container } = renderBuiltinColumn({ status: "in-progress", label: "In Progress" });
 		const column = container.querySelector(".glass-column") as HTMLElement;
 		expect(column.className).toMatch(/w-\[6\.125rem\]/);
-		expect(column.className).not.toMatch(/w-\[17\.5rem\]/);
+		expect(column.className).not.toMatch(/w-\[19rem\]/);
 		// "No tasks" placeholder is hidden in compact mode
 		expect(screen.queryByText("No tasks")).toBeNull();
 	});
@@ -602,14 +602,14 @@ describe("KanbanColumn — compact empty column on narrow viewport", () => {
 		setViewport(1200);
 		const { container } = renderBuiltinColumn({ status: "todo", label: "To Do" });
 		const column = container.querySelector(".glass-column") as HTMLElement;
-		expect(column.className).toMatch(/w-\[17\.5rem\]/);
+		expect(column.className).toMatch(/w-\[19rem\]/);
 	});
 
 	it("stays full width when viewport is wide, even if the column is empty", () => {
 		setViewport(1920);
 		const { container } = renderBuiltinColumn({ status: "in-progress", label: "In Progress" });
 		const column = container.querySelector(".glass-column") as HTMLElement;
-		expect(column.className).toMatch(/w-\[17\.5rem\]/);
+		expect(column.className).toMatch(/w-\[19rem\]/);
 		expect(screen.getByText("No tasks")).toBeInTheDocument();
 	});
 
@@ -623,7 +623,7 @@ describe("KanbanColumn — compact empty column on narrow viewport", () => {
 		};
 		const { container } = renderBuiltinColumn({ status: "in-progress", label: "In Progress", tasks: [task] });
 		const column = container.querySelector(".glass-column") as HTMLElement;
-		expect(column.className).toMatch(/w-\[17\.5rem\]/);
+		expect(column.className).toMatch(/w-\[19rem\]/);
 	});
 });
 
