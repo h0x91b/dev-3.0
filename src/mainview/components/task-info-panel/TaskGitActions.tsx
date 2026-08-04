@@ -5,6 +5,7 @@ import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
 import { api } from "../../rpc";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
+import { useViewportClamp } from "../../hooks/useViewportClamp";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import Tooltip from "../Tooltip";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
@@ -102,6 +103,7 @@ export default function TaskGitActions({
 	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
 	const refTriggerRef = useRef<HTMLButtonElement>(null);
 	const refMenuRef = useRef<HTMLDivElement>(null);
+	const { position: refMenuClamped, visible: refMenuVisible } = useViewportClamp(refMenuRef, refMenuPos);
 	const {
 		baseBranch,
 		branchStatus,
@@ -326,8 +328,13 @@ export default function TaskGitActions({
 	const refDropdownPortal = refMenuOpen && createPortal(
 		<div
 			ref={refMenuRef}
-			className="fixed bg-overlay border border-edge-active rounded-md shadow-2xl shadow-black/40 py-1 min-w-[10rem]"
-			style={{ top: refMenuPos.top, left: refMenuPos.left, zIndex: 9999 }}
+			className="fixed bg-overlay border border-edge-active rounded-md shadow-2xl shadow-black/40 py-1 min-w-[10rem] max-w-[calc(100vw-1rem)]"
+			style={{
+				top: refMenuClamped.top,
+				left: refMenuClamped.left,
+				zIndex: 9999,
+				visibility: refMenuVisible ? "visible" : "hidden",
+			}}
 			onClick={(event) => event.stopPropagation()}
 		>
 			{refOptions.map((option) => (

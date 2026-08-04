@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "../../toast";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../../shared/types";
@@ -22,6 +22,7 @@ export function _resetDevServerPollRegistry(): void {
 }
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { useViewportClamp } from "../../hooks/useViewportClamp";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import { useResolvedTaskProject } from "./useResolvedTaskProject";
 import RemoteBetaWarning from "./RemoteBetaWarning";
@@ -55,8 +56,7 @@ interface DevServerMenuProps {
 function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuProps) {
 	const t = useT();
 	const menuRef = useRef<HTMLDivElement>(null);
-	const [menuPos, setMenuPos] = useState(position);
-	const [visible, setVisible] = useState(false);
+	const { position: menuPos, visible } = useViewportClamp(menuRef, position);
 
 	useEscapeKey(onClose);
 	useEffect(() => {
@@ -70,28 +70,6 @@ function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuPr
 			document.removeEventListener("mousedown", handleClick);
 		};
 	}, [onClose]);
-
-	useLayoutEffect(() => {
-		if (!menuRef.current) {
-			return;
-		}
-
-		const menu = menuRef.current.getBoundingClientRect();
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		const pad = 8;
-
-		let top = position.top;
-		let left = position.left;
-
-		if (top + menu.height > vh - pad) top = vh - menu.height - pad;
-		if (left + menu.width > vw - pad) left = vw - menu.width - pad;
-		if (left < pad) left = pad;
-		if (top < pad) top = pad;
-
-		setMenuPos({ top, left });
-		setVisible(true);
-	}, [position]);
 
 	return (
 		<div

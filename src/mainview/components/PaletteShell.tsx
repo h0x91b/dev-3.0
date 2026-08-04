@@ -101,7 +101,7 @@ export function PaletteShell<T>({
 			<div
 				ref={trapRef}
 				tabIndex={-1}
-				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[34rem] max-h-[60vh] flex flex-col overflow-hidden outline-none"
+				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[34rem] max-w-[calc(100vw-2rem)] max-h-[60vh] flex flex-col overflow-hidden outline-none"
 				role="dialog"
 				aria-modal="true"
 				aria-label={ariaLabel}
