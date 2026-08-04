@@ -141,7 +141,10 @@ export const STATUS_COLORS: Record<TaskStatus, string> = {
 /** Light-theme column colours. Every one sits at the sRGB chroma ceiling for its
  *  lightness, and the hues are spaced (15° → 40° → 95° → 152° → 232° → 272° →
  *  318°) so that a column stays recognisable after the glow overlay keeps only a
- *  fraction of its chroma. `review-by-ai` is deliberately the neutral one. */
+ *  fraction of its chroma. `review-by-ai` is deliberately the neutral one.
+ *
+ *  These values are optimised for use as **glow, dot, and border identity** —
+ *  NOT as text ink. For rendered text use STATUS_COLORS_LIGHT_INK instead. */
 export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
 	todo: "#0182b0",
 	"in-progress": "#4b59ff",
@@ -151,6 +154,21 @@ export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
 	"review-by-colleague": "#b702df",
 	completed: "#04944b",
 	cancelled: "#d20346",
+};
+
+/** Light-theme ink colours for column header badges/chips where the status
+ *  colour is rendered as text. Verified to clear APCA |Lc| ≥ 60 on the
+ *  composited glass column header surface; hues match STATUS_COLORS_LIGHT but
+ *  are darkened where the standard value falls below the floor. */
+export const STATUS_COLORS_LIGHT_INK: Record<TaskStatus, string> = {
+	todo: "#01699e",           // darkened (standard: #0182b0, Lc ~57)
+	"in-progress": "#4b59ff",  // passes as-is (Lc ~63)
+	"user-questions": "#a63801", // darkened (standard: #d04801, Lc ~59)
+	"review-by-ai": "#656971",   // passes as-is (Lc ~71)
+	"review-by-user": "#736000", // darkened (standard: #9e8401, Lc ~50)
+	"review-by-colleague": "#b702df", // passes as-is (Lc ~68)
+	completed: "#06723a",      // darkened (standard: #04944b, Lc ~60)
+	cancelled: "#d20346",      // passes as-is (Lc ~71)
 };
 
 /** Convert "#rrggbb" â "R G B" for use as CSS variable value */

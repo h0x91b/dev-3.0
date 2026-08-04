@@ -38,10 +38,20 @@ export default {
 					fill: "rgb(var(--accent-fill) / <alpha-value>)",
 					"fill-hover": "rgb(var(--accent-fill-hover) / <alpha-value>)",
 				},
-				danger: "rgb(var(--danger) / <alpha-value>)",
+				danger: {
+					DEFAULT: "rgb(var(--danger) / <alpha-value>)",
+					strong: "rgb(var(--danger-strong) / <alpha-value>)",
+					fill: "rgb(var(--danger-fill) / <alpha-value>)",
+					"fill-hover": "rgb(var(--danger-fill-hover) / <alpha-value>)",
+				},
 				"danger-strong": "rgb(var(--danger-strong) / <alpha-value>)",
 				"success-strong": "rgb(var(--success-strong) / <alpha-value>)",
-				warning: "rgb(var(--warning) / <alpha-value>)",
+				warning: {
+					DEFAULT: "rgb(var(--warning) / <alpha-value>)",
+					strong: "rgb(var(--warning-strong) / <alpha-value>)",
+					fill: "rgb(var(--warning-fill) / <alpha-value>)",
+					"fill-hover": "rgb(var(--warning-fill-hover) / <alpha-value>)",
+				},
 				"warning-strong": "rgb(var(--warning-strong) / <alpha-value>)",
 				favorite: "rgb(var(--favorite) / <alpha-value>)",
 				awake: {
@@ -51,6 +61,8 @@ export default {
 				success: {
 					DEFAULT: "rgb(var(--success) / <alpha-value>)",
 					hover: "rgb(var(--success-hover) / <alpha-value>)",
+					fill: "rgb(var(--success-fill) / <alpha-value>)",
+					"fill-hover": "rgb(var(--success-fill-hover) / <alpha-value>)",
 				},
 				hint: {
 					DEFAULT: "rgb(var(--hint-bg) / <alpha-value>)",

@@ -3,7 +3,7 @@ import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeIn
 import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
-import { useStatusColors } from "../hooks/useStatusColors";
+import { useStatusColors, useStatusColorsInk } from "../hooks/useStatusColors";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import TaskCard from "./TaskCard";
 import TipCard from "./TipCard";
@@ -136,7 +136,11 @@ function KanbanColumn({
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
+	// ink = text-safe variant of the status colour (lighter themes need a
+	// darker shade to clear APCA |Lc| ≥ 60 on the glass column header).
+	const statusColorsInk = useStatusColorsInk();
 	const color = colorOverride ?? statusColors[status];
+	const inkColor = colorOverride ?? statusColorsInk[status];
 	const [dragOver, setDragOver] = useState(false);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const [columnDragSide, setColumnDragSide] = useState<"before" | "after" | null>(null);
@@ -426,12 +430,12 @@ function KanbanColumn({
 					/>
 				</div>
 
-				{/* Task count badge */}
+				{/* Task count badge — uses ink colour for text contrast */}
 				{tasks.length > 0 && (
 					<div className="flex justify-center pb-2">
 						<span
 							className="text-xs font-bold px-1.5 py-0.5 rounded-full"
-							style={{ color, background: `${color}18` }}
+							style={{ color: inkColor, background: `${color}18` }}
 						>
 							{tasks.length}
 						</span>
@@ -587,7 +591,7 @@ function KanbanColumn({
 						<span
 							className="text-[0.625rem] font-bold px-1.5 py-px rounded-full flex-shrink-0"
 							style={{
-								color,
+								color: inkColor,
 								background: `${color}18`,
 							}}
 						>

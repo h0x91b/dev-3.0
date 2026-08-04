@@ -59,9 +59,9 @@ html {
 	--text-tertiary: 170 182 204;
 	--text-muted: 132 145 169;
 
-	/* ---- Borders ---- */
-	--border-default: 43 49 65;
-	--border-active: 68 77 99;
+	/* ---- Borders (lifted so border-default clears |Lc| ≥ 15 on raised/base) ---- */
+	--border-default: 75 84 108;
+	--border-active: 95 107 135;
 
 	/* ---- Accent / Danger / Success ---- */
 	--accent: 69 150 254;
@@ -74,11 +74,23 @@ html {
 	--accent-fill-hover: 12 84 190;
 	--danger: 255 137 135;
 	--danger-strong: 255 137 135; /* danger ink on a danger-tinted fill */
+	/* Solid fills under white ink — --danger is a light coral, unsuitable for
+	   filled buttons. These deeper values give white Lc ≥ 75. */
+	--danger-fill: 185 28 28;
+	--danger-fill-hover: 153 27 27;
 	--success: 63 223 126;
 	--success-hover: 4 190 88;
 	--success-strong: 63 223 126; /* success ink on a success-tinted fill */
+	/* Solid fills under white ink — --success is a bright mint, unsuitable for
+	   filled buttons. These deeper values give white Lc ≥ 75. */
+	--success-fill: 15 118 54;
+	--success-fill-hover: 11 91 42;
 	--warning: 240 210 78;
 	--warning-strong: 240 210 78; /* warning ink on a warning-tinted fill */
+	/* Solid fills under white ink — --warning is a light yellow, unsuitable for
+	   filled buttons. These deeper values give white Lc ≥ 75. */
+	--warning-fill: 133 77 14;
+	--warning-fill-hover: 101 58 10;
 	--favorite: 249 182 61;    /* gold star for a saved favorite combo */
 	--awake: 244 148 86;
 	--awake-hover: 239 108 1;
@@ -144,13 +156,17 @@ html {
 	/* ---- Surfaces (oklch hue 268) ----
 	   Same idea as dark, mirrored: nothing is pure white, every surface carries
 	   a little chroma so it reads as tinted paper rather than a lightbox.
-	   L 0.906 → 0.990, monotonic. */
+	   Monotonic lightness ramp: base → raised → elevated → overlay, each step
+	   lighter so a hover never lands darker than the surface it lifts from.
+	   Hover tokens go slightly darker (light-theme convention for "pressed" depth). */
 	--surface-base: 235 239 250;
-	--surface-raised: 251 252 254;
-	--surface-raised-hover: 242 245 253;
-	--surface-elevated: 231 236 248;
-	--surface-elevated-hover: 220 226 240;
-	--surface-overlay: 253 253 255;
+	--surface-raised: 243 246 252;
+	--surface-raised-hover: 237 241 251;
+	--surface-elevated: 249 251 254;
+	--surface-elevated-hover: 243 246 252;
+	/* Overlay: hue corrected to 268° (same as other surfaces) at chroma ≈ 0.012;
+	   previously sat at ~286° due to near-zero-chroma numerical instability. */
+	--surface-overlay: 252 253 255;
 
 	/* ---- Text (slate-based, never pure black; APCA Lc ~91 / 75 / 60 / 44) ---- */
 	--text-primary: 17 26 47;
@@ -158,9 +174,9 @@ html {
 	--text-tertiary: 99 113 136;
 	--text-muted: 134 148 173;
 
-	/* ---- Borders (visible but refined) ---- */
-	--border-default: 202 210 224;
-	--border-active: 159 174 199;
+	/* ---- Borders (darkened so border-default clears |Lc| ≥ 15 on base/raised) ---- */
+	--border-default: 183 191 207;
+	--border-active: 150 163 185;
 
 	/* ---- Accent / Danger / Success ----
 	   Every one sits at the sRGB chroma ceiling for its lightness: as saturated
@@ -173,11 +189,20 @@ html {
 	--accent-fill-hover: 7 82 176;
 	--danger: 214 17 51;
 	--danger-strong: 159 18 57; /* --danger on a danger/10 fill is only 4.28:1 */
+	/* Solid fills under white ink — these give white Lc ≥ 75 in the light theme. */
+	--danger-fill: 182 14 43;
+	--danger-fill-hover: 145 11 34;
 	--success: 14 138 71;
 	--success-hover: 10 114 57;
 	--success-strong: 11 105 54; /* --success on a success/10 fill is only 4.36:1 */
+	/* Solid fills under white ink. */
+	--success-fill: 10 114 57;
+	--success-fill-hover: 8 88 44;
 	--warning: 145 118 13;
 	--warning-strong: 118 96 9; /* --warning on a warning/10 fill is only 3.82:1 */
+	/* Solid fills under white ink. */
+	--warning-fill: 105 86 9;
+	--warning-fill-hover: 82 67 7;
 	--favorite: 162 113 15;    /* deeper gold reads on a light canvas */
 	--awake: 189 94 15;
 	--awake-hover: 161 72 8;
