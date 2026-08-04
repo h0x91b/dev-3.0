@@ -429,7 +429,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 					)}
 
 					{/* Main */}
-					<main className="flex-1 min-w-0 flex flex-col">
+					<div className="flex-1 min-w-0 flex flex-col">
 						{/* Breadcrumbs */}
 						<div className="px-4 py-2 border-b border-edge flex items-center gap-0.5 overflow-x-auto text-xs flex-shrink-0 streamer-private">
 							{breadcrumbs.map((crumb, idx) => (
@@ -571,7 +571,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 								{listingError}
 							</div>
 						)}
-					</main>
+					</div>
 				</div>
 
 				{/* Footer */}

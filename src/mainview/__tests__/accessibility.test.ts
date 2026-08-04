@@ -40,6 +40,19 @@ describe("accessibility structural guards", () => {
 	});
 
 	/**
+	 * The app shell owns exactly one `<main>` and the per-route `sr-only` `<h1>`.
+	 * Screens predating that shell had their own, which nested a second landmark
+	 * and a second `h1` inside the first — invalid, and it makes landmark
+	 * navigation ambiguous. Only `App.tsx` may open the element.
+	 */
+	it("declares the main landmark in exactly one place", () => {
+		const declarers = files
+			.filter((file) => /<main[\s>]/.test(readFileSync(file, "utf8")))
+			.map((file) => path.relative(SRC, file));
+		expect(declarers).toEqual(["App.tsx"]);
+	});
+
+	/**
 	 * Every `aria-modal` element must carry an accessible name.
 	 *
 	 * Pattern matches the dialog container opening tag (all on its own lines,

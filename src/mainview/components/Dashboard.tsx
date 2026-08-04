@@ -54,8 +54,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 	}
 
 	return (
-		<main className="h-full w-full flex flex-col">
-			<h1 className="sr-only">{t("dashboard.screenTitle")}</h1>
+		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-hidden">
 				{projects.length > 0 ? (
 					<ActivityOverview
@@ -102,7 +101,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 					</div>
 				)}
 			</div>
-		</main>
+		</div>
 	);
 }
 

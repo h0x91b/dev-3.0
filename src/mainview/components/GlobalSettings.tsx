@@ -727,7 +727,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		/>
 	);
 	const settingsDetail = (
-		<main
+		<section
 			className="min-w-0 min-h-0 flex-1 overflow-y-auto p-5 md:p-7"
 			aria-labelledby="settings-category-title"
 		>
@@ -767,7 +767,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 					</>
 				)}
 			</div>
-		</main>
+		</section>
 	);
 
 	return (

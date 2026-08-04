@@ -408,13 +408,13 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 				</nav>
 			)}
 
-			<main className={`flex flex-1 min-h-0 p-2 ${narrow ? "min-h-[24rem]" : ""}`}>
+			<div className={`flex flex-1 min-h-0 p-2 ${narrow ? "min-h-[24rem]" : ""}`}>
 				{tree.zoomedPaneId
 					? renderPane(tree.zoomedPaneId)
 					: narrow
 						? renderPane(tree.activePaneId)
 						: renderNode(tree.root)}
-			</main>
+			</div>
 
 			<footer className="shrink-0 px-3 py-2 border-t border-edge bg-raised text-micro text-fg-3" aria-live="polite">
 				{stressCopy}
