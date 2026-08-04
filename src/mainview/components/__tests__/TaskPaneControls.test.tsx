@@ -178,6 +178,7 @@ describe("TaskPaneControls", () => {
 			expect(confirm).toHaveBeenCalledWith({
 				title: "Close the last pane?",
 				message: expect.stringContaining("only remaining pane"),
+				confirmLabel: "Close pane",
 				danger: true,
 			});
 			await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({

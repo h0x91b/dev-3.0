@@ -32,6 +32,7 @@ const columns = {
 	"labels.addLabel": "+ Добавить метку",
 	"labels.clearFilters": "Сбросить",
 	"labels.searchPlaceholderTasks": "Поиск задач...",
+	"labels.searchAriaLabel": "Поиск задач",
 	"labels.openFilters": "Фильтр по меткам",
 	"labels.deleteLabel": "Удалить метку",
 	"labels.dragToReorder": "Перетащите для сортировки",

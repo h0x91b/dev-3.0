@@ -370,9 +370,9 @@ export default function AgentSettingsSection({
 		<SettingsSection title={t("settings.categoryAgents")} helpTopicId="settings.agents">
 			<SettingsEntry anchor="default-agent">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.defaultAgent")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.defaultAgentDesc")}
 				</p>
@@ -740,9 +740,9 @@ export default function AgentSettingsSection({
 										/>
 
 										<div>
-											<label className="block text-fg-2 text-xs font-semibold mb-2">
+											<p className="block text-fg-2 text-xs font-semibold mb-2">
 												{t("settings.configurations")}
-											</label>
+											</p>
 											<div className="space-y-2">
 												{agent.configurations.map((config, configIndex) => {
 													const isConfigExpanded =
@@ -1100,9 +1100,9 @@ function ConfigEditor({
 			{isExpanded ? (
 				<div className="border-t border-edge px-3 py-3 space-y-3">
 					<div>
-						<label className="block text-fg-2 text-xs font-semibold mb-1.5">
+						<p className="block text-fg-2 text-xs font-semibold mb-1.5">
 							{t("settings.commandPreview")}
-						</label>
+						</p>
 						<CommandPreview
 							command={preview.command}
 							envLine={preview.envLine}
@@ -1237,9 +1237,9 @@ function ConfigEditor({
 					</div>
 
 					<div>
-						<label className="block text-fg-2 text-xs mb-1">
+						<p className="block text-fg-2 text-xs mb-1">
 							{t("settings.configAdditionalArgs")}
-						</label>
+						</p>
 						<ListEditor
 							items={config.additionalArgs || []}
 							onChange={(items) =>
@@ -1254,9 +1254,9 @@ function ConfigEditor({
 					</div>
 
 					<div>
-						<label className="block text-fg-2 text-xs mb-1">
+						<p className="block text-fg-2 text-xs mb-1">
 							{t("settings.configEnvVars")}
-						</label>
+						</p>
 						<KeyValueEditor
 							entries={config.envVars || {}}
 							onChange={(entries) =>
@@ -1463,9 +1463,9 @@ function ProviderSelector({
 
 	return (
 		<div className="mt-2 pt-4 border-t border-edge">
-			<label className="block text-fg-2 text-xs font-semibold mb-1">
+			<p className="block text-fg-2 text-xs font-semibold mb-1">
 				{t("settings.llmProvider")}
-			</label>
+			</p>
 			<p className="text-fg-3 text-xs mb-2">{t("settings.llmProviderDesc")}</p>
 
 			<div className="inline-flex rounded-xl border border-edge bg-base p-1 gap-1">

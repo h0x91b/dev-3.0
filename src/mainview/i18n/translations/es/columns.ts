@@ -30,6 +30,7 @@ const columns = {
 	"labels.addLabel": "+ Agregar etiqueta",
 	"labels.clearFilters": "Limpiar",
 	"labels.searchPlaceholderTasks": "Buscar tareas...",
+	"labels.searchAriaLabel": "Buscar tareas",
 	"labels.openFilters": "Filtrar por etiqueta",
 	"labels.deleteLabel": "Eliminar etiqueta",
 	"labels.dragToReorder": "Arrastra para reordenar",

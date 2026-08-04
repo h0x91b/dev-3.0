@@ -127,6 +127,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 						confirmed = await confirm({
 							title: t("tmux.closePaneConfirmTitle"),
 							message: t("tmux.closePaneConfirmMessage"),
+							confirmLabel: t("tmux.closePaneConfirmLabel"),
 							danger: true,
 						});
 					} catch {

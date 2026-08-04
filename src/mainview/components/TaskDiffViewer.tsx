@@ -2450,6 +2450,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		confirm({
 			title: t("infoPanel.diffReviewResetConfirmTitle"),
 			message: t("infoPanel.diffReviewResetConfirmMessage"),
+			confirmLabel: t("infoPanel.diffReviewResetConfirmLabel"),
 			danger: true,
 		})
 			.then((confirmed) => {
@@ -3469,7 +3470,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									<span
 										className="text-fg-muted text-[0.8rem] leading-none"
 										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-										title={t("infoPanel.diffTestsHidden", { count: String(hiddenTestCount) })}
+										title={t.plural("infoPanel.diffTestsHidden", hiddenTestCount)}
 									>
 										{"\u{F0912}"}
 									</span>

@@ -55,9 +55,9 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 
 	return (
 		<div>
-			<label className="block text-fg text-sm font-semibold mb-2">
+			<p className="block text-fg text-sm font-semibold mb-2">
 				{t("settings.browserNotifications")}
-			</label>
+			</p>
 			<p className="text-fg-3 text-sm mb-3">{t("settings.browserNotificationsDesc")}</p>
 
 			{permission === "unsupported" ? (

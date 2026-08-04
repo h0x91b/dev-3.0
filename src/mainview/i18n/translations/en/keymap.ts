@@ -74,6 +74,7 @@ const keymap = {
 	"keymap.edit.resetAll": "Restore all defaults",
 	"keymap.edit.resetAllTitle": "Restore all keyboard shortcuts?",
 	"keymap.edit.resetAllMessage": "Your {count} changed shortcuts go back to their defaults. This cannot be undone.",
+	"keymap.edit.resetAllConfirmLabel": "Reset shortcuts",
 	"keymap.edit.conflict": "{name} already uses this. Saving takes it away from that one.",
 	"keymap.edit.stolen": "{name} lost its shortcut and is now unassigned.",
 	"keymap.edit.rejectedReserved": "That key is reserved by the app — pick another one.",

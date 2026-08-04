@@ -97,6 +97,7 @@ const terminal = {
 	"tmux.pickPaneError": "Couldn't read the terminal layout — try again.",
 	"tmux.closePaneConfirmTitle": "Close the last pane?",
 	"tmux.closePaneConfirmMessage": "This is the only remaining pane — closing it will tear down the whole tmux session and terminate the agent. Are you sure?",
+	"tmux.closePaneConfirmLabel": "Close pane",
 	"tmux.selectPaneDesc": "Click on a pane to select it",
 	"tmux.resizePaneDesc": "Drag pane border to resize",
 
@@ -158,6 +159,7 @@ const terminal = {
 	"tmuxSessions.killAll": "Kill All",
 	"tmuxSessions.killAllConfirmTitle": "Kill all tmux sessions",
 	"tmuxSessions.killAllConfirmMessage": "Kill all {count} dev3 tmux sessions? This will terminate all processes in them.",
+	"tmuxSessions.killAllConfirmLabel": "Kill all sessions",
 	"tmuxSessions.refresh": "Refresh",
 
 	// Spawn Agent

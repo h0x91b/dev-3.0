@@ -99,6 +99,7 @@ const terminal = {
 	"tmux.pickPaneError": "Не удалось прочитать раскладку терминала — попробуйте ещё раз.",
 	"tmux.closePaneConfirmTitle": "Закрыть последнюю панель?",
 	"tmux.closePaneConfirmMessage": "Это единственная оставшаяся панель — её закрытие уничтожит весь tmux-сеанс и завершит работу агента. Уверены?",
+	"tmux.closePaneConfirmLabel": "Закрыть панель",
 	"tmux.selectPaneDesc": "Кликните на панель для выбора",
 	"tmux.resizePaneDesc": "Перетащите границу для ресайза",
 
@@ -162,6 +163,7 @@ const terminal = {
 	"tmuxSessions.killAll": "Убить все",
 	"tmuxSessions.killAllConfirmTitle": "Убить все сессии tmux",
 	"tmuxSessions.killAllConfirmMessage": "Убить все {count} сессий dev3? Все процессы будут завершены.",
+	"tmuxSessions.killAllConfirmLabel": "Убить все сессии",
 	"tmuxSessions.refresh": "Обновить",
 
 	// Spawn Agent

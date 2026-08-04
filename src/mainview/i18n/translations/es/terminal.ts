@@ -97,6 +97,7 @@ const terminal = {
 	"tmux.pickPaneError": "No se pudo leer la distribución del terminal — inténtalo de nuevo.",
 	"tmux.closePaneConfirmTitle": "¿Cerrar el último panel?",
 	"tmux.closePaneConfirmMessage": "Este es el único panel restante — cerrarlo destruirá toda la sesión de tmux y terminará el agente. ¿Estás seguro?",
+	"tmux.closePaneConfirmLabel": "Cerrar panel",
 	"tmux.selectPaneDesc": "Haz clic en un panel para seleccionarlo",
 	"tmux.resizePaneDesc": "Arrastra el borde del panel para redimensionar",
 
@@ -158,6 +159,7 @@ const terminal = {
 	"tmuxSessions.killAll": "Terminar todas",
 	"tmuxSessions.killAllConfirmTitle": "Terminar todas las sesiones tmux",
 	"tmuxSessions.killAllConfirmMessage": "¿Terminar las {count} sesiones dev3? Esto cerrará todos los procesos.",
+	"tmuxSessions.killAllConfirmLabel": "Terminar todas las sesiones",
 	"tmuxSessions.refresh": "Actualizar",
 
 	// Spawn Agent

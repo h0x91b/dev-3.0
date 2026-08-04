@@ -4,6 +4,7 @@ import { useT } from "../i18n";
 import { confirm } from "../confirm";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useFocusTrap } from "../utils/useFocusTrap";
 import { CLOSE_PANE_PICKER_EVENT, type ClosePanePickerDetail } from "../close-pane-picker";
 import { fetchPaneState, runPaneAction } from "../pane-state-bus";
 
@@ -41,6 +42,7 @@ interface HitBox {
  */
 export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [boxes, setBoxes] = useState<HitBox[] | null>(null);
 	const [busy, setBusy] = useState(false);
 
@@ -189,6 +191,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 				confirmed = await confirm({
 					title: t("tmux.closePaneConfirmTitle"),
 					message: t("tmux.closePaneConfirmMessage"),
+					confirmLabel: t("tmux.closePaneConfirmLabel"),
 					danger: true,
 				});
 			} catch {
@@ -220,10 +223,12 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 
 	return (
 		<div
+			ref={trapRef}
 			className="absolute inset-0 z-30 cursor-pointer bg-black/25"
 			role="dialog"
 			aria-modal="true"
 			aria-label={t("tmux.pickPaneHint")}
+			tabIndex={-1}
 			onClick={cancel}
 		>
 			{/* Mode hint — solid pill so it stays readable over any terminal output. */}
@@ -264,7 +269,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 					<span className="dev3-marching-ants pointer-events-none absolute inset-[6px] text-accent/70 transition-colors duration-200 group-hover:text-danger group-focus-visible:text-danger" />
 					{/* Close chip — appears only for the armed pane. */}
 					<span className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
-						<span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-danger px-2.5 py-1 text-xs font-semibold text-white shadow-lg shadow-black/40">
+						<span className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-danger-fill px-2.5 py-1 text-xs font-semibold text-white shadow-lg shadow-black/40">
 							<svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
 								<path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" />
 							</svg>

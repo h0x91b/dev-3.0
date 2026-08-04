@@ -71,6 +71,7 @@ const keymap = {
 	"keymap.edit.resetAll": "Сбросить все хоткеи",
 	"keymap.edit.resetAllTitle": "Сбросить все хоткеи?",
 	"keymap.edit.resetAllMessage": "Изменённых хоткеев: {count}. Все вернутся к значениям по умолчанию. Отменить нельзя.",
+	"keymap.edit.resetAllConfirmLabel": "Сбросить хоткеи",
 	"keymap.edit.conflict": "Занято хоткеем «{name}». Если сохранить, он его лишится.",
 	"keymap.edit.stolen": "«{name}» остался без хоткея.",
 	"keymap.edit.rejectedReserved": "Эта клавиша зарезервирована приложением — выберите другую.",

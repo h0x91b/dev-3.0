@@ -79,6 +79,7 @@ function AutomationsPanel({ project }: AutomationsPanelProps) {
 		const ok = await confirm({
 			title: t("automations.deleteConfirmTitle"),
 			message: t("automations.deleteConfirmMessage", { name: automation.name }),
+			confirmLabel: t("automations.deleteConfirmLabel"),
 			danger: true,
 		});
 		if (!ok) return;
@@ -95,7 +96,7 @@ function AutomationsPanel({ project }: AutomationsPanelProps) {
 	return (
 		<div>
 			<div className="flex items-center justify-between mb-2">
-				<label className="block text-fg text-sm font-semibold">{t("automations.title")}</label>
+				<span className="block text-fg text-sm font-semibold">{t("automations.title")}</span>
 				<button
 					type="button"
 					onClick={() => setCreating(true)}

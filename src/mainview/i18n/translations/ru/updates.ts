@@ -84,6 +84,7 @@ const updates = {
 	"requirements.setPath": "Указать путь",
 
 	// Changelog
+	"changelog.screenTitle": "Журнал изменений",
 	"changelog.loading": "Загрузка...",
 	"changelog.empty": "Записей пока нет",
 	"changelog.feature": "фича",

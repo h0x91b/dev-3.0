@@ -161,6 +161,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 			message: t("tmuxSessions.killAllConfirmMessage", {
 				count: String(sessions.length),
 			}),
+			confirmLabel: t("tmuxSessions.killAllConfirmLabel"),
 			danger: true,
 		});
 		if (!confirmed) return;

@@ -171,6 +171,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 					confirmed = await confirm({
 						title: t("tmux.closePaneConfirmTitle"),
 						message: t("tmux.closePaneConfirmMessage"),
+						confirmLabel: t("tmux.closePaneConfirmLabel"),
 						danger: true,
 					});
 				} catch {

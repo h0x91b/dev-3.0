@@ -1,4 +1,7 @@
 const common = {
+	// Landmark labels
+	"nav.appHeader": "Заголовок приложения",
+	"nav.activeTasks": "Активные задачи",
 	// Menu bar (browser / Remote Access mode only)
 	"menubar.label": "Меню приложения",
 	"menubar.openMenu": "Открыть меню",
@@ -44,7 +47,6 @@ const common = {
 	"quit.cancel": "Отмена",
 
 	// Generic confirmation dialog (imperative confirm() service)
-	"confirmDialog.confirm": "ОК",
 	"confirmDialog.cancel": "Отмена",
 	"confirmDialog.agentBadge": "Запрос от ИИ-агента",
 
@@ -94,6 +96,7 @@ const common = {
 	"sidebar.noActiveTasks": "Нет активных задач",
 	"sidebar.noSearchResults": "Ничего не найдено",
 	"sidebar.searchPlaceholder": "Поиск задач...",
+	"sidebar.searchAriaLabel": "Поиск задач",
 	"sidebar.hide": "Скрыть активные задачи",
 	"sidebar.scopeProject": "Только этот проект",
 	"sidebar.scopeGlobal": "Все проекты",
@@ -204,7 +207,9 @@ const common = {
 	"folderPicker.rootLabel": "Корень",
 	"folderPicker.loading": "Загрузка…",
 	"folderPicker.pathPlaceholder": "Вставьте путь, Enter",
+	"folderPicker.pathAriaLabel": "Путь к папке",
 	"folderPicker.filterPlaceholder": "Фильтр папок…",
+	"folderPicker.filterAriaLabel": "Фильтр папок",
 	"folderPicker.sectionPlaces": "Места",
 	"folderPicker.sectionRecent": "Недавние",
 	"folderPicker.selected": "Выбрано",

@@ -24,7 +24,7 @@ export default function TaskSharedImages({ task, projectId, compact = false }: T
 	if (count === 0) return null;
 
 	const isUnread = task.sharedImages?.some((image) => image.isUnread) ?? false;
-	const baseLabel = t("infoPanel.imagesBadge", { count: String(count) });
+	const baseLabel = t.plural("infoPanel.imagesBadge", count);
 	const label = isUnread ? `${baseLabel}. ${t("infoPanel.sharedItemsUnread")}` : baseLabel;
 	return (
 		<Tooltip content={label} detail={t("ttip.sharedImages")}>

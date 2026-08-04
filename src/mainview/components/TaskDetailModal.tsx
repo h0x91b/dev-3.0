@@ -254,6 +254,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 		const confirmed = await confirm({
 			title: t("task.delete"),
 			message: t("task.confirmDelete", { title: getTaskTitle(task) }),
+			confirmLabel: t("task.deleteConfirmLabel"),
 			danger: true,
 		});
 		if (!confirmed) return;
@@ -396,6 +397,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="task-detail-title"
 				tabIndex={-1}
 				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[35rem] max-h-[80vh] flex flex-col outline-none"
 			>
@@ -472,6 +474,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 					) : (
 						<div className="group/title flex items-start gap-2 mb-4">
 							<div
+								id="task-detail-title"
 								className={`text-fg text-base font-semibold leading-relaxed flex-1 ${!isEditing ? "cursor-pointer hover:text-fg-2" : ""}`}
 								onClick={!isEditing ? handleStartRename : undefined}
 							>
@@ -494,9 +497,9 @@ function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunc
 					{/* Description */}
 					<div className="space-y-2">
 						<div className="flex items-center justify-between">
-							<label className="text-fg-3 text-xs font-medium uppercase tracking-wider">
+							<span className="text-fg-3 text-xs font-medium uppercase tracking-wider">
 								{t("task.descriptionLabel")}
-							</label>
+							</span>
 							{isTodo && !isEditing && (
 								<button
 									onClick={handleStartEdit}
@@ -722,6 +725,7 @@ function ArchivedView({
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="archived-task-title"
 				tabIndex={-1}
 				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col outline-none"
 			>
@@ -815,15 +819,15 @@ function ArchivedView({
 					<div className="flex flex-col lg:flex-row">
 						{/* Left: title + description + notes */}
 						<div className="flex-1 px-6 py-5 min-w-0">
-							<div className="text-fg text-lg font-semibold leading-relaxed mb-4">
+							<div id="archived-task-title" className="text-fg text-lg font-semibold leading-relaxed mb-4">
 								{getTaskTitle(task)}
 							</div>
 
 							{task.description && task.description !== getTaskTitle(task) && (
 								<div className="mb-6">
-									<label className="text-fg-3 text-xs font-medium uppercase tracking-wider mb-2 block">
+									<span className="text-fg-3 text-xs font-medium uppercase tracking-wider mb-2 block">
 										{t("task.descriptionLabel")}
-									</label>
+									</span>
 									<div className="text-fg-2 text-sm leading-relaxed whitespace-pre-wrap break-words">
 										{task.description}
 									</div>

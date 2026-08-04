@@ -1,5 +1,6 @@
 const settings = {
 	// GlobalSettings
+	"settings.screenTitle": "Configuración",
 	"settings.autoOpenImages": "Abrir imágenes compartidas automáticamente",
 	"settings.autoOpenImagesDesc": "Cuando un agente comparte una imagen (dev3 show-image) mientras miras esa tarea, el visor se abre solo. Desactivado = solo una insignia y un aviso.",
 	"settings.theme": "Tema",
@@ -182,7 +183,7 @@ const settings = {
 	"settings.rateLimitTracking": "Seguimiento de límites de agentes",
 	"settings.rateLimitTrackingDesc": "Muestra en la cabecera el uso en vivo de los límites de Claude/Codex. Los datos de Claude se capturan enrutando el statusLine de la sesión a través de dev3 — tu propio statusLine sigue funcionando, dev3 solo añade su segmento.",
 	"settings.tipsSection": "Consejos",
-	"settings.tipsDisabled": "Desactivar consejos de funciones",
+	"settings.tipsDisabled": "Mostrar consejos de funciones",
 	"settings.tipsReset": "Restablecer consejos",
 	"settings.tipsResetDone": "Los consejos se han restablecido",
 	"settings.tipsDesc": "Controla los consejos y restablece su estado de visualización.",
@@ -360,6 +361,7 @@ const settings = {
 	"settings.accountsRemoveFor": "Eliminar {label}",
 	"settings.accountsRemoveConfirmTitle": "¿Eliminar cuenta?",
 	"settings.accountsRemoveConfirmMessage": "Se elimina la copia de credenciales “{label}” de dev3. La cuenta en sí no se ve afectada.",
+	"settings.accountsRemoveConfirmLabel": "Eliminar cuenta",
 	"settings.accountsUnmanaged": "Sesión no gestionada",
 	"settings.accountsUnmanagedHint": "La sesión actual de ~/.codex/auth.json aún no está guardada en dev3",
 	"settings.accountsWorkspace": "Espacio {id}",

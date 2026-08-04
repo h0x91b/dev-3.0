@@ -58,9 +58,9 @@ export default function TerminalBackendSetting({
 
 	return (
 		<div>
-			<label className="block text-fg text-sm font-semibold mb-2">
+			<p className="block text-fg text-sm font-semibold mb-2">
 				{t("settings.terminalBackend")}
-			</label>
+			</p>
 			<p className="text-fg-3 text-sm mb-3">{t("settings.terminalBackendDesc")}</p>
 			<div
 				role="radiogroup"

@@ -46,9 +46,9 @@ export default function SystemSettingsSection({
 
 			<SettingsEntry anchor="prevent-sleep">
 				<div>
-					<label className="block text-fg text-sm font-semibold mb-2">
+					<p className="block text-fg text-sm font-semibold mb-2">
 						{t("settings.preventSleep")}
-					</label>
+					</p>
 					<p className="text-fg-3 text-sm mb-3">
 						{t("settings.preventSleepDesc")}
 					</p>
@@ -77,9 +77,9 @@ export default function SystemSettingsSection({
 
 			<SettingsEntry anchor="confirm-before-quit">
 				<div>
-					<label className="block text-fg text-sm font-semibold mb-2">
+					<p className="block text-fg text-sm font-semibold mb-2">
 						{t("settings.confirmBeforeQuit")}
-					</label>
+					</p>
 					<p className="text-fg-3 text-sm mb-3">
 						{t("settings.confirmBeforeQuitDesc")}
 					</p>

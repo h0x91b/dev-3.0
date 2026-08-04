@@ -71,6 +71,7 @@ const keymap = {
 	"keymap.edit.resetAll": "Restaurar todos los atajos",
 	"keymap.edit.resetAllTitle": "¿Restaurar todos los atajos?",
 	"keymap.edit.resetAllMessage": "Tus {count} atajos cambiados vuelven a sus valores por defecto. No se puede deshacer.",
+	"keymap.edit.resetAllConfirmLabel": "Restaurar atajos",
 	"keymap.edit.conflict": "{name} ya lo usa. Al guardar, se lo quitas.",
 	"keymap.edit.stolen": "{name} se quedó sin atajo.",
 	"keymap.edit.rejectedReserved": "Esa tecla está reservada por la app: elige otra.",

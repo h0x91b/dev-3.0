@@ -80,6 +80,7 @@ const updates = {
 	"requirements.setPath": "Establecer ruta",
 
 	// Changelog
+	"changelog.screenTitle": "Historial de cambios",
 	"changelog.loading": "Cargando...",
 	"changelog.empty": "Aún no hay entradas",
 	"changelog.feature": "feature",

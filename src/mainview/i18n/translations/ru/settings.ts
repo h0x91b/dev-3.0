@@ -1,5 +1,6 @@
 const settings = {
 	// GlobalSettings
+	"settings.screenTitle": "Настройки",
 	"settings.autoOpenImages": "Автооткрытие присланных изображений",
 	"settings.autoOpenImagesDesc": "Когда агент присылает изображение (dev3 show-image), а ты смотришь на эту задачу, вьюер откроется сам. Выключено — только бейдж и тост.",
 	"settings.theme": "Тема",
@@ -182,7 +183,7 @@ const settings = {
 	"settings.rateLimitTracking": "Отслеживание лимитов агентов",
 	"settings.rateLimitTrackingDesc": "Показывает в шапке живое использование лимитов Claude/Codex. Данные Claude собираются через statusLine сессии, маршрутизируемый через dev3 — ваш собственный statusLine продолжает работать, dev3 лишь дописывает свой сегмент.",
 	"settings.tipsSection": "Подсказки",
-	"settings.tipsDisabled": "Отключить подсказки",
+	"settings.tipsDisabled": "Показывать подсказки",
 	"settings.tipsReset": "Сбросить подсказки",
 	"settings.tipsResetDone": "Подсказки сброшены",
 	"settings.tipsDesc": "Управляйте подсказками и сбрасывайте их статус просмотра.",
@@ -361,6 +362,7 @@ const settings = {
 	"settings.accountsRemoveFor": "Удалить {label}",
 	"settings.accountsRemoveConfirmTitle": "Удалить аккаунт?",
 	"settings.accountsRemoveConfirmMessage": "Снимок учётных данных «{label}» будет удалён из dev3. Сам аккаунт не пострадает.",
+	"settings.accountsRemoveConfirmLabel": "Удалить аккаунт",
 	"settings.accountsUnmanaged": "Неуправляемый логин",
 	"settings.accountsUnmanagedHint": "Текущий логин ~/.codex/auth.json ещё не сохранён в dev3",
 	"settings.accountsWorkspace": "Воркспейс {id}",

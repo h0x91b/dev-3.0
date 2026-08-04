@@ -8,7 +8,7 @@ import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
-import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
+import { orderProjectsForDisplay, taskSeqLabel, getTaskTitle } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
 import { isTypingContext } from "./utils/typing-context";
@@ -443,6 +443,26 @@ function App() {
 	useEffect(() => {
 		routeRef.current = state.route;
 	}, [state.route]);
+
+	// Drive document.title from the current route so the browser tab shows the
+	// project/task name — the only orientation cue in remote (browser) mode.
+	// The base title (version string) from main.tsx is captured once on first run
+	// and preserved as the suffix; only the context prefix changes per route.
+	const baseTitleRef = useRef("");
+	useEffect(() => {
+		const { route } = state;
+		if (!baseTitleRef.current) baseTitleRef.current = document.title;
+		const base = baseTitleRef.current || "dev-3.0";
+		let prefix = "";
+		if (route.screen === "project" || route.screen === "project-terminal" || route.screen === "project-settings") {
+			const project = state.projects.find((p) => p.id === route.projectId);
+			if (project) prefix = `${project.name} · `;
+		} else if (route.screen === "task") {
+			const task = state.currentProjectTasks.find((task) => task.id === route.taskId);
+			if (task) prefix = `${getTaskTitle(task)} · `;
+		}
+		document.title = prefix ? `${prefix}${base}` : base;
+	}, [state.route, state.currentProjectTasks, state.projects]);
 
 	// Route persistence is enabled only after the initial restore attempt has
 	// run (see the projects-load effect). Without this gate, the bootstrap
@@ -1705,8 +1725,8 @@ function App() {
 				caughtUp: boolean;
 			};
 			const message = caughtUp
-				? t("automations.missedToastCaughtUp", { name: automationName, count: String(missedCount) })
-				: t("automations.missedToast", { name: automationName, count: String(missedCount) });
+				? t.plural("automations.missedToastCaughtUp", missedCount, { name: automationName })
+				: t.plural("automations.missedToast", missedCount, { name: automationName });
 			toast.warning(message);
 		}
 		window.addEventListener("rpc:automationRunsMissed", onAutomationRunsMissed);
@@ -2033,6 +2053,28 @@ function App() {
 	}
 
 	const { route } = state;
+
+	// Screen-reader heading for the current route — gives AT users an h1 to orient by.
+	const routeH1 = (() => {
+		switch (route.screen) {
+			case "dashboard": return t("dashboard.screenTitle");
+			case "project":
+			case "project-terminal":
+			case "project-settings": {
+				const proj = state.projects.find((p) => p.id === route.projectId);
+				return proj?.name ?? "";
+			}
+			case "task": {
+				const task = state.currentProjectTasks.find((task) => task.id === route.taskId);
+				return task ? getTaskTitle(task) : "";
+			}
+			case "settings": return t("settings.screenTitle");
+			case "changelog": return t("changelog.screenTitle");
+			case "stats": return t("stats.title");
+			default: return "";
+		}
+	})();
+
 	const createTaskProject = createTaskProjectId
 		? state.projects.find((project) => project.id === createTaskProjectId) ?? null
 		: null;
@@ -2049,7 +2091,7 @@ function App() {
 			{terminalImmersiveVisible ? (
 				<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
 			) : (
-				<>
+				<header aria-label={t("nav.appHeader")}>
 					{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
 					<GlobalHeader
 						route={route}
@@ -2072,11 +2114,12 @@ function App() {
 							onDismiss={() => setGhWarning(null)}
 						/>
 					)}
-				</>
+				</header>
 			)}
-			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+			<main className="flex-1 min-h-0 flex flex-col overflow-hidden">
+				{routeH1 && <h1 className="sr-only">{routeH1}</h1>}
 				{terminalImmersiveVisible ? renderTerminalImmersiveScreen() : renderScreen()}
-			</div>
+			</main>
 			{!terminalImmersiveVisible && (
 			<>
 			{switcher.session && (
@@ -2228,7 +2271,7 @@ function App() {
 							</button>
 							<button
 								onClick={handleConfirmQuit}
-								className="px-4 py-2 text-sm rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
+								className="px-4 py-2 text-sm rounded-lg bg-danger-fill text-white hover:bg-danger-fill-hover transition-colors"
 							>
 								{t("quit.confirm")}
 							</button>
@@ -2428,7 +2471,7 @@ function App() {
 								}}
 								disabled={qrConsumed || remoteUrlCopyState === "copying"}
 								aria-label={t(remoteCopyLabel)}
-								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-all active:scale-[0.98] ${qrConsumed ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success text-white hover:bg-success-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
+								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-all active:scale-[0.98] ${qrConsumed ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
 							>
 								{remoteUrlCopyState === "copying" && (
 									<svg

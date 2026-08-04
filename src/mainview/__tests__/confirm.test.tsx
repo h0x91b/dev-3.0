@@ -24,13 +24,13 @@ describe("confirm service", () => {
 
 		let result: Promise<boolean>;
 		act(() => {
-			result = confirm({ title: "Delete task", message: "Are you sure?" });
+			result = confirm({ title: "Delete task", message: "Are you sure?", confirmLabel: "Confirm" });
 		});
 
 		expect(await screen.findByText("Delete task")).toBeInTheDocument();
 		expect(screen.getByText("Are you sure?")).toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "OK" }));
+		await user.click(screen.getByRole("button", { name: "Confirm" }));
 
 		await expect(result!).resolves.toBe(true);
 		// Dialog closes after a choice
@@ -43,7 +43,7 @@ describe("confirm service", () => {
 
 		let result: Promise<boolean>;
 		act(() => {
-			result = confirm({ title: "Cancel task", message: "Discard?" });
+			result = confirm({ title: "Cancel task", message: "Discard?", confirmLabel: "Confirm" });
 		});
 
 		await screen.findByText("Cancel task");
@@ -122,7 +122,7 @@ describe("confirm service", () => {
 	it("shows the AI agent badge for agent-initiated confirms", async () => {
 		renderHost();
 		act(() => {
-			void confirm({ title: "Agent asks", message: "M", agentInitiated: true });
+			void confirm({ title: "Agent asks", message: "M", agentInitiated: true, confirmLabel: "Confirm" });
 		});
 
 		expect(await screen.findByText("AI agent request")).toBeInTheDocument();
@@ -131,7 +131,7 @@ describe("confirm service", () => {
 	it("does not show the AI agent badge for regular confirms", async () => {
 		renderHost();
 		act(() => {
-			void confirm({ title: "Plain", message: "M" });
+			void confirm({ title: "Plain", message: "M", confirmLabel: "Confirm" });
 		});
 
 		await screen.findByText("Plain");
@@ -141,7 +141,7 @@ describe("confirm service", () => {
 	it("focuses the cancel button for agent-initiated confirms", async () => {
 		renderHost();
 		act(() => {
-			void confirm({ title: "Agent asks", message: "M", agentInitiated: true, cancelLabel: "Keep session" });
+			void confirm({ title: "Agent asks", message: "M", agentInitiated: true, confirmLabel: "Confirm", cancelLabel: "Keep session" });
 		});
 
 		const cancelBtn = await screen.findByRole("button", { name: "Keep session" });
@@ -154,6 +154,7 @@ describe("confirm service", () => {
 			void confirm({
 				title: "Agent asks",
 				message: "M",
+				confirmLabel: "Confirm",
 				info: { title: "My important task", body: "Implementing the thing; almost done." },
 			});
 		});
@@ -171,6 +172,7 @@ describe("confirm service", () => {
 			result = confirm({
 				title: "Branch merged",
 				message: "Choose what to do",
+				confirmLabel: "Confirm",
 				info: { title: "Subtask to inspect", onClick: onOpen },
 			});
 		});
@@ -185,7 +187,7 @@ describe("confirm service", () => {
 	it("renders the info card without a body when body is omitted", async () => {
 		renderHost();
 		act(() => {
-			void confirm({ title: "Agent asks", message: "M", info: { title: "Title only" } });
+			void confirm({ title: "Agent asks", message: "M", confirmLabel: "Confirm", info: { title: "Title only" } });
 		});
 
 		expect(await screen.findByText("Title only")).toBeInTheDocument();
@@ -197,6 +199,7 @@ describe("confirm service", () => {
 			void confirm({
 				title: "Agent asks",
 				message: "M",
+				confirmLabel: "Confirm",
 				info: {
 					title: "My important task",
 					body: "Almost done.",
@@ -221,7 +224,7 @@ describe("confirm service", () => {
 	it("omits the identity row when only a title is given", async () => {
 		renderHost();
 		act(() => {
-			void confirm({ title: "Agent asks", message: "M", info: { title: "Just a title" } });
+			void confirm({ title: "Agent asks", message: "M", confirmLabel: "Confirm", info: { title: "Just a title" } });
 		});
 
 		await screen.findByText("Just a title");
@@ -237,7 +240,7 @@ describe("confirm service", () => {
 
 		renderHost();
 		act(() => {
-			void confirm({ title: "Trap me", message: "M" });
+			void confirm({ title: "Trap me", message: "M", confirmLabel: "Confirm" });
 		});
 
 		const dialog = await screen.findByRole("dialog");
@@ -254,7 +257,7 @@ describe("confirm service", () => {
 
 	it("resolves false when no host is mounted", async () => {
 		// No ConfirmHost rendered → fail-closed.
-		await expect(confirm({ title: "T", message: "M" })).resolves.toBe(false);
+		await expect(confirm({ title: "T", message: "M", confirmLabel: "Confirm" })).resolves.toBe(false);
 	});
 
 	it("closes and resolves false when the abort signal fires", async () => {
@@ -263,7 +266,7 @@ describe("confirm service", () => {
 
 		let result: Promise<boolean>;
 		act(() => {
-			result = confirm({ title: "Branch Merged", message: "Complete?", signal: controller.signal });
+			result = confirm({ title: "Branch Merged", message: "Complete?", confirmLabel: "Confirm", signal: controller.signal });
 		});
 
 		expect(await screen.findByText("Branch Merged")).toBeInTheDocument();
@@ -286,6 +289,7 @@ describe("confirm service", () => {
 				void confirm({
 					title: "Complete task?",
 					message: "The worktree will be deleted.",
+					confirmLabel: "Confirm",
 					deferred: { pending: "Checking…", promise },
 				});
 			});
@@ -302,7 +306,7 @@ describe("confirm service", () => {
 		it("drops the block entirely when the check resolves with null", async () => {
 			renderHost();
 			act(() => {
-				void confirm({ title: "T", message: "m", deferred: { pending: "Checking…", promise: Promise.resolve(null) } });
+				void confirm({ title: "T", message: "m", confirmLabel: "Confirm", deferred: { pending: "Checking…", promise: Promise.resolve(null) } });
 			});
 
 			await screen.findByText("T");
@@ -320,6 +324,7 @@ describe("confirm service", () => {
 				void confirm({
 					title: "Complete task?",
 					message: "m",
+					confirmLabel: "Confirm",
 					deferred: { pending: "Checking…", promise, gateConfirm: true },
 				});
 			});
@@ -342,6 +347,7 @@ describe("confirm service", () => {
 					void confirm({
 						title: "Complete task?",
 						message: "m",
+						confirmLabel: "Confirm",
 						deferred: {
 							pending: "Checking…",
 							unknown: "Could not check the branch.",
@@ -369,6 +375,7 @@ describe("confirm service", () => {
 				void confirm({
 					title: "Complete task?",
 					message: "m",
+					confirmLabel: "Confirm",
 					deferred: {
 						pending: "Checking…",
 						unknown: "Could not check the branch.",
@@ -392,7 +399,7 @@ describe("confirm service", () => {
 
 		let result: Promise<boolean>;
 		act(() => {
-			result = confirm({ title: "Already resolved", message: "x", signal: controller.signal });
+			result = confirm({ title: "Already resolved", message: "x", confirmLabel: "Confirm", signal: controller.signal });
 		});
 
 		await expect(result!).resolves.toBe(false);

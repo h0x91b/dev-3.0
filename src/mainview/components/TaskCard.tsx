@@ -340,6 +340,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		const confirmed = await confirm({
 			title: t("task.delete"),
 			message: t("task.confirmDelete", { title: displayTitle }),
+			confirmLabel: t("task.deleteConfirmLabel"),
 			danger: true,
 		});
 		if (!confirmed) return;
@@ -380,6 +381,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			const confirmed = await confirm({
 				title: t("task.cancel"),
 				message: t("task.confirmCancel", { title: displayTitle }),
+				confirmLabel: t("task.confirmCancelLabel"),
 				danger: true,
 			});
 			if (!confirmed) return;

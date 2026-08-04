@@ -25,19 +25,16 @@ function gitWarnings(status: BranchStatus | UnsavedWork, task: Task, project: Pr
 	// Unpushed commits (never pushed or local-only)
 	if (status.unpushed === -1) {
 		if (status.ahead > 0) {
-			warnings.push(t("task.warnNeverPushed", { count: String(status.ahead) }));
+			warnings.push(t.plural("task.warnNeverPushed", status.ahead));
 		}
 	} else if (status.unpushed > 0) {
-		warnings.push(t("task.warnUnpushed", { count: String(status.unpushed) }));
+		warnings.push(t.plural("task.warnUnpushed", status.unpushed));
 	}
 
 	// Pushed but unmerged (skip if content is already in base branch, e.g. squash/rebase merge)
 	if ("mergedByContent" in status && status.unpushed >= 0 && status.ahead > 0 && !status.mergedByContent) {
 		warnings.push(
-			t("task.warnUnmerged", {
-				count: String(status.ahead),
-				branch: task.baseBranch || project.defaultBaseBranch || "main",
-			}),
+			t.plural("task.warnUnmerged", status.ahead, { branch: task.baseBranch || project.defaultBaseBranch || "main" }),
 		);
 	}
 
@@ -84,6 +81,7 @@ export async function confirmTaskCompletion(
 			: api.request.getUnsavedWork({ taskId: task.id, projectId: project.id });
 		return confirm({
 			title: t(newStatus === "completed" ? "task.confirmCompleteTitle" : "task.confirmCancelTitle"),
+			confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
 			info,
 			message: tail,
 			deferred: unsaved
@@ -116,6 +114,7 @@ export async function confirmTaskCompletion(
 
 	return confirm({
 		title: t("task.warnCompletionTitle"),
+		confirmLabel: t(newStatus === "completed" ? "task.confirmCompleteLabel" : "task.confirmCancelLabel"),
 		info,
 		message: `${warnings.map((w) => `• ${w}`).join("\n")}\n\n${tail}`,
 	});

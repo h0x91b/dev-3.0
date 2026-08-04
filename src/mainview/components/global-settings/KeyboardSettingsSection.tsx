@@ -98,6 +98,7 @@ export default function KeyboardSettingsSection({
 		const ok = await confirm({
 			title: t("keymap.edit.resetAllTitle"),
 			message: t("keymap.edit.resetAllMessage", { count: String(overrideCount()) }),
+			confirmLabel: t("keymap.edit.resetAllConfirmLabel"),
 			danger: true,
 		});
 		if (ok) onShortcutsChange({});

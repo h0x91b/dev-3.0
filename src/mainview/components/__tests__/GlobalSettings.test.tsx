@@ -1066,7 +1066,7 @@ describe("GlobalSettings", () => {
 			await user.click(screen.getByRole("button", { name: "Tasks & Board" }));
 
 			expect(document.getElementById("settings-category-title")!).toHaveTextContent("Tasks & Board");
-			expect(screen.getByText("Task Drop Position")).toBeInTheDocument();
+			expect(screen.getByText("Task drop position")).toBeInTheDocument();
 			expect(screen.queryByText("Choose the color theme for dev-3.0.")).not.toBeInTheDocument();
 		});
 

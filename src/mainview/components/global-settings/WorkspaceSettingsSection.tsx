@@ -24,9 +24,9 @@ export default function WorkspaceSettingsSection({
 		<SettingsSection title={t("settings.categoryWorkspace")} helpTopicId="settings.workspace">
 			<SettingsEntry anchor="clone-directory">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.cloneBaseDir")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.cloneBaseDirDesc")}
 				</p>
@@ -54,9 +54,9 @@ export default function WorkspaceSettingsSection({
 
 			<SettingsEntry anchor="external-apps">
 			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.externalApps")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.externalAppsDesc")}
 				</p>

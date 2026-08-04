@@ -1,4 +1,7 @@
 const common = {
+	// Landmark labels
+	"nav.appHeader": "Encabezado de la aplicación",
+	"nav.activeTasks": "Tareas activas",
 	// Menu bar (browser / Remote Access mode only)
 	"menubar.label": "Menú de la aplicación",
 	"menubar.openMenu": "Abrir menú",
@@ -44,7 +47,6 @@ const common = {
 	"quit.cancel": "Cancelar",
 
 	// Generic confirmation dialog (imperative confirm() service)
-	"confirmDialog.confirm": "OK",
 	"confirmDialog.cancel": "Cancelar",
 	"confirmDialog.agentBadge": "Solicitud del agente de IA",
 
@@ -94,6 +96,7 @@ const common = {
 	"sidebar.noActiveTasks": "Sin tareas activas",
 	"sidebar.noSearchResults": "No se encontraron tareas",
 	"sidebar.searchPlaceholder": "Buscar tareas...",
+	"sidebar.searchAriaLabel": "Buscar tareas",
 	"sidebar.hide": "Ocultar Tareas activas",
 	"sidebar.scopeProject": "Solo este proyecto",
 	"sidebar.scopeGlobal": "Todos los proyectos",
@@ -204,7 +207,9 @@ const common = {
 	"folderPicker.rootLabel": "Raíz",
 	"folderPicker.loading": "Cargando…",
 	"folderPicker.pathPlaceholder": "Pega una ruta, Enter",
+	"folderPicker.pathAriaLabel": "Ruta de carpeta",
 	"folderPicker.filterPlaceholder": "Filtrar carpetas…",
+	"folderPicker.filterAriaLabel": "Filtrar carpetas",
 	"folderPicker.sectionPlaces": "Lugares",
 	"folderPicker.sectionRecent": "Recientes",
 	"folderPicker.selected": "Seleccionado",

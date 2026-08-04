@@ -619,7 +619,7 @@ function TaskInfoPanel({
 		? (metadataBranchStatus?.diffDeletions ?? 0)
 		: visibleDiffFileStats.reduce((sum, e) => sum + e.deletions, 0);
 	const diffBadgeTitle = !includeTests && excludedTestCount > 0
-		? t("infoPanel.diffTestsHidden", { count: String(excludedTestCount) })
+		? t.plural("infoPanel.diffTestsHidden", excludedTestCount)
 		: t("infoPanel.showDiff");
 	const diffSummaryBadge = project.kind !== "virtual" && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
 		<button
@@ -640,7 +640,7 @@ function TaskInfoPanel({
 				<span
 					className="text-fg-muted text-[0.8rem] leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-					title={t("infoPanel.diffTestsHidden", { count: String(excludedTestCount) })}
+					title={t.plural("infoPanel.diffTestsHidden", excludedTestCount)}
 				>
 					{"\u{F0912}"}
 				</span>
@@ -1558,7 +1558,7 @@ function TaskInfoPanel({
 						onMouseDown={onDragStart}
 						onDoubleClick={toggleCollapsed}
 					>
-						<div className="w-8 h-[3px] rounded-full bg-fg-muted/40 group-hover:bg-fg-muted/70 transition-colors" />
+						<div className="w-8 h-[3px] rounded-full bg-fg-muted/60 group-hover:bg-fg-muted/80 transition-colors" />
 					</div>
 				</div>
 			)}

@@ -730,6 +730,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			const ok = await confirm({
 				title: t("settings.accountsRemoveConfirmTitle"),
 				message: t("settings.accountsRemoveConfirmMessage", { label: account.label }),
+				confirmLabel: t("settings.accountsRemoveConfirmLabel"),
 				danger: true,
 			});
 			if (!ok) return;

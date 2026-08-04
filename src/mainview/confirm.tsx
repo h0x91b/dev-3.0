@@ -21,7 +21,7 @@ export interface ConfirmOutcomeCards {
 export interface ConfirmOptions {
 	title: string;
 	message: string;
-	confirmLabel?: string;
+	confirmLabel: string;
 	cancelLabel?: string;
 	/** Style the confirm button as destructive (red). */
 	danger?: boolean;
@@ -187,7 +187,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
-	const confirmLabel = pending.confirmLabel ?? t("confirmDialog.confirm");
+	const confirmLabel = pending.confirmLabel;
 	const cancelLabel = pending.cancelLabel ?? t("confirmDialog.cancel");
 	const deferredState = useDeferredBlock(pending.deferred);
 	const gateActive = Boolean(pending.deferred?.gateConfirm) && !deferredState.settled;
@@ -216,6 +216,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
+				aria-labelledby="confirm-dialog-title"
 				tabIndex={-1}
 				className={`bg-overlay border rounded-2xl shadow-2xl max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] overflow-y-auto p-6 space-y-4 outline-none ${
 					pending.outcomeCards ? "w-[34rem]" : pending.alternativeAction ? "w-[30rem]" : "w-[26.25rem]"
@@ -242,7 +243,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						{pending.outcomeCards.kicker}
 					</div>
 				)}
-				<h2 className={`text-fg font-semibold ${pending.outcomeCards ? "text-xl tracking-[-0.015em]" : "text-lg"}`}>
+				<h2 id="confirm-dialog-title" className={`text-fg font-semibold ${pending.outcomeCards ? "text-xl tracking-[-0.015em]" : "text-lg"}`}>
 					{pending.title}
 				</h2>
 				{pending.outcomeCards && (

@@ -41,9 +41,9 @@ export default function AppearanceSettingsSection({
 		<SettingsSection title={t("settings.categoryAppearance")} helpTopicId="settings.appearance">
 			<SettingsEntry anchor="theme">
 				<div>
-					<label className="block text-fg text-sm font-semibold mb-2">
+					<p className="block text-fg text-sm font-semibold mb-2">
 						{t("settings.theme")}
-					</label>
+					</p>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.themeDesc")}</p>
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 					<ThemeCard
@@ -88,9 +88,9 @@ export default function AppearanceSettingsSection({
 
 			<SettingsEntry anchor="language">
 				<div>
-					<label className="block text-fg text-sm font-semibold mb-2">
+					<p className="block text-fg text-sm font-semibold mb-2">
 						{t("settings.language")}
-					</label>
+					</p>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.languageDesc")}</p>
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 					{ALL_LOCALES.map((loc) => (
@@ -108,9 +108,9 @@ export default function AppearanceSettingsSection({
 
 			<SettingsEntry anchor="zoom">
 				<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
+				<p className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.zoom")}
-				</label>
+				</p>
 				<p className="text-fg-3 text-sm mb-3">{t("settings.zoomDesc")}</p>
 				<div className="flex items-center gap-3">
 					<button
@@ -145,10 +145,10 @@ export default function AppearanceSettingsSection({
 
 			<SettingsEntry anchor="streamer-mode">
 				<div data-help-id="field.streamer-mode">
-					<label className="flex items-center gap-1.5 text-fg text-sm font-semibold mb-2">
+					<p className="flex items-center gap-1.5 text-fg text-sm font-semibold mb-2">
 						{t("settings.streamerMode")}
 						<HelpSpot topicId="field.streamer-mode" />
-					</label>
+					</p>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.streamerModeDesc")}</p>
 					<SettingsToggle
 						checked={streamerMode}

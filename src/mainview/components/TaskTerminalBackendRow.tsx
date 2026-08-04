@@ -88,9 +88,9 @@ export default function TaskTerminalBackendRow({
 
 	return (
 		<div className="mt-4 space-y-2">
-			<label className="text-fg-3 text-xs font-medium uppercase tracking-wider">
+			<span className="text-fg-3 text-xs font-medium uppercase tracking-wider">
 				{t("task.terminalBackend")}
-			</label>
+			</span>
 			<div className="flex items-center gap-2">
 				<div
 					role="radiogroup"
