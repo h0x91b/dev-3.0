@@ -646,6 +646,33 @@ describe("LiveParserPipeline fatal lifecycle and independent sinks", () => {
 		expect(settled).toBe(true);
 	});
 
+	it("retries readiness publication after sink recovery without new output", async () => {
+		let sinkAttempts = 0;
+		let readinessAttempts = 0;
+		const h = await makeHarness({
+			persistState: () => {
+				sinkAttempts++;
+				if (sinkAttempts === 1) throw new Error("initial sink failure");
+			},
+			onSinkReadinessChange: () => {
+				readinessAttempts++;
+				return readinessAttempts === 1 ? Promise.reject(new Error("record publication failed")) : Promise.resolve();
+			},
+		});
+		h.pipeline.onOutput(encoder.encode("quiet after recovery"));
+		h.runScheduled();
+		h.runTimers();
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(sinkAttempts).toBe(2);
+		expect(h.pipeline.sinkState("semantic")).toBe("ready");
+		expect(readinessAttempts).toBe(1);
+
+		h.runTimers();
+		await Promise.resolve();
+		expect(readinessAttempts).toBe(2);
+	});
+
 	it("fences queued drain and retry callbacks after disposeAndWait", async () => {
 		let attempts = 0;
 		const h = await makeHarness({

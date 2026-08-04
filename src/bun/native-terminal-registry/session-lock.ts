@@ -11,13 +11,14 @@ import { isProcessAlive, startSignaturesMatch } from "./process-identity";
 import { readProcessStartSignature } from "./process-identity-native";
 import {
 	assertValidSessionId,
+	isSessionLockGeneration,
+	parseSessionLockFile,
 	sessionLockFile,
 	sessionLocksRootDir,
 	tokenFile,
 } from "./paths";
 
 const SESSION_LOCK_VERSION = 1 as const;
-const GENERATION_PATTERN = /^[0-9a-f]{64}$/;
 const MAX_LOCK_RECORD_BYTES = 4096;
 const DEFAULT_STALE_AFTER_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -111,7 +112,7 @@ function parseLockRecord(text: string): SessionLockRecord | null {
 	if (
 		record.version !== SESSION_LOCK_VERSION ||
 		typeof record.generation !== "string" ||
-		!GENERATION_PATTERN.test(record.generation) ||
+		!isSessionLockGeneration(record.generation) ||
 		typeof record.pid !== "number" ||
 		!Number.isInteger(record.pid) ||
 		record.pid <= 0 ||
@@ -180,7 +181,12 @@ async function createCandidate(sessionId: string, options: ResolvedLockOptions):
 	return record;
 }
 
-async function familyFiles(sessionId: string): Promise<string[]> {
+interface SessionLockFamilyFile {
+	path: string;
+	member: "canonical" | "candidate" | "claim";
+}
+
+async function familyFiles(sessionId: string): Promise<SessionLockFamilyFile[]> {
 	let entries: string[];
 	try {
 		entries = await readdir(sessionLocksRootDir());
@@ -188,13 +194,13 @@ async function familyFiles(sessionId: string): Promise<string[]> {
 		if (errorCode(error) === "ENOENT") return [];
 		throw error;
 	}
-	const escapedSessionId = sessionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const familyPattern = new RegExp(
-		`^${escapedSessionId}\\.(?:canonical|(?:candidate|claim)\\.[0-9a-f]{64})\\.lock$`,
-	);
-	return entries
-		.filter((entry) => familyPattern.test(entry))
-		.map((entry) => join(sessionLocksRootDir(), entry));
+	const family: SessionLockFamilyFile[] = [];
+	for (const entry of entries) {
+		const identity = parseSessionLockFile(entry);
+		if (identity?.sessionId !== sessionId) continue;
+		family.push({ path: join(sessionLocksRootDir(), entry), member: identity.member });
+	}
+	return family;
 }
 
 function staleByAge(record: SessionLockRecord, options: ResolvedLockOptions): boolean {
@@ -218,23 +224,42 @@ async function unlinkIfGeneration(path: string, generation: string): Promise<voi
 	}
 }
 
-async function collectStaleNoncanonical(sessionId: string, options: ResolvedLockOptions): Promise<boolean> {
-	let blockingClaim = false;
-	for (const path of await familyFiles(sessionId)) {
-		const name = path.slice(path.lastIndexOf("/") + 1);
-		if (name === `${sessionId}.canonical.lock`) continue;
-		const isClaim = name.startsWith(`${sessionId}.claim.`);
-		const inspection = await inspectLockFile(path);
+interface BlockingClaim {
+	path: string;
+	generation: string | null;
+}
+
+async function collectStaleNoncanonical(sessionId: string, options: ResolvedLockOptions): Promise<BlockingClaim[]> {
+	const blockingClaims: BlockingClaim[] = [];
+	for (const familyFile of await familyFiles(sessionId)) {
+		if (familyFile.member === "canonical") continue;
+		const inspection = await inspectLockFile(familyFile.path);
 		if (inspection.kind === "absent") continue;
 		if (inspection.kind === "invalid") {
-			if (isClaim) blockingClaim = true;
+			if (familyFile.member === "claim") blockingClaims.push({ path: familyFile.path, generation: null });
 			continue;
 		}
 		const stale = staleByAge(inspection.record, options) && (await staleByEvidence(inspection.record, options));
-		if (stale) await unlinkIfGeneration(path, inspection.record.generation);
-		else if (isClaim) blockingClaim = true;
+		if (stale) await unlinkIfGeneration(familyFile.path, inspection.record.generation);
+		else if (familyFile.member === "claim") {
+			blockingClaims.push({ path: familyFile.path, generation: inspection.record.generation });
+		}
 	}
-	return blockingClaim;
+	return blockingClaims;
+}
+
+/** Internal dependency seam for deterministic filesystem race barriers. */
+export interface SessionLockRuntimeHooks {
+	afterClaimScanBeforeCanonicalLink?: (sessionId: string) => Promise<void>;
+	afterBlockingClaimScan?: (details: {
+		sessionId: string;
+		generations: Array<string | null>;
+	}) => Promise<void>;
+	afterCanonicalMovedToClaim?: (details: {
+		sessionId: string;
+		claimPath: string;
+		movedGeneration: string | null;
+	}) => Promise<void>;
 }
 
 async function claimStaleCanonical(
@@ -242,6 +267,7 @@ async function claimStaleCanonical(
 	observed: SessionLockRecord,
 	contenderGeneration: string,
 	options: ResolvedLockOptions,
+	hooks: SessionLockRuntimeHooks,
 ): Promise<void> {
 	const canonical = sessionLockFile(sessionId, "canonical");
 	const claim = sessionLockFile(sessionId, "claim", contenderGeneration);
@@ -252,6 +278,11 @@ async function claimStaleCanonical(
 		throw error;
 	}
 	const moved = await inspectLockFile(claim);
+	await hooks.afterCanonicalMovedToClaim?.({
+		sessionId,
+		claimPath: claim,
+		movedGeneration: moved.kind === "record" ? moved.record.generation : null,
+	});
 	if (moved.kind !== "record" || moved.record.generation !== observed.generation) return;
 	if (!staleByAge(moved.record, options) || !(await staleByEvidence(moved.record, options))) return;
 	await unlinkIfGeneration(claim, moved.record.generation);
@@ -261,17 +292,39 @@ async function acquire(
 	sessionId: string,
 	record: SessionLockRecord,
 	options: ResolvedLockOptions,
+	hooks: SessionLockRuntimeHooks,
 ): Promise<void> {
 	const candidate = sessionLockFile(sessionId, "candidate", record.generation);
 	const canonical = sessionLockFile(sessionId, "canonical");
 	const deadline = Date.now() + options.timeoutMs;
 	for (;;) {
-		const claimBlocks = await collectStaleNoncanonical(sessionId, options);
-		if (!claimBlocks) {
+		const blockingClaims = await collectStaleNoncanonical(sessionId, options);
+		if (blockingClaims.length > 0 && blockingClaims.every((claim) => claim.generation === record.generation)) {
+			await unlinkIfGeneration(candidate, record.generation);
+			return;
+		}
+		if (blockingClaims.length > 0) {
+			await hooks.afterBlockingClaimScan?.({
+				sessionId,
+				generations: blockingClaims.map((claim) => claim.generation),
+			});
+		}
+		if (blockingClaims.length === 0) {
+			await hooks.afterClaimScanBeforeCanonicalLink?.(sessionId);
 			try {
 				await link(candidate, canonical);
-				await unlink(candidate);
-				return;
+				// A foreign claim that freed the canonical name necessarily exists before
+				// this link can succeed. This post-link scan is therefore the acquisition
+				// barrier; a claim that appears later can only contain our own generation.
+				const postLinkClaims = await collectStaleNoncanonical(sessionId, options);
+				if (
+					postLinkClaims.length === 0 ||
+					postLinkClaims.every((claim) => claim.generation === record.generation)
+				) {
+					await unlink(candidate);
+					return;
+				}
+				await unlinkIfGeneration(canonical, record.generation);
 			} catch (error) {
 				if (errorCode(error) !== "EEXIST") throw error;
 			}
@@ -281,7 +334,7 @@ async function acquire(
 				staleByAge(current.record, options) &&
 				(await staleByEvidence(current.record, options))
 			) {
-				await claimStaleCanonical(sessionId, current.record, record.generation, options);
+				await claimStaleCanonical(sessionId, current.record, record.generation, options, hooks);
 				continue;
 			}
 		}
@@ -302,7 +355,7 @@ async function retireGeneration(sessionId: string, generation: string): Promise<
 		}
 		await unlinkIfGeneration(releaseClaim, generation);
 	}
-	for (const path of await familyFiles(sessionId)) await unlinkIfGeneration(path, generation);
+	for (const familyFile of await familyFiles(sessionId)) await unlinkIfGeneration(familyFile.path, generation);
 }
 
 function ensureSynchronous<T>(value: T): T {
@@ -320,6 +373,7 @@ async function runWithSessionStateLock<T>(
 	sessionId: string,
 	critical: () => T,
 	options: SessionStateLockOptions = {},
+	hooks: SessionLockRuntimeHooks = {},
 ): Promise<T> {
 	assertValidSessionId(sessionId);
 	const resolved = resolveOptions(options);
@@ -329,7 +383,7 @@ async function runWithSessionStateLock<T>(
 	let callbackError: unknown;
 	let value: T | undefined;
 	try {
-		await acquire(sessionId, owner, resolved);
+		await acquire(sessionId, owner, resolved, hooks);
 		acquired = true;
 		try {
 			value = ensureSynchronous(critical());
@@ -352,29 +406,34 @@ async function runWithSessionStateLock<T>(
 	return value as T;
 }
 
-export async function withSessionStateLock<T>(
-	sessionId: string,
-	critical: () => T,
-	options: SessionStateLockOptions = {},
-): Promise<T> {
-	return runWithSessionStateLock(sessionId, critical, options);
+export class SessionLockRuntime {
+	constructor(private readonly hooks: SessionLockRuntimeHooks = {}) {}
+
+	withSessionStateLock<T>(sessionId: string, critical: () => T, options: SessionStateLockOptions = {}): Promise<T> {
+		return runWithSessionStateLock(sessionId, critical, options, this.hooks);
+	}
+
+	withOwnedSessionState<T>(
+		sessionId: string,
+		expectedToken: string,
+		critical: () => T,
+		options: SessionStateLockOptions = {},
+	): Promise<OwnedSessionMutation<T>> {
+		return this.withSessionStateLock(sessionId, () => {
+			let token: string | null;
+			try {
+				token = readFileSync(tokenFile(sessionId), "utf8").trim() || null;
+			} catch (error) {
+				if (errorCode(error) !== "ENOENT") throw error;
+				token = null;
+			}
+			if (token !== expectedToken) return { kind: "session-replaced" };
+			return { kind: "applied", value: ensureSynchronous(critical()) };
+		}, options);
+	}
 }
 
-export async function withOwnedSessionState<T>(
-	sessionId: string,
-	expectedToken: string,
-	critical: () => T,
-	options: SessionStateLockOptions = {},
-): Promise<OwnedSessionMutation<T>> {
-	return withSessionStateLock(sessionId, () => {
-		let token: string | null;
-		try {
-			token = readFileSync(tokenFile(sessionId), "utf8").trim() || null;
-		} catch (error) {
-			if (errorCode(error) !== "ENOENT") throw error;
-			token = null;
-		}
-		if (token !== expectedToken) return { kind: "session-replaced" };
-		return { kind: "applied", value: ensureSynchronous(critical()) };
-	}, options);
-}
+const defaultSessionLockRuntime = new SessionLockRuntime();
+
+export const withSessionStateLock = defaultSessionLockRuntime.withSessionStateLock.bind(defaultSessionLockRuntime);
+export const withOwnedSessionState = defaultSessionLockRuntime.withOwnedSessionState.bind(defaultSessionLockRuntime);

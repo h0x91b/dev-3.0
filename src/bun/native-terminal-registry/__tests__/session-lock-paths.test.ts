@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	NATIVE_SESSIONS_DIR_ENV,
 	NATIVE_SESSION_LOCKS_DIR_ENV,
+	parseSessionLockFile,
 	SESSION_LOCK_PATTERN,
 	sessionDir,
 	sessionLockFile,
@@ -105,6 +106,14 @@ describe("session lock family paths", () => {
 		]) {
 			expect(SESSION_LOCK_PATTERN.test(other)).toBe(false);
 		}
+	});
+
+	it("parses a Windows-style claim path without treating it as canonical", () => {
+		expect(parseSessionLockFile(`C:\\locks\\alpha.claim.${GENERATION}.lock`)).toEqual({
+			sessionId: "alpha",
+			member: "claim",
+			generation: GENERATION,
+		});
 	});
 });
 

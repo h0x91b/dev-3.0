@@ -324,7 +324,11 @@ export class LiveParserPipeline {
 		semantic: null,
 		compact: null,
 	};
-	private readonly readinessSettlements = new Set<Promise<void>>();
+	private readinessRevision = 0;
+	private readinessPublishedRevision = 0;
+	private readinessFailures = 0;
+	private readinessInFlight: Promise<void> | null = null;
+	private readinessRetryTimer: unknown | null = null;
 	private candidateGeneration = 0;
 
 	private constructor(
@@ -628,18 +632,80 @@ export class LiveParserPipeline {
 
 	private notifyReadinessChanged(lifecycleGeneration: number): void {
 		if (!this.opts.onSinkReadinessChange || this.disposed || lifecycleGeneration !== this.lifecycleGeneration) return;
+		this.readinessRevision++;
+		this.startReadinessAttempt(false);
+	}
+
+	private startReadinessAttempt(force: boolean): void {
+		if (
+			!this.opts.onSinkReadinessChange ||
+			this.disposed ||
+			(this.disposing && !force) ||
+			this.readinessInFlight ||
+			this.readinessPublishedRevision >= this.readinessRevision
+		) {
+			return;
+		}
+		if (this.readinessRetryTimer !== null && !force) return;
+		this.cancelReadinessRetry();
+		const revision = this.readinessRevision;
+		const lifecycleGeneration = this.lifecycleGeneration;
 		let result: void | Promise<void>;
 		try {
 			result = this.opts.onSinkReadinessChange();
 		} catch {
+			this.settleReadiness(revision, false, lifecycleGeneration);
 			return;
 		}
-		if (!result || typeof (result as Promise<void>).then !== "function") return;
+		if (!result || typeof (result as Promise<void>).then !== "function") {
+			this.settleReadiness(revision, true, lifecycleGeneration);
+			return;
+		}
 		let settlement: Promise<void>;
 		settlement = Promise.resolve(result)
-			.catch(() => {})
-			.finally(() => this.readinessSettlements.delete(settlement));
-		this.readinessSettlements.add(settlement);
+			.then(
+				() => this.settleReadiness(revision, true, lifecycleGeneration),
+				() => this.settleReadiness(revision, false, lifecycleGeneration),
+			)
+			.finally(() => {
+				if (this.readinessInFlight === settlement) this.readinessInFlight = null;
+				if (
+					!this.disposed &&
+					lifecycleGeneration === this.lifecycleGeneration &&
+					this.readinessPublishedRevision < this.readinessRevision &&
+					this.readinessRetryTimer === null
+				) {
+					this.startReadinessAttempt(false);
+				}
+			});
+		this.readinessInFlight = settlement;
+	}
+
+	private settleReadiness(revision: number, succeeded: boolean, lifecycleGeneration: number): void {
+		if (this.disposed || lifecycleGeneration !== this.lifecycleGeneration) return;
+		if (succeeded) {
+			this.readinessPublishedRevision = Math.max(this.readinessPublishedRevision, revision);
+			this.readinessFailures = 0;
+			return;
+		}
+		this.readinessFailures++;
+		this.scheduleReadinessRetry();
+	}
+
+	private scheduleReadinessRetry(): void {
+		if (this.readinessRetryTimer !== null || this.disposed || this.disposing) return;
+		const lifecycleGeneration = this.lifecycleGeneration;
+		this.readinessRetryTimer = (this.opts.setTimer ?? defaultSetTimer)(() => {
+			this.readinessRetryTimer = null;
+			if (this.disposed || this.disposing || lifecycleGeneration !== this.lifecycleGeneration) return;
+			this.startReadinessAttempt(true);
+		}, this.retryDelayMs(this.readinessFailures));
+	}
+
+	private cancelReadinessRetry(): void {
+		if (this.readinessRetryTimer === null) return;
+		(this.opts.clearTimer ?? defaultClearTimer)(this.readinessRetryTimer);
+		this.readinessRetryTimer = null;
 	}
 
 	private scheduleSinkRetry(sink: CaptureSinkName, state: Extract<SinkPublication, { kind: "backingOff" }>): void {
@@ -772,7 +838,8 @@ export class LiveParserPipeline {
 				}
 			}
 			if (started) continue;
-			if (this.readinessSettlements.size > 0) await Promise.allSettled([...this.readinessSettlements]);
+			this.startReadinessAttempt(true);
+			if (this.readinessInFlight) await Promise.allSettled([this.readinessInFlight]);
 			return;
 		}
 	}
@@ -812,11 +879,13 @@ export class LiveParserPipeline {
 				this.lifecycleGeneration++;
 				this.cancelPersistTimer();
 				for (const sink of CAPTURE_SINKS) this.cancelSinkRetry(sink);
+				this.cancelReadinessRetry();
 				await Promise.allSettled(
 					CAPTURE_SINKS.map((sink) => this.sinkInFlight[sink]).filter(
 						(value): value is Promise<void> => value !== null,
 					),
 				);
+				if (this.readinessInFlight) await Promise.allSettled([this.readinessInFlight]);
 				// A fatal failure may already have released Ghostty. Double-freeing its
 				// uncleared WASM handle corrupts the heap, so all teardown goes through this.
 				this.releaseCore();

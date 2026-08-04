@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -14,6 +14,7 @@ import {
 import {
 	NATIVE_SESSION_CAPTURE_CAPABILITY,
 	NATIVE_SESSION_SCHEMA_VERSION,
+	SessionStateCleanupRuntime,
 	parseRecord,
 	readRecord,
 	readToken,
@@ -225,6 +226,30 @@ describe("native-session record (on disk)", () => {
 		writeRecordAtomic(sample());
 		expect(await removeSessionState("alpha", null, LOCK_OPTIONS)).toBe(false);
 		expect(readRecord("alpha")).not.toBeNull();
+	});
+
+	it("rejects partial cleanup before record removal when the token cannot be deleted", async () => {
+		writeRecordAtomic(sample());
+		writeToken("alpha", "tok-A");
+		writeFileSync(journalFile("alpha"), "old output");
+		let recordDeletionAttempted = false;
+		const cleanup = new SessionStateCleanupRuntime({
+			unlink(path) {
+				if (path === tokenFile("alpha")) {
+					const error = new Error("token is busy") as NodeJS.ErrnoException;
+					error.code = "EBUSY";
+					throw error;
+				}
+				if (path === recordFile("alpha")) recordDeletionAttempted = true;
+				unlinkSync(path);
+			},
+		});
+
+		await expect(cleanup.removeSessionState("alpha", "tok-A", LOCK_OPTIONS)).rejects.toMatchObject({ code: "EBUSY" });
+		expect(existsSync(journalFile("alpha"))).toBe(false);
+		expect(readToken("alpha")).toBe("tok-A");
+		expect(readRecord("alpha")).toEqual(sample());
+		expect(recordDeletionAttempted).toBe(false);
 	});
 
 	it("ignores a corrupt record on read", () => {

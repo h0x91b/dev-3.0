@@ -129,6 +129,36 @@ export const CAPTURE_RECORD_PATTERN = /^capture\.[0-9a-f]{64}\.json(?:\.tmp)?$/;
  * publication (`candidate`), and a contender's blocking claim (`claim`).
  */
 export type SessionLockMember = "canonical" | "candidate" | "claim";
+export interface SessionLockFileIdentity {
+	sessionId: string;
+	member: SessionLockMember;
+	generation?: string;
+}
+
+const SESSION_LOCK_GENERATION_SOURCE = "[0-9a-f]{64}";
+const SESSION_LOCK_GENERATION_PATTERN = new RegExp(`^${SESSION_LOCK_GENERATION_SOURCE}$`);
+const SESSION_LOCK_FILE_PATTERN = new RegExp(
+	`^((?!.*\\.\\.)[A-Za-z0-9][A-Za-z0-9._-]{0,63})\\.(?:(canonical)|(candidate|claim)\\.(${SESSION_LOCK_GENERATION_SOURCE}))\\.lock$`,
+);
+
+export function isSessionLockGeneration(value: unknown): value is string {
+	return typeof value === "string" && SESSION_LOCK_GENERATION_PATTERN.test(value);
+}
+
+/** Parse one lock-family basename or platform-native path. */
+export function parseSessionLockFile(pathOrName: string): SessionLockFileIdentity | null {
+	const segments = pathOrName.split(/[/\\]/);
+	const name = segments[segments.length - 1] ?? "";
+	const match = SESSION_LOCK_FILE_PATTERN.exec(name);
+	if (!match) return null;
+	const [, sessionId, canonical, generatedMember, generation] = match;
+	if (canonical === "canonical") return { sessionId, member: canonical };
+	const member = generatedMember;
+	if ((member === "candidate" || member === "claim") && isSessionLockGeneration(generation)) {
+		return { sessionId, member, generation };
+	}
+	return null;
+}
 
 export function sessionLockFile(id: string, member: "canonical"): string;
 export function sessionLockFile(id: string, member: "candidate" | "claim", generation: string): string;
@@ -137,7 +167,7 @@ export function sessionLockFile(id: string, member: SessionLockMember, generatio
 	if (member === "canonical" && generation !== undefined) {
 		throw new Error("the canonical session lock name has no generation suffix");
 	}
-	if (member !== "canonical" && !/^[0-9a-f]{64}$/.test(generation ?? "")) {
+	if (member !== "canonical" && !isSessionLockGeneration(generation)) {
 		throw new Error(`${member} session lock names require a 64-character lowercase hex generation`);
 	}
 	const suffix = generation === undefined ? "" : `.${generation}`;
@@ -149,7 +179,7 @@ export function sessionLockFile(id: string, member: SessionLockMember, generatio
 }
 
 /** Matches every member of every session's lock family, for enumeration and cleanup. */
-export const SESSION_LOCK_PATTERN = /^(?!.*\.\.)[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(?:canonical|(?:candidate|claim)\.[0-9a-f]{64})\.lock$/;
+export const SESSION_LOCK_PATTERN = SESSION_LOCK_FILE_PATTERN;
 
 /** Ordered ground-truth stream tap (seq 1228) — proof runs only, env-gated. */
 export function streamTapFile(id: string): string {

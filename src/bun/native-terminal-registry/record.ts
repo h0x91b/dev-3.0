@@ -312,13 +312,39 @@ export function readToken(sessionId: string): string | null {
  * is producer-scoped, so cleanup matches the bounded family instead of one name —
  * and it stays inside the session directory, matching nothing else.
  */
-function captureFamilyFiles(sessionId: string): string[] {
+export interface SessionStateCleanupEffects {
+	readdir(path: string): string[];
+	unlink(path: string): void;
+	rmdir(path: string): void;
+}
+
+const nodeCleanupEffects: SessionStateCleanupEffects = {
+	readdir: (path) => readdirSync(path),
+	unlink: (path) => unlinkSync(path),
+	rmdir: (path) => rmdirSync(path),
+};
+
+function cleanupErrorCode(error: unknown): string | undefined {
+	return (error as NodeJS.ErrnoException).code;
+}
+
+function captureFamilyFiles(sessionId: string, effects: SessionStateCleanupEffects): string[] {
 	try {
-		return readdirSync(sessionDir(sessionId))
+		return effects
+			.readdir(sessionDir(sessionId))
 			.filter((entry) => CAPTURE_RECORD_PATTERN.test(entry))
 			.map((entry) => join(sessionDir(sessionId), entry));
-	} catch {
-		return [];
+	} catch (error) {
+		if (cleanupErrorCode(error) === "ENOENT") return [];
+		throw error;
+	}
+}
+
+function unlinkForCleanup(path: string, effects: SessionStateCleanupEffects): void {
+	try {
+		effects.unlink(path);
+	} catch (error) {
+		if (cleanupErrorCode(error) !== "ENOENT") throw error;
 	}
 }
 
@@ -327,33 +353,15 @@ function captureFamilyFiles(sessionId: string): string[] {
  * `expectedToken`. The record is parsed before lock entry, then token, record,
  * capture artifacts, and cleanup are mutated under one generation-owned lock.
  */
-export async function removeSessionState(
+function removeOwnedSessionState(
 	sessionId: string,
-	expectedToken: string | null,
-	lockOptions: SessionStateLockOptions = {},
-): Promise<boolean> {
-	if (expectedToken === null) return false;
-	// Parsing is intentionally outside the lock. The callback rereads the token once,
-	// then performs only bounded synchronous mutations while ownership is stable.
-	const record = readRecord(sessionId);
-	const result = await withOwnedSessionState(
-		sessionId,
-		expectedToken,
-		() => removeOwnedSessionState(sessionId, record),
-		lockOptions,
-	);
-	return result.kind === "applied";
-}
-
-function removeOwnedSessionState(sessionId: string, record: NativeSessionRecord | null): true {
+	record: NativeSessionRecord | null,
+	effects: SessionStateCleanupEffects,
+): true {
 	const atomicFiles = [journalFile(sessionId), parserStateFile(sessionId), tokenFile(sessionId), recordFile(sessionId)];
 	if (record && Number.isInteger(record.host.pid) && record.host.pid > 0) {
 		for (const file of atomicFiles) {
-			try {
-				unlinkSync(`${file}.${record.host.pid}.tmp`);
-			} catch {
-				// absent, already published, or not owned by this recorded host
-			}
+			unlinkForCleanup(`${file}.${record.host.pid}.tmp`, effects);
 		}
 	}
 	const files = [
@@ -367,24 +375,41 @@ function removeOwnedSessionState(sessionId: string, record: NativeSessionRecord 
 	// Ownership was verified INSIDE the lock, and the lock is held across every
 	// deletion below, so nothing can take ownership mid-cleanup. Re-checking after the
 	// token file itself is unlinked would report failure for a cleanup that succeeded.
-	for (const file of captureFamilyFiles(sessionId)) {
-		try {
-			unlinkSync(file);
-		} catch {
-			// already gone
-		}
-	}
-	for (const file of files) {
-		try {
-			if (existsSync(file)) unlinkSync(file);
-		} catch {
-			// best-effort — a leftover file is harmless; liveness is always re-checked
-		}
-	}
+	for (const file of captureFamilyFiles(sessionId, effects)) unlinkForCleanup(file, effects);
+	for (const file of files) unlinkForCleanup(file, effects);
 	try {
-		rmdirSync(sessionDir(sessionId));
-	} catch {
-		// dir not empty (unknown sibling files) or already gone — leave it
+		effects.rmdir(sessionDir(sessionId));
+	} catch (error) {
+		if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(cleanupErrorCode(error) ?? "")) throw error;
 	}
 	return true;
 }
+
+/** Internal dependency seam for deterministic cleanup error injection. */
+export class SessionStateCleanupRuntime {
+	private readonly effects: SessionStateCleanupEffects;
+
+	constructor(effects: Partial<SessionStateCleanupEffects> = {}) {
+		this.effects = { ...nodeCleanupEffects, ...effects };
+	}
+
+	async removeSessionState(
+		sessionId: string,
+		expectedToken: string | null,
+		lockOptions: SessionStateLockOptions = {},
+	): Promise<boolean> {
+		if (expectedToken === null) return false;
+		const record = readRecord(sessionId);
+		const result = await withOwnedSessionState(
+			sessionId,
+			expectedToken,
+			() => removeOwnedSessionState(sessionId, record, this.effects),
+			lockOptions,
+		);
+		return result.kind === "applied";
+	}
+}
+
+const defaultSessionStateCleanup = new SessionStateCleanupRuntime();
+
+export const removeSessionState = defaultSessionStateCleanup.removeSessionState.bind(defaultSessionStateCleanup);

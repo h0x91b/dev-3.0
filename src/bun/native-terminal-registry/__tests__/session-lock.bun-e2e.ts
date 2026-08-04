@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -67,6 +67,13 @@ async function release(worker: Worker): Promise<void> {
 	stdin.end();
 }
 
+async function signal(worker: Worker, end = false): Promise<void> {
+	const stdin = worker.stdin as unknown as import("bun").FileSink;
+	stdin.write("continue\n");
+	await stdin.flush();
+	if (end) stdin.end();
+}
+
 async function stop(worker: Worker | undefined): Promise<void> {
 	if (!worker || worker.exitCode !== null) return;
 	try {
@@ -101,18 +108,27 @@ async function main(): Promise<void> {
 
 		const cWorker = startWorker("C", root);
 		c = cWorker.proc;
-		check((await cWorker.lines.next("C")) === "entered", "C claimed D's stale generation and entered");
+		const cEntered = await cWorker.lines.next("C");
+		const cGeneration = /^entered:([0-9a-f]{64})$/.exec(cEntered)?.[1];
+		check(Boolean(cGeneration), "C reported the generation it acquired");
 		check(existsSync(join(root, "critical.guard")), "C exclusively owns the critical guard");
 
-		const bEntered = bWorker.lines.next("B entry");
-		await release(b);
-		const premature = await Promise.race([bEntered.then(() => true), delay(250).then(() => false)]);
-		check(!premature, "resumed B neither entered nor deleted C's live state");
+		await signal(b);
+		const movedLine = await bWorker.lines.next("B claim move");
+		const moved = /^claim-moved:([0-9a-f]{64}):(.+)$/.exec(movedLine);
+		check(moved?.[1] === cGeneration, `B acknowledged moving C's exact generation into a claim (${movedLine})`);
+		const movedRecord = JSON.parse(readFileSync(join(root, "locks", moved?.[2] ?? ""), "utf8")) as {
+			generation?: string;
+		};
+		check(movedRecord.generation === cGeneration, "the moved claim contains C's generation before C release");
+		check((await bWorker.lines.next("B claim block")) === `claim-blocked:${cGeneration}`, "B stopped on C's live claim");
 		check(existsSync(join(root, "critical.guard")), "C's guard survived B's stale-break ABA attempt");
 
+		const bEntered = bWorker.lines.next("B entry");
 		await release(c);
 		check((await cWorker.lines.next("C release")) === "released", "C released its generation after B moved it to a claim");
 		await c.exited;
+		await signal(b, true);
 		check((await bEntered) === "entered", "B entered only after C released");
 		check((await bWorker.lines.next("B release")) === "released", "B released its own generation");
 		await b.exited;

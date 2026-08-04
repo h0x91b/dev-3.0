@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	SessionLockRuntime,
 	SessionLockTimeoutError,
 	type SessionLockProcessEvidence,
 	type SessionLockProcessEvidenceAdapter,
@@ -98,6 +99,34 @@ describe("generation-owned native session lock", () => {
 			SessionLockTimeoutError,
 		);
 		expect(readFileSync(sessionLockFile("alpha", "canonical"), "utf8")).toBe(staleRecord());
+	});
+
+	it("does not enter when a blocking claim appears between the final scan and canonical link", async () => {
+		let inserted = false;
+		let entered = false;
+		const generation = "d".repeat(64);
+		const runtime = new SessionLockRuntime({
+			afterClaimScanBeforeCanonicalLink: async () => {
+				if (inserted) return;
+				inserted = true;
+				writeFileSync(
+					sessionLockFile("alpha", "claim", generation),
+					staleRecord(generation, process.pid).replace(`${process.pid}@old-process`, SELF_SIGNATURE),
+				);
+			},
+		});
+
+		await expect(
+			runtime.withSessionStateLock(
+				"alpha",
+				() => {
+					entered = true;
+				},
+				lockOptions(evidence({ status: "dead" })),
+			),
+		).rejects.toBeInstanceOf(SessionLockTimeoutError);
+		expect(entered).toBe(false);
+		expect(existsSync(sessionLockFile("alpha", "claim", generation))).toBe(true);
 	});
 
 	it("fails closed when process identity cannot be established", async () => {
