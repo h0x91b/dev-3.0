@@ -246,7 +246,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 					<button
 						onClick={handleLaunch}
 						disabled={launching || !globalSettings || agentNotInstalled}
-						className="bg-danger hover:bg-danger/85 text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
+						className="bg-danger-fill hover:bg-danger-fill-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-2"
 					>
 						<span
 							className="text-[0.95rem] leading-none"

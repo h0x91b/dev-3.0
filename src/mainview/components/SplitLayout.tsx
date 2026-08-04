@@ -105,7 +105,7 @@ function SplitLayout({ kanbanContent, terminalContent }: SplitLayoutProps) {
 				onMouseDown={onDragStart}
 				onDoubleClick={handleDoubleClick}
 			>
-				<div className="w-[3px] h-8 rounded-full bg-fg-muted/40 group-hover:bg-fg-muted/70 transition-colors" />
+				<div className="w-[3px] h-8 rounded-full bg-fg-muted/60 group-hover:bg-fg-muted/80 transition-colors" />
 			</div>
 
 			{/* Right: Terminal */}

@@ -64,7 +64,7 @@ export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps)
 				{onRemove && (
 					<button
 						onClick={(e) => { e.stopPropagation(); onRemove(); }}
-						className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-danger text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+						className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-danger-fill text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
 						title={t("images.remove")}
 					>
 						<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -93,7 +93,7 @@ export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps)
 			{onRemove && (
 				<button
 					onClick={(e) => { e.stopPropagation(); onRemove(); }}
-					className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-danger text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+					className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-danger-fill text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
 					title={t("images.remove")}
 				>
 					<svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">

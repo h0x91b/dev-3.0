@@ -231,7 +231,7 @@ export default function NativePaneDividers({ tree, paneIndexById, onCommitRatio 
 						<div
 							data-testid={`pane-divider-grip-${boundary.splitId}`}
 							className={`rounded-full transition-colors ${horizontal ? "h-8 w-[3px]" : "w-8 h-[3px]"} ${
-								isDragging ? "bg-accent" : "bg-fg-muted/40 group-hover:bg-accent group-focus-visible:bg-accent"
+								isDragging ? "bg-accent" : "bg-fg-muted/60 group-hover:bg-accent group-focus-visible:bg-accent"
 							}`}
 						/>
 					</div>

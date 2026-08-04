@@ -274,7 +274,7 @@ function TaskWorkspacePane({
 							>
 								<div
 									data-testid="artifact-resize-grip"
-									className={`h-8 w-[3px] rounded-full transition-colors group-hover:bg-accent group-focus-visible:bg-accent ${artifactResizing ? "bg-accent" : "bg-fg-muted/40"}`}
+									className={`h-8 w-[3px] rounded-full transition-colors group-hover:bg-accent group-focus-visible:bg-accent ${artifactResizing ? "bg-accent" : "bg-fg-muted/60"}`}
 								/>
 							</div>
 						)}

@@ -38,11 +38,11 @@ hold the system together:
 | Role | CSS Variable | Dark | Light |
 |------|-------------|------|-------|
 | Base background | `--surface-base` | `rgb(6, 9, 22)` | `rgb(235, 239, 250)` |
-| Raised surface | `--surface-raised` | `rgb(14, 19, 33)` | `rgb(251, 252, 254)` |
-| Raised hover | `--surface-raised-hover` | `rgb(19, 25, 41)` | `rgb(242, 245, 253)` |
-| Elevated surface | `--surface-elevated` | `rgb(21, 27, 43)` | `rgb(231, 236, 248)` |
-| Elevated hover | `--surface-elevated-hover` | `rgb(29, 36, 53)` | `rgb(220, 226, 240)` |
-| Overlay (modals) | `--surface-overlay` | `rgb(27, 33, 48)` | `rgb(253, 253, 255)` |
+| Raised surface | `--surface-raised` | `rgb(14, 19, 33)` | `rgb(243, 246, 252)` |
+| Raised hover | `--surface-raised-hover` | `rgb(19, 25, 41)` | `rgb(237, 241, 251)` |
+| Elevated surface | `--surface-elevated` | `rgb(21, 27, 43)` | `rgb(249, 251, 254)` |
+| Elevated hover | `--surface-elevated-hover` | `rgb(29, 36, 53)` | `rgb(243, 246, 252)` |
+| Overlay (modals) | `--surface-overlay` | `rgb(27, 33, 48)` | `rgb(252, 253, 255)` |
 
 ### Text
 
@@ -55,14 +55,14 @@ decoration and disabled state only, never for text that has to be read.
 | Primary | `--text-primary` | `rgb(239, 244, 252)` | `rgb(17, 26, 47)` | 99 / 93 |
 | Secondary | `--text-secondary` | `rgb(200, 211, 231)` | `rgb(68, 81, 103)` | 78 / 76 |
 | Tertiary | `--text-tertiary` | `rgb(170, 182, 204)` | `rgb(99, 113, 136)` | 61 / 63 |
-| Muted | `--text-muted` | `rgb(132, 145, 169)` | `rgb(134, 148, 173)` | 41 / 46 |
+| Muted | `--text-muted` | `rgb(132, 145, 169)` | `rgb(134, 148, 173)` | 41 / 46 — decoration and disabled state only; does not clear the text floors |
 
 ### Borders
 
 | Role | CSS Variable | Dark | Light |
 |------|-------------|------|-------|
-| Default | `--border-default` | `rgb(43, 49, 65)` | `rgb(202, 210, 224)` |
-| Active | `--border-active` | `rgb(68, 77, 99)` | `rgb(159, 174, 199)` |
+| Default | `--border-default` | `rgb(75, 84, 108)` | `rgb(183, 191, 207)` |
+| Active | `--border-active` | `rgb(95, 107, 135)` | `rgb(150, 163, 185)` |
 
 ### Semantic / Interactive
 
@@ -108,6 +108,8 @@ deep, fully saturated tones — a colour laid over near-white glass at 31% alpha
 keeps only a fraction of its chroma, so anything softer makes eight columns look
 like eight shades of white. Light hues are spaced 15° → 40° → 95° → 152° → 232° →
 272° → 318°, measured so no two rendered columns land closer than 0.045 in OKLCH.
+
+`STATUS_COLORS` / `STATUS_COLORS_LIGHT` are for **glow, dot, and border identity** (fill and decoration uses). When a status colour is rendered as **text** in light theme — e.g. the task-count badge chip — use `STATUS_COLORS_LIGHT_INK` instead; these are darkened variants that clear APCA |Lc| ≥ 60 on the glass column header. In dark theme the pastel `STATUS_COLORS` serve as text directly.
 
 | Status | Dark | Light |
 |--------|------|-------|
