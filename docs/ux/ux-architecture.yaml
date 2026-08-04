@@ -530,10 +530,11 @@ ux_architecture:
     note: "Tokens are CSS custom properties in src/mainview/index.css, mapped to Tailwind in tailwind.config.js. NEVER hardcode hex/rgb in components (AGENTS.md). STATUS_COLORS in types.ts are the documented exception (inline status hex)."
     button_roles:
       primary:
-        token_class: "bg-accent / hover:bg-accent-hover (text-white)"
+        token_class: "bg-accent-fill / hover:bg-accent-fill-hover (text-white)"
+        note: "bg-accent is NOT the primary fill token for white text — white on --accent is 2.98:1 (fails WCAG 4.5:1). --accent-fill (lines 73-74 of index.css) ships a deeper blue that passes at 5.09:1. Use bg-accent only for text/icon tinting on dark surfaces."
         use_for: "One main safe action for the current screen (Create, Save, Confirm)."
         max_per_screen: 1
-        evidence: ["src/mainview/components/TaskDetailModal.tsx", "src/mainview/components/CreateTaskModal.tsx"]
+        evidence: ["src/mainview/components/TaskDetailModal.tsx", "src/mainview/components/CreateTaskModal.tsx", "src/mainview/index.css (--accent-fill comment, lines 70-74)"]
       secondary:
         token_class: "bg-raised / bg-elevated + border-edge, or text-accent bg-accent/10"
         use_for: "Visible supporting action with lower priority than primary."
@@ -694,7 +695,7 @@ ux_architecture:
     gesture_law:
       scroll_body: "board columns / lists / settings sections — one sibling = 100vw via CSS scroll-snap, body scrolls the OTHER axis. FULL-SURFACE SWIPE ALLOWED (axis unambiguous; delegate to browser)."
       live_content: "terminal pane / diff stream / any canvas/TUI — one element + position indicator (dots). FULL-SURFACE SWIPE ALLOWED BUT AXIS-ARBITRATED: claim a gesture only once clearly horizontal (capture-phase preventDefault+stopPropagation, cancel nascent selection); vertical drags + taps fall through to the content. scroll-snap can't do this (no sibling slides) -> manual gesture. (Revised 2026-06-29; was 'swipe forbidden, pager only' — bottom pager bar collided with the mobile keyboard. See decision 089.)"
-      always: "every swipe has a button + keyboard equivalent (chevrons/dots/Arrow Left-Right); swipe is never the only way. Focus follows the active sibling; aria-live announces it. prefers-reduced-motion snaps instantly — honour EVERYWHERE (today only MobileBoardCarousel does)."
+      always: "every swipe has a button + keyboard equivalent (chevrons/dots/Arrow Left-Right); swipe is never the only way. Focus follows the active sibling; aria-live announces it. prefers-reduced-motion snaps instantly — honoured everywhere (index.css blocks cover toast, sheet, marching-ants, icon families; useReducedMotion covers JS-driven animations)."
     surface_adaptation: # every §5 surface gets a narrow form
       mobile_orientation: { narrow: "portrait-only device guard — best-effort Screen Orientation API lock, with a blocking localized rotate prompt and inert app fallback when landscape cannot be locked", status: observed, evidence: "MobilePortraitGate.tsx, usePortraitOrientation.ts" }
       kanban_board: { narrow: "column carousel (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept)", status: observed, evidence: "MobileBoardCarousel.tsx, KanbanBoard.tsx useNarrowViewport(768), KanbanColumn fullWidth" }
@@ -759,6 +760,71 @@ ux_architecture:
       description: "Exposing gauge-demo / viewport-lab outside the Debug menu."
     - id: "help-icon-creep"
       description: "Scattering permanent (i) icons across dense zones (inspector quickbars, task cards, action toolbars) as the way to explain them. This is toolbar-button-creep wearing a help hat. Dense/headerless zones get help via the help-mode overlay (data-help-id); a standing HelpSpot is allowed only in a section header, max one."
+
+  accessibility:
+    status: "proposed"
+    note: "Machine-checkable floors from PRODUCT_UX_BIBLE §9a.1. All Proposed."
+    focus_ring:
+      rule: "Every interactive element shows the global :focus-visible ring from index.css."
+      banned: ["focus:outline-none — compiles to .focus\\:outline-none:focus at specificity (0,2,0), beats the global :focus-visible rule at (0,1,0) regardless of source order"]
+      allowed: ["outline-none (specificity 0,1,0) — loses to the global rule by source order because the ring is authored after @tailwind utilities"]
+    hit_area:
+      desktop_floor_px: 24
+      touch_floor_px: 44
+      mechanism: ".touch-actions helper in index.css — must be the BottomSheet default, not opt-in"
+    keyboard:
+      rule: "Every pointer interaction has a keyboard path. Escape closes overlays. Arrow keys move inside composite widgets."
+      role_tab_promise: "role=tab is a promise of roving tabindex; ship plain buttons with aria-pressed instead if not implementing it"
+    icon_controls:
+      rule: "Every icon-only control has an accessible name. A tooltip is NOT an accessible name."
+    aria_modal:
+      required: ["accessible name (aria-labelledby at title)", "focus trap", "focus restore"]
+      implementation: "useFocusTrap — one implementation, no ad-hoc traps"
+    landmarks:
+      rule: "One sr-only h1 per route; document.title follows the route"
+      rationale: "In remote mode the tab title is the only orientation cue"
+    zoom:
+      banned: ["user-scalable=no", "maximum-scale=1"]
+      must_work_at: ["200% zoom", "320px viewport width"]
+    live_regions:
+      polite: "routine updates"
+      assertive: "urgent errors only (role=alert reserved)"
+    skip_link_exception:
+      rule: "No skip link is present and that is intentional — the keyboard jump layer (command palette ⇧⌘P, hint overlay f/⌘G, task switcher Option+Tab) replaces it."
+
+  quality_floors:
+    status: "proposed"
+    note: "Machine-checkable minimums from PRODUCT_UX_BIBLE §9a. All Proposed."
+    contrast:
+      body_text_apca: ">= 75 |Lc|"
+      non_body_text_apca: ">= 60 |Lc|"
+      non_text_discernible_apca: ">= 15 |Lc|"
+      fallback_vocab: "WCAG 4.5:1 body / 3:1 non-body"
+      measure: "Rendered pair in BOTH themes; alpha-modified tokens must be composited through the real layer stack"
+      enforcement: "Automated contrast fixture over design-token pairs; every new pair must be added before shipping"
+    typography:
+      scale: "Named rungs only; text-[…] arbitrary sizes banned"
+      tabular_nums: "Required on every value that changes in place (counters, stats, gauges, timers, LOC, %, chart axes) — property of the badge/stat primitive"
+      truncation: "Identifiers and error messages may only be clamped when the full value is reachable on the same surface"
+      line_height_leading_none: "Single-line non-wrapping chrome only; wrapping content uses leading-snug minimum"
+      input_16px: "Every text-entry control in browser mode (not an allowlist)"
+    copy:
+      confirm_label: "confirmLabel required — confirm service must reject a generic default (no 'OK')"
+      error_messages: "End with an imperative next step; {error} is a parenthetical detail, not the whole message"
+      capitalization: "Sentence case for settings/buttons/tabs/menus; Title Case only for frozen proper nouns (To Do, AI Review, Your Review, PR Review)"
+      plurals: "(s) in a translation value is a defect — use t.plural"
+      ellipsis: "... is a defect — use …"
+      settings_paths: "Never spell a settings path in prose — declare it as data. Tips: set Tip.settingsSection (SettingsRouteSectionId, tips.ts); TipCard renders the link via OPEN_SETTINGS_SECTION_EVENT. Same principle for help strings."
+    motion:
+      transition_all: "banned — name properties explicitly"
+      hover_infinite: "banned — a resting cursor must not loop"
+      budget: "one play, <= 300ms for repeated-control hover, or nothing"
+      reduced_motion: "honoured everywhere — index.css blocks cover toast, sheet, marching-ants, and icon families; useReducedMotion covers JS-driven animations"
+      static_cue: "motion is never the only feedback channel"
+    layout:
+      overlay_clamp: "max-w-[calc(100vw-2rem)] on every fixed-width overlay; portals clamp and flip against innerWidth"
+      shared_viewport_breakpoints: "use useContainerWidth (ResizeObserver) not viewport hooks when a surface shares the viewport"
+      string_growth: "No fixed heights on label-bearing controls (use min-h); p90 en->ru/es expansion is ~1.9x on short labels"
 
   open_questions:
     - "Is there a need for multi-select + a real selection toolbar on the Kanban board, or is per-task action intentional?"

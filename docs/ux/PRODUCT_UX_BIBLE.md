@@ -202,7 +202,7 @@ Layout = left **Files aside** (collapsible, `22rem`) + right **diff stream**.
 
 | Control | Role | Token | Visibility |
 |---|---|---|---|
-| Copy review | `primary` (the single primary here) | `bg-accent` solid, success-tint on copied | always (disabled when 0 unsent comments) |
+| Copy review | `primary` (the single primary here) | `bg-accent-fill` solid, success-tint on copied | always (disabled when 0 unsent comments) |
 | Reset review | `destructive`, low-emphasis | ghost-danger: `text-danger` + `border-danger/30` + `hover:bg-danger/10` | only when ≥ 1 comment; confirmation required |
 | Comment count | `status` | `bg-raised` mono badge | always |
 | Comment item | `link`-like (scroll-to) | `bg-raised/65`, accent on hover | per comment |
@@ -272,7 +272,7 @@ Evidence: `NativeBackendMark.tsx`, `TaskCard.tsx`, `ActiveTasksSidebar.tsx`, `Gl
 
 | Action type | Definition | Placement | Token role |
 |---|---|---|---|
-| primary_action | Main safe action for screen/flow (Create Task, Add Project, Save) | modal footer / page header | primary (`bg-accent`), max 1 visible |
+| primary_action | Main safe action for screen/flow (Create Task, Add Project, Save) | modal footer / page header | primary (`bg-accent-fill`), max 1 visible |
 | object_action | Acts on one task/project (rename, overview, watch, duplicate, open-in) | inspector, card context menu, menu `Task` | secondary / ghost |
 | git_action | pull, push, create PR, merge, rebase, branch status | inspector `TaskGitActions`, menu `Project`, board git-pull | secondary; runs in visible terminal (decision 008) |
 | dev_server_action | start / stop / restart / status | inspector `TaskDevServer`, menu `Project.DevServer` | neutral; risky variants flagged |
@@ -293,7 +293,7 @@ Tokens are CSS custom properties in `src/mainview/index.css`, mapped to Tailwind
 
 | Semantic role | Token class | Use for | Do not use for |
 |---|---|---|---|
-| primary | `bg-accent` / `hover:bg-accent-hover` (white text) | the one main safe action | competing CTAs, destructive actions |
+| primary | `bg-accent-fill` / `hover:bg-accent-fill-hover` (white text) | the one main safe action | competing CTAs, destructive actions |
 | secondary | `bg-raised`/`bg-elevated` + `border-edge`, or `text-accent bg-accent/10` | supporting visible action | the irreversible main action |
 | ghost | transparent + `hover:bg-raised-hover`/`hover:bg-elevated-hover` | dense-toolbar icon/utility buttons | critical-path primary |
 | destructive | `text-danger`, `hover:bg-danger/10..15`, `border-danger/30` (or solid `bg-danger`) | delete, remove, cancel, reset | safe routine actions |
@@ -336,6 +336,85 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 | Task info panel | 4 bars (2×2), ≤ 4 visible per bar | assign new control to one domain bar; overflow after 4 ⇒ promote that domain to its own row (see §5.1) |
 
 **Split lifecycle controls count as one.** The status control may carry a second half that commits the pipeline's own terminal move (the ✓ → Completed) without spending a second card slot, provided it is glued to the status trigger, shares its hover surface, is desktop-only (narrow keeps the BottomSheet's promoted Completed row at ≥ 44px), and disappears when `getAllowedTransitions` forbids the target. Any action that is not the control's own lifecycle move costs its own slot — this is not a general licence for a second button.
+
+## 9a. Quality floors — what every surface must clear
+
+A gate, not a goal. Every surface passes these before shipping; a floor is not earned by meeting it once — a regression resets the clock. All six subsections are `Proposed` unless noted.
+
+### 9a.1 Accessibility — `Proposed`
+
+**Focus ring.** Every interactive element shows the global `:focus-visible` ring from `index.css`. Two specificity traps:
+- **`focus:outline-none` is banned** — Tailwind compiles it to `.focus\:outline-none:focus` at specificity (0,2,0), beating the global `:focus-visible` rule at (0,1,0) regardless of source order and killing the keyboard ring.
+- Bare `outline-none` (0,1,0) is fine — it loses to the global rule by source order because the ring is authored after `@tailwind utilities`.
+
+| Constraint | Floor |
+|---|---|
+| Hit area | 24×24 CSS px (WCAG 2.5.8); 44×44 px on touch via `.touch-actions` in `index.css` — the sheet default, not opt-in |
+| Keyboard path | Every pointer interaction has a keyboard equivalent; Escape closes overlays; Arrow keys move inside composite widgets |
+| Icon controls | Every icon-only control has an accessible name; a tooltip is **not** an accessible name |
+| `role="tab"` | Is a promise of roving tabindex — if you will not implement it, ship plain buttons with `aria-pressed` |
+| `aria-modal` surface | Accessible name (`aria-labelledby` at its title), focus trap, focus restore; `useFocusTrap` is the one implementation |
+| Landmarks | One `sr-only` `<h1>` per route; `document.title` follows the route (the tab title is the only orientation cue in remote mode) |
+| Zoom | Never `user-scalable=no`, never `maximum-scale=1`; must render and reflow at 200% and 320px |
+| Live regions | `polite` for routine updates; `assertive` / `role="alert"` reserved for urgent errors only |
+
+**Documented exception — no skip link.** The keyboard jump layer (command palette ⇧⌘P, hint overlay `f`/⌘G, task switcher Option+Tab) replaces a skip link. Future audits must not re-flag this as missing.
+
+### 9a.2 Contrast — `Proposed`
+
+APCA |Lc| ≥ 75 for body text, ≥ 60 for non-body text, ≥ 15 for non-text elements that must be discernible (borders, resize grips). WCAG 4.5:1 / 3:1 are acceptable fallback vocabulary.
+
+**Measure the rendered pair in both themes** — not the token against its opaque fallback. Alpha-modified tokens (`bg-raised/65`, `border-danger/30`, `bg-fg-muted/40`) must be composited through the real layer stack before the pair is checked.
+
+A token whose role is "text" is not a fill, and vice versa.
+
+The repo carries an automated contrast check over the design-token pairs; any new pair must be added to that fixture before shipping.
+
+### 9a.3 Typography — `Proposed`
+
+| Rule | Detail |
+|---|---|
+| Closed type scale | Named rungs only; `text-[…]` arbitrary sizes banned (they silently inherit ancestor line-height) |
+| Dense chrome minimum | After `MOBILE_DENSE_FACTOR` (~0.67×) in `zoom.ts`, meaning-bearing text needs a px-pinned floor; one bounded dense tier (weight ≥ 500, non-essential or duplicated copy only) is legitimate rather than pretending a uniform 12px floor applies everywhere |
+| `tabular-nums` | Required on every value that changes in place: counters, diff stats, gauges, timers, LOC totals, percentages, chart axes — make it a property of the badge/stat primitive, not per callsite |
+| Truncation | An identifier (branch, path, URL, PR ref) or error message may only be clamped when the full value is reachable on the same surface (tooltip, expand, or copy) |
+| Heading levels | Map to scale rungs once, centrally |
+| `line-height` | `leading-none` for single-line non-wrapping chrome only; anything that can wrap is `leading-snug` minimum; `≥1.4` at three or more lines |
+| Long-form columns | Changelog and help prose: cap the text column at ~65ch, not just the page |
+| 16px inputs | Applies to **every** text-entry control in browser mode, not an allowlist of three types |
+
+Litmus test: does the text stay readable on a 390px screen with the dense-factor applied?
+
+### 9a.4 Copy — `Proposed`
+
+| Rule | Detail |
+|---|---|
+| Confirmation buttons | Repeat the consequence; `confirmLabel` is **required** — the confirm service must reject a generic default so "OK" cannot come back |
+| Error messages | Every error ends with an imperative next step; `{error}` is a parenthetical detail, never the whole message — see `en/kanban.ts` for the reference shape |
+| Button voice | Verb-first, speaks to the reader ("you"), never as the reader ("I") |
+| Capitalization | **Sentence case** for settings rows, buttons, tabs, menu items; Title Case only for frozen proper nouns (`To Do`, `AI Review`, `Your Review`, `PR Review`) |
+| Empty states | Three parts: what this is → why useful → one action. "No X" alone is incomplete. Search empty states name the query and offer an exit |
+| Toggle labels | Name what happens when the toggle is ON |
+| Placeholders | Format examples; every field keeps a visible label |
+| Settings paths in tips/help | Never spell a path in prose — declare the destination as data and let the carrier render the link. In tips: set `Tip.settingsSection` (`SettingsRouteSectionId`, `tips.ts`) and `TipCard` renders an "Open the setting" link via `OPEN_SETTINGS_SECTION_EVENT`. The same principle applies to help strings. |
+| `(s)` | Defect — use `t.plural`. `...` is a defect — use `…` |
+
+### 9a.5 Motion — `Proposed`
+
+- **No `transition: all`** — name the properties explicitly.
+- CSS transitions for interactive state changes (interruptible); keyframes for one-shot sequences only.
+- **Motion budget:** a repeated control on hover gets at most one play, ≤300ms, or nothing. An `infinite` animation triggered by `:hover` is banned — a resting cursor must not loop.
+- Prefer compositable properties (`transform`, `opacity`); paint properties like `stroke-dashoffset` are for genuinely one-shot moments.
+- Motion is **never** the only feedback channel — every animated state change also has a static cue.
+- `prefers-reduced-motion` is honoured everywhere.
+
+### 9a.6 Layout grammar — `Proposed`
+
+- Group with space, not lines; gap between groups ≥ 2× gap within a group.
+- A control must look interactive next to static text.
+- Every fixed-width overlay clamps: `max-w-[calc(100vw-2rem)]`. Absolutely-positioned portals clamp and flip against `innerWidth`.
+- Breakpoints come from content; a surface that shares the viewport with another uses `useContainerWidth` per §12.1's rule.
+- Plan for string growth: p90 expansion en → ru/es is ~1.9× on short labels (`Retry` → `Попробовать ещё раз` is 3.8×). No fixed heights on label-bearing controls — use `min-h` instead.
 
 ## 10. Placement rules — `Observed`/`Inferred`
 
@@ -401,7 +480,7 @@ Rules: **gate layout on `useNarrowViewport`** (reactive, viewport-width). Use `u
 | **scroll-body** (board columns, lists, settings sections) | one sibling = 100vw via CSS `scroll-snap`; the body scrolls on the *other* axis | **full-surface swipe allowed** — the body scrolls vertically only, so horizontal motion is unambiguous (delegate axis disambiguation to the browser) |
 | **live-content** (terminal pane, diff stream, any canvas/TUI) | one element + a position indicator (dots) | **full-surface swipe allowed, but axis-arbitrated** — the content consumes touch (vim/htop/less, code scroll), so the handler claims a gesture only once it is *clearly horizontal* (capture-phase `preventDefault`+`stopPropagation`, cancel any nascent selection); vertical drags and taps fall through to the content. Native `scroll-snap` can't do this (a canvas has no sibling slides) → manual gesture. *(Revised 2026-06-29 — was "swipe forbidden, pager only"; a bottom pager bar collides with the mobile keyboard. See decision 089.)* |
 
-**Gesture law (always):** every swipe has a **button + keyboard equivalent** (pager chevrons, dots, Arrow Left/Right); swipe is never the only way. Focus follows the active sibling's heading; `aria-live` announces it. `prefers-reduced-motion` snaps instantly (no smooth scroll) — and this must be honoured **everywhere**, not only in the carousel (it currently is only in `MobileBoardCarousel`).
+**Gesture law (always):** every swipe has a **button + keyboard equivalent** (pager chevrons, dots, Arrow Left/Right); swipe is never the only way. Focus follows the active sibling's heading; `aria-live` announces it. `prefers-reduced-motion` snaps instantly (no smooth scroll) — honoured everywhere, not just the carousel (see §12.7).
 
 ### 12.3 Per-surface adaptation map — `Observed` (board) / `Proposed` (rest)
 
@@ -424,7 +503,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 | Settings (left-nav + detail) | left-nav Settings categories + one category detail pane; localized search groups registered Settings entries | **category list first → one category detail at a time** with a visible back affordance; same route and persistence, no horizontal overflow | `Observed` (`GlobalSettings.tsx`, `settings-registry.ts`) |
 | Dashboard (Activity) | project list + hover action icons + drag-reorder | vertical list, full-width cards (`p-3` not `p-7`); per-project actions **+ reorder** collapse into a **kebab → `BottomSheet` action sheet** (hover cluster, HTML5 drag, and the `hidden md:flex` up/down steps are all dead on touch); touch targets ≥44px | `Observed` |
 | Command palette (Cmd+K / Cmd+Shift+P) | keyboard-summoned, `34rem` | needs a **touch entry** + `w-full max-w-[calc(100vw-2rem)]` — see §12.4 (it is the action fallback for the absent native menu) | `Proposed` |
-| Global header | single row, ≤9 utility buttons | reflow: logo + truncated breadcrumb + **one overflow (kebab)** for all utilities; never a 9-icon row (`useCompact` at 1600 only hides labels, it does not reflow for 390px) | `Proposed` |
+| Global header | single row, ≤9 utility buttons | reflow: logo + truncated breadcrumb + **one overflow (kebab)** for all utilities; never a 9-icon row (`useCompact` at 1600 only hides labels, it does not reflow for 390px) | `Observed` |
 | Hover terminal preview | popover on card hover | **disabled** on touch/narrow (no hover; popover obscures) — already gated in `useTerminalPreview` | `Observed` |
 | Task image viewer | lightbox + thumbnail rail | full-bleed; filmstrip → bottom scroll strip; image is live-content (axis-arbitrated swipe + prev/next + dots); touch entry = inspector badge + palette action | `Proposed` |
 | Task artifact workspace | resizable panel beside terminal | one-at-a-time: artifact replaces terminal content; close returns to terminal; fullscreen remains available | `Observed` |
@@ -440,9 +519,11 @@ Doctrine:
 - **The browser application menu bar is a wide-layout surface**: hide its standalone row below 768px so the existing GlobalHeader `More` bottom sheet and command palette remain the compact touch entry points; desktop/browser menu parity is unchanged.
 - **No feature may be touch-unreachable.** If an action's only desktop path is a keyboard shortcut or the native menu, it MUST have a touch path on narrow (action sheet, palette, or inline control).
 
-### 12.5 Overlay primitive — `BottomSheet` (new, mandated) — `Proposed`
+### 12.5 Overlay primitive — `BottomSheet` — `Observed`
 
-The doctrine needs **one** reusable bottom-sheet primitive; none exists today (only centered `Modal`, `confirm()`, `toast`, `Popover`). `BottomSheet` is the narrow rendering for: context-menu→action-sheet, board filters, column-jump list, "Move to", the inspector actions sheet, the diff file picker, and the narrow form of action-style modals. It must: slide from the bottom, respect `env(safe-area-inset-bottom)`, trap focus, restore focus on close, dismiss on backdrop tap / swipe-down / Esc, and be a pure React component (works identically in desktop and browser — no native dialog, per the project's no-native-dialogs rule). Build it once; do not scatter ad-hoc sheets.
+`BottomSheet` is the narrow rendering for: context-menu→action-sheet, board filters, column-jump list, "Move to", the inspector actions sheet, the diff file picker, and the narrow form of action-style modals. It slides from the bottom, respects `env(safe-area-inset-bottom)`, traps focus, restores focus on close, and dismisses on backdrop tap / swipe-down / Esc. A pure React component — works identically in desktop and browser (no native dialog, per the no-native-dialogs rule). Do not scatter ad-hoc sheets.
+
+Evidence: `BottomSheet.tsx` — used by `GlobalHeader` narrow kebab, `ActivityOverview` project action sheet, `MobilePaneCarousel` manage sheet. `prefers-reduced-motion` suppresses the slide animation (`bottom-sheet-panel` in `index.css`).
 
 ### 12.6 Narrow complexity budgets & touch targets — `Proposed`
 
@@ -458,7 +539,7 @@ The doctrine needs **one** reusable bottom-sheet primitive; none exists today (o
 
 ### 12.7 Accessibility, motion, input — `Proposed`
 
-- Honour `prefers-reduced-motion` on every animated transition (currently only the carousel).
+- Honour `prefers-reduced-motion` on every animated transition. `index.css` covers toast-swipe, bottom-sheet slide, close-pane marching-ants, and several icon-animation families; `useReducedMotion` is used in gauges, git/dev-server spinners, launch modals, and skeleton loaders. The carousel was the first; it is no longer the only one.
 - Keep the `.browser-mode` 16px input-font rule (prevents iOS focus-zoom); honour `env(safe-area-inset-*)` (the viewport already sets `viewport-fit=cover`).
 - Reuse the `TerminalView` touch→mouse bridge model for any canvas surface; reuse `ExtraKeyBar`'s vw-based sizing for mobile toolbars.
 - Carousels: `aria-roledescription="carousel"`, siblings as `group`/`tabpanel`, pager as the tablist; arrow-key support when the pager is focused.
@@ -480,7 +561,7 @@ Shared UX vocabulary, specialized for this project (was `UX_GLOSSARY.md`).
 - **Destination** — a stable place users navigate to; in dev-3.0 a **screen** in the `Route` union (`dashboard`, `project`, `task`, `settings`, …), not a URL.
 - **Action** — a command that changes state or performs work: primary, object, git, dev-server, lifecycle, configuration, destructive, expert-shortcut.
 - **Surface** — a UI container that owns a class of interaction: global header, application menu (native), Kanban board, task card, task info panel (inspector), modal, popover, context menu, settings, sidebar, toast.
-- **Primary action** — the one main safe action for the current screen/flow. Styled `bg-accent`. Max one visible per screen.
+- **Primary action** — the one main safe action for the current screen/flow. Styled `bg-accent-fill`. Max one visible per screen.
 - **Destructive action** — delete, remove, cancel, reset, hard refresh. Styled `text-danger`/`bg-danger`, requires confirmation, never primary styling.
 - **Configuration** — a durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account). Lives in Global or Project Settings.
 - **Settings category** — one of the eight Global Settings navigation items: Appearance, Tasks & Board, Keyboard, Terminal, Agents, Accounts, Workspace, or System.

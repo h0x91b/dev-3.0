@@ -210,7 +210,7 @@ bar make red decorative). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskI
 
 ## 2026-07-05 — Agent rate-limit indicator is ambient header status, not a cockpit metric
 
-- **Rule:** account-wide agent rate-limit usage renders as a passive icon+percent indicator in the global header's stateful-indicators zone (next to prevent-sleep); hidden until data exists, `warning` token ≥80%, `danger` ≥95%; its enable toggle lives in Global Settings → Behavior.
+- **Rule:** account-wide agent rate-limit usage renders as a passive icon+percent indicator in the global header's stateful-indicators zone (next to prevent-sleep); hidden until data exists, `warning` token ≥80%, `danger` ≥95%; its enable toggle lives in Global Settings → Agents (`rate-limit-tracking` entry, `settings-registry.ts`).
 - **Why:** it is a diagnostic "battery gauge" the user must see before hitting a limit — not a motivational countable signal (cockpit rejected) and not task-scoped (task surfaces rejected).
 - **Status:** Implemented. Evidence: `GlobalHeader.tsx`, `ux-architecture.yaml` global_header.allowed.
 ## 2026-07-03 — Inline help: one registry, three layers (Tooltip / HelpSpot / help mode)
@@ -329,8 +329,8 @@ bar make red decorative). Evidence: `decisions/184-*.md`, `TaskCard.tsx`, `TaskI
 
 ## 2026-06-27 — Global keyboard focus ring (`:focus-visible`) as the single focus affordance
 
-- **Rule:** Focus indication is one global `:focus-visible` accent outline in `index.css` (keyboard/AT only, never mouse), authored after `@tailwind utilities` to beat `.outline-none`; modal shells (`[tabindex="-1"]`) exempted. Documented in `DESIGN.md`.
-- **Why:** App-wide accessibility affordance belongs in the base stylesheet, not scattered across ~29 `outline-none` components; rejected Tailwind ring classes per component and a new focus token (accent already is the focus color).
+- **Rule:** One global `:focus-visible` accent outline in `index.css` (keyboard/AT only, never mouse), authored after `@tailwind utilities`; modal shells (`[tabindex="-1"]`) exempted. **Specificity trap: `focus:outline-none` is banned.** Tailwind compiles it to `.focus\:outline-none:focus` at specificity (0,2,0), which beats the global `:focus-visible` rule at (0,1,0) regardless of source order and silently kills the keyboard ring. Bare `outline-none` (0,1,0) is fine — it loses on source order.
+- **Why:** App-wide ring belongs in the base stylesheet; the `focus:outline-none` trap was identified as a shipped regression vector (see §9a.1). Rejected: per-component Tailwind ring classes; a new focus token (accent already is the focus color).
 - **Status:** Observed (2026-06-27). Evidence: `src/mainview/index.css`, `DESIGN.md`.
 
 ## 2026-06-24 — Built-in Operations board: pinned-first, ⌘0, and a "system object" identity
