@@ -26,7 +26,7 @@ import { spawn, spawnSync } from "../../spawn";
 import { NativeSessionClient } from "../client";
 import { recordFile, tokenFile } from "../paths";
 import { isProcessAlive } from "../process-identity";
-import { MAX_CONTROL_FRAME_BYTES } from "../protocol";
+import { decodeControl, MAX_CONTROL_FRAME_BYTES } from "../protocol";
 import {
 	NATIVE_SESSION_SCHEMA_VERSION,
 	readRecord,
@@ -122,14 +122,21 @@ function makeSink(client: NativeSessionClient): {
  * Open a raw WebSocket (bypassing NativeSessionClient) with `token`, send one
  * text `firstFrame`, and report the first control reply + whether the host closed
  * the socket. When `secondFrame` is given, send it after the first reply and
- * capture a second reply too. Models a hostile/mismatched client probing v1.
+ * capture its reply after crossing the validated replay boundary. Models a
+ * hostile/mismatched client probing v1.
  */
 function rawFirstFrameProbe(
 	record: NativeSessionRecord,
 	token: string,
 	firstFrame: string,
 	secondFrame?: string,
-): Promise<{ reply: Record<string, unknown> | null; second: Record<string, unknown> | null; opened: boolean; closed: boolean }> {
+): Promise<{
+	reply: Record<string, unknown> | null;
+	second: Record<string, unknown> | null;
+	replayedBoundarySeen: boolean;
+	opened: boolean;
+	closed: boolean;
+}> {
 	const url = `ws://${record.endpoint.address}:${record.endpoint.port}/?token=${encodeURIComponent(token)}`;
 	const ws = new WebSocket(url);
 	return new Promise((resolve) => {
@@ -138,6 +145,7 @@ function rawFirstFrameProbe(
 		let opened = false;
 		let settled = false;
 		let sentSecond = false;
+		let replayedBoundarySeen = false;
 		const finish = (closed: boolean): void => {
 			if (settled) return;
 			settled = true;
@@ -146,7 +154,7 @@ function rawFirstFrameProbe(
 			} catch {
 				// already closed
 			}
-			resolve({ reply, second, opened, closed });
+			resolve({ reply, second, replayedBoundarySeen, opened, closed });
 		};
 		const to = setTimeout(() => finish(false), 2500);
 		ws.addEventListener("open", () => {
@@ -160,6 +168,15 @@ function rawFirstFrameProbe(
 				reply = parsed;
 				sentSecond = true;
 				ws.send(secondFrame);
+				return;
+			}
+			if (
+				secondFrame !== undefined &&
+				sentSecond &&
+				!replayedBoundarySeen &&
+				decodeControl(ev.data)?.type === "replayed"
+			) {
+				replayedBoundarySeen = true;
 				return;
 			}
 			if (secondFrame !== undefined) second = parsed;
@@ -398,6 +415,10 @@ async function run(): Promise<void> {
 			alphaToken,
 			JSON.stringify({ v: 1, type: "hello", sessionId: "alpha", id: 7 }),
 			JSON.stringify({ v: 1, type: "hello", sessionId: "alpha", id: 8 }),
+		);
+		check(
+			dupHello.replayedBoundarySeen,
+			"the duplicate-hello probe crosses the validated replay boundary before its correlated response",
 		);
 		check(
 			dupHello.reply?.type === "welcome" && dupHello.second?.type === "error" && dupHello.second?.code === "conflict" && dupHello.second?.id === 8,
