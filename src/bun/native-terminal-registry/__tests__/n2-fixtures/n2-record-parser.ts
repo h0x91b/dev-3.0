@@ -123,4 +123,3 @@ export function n2ParseRecord(text: string): N2SessionRecord | null {
 		updatedAt: r.updatedAt,
 	};
 }
-
