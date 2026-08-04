@@ -97,6 +97,7 @@ export default function TaskGitActions({
 	const t = useT();
 	const reducedMotion = useReducedMotion();
 	const [copiedPath, setCopiedPath] = useState(false);
+	const [copiedBranch, setCopiedBranch] = useState(false);
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
 	const [pushedPRStatus, setPushedPRStatus] = useState<TaskPRBadgeInfo | null>(null);
 	const initialPrRefreshTaskRef = useRef<string | null>(null);
@@ -237,6 +238,16 @@ export default function TaskGitActions({
 		document.addEventListener("mousedown", handleClick);
 		return () => document.removeEventListener("mousedown", handleClick);
 	}, [refMenuOpen]);
+
+	function handleCopyBranch() {
+		if (!task.branchName) {
+			return;
+		}
+
+		navigator.clipboard.writeText(task.branchName);
+		setCopiedBranch(true);
+		setTimeout(() => setCopiedBranch(false), 1500);
+	}
 
 	function handleCopyPath() {
 		if (!task.worktreePath) {
@@ -593,9 +604,18 @@ export default function TaskGitActions({
 			{refDropdownPortal}
 
 			{task.branchName && (
-				<span className={branchNameClassName}>
-					{task.branchName}
-				</span>
+				<Tooltip
+					content={copiedBranch ? t("infoPanel.branchCopied") : task.branchName}
+					detail={t("ttip.infoPanel.copyBranch")}
+				>
+					<button
+						onClick={handleCopyBranch}
+						className={`${branchNameClassName} text-left rounded hover:text-fg transition-colors`}
+						aria-label={t("infoPanel.copyBranch", { branch: task.branchName })}
+					>
+						{task.branchName}
+					</button>
+				</Tooltip>
 			)}
 
 			{showWorktreeCopy && task.worktreePath && (

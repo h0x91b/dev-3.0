@@ -53,6 +53,7 @@ export const tooltips = {
 	"ttip.infoPanel.bugHunters":
 		"Lanza varios agentes de solo lectura que peinan este worktree en paralelo buscando bugs y reportan lo que encuentran. No pueden modificar archivos.",
 	"ttip.infoPanel.worktreeConfig": "Ajustes específicos de cómo se prepara el worktree de esta tarea.",
+	"ttip.infoPanel.copyBranch": "La barra recorta los nombres de rama largos — haz clic para copiar el nombre completo.",
 	"ttip.infoPanel.copyPath": "Copia la ruta absoluta del git worktree de esta tarea — pégala en cualquier terminal o editor.",
 	"ttip.infoPanel.actions": "Todas las acciones de la tarea en una hoja: git, scripts, dev server, abrir-en y más.",
 	"ttip.infoPanel.fullScreen": "La terminal ocupa toda la ventana. Pulsa de nuevo para volver. Atajos: {shortcuts}.",

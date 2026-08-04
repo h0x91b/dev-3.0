@@ -86,6 +86,8 @@ const infoPanel = {
 	"infoPanel.mergeCheckStatusIneligible": "La rama está fusionada, pero una tarea en «{status}» no se puede completar desde aquí",
 	"infoPanel.movedAt": "Movido",
 	"infoPanel.baseBranch": "Rama base",
+	"infoPanel.copyBranch": "Copiar el nombre de la rama {branch}",
+	"infoPanel.branchCopied": "Nombre de la rama copiado",
 	"infoPanel.copyPath": "Copiar la ruta de este git worktree",
 	"infoPanel.pathCopied": "¡Copiado!",
 	"infoPanel.changedFiles": "Archivos cambiados",

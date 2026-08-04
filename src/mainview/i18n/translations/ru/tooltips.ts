@@ -53,6 +53,7 @@ export const tooltips = {
 	"ttip.infoPanel.bugHunters":
 		"Запускает несколько read-only агентов, которые параллельно прочёсывают worktree в поисках багов и докладывают о находках. Менять файлы они не могут.",
 	"ttip.infoPanel.worktreeConfig": "Переопределения настройки worktree для конкретной таски.",
+	"ttip.infoPanel.copyBranch": "Бар обрезает длинные имена веток — нажмите, чтобы скопировать полное имя.",
 	"ttip.infoPanel.copyPath": "Копирует абсолютный путь к git worktree таски — вставьте его в любой терминал или редактор.",
 	"ttip.infoPanel.actions": "Все действия таски в одном списке: git, скрипты, dev-сервер, open-in и прочее.",
 	"ttip.infoPanel.fullScreen": "Терминал занимает всё окно. Нажмите ещё раз, чтобы вернуться. Горячие клавиши: {shortcuts}.",

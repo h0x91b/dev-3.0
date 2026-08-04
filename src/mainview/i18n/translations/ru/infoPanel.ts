@@ -86,6 +86,8 @@ const infoPanel = {
 	"infoPanel.mergeCheckStatusIneligible": "Ветка влита, но задачу в статусе «{status}» отсюда завершить нельзя",
 	"infoPanel.movedAt": "Перемещено",
 	"infoPanel.baseBranch": "Базовая ветка",
+	"infoPanel.copyBranch": "Скопировать имя ветки {branch}",
+	"infoPanel.branchCopied": "Имя ветки скопировано",
 	"infoPanel.copyPath": "Скопировать путь к этому git worktree",
 	"infoPanel.pathCopied": "Скопировано!",
 	"infoPanel.changedFiles": "Изменённые файлы",

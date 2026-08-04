@@ -55,6 +55,7 @@ export const tooltips = {
 	"ttip.infoPanel.bugHunters":
 		"Launches several read-only agents that comb this worktree for bugs in parallel and report what they find. They cannot modify files.",
 	"ttip.infoPanel.worktreeConfig": "Per-task overrides for how this worktree is set up.",
+	"ttip.infoPanel.copyBranch": "The bar clamps long branch names — click to copy the full name to the clipboard.",
 	"ttip.infoPanel.copyPath": "Copies the absolute path of this task's git worktree — paste it into any terminal or editor.",
 	"ttip.infoPanel.actions": "All task actions in one sheet: git, scripts, dev server, open-in and more.",
 	"ttip.infoPanel.fullScreen": "The terminal takes over the whole window. Press again to come back. Shortcuts: {shortcuts}.",

@@ -86,6 +86,8 @@ const infoPanel = {
 	"infoPanel.mergeCheckStatusIneligible": "Branch is merged, but a task in \"{status}\" can't be completed from here",
 	"infoPanel.movedAt": "Moved",
 	"infoPanel.baseBranch": "Base Branch",
+	"infoPanel.copyBranch": "Copy branch name {branch}",
+	"infoPanel.branchCopied": "Branch name copied",
 	"infoPanel.copyPath": "Copy path to this git worktree",
 	"infoPanel.pathCopied": "Copied!",
 	"infoPanel.changedFiles": "Changed files",
