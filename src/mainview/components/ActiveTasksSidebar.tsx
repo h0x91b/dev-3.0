@@ -555,7 +555,7 @@ function ActiveTasksSidebar({
 							}
 						}}
 						placeholder={t("sidebar.searchPlaceholder")}
-						className="w-full pl-6 pr-5 py-1 text-xs bg-base border border-edge rounded-md text-fg placeholder:text-fg-muted focus:outline-none focus:border-edge-active transition-colors"
+						className="w-full pl-6 pr-5 py-1 text-xs bg-base border border-edge rounded-md text-fg placeholder:text-fg-muted focus:border-edge-active transition-colors"
 					/>
 					{searchQuery && (
 						<button
@@ -674,7 +674,7 @@ function ActiveTasksSidebar({
 												if (!task.shuttingDown) preview.handlers.onMouseEnter(task.id, e.currentTarget);
 											}}
 											onMouseLeave={preview.handlers.onMouseLeave}
-											className={`w-full text-left px-3 py-2 transition-colors relative cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
+											className={`w-full text-left px-3 py-2 transition-colors relative cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 												task.shuttingDown
 													? "grayscale opacity-40 pointer-events-none"
 													: task.hibernated

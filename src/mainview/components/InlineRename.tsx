@@ -28,7 +28,7 @@ export default function InlineRename({
 	hasCustomTitle,
 	dispatch,
 	className = "text-fg font-semibold truncate",
-	inputClassName = "bg-base border border-edge-active rounded px-1.5 py-0.5 text-sm text-fg font-semibold focus:outline-none focus:border-accent",
+	inputClassName = "bg-base border border-edge-active rounded px-1.5 py-0.5 text-sm text-fg font-semibold focus:border-accent",
 	showReset,
 }: InlineRenameProps) {
 	const t = useT();

@@ -130,7 +130,7 @@ function LabelFilterBar({
 							}
 						}}
 						placeholder={t("labels.searchPlaceholderTasks")}
-						className="w-full pl-7 pr-6 py-1.5 text-sm bg-base border border-edge rounded-lg text-fg placeholder:text-fg-muted focus:outline-none focus:border-edge-active transition-colors"
+						className="w-full pl-7 pr-6 py-1.5 text-sm bg-base border border-edge rounded-lg text-fg placeholder:text-fg-muted focus:border-edge-active transition-colors"
 					/>
 					{searchQuery && (
 						<button
@@ -183,7 +183,7 @@ function LabelFilterBar({
 							}
 						}}
 						placeholder={t("labels.searchPlaceholderTasks")}
-						className="w-full pl-7 pr-6 py-1 text-xs bg-base border border-edge rounded-lg text-fg placeholder:text-fg-muted focus:outline-none focus:border-edge-active transition-colors"
+						className="w-full pl-7 pr-6 py-1 text-xs bg-base border border-edge rounded-lg text-fg placeholder:text-fg-muted focus:border-edge-active transition-colors"
 					/>
 					{searchQuery && (
 						<button

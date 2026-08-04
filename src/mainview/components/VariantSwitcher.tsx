@@ -52,7 +52,7 @@ function VariantSwitcher({ variants, currentTaskId, projectId, isFullPage = fals
 							aria-current={isCurrent ? "true" : undefined}
 							data-testid={`variant-switcher-${variant.id}`}
 							onClick={() => navigateToVariant(variant.id)}
-							className={`inline-flex h-7 min-w-[2.25rem] items-center justify-center gap-1 rounded-md px-1.5 text-[0.625rem] font-semibold tabular-nums transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+							className={`inline-flex h-7 min-w-[2.25rem] items-center justify-center gap-1 rounded-md px-1.5 text-[0.625rem] font-semibold tabular-nums transition-colors focus-visible:ring-1 focus-visible:ring-accent ${
 								isCurrent
 									? "bg-accent/15 text-fg ring-1 ring-inset ring-accent/60"
 									: "text-fg-3 hover:bg-elevated-hover hover:text-fg"

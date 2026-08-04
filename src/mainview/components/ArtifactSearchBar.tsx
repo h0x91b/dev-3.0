@@ -78,7 +78,7 @@ const ArtifactSearchBar = forwardRef<ArtifactSearchBarHandle, ArtifactSearchBarP
 					spellCheck={false}
 					autoCorrect="off"
 					autoCapitalize="off"
-					className="w-40 bg-transparent text-sm text-fg placeholder:text-fg-muted focus:outline-none"
+					className="w-40 bg-transparent text-sm text-fg placeholder:text-fg-muted"
 				/>
 				{matches !== null && (
 					<span

@@ -129,7 +129,7 @@ const TerminalSearchBar = forwardRef<TerminalSearchBarHandle, TerminalSearchBarP
 					spellCheck={false}
 					autoCorrect="off"
 					autoCapitalize="off"
-					className="w-44 bg-transparent text-sm text-fg placeholder:text-fg-muted focus:outline-none"
+					className="w-44 bg-transparent text-sm text-fg placeholder:text-fg-muted"
 				/>
 				{matches !== null && (
 					<span

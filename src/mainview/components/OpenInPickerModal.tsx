@@ -194,7 +194,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 				<div className="border-t border-edge px-3 py-2 flex items-center justify-between gap-3">
 					<button
 						onClick={copyPath}
-						className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-fg-3 hover:text-fg hover:bg-elevated-hover focus:outline-none focus:ring-2 focus:ring-accent/50 transition-colors"
+						className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-fg-3 hover:text-fg hover:bg-elevated-hover focus:ring-2 focus:ring-accent/50 transition-colors"
 					>
 						<span className="w-4 text-center leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 							{copied ? "\u{F012C}" : "\u{F0C5}"}

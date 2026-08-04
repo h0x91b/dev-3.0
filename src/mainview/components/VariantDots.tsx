@@ -58,7 +58,7 @@ function VariantDots({
 						onOpen?.();
 						setPopoverOpen((open) => !open);
 					}}
-					className={`inline-flex min-w-[2.25rem] items-center justify-start rounded-lg px-1.5 py-1 transition-colors hover:bg-fg/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent ${gapClassName}`}
+					className={`inline-flex min-w-[2.25rem] items-center justify-start rounded-lg px-1.5 py-1 transition-colors hover:bg-fg/5 focus-visible:ring-1 focus-visible:ring-accent ${gapClassName}`}
 				>
 					{dots.map((variant) => (
 						<span

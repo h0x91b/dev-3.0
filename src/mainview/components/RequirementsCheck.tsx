@@ -159,7 +159,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 													aria-invalid={hasPathError}
 													aria-describedby={hasPathError ? pathErrorId : undefined}
 													placeholder={`/path/to/${req.name.toLowerCase()}`}
-													className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${hasPathError ? "border-danger" : "border-edge"}`}
+													className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${hasPathError ? "border-danger" : "border-edge"}`}
 												/>
 												<button
 													type="button"

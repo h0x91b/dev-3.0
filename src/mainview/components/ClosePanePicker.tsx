@@ -246,7 +246,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 						e.stopPropagation();
 						void commit(box);
 					}}
-					className="group absolute cursor-pointer focus:outline-none"
+					className="group absolute cursor-pointer"
 					style={{
 						left: `${box.leftPct}%`,
 						top: `${box.topPct}%`,

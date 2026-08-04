@@ -399,7 +399,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 									onChange={(e) => { setQuery(e.target.value); setActiveIdx(0); }}
 									onKeyDown={onSearchKey}
 									placeholder={t("scripts.search.placeholder")}
-									className="w-full bg-base border border-edge rounded-lg px-2.5 py-1.5 text-sm text-fg placeholder:text-fg-muted focus:outline-none focus:border-accent"
+									className="w-full bg-base border border-edge rounded-lg px-2.5 py-1.5 text-sm text-fg placeholder:text-fg-muted focus:border-accent"
 								/>
 							</div>
 						)}

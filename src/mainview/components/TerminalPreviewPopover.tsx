@@ -250,7 +250,7 @@ function TerminalPreviewPopover({
 								rows={5}
 								disabled={saving}
 								placeholder={t("overview.editPlaceholder")}
-								className="w-full resize-none bg-base border border-edge-active rounded px-2 py-1.5 text-[0.75rem] leading-snug text-fg focus:outline-none focus:border-accent"
+								className="w-full resize-none bg-base border border-edge-active rounded px-2 py-1.5 text-[0.75rem] leading-snug text-fg focus:border-accent"
 							/>
 							<div className="flex items-center justify-between gap-2">
 								<span

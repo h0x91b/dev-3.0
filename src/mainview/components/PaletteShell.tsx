@@ -118,7 +118,7 @@ export function PaletteShell<T>({
 						}}
 						onKeyDown={handleKeyDown}
 						placeholder={placeholder}
-						className="w-full bg-base border border-edge rounded-lg px-3 py-2 text-fg text-sm placeholder:text-fg-muted focus:outline-none focus:border-edge-active"
+						className="w-full bg-base border border-edge rounded-lg px-3 py-2 text-fg text-sm placeholder:text-fg-muted focus:border-edge-active"
 						aria-label={placeholder}
 					/>
 				</div>

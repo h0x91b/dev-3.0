@@ -341,7 +341,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 						}}
 						title={t("task.prShowUnresolvedInDiff")}
 						aria-label={t("task.prShowUnresolvedInDiff")}
-						className="mt-2 flex items-center gap-1.5 rounded text-warning transition-colors hover:underline focus:outline-none focus:ring-1 focus:ring-accent"
+						className="mt-2 flex items-center gap-1.5 rounded text-warning transition-colors hover:underline focus:ring-1 focus:ring-accent"
 					>
 						<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 						<span>{t.plural("task.prUnresolvedComments", prInfo.unresolvedCount)}</span>
@@ -418,7 +418,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 											href={check.detailsUrl}
 											target="_blank"
 											rel="noreferrer"
-											className={`block rounded ${rowPadding} hover:bg-elevated-hover focus:outline-none focus:ring-1 focus:ring-accent`}
+											className={`block rounded ${rowPadding} hover:bg-elevated-hover focus:ring-1 focus:ring-accent`}
 											aria-label={t("task.prCheckDetails", { name })}
 										>
 											{row}

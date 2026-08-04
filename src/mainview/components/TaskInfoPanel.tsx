@@ -1027,7 +1027,7 @@ function TaskInfoPanel({
 								hasCustomTitle={!!task.customTitle}
 								dispatch={dispatch}
 								className="text-fg-2 font-semibold truncate"
-								inputClassName="w-full bg-base border border-edge-active rounded px-1.5 py-0.5 text-xs text-fg focus:outline-none focus:border-accent"
+								inputClassName="w-full bg-base border border-edge-active rounded px-1.5 py-0.5 text-xs text-fg focus:border-accent"
 								showReset
 							/>
 

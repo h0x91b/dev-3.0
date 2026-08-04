@@ -876,7 +876,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 								<button
 									ref={keepEditingRef}
 									onClick={() => setConfirmDiscard(false)}
-									className="px-3 py-1 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg focus:outline-none focus:ring-2 focus:ring-edge-active focus:text-fg"
+									className="px-3 py-1 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg focus:ring-2 focus:ring-edge-active focus:text-fg"
 								>
 									{t("createTask.keepEditing")}
 								</button>

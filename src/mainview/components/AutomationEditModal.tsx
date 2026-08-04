@@ -204,7 +204,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 	const hasDays = mode !== "daily" || byDay.length > 0;
 	const canSave = name.trim().length > 0 && prompt.trim().length > 0 && hasDays && !saving;
 
-	const inputClass = "w-full bg-raised border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted focus:border-edge-active focus:outline-none";
+	const inputClass = "w-full bg-raised border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted focus:border-edge-active";
 	const labelClass = "text-xs text-fg-3 block mb-1";
 	const modeButtonClass = (m: ScheduleMode) =>
 		`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -335,7 +335,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 									max={31}
 									value={monthDay}
 									onChange={(e) => setMonthDay(Number(e.target.value))}
-									className="w-20 bg-raised border border-edge rounded-lg px-2 py-1 text-sm text-fg focus:border-edge-active focus:outline-none"
+									className="w-20 bg-raised border border-edge rounded-lg px-2 py-1 text-sm text-fg focus:border-edge-active"
 								/>
 							</div>
 						)}
@@ -348,7 +348,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 									type="time"
 									value={time}
 									onChange={(e) => setTime(e.target.value)}
-									className="bg-raised border border-edge rounded-lg px-2 py-1 text-sm text-fg focus:border-edge-active focus:outline-none"
+									className="bg-raised border border-edge rounded-lg px-2 py-1 text-sm text-fg focus:border-edge-active"
 								/>
 							</div>
 						) : (

@@ -3605,7 +3605,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 															className={`rounded-lg border px-3 py-2 space-y-2 ${
 																isEditing
 																	? "border-accent/40 bg-accent/10"
-																	: `border-edge bg-raised/65 cursor-pointer transition-colors hover:border-accent/30 hover:bg-accent/5 focus:outline-none focus:ring-1 focus:ring-accent/40${entry.sentAt ? " opacity-60" : ""}`
+																	: `border-edge bg-raised/65 cursor-pointer transition-colors hover:border-accent/30 hover:bg-accent/5 focus:ring-1 focus:ring-accent/40${entry.sentAt ? " opacity-60" : ""}`
 															}`}
 														>
 															<div className="flex items-center gap-1.5 text-xs font-semibold text-fg">

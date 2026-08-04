@@ -651,7 +651,7 @@ export default function AgentSettingsSection({
 																	}
 																	onClick={(event) => event.stopPropagation()}
 																	placeholder={`/path/to/${agent.baseCommand}`}
-																	className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${
+																	className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${
 																		availability.customPathError
 																			? "border-danger"
 																			: "border-edge"

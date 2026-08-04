@@ -384,7 +384,7 @@ function NumberInput({
 				type="number"
 				value={value}
 				onChange={(e) => onChange(Number(e.target.value))}
-				className="w-full px-2 py-1.5 text-sm rounded-lg bg-elevated border border-edge text-fg focus:outline-none focus:border-accent transition-colors"
+				className="w-full px-2 py-1.5 text-sm rounded-lg bg-elevated border border-edge text-fg focus:border-accent transition-colors"
 			/>
 		</div>
 	);
@@ -406,7 +406,7 @@ function TextInput({
 				type="text"
 				value={value}
 				onChange={(e) => onChange(e.target.value)}
-				className="w-full px-2 py-1.5 text-sm rounded-lg bg-elevated border border-edge text-fg focus:outline-none focus:border-accent transition-colors"
+				className="w-full px-2 py-1.5 text-sm rounded-lg bg-elevated border border-edge text-fg focus:border-accent transition-colors"
 			/>
 		</div>
 	);
