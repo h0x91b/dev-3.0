@@ -16,7 +16,7 @@
  */
 export { tmux, TmuxClient } from "./client";
 export type { TmuxClientOptions, SplitOrientation, TmuxLayoutName } from "./client";
-export { DEFAULT_TMUX_SOCKET } from "./constants";
+export { DEFAULT_TMUX_SOCKET, CAPTURE_SCROLLBACK_START_LINE } from "./constants";
 export { TmuxError, isTmuxError, TmuxSpawnError, isTmuxSpawnError, TmuxTimeoutError, isTmuxTimeoutError } from "./errors";
 export {
 	tmuxFormat,
@@ -31,6 +31,7 @@ export {
 	WINDOW_OVERVIEW_FORMAT,
 	PANE_GEOMETRY_FORMAT,
 	PANE_SWITCHER_FORMAT,
+	PEEK_PANE_FORMAT,
 	WINDOW_SWITCHER_FORMAT,
 	SEARCH_STATE_FORMAT,
 	SESSION_OVERVIEW_FORMAT,

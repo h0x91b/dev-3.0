@@ -27,6 +27,7 @@ import {
 	nativeTaskTerminalBackend,
 	type NativePaneObservation,
 	type TerminalLaunchSpec,
+	type TerminalPaneCapture,
 } from "./task-terminal-backend";
 import {
 	defineShellLaunchSpec,
@@ -317,6 +318,20 @@ export async function writeNativeTaskPane(taskId: string, paneId: string, data: 
  * had a cached coordinator. A still-present coordinator would make the next
  * startNativeTaskPanes fail with session-exists.
  */
+/**
+ * Read-only observation of one pane (`dev3 peek`), through the seam's purely
+ * observational capture: a file read with no writer lease and nothing the pane's
+ * agent cooperates with (decision 202). Every outcome is a result, so a caller
+ * must handle a miss instead of reading text off it.
+ */
+export function captureNativeTaskPane(
+	taskId: string,
+	paneId: string,
+	historyLines: number,
+): Promise<TerminalPaneCapture> {
+	return getBackend().captureView(coordinatorId(taskId), paneId, { historyLines });
+}
+
 export async function stopNativeTaskPanes(taskId: string): Promise<void> {
 	const backend = getBackend();
 	const coordId = coordinatorId(taskId);

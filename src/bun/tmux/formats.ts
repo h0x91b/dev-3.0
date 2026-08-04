@@ -243,6 +243,23 @@ export const PANE_SWITCHER_FORMAT = tmuxFormat()
 	.tail("title", "pane_title")
 	.build();
 
+/**
+ * Pane list for `dev3 peek` — liveness plus the freshest activity time tmux can
+ * give. There is deliberately no per-pane activity variable in the format:
+ * `pane_last_activity` / `pane_activity` do not exist (verified against a live
+ * tmux 3.6a), so `windowActivity` (epoch seconds, per WINDOW) is the honest
+ * signal and peek labels it as window-level.
+ */
+export const PEEK_PANE_FORMAT = tmuxFormat()
+	.string("paneId", "pane_id")
+	.flag("active", "pane_active")
+	.flag("dead", "pane_dead")
+	.number("windowActivity", "window_activity")
+	.string("command", "pane_current_command")
+	.string("hostShort", "host_short")
+	.tail("title", "pane_title")
+	.build();
+
 /** Window list for the narrow-viewport window switcher. */
 export const WINDOW_SWITCHER_FORMAT = tmuxFormat()
 	.string("windowId", "window_id")

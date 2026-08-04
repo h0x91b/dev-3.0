@@ -405,6 +405,23 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "peek",
+		summary: "Read-only glance at a task's terminal — what it was doing and how fresh that is.",
+		subcommands: [],
+		usage: "dev3 peek [--task <id|seq:N>] [--pane <N|paneId>] [--lines <N>] [--json]",
+		details: [
+			"Prints a header, one line per pane (command, alive/dead, age of last output) and the tail of the focused pane.",
+			"--task <id>      Any task in any project; defaults to the current worktree's task.",
+			"--project <id>   Narrow the search when a seq: ref matches tasks on several boards.",
+			"--pane <N|id>    Tail another pane: the number from the summary, or its raw pane id.",
+			"--lines <N>      Tail budget, 1..1000 (default 120).",
+			"--json           Emit the raw snapshot object.",
+			"Never focuses, writes, resizes, or takes ownership — the peeked task cannot tell it happened.",
+			"A task with no live terminal answers successfully with the reason (draft, hibernated, not running).",
+			"On tmux, output ages are per WINDOW (tmux has no per-pane activity time); native reports them per pane.",
+		],
+	},
+	{
 		name: "ui",
 		summary: "Inspect the app's current UI state.",
 		subcommands: [

@@ -9,6 +9,7 @@ import {
 	PANE_CAPTURE_FORMAT,
 	PANE_GEOMETRY_FORMAT,
 	PANE_SWITCHER_FORMAT,
+	PEEK_PANE_FORMAT,
 	ALT_CLICK_PANE_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
 	SEARCH_STATE_FORMAT,
@@ -108,6 +109,26 @@ describe("format declarations", () => {
 	it("PANE_SWITCHER_FORMAT carries host_short to detect unset titles", () => {
 		const rows = PANE_SWITCHER_FORMAT.parse("%1\t1\t0\tzsh\tmyhost\tmyhost\n");
 		expect(rows[0]).toMatchObject({ paneId: "%1", active: true, zoomed: false, command: "zsh", hostShort: "myhost", title: "myhost" });
+	});
+
+	it("PEEK_PANE_FORMAT parses window activity and keeps the title as the tail", () => {
+		const rows = PEEK_PANE_FORMAT.parse("%1\t1\t0\t1785801206\tzsh\tmyhost\tThinking\tabout\tauth\n");
+		expect(rows[0]).toEqual({
+			paneId: "%1",
+			active: true,
+			dead: false,
+			windowActivity: 1785801206,
+			command: "zsh",
+			hostShort: "myhost",
+			// A TAB inside the title cannot shift the typed columns before it.
+			title: "Thinking\tabout\tauth",
+		});
+	});
+
+	it("PEEK_PANE_FORMAT asks for a WINDOW activity time — tmux has no per-pane one", () => {
+		expect(PEEK_PANE_FORMAT.formatString).toContain("#{window_activity}");
+		expect(PEEK_PANE_FORMAT.formatString).not.toContain("pane_activity");
+		expect(PEEK_PANE_FORMAT.formatString.endsWith("#{pane_title}")).toBe(true);
 	});
 
 	it("STATUS_GEOMETRY_FORMAT keeps status as a raw string (off/on/N)", () => {

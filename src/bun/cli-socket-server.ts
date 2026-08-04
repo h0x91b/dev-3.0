@@ -24,6 +24,7 @@ import { loadSettings } from "./settings";
 import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { syncTaskBranchName } from "./task-branch-sync";
+import { taskPeek } from "./task-peek";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "./task-terminal-backend-switch";
 import { DEV3_HOME } from "./paths";
 import { cliTransportFor, startCliListener } from "./cli-listener";
@@ -407,6 +408,31 @@ const handlers: Record<string, Handler> = {
 		const found = await resolveTaskAcrossProjects(taskId);
 		if (!found) throw taskNotFoundError(taskId);
 		return await syncTaskBranchName(found.project, found.task);
+	},
+
+	/**
+	 * Read-only activity glance for a coordinator (`dev3 peek`). Deliberately
+	 * unrestricted across projects, and deliberately silent in the logs about the
+	 * terminal text it returns.
+	 */
+	"task.peek": async (params) => {
+		const taskId = params.taskId as string;
+		if (!taskId) throw new Error("taskId is required");
+
+		let task: Task | null = null;
+		if (params.projectId) {
+			const project = await data.getProject(params.projectId as string);
+			task = findTaskByRef(await data.loadTasks(project), taskId);
+		} else {
+			task = (await resolveTaskAcrossProjects(taskId))?.task ?? null;
+		}
+		if (!task) throw taskNotFoundError(taskId);
+
+		return await taskPeek({
+			task,
+			pane: params.pane === undefined ? undefined : String(params.pane),
+			lines: params.lines === undefined ? undefined : Number(params.lines),
+		});
 	},
 
 	"task.create": async (params) => {

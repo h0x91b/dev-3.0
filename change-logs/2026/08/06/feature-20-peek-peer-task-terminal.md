@@ -1,0 +1,3 @@
+Short: Peek at another task's terminal
+
+New read-only `dev3 peek` command: a coordinating agent can glance at another task's terminal — a per-pane summary with liveness and how long ago each pane produced output, plus the tail of one pane — without focusing it, sending input, or interrupting the worker. Both backends answer with the same fields and the same meanings: on tmux the output ages are per window, which the output states explicitly, and anything a backend cannot supply is reported as `unknown` rather than guessed. Native tasks currently answer `could not read the terminal — not-enabled`, because the native host publishes no capture artifact yet (decision 202); their pane summary still works.

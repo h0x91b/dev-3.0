@@ -27,6 +27,10 @@ import { NativeTerminalBackend, TmuxTerminalBackend, type TerminalBackend } from
 // The seam's vocabulary reaches the rest of the app through here, so the
 // isolation guard can keep pointing at a single importer.
 export type { TerminalLaunchSpec, TerminalSessionState } from "./terminal-backend";
+// The capture vocabulary rides along: a read-only observer needs the outcome
+// types, and the seam itself stays importable only from here.
+export { isCapturedPane } from "./terminal-backend";
+export type { TerminalPaneCapture, TerminalPaneCaptureMissReason } from "./terminal-backend";
 // Re-export the concrete class so native-task-panes can hold the typed handle
 // without importing terminal-backend directly (isolation: decision 179).
 export { NativeTerminalBackend } from "./terminal-backend";
