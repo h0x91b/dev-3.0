@@ -589,7 +589,7 @@ function KanbanColumn({
 					)}
 					{tasks.length > 0 && (
 						<span
-							className="text-[0.625rem] font-bold px-1.5 py-px rounded-full flex-shrink-0"
+							className="text-dense font-bold px-1.5 py-px rounded-full flex-shrink-0"
 							style={{
 								color: inkColor,
 								background: `${color}18`,
@@ -678,7 +678,8 @@ function KanbanColumn({
 
 				{tasks.length === 0 && !tip && !isCompactNarrow && (
 					<div className="text-fg-muted text-sm text-center py-8">
-						{t("kanban.noTasks")}
+						<p>{t("kanban.noTasks")}</p>
+						<p className="text-xs mt-1">{t("kanban.noTasksHint")}</p>
 					</div>
 				)}
 

@@ -203,7 +203,7 @@ function LabelRow({
 					title={t("labels.dragToReorder")}
 					aria-label={t("labels.dragToReorder")}
 				>
-					<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01DB}"}</span>
+					<span className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01DB}"}</span>
 				</button>
 				<div className="flex items-center gap-0.5 transition-opacity duration-150 ease-out md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
 					<button
@@ -214,7 +214,7 @@ function LabelRow({
 						title={t("labels.moveUp")}
 						aria-label={t("labels.moveUp")}
 					>
-						<span className="text-[0.8125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF062"}</span>
+						<span className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF062"}</span>
 					</button>
 					<button
 						type="button"
@@ -224,7 +224,7 @@ function LabelRow({
 						title={t("labels.moveDown")}
 						aria-label={t("labels.moveDown")}
 					>
-						<span className="text-[0.8125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF063"}</span>
+						<span className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF063"}</span>
 					</button>
 				</div>
 			</div>
@@ -389,7 +389,7 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 				<div className="flex items-center justify-between gap-3 mb-2">
 					<div>
 						<span className="block text-fg-3 text-xs font-medium">{t("columnAgent.title")}</span>
-						<p className="text-fg-muted text-[0.65rem]">{t("columnAgent.desc")}</p>
+						<p className="text-fg-muted text-dense">{t("columnAgent.desc")}</p>
 					</div>
 					<ToggleSwitch
 						checked={agentEnabled}
@@ -434,7 +434,7 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 								spellCheck={false}
 								className="w-full px-2 py-1.5 bg-base border border-edge rounded-lg text-fg-2 text-xs placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y font-mono"
 							/>
-							<p className="text-fg-muted text-[0.6rem] mt-1">{t("columnAgent.hint")}</p>
+							<p className="text-fg-muted text-nano mt-1">{t("columnAgent.hint")}</p>
 						</div>
 					</div>
 				)}
@@ -686,7 +686,7 @@ function BranchPicker({
 				<div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-overlay border border-edge rounded-xl shadow-lg">
 					{localBranches.length > 0 && (
 						<>
-							<div className="px-3 py-1 text-[0.625rem] font-semibold text-fg-muted uppercase tracking-wider">
+							<div className="px-3 py-1 text-dense font-semibold text-fg-muted uppercase tracking-wider">
 								{t("createTask.branchLocal")}
 							</div>
 							{localBranches.map((branch) => (
@@ -710,7 +710,7 @@ function BranchPicker({
 
 					{includeRemote && remoteBranches.length > 0 && (
 						<>
-							<div className="px-3 py-1 text-[0.625rem] font-semibold text-fg-muted uppercase tracking-wider">
+							<div className="px-3 py-1 text-dense font-semibold text-fg-muted uppercase tracking-wider">
 								{t("createTask.branchRemote")}
 							</div>
 							{remoteBranches.map((branch) => (
@@ -1773,7 +1773,10 @@ function ProjectSettings({
 										/>
 									))}
 									{(project.customColumns ?? []).length === 0 && (
-										<EmptyHint>{t("customColumns.noColumns")}</EmptyHint>
+										<EmptyHint>
+											{t("customColumns.noColumns")}
+											<span className="block text-xs mt-1">{t("customColumns.noColumnsHint")}</span>
+										</EmptyHint>
 									)}
 								</div>
 								<AddRowButton onClick={handleAddColumn} disabled={columnSaving !== null}>

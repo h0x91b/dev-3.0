@@ -43,6 +43,7 @@ const terminal = {
 	"paneMap.hint": "Toca un panel para saltar a él.",
 	"paneMap.loading": "Leyendo disposición…",
 	"paneMap.empty": "No hay paneles que mostrar.",
+	"paneMap.emptyHint": "Divide el terminal con los atajos de tmux para ver los paneles aquí.",
 	"paneMap.goTo": "Ir a {label}",
 	"paneMap.current": "actual",
 	"paneMap.windows": "Ventanas",
@@ -147,6 +148,7 @@ const terminal = {
 	// Tmux Session Manager
 	"tmuxSessions.title": "Sesiones tmux",
 	"tmuxSessions.empty": "No hay sesiones dev3 activas",
+	"tmuxSessions.emptyHint": "Inicia una tarea en el tablero para crear una sesión aquí.",
 	"tmuxSessions.sessionCount_one": "{count} sesión",
 	"tmuxSessions.sessionCount_other": "{count} sesiones",
 	"tmuxSessions.copied": "¡Copiado!",
@@ -183,7 +185,7 @@ const terminal = {
 
 	// Ports
 	"ports.title": "Puertos",
-	"ports.empty": "Sin puertos abiertos",
+	"ports.empty": "Sin puertos abiertos — inicia un servidor de desarrollo para exponer uno.",
 	"ports.openInBrowser": "Abrir en navegador",
 	"ports.copyUrl": "Copiar URL",
 	"ports.copied": "¡Copiado!",

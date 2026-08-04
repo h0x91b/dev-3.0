@@ -210,7 +210,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 						<span className="text-accent text-2xl leading-none" style={{ fontFamily: ICON }}>{"\u{F04C5}"}</span>
 						<div className="min-w-0">
 							<div className="flex items-center gap-1.5">
-								<h1 className="text-fg text-xl font-bold leading-tight">{t("stats.title")}</h1>
+								<h1 className="text-fg text-2xl font-bold leading-tight">{t("stats.title")}</h1>
 								<HelpSpot topicId="stats.overview" />
 							</div>
 							{data.hasAnyData ? (
@@ -416,7 +416,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<div className="rounded-2xl border border-edge bg-raised p-4">
 								<div className="flex items-center justify-between mb-3">
 									<div className="text-fg-2 text-sm font-semibold">{t("stats.chart.linesTitle")}</div>
-									<div className="text-fg-muted text-[0.625rem]">
+									<div className="text-fg-muted text-dense">
 										{!data.hasAnyLines
 											? t("stats.locEmpty.badge")
 											: data.locTrackingSince
@@ -436,7 +436,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 						<div>
 							<div className="flex items-center justify-between mb-3">
 								<div className="text-fg-2 text-sm font-semibold">{t("stats.heatmap.title")}</div>
-								<div className="text-fg-muted text-[0.625rem]">{t("stats.heatmap.subtitle")}</div>
+								<div className="text-fg-muted text-dense">{t("stats.heatmap.subtitle")}</div>
 							</div>
 							<div className="rounded-2xl border border-edge bg-raised p-4">
 								<ContributionHeatmap
@@ -484,7 +484,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 						<div>
 							<div className="flex items-center justify-between mb-3">
 								<div className="text-fg-2 text-sm font-semibold">{t("stats.time.title")}</div>
-								<div className="text-fg-muted text-[0.625rem]">
+								<div className="text-fg-muted text-dense">
 									{data.time.count === 0
 										? t("stats.time.empty")
 										: !data.time.hasTracking
@@ -545,7 +545,10 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 						<div>
 							<div className="text-fg-2 text-sm font-semibold mb-3">{t("stats.perProject.title")}</div>
 							{data.perProject.length === 0 ? (
-								<div className="text-fg-muted text-xs py-6 text-center">{t("stats.perProject.empty")}</div>
+								<div className="text-fg-muted text-xs py-6 text-center">
+									<p>{t("stats.perProject.empty")}</p>
+									<p className="mt-1">{t("stats.perProject.emptyHint")}</p>
+								</div>
 							) : (
 								<div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
 									{data.perProject.map((p) => (
@@ -565,7 +568,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 												<span className="text-fg text-sm font-bold tabular-nums flex-shrink-0">{p.completed}</span>
 											</div>
 											<SegmentedBar value={p.completed} max={projMax} ariaLabel={`${p.name}: ${p.completed} ${t("stats.unit.tasks")}`} />
-											<div className="flex items-center gap-2 text-fg-muted text-[0.625rem]">
+											<div className="flex items-center gap-2 text-fg-muted text-dense">
 												{p.lines > 0 && <span>{compact(p.lines)} {t("stats.unit.lines")}</span>}
 												<span>{p.averageLifetimeMs == null ? t("stats.perProject.lifetimeUnavailable") : `${t("stats.perProject.lifetime")}: ${formatLifetime(p.averageLifetimeMs / 3_600_000)}`}</span>
 												{p.totalMs > 0 && (
@@ -593,7 +596,10 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<div>
 								<div className="text-fg-2 text-sm font-semibold mb-3">{t("stats.perAgent.title")}</div>
 								{data.perAgent.length === 0 ? (
-									<div className="text-fg-muted text-xs py-6 text-center">{t("stats.perAgent.empty")}</div>
+									<div className="text-fg-muted text-xs py-6 text-center">
+										<p>{t("stats.perAgent.empty")}</p>
+										<p className="mt-1">{t("stats.perAgent.emptyHint")}</p>
+									</div>
 								) : (
 									<div className="rounded-2xl border border-edge bg-raised p-4 max-w-md">
 										<BreakdownPie
@@ -618,7 +624,10 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 									<HelpSpot topicId="stats.model-configuration" />
 								</div>
 								{data.perModelConfiguration.length === 0 ? (
-									<div className="text-fg-muted text-xs py-6 text-center">{t("stats.perModelConfiguration.empty")}</div>
+									<div className="text-fg-muted text-xs py-6 text-center">
+										<p>{t("stats.perModelConfiguration.empty")}</p>
+										<p className="mt-1">{t("stats.perModelConfiguration.emptyHint")}</p>
+									</div>
 								) : (
 									<div className="rounded-2xl border border-edge bg-raised p-4 max-w-md">
 										<BreakdownPie
@@ -692,8 +701,8 @@ function TimeCard({
 		<div className="rounded-xl border border-edge bg-raised px-4 py-3 flex flex-col gap-0.5">
 			<div className={`text-2xl font-bold tabular-nums leading-none ${valueColor}`}>{formatDuration(ms)}</div>
 			<div className="text-fg-2 text-xs font-semibold">{label}</div>
-			<div className="text-fg-muted text-[0.625rem] leading-tight">{caption}</div>
-			{sub && <div className="text-fg-3 text-[0.625rem] leading-tight mt-0.5 tabular-nums">{sub}</div>}
+			<div className="text-fg-muted text-dense leading-tight">{caption}</div>
+			{sub && <div className="text-fg-3 text-dense leading-tight mt-0.5 tabular-nums">{sub}</div>}
 		</div>
 	);
 }
@@ -723,7 +732,7 @@ function AgentVsYouBar({
 		<div className="mt-3 rounded-2xl border border-edge bg-raised p-4">
 			<div className="flex items-center justify-between mb-2">
 				<span className="text-fg-2 text-xs font-semibold">{title}</span>
-				<span className="text-fg-muted text-[0.625rem] tabular-nums">{Math.round(agentPct)}% · {Math.round(youPct)}%</span>
+				<span className="text-fg-muted text-dense tabular-nums">{Math.round(agentPct)}% · {Math.round(youPct)}%</span>
 			</div>
 			<div
 				className="flex h-2.5 w-full overflow-hidden rounded-full bg-elevated"
@@ -733,7 +742,7 @@ function AgentVsYouBar({
 				<div className="h-full bg-fg-3" style={{ width: `${agentPct}%` }} />
 				<div className="h-full bg-accent" style={{ width: `${youPct}%` }} />
 			</div>
-			<div className="mt-2 flex items-center justify-between text-[0.625rem]">
+			<div className="mt-2 flex items-center justify-between text-dense">
 				<span className="inline-flex items-center gap-1.5 text-fg-3">
 					<span className="w-2 h-2 rounded-sm bg-fg-3" /> {agentLabel} · {formatDuration(agentMs)}
 				</span>
@@ -771,12 +780,12 @@ function HeroStat({
 	return (
 		<div className="flex flex-col gap-1 rounded-xl border border-edge bg-raised px-3 py-2.5">
 			<div className="flex items-baseline justify-between gap-1.5">
-				<span className="text-fg text-[1.375rem] font-bold tabular-nums leading-none">
+				<span className="text-fg text-xl-sm font-bold tabular-nums leading-none">
 					{format ? <CountUp value={value} format={format} /> : (displayValue ?? String(value))}
 				</span>
 				{hasTrend && (
 					<span
-						className={`inline-flex items-center gap-0.5 text-[0.6875rem] font-semibold tabular-nums ${up ? "text-success" : "text-danger"}`}
+						className={`inline-flex items-center gap-0.5 text-micro font-semibold tabular-nums ${up ? "text-success" : "text-danger"}`}
 						title={trendSuffix}
 					>
 						<span>{up ? "▲" : "▼"}</span>
@@ -785,7 +794,7 @@ function HeroStat({
 				)}
 			</div>
 			<div className="text-fg-2 text-xs font-semibold leading-tight">{caption}</div>
-			{unit && <div className="text-fg-muted text-[0.625rem] leading-tight">{unit}</div>}
+			{unit && <div className="text-fg-muted text-dense leading-tight">{unit}</div>}
 		</div>
 	);
 }
@@ -795,7 +804,7 @@ function CompactLocPlaceholder({ label, body }: { label: string; body: string })
 	return (
 		<div className="flex flex-col gap-1 rounded-xl border border-edge border-dashed bg-raised px-3 py-2.5">
 			<div className="text-fg-2 text-xs font-semibold leading-tight">{label}</div>
-			<div className="text-fg-muted text-[0.625rem] leading-tight">{body}</div>
+			<div className="text-fg-muted text-dense leading-tight">{body}</div>
 		</div>
 	);
 }

@@ -94,6 +94,7 @@ const common = {
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Активные задачи",
 	"sidebar.noActiveTasks": "Нет активных задач",
+	"sidebar.noActiveTasksHint": "Запустите задачу с доски, чтобы она появилась здесь.",
 	"sidebar.noSearchResults": "Ничего не найдено",
 	"sidebar.searchPlaceholder": "Поиск задач...",
 	"sidebar.searchAriaLabel": "Поиск задач",

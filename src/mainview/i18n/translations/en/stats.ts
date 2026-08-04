@@ -68,7 +68,7 @@ const stats = {
 	// Charts
 	"stats.chart.completedTitle": "Tasks completed",
 	"stats.chart.linesTitle": "Lines changed",
-	"stats.chart.empty": "No activity in this range",
+	"stats.chart.empty": "No activity in this range — complete tasks to fill this in.",
 	"stats.locTrackingSince": "LOC tracked since {date}",
 	"stats.locNoData": "LOC tracking starts now",
 	// Counters
@@ -86,17 +86,20 @@ const stats = {
 	// Per-project
 	"stats.perProject.title": "By project",
 	"stats.perProject.empty": "No completed tasks in this period",
+	"stats.perProject.emptyHint": "Complete a task this period to see the breakdown by project.",
 	"stats.perProject.busiest": "Busiest project",
 	"stats.perProject.lifetime": "Avg. lifetime",
 	"stats.perProject.lifetimeUnavailable": "Lifetime tracking starts now",
 	// Per-agent
 	"stats.perAgent.title": "By agent",
 	"stats.perAgent.empty": "No completed tasks in this period",
+	"stats.perAgent.emptyHint": "Complete a task this period to see usage by agent.",
 	"stats.perAgent.busiest": "Most-used agent",
 	"stats.perAgent.total": "shipped",
 	// Per-model configuration
 	"stats.perModelConfiguration.title": "By model configuration",
 	"stats.perModelConfiguration.empty": "No completed tasks in this period",
+	"stats.perModelConfiguration.emptyHint": "Complete a task this period to see usage by model.",
 	"stats.perModelConfiguration.total": "shipped",
 	// Momentum headline (dynamic subtitle)
 	"stats.momentum.fire": "On fire — {pct}% above your usual pace",

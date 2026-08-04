@@ -43,6 +43,7 @@ const terminal = {
 	"paneMap.hint": "Тапни панель, чтобы перейти к ней.",
 	"paneMap.loading": "Читаю раскладку…",
 	"paneMap.empty": "Нет панелей для показа.",
+	"paneMap.emptyHint": "Разделите терминал с помощью горячих клавиш tmux, чтобы увидеть панели здесь.",
 	"paneMap.goTo": "Перейти к {label}",
 	"paneMap.current": "текущая",
 	"paneMap.windows": "Окна",
@@ -149,6 +150,7 @@ const terminal = {
 	// Tmux Session Manager
 	"tmuxSessions.title": "Сессии tmux",
 	"tmuxSessions.empty": "Нет активных сессий dev3",
+	"tmuxSessions.emptyHint": "Запустите задачу на доске, чтобы создать сессию.",
 	"tmuxSessions.sessionCount_one": "{count} сессия",
 	"tmuxSessions.sessionCount_few": "{count} сессии",
 	"tmuxSessions.sessionCount_many": "{count} сессий",
@@ -189,7 +191,7 @@ const terminal = {
 
 	// Ports
 	"ports.title": "Порты",
-	"ports.empty": "Нет открытых портов",
+	"ports.empty": "Нет открытых портов — запустите дев-сервер, чтобы показать один.",
 	"ports.openInBrowser": "Открыть в браузере",
 	"ports.copyUrl": "Копировать URL",
 	"ports.copied": "Скопировано!",

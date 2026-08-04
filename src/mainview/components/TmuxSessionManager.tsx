@@ -205,13 +205,13 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 				aria-label={t("tmuxSessions.title")}
 			>
 				<span
-					className="text-[1.125rem] leading-none"
+					className="text-lg leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\u{EBC8}"}
 				</span>
 				{count > 0 && (
-					<span className="min-w-[1.125rem] h-[1.125rem] flex items-center justify-center text-[0.625rem] font-bold bg-accent/20 text-accent rounded-full px-1">
+					<span className="min-w-[1.125rem] h-[1.125rem] flex items-center justify-center text-dense font-bold bg-accent/20 text-accent rounded-full px-1">
 						{count}
 					</span>
 				)}
@@ -269,7 +269,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 								{count > 0 && (
 									<button
 										onClick={handleKillAll}
-										className="text-[0.625rem] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
+										className="text-dense text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
 									>
 										{t("tmuxSessions.killAll")}
 									</button>
@@ -281,7 +281,8 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 						<div className="flex-1 overflow-auto">
 							{sessions.length === 0 ? (
 								<div className="px-4 py-6 text-center text-sm text-fg-muted">
-									{t("tmuxSessions.empty")}
+									<p>{t("tmuxSessions.empty")}</p>
+									<p className="text-xs mt-1">{t("tmuxSessions.emptyHint")}</p>
 								</div>
 							) : (
 								sessions.map((session) => {
@@ -310,17 +311,17 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 															: (session.taskTitle || session.name.replace(/^dev3-/, ""))}
 													</span>
 													{session.isProjectTerminal && (
-														<span className="text-[0.5625rem] bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+														<span className="text-nano bg-accent/15 text-accent px-1.5 py-0.5 rounded font-medium flex-shrink-0">
 															{t("projectTerminal.label")}
 														</span>
 													)}
 													{session.isCleanup && (
-														<span className="text-[0.5625rem] bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+														<span className="text-nano bg-danger/15 text-danger px-1.5 py-0.5 rounded font-medium flex-shrink-0">
 															{t("tmuxSessions.cleanup")}
 														</span>
 													)}
 													{isOrphaned && (
-														<span className="text-[0.5625rem] bg-fg-muted/15 text-fg-muted px-1.5 py-0.5 rounded font-medium flex-shrink-0">
+														<span className="text-nano bg-fg-muted/15 text-fg-muted px-1.5 py-0.5 rounded font-medium flex-shrink-0">
 															{t("tmuxSessions.orphaned")}
 														</span>
 													)}
@@ -330,7 +331,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 														e.stopPropagation();
 														handleKill(session.name);
 													}}
-													className="flex-shrink-0 text-[0.625rem] text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
+													className="flex-shrink-0 text-dense text-danger hover:bg-danger/10 px-2 py-0.5 rounded transition-colors font-medium"
 												>
 													{t("tmuxSessions.kill")}
 												</button>
@@ -339,7 +340,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 											{/* Working directory */}
 											{session.cwd && (
 												<div
-													className="text-[0.6875rem] text-fg-3 font-mono truncate mt-1"
+													className="text-micro text-fg-3 font-mono truncate mt-1"
 													title={session.cwd}
 												>
 													{session.cwd}
@@ -356,10 +357,10 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 																e.stopPropagation();
 																window.open(`http://localhost:${p.port}`, "_blank");
 															}}
-															className="inline-flex items-center gap-1 text-[0.625rem] font-mono text-accent bg-accent/10 hover:bg-accent/20 px-1.5 py-0.5 rounded transition-colors"
+															className="inline-flex items-center gap-1 text-dense font-mono text-accent bg-accent/10 hover:bg-accent/20 px-1.5 py-0.5 rounded transition-colors"
 															title={`${p.processName} (PID ${p.pid})`}
 														>
-															<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+															<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
 															:{p.port}
 														</button>
 													))}
@@ -368,7 +369,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 
 											{/* Resource usage */}
 											{session.resourceUsage && (
-												<div className="flex items-center gap-1.5 mt-1.5 text-[0.625rem] font-mono text-fg-3">
+												<div className="flex items-center gap-1.5 mt-1.5 text-dense font-mono text-fg-3">
 													<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F035B}"}</span>
 													<span>{formatBytes(session.resourceUsage.rss)}</span>
 													<span className="text-fg-muted">·</span>
@@ -382,7 +383,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 													e.stopPropagation();
 													handleCopy(session.name);
 												}}
-												className="mt-1.5 inline-flex items-center gap-1.5 text-[0.625rem] text-accent hover:text-accent-emphasis transition-colors"
+												className="mt-1.5 inline-flex items-center gap-1.5 text-dense text-accent hover:text-accent-emphasis transition-colors"
 											>
 												<svg
 													className="w-3 h-3 flex-shrink-0"

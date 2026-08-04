@@ -1,7 +1,7 @@
 const overview = {
 	"overview.label": "Обзор",
 	"overview.labelFallback": "Из описания",
-	"overview.empty": "Обзор ещё не задан.",
+	"overview.empty": "Обзор ещё не задан — агент заполнит его по ходу работы.",
 	"overview.edit": "Изменить обзор",
 	"overview.editPlaceholder": "Один короткий абзац: о чём таск и в каком он состоянии.",
 	"overview.save": "Сохранить",

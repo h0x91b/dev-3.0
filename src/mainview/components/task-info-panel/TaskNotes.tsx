@@ -74,7 +74,10 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 				</button>
 			</div>
 			{(task.notes ?? []).length === 0 && (
-				<span className="text-xs text-fg-muted">{t("notes.empty")}</span>
+				<div className="text-xs text-fg-muted">
+					<p>{t("notes.empty")}</p>
+					<p className="mt-0.5">{t("notes.emptyHint")}</p>
+				</div>
 			)}
 			{(task.notes ?? []).map((note) => (
 				<NoteItem

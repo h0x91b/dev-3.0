@@ -1,7 +1,7 @@
 const overview = {
 	"overview.label": "Resumen",
 	"overview.labelFallback": "De la descripción",
-	"overview.empty": "Aún no hay resumen.",
+	"overview.empty": "Aún no hay resumen — el agente lo irá completando a medida que avance el trabajo.",
 	"overview.edit": "Editar resumen",
 	"overview.editPlaceholder": "Un párrafo claro: de qué trata la tarea y en qué estado está.",
 	"overview.save": "Guardar",

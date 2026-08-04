@@ -512,6 +512,23 @@ button {
 	}
 }
 
+/* ---- Global 44px touch targets on coarse-pointer devices ------------------
+   §9a.1 / §12.6: the 44px minimum is the DEFAULT on touch, not opt-in per
+   surface.  `pointer: coarse` fires on any touch or stylus device regardless
+   of viewport width, so tablets in landscape are covered the same as phones.
+   We prefer this real capability query over a viewport-width gate because
+   touch target size is a device capability, not a layout breakpoint.
+
+   Sizing is absolute px (not rem) for the same reason as .touch-actions below:
+   the 0.67× dense-zoom factor used on the mobile task screen must not shrink
+   targets below the 44px floor. */
+@media (pointer: coarse) {
+	:is(button, a[role="button"], [role="menuitem"], [role="option"], [role="tab"]) {
+		min-height: 44px;
+		min-width: 44px;
+	}
+}
+
 /* ---- Touch action group (narrow-viewport action sheets) ----
    Dense desktop toolbars pack controls at ~28-32px (p-0.5/py-1). Inside a
    narrow-viewport action sheet those are below the 44px touch target the mobile
@@ -799,6 +816,13 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .tmux-anim:hover .tmx-mg-right { animation: tmx-mg-right 2.6s ease-in-out infinite; }
 .tmux-anim:hover .tmx-mg-back { animation: tmx-mg-back 2.6s ease-in-out infinite; }
 
+/* §9a.5 — one play per hover; equal specificity + later source order beats the
+   shorthand `infinite` set per-element above. */
+.tmux-anim:hover [class^="tmx-"],
+.tmux-anim:hover [class*=" tmx-"] {
+	animation-iteration-count: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.tmux-anim:hover [class^="tmx-"],
 	.tmux-anim:hover [class*=" tmx-"] {
@@ -962,6 +986,12 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .git-anim:hover .gtx-tf-b1 { animation: gtx-tf-b1 2.2s ease-out infinite; }
 .git-anim:hover .gtx-tf-b2 { animation: gtx-tf-b2 2.2s ease-out infinite; }
 .git-anim:hover .gtx-tf-liquid { animation: gtx-tf-liquid 2.2s ease-in-out infinite; }
+
+/* §9a.5 — one play per hover. */
+.git-anim:hover [class^="gtx-"],
+.git-anim:hover [class*=" gtx-"] {
+	animation-iteration-count: 1;
+}
 
 @media (prefers-reduced-motion: reduce) {
 	.git-anim:hover [class^="gtx-"],
@@ -1268,6 +1298,13 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	transition: width 600ms ease-out, background-color 300ms ease-out;
 }
 
+/* §9a.5 — one play per hover. remote-access-active communicates ongoing state
+   and is intentionally kept infinite. */
+.header-anim:hover [class^="hdr-"],
+.header-anim:hover [class*=" hdr-"] {
+	animation-iteration-count: 1;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.header-anim:hover [class^="hdr-"],
 	.header-anim:hover [class*=" hdr-"],
@@ -1496,7 +1533,14 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .task-anim:hover .th-col-up { animation: th-col-up 2.4s ease-in-out infinite; }
 .task-anim:hover .th-col-up-ghost { animation: th-col-up-ghost 2.4s ease-in-out infinite; }
 
-/* Fresh task-bound images/artifacts keep gently nudging until their viewer opens. */
+/* §9a.5 — one play per hover. */
+.task-anim:hover [class^="th-"],
+.task-anim:hover [class*=" th-"] {
+	animation-iteration-count: 1;
+}
+
+/* Fresh task-bound images/artifacts keep gently nudging until their viewer opens.
+   Communicates ongoing unread state — intentionally infinite. */
 @keyframes task-shared-unread-nudge {
 	0%, 55%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
 	64% { transform: translateY(-1.5px) rotate(-7deg) scale(1.06); }

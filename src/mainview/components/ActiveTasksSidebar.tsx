@@ -502,7 +502,7 @@ function ActiveTasksSidebar({
 									<ScopeGlyph outline={"\uF0A2"} filled={"\uF0F3"} active={scope === "attention"} />
 								</span>
 								{attentionCount > 0 && scope !== "attention" && (
-									<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-awake text-[0.5rem] font-bold text-fg leading-none pointer-events-none">
+									<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-awake text-nano font-bold text-fg leading-none pointer-events-none">
 										{attentionCount > 9 ? "9+" : attentionCount}
 									</span>
 								)}
@@ -586,11 +586,16 @@ function ActiveTasksSidebar({
 					</div>
 				) : grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
-						{searchQuery.trim()
-							? t("sidebar.noSearchResults")
-							: scope === "attention"
-								? t("sidebar.noAttentionTasks")
-								: t("sidebar.noActiveTasks")}
+						{searchQuery.trim() ? (
+							t("sidebar.noSearchResults")
+						) : scope === "attention" ? (
+							t("sidebar.noAttentionTasks")
+						) : (
+							<>
+								<p>{t("sidebar.noActiveTasks")}</p>
+								<p className="mt-1">{t("sidebar.noActiveTasksHint")}</p>
+							</>
+						)}
 					</div>
 				) : (
 					grouped.map(({ key: groupKey, label: groupLabel, color: groupColor, showHeader: groupShowHeader, tasks: groupTasks }, groupIdx) => (
@@ -618,10 +623,10 @@ function ActiveTasksSidebar({
 									className="w-2 h-2 rounded-full flex-shrink-0 relative"
 									style={{ background: groupColor }}
 								/>
-								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
+								<span className="text-dense font-semibold text-fg-3 uppercase tracking-wider">
 									{groupLabel}
 								</span>
-								<span className="text-[0.625rem] text-fg-muted" data-testid={`sidebar-tier-count-${groupKey}`}>
+								<span className="text-dense text-fg-muted" data-testid={`sidebar-tier-count-${groupKey}`}>
 									{groupTasks.length}
 								</span>
 							</div>}
@@ -727,7 +732,7 @@ function ActiveTasksSidebar({
 												<div
 													className="absolute top-1 right-2 min-w-[1rem] h-4 flex items-center justify-center px-1 rounded-full bg-danger shadow-sm shadow-danger/40"
 												>
-													<span className="text-[0.5625rem] font-bold text-white leading-none">
+													<span className="text-nano font-bold text-white leading-none">
 														{bellCount > 9 ? "9+" : bellCount}
 													</span>
 												</div>
@@ -737,13 +742,13 @@ function ActiveTasksSidebar({
 												{showProjectBadge && (
 													<Tooltip content={projectBadgeName}>
 														<div
-															className="mb-1 inline-flex items-center gap-1 max-w-full text-[0.6875rem] font-semibold text-accent bg-accent/10 border border-accent/25 rounded px-1.5 py-[1px]"
+															className="mb-1 inline-flex items-center gap-1 max-w-full text-micro font-semibold text-accent bg-accent/10 border border-accent/25 rounded px-1.5 py-[1px]"
 															data-testid={`sidebar-project-badge-${task.id}`}
 														>
 															<span
 																aria-hidden
 																style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-																className="leading-none text-[0.75rem]"
+																className="leading-none text-xs"
 															>
 																{"\uEB01"}
 															</span>
@@ -773,14 +778,14 @@ function ActiveTasksSidebar({
 														<span
 															data-testid="sidebar-hibernated-badge"
 															title={t("task.hibernatedHint")}
-															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-[0.5625rem] font-semibold uppercase tracking-[0.06em] text-fg-muted"
+															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-muted"
 														>
 															{t("task.hibernatedBadge")}
 														</span>
 													)}
 													<Tooltip content={agentSummary} disabled={!agentSummary}>
 														<div
-															className={`min-w-0 flex-1 truncate text-[0.625rem] font-medium ${
+															className={`min-w-0 flex-1 truncate text-dense font-medium ${
 																isActive ? "text-fg" : "text-fg-2"
 															}`}
 														>
@@ -823,7 +828,7 @@ function ActiveTasksSidebar({
 														const hue = statusColors[task.status];
 														return (
 															<span
-																className="shrink-0 text-[0.5625rem] font-semibold uppercase tracking-wide leading-none px-1 py-0.5 rounded"
+																className="shrink-0 text-nano font-semibold uppercase tracking-wide leading-none px-1 py-0.5 rounded"
 																style={{ color: hue, background: statusTint(hue, 0.14) }}
 																data-testid={`sidebar-status-label-${task.id}`}
 															>
@@ -831,7 +836,7 @@ function ActiveTasksSidebar({
 															</span>
 														);
 													})()}
-													<div className="text-[0.5625rem] text-fg-3 font-mono shrink-0">
+													<div className="text-nano text-fg-3 font-mono shrink-0">
 														#{task.seq}
 													</div>
 													{assignedLabels.length > 0 && (
@@ -872,7 +877,7 @@ function ActiveTasksSidebar({
 														return (
 															<Tooltip content={t("sidebar.statusChanged", { ago: relative, date })}>
 																<span
-																	className="ml-auto shrink-0 flex items-center gap-0.5 text-[0.5625rem] text-fg-3 font-mono whitespace-nowrap"
+																	className="ml-auto shrink-0 flex items-center gap-0.5 text-nano text-fg-3 font-mono whitespace-nowrap"
 																	data-testid={`sidebar-status-age-${task.id}`}
 																>
 																	<span
@@ -898,7 +903,7 @@ function ActiveTasksSidebar({
 															{ports.map((p) => (
 																<Tooltip key={p.port} content={`${p.processName} (PID ${p.pid})`}>
 																	<span
-																		className="inline-flex items-center gap-1 text-[0.5625rem] font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded"
+																		className="inline-flex items-center gap-1 text-nano font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded"
 																		onClick={(e) => {
 																			e.stopPropagation();
 																			window.open(`http://localhost:${p.port}`, "_blank");

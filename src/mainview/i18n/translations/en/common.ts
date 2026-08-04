@@ -94,6 +94,7 @@ const common = {
 	// ActiveTasksSidebar
 	"sidebar.activeTasks": "Active Tasks",
 	"sidebar.noActiveTasks": "No active tasks",
+	"sidebar.noActiveTasksHint": "Start a task from the board to track it here.",
 	"sidebar.noSearchResults": "No tasks match your search",
 	"sidebar.searchPlaceholder": "Search tasks...",
 	"sidebar.searchAriaLabel": "Search tasks",

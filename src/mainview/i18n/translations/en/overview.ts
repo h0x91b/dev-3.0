@@ -1,7 +1,7 @@
 const overview = {
 	"overview.label": "Overview",
 	"overview.labelFallback": "From description",
-	"overview.empty": "No overview yet.",
+	"overview.empty": "No overview yet — the agent fills this in as work progresses.",
 	"overview.edit": "Edit overview",
 	"overview.editPlaceholder": "One clean paragraph: what the task is about and current state.",
 	"overview.save": "Save",

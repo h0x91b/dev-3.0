@@ -1,6 +1,7 @@
 const kanban = {
 	// KanbanColumn
 	"kanban.noTasks": "Sin tareas",
+	"kanban.noTasksHint": "Arrastra una tarea aquí o usa el botón de abajo para crear una.",
 	"kanban.add": "Agregar",
 	"kanban.cancel": "Cancelar",
 	"kanban.newTask": "+ Nueva tarea",

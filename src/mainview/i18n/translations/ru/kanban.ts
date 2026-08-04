@@ -1,6 +1,7 @@
 const kanban = {
 	// KanbanColumn
 	"kanban.noTasks": "Нет задач",
+	"kanban.noTasksHint": "Перетащите задачу сюда или используйте кнопку ниже.",
 	"kanban.add": "Добавить",
 	"kanban.cancel": "Отмена",
 	"kanban.newTask": "+ Новая задача",

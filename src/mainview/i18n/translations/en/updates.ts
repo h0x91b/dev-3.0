@@ -82,7 +82,7 @@ const updates = {
 	// Changelog
 	"changelog.screenTitle": "Changelog",
 	"changelog.loading": "Loading...",
-	"changelog.empty": "No changelog entries yet",
+	"changelog.empty": "No changelog entries yet — they appear here as you ship new versions.",
 	"changelog.feature": "feature",
 	"changelog.fix": "fix",
 	"changelog.refactor": "refactor",

@@ -375,7 +375,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						<button
 							onClick={goBack}
 							disabled={!canGoBack}
-							className={`header-anim px-1.5 py-1 transition-colors ${
+							className={`header-anim px-1.5 py-[5px] transition-colors ${
 								canGoBack
 									? "text-fg-3 hover:text-fg hover:bg-elevated"
 									: "text-fg-muted/40 cursor-default"
@@ -390,7 +390,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						<button
 							onClick={goForward}
 							disabled={!canGoForward}
-							className={`header-anim px-1.5 py-1 transition-colors ${
+							className={`header-anim px-1.5 py-[5px] transition-colors ${
 								canGoForward
 									? "text-fg-3 hover:text-fg hover:bg-elevated"
 									: "text-fg-muted/40 cursor-default"

@@ -60,7 +60,10 @@ export default function PaneMapSheet({ taskId, open, onClose, onJump }: PaneMapS
 			{loading && !state ? (
 				<div className="py-8 text-center text-fg-3 text-sm">{t("paneMap.loading")}</div>
 			) : panes.length === 0 ? (
-				<div className="py-8 text-center text-fg-3 text-sm">{t("paneMap.empty")}</div>
+				<div className="py-8 text-center text-fg-3 text-sm">
+					<p>{t("paneMap.empty")}</p>
+					<p className="text-xs mt-1 text-fg-muted">{t("paneMap.emptyHint")}</p>
+				</div>
 			) : (
 				<>
 					<p className="mb-2 text-fg-muted text-xs">{t("paneMap.hint")}</p>
@@ -91,8 +94,8 @@ export default function PaneMapSheet({ taskId, open, onClose, onJump }: PaneMapS
 										height: `${p.rect.height * 100}%`,
 									}}
 								>
-									<span className="max-w-full truncate text-[0.7rem] font-medium leading-tight">{label}</span>
-									{p.active && <span className="text-[0.6rem] leading-none opacity-80">{t("paneMap.current")}</span>}
+									<span className="max-w-full truncate text-micro font-medium leading-tight">{label}</span>
+									{p.active && <span className="text-nano leading-none opacity-80">{t("paneMap.current")}</span>}
 								</button>
 							);
 						})}
