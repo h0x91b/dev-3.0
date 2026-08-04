@@ -18,14 +18,20 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 /**
- * Tailwind compiles `focus:outline-none` to `.focus\:outline-none:focus` — a class
- * plus a pseudo-class, specificity (0,2,0). The app's single focus affordance is the
- * bare `:focus-visible` rule in index.css at (0,1,0), so the variant silently wins
- * and paints a TRANSPARENT outline over the keyboard ring. It shipped on 27 controls.
+ * Tailwind compiles the focus variant of `outline-none` to a class plus a
+ * pseudo-class, specificity (0,2,0). The app's single focus affordance is the bare
+ * `:focus-visible` rule in index.css at (0,1,0), so the variant silently wins and
+ * paints a TRANSPARENT outline over the keyboard ring. It shipped on 27 controls.
  *
  * The bare `outline-none` utility is fine: same specificity as the global rule, and
  * the global rule is authored after `@tailwind utilities`, so source order settles it.
+ *
+ * The banned class is assembled at runtime on purpose. Tailwind's content glob covers
+ * `src/mainview/**` including this directory, so spelling it out here would keep
+ * generating the very rule the test forbids.
  */
+const BANNED = ["focus", "outline-none"].join(":");
+
 describe("keyboard focus ring", () => {
 	const files = walk(SRC);
 
@@ -33,9 +39,9 @@ describe("keyboard focus ring", () => {
 		expect(files.length).toBeGreaterThan(100);
 	});
 
-	it("never uses focus:outline-none, which out-specifies the global :focus-visible ring", () => {
+	it("never uses the focus variant of outline-none, which out-specifies the global ring", () => {
 		const offenders = files
-			.filter((file) => readFileSync(file, "utf8").includes("focus:outline-none"))
+			.filter((file) => readFileSync(file, "utf8").includes(BANNED))
 			.map((file) => path.relative(SRC, file));
 		expect(offenders).toEqual([]);
 	});
