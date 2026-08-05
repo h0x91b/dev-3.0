@@ -1,0 +1,126 @@
+# 209 — The required checks wait for the Windows packaging proof
+
+## Context
+
+`main`'s required status checks are exactly `lint`, `test`, `build-check`, `trivy-scan` (read from the
+branch protection API; `strict=false`). All four are fast Ubuntu jobs: measured over the 20 most recent
+`pull_request` runs, they go green at roughly 60–70 s p50. The packaged Windows jobs —
+`package-runtime (windows-latest)` p50 306 s and `windows-app-archive` p50 304 s, p90 ~350 s, worst
+observed 462 s — are **not** required.
+
+So the required set is systematically the fast jobs and the packaging proof is systematically unrequired.
+A PR with auto-merge lands the moment the four go green, which is *before* the Windows jobs have decided
+anything — by construction, every time, not occasionally. PR #1263 is the demonstration: it merged with
+both Windows jobs pending; they went green five minutes later. A red one would have landed identically,
+and the only trace would be a failed check on an already-merged PR nobody has a reason to reopen.
+
+This matters more here than in most repos because `windows-app-archive` is the only thing that proves the
+packaged Windows app launches and produces a UI, and Windows is the platform with no local machine —
+CI is the sole detector. Three separate tasks hit this hole in one day.
+
+The fix had to live **in the repo**, not in branch protection: a required-contexts list is configuration
+outside the repo that drifts silently and that nobody remembers exists, whereas a `needs:` edge travels
+with the code and shows up in a diff.
+
+## Investigation
+
+Two facts killed the obvious implementation.
+
+1. **`needs:` is intra-workflow only.** The two Windows jobs live in `windows-conpty-package.yml`, not
+   `build.yml`, so no job in `build.yml` could depend on them. The sibling change that gated the live
+   terminal e2e (`terminal_e2e`, seq 1422) was cheap precisely because its job was already in the same
+   file as the required context.
+2. **The hole is worse than "skipped looks like success".** `windows-conpty-package.yml` carried a
+   45-entry `on.pull_request.paths` filter. When nothing matches, the workflow does not trigger at all —
+   there is no check run, so `needs.<job>.result` would never exist to be read and a gate depending on it
+   would sit *pending forever*, blocking every out-of-scope merge in the repo. This is not theoretical:
+   of the last five merged PRs, #1263, #1261, #1260, #1258 ran the Windows checks and **#1259**
+   (renderer-only) produced none at all. Roughly one PR in five is genuinely out of scope.
+
+## Decision
+
+`windows-conpty-package.yml` becomes a **reusable workflow** (`workflow_call`, keeping
+`workflow_dispatch`); its `on.pull_request` trigger and its paths filter are **deleted**. `build.yml`
+calls it as a job, so `needs:` works, and the already-required `test` job takes the call as a dependency —
+no branch-protection change.
+
+The path filter is replaced by code, in one place:
+
+- `src/shared/windows-ci-scope.ts` — `WINDOWS_SCOPE_PATHS` plus `matchesWindowsScope` / `windowsScopeHits`.
+- `scripts/windows-ci-scope.ts` — the `windows_scope` job runs it over the PR diff and emits `in-scope`.
+- The called workflow is gated on that output, so an out-of-scope PR keeps today's cost profile.
+
+The gate step in `test` follows the idiom seq 1422 established (`::warning` / `::error` sharing one
+`title=`, one `$GITHUB_STEP_SUMMARY` line per branch, `continue-on-error` on the verifications with a
+final step failing on either, so a red Windows gate never hides which test shards failed). It has **four**
+cases where 1422 has three:
+
+| `windows_scope` | `in-scope` | Windows package result | Verdict |
+|---|---|---|---|
+| not `success` | — | — | **hard fail** — a gate that cannot compute scope never assumes "fine" |
+| `success` | `false` | `skipped` | pass, loudly announced (see below) |
+| `success` | `true` | `success` | pass |
+| `success` | `true` | anything else, incl. `skipped` | **hard fail** — a skip for any reason other than scope is not a pass |
+
+The fourth row is the addition: because `skipped` is now *reachable and legitimate*, it is only ever a
+pass when cross-checked against the scope output.
+
+**The artifact holding the absence branch open** is the `::warning title=Windows packaging gate::` line
+and its `## ⚠️` run-summary line in the `windows_gate` step of `build.yml`, worded as what was *not*
+proved rather than "skipped". `src/bun/__tests__/workflow-windows-gate.test.ts` pins them by parsing
+`build.yml` as raw text (same approach as `workflow-bun-pins.test.ts`; do not import `yaml`, it is not a
+declared dependency) and asserts the branch emits both and does **not** `exit 1`. Mutation-checked both
+ways: deleting the warning fails the test, adding `exit 1` fails the test.
+
+## Risks
+
+**The path list is now load-bearing in a stronger way, and this is a real escalation.** Before, a file
+missing from the list meant Windows silently did not run. Now the same miss makes the required `test`
+context go green *while asserting that Windows was checked and not applicable*. The claim got stronger;
+the thing it rests on did not.
+
+For the list to be wrong, only this has to be true: someone adds or moves a file that changes packaged
+Windows behaviour and does not add it to `WINDOWS_SCOPE_PATHS`. Nothing in CI can detect that — the whole
+point of the list is that it is a human judgement about which files matter. How anyone finds out today:
+the regression reaches `main`, and the next PR that *does* touch a listed path fails the Windows job for
+reasons unrelated to its own diff. Partial mitigations in place: the list contains
+`src/shared/windows-ci-scope.ts` and `scripts/windows-ci-scope.ts`, so a change to the decision mechanism
+cannot judge itself out of scope; the run summary always prints how many changed files matched, so an
+out-of-scope verdict is visible rather than silent; `release.yml` still packages Windows on every release,
+so the proof is not skippable forever.
+
+Other risks:
+
+- **Wall-clock.** The required `test` context now waits on the packaging jobs on in-scope PRs: p50 ~310 s,
+  p90 ~355 s, worst observed 462 s — about **+250 s p50 (4.2 min)** on top of today's 60–70 s. These are
+  per-job durations excluding runner queueing, so treat them as a floor. Accepted deliberately.
+- **`strict=false` is untouched and this change does not improve it.** PRs need not be up to date with
+  `main`, so the Windows proof can be green against a stale base and merge onto a moved one. Worse, the
+  scope decision is computed from the PR's own diff, so a file that becomes Windows-relevant on `main`
+  after the PR forked is invisible to it. Mechanically unchanged, rhetorically worse: an advisory job
+  going green against a stale base was noise, a required gate doing it is a claim. Not changed here.
+- **The trigger widened for the callee's sibling jobs.** `posix-app-package` and the macOS/Ubuntu legs of
+  `package-runtime` now run whenever the caller invokes the workflow, i.e. on in-scope PRs only — the same
+  condition as before, expressed in code instead of YAML.
+
+## Alternatives considered
+
+- **Change branch protection to require the Windows contexts.** Rejected by the user: out-of-repo
+  configuration that drifts silently and is invisible in a diff.
+- **Move the two Windows jobs bodily into `build.yml`.** Rejected: it forks a 300-line matrix away from
+  its posix siblings, and the paths filter would have to be re-expressed per job anyway.
+- **Convert to `workflow_call` and drop the filter entirely, running Windows on every PR.** Simplest, and
+  it has no absence branch at all — but it taxes every docs-only PR five minutes on three Windows-billed
+  runners. A gate people resent is a gate that gets removed.
+- **Poll the GitHub API from `build.yml` for the other workflow's conclusion.** Rejected: it has to
+  replicate the paths filter to know whether a run should exist, which is the duplicated-list drift this
+  design exists to avoid.
+
+## Adjacent finding, deliberately not fixed here
+
+`package-runtime`'s Windows leg spends its ~306 s largely on roughly 15 sequential E2E steps in one job
+(native shell launch, process naming, two CLI loopback E2Es, packaged host image, four native-session
+E2Es, cross-instance owner routing, product task-terminal, adapter parity, multi-pane coordinator, the
+explicit Windows shell launch matrix, two live-parser probes). Splitting or parallelising them may be a
+cheaper fix to the wall-clock cost than anything in this record. Not touched: lowering a job to make the
+gate's numbers look better would defeat the gate.
