@@ -1,0 +1,1 @@
+Removed src/shared/__tests__, which sat outside all three vitest roots and therefore never ran despite looking like coverage. The pane action mapping tests were fully duplicated by the task-panes handler tests and were deleted; the pane session key tests moved to src/bun/__tests__ so the separator's URL-safety invariant is actually guarded.

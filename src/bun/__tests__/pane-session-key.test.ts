@@ -1,8 +1,11 @@
 /**
  * Pane session key round-trip and URL safety (seq 1311).
+ *
+ * The URL-safety case is the only guard on the SEPARATOR: pty-server tests build
+ * their keys with paneSessionKey() too, so they stay green if it changes.
  */
 import { describe, expect, it } from "vitest";
-import { paneSessionKey, parsePaneSessionKey } from "../pane-session-key";
+import { paneSessionKey, parsePaneSessionKey } from "../../shared/pane-session-key";
 
 describe("pane-session-key", () => {
 	it("round-trips taskId + paneId through encode and parse", () => {
@@ -11,7 +14,7 @@ describe("pane-session-key", () => {
 		expect(parsed).toEqual({ taskId: "task-abc", paneId: "pane-3" });
 	});
 
-	it("produces a URL-safe key (tilde is RFC 3986 unreserved)", () => {
+	it("the separator must stay URL-safe: a key needs no escaping in ?session=", () => {
 		const key = paneSessionKey("task-abc", "pane-3");
 		// RFC 3986 §2.3 unreserved chars: A-Z a-z 0-9 - . _ ~
 		const urlSafe = /^[A-Za-z0-9\-._~]+$/.test(key);
