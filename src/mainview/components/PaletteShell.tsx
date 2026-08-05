@@ -38,6 +38,8 @@ interface PaletteShellProps<T> {
 	testId?: string;
 	/** Optional trailing content per row (shortcut badge, category, …). */
 	renderItemRight?: (item: T, index: number, query: string) => React.ReactNode;
+	/** Extra classes for a row's label — used to blur a masked (sensitive) row. */
+	getTextClassName?: (item: T) => string;
 }
 
 /**
@@ -58,6 +60,7 @@ export function PaletteShell<T>({
 	noResults,
 	testId,
 	renderItemRight,
+	getTextClassName,
 }: PaletteShellProps<T>) {
 	const [query, setQuery] = useState("");
 	const [index, setIndex] = useState(0);
@@ -144,7 +147,7 @@ export function PaletteShell<T>({
 										isSelected ? "bg-accent/15" : "hover:bg-elevated-hover"
 									}`}
 								>
-									<span className="text-fg text-sm truncate min-w-0">
+									<span className={`text-fg text-sm truncate min-w-0 ${getTextClassName?.(r.item) ?? ""}`}>
 										<HighlightedText text={getText(r.item)} indices={r.indices} />
 									</span>
 									{renderItemRight?.(r.item, i, query.trim())}

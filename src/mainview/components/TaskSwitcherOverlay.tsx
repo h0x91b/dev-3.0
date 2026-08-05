@@ -7,6 +7,7 @@ import type { SwitcherSession } from "../hooks/useTaskSwitcher";
 import { api } from "../rpc";
 import { ansiToHtml } from "../utils/ansi-to-html";
 import { useT } from "../i18n";
+import { useProjectPrivacy } from "../sensitive-projects";
 
 interface TaskSwitcherOverlayProps {
 	session: SwitcherSession;
@@ -69,6 +70,7 @@ function TaskSwitcherOverlay({
 	onCancel,
 }: TaskSwitcherOverlayProps) {
 	const t = useT();
+	const privacy = useProjectPrivacy();
 	const statusColors = useStatusColors();
 	const { scope, items, index } = session;
 
@@ -118,22 +120,24 @@ function TaskSwitcherOverlay({
 									selected ? "bg-accent/15" : "hover:bg-elevated-hover"
 								}`}
 							>
-								<TerminalThumbnail taskId={task.id} />
+								<span className={privacy.isLocked(project) ? "streamer-private-media" : ""}>
+									<TerminalThumbnail taskId={task.id} />
+								</span>
 								<div className="flex-1 min-w-0">
 									<div className="flex items-center gap-2 min-w-0">
 										<span
 											className="w-2 h-2 rounded-full flex-shrink-0"
 											style={{ background: statusColors[task.status] }}
 										/>
-										<span className="text-fg text-sm font-medium truncate">
+										<span className={`text-fg text-sm font-medium truncate ${privacy.maskClass(project)}`}>
 											{getTaskTitle(task)}
 										</span>
 										{scope === "global" && project && (
-											<span className="text-fg-3 text-xs flex-shrink-0">{project.name}</span>
+											<span className={`text-fg-3 text-xs flex-shrink-0 ${privacy.maskClass(project)}`}>{project.name}</span>
 										)}
 									</div>
 									<p
-										className={`text-sm-plus leading-snug mt-1 line-clamp-2 ${
+										className={`text-sm-plus leading-snug mt-1 line-clamp-2 ${privacy.maskClass(project)} ${
 											overview ? "text-fg-3" : "text-fg-muted italic"
 										}`}
 									>

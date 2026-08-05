@@ -68,6 +68,7 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		...extractConfigFromParams(params),
 		...(params.githubAuthHost !== undefined ? { githubAuthHost: params.githubAuthHost } : {}),
 		...(params.githubAuthLogin !== undefined ? { githubAuthLogin: params.githubAuthLogin } : {}),
+		...(params.sensitive !== undefined ? { sensitive: params.sensitive } : {}),
 	};
 	const updated = await data.updateProject(params.projectId, updates);
 	getPushMessage()?.("projectUpdated", { project: updated });

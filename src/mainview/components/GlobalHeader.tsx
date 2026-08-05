@@ -3,6 +3,7 @@ import type { Project, Task, UpdateChangelog } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
+import { useProjectPrivacy } from "../sensitive-projects";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api, isElectrobun } from "../rpc";
@@ -73,6 +74,7 @@ const COUNTS_CACHE_TTL = 30_000;
 
 function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
 	const t = useT();
+	const privacy = useProjectPrivacy();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	// Live fullscreen state for the action-sheet toggle label (browser only).
@@ -452,12 +454,15 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 											const isCurrent = currentProjectId === p.id;
 											const count = projectTaskCounts[p.id];
 											const isBuiltin = isBuiltinOpsProject(p);
+											const locked = privacy.isLocked(p);
 											// \u23180 for the pinned built-in board; \u23181-9 for the rest.
 											const nonBuiltinIdx = switcherHasPinnedBuiltin ? idx - 1 : idx;
 											const shortcutLabel = isBuiltin ? "0" : (nonBuiltinIdx < 9 ? String(nonBuiltinIdx + 1) : null);
 											return (
 												<button
 													key={p.id}
+													aria-disabled={locked || undefined}
+													title={locked ? t("streamer.projectLocked") : undefined}
 													onClick={() => {
 														setShowProjectDropdown(false);
 														navigate({ screen: "project", projectId: p.id });
@@ -471,7 +476,10 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 													{isBuiltin && (
 														<span className="text-accent flex-shrink-0 text-sm-plus" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 													)}
-													<span className="truncate text-sm flex-1">{isBuiltin ? t("ops.boardName") : p.name}</span>
+													{locked && (
+														<span aria-hidden="true" className="text-fg-muted flex-shrink-0 text-sm-plus" style={{ fontFamily: "\'JetBrainsMono Nerd Font Mono\'" }}>{"\u{F033E}"}</span>
+													)}
+													<span className={`truncate text-sm flex-1 ${privacy.maskClass(p)}`}>{isBuiltin ? t("ops.boardName") : p.name}</span>
 													{isBuiltin && (
 														<span className="flex-shrink-0 px-1 py-0.5 rounded bg-raised text-fg-3 text-nano font-medium uppercase tracking-wide">{t("ops.badgeSystem")}</span>
 													)}

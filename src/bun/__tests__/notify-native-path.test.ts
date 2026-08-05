@@ -52,6 +52,7 @@ const {
 	pushTerminalBell,
 	pushCliShowImage,
 	pushCliShowArtifact,
+	setStreamerPrivacy,
 } = await import("../rpc-handlers/shared");
 
 function makeTask(overrides?: Partial<Task>): Task {
@@ -74,6 +75,7 @@ beforeEach(() => {
 	vi.mocked(postNativeTaskNotification).mockReset();
 	_resetWatchedNotificationState();
 	setPushMessage(() => {});
+	setStreamerPrivacy({ streamerMode: false, sensitiveProjectIds: [] });
 });
 
 describe("native notification channel routing", () => {
@@ -180,12 +182,12 @@ describe("native notification channel routing", () => {
 		setPushMessage(push);
 		setFocusMode(true);
 
-		pushCliAttention({ taskId: "task-1", reason: "CI passed" });
+		pushCliAttention({ taskId: "task-1", projectId: "project-1", reason: "CI passed" });
 		expect(push).not.toHaveBeenCalled();
 
 		setFocusMode(false);
 
-		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", reason: "CI passed" });
+		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", projectId: "project-1", reason: "CI passed" });
 	});
 
 	it("flushes mixed notification types in arrival order with their task targets", () => {
@@ -196,7 +198,7 @@ describe("native notification channel routing", () => {
 		pushCliToast({ taskId: "task-1", projectId: "proj-1", message: "toast", level: "info" });
 		pushTerminalBell("task-1");
 		pushCliShowImage({ taskId: "task-1", projectId: "proj-1", images: [], newCount: 1 });
-		pushCliAttention({ taskId: "task-2", reason: "attention" });
+		pushCliAttention({ taskId: "task-2", projectId: "project-1", reason: "attention" });
 		pushCliShowArtifact({ taskId: "task-2", projectId: "proj-1", artifacts: [], newCount: 1 });
 
 		expect(push).not.toHaveBeenCalled();
@@ -210,7 +212,7 @@ describe("native notification channel routing", () => {
 			"cliShowArtifact",
 		]);
 		expect(push).toHaveBeenCalledWith("cliShowImage", expect.objectContaining({ taskId: "task-1" }));
-		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-2", reason: "attention" });
+		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-2", projectId: "project-1", reason: "attention" });
 	});
 
 	it("keeps queued notifications hidden until every suppression source ends", () => {
@@ -219,11 +221,72 @@ describe("native notification channel routing", () => {
 		setTerminalFocus(true);
 		setFocusMode(true);
 
-		pushCliAttention({ taskId: "task-1", reason: "still busy" });
+		pushCliAttention({ taskId: "task-1", projectId: "project-1", reason: "still busy" });
 		setTerminalFocus(false);
 		expect(push).not.toHaveBeenCalled();
 
 		setFocusMode(false);
-		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", reason: "still busy" });
+		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", projectId: "project-1", reason: "still busy" });
+	});
+});
+
+// A project the user flagged `sensitive` goes silent while streamer mode is on:
+// the event is DROPPED, not queued, so it cannot resurface once the mode goes off.
+describe("sensitive projects are silenced while streamer mode is on", () => {
+	it("drops the OS notification and its web mirror", () => {
+		vi.mocked(postNativeTaskNotification).mockReturnValue(true);
+		const push = vi.fn();
+		setPushMessage(push);
+		setStreamerPrivacy({ streamerMode: true, sensitiveProjectIds: ["proj-1"] });
+
+		notifyWatchedTaskStatusChange(makeTask(), "in-progress", "review-by-user", "MyProject");
+
+		expect(postNativeTaskNotification).not.toHaveBeenCalled();
+		expect(Utils.showNotification).not.toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalled();
+	});
+
+	it("drops CLI toasts, attention badges, images and artifacts of that project", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setStreamerPrivacy({ streamerMode: true, sensitiveProjectIds: ["proj-1"] });
+
+		pushCliToast({ taskId: "task-1", projectId: "proj-1", message: "hi", level: "info" });
+		pushCliAttention({ taskId: "task-1", projectId: "proj-1", reason: "look" });
+		pushCliShowImage({ taskId: "task-1", projectId: "proj-1", images: [], newCount: 1 });
+		pushCliShowArtifact({ taskId: "task-1", projectId: "proj-1", artifacts: [], newCount: 1 });
+
+		expect(push).not.toHaveBeenCalled();
+	});
+
+	it("leaves other projects alone", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setStreamerPrivacy({ streamerMode: true, sensitiveProjectIds: ["proj-other"] });
+
+		pushCliToast({ taskId: "task-1", projectId: "proj-1", message: "hi", level: "info" });
+
+		expect(push).toHaveBeenCalledWith("cliToast", expect.objectContaining({ projectId: "proj-1" }));
+	});
+
+	it("does nothing when the flag is set but streamer mode is off", () => {
+		vi.mocked(postNativeTaskNotification).mockReturnValue(true);
+		setStreamerPrivacy({ streamerMode: false, sensitiveProjectIds: ["proj-1"] });
+
+		notifyWatchedTaskStatusChange(makeTask(), "in-progress", "review-by-user", "MyProject");
+
+		expect(postNativeTaskNotification).toHaveBeenCalled();
+	});
+
+	it("drops the notification instead of queueing it behind focus mode", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setStreamerPrivacy({ streamerMode: true, sensitiveProjectIds: ["proj-1"] });
+		setFocusMode(true);
+
+		pushCliAttention({ taskId: "task-1", projectId: "proj-1", reason: "look" });
+		setFocusMode(false);
+
+		expect(push).not.toHaveBeenCalled();
 	});
 });

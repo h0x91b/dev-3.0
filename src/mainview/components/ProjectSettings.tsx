@@ -1397,6 +1397,19 @@ function ProjectSettings({
 	}
 
 	// ---- Global tab handlers ----
+	// Saves on toggle — the Board tab has no Save button. The flag lives on the
+	// project record (not .dev3/config.json): it is this machine's privacy call,
+	// not something to commit into the repo.
+	async function handleToggleSensitive(next: boolean) {
+		if (!project) return;
+		try {
+			const updated = await api.request.updateProjectSettings({ projectId, sensitive: next });
+			dispatch({ type: "updateProject", project: updated });
+		} catch (err) {
+			toast.error(t("projectSettings.failedSave", { error: String(err) }));
+		}
+	}
+
 	async function handleAddLabel() {
 		if (!project) return;
 		setLabelSaving("new");
@@ -1825,6 +1838,27 @@ function ProjectSettings({
 								<AddRowButton onClick={handleAddLabel} disabled={labelSaving !== null}>
 									{t("labels.addLabel")}
 								</AddRowButton>
+							</div>
+							</SettingsSection>
+
+							<SettingsSection
+								title={t("projectSettings.groupPrivacy")}
+								description={t("projectSettings.groupPrivacyDesc")}
+							>
+							<div className="flex items-center justify-between gap-4">
+								<div>
+									<span className="block text-fg text-sm font-semibold mb-1">
+										{t("projectSettings.sensitive")}
+									</span>
+									<p className="text-fg-3 text-sm">
+										{t("projectSettings.sensitiveDesc")}
+									</p>
+								</div>
+								<ToggleSwitch
+									checked={project.sensitive ?? false}
+									ariaLabel={t("projectSettings.sensitive")}
+									onToggle={() => void handleToggleSensitive(!(project.sensitive ?? false))}
+								/>
 							</div>
 							</SettingsSection>
 						</div>

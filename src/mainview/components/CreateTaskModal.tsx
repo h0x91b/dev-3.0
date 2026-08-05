@@ -5,6 +5,7 @@ import { DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, titleFr
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
+import { useProjectPrivacy } from "../sensitive-projects";
 import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
@@ -55,14 +56,17 @@ function sameLabelIds(left: string[], right: string[]): boolean {
 
 function CreateTaskModal({ project: initialProject, projects, dispatch, initialText, onClose, onCreateAndRun, onOpenAutomations, draftTask }: CreateTaskModalProps) {
 	const t = useT();
+	const privacy = useProjectPrivacy();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const availableProjects = useMemo(() => {
-		const visibleProjects = (projects ?? []).filter((candidate) => !candidate.deleted);
+		// A native <select> option cannot carry the blur class, so a locked project
+		// is dropped from the list instead of masked — it cannot be opened anyway.
+		const visibleProjects = (projects ?? []).filter((candidate) => !candidate.deleted && !privacy.isLocked(candidate));
 		if (!visibleProjects.some((candidate) => candidate.id === initialProject.id)) {
 			visibleProjects.push(initialProject);
 		}
 		return orderProjectsForDisplay(visibleProjects);
-	}, [initialProject, projects]);
+	}, [initialProject, projects, privacy]);
 	// Editing an existing draft: the task already belongs to a board, so the
 	// project is fixed and every field starts from what the user had saved.
 	const isDraftEdit = !!draftTask;

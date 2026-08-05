@@ -163,6 +163,7 @@ vi.mock("../confirm", () => ({
 }));
 import { initTaskSoundPlayback, playTaskSoundFromPush } from "../task-sounds";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
+import { setStreamerMode } from "../streamer-mode";
 
 const mockedAdjustZoom = vi.mocked(adjustZoom);
 const mockedApplyZoom = vi.mocked(applyZoom);
@@ -747,6 +748,63 @@ describe("App keyboard shortcuts", () => {
 
 			expect(FakeWebNotification.instances).toHaveLength(1);
 			expect(FakeWebNotification.instances[0].options?.body).toBe("In Progress → Review By User");
+		});
+	});
+
+	// Streamer mode refuses every route into a project the user flagged sensitive,
+	// and evicts them if the mode goes on while they are already inside it.
+	describe("sensitive project is locked in streamer mode", () => {
+		const projects = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			{ id: "p2", name: "Secret", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "", sensitive: true },
+		];
+
+		afterEach(() => {
+			setStreamerMode(false);
+			delete document.documentElement.dataset.streamer;
+		});
+
+		it("refuses Cmd+2 into the sensitive project and keeps the current board", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			setStreamerMode(true);
+
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
+		});
+
+		it("allows the same jump once streamer mode is off", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+
+			await userEvent.keyboard("{Meta>}2{/Meta}");
+
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
+		});
+
+		it("evicts the user to the dashboard when streamer mode goes on inside it", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p2" }),
+			});
+
+			await renderApp();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
+
+			await act(async () => {
+				setStreamerMode(true);
+			});
+
+			expect(screen.queryByTestId("project-screen")).not.toBeInTheDocument();
 		});
 	});
 

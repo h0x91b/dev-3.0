@@ -22,7 +22,7 @@ import { listFilesystemRoots } from "../../shared/filesystem-roots";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn, spawnSync } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
-import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererDiagnostic, setActiveContext, setAppForeground, setTerminalFocus } from "./shared";
+import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererDiagnostic, setActiveContext, setAppForeground, setStreamerPrivacy, setTerminalFocus } from "./shared";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
 import { loadSharedArtifactContent, loadSharedArtifactDownload } from "../shared-artifacts";
 
@@ -114,6 +114,15 @@ async function setTerminalFocusHandler(params: { active: boolean }): Promise<voi
  */
 async function setActiveContextHandler(params: { projectId: string | null; taskId: string | null }): Promise<void> {
 	setActiveContext(params);
+}
+
+/**
+ * The renderer reports its streamer-mode state and the sensitive projects, so the
+ * backend can drop OS notifications for those projects while the mode is on. See
+ * `setStreamerPrivacy` in shared.ts for why the renderer owns this state.
+ */
+async function setStreamerPrivacyHandler(params: { streamerMode: boolean; sensitiveProjectIds: string[] }): Promise<void> {
+	setStreamerPrivacy(params);
 }
 
 // Liveness probe for the renderer's RPC bridge watchdog. Intentionally trivial:
@@ -1007,6 +1016,7 @@ export const appHandlers = {
 	setWindowForeground,
 	setTerminalFocus: setTerminalFocusHandler,
 	setActiveContext: setActiveContextHandler,
+	setStreamerPrivacy: setStreamerPrivacyHandler,
 	ping,
 	updateMenuContext,
 	getProjects,

@@ -3,6 +3,8 @@ import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getT
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
+import { useStreamerMode } from "./streamer-mode";
+import { isProjectSilencedForDisplay, setSensitiveProjectIds } from "./sensitive-projects";
 import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
@@ -450,6 +452,19 @@ function App() {
 
 	// Drive document.title from the current route so the browser tab shows the
 	// project/task name — the only orientation cue in remote (browser) mode.
+	// Streamer mode locks every project the user flagged `sensitive`: it cannot be
+	// entered, so a stray click during a recording cannot expose it.
+	const streamerModeOn = useStreamerMode();
+	const isRouteLocked = useCallback(
+		(route: Route) => {
+			if (!streamerModeOn) return false;
+			const projectId = projectIdForRoute(route);
+			if (!projectId) return false;
+			return Boolean(state.projects.find((p) => p.id === projectId)?.sensitive);
+		},
+		[streamerModeOn, state.projects],
+	);
+
 	// The base title (version string) from main.tsx is captured once on first run
 	// and preserved as the suffix; only the context prefix changes per route.
 	const baseTitleRef = useRef("");
@@ -458,7 +473,12 @@ function App() {
 		if (!baseTitleRef.current) baseTitleRef.current = document.title;
 		const base = baseTitleRef.current || "dev-3.0";
 		let prefix = "";
-		if (route.screen === "project" || route.screen === "project-terminal" || route.screen === "project-settings") {
+		// A tab title cannot be blurred (CSS reaches the document, not the chrome),
+		// so a sensitive project's context is replaced rather than masked.
+		const locked = isRouteLocked(route);
+		if (locked) {
+			prefix = `${t("streamer.privateTitle")} · `;
+		} else if (route.screen === "project" || route.screen === "project-terminal" || route.screen === "project-settings") {
 			const project = state.projects.find((p) => p.id === route.projectId);
 			if (project) prefix = `${project.name} · `;
 		} else if (route.screen === "task") {
@@ -466,7 +486,7 @@ function App() {
 			if (task) prefix = `${getTaskTitle(task)} · `;
 		}
 		document.title = prefix ? `${prefix}${base}` : base;
-	}, [state.route, state.currentProjectTasks, state.projects]);
+	}, [state.route, state.currentProjectTasks, state.projects, isRouteLocked, t]);
 
 	// Route persistence is enabled only after the initial restore attempt has
 	// run (see the projects-load effect). Without this gate, the bootstrap
@@ -511,13 +531,20 @@ function App() {
 	);
 	const navigate = useCallback(
 		(route: Route) => {
+			// One guard for every entry point into a sensitive project (card, Cmd+1..9,
+			// Cmd+K, palette, deep link, notification click, hint overlay). Checked
+			// before the dirty-form guard: a refused route must not prompt to save.
+			if (isRouteLocked(route)) {
+				toast.info(t("streamer.projectLocked"));
+				return;
+			}
 			if (navigationGuardRef.current?.isDirty()) {
 				setPendingNavigation(route);
 				return;
 			}
 			commitNavigation(route);
 		},
-		[commitNavigation],
+		[commitNavigation, isRouteLocked, t],
 	);
 
 	const toggleTerminalImmersive = useCallback(() => {
@@ -1236,8 +1263,9 @@ function App() {
 	// the terminal bell, but carries a hoverable reason.
 	useEffect(() => {
 		function onCliAttention(e: Event) {
-			const { taskId, reason } = (e as CustomEvent).detail as { taskId: string; reason: string };
+			const { taskId, projectId, reason } = (e as CustomEvent).detail as { taskId: string; projectId?: string; reason: string };
 			if (!taskId) return;
+			if (isProjectSilencedForDisplay(projectId)) return;
 			dispatch({ type: "addBell", taskId, reason: reason ?? "" });
 		}
 		window.addEventListener("rpc:cliAttention", onCliAttention);
@@ -1259,6 +1287,7 @@ function App() {
 				projectName?: string;
 			};
 			if (!message) return;
+			if (isProjectSilencedForDisplay(projectId)) return;
 			const onClick =
 				taskId && projectId
 					? () => openTaskFromNotification(taskId, projectId)
@@ -1402,6 +1431,7 @@ function App() {
 		function onWebNotification(e: Event) {
 			const detail = (e as CustomEvent).detail as WebNotificationDetail;
 			if (!detail?.body) return;
+			if (isProjectSilencedForDisplay(detail.projectId)) return;
 			showWebNotificationOrToast(detail, openTaskFromNotification);
 		}
 		window.addEventListener("rpc:webNotification", onWebNotification);
@@ -1722,6 +1752,32 @@ function App() {
 		const taskId = routeTaskId(route);
 		void api.request.setActiveContext?.({ projectId, taskId })?.catch?.(() => { /* best-effort */ });
 	}, [state.route]);
+
+	// Publish the sensitive ids so surfaces that only know a projectId (tmux
+	// sessions, notification payloads) can ask for the privacy verdict.
+	useEffect(() => {
+		setSensitiveProjectIds(state.projects.filter((p) => p.sensitive).map((p) => p.id));
+	}, [state.projects]);
+
+	// Report streamer mode + the sensitive projects so the backend drops the OS
+	// notifications no renderer gate can intercept. Streamer mode is per-client
+	// localStorage state, so the renderer is its only authority.
+	useEffect(() => {
+		void api.request.setStreamerPrivacy?.({
+			streamerMode: streamerModeOn,
+			sensitiveProjectIds: state.projects.filter((p) => p.sensitive).map((p) => p.id),
+		})?.catch?.(() => { /* best-effort */ });
+	}, [streamerModeOn, state.projects]);
+
+	// A sensitive project must not stay on screen the moment the camera goes on.
+	useEffect(() => {
+		if (!streamerModeOn) return;
+		const projectId = projectIdForRoute(state.route);
+		if (!projectId) return;
+		if (!state.projects.find((p) => p.id === projectId)?.sensitive) return;
+		commitNavigation({ screen: "dashboard" });
+		toast.info(t("streamer.projectLocked"));
+	}, [streamerModeOn, state.route, state.projects, commitNavigation, t]);
 
 	// Notify user when a column-agent launch fails. Built-in AI Review also parks the
 	// task in Your Review; a custom column leaves it where it is.

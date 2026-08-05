@@ -291,6 +291,9 @@ const common = {
 	"mobile.portrait.title": "Rotate to portrait",
 	"mobile.portrait.message": "dev-3.0 works best in portrait mode on phones. Rotate your device to continue.",
 	"mobile.backExitToast": "Press Back again to exit",
+	"streamer.privateTitle": "Private project",
+	"streamer.projectLocked": "Sensitive project — locked while streamer mode is on",
 } as const;
 
 export default common;
+

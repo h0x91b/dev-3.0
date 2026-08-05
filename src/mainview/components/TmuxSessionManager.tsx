@@ -6,6 +6,7 @@ import type { Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
+import { useProjectPrivacy } from "../sensitive-projects";
 import HelpSpot from "./HelpSpot";
 import { formatBytes } from "../utils/formatBytes";
 import { startVisibilityAwarePoll } from "../utils/poll";
@@ -19,6 +20,7 @@ const SESSION_REFRESH_FRESH_MS = 5000;
 
 function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 	const t = useT();
+	const privacy = useProjectPrivacy();
 
 	const [sessions, setSessions] = useState<TmuxSessionInfo[]>([]);
 	const [popoverOpen, setPopoverOpen] = useState(false);
@@ -305,7 +307,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 											{/* Session name + badges + kill */}
 											<div className="flex items-center justify-between gap-2">
 												<div className="flex items-center gap-2 min-w-0">
-													<span className={`text-sm font-semibold truncate${canNavigate ? " text-accent" : " text-fg"}`} title={session.name}>
+													<span className={`text-sm font-semibold truncate${canNavigate ? " text-accent" : " text-fg"} ${privacy.maskClass(session.projectId)}`} title={privacy.isLocked(session.projectId) ? undefined : session.name}>
 														{session.isProjectTerminal
 															? (session.projectName || session.name)
 															: (session.taskTitle || session.name.replace(/^dev3-/, ""))}

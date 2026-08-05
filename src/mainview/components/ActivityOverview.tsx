@@ -5,6 +5,7 @@ import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, orderProjectsFo
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { useProjectPrivacy } from "../sensitive-projects";
 import { getStatusLabel } from "../utils/statusLabel";
 import { statusKey } from "../i18n/status";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -117,6 +118,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	// Tasks whose row ✓ is in flight — the confirmation dialog it opens runs a git
 	// check, so the row has to acknowledge the click before the move lands.
 	const [completingTasks, setCompletingTasks] = useState<Set<string>>(new Set());
+
+	const privacy = useProjectPrivacy();
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
@@ -351,6 +354,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					const hasActiveTasks = tasks.length > 0;
 					const isDragged = draggedProjectId === project.id;
 					const isBuiltinOps = isBuiltinOpsProject(project);
+					const locked = privacy.isLocked(project);
 					// Virtual boards (builtin and user-created) cannot be reordered:
 					// reorderProjects only persists git project order; dragging a virtual
 					// board would silently snap back after the API call. The project right
@@ -486,7 +490,9 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 									type="button"
 									data-hint-id={`project:${project.id}`}
 									onClick={() => openProject(project.id)}
-									className="min-w-0 flex-1 flex items-center gap-3 text-left"
+									aria-disabled={locked || undefined}
+									title={locked ? t("streamer.projectLocked") : undefined}
+									className={`min-w-0 flex-1 flex items-center gap-3 text-left ${locked ? "cursor-not-allowed" : ""}`}
 								>
 									<div className={`${hasActiveTasks ? "w-8 h-8" : "w-6 h-6"} rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0`}>
 										<svg aria-hidden="true" focusable="false" className={`${hasActiveTasks ? "w-4 h-4" : "w-3 h-3"} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -498,7 +504,16 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 											{isBuiltinOps && (
 												<span aria-hidden="true" className="text-accent flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 											)}
-											<span className="truncate select-text" title={isBuiltinOps ? undefined : project.name}>{isBuiltinOps ? t("ops.boardName") : project.name}</span>
+											{locked && (
+										<span
+											aria-hidden="true"
+											className="text-fg-muted flex-shrink-0"
+											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										>
+											{"\u{F033E}"}
+										</span>
+									)}
+									<span className={`truncate select-text ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{isBuiltinOps ? t("ops.boardName") : project.name}</span>
 											{project.kind === "virtual" && (
 												<span className="px-1.5 py-0.5 rounded bg-raised text-fg-3 text-dense font-medium uppercase tracking-[0.06em] flex items-center gap-1 flex-shrink-0">
 													<span aria-hidden="true" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
@@ -573,7 +588,9 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 										const needsMe = !col && NEEDS_ME_STATUSES.includes(task.status);
 										// The row's single object action. A hibernated task refuses column
 										// changes in the lifecycle machine, so it gets no ✓ at all.
-										const canComplete = !task.hibernated;
+										// A locked project's rows are blurred, so completing from one would
+										// mutate a task the user cannot read.
+										const canComplete = !task.hibernated && !locked;
 										const completing = completingTasks.has(task.id);
 										return (
 										<div
@@ -600,7 +617,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 											<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
 												<span
 													title={getTaskTitle(task)}
-													className={`text-fg-2 text-sm min-w-0 md:flex-1 select-text ${narrow ? "line-clamp-2" : "truncate"}`}
+													className={`text-fg-2 text-sm min-w-0 md:flex-1 select-text ${narrow ? "line-clamp-2" : "truncate"} ${privacy.maskClass(project)}`}
 												>
 													{getTaskTitle(task)}
 												</span>

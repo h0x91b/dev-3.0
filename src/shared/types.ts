@@ -1136,6 +1136,7 @@ export type ResolvedConfigSource = "local" | "repo" | "project" | "default" | "u
 export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	githubAuthHost?: string | null;
 	githubAuthLogin?: string | null;
+	sensitive?: boolean;
 }
 
 export interface Project {
@@ -1187,6 +1188,12 @@ export interface Project {
 	 * for naming purposes). Only ever set on virtual projects.
 	 */
 	builtin?: boolean;
+	/**
+	 * Marks a project the user must not show on camera. Inert on its own: every
+	 * effect (masked name and tasks, blocked entry, silenced notifications) is
+	 * gated on streamer mode being on. See PRODUCT_UX_BIBLE §10 + decision 197.
+	 */
+	sensitive?: boolean;
 }
 
 /**
@@ -3886,6 +3893,17 @@ export type AppRPCSchema = {
 			 */
 			setActiveContext: {
 				params: { projectId: string | null; taskId: string | null };
+				response: void;
+			};
+			/**
+			 * Renderer reports its streamer-mode state together with the projects
+			 * marked `sensitive`, so the backend can drop OS-level notifications the
+			 * renderer cannot intercept. Streamer mode is per-client display state
+			 * (localStorage), so the renderer is its only authority; with no client
+			 * connected there is no screen to leak on and nothing is silenced.
+			 */
+			setStreamerPrivacy: {
+				params: { streamerMode: boolean; sensitiveProjectIds: string[] };
 				response: void;
 			};
 			/**

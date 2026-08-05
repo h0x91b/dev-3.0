@@ -5,6 +5,7 @@ import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
 import { getTaskTitle } from "../../../shared/types";
 import type { Route } from "../../state";
+import { setStreamerMode } from "../../streamer-mode";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -73,6 +74,72 @@ function renderActivityOverview(
 		</I18nProvider>,
 	);
 }
+
+function renderWithProjects(projects: Project[], navigate: (route: Route) => void = vi.fn()) {
+	return render(
+		<I18nProvider>
+			<ActivityOverview
+				projects={projects}
+				navigate={navigate}
+				dispatch={vi.fn()}
+				bellCounts={new Map()}
+				onRemoveProject={vi.fn()}
+				onOpenAddProject={vi.fn()}
+			/>
+		</I18nProvider>,
+	);
+}
+
+// A project flagged `sensitive` must read as present-but-off-limits while
+// streamer mode is on: blurred name + task, lock glyph, and a non-actionable row
+// (the refusal itself lives in App's navigate guard).
+describe("ActivityOverview — sensitive project in streamer mode", () => {
+	const sensitive: Project = { ...mockProject, sensitive: true };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{ projectId: "p1", tasks: [mockTask] },
+		]);
+		localStorage.clear();
+		delete document.documentElement.dataset.streamer;
+		setStreamerMode(false);
+	});
+
+	it("leaves the row untouched while streamer mode is off", async () => {
+		renderWithProjects([sensitive]);
+		const name = await screen.findByText("My Project");
+		expect(name.className).not.toContain("streamer-private");
+	});
+
+	it("blurs the project name and its task, and marks the row aria-disabled", async () => {
+		setStreamerMode(true);
+		renderWithProjects([sensitive]);
+
+		const name = await screen.findByText("My Project");
+		expect(name.className).toContain("streamer-private");
+		expect(screen.getByText(getTaskTitle(mockTask)).className).toContain("streamer-private");
+		expect(name.closest("button")).toHaveAttribute("aria-disabled", "true");
+		expect(name.closest("button")).toHaveAttribute("title", expect.stringContaining("Sensitive project"));
+	});
+
+	it("hides the row's Complete action so a blurred task cannot be mutated", async () => {
+		setStreamerMode(true);
+		renderWithProjects([sensitive]);
+
+		await screen.findByText("My Project");
+		expect(screen.queryByTestId("activity-row-complete")).not.toBeInTheDocument();
+	});
+
+	it("does not blur a project without the flag", async () => {
+		setStreamerMode(true);
+		renderWithProjects([mockProject]);
+
+		const name = await screen.findByText("My Project");
+		expect(name.className).not.toContain("streamer-private");
+		expect(name.closest("button")).not.toHaveAttribute("aria-disabled");
+	});
+});
 
 describe("ActivityOverview", () => {
 	beforeEach(() => {

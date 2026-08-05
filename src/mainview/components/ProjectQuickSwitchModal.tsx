@@ -1,6 +1,7 @@
 import type { Project } from "../../shared/types";
 import { isBuiltinOpsProject } from "../../shared/types";
 import { useT } from "../i18n";
+import { useProjectPrivacy } from "../sensitive-projects";
 import { PaletteShell } from "./PaletteShell";
 
 interface ProjectQuickSwitchModalProps {
@@ -28,11 +29,13 @@ interface ProjectQuickSwitchModalProps {
  */
 function ProjectQuickSwitchModal({ projects, shortcutIndexById, onSelect, onClose }: ProjectQuickSwitchModalProps) {
 	const t = useT();
+	const privacy = useProjectPrivacy();
 	return (
 		<PaletteShell
 			items={projects}
 			getKey={(p) => p.id}
 			getText={(p) => (isBuiltinOpsProject(p) ? t("ops.boardName") : p.name)}
+			getTextClassName={(p) => privacy.maskClass(p)}
 			onSelect={(p) => onSelect(p.id)}
 			onClose={onClose}
 			placeholder={t("projectSwitch.placeholder")}
@@ -41,6 +44,15 @@ function ProjectQuickSwitchModal({ projects, shortcutIndexById, onSelect, onClos
 			noResults={t("projectSwitch.noResults")}
 			testId="project-quick-switch"
 			renderItemRight={(p, _i, query) => {
+				// A locked project stays listed so the palette does not lie about what
+				// exists; selecting it is refused by the navigation guard.
+				if (privacy.isLocked(p)) {
+					return (
+						<span aria-label={t("streamer.projectLocked")} className="text-fg-muted text-xs flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\u{F033E}"}
+						</span>
+					);
+				}
 				if (query.length === 0 && isBuiltinOpsProject(p)) {
 					return <span className="text-fg-3 text-xs flex-shrink-0">⌘0</span>;
 				}

@@ -134,6 +134,31 @@ export function getActiveContext(): { projectId: string | null; taskId: string |
 	return activeContext;
 }
 
+/**
+ * Streamer-mode privacy, as reported by the renderer (`setStreamerPrivacy`).
+ * Streamer mode lives in each client's localStorage, so the renderer is its only
+ * authority; the backend keeps the last report purely to drop OS-level
+ * notifications for sensitive projects, which no renderer gate can intercept.
+ * Nothing is silenced until a client reports — with no client there is no screen.
+ */
+let streamerPrivacy: { streamerMode: boolean; sensitiveProjectIds: Set<string> } = {
+	streamerMode: false,
+	sensitiveProjectIds: new Set(),
+};
+
+export function setStreamerPrivacy(params: { streamerMode: boolean; sensitiveProjectIds: string[] }): void {
+	streamerPrivacy = {
+		streamerMode: params.streamerMode,
+		sensitiveProjectIds: new Set(params.sensitiveProjectIds),
+	};
+}
+
+/** True when a notification for this project must be dropped, not queued. */
+export function isProjectSilenced(projectId: string | null | undefined): boolean {
+	if (!streamerPrivacy.streamerMode || !projectId) return false;
+	return streamerPrivacy.sensitiveProjectIds.has(projectId);
+}
+
 export interface TerminalFocusToastPayload {
 	taskId: string | null;
 	projectId: string | null;
@@ -147,6 +172,8 @@ export interface TerminalFocusToastPayload {
 
 export interface TerminalFocusAttentionPayload {
 	taskId: string;
+	/** Owning project — carried solely so a sensitive project's badge can be dropped. */
+	projectId: string;
 	reason: string;
 }
 
@@ -246,6 +273,7 @@ export function queueTerminalFocusAttention(payload: TerminalFocusAttentionPaylo
 }
 
 export function pushCliToast(payload: TerminalFocusToastPayload): void {
+	if (isProjectSilenced(payload.projectId)) return;
 	if (isNotificationSuppressed()) {
 		queueTerminalFocusToast(payload);
 		return;
@@ -254,6 +282,7 @@ export function pushCliToast(payload: TerminalFocusToastPayload): void {
 }
 
 export function pushCliAttention(payload: TerminalFocusAttentionPayload): void {
+	if (isProjectSilenced(payload.projectId)) return;
 	if (isNotificationSuppressed()) {
 		queueTerminalFocusAttention(payload);
 		return;
@@ -273,6 +302,7 @@ export function pushTerminalBell(taskId: string): void {
 
 /** Queue or deliver a shared-image notification while an attention-suppressing mode is active. */
 export function pushCliShowImage(payload: TerminalFocusImagePayload): void {
+	if (isProjectSilenced(payload.projectId)) return;
 	if (isNotificationSuppressed()) {
 		queuedTerminalNotifications.push({ kind: "showImage", payload });
 		return;
@@ -282,6 +312,7 @@ export function pushCliShowImage(payload: TerminalFocusImagePayload): void {
 
 /** Queue or deliver an artifact notification while an attention-suppressing mode is active. */
 export function pushCliShowArtifact(payload: TerminalFocusArtifactPayload): void {
+	if (isProjectSilenced(payload.projectId)) return;
 	if (isNotificationSuppressed()) {
 		queuedTerminalNotifications.push({ kind: "showArtifact", payload });
 		return;
@@ -331,6 +362,9 @@ function deliverTaskNotification(
 	projectName?: string,
 	bypassSuppression = false,
 ): void {
+	// A sensitive project on camera is dropped, never queued: the point is that the
+	// event leaves no trace on screen, now or after streamer mode goes off.
+	if (isProjectSilenced(task.projectId)) return;
 	if (isNotificationSuppressed() && !bypassSuppression) {
 		queuedTerminalNotifications.push({ kind: "task", task, body, projectName });
 		return;

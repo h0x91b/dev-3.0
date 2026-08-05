@@ -1382,7 +1382,7 @@ describe("ui control (notify / attention / state)", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ delivered: true, queued: true });
 		expect(pushFn).not.toHaveBeenCalled();
-		expect(pushCliAttention).toHaveBeenCalledWith({ taskId: task.id, reason: "x" });
+		expect(pushCliAttention).toHaveBeenCalledWith({ taskId: task.id, projectId: task.projectId, reason: "x" });
 	});
 
 	it("ui.attention: pushes cliAttention for the resolved task", async () => {

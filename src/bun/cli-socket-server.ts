@@ -1160,7 +1160,7 @@ const handlers: Record<string, Handler> = {
 		const { project, task } = await resolveTaskFromParams(params);
 		if ((await loadSettings()).focusMode) setFocusMode(true);
 		if (isNotificationSuppressed()) {
-			pushCliAttention({ taskId: task.id, reason });
+			pushCliAttention({ taskId: task.id, projectId: task.projectId, reason });
 			return { delivered: true, queued: true, taskId: task.id, projectId: project.id };
 		}
 		const push = getPushMessage();

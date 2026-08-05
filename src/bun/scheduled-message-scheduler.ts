@@ -78,7 +78,7 @@ function notifyOutcome(project: Project, task: Task, opts: { toast: string; leve
 		taskTitle: getTaskTitle(task),
 		projectName: project.name,
 	});
-	pushCliAttention({ taskId: task.id, reason: opts.reason });
+	pushCliAttention({ taskId: task.id, projectId: task.projectId, reason: opts.reason });
 }
 
 /** Remove one queued message and broadcast the updated task. Returns the updated

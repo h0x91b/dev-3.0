@@ -290,6 +290,8 @@ const common = {
 	"mobile.portrait.title": "Gira el dispositivo a vertical",
 	"mobile.portrait.message": "dev-3.0 funciona mejor en modo vertical en teléfonos. Gira el dispositivo para continuar.",
 	"mobile.backExitToast": "Pulsa Atrás de nuevo para salir",
+	"streamer.privateTitle": "Proyecto privado",
+	"streamer.projectLocked": "Proyecto sensible — bloqueado mientras el modo streamer está activo",
 };
 
 export default common;

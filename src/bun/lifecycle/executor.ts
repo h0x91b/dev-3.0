@@ -1087,7 +1087,7 @@ export async function executeLifecycleEffect(
 			notifyWatchedTaskStatusChange(ctx.task, effect.from, effect.to, ctx.project.name);
 			return {};
 		case "raisePrAttention":
-			pushCliAttention({ taskId: ctx.task.id, reason: effect.reason });
+			pushCliAttention({ taskId: ctx.task.id, projectId: ctx.task.projectId, reason: effect.reason });
 			notifyWatchedTaskEvent(ctx.task, effect.reason, ctx.project.name);
 			return {};
 		case "emitTaskSound":

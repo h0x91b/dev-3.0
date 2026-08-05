@@ -672,6 +672,13 @@ ux_architecture:
       reject: ["collapsing a variant group into one card (breaks sidebar readiness tiers + hides diverged per-variant titles/statuses)", "click-to-filter group chips (epic mechanic; variants want direct switch, not filtering)", "+N overflow counter next to the dots", "unbounded dot rows"]
       status: "agreed"
       rationale: "Variants of one logical task stay individually honest cards (status/tier/title per variant), while ONE unified affordance — capped clickable dots + a richer SiblingPopover — provides group identity, overview, and jump on both card surfaces; in-workspace switching (QA flow: run each variant, poke it, next) gets the inspector Context-bar switcher + a cycle hotkey. Decided in a grilling session, task seq 1042 (2026-07-12)."
+    - id: "sensitive-project-masked-locked-and-silent"
+      when: { feature_class: "configuration", trait: "privacy_sensitive_whole_object" }
+      place_in: ["project_settings.tab_global (Board) -> own SettingsSection, ToggleSwitch (project-record state, not the git-committed config tabs)", "mask: streamer-private on the project name + on task text containers on every surface outside the project", "block: the single navigate() choke point in App.tsx + a redirect to dashboard when streamer mode turns on inside the project", "silence: bun deliverTaskNotification gate + renderer toast/web-notification gate", "document.title: neutral placeholder (CSS cannot blur a tab title)"]
+      reject: ["hiding_the_project_from_dashboard_and_pickers", "card_wide_blur_that_hides_the_lock_affordance", "header_indicator_or_counter_for_sensitive_projects", "unlock_for_this_session_escape_hatch", "effects_outside_streamer_mode", "per_entry_point_guards_instead_of_the_navigate_choke_point"]
+      token_role: "neutral (lock glyph text-fg-muted); toast level info"
+      status: "proposed"
+      rationale: "The flag protects one moment — the camera is on — against one accident: a click into the wrong project. The guard therefore belongs at the routing choke point, not in the ~10 entry points that reach it. Visible-but-locked (blurred name + lock + toast) keeps the demo continuous, which is the same reason decision 161 chose blur over text replacement. See PRODUCT_UX_BIBLE §3 + §10 + UX_DECISIONS 2026-08-05."
     - id: "inline-help-placement"
       when: { feature_class: "onboarding_help" }
       place_in: ["help.ts registry topic + HelpSpot in a header-bearing section", "help-mode coverage via data-help-id (dense/headerless zones)", "application_menu.Help / ⇧⌘/ / command_palette entry"]

@@ -300,6 +300,8 @@ const common = {
 	"mobile.portrait.title": "Поверните телефон вертикально",
 	"mobile.portrait.message": "На телефоне dev-3.0 работает в портретном режиме. Поверните устройство, чтобы продолжить.",
 	"mobile.backExitToast": "Нажмите «Назад» ещё раз для выхода",
+	"streamer.privateTitle": "Приватный проект",
+	"streamer.projectLocked": "Чувствительный проект — заблокирован, пока включён режим стримера",
 };
 
 export default common;

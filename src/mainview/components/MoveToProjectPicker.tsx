@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { Project } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { useProjectPrivacy } from "../sensitive-projects";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import BottomSheet from "./BottomSheet";
 
@@ -30,6 +31,7 @@ const POPOVER_WIDTH = 260;
  */
 export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSelect, onClose }: MoveToProjectPickerProps) {
 	const t = useT();
+	const privacy = useProjectPrivacy();
 	const narrow = useNarrowViewport(MOBILE_MAX_WIDTH);
 	const [projects, setProjects] = useState<Project[] | null>(null);
 	const [query, setQuery] = useState("");
@@ -122,10 +124,15 @@ export default function MoveToProjectPicker({ currentProjectId, anchorEl, onSele
 					<button
 						key={p.id}
 						type="button"
-						onClick={() => onSelect(p)}
+						aria-disabled={privacy.isLocked(p) || undefined}
+						title={privacy.isLocked(p) ? t("streamer.projectLocked") : undefined}
+						onClick={() => {
+							if (privacy.isLocked(p)) return;
+							onSelect(p);
+						}}
 						className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-elevated-hover"
 					>
-						<span className="truncate text-sm text-fg">{p.name}</span>
+						<span className={`truncate text-sm text-fg ${privacy.maskClass(p)}`}>{p.name}</span>
 					</button>
 				))
 			)}

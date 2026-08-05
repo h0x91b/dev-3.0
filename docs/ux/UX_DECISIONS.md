@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-08-05 — A sensitive project is masked, locked and silent — but only while streamer mode is on
+
+- **Rule:** `Project.sensitive` (toggle in Project Settings → Board) is inert until `data-streamer="on"`; then the project name and its task text carry `streamer-private` everywhere outside the project, its dashboard row / picker option stays visible but `aria-disabled` with a lock glyph and an info toast on click, the `navigate()` choke point in `App.tsx` refuses routes into it (and redirects out when the mode turns on), and every notification path drops its events. `document.title` gets a neutral placeholder — CSS cannot blur a tab title. Bible §3 + §10, yaml `sensitive-project-masked-locked-and-silent`.
+- **Why:** the flag guards one moment (camera on) against one accident (a click into the wrong project), so one routing guard beats ~10 per-entry-point guards. Rejected: hiding the project entirely (reads as data loss, and hides that the guard works), a header indicator (chrome creep — the row's lock is the indicator), an unlock-for-this-session hatch (the hatch is turning streamer mode off).
+- **Status:** Decided. Evidence: `decisions/161-streamer-mode-css-blur-masking.md`, `src/mainview/streamer-mode.tsx`, `src/mainview/App.tsx` (`navigate`), `src/bun/rpc-handlers/shared.ts` (`deliverTaskNotification`).
+
 ## 2026-08-05 — The dashboard task row carries exactly one object action: ✓ Complete
 
 - **Rule:** each dashboard task row ends in one ✓ Complete (hover/focus-revealed on desktop, always visible ≥44×44 on narrow, always `alwaysConfirm`, hidden while hibernated) and never gains a second row action, kebab, or context menu. Bible §10 row `object_action — the one dashboard exception`, yaml `placement_rules.dashboard-task-row-single-complete`.
