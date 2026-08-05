@@ -689,6 +689,71 @@ describe("runCleanupScript", () => {
 
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});
+
+	// Issue #1251: an attached cleanup client that never exits used to block the
+	// whole teardown chain — no worktree removal, no terminal status write, card
+	// stuck on "Shutting down…" until the app restarted.
+	describe("wedged tmux client", () => {
+		const wedgedClient = { pid: 4242, exited: new Promise<number>(() => {}), kill: vi.fn() };
+
+		function mockCleanupSpawn(sessionAlive: boolean) {
+			mockSpawn.mockImplementation((argv: string[]) => {
+				if (argv.includes("new-session") && !argv.includes("-d")) return wedgedClient;
+				return {
+					stdout: new Response(""),
+					stderr: new Response(""),
+					exited: Promise.resolve(argv.includes("has-session") && !sessionAlive ? 1 : 0),
+				};
+			});
+		}
+
+		function cleanupTask() {
+			return makeTask({ id: "task-wedged-1234", worktreePath: "/tmp/test-worktree", status: "in-progress" });
+		}
+
+		beforeEach(() => {
+			wedgedClient.kill.mockClear();
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("kills the client and returns once its session is gone", async () => {
+			mockCleanupSpawn(false);
+			const project = makeProject({ path: "/tmp/project-root", cleanupScript: "echo cleanup" });
+
+			const pending = runCleanupScript(cleanupTask(), project, {
+				fromStatus: "in-progress",
+				toStatus: "completed",
+			});
+			await vi.advanceTimersByTimeAsync(30_000);
+			await expect(pending).resolves.toBeUndefined();
+
+			expect(wedgedClient.kill).toHaveBeenCalledWith(9);
+			const killSession = mockSpawn.mock.calls
+				.map(([argv]) => argv as string[])
+				.find((argv) => argv.includes("kill-session"));
+			expect(killSession).toContain("dev3-cl-task-wed");
+		});
+
+		it("waits out a live session and gives up only at the hard cap", async () => {
+			mockCleanupSpawn(true);
+			const project = makeProject({ path: "/tmp/project-root", cleanupScript: "echo cleanup" });
+
+			const pending = runCleanupScript(cleanupTask(), project, {
+				fromStatus: "in-progress",
+				toStatus: "completed",
+			});
+			await vi.advanceTimersByTimeAsync(60_000);
+			expect(wedgedClient.kill).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(10 * 60_000);
+			await expect(pending).resolves.toBeUndefined();
+			expect(wedgedClient.kill).toHaveBeenCalledWith(9);
+		});
+	});
 });
 
 describe("uploadFileBase64", () => {

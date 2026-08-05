@@ -339,6 +339,87 @@ function buildCleanupScriptEnv(
 	};
 }
 
+/**
+ * A cleanup script sits in the middle of the teardown effect chain, before
+ * worktree removal and the terminal status write. Its attached tmux client has
+ * been observed staying alive forever after its session was already gone, which
+ * stranded the task in `tearing-down` with a permanently greyed-out card and
+ * leaked the worktree (issue #1251, decision 205). Nothing about a cleanup
+ * script may block teardown, so the wait is bounded twice: an orphaned client
+ * (session gone, client alive) is killed within seconds, and even a script that
+ * is genuinely still running gives up at the hard cap.
+ */
+export const CLEANUP_SESSION_POLL_MS = 5_000;
+export const CLEANUP_SCRIPT_HARD_TIMEOUT_MS = 10 * 60_000;
+/** Consecutive missing-session polls before the client is declared orphaned. */
+const CLEANUP_ORPHAN_POLLS = 2;
+
+type CleanupProcess = { exited: Promise<number>; kill: (signal?: number) => void };
+
+async function abandonCleanupSession(
+	proc: CleanupProcess,
+	socket: string,
+	sessionName: string,
+	reason: "orphaned-client" | "hard-timeout",
+	fields: Record<string, unknown>,
+): Promise<void> {
+	log.warn("Cleanup script abandoned — continuing teardown without it", { ...fields, reason });
+	try {
+		await tmux.killSession(sessionName, { socket, bestEffort: true });
+	} catch {
+		// Killing the session is best-effort; teardown continues either way.
+	}
+	try {
+		proc.kill(9);
+	} catch {
+		// The client may have exited between the last poll and the kill.
+	}
+}
+
+/** An unreadable socket is inconclusive, not proof of death — only the hard cap acts on it. */
+async function cleanupSessionAlive(socket: string, sessionName: string): Promise<boolean> {
+	try {
+		return await tmux.hasSession(sessionName, { socket });
+	} catch {
+		return true;
+	}
+}
+
+async function awaitCleanupSession(
+	proc: CleanupProcess,
+	socket: string,
+	sessionName: string,
+	taskId: string,
+): Promise<void> {
+	const startedAt = Date.now();
+	const fields = { taskId, session: sessionName };
+	let missingSessionPolls = 0;
+	for (;;) {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const settled = await Promise.race([
+			proc.exited.then((exitCode) => ({ exitCode })),
+			new Promise<null>((resolve) => {
+				timer = setTimeout(() => resolve(null), CLEANUP_SESSION_POLL_MS);
+			}),
+		]);
+		clearTimeout(timer);
+		const elapsedMs = Date.now() - startedAt;
+		if (settled) {
+			log.info("Cleanup script finished", { ...fields, exitCode: settled.exitCode, elapsedMs });
+			return;
+		}
+		if (elapsedMs >= CLEANUP_SCRIPT_HARD_TIMEOUT_MS) {
+			await abandonCleanupSession(proc, socket, sessionName, "hard-timeout", { ...fields, elapsedMs });
+			return;
+		}
+		missingSessionPolls = (await cleanupSessionAlive(socket, sessionName)) ? 0 : missingSessionPolls + 1;
+		if (missingSessionPolls >= CLEANUP_ORPHAN_POLLS) {
+			await abandonCleanupSession(proc, socket, sessionName, "orphaned-client", { ...fields, elapsedMs });
+			return;
+		}
+	}
+}
+
 export async function runCleanupScript(
 	task: Task,
 	project: Project,
@@ -356,17 +437,21 @@ export async function runCleanupScript(
 	await Bun.write(scriptPath, `${[...dialect.header(), script].join("\n")}\n`);
 	// The cleanup script is shown in a throwaway tmux session — POSIX-only.
 	assertPosixLaunchDialect("the cleanup-script tmux session");
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+	const sessionName = cleanupSessionName(task.id);
+	const taskId = task.id.slice(0, 8);
+	log.info("Running cleanup script", { taskId, session: sessionName });
 	const proc = tmux.spawnAttachedSession({
-		socket: task.tmuxSocket ?? DEFAULT_TMUX_SOCKET,
+		socket,
 		configFile: activeTmuxConfigPath(),
-		sessionName: cleanupSessionName(task.id),
+		sessionName,
 		cwd: task.worktreePath,
 		envFlags: cleanupEnv,
 		command: buildScriptRunnerCommand(scriptPath, { shellPath: getUserShell() }),
 		terminal: { cols: 220, rows: 50, data: () => {} },
 		processEnv: cleanupEnv,
 	});
-	await proc.exited;
+	await awaitCleanupSession(proc, socket, sessionName, taskId);
 }
 
 export async function captureCompletedDiffStats(
