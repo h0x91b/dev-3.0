@@ -171,7 +171,8 @@ const mockNativePanes = {
 };
 vi.mock("../native-task-panes", () => mockNativePanes);
 
-const mockSendPromptToNativePane = vi.fn(async () => true);
+/** The native arm of the seam: its best answer is `unconfirmed`, never `delivered`. */
+const mockSendPromptToNativePane = vi.fn(async () => ({ status: "unconfirmed", reason: "unacknowledged" }) as any);
 vi.mock("../agent-prompt-native", () => ({
 	sendPromptToNativePane: (...args: any[]) => mockSendPromptToNativePane(...(args as [])),
 	sendPromptToNativeAgentPane: vi.fn(async () => true),
@@ -5563,6 +5564,7 @@ describe("handlers.resolvePrUrl", () => {
 describe("handlers.getTaskDiff", () => {
 	beforeEach(() => vi.clearAllMocks());
 
+
 	it("throws when task has no worktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ worktreePath: null });
@@ -8721,17 +8723,116 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		vi.useRealTimers();
 	});
 
-	function makeSplitMock(paneIds: string[]) {
+	/**
+	 * A fake tmux SERVER, not a fake seam: it answers the split, the pane sighting the
+	 * guarded seam pins against, the guarded send itself, and kill-pane. Delivery runs
+	 * through that seam now (`201-backend-neutral-pane-input`), so a test can name WHY a delivery failed —
+	 * an unlisted pane, a guard that refused, a command that exited non-zero — instead
+	 * of only seeing that the launch threw.
+	 */
+	const HUNTER_TOKEN = "srv-hunter-1";
+	const HUNTER_SESSION = "dev3-abcd1234";
+
+	interface GuardedSend {
+		pane: string;
+		/** The literal text this send puts into the pane, decoded from its `-H` hex. */
+		text: string;
+		/** The key names this send presses. */
+		keys: string[];
+		exitCode: number;
+	}
+
+	function parseGuardedCommands(commandList: string): { text: string; keys: string[] } {
+		let text = "";
+		const keys: string[] = [];
+		for (const command of commandList.split(" ; ")) {
+			const hex = command.split(" -H ")[1];
+			if (hex !== undefined) {
+				text += Buffer.from(hex.split(" ").join(""), "hex").toString("utf8");
+				continue;
+			}
+			const parts = command.split(" ");
+			if (parts[0] === "send-keys") keys.push(...parts.slice(3));
+		}
+		return { text, keys };
+	}
+
+	function makeSplitMock(
+		paneIds: string[],
+		opts: {
+			/** Panes the server will not list when the seam pins them. */
+			unlistedPanes?: string[];
+			/** Panes whose guard refuses, so nothing is sent. */
+			guardRefuses?: string[];
+			/** Panes whose guarded send exits non-zero — fate unknown. */
+			sendFails?: string[];
+			/** kill-pane fails, the way a pane that will not go looks. */
+			killFails?: boolean;
+			/** The server cannot answer at all — measured live as `no server running`. */
+			listPanesFails?: boolean;
+		} = {},
+	) {
 		let i = 0;
 		const enc = new TextEncoder();
-		mockSpawn.mockImplementation((args: string[]) => {
-			const isSplit = args.includes("split-window");
-			if (isSplit) {
-				const pane = paneIds[i++] ?? `%99`;
-				return { stderr: enc.encode(""), stdout: enc.encode(pane), exited: Promise.resolve(0) };
-			}
-			return { stderr: enc.encode(""), stdout: enc.encode(""), exited: Promise.resolve(0) };
+		const opened: string[] = [];
+		const killed: string[] = [];
+		const sends: GuardedSend[] = [];
+		const reply = (stdout: string, exitCode = 0) => ({
+			stderr: enc.encode(""),
+			stdout: enc.encode(stdout),
+			exited: Promise.resolve(exitCode),
 		});
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (args.includes("split-window")) {
+				const pane = paneIds[i++] ?? `%99`;
+				opened.push(pane);
+				return reply(pane);
+			}
+			// The pane sighting: pane id, dead flag, server token, session name.
+			if (args.includes("list-panes") && args.some((arg) => arg.includes("@dev3_server_token"))) {
+				if (opts.listPanesFails) return reply("", 1);
+				const rows = opened
+					.filter((pane) => !killed.includes(pane) && !(opts.unlistedPanes ?? []).includes(pane))
+					.map((pane) => `${pane}\t0\t${HUNTER_TOKEN}\t${HUNTER_SESSION}`);
+				return reply(rows.join("\n"));
+			}
+			const guardIndex = args.indexOf("if-shell");
+			if (guardIndex >= 0) {
+				const pane = args[guardIndex + 2];
+				const exitCode = (opts.sendFails ?? []).includes(pane) ? 1 : 0;
+				sends.push({ pane, ...parseGuardedCommands(args[guardIndex + 5] ?? ""), exitCode });
+				if (exitCode !== 0) return reply("", exitCode);
+				// No marker on stdout is how tmux reports "the guard was false".
+				return reply((opts.guardRefuses ?? []).includes(pane) ? "" : "dev3-pane-input-sent\n");
+			}
+			if (args.includes("kill-pane")) {
+				const pane = args[args.indexOf("-t") + 1];
+				if (opts.killFails) return reply("no such pane", 1);
+				killed.push(pane);
+				return reply("");
+			}
+			return reply("");
+		});
+		return {
+			sends,
+			sendsTo: (pane: string) => sends.filter((send) => send.pane === pane),
+			killed: () => killed,
+		};
+	}
+
+	/**
+	 * Launch and let the boot delay plus every pane's inter-stage delay elapse. The
+	 * prompt is awaited on tmux now, so the launch cannot settle before its timers do.
+	 */
+	function runLaunch<T>(started: Promise<T>, panes: number): Promise<T> {
+		const settled = started.catch(() => undefined);
+		return vi
+			.advanceTimersByTimeAsync(5000)
+			.then(async () => {
+				for (let pane = 0; pane < panes; pane++) await vi.advanceTimersByTimeAsync(800);
+			})
+			.then(() => settled)
+			.then(() => started);
 	}
 
 	it("creates N panes: first horizontal 50% off the session, rest vertical off the previous right pane", async () => {
@@ -8740,9 +8841,12 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		(data.getProject as any).mockResolvedValue(project);
 		(data.getTask as any).mockResolvedValue(task);
 		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
-		makeSplitMock(["%10", "%11", "%12"]);
+		const server = makeSplitMock(["%10", "%11", "%12"]);
 
-		const result = await handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 3 });
+		const result = await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 3 }),
+			3,
+		);
 
 		expect(result).toEqual({ spawned: 3 });
 
@@ -8768,19 +8872,15 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			expect(script).toContain("export DEV3_ARTIFACT_TEMPLATE_DIR='/tmp/test-dev3/artifact-template-v1'");
 		}
 
-		// After 5s the auto-paste of /dev3-bug-hunter happens. The prompt MUST
-		// lock the hunter to changes in this branch only — otherwise hunters
-		// would roam the whole codebase, which is not the intent in the local
-		// lightbox path. Prompt and Enter are sent as TWO separate send-keys
-		// calls (paste, then Enter after a delay) so Claude does not treat the
-		// trailing Enter as a newline inside a bracketed paste.
-		vi.advanceTimersByTime(5100);
-		const pasteCalls = mockSpawn.mock.calls
-			.map((c) => c[0] as string[])
-			.filter((args) => args.includes("send-keys") && !args.includes("Enter"));
+		// After the boot delay each hunter gets the /dev3-bug-hunter prompt. The prompt
+		// MUST lock the hunter to changes in this branch only — otherwise hunters would
+		// roam the whole codebase, which is not the intent in the local lightbox path.
+		// Text and Enter are TWO guarded sends per pane (`201-backend-neutral-pane-input`), so Claude does
+		// not read the trailing Enter as a newline inside a bracketed paste.
+		expect(server.sends.map((send) => send.pane)).toEqual(["%10", "%10", "%11", "%11", "%12", "%12"]);
+		const pasteCalls = server.sends.filter((send) => send.text !== "");
 		expect(pasteCalls).toHaveLength(3);
-		for (const args of pasteCalls) {
-			const prompt = args[args.length - 1];
+		for (const { text: prompt } of pasteCalls) {
 			expect(prompt).toContain("/dev3-bug-hunter");
 			expect(prompt).toContain("read-only helper inside a task owned by the main agent");
 			expect(prompt).toContain("Do NOT run the dev3 session-start checklist");
@@ -8801,16 +8901,11 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			expect(prompt).toContain("do NOT create any");
 		}
 
-		// Enter not pressed yet.
-		const enterCallsBeforeDelay = mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((args) => args.includes("send-keys") && args.includes("Enter"));
-		expect(enterCallsBeforeDelay).toHaveLength(0);
-
-		// After another 800ms the Enter goes in as a discrete keypress.
-		vi.advanceTimersByTime(900);
-		const enterCalls = mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((args) => args.includes("send-keys") && args.includes("Enter"));
+		// The submit is its own guarded send, one per pane, carrying no text.
+		const enterCalls = server.sends.filter((send) => send.text === "");
 		expect(enterCalls).toHaveLength(3);
-		for (const args of enterCalls) {
-			expect(args[args.length - 1]).toBe("Enter");
+		for (const { keys } of enterCalls) {
+			expect(keys).toEqual(["Enter"]);
 		}
 	});
 
@@ -8836,13 +8931,16 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		});
 		makeSplitMock(["%10"]);
 
-		await handlers.spawnBugHuntersInTask({
-			taskId: persistedTask.id,
-			projectId: project.id,
-			agentId: "hunter-agent",
-			configId: "hunter-config",
-			count: 1,
-		});
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({
+				taskId: persistedTask.id,
+				projectId: project.id,
+				agentId: "hunter-agent",
+				configId: "hunter-config",
+				count: 1,
+			}),
+			1,
+		);
 
 		expect(persistedTask).toMatchObject({
 			agentId: "primary-agent",
@@ -8865,17 +8963,16 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		(data.getProject as any).mockResolvedValue(project);
 		(data.getTask as any).mockResolvedValue(task);
 		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "codex", extraEnv: {}, agent: { baseCommand: "codex" } });
-		makeSplitMock(["%10", "%11"]);
+		const server = makeSplitMock(["%10", "%11"]);
 
-		await handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-codex", configId: "codex-default", count: 2 });
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-codex", configId: "codex-default", count: 2 }),
+			2,
+		);
 
-		vi.advanceTimersByTime(5100);
-		const pasteCalls = mockSpawn.mock.calls
-			.map((c) => c[0] as string[])
-			.filter((args) => args.includes("send-keys") && !args.includes("Enter"));
+		const pasteCalls = server.sends.filter((send) => send.text !== "");
 		expect(pasteCalls).toHaveLength(2);
-		for (const args of pasteCalls) {
-			const prompt = args[args.length - 1];
+		for (const { text: prompt } of pasteCalls) {
 			expect(prompt).toContain("$dev3-bug-hunter");
 			expect(prompt).not.toContain("/dev3-bug-hunter");
 		}
@@ -8887,16 +8984,16 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		(data.getProject as any).mockResolvedValue(project);
 		(data.getTask as any).mockResolvedValue(task);
 		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
-		makeSplitMock(["%10"]);
+		const server = makeSplitMock(["%10"]);
 
-		await handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 });
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
 
-		vi.advanceTimersByTime(5100);
-		const pasteCalls = mockSpawn.mock.calls
-			.map((c) => c[0] as string[])
-			.filter((args) => args.includes("send-keys") && !args.includes("Enter"));
+		const pasteCalls = server.sends.filter((send) => send.text !== "");
 		expect(pasteCalls).toHaveLength(1);
-		const prompt = pasteCalls[0][pasteCalls[0].length - 1];
+		const prompt = pasteCalls[0].text;
 		expect(prompt).toContain("git merge-base upstream/release HEAD");
 		expect(prompt).not.toContain("origin/main");
 	});
@@ -8907,15 +9004,14 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		(data.getProject as any).mockResolvedValue(project);
 		(data.getTask as any).mockResolvedValue(task);
 		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
-		makeSplitMock(["%10"]);
+		const server = makeSplitMock(["%10"]);
 
-		await handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 });
+		await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count: 1 }),
+			1,
+		);
 
-		vi.advanceTimersByTime(5100);
-		const pasteCalls = mockSpawn.mock.calls
-			.map((c) => c[0] as string[])
-			.filter((args) => args.includes("send-keys") && !args.includes("Enter"));
-		const prompt = pasteCalls[0][pasteCalls[0].length - 1];
+		const prompt = server.sends.filter((send) => send.text !== "")[0].text;
 		expect(prompt).toContain("git merge-base main HEAD");
 		expect(prompt).not.toContain("origin/main");
 	});
@@ -8926,13 +9022,123 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		(data.getProject as any).mockResolvedValue(project);
 		(data.getTask as any).mockResolvedValue(task);
 		(agents.resolveCommandForProject as any).mockResolvedValue({ command: "claude", extraEnv: {} });
-		makeSplitMock(["%a", "%b", "%c", "%d", "%e", "%f", "%g"]);
+		makeSplitMock(["%1", "%2", "%3", "%4", "%5", "%6", "%7"]);
 
-		const result = await handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: null, configId: null, count: 99 });
+		const result = await runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: null, configId: null, count: 99 }),
+			6,
+		);
 
 		expect(result.spawned).toBe(6);
 		const splitCalls = mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((args) => args.includes("split-window"));
 		expect(splitCalls).toHaveLength(6);
+	});
+
+	// ── The prompt decides the launch (seq 1430) ────────────────────────────
+	//
+	// Every case below asserts the CAUSE — how many guarded sends each pane got,
+	// and which panes were killed — never just "the launch threw". A launch that
+	// failed for an unrelated reason produces the same rejection, so counting the
+	// executions is the only assertion a wrong cause cannot fake.
+
+	function arrangeTmuxHunterTask() {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+	}
+
+	function launchTmuxHunters(count: number): Promise<{ spawned: number }> {
+		return runLaunch(
+			handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default", count }),
+			count,
+		);
+	}
+
+	it("rolls the tmux launch back when the guard refuses one pane's prompt", async () => {
+		arrangeTmuxHunterTask();
+		const server = makeSplitMock(["%10", "%11"], { guardRefuses: ["%11"] });
+
+		await expect(launchTmuxHunters(2)).rejects.toThrow(
+			"All 2 hunter panes opened, but the hunt prompt never reached %11 (incarnation-changed); launch rolled back.",
+		);
+
+		// The cause: %11 was pinned and its FIRST stage was refused, so exactly one
+		// guarded send ran against it — a pin that had failed would have run zero.
+		expect(server.sendsTo("%11")).toHaveLength(1);
+		expect(server.sendsTo("%10")).toHaveLength(2);
+		expect(server.killed()).toEqual(["%10", "%11"]);
+	});
+
+	it("rolls the tmux launch back when a hunter pane is not on the server any more", async () => {
+		arrangeTmuxHunterTask();
+		const server = makeSplitMock(["%10", "%11"], { unlistedPanes: ["%10"] });
+
+		await expect(launchTmuxHunters(2)).rejects.toThrow(/never reached %10 \(pane-absent\)/);
+
+		// An absent pane is refused by the pin, so NOTHING was sent to it — that is
+		// what tells this apart from the guard refusing a pane that does exist.
+		expect(server.sendsTo("%10")).toHaveLength(0);
+		expect(server.sendsTo("%11")).toHaveLength(2);
+		expect(server.killed()).toEqual(["%10", "%11"]);
+	});
+
+	it("keeps the tmux launch when a send's fate is unknown, instead of killing a pane that may be hunting", async () => {
+		arrangeTmuxHunterTask();
+		const server = makeSplitMock(["%10", "%11"], { sendFails: ["%10"] });
+
+		const result = await launchTmuxHunters(2);
+
+		expect(result).toEqual({ spawned: 2 });
+		// A send that exited non-zero may have applied a prefix of its stage, so the
+		// verdict is "cannot say" and the pane stays. Cause: it was attempted once.
+		expect(server.sendsTo("%10")).toHaveLength(1);
+		expect(server.sendsTo("%11")).toHaveLength(2);
+		expect(server.killed()).toEqual([]);
+	});
+
+	// Measured live against a real tmux server: killing the pane answers pane-absent,
+	// killing the whole SERVER answers backend-failure with "no server running". Two
+	// different facts about the world, and the message must not merge them.
+	it("says the server could not answer, rather than that the pane is gone", async () => {
+		arrangeTmuxHunterTask();
+		const server = makeSplitMock(["%10"], { listPanesFails: true });
+
+		await expect(launchTmuxHunters(1)).rejects.toThrow(/never reached %10 \(backend-failure\)/);
+
+		// Nothing was sent: the pin could not be taken, so no guarded send ever ran.
+		expect(server.sendsTo("%10")).toHaveLength(0);
+	});
+
+	it("names the tmux panes the rollback could not close", async () => {
+		arrangeTmuxHunterTask();
+		const server = makeSplitMock(["%10", "%11"], { guardRefuses: ["%10", "%11"], killFails: true });
+
+		await expect(launchTmuxHunters(2)).rejects.toThrow(
+			/the rollback could not close %10, %11 — those panes are still open, close them by hand\./,
+		);
+
+		expect(server.killed()).toEqual([]);
+	});
+
+	it("retires a rolled-back tmux pane from sessionState", async () => {
+		const project = makeProject();
+		let persistedTask = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockImplementation(async () => persistedTask);
+		(data.updateTask as any).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => {
+			persistedTask = { ...persistedTask, ...patch };
+			return persistedTask;
+		});
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude", extraEnv: {} });
+		makeSplitMock(["%10"], { guardRefuses: ["%10"] });
+
+		await expect(launchTmuxHunters(1)).rejects.toThrow(/never reached %10/);
+
+		// kill-pane fires no pane-exited hook, so the entry this launch appended has to
+		// be gone by hand — otherwise the next prompt can be aimed at a dead pane.
+		expect(persistedTask.sessionState?.panes ?? []).toEqual([]);
 	});
 
 	it("throws when task has no worktree", async () => {
@@ -8961,7 +9167,7 @@ describe("handlers.spawnBugHuntersInTask on a native task", () => {
 		vi.clearAllMocks();
 		vi.useFakeTimers();
 		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
-		mockSendPromptToNativePane.mockResolvedValue(true);
+		mockSendPromptToNativePane.mockResolvedValue({ status: "unconfirmed", reason: "unacknowledged" } as any);
 		mockNativePanes.focusNativeTaskPane.mockResolvedValue(null as any);
 		mockNativePanes.closeNativeTaskPane.mockResolvedValue({ sessionTornDown: false, state: null } as any);
 	});
@@ -9128,26 +9334,30 @@ describe("handlers.spawnBugHuntersInTask on a native task", () => {
 	it("fails the launch when a prompt is reported undelivered", async () => {
 		arrangeNativeTask();
 		const set = arrangeNativePaneSet();
-		mockSendPromptToNativePane.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+		mockSendPromptToNativePane
+			.mockResolvedValueOnce({ status: "unconfirmed", reason: "unacknowledged" } as any)
+			.mockResolvedValueOnce({ status: "not-delivered", reason: "owner-unknown" } as any);
 
 		// Not "only 2 of 2 could be started" — the panes DID open, the prompt did not land.
 		await expect(launchHunters(2)).rejects.toThrow(
-			"All 2 hunter panes opened, but the hunt prompt never reached pane-3; launch rolled back.",
+			"All 2 hunter panes opened, but the hunt prompt never reached pane-3 (owner-unknown); launch rolled back.",
 		);
 
 		expect(set.paneIds()).toEqual(["pane-1"]);
 		expect(set.activePaneId()).toBe("pane-1");
 	});
 
-	it("fails the launch when a prompt delivery throws", async () => {
+	// A throw carries no verdict, so it cannot join the proven failures: killing a
+	// pane whose prompt MAY have landed is the collapse `201-backend-neutral-pane-input` forbids.
+	it("keeps the panes when a prompt delivery throws, because nothing can say whether it landed", async () => {
 		arrangeNativeTask();
 		const set = arrangeNativePaneSet();
 		mockSendPromptToNativePane.mockRejectedValue(new Error("writer lease is gone"));
 
-		await expect(launchHunters(2)).rejects.toThrow(/writer lease is gone/);
+		await expect(launchHunters(2)).resolves.toEqual({ spawned: 2 });
 
-		expect(set.paneIds()).toEqual(["pane-1"]);
-		expect(set.activePaneId()).toBe("pane-1");
+		expect(mockSendPromptToNativePane).toHaveBeenCalledTimes(2);
+		expect(set.paneIds()).toEqual(["pane-1", "pane-2", "pane-3"]);
 	});
 
 	it("rolls the whole launch back when a later split fails, instead of leaving a partial set", async () => {

@@ -51,7 +51,8 @@ import {
 	setNativeTaskPaneLayout,
 } from "../native-task-panes";
 import { setSplitRatio, splitCreatedBySplitting } from "../../shared/split-tree";
-import { sendPromptToNativePane } from "../agent-prompt-native";
+import { deliverAgentPrompt } from "../agent-prompt-delivery";
+import { agentPromptMayHaveLanded, type AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
 import {
 	auxPaneAlive,
 	auxPaneTitle,
@@ -2564,8 +2565,8 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });
 }
 
+/** How long the hunter agents get to boot before their prompt is typed in. */
 const BUG_HUNTER_AUTOTYPE_DELAY_MS = 5000;
-const BUG_HUNTER_ENTER_DELAY_MS = 800;
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
@@ -2758,13 +2759,14 @@ async function equalizeNativeHunterColumn(taskId: string, anchors: string[]): Pr
 }
 
 /**
- * Undo a native launch that went wrong, and build the error the user sees.
- * `headline` says what actually failed; this adds what the cleanup achieved.
+ * Undo a hunter launch that went wrong, on whichever backend it ran, and build the
+ * error the user sees. `headline` says what actually failed; this adds what the
+ * cleanup achieved.
  *
  * A close that fails is NAMED — claiming the launch was rolled back while panes
  * are still on screen is the one outcome this must never produce.
  */
-async function rollBackNativeHunters(
+async function rollBackHunterLaunch(
 	task: Task,
 	handles: AuxPaneHandle[],
 	socket: string,
@@ -2782,6 +2784,14 @@ async function rollBackNativeHunters(
 				paneId: handle.paneId,
 				error: String(err),
 			});
+			continue;
+		}
+		// kill-pane does not fire tmux's pane-exited hook, so the pane this launch
+		// appended to sessionState has to be retired here or it outlives the rollback.
+		if (handle.backend === "tmux") {
+			await handlePaneExited(task.id, handle.paneId).catch((err) =>
+				log.warn("Could not retire a rolled-back hunter pane from sessionState", { paneId: handle.paneId, error: String(err) }),
+			);
 		}
 	}
 	if (focusedBefore) await focusNativeTaskPane(task.id, focusedBefore).catch(() => {});
@@ -2793,6 +2803,20 @@ async function rollBackNativeHunters(
 		);
 	}
 	return new Error(`${headline}; launch rolled back.`);
+}
+
+/**
+ * One hunter's prompt, as a verdict rather than an exception. A throw carries no
+ * verdict — nothing can then say whether the text landed — so it becomes
+ * `unconfirmed` and keeps the pane, instead of joining the proven failures that
+ * undo the launch.
+ */
+async function deliverHunterPrompt(task: Task, paneId: string, prompt: string): Promise<AgentPromptDelivery> {
+	try {
+		return await deliverAgentPrompt(task, prompt, { kind: "pane", paneId });
+	} catch (err) {
+		return { status: "unconfirmed", reason: "backend-failure", detail: String(err) };
+	}
 }
 
 async function spawnBugHuntersInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number; accountId?: string | null }): Promise<{ spawned: number }> {
@@ -2875,7 +2899,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				opened: handles.length,
 				error: String(err),
 			});
-			throw await rollBackNativeHunters(
+			throw await rollBackHunterLaunch(
 				task,
 				handles,
 				socket,
@@ -2897,7 +2921,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				taskId: params.taskId.slice(0, 8),
 				error: String(err),
 			});
-			throw await rollBackNativeHunters(
+			throw await rollBackHunterLaunch(
 				task,
 				handles,
 				socket,
@@ -2923,50 +2947,43 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 		);
 	}
 
-	if (native) {
-		// A native delivery can be PROVEN — sendPromptToNativePane resolves the pane's
-		// writer lease and reports whether the text landed. So its verdict decides the
-		// launch: a hunter sitting at an empty prompt is not a hunter.
-		await sleep(BUG_HUNTER_AUTOTYPE_DELAY_MS);
-		const undelivered: string[] = [];
-		for (const handle of handles) {
-			try {
-				if (!(await sendPromptToNativePane(task, handle.paneId, prompt))) undelivered.push(handle.paneId);
-			} catch (err) {
-				undelivered.push(`${handle.paneId} (${String(err)})`);
-			}
+	// The prompt decides the launch on BOTH backends. Delivery runs through the guarded
+	// seam (`201-backend-neutral-pane-input`): the pane is pinned to one backend generation, and the answer
+	// is one of three — landed, cannot say, or provably nothing sent. Only the last one
+	// undoes the launch, because a hunter that never got its prompt is a pane the user
+	// has to notice and close by hand, while a pane that may have got it must not be
+	// killed on a guess.
+	await sleep(BUG_HUNTER_AUTOTYPE_DELAY_MS);
+	const undelivered: string[] = [];
+	for (const handle of handles) {
+		const delivery = await deliverHunterPrompt(task, handle.paneId, prompt);
+		if (!agentPromptMayHaveLanded(delivery)) {
+			undelivered.push(`${handle.paneId} (${delivery.reason ?? "no reason given"})`);
+			continue;
 		}
-		if (undelivered.length > 0) {
-			log.error("Bug hunter prompt was not delivered — rolling the launch back", {
+		if (delivery.status === "unconfirmed") {
+			log.warn("Bug hunter prompt could not be confirmed — keeping the pane", {
 				taskId: params.taskId.slice(0, 8),
-				undelivered,
+				paneId: handle.paneId,
+				reason: delivery.reason,
+				detail: delivery.detail,
 			});
-			throw await rollBackNativeHunters(
-				task,
-				handles,
-				socket,
-				focusedBefore,
-				`All ${handles.length} hunter ${handles.length === 1 ? "pane" : "panes"} opened, ` +
-					`but the hunt prompt never reached ${undelivered.join(", ")}`,
-			);
 		}
-	} else {
-		// tmux cannot prove a delivery, so it stays fire-and-forget on the original
-		// timers. Paste and Enter are two send-keys calls: Claude Code's input layer
-		// reads a fast "prompt Enter" as one paste, newline included, and never submits.
-		for (const handle of handles) {
-			const paneId = handle.paneId;
-			setTimeout(() => {
-				tmux.sendKeys(paneId, [prompt], { socket, bestEffort: true }).catch((err) => {
-					log.warn("send-keys paste for bug hunter pane failed", { paneId, error: String(err) });
-				});
-				setTimeout(() => {
-					tmux.sendKeys(paneId, ["Enter"], { socket, bestEffort: true }).catch((err) => {
-						log.warn("send-keys Enter for bug hunter pane failed", { paneId, error: String(err) });
-					});
-				}, BUG_HUNTER_ENTER_DELAY_MS);
-			}, BUG_HUNTER_AUTOTYPE_DELAY_MS);
-		}
+	}
+	if (undelivered.length > 0) {
+		log.error("Bug hunter prompt was not delivered — rolling the launch back", {
+			taskId: params.taskId.slice(0, 8),
+			native,
+			undelivered,
+		});
+		throw await rollBackHunterLaunch(
+			task,
+			handles,
+			socket,
+			focusedBefore,
+			`All ${handles.length} hunter ${handles.length === 1 ? "pane" : "panes"} opened, ` +
+				`but the hunt prompt never reached ${undelivered.join(", ")}`,
+		);
 	}
 
 	// Bump favorite usage — one per hunter actually spawned (all share the combo). Best-effort.
