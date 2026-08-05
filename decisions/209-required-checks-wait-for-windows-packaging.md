@@ -72,6 +72,14 @@ proved rather than "skipped". `src/bun/__tests__/workflow-windows-gate.test.ts` 
 declared dependency) and asserts the branch emits both and does **not** `exit 1`. Mutation-checked both
 ways: deleting the warning fails the test, adding `exit 1` fails the test.
 
+That pin is itself a test consuming a file as **data**, with no type checking on the link — the same class
+of fragile interface this change removed elsewhere (`workflow-bun-pins.test.ts` used to read the deleted
+`paths:` filter by regex, and it now reads `WINDOWS_SCOPE_PATHS` as a typed import instead). Parsing raw
+YAML is accepted here because there is no other way to pin a shell branch. The mitigation is the failure
+message: **when this pin fails it must say the pinned string moved and name the fix — update it in this
+test — never merely restate the invariant.** Anyone reshaping the gate step will trip it, and a failure
+that misdescribes its own cause sends the next reader after a phantom regression.
+
 ## Risks
 
 **The path list is now load-bearing in a stronger way, and this is a real escalation.** Before, a file
