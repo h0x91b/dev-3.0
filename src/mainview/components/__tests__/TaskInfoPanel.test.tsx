@@ -2143,7 +2143,7 @@ describe("TaskInfoPanel", () => {
 				unpushed: 0,
 				prNumber: null,
 			});
-			mockedApi.request.createPullRequest.mockResolvedValue(undefined);
+			mockedApi.request.createPullRequest.mockResolvedValue({ delivery: { status: "delivered" } });
 
 			await act(async () => {
 				renderPanel(makeTask());
@@ -2169,7 +2169,7 @@ describe("TaskInfoPanel", () => {
 				unpushed: 0,
 				prNumber: null,
 			});
-			mockedApi.request.createPullRequest.mockResolvedValue(undefined);
+			mockedApi.request.createPullRequest.mockResolvedValue({ delivery: { status: "delivered" } });
 
 			await act(async () => {
 				renderPanel(makeTask());
@@ -3277,7 +3277,7 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 		});
 
 		it("triggers Create PR and dismisses the sheet", async () => {
-			mockedApi.request.createPullRequest.mockResolvedValue(undefined);
+			mockedApi.request.createPullRequest.mockResolvedValue({ delivery: { status: "delivered" } });
 			await act(async () => {
 				renderPanel(makeTask());
 			});

@@ -503,7 +503,13 @@ function rebaseConflictAgentPrompt(rebaseTarget: string): string {
 	return `This branch cannot be rebased automatically onto ${rebaseTarget} because of merge conflicts. Please rebase it and resolve the conflicts: run \`git fetch origin\`, then \`git rebase ${rebaseTarget}\`, resolve each conflict carefully preserving the intent of both sides, \`git add\` the resolved files, and \`git rebase --continue\` until the rebase finishes. If it becomes unsafe, abort with \`git rebase --abort\` and explain what happened.`;
 }
 
-async function createPullRequest(params: { taskId: string; projectId: string; autoMerge?: boolean }): Promise<void> {
+/**
+ * PR handoff: the agent pushes the branch and runs `gh pr create` itself, because the
+ * title and description come from the conversation. Returns the delivery verdict so the
+ * UI can confirm the handoff, warn that no terminal exists, or say it could not be
+ * confirmed — the same three answers its rebase and commit siblings give.
+ */
+async function createPullRequest(params: { taskId: string; projectId: string; autoMerge?: boolean }): Promise<{ delivery: AgentPromptDelivery }> {
 	log.info("→ createPullRequest", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -512,14 +518,8 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 
 	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
 	const delivery = await deliverAgentPrompt(task, prompt);
-	if (delivery.status === "not-delivered") {
-		log.info("← createPullRequest skipped — no active pane", { taskId: task.id.slice(0, 8), reason: delivery.reason });
-		return;
-	}
-
-	// This handler answers void, so the three verdicts only reach the log. The user is
-	// told nothing either way — a pre-existing gap, not one this seam introduced.
-	log.info("← createPullRequest (prompt sent to agent)", { taskId: task.id.slice(0, 8), status: delivery.status });
+	log.info("← createPullRequest", { taskId: task.id.slice(0, 8), status: delivery.status, reason: delivery.reason });
+	return { delivery };
 }
 
 /**

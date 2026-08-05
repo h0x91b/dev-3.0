@@ -205,11 +205,21 @@ export function useTaskBranchStatus({
 
 		setCreatingPR(true);
 		try {
-			await api.request.createPullRequest({
+			const { delivery } = await api.request.createPullRequest({
 				taskId: task.id,
 				projectId: project.id,
 				autoMerge,
 			});
+			// Three verdicts, three messages — same shape as the rebase and commit
+			// handoffs. Nothing here claims a PR exists: all that is ever proven is
+			// that the request reached the agent's pane.
+			if (delivery.status === "delivered") {
+				toast.info(t("infoPanel.createPRAgentStarted"), { taskId: task.id });
+			} else if (delivery.status === "unconfirmed") {
+				toast.info(t("infoPanel.createPRAgentUnconfirmed"), { taskId: task.id });
+			} else {
+				toast.error(t("infoPanel.createPRAgentNoPane"), { taskId: task.id });
+			}
 		} catch (err) {
 			toast.error(t("infoPanel.createPRFailed", { error: String(err) }), { taskId: task.id });
 		}

@@ -12333,7 +12333,8 @@ describe("handlers.createPullRequest", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		tmuxWithLivePanes();
 
-		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+		const result = await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+		expect(result).toEqual({ delivery: { status: "delivered" } });
 
 		// Two stages, both guarded and both aimed at the pinned pane: the text, then Enter.
 		const sends = guardedSends();
@@ -12367,7 +12368,7 @@ describe("handlers.createPullRequest", () => {
 		expect(typedText(guardedSends()[0])).not.toContain("gh pr merge --auto");
 	});
 
-	it("silently does nothing when there is no active pane", async () => {
+	it("reports a proven no-pane as not-delivered, and sends nothing", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -12378,8 +12379,8 @@ describe("handlers.createPullRequest", () => {
 			exited: Promise.resolve(0),
 		}));
 
-		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
-
+		const result = await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+		expect(result.delivery.status).toBe("not-delivered");
 		expect(guardedSends()).toHaveLength(0);
 	});
 

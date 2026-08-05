@@ -3412,7 +3412,7 @@ export type AppRPCSchema = {
 			};
 			createPullRequest: {
 				params: { taskId: string; projectId: string; autoMerge?: boolean };
-				response: void;
+				response: { delivery: AgentPromptDelivery };
 			};
 			openPullRequest: {
 				params: { taskId: string; projectId: string };
