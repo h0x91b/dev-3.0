@@ -13,6 +13,7 @@ import { mergeCompletionBlocker } from "./mergeCompletionBlocker";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
 import { offerMergeCompletion } from "../../utils/offerMergeCompletion";
 import { startVisibilityAwarePoll } from "../../utils/poll";
+import posthog from "../../posthog";
 
 interface UseTaskBranchStatusParams {
 	task: Task;
@@ -215,6 +216,7 @@ export function useTaskBranchStatus({
 			// that the request reached the agent's pane.
 			if (delivery.status === "delivered") {
 				toast.info(t("infoPanel.createPRAgentStarted"), { taskId: task.id });
+				posthog.capture("pull_request_created", { auto_merge: autoMerge });
 			} else if (delivery.status === "unconfirmed") {
 				toast.info(t("infoPanel.createPRAgentUnconfirmed"), { taskId: task.id });
 			} else {
@@ -306,15 +308,18 @@ export function useTaskBranchStatus({
 
 		setRebasing(true);
 		try {
+			const requiresAgent = !!(branchStatus && branchStatus.behind > 0 && !branchStatus.canRebase);
+			let handedOff = false;
 			// Clean rebase → run it directly in a visible terminal pane (unchanged).
 			// Conflicting rebase (behind but can't apply cleanly) → hand it off to the
 			// agent in the task terminal, mirroring the Create-PR handoff.
-			if (branchStatus && branchStatus.behind > 0 && !branchStatus.canRebase) {
+			if (requiresAgent) {
 				const { delivery } = await api.request.rebaseTaskViaAgent({
 					taskId: task.id,
 					projectId: project.id,
 					compareRef: compareRef || undefined,
 				});
+				handedOff = delivery.status !== "not-delivered";
 				// Three verdicts, three messages. "unconfirmed" may well have landed, so it
 				// is neither the success line nor the "no terminal" error.
 				if (delivery.status === "delivered") {
@@ -330,6 +335,9 @@ export function useTaskBranchStatus({
 					projectId: project.id,
 					compareRef: compareRef || undefined,
 				});
+			}
+			if (!requiresAgent || handedOff) {
+				posthog.capture("task_rebased", { via_agent: requiresAgent });
 			}
 		} catch (err) {
 			toast.error(t("infoPanel.rebaseFailed", { error: String(err) }), { taskId: task.id });
@@ -352,6 +360,7 @@ export function useTaskBranchStatus({
 			});
 			if (delivery.status === "delivered") {
 				toast.info(t("infoPanel.commitAgentStarted"), { taskId: task.id });
+				posthog.capture("task_commit_requested");
 			} else if (delivery.status === "unconfirmed") {
 				toast.info(t("infoPanel.commitAgentUnconfirmed"), { taskId: task.id });
 			} else {
@@ -374,6 +383,7 @@ export function useTaskBranchStatus({
 				taskId: task.id,
 				projectId: project.id,
 			});
+			posthog.capture("task_merged");
 		} catch (err) {
 			toast.error(t("infoPanel.mergeFailed", { error: String(err) }), { taskId: task.id });
 		}
@@ -391,6 +401,7 @@ export function useTaskBranchStatus({
 				taskId: task.id,
 				projectId: project.id,
 			});
+			posthog.capture("task_pushed");
 		} catch (err) {
 			toast.error(t("infoPanel.pushFailed", { error: String(err) }), { taskId: task.id });
 		}

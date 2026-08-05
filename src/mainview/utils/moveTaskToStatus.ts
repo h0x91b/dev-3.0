@@ -2,6 +2,7 @@ import type { Dispatch } from "react";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { trackEvent, agentNameFromId } from "../analytics";
+import posthog from "../posthog";
 import { confirmTaskCompletion } from "./confirmTaskCompletion";
 import { playTaskCompletionSound } from "../task-sounds";
 import type { Task, Project, TaskStatus } from "../../shared/types";
@@ -121,7 +122,6 @@ export async function moveTaskToStatus({
 		clientPlayedSound = playTaskCompletionSound(newStatus as "completed" | "cancelled");
 	}
 	onMoved?.();
-	trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus, agent_name: agentNameFromId(task.agentId) });
 	afterOptimistic?.();
 
 	onMovingChange?.(true);
@@ -134,6 +134,8 @@ export async function moveTaskToStatus({
 			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, force: true, clientPlayedSound });
 		}
 		dispatch({ type: "updateTask", task: updated });
+		trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus, agent_name: agentNameFromId(task.agentId) });
+		posthog.capture("task_moved", { from_status: fromStatus, to_status: newStatus });
 		onSuccess?.();
 	} catch (err) {
 		onFailure?.(err);

@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { init } from "ghostty-web";
+import "./posthog";
 import "./index.css";
 import "./rpc";
 import App from "./App";

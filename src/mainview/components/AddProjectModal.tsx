@@ -6,6 +6,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { trackEvent } from "../analytics";
+import posthog from "../posthog";
 import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
 import { toast } from "../toast";
 import { useFocusTrap } from "../utils/useFocusTrap";
@@ -82,6 +83,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 					if (result.ok) {
 						dispatch({ type: "addProject", project: result.project });
 						trackEvent("project_added", { source: "local" });
+						posthog.capture("project_added", { source: "local" });
 						anySucceeded = true;
 					} else {
 						errors.push(`${name}: ${result.error}`);
@@ -126,6 +128,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
 				trackEvent("project_added", { source: "init" });
+				posthog.capture("project_added", { source: "init" });
 				onClose();
 			} else {
 				setError(result.error);
@@ -175,6 +178,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
 				trackEvent("project_added", { source: "clone" });
+				posthog.capture("project_added", { source: "clone" });
 				onClose();
 			} else {
 				setError(result.error);
@@ -195,6 +199,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
 				trackEvent("project_added", { source: "operations" });
+				posthog.capture("project_added", { source: "operations" });
 				onClose();
 			} else {
 				setError(result.error);

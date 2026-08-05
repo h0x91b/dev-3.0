@@ -7,6 +7,7 @@ import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { trackEvent } from "../analytics";
+import posthog from "../posthog";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
@@ -355,6 +356,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 			});
 			dispatch({ type: "updateTask", task: updated });
 			trackEvent("task_edited", { project_id: project.id, source: keepDraft ? "draft_save" : "draft_promote" });
+			posthog.capture("task_edited", { source: keepDraft ? "draft_save" : "draft_promote" });
 			if (mode === "run" && onCreateAndRun) {
 				onCreateAndRun(updated, project);
 			} else {
@@ -423,6 +425,11 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 			}
 			trackEvent("task_created", {
 				project_id: project.id,
+				...(mode === "run" ? { source: "create_and_run" } : {}),
+				...(mode === "scratch" ? { source: "scratch" } : {}),
+				...(mode === "draft" ? { source: "draft" } : {}),
+			});
+			posthog.capture("task_created", {
 				...(mode === "run" ? { source: "create_and_run" } : {}),
 				...(mode === "scratch" ? { source: "scratch" } : {}),
 				...(mode === "draft" ? { source: "draft" } : {}),

@@ -8,6 +8,7 @@ import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
+import posthog from "../posthog";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import HelpSpot from "./HelpSpot";
@@ -193,6 +194,7 @@ function LaunchVariantsModal({
 				const [updatedSource, ...newAttempts] = result;
 				dispatch({ type: "addAttempts", sourceTaskId: task.id, newAttempts, updatedSource });
 				trackEvent("task_add_attempts", { project_id: project.id, attempt_count: newAttempts.length });
+				posthog.capture("task_add_attempts", { attempt_count: newAttempts.length });
 				for (const variant of variants) {
 					trackAgentLaunched(agents, variant.agentId, variant.configId);
 				}
@@ -205,6 +207,7 @@ function LaunchVariantsModal({
 				});
 				dispatch({ type: "spawnVariants", sourceTaskId: task.id, variants: resultTasks });
 				trackEvent("task_spawned", { project_id: project.id, variant_count: resultTasks.length });
+				posthog.capture("task_spawned", { variant_count: resultTasks.length, target_status: targetStatus });
 				for (const variant of variants) {
 					trackAgentLaunched(agents, variant.agentId, variant.configId);
 				}
@@ -240,6 +243,12 @@ function LaunchVariantsModal({
 				variant_count: variants.length,
 				delay_ms: delayMs,
 				schedule_mode: scheduleMode,
+			});
+			posthog.capture("task_launch_scheduled", {
+				variant_count: variants.length,
+				delay_ms: delayMs,
+				schedule_mode: scheduleMode,
+				target_status: targetStatus,
 			});
 			onClose();
 		} catch (err) {
