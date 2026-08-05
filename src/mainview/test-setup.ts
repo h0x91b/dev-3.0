@@ -88,6 +88,11 @@ vi.mock("@lobehub/icons/es/icons", () => {
 	};
 });
 
+// posthog.ts throws at import time when VITE_POSTHOG_KEY/HOST are unset, gated on
+// import.meta.env.DEV — which vitest always reports true. Mock it so every test file
+// that renders a component calling capture() doesn't crash on that module-level throw.
+vi.mock("./posthog", () => ({ default: { capture: () => undefined } }));
+
 // Suppress happy-dom AbortError noise during window teardown.
 // When happy-dom tears down the test window it aborts all pending fetch requests,
 // which surfaces as DOMException(AbortError) stack traces in the test output.
