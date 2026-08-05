@@ -363,7 +363,14 @@ onMenuContextChange((ctx) => {
 const readiness = createRendererReadinessWatchdog({
 	timeoutMs: resolveRendererReadyTimeoutMs(),
 	onArmed: (timeoutMs) => log.info("Waiting for the renderer to report dom-ready", { timeoutMs }),
-	onReady: (source, elapsedMs) => log.info("Renderer ready", { source, elapsedMs }),
+	onReady: (source, elapsedMs) => {
+		log.info("Renderer ready", { source, elapsedMs });
+		// Window, RPC, push transport AND a live renderer — only now is the app
+		// genuinely usable, so this is where the automated packaged-build proof
+		// gets its marker, carrying the measurement the budget is set against.
+		// No-op without DEV3_READY_MARKER_FILE.
+		writeAppReadyMarker(APP_VERSION, elapsedMs);
+	},
 	onTimeout: (timeoutMs) => failDesktopLaunch(timeoutMs),
 });
 
@@ -396,12 +403,8 @@ async function openMainWindow() {
 		onDomReady: async (win) => {
 			// dom-ready is the readiness contract: it only fires once a webview
 			// actually rendered, so it is the one signal that proves a renderer.
-			if (readiness.markReady("dom-ready")) {
-				// Window, RPC, push transport AND a live renderer — only now is the
-				// app genuinely usable, so this is where the automated packaged-build
-				// proof gets its marker. No-op without DEV3_READY_MARKER_FILE.
-				writeAppReadyMarker(APP_VERSION);
-			}
+			// The first report writes the proof marker (see the watchdog's onReady).
+			readiness.markReady("dom-ready");
 			if (buildChannel === "dev") {
 				win.webview.openDevTools();
 			}

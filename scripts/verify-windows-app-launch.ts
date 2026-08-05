@@ -35,9 +35,17 @@ import {
 	PACKAGED_HOST_IMAGE_PARENT,
 } from "../src/bun/native-terminal-registry/host-images/packaged-image";
 import type { AppReadyMarker } from "../src/bun/app-ready-marker";
+import { RENDERER_READY_TIMEOUT_MS } from "../src/bun/renderer-readiness";
 import { cliBinaryName } from "../electrobun.config";
 
-const READY_TIMEOUT_MS = Number(process.env.DEV3_READY_TIMEOUT_MS ?? 180_000);
+/**
+ * Strictly longer than the app's own renderer budget, so a launch with no
+ * renderer surfaces the app's actionable `DEV3_DESKTOP_RENDERER_UNAVAILABLE`
+ * diagnostic instead of this script's generic "no marker" timeout.
+ */
+const READY_TIMEOUT_MS = Number(
+	process.env.DEV3_READY_TIMEOUT_MS ?? RENDERER_READY_TIMEOUT_MS + 60_000,
+);
 const GRACEFUL_SHUTDOWN_MS = 10_000;
 const FORCED_SHUTDOWN_MS = 20_000;
 
@@ -140,7 +148,11 @@ export function isUsableReadyMarker(value: unknown, expectedVersion: string): va
 		marker.platform === "win32" &&
 		marker.version === expectedVersion &&
 		typeof marker.startedAt === "string" &&
-		marker.startedAt.length > 0
+		marker.startedAt.length > 0 &&
+		// Windows always arms the readiness watchdog, so a marker without a
+		// measured window→dom-ready cost did not come from a watched launch.
+		typeof marker.rendererReadyMs === "number" &&
+		marker.rendererReadyMs >= 0
 	);
 }
 
@@ -474,6 +486,10 @@ async function main(): Promise<void> {
 			readyMarker: marker,
 			readyAfterMs,
 			readyTimeoutMs: READY_TIMEOUT_MS,
+			// The two halves of readyAfterMs, kept apart because only the second one
+			// is what the app's renderer budget is set against.
+			rendererReadyMs: marker.rendererReadyMs,
+			rendererReadyBudgetMs: RENDERER_READY_TIMEOUT_MS,
 			ownedProcessesBeforeShutdown,
 			shutdownMethod,
 			shutdownAfterMs,
@@ -485,7 +501,8 @@ async function main(): Promise<void> {
 		console.log(`[windows-app-launch] ${JSON.stringify(proof)}`);
 		console.log(
 			`[windows-app-launch] ${desktopExecutableRelativePath} (rejected ${desktopSelection.rejected.length} other executables) ` +
-				`shipped with cli/${expectedCliName} and host image ${discovered.tag}, reached ready in ${readyAfterMs}ms, ` +
+				`shipped with cli/${expectedCliName} and host image ${discovered.tag}, reached ready in ${readyAfterMs}ms ` +
+				`(renderer ${marker.rendererReadyMs}ms of a ${RENDERER_READY_TIMEOUT_MS}ms budget), ` +
 				`shut down via ${shutdownMethod} with no owned processes left`,
 		);
 	} finally {

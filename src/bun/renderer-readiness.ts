@@ -15,14 +15,23 @@
  * The first webview `dom-ready` is the only signal that a renderer exists, so
  * the launch arms a watchdog on it: ready inside the budget → proceed; silence →
  * the launch has failed and the caller must leave instead of half-running.
- * Measured healthy startups reach dom-ready in 366 ms (Windows, interactive) and
- * 1511 ms (packaged launch proof), so the budget is ~30x the observed cost.
  */
 
 import { CLI_EXIT_CODE_RENDERER_UNAVAILABLE } from "../shared/cli-exit-codes";
 
-/** Budget from window creation to the first `dom-ready`. */
-export const RENDERER_READY_TIMEOUT_MS = 45_000;
+/**
+ * Budget from window creation to the first `dom-ready`.
+ *
+ * Sized off the measured packaged-launch distribution, not off a dev machine.
+ * 40 green `windows-app-archive` proofs (spawn → dom-ready, which brackets this
+ * window from above): min 4.0 s, median 11.1 s, p90 18.7 s, p95 24.8 s, max
+ * 40.5 s — a 10x spread driven by shared-runner speed, not by the app. The
+ * original 45 s came from a 1.5 s single sample and left the slowest healthy
+ * launch only ~10% of headroom, which is what made the CI job flaky. 180 s is
+ * ~4.4x the slowest healthy launch ever observed and still bounded: a machine
+ * with no renderer at all fails with the same diagnostic, just later.
+ */
+export const RENDERER_READY_TIMEOUT_MS = 180_000;
 
 /** Grepped by the Windows launch proof; keep it stable. */
 export const RENDERER_UNAVAILABLE_MARKER = "DEV3_DESKTOP_RENDERER_UNAVAILABLE";
@@ -94,7 +103,8 @@ export interface RendererReadinessOptions {
 	/** Called once, when the budget expires without a renderer. */
 	onTimeout: (timeoutMs: number) => void;
 	onArmed?: (timeoutMs: number) => void;
-	onReady?: (source: string, elapsedMs: number) => void;
+	/** `elapsedMs` is null when the watchdog was never armed — nothing measured it. */
+	onReady?: (source: string, elapsedMs: number | null) => void;
 	setTimer?: (fn: () => void, ms: number) => TimerHandle;
 	clearTimer?: (handle: TimerHandle) => void;
 	now?: () => number;
@@ -145,7 +155,7 @@ export function createRendererReadinessWatchdog(
 				// Nothing to disarm, but the caller still needs "first renderer"
 				// semantics so it can gate one-shot work on it.
 				state = "ready";
-				opts.onReady?.(source, 0);
+				opts.onReady?.(source, null);
 				return true;
 			}
 			state = "ready";
@@ -153,7 +163,7 @@ export function createRendererReadinessWatchdog(
 				clearTimer(timer);
 				timer = null;
 			}
-			opts.onReady?.(source, wasArmed ? now() - armedAt : 0);
+			opts.onReady?.(source, wasArmed ? now() - armedAt : null);
 			return true;
 		},
 		state(): RendererReadinessState {

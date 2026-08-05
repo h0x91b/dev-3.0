@@ -47,21 +47,26 @@ describe("build plans", () => {
 
 describe("app ready marker", () => {
 	it("describes the running process", () => {
-		const marker = buildAppReadyMarker("9.9.9", new Date("2026-07-25T10:00:00.000Z"));
+		const marker = buildAppReadyMarker("9.9.9", 1234, new Date("2026-07-25T10:00:00.000Z"));
 		expect(marker).toEqual({
 			ready: true,
 			pid: process.pid,
 			version: "9.9.9",
 			platform: process.platform,
 			startedAt: "2026-07-25T10:00:00.000Z",
+			rendererReadyMs: 1234,
 		});
+	});
+
+	it("records an unmeasured renderer as null rather than a fake zero", () => {
+		expect(buildAppReadyMarker("9.9.9", null).rendererReadyMs).toBeNull();
 	});
 
 	it("writes atomically and leaves no temp file behind", () => {
 		const dir = mkdtempSync(join(tmpdir(), "dev3-ready-marker-"));
 		try {
 			const markerPath = join(dir, "nested", "app-ready.json");
-			const written = writeAppReadyMarker("1.2.3", markerPath);
+			const written = writeAppReadyMarker("1.2.3", 900, markerPath);
 			expect(written?.version).toBe("1.2.3");
 			expect(JSON.parse(readFileSync(markerPath, "utf8"))).toEqual(written);
 			expect(readdirSync(join(dir, "nested"))).toEqual(["app-ready.json"]);
@@ -71,13 +76,20 @@ describe("app ready marker", () => {
 	});
 
 	it("is a no-op without a marker path and never throws on a bad one", () => {
-		expect(writeAppReadyMarker("1.2.3", undefined)).toBeNull();
-		expect(writeAppReadyMarker("1.2.3", "")).toBeNull();
-		expect(writeAppReadyMarker("1.2.3", join(tmpdir(), "dev3-missing\0path", "marker.json"))).toBeNull();
+		expect(writeAppReadyMarker("1.2.3", 900, undefined)).toBeNull();
+		expect(writeAppReadyMarker("1.2.3", 900, "")).toBeNull();
+		expect(writeAppReadyMarker("1.2.3", 900, join(tmpdir(), "dev3-missing\0path", "marker.json"))).toBeNull();
 	});
 
 	it("accepts only a complete Windows marker for the expected version", () => {
-		const good = { ready: true, pid: 42, version: "1.2.3", platform: "win32", startedAt: "now" };
+		const good = {
+			ready: true,
+			pid: 42,
+			version: "1.2.3",
+			platform: "win32",
+			startedAt: "now",
+			rendererReadyMs: 1500,
+		};
 		expect(isUsableReadyMarker(good, "1.2.3")).toBe(true);
 		expect(isUsableReadyMarker(good, "1.2.4")).toBe(false);
 		expect(isUsableReadyMarker({ ...good, ready: false }, "1.2.3")).toBe(false);
@@ -85,6 +97,10 @@ describe("app ready marker", () => {
 		expect(isUsableReadyMarker({ ...good, platform: "darwin" }, "1.2.3")).toBe(false);
 		expect(isUsableReadyMarker({ ...good, startedAt: "" }, "1.2.3")).toBe(false);
 		expect(isUsableReadyMarker(null, "1.2.3")).toBe(false);
+		// A Windows launch always measures the renderer; a marker that did not is
+		// not proof of a watched launch.
+		expect(isUsableReadyMarker({ ...good, rendererReadyMs: null }, "1.2.3")).toBe(false);
+		expect(isUsableReadyMarker({ ...good, rendererReadyMs: -1 }, "1.2.3")).toBe(false);
 	});
 });
 

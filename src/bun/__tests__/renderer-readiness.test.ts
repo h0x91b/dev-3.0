@@ -51,6 +51,24 @@ function watchdogWith(timeoutMs: number | null) {
 	return { watchdog, timers, onTimeout, onReady, onArmed };
 }
 
+describe("the renderer ready budget", () => {
+	/**
+	 * Slowest healthy packaged launch ever measured: spawn → dom-ready across 40
+	 * green `windows-app-archive` proofs (min 4.0 s, median 11.1 s, p95 24.8 s).
+	 * It brackets the watched window from above, so headroom against it is a
+	 * lower bound on the real headroom.
+	 */
+	const SLOWEST_MEASURED_HEALTHY_LAUNCH_MS = 40_534;
+
+	it("keeps at least 3x headroom over the slowest measured healthy launch", () => {
+		expect(RENDERER_READY_TIMEOUT_MS).toBeGreaterThanOrEqual(SLOWEST_MEASURED_HEALTHY_LAUNCH_MS * 3);
+	});
+
+	it("stays bounded, so a machine that never produces a renderer still fails", () => {
+		expect(RENDERER_READY_TIMEOUT_MS).toBeLessThanOrEqual(300_000);
+	});
+});
+
 describe("resolveRendererReadyTimeoutMs", () => {
 	it("watches win32 by default and leaves macOS/Linux untouched", () => {
 		expect(resolveRendererReadyTimeoutMs({}, "win32")).toBe(RENDERER_READY_TIMEOUT_MS);
@@ -131,6 +149,8 @@ describe("renderer readiness watchdog", () => {
 		expect(watchdog.markReady("dom-ready")).toBe(true);
 		expect(watchdog.markReady("dom-ready")).toBe(false);
 		expect(onReady).toHaveBeenCalledTimes(1);
+		// Nothing timed this launch, so it reports null instead of a fake 0 ms.
+		expect(onReady).toHaveBeenCalledWith("dom-ready", null);
 	});
 });
 

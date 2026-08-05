@@ -62,8 +62,11 @@ no event, and no falsy return — the bun side cannot see it at all.
 
 - `src/bun/renderer-readiness.ts` owns the contract. The first webview `dom-ready`
   is the only proof a renderer exists, so `index.ts` arms a watchdog right after
-  `openMainWindow()` and disarms it in `onDomReady`. Budget: 45 s
-  (`RENDERER_READY_TIMEOUT_MS`), ~30x the slowest observed healthy startup.
+  `openMainWindow()` and disarms it in `onDomReady`. Budget:
+  `RENDERER_READY_TIMEOUT_MS`, set here to 45 s on the belief it was ~30x the
+  slowest healthy startup. Measurement later showed it was ~1.1x, and the budget
+  was re-sized off the real distribution — see
+  [decision 207](207-renderer-ready-budget-from-measured-distribution.md).
 - `resolveRendererReadyTimeoutMs()` watches **win32 only** by default; macOS and
   Linux get `null` (no timer at all), so their startup is byte-identical. The
   `DEV3_RENDERER_READY_TIMEOUT_MS` env is the seam: an explicit value applies on
@@ -103,13 +106,13 @@ no event, and no falsy return — the bun side cannot see it at all.
 
 ## Risks
 
-- A healthy launch that is slower than 45 s to first paint would now be killed.
-  Observed healthy startups are 0.37–1.5 s, and the budget is win32-only, so the
-  margin is large — but a pathologically slow machine is the failure mode to watch.
+- A healthy launch that is slower than the budget to first paint would now be
+  killed. This risk **materialised** at 45 s: packaged launches on a shared CI
+  runner measured 4–40.5 s, and one crossed the line (decision 207).
 - The nudge was the crash we could reproduce; the pre-renderer window still
   contains other native calls (poller broadcasts into a controller-less webview).
   Nothing was observed to crash there in 17.5 minutes, but the class is not
-  eliminated — only shortened to 45 s.
+  eliminated — only shortened to the readiness budget.
 - `TerminateProcess` bypasses every exit handler and flush. Everything this process
   owns is torn down explicitly before the call; anything added to
   `runGlobalQuitCleanup()` later inherits that requirement.

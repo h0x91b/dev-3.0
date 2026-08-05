@@ -22,6 +22,7 @@ on:
       - "scripts/verify-windows-app-launch.ts"
       - "scripts/verify-windows-conpty-update-archive.ts"
       - "src/bun/app-ready-marker.ts"
+      - "src/bun/renderer-readiness.ts"
       - "src/bun/index.ts"
       - "scripts/native-terminal-host-manifest/**"
       - "src/bun/native-terminal-host/**"

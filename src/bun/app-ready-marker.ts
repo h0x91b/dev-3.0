@@ -16,15 +16,27 @@ export interface AppReadyMarker {
 	version: string;
 	platform: NodeJS.Platform;
 	startedAt: string;
+	/**
+	 * Window creation → first `dom-ready`, in ms: the exact quantity the renderer
+	 * readiness budget is set against. Recorded on every proof run so the budget
+	 * stays sized off a measured distribution instead of one sample. `null` where
+	 * the readiness watchdog is off (macOS/Linux) — nothing measured it there.
+	 */
+	rendererReadyMs: number | null;
 }
 
-export function buildAppReadyMarker(version: string, now: Date = new Date()): AppReadyMarker {
+export function buildAppReadyMarker(
+	version: string,
+	rendererReadyMs: number | null,
+	now: Date = new Date(),
+): AppReadyMarker {
 	return {
 		ready: true,
 		pid: process.pid,
 		version,
 		platform: process.platform,
 		startedAt: now.toISOString(),
+		rendererReadyMs,
 	};
 }
 
@@ -35,12 +47,13 @@ export function buildAppReadyMarker(version: string, now: Date = new Date()): Ap
  */
 export function writeAppReadyMarker(
 	version: string,
+	rendererReadyMs: number | null,
 	markerPath: string | undefined = process.env.DEV3_READY_MARKER_FILE,
 ): AppReadyMarker | null {
 	if (!markerPath) return null;
 	try {
 		mkdirSync(dirname(markerPath), { recursive: true });
-		const marker = buildAppReadyMarker(version);
+		const marker = buildAppReadyMarker(version, rendererReadyMs);
 		const tempPath = `${markerPath}.${process.pid}.tmp`;
 		writeFileSync(tempPath, `${JSON.stringify(marker, null, 2)}\n`);
 		renameSync(tempPath, markerPath);
