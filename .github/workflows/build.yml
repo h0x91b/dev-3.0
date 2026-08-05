@@ -158,12 +158,111 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # The live terminal gate: guarantees only a REAL tmux server or a REAL native host
+  # can prove — guard grammar against a live server, recycled pane ids across a server
+  # restart, exactly-once delivery across three processes, ownership-verified teardown.
+  # Before this job they ran only when a human remembered, so reviewers had to keep
+  # marking those claims unverified.
+  #
+  # RUNS THE WHOLE SET ON EVERY PR, both OSes — nothing is held back for main. The set
+  # measures ~27 s of script time locally, so there is no honest reason to narrow it;
+  # `scripts/run-terminal-e2e.ts --set fast` exists if a measurement ever says otherwise,
+  # and the per-script runtime table lands on the run summary so that stays a decision
+  # made from numbers instead of a guess.
+  #
+  # It GATES PRs: the required `test` context needs this job, so a red terminal gate
+  # blocks the merge instead of sitting pending like the Windows packaging jobs do.
+  terminal_e2e:
+    name: terminal e2e (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # tmux behaves differently across these two, and the native host differs more.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The runner image may or may not ship tmux, and guard grammar is version
+      # sensitive, so install on demand and print what we actually got.
+      - name: Ensure tmux
+        shell: bash
+        run: |
+          if ! command -v tmux >/dev/null 2>&1; then
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              brew install tmux
+            else
+              sudo apt-get update && sudo apt-get install -y tmux
+            fi
+          fi
+          tmux -V
+
+      # `native-message-e2e` loads the production RPC handlers, which import the
+      # generated changelog bundle; without this it dies before the first check.
+      - name: Generate build files
+        run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
+
+      - name: Live terminal e2e (whole set, orphan-checked)
+        run: bun scripts/run-terminal-e2e.ts
+
+      # A gate that catches the rarest failure in the change and then discards the
+      # evidence is a rumour. Only written when something survived, so an empty upload
+      # is the normal case.
+      - name: Upload survivor evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: terminal-e2e-evidence-${{ matrix.os }}
+          path: terminal-e2e-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
   test:
     name: test
     if: always()
-    needs: test_shards
+    needs: [test_shards, terminal_e2e]
     runs-on: ubuntu-latest
     steps:
+      # `test` is the required status context, so gating through it makes the terminal
+      # e2e job block a merge without touching branch protection. Both verifications
+      # are `continue-on-error` and a final step fails the job, so a red terminal gate
+      # never hides which test shards also failed, and vice versa.
+      #
+      # `skipped` must NOT fail here. It is unreachable today — this workflow has no
+      # path filter, no concurrency group, and `terminal_e2e` has no `if:` — but if
+      # anyone ever adds one, failing on `skipped` would turn the required `test`
+      # context red on every PR and block the whole repo. It is loudly announced
+      # instead, so a gate that stopped running cannot pass as a gate that passed.
+      - name: Verify the live terminal e2e gate
+        id: terminal_gate
+        continue-on-error: true
+        env:
+          TERMINAL_E2E_RESULT: ${{ needs.terminal_e2e.result }}
+        run: |
+          echo "terminal e2e: $TERMINAL_E2E_RESULT"
+          case "$TERMINAL_E2E_RESULT" in
+            success)
+              ;;
+            skipped)
+              echo "::warning title=Live terminal e2e::the terminal e2e job was SKIPPED, so nothing was proved against a live tmux server or native host on this PR"
+              echo "## ⚠️ Live terminal e2e gate: skipped — nothing was verified live" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error title=Live terminal e2e::the terminal e2e job did not succeed ($TERMINAL_E2E_RESULT) — open 'terminal e2e (ubuntu-latest)' / 'terminal e2e (macos-latest)' for the failing script and its runtime table"
+              echo "## ❌ Live terminal e2e gate: $TERMINAL_E2E_RESULT" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+              ;;
+          esac
+
       - name: Download shard results
         uses: actions/download-artifact@v8
         with:
@@ -172,6 +271,8 @@ jobs:
           merge-multiple: true
 
       - name: Verify test shards
+        id: shards
+        continue-on-error: true
         run: |
           shopt -s nullglob
           result_files=(test-shard-results/shard-*.txt)
@@ -306,6 +407,15 @@ jobs:
           fi
 
           exit "$failed"
+
+      - name: Fail if either gate is red
+        env:
+          TERMINAL_GATE: ${{ steps.terminal_gate.outcome }}
+          SHARDS: ${{ steps.shards.outcome }}
+        run: |
+          echo "terminal e2e gate: $TERMINAL_GATE"
+          echo "test shards: $SHARDS"
+          [ "$TERMINAL_GATE" = "success" ] && [ "$SHARDS" = "success" ]
 
   build-check:
     runs-on: ubuntu-latest
