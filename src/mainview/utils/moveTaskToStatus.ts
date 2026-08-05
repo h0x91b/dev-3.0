@@ -37,6 +37,12 @@ export interface MoveTaskToStatusOptions {
 	/** Run only after the server confirms the move (after both RPC attempts succeed). Not called on failure. */
 	onSuccess?: () => void;
 	/**
+	 * Run when both RPC attempts failed. For surfaces holding their own list of
+	 * tasks (the dashboard's activity rows), this is where a locally-dropped row
+	 * comes back — `dispatch` only reverts the shared task state.
+	 */
+	onFailure?: (err: unknown) => void;
+	/**
 	 * On total RPC failure (both the normal and forced attempts), revert the
 	 * optimistic update and surface a toast. Default true.
 	 *
@@ -79,6 +85,7 @@ export async function moveTaskToStatus({
 	onMoved,
 	afterOptimistic,
 	onSuccess,
+	onFailure,
 	revertOnFailure = true,
 }: MoveTaskToStatusOptions): Promise<boolean> {
 	const terminal = isTerminalStatus(newStatus);
@@ -129,6 +136,7 @@ export async function moveTaskToStatus({
 		dispatch({ type: "updateTask", task: updated });
 		onSuccess?.();
 	} catch (err) {
+		onFailure?.(err);
 		if (revertOnFailure) {
 			dispatch({ type: "updateTask", task });
 			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });

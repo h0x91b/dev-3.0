@@ -15,9 +15,15 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
+vi.mock("../../utils/moveTaskToStatus", () => ({
+	moveTaskToStatus: vi.fn(async () => true),
+}));
+
 import { api } from "../../rpc";
+import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
 
 const mockedApi = vi.mocked(api, true);
+const mockedMove = vi.mocked(moveTaskToStatus);
 
 const mockProject: Project = {
 	id: "p1",
@@ -59,6 +65,7 @@ function renderActivityOverview(
 			<ActivityOverview
 				projects={[mockProject]}
 				navigate={navigate}
+				dispatch={vi.fn()}
 				bellCounts={new Map()}
 				onRemoveProject={onRemoveProject}
 				onOpenAddProject={onOpenAddProject}
@@ -169,7 +176,7 @@ describe("ActivityOverview", () => {
 
 		render(
 			<I18nProvider>
-				<ActivityOverview projects={[virtual]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[virtual]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 
@@ -197,7 +204,7 @@ describe("ActivityOverview", () => {
 		render(
 			<I18nProvider>
 				{/* Built-in passed LAST but must render FIRST. */}
-				<ActivityOverview projects={[gitProj, builtin]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[gitProj, builtin]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 
@@ -292,7 +299,7 @@ describe("ActivityOverview", () => {
 
 		render(
 			<I18nProvider>
-				<ActivityOverview projects={[projWithColumn]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[projWithColumn]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 
@@ -382,7 +389,7 @@ describe("ActivityOverview — narrow viewport", () => {
 				<ActivityOverview
 					projects={[mockProject]}
 					navigate={vi.fn()}
-					bellCounts={new Map()}
+					dispatch={vi.fn()} bellCounts={new Map()}
 					onRemoveProject={vi.fn()}
 					onReorderProjects={vi.fn()}
 				/>
@@ -412,7 +419,7 @@ describe("ActivityOverview — narrow viewport", () => {
 				<ActivityOverview
 					projects={[mockProject]}
 					navigate={navigate}
-					bellCounts={new Map()}
+					dispatch={vi.fn()} bellCounts={new Map()}
 					onRemoveProject={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -440,7 +447,7 @@ describe("ActivityOverview — narrow viewport", () => {
 
 		render(
 			<I18nProvider>
-				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 		await screen.findByText("Review item 1");
@@ -470,7 +477,7 @@ describe("ActivityOverview — narrow viewport", () => {
 
 		render(
 			<I18nProvider>
-				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 		const mine = await screen.findByText("My review");
@@ -488,7 +495,7 @@ describe("ActivityOverview — narrow viewport", () => {
 
 		render(
 			<I18nProvider>
-				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 
@@ -511,7 +518,7 @@ describe("ActivityOverview loading state", () => {
 
 		const { container } = render(
 			<I18nProvider>
-				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 
@@ -540,7 +547,7 @@ describe("ActivityOverview accessibility and copy regressions", () => {
 
 		render(
 			<I18nProvider>
-				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 
@@ -560,7 +567,7 @@ describe("ActivityOverview accessibility and copy regressions", () => {
 				<ActivityOverview
 					projects={[mockProject]}
 					navigate={vi.fn()}
-					bellCounts={new Map()}
+					dispatch={vi.fn()} bellCounts={new Map()}
 					onReorderProjects={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -582,12 +589,101 @@ describe("ActivityOverview accessibility and copy regressions", () => {
 
 		render(
 			<I18nProvider>
-				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
 			</I18nProvider>,
 		);
 
 		expect(await screen.findByTitle(mockProject.name)).toBeInTheDocument();
 		expect(screen.getByTitle(mockProject.path)).toBeInTheDocument();
 		expect(screen.getByTitle(getTaskTitle(mockTask))).toBeInTheDocument();
+	});
+});
+
+describe("ActivityOverview row complete action", () => {
+	const user = userEvent.setup();
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{ projectId: "p1", tasks: [mockTask] },
+		]);
+	});
+
+	it("gives every task row a complete button, and hibernated rows none", async () => {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{
+				projectId: "p1",
+				tasks: [mockTask, { ...mockTask, id: "t2", title: "Sleeping", hibernated: true }],
+			},
+		]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		await screen.findByText("Sleeping");
+
+		expect(screen.getAllByTestId("activity-row-complete")).toHaveLength(1);
+		expect(
+			screen.getByLabelText(`Move to Completed — ${getTaskTitle(mockTask)}`),
+		).toBeInTheDocument();
+	});
+
+	it("completes through the shared confirmed move and drops the row", async () => {
+		mockedMove.mockImplementation(async ({ afterOptimistic }) => {
+			afterOptimistic?.();
+			return true;
+		});
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		await screen.findByText(getTaskTitle(mockTask));
+
+		await user.click(screen.getByTestId("activity-row-complete"));
+
+		expect(mockedMove).toHaveBeenCalledWith(
+			expect.objectContaining({ newStatus: "completed", alwaysConfirm: true }),
+		);
+		await waitFor(() => expect(screen.queryByTestId("activity-row-complete")).toBeNull());
+	});
+
+	it("brings the row back when the move fails", async () => {
+		mockedMove.mockImplementation(async ({ afterOptimistic, onFailure }) => {
+			afterOptimistic?.();
+			onFailure?.(new Error("boom"));
+			return true;
+		});
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} dispatch={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		await screen.findByText(getTaskTitle(mockTask));
+
+		await user.click(screen.getByTestId("activity-row-complete"));
+
+		await waitFor(() => expect(screen.getByTestId("activity-row-complete")).toBeInTheDocument());
+		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
+	});
+
+	it("does not navigate to the task when the complete button is clicked", async () => {
+		const navigate = vi.fn();
+		mockedMove.mockResolvedValue(true);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={navigate} dispatch={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		await screen.findByText(getTaskTitle(mockTask));
+
+		await user.click(screen.getByTestId("activity-row-complete"));
+
+		expect(navigate).not.toHaveBeenCalled();
 	});
 });

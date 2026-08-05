@@ -421,7 +421,8 @@ Litmus test: does the text stay readable on a 390px screen with the dense-factor
 | Feature class | Place in | Reject | Rationale |
 |---|---|---|---|
 | destination | global header, menu `View`, sidebar | card, modal, toolbar | navigation = places, not commands |
-| object_action (single task) | inspector, card context menu, menu `Task` | global header, dashboard | actions belong to the object surface |
+| object_action (single task) | inspector, card context menu, menu `Task` | global header, dashboard chrome | actions belong to the object surface |
+| object_action — the one dashboard exception | the dashboard's own **task row**, at the row end: **exactly one ✓ Complete**, hover/focus-revealed on desktop, always visible and ≥44×44 on narrow; always routed through the terminal-move confirmation (`alwaysConfirm`), absent on hibernated tasks | a second row action, a per-row kebab or context menu on the dashboard, the same action in the project header or dashboard chrome | the dashboard is the *attention triage* list — every row is there because it waits on the user, and clearing a finished one is the job that screen exists for. The row **is** the task's surface (it already navigates to the task), so this is not app chrome. Capped at one: the moment a second action lands, the row needs a menu and the triage list becomes a second board (issue #1252) |
 | git_action | inspector (frequent), menu `Project` (rare) | header, card inline | git surface is already dense |
 | configuration | global/project settings | board, inspector, toolbar | durable behavior lives in settings |
 | destructive | context menu, confirm, danger zone, overflow | primary button, header | needs friction + destructive styling |

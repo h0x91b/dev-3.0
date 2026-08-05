@@ -59,6 +59,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 				{projects.length > 0 ? (
 					<ActivityOverview
 						projects={projects}
+						dispatch={dispatch}
 						navigate={navigate}
 						bellCounts={bellCounts}
 						onRemoveProject={handleRemoveProject}

@@ -1,22 +1,26 @@
 import { useState, useEffect, useCallback } from "react";
-import type { DragEvent } from "react";
+import type { Dispatch, DragEvent } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
-import type { Route } from "../state";
+import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { statusKey } from "../i18n/status";
 import { useStatusColors } from "../hooks/useStatusColors";
+import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import ProjectActionButtons from "./ProjectActionButtons";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import PriorityBadge from "./PriorityBadge";
+import Tooltip from "./Tooltip";
+import { CompleteCheckIcon } from "./PipelineRing";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ActivityOverviewProps {
 	projects: Project[];
+	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
 	onRemoveProject?: (projectId: string) => void | Promise<void>;
@@ -95,7 +99,7 @@ function ActionSheetButton({
 	);
 }
 
-function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects }: ActivityOverviewProps) {
+function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -110,6 +114,9 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 	// Narrow viewport: per-project task lists are capped to NARROW_ROW_CAP rows;
 	// these are the projects the user has explicitly expanded past the cap.
 	const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+	// Tasks whose row ✓ is in flight — the confirmation dialog it opens runs a git
+	// check, so the row has to acknowledge the click before the move lands.
+	const [completingTasks, setCompletingTasks] = useState<Set<string>>(new Set());
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
@@ -135,6 +142,50 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 			else next.add(projectId);
 			return next;
 		});
+	}
+
+	function markCompleting(taskId: string, active: boolean) {
+		setCompletingTasks((prev) => {
+			const next = new Set(prev);
+			if (active) next.add(taskId);
+			else next.delete(taskId);
+			return next;
+		});
+	}
+
+	/** Drop / restore a row in this screen's own task list — `dispatch` only
+	 *  reverts the shared task state, which the dashboard never reads from. */
+	function setRowPresent(task: Task, present: boolean) {
+		setTasksByProject((prev) => {
+			const next = new Map(prev);
+			const tasks = next.get(task.projectId) ?? [];
+			if (present) {
+				if (!tasks.some((t) => t.id === task.id)) next.set(task.projectId, [...tasks, task]);
+			} else {
+				next.set(task.projectId, tasks.filter((t) => t.id !== task.id));
+			}
+			return next;
+		});
+	}
+
+	/** The row's one object action. Always confirms: this is a one-click ✓ on a
+	 *  triage list, so a mis-click must never silently complete a task. */
+	async function completeTask(task: Task, project: Project) {
+		markCompleting(task.id, true);
+		try {
+			await moveTaskToStatus({
+				task,
+				project,
+				newStatus: "completed",
+				dispatch,
+				t,
+				afterOptimistic: () => setRowPresent(task, false),
+				onFailure: () => setRowPresent(task, true),
+				alwaysConfirm: true,
+			});
+		} finally {
+			markCompleting(task.id, false);
+		}
 	}
 
 	const fetchAllTasks = useCallback(async () => {
@@ -520,12 +571,19 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										// shown as a swatch instead of as text colour (see comment above).
 										const labelAsSwatch = col !== null;
 										const needsMe = !col && NEEDS_ME_STATUSES.includes(task.status);
+										// The row's single object action. A hibernated task refuses column
+										// changes in the lifecycle machine, so it gets no ✓ at all.
+										const canComplete = !task.hibernated;
+										const completing = completingTasks.has(task.id);
 										return (
-										<button
+										<div
 											key={task.id}
+											className={`group/row relative flex items-stretch hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0 ${task.hibernated ? "grayscale" : ""}`}
+										>
+										<button
 											data-hint-id={`task:${task.id}`}
 											onClick={() => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
-											className={`relative w-full flex items-start md:items-center gap-3 px-3 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0 ${task.hibernated ? "grayscale" : ""}`}
+											className={`min-w-0 flex-1 flex items-start md:items-center gap-3 pl-3 md:pl-5 py-3 md:py-2.5 min-h-[44px] text-left ${canComplete ? "pr-1" : "pr-3 md:pr-5"}`}
 										>
 											{/* "Your turn" accent strip — narrow only (keeps desktop intact). */}
 											{narrow && needsMe && (
@@ -590,6 +648,32 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 												</span>
 											</span>
 										</button>
+										{canComplete && (
+											<Tooltip content={t("pipeline.completeTooltip")} disabled={completing}>
+												<button
+													type="button"
+													data-testid="activity-row-complete"
+													onClick={() => void completeTask(task, project)}
+													disabled={completing}
+													aria-label={`${t("pipeline.completeTooltip")} — ${getTaskTitle(task)}`}
+													className={`flex flex-shrink-0 items-center justify-center self-stretch pr-1 md:pr-2 text-success transition-[opacity,background-color,transform] duration-150 ease-out hover:bg-success/10 motion-safe:active:scale-[0.96] ${narrow ? "w-11" : "w-9"} ${
+														completing ? "opacity-100" : "md:opacity-0 md:group-hover/row:opacity-100 md:group-focus-within/row:opacity-100"
+													}`}
+												>
+													{/* Both glyphs stay mounted and cross-fade — a hard swap on a
+													    14px target reads as a flicker. */}
+													<span className="relative flex h-4 w-4 items-center justify-center rounded-md">
+														<span
+															className={`absolute inset-0 h-4 w-4 animate-spin rounded-full border-2 border-success/30 border-t-success transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "opacity-100 scale-100 blur-0" : "opacity-0 scale-[0.25] blur-[4px]"}`}
+														/>
+														<CompleteCheckIcon
+															className={`absolute inset-0 h-4 w-4 transition-[opacity,transform,filter] duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${completing ? "opacity-0 scale-[0.25] blur-[4px]" : "opacity-100 scale-100 blur-0"}`}
+														/>
+													</span>
+												</button>
+											</Tooltip>
+										)}
+										</div>
 										);
 									})}
 

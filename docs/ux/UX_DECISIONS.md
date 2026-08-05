@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-08-05 — The dashboard task row carries exactly one object action: ✓ Complete
+
+- **Rule:** each dashboard task row ends in one ✓ Complete (hover/focus-revealed on desktop, always visible ≥44×44 on narrow, always `alwaysConfirm`, hidden while hibernated) and never gains a second row action, kebab, or context menu. Bible §10 row `object_action — the one dashboard exception`, yaml `placement_rules.dashboard-task-row-single-complete`.
+- **Why:** the dashboard is the attention triage list, so clearing a finished row is the job that screen exists for, and the row is the task's own surface rather than app chrome — which is what `task-scoped-actions-in-inspector-or-menu` meant to protect. Rejected: a per-row kebab (turns triage into a second board) and a narrow-only long-press (leaves the desktop pain in the issue unfixed).
+- **Status:** Implemented. Evidence: `ActivityOverview.tsx`, `utils/moveTaskToStatus.ts (onFailure)`, issue #1252.
+
 ## 2026-08-03 — Local review comments send one-by-one; the batch send covers only unsent ones
 
 - **Rule:** Every local inline review comment carries its own `Send to agent` (role `secondary`, beside Edit/Delete, sending/sent states + toasts); a sent comment is marked `Sent` and leaves the Review export card's copy/batch-send payload, which is now scoped to unsent comments. Bible §5.3, yaml `surfaces.diff_review_viewer.inline_comment_actions`.
