@@ -10,6 +10,7 @@ import {
 	MAX_SCHEDULED_MESSAGE_LENGTH,
 } from "../shared/types";
 import * as data from "./data";
+import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
@@ -60,7 +61,7 @@ function messagePreview(text: string): string {
  * The ONE seam shared by immediate `dev3 message` sends and queued
  * "Send later" fires, so the two can never drift apart again.
  */
-async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<boolean> {
+async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<AgentPromptDelivery> {
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
 	const text = message.source ? wrapAgentMessage(message.text, message.source) : message.text;
@@ -68,7 +69,11 @@ async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<b
 }
 
 /** Toast + attention for a late-fire or drop. Silent path never calls this. */
-function notifyOutcome(project: Project, task: Task, opts: { toast: string; level: "success" | "error"; reason: string }): void {
+function notifyOutcome(
+	project: Project,
+	task: Task,
+	opts: { toast: string; level: "success" | "error" | "info"; reason: string },
+): void {
 	pushCliToast({
 		taskId: task.id,
 		projectId: project.id,
@@ -107,22 +112,31 @@ export async function fireScheduledMessage(
 	task: Task,
 	message: ScheduledMessage,
 	opts: { late: boolean },
-): Promise<{ delivered: boolean; task: Task }> {
-	let delivered = false;
+): Promise<{ delivery: AgentPromptDelivery; task: Task }> {
+	let delivery: AgentPromptDelivery = { status: "not-delivered", reason: "pane-absent", detail: "the task is finished" };
 	if (!isTerminal(task.status)) {
 		try {
-			delivered = await deliverToTarget(task, message);
+			delivery = await deliverToTarget(task, message);
 		} catch (err) {
+			delivery = { status: "not-delivered", reason: "backend-failure", detail: String(err) };
 			log.warn("Scheduled message delivery threw", { taskId: task.id.slice(0, 8), error: String(err) });
 		}
 	}
 	const updated = await removeFromQueue(project, task, message.id);
 	const preview = messagePreview(message.text);
-	if (!delivered) {
+	if (delivery.status === "not-delivered") {
 		notifyOutcome(project, task, {
 			toast: `Scheduled message not delivered — no live agent: "${preview}"`,
 			level: "error",
 			reason: `Scheduled message dropped (no live agent): "${preview}"`,
+		});
+	} else if (delivery.status === "unconfirmed") {
+		// Never silent. The message is out of the queue whatever happened, so saying
+		// nothing would read as "delivered" and the text would be unrecoverable.
+		notifyOutcome(project, task, {
+			toast: `Scheduled message sent but not confirmed — check the terminal: "${preview}"`,
+			level: "info",
+			reason: `Scheduled message sent without confirmation (removed from the queue): "${preview}"`,
 		});
 	} else if (opts.late) {
 		notifyOutcome(project, task, {
@@ -131,7 +145,7 @@ export async function fireScheduledMessage(
 			reason: `Scheduled message delivered late: "${preview}"`,
 		});
 	}
-	return { delivered, task: updated };
+	return { delivery, task: updated };
 }
 
 /** Shared validation for a message's text; throws a usage-style error. */
@@ -198,29 +212,33 @@ export async function sendScheduledMessageNow(project: Project, taskId: string, 
 
 /**
  * Send `text` to a task's agent/pane right now without queueing (the CLI bare
- * `dev3 message "text"` form). Throws if it can't be delivered so the caller can
- * report the failure. Returns nothing on success.
+ * `dev3 message "text"` form).
+ *
+ * Throws ONLY when nothing was sent, because a caller that catches reports a failure
+ * and re-sends — and a re-send into a live agent is a double submit. An unconfirmed
+ * send is therefore returned, not thrown, and the caller must say so out loud.
  */
 export async function sendMessageImmediately(
 	task: Task,
 	text: string,
 	target?: ScheduledMessageTarget | null,
 	source?: AgentMessageSource | null,
-): Promise<void> {
+): Promise<AgentPromptDelivery> {
 	const trimmed = validateText(text);
 	if (isTerminal(task.status)) {
 		throw new Error("Cannot send a message to a completed or cancelled task");
 	}
-	const delivered = await deliverToTarget(task, {
+	const delivery = await deliverToTarget(task, {
 		id: "",
 		text: trimmed,
 		at: "",
 		target: normalizeTarget(target),
 		...(source ? { source } : {}),
 	});
-	if (!delivered) {
+	if (delivery.status === "not-delivered") {
 		throw new Error("Could not deliver the message — the task has no live agent session.");
 	}
+	return delivery;
 }
 
 /**

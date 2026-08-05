@@ -7058,43 +7058,73 @@ describe("handlers.rebaseTask", () => {
 // ================================================================
 
 describe("handlers.rebaseTaskViaAgent", () => {
-	function sendKeysCalls() {
+	/**
+	 * The guarded sends this handoff performed. One stage is ONE `if-shell` command
+	 * list, so counting these counts stages that actually reached the server.
+	 */
+	function guardedSends() {
 		return mockSpawn.mock.calls
 			.map((c) => c[0] as string[])
-			.filter((args) => args.includes("send-keys"));
+			.filter((args) => args.includes("if-shell"));
+	}
+
+	/**
+	 * The literal text one guarded send put into the pane. The adapter sends text as
+	 * `-H <hex bytes>`, so decoding is how a test reads what the agent will see.
+	 */
+	function typedText(args: string[] | undefined): string {
+		const hex = /send-keys -t %\d+ -H ([0-9a-f ]+)/.exec(args?.join(" ") ?? "")?.[1];
+		return hex ? Buffer.from(hex.replaceAll(" ", ""), "hex").toString("utf8") : "";
+	}
+
+	/**
+	 * A tmux server whose live panes are `panes`, all in the task's own session, with
+	 * `active` focused. Pane RESOLUTION and the seam's SIGHTING are both `list-panes`
+	 * and are told apart by the sighting's generation-token field.
+	 */
+	function tmuxWithLivePanes(panes: string[] = ["%3"], active = panes[0]): void {
+		mockSpawn.mockImplementation((args: string[]) => {
+			const argv = args.join(" ");
+			const sighting = argv.includes("@dev3_server_token");
+			return {
+				stdout: args.includes("display-message")
+					? `${active}\n`
+					: args.includes("list-panes")
+						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\tdev3-task-1` : p)).join("\n") + "\n"
+						: args.includes("if-shell")
+							? "dev3-pane-input-sent\n"
+							: "",
+				stderr: "",
+				exited: Promise.resolve(0),
+			};
+		});
 	}
 
 	beforeEach(() => vi.clearAllMocks());
 
-	it("sends a rebase prompt to the active pane and reports handedOff", async () => {
-		vi.useFakeTimers();
+	it("types the rebase prompt into the pinned pane, then submits it", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: args.includes("display-message") ? "%3\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes();
 
 		const result = await handlers.rebaseTaskViaAgent({ taskId: "task-1", projectId: project.id });
-		expect(result).toEqual({ handedOff: true });
+		expect(result).toEqual({ delivery: { status: "delivered" } });
 
-		const paste = sendKeysCalls();
-		expect(paste).toHaveLength(1);
-		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
-		expect(paste[0]?.some((a) => a.includes("git rebase"))).toBe(true);
-
-		// Enter is sent as a discrete keypress after the shared delay.
-		vi.advanceTimersByTime(800);
-		const all = sendKeysCalls();
-		expect(all).toHaveLength(2);
-		expect(all[1]).toEqual(["tmux", "-L", "dev3", "send-keys", "-t", "%3", "Enter"]);
-		vi.useRealTimers();
+		// Two stages: the text, then Enter — each its own guarded command list, both
+		// aimed at the pane the sighting pinned.
+		const sends = guardedSends();
+		expect(sends).toHaveLength(2);
+		expect(typedText(sends[0])).toContain("git rebase");
+		expect(sends[1]?.join(" ")).toContain("send-keys -t %3 Enter");
+		// The guard carries the whole pinned incarnation, so a restarted server or a
+		// pane that moved sessions cannot pass it.
+		expect(sends[0]?.join(" ")).toContain("srv-token-1");
+		expect(sends[0]?.join(" ")).toContain("dev3-task-1");
 	});
 
-	it("reports handedOff:false when there is no active pane", async () => {
+	it("reports a proven no-pane as not-delivered, and sends nothing", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -7106,8 +7136,8 @@ describe("handlers.rebaseTaskViaAgent", () => {
 		}));
 
 		const result = await handlers.rebaseTaskViaAgent({ taskId: "task-1", projectId: project.id });
-		expect(result).toEqual({ handedOff: false });
-		expect(sendKeysCalls()).toHaveLength(0);
+		expect(result.delivery.status).toBe("not-delivered");
+		expect(guardedSends()).toHaveLength(0);
 	});
 
 	it("throws when the task has no worktree", async () => {
@@ -7127,31 +7157,60 @@ describe("handlers.rebaseTaskViaAgent", () => {
 // ================================================================
 
 describe("handlers.commitTaskViaAgent", () => {
-	function sendKeysCalls() {
+	/**
+	 * The guarded sends this handoff performed. One stage is ONE `if-shell` command
+	 * list, so counting these counts stages that actually reached the server.
+	 */
+	function guardedSends() {
 		return mockSpawn.mock.calls
 			.map((c) => c[0] as string[])
-			.filter((args) => args.includes("send-keys"));
+			.filter((args) => args.includes("if-shell"));
+	}
+
+	/**
+	 * The literal text one guarded send put into the pane. The adapter sends text as
+	 * `-H <hex bytes>`, so decoding is how a test reads what the agent will see.
+	 */
+	function typedText(args: string[] | undefined): string {
+		const hex = /send-keys -t %\d+ -H ([0-9a-f ]+)/.exec(args?.join(" ") ?? "")?.[1];
+		return hex ? Buffer.from(hex.replaceAll(" ", ""), "hex").toString("utf8") : "";
+	}
+
+	/**
+	 * A tmux server whose live panes are `panes`, all in the task's own session, with
+	 * `active` focused. Pane RESOLUTION and the seam's SIGHTING are both `list-panes`
+	 * and are told apart by the sighting's generation-token field.
+	 */
+	function tmuxWithLivePanes(panes: string[] = ["%3"], active = panes[0]): void {
+		mockSpawn.mockImplementation((args: string[]) => {
+			const argv = args.join(" ");
+			const sighting = argv.includes("@dev3_server_token");
+			return {
+				stdout: args.includes("display-message")
+					? `${active}\n`
+					: args.includes("list-panes")
+						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\tdev3-task-1` : p)).join("\n") + "\n"
+						: args.includes("if-shell")
+							? "dev3-pane-input-sent\n"
+							: "",
+				stderr: "",
+				exited: Promise.resolve(0),
+			};
+		});
 	}
 
 	beforeEach(() => vi.clearAllMocks());
 
-	it("sends a commit prompt to the active pane and reports handedOff", async () => {
+	it("types the commit prompt into the pinned pane", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: args.includes("display-message") ? "%3\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes();
 
 		const result = await handlers.commitTaskViaAgent({ taskId: "task-1", projectId: project.id });
-		expect(result).toEqual({ handedOff: true });
-
-		const paste = sendKeysCalls();
-		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
-		expect(paste[0]?.some((a) => a.includes("commit the current changes"))).toBe(true);
+		expect(result).toEqual({ delivery: { status: "delivered" } });
+		expect(typedText(guardedSends()[0])).toContain("commit the current changes");
 	});
 
 	it("never asks the agent to push", async () => {
@@ -7159,17 +7218,13 @@ describe("handlers.commitTaskViaAgent", () => {
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: args.includes("display-message") ? "%3\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes();
 
 		await handlers.commitTaskViaAgent({ taskId: "task-1", projectId: project.id });
-		expect(sendKeysCalls()[0]?.some((a) => a.includes("Do not push"))).toBe(true);
+		expect(typedText(guardedSends()[0])).toContain("Do not push");
 	});
 
-	it("reports handedOff:false when there is no active pane", async () => {
+	it("reports a proven no-pane as not-delivered, and sends nothing", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -7181,8 +7236,8 @@ describe("handlers.commitTaskViaAgent", () => {
 		}));
 
 		const result = await handlers.commitTaskViaAgent({ taskId: "task-1", projectId: project.id });
-		expect(result).toEqual({ handedOff: false });
-		expect(sendKeysCalls()).toHaveLength(0);
+		expect(result.delivery.status).toBe("not-delivered");
+		expect(guardedSends()).toHaveLength(0);
 	});
 
 	it("throws when the task has no worktree", async () => {
@@ -12225,10 +12280,46 @@ describe("toggleTaskWatch", () => {
 });
 
 describe("handlers.createPullRequest", () => {
-	function sendKeysCalls() {
+	/**
+	 * The guarded sends this handoff performed. One stage is ONE `if-shell` command
+	 * list, so counting these counts stages that actually reached the server.
+	 */
+	function guardedSends() {
 		return mockSpawn.mock.calls
 			.map((c) => c[0] as string[])
-			.filter((args) => args.includes("send-keys"));
+			.filter((args) => args.includes("if-shell"));
+	}
+
+	/**
+	 * The literal text one guarded send put into the pane. The adapter sends text as
+	 * `-H <hex bytes>`, so decoding is how a test reads what the agent will see.
+	 */
+	function typedText(args: string[] | undefined): string {
+		const hex = /send-keys -t %\d+ -H ([0-9a-f ]+)/.exec(args?.join(" ") ?? "")?.[1];
+		return hex ? Buffer.from(hex.replaceAll(" ", ""), "hex").toString("utf8") : "";
+	}
+
+	/**
+	 * A tmux server whose live panes are `panes`, all in the task's own session, with
+	 * `active` focused. Pane RESOLUTION and the seam's SIGHTING are both `list-panes`
+	 * and are told apart by the sighting's generation-token field.
+	 */
+	function tmuxWithLivePanes(panes: string[] = ["%3"], active = panes[0]): void {
+		mockSpawn.mockImplementation((args: string[]) => {
+			const argv = args.join(" ");
+			const sighting = argv.includes("@dev3_server_token");
+			return {
+				stdout: args.includes("display-message")
+					? `${active}\n`
+					: args.includes("list-panes")
+						? panes.map((p) => (sighting ? `${p}\t0\tsrv-token-1\tdev3-task-1` : p)).join("\n") + "\n"
+						: args.includes("if-shell")
+							? "dev3-pane-input-sent\n"
+							: "",
+				stderr: "",
+				exited: Promise.resolve(0),
+			};
+		});
 	}
 
 	beforeEach(() => {
@@ -12236,70 +12327,44 @@ describe("handlers.createPullRequest", () => {
 	});
 
 	it("sends the PR prompt to the active pane of the task session", async () => {
-		vi.useFakeTimers();
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: args.includes("display-message") ? "%3\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes();
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		const paste = sendKeysCalls();
-		expect(paste).toHaveLength(1);
-		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
-		expect(paste[0]?.some((a) => a.includes("gh pr create"))).toBe(true);
-
-		// Enter is sent as a discrete keypress after a short delay.
-		vi.advanceTimersByTime(800);
-		const all = sendKeysCalls();
-		expect(all).toHaveLength(2);
-		expect(all[1]).toEqual(["tmux", "-L", "dev3", "send-keys", "-t", "%3", "Enter"]);
-		vi.useRealTimers();
+		// Two stages, both guarded and both aimed at the pinned pane: the text, then Enter.
+		const sends = guardedSends();
+		expect(sends).toHaveLength(2);
+		expect(typedText(sends[0])).toContain("gh pr create");
+		expect(sends[1]?.join(" ")).toContain("send-keys -t %3 Enter");
 	});
 
 	it("sends the auto-merge variant prompt when autoMerge is set", async () => {
-		vi.useFakeTimers();
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: args.includes("display-message") ? "%3\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes();
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id, autoMerge: true });
 
-		const paste = sendKeysCalls();
-		expect(paste).toHaveLength(1);
-		expect(paste[0]?.some((a) => a.includes("gh pr create"))).toBe(true);
-		expect(paste[0]?.some((a) => a.includes("gh pr merge --auto"))).toBe(true);
-		vi.useRealTimers();
+		expect(typedText(guardedSends()[0])).toContain("gh pr create");
+		expect(typedText(guardedSends()[0])).toContain("gh pr merge --auto");
 	});
 
 	it("does not enable auto-merge in the default prompt", async () => {
-		vi.useFakeTimers();
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: args.includes("display-message") ? "%3\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes();
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		const paste = sendKeysCalls();
-		expect(paste[0]?.some((a) => a.includes("gh pr merge --auto"))).toBe(false);
-		vi.useRealTimers();
+		expect(typedText(guardedSends()[0])).not.toContain("gh pr merge --auto");
 	});
 
 	it("silently does nothing when there is no active pane", async () => {
@@ -12315,13 +12380,12 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(sendKeysCalls()).toHaveLength(0);
+		expect(guardedSends()).toHaveLength(0);
 	});
 
 	// Issue #609: with a single agent pane the prompt must land in that pane even
 	// when a different (non-agent) pane is focused — the active pane must NOT win.
 	it("routes to the sole agent pane, ignoring a different active pane", async () => {
-		vi.useFakeTimers();
 		const project = makeProject();
 		const task = makeTask({
 			id: "task-1",
@@ -12330,23 +12394,14 @@ describe("handlers.createPullRequest", () => {
 		});
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			// Active pane is a non-agent split (%3); the agent lives in %5.
-			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n%5\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes(["%3", "%5"], "%3");
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		const paste = sendKeysCalls();
-		expect(paste).toHaveLength(1);
-		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%5"]));
-
-		vi.advanceTimersByTime(800);
-		const all = sendKeysCalls();
-		expect(all[1]).toEqual(["tmux", "-L", "dev3", "send-keys", "-t", "%5", "Enter"]);
-		vi.useRealTimers();
+		const sends = guardedSends();
+		expect(sends).toHaveLength(2);
+		expect(sends[0]?.join(" ")).toContain("send-keys -t %5 -H");
+		expect(sends[1]?.join(" ")).toContain("send-keys -t %5 Enter");
 	});
 
 	// With two or more agent panes the target is ambiguous, so respect focus.
@@ -12364,17 +12419,11 @@ describe("handlers.createPullRequest", () => {
 		});
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n%5\n%7\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes(["%3", "%5", "%7"], "%3");
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		const paste = sendKeysCalls();
-		expect(paste).toHaveLength(1);
-		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %3 -H");
 	});
 
 	it("routes to the active Codex main pane when its pane id is not persisted", async () => {
@@ -12391,17 +12440,11 @@ describe("handlers.createPullRequest", () => {
 		});
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n%7\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes(["%3", "%7"], "%3");
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		const paste = sendKeysCalls();
-		expect(paste).toHaveLength(1);
-		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %3 -H");
 	});
 
 	it("routes a legacy Codex main pane before a focused shell split", async () => {
@@ -12415,18 +12458,11 @@ describe("handlers.createPullRequest", () => {
 		});
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			// The initial agent pane is listed first, but a shell split is focused.
-			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%5\n%3\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes(["%5", "%3"], "%3");
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		const paste = sendKeysCalls();
-		expect(paste).toHaveLength(1);
-		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%5"]));
+		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %5 -H");
 	});
 
 	// A registered agent pane that no longer exists must not hijack the routing —
@@ -12440,18 +12476,11 @@ describe("handlers.createPullRequest", () => {
 		});
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		mockSpawn.mockImplementation((args: string[]) => ({
-			// %5 is gone; only the active pane %3 is live.
-			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n" : "",
-			stderr: "",
-			exited: Promise.resolve(0),
-		}));
+		tmuxWithLivePanes(["%3"], "%3");
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		const paste = sendKeysCalls();
-		expect(paste).toHaveLength(1);
-		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %3 -H");
 	});
 
 	it("throws when the task has no worktree", async () => {

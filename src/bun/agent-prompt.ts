@@ -1,5 +1,7 @@
-import type { PaneSessionEntry } from "../shared/types";
-import { tmux, PANE_ID_FORMAT, TMUX_AGENT_PANE_OPTION, TMUX_LAST_AGENT_PANE_OPTION } from "./tmux";
+import type { PaneSessionEntry, Task } from "../shared/types";
+import type { PaneInputOutcome, PaneInputStage } from "../shared/pane-input";
+import { sendPaneInput } from "./pane-input";
+import { DEFAULT_TMUX_SOCKET, tmux, taskSessionName, PANE_ID_FORMAT, TMUX_AGENT_PANE_OPTION, TMUX_LAST_AGENT_PANE_OPTION } from "./tmux";
 import { createLogger } from "./logger";
 
 const log = createLogger("agent-prompt");
@@ -25,11 +27,6 @@ async function listLivePaneIds(tmuxSession: string, socket: string): Promise<str
 		return rows.map((row) => row.paneId).filter(Boolean);
 	} catch { /* best effort */ }
 	return [];
-}
-
-/** Whether `paneId` is currently a live pane in `tmuxSession`. */
-export async function isPaneLive(tmuxSession: string, socket: string, paneId: string): Promise<boolean> {
-	return (await listLivePaneIds(tmuxSession, socket)).includes(paneId);
 }
 
 /**
@@ -142,52 +139,70 @@ export function scheduleAgentPromptSubmit(send: () => void | Promise<void>, cont
 	}, AGENT_PROMPT_ENTER_DELAY_MS);
 }
 
-/** Type `text` into `pane`, then send Enter as a discrete keypress after a short delay. */
-async function pasteThenEnter(socket: string, pane: string, text: string): Promise<boolean> {
-	try {
-		// bestEffort swallows non-zero tmux exits inside the client, so a rejection
-		// here means tmux itself failed to launch — nothing reached the pane. Report
-		// false (and skip Enter) so callers don't drop a queued message as delivered.
-		await tmux.sendKeys(pane, [text], { socket, bestEffort: true });
-	} catch (err) {
-		log.warn("send-keys paste failed", { paneId: pane, error: String(err) });
-		return false;
-	}
-	scheduleAgentPromptSubmit(() => tmux.sendKeys(pane, ["Enter"], { socket, bestEffort: true }), { paneId: pane });
-	return true;
+/**
+ * The program every agent prompt is: type the text, wait, then submit it.
+ *
+ * Two stages rather than one, because Claude Code's input layer reads a fast
+ * "text Enter" as a single paste — newline included — and never submits. The
+ * text is a text step, so the tmux adapter sends it with `-l` and a prompt whose
+ * content reads like a key name (`C-c`, `Escape`) is typed rather than pressed.
+ */
+function agentPromptStages(prompt: string): PaneInputStage[] {
+	return [
+		{ steps: [{ kind: "text", text: prompt }] },
+		{ delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] },
+	];
+}
+
+/** The verdict for a prompt that never found a pane to aim at. */
+function noTargetPane(detail: string): PaneInputOutcome {
+	return {
+		deliveryId: "",
+		backend: "tmux",
+		paneId: "",
+		status: "not-started",
+		reason: "pane-absent",
+		retryableAsNewDelivery: false,
+		detail,
+	};
+}
+
+/** The tmux socket and session name `task` runs on. */
+function tmuxRouting(task: Task): { tmuxSession: string; socket: string } {
+	return { tmuxSession: taskSessionName(task.id), socket: task.tmuxSocket ?? DEFAULT_TMUX_SOCKET };
 }
 
 /**
  * Hand a task off to the AI agent running in its tmux session: pick the pane the
  * agent lives in (see {@link resolveAgentPromptTargetPane}), type `prompt` into
- * it, then send Enter as a discrete keypress after a short delay. Returns false
- * when no target pane could be resolved (nothing was sent). This is the shared
- * mechanism behind the Create-PR / auto-merge buttons, the rebase-conflict
- * handoff, and scheduled-message delivery — the agent is a continuation of the
- * user's conversation, so a plain-language instruction is enough.
+ * it, then submit it. This is the shared mechanism behind the Create-PR /
+ * auto-merge buttons, the rebase-conflict handoff, and scheduled-message
+ * delivery — the agent is a continuation of the user's conversation, so a
+ * plain-language instruction is enough.
+ *
+ * Delivery goes through the guarded seam (decision 201), so the pane is pinned to
+ * one tmux server generation and the verdict distinguishes "the pane is gone"
+ * from "the server took the keys" from "nobody can say". Resolution is a
+ * heuristic and pinning is a separate sighting, so a pane that dies in between is
+ * reported by the send rather than by a pre-check.
  */
 export async function sendPromptToAgentPane(
-	tmuxSession: string,
-	socket: string,
+	task: Task,
 	prompt: string,
 	agentPanes: PaneSessionEntry[] | undefined,
-): Promise<boolean> {
+): Promise<PaneInputOutcome> {
+	const { tmuxSession, socket } = tmuxRouting(task);
 	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
-	if (!targetPane) return false;
-	return pasteThenEnter(socket, targetPane, prompt);
+	if (!targetPane) return noTargetPane(`no agent pane could be resolved in ${tmuxSession}`);
+	return sendPaneInput(task, targetPane, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
 }
 
 /**
  * Deliver `prompt` to a concrete pane id (the `{ kind: "pane" }` scheduled-message
- * target). Returns false when the pane is no longer live (→ drop-with-notice),
- * so a stale pane id from a previous tmux lifetime never silently misfires.
+ * target). A stale pane id from a previous tmux lifetime is refused by the pin —
+ * the server generation is part of the pinned incarnation — so it never silently
+ * misfires into whatever pane inherited the id.
  */
-export async function sendPromptToPane(
-	tmuxSession: string,
-	socket: string,
-	paneId: string,
-	prompt: string,
-): Promise<boolean> {
-	if (!(await isPaneLive(tmuxSession, socket, paneId))) return false;
-	return pasteThenEnter(socket, paneId, prompt);
+export async function sendPromptToPane(task: Task, paneId: string, prompt: string): Promise<PaneInputOutcome> {
+	return sendPaneInput(task, paneId, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
 }

@@ -22,6 +22,22 @@ read in the SAME sighting as the pane, its liveness and its copy-mode state. Pin
 observes, one stage is one backend operation, and nothing here claims a lease or attaches a
 client. Retrying means a new delivery id; `attempt` above 1 is a probe that never executes.
 
+Scope, so the boundary is not re-argued: the seam owns deliveries whose caller ACTS on the
+outcome — a prompt typed into an agent, and anything that reports success or failure back to
+a user or another process. The raw `tmux.sendKeys` primitive keeps the rest and is not
+deprecated: the interactive keystroke stream (`terminal-backend/tmux-port.ts` `writePane`),
+cursor nudges like alt-click, and test harnesses. Those have no reader for a verdict, and a
+per-keystroke pin, deadline and ledger record would only cost latency.
+
+Stated rather than glossed: the TMUX arm has a production consumer (agent prompts), the
+NATIVE arm has none, and `agent-prompt-native.ts` remains the native delivery
+implementation. Two native paths is a real cost. It is not a deprecated stub — nothing is
+kept alive for unmigrated callers — but it is unresolved, because the seam's native arm
+refuses two cases that agent-prompt handles (it never attaches a binding, and never claims a
+vacant writer lease), and whether an out-of-sight delivery may mutate writer ownership is a
+design question, not a refactor. Convergence is tasked separately and lands one of: the
+native arm gains bind-on-demand and vacant-claim, or it is deleted as unreachable.
+
 ## Risks
 
 Native never returns `delivered` until its host can acknowledge input, and tmux `delivered`

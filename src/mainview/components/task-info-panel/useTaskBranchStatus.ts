@@ -300,13 +300,17 @@ export function useTaskBranchStatus({
 			// Conflicting rebase (behind but can't apply cleanly) → hand it off to the
 			// agent in the task terminal, mirroring the Create-PR handoff.
 			if (branchStatus && branchStatus.behind > 0 && !branchStatus.canRebase) {
-				const { handedOff } = await api.request.rebaseTaskViaAgent({
+				const { delivery } = await api.request.rebaseTaskViaAgent({
 					taskId: task.id,
 					projectId: project.id,
 					compareRef: compareRef || undefined,
 				});
-				if (handedOff) {
+				// Three verdicts, three messages. "unconfirmed" may well have landed, so it
+				// is neither the success line nor the "no terminal" error.
+				if (delivery.status === "delivered") {
 					toast.info(t("infoPanel.rebaseAgentStarted"), { taskId: task.id });
+				} else if (delivery.status === "unconfirmed") {
+					toast.info(t("infoPanel.rebaseAgentUnconfirmed"), { taskId: task.id });
 				} else {
 					toast.error(t("infoPanel.rebaseAgentNoPane"), { taskId: task.id });
 				}
@@ -332,12 +336,14 @@ export function useTaskBranchStatus({
 
 		setCommitting(true);
 		try {
-			const { handedOff } = await api.request.commitTaskViaAgent({
+			const { delivery } = await api.request.commitTaskViaAgent({
 				taskId: task.id,
 				projectId: project.id,
 			});
-			if (handedOff) {
+			if (delivery.status === "delivered") {
 				toast.info(t("infoPanel.commitAgentStarted"), { taskId: task.id });
+			} else if (delivery.status === "unconfirmed") {
+				toast.info(t("infoPanel.commitAgentUnconfirmed"), { taskId: task.id });
 			} else {
 				toast.error(t("infoPanel.commitAgentNoPane"), { taskId: task.id });
 			}

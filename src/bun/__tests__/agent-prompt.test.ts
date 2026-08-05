@@ -4,14 +4,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // handler-level tests). The real ../tmux module has module-load side effects
 // (config file writes, shim sanitation), so a full factory mock keeps this fast
 // and isolated; PANE_ID_FORMAT is only forwarded to the mocked listPanes.
+//
+// Delivery now runs through the guarded pane-input seam (decision 201), so the
+// mock covers the two calls that seam makes: observePane to pin the incarnation,
+// and sendKeysGuarded to perform each stage.
 vi.mock("../tmux", () => ({
 	tmux: {
 		activePaneId: vi.fn(),
 		listPanes: vi.fn(),
-		sendKeys: vi.fn(),
 		showOption: vi.fn(),
 		setPaneOption: vi.fn(),
+		observePane: vi.fn(),
+		sendKeysGuarded: vi.fn(),
 	},
+	isTmuxSpawnError: (err: unknown) => (err as { spawnFailure?: boolean })?.spawnFailure === true,
+	isTmuxTimeoutError: (err: unknown) => (err as { timedOut?: boolean })?.timedOut === true,
+	taskSessionName: (taskId: string) => `dev3-${taskId.slice(0, 8)}`,
+	DEFAULT_TMUX_SOCKET: "dev3",
 	PANE_ID_FORMAT: { sentinel: "pane-id-format" },
 	TMUX_AGENT_PANE_OPTION: "@dev3_agent",
 	TMUX_LAST_AGENT_PANE_OPTION: "@dev3_last_agent_pane",
@@ -21,28 +30,51 @@ vi.mock("../logger", () => ({
 }));
 
 import { tmux } from "../tmux";
-import { TmuxSpawnError } from "../tmux/errors";
 import {
 	AGENT_PROMPT_ENTER_DELAY_MS,
 	sendPromptToAgentPane,
 	sendPromptToPane,
 } from "../agent-prompt";
-import type { PaneSessionEntry } from "../../shared/types";
+import type { PaneSessionEntry, Task } from "../../shared/types";
 
-const SESSION = "dev3-task-1234";
+const TASK_ID = "1234abcd-0000-4000-8000-000000000001";
+const SESSION = `dev3-${TASK_ID.slice(0, 8)}`;
 const SOCKET = "dev3";
+const SERVER_TOKEN = "srv-token-1";
+
+/** An unmarked task, which `taskTerminalBackendIdentity` reads as tmux. */
+const TASK = { id: TASK_ID, tmuxSocket: SOCKET } as Task;
 
 function agentPane(paneId: string | null): PaneSessionEntry {
 	return { paneId, agentCmd: "claude", sessionId: null, agentId: null, configId: null } as PaneSessionEntry;
+}
+
+/** The chunks handed to the guard for call `n` — what actually goes into the pane. */
+function sentChunks(n: number): unknown {
+	return vi.mocked(tmux.sendKeysGuarded).mock.calls[n]?.[0]?.chunks;
+}
+
+function sentPane(n: number): unknown {
+	return vi.mocked(tmux.sendKeysGuarded).mock.calls[n]?.[0]?.pane;
+}
+
+/**
+ * Run a whole prompt program: it spans the inter-stage delay, so the timers must
+ * advance before the promise can settle.
+ */
+async function runPrompt<T>(started: Promise<T>): Promise<T> {
+	await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS);
+	return started;
 }
 
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.mocked(tmux.activePaneId).mockResolvedValue("%1");
 	vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }] as never);
-	vi.mocked(tmux.sendKeys).mockResolvedValue(undefined);
 	vi.mocked(tmux.showOption).mockResolvedValue(""); // no last-focused agent recorded
 	vi.mocked(tmux.setPaneOption).mockResolvedValue(undefined);
+	vi.mocked(tmux.observePane).mockResolvedValue({ kind: "present", sessionName: SESSION, serverToken: SERVER_TOKEN } as never);
+	vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: true } as never);
 });
 
 afterEach(() => {
@@ -51,35 +83,65 @@ afterEach(() => {
 });
 
 describe("sendPromptToAgentPane — delivery", () => {
-	it("pastes the prompt, then sends Enter as a discrete keypress after the delay", async () => {
-		await expect(sendPromptToAgentPane(SESSION, SOCKET, "check CI", [agentPane("%1")])).resolves.toBe(true);
-		expect(tmux.sendKeys).toHaveBeenCalledTimes(1);
-		expect(tmux.sendKeys).toHaveBeenCalledWith("%1", ["check CI"], { socket: SOCKET, bestEffort: true });
+	it("types the prompt, then sends Enter as a separate guarded stage", async () => {
+		const delivery = await runPrompt(sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")]));
 
-		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS);
-		expect(tmux.sendKeys).toHaveBeenCalledTimes(2);
-		expect(tmux.sendKeys).toHaveBeenLastCalledWith("%1", ["Enter"], { socket: SOCKET, bestEffort: true });
+		expect(delivery).toMatchObject({ status: "delivered" });
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		expect(sentChunks(0)).toEqual([{ literal: "check CI" }]);
+		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
 	});
 
-	it("returns false and never schedules Enter when the paste send-keys cannot launch", async () => {
-		// bestEffort swallows non-zero tmux exits inside the client, so a rejection
-		// reaching agent-prompt means tmux itself failed to start (TmuxSpawnError).
-		// Callers (scheduled-message delivery) must see false — not a phantom success
-		// that removes the queued message.
-		vi.mocked(tmux.sendKeys).mockRejectedValue(new TmuxSpawnError("/usr/bin/tmux", new Error("posix_spawn failed")));
+	it("pins the pane to the session and server generation it was sighted in", async () => {
+		await runPrompt(sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")]));
 
-		await expect(sendPromptToAgentPane(SESSION, SOCKET, "check CI", [agentPane("%1")])).resolves.toBe(false);
-
-		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS);
-		expect(tmux.sendKeys).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(tmux.sendKeysGuarded).mock.calls[0]?.[0]).toMatchObject({
+			pane: "%1",
+			session: SESSION,
+			serverToken: SERVER_TOKEN,
+		});
 	});
 
-	it("returns false without sending when no target pane can be resolved", async () => {
+	it("TYPES a prompt whose text is a tmux key name instead of pressing it", async () => {
+		// Without -l, tmux resolves an argument as a key name FIRST, so a message whose
+		// text is exactly "C-c" would interrupt the agent rather than reach its input
+		// box. The text must therefore arrive as a literal chunk, never as keys.
+		await runPrompt(sendPromptToAgentPane(TASK, "C-c", [agentPane("%1")]));
+
+		expect(sentChunks(0)).toEqual([{ literal: "C-c" }]);
+		expect(sentChunks(0)).not.toEqual([{ keys: ["C-c"] }]);
+	});
+
+	it("never sends Enter after a stage the guard refused", async () => {
+		// The guard is false inside the server's own turn: the pane moved, restarted,
+		// died, or sits in copy mode. Counting EXECUTIONS is the assertion — a verdict
+		// alone cannot tell "text went in, Enter did not" from "nothing went in".
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false } as never);
+
+		const delivery = await runPrompt(sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")]));
+
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
+		expect(delivery).toMatchObject({ status: "not-started", reason: "incarnation-changed" });
+	});
+
+	it("reports a spawn failure as nothing-sent, with no second stage", async () => {
+		vi.mocked(tmux.sendKeysGuarded).mockRejectedValue(Object.assign(new Error("tmux: not found"), { spawnFailure: true }));
+
+		const delivery = await runPrompt(sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")]));
+
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
+		expect(delivery).toMatchObject({ status: "not-started", reason: "backend-failure" });
+	});
+
+	it("sends nothing when no target pane can be resolved", async () => {
 		vi.mocked(tmux.activePaneId).mockResolvedValue(null);
 		vi.mocked(tmux.listPanes).mockResolvedValue([] as never);
 
-		await expect(sendPromptToAgentPane(SESSION, SOCKET, "check CI", [agentPane("%9")])).resolves.toBe(false);
-		expect(tmux.sendKeys).not.toHaveBeenCalled();
+		const delivery = await runPrompt(sendPromptToAgentPane(TASK, "check CI", [agentPane("%9")]));
+
+		expect(delivery).toMatchObject({ status: "not-started", reason: "pane-absent" });
+		expect(tmux.observePane).not.toHaveBeenCalled();
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
 	});
 });
 
@@ -94,14 +156,14 @@ describe("sendPromptToAgentPane — target resolution", () => {
 
 	it("routes to the last-focused agent pane the hook recorded, not the active pane", async () => {
 		vi.mocked(tmux.showOption).mockResolvedValue("%2");
-		await sendPromptToAgentPane(SESSION, SOCKET, "ping", TWO_AGENTS);
-		expect(tmux.sendKeys).toHaveBeenCalledWith("%2", ["ping"], { socket: SOCKET, bestEffort: true });
+		await runPrompt(sendPromptToAgentPane(TASK, "ping", TWO_AGENTS));
+		expect(sentPane(0)).toBe("%2");
 	});
 
 	it("ignores a recorded last-focused pane that is no longer live and falls back to the active pane", async () => {
 		vi.mocked(tmux.showOption).mockResolvedValue("%9"); // dead / unknown
-		await sendPromptToAgentPane(SESSION, SOCKET, "ping", TWO_AGENTS);
-		expect(tmux.sendKeys).toHaveBeenCalledWith("%1", ["ping"], { socket: SOCKET, bestEffort: true });
+		await runPrompt(sendPromptToAgentPane(TASK, "ping", TWO_AGENTS));
+		expect(sentPane(0)).toBe("%1");
 	});
 
 	it("ignores a recorded pane that is live but not a registered agent pane", async () => {
@@ -109,14 +171,14 @@ describe("sendPromptToAgentPane — target resolution", () => {
 		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%2" }, { paneId: "%3" }] as never);
 		vi.mocked(tmux.showOption).mockResolvedValue("%3");
 		vi.mocked(tmux.activePaneId).mockResolvedValue("%3");
-		await sendPromptToAgentPane(SESSION, SOCKET, "ping", TWO_AGENTS);
+		await runPrompt(sendPromptToAgentPane(TASK, "ping", TWO_AGENTS));
 		// No last-focused agent → ≥2 agents → active pane (%3, the focused shell).
-		expect(tmux.sendKeys).toHaveBeenCalledWith("%3", ["ping"], { socket: SOCKET, bestEffort: true });
+		expect(sentPane(0)).toBe("%3");
 	});
 
 	it("marks live agent panes with the focus-hook option (self-heal)", async () => {
 		vi.mocked(tmux.showOption).mockResolvedValue("");
-		await sendPromptToAgentPane(SESSION, SOCKET, "ping", TWO_AGENTS);
+		await runPrompt(sendPromptToAgentPane(TASK, "ping", TWO_AGENTS));
 		expect(tmux.setPaneOption).toHaveBeenCalledWith("%1", "@dev3_agent", "1", { socket: SOCKET, bestEffort: true });
 		expect(tmux.setPaneOption).toHaveBeenCalledWith("%2", "@dev3_agent", "1", { socket: SOCKET, bestEffort: true });
 	});
@@ -125,24 +187,50 @@ describe("sendPromptToAgentPane — target resolution", () => {
 		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%2" }, { paneId: "%5" }] as never);
 		vi.mocked(tmux.activePaneId).mockResolvedValue("%5"); // a focused shell
 		vi.mocked(tmux.showOption).mockResolvedValue("");
-		await sendPromptToAgentPane(SESSION, SOCKET, "ping", [agentPane("%2")]);
-		expect(tmux.sendKeys).toHaveBeenCalledWith("%2", ["ping"], { socket: SOCKET, bestEffort: true });
+		await runPrompt(sendPromptToAgentPane(TASK, "ping", [agentPane("%2")]));
+		expect(sentPane(0)).toBe("%2");
 	});
 });
 
 describe("sendPromptToPane — concrete pane target", () => {
 	it("delivers to a live pane", async () => {
-		await expect(sendPromptToPane(SESSION, SOCKET, "%1", "hello")).resolves.toBe(true);
-		expect(tmux.sendKeys).toHaveBeenCalledWith("%1", ["hello"], { socket: SOCKET, bestEffort: true });
+		const delivery = await runPrompt(sendPromptToPane(TASK, "%1", "hello"));
+
+		expect(delivery).toMatchObject({ status: "delivered" });
+		expect(sentChunks(0)).toEqual([{ literal: "hello" }]);
 	});
 
-	it("returns false for a pane that is no longer live", async () => {
-		await expect(sendPromptToPane(SESSION, SOCKET, "%42", "hello")).resolves.toBe(false);
-		expect(tmux.sendKeys).not.toHaveBeenCalled();
+	it("keeps an absent pane distinct from a dead one, and sends in neither case", async () => {
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "absent" } as never);
+		await expect(runPrompt(sendPromptToPane(TASK, "%42", "hello"))).resolves.toMatchObject({
+			status: "not-started",
+			reason: "pane-absent",
+		});
+
+		vi.mocked(tmux.observePane).mockResolvedValue({
+			kind: "dead",
+			sessionName: SESSION,
+			serverToken: SERVER_TOKEN,
+		} as never);
+		await expect(runPrompt(sendPromptToPane(TASK, "%42", "hello"))).resolves.toMatchObject({
+			status: "not-started",
+			reason: "pane-dead",
+		});
+
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
 	});
 
-	it("returns false when the paste fails at launch for a live pane", async () => {
-		vi.mocked(tmux.sendKeys).mockRejectedValue(new TmuxSpawnError("/usr/bin/tmux", new Error("boom")));
-		await expect(sendPromptToPane(SESSION, SOCKET, "%1", "hello")).resolves.toBe(false);
+	it("refuses a pane that belongs to another task's session", async () => {
+		vi.mocked(tmux.observePane).mockResolvedValue({
+			kind: "present",
+			sessionName: "dev3-someone-else",
+			serverToken: SERVER_TOKEN,
+		} as never);
+
+		await expect(runPrompt(sendPromptToPane(TASK, "%1", "hello"))).resolves.toMatchObject({
+			status: "not-started",
+			reason: "pane-absent",
+		});
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
 	});
 });

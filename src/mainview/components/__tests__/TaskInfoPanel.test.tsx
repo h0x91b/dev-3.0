@@ -1832,7 +1832,7 @@ describe("TaskInfoPanel", () => {
 				behind: 2,
 				canRebase: false,
 			});
-			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({ handedOff: true });
+			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({ delivery: { status: "delivered" } });
 
 			await act(async () => {
 				renderPanel(makeTask());
@@ -1860,7 +1860,7 @@ describe("TaskInfoPanel", () => {
 				behind: 2,
 				canRebase: false,
 			});
-			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({ handedOff: false });
+			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({ delivery: { status: "not-delivered", reason: "pane-absent" } });
 
 			await act(async () => {
 				renderPanel(makeTask());
@@ -1874,6 +1874,34 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => expect(toast.error).toHaveBeenCalled());
 		});
 
+		it("says the rebase handoff could not be confirmed, instead of claiming it landed", async () => {
+			// "unconfirmed" is neither of the two old answers: the prompt may well be in the
+			// agent already, so it must read as neither the success line nor "no terminal".
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				behind: 2,
+				canRebase: false,
+			});
+			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({
+				delivery: { status: "unconfirmed", reason: "unacknowledged" },
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const enabledBtn = screen
+				.getAllByText("Rebase (AI)")
+				.find((b) => !b.closest("button")!.disabled);
+			await user.click(enabledBtn!.closest("button")!);
+
+			await waitFor(() =>
+				expect(toast.info).toHaveBeenCalledWith(expect.stringContaining("could not be confirmed"), expect.anything()),
+			);
+			expect(toast.error).not.toHaveBeenCalled();
+		});
+
 		it("hands the commit off to the agent when the worktree is dirty", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
@@ -1881,7 +1909,7 @@ describe("TaskInfoPanel", () => {
 				insertions: 12,
 				deletions: 3,
 			});
-			mockedApi.request.commitTaskViaAgent.mockResolvedValue({ handedOff: true });
+			mockedApi.request.commitTaskViaAgent.mockResolvedValue({ delivery: { status: "delivered" } });
 
 			await act(async () => {
 				renderPanel(makeTask());
@@ -1923,7 +1951,7 @@ describe("TaskInfoPanel", () => {
 				insertions: 4,
 				deletions: 0,
 			});
-			mockedApi.request.commitTaskViaAgent.mockResolvedValue({ handedOff: false });
+			mockedApi.request.commitTaskViaAgent.mockResolvedValue({ delivery: { status: "not-delivered", reason: "pane-absent" } });
 
 			await act(async () => {
 				renderPanel(makeTask());

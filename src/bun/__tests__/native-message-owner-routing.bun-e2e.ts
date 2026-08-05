@@ -25,7 +25,7 @@
  * a silent tmux fallback anywhere in that chain would show up as a session on a
  * socket whose list is asserted byte-identical.
  *
- * What it asserts: the lease really lives in A; `deliverAgentPrompt` reports true
+ * What it asserts: the lease really lives in A; `deliverAgentPrompt` reports unconfirmed
  * in B; `message.send` entering B over its own socket answers delivered; each
  * token lands in native pane-1 with its submit CR; each occurs EXACTLY once and
  * is still exactly once well past the submit delay; the bytes were written by A
@@ -382,8 +382,13 @@ async function runSender(): Promise<void> {
 			worktreePath: work,
 			terminalBackend: "native",
 		} as unknown as Task;
-		const delivered = await deliverAgentPrompt(task, token);
-		check(delivered === true, "deliverAgentPrompt resolved TRUE in the non-owning process");
+		const delivery = await deliverAgentPrompt(task, token);
+		// Native can never PROVE a write, so the honest best case is "unconfirmed".
+		// Step 3 below is what proves the bytes actually reached the pane.
+		check(
+			delivery.status === "unconfirmed",
+			`deliverAgentPrompt reported ${delivery.status} in the non-owning process (expected unconfirmed)`,
+		);
 
 		// ── 3. the token reached the pane's shell, submit CR and all ──
 		const lineDeadline = Date.now() + 15_000;

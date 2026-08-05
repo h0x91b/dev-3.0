@@ -9,6 +9,7 @@ export const CLI_EXIT_CODE_DOCTOR_PROBLEMS = 7;
 export const CLI_EXIT_CODE_RENDERER_UNAVAILABLE = 8;
 export const CLI_EXIT_CODE_TASK_IS_DRAFT = 9;
 export const CLI_EXIT_CODE_LAUNCH_DECLINED = 10;
+export const CLI_EXIT_CODE_DELIVERY_UNCONFIRMED = 11;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -71,5 +72,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_LAUNCH_DECLINED,
 		description:
 			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) and the user declined the approval dialog. Nothing was launched and the target task stays where it was.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_DELIVERY_UNCONFIRMED",
+		code: CLI_EXIT_CODE_DELIVERY_UNCONFIRMED,
+		description:
+			"`dev3 message` sent the text but no backend could confirm it arrived (the native terminal host cannot acknowledge input, or a tmux send stopped mid-program). The message may well have landed, so DO NOT re-send it — a re-send is a second submit into a live agent. Distinct from exit 1, which means nothing was sent.",
 	},
 ] as const;

@@ -5,6 +5,7 @@ import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotMode
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-panes";
 import type { DeepLinkNav } from "./deep-link";
+import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 
 // ---- Changelog ----
 
@@ -3395,11 +3396,11 @@ export type AppRPCSchema = {
 			};
 			rebaseTaskViaAgent: {
 				params: { taskId: string; projectId: string; compareRef?: string };
-				response: { handedOff: boolean };
+				response: { delivery: AgentPromptDelivery };
 			};
 			commitTaskViaAgent: {
 				params: { taskId: string; projectId: string };
-				response: { handedOff: boolean };
+				response: { delivery: AgentPromptDelivery };
 			};
 			mergeTask: {
 				params: { taskId: string; projectId: string };

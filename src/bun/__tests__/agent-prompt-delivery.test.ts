@@ -36,19 +36,25 @@ function task(overrides: Partial<Task> = {}): Task {
 	} as Task;
 }
 
+/** What a tmux send that the server accepted looks like coming back from the seam. */
+const TMUX_DELIVERED = { deliveryId: "d1", backend: "tmux", paneId: "%1", status: "delivered", acceptedThrough: 2 } as const;
+
+/** The best a native write can ever report: the bytes went out, unacknowledged. */
+const NATIVE_UNCONFIRMED = { status: "unconfirmed", reason: "unacknowledged" } as const;
+
 beforeEach(() => {
-	vi.mocked(sendPromptToAgentPane).mockResolvedValue(true);
-	vi.mocked(sendPromptToPane).mockResolvedValue(true);
-	vi.mocked(sendPromptToNativeAgentPane).mockResolvedValue(true);
-	vi.mocked(sendPromptToNativePane).mockResolvedValue(true);
+	vi.mocked(sendPromptToAgentPane).mockResolvedValue(TMUX_DELIVERED);
+	vi.mocked(sendPromptToPane).mockResolvedValue(TMUX_DELIVERED);
+	vi.mocked(sendPromptToNativeAgentPane).mockResolvedValue(NATIVE_UNCONFIRMED);
+	vi.mocked(sendPromptToNativePane).mockResolvedValue(NATIVE_UNCONFIRMED);
 });
 
 afterEach(() => vi.clearAllMocks());
 
 describe("deliverAgentPrompt — tmux tasks (regression)", () => {
-	it("routes an unmarked legacy task through the tmux path with the exact old arguments", async () => {
-		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toBe(true);
-		expect(sendPromptToAgentPane).toHaveBeenCalledWith(`dev3-task-${TASK_ID}`, "dev3", "check CI", PANES);
+	it("routes an unmarked legacy task through the tmux path", async () => {
+		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toEqual({ status: "delivered" });
+		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI", PANES);
 		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
 	});
 
@@ -60,18 +66,47 @@ describe("deliverAgentPrompt — tmux tasks (regression)", () => {
 
 	it("honours the task's own tmux socket", async () => {
 		await deliverAgentPrompt(task({ tmuxSocket: "custom" } as Partial<Task>), "check CI");
-		expect(sendPromptToAgentPane).toHaveBeenCalledWith(`dev3-task-${TASK_ID}`, "custom", "check CI", PANES);
+		expect(sendPromptToAgentPane).toHaveBeenCalledWith(
+			expect.objectContaining({ id: TASK_ID, tmuxSocket: "custom" }),
+			"check CI",
+			PANES,
+		);
 	});
 
 	it("routes a concrete tmux pane target to the pane path", async () => {
 		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" });
-		expect(sendPromptToPane).toHaveBeenCalledWith(`dev3-task-${TASK_ID}`, "dev3", "%4", "check CI");
+		expect(sendPromptToPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%4", "check CI");
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});
 
-	it("propagates a tmux failure as false", async () => {
-		vi.mocked(sendPromptToAgentPane).mockResolvedValue(false);
-		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toBe(false);
+	it("maps a proven tmux refusal to not-delivered, keeping its reason", async () => {
+		vi.mocked(sendPromptToAgentPane).mockResolvedValue({
+			deliveryId: "d1",
+			backend: "tmux",
+			paneId: "%1",
+			status: "not-started",
+			reason: "pane-dead",
+			retryableAsNewDelivery: false,
+		});
+		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toMatchObject({
+			status: "not-delivered",
+			reason: "pane-dead",
+		});
+	});
+
+	it("maps a tmux send that stopped mid-program to unconfirmed, never to a failure", async () => {
+		// The text stage went in and Enter did not, so the agent has the text sitting in
+		// its input box: a caller that re-sent would submit it twice.
+		vi.mocked(sendPromptToAgentPane).mockResolvedValue({
+			deliveryId: "d1",
+			backend: "tmux",
+			paneId: "%1",
+			status: "partial",
+			acceptedThrough: 1,
+			uncertainStep: null,
+			reason: "incarnation-changed",
+		});
+		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toMatchObject({ status: "unconfirmed" });
 	});
 });
 
@@ -80,7 +115,7 @@ describe("deliverAgentPrompt — native tasks", () => {
 		task({ terminalBackend: "native", ...extra } as Partial<Task>);
 
 	it("routes an agent target to the native agent pane", async () => {
-		await expect(deliverAgentPrompt(nativeTask(), "check CI")).resolves.toBe(true);
+		await expect(deliverAgentPrompt(nativeTask(), "check CI")).resolves.toMatchObject({ status: "unconfirmed" });
 		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI");
 	});
 
@@ -94,8 +129,8 @@ describe("deliverAgentPrompt — native tasks", () => {
 	});
 
 	it("NEVER falls back to tmux when native delivery fails", async () => {
-		vi.mocked(sendPromptToNativeAgentPane).mockResolvedValue(false);
-		await expect(deliverAgentPrompt(nativeTask(), "check CI")).resolves.toBe(false);
+		vi.mocked(sendPromptToNativeAgentPane).mockResolvedValue({ status: "not-delivered", reason: "pane-absent" });
+		await expect(deliverAgentPrompt(nativeTask(), "check CI")).resolves.toMatchObject({ status: "not-delivered" });
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		expect(sendPromptToPane).not.toHaveBeenCalled();
 	});

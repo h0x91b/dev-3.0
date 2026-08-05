@@ -15,6 +15,7 @@ import * as github from "../github";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
+import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
 import {
 	scheduleMessage as scheduleMessageCore,
@@ -510,23 +511,25 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 	assertGitTask(project, task);
 
 	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
-	const handedOff = await deliverAgentPrompt(task, prompt);
-	if (!handedOff) {
-		log.info("← createPullRequest skipped — no active pane", { taskId: task.id.slice(0, 8) });
+	const delivery = await deliverAgentPrompt(task, prompt);
+	if (delivery.status === "not-delivered") {
+		log.info("← createPullRequest skipped — no active pane", { taskId: task.id.slice(0, 8), reason: delivery.reason });
 		return;
 	}
 
-	log.info("← createPullRequest (prompt sent to agent)", { taskId: task.id.slice(0, 8) });
+	// This handler answers void, so the three verdicts only reach the log. The user is
+	// told nothing either way — a pre-existing gap, not one this seam introduced.
+	log.info("← createPullRequest (prompt sent to agent)", { taskId: task.id.slice(0, 8), status: delivery.status });
 }
 
 /**
  * Rebase-conflict handoff: when `git rebase` cannot apply cleanly (canRebase is
  * false), the UI routes the Rebase button here instead of opening a doomed
  * auto-rebase pane. We ask the agent in the task terminal to perform the rebase
- * and resolve the conflicts. Returns whether the prompt actually reached an
- * agent pane so the UI can confirm the handoff (or warn that no terminal exists).
+ * and resolve the conflicts. Returns the delivery verdict so the UI can confirm the
+ * handoff, warn that no terminal exists, or say it could not be confirmed.
  */
-async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; compareRef?: string }): Promise<{ handedOff: boolean }> {
+async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; compareRef?: string }): Promise<{ delivery: AgentPromptDelivery }> {
 	log.info("→ rebaseTaskViaAgent", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -535,27 +538,27 @@ async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; c
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
-	const handedOff = await deliverAgentPrompt(task, rebaseConflictAgentPrompt(rebaseTarget));
-	log.info("← rebaseTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
-	return { handedOff };
+	const delivery = await deliverAgentPrompt(task, rebaseConflictAgentPrompt(rebaseTarget));
+	log.info("← rebaseTaskViaAgent", { taskId: task.id.slice(0, 8), status: delivery.status, reason: delivery.reason });
+	return { delivery };
 }
 
 /**
  * Commit handoff: the git row's Commit button never runs `git commit` itself —
  * choosing what to stage and how to word the message is exactly the agent's job
- * (issue #271). Mirrors the Create-PR / rebase-conflict handoffs and returns
- * whether the prompt reached an agent pane.
+ * (issue #271). Mirrors the Create-PR / rebase-conflict handoffs and returns the
+ * delivery verdict.
  */
-async function commitTaskViaAgent(params: { taskId: string; projectId: string }): Promise<{ handedOff: boolean }> {
+async function commitTaskViaAgent(params: { taskId: string; projectId: string }): Promise<{ delivery: AgentPromptDelivery }> {
 	log.info("→ commitTaskViaAgent", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
 	assertGitTask(project, task);
 
-	const handedOff = await deliverAgentPrompt(task, COMMIT_AGENT_PROMPT);
-	log.info("← commitTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
-	return { handedOff };
+	const delivery = await deliverAgentPrompt(task, COMMIT_AGENT_PROMPT);
+	log.info("← commitTaskViaAgent", { taskId: task.id.slice(0, 8), status: delivery.status, reason: delivery.reason });
+	return { delivery };
 }
 
 async function openPullRequest(params: { taskId: string; projectId: string }): Promise<void> {

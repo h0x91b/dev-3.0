@@ -6,6 +6,8 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { parseDelay, formatCountdown } from "../../shared/duration";
 import { resolveScheduleTarget } from "../../shared/schedule";
 import { MAX_SCHEDULED_MESSAGE_LENGTH } from "../../shared/types";
+import type { AgentPromptDeliveryStatus } from "../../shared/agent-prompt-delivery";
+import { CLI_EXIT_CODE_DELIVERY_UNCONFIRMED } from "../../shared/cli-exit-codes";
 
 const USAGE = 'Usage: dev3 message [--in <dur> | --at <hh:mm>] "text" [--task <id>]';
 
@@ -52,8 +54,19 @@ export async function handleMessage(
 	if (!hasIn && !hasAt) {
 		const resp = await sendRequest(socketPath, "message.send", params);
 		if (!resp.ok) exitError(resp.error || "Failed to send message");
-		const data = resp.data as { taskId: string };
-		process.stdout.write(`Message sent to task ${data.taskId.slice(0, 8)}.\n`);
+		const data = resp.data as { taskId: string; status?: AgentPromptDeliveryStatus; detail?: string };
+		const shortId = data.taskId.slice(0, 8);
+		// "Unconfirmed" is its own exit code, never an error: the text may well have
+		// landed, and an agent that read a failure here would re-send it — a second
+		// submit into a live agent is worse than not knowing.
+		if (data.status === "unconfirmed") {
+			process.stdout.write(
+				`Message sent to task ${shortId}, but delivery could not be confirmed${data.detail ? ` (${data.detail})` : ""}. ` +
+					`Check the task's terminal before sending it again.\n`,
+			);
+			process.exit(CLI_EXIT_CODE_DELIVERY_UNCONFIRMED);
+		}
+		process.stdout.write(`Message sent to task ${shortId}.\n`);
 		return;
 	}
 

@@ -24,9 +24,14 @@
  *
  * Never touches tmux, and never falls back to it: an unresolvable or unproven
  * target is an honest "no live agent session".
+ *
+ * A write here can never be PROVEN: `NativeTaskTerminal.write` is void and the host
+ * cannot acknowledge input yet (decision 201). So the best answer this module has is
+ * `unconfirmed` — it reports that instead of the optimistic "delivered" it used to.
  */
 
 import type { Task } from "../shared/types";
+import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import { scheduleAgentPromptSubmit } from "./agent-prompt";
 import { createLogger } from "./logger";
 import { forwardToOwner, resolvePaneOwner } from "./native-pane-owner";
@@ -134,13 +139,30 @@ export async function deliverNativePromptAsOwner(params: NativePromptDeliveryPar
 	return true;
 }
 
+/** Nothing was sent, and it is proven — the caller may report a failure and may re-send. */
+function notDelivered(reason: string, detail: string): AgentPromptDelivery {
+	return { status: "not-delivered", reason, detail };
+}
+
+/** The best answer a write into a native PTY has: the bytes went out, unacknowledged. */
+function wroteUnconfirmed(): AgentPromptDelivery {
+	return {
+		status: "unconfirmed",
+		reason: "unacknowledged",
+		detail: "the text was written to the native pane, whose host cannot acknowledge input yet",
+	};
+}
+
 /**
  * Type `prompt` into one native pane, wherever its writer lease lives.
- * Returns false when nothing was (provably) delivered.
+ *
+ * The best case is `unconfirmed`, never `delivered`: the write itself is unprovable.
+ * Every other answer is `not-delivered` and proven — no owner, no binding, or a lease
+ * that moved — so a caller can tell "nothing happened" from "cannot say".
  */
-export async function sendPromptToNativePane(task: Task, paneId: string, prompt: string): Promise<boolean> {
+export async function sendPromptToNativePane(task: Task, paneId: string, prompt: string): Promise<AgentPromptDelivery> {
 	const terminal = await bindPane(task, paneId);
-	if (!terminal) return false;
+	if (!terminal) return notDelivered("pane-absent", `no live native pane ${paneId} to bind`);
 
 	const owner = await resolvePaneOwner(terminal);
 	const context = { taskId: task.id.slice(0, 8), paneId, owner: owner.kind };
@@ -148,16 +170,16 @@ export async function sendPromptToNativePane(task: Task, paneId: string, prompt:
 	switch (owner.kind) {
 		case "local":
 			typeThenSubmit(terminal, paneId, prompt);
-			return true;
+			return wroteUnconfirmed();
 
 		case "vacant": {
 			// Nobody is typing — take the lease and deliver here.
 			if ((await terminal.claimHostWriter()) === "writer") {
 				typeThenSubmit(terminal, paneId, prompt);
-				return true;
+				return wroteUnconfirmed();
 			}
 			log.info("Writer lease was taken while claiming it; not delivering", context);
-			return false;
+			return notDelivered("read-only", "another process took the pane's writer lease while claiming it");
 		}
 
 		case "peer": {
@@ -171,14 +193,24 @@ export async function sendPromptToNativePane(task: Task, paneId: string, prompt:
 					params as unknown as Record<string, unknown>,
 				);
 				log.info("Prompt delivery routed to the owning app process", { ...context, ownerPid: owner.pid });
-				return delivered?.delivered === true;
+				// The wire stays a boolean: it answers "did the owner write", which is as much
+				// as the owner itself can know. True is therefore unconfirmed, not delivered.
+				return delivered?.delivered === true
+					? wroteUnconfirmed()
+					: notDelivered("read-only", `the owning app process (pid ${owner.pid}) did not hold the lease`);
 			} catch (err) {
 				log.warn("Forwarding the prompt to the owning app process failed", {
 					...context,
 					ownerPid: owner.pid,
 					error: String(err),
 				});
-				return false;
+				// The request left this process, so its fate is genuinely unknown — the owner
+				// may have written before the reply was lost.
+				return {
+					status: "unconfirmed",
+					reason: "owner-unreachable",
+					detail: `forwarding to owner ${owner.pid} failed: ${String(err)}`,
+				};
 			}
 		}
 
@@ -188,16 +220,16 @@ export async function sendPromptToNativePane(task: Task, paneId: string, prompt:
 			// The host cannot name an owner, so a write here would be dropped
 			// silently. Report it as undelivered rather than guess.
 			log.info("No provable writer for this native pane", context);
-			return false;
+			return notDelivered("owner-unknown", "the host cannot name a writer for this pane");
 	}
 }
 
-/** Deliver `prompt` to the task's live native agent pane; false when none is running. */
-export async function sendPromptToNativeAgentPane(task: Task, prompt: string): Promise<boolean> {
+/** Deliver `prompt` to the task's live native agent pane. */
+export async function sendPromptToNativeAgentPane(task: Task, prompt: string): Promise<AgentPromptDelivery> {
 	const paneId = await resolveNativeAgentPane(task.id);
 	if (!paneId) {
 		log.info("No live native agent pane for this task", { taskId: task.id.slice(0, 8) });
-		return false;
+		return notDelivered("pane-absent", "the task has no live native agent pane");
 	}
 	return sendPromptToNativePane(task, paneId, prompt);
 }

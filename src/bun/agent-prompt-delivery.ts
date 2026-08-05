@@ -12,36 +12,37 @@
  *  - The task's persisted backend identity decides the path, and a task whose
  *    marker cannot be read throws instead of guessing (`taskTerminalBackendIdentity`).
  *  - A native task NEVER falls back to tmux. If its agent pane cannot be resolved
- *    or written to, the answer is false — the caller's honest "no live agent
- *    session" — not a tmux send that would type into nothing.
- *  - The tmux path is the pre-existing code, unchanged, called with the same
- *    arguments it was called with before.
+ *    or written to, the answer is the caller's honest "no live agent session" —
+ *    not a tmux send that would type into nothing.
+ *  - Three answers reach the caller, never two. `unconfirmed` is the native arm's
+ *    everyday answer (its host cannot acknowledge input) and tmux's answer when a
+ *    send stopped mid-program, so nothing may report it as either success or
+ *    failure — see `src/shared/agent-prompt-delivery.ts`.
  */
 
 import type { ScheduledMessageTarget, Task } from "../shared/types";
+import { type AgentPromptDelivery, agentPromptDeliveryFromPaneInput } from "../shared/agent-prompt-delivery";
 import { sendPromptToAgentPane, sendPromptToPane } from "./agent-prompt";
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "./agent-prompt-native";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
-import { DEFAULT_TMUX_SOCKET, taskSessionName } from "./tmux";
 
 /**
- * Type `prompt` into `task`'s agent (or into one concrete pane) and submit it.
- * Returns false when nothing usable is live, so callers keep their existing
- * drop-with-notice / throw behavior.
+ * Type `prompt` into `task`'s agent (or into one concrete pane) and submit it,
+ * reporting which of the three answers the backend could actually give.
  */
 export async function deliverAgentPrompt(
 	task: Task,
 	prompt: string,
 	target: ScheduledMessageTarget = { kind: "agent" },
-): Promise<boolean> {
+): Promise<AgentPromptDelivery> {
 	if (taskTerminalBackendIdentity(task) === "native") {
 		return target.kind === "pane"
 			? sendPromptToNativePane(task, target.paneId, prompt)
 			: sendPromptToNativeAgentPane(task, prompt);
 	}
-	const tmuxSession = taskSessionName(task.id);
-	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-	return target.kind === "pane"
-		? sendPromptToPane(tmuxSession, socket, target.paneId, prompt)
-		: sendPromptToAgentPane(tmuxSession, socket, prompt, task.sessionState?.panes);
+	const outcome =
+		target.kind === "pane"
+			? await sendPromptToPane(task, target.paneId, prompt)
+			: await sendPromptToAgentPane(task, prompt, task.sessionState?.panes);
+	return agentPromptDeliveryFromPaneInput(outcome);
 }

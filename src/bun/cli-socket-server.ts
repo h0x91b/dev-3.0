@@ -1196,14 +1196,20 @@ const handlers: Record<string, Handler> = {
 	},
 
 	// `dev3 message "text"` (no time flag): deliver a message into the task's live
-	// agent immediately (send-keys paste + Enter). Best-effort — throws if no live
-	// agent pane can be resolved.
+	// agent immediately. Throws only when nothing was sent; an unconfirmed send
+	// travels back as its own status so the CLI reports it as neither.
 	"message.send": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
 		const text = ((params.text as string) ?? "").toString();
 		const source = await resolveAgentMessageSource(params, task.id);
-		await sendMessageImmediately(task, text, null, source);
-		return { delivered: true, taskId: task.id, projectId: project.id };
+		const delivery = await sendMessageImmediately(task, text, null, source);
+		return {
+			delivered: true,
+			status: delivery.status,
+			...(delivery.detail === undefined ? {} : { detail: delivery.detail }),
+			taskId: task.id,
+			projectId: project.id,
+		};
 	},
 
 	// Owner-routed half of native prompt delivery: another dev-3.0 instance
