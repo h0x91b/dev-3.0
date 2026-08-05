@@ -1602,6 +1602,9 @@ function TaskDiffFileSection({
 						)}
 					</button>
 
+					{/* Quiet ghost square: a bordered, filled box here out-sized the
+					    file identity it sits next to (the status badge and the +/− pill
+					    are both ~22px). Touch keeps the 44px target. */}
 					<button
 						type="button"
 						onClick={handleCopyPath}
@@ -1611,15 +1614,13 @@ function TaskDiffFileSection({
 						title={copiedPath
 							? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
 							: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
-						className={`inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border transition-colors ${
-							copiedPath
-								? "border-success/30 bg-success/10 text-success"
-								: "border-edge bg-base text-fg-2 hover:bg-elevated-hover"
+						className={`inline-flex h-11 w-11 md:h-7 md:w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+							copiedPath ? "text-success" : "text-fg-3 hover:bg-elevated-hover hover:text-fg"
 						}`}
 					>
 						<span
 							aria-hidden="true"
-							className="text-base leading-none"
+							className="text-sm-plus leading-none"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
 							{copiedPath ? "\uF00C" : "\uF4BB"}
@@ -1664,7 +1665,7 @@ function TaskDiffFileSection({
 					/>
 					<span
 						aria-hidden="true"
-						className={`inline-flex h-4 w-4 items-center justify-center rounded-[4px] border text-micro leading-none ${isRead ? "border-success bg-success text-base" : "border-edge bg-base text-transparent"}`}
+						className={`inline-flex h-4 w-4 items-center justify-center rounded-[4px] border text-micro leading-none ${isRead ? "border-success bg-success text-base-ink" : "border-edge bg-base text-transparent"}`}
 					>
 						{"\u2713"}
 					</span>

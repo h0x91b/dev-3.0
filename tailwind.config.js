@@ -32,8 +32,18 @@ export default {
 					"monospace",
 				],
 			},
+			// `base` is deliberately NOT in `colors`: that would also emit a
+			// `.text-base` COLOR utility, which collides with Tailwind's built-in
+			// `text-base` FONT-SIZE utility and silently paints icons and headings
+			// in the page background colour. Register the surface only where it is
+			// actually used. Never move `base` back into `colors`.
+			backgroundColor: { base: "rgb(var(--surface-base) / <alpha-value>)" },
+			ringColor: { base: "rgb(var(--surface-base) / <alpha-value>)" },
 			colors: {
-				base: "rgb(var(--surface-base) / <alpha-value>)",
+				// Knocked-out ink for text sitting on a solid accent/success fill —
+				// the base surface colour under a name that cannot collide with the
+				// `text-base` font-size rung.
+				"base-ink": "rgb(var(--surface-base) / <alpha-value>)",
 				raised: "rgb(var(--surface-raised) / <alpha-value>)",
 				"raised-hover": "rgb(var(--surface-raised-hover) / <alpha-value>)",
 				elevated: "rgb(var(--surface-elevated) / <alpha-value>)",
