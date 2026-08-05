@@ -518,13 +518,12 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 										)}
 									</div>
 								</button>
-								{/* Desktop: hover-revealed inline icon cluster. */}
+								{/* Desktop: resting-visible inline icon cluster, hover-emphasised. */}
 								<div className="hidden md:flex">
 									<ProjectActionButtons
 										project={project}
 										navigate={navigate}
 										onRemove={onRemoveProject}
-										className="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
 									/>
 								</div>
 								<span className="flex items-center gap-3">

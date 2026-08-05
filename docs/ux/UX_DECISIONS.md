@@ -10,6 +10,13 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** the dashboard is the attention triage list, so clearing a finished row is the job that screen exists for, and the row is the task's own surface rather than app chrome — which is what `task-scoped-actions-in-inspector-or-menu` meant to protect. Rejected: a per-row kebab (turns triage into a second board) and a narrow-only long-press (leaves the desktop pain in the issue unfixed).
 - **Status:** Implemented. Evidence: `ActivityOverview.tsx`, `utils/moveTaskToStatus.ts (onFailure)`, issue #1252.
 
+## 2026-08-05 — Hover raises emphasis; it never creates the control
+
+- **Rule:** An action cluster may not be hidden behind `opacity-0` → `group-hover:opacity-100`. It rests at a visible tone (`text-fg-3`, the quietest step clearing 3:1 on the light theme's `surface-raised`) and hover only lifts it to `text-fg` + `bg-elevated` — destructive to `text-danger` + `bg-danger/10`.
+- **Why:** The Dashboard project row hid settings / Finder / project-terminal / remove entirely until hover, so the four actions were undiscoverable and inconsistent with the drag + up/down reorder affordances in the same row, which were already resting-visible. Rejected alternative: keep hover-reveal and only raise the revealed contrast — it fixes legibility but not discoverability.
+- **Status:** Implemented. Evidence: `src/mainview/components/ProjectActionButtons.tsx`, `src/mainview/components/ActivityOverview.tsx`.
+- **Open tension:** the ✓ Complete action landed on the dashboard *task* row the same day is still hover-revealed on desktop. It is the one known exception to this rule and has not been reconciled yet.
+
 ## 2026-08-03 — Local review comments send one-by-one; the batch send covers only unsent ones
 
 - **Rule:** Every local inline review comment carries its own `Send to agent` (role `secondary`, beside Edit/Delete, sending/sent states + toasts); a sent comment is marked `Sent` and leaves the Review export card's copy/batch-send payload, which is now scoped to unsent comments. Bible §5.3, yaml `surfaces.diff_review_viewer.inline_comment_actions`.

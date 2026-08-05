@@ -31,15 +31,22 @@ function ProjectActionButtons({
 		event.stopPropagation();
 	}
 
+	// Hover raises emphasis, it never *creates* the control: the cluster rests at
+	// `text-fg-3` — same tone as the reorder buttons at the other end of the row,
+	// and the quietest step that still clears 3:1 on the light theme's surface.
+	const iconButton =
+		"text-fg-3 transition-colors p-2 rounded-lg focus-visible:outline-none focus-visible:text-fg focus-visible:ring-2 focus-visible:ring-accent";
+	const neutralButton = `${iconButton} hover:text-fg hover:bg-elevated`;
+
 	return (
-		<div className={`flex items-center gap-0.5 transition-opacity ${className}`.trim()}>
+		<div className={`flex items-center gap-0.5 ${className}`.trim()}>
 			<button
 				type="button"
 				onClick={(event) => {
 					stopEvent(event);
 					navigate({ screen: "project-settings", projectId: project.id });
 				}}
-				className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
+				className={neutralButton}
 				title={t("header.projectSettings")}
 				aria-label={t("header.projectSettings")}
 			>
@@ -58,7 +65,7 @@ function ProjectActionButtons({
 						stopEvent(event);
 						api.request.openFolder({ path: project.path }).catch(() => {});
 					}}
-					className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
+					className={neutralButton}
 					title={t("dashboard.openInFinder")}
 					aria-label={t("dashboard.openInFinder")}
 				>
@@ -78,7 +85,7 @@ function ProjectActionButtons({
 						stopEvent(event);
 						navigate({ screen: "project-terminal", projectId: project.id });
 					}}
-					className="text-fg-3 hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-elevated"
+					className={neutralButton}
 					title={t("projectTerminal.tooltip")}
 					aria-label={t("projectTerminal.tooltip")}
 				>
@@ -98,7 +105,7 @@ function ProjectActionButtons({
 						stopEvent(event);
 						void onRemove(project.id);
 					}}
-					className="text-fg-3 hover:text-danger transition-colors p-1.5 ml-2 rounded-lg hover:bg-danger/10"
+					className={`${iconButton} ml-2 hover:text-danger hover:bg-danger/10`}
 					title={t("dashboard.remove")}
 					aria-label={t("dashboard.remove")}
 				>

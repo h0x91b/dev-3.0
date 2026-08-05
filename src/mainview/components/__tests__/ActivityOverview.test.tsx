@@ -96,6 +96,17 @@ describe("ActivityOverview", () => {
 		expect(screen.getByTitle("Remove")).toBeInTheDocument();
 	});
 
+	it("keeps project quick actions visible at rest instead of revealing them on hover", async () => {
+		renderActivityOverview(vi.fn(), vi.fn(), vi.fn());
+
+		const cluster = (await screen.findByTitle("Project settings")).parentElement;
+
+		expect(cluster?.className).not.toMatch(/opacity-0/);
+		for (const title of ["Project settings", "Open in Finder", "Open a terminal in the project root", "Remove"]) {
+			expect(screen.getByTitle(title).className).toContain("text-fg-3");
+		}
+	});
+
 	it("renders project quick actions before the activity count", async () => {
 		renderActivityOverview(vi.fn(), vi.fn(), vi.fn());
 
