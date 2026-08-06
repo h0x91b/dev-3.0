@@ -215,14 +215,31 @@ A recovery path with no test is code that runs for the first time on the worst d
 proved that class is live rather than theoretical: **three of eleven failure-only branches were
 dead, not merely untested** — a 27% dead rate, measured rather than suspected.
 
-The third one is the sharpest, because a test was already covering it and passing. `find_version_json`
-returns the path **on stdout**, and its `::notice::` went to stdout too — so the caller captured both
-lines, and the next `bun -e "Bun.file('<two lines>')"` died with `Unterminated string literal`. The
-existing test asserted that the notice text appeared and that the tarball was staged. **Both are true
-on the broken path**, because staging happens before the failure. It was found only when an
-`expect(result.status).toBe(0)` was added: **asserting an artifact exists is not asserting the script
-succeeded.** Fixed by sending every human-readable line in that function to stderr, which is now
-stated at the function as a rule about its stdout being its return value.
+**27% is a FLOOR, not an estimate.** The number moved from 18% to 27% because a *passing* test was
+found to be passing on a broken path. Nothing rules out the same being true of another branch that
+currently looks covered.
+
+### Asserting an artifact exists is not asserting the script succeeded
+
+This is the sharpest finding in this record, and it deserves its own name rather than a line in the
+dead-path count.
+
+The third dead branch was **covered by a passing test.** That test asserted the `::notice::` text
+appeared and the staged tarball existed. **Both are true on the broken path**, because staging
+happens before the failure. The test was not weak — it was measuring the wrong end: it verified that
+things had *happened*, never that the script *finished*. Adding `expect(result.status).toBe(0)` is
+what turned it red.
+
+Every other finding in this record is a variant of *absence reads as success* — a skipped job, an
+empty checks list, a rerun overwriting a conclusion, a zero-target detector, a silent `--env`
+fallback. This is the sharpest form of it, because **the absence was wrapped in a passing test.**
+Anyone auditing coverage would have ticked that path off.
+
+The mechanism: `find_version_json` returns its path **on stdout**, and its `::notice::` went to
+stdout too, so the caller captured both lines and the next `bun -e "Bun.file('<two lines>')"` died
+with `Unterminated string literal`. The rule that prevents the whole class — **a function's stdout
+IS its return value, so every human-readable line goes to stderr** — is written at that function,
+where a future editor will read it.
 
 **The enumeration itself is the map**, recorded in full so the next person editing these scripts
 does not pay what it cost to rebuild it.
@@ -252,7 +269,13 @@ deep inside a release.
 three in the CLI script remain unexercised — eight in total, and **two of the eight are left for
 `hdiutil` cost rather than for principle.** A cap that is decided is fine; a cap that is silent
 reads as coverage. With three of eleven branches proven dead, the remaining five in the artifact
-script carry a *measured* prior, not a theoretical one. If a release ever fails inside one of them,
+script carry a *measured* prior, not a theoretical one.
+
+**And that prior is high enough to be a prediction rather than a chore.** Twice in one day, adding a
+real assertion to this script uncovered something five months old. That is not luck twice; it is a
+property of the file — its failure-only paths have never been exercised, so any genuine assertion
+has a high chance of finding a corpse. Whoever picks up the remaining five should expect to find
+bugs, not to confirm correctness. If a release ever fails inside one of them,
 that measurement is why nobody gets to be surprised.
 
 **The test for one of them was host-dependent, and it failed naming the wrong cause.** It
