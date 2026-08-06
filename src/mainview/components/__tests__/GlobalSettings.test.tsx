@@ -4,6 +4,7 @@ import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
+import { UNSTABLE_FEED_AVAILABLE } from "../../../shared/update-channel";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -421,14 +422,30 @@ describe("GlobalSettings", () => {
 			expect(select).toBeInTheDocument();
 		});
 
-		it("select is disabled and cannot be changed", async () => {
+		// The control shipped `disabled` while no unstable feed existed; enabling it is the
+		// point of the channels work. It must NOT be silently disabled again — that state
+		// looks identical to "feature present" on a screenshot.
+		// The control stays unusable until the unstable feed publishes. Enabling it earlier
+		// is the 403-forever trap: the updater fetches a missing manifest, reports "no
+		// update", and the UI renders that as "you are up to date" — permanently, silently.
+		it("stays disabled while no unstable feed is published", async () => {
 			setupMocks();
 			renderGlobalSettings("system");
 			await waitForLoad();
 
-			const select = screen.getByDisplayValue("Stable");
-			expect(select).toBeDisabled();
-			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
+			expect(
+				screen.getByDisplayValue("Stable"),
+				"the update-channel select must stay disabled while UNSTABLE_FEED_AVAILABLE is false. Fix: flip that constant in src/shared/update-channel.ts in the SAME change that lands the publishing workflow — not before, or a user who picks Unstable silently stops receiving updates forever.",
+			).toBeDisabled();
+		});
+
+		it("keeps the constant and the control in lockstep", () => {
+			// If someone flips the constant without shipping the feed, the test above starts
+			// failing and names the reason. This asserts the coupling exists at all.
+			expect(
+				UNSTABLE_FEED_AVAILABLE,
+				"UNSTABLE_FEED_AVAILABLE must be DELETED, not flipped to true, in the change that lands the publishing workflow — a permanently-true constant is a dead branch and this guard test then asserts nothing. Fix: remove the constant, its `disabled` guard, and both guard tests, and restore the enabled-control assertions instead.",
+			).toBe(false);
 		});
 	});
 

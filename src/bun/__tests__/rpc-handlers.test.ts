@@ -6747,6 +6747,7 @@ describe("handlers.getAppVersion", () => {
 			version: "0.3.0",
 			hash: "abc123",
 			channel: "dev",
+			buildOrder: 1234,
 		});
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "beta" } as any);
 
@@ -11904,7 +11905,7 @@ describe("resolveBinaryPath", () => {
 	});
 });
 
-// ---- bundledTmuxCandidates (decisions/2026/07/16/bundle-tmux-macos.md) ----
+// ---- bundledTmuxCandidates (decisions/137) ----
 
 describe("bundledTmuxCandidates", () => {
 	it("maps the app-bundle layout: Contents/MacOS → Resources/app/tmux/tmux", () => {

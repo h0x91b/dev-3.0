@@ -2,6 +2,8 @@ import { Updater } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { isNewerVersion } from "../shared/version";
 import { markQuitConfirmed } from "./quit-manager";
+import { BUILD_ORDER } from "../shared/build-info.generated";
+import { decideUpdate, type UpdateChannel, type UpdateManifest } from "../shared/update-channel";
 import type { UpdateChangelog } from "../shared/types";
 
 const log = createLogger("updater");
@@ -66,11 +68,7 @@ export function shouldRemindAboutReadyUpdate(now: number = Date.now()): boolean 
 	return true;
 }
 
-interface UpdateJson {
-	version: string;
-	hash: string;
-	changelog?: UpdateChangelog | null;
-}
+type UpdateJson = UpdateManifest & { changelog?: UpdateChangelog | null };
 
 interface UpdateCheckResult {
 	updateAvailable: boolean;
@@ -79,6 +77,18 @@ interface UpdateCheckResult {
 	error?: string;
 	/** True when running a from-source "dev" build, where updates are disabled. */
 	devBuild?: boolean;
+	/**
+	 * Set when the offer CROSSES channels. The UI must then name the direction
+	 * ("Switch to stable (1.42.0)") instead of calling it an update, because the target
+	 * channel's build is simply a different build and may well be an older one.
+	 */
+	switchTo?: UpdateChannel;
+	/**
+	 * Only meaningful with {@link switchTo}: the offered build is OLDER than the running
+	 * one. Going unstable → stable normally is, and the user has to be told, because an
+	 * older build then reads state a newer build already wrote.
+	 */
+	installsOlderBuild?: boolean;
 }
 
 function getPlatformPrefix(): string {
@@ -87,16 +97,19 @@ function getPlatformPrefix(): string {
 	return `${platform}-${arch}`;
 }
 
-export async function getLocalVersion(): Promise<{ version: string; hash: string; channel: string }> {
+export async function getLocalVersion(): Promise<{ version: string; hash: string; channel: string; buildOrder: number }> {
 	const [version, hash, channel] = await Promise.all([
 		Updater.localInfo.version(),
 		Updater.localInfo.hash(),
 		Updater.localInfo.channel(),
 	]);
-	return { version, hash, channel };
+	// buildOrder cannot come from version.json — Electrobun writes that file and we do
+	// not control its fields. It is baked in by scripts/generate-build-info.ts from the
+	// same `git rev-list --count HEAD` the published manifest uses, in the same job.
+	return { version, hash, channel, buildOrder: BUILD_ORDER };
 }
 
-export async function checkForUpdateWithChannel(channel: string): Promise<UpdateCheckResult> {
+export async function checkForUpdateWithChannel(channel: UpdateChannel): Promise<UpdateCheckResult> {
 	const local = await getLocalVersion();
 
 	// Dev/source builds have updates disabled in Electrobun's updater; a download
@@ -129,19 +142,36 @@ export async function checkForUpdateWithChannel(channel: string): Promise<Update
 			return { updateAvailable: false, version: local.version, error: "Invalid update.json: missing version" };
 		}
 
-		const updateAvailable = isNewerVersion(local.version, remote.version);
+		const decision = decideUpdate(local, channel, remote, isNewerVersion);
 		log.info("Update check result", {
-			updateAvailable,
+			decision: decision.kind,
+			selectedChannel: channel,
+			buildChannel: local.channel,
 			localVersion: local.version,
 			remoteVersion: remote.version,
+			localBuildOrder: local.buildOrder,
+			remoteBuildOrder: remote.buildOrder,
 			localHash: local.hash.slice(0, 12),
 			remoteHash: remote.hash.slice(0, 12),
 		});
 
+		if (decision.kind === "error") {
+			return { updateAvailable: false, version: local.version, error: decision.reason };
+		}
+		const changelog = remote.changelog ? { changelog: remote.changelog } : {};
+		if (decision.kind === "switch") {
+			return {
+				updateAvailable: true,
+				version: decision.version || "unknown",
+				switchTo: decision.to,
+				installsOlderBuild: decision.installsOlderBuild,
+				...changelog,
+			};
+		}
 		return {
-			updateAvailable,
+			updateAvailable: decision.kind === "update",
 			version: remote.version || "unknown",
-			...(remote.changelog ? { changelog: remote.changelog } : {}),
+			...changelog,
 		};
 	} catch (err) {
 		const msg = `Failed to check for updates: ${err}`;
@@ -151,7 +181,7 @@ export async function checkForUpdateWithChannel(channel: string): Promise<Update
 }
 
 export function downloadUpdateForChannel(
-	channel: string,
+	channel: UpdateChannel,
 	onProgress?: (status: string, progress?: number) => void,
 ): Promise<{ ok: boolean; error?: string }> {
 	return withUpdaterLock(async () => {
@@ -169,7 +199,7 @@ export function downloadUpdateForChannel(
 }
 
 async function doDownloadUpdateForChannel(
-	channel: string,
+	channel: UpdateChannel,
 	onProgress?: (status: string, progress?: number) => void,
 ): Promise<{ ok: boolean; error?: string }> {
 	const local = await getLocalVersion();
@@ -253,49 +283,73 @@ async function doDownloadUpdateForChannel(
 		}
 	}
 
-	// Cross-channel update: download full .tar.zst manually
-	// The built-in updater can still apply it via applyUpdate()
-	log.info("Cross-channel update, downloading full bundle", { selectedChannel: channel, buildChannel: local.channel });
+	// ── Crossing channels ────────────────────────────────────────────────────────
+	// The channel is BAKED INTO THE BUNDLE at build time (Resources/version.json), and
+	// Electrobun has no runtime channel switch — there is a literal
+	// `// todo: allow switching channels` in its Updater. Every URL it builds comes from
+	// the cached `localInfo` object, so pointing it at the other channel means mutating
+	// that cache: `channel` (it prefixes every artifact name) and `name` (non-stable
+	// channels suffix the app file name, e.g. `dev-3.0-unstable`, and the tarball URL is
+	// built from it).
+	//
+	// THAT IS SAFE ON macOS AND NOT ELSEWHERE, and the asymmetry is not ours to wish away:
+	// `Updater.appDataFolder()` is `{appData}/{identifier}/{channel}`. On macOS that folder
+	// is only download scratch — the bundle swap targets `process.execPath`, i.e. the .app
+	// that is actually running, so a mutated channel cannot misdirect it. On Linux and
+	// Windows the running app IS `{appDataFolder}/app`, so a mutated channel would install
+	// the new bundle into a directory the launcher does not run from: the user restarts,
+	// sees no change, and nothing reports a failure. A silent no-op is worse than a refusal.
+	if (process.platform !== "darwin") {
+		const msg =
+			"Switching channels in place is not supported on this platform yet — the update would install into a directory the launcher does not run from. Install the other channel's build once from the releases page; the channel setting is already saved.";
+		log.warn("Cross-channel switch refused on non-macOS platform", {
+			platform: process.platform,
+			selectedChannel: channel,
+			buildChannel: local.channel,
+		});
+		return { ok: false, error: msg };
+	}
+
+	log.info("Cross-channel switch, retargeting the updater", { selectedChannel: channel, buildChannel: local.channel });
 	onProgress?.("downloading", 0);
 
+	// Mutating the object Electrobun hands back mutates its module-level cache, which is
+	// what retargets checkForUpdate/downloadUpdate/applyUpdate as one coherent set. It is
+	// restored on failure so a refused switch cannot leave the updater aimed at a channel
+	// the bundle is not on; on success it stays retargeted only until the restart, after
+	// which the newly installed bundle's own version.json says the target channel.
+	const info = (await Updater.getLocalInfo()) as { channel: string; name: string };
+	const previous = { channel: info.channel, name: info.name };
+	info.channel = channel;
+	info.name = channel === "stable" ? "dev-3.0" : `dev-3.0-${channel}`;
+
 	try {
-		// First, run the built-in checkForUpdate to populate internal state
-		// by pointing it at the correct channel's update.json
-		// For cross-channel, we need to download the full tar.zst ourselves
-		const platformPrefix = getPlatformPrefix();
-		const appName = "dev-3.0".replace(/\s/g, "");
-		const ext = process.platform === "darwin" ? ".app.tar.zst" : ".tar.zst";
-		const tarUrl = `${BASE_URL}/${channel}-${platformPrefix}-${appName}${ext}?_=${Date.now()}`;
-
-		log.info("Downloading full bundle", { url: tarUrl });
-		onProgress?.("downloading", 10);
-
-		const resp = await fetch(tarUrl);
-		if (!resp.ok) {
-			const msg = `HTTP ${resp.status} downloading bundle`;
-			log.error(msg);
+		const checkResult = await Updater.checkForUpdate();
+		if (!checkResult?.updateAvailable) {
+			// Electrobun compares HASHES, so it says "available" for an older build too —
+			// which is exactly what a switch back to stable needs. Not-available here means
+			// the two channels are genuinely on the same bundle.
+			info.channel = previous.channel;
+			info.name = previous.name;
+			const msg = "Both channels are on the same build — nothing to install";
+			log.info(msg);
 			return { ok: false, error: msg };
 		}
-
-		// Use the built-in updater's checkForUpdate() first to set up internal state,
-		// then downloadUpdate() which will handle the full bundle case
-		// Actually, the built-in updater constructs its own URLs based on build-time channel.
-		// For cross-channel, we'd need to work differently.
-		// The safest approach: use built-in check+download since the baseUrl already points
-		// to the flat directory where all channels live.
-		// The built-in updater uses: {baseUrl}/{channel}-{platform}-{arch}-update.json
-		// Since we sync all artifacts to the flat root, this should work.
-
-		// For now, fall back to the built-in updater even for cross-channel
-		// (it will download using its own build-time channel, which should be fine
-		// since the S3 bucket has the flat artifact structure)
-		log.warn("Cross-channel download not yet fully implemented, falling back to built-in updater");
-		await Updater.checkForUpdate();
 		await Updater.downloadUpdate();
+		if (!Updater.updateInfo?.()?.updateReady) {
+			info.channel = previous.channel;
+			info.name = previous.name;
+			const msg = "Cross-channel bundle downloaded but the updater did not mark it ready";
+			log.error(msg);
+			onProgress?.("error");
+			return { ok: false, error: msg };
+		}
 		onProgress?.("complete", 100);
 		return { ok: true };
 	} catch (err) {
-		const msg = `Download failed: ${err}`;
+		info.channel = previous.channel;
+		info.name = previous.name;
+		const msg = `Channel switch failed: ${err}`;
 		log.error(msg);
 		onProgress?.("error");
 		return { ok: false, error: msg };
@@ -345,7 +399,7 @@ async function doApplyUpdate(): Promise<void> {
 }
 
 export function startAutoCheck(
-	getChannel: () => Promise<string>,
+	getChannel: () => Promise<UpdateChannel>,
 	onUpdate: (version: string, changelog?: UpdateChangelog) => void,
 	onProgress?: (status: string, progress?: number) => void,
 	onRemind?: (version: string, changelog?: UpdateChangelog) => void,
