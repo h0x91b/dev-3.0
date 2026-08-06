@@ -374,10 +374,19 @@ ux_architecture:
       tokens: "Gauge reused verbatim (self-contained palette, accepted exception); new charts use semantic tokens (accent/success/danger, bg-raised, border-edge, text-fg-*)."
       evidence: ["src/mainview/components/ProductivityStatsView.tsx", "src/mainview/components/stats/*", "src/mainview/utils/productivityStats.ts", "src/bun/rpc-handlers/productivity-stats.ts", "decisions/2026/06/29/productivity-stats-loc-capture.md", "UX_DECISIONS 2026-06-28"]
     toast:
-      purpose: "Transient operation feedback (errors)."
-      allowed: ["status_message", "error"]
-      forbidden: ["persistent_action", "primary_action"]
-      evidence: ["src/mainview/components/ErrorToast.tsx"]
+      purpose: "Transient feedback for EVERY origin — in-app action, agent/CLI push (`dev3 notify`, show-image, show-artifact), background watcher. One anatomy regardless of origin: source line -> message -> click target -> dismiss."
+      status: "observed"
+      allowed: ["status_message", "error", "success", "warning", "click_through (to the surface the toast is about)"]
+      forbidden: ["persistent_action", "primary_action", "multi_step_flow", "fabricated_source_line (a seq/project invented for a toast that has no task)"]
+      anatomy:
+        source_line: "`#seq · project · task title`, single line, truncate, text-micro font-mono text-fg-muted. Rendered IFF a task identity resolves — never fabricated. `#seq` leads so the ellipsis eats the title, not the identifier."
+        message: "The sentence. break-words, never truncated."
+        click_target: "The MOST SPECIFIC surface the toast is about (image viewer, diff, settings section). The owning task is the fallback, never an override. Task navigation honours the user's task-open-mode via openTaskFromNotification."
+        dismiss: "swipe right (pointer+touch) AND the X button AND auto-timeout — swipe is never the only way (mobile_doctrine.gesture law)."
+      identity_resolution: "CENTRAL. A call site passes only `taskId`; ToastHost resolves seq/project/title and the default click target through a resolver prop injected by App.tsx. toast.tsx imports no app state. ~180 call sites stay one field long and future toasts are correct by default; explicitly passed context/onClick always win (e.g. cliShowImage opens the lightbox, not the task)."
+      a11y: "The clickable overlay's accessible name is `context — message`, not the message alone: a screen reader must hear WHICH task it navigates to. Dismiss button label localized (en/ru/es)."
+      narrow: "max-w-[calc(100vw-2rem)] + NARROW_MAX_VISIBLE_TOASTS=1 bound total height; the source line adds one truncated line, not a wrap."
+      evidence: ["src/mainview/toast.tsx", "src/mainview/App.tsx (ToastHost mount, openTaskFromNotification)", "PRODUCT_UX_BIBLE §5.7"]
     inline_help:
       purpose: "Explain what a section/zone/field is, why it exists, and what to do in it. One registry (src/mainview/help.ts — declare-as-data like keymap.ts/tips.ts), three layers: fast Tooltip primitive (replaces native title= on icon controls), HelpSpot (i) -> HelpCard in header-bearing sections, and a screen-wide help-mode overlay — the master surface. The UI is the product's only teaching channel (no tutorials): help coverage is owed, not earned."
       status: "observed"

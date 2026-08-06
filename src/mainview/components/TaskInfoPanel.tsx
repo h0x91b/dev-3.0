@@ -925,9 +925,9 @@ function TaskInfoPanel({
 			// can be up to one poll interval older than the kill.
 			toast.success(freedRssBytes
 				? t("task.hibernatedToastMem", { mem: formatBytes(freedRssBytes) })
-				: t("task.hibernatedToast"));
+				: t("task.hibernatedToast"), { taskId: task.id });
 		} catch (err) {
-			toast.error(t("task.hibernateFailed", { error: String(err) }));
+			toast.error(t("task.hibernateFailed", { error: String(err) }), { taskId: task.id });
 		} finally {
 			setHibernating(false);
 		}

@@ -1,6 +1,13 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { act, fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { setToastSuppressed, ToastHost, toast } from "../toast";
+import { I18nProvider } from "../i18n";
+import { setToastSuppressed, taskToastContext, ToastHost, toast } from "../toast";
+
+/** `ToastHost` localizes its dismiss label, so every render needs the provider. */
+function render(ui: ReactElement) {
+	return rtlRender(<I18nProvider>{ui}</I18nProvider>);
+}
 
 function toastCard(): Element {
 	const card = screen.getByRole("alert").querySelector("[data-toast-card]");
@@ -247,6 +254,102 @@ describe("toast service", () => {
 		await user.click(within(screen.getByRole("alert")).getByRole("button", { name: "Go there" }));
 		expect(onClick).toHaveBeenCalledOnce();
 		expect(screen.queryByText("Go there")).not.toBeInTheDocument();
+	});
+
+	it("fills the source line and click target from a bare taskId", async () => {
+		const user = userEvent.setup();
+		const openTask = vi.fn();
+		const resolveTask = vi.fn(() => ({ context: "#42 · dev-3.0 · Fix the thing", onClick: openTask }));
+		render(<ToastHost resolveTask={resolveTask} />);
+		act(() => {
+			toast.error("Push failed", { taskId: "t1", durationMs: 60_000 });
+		});
+
+		expect(resolveTask).toHaveBeenCalledWith("t1");
+		expect(screen.getByText("#42 · dev-3.0 · Fix the thing")).toBeInTheDocument();
+		// The source line is part of the accessible name — a screen reader must hear
+		// which task the click navigates to.
+		const overlay = within(screen.getByRole("alert")).getByRole("button", {
+			name: "#42 · dev-3.0 · Fix the thing — Push failed",
+		});
+		await user.click(overlay);
+		expect(openTask).toHaveBeenCalledOnce();
+	});
+
+	it("keeps an explicit context and click target over the resolved ones", async () => {
+		const user = userEvent.setup();
+		const ownClick = vi.fn();
+		const resolvedClick = vi.fn();
+		const resolveTask = () => ({ context: "resolved", onClick: resolvedClick });
+		render(<ToastHost resolveTask={resolveTask} />);
+		act(() => {
+			toast.info("Open the viewer", {
+				taskId: "t1",
+				context: "#7 · dev-3.0 · Screenshot task",
+				onClick: ownClick,
+				durationMs: 60_000,
+			});
+		});
+
+		expect(screen.queryByText("resolved")).not.toBeInTheDocument();
+		await user.click(within(screen.getByRole("alert")).getByRole("button", {
+			name: "#7 · dev-3.0 · Screenshot task — Open the viewer",
+		}));
+		expect(ownClick).toHaveBeenCalledOnce();
+		expect(resolvedClick).not.toHaveBeenCalled();
+	});
+
+	it("keeps a live toast's source line after the task stops resolving", async () => {
+		const user = userEvent.setup();
+		const openTask = vi.fn();
+		const { rerender } = rtlRender(
+			<I18nProvider>
+				<ToastHost resolveTask={() => ({ context: "#42 · dev-3.0 · Fix the thing", onClick: openTask })} />
+			</I18nProvider>,
+		);
+		act(() => {
+			toast.error("Push failed", { taskId: "t1", durationMs: 60_000 });
+		});
+
+		// Leaving the project empties the resolver's task list. The toast was raised
+		// while the task was known, so it must keep both its identity and its way back.
+		rerender(
+			<I18nProvider>
+				<ToastHost resolveTask={() => undefined} />
+			</I18nProvider>,
+		);
+		expect(screen.getByText("#42 · dev-3.0 · Fix the thing")).toBeInTheDocument();
+		await user.click(within(screen.getByRole("alert")).getByRole("button", {
+			name: "#42 · dev-3.0 · Fix the thing — Push failed",
+		}));
+		expect(openTask).toHaveBeenCalledOnce();
+	});
+
+	it("never fabricates a source line for a task it cannot resolve", () => {
+		render(<ToastHost resolveTask={() => undefined} />);
+		act(() => {
+			toast.error("Save failed", { taskId: "gone", durationMs: 60_000 });
+		});
+
+		const card = toastCard() as HTMLElement;
+		expect(within(card).getByText("Save failed")).toBeInTheDocument();
+		// No resolution -> no source line and no click target, just the message.
+		expect(within(card).queryByRole("button", { name: /Save failed/ })).not.toBeInTheDocument();
+		expect(card.querySelector(".font-mono")).toBeNull();
+	});
+
+	it("leaves a toast with no task identity bare", () => {
+		render(<ToastHost resolveTask={() => ({ context: "never", onClick: vi.fn() })} />);
+		act(() => {
+			toast.error("Could not add the project", { durationMs: 60_000 });
+		});
+		expect(screen.queryByText("never")).not.toBeInTheDocument();
+	});
+
+	it("composes a source line with the identifier first", () => {
+		expect(taskToastContext(804, "dev-3.0", "Review PR Babysitter")).toBe("#804 · dev-3.0 · Review PR Babysitter");
+		expect(taskToastContext(undefined, "dev-3.0", "No seq")).toBeUndefined();
+		expect(taskToastContext(12, undefined, undefined)).toBe("#12");
 	});
 
 	it("auto-dismisses after the given duration", () => {

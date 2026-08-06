@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
+import { useT } from "./i18n";
 
 export type ToastVariant = "error" | "success" | "info" | "warning";
 
@@ -36,9 +37,24 @@ export function taskToastContext(
 	return [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ");
 }
 
+/** What the host can learn about a toast's owning task, resolved centrally. */
+export interface ResolvedToastTask {
+	/** Source line, already composed (see {@link taskToastContext}). */
+	context?: string;
+	/** Default click target — used only when the call site passed none. */
+	onClick?: () => void;
+}
+
 export interface ToastHostProps {
 	/** Receives only task-scoped entries evicted by the visible toast capacity limit. */
 	onTaskOverflow?: (entry: ToastEntry) => void;
+	/**
+	 * Turns a bare `taskId` into the source line and the default click target, so a
+	 * call site only has to say WHICH task it is about. `App.tsx` owns the app state
+	 * this needs; the toast service itself stays free of it. Returning `undefined`
+	 * (unknown task) leaves the toast bare — a source line is never fabricated.
+	 */
+	resolveTask?: (taskId: string) => ResolvedToastTask | undefined;
 }
 
 type Listener = (entry: ToastEntry) => void;
@@ -54,6 +70,9 @@ interface ToastRuntime {
 interface RenderedToast {
 	entry: ToastEntry;
 	paused: boolean;
+	/** Source line and click target, frozen when the toast was raised. */
+	context?: string;
+	onClick?: () => void;
 }
 
 const listeners = new Set<Listener>();
@@ -146,7 +165,8 @@ function rendererIsActive(): boolean {
 	return document.visibilityState === "visible" && focused;
 }
 
-export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
+export function ToastHost({ onTaskOverflow, resolveTask }: ToastHostProps = {}) {
+	const t = useT();
 	const narrow = useNarrowViewport(NARROW_VIEWPORT_PX);
 	const maxVisibleToasts = narrow ? NARROW_MAX_VISIBLE_TOASTS : MAX_VISIBLE_TOASTS;
 	const [toasts, setToasts] = useState<RenderedToast[]>([]);
@@ -154,8 +174,10 @@ export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
 	const runtimesRef = useRef(new Map<number, ToastRuntime>());
 	const activeRef = useRef(rendererIsActive());
 	const overflowHandlerRef = useRef(onTaskOverflow);
+	const resolveTaskRef = useRef(resolveTask);
 	const maxVisibleToastsRef = useRef(maxVisibleToasts);
 	overflowHandlerRef.current = onTaskOverflow;
+	resolveTaskRef.current = resolveTask;
 	maxVisibleToastsRef.current = maxVisibleToasts;
 
 	function publish(next: RenderedToast[]): void {
@@ -277,6 +299,12 @@ export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
 			};
 			runtimesRef.current.set(entry.id, runtime);
 
+			// Resolve identity ONCE, here — not per render. The resolver reads the
+			// current project's tasks, so a toast still on screen after the user
+			// navigated away would otherwise silently lose its source line and its
+			// way back to the task, which is exactly when it is needed most.
+			const resolved = entry.taskId ? resolveTaskRef.current?.(entry.taskId) : undefined;
+
 			const previous = toastsRef.current;
 			const capacity = maxVisibleToastsRef.current;
 			const evictedCount = Math.max(0, previous.length - capacity + 1);
@@ -284,7 +312,14 @@ export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
 			evicted.forEach(({ entry: evictedEntry }) => clearRuntime(evictedEntry.id));
 			const next = [
 				...previous.slice(evictedCount),
-				{ entry, paused: !activeRef.current },
+				{
+					entry,
+					paused: !activeRef.current,
+					// Whatever the call site passed explicitly always wins — a toast about
+					// a shared image opens the lightbox, not the task.
+					context: entry.context ?? resolved?.context,
+					onClick: entry.onClick ?? resolved?.onClick,
+				},
 			];
 			publish(next);
 
@@ -306,10 +341,13 @@ export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
 
 	return (
 		<div className="fixed top-14 right-4 z-[55] flex flex-col gap-2.5 pointer-events-none">
-			{toasts.map(({ entry, paused }) => (
+			{toasts.map(({ entry, paused, context, onClick }) => (
 				<ToastCard
 					key={entry.id}
 					entry={entry}
+					context={context}
+					onClick={onClick}
+					dismissLabel={t("toast.dismiss")}
 					paused={paused}
 					onDismiss={removeToast}
 					onInteraction={setInteraction}
@@ -328,6 +366,11 @@ const SWIPE_COMMIT_FRACTION = 0.35;
 
 interface ToastCardProps {
 	entry: ToastEntry;
+	/** Source line after central resolution — not `entry.context`. */
+	context?: string;
+	/** Click target after central resolution — not `entry.onClick`. */
+	onClick?: () => void;
+	dismissLabel: string;
 	paused: boolean;
 	onDismiss: (id: number) => void;
 	onInteraction: (id: number, kind: "hovered" | "focused", value: boolean) => void;
@@ -339,7 +382,7 @@ interface ToastCardProps {
  * right edge is the natural discard gesture. The visible X button and click
  * navigation still work; a completed drag suppresses the click that follows it.
  */
-function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) {
+function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, onInteraction }: ToastCardProps) {
 	const v = VARIANT[entry.variant];
 	const [dragX, setDragX] = useState(0);
 	const [dragging, setDragging] = useState(false);
@@ -450,13 +493,13 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 					{v.icon}
 				</span>
 				<div className="flex-1 min-w-0 pr-1">
-					{entry.context && (
+					{context && (
 						<div className="text-micro font-mono text-fg-muted truncate mb-0.5">
-							{entry.context}
+							{context}
 						</div>
 					)}
 					<div
-						className={`text-fg text-sm leading-relaxed break-words ${entry.onClick ? "group-hover:underline" : ""}`}
+						className={`text-fg text-sm leading-relaxed break-words ${onClick ? "group-hover:underline" : ""}`}
 					>
 						{entry.message}
 					</div>
@@ -465,7 +508,7 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 				    every pixel except the dismiss button activates it. Inset by 3px so
 				    the keyboard focus ring (2px outline, 2px offset) stays inside the
 				    card's `overflow-hidden` box instead of being clipped away. */}
-				{entry.onClick && (
+				{onClick && (
 					<button
 						type="button"
 						// Pointer press must not focus the toast: WebKit then paints the
@@ -473,10 +516,12 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 						onMouseDown={(event) => event.preventDefault()}
 						onClick={() => {
 							if (suppressIfDragged()) return;
-							entry.onClick?.();
+							onClick();
 							onDismiss(entry.id);
 						}}
-						aria-label={entry.message}
+						// The source line is part of the name: a screen-reader user must
+						// hear which task the click navigates to, not just the sentence.
+						aria-label={context ? `${context} — ${entry.message}` : entry.message}
 						className="absolute inset-[3px] cursor-pointer rounded-[0.625rem]"
 					/>
 				)}
@@ -488,7 +533,7 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 						if (suppressIfDragged()) return;
 						onDismiss(entry.id);
 					}}
-					aria-label="Dismiss"
+					aria-label={dismissLabel}
 					className="relative text-fg-muted hover:text-fg transition-colors flex-shrink-0"
 				>
 					<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

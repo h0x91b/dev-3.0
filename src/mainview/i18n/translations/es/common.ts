@@ -58,6 +58,7 @@ const common = {
 	"about.close": "Cerrar",
 
 	// Generic
+	"toast.dismiss": "Descartar",
 	"common.close": "Cerrar",
 
 	// Status labels

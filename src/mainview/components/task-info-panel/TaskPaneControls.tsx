@@ -203,7 +203,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		if (paneAction) {
 			void withBusy(() =>
 				runPaneAction(taskId, paneAction).catch((err) =>
-					toast.error(t("panes.actionFailed", { error: String(err) })),
+					toast.error(t("panes.actionFailed", { error: String(err) }), { taskId }),
 				),
 			);
 		}

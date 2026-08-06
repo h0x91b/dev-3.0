@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, act } from "@testing-library/react";
 import { useAndroidBackGuard } from "../useAndroidBackGuard";
 import { registerBackLayer, __resetBackLayersForTests, BACK_SENTINEL_STATE } from "../../back-navigation";
+import { I18nProvider } from "../../i18n";
 import { ToastHost, toast } from "../../toast";
 
 function Harness({
@@ -102,13 +103,13 @@ describe("useAndroidBackGuard", () => {
 
 	it("renders the double-back exit toast through the toast host", async () => {
 		render(
-			<>
+			<I18nProvider>
 				<ToastHost />
 				<Harness
 					routeBack={() => false}
 					showExitToast={() => toast.info("Press Back again to exit", { durationMs: 2_500 })}
 				/>
-			</>,
+			</I18nProvider>,
 		);
 
 		pressBack();

@@ -208,7 +208,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 		try {
 			await api.request.refreshTaskPrStatus({ taskId, projectId });
 		} catch (error) {
-			toast.error(t("task.prRefreshFailed", { error: String(error) }));
+			toast.error(t("task.prRefreshFailed", { error: String(error) }), { taskId });
 		} finally {
 			refreshingRef.current = false;
 			setRefreshing(false);

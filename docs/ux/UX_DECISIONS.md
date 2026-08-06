@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-06 — Every toast has one anatomy, and task identity is resolved centrally
+
+- **Rule:** Origin never changes a toast's shape: source line (`#seq · project · title`, rendered **only** when a task identity resolves — never fabricated) → message → click target (the most specific surface the toast is about; the owning task is the fallback, never an override) → swipe **and** X **and** timeout. A caller passes only `taskId`; `ToastHost` resolves identity and the default target through a resolver injected by `App.tsx`. Bible §5.7, yaml `surfaces.toast`.
+- **Why:** with many parallel tasks a bare sentence cannot say which task it is about — CLI push toasts already carried the source line, in-app ones did not. Rejected: composing `context`/`onClick` at each of ~180 call sites (drifts again on the next toast anyone writes), and letting `toast.tsx` import app state (a module-level service would depend on the reducer). Central resolution behind an injected resolver keeps future toasts correct by default at one choke point — the same shape as the `navigate()` sensitive-project gate.
+- **Status:** Decided. Evidence: `src/mainview/toast.tsx`, `src/mainview/App.tsx` (`ToastHost` mount, `openTaskFromNotification`), seq 1437.
+
 ## 2026-08-05 — A sensitive project is masked, locked and silent — but only while streamer mode is on
 
 - **Rule:** `Project.sensitive` (toggle in Project Settings → Board) is inert until `data-streamer="on"`; then the project name and its task text carry `streamer-private` everywhere outside the project, its dashboard row / picker option stays visible but `aria-disabled` with a lock glyph and an info toast on click, the `navigate()` choke point in `App.tsx` refuses routes into it (and redirects out when the mode turns on), and every notification path drops its events. `document.title` gets a neutral placeholder — CSS cannot blur a tab title. Bible §3 + §10, yaml `sensitive-project-masked-locked-and-silent`.

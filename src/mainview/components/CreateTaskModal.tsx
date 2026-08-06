@@ -421,7 +421,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				followUpError = followUpErr;
 			}
 			if (followUpError) {
-				toast.error(t("kanban.createdButFollowUpFailed", { error: String(followUpError) }));
+				toast.error(t("kanban.createdButFollowUpFailed", { error: String(followUpError) }), { taskId: created.id });
 			}
 			trackEvent("task_created", {
 				project_id: project.id,

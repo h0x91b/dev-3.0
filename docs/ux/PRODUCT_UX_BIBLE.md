@@ -125,7 +125,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Command palette (Cmd+K nav / Cmd+Shift+P actions) | Type-to-find nav + type-to-run commands (two modes, one shell) | destination, fuzzy search, object jump, command runner (action mode, via handleMenuAction) | destructive action, modal/inline flow, durable config without friction, dense filters | `PaletteShell.tsx`, `ProjectQuickSwitchModal.tsx`, `CommandPaletteModal.tsx`, `commands.ts` |
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
-| Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
+| Toast | Transient feedback for **every** origin (in-app action, agent/CLI push, background watcher) — one anatomy: optional source line → message → optional click target → swipe/X dismiss | status, error, success, warning, click-through to the surface the toast is about | persistent/primary action, multi-step flow, a fabricated source line | `toast.tsx` (see §5.7) |
 | Diagnostics (crash + error surface) | Make renderer faults visible in remote/mobile where there is no devtools | crash fallback (error boundary), bootstrap phase + timeout→retry, captured error list, copy/clear, conditional floating entry | navigation destination, mutation of app data, permanent chrome in the happy path | `RootErrorBoundary.tsx`, `BootstrapScreen.tsx`, `DiagnosticsPanel.tsx`, `DiagnosticsIndicator.tsx`, `diagnostics.ts` (see §5.5) |
 | Inline help (Tooltip / HelpSpot → HelpCard / help mode) | Explain what a section is, why it exists, what to do in it | fast control tooltip, section (i) in header-bearing surfaces, rich read-only HelpCard, screen-wide help-mode overlay | mutation, multi-step tour, permanent (i) in quickbars/cards/toolbars | `Tooltip.tsx`, `HelpSpot.tsx`, `HelpCard.tsx`, `HelpOverlay.tsx`, `help.ts` (see §5.4) |
 | Productivity Stats (Velocity Cockpit) | Read-only showcase of shipping output over time | hero speedometer gauges, SVG bar/area charts, per-project gauge wall, counters, time-range switch + prev/next period navigation, per-project→board jump | mutation, lifecycle/config action, header button, data filter (new dimension beyond time) | `ProductivityStatsView.tsx`, `components/stats/*` |
@@ -269,6 +269,25 @@ One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded 
 - **Never colour-only:** localized tooltip + accessible name in en/ru/es. On the sidebar the row is a `role="button"` with its own `aria-label`, which overrides descendants — so the backend label is appended to **that** name, not left on the inner span.
 
 Evidence: `NativeBackendMark.tsx`, `TaskCard.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
+
+### 5.7 Toast anatomy — one shape for every origin — `Observed`
+
+The user runs many tasks in parallel, so a toast must answer **"which of my tasks is this about, and how do I get there"** before it says anything else. Origin (in-app click, `dev3 notify` push, background watcher) must not change the shape.
+
+| Slot | Rule |
+|---|---|
+| Source line | `#seq · project · task title`, one line, `truncate`, `text-micro font-mono text-fg-muted`. Present **iff a task identity resolves**. `#seq` leads so ellipsis eats the title, not the identifier. |
+| Message | The sentence. `break-words`, no truncation. |
+| Click target | The **most specific surface the toast is about** — image viewer, diff, settings section. The owning task is the *fallback*, never an override. |
+| Dismiss | Swipe right (pointer + touch) **and** the X button **and** auto-timeout. Swipe is never the only way (§12 gesture law). |
+
+Rules:
+
+- **Never fabricate a source line.** A global or project-scoped toast (settings saved, project add failed) has no seq and gets none — "project name alone" is noise, not identity.
+- **Identity is resolved centrally, not composed per call site.** A caller passes `taskId`; `ToastHost` resolves seq/project/title and the default click target through a resolver injected by `App.tsx`. The toast module stays free of app-state imports; ~180 call sites stay one field long; a future toast is correct by default. Explicitly passed `context`/`onClick` always win.
+- **The clickable overlay's accessible name is `context — message`**, not the message alone: a screen reader must hear which task it is being sent to.
+
+Evidence: `toast.tsx`, `App.tsx` (`ToastHost` mount, `openTaskFromNotification`).
 
 ## 6. Action taxonomy — `Observed`
 

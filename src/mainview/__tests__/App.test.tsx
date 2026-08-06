@@ -1000,7 +1000,7 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "");
 
 			dispatchShowImage();
-			await userEvent.click(await screen.findByRole("button", { name: "Agent shared an image" }));
+			await userEvent.click(await screen.findByRole("button", { name: "#42 · Alpha · Some task — Agent shared an image" }));
 
 			const view = screen.getByTestId("project-screen");
 			expect(view).toHaveAttribute("data-project-id", "p1");
@@ -1023,7 +1023,7 @@ describe("App keyboard shortcuts", () => {
 
 			await renderApp();
 			dispatchShowImage();
-			await userEvent.click(await screen.findByRole("button", { name: "Agent shared an image" }));
+			await userEvent.click(await screen.findByRole("button", { name: "#42 · Alpha · Some task — Agent shared an image" }));
 
 			expect(await screen.findByTestId("task-screen")).toBeInTheDocument();
 			expect(screen.getByTestId("image-viewer")).toBeInTheDocument();

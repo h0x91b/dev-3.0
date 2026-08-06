@@ -2379,11 +2379,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				setThreadSendStates((current) => ({ ...current, [thread.id]: "sent" }));
 				toast.success(result?.spilledPath
 					? t("infoPanel.prSendToAgentSuccessFile", { path: result.spilledPath })
-					: t("infoPanel.prSendToAgentSuccess"));
+					: t("infoPanel.prSendToAgentSuccess"), { taskId: task.id });
 			})
 			.catch((err) => {
 				setThreadSendStates((current) => ({ ...current, [thread.id]: undefined }));
-				toast.error(t("infoPanel.prSendToAgentFailed", { error: String(err) }));
+				toast.error(t("infoPanel.prSendToAgentFailed", { error: String(err) }), { taskId: task.id });
 			});
 	}
 
@@ -2402,10 +2402,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				})));
 				toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
-					: t("infoPanel.diffReviewSendCommentSuccess"));
+					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId: task.id });
 			})
 			.catch((err) => {
-				toast.error(t("infoPanel.diffReviewSendCommentFailed", { error: String(err) }));
+				toast.error(t("infoPanel.diffReviewSendCommentFailed", { error: String(err) }), { taskId: task.id });
 			})
 			.finally(() => {
 				setSendingCommentIds((current) => {
@@ -2439,11 +2439,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				setEditingCommentId(null);
 				toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewExportSendSuccessFile", { path: result.spilledPath })
-					: t("infoPanel.diffReviewExportSendSuccess"));
+					: t("infoPanel.diffReviewExportSendSuccess"), { taskId: task.id });
 			})
 			.catch((err) => {
 				setReviewSendState(undefined);
-				toast.error(t("infoPanel.diffReviewExportSendFailed", { error: String(err) }));
+				toast.error(t("infoPanel.diffReviewExportSendFailed", { error: String(err) }), { taskId: task.id });
 			});
 	}
 

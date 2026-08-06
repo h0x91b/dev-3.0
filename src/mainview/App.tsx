@@ -571,6 +571,27 @@ function App() {
 		[navigate, setTerminalImmersiveActive],
 	);
 
+	// Every toast has the same anatomy, so a call site passes only `taskId` and the
+	// host fills in the source line and the default click target from here. An
+	// unknown task (another project, already deleted) resolves to nothing rather
+	// than to a made-up source line.
+	const currentProjectTasks = state.currentProjectTasks;
+	const projects = state.projects;
+	const resolveToastTask = useCallback(
+		(taskId: string) => {
+			const task = currentProjectTasks.find((candidate) => candidate.id === taskId);
+			if (!task) return undefined;
+			const projectName = projects.find((p) => p.id === task.projectId)?.name;
+			return {
+				// getTaskTitle, not task.title — the push path composes the same line
+				// through it, and the two must not disagree for the same task.
+				context: taskToastContext(task.seq, projectName, getTaskTitle(task)),
+				onClick: () => openTaskFromNotification(task.id, task.projectId),
+			};
+		},
+		[currentProjectTasks, projects, openTaskFromNotification],
+	);
+
 	useEffect(() => {
 		if (terminalImmersive && !isTaskTerminalRoute(state.route)) {
 			setTerminalImmersiveActive(false);
@@ -2681,7 +2702,7 @@ function App() {
 			{showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 			{/* Toasts are transient feedback, not immersive chrome; notification toasts
 			    must remain clickable so their handler can exit fullscreen first. */}
-			<ToastHost onTaskOverflow={handleToastOverflow} />
+			<ToastHost onTaskOverflow={handleToastOverflow} resolveTask={resolveToastTask} />
 		</div>
 	);
 
