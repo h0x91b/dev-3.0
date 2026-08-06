@@ -512,20 +512,30 @@ button {
 	}
 }
 
-/* ---- Global 44px touch targets on coarse-pointer devices ------------------
-   §9a.1 / §12.6: the 44px minimum is the DEFAULT on touch, not opt-in per
-   surface.  `pointer: coarse` fires on any touch or stylus device regardless
-   of viewport width, so tablets in landscape are covered the same as phones.
-   We prefer this real capability query over a viewport-width gate because
-   touch target size is a device capability, not a layout breakpoint.
+/* ---- Global 24px touch-target floor on coarse-pointer devices -------------
+   `pointer: coarse` fires on any touch or stylus device regardless of viewport
+   width, so tablets in landscape are covered the same as phones — a device
+   capability, not a layout breakpoint.
+
+   The floor is the WCAG 2.5.8 minimum (24×24), NOT 44×44. A blanket 44px
+   inflated every inline control on the board — carousel dots, label chips,
+   priority badges — into oversized blobs that wrecked card layout. 44×44 stays
+   where it belongs: full-width rows in `.touch-actions` sheets and the
+   primary controls that opt into it per surface.
+
+   `:where()` (specificity 0), NOT `:is()`: with `:is()` the rule carried the
+   weight of its heaviest argument (`[role="menuitem"]`, 0-1-0) and, authored
+   after `@tailwind utilities`, silently beat every explicit `min-h-11` /
+   `h-9` a component had set for itself. A floor must lose to an author's
+   deliberate size, always.
 
    Sizing is absolute px (not rem) for the same reason as .touch-actions below:
    the 0.67× dense-zoom factor used on the mobile task screen must not shrink
-   targets below the 44px floor. */
+   targets below the floor. */
 @media (pointer: coarse) {
-	:is(button, a[role="button"], [role="menuitem"], [role="option"], [role="tab"]) {
-		min-height: 44px;
-		min-width: 44px;
+	:where(button, a[role="button"], [role="menuitem"], [role="option"], [role="tab"]) {
+		min-height: 24px;
+		min-width: 24px;
 	}
 }
 

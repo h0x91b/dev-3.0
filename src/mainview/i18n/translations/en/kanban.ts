@@ -332,7 +332,6 @@ const kanban = {
 	"kanban.carouselRole": "Board columns",
 	"kanban.carouselPrev": "Previous column",
 	"kanban.carouselNext": "Next column",
-	"kanban.carouselGoTo": "Go to {label}",
 	// Board load states
 	"kanban.loadingTasks": "Loading tasks…",
 	"kanban.loadFailed": "Couldn't load the board",

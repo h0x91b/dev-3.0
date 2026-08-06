@@ -31,9 +31,9 @@ function renderCarousel(columns: CarouselColumn[], initialColumnId?: string) {
 }
 
 describe("MobileBoardCarousel", () => {
-	it("renders the first column with its position and count", () => {
+	it("renders the first column with its position", () => {
 		renderCarousel(makeColumns());
-		expect(screen.getByText("To Do")).toBeTruthy();
+		expect(screen.getByText(/To Do/)).toBeTruthy();
 		expect(screen.getByText("1 / 3")).toBeTruthy();
 		// Prev is disabled on the first column
 		expect(screen.getByLabelText("Previous column").hasAttribute("disabled")).toBe(true);
@@ -77,7 +77,7 @@ describe("MobileBoardCarousel", () => {
 		const user = userEvent.setup();
 		renderCarousel(makeColumns());
 		await user.click(screen.getByLabelText("Next column"));
-		expect(screen.getByText("In Progress")).toBeTruthy();
+		expect(screen.getByText(/In Progress/)).toBeTruthy();
 		expect(screen.getByText("2 / 3")).toBeTruthy();
 	});
 
@@ -90,12 +90,11 @@ describe("MobileBoardCarousel", () => {
 		expect(screen.getByLabelText("Next column").hasAttribute("disabled")).toBe(true);
 	});
 
-	it("jumps to a column via its dot indicator", async () => {
-		const user = userEvent.setup();
+	it("renders no per-column dot indicators", () => {
 		renderCarousel(makeColumns());
-		await user.click(screen.getByLabelText("Go to Done"));
-		expect(screen.getByText("Done")).toBeTruthy();
-		expect(screen.getByText("3 / 3")).toBeTruthy();
+		expect(screen.queryByLabelText("Go to Done")).toBeNull();
+		// The pager keeps exactly the two chevrons.
+		expect(screen.getAllByRole("button")).toHaveLength(2);
 	});
 
 	it("renders nothing when there are no columns", () => {

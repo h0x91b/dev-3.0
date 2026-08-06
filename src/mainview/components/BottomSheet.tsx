@@ -111,8 +111,11 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 						</div>
 					)}
 				</div>
+				{/* `touch-actions`: 44px rows are the sheet default, not opt-in per
+				    sheet — the global coarse-pointer floor is only 24px (WCAG 2.5.8),
+				    and the mobile dense-zoom factor would shrink these rows further. */}
 				<div
-					className="px-4 py-3"
+					className="touch-actions px-4 py-3"
 					style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
 				>
 					{children}

@@ -332,7 +332,6 @@ const kanban = {
 	"kanban.carouselRole": "Columnas del tablero",
 	"kanban.carouselPrev": "Columna anterior",
 	"kanban.carouselNext": "Columna siguiente",
-	"kanban.carouselGoTo": "Ir a {label}",
 	// Board load states
 	"kanban.loadingTasks": "Cargando tareas…",
 	"kanban.loadFailed": "No se pudo cargar el tablero",

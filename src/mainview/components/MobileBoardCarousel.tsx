@@ -28,7 +28,7 @@ function prefersReducedMotion(): boolean {
 
 /**
  * Narrow-viewport board: shows exactly one column at a time. Horizontal swipe
- * (native CSS scroll-snap) or the pager chevrons/dots change the column;
+ * (native CSS scroll-snap) or the pager chevrons change the column;
  * the column body scrolls vertically. Each swipe has a button + keyboard
  * (Arrow Left/Right) equivalent and announces the active column via aria-live.
  */
@@ -110,17 +110,12 @@ function MobileBoardCarousel({ columns, initialColumnId }: { columns: CarouselCo
 					{/* Nerd Font: fa-chevron-left (U+F053) */}
 					<span className="font-mono text-sm leading-none">{""}</span>
 				</button>
-				<div className="flex-1 min-w-0 text-center" aria-live="polite">
-					<div className="flex items-center justify-center gap-2 min-w-0">
-						<span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: current.color }} />
-						<span className="font-semibold text-fg truncate">{current.label}</span>
-						<span className="text-dense font-bold text-fg-muted bg-fg/10 px-1.5 py-px rounded-full flex-shrink-0">
-							{current.count}
-						</span>
-					</div>
-					<div className="text-dense text-fg-muted mt-0.5">
-						{active + 1} / {columns.length}
-					</div>
+				{/* Position only: the column body right below already carries the
+				    name, count and colour dot — repeating them here cost a whole
+				    row of a phone screen. The name still reaches a screen reader. */}
+				<div className="flex-1 min-w-0 text-center text-dense text-fg-muted" aria-live="polite">
+					<span className="sr-only">{current.label} — </span>
+					{active + 1} / {columns.length}
 				</div>
 				<button
 					type="button"
@@ -134,24 +129,6 @@ function MobileBoardCarousel({ columns, initialColumnId }: { columns: CarouselCo
 					<span className="font-mono text-sm leading-none">{""}</span>
 				</button>
 			</div>
-
-			{/* Dot indicators (also jump targets) */}
-			{columns.length > 1 && (
-				<div className="flex items-center justify-center gap-1.5 py-1.5 flex-shrink-0 flex-wrap px-3">
-					{columns.map((col, i) => (
-						<button
-							key={col.id}
-							type="button"
-							onClick={() => goTo(i)}
-							aria-label={t("kanban.carouselGoTo", { label: col.label })}
-							aria-current={i === active}
-							className={`h-1.5 rounded-full transition-[width,background-color] ${
-								i === active ? "w-4 bg-accent" : "w-1.5 bg-edge hover:bg-edge-active"
-							}`}
-						/>
-					))}
-				</div>
-			)}
 
 			{/* Scroll-snap track: one column == 100% of the track width */}
 			<div

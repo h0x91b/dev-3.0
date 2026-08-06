@@ -563,7 +563,7 @@ Evidence: `BottomSheet.tsx` — used by `GlobalHeader` narrow kebab, `ActivityOv
 | Page primary action | 1 (a FAB or header button) | rest into a bottom sheet |
 | Inspector | 1 summary bar (+ conditional output readouts) | all *actions* into the actions sheet |
 | Any toolbar/action row | wrap or sheet — **never** a non-wrapping overflow row | move to bottom sheet |
-| Touch target | **≥ 44×44px** | many current controls are 32px / `p-0.5` — bump on narrow |
+| Touch target | **≥ 44×44px** for standalone/primary controls and sheet rows; the global coarse-pointer floor is 24×24 (WCAG 2.5.8) | bump primary controls per surface — a blanket 44px floor inflates inline chips and badges and wrecks card layout |
 
 **Conditional agent-output readouts stay on the inspector summary bar.** The diff badge, `Images` and `Artifacts` are not folded into the sheet: they exist only when the task actually produced that output, they carry an unread state, and their whole value is being *seen* without opening a menu — the same status-not-action logic as the header's ambient readout, and the sibling of the desktop Runtime-bar exception in §5.1. They sit next to priority (before the wrap spacer), render at the 44px touch target, and — unlike the header readout — are **also** kept as sheet rows, because the sheet is the phone's complete action inventory. Only agent outputs inherit this; an ordinary action still folds.
 

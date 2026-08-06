@@ -344,7 +344,6 @@ const kanban = {
 	"kanban.carouselRole": "Колонки доски",
 	"kanban.carouselPrev": "Предыдущая колонка",
 	"kanban.carouselNext": "Следующая колонка",
-	"kanban.carouselGoTo": "Перейти к {label}",
 	// Board load states
 	"kanban.loadingTasks": "Загрузка задач…",
 	"kanban.loadFailed": "Не удалось загрузить доску",
