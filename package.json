@@ -73,7 +73,7 @@
 		"ghostty-web": "^0.4.0",
 		"js-toml": "1.1.0",
 		"marked": "^18.0.6",
-		"posthog-js": "^1.407.2",
+		"posthog-js": "1.407.2",
 		"qrcode": "^1.5.4",
 		"react": "19.2.6",
 		"react-dom": "19.2.6",
