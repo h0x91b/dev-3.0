@@ -252,8 +252,17 @@ jobs:
         run: |
           TAG="${{ inputs.tag }}"
           aws s3 sync "./artifacts-macos-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          # THE MANIFEST GOES LAST, AND IT IS THE ONLY FILE CLIENTS DISCOVER BUILDS THROUGH.
+          # One sync of the whole directory uploaded `*-update.json` FIRST on 4 of 4 platforms
+          # (measured on run 31091740061), leaving a 2.25-2.99s window in which the manifest
+          # advertised a tarball that was not at the root path yet. Splitting the root sync in
+          # two closes that window; it does NOT make the publish atomic, and does not need to —
+          # a client polling between the two syncs reads the PREVIOUS manifest, which is correct.
           aws s3 sync "./artifacts-macos-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/" \
-            --exclude "*.dmg" --exclude "*Setup*.tar.gz" --exclude "dev3-cli-*.tar.gz"
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz" --exclude "dev3-cli-*.tar.gz" \
+            --exclude "*-update.json"
+          aws s3 cp "./artifacts-macos-${{ inputs.arch }}/${{ inputs.channel }}-macos-${{ inputs.arch }}-update.json" \
+            "s3://h0x91b-releases/dev-3.0/"
 
       - name: Upload artifacts for release job
         uses: actions/upload-artifact@v5
