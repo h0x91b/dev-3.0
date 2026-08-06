@@ -2389,6 +2389,35 @@ describe("handlers.moveTask", () => {
 		expect(git.createWorktree).toHaveBeenCalled();
 	});
 
+	it("completed → in-progress (reopen): marks the merged head as already answered", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "completed", worktreePath: null });
+		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
+
+		// Writes accumulate so the preparing runId survives into the
+		// preparation-succeeded follow-up — the transition that owns the dismissal.
+		let current = task;
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockImplementation(async () => current);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
+		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId, patch) => {
+			current = { ...updatedTask, ...current, ...patch, id: taskId } as Task;
+			return current;
+		});
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/t:abc123",
+				promptedAt: expect.any(String),
+				dismissedAt: expect.any(String),
+				precise: true,
+			},
+		});
+	});
+
 	it("in-progress → completed: destroys PTY, runs cleanup, removes worktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
@@ -10731,6 +10760,71 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			shouldNotify,
 		}));
 		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("stays quiet for a task the user pulled back out of Completed on the same merged head", async () => {
+		const project = makeProject();
+		const dismissedAt = new Date().toISOString();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			// What the reopen writes: this head was already answered.
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:abc123",
+				promptedAt: dismissedAt,
+				dismissedAt,
+				precise: true,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+	});
+
+	it("offers completion again once the reopened task merges new work", async () => {
+		const project = makeProject();
+		const dismissedAt = new Date().toISOString();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			// Dismissed for the head the task was reopened on; HEAD has moved since.
+			mergeCompletionPrompt: {
+				fingerprint: "v1:dev3/task-test:oldhead",
+				promptedAt: dismissedAt,
+				dismissedAt,
+				precise: true,
+			},
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({
+			taskId: task.id,
+			fingerprint: "v1:dev3/task-test:abc123",
+		}));
 	});
 
 	it("compares PR-review tasks against the project base branch, not the reviewed branch itself", async () => {

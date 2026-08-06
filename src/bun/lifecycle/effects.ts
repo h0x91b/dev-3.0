@@ -107,6 +107,9 @@ export type LifecycleEffect =
 	| ({ type: "persistPreparationFailure"; error: string | null } & EffectPolicy)
 	| ({ type: "persistMergePrompt"; fingerprint: string; precise: boolean; promptedAt?: string } & EffectPolicy)
 	| ({ type: "persistMergeDismissal"; fingerprint: string; precise: boolean; dismissedAt: string } & EffectPolicy)
+	// Same dismissal, but for the head only the executor can fingerprint because
+	// it has to read git HEAD in the worktree.
+	| ({ type: "dismissMergePromptForCurrentHead" } & EffectPolicy)
 	| ({ type: "persistPrStatus"; payload: unknown } & EffectPolicy)
 	| ({ type: "launchColumnAgent"; column: LifecycleColumn } & EffectPolicy)
 	| ({ type: "notifyStatusChange"; from: TaskStatus; to: TaskStatus } & EffectPolicy)

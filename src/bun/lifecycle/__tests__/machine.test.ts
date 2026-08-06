@@ -343,6 +343,78 @@ describe("task lifecycle transition table", () => {
 		});
 	});
 
+	it("silences the merge prompt for the head a reopened task comes back on", () => {
+		const preparing = state("review-by-user", {
+			runtime: {
+				phase: "preparing",
+				stage: "creating-worktree",
+				runId: "reopen-run",
+				origin: { status: "completed", customColumnId: null },
+			},
+		});
+		const prepared = transition(preparing, {
+			type: "preparationSucceeded",
+			runId: "reopen-run",
+			worktreePath: "/tmp/reopened",
+			branchName: "fix/thing",
+			origin: { status: "completed", customColumnId: null },
+			target: { status: "review-by-user", customColumnId: null },
+			mode: "activation",
+		});
+
+		expect(prepared.effects.some((effect) => effect.type === "dismissMergePromptForCurrentHead")).toBe(true);
+	});
+
+	it("leaves the merge prompt alone when a To Do task is started for the first time", () => {
+		const preparing = state("in-progress", {
+			runtime: {
+				phase: "preparing",
+				stage: "creating-worktree",
+				runId: "first-run",
+				origin: { status: "todo", customColumnId: null },
+			},
+		});
+		const prepared = transition(preparing, {
+			type: "preparationSucceeded",
+			runId: "first-run",
+			worktreePath: "/tmp/fresh",
+			branchName: "feat/thing",
+			origin: { status: "todo", customColumnId: null },
+			target: { status: "in-progress", customColumnId: null },
+			mode: "activation",
+		});
+
+		expect(prepared.effects.some((effect) => effect.type === "dismissMergePromptForCurrentHead")).toBe(false);
+	});
+
+	it("skips the reopen dismissal for a virtual project with no branch to merge", () => {
+		const preparing = state("review-by-user", {
+			runtime: {
+				phase: "preparing",
+				stage: "creating-worktree",
+				runId: "reopen-run",
+				origin: { status: "completed", customColumnId: null },
+			},
+			facts: {
+				hasWorktree: true,
+				projectKind: "virtual",
+				hasPrIdentity: false,
+				peerReviewEnabled: true,
+			},
+		});
+		const prepared = transition(preparing, {
+			type: "preparationSucceeded",
+			runId: "reopen-run",
+			worktreePath: "/tmp/ops",
+			branchName: null,
+			origin: { status: "completed", customColumnId: null },
+			target: { status: "review-by-user", customColumnId: null },
+			mode: "activation",
+		});
+
+		expect(prepared.effects.some((effect) => effect.type === "dismissMergePromptForCurrentHead")).toBe(false);
+	});
+
 	it("clears a deleted custom column without launching the underlying built-in agent", () => {
 		const current = state("review-by-ai", {
 			column: { status: "review-by-ai", customColumnId: "obsolete-column" },

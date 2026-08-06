@@ -62,6 +62,7 @@ import {
 } from "../rpc-handlers/shared";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import type { LifecycleEffect } from "./effects";
+import { getMergeCompletionFingerprint } from "./merge-fingerprint";
 import type {
 	LifecycleColumn,
 	LifecycleEvent,
@@ -1062,6 +1063,20 @@ export async function executeLifecycleEffect(
 				},
 			});
 			ctx.stateTask = ctx.task;
+			return {};
+		}
+		case "dismissMergePromptForCurrentHead": {
+			const { fingerprint, precise } = await getMergeCompletionFingerprint(ctx.task, ctx.task.branchName);
+			const dismissedAt = new Date().toISOString();
+			const updates: Partial<Task> = {
+				mergeCompletionPrompt: { fingerprint, promptedAt: dismissedAt, dismissedAt, precise },
+			};
+			const persisted = await data.updateTask(ctx.project, ctx.task.id, updates);
+			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, updates);
+			ctx.stateTask = ctx.task;
+			// The persisted dismissal covers the prompt; the reservation also mutes the
+			// passive "branch merged" toast the notice-only path would still raise.
+			ctx.hooks.reserveMergePrompt(ctx.task.id, fingerprint, Date.parse(dismissedAt));
 			return {};
 		}
 		case "persistPrStatus": {

@@ -30,12 +30,12 @@ import { lifecycleActorRuntime } from "../lifecycle/service";
 import {
 	PR_DETECTION_TIMEOUT_MS,
 	dismissMergeCompletionPrompt,
-	getMergeCompletionFingerprint,
 	persistProjectPrIdentities,
 	persistTaskPrIdentity,
 	prepareMergeCompletionPrompt,
 	refreshTaskPrStatus,
 } from "../lifecycle/activities";
+import { getMergeCompletionFingerprint } from "../lifecycle/merge-fingerprint";
 
 /**
  * Reject git-only RPCs for virtual (Operations) tasks. They have a working dir

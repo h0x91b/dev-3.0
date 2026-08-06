@@ -27,10 +27,10 @@ import {
 	wasAsleep,
 } from "../rpc-handlers/git-poll-throttle";
 import {
-	type MergeCompletionFingerprint,
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
 	shouldSuppressMergePrompt,
 } from "./merge-prompt";
+import { getMergeCompletionFingerprint } from "./merge-fingerprint";
 import {
 	computeSignalKey,
 	countUnresolvedReviewThreads,
@@ -73,23 +73,6 @@ function isPromptReserved(taskId: string, fingerprint: string, nowMs: number): b
 		return false;
 	}
 	return true;
-}
-
-export async function getMergeCompletionFingerprint(task: Pick<Task, "id" | "worktreePath" | "branchName">, branchName: string | null): Promise<MergeCompletionFingerprint> {
-	const resolvedBranchName = branchName || task.branchName || task.id;
-	if (task.worktreePath) {
-		const headSha = await git.getHeadSha(task.worktreePath);
-		if (headSha) {
-			return {
-				fingerprint: `v1:${resolvedBranchName}:${headSha}`,
-				precise: true,
-			};
-		}
-	}
-	return {
-		fingerprint: `fallback:${resolvedBranchName}`,
-		precise: false,
-	};
 }
 
 export async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean }): Promise<{ shouldPrompt: boolean; fingerprint: string | null; shouldNotify?: boolean }> {

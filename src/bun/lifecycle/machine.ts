@@ -569,6 +569,13 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 						origin: event.origin,
 						target: event.target,
 					}),
+					// Pulling a task back out of Completed is an explicit "I want to do more
+					// here" — the branch is still merged, so without this the merge poller
+					// re-offers completion seconds later (issue: prompt on reopen). Only
+					// this head is silenced: work merged after the reopen prompts again.
+					...(TERMINAL_STATUSES.has(event.origin.status) && state.facts.projectKind === "git"
+						? [effect({ type: "dismissMergePromptForCurrentHead" })]
+						: []),
 					effect({ type: "push", message: "taskUpdated", view: "current" }),
 					...(!event.columnReserved
 						? [effect({ type: "notifyStatusChange", from: event.origin.status, to: state.column.status })]
