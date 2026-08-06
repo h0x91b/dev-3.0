@@ -57,6 +57,39 @@ limit of the shared evidence, though — the ETIMEDOUT wraps the PowerShell star
 the WMI round-trip, so this failure cannot by itself prove the WMI half is the expensive
 one.
 
+## What the queries actually cost — and why 60 s must not be raised
+
+First measurement, from the post-merge run of this change: `windows-proof-main` run
+`31100808763` **attempt 1** on merge commit `45a1d68b3` (cite the attempt; a rerun
+overwrites the run-level conclusion). The PR side never sees these numbers by design —
+`#1271` moved the packaged proof post-merge after measuring +4m47 on every in-scope PR — so
+the first Windows execution of a change like this is always its own merge commit.
+
+| Dialect | Calls | Slowest | Mean | Budget |
+|---|---|---|---|---|
+| WMI tree walk (`powershell` + `Get-CimInstance`) | 2 | 3 316 ms | ~1 965 ms | 60 000 ms |
+| Liveness (`tasklist.exe`) | 15 | 349 ms | ~327 ms | 30 000 ms |
+
+What follows from it, and it is the durable part of this record:
+
+- **Raising the 60 s budget is now the harder position, not the easier one.** 60 s is ~18×
+  the slowest *normal* call ever measured, so the stall that started all this was ~18× past
+  worst-normal. A bigger number has to explain a tail that far out.
+- **17 process queries per run**, of which 15 used to be PowerShell + WMI and now are not.
+  Cost inside process queries dropped from ~33 s to ~8.9 s per run; `tasklist` is ~6×
+  cheaper per call.
+- **The estimate in this record's Investigation was wrong and too low**: ~1 s per snapshot
+  was inferred, ~1 965 ms measured. The call count inferred there (~15) was exact.
+- **Zero retries were consumed.** The retry path is unit-proven and field-unproven; nobody
+  may describe it otherwise until a real stall exercises it.
+
+The change also leaves **two** PowerShell cold starts where there were ~15 while removing
+almost all WMI exposure, so a *next* stall discriminates what one observation could not:
+on a remaining tree walk it convicts the **PowerShell spawn**; on the `tasklist` path it
+convicts **neither** and points at the runner's process subsystem, which would mean
+`Get-Process` does not save the Windows preBuild work built on the same mechanism either.
+Nothing was learned on that question here — the run was green.
+
 ## Risks
 
 - Three attempts at a 60 s budget means a genuinely dead query costs 180 s per tree walk
