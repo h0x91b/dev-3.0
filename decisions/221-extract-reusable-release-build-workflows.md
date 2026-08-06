@@ -246,6 +246,21 @@ reads as coverage. With two of eleven branches proven dead, the remaining five i
 script carry a *measured* prior, not a theoretical one. If a release ever fails inside one of them,
 that measurement is why nobody gets to be surprised.
 
+**The test for one of them was host-dependent, and it failed naming the wrong cause.** It
+symlinked the repo's `node_modules` and drove the script as `macos/arm64`, so it needed
+`dist-macos-arm64/zig-zstd` — installed on the author's macOS arm64 machine, absent on a Linux CI
+runner. It passed locally and failed on CI reporting the `version.json` notice missing, when the
+real cause was that the compress step never ran at all. Had that failure looked like a flake it
+would have been re-run and the test would have shipped, proving nothing anywhere it mattered.
+
+The repair is a **shim that enforces the real binary's contract** — it refuses positional arguments
+exactly as `zig-zstd` does — not a platform skip. A skip would have converted a broken test into an
+absent one: green on the runner, and absence reading as success. Mutation-proved both directions:
+revert the call site to the positional form and the `InvalidArgs` assertion goes red with the right
+message; restore it and the file is 7/7. **A test that depends on what happens to be installed is
+not a test of the script; it is a test of the machine.** That matters specifically for these release
+scripts, whose whole job is to run on a runner rather than on a laptop.
+
 The tests covering the two revived branches deliberately tar a directory that is *not* the `.app`
 bundle, which exercises path 5 at the same time and skips DMG creation, so they run in ~1.4s
 instead of timing out.
