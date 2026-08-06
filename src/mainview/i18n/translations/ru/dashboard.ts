@@ -208,11 +208,16 @@ const dashboard = {
 	"memory.activeTasks_many": "{count} активных задач",
 	"memory.activeTasks_other": "{count} активных задач",
 	"memory.approxNote": "Приблизительно: общие страницы считаются в каждом процессе, поэтому сумма завышена.",
-	"memory.bannerHeadline": "Свободно {free} памяти",
-	"memory.bannerSwapping": "Машина уже свопит.",
-	"memory.bannerForecast": "Твои активные задачи занимают примерно по {median}, поэтому ещё {count} потребуют около {needed}.",
-	"memory.bannerNoForecast": "Активных задач пока нет, поэтому прогнозировать не от чего.",
-	"memory.bannerWontFit": "В остаток это не влезет.",
+	"memory.bannerSwapping": "Она уже свопит на диск.",
+	"memory.bannerTight": "Машине уже тесно по памяти.",
+	"memory.bannerLoaded_one": "Машина уже нагружена — ещё одну задачу ей будет тяжеловато потянуть.",
+	"memory.bannerLoaded_few": "Машина уже нагружена — ещё {count} задачи ей будет тяжеловато потянуть.",
+	"memory.bannerLoaded_many": "Машина уже нагружена — ещё {count} задач ей будет тяжеловато потянуть.",
+	"memory.bannerLoaded_other": "Машина уже нагружена — ещё {count} задач ей будет тяжеловато потянуть.",
+	"memory.bannerOutOfRoom_one": "Памяти в обрез — ещё одну задачу машина, скорее всего, не потянет.",
+	"memory.bannerOutOfRoom_few": "Памяти в обрез — ещё {count} задачи машина, скорее всего, не потянет.",
+	"memory.bannerOutOfRoom_many": "Памяти в обрез — ещё {count} задач машина, скорее всего, не потянет.",
+	"memory.bannerOutOfRoom_other": "Памяти в обрез — ещё {count} задач машина, скорее всего, не потянет.",
 };
 
 export default dashboard;

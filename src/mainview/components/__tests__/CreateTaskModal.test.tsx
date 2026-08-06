@@ -1761,22 +1761,21 @@ describe("CreateTaskModal — memory notice", () => {
 		expect(screen.queryByTestId("memory-pressure-banner")).toBeNull();
 	});
 
-	it("states free memory and whether the machine is swapping", async () => {
+	it("says the machine is loaded and whether it is swapping, without byte counts", async () => {
 		mockedApi.request.getSystemMemory.mockResolvedValue(memory({ swapping: true }));
 		renderModal();
 
 		const banner = await screen.findByTestId("memory-pressure-banner");
-		expect(banner).toHaveTextContent("3.0 GB");
+		expect(banner).toHaveTextContent(/already loaded/i);
 		expect(banner).toHaveTextContent(/already swapping/i);
+		expect(banner).not.toHaveTextContent(/\d+(\.\d+)?\s?(MB|GB)/);
 	});
 
-	it("forecasts one task, because this modal creates one", async () => {
+	it("speaks of one task, because this modal creates one", async () => {
 		mockedApi.request.getSystemMemory.mockResolvedValue(memory());
 		renderModal();
 
-		expect(await screen.findByTestId("memory-pressure-banner")).toHaveTextContent(
-			/1 more would need roughly 2\.0 GB/,
-		);
+		expect(await screen.findByTestId("memory-pressure-banner")).toHaveTextContent(/one more task/i);
 	});
 
 	it("never disables the create exits while the notice is showing", async () => {

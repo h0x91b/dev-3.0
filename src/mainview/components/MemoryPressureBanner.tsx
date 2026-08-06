@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import type { SystemMemorySnapshot } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
-import { formatBytes } from "../utils/formatBytes";
 
 /**
  * Launch-time memory notice for the create-task and launch-variants modals.
  *
  * A passive header widget will not stop anyone from starting a twentieth task, so
- * the same numbers appear at the moment the decision is actually made. It
- * INFORMS: it never blocks, never gates behind a confirmation, and never disables
- * the launch button. The user keeps authority over their own machine.
+ * a verdict appears at the moment the decision is actually made. It INFORMS: it
+ * never blocks, never gates behind a confirmation, and never disables the launch
+ * button. The user keeps authority over their own machine.
+ *
+ * One plain-language line, no byte counts: at launch time "139 MB per task" is
+ * arithmetic the user has to do themselves, and it cost this notice as much
+ * vertical space as the variant picker it sits above. The exact figures stay one
+ * hover away in the header's memory readout.
  *
  * It appears only when the machine is genuinely tight — otherwise it becomes
  * wallpaper the user stops reading.
@@ -59,30 +63,41 @@ export default function MemoryPressureBanner({ launchCount }: MemoryPressureBann
 	// The forecast overrunning what is left is the sharper signal, and should not
 	// look identical to the merely-tight case.
 	const severe = wontFit || snapshot.pressure === "critical";
-	const surfaceClass = severe ? "border-danger/30 bg-danger/10" : "border-accent/30 bg-accent/10";
-	const headlineClass = severe ? "text-danger" : "text-accent";
+	const surfaceClass = severe
+		? "border-danger/30 bg-danger/10 text-danger"
+		: "border-accent/30 bg-accent/10 text-accent";
+
+	const count = Math.max(1, launchCount);
+	const verdict =
+		forecast === null
+			? t("memory.bannerTight")
+			: t.plural(severe ? "memory.bannerOutOfRoom" : "memory.bannerLoaded", count);
 
 	return (
 		<div
 			role="status"
 			aria-live="polite"
 			data-testid="memory-pressure-banner"
-			className={`flex flex-col gap-1 rounded-xl border px-3 py-2.5 ${surfaceClass}`}
+			className={`flex items-start gap-2 rounded-lg border px-3 py-1.5 text-xs ${surfaceClass}`}
 		>
-			<p className={`text-sm font-medium ${headlineClass}`}>
-				{t("memory.bannerHeadline", { free: formatBytes(snapshot.headroom) })}
-			</p>
-			<p className="text-xs leading-relaxed text-fg-2">
-				{snapshot.swapping && `${t("memory.bannerSwapping")} `}
-				{forecast === null
-					? t("memory.bannerNoForecast")
-					: t("memory.bannerForecast", {
-							median: formatBytes(snapshot.medianTaskRss!),
-							count: String(Math.max(1, launchCount)),
-							needed: formatBytes(forecast),
-						})}
-				{wontFit && ` ${t("memory.bannerWontFit")}`}
-			</p>
+			{/* mt-px keeps the glyph on the first line's optical centre when the
+			    sentence wraps in a narrow dialog. */}
+			<svg
+				className="w-3.5 h-3.5 mt-px flex-shrink-0"
+				viewBox="0 0 16 16"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.5"
+				strokeLinecap="round"
+				aria-hidden="true"
+			>
+				<circle cx="8" cy="8" r="6.25" />
+				<path d="M8 4.75v3.75M8 11.1h.01" />
+			</svg>
+			<span className="min-w-0">
+				{verdict}
+				{snapshot.swapping && ` ${t("memory.bannerSwapping")}`}
+			</span>
 		</div>
 	);
 }

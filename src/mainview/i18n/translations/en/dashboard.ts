@@ -190,11 +190,12 @@ const dashboard = {
 	"memory.activeTasks_one": "{count} active task",
 	"memory.activeTasks_other": "{count} active tasks",
 	"memory.approxNote": "Approximate: shared pages are counted once per process, so this overstates.",
-	"memory.bannerHeadline": "{free} of memory left",
-	"memory.bannerSwapping": "The machine is already swapping.",
-	"memory.bannerForecast": "Your active tasks use about {median} each, so {count} more would need roughly {needed}.",
-	"memory.bannerNoForecast": "No tasks are running yet, so there is nothing to base a forecast on.",
-	"memory.bannerWontFit": "That does not fit in what is left.",
+	"memory.bannerSwapping": "It is already swapping to disk.",
+	"memory.bannerTight": "This machine is already tight on memory.",
+	"memory.bannerLoaded_one": "This machine is already loaded — one more task is a lot to ask of it.",
+	"memory.bannerLoaded_other": "This machine is already loaded — {count} more tasks are a lot to ask of it.",
+	"memory.bannerOutOfRoom_one": "This machine is out of memory — one more task will likely make it crawl.",
+	"memory.bannerOutOfRoom_other": "This machine is out of memory — {count} more tasks will likely make it crawl.",
 } as const;
 
 export default dashboard;

@@ -156,7 +156,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				</div>
 
 				{/* Memory notice — this dialog starts exactly one more agent. */}
-				<div className="px-6 pt-4 empty:hidden">
+				<div className="px-6 pt-3 empty:hidden">
 					<MemoryPressureBanner launchCount={1} />
 				</div>
 

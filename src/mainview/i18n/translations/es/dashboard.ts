@@ -188,11 +188,12 @@ const dashboard = {
 	"memory.activeTasks_one": "{count} tarea activa",
 	"memory.activeTasks_other": "{count} tareas activas",
 	"memory.approxNote": "Aproximado: las páginas compartidas se cuentan una vez por proceso, así que esto sobreestima.",
-	"memory.bannerHeadline": "Quedan {free} de memoria",
-	"memory.bannerSwapping": "La máquina ya está intercambiando.",
-	"memory.bannerForecast": "Tus tareas activas usan unos {median} cada una, así que {count} más necesitarían aproximadamente {needed}.",
-	"memory.bannerNoForecast": "Aún no hay tareas en ejecución, así que no hay base para un pronóstico.",
-	"memory.bannerWontFit": "Eso no cabe en lo que queda.",
+	"memory.bannerSwapping": "Ya está usando la memoria de intercambio.",
+	"memory.bannerTight": "Esta máquina ya va justa de memoria.",
+	"memory.bannerLoaded_one": "Esta máquina ya está cargada: una tarea más le costará.",
+	"memory.bannerLoaded_other": "Esta máquina ya está cargada: {count} tareas más le costarán.",
+	"memory.bannerOutOfRoom_one": "Esta máquina se ha quedado sin memoria: una tarea más la ralentizará.",
+	"memory.bannerOutOfRoom_other": "Esta máquina se ha quedado sin memoria: {count} tareas más la ralentizarán.",
 };
 
 export default dashboard;

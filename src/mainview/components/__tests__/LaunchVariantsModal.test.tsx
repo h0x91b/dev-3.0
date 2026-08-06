@@ -832,50 +832,49 @@ describe("LaunchVariantsModal — memory notice", () => {
 		expect(screen.queryByTestId("memory-pressure-banner")).toBeNull();
 	});
 
-	it("appears when the machine is under pressure", async () => {
+	it("appears when the machine is under pressure, in plain words and no byte counts", async () => {
 		mockedApi.request.getSystemMemory.mockResolvedValue(memory());
 		renderModal(makeProject());
 
-		expect(await screen.findByTestId("memory-pressure-banner")).toHaveTextContent("4.0 GB");
+		const banner = await screen.findByTestId("memory-pressure-banner");
+		expect(banner).toHaveTextContent(/already loaded/i);
+		expect(banner).not.toHaveTextContent(/\d+(\.\d+)?\s?(MB|GB)/);
 	});
 
-	it("scales the forecast by the number of variants", async () => {
+	it("counts the variants it is about to launch", async () => {
 		const user = userEvent.setup();
 		mockedApi.request.getSystemMemory.mockResolvedValue(memory({ headroom: 20 * GIB, pressure: "warn" }));
 		renderModal(makeProject());
 
 		const banner = await screen.findByTestId("memory-pressure-banner");
-		// One variant at a 3 GB median.
-		expect(banner).toHaveTextContent(/1 more would need roughly 3\.0 GB/);
+		expect(banner).toHaveTextContent(/one more task/i);
 
 		await user.click(screen.getByRole("button", { name: /Add Variant/i }));
 		await user.click(screen.getByRole("button", { name: /Add Variant/i }));
 
-		expect(await screen.findByTestId("memory-pressure-banner")).toHaveTextContent(
-			/3 more would need roughly 9\.0 GB/,
-		);
+		expect(await screen.findByTestId("memory-pressure-banner")).toHaveTextContent(/3 more tasks/i);
 	});
 
-	it("warns when the forecast does not fit, even at normal pressure", async () => {
+	it("hardens the wording when the forecast does not fit, even at normal pressure", async () => {
 		mockedApi.request.getSystemMemory.mockResolvedValue(
 			memory({ pressure: "normal", headroom: 1 * GIB, medianTaskRss: 3 * GIB }),
 		);
 		renderModal(makeProject());
 
 		const banner = await screen.findByTestId("memory-pressure-banner");
-		expect(banner).toHaveTextContent(/does not fit/i);
+		expect(banner).toHaveTextContent(/out of memory/i);
 		expect(banner.className).toContain("border-danger/30");
 	});
 
-	it("omits the forecast when there are no active tasks to learn from", async () => {
+	it("drops the task-count claim when there are no active tasks to learn from", async () => {
 		mockedApi.request.getSystemMemory.mockResolvedValue(
 			memory({ activeTaskCount: 0, tasksRssApprox: 0, medianTaskRss: null }),
 		);
 		renderModal(makeProject());
 
 		const banner = await screen.findByTestId("memory-pressure-banner");
-		expect(banner).toHaveTextContent(/nothing to base a forecast on/i);
-		expect(banner).not.toHaveTextContent(/would need roughly/);
+		expect(banner).toHaveTextContent(/already tight on memory/i);
+		expect(banner).not.toHaveTextContent(/more task/i);
 	});
 
 	it("never blocks the launch — the button stays enabled and still spawns", async () => {

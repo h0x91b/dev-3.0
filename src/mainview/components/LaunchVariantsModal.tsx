@@ -336,7 +336,7 @@ function LaunchVariantsModal({
 
 				{/* Memory notice, outside the scrolling variant list so it cannot be
 				    scrolled out of sight. The forecast scales with the variant count. */}
-				<div className="px-6 pt-4 empty:hidden">
+				<div className="px-6 pt-3 empty:hidden">
 					<MemoryPressureBanner launchCount={variants.length} />
 				</div>
 
@@ -372,8 +372,12 @@ function LaunchVariantsModal({
 								aria-label={t("launch.variantGroup", { n: String(index + 1) })}
 								className="grid grid-cols-[1.75rem_minmax(0,1fr)_1.5rem] items-start gap-3 p-3 bg-raised rounded-[1.25rem] border border-edge"
 							>
-								{/* Variant number */}
-								<span className="text-accent font-bold text-sm">#{index + 1}</span>
+								{/* Variant number. A control-height box, so the index reads as
+								    centred against the fields beside it instead of riding
+								    their top edge. */}
+								<span className="flex h-[34px] items-center text-accent font-bold text-sm">
+									#{index + 1}
+								</span>
 
 								{/* Provider → Model → Mode (stacks in a narrow dialog) */}
 								<AgentConfigPicker
@@ -397,7 +401,7 @@ function LaunchVariantsModal({
 								{variants.length > 1 && (
 									<button
 										onClick={() => removeVariant(index)}
-										className={`text-fg-muted hover:text-danger p-1 ${pressClass}`}
+										className={`flex h-[34px] w-6 items-center justify-center text-fg-muted hover:text-danger ${pressClass}`}
 										title={t("launch.removeVariant")}
 									>
 										<svg
