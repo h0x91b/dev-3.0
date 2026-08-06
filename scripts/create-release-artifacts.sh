@@ -210,7 +210,7 @@ fi
 if [ ! -f "$TAR_ZST" ] && [ -f "$TAR" ]; then
   "$ZSTD" "$TAR" -o "$TAR_ZST"
 fi
-cp "$EBUN_TAR_ZST" "${OUTPUT_DIR}/${PLATFORM_PREFIX}-${APP_FILE_NAME}${TAR_NAME#${APP_FILE_NAME}}.zst"
+cp "$TAR_ZST" "${OUTPUT_DIR}/${PLATFORM_PREFIX}-${APP_FILE_NAME}${TAR_NAME#${APP_FILE_NAME}}.zst"
 
 # Extract to recover version.json and create platform-specific artifacts
 RECOVER_DIR="${BUILD_DIR}/recovered"
