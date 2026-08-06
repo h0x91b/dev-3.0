@@ -404,10 +404,12 @@ describe("nothing publishes to the updater feed without the Windows proof", () =
 		const bad: string[] = [];
 		for (const { file, yaml } of allWorkflows()) {
 			for (const [job, body] of jobs(yaml)) {
-				// Only a CALL-SITE input counts. `prepare` DECLARES a job output also named
-				// `publish` at the same indent, and matching that instead is a false positive
-				// — the output is meant to be a string; it is the `with:` value that must be
-				// a boolean.
+				// INDENT-BASED YAML MATCHING TRAP, and this assertion tripped it on its first
+				// run: `^ {6}publish:` matched `prepare`'s job OUTPUT DECLARATION, which sits
+				// at the same six-space indent as a `with:` input. The output is legitimately
+				// a string; it is the `with:` value that must be a boolean. So the scope is
+				// `with:`-relative, never file-relative. Anyone writing another indent-based
+				// assertion in this repo will hit the same shape.
 				const withIdx = body.search(/^ {4}with:$/m);
 				if (withIdx < 0) continue;
 				const m = /^ {6}publish:\s*(.+)$/m.exec(body.slice(withIdx));
