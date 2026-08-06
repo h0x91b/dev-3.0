@@ -448,23 +448,24 @@ function LaunchVariantsModal({
 					</div>
 				)}
 
-				{/* Footer */}
-				<div className="px-6 py-4 border-t border-edge flex items-center justify-between">
+				{/* Footer — wraps on a phone-width viewport instead of squeezing the
+				    labels into one-word-per-line columns. */}
+				<div className="px-6 py-4 border-t border-edge flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
 					{isVirtual ? (
 						<div />
 					) : (
 						<button
 							onClick={addVariant}
-							className={`text-accent hover:text-accent-emphasis text-sm font-medium ${pressClass}`}
+							className={`text-accent hover:text-accent-emphasis text-sm font-medium whitespace-nowrap ${pressClass}`}
 						>
 							{t("launch.addVariant")}
 						</button>
 					)}
 
-					<div className="flex items-center gap-3">
+					<div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
 						<button
 							onClick={onClose}
-							className={`text-fg-3 hover:text-fg text-sm px-3 py-1.5 ${pressClass}`}
+							className={`text-fg-3 hover:text-fg text-sm px-3 py-1.5 whitespace-nowrap ${pressClass}`}
 							disabled={launching}
 						>
 							{t("kanban.cancel")}
@@ -473,7 +474,7 @@ function LaunchVariantsModal({
 							<button
 								onClick={() => setScheduleOpen((v) => !v)}
 								disabled={launching}
-								className={`text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5 border ${pressClass} ${
+								className={`text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5 border whitespace-nowrap ${pressClass} ${
 									scheduleOpen
 										? "text-accent border-accent/40 bg-accent/10"
 										: "text-fg-3 hover:text-fg border-transparent"

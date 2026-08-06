@@ -530,7 +530,7 @@ button {
    deliberate size, always.
 
    Sizing is absolute px (not rem) for the same reason as .touch-actions below:
-   the 0.67× dense-zoom factor used on the mobile task screen must not shrink
+   the 0.67× phone factor applied to every screen on a phone must not shrink
    targets below the floor. */
 @media (pointer: coarse) {
 	:where(button, a[role="button"], [role="menuitem"], [role="option"], [role="tab"]) {
@@ -548,7 +548,7 @@ button {
    so their menu items keep their own (already touch-sized) rows.
 
    Sizing is absolute px, NOT rem: the mobile task screen scales the root
-   font-size to 0.67× via the dense-zoom factor (see zoom.ts MOBILE_DENSE_FACTOR),
+   font-size to 0.67× on a phone (see zoom.ts MOBILE_DENSE_FACTOR),
    which is meant to pack content-heavy terminal/diff surfaces — a touch action
    sheet must keep true 44px targets and not shrink with it. */
 .touch-actions :is(button, a[role="button"], [role="menuitem"]) {

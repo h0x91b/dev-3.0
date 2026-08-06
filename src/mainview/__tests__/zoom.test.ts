@@ -18,7 +18,6 @@ import {
 	getEffectiveZoom,
 	adjustZoom,
 	bootstrapZoom,
-	retainDenseZoom,
 	DEFAULT_ZOOM,
 	MOBILE_DENSE_FACTOR,
 	MIN_ZOOM,
@@ -168,84 +167,36 @@ describe("zoom", () => {
 		});
 	});
 
-	describe("retainDenseZoom on mobile", () => {
-		beforeEach(() => {
+	describe("phone factor", () => {
+		it("scales every screen on a phone, not just the terminal", () => {
 			setScreenWidth(MOBILE_SCREEN_WIDTH);
-		});
-
-		it("scales the root font-size by the dense factor while retained and restores on release", () => {
-			const release = retainDenseZoom();
+			applyZoom(DEFAULT_ZOOM);
 			expect(getEffectiveZoom()).toBe(MOBILE_DENSE_FACTOR);
 			expect(document.documentElement.style.fontSize).toBe(`${16 * MOBILE_DENSE_FACTOR}px`);
-			release();
-			expect(getEffectiveZoom()).toBe(DEFAULT_ZOOM);
-			expect(document.documentElement.style.fontSize).toBe("16px");
 		});
 
-		it("does not change the persisted user zoom", () => {
-			const release = retainDenseZoom();
-			expect(getZoom()).toBe(DEFAULT_ZOOM);
-			expect(storage.get("dev3-zoom")).toBe("1");
-			release();
-		});
-
-		it("multiplies on top of the user's zoom", () => {
+		it("multiplies on top of the user's zoom without touching the saved value", () => {
+			setScreenWidth(MOBILE_SCREEN_WIDTH);
 			applyZoom(1.2);
 			const expected = Math.round(1.2 * MOBILE_DENSE_FACTOR * 100) / 100;
-			const release = retainDenseZoom();
 			expect(getEffectiveZoom()).toBe(expected);
 			expect(document.documentElement.style.fontSize).toBe(`${16 * expected}px`);
-			release();
+			expect(getZoom()).toBe(1.2);
+			expect(storage.get("dev3-zoom")).toBe("1.2");
+		});
+
+		it("is a no-op on a wide screen", () => {
+			setScreenWidth(DESKTOP_SCREEN_WIDTH);
 			applyZoom(DEFAULT_ZOOM);
-		});
-
-		it("is refcounted — overlapping retains keep the dense scale", () => {
-			const releaseA = retainDenseZoom();
-			const releaseB = retainDenseZoom();
-			releaseB();
-			expect(getEffectiveZoom()).toBe(MOBILE_DENSE_FACTOR);
-			releaseA();
-			expect(getEffectiveZoom()).toBe(DEFAULT_ZOOM);
-		});
-
-		it("release is idempotent", () => {
-			const releaseA = retainDenseZoom();
-			const releaseB = retainDenseZoom();
-			releaseA();
-			releaseA();
-			expect(getEffectiveZoom()).toBe(MOBILE_DENSE_FACTOR);
-			releaseB();
-			expect(getEffectiveZoom()).toBe(DEFAULT_ZOOM);
-		});
-
-		it("dispatches the zoom-changed event with the effective zoom", () => {
-			const handler = vi.fn();
-			window.addEventListener(ZOOM_CHANGED_EVENT, handler);
-			const release = retainDenseZoom();
-			expect((handler.mock.calls[0][0] as CustomEvent).detail).toBe(MOBILE_DENSE_FACTOR);
-			release();
-			expect((handler.mock.calls[1][0] as CustomEvent).detail).toBe(DEFAULT_ZOOM);
-			window.removeEventListener(ZOOM_CHANGED_EVENT, handler);
-		});
-
-		it("applyZoom while dense keeps the dense factor applied", () => {
-			const release = retainDenseZoom();
-			applyZoom(1.0);
-			expect(document.documentElement.style.fontSize).toBe(`${16 * MOBILE_DENSE_FACTOR}px`);
-			release();
-		});
-	});
-
-	describe("retainDenseZoom on desktop", () => {
-		it("is a visual no-op on wide screens", () => {
-			const handler = vi.fn();
-			window.addEventListener(ZOOM_CHANGED_EVENT, handler);
-			const release = retainDenseZoom();
 			expect(getEffectiveZoom()).toBe(DEFAULT_ZOOM);
 			expect(document.documentElement.style.fontSize).toBe("16px");
-			expect(handler).not.toHaveBeenCalled();
-			release();
-			window.removeEventListener(ZOOM_CHANGED_EVENT, handler);
+		});
+
+		it("applies at bootstrap, before React mounts", () => {
+			setScreenWidth(MOBILE_SCREEN_WIDTH);
+			storage.set("dev3-zoom", "1");
+			bootstrapZoom();
+			expect(document.documentElement.style.fontSize).toBe(`${16 * MOBILE_DENSE_FACTOR}px`);
 		});
 	});
 });

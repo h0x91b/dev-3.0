@@ -12,25 +12,26 @@ export const MIN_ZOOM = 0.5;
 export const MAX_ZOOM = 2.0;
 export const ZOOM_STEP = 0.1;
 export const ZOOM_CHANGED_EVENT = "zoom-changed" as const;
-// On mobile devices the terminal/diff screens have no room — they render at
-// ~2/3 scale (1.5× denser) so more content fits. Applied as a multiplier on top
-// of the user's zoom while such a screen is mounted; the saved setting is untouched.
+// A phone gets ~2/3 scale (1.5× denser) on EVERY screen: at 1.0 the board, cards
+// and modals are sized for a desktop pointer and read as oversized on a ~400px
+// viewport. Applied as a multiplier on top of the user's zoom; the saved setting
+// is untouched, so ⌘+/⌘− still work from there. Terminal/diff screens asked for
+// this same factor before it became the phone default — they keep it, not a
+// second helping of it (see mobileFactor).
 export const MOBILE_DENSE_FACTOR = 0.67;
 
 const BASE_FONT_SIZE = 16; // browser default root font-size in px
 
 /** In-memory cache — avoids localStorage reads on every call. */
 let currentZoom = DEFAULT_ZOOM;
-/** Refcount of mounted screens requesting the dense (mobile terminal) scale. */
-let denseScreens = 0;
 
-function denseFactor(): number {
-	return denseScreens > 0 && detectMobile() ? MOBILE_DENSE_FACTOR : 1;
+function mobileFactor(): number {
+	return detectMobile() ? MOBILE_DENSE_FACTOR : 1;
 }
 
-/** User zoom × dense-screen factor — what the root font-size and terminal font actually use. */
+/** User zoom × phone factor — what the root font-size and terminal font actually use. */
 export function getEffectiveZoom(): number {
-	return Math.round(currentZoom * denseFactor() * 100) / 100;
+	return Math.round(currentZoom * mobileFactor() * 100) / 100;
 }
 
 function syncRootFontSize() {
@@ -51,33 +52,6 @@ export function getZoom(): number {
 
 export function adjustZoom(delta: number) {
 	applyZoom(currentZoom + delta);
-}
-
-/**
- * Request the dense scale while a screen that needs it (mobile terminal/diff)
- * is mounted. Returns a release function; refcounted so overlapping screens
- * (e.g. diff opened inside the task view) don't fight over the factor.
- * No-op visually on non-mobile devices.
- */
-export function retainDenseZoom(): () => void {
-	const before = getEffectiveZoom();
-	denseScreens++;
-	notifyIfChanged(before);
-	let released = false;
-	return () => {
-		if (released) return;
-		released = true;
-		const prev = getEffectiveZoom();
-		denseScreens = Math.max(0, denseScreens - 1);
-		notifyIfChanged(prev);
-	};
-}
-
-function notifyIfChanged(previousEffective: number) {
-	const effective = getEffectiveZoom();
-	if (effective === previousEffective) return;
-	syncRootFontSize();
-	window.dispatchEvent(new CustomEvent(ZOOM_CHANGED_EVENT, { detail: effective }));
 }
 
 /** Call once before React mounts to apply saved zoom and expose the API globally. */

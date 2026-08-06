@@ -1,5 +1,9 @@
 # 107 — Mobile terminal/diff screens render denser (dense zoom)
 
+> **Superseded by [223](223-phone-wide-067-zoom-supersedes-dense-terminal-zoom.md).**
+> The 0.67× factor now applies to every screen on a phone; the refcount and the
+> `useMobileDenseZoom` hook described below no longer exist.
+
 ## Context
 
 On phones the task terminal screen (and the diff viewer) had no room — chrome ate the screen and little terminal content fit. The rest of the mobile UI (board carousel, dashboard, settings) is already adapted and should keep its scale, so a global mobile zoom was rejected after trying it.

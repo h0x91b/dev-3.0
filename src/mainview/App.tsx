@@ -20,7 +20,6 @@ import { setShortcutOverrides } from "./keymap-store";
 import { syncTerminalBidiFromGlobalSettings } from "./terminal-bidi/flag";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
-import { useMobileDenseZoom } from "./hooks/useMobileDenseZoom";
 import { useMobile } from "./hooks/useMobile";
 import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
 import GlobalHeader from "./components/GlobalHeader";
@@ -154,7 +153,6 @@ function App() {
 		};
 	}, []);
 	useViewport(state.route);
-	useMobileDenseZoom(state.route);
 	// Android hardware/gesture Back drives in-app navigation in mobile remote
 	// mode: close the topmost layer → route back → double-back-to-exit toast.
 	// Reads history depth through a ref so the popstate handler stays stable.
