@@ -1225,6 +1225,12 @@ function TaskInfoPanel({
 					    legible chip and a comfortable touch target on a phone (§12.6),
 					    versus the dense `xs` desktop badge. */}
 					<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="sm" className="shrink-0" />
+					{/* Agent outputs (images / artifacts) ride the summary bar next to
+					    priority, not only the sheet: they are conditional, and an unread
+					    one has to be seen without opening a menu. Same class as the diff
+					    badge — a readout, not a folded action (bible §12.6). */}
+					<TaskSharedImages task={task} projectId={project.id} compact touch />
+					<TaskArtifacts task={task} projectId={project.id} compact touch />
 					{/* Task title intentionally omitted here — it already shows in the
 					    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
 					    bar; the freed space keeps status + priority + diff readable. */}
@@ -1303,7 +1309,7 @@ function TaskInfoPanel({
 									onClick={() => {
 										setActionsSheetOpen(false);
 										window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-											detail: { taskId: task.id, images: task.sharedImages, index: (task.sharedImages?.length ?? 1) - 1 },
+											detail: { taskId: task.id, projectId: project.id, images: task.sharedImages, index: (task.sharedImages?.length ?? 1) - 1 },
 										}));
 									}}
 									className={SHEET_ROW_CLASS}
@@ -1320,7 +1326,7 @@ function TaskInfoPanel({
 									onClick={() => {
 										setActionsSheetOpen(false);
 										window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-											detail: { taskId: task.id, artifacts: task.sharedArtifacts, index: (task.sharedArtifacts?.length ?? 1) - 1 },
+											detail: { taskId: task.id, projectId: project.id, artifacts: task.sharedArtifacts, index: (task.sharedArtifacts?.length ?? 1) - 1 },
 										}));
 									}}
 									className={SHEET_ROW_CLASS}

@@ -8,6 +8,8 @@ interface TaskSharedImagesProps {
 	projectId: string;
 	/** Icon-only rendering (count kept) for a bar that is short on width. */
 	compact?: boolean;
+	/** Narrow-viewport sizing — grows the hit area to the 44px touch target. */
+	touch?: boolean;
 }
 
 /**
@@ -18,7 +20,7 @@ interface TaskSharedImagesProps {
  * App-level lightbox at the newest image via the same `dev3:openImageViewer`
  * event the inspector badge used, so the viewer stays a single App-mounted host.
  */
-export default function TaskSharedImages({ task, projectId, compact = false }: TaskSharedImagesProps) {
+export default function TaskSharedImages({ task, projectId, compact = false, touch = false }: TaskSharedImagesProps) {
 	const t = useT();
 	const count = task.sharedImages?.length ?? 0;
 	if (count === 0) return null;
@@ -33,7 +35,7 @@ export default function TaskSharedImages({ task, projectId, compact = false }: T
 				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
 					detail: { taskId: task.id, projectId, images: task.sharedImages, index: count - 1 },
 				}))}
-				className={`task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 border ${isUnread
+				className={`task-anim flex items-center gap-1 rounded-lg transition-colors flex-shrink-0 border ${touch ? "min-h-11 px-3" : "px-2 py-1"} ${isUnread
 					? "text-success bg-success/15 border-success/40 hover:bg-success/25"
 					: "text-fg-2 hover:text-fg hover:bg-elevated-hover border-edge"
 				}`}

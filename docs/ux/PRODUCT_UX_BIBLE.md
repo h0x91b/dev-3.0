@@ -537,9 +537,11 @@ Evidence: `BottomSheet.tsx` — used by `GlobalHeader` narrow kebab, `ActivityOv
 |---|---|---|
 | Global header utilities | logo + breadcrumb + **1** overflow kebab + **≤1 ambient resource readout** | everything else into the kebab/sheet |
 | Page primary action | 1 (a FAB or header button) | rest into a bottom sheet |
-| Inspector | 1 summary bar | all actions into the actions sheet |
+| Inspector | 1 summary bar (+ conditional output readouts) | all *actions* into the actions sheet |
 | Any toolbar/action row | wrap or sheet — **never** a non-wrapping overflow row | move to bottom sheet |
 | Touch target | **≥ 44×44px** | many current controls are 32px / `p-0.5` — bump on narrow |
+
+**Conditional agent-output readouts stay on the inspector summary bar.** The diff badge, `Images` and `Artifacts` are not folded into the sheet: they exist only when the task actually produced that output, they carry an unread state, and their whole value is being *seen* without opening a menu — the same status-not-action logic as the header's ambient readout, and the sibling of the desktop Runtime-bar exception in §5.1. They sit next to priority (before the wrap spacer), render at the 44px touch target, and — unlike the header readout — are **also** kept as sheet rows, because the sheet is the phone's complete action inventory. Only agent outputs inherit this; an ordinary action still folds.
 
 **The one ambient-readout slot is an exception, and it is capped at one.** Utilities fold into the kebab because they are *actions* you go looking for; an ambient resource readout is a *status* whose whole value is being seen without looking — and it matters most on narrow, where the user has less screen and usually more running. It claims exactly one slot (currently memory headroom) and must hit the 44×44px touch target. No second readout inherits this; the next one folds into the sheet. Its neighbours `PreventSleepToggle` / `RateLimitIndicator` stay folded (a toggle is an action; per-account quota is not machine-critical), and the readout is **not** duplicated inside the sheet.
 

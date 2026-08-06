@@ -3157,6 +3157,45 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(within(sheet).getByText("#7")).toBeInTheDocument();
 		});
 
+		it("surfaces the images and artifacts badges in the summary bar itself", async () => {
+			const openImage = vi.fn();
+			window.addEventListener("dev3:openImageViewer", openImage);
+			await act(async () => {
+				renderPanel(makeTask({
+					sharedImages: [{
+						id: "image-1",
+						storedPath: "/tmp/shared-images/image-1/shot.png",
+						originalPath: "/tmp/shot.png",
+						name: "shot.png",
+						mime: "image/png",
+						bytes: 10,
+						createdAt: 1,
+					}],
+					sharedArtifacts: [{
+						id: "artifact-1",
+						kind: "html",
+						title: "Report",
+						name: "report.html",
+						storedPath: "/tmp/shared-artifacts/artifact-1/report.html",
+						originalPath: "/tmp/report.html",
+						bytes: 10,
+						createdAt: 1,
+						assets: [],
+					}],
+				}));
+			});
+			// Both ride the bar with the sheet closed — an unread output must be
+			// visible without opening the kebab.
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+			const badge = within(screen.getByTestId("task-summary-bar")).getByTestId("shared-images-badge");
+			expect(within(screen.getByTestId("task-summary-bar")).getByTestId("shared-artifacts-badge")).toBeInTheDocument();
+			await act(async () => {
+				fireEvent.click(badge);
+			});
+			expect((openImage.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ taskId: "t1", projectId: "p1" });
+			window.removeEventListener("dev3:openImageViewer", openImage);
+		});
+
 		it("opens artifact history from the touch actions sheet", async () => {
 			const openArtifact = vi.fn();
 			window.addEventListener("dev3:openArtifactViewer", openArtifact);
@@ -3178,6 +3217,8 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			await userEvent.click(screen.getByTestId("task-actions-kebab"));
 			await userEvent.click(within(screen.getByTestId("task-actions-sheet")).getByText("Artifacts"));
 			expect(openArtifact).toHaveBeenCalledOnce();
+			// projectId is required by the App-level listener — without it the viewer never opens.
+			expect((openArtifact.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ taskId: "t1", projectId: "p1" });
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 			window.removeEventListener("dev3:openArtifactViewer", openArtifact);
 		});
@@ -3201,6 +3242,7 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			await userEvent.click(screen.getByTestId("task-actions-kebab"));
 			await userEvent.click(within(screen.getByTestId("task-actions-sheet")).getByText("Images"));
 			expect(openImage).toHaveBeenCalledOnce();
+			expect((openImage.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ taskId: "t1", projectId: "p1" });
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 			window.removeEventListener("dev3:openImageViewer", openImage);
 		});

@@ -23,6 +23,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Implemented. Evidence: `src/mainview/components/ProjectActionButtons.tsx`, `src/mainview/components/ActivityOverview.tsx`.
 - **Open tension:** the ✓ Complete action landed on the dashboard *task* row the same day is still hover-revealed on desktop. It is the one known exception to this rule and has not been reconciled yet.
 
+## 2026-08-06 — Agent outputs ride the narrow summary bar, and are duplicated in the sheet
+
+- **Rule:** On narrow, `Images` / `Artifacts` render as conditional 44px readouts on the inspector summary bar next to priority AND stay as rows in the actions sheet (`surfaces.task_inspector`, bible §12.6).
+- **Why:** An unread output must be visible without opening a kebab — the same status-not-action logic as the ambient header readout; folding them (the shipped behaviour) hid a produced artifact behind two taps, and the sheet copy is kept because the sheet is the phone's complete action inventory.
+- **Status:** Implemented. Evidence: `src/mainview/components/TaskInfoPanel.tsx`, `src/mainview/components/task-info-panel/TaskSharedImages.tsx`.
+
 ## 2026-08-03 — Local review comments send one-by-one; the batch send covers only unsent ones
 
 - **Rule:** Every local inline review comment carries its own `Send to agent` (role `secondary`, beside Edit/Delete, sending/sent states + toasts); a sent comment is marked `Sent` and leaves the Review export card's copy/batch-send payload, which is now scoped to unsent comments. Bible §5.3, yaml `surfaces.diff_review_viewer.inline_comment_actions`.
