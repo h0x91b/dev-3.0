@@ -77,6 +77,24 @@ Components calling `useT()` must render inside `<I18nProvider>` (import from `..
 Handler tests mock the `tmux` singleton the same way they mock `rpc.ts`; the tmux client's
 own tests inject a fake spawn instead.
 
+### A test that reads a file as data is an untyped interface
+
+Some tests consume something as **data** rather than importing it as code: workflow YAML parsed
+line by line, a fixture matched by a regex, a log line asserted on, a JSON shape read by string
+matching. Nothing type-checks that link, so reshaping the source breaks the test with the
+compiler silent.
+
+The failure is worse than silent — it is misleading. When the test finally fails it describes the
+**invariant** ("every Bun-pinning workflow would ship an unproven pin"), not the missing source,
+so it reads as a real regression and someone spends an hour proving it is not.
+
+Two rules:
+
+- **Before deleting or reshaping anything, grep who reads it** — not just who imports it. A YAML
+  key, a fixture line shape, a log string.
+- **If you write one of these, make its failure message name the cause and the fix** — "the
+  pinned string moved; update it in this test" — never just restate the invariant.
+
 ## Bug fixing — reproduce first
 
 Write the failing test that reproduces the bug (red), then fix until it passes (green), and

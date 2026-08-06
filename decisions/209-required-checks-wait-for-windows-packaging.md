@@ -80,6 +80,16 @@ message: **when this pin fails it must say the pinned string moved and name the 
 test — never merely restate the invariant.** Anyone reshaping the gate step will trip it, and a failure
 that misdescribes its own cause sends the next reader after a phantom regression.
 
+**One level deeper than the gate can see.** The gate reads the *caller* job's result, and a called
+workflow whose internal job skips can still report success to its caller. A job-level `if:` inside
+`windows-conpty-package.yml` would therefore pass the gate on a package that never packaged — the same
+absence-looks-like-success hole, hidden where no cross-check reaches. Rather than depend on GitHub's
+exact semantics here (not verified empirically, and not worth depending on either way), the dependence
+is removed: `src/bun/__tests__/workflow-windows-gate.test.ts` asserts the called workflow has no
+job-level `if:` and no job-level `continue-on-error`, so scope can only be expressed where the caller
+evaluates it and the gate cross-checks it. Mutation-checked by adding `if: false` to
+`windows-app-archive` and watching the tripwire name that job.
+
 ## Risks
 
 **The path list is now load-bearing in a stronger way, and this is a real escalation.** Before, a file
