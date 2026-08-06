@@ -15,6 +15,18 @@ import {
 	selectDesktopExecutable,
 	selectWindowsArchive,
 } from "../../../scripts/verify-windows-app-launch";
+import {
+	bundleExecutableNames,
+	candidateHolders,
+	interpretProcessRows,
+	isInsideDirectory,
+	parseProcessPaths,
+	parseTasklistCsv,
+	planBuildFolderRelease,
+	refusedPackagedCliMessage,
+	shouldFreeBuildFolder,
+	stuckBuildFolderMessage,
+} from "../../../scripts/free-build-folder";
 import { buildAppReadyMarker, writeAppReadyMarker } from "../app-ready-marker";
 
 describe("packaged CLI binary naming", () => {
@@ -265,3 +277,116 @@ function fakeClock(instants: number[]): () => number {
 	let index = 0;
 	return () => instants[Math.min(index++, instants.length - 1)] ?? 0;
 }
+
+describe("freeing the build folder before electrobun wipes it", () => {
+	const BUILD_DIR = "D:\\src\\dev-3.0\\build\\dev-win-x64";
+
+	it("runs on Windows only — every other host leaves electrobun's own wipe alone", () => {
+		expect(shouldFreeBuildFolder("win32")).toBe(true);
+		expect(shouldFreeBuildFolder("darwin")).toBe(false);
+		expect(shouldFreeBuildFolder("linux")).toBe(false);
+	});
+
+	it("matches the folder and its contents, case- and separator-insensitively", () => {
+		expect(isInsideDirectory(BUILD_DIR, BUILD_DIR)).toBe(true);
+		expect(isInsideDirectory(BUILD_DIR, `${BUILD_DIR}\\dev-3.0\\bin\\launcher.exe`)).toBe(true);
+		expect(isInsideDirectory(BUILD_DIR, "d:/src/dev-3.0/build/dev-win-x64/dev-3.0/bin/bun.exe")).toBe(true);
+		expect(isInsideDirectory(`${BUILD_DIR}\\`, `${BUILD_DIR}\\bin\\bun.exe`)).toBe(true);
+	});
+
+	it("does not reach into a neighbouring folder that merely shares the prefix", () => {
+		expect(isInsideDirectory(BUILD_DIR, `${BUILD_DIR}-old\\bin\\launcher.exe`)).toBe(false);
+		expect(isInsideDirectory(BUILD_DIR, "D:\\src\\dev-3.0\\build\\dev-win-arm64\\bin\\bun.exe")).toBe(false);
+		expect(isInsideDirectory("", "D:\\anything")).toBe(false);
+	});
+
+	it("reads tasklist CSV without depending on a localized header", () => {
+		expect(parseTasklistCsv('"launcher.exe","1234","Console","1","52,000 K"\r\n"bun.exe","5678","Console","1","9 K"\r\n')).toEqual([
+			{ pid: 1234, name: "launcher.exe", executablePath: null },
+			{ pid: 5678, name: "bun.exe", executablePath: null },
+		]);
+		expect(parseTasklistCsv("INFO: No tasks are running which match the specified criteria.")).toEqual([]);
+		// Real tasklist output opens with pid 0, which is not a killable process.
+		expect(parseTasklistCsv('"System Idle Process","0","Services","0","8 K"')).toEqual([]);
+		// Only a row that STARTS with the name/pid pair counts — a quoted pair inside
+		// any other text (a window title, a translated notice) is not a process.
+		expect(parseTasklistCsv('NOTE: nothing here "evil.exe","666" still nothing')).toEqual([]);
+	});
+
+	it("reads the narrow image-path query, including the single-row object form", () => {
+		expect(
+			parseProcessPaths('[{"Id":100,"ProcessName":"launcher","Path":"C:\\\\a\\\\launcher.exe"},{"Id":0,"ProcessName":"idle","Path":null}]'),
+		).toEqual([{ pid: 100, name: "launcher", executablePath: "C:\\a\\launcher.exe" }]);
+		expect(parseProcessPaths('{"Id":7,"ProcessName":"bun","Path":null}')).toEqual([
+			{ pid: 7, name: "bun", executablePath: null },
+		]);
+		expect(parseProcessPaths("not json")).toEqual([]);
+	});
+
+	it("treats a zero-row parse as a broken query, not as an empty machine", () => {
+		const empty = interpretProcessRows("tasklist", []);
+		expect(empty.rows).toEqual([]);
+		expect(empty.failure).toBe("tasklist produced output that parsed to zero processes");
+		expect(interpretProcessRows("tasklist", [{ pid: 1, name: "a.exe", executablePath: null }]).failure).toBeNull();
+	});
+
+	it("derives the candidate names from the bundle on disk, not a hardcoded list", () => {
+		const tree: Record<string, string[]> = {
+			[BUILD_DIR]: ["dev-3.0"],
+			[`${BUILD_DIR}\\dev-3.0`]: ["bin", "Resources"],
+			[`${BUILD_DIR}\\dev-3.0\\bin`]: ["launcher.exe", "bun.exe", "build.json"],
+			[`${BUILD_DIR}\\dev-3.0\\Resources`]: ["dev3.exe"],
+		};
+		expect(bundleExecutableNames(BUILD_DIR, (dir) => tree[dir] ?? [])).toEqual(
+			new Set(["launcher.exe", "bun.exe", "dev3.exe"]),
+		);
+	});
+
+	it("asks the expensive path query only about names the bundle ships, and never about itself", () => {
+		const rows = parseTasklistCsv(
+			'"launcher.exe","100","Console","1","1 K"\r\n"chrome.exe","200","Console","1","1 K"\r\n"bun.exe","300","Console","1","1 K"',
+		);
+		expect(candidateHolders(rows, new Set(["launcher.exe", "bun.exe"]), 300).map((row) => row.pid)).toEqual([100]);
+	});
+
+	it("kills this build's own app image and refuses the packaged CLI another task may be using", () => {
+		const rows = [
+			{ pid: 100, name: "launcher", executablePath: `${BUILD_DIR}\\dev-3.0\\bin\\launcher.exe` },
+			{ pid: 200, name: "bun", executablePath: `${BUILD_DIR}\\dev-3.0\\bin\\bun.exe` },
+			{ pid: 300, name: "dev3", executablePath: `${BUILD_DIR}\\dev-3.0\\Resources\\app\\cli\\dev3.exe` },
+			{ pid: 400, name: "bun", executablePath: "C:\\Users\\dev\\.bun\\bin\\bun.exe" },
+			{ pid: 500, name: "System", executablePath: null },
+			{ pid: 600, name: "self", executablePath: `${BUILD_DIR}\\dev-3.0\\bin\\bun.exe` },
+		];
+		const release = planBuildFolderRelease(rows, BUILD_DIR, 600);
+		expect(release.kill.map((row) => row.pid)).toEqual([100, 200]);
+		expect(release.refuse.map((row) => row.pid)).toEqual([300]);
+	});
+
+	it("names the other task's CLI as the cause and leaves the decision to the user", () => {
+		const message = refusedPackagedCliMessage(BUILD_DIR, ["dev3 (pid 300) — command: dev3 task move"]);
+		expect(message).toContain(BUILD_DIR);
+		expect(message).toContain("DIFFERENT task");
+		expect(message).toContain("ten minutes");
+		expect(message).toContain("pid 300");
+		expect(message).toContain("Fix:");
+	});
+
+	it("names an invisible handle as the cause and the windows to close as the fix", () => {
+		const killed = stuckBuildFolderMessage(BUILD_DIR, ["launcher (pid 100) — path"], null);
+		expect(killed).toContain("Terminated this build's own processes first");
+		expect(killed).toContain("Fix: close every dev-3.0 window");
+
+		const nothingFound = stuckBuildFolderMessage(BUILD_DIR, [], null);
+		expect(nothingFound).toContain("the handle belongs to something else");
+
+		const blind = stuckBuildFolderMessage(BUILD_DIR, [], "tasklist attempt 2 timed out after 5001ms");
+		expect(blind).toContain("this machine's OS process list, not the app");
+		expect(blind).toContain("nothing was terminated");
+		expect(blind).toContain("timed out after 5001ms");
+		for (const message of [killed, nothingFound, blind]) {
+			expect(message).toContain("Windows refuses to delete it");
+			expect(message).toContain("Fix:");
+		}
+	});
+});

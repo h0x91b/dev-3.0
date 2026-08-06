@@ -30,7 +30,7 @@ import { withFileLock } from "../file-lock";
 import { whichSync } from "../which";
 import { NativeSessionClient } from "./client";
 import { classifyOwnership, type OwnershipVerdict } from "./ownership";
-import { isValidSessionId, logFile, recordFile, sessionDir, sessionsRootDir } from "./paths";
+import { detachedHostCwd, isValidSessionId, logFile, recordFile, sessionDir, sessionsRootDir } from "./paths";
 import { isProcessAlive } from "./process-identity";
 import { nativeHostProcessName } from "./process-naming";
 import { inspectRecordFile, readRecord, readToken, removeSessionState, type NativeSessionRecord } from "./record";
@@ -162,6 +162,9 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 		argv0: nativeHostProcessName(sessionId, opts.launch.env),
 		stdio: ["ignore", logFd, logFd],
 		detached: true,
+		// Never inherit the app's cwd: this child outlives it, and on Windows a live
+		// cwd is undeletable. See detachedHostCwd().
+		cwd: detachedHostCwd(),
 		env: {
 			...process.env,
 			DEV3_NATIVE_SESSION_ID: sessionId,

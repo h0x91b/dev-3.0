@@ -86,6 +86,9 @@ export default {
 		},
 	},
 	scripts: {
+		// preBuild clears the build folder before electrobun's own un-forced,
+		// un-retried rmSync of it, which throws EBUSY on Windows. No-op elsewhere.
+		preBuild: "./scripts/free-build-folder.ts",
 		// postBuild assembles the versioned native host image into the bundle on
 		// every platform, so it ships inside the update archive; postPackage
 		// re-verifies the Windows image from the FINAL archive (no-op elsewhere).

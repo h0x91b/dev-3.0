@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import { spawn as spawnChild } from "node:child_process";
 import { createLogger } from "./logger";
 import { NATIVE_SESSION_PROTOCOL_VERSION } from "./native-terminal-registry/protocol";
-import { hostImagesRootDir } from "./native-terminal-registry/paths";
+import { detachedHostCwd, hostImagesRootDir } from "./native-terminal-registry/paths";
 import {
 	discoverPackagedImage,
 	stagePackagedImage,
@@ -237,6 +237,10 @@ export function nativeHostLauncher(runtime: NativeHostRuntime): HostLauncher {
 				argv0: nativeHostProcessName(sessionId, opts.launch.env),
 				stdio: ["ignore", logFd, logFd],
 				detached: true,
+				// Never inherit the app's cwd: this child outlives it, and on Windows a
+				// live cwd is undeletable — which is what made `bun run dev` fail to wipe
+				// its own build folder. See detachedHostCwd().
+				cwd: detachedHostCwd(),
 				env: {
 					...process.env,
 					DEV3_NATIVE_SESSION_ID: sessionId,

@@ -63,6 +63,26 @@ export function hostImagesRootDir(): string {
 	return join(dev3HomeDir(), "native-host-images");
 }
 
+/**
+ * Working directory for a detached host process.
+ *
+ * A detached host outlives the app that spawned it (that is the point — decision
+ * 169), so it must not inherit the app's cwd: on Windows a live process's current
+ * directory cannot be deleted, and the app's cwd is inside its own bundle, which
+ * `bun run dev` wipes on every build. `~/.dev3.0` satisfies all three
+ * requirements — outside any app bundle, alive as long as dev3 has data at all,
+ * and protected from being moved or deleted underneath us by the on-disk
+ * invariants in AGENTS.md. Same destination `spawn.ts` already pins cwd-less
+ * children to (decision `110-no-chdir-pin-child-cwd`); this is the one spawn that
+ * bypasses that wrapper, because it needs `argv0`.
+ *
+ * No mkdir: the registry has already written this session's own directory under
+ * `~/.dev3.0` before any launcher runs.
+ */
+export function detachedHostCwd(): string {
+	return dev3HomeDir();
+}
+
 // Stable session ids are chosen by launchers, so they must map to a safe single
 // directory segment — no path separators, no traversal, no leading dot.
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;

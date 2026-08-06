@@ -103,7 +103,7 @@ log.info("Log files", { dir: getLogPath() });
 // The brew-upgrade/in-app-update ENOENT hazard it was meant to fix — a child
 // inheriting a since-deleted bundle cwd — is instead handled in spawn.ts, which
 // pins cwd-less children to DEV3_HOME without ever moving the process. See
-// decision 109.
+// decisions/110-no-chdir-pin-child-cwd.md.
 
 // ── CLI binary + agent skills + shell PATH (FIRST — before any async work) ──
 // These must run before resolveShellEnv() because existing tmux sessions

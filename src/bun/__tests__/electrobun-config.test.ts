@@ -24,7 +24,12 @@ describe("electrobun packaged Bun runtime", () => {
 	it("pins the global app runtime at or above the ConPTY floor and packages a native host on every platform", () => {
 		expect(config.build).toHaveProperty("bunVersion");
 		expect(assertPackagedConptyRuntime(config.build.bunVersion)).toBe(config.build.bunVersion);
-		expect(config.scripts).not.toHaveProperty("preBuild");
+		// This used to assert preBuild was ABSENT. The invariant it protected is that
+		// host packaging and its proof stay in postBuild/postPackage — so preBuild is
+		// pinned to the one thing it may do: clearing the build folder before
+		// electrobun's own un-retried wipe of it (Windows EBUSY, decision
+		// 217-windows-build-folder-freed-before-electrobun-wipes-it).
+		expect(config.scripts.preBuild).toBe("./scripts/free-build-folder.ts");
 		expect(config.scripts.postBuild).toBe("./scripts/package-native-host.ts");
 		expect(config.build.copy["dist/native"]).toBe("native");
 	});

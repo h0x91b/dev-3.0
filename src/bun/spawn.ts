@@ -17,7 +17,8 @@
  * dir from under a running instance, after which any child that inherits our
  * bundle cwd dies with ENOENT (posix_spawn resolves the child cwd from ours).
  * Pinning cwd-less children to DEV3_HOME — which lives as long as our data does —
- * sidesteps that without ever moving the process. See decision 109.
+ * sidesteps that without ever moving the process.
+ * See decisions/110-no-chdir-pin-child-cwd.md.
  *
  * RULE: Never use Bun.spawn / Bun.spawnSync directly — always use these.
  */
