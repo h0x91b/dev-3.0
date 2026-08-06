@@ -24,7 +24,7 @@ import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "../../spawn";
 import { NativeSessionClient } from "../client";
-import { recordFile, tokenFile } from "../paths";
+import { journalFile, recordFile, tokenFile } from "../paths";
 import { isProcessAlive } from "../process-identity";
 import { decodeControl, MAX_CONTROL_FRAME_BYTES } from "../protocol";
 import {
@@ -74,11 +74,17 @@ function liveProcessCommandLine(pid: number): string {
 }
 
 let failures = 0;
-function check(condition: boolean, msg: string): void {
+/**
+ * `explain` runs ONLY on failure and must name the CAUSE and the FIX: this proof's
+ * whole output on CI is these lines, so a bare `FAIL - x` costs a Windows-only
+ * investigation that cannot be reproduced anywhere else.
+ */
+function check(condition: boolean, msg: string, explain?: () => string): void {
 	if (condition) console.log(`  ok   - ${msg}`);
 	else {
 		failures++;
 		console.error(`  FAIL - ${msg}`);
+		for (const line of (explain?.() ?? "").split("\n")) if (line) console.error(`         ${line}`);
 	}
 }
 
@@ -193,6 +199,112 @@ function rawFirstFrameProbe(
 			finish(true);
 		});
 	});
+}
+
+/**
+ * Ceiling for a session's own output to become durable on disk, NOT a delay: the
+ * journal writer flushes on a 150 ms debounce, and a loaded 2-core CI runner can
+ * starve that timer well past the fixed 400 ms sleep this replaced. Only the
+ * durability half is allowed to wait — isolation is asserted on every observation.
+ */
+const JOURNAL_DURABILITY_BUDGET_MS = 10_000;
+
+/**
+ * One observation of a session's persisted journal, taken through the PRODUCT read
+ * path (`replayJournal`) and the raw file at once. The product path answers
+ * "unreadable" and "nothing persisted" with the same empty tail, so the file size
+ * and the read error are carried alongside — otherwise a Windows sharing violation
+ * during the writer's atomic rename is indistinguishable from a lost marker.
+ */
+interface JournalObservation {
+	own: boolean;
+	foreign: boolean;
+	chunks: number;
+	fileBytes: number;
+	readError: string;
+	tail: string;
+}
+
+/** Printable, single-line excerpt — a journal holds raw PTY bytes, escapes included. */
+function excerpt(text: string, max = 240): string {
+	let out = "";
+	for (const ch of text.slice(-max)) {
+		const code = ch.codePointAt(0) ?? 0;
+		out += code < 0x20 || code === 0x7f ? `\\x${code.toString(16).padStart(2, "0")}` : ch;
+	}
+	return out;
+}
+
+function observeJournal(sessionId: string, ownMark: string, foreignMark: string): JournalObservation {
+	const chunks = NativeSessionClient.replayJournal(sessionId);
+	const text = chunks.map((bytes) => new TextDecoder().decode(bytes)).join("");
+	let fileBytes = -1;
+	let readError = "";
+	try {
+		// The raw read is the point: `readJournalTail` catches every failure and answers
+		// with an empty tail, so this is the only place the actual error survives.
+		fileBytes = Buffer.byteLength(readFileSync(journalFile(sessionId), "utf8"), "utf8");
+	} catch (err) {
+		readError = String(err);
+	}
+	return {
+		own: text.includes(ownMark),
+		foreign: text.includes(foreignMark),
+		chunks: chunks.length,
+		fileBytes,
+		readError,
+		tail: excerpt(text),
+	};
+}
+
+/** Names the CAUSE and the FIX for whichever of the two journal properties broke. */
+function explainJournal(
+	sessionId: string,
+	other: string,
+	obs: JournalObservation,
+	waitedMs: number,
+	liveMarkSeen: boolean,
+): string {
+	const evidence = `evidence: chunks=${obs.chunks} fileBytes=${obs.fileBytes}${obs.readError ? ` readError=${obs.readError}` : ""} tail="${obs.tail}"`;
+	if (obs.foreign) {
+		return [
+			`CAUSE: ${sessionId}'s journal contains ${other}'s marker — cross-session leakage in the registry,`,
+			"       not a timing problem (a journal is per-session state; waiting cannot remove a foreign byte).",
+			`FIX: the registry's journal path or output fan-out (paths.journalFile / host.ts data callback). Never this assertion.`,
+			evidence,
+		].join("\n");
+	}
+	if (!liveMarkSeen) {
+		return [
+			`CAUSE: ${sessionId}'s shell never produced its marker on the LIVE stream, so nothing was there to persist —`,
+			"       a lost or unexecuted command, not a journal defect (the check above is the primary failure).",
+			"FIX: the shell round-trip for this session, e.g. a warm-up budget as in command-roundtrip.ts.",
+			evidence,
+		].join("\n");
+	}
+	if (obs.readError.includes("ENOENT")) {
+		return [
+			`CAUSE: ${sessionId} has no journal file at all after ${waitedMs}ms — nothing was ever published for it,`,
+			"       so this is not a slow flush: the writer never reached disk, or it wrote somewhere else.",
+			"FIX: JournalWriter.flush (its failures print to host.log) and paths.journalFile for this session.",
+			evidence,
+		].join("\n");
+	}
+	if (obs.readError) {
+		return [
+			`CAUSE: ${sessionId}'s journal file exists but could not be read after ${waitedMs}ms — on Windows this is normally a`,
+			"       sharing violation racing the writer's atomic rename, which readJournalTail reports as an empty tail.",
+			"FIX: the read path (journal-read.ts) must survive a transient read failure instead of reporting no journal.",
+			evidence,
+		].join("\n");
+	}
+	return [
+		`CAUSE: ${sessionId}'s marker reached its live client but never reached disk within ${waitedMs}ms.`,
+		"       Its bytes were recorded in the writer BEFORE the client saw them (host.ts records, then fans out),",
+		"       so the loss is memory→disk: a failed flush (see host.log), a starved 150ms flush timer, or cap eviction.",
+		"FIX: the JournalWriter flush path — raise DEFAULT_JOURNAL_MAX_BYTES only if fileBytes is at the cap.",
+		evidence,
+	].join("\n");
 }
 
 const cliEntry = fileURLToPath(new URL("../cli.ts", import.meta.url));
@@ -335,21 +447,48 @@ async function run(): Promise<void> {
 		await cB.connect(recBravo!, readFileSync(tokenFile("bravo"), "utf8").trim());
 		const sB = makeSink(cB);
 		send(cB, isWindows ? `Write-Output "BRAVOMARK:${nonce}"` : `echo "BRAVOMARK:${nonce}"`);
-		await sB.waitFor(`BRAVOMARK:${nonce}`);
+		// Asserted, never discarded: the host records a chunk into the journal BEFORE it fans the
+		// same bytes out to clients, so a marker the client saw is already in the writer. Without
+		// this check a lost command masquerades as a journal defect below.
+		const bravoMarkLive = await sB.waitFor(`BRAVOMARK:${nonce}`);
+		check(bravoMarkLive, "bravo client receives its own live shell output", () =>
+			[
+				"CAUSE: bravo's shell produced no BRAVOMARK on the live stream within the wait budget.",
+				"FIX: the shell round-trip for the CLI-started session (command-roundtrip.ts warm-up budget).",
+			].join("\n"),
+		);
 		await cB.disconnect({ timeoutMs: 3000 });
 
 		// ── 4. disconnect survival + INDEPENDENT journals ──
-		await delay(400); // let the journal debounce flush
 		check(isProcessAlive(alpha.record.host.pid) && isProcessAlive(alpha.record.shell.pid), "alpha host + shell survive client disconnect");
 		check(isProcessAlive(bravo.hostPid) && isProcessAlive(bravo.shellPid), "bravo host + shell survive client disconnect");
-		const decodeJournal = (sessionId: string): string =>
-			NativeSessionClient.replayJournal(sessionId)
-				.map((bytes) => new TextDecoder().decode(bytes))
-				.join("");
-		const alphaJournal = decodeJournal("alpha");
-		const bravoJournal = decodeJournal("bravo");
-		check(alphaJournal.includes(`ALPHAMARK:${nonce}`) && !alphaJournal.includes(`BRAVOMARK:${nonce}`), "alpha journal holds only alpha's output");
-		check(bravoJournal.includes(`BRAVOMARK:${nonce}`) && !bravoJournal.includes(`ALPHAMARK:${nonce}`), "bravo journal holds only bravo's output");
+		// TWO different properties, deliberately not one boolean:
+		//   durability — a session's own output REACHES its journal. Eventual (the writer flushes on
+		//     a debounce), so it is polled to a ceiling instead of slept at for a fixed 400ms.
+		//   isolation  — a journal NEVER holds the other session's output. A safety property:
+		//     re-observed on every poll and terminal on the first violation, so the durability wait
+		//     can never sit on top of a leak and wait it out of sight.
+		// The two are CONJOINED, never asserted alone: "holds no foreign marker" is vacuously true
+		// of an empty or missing journal, so an isolation check over zero observations would pass
+		// while proving nothing. Requiring the session's own marker is what forbids that.
+		const alphaMark = `ALPHAMARK:${nonce}`;
+		const bravoMark = `BRAVOMARK:${nonce}`;
+		const journalStart = Date.now();
+		let obsAlpha = observeJournal("alpha", alphaMark, bravoMark);
+		let obsBravo = observeJournal("bravo", bravoMark, alphaMark);
+		while (!obsAlpha.foreign && !obsBravo.foreign && !(obsAlpha.own && obsBravo.own)) {
+			if (Date.now() - journalStart > JOURNAL_DURABILITY_BUDGET_MS) break;
+			await delay(50);
+			obsAlpha = observeJournal("alpha", alphaMark, bravoMark);
+			obsBravo = observeJournal("bravo", bravoMark, alphaMark);
+		}
+		const journalWaitedMs = Date.now() - journalStart;
+		check(obsAlpha.own && !obsAlpha.foreign, "alpha journal holds only alpha's output", () =>
+			explainJournal("alpha", "bravo", obsAlpha, journalWaitedMs, true),
+		);
+		check(obsBravo.own && !obsBravo.foreign, "bravo journal holds only bravo's output", () =>
+			explainJournal("bravo", "alpha", obsBravo, journalWaitedMs, bravoMarkLive),
+		);
 
 		// ── 5. fresh client rediscovers alpha and proves PID + state preserved ──
 		const c2 = await NativeSessionClient.discover("alpha");
