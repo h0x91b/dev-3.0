@@ -3539,6 +3539,36 @@ describe("handlers.spawnVariants", () => {
 		expect(data.addTask).not.toHaveBeenCalled();
 	});
 
+	// A scratch task launches with no prompt — "Agent is Working" would be a lie.
+	// It parks in Has Questions until the user types; the agent's UserPromptSubmit
+	// hook moves it to in-progress from there.
+	it("parks a scratch task in user-questions instead of in-progress", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "todo",
+			seq: 5,
+			scratch: true,
+			description: "Scratch — 14:32",
+			worktreePath: null,
+			branchName: null,
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		mockTransformSource(sourceTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/task-task-1" });
+		vi.mocked(data.updateTask).mockResolvedValue(makeTask({ status: "user-questions", worktreePath: "/tmp/vwt" }));
+
+		const result = await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(result[0].status).toBe("user-questions");
+	});
+
 	it("keeps the source task id as variant #1 and creates only variants 2..N when launching multiple variants", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5, worktreePath: null, branchName: null });

@@ -212,7 +212,7 @@ For the full command reference (rename / swap / move windows, resize, capture ou
 const SKILL_SCRATCH_TASK = `
 ## Scratch tasks
 
-If your task title starts with \`Scratch — \` (e.g. \`Scratch — 14:32\`), the user clicked "Scratch Task" — there is no initial instruction and the \`description\` is just the placeholder title. Greet the user in one short line and ask what they want to do. As soon as they answer, treat that message as the task description: set a real title, overview, and labels (session-start checklist) and proceed as normal.
+If your task title starts with \`Scratch — \` (e.g. \`Scratch — 14:32\`), the user clicked "Scratch Task" — there is no initial instruction and the \`description\` is just the placeholder title. The task launches parked in **Has Questions** on purpose — nothing is expected of you until someone writes, and you must not move it out of that column yourself. Greet the user in one short line and ask what they want to do. As soon as they answer, treat that message as the task description: set a real title, overview, and labels (session-start checklist) and proceed as normal.
 
 If instead a peer **agent** started you, your first message says so and names the task that asked — report progress and results back to it with the \`dev3 message --task seq:<N>\` command in that message, and treat its instructions as your task description.
 `;

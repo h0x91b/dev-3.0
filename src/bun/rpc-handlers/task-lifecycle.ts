@@ -370,6 +370,15 @@ async function spawnVariants(params: {
 	const srcBranch = getSourceTaskBranch(sourceTask, project);
 	const isMultiVariant = params.variants.length > 1;
 	const needsWorktree = isActive(params.targetStatus);
+	// A scratch task still carrying its placeholder launches with a blank prompt
+	// (see taskWithLaunchDescription in the executor), so "Agent is Working"
+	// would be a lie — it parks in Has Questions until the user types, and the
+	// agent's UserPromptSubmit hook moves it to in-progress from there.
+	const launchesWithoutPrompt = sourceTask.scratch === true
+		&& isScratchPlaceholderDescription(sourceTask.description);
+	const targetStatus: TaskStatus = launchesWithoutPrompt && needsWorktree
+		? "user-questions"
+		: params.targetStatus;
 
 	const firstVariant = params.variants[0];
 	if (!firstVariant) throw new Error("At least one variant is required");
@@ -377,7 +386,7 @@ async function spawnVariants(params: {
 	const launchedSource = await dispatchLifecycleEvent(project.id, sourceTask.id, {
 		type: "moveRequested",
 		runId: sourceRunId,
-		target: { status: params.targetStatus, customColumnId: null },
+		target: { status: targetStatus, customColumnId: null },
 		taskPatch: {
 			groupId,
 			variantIndex: 1,
@@ -470,7 +479,7 @@ async function spawnVariants(params: {
 			: undefined;
 		resultTasks.push(await dispatchLifecycleEvent(project.id, pendingTask.id, {
 			type: "moveRequested",
-			target: { status: params.targetStatus, customColumnId: null },
+			target: { status: targetStatus, customColumnId: null },
 			taskPatch: {
 				groupId,
 				variantIndex: i + 1,

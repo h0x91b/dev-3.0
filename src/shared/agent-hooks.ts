@@ -36,7 +36,11 @@ export function getCodexHookTargetStatus(
 	if (currentStatus === "completed" || currentStatus === "cancelled") return null;
 
 	switch (event) {
+		// Starting a session is not working: a scratch task launches parked in
+		// user-questions with no prompt, and only a real prompt may claim it.
 		case "SessionStart":
+			if (currentStatus === "user-questions") return resumeStatus ?? null;
+			return currentStatus === "review-by-ai" ? null : "in-progress";
 		case "UserPromptSubmit":
 		case "PreToolUse":
 		case "PostToolUse":

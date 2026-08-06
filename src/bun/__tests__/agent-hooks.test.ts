@@ -365,6 +365,18 @@ describe("getCodexHookTargetStatus", () => {
 		expect(getCodexHookTargetStatus("PreToolUse", "review-by-ai", true)).toBeNull();
 	});
 
+	// A scratch task launches parked in user-questions with no prompt. Codex
+	// fires SessionStart at startup, which must not claim the task is working —
+	// only a real prompt may.
+	it("leaves a task parked in user-questions when the session starts", () => {
+		expect(getCodexHookTargetStatus("SessionStart", "user-questions", false)).toBeNull();
+	});
+
+	it("resumes the remembered status when the session starts after an approval", () => {
+		expect(getCodexHookTargetStatus("SessionStart", "user-questions", false, "in-progress"))
+			.toBe("in-progress");
+	});
+
 	it.each(["todo", "user-questions", "review-by-user"] as const)(
 		"does not overwrite %s when a turn stops",
 		(status) => {
