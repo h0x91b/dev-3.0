@@ -1,10 +1,13 @@
-# 221 — Extract the per-platform release builds into reusable workflows
+# Extract the per-platform release builds into reusable workflows
 
-Companion record: `decisions/218-stable-unstable-update-channels.md` (cited by slug, never by
-number — decision numbers in this repo collide routinely between unmerged siblings). That record
-owns what a channel *is*; this one owns the release-pipeline refactor that had to land first, and
-everything the refactor taught. The two are independent: either can merge before the other and
-`main` stays coherent.
+Companion record: `decisions/2026/08/06/stable-unstable-update-channels.md`. That record owns what a
+channel *is*; this one owns the release-pipeline refactor that had to land first, and everything the
+refactor taught. The two are independent: either can merge before the other and `main` stays
+coherent.
+
+This record was written as `221-…` while records were still numbered, and moved when the dated layout
+landed. Every citation of both records is by **slug**, so the move touched no reference — which is
+the whole reason that rule existed before the layout changed.
 
 ## 1. Context
 
@@ -58,7 +61,7 @@ writes two more fields on **every** channel — one code path, no branch to get 
 Neither is derivable from the other, and a re-run on the same commit reproduces both. They live
 here rather than in the channel record because they are what the extracted workflow was proved to
 publish (`Manifest identity: sha=… buildOrder=1599`, run 31104425148 attempt 1); who *reads* them
-belongs to `decisions/218-stable-unstable-update-channels.md`.
+belongs to `decisions/2026/08/06/stable-unstable-update-channels.md`.
 
 `buildOrder` is monotonic **only because `main` is squash-merged**: its history is linear, so the
 count rises by exactly one per merge. That is a property of how this repo lands pull requests, not

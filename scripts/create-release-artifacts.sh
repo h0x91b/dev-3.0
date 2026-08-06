@@ -50,7 +50,7 @@ ZSTD="./node_modules/electrobun/dist-${OS}-${ARCH}/zig-zstd"
 # version string carries a +unstable.<sha> suffix that semver silently parses away).
 # `buildOrder` is monotonic ONLY because main is squash-merged: linear history, +1 per
 # merge. That is a property of how this repo lands PRs, not of git. See
-# decisions/221-extract-reusable-release-build-workflows.md.
+# decisions/2026/08/06/extract-reusable-release-build-workflows.md.
 BUILD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_ORDER=$(git rev-list --count HEAD 2>/dev/null || echo "0")
 echo "Manifest identity: sha=${BUILD_SHA} buildOrder=${BUILD_ORDER}"
