@@ -130,6 +130,12 @@ anyway. What the fix removes is the pin held by processes we must NOT kill.
   rebuilding it anyway.
 - Hosts started **before** this change still carry the old bundle cwd, so the first
   build after upgrading can still refuse once until those tasks are restarted.
+- **`scripts/free-build-folder.ts` is not in `WINDOWS_SCOPE_PATHS`** (`src/shared/
+  windows-ci-scope.ts`), so a future change to the hook ALONE would merge with the
+  packaged Windows proof skipped — a success that proved nothing. This change is in
+  scope only because it also edits `electrobun.config.ts`, `src/bun/index.ts` and
+  `src/bun/native-terminal-registry/**` (7 of its 13 files match). Reported to the
+  coordinator; that list is held by another task, so it is not edited here.
 - A holder that owns a handle without running from the folder (a shell or Explorer
   window sitting in it, an antivirus scan) cannot be enumerated at all; the hook
   fails with a message naming that as the cause.
