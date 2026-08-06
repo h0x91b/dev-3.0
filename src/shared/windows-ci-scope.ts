@@ -11,17 +11,38 @@
  * proved on this merge", not a required context asserting Windows was checked. See
  * decisions/211-windows-proof-post-merge-not-pull-request.md.
  */
-/** Changed files matching any of these dispatch the packaged Windows workflow. */
+/**
+ * Changed files matching any of these dispatch the packaged Windows workflow.
+ *
+ * THIS LIST IS A UNION OF TWO INVARIANTS, not one, and every entry is tagged with the
+ * one that earned it:
+ *   (1) SHIPS INTO / IS EXERCISED BY the packaged Windows proof — change it and the
+ *       packaged Windows app itself may differ.
+ *   (2) CARRIES THE BUN PIN that every workflow must hold in lockstep — drift there means
+ *       the repo's pins no longer agree, so the packaged proof stops being evidence about
+ *       the runtime anyone actually ships. This is why `electrobun.config.ts` and
+ *       `package.json` are here even though neither builds Windows.
+ *
+ * An entry may only be deleted by defeating the SPECIFIC reason that earned it. Deleting
+ * one because the other reason does not apply is how coverage silently disappears.
+ */
 export const WINDOWS_SCOPE_PATHS = [
+	// (1) the proof itself
 	".github/workflows/windows-conpty-package.yml",
 	// The post-merge caller. RULE: a workflow that DISPATCHES the proof must itself be
 	// in this list — it pins Bun, a pin change is a packaged-runtime change, and a
 	// workflow outside the list cannot dispatch the proof for its own edits.
 	".github/workflows/windows-proof-main.yml",
-	// A Bun pin change in these is a packaged-runtime change: they install the
-	// Bun that builds and ships the app, so the package proof has to re-run.
+	// (2) these carry the Bun pin that builds and ships the app, so a pin change here is
+	// a packaged-runtime change and the proof has to re-run. release.yml still pins Bun in
+	// its `prepare` and `release` jobs after the per-platform builds moved out; the two
+	// reusable build workflows below pin it for the builds themselves. NOTE that the
+	// reusable files are in under (2) ONLY — release.yml builds no Windows, it CALLS the
+	// proof, so neither reusable file ships into the packaged Windows app.
 	".github/workflows/build.yml",
 	".github/workflows/release.yml",
+	".github/workflows/release-build-macos.yml",
+	".github/workflows/release-build-linux.yml",
 	".github/workflows/native-terminal-soak.yml",
 	"electrobun.config.ts",
 	"package.json",

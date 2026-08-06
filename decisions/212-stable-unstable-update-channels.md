@@ -130,6 +130,36 @@ criterion earned it**, and an entry may only be deleted by defeating that specif
 comment that previously justified the workflow entries by the packaged-runtime reason alone was
 stale after the extract and now names both.
 
+## 3b. The dry-run guard was PER-STEP, and a reusable workflow cannot inherit it
+
+Found while extracting the per-platform builds, before the mistake existed. It is the most
+dangerous line in that refactor and it would have failed silently and green.
+
+A `test-*` tag publishes NOTHING today, and the mechanism is per-STEP, not per-workflow:
+`release.yml`'s `prepare` sets `publish=true` only when the event is a push AND the tag
+matches `v*`; all eight `aws s3 sync` calls live in four steps each carrying
+`if: needs.prepare.outputs.publish == 'true'`; the `release` job (GitHub Release + brew)
+carries the same condition at job level. Because the gate is on the steps, it applied to
+every earlier dry run too — nothing a previous `test-*` tag could have left in the feed.
+
+**A reusable workflow cannot read its caller's `needs` context.** Moving those steps into
+one without re-gating them would have turned every future dry run into a live publish to
+the updater feed real users poll, while the run stayed green. So `publish` is a REQUIRED
+boolean input, and the guard is `if: inputs.publish`.
+
+One level up, the same catastrophe has a second route: a job output is a **string** (which
+is why the original compares it to `'true'`). Passing the raw output to a boolean input
+means a non-empty `"false"` arrives truthy, `if: inputs.publish` is satisfied, and the dry
+run publishes — with the new `if:` present and correct. Callers therefore MUST pass an
+explicit comparison, `publish: ${{ needs.prepare.outputs.publish == 'true' }}`.
+
+Both are asserted in `workflow-windows-proof.test.ts`, which now enumerates publishers
+across every workflow and follows `workflow_call` indirection — a publisher inside a
+reusable workflow is guarded by its callers, and every caller must carry the edge. **Two
+independent properties hang off that one enumeration** — gated by the Windows proof, and
+gated by `publish` — asserted separately because a publisher can satisfy either while
+violating the other. They look redundant; deleting either as duplication is how one dies.
+
 ## 4. Risks
 
 - `buildOrder` depends on `main` staying squash-merged. Nothing enforces that mechanically.
@@ -155,6 +185,20 @@ stale after the extract and now names both.
   `cancel-in-progress`, since a cron checking a sha has no burst to collapse. The manifest-last
   upload ordering stays regardless — it protects a run that dies mid-sync, which is a different
   hazard.
+- **One reusable build workflow for all four platforms** — rejected. Enumerating the four
+  jobs showed the two macOS jobs are step-for-step identical while the Linux pair differs in
+  six ways, so a single file would have required inventing `if:` branches that do not exist
+  today: a rewrite wearing an extract's clothes, and a wrongly-skipped step still produces
+  artifacts and a green run. Two reusable workflows instead (macOS is a pure copy; Linux
+  carries one extra declared input). PR1 therefore contains exactly **two** deliberate
+  behaviour changes, both named rather than absorbed: the x64 artifact/CLI ordering is
+  unified to CLI-first (verified safe — the two scripts write disjoint files into a shared
+  directory and neither removes it, and the CLI step writes no JSON for the wholesale
+  `update.json` rewrite to discard), and a missing linux-arm64 GUI bundle now shows as a
+  failed-but-continued step instead of a passing step with a `::warning::` annotation.
+- **A required enum input to switch step order** — rejected. A declared conditional is still
+  a conditional; unifying the order removes the branch entirely, which is what the rule was
+  aiming at.
 - **A separate `Unstable` badge, leaving the version untouched**, and **a real pre-release semver
   like `1.43.0-unstable.N`** — both put to Arseny alongside the build-metadata suffix; he picked
   the suffix.

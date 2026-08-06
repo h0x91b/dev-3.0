@@ -16,8 +16,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 const workflow = (name: string) =>
 	readFileSync(fileURLToPath(new URL(`../../../.github/workflows/${name}`, import.meta.url)), "utf8");
@@ -25,7 +26,6 @@ const workflow = (name: string) =>
 const PACKAGE_WORKFLOW = workflow("windows-conpty-package.yml");
 const MAIN_WORKFLOW = workflow("windows-proof-main.yml");
 const BUILD_WORKFLOW = workflow("build.yml");
-const RELEASE_WORKFLOW = workflow("release.yml");
 
 /**
  * Job blocks under `jobs:`, keyed by job name: two spaces, a name, a colon, end of line.
@@ -267,69 +267,160 @@ describe("the post-merge Windows proof on main", () => {
 	});
 });
 
+/**
+ * Publishers are detected BY BEHAVIOUR across EVERY workflow, and now across workflow_call
+ * INDIRECTION: the per-platform builds moved into reusable workflows, so the job that runs
+ * `aws s3 sync` lives in one file while the `needs: windows-proof` edge that guards it lives
+ * in its caller. A per-file detector then finds a publisher with no edge (false red) or —
+ * worse — finds no publisher at all and passes on an empty set.
+ *
+ * TWO INDEPENDENT PROPERTIES hang off this one enumeration, and they are asserted
+ * SEPARATELY over the same set:
+ *   A. every publisher is gated by the packaged Windows proof;
+ *   B. every publisher is gated by `publish`, so a dry run cannot reach the live feed.
+ * They will look redundant to someone later. THEY ARE NOT — a publisher can carry the
+ * Windows edge and still publish from a `test-*` tag, and vice versa. Deleting either as
+ * duplication is how one of them dies.
+ */
 describe("nothing publishes to the updater feed without the Windows proof", () => {
-	/**
-	 * Publishers are detected BY BEHAVIOUR, not by name: any job that runs an
-	 * `aws s3 sync`/`cp`. Naming them would mean this test protects exactly today's
-	 * four jobs and silently ignores the per-channel jobs the update-channels work adds.
-	 */
-	const release = [...jobs(RELEASE_WORKFLOW)];
-	/** By the command that uploads. */
-	const byCommand = release.filter(([, body]) => /aws s3 (?:sync|cp)\b/.test(body));
-	/** By the destination that is uploaded to — independent of how it is spelled. */
-	const byBucket = release.filter(([, body]) => /s3:\/\/h0x91b-releases\//.test(body));
-	const publishers = release.filter(
-		([name]) => byCommand.some(([c]) => c === name) || byBucket.some(([b]) => b === name),
+	const WORKFLOWS_DIR = fileURLToPath(new URL("../../../.github/workflows", import.meta.url));
+
+	interface Publisher {
+		/** File the publishing step lives in. */
+		file: string;
+		/** Job inside that file. */
+		job: string;
+		body: string;
+		/** True when the publisher sits in a reusable workflow, so its callers guard it. */
+		reusable: boolean;
+	}
+
+	function allWorkflows(): Array<{ file: string; yaml: string }> {
+		return readdirSync(WORKFLOWS_DIR, { withFileTypes: true })
+			.filter((e) => e.isFile() && /\.ya?ml$/.test(e.name))
+			.map((e) => ({ file: e.name, yaml: readFileSync(join(WORKFLOWS_DIR, e.name), "utf8") }));
+	}
+
+	/** By the command that uploads, and independently by the destination uploaded to. */
+	const byCommand: Publisher[] = [];
+	const byBucket: Publisher[] = [];
+	for (const { file, yaml } of allWorkflows()) {
+		const reusable = /^\s{2}workflow_call:/m.test(yaml);
+		for (const [job, body] of jobs(yaml)) {
+			if (/aws s3 (?:sync|cp)\b/.test(body)) byCommand.push({ file, job, body, reusable });
+			if (/s3:\/\/h0x91b-releases\//.test(body)) byBucket.push({ file, job, body, reusable });
+		}
+	}
+	const publishers = [...byCommand, ...byBucket].filter(
+		(p, i, all) => all.findIndex((q) => q.file === p.file && q.job === p.job) === i,
 	);
 
-	// TWO detectors, DELIBERATELY REDUNDANT — neither may be deleted as duplication.
-	// Each is blind to a different mutation: renaming the upload command hides a job from
-	// the first (while the others keep the count non-zero, so the gate silently covers
-	// three of four), moving the bucket hides every job from the second. A detector that
-	// matches NOTHING must be red, or this whole describe passes by iterating an empty
-	// list while the updater feed ships ungated.
+	/** Every job in any workflow that calls `file` via `uses:`. */
+	function callersOf(file: string): Array<{ file: string; job: string; body: string }> {
+		const found: Array<{ file: string; job: string; body: string }> = [];
+		for (const { file: caller, yaml } of allWorkflows()) {
+			for (const [job, body] of jobs(yaml)) {
+				if (body.includes(`uses: ./.github/workflows/${file}`)) found.push({ file: caller, job, body });
+			}
+		}
+		return found;
+	}
+
+	// TWO detectors, DELIBERATELY REDUNDANT — neither may be deleted as duplication. Each is
+	// blind to a different mutation: renaming the upload command hides a job from the first,
+	// moving the bucket hides every job from the second. A detector that matches NOTHING must
+	// be red, or this whole describe passes by iterating an empty list while the feed ships
+	// ungated. The extraction of the per-platform builds is exactly the change that emptied
+	// the old release.yml-only version of this set.
 	it("detects the publishing jobs by their upload command", () => {
 		expect(
 			byCommand.length,
-			"no publishing jobs detected in release.yml by upload command: the matcher for `aws s3 sync` / `aws s3 cp` found nothing. The gate below would then pass on an empty list. Fix: if publishing moved to another command, teach this matcher the new one — do not delete the assertion.",
+			"no publishing jobs detected in ANY workflow by upload command: the matcher for `aws s3 sync` / `aws s3 cp` found nothing, so every assertion below passes on an empty list. Fix: if publishing moved to another command, teach this matcher the new one — do not delete the assertion.",
 		).toBeGreaterThan(0);
 	});
 
 	it("detects the publishing jobs by their destination bucket", () => {
 		expect(
 			byBucket.length,
-			"no publishing jobs detected in release.yml by destination: nothing mentions s3://h0x91b-releases/ any more. If the bucket or its prefix moved — update channels, for instance — this detector is now blind and the gate below is decoration. Fix: point it at the new destination.",
+			"no publishing jobs detected in ANY workflow by destination: nothing mentions s3://h0x91b-releases/ any more. If the bucket or its prefix moved, this detector is now blind and everything below is decoration. Fix: point it at the new destination.",
 		).toBeGreaterThan(0);
 	});
 
-	// Publishing is decentralised: each build job syncs its own artifacts, INCLUDING to
-	// the bucket root, which is the updater feed. So the proof has to gate the build
-	// jobs; gating only `release` would fail the GitHub Release after macOS had already
-	// shipped to updater clients.
+	// PROPERTY A. Publishing is decentralised: each build job syncs its own artifacts,
+	// INCLUDING to the bucket root that feeds the in-app updater. A publisher inside a
+	// reusable workflow is guarded by its CALLERS, and EVERY caller must carry the edge —
+	// one unguarded caller is a full publish path.
 	it("makes every publishing job depend on the Windows proof", () => {
-		const ungated = publishers
-			.filter(([, body]) => !/^ {4}needs:.*\bwindows-proof\b/m.test(body))
-			.map(([name]) => name);
+		const ungated: string[] = [];
+		for (const p of publishers) {
+			if (!p.reusable) {
+				if (!/^ {4}needs:.*\bwindows-proof\b/m.test(p.body)) ungated.push(`${p.file} job ${p.job}`);
+				continue;
+			}
+			const callers = callersOf(p.file);
+			if (callers.length === 0) {
+				ungated.push(`${p.file} job ${p.job} (reusable, but nothing calls it — it cannot be guarded)`);
+				continue;
+			}
+			for (const c of callers) {
+				if (!/^ {4}needs:.*\bwindows-proof\b/m.test(c.body)) {
+					ungated.push(`${c.file} job ${c.job} calls ${p.file} without the proof`);
+				}
+			}
+		}
 
 		expect(
 			ungated,
-			`These release jobs publish to the updater feed without the packaged Windows proof gating them:\n${ungated.join("\n")}\nEach one runs its own \`aws s3 sync\`, including the sync to the bucket ROOT that feeds the in-app updater, so a Windows failure would land a partial ship wearing a failed release's clothes. Fix: add \`windows-proof\` to that job's \`needs:\` — not to the \`release\` job, which runs after the publishing already happened. See decisions/211-windows-proof-post-merge-not-pull-request.md.`,
+			`These publish to the updater feed without the packaged Windows proof gating them:\n${ungated.join("\n")}\nEach runs its own \`aws s3 sync\`, including the sync to the bucket ROOT that feeds the in-app updater, so a Windows failure would land a partial ship wearing a failed release's clothes. A publisher inside a REUSABLE workflow is guarded by its callers, so EVERY caller needs the edge. Fix: add \`windows-proof\` to that job's \`needs:\`. See decisions/211-windows-proof-post-merge-not-pull-request.md.`,
 		).toEqual([]);
 	});
 
-	it("runs the proof from the release path itself, not from a stale artifact", () => {
-		const proof = jobs(RELEASE_WORKFLOW).get("windows-proof") ?? "";
+	// PROPERTY B, and the reason it exists is a near miss. The dry-run containment was
+	// PER-STEP — `if: needs.prepare.outputs.publish == 'true'` on the upload step — and a
+	// reusable workflow CANNOT read its caller's `needs` context. Moving those steps without
+	// re-gating them would have turned every `test-*` dry run into a live publish to the feed
+	// real users poll, silently, with the run still green.
+	it("gates every publishing step so a dry run cannot reach the live feed", () => {
+		const ungated: string[] = [];
+		for (const p of publishers) {
+			const guarded = p.reusable
+				? /^ {8}if:\s*inputs\.publish\s*$/m.test(p.body)
+				: /^ {8}if:\s*needs\.prepare\.outputs\.publish == 'true'\s*$/m.test(p.body);
+			if (!guarded) ungated.push(`${p.file} job ${p.job}`);
+		}
+
 		expect(
-			proof,
-			"release.yml has no windows-proof job, so a release can build and publish while the packaged Windows app is broken. Arseny's rule: if it cannot build Windows at version-build time, it should fail there. Fix: call ./.github/workflows/windows-conpty-package.yml from a job named windows-proof.",
-		).not.toBe("");
+			ungated,
+			`These publishing steps are not gated, so a dry run (a \`test-*\` tag or workflow_dispatch) would publish to the LIVE updater feed:\n${ungated.join("\n")}\nFix: in a caller, gate the upload step with \`if: needs.prepare.outputs.publish == 'true'\`; in a reusable workflow, take \`publish\` as a required boolean input and gate with \`if: inputs.publish\`. A reusable workflow cannot read the caller's \`needs\` context, which is why this is an input and not an inherited condition.`,
+		).toEqual([]);
+	});
+
+	// PROPERTY B, one level up. A job output is a STRING — release.yml compares it to
+	// 'true' for exactly that reason. Passing the raw output to a boolean input means a
+	// "false" string arrives truthy, `if: inputs.publish` is satisfied, and the dry run
+	// publishes — the identical catastrophe one file over, with the step's `if:` present
+	// and correct.
+	it("passes publish as an explicit boolean comparison, never a raw output string", () => {
+		const bad: string[] = [];
+		for (const { file, yaml } of allWorkflows()) {
+			for (const [job, body] of jobs(yaml)) {
+				// Only a CALL-SITE input counts. `prepare` DECLARES a job output also named
+				// `publish` at the same indent, and matching that instead is a false positive
+				// — the output is meant to be a string; it is the `with:` value that must be
+				// a boolean.
+				const withIdx = body.search(/^ {4}with:$/m);
+				if (withIdx < 0) continue;
+				const m = /^ {6}publish:\s*(.+)$/m.exec(body.slice(withIdx));
+				if (!m) continue;
+				const value = m[1].trim();
+				const ok = /==\s*'true'\s*\}\}$/.test(value) || value === "true" || value === "false";
+				if (!ok) bad.push(`${file} job ${job} passes publish: ${value}`);
+			}
+		}
+
 		expect(
-			proof,
-			"the release-side proof must call the same reusable workflow the post-merge one does, or the two drift. Fix: `uses: ./.github/workflows/windows-conpty-package.yml`.",
-		).toMatch(/uses:\s*\.\/\.github\/workflows\/windows-conpty-package\.yml/);
-		expect(
-			proof,
-			"a scope filter on the release-side proof would let a release skip Windows entirely. Fix: leave this job unconditional — scoping belongs to the post-merge workflow only.",
-		).not.toMatch(/^ {4}if:/m);
+			bad,
+			`These call sites pass a non-boolean to the \`publish\` input:\n${bad.join("\n")}\nA job output is a STRING, so a non-empty "false" arrives TRUTHY at a boolean input and the dry run publishes to the live feed with the step's \`if:\` present and correct. Fix: pass \`publish: \${{ needs.prepare.outputs.publish == 'true' }}\` — an explicit comparison — or a literal true/false.`,
+		).toEqual([]);
 	});
 });
