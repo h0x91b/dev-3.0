@@ -31,6 +31,7 @@ type SpawnResponse = {
 
 let spawnResponses: SpawnResponse[] = [];
 let lastSpawnOptions: { env?: Record<string, string> } | undefined;
+let spawnCommands: string[][] = [];
 let killedProcesses = 0;
 
 function queueResponse(exitCode: number, stdout: string, stderr = "") {
@@ -38,8 +39,9 @@ function queueResponse(exitCode: number, stdout: string, stderr = "") {
 }
 
 vi.mock("../spawn", () => ({
-	spawn: (_cmd: string[], opts?: { env?: Record<string, string> }) => {
+	spawn: (cmd: string[], opts?: { env?: Record<string, string> }) => {
 		lastSpawnOptions = opts;
+		spawnCommands.push(cmd);
 		const response = spawnResponses.shift() ?? { exitCode: 1, stdout: "", stderr: "no response queued" };
 		const encoder = new TextEncoder();
 		let resolveExit!: (code: number) => void;
@@ -71,6 +73,7 @@ vi.mock("../spawn", () => ({
 }));
 
 import {
+	fetchCompareRef,
 	fetchOrigin,
 	_resetFetchState,
 	saveDiffSnapshot,
@@ -80,6 +83,7 @@ import {
 beforeEach(() => {
 	lastSpawnOptions = undefined;
 	spawnResponses = [];
+	spawnCommands = [];
 	killedProcesses = 0;
 	_resetFetchState();
 });
@@ -230,6 +234,54 @@ describe("fetchOrigin", () => {
 		expect(ok1).toBe(true);
 		expect(ok2).toBe(true);
 		expect(spawnResponses).toHaveLength(0); // both consumed
+	});
+});
+
+// ─── fetchCompareRef ─────────────────────────────────────────────────────────
+
+describe("fetchCompareRef", () => {
+	/** Spawned fetches, minus the `-c core.quotepath=false` every git call carries. */
+	function fetchCommands(): string[][] {
+		return spawnCommands
+			.map((cmd) => cmd.filter((arg) => arg !== "-c" && arg !== "core.quotepath=false"))
+			.filter((cmd) => cmd[1] === "fetch");
+	}
+
+	it("fetches a fork-qualified base from the remote that owns it", async () => {
+		queueResponse(0, "origin\narditti\n"); // git remote
+		queueResponse(0, ""); // git fetch
+
+		expect(await fetchCompareRef("/repo", "arditti/feat/file-path-open")).toBe(true);
+		expect(fetchCommands()).toEqual([[
+			"git", "fetch", "arditti",
+			"+refs/heads/feat/file-path-open:refs/remotes/arditti/feat/file-path-open",
+			"--quiet",
+		]]);
+	});
+
+	it("treats a slashed branch name as an origin branch when no such remote exists", async () => {
+		queueResponse(0, "origin\n"); // git remote
+		queueResponse(0, ""); // git fetch
+
+		expect(await fetchCompareRef("/repo", "feat/file-path-open")).toBe(true);
+		expect(fetchCommands()).toEqual([["git", "fetch", "origin", "feat/file-path-open", "--quiet"]]);
+	});
+
+	it("does not consult remotes for an unslashed branch", async () => {
+		queueResponse(0, ""); // git fetch
+
+		expect(await fetchCompareRef("/repo", "main")).toBe(true);
+		expect(spawnCommands.some((cmd) => cmd[cmd.length - 1] === "remote")).toBe(false);
+	});
+
+	it("keeps the origin and fork fetches of the same branch on separate cooldowns", async () => {
+		queueResponse(0, "origin\narditti\n");
+		queueResponse(0, "");
+		expect(await fetchCompareRef("/repo", "arditti/feat/x")).toBe(true);
+
+		queueResponse(0, "");
+		expect(await fetchOrigin("/repo", "arditti/feat/x")).toBe(true);
+		expect(fetchCommands()).toHaveLength(2);
 	});
 });
 

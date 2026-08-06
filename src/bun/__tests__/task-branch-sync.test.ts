@@ -132,6 +132,57 @@ describe("syncTaskBranchName", () => {
 		expect(git.getCurrentBranch).not.toHaveBeenCalled();
 	});
 
+	it("pins the comparison base when a review task's branch is renamed", async () => {
+		// PR-review task: baseBranch is the reviewed branch, and the guard in
+		// resolveTaskCompareBaseBranch recognised it only while branchName matched.
+		// After the rename the review branch would leak through as the base.
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("fix/dev3-underline-flicker");
+
+		const project = makeProject();
+		const task = makeTask({
+			baseBranch: "arditti/feat/dev3-file-path-open",
+			existingBranch: "arditti/feat/dev3-file-path-open",
+			branchName: "feat/dev3-file-path-open",
+		});
+
+		await syncTaskBranchName(project, task);
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			branchName: "fix/dev3-underline-flicker",
+			baseBranch: "main",
+		});
+	});
+
+	it("leaves a variant's source branch as its base across a rename", async () => {
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feature/source-v3");
+
+		const project = makeProject();
+		const task = makeTask({
+			baseBranch: "feature/source",
+			existingBranch: "feature/source",
+			branchName: "feature/source-v2",
+		});
+
+		await syncTaskBranchName(project, task);
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { branchName: "feature/source-v3" });
+	});
+
+	it("does not pin anything when the branch is renamed onto the stored base", async () => {
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feature/source");
+
+		const project = makeProject();
+		const task = makeTask({
+			baseBranch: "feature/source",
+			existingBranch: "feature/source",
+			branchName: "feature/source-v2",
+		});
+
+		await syncTaskBranchName(project, task);
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { branchName: "feature/source" });
+	});
+
 	it("returns the original task when persisting fails", async () => {
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("chore/dev3-example");
 		vi.mocked(data.updateTask).mockRejectedValue(new Error("disk full"));

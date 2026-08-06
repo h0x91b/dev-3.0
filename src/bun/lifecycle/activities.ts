@@ -204,7 +204,7 @@ async function checkMergedBranches(): Promise<void> {
 			...dueTasks.map((t) => t.baseBranch || project.defaultBaseBranch || "main"),
 		])];
 		try {
-			await Promise.all(uniqueBaseBranches.map((b) => git.fetchOrigin(project.path, b)));
+			await Promise.all(uniqueBaseBranches.map((b) => git.fetchCompareRef(project.path, b)));
 		} catch {
 			continue;
 		}
@@ -255,7 +255,7 @@ async function checkMergedBranches(): Promise<void> {
 					merged = await git.isBranchMergedViaGitHubPR(task.worktreePath!, project)
 						|| (task.prNumber != null
 							&& (await git.getBranchStatus(task.worktreePath!, ref)).ahead === 0
-							&& await github.isPullRequestMerged(project, task.worktreePath!, task.prNumber));
+							&& await github.isPullRequestMerged(project, task.worktreePath!, task.prNumber, branchName));
 				} else {
 					merged = await git.isContentMergedInto(task.worktreePath!, ref, project);
 				}
@@ -343,9 +343,10 @@ interface GitHubPullRequestSummary {
 	mergeStateStatus?: unknown;
 	statusCheckRollup?: unknown;
 	reviewDecision?: unknown;
+	headRefName?: unknown;
 }
 
-const PR_STATUS_JSON_FIELDS = "number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title";
+const PR_STATUS_JSON_FIELDS = "number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title,headRefName";
 
 interface PolledPRStatus {
 	found: boolean;
@@ -517,7 +518,17 @@ async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion:
 			try {
 				const parsed = JSON.parse(knownPrResult.stdout);
 				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-					pr = parsed as GitHubPullRequestSummary;
+					const known = parsed as GitHubPullRequestSummary;
+					// The stored number survives a branch rename, and a task grown out
+					// of a review task inherits the reviewed PR's number. Either way it
+					// can name somebody else's PR — take it only if its head is us.
+					if (typeof known.headRefName === "string" && known.headRefName !== branchName) {
+						log.info("Ignoring stored PR from a different branch", {
+							taskId: task.id.slice(0, 8), pr: task.prNumber, prHead: known.headRefName, branch: branchName,
+						});
+						return { found: false, ciStatus: null };
+					}
+					pr = known;
 					isOpenPr = typeof pr.state === "string" && pr.state.toUpperCase() === "OPEN";
 				}
 			} catch {

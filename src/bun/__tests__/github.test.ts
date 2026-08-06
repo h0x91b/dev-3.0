@@ -527,7 +527,7 @@ describe("github", () => {
 	describe("isPullRequestMerged", () => {
 		const PROJECT = { githubAuthHost: "github.com", githubAuthLogin: "h0x91b" };
 
-		function mockGhPrView(state: string | null, ok = true) {
+		function mockGhPrView(state: string | null, ok = true, headRefName = "feat/mine") {
 			whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
 			spawnMock.mockImplementation((cmd: string[]) => {
 				if (cmd.join(" ") === "gh auth status --json hosts") {
@@ -537,35 +537,59 @@ describe("github", () => {
 				}
 				if (cmd[1] === "auth" && cmd[2] === "token") return fakeProc("secret-token\n");
 				if (!ok) return fakeProc("", "no such PR", 1);
-				return fakeProc(JSON.stringify({ state }));
+				return fakeProc(JSON.stringify({ state, headRefName }));
 			});
 		}
 
-		it("returns true for a merged PR", async () => {
+		it("returns true for a merged PR on this branch", async () => {
 			mockGhPrView("MERGED");
 			const { isPullRequestMerged } = await import("../github");
-			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077)).resolves.toBe(true);
+			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine")).resolves.toBe(true);
 		});
 
 		it("returns false for an open PR", async () => {
 			mockGhPrView("OPEN");
 			const { isPullRequestMerged } = await import("../github");
-			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077)).resolves.toBe(false);
+			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine")).resolves.toBe(false);
 		});
 
 		it("returns false when the gh command fails (offline / unauthenticated)", async () => {
 			mockGhPrView(null, false);
 			const { isPullRequestMerged } = await import("../github");
-			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077)).resolves.toBe(false);
+			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine")).resolves.toBe(false);
+		});
+
+		it("refuses a merged PR that belongs to another branch", async () => {
+			mockGhPrView("MERGED", true, "contributor/their-feature");
+			const { isPullRequestMerged, _resetPullRequestMergedCache } = await import("../github");
+			_resetPullRequestMergedCache();
+			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1255, "fix/mine")).resolves.toBe(false);
+		});
+
+		it("accepts a merged PR without an ownership check when no branch is known", async () => {
+			mockGhPrView("MERGED", true, "contributor/their-feature");
+			const { isPullRequestMerged, _resetPullRequestMergedCache } = await import("../github");
+			_resetPullRequestMergedCache();
+			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1255, null)).resolves.toBe(true);
+		});
+
+		it("reports state and head branch via getPullRequestSnapshot", async () => {
+			mockGhPrView("MERGED", true, "contributor/their-feature");
+			const { getPullRequestSnapshot, _resetPullRequestMergedCache } = await import("../github");
+			_resetPullRequestMergedCache();
+			await expect(getPullRequestSnapshot(PROJECT, "/tmp/wt", 1255)).resolves.toEqual({
+				state: "MERGED",
+				headRefName: "contributor/their-feature",
+			});
 		});
 
 		it("caches a merged answer instead of re-asking gh", async () => {
 			mockGhPrView("MERGED");
 			const { isPullRequestMerged, _resetPullRequestMergedCache } = await import("../github");
 			_resetPullRequestMergedCache();
-			await isPullRequestMerged(PROJECT, "/tmp/wt", 1077);
+			await isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine");
 			const callsAfterFirst = spawnMock.mock.calls.length;
-			await isPullRequestMerged(PROJECT, "/tmp/wt", 1077);
+			await isPullRequestMerged(PROJECT, "/tmp/wt", 1077, "feat/mine");
 			expect(spawnMock.mock.calls.length).toBe(callsAfterFirst);
 		});
 	});

@@ -383,48 +383,84 @@ export async function runGitHub(
 	return runGh(args, { cwd, env, timeoutMs: options?.timeoutMs });
 }
 
-// A merged PR never un-merges, so positive answers are cached for the process
-// lifetime; negatives expire so the 15s branch-status poll re-asks without
-// hammering the API.
-const PR_MERGED_NEGATIVE_TTL_MS = 60_000;
+// A merged PR never un-merges, so a terminal answer is cached for the process
+// lifetime; everything else expires so the 15s branch-status poll re-asks
+// without hammering the API.
+const PR_SNAPSHOT_TTL_MS = 60_000;
 const PR_MERGED_TIMEOUT_MS = 10_000;
-const prMergedCache = new Map<string, { at: number; merged: boolean }>();
+const prSnapshotCache = new Map<string, { at: number; snapshot: PullRequestSnapshot | null }>();
 
-/** Test-only: clear the merged-PR cache. */
+/** Identity of one PR, as far as a task needs to trust it. */
+export interface PullRequestSnapshot {
+	/** `OPEN` / `MERGED` / `CLOSED`, uppercased. */
+	state: string;
+	/** The PR's head branch, so a caller can prove the PR is about its own work. */
+	headRefName: string;
+}
+
+/** Test-only: clear the PR snapshot cache. */
 export function _resetPullRequestMergedCache(): void {
-	prMergedCache.clear();
+	prSnapshotCache.clear();
 }
 
 /**
- * Is this exact PR merged? Task-scoped by design: the caller passes the PR
- * number recorded for its own task, so a reused branch name cannot make
- * somebody else's merged PR look like this task's work.
+ * State + head branch of one PR by number. Null when GitHub cannot answer
+ * (offline, unauthenticated, non-GitHub remote, PR gone).
+ */
+export async function getPullRequestSnapshot(
+	project: ProjectGitHubSelection,
+	cwd: string,
+	prNumber: number,
+): Promise<PullRequestSnapshot | null> {
+	const key = `${cwd}#${prNumber}`;
+	const cached = prSnapshotCache.get(key);
+	if (cached && (cached.snapshot?.state === "MERGED" || Date.now() - cached.at < PR_SNAPSHOT_TTL_MS)) {
+		return cached.snapshot;
+	}
+
+	let snapshot: PullRequestSnapshot | null = null;
+	try {
+		const result = await runGitHub(project, cwd, ["pr", "view", String(prNumber), "--json", "state,headRefName"], {
+			timeoutMs: PR_MERGED_TIMEOUT_MS,
+		});
+		if (result.ok && result.stdout) {
+			const parsed = JSON.parse(result.stdout);
+			if (typeof parsed?.state === "string") {
+				snapshot = {
+					state: parsed.state.toUpperCase(),
+					headRefName: typeof parsed.headRefName === "string" ? parsed.headRefName : "",
+				};
+			}
+		}
+	} catch (err) {
+		log.warn("getPullRequestSnapshot failed", { prNumber, error: String(err) });
+	}
+	prSnapshotCache.set(key, { at: Date.now(), snapshot });
+	return snapshot;
+}
+
+/**
+ * Is this exact PR merged *and* about this branch's work? A task's stored PR
+ * number outlives the branch it was opened from: rename the branch, or inherit
+ * the number from a review task, and the number points at somebody else's PR.
+ * `headBranch` is that ownership proof — pass null only where no branch is known.
  */
 export async function isPullRequestMerged(
 	project: ProjectGitHubSelection,
 	cwd: string,
 	prNumber: number,
+	headBranch: string | null,
 ): Promise<boolean> {
-	const key = `${cwd}#${prNumber}`;
-	const cached = prMergedCache.get(key);
-	if (cached && (cached.merged || Date.now() - cached.at < PR_MERGED_NEGATIVE_TTL_MS)) {
-		return cached.merged;
-	}
-
-	let merged = false;
-	try {
-		const result = await runGitHub(project, cwd, ["pr", "view", String(prNumber), "--json", "state"], {
-			timeoutMs: PR_MERGED_TIMEOUT_MS,
-		});
-		if (result.ok && result.stdout) {
-			merged = JSON.parse(result.stdout)?.state === "MERGED";
-		}
-	} catch (err) {
-		// Offline, unauthenticated, non-GitHub remote — degrade to "not merged".
-		log.warn("isPullRequestMerged failed", { prNumber, error: String(err) });
-	}
-	prMergedCache.set(key, { at: Date.now(), merged });
-	log.info("isPullRequestMerged", { prNumber, merged });
+	const snapshot = await getPullRequestSnapshot(project, cwd, prNumber);
+	const merged = snapshot?.state === "MERGED"
+		&& (headBranch === null || snapshot.headRefName === headBranch);
+	log.info("isPullRequestMerged", {
+		prNumber,
+		merged,
+		state: snapshot?.state ?? null,
+		headRefName: snapshot?.headRefName ?? null,
+		headBranch,
+	});
 	return merged;
 }
 

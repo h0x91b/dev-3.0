@@ -125,6 +125,36 @@ function monitorGitPane(paneId: string | null, task: Task, projectId: string, op
 	}
 }
 
+/**
+ * Retire a comparison base that has stopped being a base. A review-branch or
+ * variant-source base is a moment in time: once that branch is merged into the
+ * project base — or deleted outright — every number computed against it answers
+ * a question nobody is asking, and "Rebase (AI)" points the agent at a dead
+ * branch. Fall the task back to the project base and persist it, so the fix
+ * outlives this poll. The user's `vs … ▾` override is unaffected: it lives in
+ * renderer state, not in `task.baseBranch`.
+ */
+async function healDeadCompareBase(project: Project, task: Task, baseBranch: string): Promise<string> {
+	const projectBase = project.defaultBaseBranch || "main";
+	if (baseBranch === projectBase || task.baseBranch !== baseBranch) return baseBranch;
+
+	const reason = !await git.refExists(project.path, baseBranch)
+		? "gone"
+		: await git.isRefMergedInto(project.path, baseBranch, `origin/${projectBase}`)
+			? "merged"
+			: null;
+	if (!reason) return baseBranch;
+
+	log.info("Retiring stale comparison base", { taskId: task.id.slice(0, 8), baseBranch, projectBase, reason });
+	try {
+		const updated = await data.updateTask(project, task.id, { baseBranch: projectBase });
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	} catch (err) {
+		log.warn("Failed to retire stale comparison base", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
+	return projectBase;
+}
+
 async function getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string }): Promise<BranchStatus> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -136,7 +166,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null };
 	}
 
-	const baseBranch = resolveTaskCompareBaseBranch(task, project);
+	const resolvedBase = resolveTaskCompareBaseBranch(task, project);
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
 	const branchForPush = liveBranch ?? task.branchName ?? "";
 
@@ -144,12 +174,13 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		await syncTaskBranchName(project, task);
 	}
 
-	log.debug("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
-	await git.fetchOrigin(project.path, baseBranch);
+	log.debug("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch: resolvedBase, branchName: branchForPush });
+	await git.fetchCompareRef(project.path, resolvedBase);
+	const baseBranch = await healDeadCompareBase(project, task, resolvedBase);
 	const ref = params.compareRef || `origin/${baseBranch}`;
 	const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
 	if (compareRefBranch && compareRefBranch !== baseBranch) {
-		await git.fetchOrigin(project.path, compareRefBranch);
+		await git.fetchCompareRef(project.path, compareRefBranch);
 	}
 	// Also refresh origin/<task-branch> so getUnpushedCount reflects out-of-band remote pushes.
 	if (branchForPush && branchForPush !== baseBranch && branchForPush !== compareRefBranch) {
@@ -184,9 +215,22 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		git.getBranchDiffStats(task.worktreePath, ref),
 		prDetection,
 	]);
-	const prInfo = detectedPr ?? (task.prNumber != null && task.prUrl
-		? { number: task.prNumber, url: task.prUrl }
-		: null);
+	let prInfo = detectedPr;
+	if (!prInfo && task.prNumber != null && task.prUrl) {
+		// The sticky number outlives the branch it was opened from: rename the
+		// branch, or inherit the number from the review task this one grew out of,
+		// and it points at a stranger's PR. Show it only while GitHub says the PR
+		// is about this branch. No answer at all (offline, non-GitHub remote) keeps
+		// the stored pair — better a stale badge than one that blinks out.
+		const snapshot = await github.getPullRequestSnapshot(project, task.worktreePath, task.prNumber);
+		if (!snapshot || !branchForPush || snapshot.headRefName === branchForPush) {
+			prInfo = { number: task.prNumber, url: task.prUrl };
+		} else {
+			log.info("Ignoring stored PR from a different branch", {
+				taskId: task.id.slice(0, 8), pr: task.prNumber, prHead: snapshot.headRefName, branch: branchForPush,
+			});
+		}
+	}
 	const prNumber = prInfo?.number ?? null;
 	const prUrl = prInfo?.url ?? null;
 	log.debug("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });
@@ -196,11 +240,11 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// Git alone cannot tell "merged, then rebased away" from "brand-new branch,
 	// nothing committed yet" — only this task's own merged PR proves work landed.
 	// No PR (or no GitHub / offline) ⇒ not merged, never a false positive.
-	const prNumberForMergeProof = detectedPr?.number ?? task.prNumber ?? null;
+	const prNumberForMergeProof = prInfo?.number ?? null;
 	const mergedByContent = status.ahead > 0
 		? await git.isContentMergedInto(task.worktreePath, ref, project) === true
 		: prNumberForMergeProof != null
-			&& await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof) === true;
+			&& await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof, branchForPush || null) === true;
 	const mergeCompletionFingerprint = mergedByContent
 		? (await getMergeCompletionFingerprint(task, branchForPush)).fingerprint
 		: null;
@@ -286,10 +330,10 @@ async function getTaskDiff(params: {
 	// `HEAD~N..HEAD` and clamps against the already on-disk `origin/<base>`
 	// merge-base — so neither pays for a network fetch.
 	if (params.mode !== "uncommitted" && params.mode !== "recent") {
-		await git.fetchOrigin(project.path, baseBranch);
+		await git.fetchCompareRef(project.path, baseBranch);
 		const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
 		if (compareRefBranch && compareRefBranch !== baseBranch) {
-			await git.fetchOrigin(project.path, compareRefBranch);
+			await git.fetchCompareRef(project.path, compareRefBranch);
 		}
 	}
 

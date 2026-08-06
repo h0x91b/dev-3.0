@@ -79,7 +79,11 @@ vi.mock("../git", () => ({
 	isGitRepo: vi.fn(),
 	getDefaultBranch: vi.fn(),
 	fetchOrigin: vi.fn().mockResolvedValue(true),
+	fetchCompareRef: vi.fn().mockResolvedValue(true),
 	fetchFork: vi.fn().mockResolvedValue(true),
+	listRemotes: vi.fn().mockResolvedValue(["origin"]),
+	refExists: vi.fn().mockResolvedValue(true),
+	isRefMergedInto: vi.fn().mockResolvedValue(false),
 	getBranchStatus: vi.fn(),
 	getTaskDiff: vi.fn(),
 	getUncommittedChanges: vi.fn(),
@@ -106,6 +110,7 @@ vi.mock("../git", () => ({
 vi.mock("../github", () => ({
 	runGitHub: vi.fn(),
 	isPullRequestMerged: vi.fn(),
+	getPullRequestSnapshot: vi.fn().mockResolvedValue(null),
 	getGitHubShellExports: vi.fn().mockResolvedValue([]),
 	getGitHubCliStatus: vi.fn(),
 }));
@@ -5043,7 +5048,7 @@ describe("handlers.getTaskDiff base branch resolution", () => {
 		await handlers.getTaskDiff({ taskId: task.id, projectId: project.id, mode: "branch" });
 
 		// Fetch and diff against the real base — never the branch compared to itself.
-		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, "main");
+		expect(git.fetchCompareRef).toHaveBeenCalledWith(project.path, "main");
 		expect(git.getTaskDiff).toHaveBeenCalledWith(
 			"/tmp/wt",
 			"branch",
@@ -5202,7 +5207,7 @@ describe("handlers.getBranchStatus", () => {
 			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 			expect(result.mergedByContent).toBe(true);
-			expect(github.isPullRequestMerged).toHaveBeenCalledWith(project, "/tmp/wt", 1077);
+			expect(github.isPullRequestMerged).toHaveBeenCalledWith(project, "/tmp/wt", 1077, "dev3/t");
 			// Content strategies are pointless here — nothing of the branch is left.
 			expect(git.isContentMergedInto).not.toHaveBeenCalled();
 		});
@@ -5259,6 +5264,143 @@ describe("handlers.getBranchStatus", () => {
 			expect(result.mergedByContent).toBe(true);
 			expect(git.isContentMergedInto).toHaveBeenCalled();
 			expect(github.isPullRequestMerged).not.toHaveBeenCalled();
+		});
+	});
+
+	// A task's stored PR number survives a branch rename, and a task grown out of
+	// a review task inherits the reviewed PR's number — so it can name a PR that
+	// belongs to somebody else's branch entirely.
+	describe("getBranchStatus with a stored PR from another branch", () => {
+		function mockClean() {
+			vi.mocked(git.getCurrentBranch).mockResolvedValue("fix/mine");
+			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 3 });
+			vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+			vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
+			vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", exitCode: 0 } as any);
+		}
+
+		it("hides the badge and refuses the merge proof when the PR's head is a foreign branch", async () => {
+			const project = makeProject();
+			const task = makeTask({
+				worktreePath: "/tmp/wt", branchName: "fix/mine", prNumber: 1255, prUrl: "https://gh/pr/1255",
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockClean();
+			vi.mocked(github.getPullRequestSnapshot).mockResolvedValue({
+				state: "MERGED", headRefName: "arditti/feat/file-path-open",
+			});
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.prNumber).toBeNull();
+			expect(result.mergedByContent).toBe(false);
+			expect(github.isPullRequestMerged).not.toHaveBeenCalled();
+		});
+
+		it("keeps the badge when the stored PR is this branch's own merged PR", async () => {
+			const project = makeProject();
+			const task = makeTask({
+				worktreePath: "/tmp/wt", branchName: "fix/mine", prNumber: 1300, prUrl: "https://gh/pr/1300",
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockClean();
+			vi.mocked(github.getPullRequestSnapshot).mockResolvedValue({ state: "MERGED", headRefName: "fix/mine" });
+			vi.mocked(github.isPullRequestMerged).mockResolvedValue(true);
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.prNumber).toBe(1300);
+			expect(result.mergedByContent).toBe(true);
+		});
+
+		it("keeps the stored badge when GitHub cannot answer at all (offline)", async () => {
+			const project = makeProject();
+			const task = makeTask({
+				worktreePath: "/tmp/wt", branchName: "fix/mine", prNumber: 1300, prUrl: "https://gh/pr/1300",
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockClean();
+			vi.mocked(github.getPullRequestSnapshot).mockResolvedValue(null);
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.prNumber).toBe(1300);
+		});
+	});
+
+	// A review-branch or variant-source base stops being a base once that branch
+	// merges or disappears; every number computed against it then answers a
+	// question nobody is asking.
+	describe("getBranchStatus retires a dead comparison base", () => {
+		function mockVariantTask() {
+			const project = makeProject();
+			const task = makeTask({
+				worktreePath: "/tmp/wt",
+				branchName: "feature/source-v2",
+				baseBranch: "feature/source",
+				existingBranch: "feature/source",
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }) as any);
+			vi.mocked(git.getCurrentBranch).mockResolvedValue("feature/source-v2");
+			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 0 });
+			vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+			vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
+			vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
+			vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", exitCode: 0 } as any);
+			return { project, task };
+		}
+
+		it("falls back to the project base once the base branch is merged into it", async () => {
+			const { project } = mockVariantTask();
+			vi.mocked(git.refExists).mockResolvedValue(true);
+			vi.mocked(git.isRefMergedInto).mockResolvedValue(true);
+
+			await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(git.isRefMergedInto).toHaveBeenCalledWith(project.path, "feature/source", "origin/main");
+			expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { baseBranch: "main" });
+			expect(git.getBranchStatus).toHaveBeenCalledWith("/tmp/wt", "origin/main");
+		});
+
+		it("falls back to the project base when the base ref no longer resolves", async () => {
+			const { project } = mockVariantTask();
+			vi.mocked(git.refExists).mockResolvedValue(false);
+
+			await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { baseBranch: "main" });
+			expect(git.isRefMergedInto).not.toHaveBeenCalled();
+		});
+
+		it("keeps a live base branch that has not landed yet", async () => {
+			mockVariantTask();
+			vi.mocked(git.refExists).mockResolvedValue(true);
+			vi.mocked(git.isRefMergedInto).mockResolvedValue(false);
+
+			await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(data.updateTask).not.toHaveBeenCalled();
+			expect(git.getBranchStatus).toHaveBeenCalledWith("/tmp/wt", "origin/feature/source");
+		});
+
+		it("does not probe anything for a task on the project base", async () => {
+			mockVariantTask();
+			vi.mocked(data.getTask).mockResolvedValue(makeTask({
+				worktreePath: "/tmp/wt", branchName: "dev3/t", baseBranch: "main",
+			}));
+			vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+
+			await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(git.refExists).not.toHaveBeenCalled();
+			expect(git.isRefMergedInto).not.toHaveBeenCalled();
 		});
 	});
 
@@ -5634,7 +5776,7 @@ describe("handlers.getTaskDiff", () => {
 			compareLabel: "origin/main",
 		});
 
-		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, "main");
+		expect(git.fetchCompareRef).toHaveBeenCalledWith(project.path, "main");
 		expect(git.getTaskDiff).toHaveBeenCalledWith("/tmp/wt", "branch", {
 			baseBranch: "main",
 			compareRef: "origin/main",

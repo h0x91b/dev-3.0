@@ -1220,7 +1220,7 @@ export async function listBranches(projectPath: string): Promise<BranchInfo[]> {
 	return branches;
 }
 
-async function refExists(projectPath: string, ref: string): Promise<boolean> {
+export async function refExists(projectPath: string, ref: string): Promise<boolean> {
 	const result = await run(["git", "rev-parse", "--verify", ref], projectPath);
 	return result.ok;
 }
@@ -1256,11 +1256,7 @@ async function detectDefaultCompareRefUncached(
 	projectPath: string,
 	baseBranch: string,
 ): Promise<string> {
-	const remoteResult = await run(["git", "remote"], projectPath);
-	const hasOriginRemote = remoteResult.ok && remoteResult.stdout
-		.split("\n")
-		.map((remote) => remote.trim())
-		.includes("origin");
+	const hasOriginRemote = (await listRemotes(projectPath)).includes("origin");
 	const remoteBaseRef = `origin/${baseBranch}`;
 	const remoteBaseExists = hasOriginRemote && await refExists(projectPath, remoteBaseRef);
 	const localBaseExists = await refExists(projectPath, baseBranch);
@@ -1341,10 +1337,19 @@ export async function fetchOrigin(
 	branch?: string,
 	timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS,
 ): Promise<boolean> {
+	return fetchFromRemote(projectPath, "origin", branch, timeoutMs);
+}
+
+async function fetchFromRemote(
+	projectPath: string,
+	remote: string,
+	branch?: string,
+	timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS,
+): Promise<boolean> {
 	await reportCurrentPreparationStage("fetching-origin");
 	const now = Date.now();
-	// Cache key is scoped to the specific branch when provided, or "*" for a full fetch.
-	const cacheKey = branch ? `${projectPath}:${branch}` : `${projectPath}:*`;
+	// Cache key is scoped to the specific remote+branch, or "*" for a full fetch.
+	const cacheKey = branch ? `${projectPath}:${remote}/${branch}` : `${projectPath}:${remote}:*`;
 	const lastSuccess = fetchLastSuccess.get(cacheKey) ?? 0;
 
 	// Skip if a successful fetch completed recently
@@ -1387,10 +1392,15 @@ export async function fetchOrigin(
 		}
 
 		const startedAt = performance.now();
+		// A non-origin remote needs an explicit refspec, otherwise `git fetch <fork>
+		// <branch>` lands in FETCH_HEAD only and refs/remotes/<fork>/<branch> —
+		// the ref every comparison resolves — stays frozen at its old commit.
 		const cmd = branch
-			? ["git", "fetch", "origin", branch, "--quiet"]
-			: ["git", "fetch", "origin", "--quiet"];
-		log.debug("Fetching origin", { projectPath, branch });
+			? remote === "origin"
+				? ["git", "fetch", "origin", branch, "--quiet"]
+				: ["git", "fetch", remote, `+refs/heads/${branch}:refs/remotes/${remote}/${branch}`, "--quiet"]
+			: ["git", "fetch", remote, "--quiet"];
+		log.debug("Fetching remote", { projectPath, remote, branch });
 		const result = await run(cmd, projectPath, {
 			timeoutMs,
 			env: {
@@ -1429,6 +1439,41 @@ export async function fetchOrigin(
 	} finally {
 		fetchInFlight.delete(cacheKey);
 	}
+}
+
+/** Configured remote names, e.g. `["origin", "arditti"]`. Empty when git fails. */
+export async function listRemotes(projectPath: string): Promise<string[]> {
+	const result = await run(["git", "remote"], projectPath);
+	if (!result.ok) return [];
+	return result.stdout.split("\n").map((remote) => remote.trim()).filter(Boolean);
+}
+
+/**
+ * Fetch the branch a task actually compares against. A fork-review base is
+ * stored remote-qualified (`arditti/feat/x`) and resolves to
+ * `refs/remotes/arditti/feat/x`, so fetching it from `origin` fails with
+ * "couldn't find remote ref" and the comparison keeps using a frozen ref.
+ * Route it to the remote that owns it; anything else is an origin branch.
+ */
+export async function fetchCompareRef(
+	projectPath: string,
+	branch: string,
+	timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS,
+): Promise<boolean> {
+	const slash = branch.indexOf("/");
+	if (slash > 0) {
+		const remote = branch.slice(0, slash);
+		if (remote !== "origin" && (await listRemotes(projectPath)).includes(remote)) {
+			return fetchFromRemote(projectPath, remote, branch.slice(slash + 1), timeoutMs);
+		}
+	}
+	return fetchFromRemote(projectPath, "origin", branch, timeoutMs);
+}
+
+/** Is `ref` fully contained in `targetRef`? False when either ref is unresolvable. */
+export async function isRefMergedInto(projectPath: string, ref: string, targetRef: string): Promise<boolean> {
+	const result = await run(["git", "merge-base", "--is-ancestor", ref, targetRef], projectPath);
+	return result.ok;
 }
 
 // `git pull --ff-only` intermittently dies with "fatal: Cannot fast-forward to
