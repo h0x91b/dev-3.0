@@ -11,6 +11,7 @@ import AgentConfigPicker from "./AgentConfigPicker";
 import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import MemoryPressureBanner from "./MemoryPressureBanner";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { requestTaskTerminalFocus } from "../terminal-focus-request";
 import { useReducedMotion } from "../utils/useReducedMotion";
 
 const NOT_INSTALLED_ID = "spawn-agent-not-installed";
@@ -23,7 +24,10 @@ interface SpawnAgentModalProps {
 
 function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	const t = useT();
-	const trapRef = useFocusTrap<HTMLDivElement>();
+	// A spawned agent owns the keyboard from here on, so the trap must not pull
+	// focus back to the "+ Agent" button — that is the extra click this removes.
+	const spawnedRef = useRef(false);
+	const trapRef = useFocusTrap<HTMLDivElement>({ shouldRestoreFocus: () => !spawnedRef.current });
 	const reducedMotion = useReducedMotion();
 	const errorRef = useRef<HTMLDivElement>(null);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
@@ -107,6 +111,10 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 			});
 			trackEvent("spawn_extra_agent", { project_id: project.id, agent_id: agentId ?? "default" });
 			trackAgentLaunched(agents, agentId, configId);
+			spawnedRef.current = true;
+			// The terminal holds this until the new pane is attachable, then types
+			// straight into it — the user's next keystroke is the agent's prompt.
+			requestTaskTerminalFocus(task.id);
 			onClose();
 		} catch (err) {
 			setError(String(err));

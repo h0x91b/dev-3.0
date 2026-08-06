@@ -30,6 +30,7 @@ import { getPaneRects, restoreSplitTree, serializeSplitTree, setSplitRatio } fro
 import NativePaneDividers from "./NativePaneDividers";
 import { publishNativePaneFocus } from "../native-pane-focus";
 import { fetchPaneState, runPaneAction, subscribePaneState } from "../pane-state-bus";
+import { subscribeTaskTerminalFocus } from "../terminal-focus-request";
 
 interface TaskTerminalProps {
 	projectId: string;
@@ -43,6 +44,8 @@ interface TaskTerminalProps {
 
 const PTY_CONNECT_TIMEOUT_MS = 10_000;
 const NATIVE_PANE_POLL_MS = 2500;
+/** How long a "give the terminal the keyboard" wish waits for a pane to attach. */
+const FOCUS_REQUEST_TTL_MS = 15_000;
 
 type ErrorKind = "worktree-gone" | "session-ended";
 
@@ -105,6 +108,33 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [focusedPaneRefusedReason, setFocusedPaneRefusedReason] = useState<NativeViewerStatus["refusedReason"]>(undefined);
 	/** Whether ANY process holds the lease; undefined until the host reports it. */
 	const [focusedPaneWriterAttached, setFocusedPaneWriterAttached] = useState<boolean | undefined>(undefined);
+
+	// Pane ids seen in the previous pane-state frame, so the next one can tell a
+	// pane that JUST opened from one that was already there.
+	const knownPaneIdsRef = useRef<Set<string>>(new Set());
+
+	// ── Pending keyboard focus ────────────────────────────────────────────────
+	// A surface that just started an agent ("+ Agent") asks for the keyboard. On
+	// native the pane it means does not exist yet, so the wish waits for the pane
+	// the server just made active — focusing whatever is on screen right now would
+	// put the user's first keystroke in the WRONG agent. It expires rather than
+	// firing minutes later, and on tmux there is nothing to wait for: one canvas,
+	// and tmux already made the new pane active.
+	const pendingFocusRef = useRef<{ until: number; awaitFreshPane: boolean } | null>(null);
+	const [focusRequestSeq, setFocusRequestSeq] = useState(0);
+
+	/** Hand the keyboard over if it was asked for and this handle can take it. */
+	function consumePendingFocus(handle: TerminalHandle | null | undefined) {
+		const pending = pendingFocusRef.current;
+		if (!pending) return;
+		if (Date.now() > pending.until) {
+			pendingFocusRef.current = null;
+			return;
+		}
+		if (pending.awaitFreshPane || !handle) return;
+		pendingFocusRef.current = null;
+		handle.focus();
+	}
 
 	// A host that is gone never comes back, so a pane stays marked until it leaves
 	// the pane set — re-asking every poll would just hammer a dead session.
@@ -179,9 +209,23 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				for (const paneId of stale) next.delete(paneId);
 				return next;
 			});
+			// A pane that is BOTH brand new and the server's active one was opened for
+			// the user to work in ("+ Agent"), so this viewer follows it. An auxiliary
+			// pane (dev server, viewer) hands focus back on split, so it never matches
+			// and never steals the agent's keyboard.
+			const known = knownPaneIdsRef.current;
+			const fresh = state.activePaneId && known.size > 0 && !known.has(state.activePaneId)
+				? state.activePaneId
+				: null;
+			knownPaneIdsRef.current = live;
+			// The pane a pending focus request was waiting for has arrived.
+			if (fresh && pendingFocusRef.current?.awaitFreshPane) {
+				pendingFocusRef.current = { ...pendingFocusRef.current, awaitFreshPane: false };
+				setFocusRequestSeq((n) => n + 1);
+			}
 			setClientFocusPaneId((prev) => {
 				const kept = prev && live.has(prev) ? prev : null;
-				const next = kept ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null);
+				const next = fresh ?? kept ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null);
 				if (next) publishNativePaneFocus(taskId, next);
 				return next;
 			});
@@ -227,6 +271,31 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			}
 		}
 	}, [nativePaneState?.panes.map((p) => p.paneId).join(",")]);
+
+	// Which native pane this viewer types into. Computed here, above the native
+	// branch, because the focus effects below need it too.
+	const nativeFocusPaneId = clientFocusPaneId
+		?? nativePaneState?.activePaneId
+		?? nativePaneState?.panes[0]?.paneId
+		?? null;
+
+	// ── Someone asked for the keyboard ────────────────────────────────────────
+	useEffect(() => {
+		return subscribeTaskTerminalFocus(taskId, () => {
+			pendingFocusRef.current = { until: Date.now() + FOCUS_REQUEST_TTL_MS, awaitFreshPane: isNative };
+			setFocusRequestSeq((n) => n + 1);
+			// Do not wait out the poll interval for a pane that already exists on the
+			// server — ask now so the keystrokes have somewhere to land.
+			if (isNative) void fetchPaneState(taskId).catch(() => {});
+		});
+	}, [taskId, isNative]);
+
+	// A handle that registers later consumes the request from onReady; this covers
+	// the pane that was already attached when the request arrived.
+	useEffect(() => {
+		if (!pendingFocusRef.current) return;
+		consumePendingFocus(isNative ? paneHandlesRef.current.get(nativeFocusPaneId ?? "") : termHandle);
+	}, [focusRequestSeq, isNative, nativeFocusPaneId, termHandle]);
 
 	// Hibernating a task whose terminal is already open must not leave a dead
 	// socket reconnecting forever: drop straight to the wake screen the moment the
@@ -459,7 +528,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		const panes = nativePaneState?.panes ?? [];
 
 		// Focused pane: clicking a pane updates client-local focus.
-		const focusPaneId = clientFocusPaneId ?? nativePaneState?.activePaneId ?? panes[0]?.paneId ?? null;
+		const focusPaneId = nativeFocusPaneId;
 
 		function makePaneNativeStatusHandler(paneId: string) {
 			return (status: NativeViewerStatus) => {
@@ -541,6 +610,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 								paneHandlesRef.current.set(paneId, handle);
 								// Use focused pane's handle for touch composer.
 								if (isFocused) setTermHandle(handle);
+								if (isFocused) consumePendingFocus(handle);
 							}}
 							onNativeStatus={makePaneNativeStatusHandler(paneId)}
 							onSessionLost={() => markPaneGone(paneId)}
@@ -572,6 +642,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					onReady={(handle) => {
 						if (focusPaneId) paneHandlesRef.current.set(focusPaneId, handle);
 						setTermHandle(handle);
+						consumePendingFocus(handle);
 					}}
 					onNativeStatus={focusPaneId ? makePaneNativeStatusHandler(focusPaneId) : undefined}
 					onSessionLost={focusPaneId ? () => markPaneGone(focusPaneId) : undefined}
@@ -739,7 +810,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			ptyUrl={ptyUrl}
 			taskId={taskId}
 			projectId={projectId}
-			onReady={setTermHandle}
+			onReady={(handle) => {
+				setTermHandle(handle);
+				consumePendingFocus(handle);
+			}}
 			onNativeStatus={handleNativeStatus}
 			touchComposeMode={touchInput && !rawMode}
 		/>

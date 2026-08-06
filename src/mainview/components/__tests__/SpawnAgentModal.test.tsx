@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import SpawnAgentModal from "../SpawnAgentModal";
 import { I18nProvider } from "../../i18n";
+import { subscribeTaskTerminalFocus } from "../../terminal-focus-request";
 import type { CodingAgent, GlobalSettings, Project, Task } from "../../../shared/types";
 
 const claudeAgent: CodingAgent = {
@@ -364,6 +366,72 @@ describe("SpawnAgentModal", () => {
 				expect(document.activeElement).not.toBe(outside);
 			}
 			document.body.removeChild(outside);
+		});
+	});
+
+	// The whole point of "+ Agent": the keystroke after it is the agent's prompt,
+	// so the keyboard has to end up in the terminal and not back on the trigger.
+	describe("handing the keyboard to the spawned agent", () => {
+		beforeEach(() => {
+			// Earlier cases leave implementations behind (clearAllMocks keeps them):
+			// a rejecting spawn and an uninstalled agent both block the success path.
+			mockedApi.request.spawnAgentInTask.mockResolvedValue(undefined);
+			mockedApi.request.checkAgentAvailability.mockResolvedValue([
+				{ agentId: "builtin-claude", name: "Claude", baseCommand: "claude", installed: true, resolvedPath: "/usr/local/bin/claude" },
+			]);
+		});
+
+		/** Opens the dialog by CLICKING the trigger, so it is the element focus would return to. */
+		async function openFromTrigger(user: ReturnType<typeof userEvent.setup>) {
+			function Harness() {
+				const [open, setOpen] = useState(false);
+				return (
+					<>
+						<button data-testid="trigger" onClick={() => setOpen(true)}>+ Agent</button>
+						{open && <SpawnAgentModal task={baseTask} project={baseProject} onClose={() => setOpen(false)} />}
+					</>
+				);
+			}
+			render(<I18nProvider><Harness /></I18nProvider>);
+			const trigger = screen.getByTestId("trigger");
+			await user.click(trigger);
+			return trigger;
+		}
+
+		it("asks the task terminal for the keyboard after a successful spawn", async () => {
+			const user = userEvent.setup();
+			const seen: string[] = [];
+			const stop = subscribeTaskTerminalFocus("t1", () => seen.push("t1"));
+			renderModal();
+
+			await vi.waitFor(() => expect(screen.getByTestId("spawn-agent-submit")).toBeEnabled());
+			await user.click(screen.getByTestId("spawn-agent-submit"));
+
+			await vi.waitFor(() => expect(seen).toEqual(["t1"]));
+			stop();
+		});
+
+		it("does not pull focus back to the + Agent button", async () => {
+			const user = userEvent.setup();
+			const trigger = await openFromTrigger(user);
+
+			await vi.waitFor(() => expect(screen.getByTestId("spawn-agent-submit")).toBeEnabled());
+			await user.click(screen.getByTestId("spawn-agent-submit"));
+
+			await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+			expect(trigger).not.toHaveFocus();
+		});
+
+		it("still returns focus to the trigger when the dialog is cancelled", async () => {
+			const user = userEvent.setup();
+			const trigger = await openFromTrigger(user);
+
+			await vi.waitFor(() => expect(screen.getByTestId("spawn-agent-submit")).toBeEnabled());
+			await user.keyboard("{Escape}");
+
+			await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+			expect(trigger).toHaveFocus();
+			expect(mockedApi.request.spawnAgentInTask).not.toHaveBeenCalled();
 		});
 	});
 });

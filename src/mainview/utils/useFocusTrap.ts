@@ -64,10 +64,20 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
  * be focusable itself (`tabIndex={-1}`) so step 1 has a target even when the
  * dialog has no focusable children yet.
  *
+ * `shouldRestoreFocus` opts step 3 out: a dialog that hands the keyboard to
+ * something else on success (a terminal it just spawned an agent into) must not
+ * have focus yanked back to its own trigger button on unmount. It is a callback,
+ * not a flag, because the decision is made in the click handler — the dialog
+ * unmounts in that same commit and never re-renders to publish a new value.
+ *
  * Works identically in the Electrobun desktop shell and the browser remote mode.
  */
-export function useFocusTrap<T extends HTMLElement = HTMLElement>(): RefObject<T | null> {
+export function useFocusTrap<T extends HTMLElement = HTMLElement>(
+	options?: { shouldRestoreFocus?: () => boolean },
+): RefObject<T | null> {
 	const ref = useRef<T>(null);
+	const shouldRestore = useRef(options?.shouldRestoreFocus);
+	shouldRestore.current = options?.shouldRestoreFocus;
 
 	// Capture the trigger element at first render — before the dialog mounts and
 	// before any `autoFocus` child runs — so focus can be restored on close.
@@ -139,6 +149,7 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(): RefObject<T
 		return () => {
 			document.removeEventListener("keydown", onKeyDown, true);
 			// Return focus to where the user was before the dialog opened.
+			if (shouldRestore.current?.() === false) return;
 			(previouslyFocused.current as HTMLElement | null)?.focus?.();
 		};
 	}, []);
