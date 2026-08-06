@@ -5,6 +5,7 @@ import { MAX_SHARED_IMAGE_BYTES, SHARED_IMAGE_EXTS } from "../shared/types";
 import { DEV3_HOME } from "./paths";
 import { projectStorageKey } from "../shared/project-storage-key";
 import { createLogger } from "./logger";
+import { isFullyQualifiedPath } from "../shared/absolute-path";
 
 const log = createLogger("shared-images");
 
@@ -55,7 +56,7 @@ export class SharedImageError extends Error {}
  * per-image `caption` is the agent's note about what to look at in this shot.
  */
 export function saveSharedImage(projectPath: string, sourcePath: string, caption?: string): SharedImage {
-	if (!sourcePath.startsWith("/") || sourcePath.includes("..")) {
+	if (!isFullyQualifiedPath(sourcePath, process.platform)) {
 		throw new SharedImageError(`Path must be absolute and free of "..": ${sourcePath}`);
 	}
 	if (!existsSync(sourcePath)) {

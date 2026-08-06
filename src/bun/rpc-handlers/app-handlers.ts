@@ -25,6 +25,8 @@ import { writeSystemClipboard } from "../system-clipboard";
 import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererDiagnostic, setActiveContext, setAppForeground, setStreamerPrivacy, setTerminalFocus } from "./shared";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
 import { loadSharedArtifactContent, loadSharedArtifactDownload } from "../shared-artifacts";
+import { isFullyQualifiedPath } from "../../shared/absolute-path";
+import { clipboardImageToPng } from "../clipboard-image";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
 	applyMenuContext({
@@ -763,12 +765,22 @@ async function pasteClipboardImage(params: { projectId: string }): Promise<{ pat
 		log.info("← pasteClipboardImage: no image in clipboard");
 		return null;
 	}
-	const pngData = Utils.clipboardReadImage();
-	if (!pngData || pngData.length === 0) {
+	const clipboardData = Utils.clipboardReadImage();
+	if (!clipboardData || clipboardData.length === 0) {
 		log.warn("← pasteClipboardImage: clipboardReadImage returned empty");
 		return null;
 	}
-	return saveUploadedFile(params.projectId, pngData, { mimeType: "image/png" });
+	// Windows hands back raw CF_DIB bytes, not PNG — convert before saving.
+	const converted = clipboardImageToPng(clipboardData);
+	if (!converted.ok) {
+		log.warn("← pasteClipboardImage: clipboard bytes are not a usable image", {
+			reason: converted.reason,
+			len: clipboardData.length,
+			head: Array.from(clipboardData.subarray(0, 8)),
+		});
+		return null;
+	}
+	return saveUploadedFile(params.projectId, converted.png, { mimeType: "image/png" });
 }
 
 async function uploadImageBase64(params: { projectId: string; base64: string; filename?: string; mimeType?: string }): Promise<{ path: string } | null> {
@@ -799,7 +811,7 @@ async function uploadFileBase64(params: { projectId: string; base64: string; fil
 
 async function readImageBase64(params: { path: string }): Promise<{ dataUrl: string } | null> {
 	log.info("→ readImageBase64", { path: params.path });
-	if (!params.path.startsWith("/") || params.path.includes("..")) {
+	if (!isFullyQualifiedPath(params.path, process.platform)) {
 		log.warn("← readImageBase64: invalid path, rejected");
 		return null;
 	}
@@ -834,7 +846,7 @@ async function readArtifactDownload(params: { artifact: SharedArtifact }) {
 
 async function openImageFile(params: { path: string }): Promise<void> {
 	log.info("→ openImageFile", { path: params.path });
-	if (!params.path.startsWith("/") || params.path.includes("..")) {
+	if (!isFullyQualifiedPath(params.path, process.platform)) {
 		throw new Error("Invalid file path");
 	}
 	Utils.openPath(params.path);
@@ -842,7 +854,7 @@ async function openImageFile(params: { path: string }): Promise<void> {
 
 async function openFolder(params: { path: string }): Promise<void> {
 	log.info("→ openFolder", { path: params.path });
-	if (!params.path.startsWith("/") || params.path.includes("..")) {
+	if (!isFullyQualifiedPath(params.path, process.platform)) {
 		throw new Error("Invalid folder path");
 	}
 	Utils.openPath(params.path);
@@ -902,7 +914,7 @@ function resolveZedCli(): string | null {
 
 async function openInApp(params: { appName: string; path: string }): Promise<void> {
 	log.info("→ openInApp", { appName: params.appName, path: params.path });
-	if (!params.path.startsWith("/") || params.path.includes("..")) {
+	if (!isFullyQualifiedPath(params.path, process.platform)) {
 		throw new Error("Invalid path");
 	}
 	if (!params.appName || params.appName.includes("/")) {

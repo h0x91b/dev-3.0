@@ -215,6 +215,7 @@ const terminal = {
 	"quickShell.open": "Quick Shell",
 	"quickShell.tooltipWithShortcut": "Quick Shell \u2014 new scratch in Operations (\u2318\u21e7`)",
 	"fileDrop.uploadFailed": "File upload failed: {error}",
+	"imagePaste.failed": "Couldn't paste the image from the clipboard. Save it as a file and drag it in instead.",
 
 	// Touch composer (mobile input mode)
 	"terminal.composerPlaceholder": "Type prompt…",

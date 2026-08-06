@@ -223,6 +223,7 @@ const terminal = {
 	"quickShell.open": "Быстрая консоль",
 	"quickShell.tooltipWithShortcut": "Быстрая консоль — новый scratch в Operations (⌘⇧`)",
 	"fileDrop.uploadFailed": "Ошибка загрузки файла: {error}",
+	"imagePaste.failed": "Не удалось вставить картинку из буфера. Сохраните её в файл и перетащите сюда.",
 
 	// Touch composer (mobile input mode)
 	"terminal.composerPlaceholder": "Введите промпт…",

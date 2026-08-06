@@ -215,6 +215,7 @@ const terminal = {
 	"quickShell.open": "Shell rápido",
 	"quickShell.tooltipWithShortcut": "Shell rápido — nuevo scratch en Operations (⌘⇧`)",
 	"fileDrop.uploadFailed": "Error al subir el archivo: {error}",
+	"imagePaste.failed": "No se pudo pegar la imagen del portapapeles. Guárdala como archivo y arrástrala aquí.",
 
 	// Touch composer (mobile input mode)
 	"terminal.composerPlaceholder": "Escribe un prompt…",

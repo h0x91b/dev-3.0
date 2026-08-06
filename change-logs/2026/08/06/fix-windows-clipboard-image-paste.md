@@ -1,0 +1,3 @@
+Short: Pasting an image works on Windows
+
+Pasting an image now takes the picture from the paste event itself instead of re-reading the host clipboard, which on Windows returned raw bitmap bytes that were saved as a broken `.png`; the host-clipboard fallback converts those bytes to real PNG. Image thumbnails, "open image", "open folder", and `dev3 show-image` also stop rejecting Windows paths like `C:/Users/...`. A paste that still fails now shows an error instead of doing nothing. On macOS the paste path changed too — the pasted image is uploaded from the event rather than through the clipboard RPC.

@@ -2,6 +2,9 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { api } from "../rpc";
 import { isLargeTextPaste, uploadPastedText } from "../utils/uploadPastedText";
 import { useAttachUpload } from "./useAttachUpload";
+import { imageFilesFromClipboard } from "../utils/clipboardImageFiles";
+import { toast } from "../toast";
+import { useT } from "../i18n";
 
 type PasteKind = "image" | "text" | null;
 
@@ -9,6 +12,7 @@ export function useClipboardPaste(
 	projectId: string,
 	onPathPasted: (path: string) => void,
 ): { handlePaste: (e: React.ClipboardEvent) => void; isPasting: boolean; pasteKind: PasteKind } {
+	const t = useT();
 	const [isPasting, setIsPasting] = useState(false);
 	const [pasteKind, setPasteKind] = useState<PasteKind>(null);
 	const mountedRef = useRef(true);
@@ -25,7 +29,8 @@ export function useClipboardPaste(
 			// mode) — upload them directly. The RPC fallback below reads the app
 			// host's clipboard, which in remote/browser mode is NOT the device the
 			// user pasted from.
-			const files = Array.from(e.clipboardData?.files ?? []);
+			const files = imageFilesFromClipboard(e.clipboardData);
+			if (files.length === 0) files.push(...Array.from(e.clipboardData?.files ?? []));
 			if (files.length > 0 && projectId) {
 				e.preventDefault();
 				setPasteKind("image");
@@ -55,13 +60,15 @@ export function useClipboardPaste(
 
 				api.request.pasteClipboardImage({ projectId }).then((result) => {
 					if (!mountedRef.current) return;
-					if (result) {
-						onPathPasted(result.path);
-					}
+					if (result) onPathPasted(result.path);
+					// A null result means the host clipboard had nothing usable — say so
+					// instead of leaving the user with an unchanged field.
+					else toast.error(t("imagePaste.failed"));
 					setIsPasting(false);
 					setPasteKind(null);
 				}).catch(() => {
 					if (!mountedRef.current) return;
+					toast.error(t("imagePaste.failed"));
 					setIsPasting(false);
 					setPasteKind(null);
 				});
@@ -89,7 +96,7 @@ export function useClipboardPaste(
 				setPasteKind(null);
 			});
 		},
-		[projectId, onPathPasted, attach],
+		[projectId, onPathPasted, attach, t],
 	);
 
 	return { handlePaste, isPasting: isPasting || isUploadingFiles, pasteKind };

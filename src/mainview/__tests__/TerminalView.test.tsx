@@ -995,12 +995,14 @@ function dispatchPaste(
 	target: Element,
 	text: string,
 	items: Array<{ type: string }> = [],
+	files: File[] = [],
 ) {
 	const event = new Event("paste", { bubbles: true, cancelable: true });
 	Object.defineProperty(event, "clipboardData", {
 		value: {
 			getData: (type: string) => (type === "text/plain" ? text : ""),
 			items,
+			files,
 		},
 	});
 	const preventDefault = vi.spyOn(event, "preventDefault");
@@ -1085,6 +1087,26 @@ describe("TerminalView – paste routing", () => {
 		expect(preventDefault).not.toHaveBeenCalled();
 	});
 
+	it("tells the user when the host clipboard yields no usable image, instead of failing silently", async () => {
+		// This is the Windows symptom: electrobun's clipboardReadImage returns nothing
+		// usable, the handler returned null, and absolutely nothing appeared on screen.
+		const { toast } = await import("../toast");
+		const errorToast = vi.mocked(toast.error);
+		errorToast.mockClear();
+		mockedPasteClipboardImage.mockResolvedValue(null);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		dispatchPaste(terminal, "", [{ type: "image/png" }]);
+
+		await waitFor(() => {
+			expect(
+				errorToast,
+				"cause: a failed image paste produced no user-visible feedback. fix: toast.error(t(\"imagePaste.failed\")) when pasteClipboardImage resolves null or rejects",
+			).toHaveBeenCalled();
+		});
+	});
+
 	it("still diverts image pastes to the attachment uploader (not term.paste)", async () => {
 		mockedPasteClipboardImage.mockResolvedValue({ path: "/tmp/uploads/pic.png" } as any);
 		const { container } = await renderAndSetup();
@@ -1096,6 +1118,44 @@ describe("TerminalView – paste routing", () => {
 			expect(mockedPasteClipboardImage).toHaveBeenCalledWith({ projectId: "p1" });
 		});
 		expect(mockPaste).not.toHaveBeenCalled();
+	});
+
+	it("uploads an image carried by the paste event itself, without reading the host clipboard", async () => {
+		// The webview already decoded the clipboard bitmap into real PNG bytes. Going
+		// through the host clipboard instead is what breaks on Windows, where
+		// electrobun returns raw CF_DIB bytes (or nothing at all).
+		mockedUploadFileBase64.mockResolvedValue({ path: "/tmp/uploads/image.png" } as any);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+		const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "image.png", { type: "image/png" });
+
+		dispatchPaste(terminal, "", [{ type: "image/png" }], [file]);
+
+		await waitFor(() => {
+			expect(mockedUploadFileBase64).toHaveBeenCalled();
+		});
+		expect(
+			mockedPasteClipboardImage,
+			"cause: the paste went through the host-clipboard RPC even though the event carried the image. fix: check imageFilesFromClipboard before the pasteClipboardImage fallback",
+		).not.toHaveBeenCalled();
+		expect(
+			mockPaste,
+			"cause: an image paste was also typed into the terminal as text. fix: preventDefault and return after the upload branch",
+		).not.toHaveBeenCalled();
+	});
+
+	it("leaves ordinary text pastes on the bracketed path when a non-image file is attached", async () => {
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+		const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+
+		dispatchPaste(terminal, "hello world", [], [file]);
+
+		expect(
+			mockPaste,
+			'cause: a text paste was diverted to the uploader because a non-image file was attached. fix: filter clipboard files on type.startsWith("image/")',
+		).toHaveBeenCalledWith("hello world");
+		expect(mockedUploadFileBase64).not.toHaveBeenCalled();
 	});
 
 	it("still diverts large text pastes to the .txt uploader (not term.paste)", async () => {

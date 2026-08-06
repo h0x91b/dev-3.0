@@ -29,6 +29,7 @@ import { matchesShortcut } from "./keymap";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { writeClipboardText } from "./utils/clipboard-write";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
+import { imageFilesFromClipboard } from "./utils/clipboardImageFiles";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 import { submitPastedText } from "./terminal-submit";
 import { createFilePathLinkProvider, type FilePathLinkProvider } from "./terminal-file-links";
@@ -1822,6 +1823,27 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 			// Attachments (images / large text) need a project to upload into.
 			if (projectId) {
+				// The paste event's own files are the reliable source: the webview hands
+				// over real PNG bytes for a clipboard bitmap. The host-clipboard RPC below
+				// is the fallback — on Windows it returns raw DIB bytes, and in remote mode
+				// it reads the app host's clipboard rather than the user's device.
+				const pastedImages = imageFilesFromClipboard(clip);
+				if (pastedImages.length > 0) {
+					e.preventDefault();
+					e.stopImmediatePropagation();
+					void Promise.all(pastedImages.map((f) => uploadDroppedFile(projectId, f)))
+						.then((paths) => {
+							const line = paths.filter((p): p is string => Boolean(p)).map((p) => p.replace(/ /g, "\\ ")).join(" ");
+							if (line) sendPathToPty(line);
+							else toast.error(t("imagePaste.failed"), { taskId });
+						})
+						.catch((err) => {
+							console.error("[TerminalView] Image paste upload failed:", err);
+							toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }), { taskId });
+						});
+					return;
+				}
+
 				let hasImage = false;
 				const items = clip?.items;
 				if (items) {
@@ -1838,8 +1860,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					e.stopImmediatePropagation();
 					api.request.pasteClipboardImage({ projectId }).then((result) => {
 						if (result) sendPathToPty(result.path);
+						else toast.error(t("imagePaste.failed"), { taskId });
 					}).catch((err) => {
 						console.error("[TerminalView] Image paste failed:", err);
+						toast.error(t("imagePaste.failed"), { taskId });
 					});
 					return;
 				}
@@ -1883,7 +1907,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 		container.addEventListener("paste", onPaste, { capture: true });
 		return () => container.removeEventListener("paste", onPaste, { capture: true });
-	}, [projectId]);
+	}, [projectId, taskId, t]);
 
 	function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
 		e.preventDefault();
