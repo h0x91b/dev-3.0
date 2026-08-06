@@ -3,7 +3,7 @@ name: Release build (macOS)
 # One macOS platform of the release path, callable per architecture and per update
 # channel. Extracted verbatim from release.yml's two identical build-macos-* jobs —
 # they differed ONLY by runner, the arch in cache keys / script args / artifact paths,
-# and one comment. See decisions/212-stable-unstable-update-channels.md.
+# and one comment. See decisions/218-stable-unstable-update-channels.md.
 #
 # EVERY INPUT IS REQUIRED, NO DEFAULTS. A default here publishes the wrong channel or
 # publishes at all from a dry run, and every test stays green — see `publish` below.

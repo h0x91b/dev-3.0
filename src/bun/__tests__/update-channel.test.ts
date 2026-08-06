@@ -5,7 +5,7 @@
  * settings coercion degrades an unknown channel instead of crashing, the semver comparator
  * swallows build metadata instead of throwing, and a wrong ordering rule reports "no
  * update" rather than an error. None of them produce a stack trace, so none of them would
- * be noticed without a test. See decisions/212-stable-unstable-update-channels.md.
+ * be noticed without a test. See decisions/218-stable-unstable-update-channels.md.
  */
 
 import { describe, expect, it } from "vitest";

@@ -3,7 +3,7 @@ name: Release build (Linux)
 # One Linux platform of the release path, callable per architecture and per update
 # channel. Extracted from release.yml's build-linux-x64 job; every way build-linux-arm64
 # differed from it is a DECLARED INPUT below or a named unification — nothing inferred
-# from the arch. See decisions/212-stable-unstable-update-channels.md.
+# from the arch. See decisions/218-stable-unstable-update-channels.md.
 #
 # EVERY INPUT IS REQUIRED, NO DEFAULTS. A default publishes the wrong channel, or
 # publishes at all from a dry run, with every test still green.

@@ -1,4 +1,4 @@
-# 212 — Stable and unstable update channels
+# 218 — Stable and unstable update channels
 
 ## 1. Context
 
@@ -130,6 +130,22 @@ criterion earned it**, and an entry may only be deleted by defeating that specif
 comment that previously justified the workflow entries by the packaged-runtime reason alone was
 stale after the extract and now names both.
 
+## 3a0. An equivalence gate needs an anchor OUTSIDE the change
+
+The gate for PR1's extract was specified as artifact equivalence: baseline versus extract.
+**Both of those points sit inside the change**, so two identically broken runs satisfy
+equivalence perfectly — and that is exactly what happened. `build-macos-x64` failed in both,
+every other platform passed in both, and the extract was genuinely equivalent *including in
+its failure*.
+
+What caught the bug was a third leg outside the change: **v1.42.0's real release run**, which
+had succeeded on that platform. So the rule is not "compare before and after", it is: **an
+equivalence gate needs an anchor outside the change, or it can only prove you broke nothing
+new.** Anyone copying this gate should copy the three-legged version.
+
+Stated plainly because it is the whole lesson: *I would have shipped it if I had reasoned
+from "both runs match, therefore fine".*
+
 ## 3a1. Dry-run evidence
 
 PR1's extract was proved by two dry runs rather than by a green suite, because a
@@ -169,6 +185,60 @@ reusable workflow is guarded by its callers, and every caller must carry the edg
 independent properties hang off that one enumeration** — gated by the Windows proof, and
 gated by `publish` — asserted separately because a publisher can satisfy either while
 violating the other. They look redundant; deleting either as duplication is how one dies.
+
+## 3b1. Two recovery paths were DEAD, not merely untested
+
+`create-release-artifacts.sh` has a recovery half (Case 2) that runs when electrobun crashes
+after tarring. Two of its branches had never worked:
+
+1. **The staged copy** used `$EBUN_TAR_ZST` — the Case 1 variable, which is EMPTY by
+   definition in Case 2, since that emptiness is the branch condition. Result:
+   `cp: : No such file or directory`. Introduced by this task's own channel
+   parameterisation, caught by the dry run above (run 31098887428, `build-macos-x64`).
+2. **The compress-the-tar branch** called `"$ZSTD" "$TAR" -o "$TAR_ZST"`. `zig-zstd`
+   requires a subcommand and `-i`; called positionally it prints usage and exits
+   `error: InvalidArgs`. Dead since `571f038dd` ("feat: add x64 (Intel) macOS builds", #12,
+   2026-03-01) and present unchanged on `main` — five months dormant, because the only way
+   in is electrobun dying between tar and compress.
+
+A recovery path with no test is code that runs for the first time on the worst day, and this
+file proved that class is live rather than theoretical: **two of eleven failure-only branches
+were dead, not merely untested** — an 18% dead rate, measured rather than suspected.
+
+**The enumeration itself is the map.** It is recorded in full so the next person editing these
+scripts does not pay what it cost to rebuild it.
+
+`create-release-artifacts.sh`
+
+| # | Failure-only path | Verdict |
+|---|---|---|
+| 1 | missing `<channel>` argument → error | covered |
+| 2 | unknown channel → error | covered |
+| 3 | Case 2 entry: recover from a tar left in the build dir | covered (was DEAD — the empty-copy bug) |
+| 4 | Case 2: tar present, no `.tar.zst` → compress it ourselves | covered (was DEAD five months) |
+| 5 | `find_version_json` fallback: `version.json` off the expected path → `::notice::` | covered |
+| 6 | Case 2: neither tar nor `.tar.zst` → "build failed before tarring" | covered |
+| 7 | Case 2, macOS: partial `.app.zip` → error naming notarization | covered (pre-existing test) |
+| 8 | `find_version_json`: not found anywhere → `::error::` return 1 | **left** — needs a bundle with no `version.json` at all, which no real build produces; two lines, loud failure |
+| 9 | Case 1: artifacts exist but no electrobun `update.json` → recover version from the `.tar.zst` | **left** — requires real electrobun output in a state that cannot be honestly fabricated |
+| 10 | Case 1, macOS: no electrobun DMG → build one from the build dir | **left** — `hdiutil` costs 5–8s and blows the default test timeout |
+| 11 | Case 2, macOS: DMG from the recovered app | **left** — same `hdiutil` cost |
+
+`create-cli-tarball.sh` — all three **left**: `dist/dev3` missing, `dist/index.html` missing,
+macOS `dist/tmux/tmux` missing. Each is an immediate `::error::` + exit with the fix command
+in the message, no logic to get wrong, and each fires on the first line of a broken build
+rather than deep inside a release.
+
+**RESIDUAL, stated plainly rather than left silent:** five failure paths in the artifact script
+and three in the CLI script remain unexercised — eight in total, and **two of the eight are
+left for `hdiutil` cost rather than for principle.** A cap that is decided is fine; a cap that
+is silent reads as coverage. With two of eleven branches proven dead, the remaining five in the
+artifact script carry a *measured* prior, not a theoretical one. If a release ever fails inside
+one of them, that measurement is why nobody gets to be surprised.
+
+The tests covering the two revived branches deliberately tar a directory that is *not* the
+`.app` bundle, which exercises path 5 at the same time and skips DMG creation, so they run in
+~1.4s instead of timing out.
 
 ## 3c. Coverage caps: discovery by breakage is luck, and the numbers that prove it
 
