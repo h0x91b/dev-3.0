@@ -204,9 +204,13 @@ if [ ! -f "$TAR_ZST" ] && [ ! -f "$TAR" ]; then
   exit 1
 fi
 
-# Compress tar if electrobun didn't get to it
+# Compress tar if electrobun didn't get to it. `zig-zstd` REQUIRES the `compress`
+# subcommand and `-i` for the input; called as `zig-zstd <in> -o <out>` it exits with
+# `error: InvalidArgs`, which is how this branch sat dead from PR #12 (2026-03-01) until a
+# test finally entered it — it is reachable only when electrobun dies between writing the
+# tar and compressing it.
 if [ ! -f "$TAR_ZST" ] && [ -f "$TAR" ]; then
-  "$ZSTD" "$TAR" -o "$TAR_ZST"
+  "$ZSTD" compress -i "$TAR" -o "$TAR_ZST" --no-timing
 fi
 cp "$TAR_ZST" "${OUTPUT_DIR}/${PLATFORM_PREFIX}-${APP_FILE_NAME}${TAR_NAME#${APP_FILE_NAME}}.zst"
 
