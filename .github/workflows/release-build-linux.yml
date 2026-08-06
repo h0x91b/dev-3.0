@@ -1,0 +1,149 @@
+name: Release build (Linux)
+
+# One Linux platform of the release path, callable per architecture and per update
+# channel. Extracted from release.yml's build-linux-x64 job; every way build-linux-arm64
+# differed from it is a DECLARED INPUT below or a named unification — nothing inferred
+# from the arch. See decisions/221-extract-reusable-release-build-workflows.md.
+#
+# EVERY INPUT IS REQUIRED, NO DEFAULTS. A default publishes the wrong channel, or
+# publishes at all from a dry run, with every test still green.
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        description: "x64 or arm64 — feeds cache keys, script args and artifact paths"
+        required: true
+        type: string
+      runsOn:
+        description: "Runner label (ubuntu-22.04 for x64, ubuntu-22.04-arm for arm64)"
+        required: true
+        type: string
+      channel:
+        description: "stable or unstable — prefixes every artifact name and the update manifest"
+        required: true
+        type: string
+      tag:
+        description: "Tag or ref being built, used for the versioned S3 prefix"
+        required: true
+        type: string
+      publish:
+        # THE MOST DANGEROUS INPUT IN THIS FILE. In release.yml the S3 upload was gated
+        # per STEP by `needs.prepare.outputs.publish == 'true'`, and a reusable workflow
+        # CANNOT read its caller's `needs` context — so moving the step here without this
+        # input would silently turn every dry run into a live publish to the updater feed
+        # real users poll, while the run stayed green.
+        #
+        # Callers MUST pass an explicit boolean comparison:
+        #     publish: ${{ needs.prepare.outputs.publish == 'true' }}
+        # A job output is a STRING and a non-empty "false" arrives truthy, reproducing the
+        # identical catastrophe one file over with this `if:` present and correct.
+        description: "Whether to upload to S3. Pass an explicit boolean comparison, never a raw output string."
+        required: true
+        type: boolean
+      bestEffort:
+        # linux-arm64 only, today: the Electrobun desktop bundle for that target is not
+        # yet proven, and this platform must NEVER block a release of the established
+        # ones. Covers the job AND the artifact step as ONE decision — a best-effort job
+        # with a hard-failing artifact step is an incoherent combination, so they are not
+        # two inputs.
+        description: "Allow this platform's GUI bundle to fail without failing the release"
+        required: true
+        type: boolean
+
+jobs:
+  build:
+    continue-on-error: ${{ inputs.bestEffort }}
+    runs-on: ${{ inputs.runsOn }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history + tags: build-update-changelog.ts resolves the previous
+          # release tag and diffs the changelog window. The shallow default
+          # (fetch-depth 1, no tags) left the update popover empty (decision 152).
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Restore node_modules cache
+        id: cache-deps
+        uses: actions/cache/restore@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-linux-${{ inputs.arch }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install
+
+      - name: Save node_modules cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-linux-${{ inputs.arch }}-${{ hashFiles('bun.lock') }}
+
+      - name: Clean build directory
+        run: rm -rf ./build ./artifacts
+
+      - name: Build release
+        env:
+          # Vite inlines these at build time; missing values leave PostHog in no-op mode.
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+          COPYFILE_DISABLE: "1"
+          COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
+        run: |
+          bun scripts/generate-build-info.ts
+          bun scripts/generate-changelog.ts
+          bunx vite build
+          bun run build:cli
+          bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
+
+      - name: Debug build output
+        if: always()
+        run: |
+          echo "=== ./build/ ==="
+          find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
+          echo "=== ./artifacts/ ==="
+          ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
+
+      - name: Create CLI tarball
+        run: bash ./scripts/create-cli-tarball.sh linux ${{ inputs.arch }}
+
+      # Best-effort on platforms whose GUI runtime may not exist yet (linux-arm64):
+      # `bestEffort` lets the step FAIL VISIBLY while the job continues, instead of the
+      # old `|| echo ::warning::` which made a missing bundle look like a passing step.
+      - name: Create release artifacts
+        continue-on-error: ${{ inputs.bestEffort }}
+        run: bash ./scripts/create-release-artifacts.sh linux ${{ inputs.arch }} ${{ inputs.channel }}
+
+      - name: Upload artifacts to S3
+        if: inputs.publish
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+        run: |
+          TAG="${{ inputs.tag }}"
+          aws s3 sync "./artifacts-linux-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          aws s3 sync "./artifacts-linux-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/" \
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz" --exclude "dev3-cli-*.tar.gz"
+
+      - name: Upload artifacts for release job
+        uses: actions/upload-artifact@v5
+        with:
+          name: artifacts-linux-${{ inputs.arch }}
+          path: ./artifacts-linux-${{ inputs.arch }}/
