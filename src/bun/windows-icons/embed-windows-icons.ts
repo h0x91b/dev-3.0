@@ -22,9 +22,14 @@ import { hasEmbeddedIcon } from "./pe-icon-resources";
  * artifact an icon would make it read as vetted.
  *
  * Consequence to expect in every Windows build log, permanently: electrobun emits
- * THREE `Failed to embed icon` warnings and this hook removes two of them. The
- * surviving installer warning is the decision above, not a leftover — do not
- * "finish the job" by reaching into the zip electrobun just wrote.
+ * THREE `Failed to embed icon` warnings, and this hook removes NONE of them —
+ * electrobun tries first and warns on the way past, and we repair two of the three
+ * afterwards. A build that worked still prints all three. That is why the hook's
+ * success line says the earlier warnings are superseded instead of only announcing
+ * itself; a log that reads as broken while being correct is a defect.
+ *
+ * The third, for the installer, is the decision above — do not "finish the job" by
+ * reaching into the zip electrobun just wrote.
  */
 export const WINDOWS_ICON_TARGETS = ["bin/launcher.exe", "bin/bun.exe"] as const;
 

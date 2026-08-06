@@ -76,8 +76,18 @@ async function run(): Promise<void> {
 		},
 	});
 
+	// Electrobun's own icon attempt runs BEFORE this hook and warns twice on the
+	// way past. A build that worked therefore prints two alarming lines and then
+	// succeeds a dozen lines later, and a human believes the warnings. So say out
+	// loud that they are superseded rather than only announcing success.
 	console.log(
-		`[windows-icons] embedded and verified the app icon in ${targets.map((target) => target.relativePath).join(", ")}`,
+		"[windows-icons] the two 'Failed to embed icon into launcher.exe/bun.exe' warnings above are EXPECTED and already repaired — " +
+			"electrobun cannot resolve its own rcedit (decisions/214-vendor-rcedit-for-windows-icons.md), so we embed it here instead.",
+	);
+	console.log(
+		`[windows-icons] app icon embedded and verified in ${targets.map((target) => target.relativePath).join(", ")}. ` +
+			"A third warning, for the Windows installer, survives on purpose and is not repaired (decision 213). " +
+			"This governs the icon in Explorer, on shortcuts and in the Start menu — NOT the running app's taskbar icon.",
 	);
 }
 

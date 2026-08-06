@@ -74,9 +74,53 @@ artifact an icon would make it read as finished. A user who eventually runs the
 installer still gets an icon'd app — it extracts the tree we fixed. Only the
 installer's own file icon stays blank.
 
-**So every Windows build log keeps exactly one `Failed to embed icon` warning,
-forever.** That surviving line is this decision, not a leftover. Do not "finish the
-job".
+## What the build log actually looks like, and why that matters
+
+An earlier draft of this record claimed the `launcher.exe` and `bun.exe` warnings "go
+away" after this fix. **They do not**, and that error cost the repo owner his trust in
+the fix on the first Windows run: he saw the warnings, concluded the icons were broken,
+and stopped reading twelve lines short of the success.
+
+Electrobun attempts the embed **before** `postBuild` and warns on the way past. This
+hook then repairs two of the three. So a **working** Windows build prints:
+
+```
+Warning: Failed to embed icon into launcher.exe: ... Cannot find module '...rcedit/package.json'
+Warning: Failed to embed icon into bun.exe: ...
+Running postBuild script: ./scripts/package-native-host.ts
+[windows-icons] the two ... warnings above are EXPECTED and already repaired — ...
+[windows-icons] app icon embedded and verified in bin/launcher.exe, bin/bun.exe. ...
+Warning: Failed to embed icon into Windows installer: ...
+```
+
+All three warnings survive forever. The first two are **repaired twelve lines later**;
+the installer one is never repaired, per the section above. The hook's success line
+therefore states that the earlier warnings are superseded rather than merely announcing
+itself — **a log that reads as broken while being correct is a defect, not cosmetics.**
+
+## What this does NOT fix: the running app's window and taskbar icon
+
+An icon resource in a PE governs the file's icon in Explorer, on a shortcut, and in the
+Start menu. It does **not** by itself give a running window an icon.
+
+Read out of electrobun's `package/src/native/win/nativeWrapper.cpp`: the main window
+class `BasicWindowClass` is registered as `WNDCLASSW wc = {0}` with `lpfnWndProc` and
+`hCursor` set and **`hIcon` never assigned**; its `hInstance` is the native wrapper
+*DLL* rather than the executable; and the repository contains no `WM_SETICON`,
+`LoadIconW` or `SetClassLongPtr` call for an app window anywhere. (The only `hIcon`
+assignments in that file are for the tray `NOTIFYICONDATA`. GitHub code search was
+control-checked against the same repo before trusting the zero results.)
+
+So whatever Windows shows for the window and its taskbar button is a system fallback,
+not an icon anyone loaded. **This change is correct and incomplete**: closing that
+surface means electrobun setting a window icon — upstream work, or a separate decision
+here. `rcedit` cannot reach it.
+
+**Do not "confirm" this fix by looking at the taskbar.**
+
+⚠️ Explorer caches per-file icons. An `.exe` whose icon resource changed **at the same
+path** can keep showing the old or default icon until that cache is invalidated, so a
+stale thumbnail is not evidence of a failed embed.
 
 ## How the two-line `bun.lock` diff was produced
 
