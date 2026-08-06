@@ -545,6 +545,82 @@ describe("task.agentHook", () => {
 	});
 });
 
+describe("task.claudeStopFailure", () => {
+	const LIMIT_MESSAGE = "You've hit your session limit · resets 3:40pm (Asia/Jerusalem)";
+
+	function stub(project: Project, task: Task): void {
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+	}
+
+	it("parks a rate-limited turn in user-questions and names the reset time", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		stub(project, task);
+
+		const response = await handleRequest(makeRequest("task.claudeStopFailure", {
+			taskId: task.id,
+			projectId: project.id,
+			error: "rate_limit",
+			lastAssistantMessage: LIMIT_MESSAGE,
+		}));
+
+		expect((response.data as { task: Task }).task.status).toBe("user-questions");
+		expect(pushCliAttention).not.toHaveBeenCalled(); // not suppressed → pushed live
+		expect(notifyFromCliDesktop).toHaveBeenCalledWith(expect.objectContaining({ body: LIMIT_MESSAGE }));
+	});
+
+	it("still badges when the task is already in user-questions", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "user-questions" });
+		stub(project, task);
+
+		await handleRequest(makeRequest("task.claudeStopFailure", {
+			taskId: task.id,
+			projectId: project.id,
+			error: "server_error",
+		}));
+
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(notifyFromCliDesktop).toHaveBeenCalled();
+	});
+
+	it("leaves a finished task alone", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "completed" });
+		stub(project, task);
+
+		const response = await handleRequest(makeRequest("task.claudeStopFailure", {
+			taskId: task.id,
+			projectId: project.id,
+			error: "rate_limit",
+		}));
+
+		expect((response.data as { moved: boolean }).moved).toBe(false);
+		expect(moveTask).not.toHaveBeenCalled();
+		expect(notifyFromCliDesktop).not.toHaveBeenCalled();
+	});
+
+	it("queues the badge under focus mode instead of dropping it", async () => {
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		stub(project, task);
+
+		await handleRequest(makeRequest("task.claudeStopFailure", {
+			taskId: task.id,
+			projectId: project.id,
+			error: "rate_limit",
+		}));
+
+		expect(pushCliAttention).toHaveBeenCalledWith({
+			taskId: task.id,
+			projectId: task.projectId,
+			reason: "Usage limit reached — the agent stopped mid-task",
+		});
+	});
+});
+
 describe("projects.list", () => {
 	it("returns all projects", async () => {
 		const projects = [makeProject({ id: "p1" }), makeProject({ id: "p2" })];

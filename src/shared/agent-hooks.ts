@@ -17,6 +17,7 @@ export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
 export const TOLERATE_APP_OFFLINE_FLAG = "--tolerate-app-offline";
 export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
 export const CODEX_DEV3_HOOK_COMMAND = `${DEV3_CLI} hook codex`;
+export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
 export const CODEX_STATUS_HOOK_EVENTS = [
 	"SessionStart",
 	"UserPromptSubmit",
@@ -74,6 +75,7 @@ export interface HookEntry {
  * - UserPromptSubmit/PreToolUse/PostToolUse: → in-progress (skipped when in review-by-ai)
  * - PermissionRequest: → user-questions
  * - Stop: primary agent → stopTarget; review agent → review-by-user
+ * - StopFailure: → user-questions (fires INSTEAD of Stop on an API error)
  */
 export interface MatcherGroup {
 	matcher?: string;
@@ -182,6 +184,13 @@ export function buildClaudeHooks(
 			{ hooks: [{ type: "command", command: move("user-questions") }] },
 		],
 		Stop: buildStopGroups(stopTarget, dialect),
+		// No matcher: every API error that killed the turn leaves the agent idle at
+		// its prompt, so all of them belong in front of the user. The handler owns
+		// the app-offline case and always exits 0 — Claude ignores its exit code
+		// anyway, StopFailure being fire-and-forget.
+		StopFailure: [
+			{ hooks: [{ type: "command", command: `${dialect.cli} ${CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND}`, timeout: 5 }] },
+		],
 	};
 }
 

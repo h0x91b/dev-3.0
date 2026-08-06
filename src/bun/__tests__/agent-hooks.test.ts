@@ -162,25 +162,39 @@ describe("buildClaudeHooks", () => {
 		for (const groups of Object.values(hooks)) {
 			for (const group of groups) {
 				for (const entry of group.hooks) {
-					// Command should be "dev3 task move --status X", no UUID
-					expect(entry.command).toMatch(/task move --status/);
+					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
+					// that reads the event from stdin — never a UUID either way.
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure/);
 					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
 				}
 			}
 		}
 	});
 
-	it("every Claude hook tolerates app-offline (exit 2) without blocking the agent", () => {
+	it("StopFailure parks the task through the dev3 hook adapter, with no matcher", () => {
+		const hooks = buildClaudeHooks();
+
+		// StopFailure fires INSTEAD of Stop when an API error killed the turn, so
+		// without it a rate-limited task stays in "Agent is Working" forever.
+		expect(hooks.StopFailure).toHaveLength(1);
+		expect(hooks.StopFailure[0].matcher).toBeUndefined();
+		expect(hooks.StopFailure[0].hooks[0].command).toContain("hook claude-stop-failure");
+	});
+
+	it("every status-move Claude hook tolerates app-offline (exit 2) without blocking the agent", () => {
 		// Claude Code treats a hook exit code of 2 as a *blocking* error
 		// (PreToolUse blocks the tool, UserPromptSubmit erases the prompt, Stop
 		// blocks stoppage). CLI_EXIT_CODE_APP_NOT_RUNNING is also 2, so when the
 		// desktop app is closed the hook must swallow exactly that code — and
 		// nothing else — into success. (issue: closed app wedged Edit/Bash.)
+		// `dev3 hook <name>` adapters are exempt: they own the offline case inside
+		// the CLI and always exit 0.
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai" });
 
 		for (const groups of Object.values(hooks)) {
 			for (const group of groups) {
 				for (const entry of group.hooks) {
+					if (!entry.command.includes("task move")) continue;
 					expect(entry.command).toContain("|| [ $? -eq 2 ]");
 					// Never the blunt `|| true`, which would also hide real failures.
 					expect(entry.command).not.toContain("|| true");

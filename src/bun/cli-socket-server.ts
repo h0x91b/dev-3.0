@@ -5,6 +5,7 @@ import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
+import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
@@ -1009,6 +1010,48 @@ const handlers: Record<string, Handler> = {
 		}
 
 		return updated;
+	},
+
+	// Claude Code's StopFailure hook: an API error ended the turn, so the agent is
+	// parked at its prompt with nothing to show for it. Park the task in front of
+	// the user too — the board would otherwise keep claiming the agent is working.
+	"task.claudeStopFailure": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const rawError = params.error;
+		const error: ClaudeStopFailureError = CLAUDE_STOP_FAILURE_ERRORS.includes(rawError as ClaudeStopFailureError)
+			? rawError as ClaudeStopFailureError
+			: "unknown";
+		const reason = describeClaudeStopFailure({
+			error,
+			...(typeof params.errorDetails === "string" ? { errorDetails: params.errorDetails } : {}),
+			...(typeof params.lastAssistantMessage === "string" ? { lastAssistantMessage: params.lastAssistantMessage } : {}),
+		});
+
+		if (task.status === "completed" || task.status === "cancelled") {
+			return { task, moved: false, reason };
+		}
+
+		let updated = task;
+		if (task.status !== "user-questions" || task.customColumnId != null) {
+			updated = await moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: "user-questions",
+				ifStatus: task.status,
+			});
+		}
+
+		if ((await loadSettings()).focusMode) setFocusMode(true);
+		if (isNotificationSuppressed()) {
+			pushCliAttention({ taskId: task.id, projectId: task.projectId, reason });
+		} else {
+			getPushMessage()?.("cliAttention", { taskId: task.id, reason });
+		}
+		// A dead turn is precisely the case where the user has walked away, so this
+		// goes to the OS rather than an in-app toast nobody is looking at.
+		notifyFromCliDesktop({ task: updated, body: reason, projectName: project.name });
+
+		return { task: updated, moved: updated.status === "user-questions", reason };
 	},
 
 	"task.move": async (params) => {

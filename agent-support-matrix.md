@@ -44,7 +44,7 @@ Last updated: 2026-07-13
 | **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — |
 | **Agent selection** | — | — | — | — | `--agent` |
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
-| **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — |
+| **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — |
 | **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`) | Yes | Yes | Yes | Yes |
@@ -61,8 +61,12 @@ Injected into `.claude/settings.local.json`.
 |------------|------------------|---------|
 | `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working |
 | `PreToolUse` | → `in-progress` | Agent is about to call a tool (also catches post-permission resume) |
+| `PostToolUse` | → `in-progress` | A tool finished, including answers submitted to `AskUserQuestion` |
 | `PermissionRequest` | → `user-questions` | Agent needs user approval for a tool call |
 | `Stop` | → `review-by-user` | Agent finished its turn |
+| `StopFailure` | → `user-questions` | An API error (usage limit, auth, billing, server) ended the turn. Fires **instead of** `Stop`, so without it the task would keep claiming the agent is working. Routed through `dev3 hook claude-stop-failure`, which also raises the attention badge and a desktop notification naming the reset time |
+
+Codex has no equivalent event — a Codex session that runs out of quota is still only visible in the rate-limit indicator.
 
 ### Codex
 
