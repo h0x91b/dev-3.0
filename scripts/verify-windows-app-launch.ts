@@ -263,6 +263,14 @@ export function runProcessQuery(
  * translates its column headers on a localized Windows, so a parser reading the English
  * header form matches nothing on a German or Russian machine — and "matched nothing"
  * here would read as "no process is alive".
+ *
+ * `scripts/free-build-folder.ts` parses the same output with its own regex, and that
+ * is DELIBERATE, not an oversight to tidy away: same lesson (locale-safe CSV, throw
+ * rather than read zero rows as an empty machine), different contracts (pids only and
+ * pid 0 kept here; name+pid pairs and pid 0 dropped there) and different blast radius
+ * (a CI proof of a packaged app here; a developer's pre-build hook there). A shared
+ * helper would need a flag to serve both, and a change made for one would break the
+ * other on a Windows surface nobody can watch.
  */
 export function parseTasklistPids(output: string): number[] {
 	const pids: number[] = [];

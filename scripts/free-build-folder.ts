@@ -75,6 +75,13 @@ export function isInsideDirectory(parent: string, candidate: string): boolean {
  * `/NH` is what makes this locale-safe: no column headers to translate, and the
  * first two fields are the image name and the pid on every Windows build. A row
  * that is not a quoted name followed by a numeric pid is dropped.
+ *
+ * `scripts/verify-windows-app-launch.ts` (`parseTasklistPids`) parses the same output
+ * separately, and the split is DELIBERATE: same lesson (locale-safe CSV, and a
+ * zero-row parse is a failure, never an empty machine), different contracts (it wants
+ * pids only and keeps pid 0; this wants name+pid pairs and drops pid 0) and different
+ * blast radius (a CI proof of a packaged app there; this developer-machine hook here).
+ * Do not merge them into one helper with a flag.
  */
 export function parseTasklistCsv(stdout: string): ProcessRow[] {
 	const rows: ProcessRow[] = [];
