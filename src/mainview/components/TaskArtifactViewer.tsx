@@ -5,7 +5,7 @@ import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
 import { composeArtifactDocument } from "../utils/artifactDocument";
-import { isMac } from "../utils/platform";
+import { isMac, isRemote } from "../utils/platform";
 import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearchBar";
 
 interface TaskArtifactViewerProps {
@@ -273,6 +273,24 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 			setDownloading(false);
 		}
 	};
+	// Desktop hands the stored file to the OS browser, so relative assets keep
+	// resolving. In remote mode that file lives on the host machine, so the tab gets
+	// the already-composed document — opened synchronously, or the popup blocker eats it.
+	const openInBrowser = () => {
+		if (!isRemote()) {
+			api.request.openArtifactInBrowser({ artifact: current })
+				.catch(() => toast.error(t("artifactViewer.openInBrowserFailed"), { taskId }));
+			return;
+		}
+		if (!srcDoc) return;
+		const url = URL.createObjectURL(new Blob([srcDoc], { type: "text/html" }));
+		if (!window.open(url, "_blank", "noopener,noreferrer")) {
+			URL.revokeObjectURL(url);
+			toast.error(t("artifactViewer.openInBrowserFailed"), { taskId });
+			return;
+		}
+		setTimeout(() => URL.revokeObjectURL(url), 60_000);
+	};
 	const iconButton = "flex h-11 w-11 sm:h-8 sm:w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg disabled:opacity-40";
 	const themeName = themeMode === "follow"
 		? t("artifactViewer.themeFollow")
@@ -327,6 +345,15 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 					title={themeLabel}
 				><span style={{ fontFamily: ICON }}>{themeIcon}</span></button>
 				<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={current.bundlePath ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
+				<button
+					type="button"
+					data-testid="artifact-viewer-open-browser"
+					className={iconButton}
+					disabled={!srcDoc}
+					onClick={openInBrowser}
+					aria-label={t("artifactViewer.openInBrowser")}
+					title={t("artifactViewer.openInBrowser")}
+				><span style={{ fontFamily: ICON }}>{""}</span></button>
 				<button type="button" data-testid="artifact-viewer-fullscreen" className={iconButton} onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("artifactViewer.exitFullscreen") : t("artifactViewer.fullscreen")}><span style={{ fontFamily: ICON }}>{fullscreen ? "" : ""}</span></button>
 				<button type="button" data-testid="artifact-viewer-close" className={iconButton} onClick={onClose} aria-label={t("artifactViewer.close")}><span style={{ fontFamily: ICON }}></span></button>
 			</header>

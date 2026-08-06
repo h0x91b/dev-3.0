@@ -5,11 +5,12 @@ import { I18nProvider } from "../../i18n";
 import TaskArtifactViewer from "../TaskArtifactViewer";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { readArtifactContent: vi.fn(), readArtifactDownload: vi.fn() } },
+	api: { request: { readArtifactContent: vi.fn(), readArtifactDownload: vi.fn(), openArtifactInBrowser: vi.fn() } },
 }));
 
 // Pin the platform so the ⌘F assertions don't depend on the host running them.
-vi.mock("../../utils/platform", () => ({ isMac: () => true, isRemote: () => false }));
+const platform = vi.hoisted(() => ({ remote: false }));
+vi.mock("../../utils/platform", () => ({ isMac: () => true, isRemote: () => platform.remote }));
 import { api } from "../../rpc";
 const mockedApi = vi.mocked(api, true);
 
@@ -33,6 +34,8 @@ beforeEach(() => {
 		html: '<!doctype html><html><head></head><body><img src="chart.png"></body></html>',
 		assets: [{ name: "chart.png", mime: "image/png", dataUrl: "data:image/png;base64,AAA" }],
 	});
+	platform.remote = false;
+	vi.mocked(mockedApi.request.openArtifactInBrowser).mockResolvedValue(undefined);
 	vi.mocked(mockedApi.request.readArtifactDownload).mockResolvedValue({
 		fileName: "b.zip",
 		mime: "application/zip",
@@ -252,6 +255,26 @@ describe("TaskArtifactViewer", () => {
 		} finally {
 			window.removeEventListener("keydown", appLevel);
 		}
+	});
+
+	it("hands the stored artifact file to the OS browser on desktop", async () => {
+		render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		await screen.findByTitle("Artifact a");
+		await userEvent.click(screen.getByTestId("artifact-viewer-open-browser"));
+		expect(mockedApi.request.openArtifactInBrowser).toHaveBeenCalledWith({ artifact: artifact("a") });
+	});
+
+	it("opens the composed document in a new tab in remote mode, without touching the host", async () => {
+		platform.remote = true;
+		vi.mocked(mockedApi.request.openArtifactInBrowser).mockClear();
+		const openSpy = vi.fn().mockReturnValue({});
+		window.open = openSpy;
+		render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		await screen.findByTitle("Artifact a");
+		await userEvent.click(screen.getByTestId("artifact-viewer-open-browser"));
+		expect(mockedApi.request.openArtifactInBrowser).not.toHaveBeenCalled();
+		expect(openSpy).toHaveBeenCalledOnce();
+		expect(String(openSpy.mock.calls[0][0])).toMatch(/^blob:/);
 	});
 
 	it("requests ZIP download when the artifact has assets", async () => {

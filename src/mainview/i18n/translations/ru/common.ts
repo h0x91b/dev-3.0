@@ -280,6 +280,8 @@ const common = {
 	"artifactViewer.downloadZip": "Скачать ZIP",
 	"artifactViewer.downloadHtml": "Скачать HTML",
 	"artifactViewer.downloadFailed": "Не удалось скачать артефакт",
+	"artifactViewer.openInBrowser": "Открыть в браузере",
+	"artifactViewer.openInBrowserFailed": "Не удалось открыть артефакт в браузере",
 	"artifactViewer.saveImage": "Сохранить изображение",
 	"artifactViewer.imageSaved": "Изображение сохранено в Downloads",
 	"artifactViewer.imageSaveFailed": "Не удалось сохранить изображение",

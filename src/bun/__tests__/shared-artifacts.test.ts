@@ -19,6 +19,7 @@ import {
 	loadSharedArtifactContent,
 	loadSharedArtifactDownload,
 	saveSharedArtifact,
+	sharedArtifactHtmlPath,
 } from "../shared-artifacts";
 
 afterAll(() => {
@@ -237,5 +238,15 @@ describe("stored artifact read boundary", () => {
 		};
 		expect(() => loadSharedArtifactContent(forged)).toThrow(SharedArtifactError);
 		expect(() => loadSharedArtifactDownload(forged)).toThrow(SharedArtifactError);
+		expect(() => sharedArtifactHtmlPath(forged)).toThrow(SharedArtifactError);
+	});
+
+	it("returns the stored HTML path for the OS browser, and refuses a vanished file", () => {
+		const html = join(SRC_DIR, "browser.html");
+		writeFileSync(html, "<!doctype html><html><body>Hi</body></html>", "utf8");
+		const saved = saveSharedArtifact("/tmp/proj", html, []);
+		expect(sharedArtifactHtmlPath(saved)).toBe(saved.storedPath);
+		rmSync(saved.storedPath, { force: true });
+		expect(() => sharedArtifactHtmlPath(saved)).toThrow(SharedArtifactError);
 	});
 });

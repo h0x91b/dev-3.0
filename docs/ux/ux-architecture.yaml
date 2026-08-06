@@ -101,7 +101,7 @@ ux_architecture:
       plural: "HTML Artifacts"
       observed: true
       owner: "task"
-      common_actions: ["view", "resize", "fullscreen", "navigate_history", "download_html_or_zip"]
+      common_actions: ["view", "resize", "fullscreen", "navigate_history", "download_html_or_zip", "open_in_external_browser"]
       shape: "HTML entrypoint plus explicit local CSS, classic JS, and raster assets copied with --assets; assets trigger a portable ZIP download."
       evidence: ["src/shared/types.ts (SharedArtifact)", "src/bun/shared-artifacts.ts", "src/cli/commands/show-artifact.ts"]
     automation:
@@ -491,12 +491,13 @@ ux_architecture:
       purpose: "Task-bound interactive HTML output surfaced via dev3 show-artifact; docked beside the terminal, horizontally resizable, and fullscreen on demand."
       feature_class: ["object_action", "data_visualization", "notification"]
       reached_from: ["arrival_push (auto-open only on the focused task)", "inspector:Artifacts conditional count button"]
-      allowed: ["sandboxed_html", "history_navigation", "theme_sync", "resize", "fullscreen", "find_in_content", "download_html", "download_zip"]
+      allowed: ["sandboxed_html", "history_navigation", "theme_sync", "resize", "fullscreen", "find_in_content", "download_html", "download_zip", "open_in_external_browser"]
       forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "parent_dom_or_rpc_access", "native_dialog"]
       find_in_content: "Floating bar over the iframe (top-right); Cmd/Ctrl+F is the primary trigger while focus is inside the viewer, plus exactly ONE earned magnifier icon in the header that toggles the bar (explicit bible-section-10/11 exception -- the search field itself never moves into the header). The parent cannot reach the opaque-origin document, so query/step are postMessage'd to an injected script that owns highlighting and scroll and reports {matches,index} back. Registered in keymap.ts."
       security: "iframe sandbox=allow-scripts without allow-same-origin is the security boundary; local CSS (including @import chains), classic JS, and raster references are rewritten to data URLs in rendered srcdoc. CSP intentionally permits all origins plus data/blob/file/views schemes, inline/eval runtimes, fetch, and WebSockets so artifact integrations work without policy tuning. Scripts still originate from null and can self-navigate their iframe, so artifacts are trusted task output rather than an untrusted-code boundary."
       layout: "Desktop: right-side TaskWorkspacePane sibling with persisted width. Narrow: one-at-a-time artifact replaces terminal until closed."
       export: "No assets -> HTML download. Any --assets files -> STORE ZIP containing HTML plus safe asset paths relative to the HTML."
+      open_in_external_browser: "One neutral external-link icon in the viewer header, grouped with download (the hand-off pair). Desktop hands the stored HTML path to the OS default browser via RPC (relative assets resolve on disk); browser/remote opens a blob URL of the already-composed document in a new tab, synchronously inside the click so popup blockers allow it. Failure is a toast, never a native dialog. No keyboard shortcut."
       evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/bun/shared-artifacts.ts", "decisions/2026/07/09/task-html-artifacts.md"]
 
   action_types:

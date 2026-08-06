@@ -3734,6 +3734,10 @@ export type AppRPCSchema = {
 				params: { artifact: SharedArtifact };
 				response: { fileName: string; mime: "application/zip" | "text/html"; base64: string };
 			};
+			openArtifactInBrowser: {
+				params: { artifact: SharedArtifact };
+				response: void;
+			};
 			openImageFile: {
 				params: { path: string };
 				response: void;

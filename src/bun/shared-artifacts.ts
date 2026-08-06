@@ -182,6 +182,16 @@ function assertStoredArtifactRecord(artifact: SharedArtifact): string {
 	return dir;
 }
 
+/**
+ * The stored HTML path, validated. Handing it to the OS browser keeps the
+ * artifact's relative asset references working — no data-URL rewriting needed.
+ */
+export function sharedArtifactHtmlPath(artifact: SharedArtifact): string {
+	assertStoredArtifactRecord(artifact);
+	if (!existsSync(artifact.storedPath)) throw new SharedArtifactError("Artifact file is missing");
+	return artifact.storedPath;
+}
+
 /** Read HTML plus copied assets for the sandboxed renderer. */
 export function loadSharedArtifactContent(artifact: SharedArtifact): {
 	html: string;

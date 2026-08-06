@@ -10,6 +10,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Why:** with many parallel tasks a bare sentence cannot say which task it is about — CLI push toasts already carried the source line, in-app ones did not. Rejected: composing `context`/`onClick` at each of ~180 call sites (drifts again on the next toast anyone writes); letting `toast.tsx` import app state (a module-level service would depend on the reducer); and stamping every originless toast with `dev-3.0` (a uniform line that carries nothing is fabrication by another route). Resolving per render passed every unit test yet lost a live toast's line and click target as soon as the user left the project — hence once at emit.
 - **Status:** Decided. Evidence: `src/mainview/toast.tsx`, `src/mainview/App.tsx` (`ToastHost` mount, `openTaskFromNotification`), seq 1437.
 
+## 2026-08-06 — Opening a viewed artifact in the real browser is one icon next to download
+
+- **Rule:** The artifact viewer header gets one neutral external-link icon beside download; desktop hands the stored HTML path to the OS browser via RPC, browser/remote opens a blob URL synchronously in the click (§10 hand-off row). The header is now full at six controls.
+- **Why:** The real browser owns find, print, zoom, devtools and a window that outlives dev3 navigation, so the escape hatch belongs on the document; a context-menu-only entry was rejected because the viewer has no context menu and would be invisible on touch.
+- **Status:** Implemented. Evidence: `src/mainview/components/TaskArtifactViewer.tsx`, `src/bun/rpc-handlers/app-handlers.ts`.
+
 ## 2026-08-05 — A sensitive project is masked, locked and silent — but only while streamer mode is on
 
 - **Rule:** `Project.sensitive` (toggle in Project Settings → Board) is inert until `data-streamer="on"`; then the project name and its task text carry `streamer-private` everywhere outside the project, its dashboard row / picker option stays visible but `aria-disabled` with a lock glyph and an info toast on click, the `navigate()` choke point in `App.tsx` refuses routes into it (and redirects out when the mode turns on), and every notification path drops its events. `document.title` gets a neutral placeholder — CSS cannot blur a tab title. Bible §3 + §10, yaml `sensitive-project-masked-locked-and-silent`.

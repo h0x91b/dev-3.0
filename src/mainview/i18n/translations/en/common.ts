@@ -275,6 +275,8 @@ const common = {
 	"artifactViewer.downloadZip": "Download ZIP",
 	"artifactViewer.downloadHtml": "Download HTML",
 	"artifactViewer.downloadFailed": "Couldn't download the artifact",
+	"artifactViewer.openInBrowser": "Open in web browser",
+	"artifactViewer.openInBrowserFailed": "Couldn't open the artifact in a browser",
 	"artifactViewer.saveImage": "Save image",
 	"artifactViewer.imageSaved": "Image saved to Downloads",
 	"artifactViewer.imageSaveFailed": "Couldn't save the image",
