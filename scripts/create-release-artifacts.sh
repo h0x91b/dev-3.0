@@ -102,7 +102,13 @@ create_dmg() {
   hdiutil detach "/Volumes/${VOL_NAME}" -force 2>/dev/null || true
 }
 
-# Helper: find version.json in a recovered directory
+# Helper: find version.json in a recovered directory.
+#
+# THIS FUNCTION'S STDOUT IS ITS RETURN VALUE — callers do `X=$(find_version_json ...)`.
+# Every human-readable line therefore goes to STDERR. A `::notice::` on stdout is captured
+# INTO the path, and the next `bun -e "Bun.file('<two lines>')"` dies with "Unterminated
+# string literal", which is how the fallback branch below sat dead: the notice appeared in
+# the log, so it looked exercised.
 find_version_json() {
   local SEARCH_DIR="$1"
   local EXPECTED="${SEARCH_DIR}/${VERSION_JSON_SUBPATH}"
@@ -116,12 +122,12 @@ find_version_json() {
   local FOUND
   FOUND=$(find "$SEARCH_DIR" -name "version.json" -type f 2>/dev/null | head -1)
   if [ -n "$FOUND" ]; then
-    echo "::notice::version.json found at unexpected path: $FOUND"
+    echo "::notice::version.json found at unexpected path: $FOUND" >&2
     echo "$FOUND"
     return
   fi
 
-  echo "::error::version.json not found in $SEARCH_DIR"
+  echo "::error::version.json not found in $SEARCH_DIR" >&2
   return 1
 }
 

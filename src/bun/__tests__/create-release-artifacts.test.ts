@@ -185,6 +185,13 @@ describe("create-release-artifacts.sh", () => {
 			existsSync(join(tempDir, "artifacts-macos-arm64", "stable-macos-arm64-dev-3.0.app.tar.zst")),
 			"the compressed tarball must be staged from a build that only produced the uncompressed tar.",
 		).toBe(true);
+		// Staging happens BEFORE the script's remaining work, so asserting the artifact exists
+		// is NOT the same as asserting the script succeeded — and that gap is how the
+		// version.json fallback stayed broken while this test passed.
+		expect(
+			result.status,
+			"the whole recovery path must EXIT 0, not merely produce the tarball. A non-zero exit means something after the staging copy rejected the build; read the output above rather than trusting the artifact's existence.",
+		).toBe(0);
 	});
 
 	// Both fields land in the manifest this script is the single writer of. They answer

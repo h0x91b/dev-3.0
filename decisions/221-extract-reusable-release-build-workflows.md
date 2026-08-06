@@ -199,7 +199,7 @@ an output of the same name at the same indent — a bare indent match reports a 
 ## 7. Two recovery paths were DEAD, not merely untested
 
 `create-release-artifacts.sh` has a recovery half (Case 2) that runs when electrobun crashes after
-tarring. Two of its branches had never worked:
+tarring. THREE of its branches had never worked:
 
 1. **The staged copy** used `$EBUN_TAR_ZST` — the Case 1 variable, which is EMPTY by definition in
    Case 2, since that emptiness is the branch condition. Result: `cp: : No such file or
@@ -212,8 +212,17 @@ tarring. Two of its branches had never worked:
    is electrobun dying between tar and compress.
 
 A recovery path with no test is code that runs for the first time on the worst day, and this file
-proved that class is live rather than theoretical: **two of eleven failure-only branches were
-dead, not merely untested** — an 18% dead rate, measured rather than suspected.
+proved that class is live rather than theoretical: **three of eleven failure-only branches were
+dead, not merely untested** — a 27% dead rate, measured rather than suspected.
+
+The third one is the sharpest, because a test was already covering it and passing. `find_version_json`
+returns the path **on stdout**, and its `::notice::` went to stdout too — so the caller captured both
+lines, and the next `bun -e "Bun.file('<two lines>')"` died with `Unterminated string literal`. The
+existing test asserted that the notice text appeared and that the tarball was staged. **Both are true
+on the broken path**, because staging happens before the failure. It was found only when an
+`expect(result.status).toBe(0)` was added: **asserting an artifact exists is not asserting the script
+succeeded.** Fixed by sending every human-readable line in that function to stderr, which is now
+stated at the function as a rule about its stdout being its return value.
 
 **The enumeration itself is the map**, recorded in full so the next person editing these scripts
 does not pay what it cost to rebuild it.
@@ -226,7 +235,7 @@ does not pay what it cost to rebuild it.
 | 2 | unknown channel → error | covered |
 | 3 | Case 2 entry: recover from a tar left in the build dir | covered (was DEAD — the empty-copy bug) |
 | 4 | Case 2: tar present, no `.tar.zst` → compress it ourselves | covered (was DEAD five months) |
-| 5 | `find_version_json` fallback: `version.json` off the expected path → `::notice::` | covered |
+| 5 | `find_version_json` fallback: `version.json` off the expected path → `::notice::` | covered (was DEAD — the notice was captured into the path) |
 | 6 | Case 2: neither tar nor `.tar.zst` → "build failed before tarring" | covered |
 | 7 | Case 2, macOS: partial `.app.zip` → error naming notarization | covered (pre-existing test) |
 | 8 | `find_version_json`: not found anywhere → `::error::` return 1 | **left** — needs a bundle with no `version.json` at all, which no real build produces; two lines, loud failure |
@@ -242,7 +251,7 @@ deep inside a release.
 **RESIDUAL, stated plainly rather than left silent:** five failure paths in the artifact script and
 three in the CLI script remain unexercised — eight in total, and **two of the eight are left for
 `hdiutil` cost rather than for principle.** A cap that is decided is fine; a cap that is silent
-reads as coverage. With two of eleven branches proven dead, the remaining five in the artifact
+reads as coverage. With three of eleven branches proven dead, the remaining five in the artifact
 script carry a *measured* prior, not a theoretical one. If a release ever fails inside one of them,
 that measurement is why nobody gets to be surprised.
 
