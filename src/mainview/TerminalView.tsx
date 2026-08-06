@@ -528,7 +528,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				onActivate: (resolved, _event, line) => {
 					void activateTerminalPath(resolved, tRef.current, line);
 				},
-				onResolutionsChanged: () => linkUnderlines?.scheduleRedraw(),
+				onResolutionsChanged: () => linkUnderlines?.requestRedraw(),
 			});
 			term.registerLinkProvider(filePathLinks);
 			linkUnderlines = installFilePathUnderlines({
@@ -1277,7 +1277,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						clearStaleSelectionOnWrite(batchTerm);
 						// ghostty-web never fires onRender, so the write batch is
 						// the "content changed" signal for the link underlines.
-						linkUnderlines?.contentChanged();
+						linkUnderlines?.requestRedraw();
 					} catch {
 						// Swallow ghostty-web rendering errors
 					}

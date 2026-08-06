@@ -10,16 +10,20 @@ import type { BufferRange } from "./terminal-file-links";
  *
  * Refresh triggers: ghostty-web 0.4.0 never fires `onRender` (the emitter has
  * no `.fire()` call in the bundle), so content changes are reported by
- * TerminalView's own write batch via `contentChanged()`; `onScroll` covers
- * viewport moves and a ResizeObserver covers layout. The canvas is cleared
- * synchronously on every trigger so a stale underline never sits under moved
- * text; the recompute itself is debounced.
+ * TerminalView's own write batch via `requestRedraw()`; `onScroll` covers
+ * viewport moves and a ResizeObserver covers layout.
+ *
+ * Redraws coalesce into the next animation frame and clear-and-stroke in the
+ * same pass, so the overlay is never left blank waiting for a recompute. A
+ * debounce here would starve: under a stream of writes it never fires, which
+ * blanked the underlines for the whole output burst and blinked them at the
+ * refresh rate of an agent's spinner. One frame costs ~0.2 ms for a 160×48
+ * viewport, so per-frame recompute is cheaper than the bookkeeping to avoid it.
  */
 
 // Same blue ghostty-web hardcodes for its hover underline (#4A90E2), slightly
 // translucent so the persistent decoration stays quieter than the hover state.
 const UNDERLINE_COLOR = "rgba(74, 144, 226, 0.55)";
-const REDRAW_DEBOUNCE_MS = 120;
 
 /**
  * Map a viewport row to an absolute buffer row (scrollback + screen), the
@@ -32,10 +36,8 @@ export function viewportRowToAbsolute(viewportRow: number, viewportY: number, sc
 }
 
 export interface FilePathUnderlinesHandle {
-	/** New terminal content was written — clear now, recompute after idle. */
-	contentChanged(): void;
-	/** Recompute without an immediate clear (e.g. new resolutions landed). */
-	scheduleRedraw(): void;
+	/** Content, viewport or resolutions changed — repaint on the next frame. */
+	requestRedraw(): void;
 	dispose(): void;
 }
 
@@ -58,7 +60,7 @@ export function installFilePathUnderlines(options: {
 	const ctx = overlay.getContext("2d");
 
 	let disposed = false;
-	let redrawTimer: ReturnType<typeof setTimeout> | undefined;
+	let frameId: number | null = null;
 
 	function termCanvas(): HTMLCanvasElement | null {
 		for (const canvas of container.querySelectorAll("canvas")) {
@@ -67,16 +69,23 @@ export function installFilePathUnderlines(options: {
 		return null;
 	}
 
+	/**
+	 * Mirror the terminal canvas's box. Style writes are conditional: this runs
+	 * inside every frame, and writing unchanged values would invalidate layout
+	 * and make the next read a forced reflow.
+	 */
 	function syncSize(): { w: number; h: number; dpr: number } | null {
 		const canvas = termCanvas();
 		if (!canvas) return null;
 		const w = canvas.clientWidth;
 		const h = canvas.clientHeight;
 		const dpr = window.devicePixelRatio || 1;
-		overlay.style.left = `${canvas.offsetLeft}px`;
-		overlay.style.top = `${canvas.offsetTop}px`;
-		overlay.style.width = `${w}px`;
-		overlay.style.height = `${h}px`;
+		const left = `${canvas.offsetLeft}px`;
+		const top = `${canvas.offsetTop}px`;
+		if (overlay.style.left !== left) overlay.style.left = left;
+		if (overlay.style.top !== top) overlay.style.top = top;
+		if (overlay.style.width !== `${w}px`) overlay.style.width = `${w}px`;
+		if (overlay.style.height !== `${h}px`) overlay.style.height = `${h}px`;
 		if (overlay.width !== w * dpr || overlay.height !== h * dpr) {
 			overlay.width = w * dpr;
 			overlay.height = h * dpr;
@@ -90,12 +99,15 @@ export function installFilePathUnderlines(options: {
 	}
 
 	function redraw(): void {
-		if (disposed || !ctx || !term.renderer) return;
+		if (disposed || !ctx) return;
+		// No renderer or no metrics yet: drop whatever is drawn rather than leave
+		// underlines standing at positions we can no longer verify.
+		if (!term.renderer) return clearNow();
 		const size = syncSize();
-		if (!size) return;
+		if (!size) return clearNow();
 		const charWidth = term.renderer.charWidth;
 		const charHeight = term.renderer.charHeight;
-		if (!charWidth || !charHeight) return;
+		if (!charWidth || !charHeight) return clearNow();
 		const buffer = term.buffer.active;
 		const scrollback = Math.max(0, buffer.length - term.rows);
 		const viewportY = term.viewportY;
@@ -124,32 +136,26 @@ export function installFilePathUnderlines(options: {
 		}
 	}
 
-	function scheduleRedraw(): void {
-		if (disposed) return;
-		clearTimeout(redrawTimer);
-		redrawTimer = setTimeout(() => {
+	/** Coalesce every trigger into one repaint on the next frame. */
+	function requestRedraw(): void {
+		if (disposed || frameId !== null) return;
+		frameId = requestAnimationFrame(() => {
+			frameId = null;
 			redraw();
-		}, REDRAW_DEBOUNCE_MS);
+		});
 	}
 
-	function contentChanged(): void {
-		if (disposed) return;
-		clearNow();
-		scheduleRedraw();
-	}
-
-	const subscriptions = [term.onScroll(() => contentChanged())];
+	const subscriptions = [term.onScroll(() => requestRedraw())];
 	const resizeObserver =
-		typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => contentChanged()) : null;
+		typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => requestRedraw()) : null;
 	resizeObserver?.observe(container);
-	scheduleRedraw();
+	requestRedraw();
 
 	return {
-		contentChanged,
-		scheduleRedraw,
+		requestRedraw,
 		dispose() {
 			disposed = true;
-			clearTimeout(redrawTimer);
+			if (frameId !== null) cancelAnimationFrame(frameId);
 			for (const sub of subscriptions) sub.dispose();
 			resizeObserver?.disconnect();
 			overlay.remove();
