@@ -82,10 +82,29 @@ jobs:
           fi
 
   # ──────────────────────────────────────────────────
+  # The packaged Windows proof, BEFORE anything publishes
+  # ──────────────────────────────────────────────────
+  # Arseny: if it cannot build Windows at version-build time, it should fail there.
+  #
+  # This has to gate the BUILD jobs, not the `release` job, and the reason is that
+  # publishing is DECENTRALISED: build-macos-arm64, build-macos-x64, build-linux-x64
+  # and build-linux-arm64 each run their own `aws s3 sync`, including the sync to the
+  # bucket ROOT, which is the updater feed. Gating only `release` would fail the GitHub
+  # Release after macOS had already shipped to updater clients — a partial ship wearing
+  # a failed release's clothes. Do not "simplify" this onto `release`.
+  # `workflow-windows-proof.test.ts` asserts every job that syncs the feed depends on
+  # this one, by detecting publishers from their sync step rather than by name, so a
+  # publisher added later is covered the moment it exists.
+  # See decisions/211-windows-proof-post-merge-not-pull-request.md.
+  windows-proof:
+    needs: prepare
+    uses: ./.github/workflows/windows-conpty-package.yml
+
+  # ──────────────────────────────────────────────────
   # Build for each platform (parallel)
   # ──────────────────────────────────────────────────
   build-macos-arm64:
-    needs: prepare
+    needs: [prepare, windows-proof]
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
@@ -301,7 +320,7 @@ jobs:
           path: ./artifacts-macos-arm64/
 
   build-macos-x64:
-    needs: prepare
+    needs: [prepare, windows-proof]
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v5
@@ -516,7 +535,7 @@ jobs:
           path: ./artifacts-macos-x64/
 
   build-linux-x64:
-    needs: prepare
+    needs: [prepare, windows-proof]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
@@ -608,7 +627,7 @@ jobs:
           path: ./artifacts-linux-x64/
 
   build-linux-arm64:
-    needs: prepare
+    needs: [prepare, windows-proof]
     runs-on: ubuntu-22.04-arm
     # Best-effort: arm64 is a newer target and the Electrobun desktop bundle for
     # linux-arm64 is not yet proven, so this job must NEVER block a release of the

@@ -1,10 +1,12 @@
 name: Packaged Bun runtime
 
-# Reusable: build.yml calls this from a job so the required `test` context can wait
-# for it. The 45-entry `on.pull_request.paths` filter that used to live here now lives
-# in WINDOWS_SCOPE_PATHS (src/shared/windows-ci-scope.ts) — a filter GitHub evaluates
-# for itself cannot be read by a gate, and two copies of the list would drift.
-# See decisions/209-required-checks-wait-for-windows-packaging.md.
+# Reusable, with TWO callers and no trigger of its own:
+#   - windows-proof-main.yml — post-merge on `main`, scoped by WINDOWS_SCOPE_PATHS
+#   - release.yml — unconditionally, in front of every job that publishes
+# It briefly gated pull requests too; that cost +4m47 on every in-scope PR and was
+# reversed. The 45-entry `on.pull_request.paths` filter that used to live here lives in
+# WINDOWS_SCOPE_PATHS (src/shared/windows-ci-scope.ts), so one list serves both callers.
+# See decisions/211-windows-proof-post-merge-not-pull-request.md.
 on:
   workflow_call:
   workflow_dispatch:

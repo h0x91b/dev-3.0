@@ -74,9 +74,9 @@ describe("workflow Bun pins", () => {
 	// A pin change IS a packaged-runtime change, so the job that proves the
 	// package must re-run on it. Without this, a pure pin edit ships unproven.
 	it("makes every Bun-pinning workflow trigger the packaged-runtime proof", () => {
-		// Reads WINDOWS_SCOPE_PATHS, not the packaging workflow's own `paths:`. That
-		// filter is being deleted: the workflow becomes reusable and the required
-		// `test` context decides when it runs. Same invariant, new home — decisions/209.
+		// Reads WINDOWS_SCOPE_PATHS, not the packaging workflow's own `paths:`, which no
+		// longer exists. The list now decides which pushes to `main` dispatch the
+		// post-merge proof — decisions/211-windows-proof-post-merge-not-pull-request.md.
 		const pinningWorkflows = [...new Set(bunPins().map((pin) => pin.workflow))];
 
 		const untriggered = pinningWorkflows.filter(

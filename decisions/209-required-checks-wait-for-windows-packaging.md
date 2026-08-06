@@ -1,5 +1,16 @@
 # 209 — The required checks wait for the Windows packaging proof
 
+> **PARTLY SUPERSEDED by `decisions/211-windows-proof-post-merge-not-pull-request.md`.** The half of
+> this record that makes the required `test` context wait for the packaged Windows jobs was **reversed**
+> on measured cost: +4 m 47 s on every in-scope PR (run 31083965892). The proof now runs post-merge on
+> `main` and in front of every release job that publishes. Nothing PR-side described below still exists.
+>
+> **Still valid:** why the packaged Windows jobs matter, why the fix had to live in the repo, the
+> `workflow_call` conversion, and `WINDOWS_SCOPE_PATHS` as the single home for the path list.
+>
+> **Known false below:** the mitigation claiming `release.yml` packages Windows on every release. It
+> never did — see the Risks note marked ⚠️ FALSE.
+
 ## Context
 
 `main`'s required status checks are exactly `lint`, `test`, `build-check`, `trivy-scan` (read from the
@@ -104,8 +115,13 @@ the regression reaches `main`, and the next PR that *does* touch a listed path f
 reasons unrelated to its own diff. Partial mitigations in place: the list contains
 `src/shared/windows-ci-scope.ts` and `scripts/windows-ci-scope.ts`, so a change to the decision mechanism
 cannot judge itself out of scope; the run summary always prints how many changed files matched, so an
-out-of-scope verdict is visible rather than silent; `release.yml` still packages Windows on every release,
-so the proof is not skippable forever.
+out-of-scope verdict is visible rather than silent.
+
+  ⚠️ **FALSE — this line claimed `release.yml` still packages Windows on every release, so the proof was
+  not skippable forever. `release.yml` contained zero Windows, and had the whole time.** This was not a
+  stale number: it was a safety argument resting on a fact that was never true, offered while ruling on
+  the PR gate. A Windows proof was added to the release path only in
+  `decisions/211-windows-proof-post-merge-not-pull-request.md`.
 
 Other risks:
 

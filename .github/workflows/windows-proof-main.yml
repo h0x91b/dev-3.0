@@ -1,0 +1,78 @@
+name: Windows proof (main)
+
+# The packaged Windows proof, POST-MERGE. It briefly gated pull requests instead
+# (decisions/209-required-checks-wait-for-windows-packaging.md) and that cost +4m47 on
+# every in-scope PR, so the gating half was reversed: nothing here can block a merge.
+# A break is detected within roughly the packaging duration and is attributable to ONE
+# commit. See decisions/211-windows-proof-post-merge-not-pull-request.md.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Same WINDOWS_SCOPE_PATHS as the PR gate used, over the pushed commit range
+  # instead of a PR diff. The DEFAULT IS THE OPPOSITE of the PR side and must stay
+  # that way: there, an undecidable scope failed the job, because a required context
+  # asserting "Windows was checked" on a guess is a lie. Here nobody is waiting, so an
+  # undecidable range PROVES instead. Do not "align" the two.
+  windows_scope:
+    name: windows scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      in-scope: ${{ steps.scope.outputs.in-scope }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      # No `bun install`: the script imports only src/shared, so this job stays seconds
+      # long in front of the packaging jobs.
+      - name: Decide whether the packaged Windows proof is in scope
+        id: scope
+        shell: bash
+        env:
+          PUSHED_BEFORE: ${{ github.event.before }}
+          PUSHED_AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Force push, branch creation and the all-zero `before` all land here. The
+          # range is what makes a break attributable to one commit; without it there is
+          # nothing to scope, so prove rather than skip.
+          if [ -z "$PUSHED_BEFORE" ] \
+            || [ "$PUSHED_BEFORE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "$PUSHED_BEFORE^{commit}" 2>/dev/null; then
+            echo "::notice title=Windows proof::the pushed range ($PUSHED_BEFORE..$PUSHED_AFTER) does not resolve, so no file list exists to scope — proving Windows unconditionally instead of skipping it"
+            echo "## ℹ️ Windows proof: pushed range unresolvable, proving unconditionally" >> "$GITHUB_STEP_SUMMARY"
+            echo "in-scope=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$PUSHED_BEFORE" "$PUSHED_AFTER" | bun scripts/windows-ci-scope.ts
+
+      # Absence is not success. An out-of-scope merge produces a green run in which
+      # nothing was proved, and the only thing separating that from a real proof is
+      # this line. If a Windows-affecting file is missing from WINDOWS_SCOPE_PATHS,
+      # this is where it hides.
+      - name: Announce a merge that proves nothing about Windows
+        if: steps.scope.outputs.in-scope != 'true'
+        shell: bash
+        run: |
+          echo "::warning title=Windows proof::no file in this push matched WINDOWS_SCOPE_PATHS, so the packaged Windows jobs were DELIBERATELY NOT DISPATCHED — nothing was proved about the packaged Windows app on this commit"
+          echo "## ⚠️ Windows proof: deliberately not dispatched — nothing was proved about the packaged Windows app" >> "$GITHUB_STEP_SUMMARY"
+
+  # A red job here IS the notification: GitHub notifies the commit author of a failed
+  # run on the default branch, and the commit carries a ✗. That works because one human
+  # authors every commit in this repo — it is not a general solution.
+  windows_package:
+    name: windows package
+    needs: windows_scope
+    if: needs.windows_scope.outputs.in-scope == 'true'
+    uses: ./.github/workflows/windows-conpty-package.yml

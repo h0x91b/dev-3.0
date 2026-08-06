@@ -1,6 +1,6 @@
 /**
- * Decides whether a pull request's diff puts the packaged Windows proof in scope,
- * and emits `in-scope` for the `windows_scope` job in `build.yml`.
+ * Decides whether a set of changed files puts the packaged Windows proof in scope,
+ * and emits `in-scope` for the `windows_scope` job in `windows-proof-main.yml`.
  *
  * Reads repo-relative changed files from argv or newline-separated stdin. An empty
  * file list is a HARD ERROR, never "out of scope": a gate that cannot compute scope

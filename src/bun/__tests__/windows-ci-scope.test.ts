@@ -1,9 +1,8 @@
 /**
- * `WINDOWS_SCOPE_PATHS` decides whether the required `test` context waits for the
- * packaged Windows jobs or asserts they were deliberately not needed. That makes
- * the list and its matcher load-bearing in a way the old YAML filter was not: a
- * miss no longer means "Windows quietly did not run", it means "Windows was
- * checked-and-not-applicable" on a green required check. See decisions/209.
+ * `WINDOWS_SCOPE_PATHS` decides whether a push to `main` dispatches the packaged
+ * Windows proof. A miss means that merge proved nothing about Windows, and the run
+ * says so out loud rather than claiming the platform was checked. See
+ * decisions/211-windows-proof-post-merge-not-pull-request.md.
  */
 
 import { describe, expect, it } from "vitest";

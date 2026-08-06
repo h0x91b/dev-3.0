@@ -58,9 +58,9 @@ describe("the live terminal e2e job is wired to gate PRs", () => {
 	});
 
 	it("is a dependency of the required `test` context", () => {
-		// Membership, scoped to the `test` job, not an exact list: that array grows as
-		// sibling gates land on the required context (the Windows packaging gate did —
-		// decisions/209-required-checks-wait-for-windows-packaging.md). Scoped, because
+		// Membership, scoped to the `test` job, not an exact list: that array changes as
+		// sibling gates land on or leave the required context (the Windows packaging gate
+		// did both — decisions/211-windows-proof-post-merge-not-pull-request.md). Scoped, because
 		// membership checked file-wide would still pass if terminal_e2e were moved into
 		// some other job's needs while the required context stopped waiting for it.
 		const job = jobBlock("test");

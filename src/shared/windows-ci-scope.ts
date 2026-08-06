@@ -1,20 +1,23 @@
 /**
- * Single source of truth for whether a pull request puts the packaged Windows
- * proof in scope.
+ * Single source of truth for whether a change puts the packaged Windows proof in scope.
  *
  * The list used to live in `windows-conpty-package.yml` as an `on.pull_request.paths`
- * filter. It moved here because the required contexts now wait on that workflow:
- * a filter GitHub evaluates for itself cannot be read by a gate, and a second copy
- * of a 45-entry list would drift with nobody knowing which copy was authoritative.
+ * filter. It moved here so a gate could read it, back when the required `test` context
+ * waited on that workflow. It no longer does: the proof runs POST-MERGE on `main` and
+ * this list decides which pushes dispatch it.
  *
- * THIS LIST IS LOAD-BEARING. Before, a missing entry meant Windows quietly did not
- * run. Now a missing entry makes the required `test` context assert "deliberately
- * out of scope" — a stronger claim built on the same fragile list. See decisions/209.
+ * The list is still what stands between a Windows regression and nobody noticing, but
+ * its failure mode is back to the mild one: a missing entry means "Windows was not
+ * proved on this merge", not a required context asserting Windows was checked. See
+ * decisions/211-windows-proof-post-merge-not-pull-request.md.
  */
-
 /** Changed files matching any of these dispatch the packaged Windows workflow. */
 export const WINDOWS_SCOPE_PATHS = [
 	".github/workflows/windows-conpty-package.yml",
+	// The post-merge caller. RULE: a workflow that DISPATCHES the proof must itself be
+	// in this list — it pins Bun, a pin change is a packaged-runtime change, and a
+	// workflow outside the list cannot dispatch the proof for its own edits.
+	".github/workflows/windows-proof-main.yml",
 	// A Bun pin change in these is a packaged-runtime change: they install the
 	// Bun that builds and ships the app, so the package proof has to re-run.
 	".github/workflows/build.yml",
