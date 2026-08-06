@@ -41,6 +41,15 @@ pixel; measured heights via `getBoundingClientRect` before and after.
 - `MobileBoardCarousel` no longer renders per-column dots; chevrons plus swipe
   are the navigation, and the pager keeps only the position (`5 / 9`) because the
   column header right below it already names the column.
+- **Inline chips opt out via `.touch-inline`** (`PriorityBadge`, `LabelChip`).
+  Even 24px squared a 19×15 `P3` badge and made a label pill taller than the card
+  title it sits under. WCAG 2.5.8 exempts inline targets, the card surface itself
+  is the tap target, and both actions also live in the task-actions sheet at 44px.
+- **A hover-only affordance is dropped where there is no hover.** `LabelChip`'s
+  remove `×` is `opacity-0` until hover, so on a phone it could never appear —
+  yet it still reserved ~10px inside every pill. It is `display: none` under
+  `@media (hover: none)` and the right padding goes back to symmetric; tapping
+  the chip opens the label picker, which is how a phone removes a label.
 
 ## Risks
 

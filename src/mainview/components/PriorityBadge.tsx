@@ -30,7 +30,7 @@ function PriorityBadge({ priority, onChange, size = "xs", className = "" }: Prio
 
 	if (!onChange) {
 		return (
-			<span className={`inline-flex items-center justify-center font-mono font-semibold leading-none ${sizeCls} ${style.badge} ${className}`}>
+			<span className={`touch-inline inline-flex items-center justify-center font-mono font-semibold leading-none ${sizeCls} ${style.badge} ${className}`}>
 				{level}
 			</span>
 		);
@@ -49,7 +49,7 @@ function PriorityBadge({ priority, onChange, size = "xs", className = "" }: Prio
 					e.stopPropagation();
 					setOpen((v) => !v);
 				}}
-				className={`inline-flex items-center justify-center font-mono font-semibold leading-none transition-colors hover:brightness-110 focus-visible:ring-1 focus-visible:ring-accent/60 ${sizeCls} ${style.badge} ${className}`}
+				className={`touch-inline inline-flex items-center justify-center font-mono font-semibold leading-none transition-colors hover:brightness-110 focus-visible:ring-1 focus-visible:ring-accent/60 ${sizeCls} ${style.badge} ${className}`}
 			>
 				{level}
 			</button>

@@ -539,6 +539,18 @@ button {
 	}
 }
 
+/* ---- Inline chips opt out of the touch floor ------------------------------
+   A priority badge is a 15×13 painted box and a label chip a small pill; the
+   24px floor stretched both into squares with the text floating inside, and on
+   a card the label pill ended up taller than the card's own title. WCAG 2.5.8
+   exempts targets in inline flow, and these two sit inside a card whose whole
+   surface is the tap target — the same actions also live in the task-actions
+   sheet at a true 44px row. Class (0-1-0) beats the `:where()` floor (0). */
+.touch-inline {
+	min-height: 0;
+	min-width: 0;
+}
+
 /* ---- Touch action group (narrow-viewport action sheets) ----
    Dense desktop toolbars pack controls at ~28-32px (p-0.5/py-1). Inside a
    narrow-viewport action sheet those are below the 44px touch target the mobile

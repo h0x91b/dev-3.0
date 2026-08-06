@@ -13,7 +13,7 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 
 	return (
 		<span
-			className={`group/chip inline-flex items-center justify-center rounded-full transition-colors ${
+			className={`group/chip touch-inline inline-flex items-center justify-center rounded-full transition-colors ${
 				isSmall ? "text-dense" : "text-xs"
 			}`}
 			style={
@@ -30,9 +30,9 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 			<button
 				type="button"
 				onClick={onClick}
-				className={`inline-flex items-center justify-center gap-1 rounded-full transition-colors ${
-					isSmall ? "pl-1.5 py-0.5" : "pl-2 py-0.5"
-				} ${onRemove ? (isSmall ? "pr-0.5" : "pr-1") : (isSmall ? "pr-1.5" : "pr-2")} ${
+				className={`touch-inline inline-flex items-center justify-center gap-[3px] rounded-full transition-colors ${
+					isSmall ? "pl-1 py-px" : "pl-2 py-0.5"
+				} ${onRemove ? (isSmall ? "pr-0.5 [@media(hover:none)]:pr-1" : "pr-1 [@media(hover:none)]:pr-2") : (isSmall ? "pr-1" : "pr-2")} ${
 					onClick ? "cursor-pointer" : "cursor-default"
 				}`}
 				title={label.name}
@@ -40,15 +40,18 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 				<span
 					className="rounded-full flex-shrink-0"
 					style={{
-						width: isSmall ? 5 : 6,
-						height: isSmall ? 5 : 6,
+						width: isSmall ? 4 : 6,
+						height: isSmall ? 4 : 6,
 						background: active ? "rgba(255,255,255,0.8)" : label.color,
 					}}
 				/>
 				<span className="font-medium leading-none truncate max-w-[5rem]">{label.name}</span>
 			</button>
 
-			{/* Remove button — only rendered when onRemove is provided */}
+			{/* Remove button — only rendered when onRemove is provided. Dropped
+			    entirely where there is no hover: it could never appear, yet it
+			    reserved ~10px inside every pill. Tapping the chip opens the label
+			    picker, which is how a phone removes a label. */}
 			{onRemove && (
 				<button
 					type="button"
@@ -56,8 +59,8 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 						e.stopPropagation();
 						onRemove(e);
 					}}
-					className={`opacity-0 group-hover/chip:opacity-100 flex items-center justify-center rounded-full transition-[opacity,background-color,color] flex-shrink-0 ${
-						isSmall ? "w-3.5 h-3.5 mr-0.5" : "w-4 h-4 mr-1"
+					className={`touch-inline opacity-0 group-hover/chip:opacity-100 [@media(hover:none)]:hidden flex items-center justify-center rounded-full transition-[opacity,background-color,color] flex-shrink-0 ${
+						isSmall ? "w-3 h-3 mr-0.5" : "w-4 h-4 mr-1"
 					}`}
 					style={{
 						background: active ? "rgba(255,255,255,0.25)" : `${label.color}30`,
