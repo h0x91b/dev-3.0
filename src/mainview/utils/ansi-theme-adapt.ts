@@ -17,8 +17,13 @@
  * entirely instead made muted text — the input ghost/placeholder suggestion —
  * look like typed input, so dim now becomes a readable-but-secondary gray.
  * When an explicit fg color accompanies the dim, the color wins and dim is
- * dropped (preserving the colored text). The substitution is resolved at the
- * end of each SGR sequence and reset by SGR 0/22.
+ * dropped (preserving the colored text). Dim and the explicit-fg flag are
+ * therefore tracked as independent terminal state and reconciled at the end of
+ * every SGR sequence: tmux repaints a dim run as `38;5;241` `2` … `39` (color
+ * first, dim second, default fg later), so a dim that arrived under a color
+ * must still turn gray once that color is dropped. tmux also paints every
+ * default-fg cell with its pane style's foreground, so those colors count as
+ * "no color chosen" — see TMUX_PANE_DEFAULT_FGS and decision 210.
  *
  * The filter rewrites the stream before term.write():
  * - light mode: pale foregrounds (indexed N>=16 and truecolor) are darkened
@@ -212,6 +217,22 @@ function dimFgReplacement(mode: ThemeMode): string[] {
 	return mode === "light" ? LIGHT_DIM_FG : DARK_DIM_FG;
 }
 
+// tmux paints every default-fg cell with its pane style's foreground
+// (`window-active-style` / `window-style`, src/bun/tmux/themes.ts), so a bare
+// default fg never reaches us — the stream is all truecolor. These four colors
+// therefore mean "the app picked no color", not an explicit one, and must not
+// suppress the dim emulation the way a real color does.
+const TMUX_PANE_DEFAULT_FGS: readonly Rgb[] = [
+	[205, 214, 244], // Mocha @thm_fg        — active pane
+	[127, 132, 156], // Mocha @thm_overlay_1 — inactive pane
+	[76, 79, 105], //   Latte @thm_fg        — active pane
+	[140, 143, 161], // Latte @thm_overlay_1 — inactive pane
+];
+
+function isTmuxPaneDefaultFg(r: number, g: number, b: number): boolean {
+	return TMUX_PANE_DEFAULT_FGS.some(([sr, sg, sb]) => r === sr && g === sg && b === sb);
+}
+
 function whiteBgReplacement(bright: boolean, mode: ThemeMode): string[] {
 	if (mode === "light") return bright ? LIGHT_BRIGHT_WHITE_BG : LIGHT_WHITE_BG;
 	return bright ? DARK_BRIGHT_WHITE_BG : DARK_WHITE_BG;
@@ -250,14 +271,19 @@ interface GateState {
 	// 38;5;16 then 48;5;37), so the fg gets adjusted before the gating bg is
 	// known — when such a bg opens, the original fg is re-emitted to undo it.
 	pendingFg: string[] | null;
-	// SGR dim seen in the current sequence, not yet resolved: flushed as an
-	// emulated muted-gray fg at sequence end iff no explicit fg overrides it.
-	dimPending: boolean;
-	// An emulated dim gray is the active fg, so SGR 22 (dim off) must reset it.
+	// SGR dim is on (until 22 or a reset). Persistent, not per-sequence: the
+	// dim may arrive while a color is active and only become visible later,
+	// when that color is dropped with 39.
+	dimOn: boolean;
+	// An emulated dim gray is the active fg, so it must be undone when dim ends.
 	dimActive: boolean;
 	// An explicit fg color (not the default, not our emulated gray) is active —
 	// dim is then dropped (the color shows full), matching prior behavior.
 	fgExplicit: boolean;
+	// The tmux pane-style fg currently standing in for the default fg. Ending
+	// dim restores it instead of SGR 39, which would fall back to the ghostty
+	// theme's own foreground and shift the color of the rest of the line.
+	paneDefaultFg: string[] | null;
 }
 
 /**
@@ -273,9 +299,10 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		gate.reverseActive = false;
 		gate.darkFg = null;
 		gate.pendingFg = null;
-		gate.dimPending = false;
+		gate.dimOn = false;
 		gate.dimActive = false;
 		gate.fgExplicit = false;
+		gate.paneDefaultFg = null;
 		return raw;
 	}
 	// Normalize colon sub-parameter form (38:5:226) to semicolons so the
@@ -335,7 +362,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			gate.reverseActive = false;
 			gate.darkFg = null;
 			gate.pendingFg = null;
-			gate.dimPending = false;
+			gate.dimOn = false;
 			gate.dimActive = false;
 			gate.fgExplicit = false;
 			out.push(token);
@@ -365,26 +392,20 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		if (token === "2") {
 			// SGR dim — resolved at sequence end (flushed as an emulated muted
 			// gray unless an explicit fg overrides it). Don't emit the dim token.
-			gate.dimPending = true;
+			gate.dimOn = true;
 			i++;
 			continue;
 		}
 		if (token === "22") {
-			// Dim off. If we emulated dim with a gray fg, also reset the fg.
-			gate.dimPending = false;
+			// Dim off; the emulated gray fg is undone by the reconcile below.
+			gate.dimOn = false;
 			out.push(token);
-			if (gate.dimActive) {
-				out.push("39");
-				gate.dimActive = false;
-				gate.fgExplicit = false;
-			}
 			i++;
 			continue;
 		}
 		if (token === "30" || token === "90") {
 			gate.darkFg = token;
 			gate.pendingFg = null;
-			gate.dimPending = false;
 			gate.dimActive = false;
 			gate.fgExplicit = true;
 			if (mode === "dark" && gate.bg === "white" && !gate.reverseActive) {
@@ -403,7 +424,6 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			if (token !== "38") {
 				gate.darkFg = null;
 				gate.pendingFg = null;
-				gate.dimPending = false;
 				gate.dimActive = false;
 				// 39 restores the default fg (not an explicit color); 31-37/91-97
 				// are explicit colors that take over and drop dim.
@@ -448,7 +468,6 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 				if (token === "38") {
 					gate.darkFg = null;
 					gate.pendingFg = null;
-					gate.dimPending = false;
 					gate.dimActive = false;
 					gate.fgExplicit = true;
 					if (index >= 16 && index <= 255 && fgAdjustable()) {
@@ -489,9 +508,22 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 				if (token === "38") {
 					gate.darkFg = null;
 					gate.pendingFg = null;
-					gate.dimPending = false;
 					gate.dimActive = false;
 					gate.fgExplicit = true;
+					if (
+						isTmuxPaneDefaultFg(
+							Number(tokens[i + 2]),
+							Number(tokens[i + 3]),
+							Number(tokens[i + 4]),
+						)
+					) {
+						// tmux repainting a default-fg cell, not a color the app chose.
+						gate.fgExplicit = false;
+						gate.paneDefaultFg = ["38", "2", tokens[i + 2], tokens[i + 3], tokens[i + 4]];
+						out.push(token, tokens[i + 1], tokens[i + 2], tokens[i + 3], tokens[i + 4]);
+						i += 5;
+						continue;
+					}
 					if (fgAdjustable()) {
 						const r = Number(tokens[i + 2]);
 						const g = Number(tokens[i + 3]);
@@ -513,15 +545,17 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		out.push(token);
 		i++;
 	}
-	// Resolve a dim seen in this sequence: if no explicit fg overrode it, the
-	// dimmed text is over the default fg — emit an emulated muted gray so it
-	// stays readable yet visibly secondary (placeholder/ghost text, hints).
-	if (gate.dimPending) {
-		gate.dimPending = false;
-		if (!gate.fgExplicit) {
-			out.push(...dimFgReplacement(mode));
-			gate.dimActive = true;
-		}
+	// Reconcile the emulated gray with the state this sequence leaves behind: it
+	// applies exactly while dim is on over the default fg (placeholder/ghost
+	// text, hints). Dropping it needs an explicit 39 unless this sequence
+	// already installed a real color, which overrides the gray on its own.
+	const grayWanted = gate.dimOn && !gate.fgExplicit;
+	if (grayWanted && !gate.dimActive) {
+		out.push(...dimFgReplacement(mode));
+		gate.dimActive = true;
+	} else if (!grayWanted && gate.dimActive) {
+		gate.dimActive = false;
+		if (!gate.fgExplicit) out.push(...(gate.paneDefaultFg ?? ["39"]));
 	}
 	if (out.length === 0) return null;
 	return out.join(";");
@@ -546,9 +580,10 @@ export function createAnsiThemeFilter(): (chunk: string, mode: ThemeMode) => str
 		reverseActive: false,
 		darkFg: null,
 		pendingFg: null,
-		dimPending: false,
+		dimOn: false,
 		dimActive: false,
 		fgExplicit: false,
+		paneDefaultFg: null,
 	};
 	return (chunk, mode) => {
 		let data = carry + chunk;

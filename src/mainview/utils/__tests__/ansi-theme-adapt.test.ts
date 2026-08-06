@@ -105,6 +105,36 @@ describe("createAnsiThemeFilter — dim handling (both themes)", () => {
 		);
 	});
 
+	it("grays a dim run that only loses its color later (tmux repaint order)", () => {
+		// tmux repaints Claude Code's placeholder line as color-then-dim for the
+		// prompt glyph, and drops the color with a bare 39 for the hint text:
+		// `38;5;241` `2` "❯ " `39` "Press up to edit…". The dim arrives while an
+		// explicit color is active, so it must still take effect on the 39.
+		expect(
+			filterAll([`${ESC}[38;5;241m${ESC}[2m❯ ${ESC}[39mPress up${ESC}[0m`], "dark"),
+		).toBe(`${ESC}[38;5;241m❯ ${ESC}[39;${DARK_DIM}mPress up${ESC}[0m`);
+	});
+
+	it("grays dim under the tmux pane-style fg (Catppuccin window-active-style)", () => {
+		// tmux paints every default-fg cell with `window-active-style`'s fg
+		// (#cdd6f4), so no bare default fg ever reaches the filter. Treating that
+		// repaint as an app-chosen color killed dim everywhere in Claude/Codex.
+		const pane = `${ESC}[38;2;205;214;244m`;
+		expect(filterAll([`${pane}${ESC}[2mghost${ESC}[22mtyped`], "dark")).toBe(
+			`${pane}${ESC}[${DARK_DIM}mghost${ESC}[22;38;2;205;214;244mtyped`,
+		);
+	});
+
+	it("keeps color-wins for a real app color under dim", () => {
+		expect(filterAll([`${ESC}[38;2;243;139;168m${ESC}[2mred${ESC}[0m`], "dark")).toBe(
+			`${ESC}[38;2;243;139;168mred${ESC}[0m`,
+		);
+	});
+
+	it("grays dim paired with the default fg in one sequence", () => {
+		expect(filterAll([`${ESC}[2;39mfoo`], "dark")).toBe(`${ESC}[39;${DARK_DIM}mfoo`);
+	});
+
 	it("resets the emulated gray on SGR 22 (dim off)", () => {
 		expect(filterAll([`${ESC}[2mfoo${ESC}[22mbar`], "dark")).toBe(
 			`${ESC}[${DARK_DIM}mfoo${ESC}[22;39mbar`,
