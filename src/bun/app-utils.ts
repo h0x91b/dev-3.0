@@ -1,3 +1,5 @@
+import { buildChannelTitlePrefix } from "../shared/update-channel";
+
 /**
  * Pure utility functions used by the main process entry point (index.ts).
  * Extracted here so they can be tested without triggering Electrobun side effects.
@@ -32,10 +34,6 @@ export const formatDateTime = (d: Date) => {
 	return `${date} · W${String(getISOWeek(d)).padStart(2, "0")} · ${time}`;
 };
 
-/**
- * Builds the window title string. Dev builds (channel "dev", i.e. `bun run dev`
- * from source) get a "[DEV from src]" prefix so they are unmistakable next to an
- * installed production/staging window.
- */
+/** Builds the window title string, marking non-stable channels (see above). */
 export const makeTitle = (version: string, dt: string, buildChannel?: string) =>
-	`${buildChannel === "dev" ? "[DEV from src] " : ""}dev-3.0 v${version} [${dt}]`;
+	`${buildChannelTitlePrefix(buildChannel)}dev-3.0 v${version} [${dt}]`;

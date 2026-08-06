@@ -14,6 +14,7 @@ import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
 import { initStreamerMode } from "./streamer-mode";
+import { buildChannelTitlePrefix } from "../shared/update-channel";
 import RootErrorBoundary from "./components/RootErrorBoundary";
 import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
@@ -118,10 +119,9 @@ async function bootstrap() {
 			new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
 		]);
 		initAnalytics(version);
-		// Dev builds (channel "dev" = `bun run dev` from source) get a visible
-		// prefix so the window is unmistakable next to an installed prod window.
-		const devPrefix = buildChannel === "dev" ? "[DEV from src] " : "";
-		document.title = `${devPrefix}dev-3.0 v${version}`;
+		// Non-stable channels get a visible prefix so the window is unmistakable next to
+		// an installed stable one — shared with the native window title.
+		document.title = `${buildChannelTitlePrefix(buildChannel)}dev-3.0 v${version}`;
 	} catch (err) {
 		console.warn("[main] Failed to init analytics:", err);
 		initAnalytics("unknown");

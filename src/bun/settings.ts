@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import type { GlobalSettings, ShortcutOverride } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
+import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -51,7 +52,7 @@ const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
 	defaultConfigId: "claude-auto-opus5-medium",
 	taskDropPosition: "top",
-	updateChannel: "stable",
+	updateChannel: DEFAULT_UPDATE_CHANNEL,
 };
 
 const ALL_BUILTIN_CONFIG_IDS = new Set(DEFAULT_AGENTS.flatMap((a) => a.configurations.map((c) => c.id)));
@@ -86,7 +87,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
 			defaultConfigId: resolveDefaultConfigId(data.defaultConfigId),
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
-			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
+			updateChannel: coerceUpdateChannel(data.updateChannel),
 			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
 			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
@@ -193,7 +194,7 @@ export function loadSettingsSync(): GlobalSettings {
 			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
 			defaultConfigId: resolveDefaultConfigId(data.defaultConfigId),
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
-			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
+			updateChannel: coerceUpdateChannel(data.updateChannel),
 			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
 			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,

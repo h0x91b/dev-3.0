@@ -5,6 +5,7 @@ import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotMode
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-panes";
 import type { DeepLinkNav } from "./deep-link";
+import type { UpdateChannel } from "./update-channel";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 
 // ---- Changelog ----
@@ -811,7 +812,7 @@ export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
 	taskDropPosition: "top" | "bottom";
-	updateChannel: "stable" | "canary";
+	updateChannel: UpdateChannel;
 	theme?: "dark" | "light" | "system";
 	resolvedTheme?: "dark" | "light";
 	cloneBaseDirectory?: string;

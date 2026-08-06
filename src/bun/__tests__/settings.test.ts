@@ -38,7 +38,7 @@ describe("saveSettings", () => {
 	});
 
 	it("does not corrupt the existing settings file if a write crashes mid-save", async () => {
-		const previousSettings = makeSettings({ updateChannel: "canary" });
+		const previousSettings = makeSettings({ updateChannel: "unstable" });
 		writeFileSync(settingsPath, JSON.stringify(previousSettings, null, 2), "utf-8");
 
 		vi.spyOn(Bun, "write").mockImplementation(async (target) => {
@@ -156,7 +156,7 @@ describe("saveSettings", () => {
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskDropPosition: "bottom",
-			updateChannel: "canary",
+			updateChannel: "unstable",
 			terminalPathOpenMode: "reveal",
 			theme: "light",
 			resolvedTheme: "light",

@@ -30,6 +30,8 @@ import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { setShortcutOverrides } from "../keymap-store";
 import { trackEvent } from "../analytics";
+import { confirm } from "../confirm";
+import type { UpdateChannel } from "../../shared/update-channel";
 import AdvancedExperienceSection from "./global-settings/AdvancedExperienceSection";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
 import AgentRateLimitSettingsSection from "./global-settings/AgentRateLimitSettingsSection";
@@ -252,8 +254,21 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
+	// Switching channels is not an ordinary preference write: it leads to installing a
+	// different bundle, and going back to stable installs an OLDER one that then reads
+	// state a newer build wrote. Both directions are confirmed, and each states its own
+	// consequence — the stable direction is the one nobody would guess.
 	const handleUpdateChannelChange = useCallback(
-		(channel: "stable" | "canary") => {
+		async (channel: UpdateChannel) => {
+			const toUnstable = channel === "unstable";
+			const ok = await confirm({
+				title: t(toUnstable ? "settings.updateChannelSwitchToUnstableTitle" : "settings.updateChannelSwitchToStableTitle"),
+				message: t(toUnstable ? "settings.updateChannelSwitchToUnstableBody" : "settings.updateChannelSwitchToStableBody"),
+				confirmLabel: t(
+					toUnstable ? "settings.updateChannelSwitchToUnstableConfirm" : "settings.updateChannelSwitchToStableConfirm",
+				),
+			});
+			if (!ok) return;
 			persistSettingChange(
 				{ updateChannel: channel },
 				{
@@ -264,7 +279,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 				},
 			);
 		},
-		[persistSettingChange],
+		[persistSettingChange, t],
 	);
 
 	const handleShortcutsChange = useCallback(

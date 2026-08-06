@@ -6576,6 +6576,7 @@ describe("handlers.getAppVersion", () => {
 			version: "0.3.0",
 			hash: "abc123",
 			channel: "dev",
+			buildOrder: 1234,
 		});
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "beta" } as any);
 

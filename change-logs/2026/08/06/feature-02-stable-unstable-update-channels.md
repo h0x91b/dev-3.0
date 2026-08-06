@@ -1,0 +1,3 @@
+Short: Choose stable or unstable updates
+
+Updates now come in two channels, picked in Settings → System. Stable ships only tagged releases and stays the default for everyone; unstable is built from main and is opt-in, so ordinary installs stop receiving every beta. Switching back to stable installs an older build on purpose and says so first, and an unstable build marks itself in the window title. Includes a mandatory widening of the release guardrail so the new publisher cannot escape the Windows proof, plus a declared ride-along that derives the pipefail workflow check from the workflows directory instead of a hardcoded list that silently stopped covering new files.

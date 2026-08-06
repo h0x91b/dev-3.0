@@ -296,7 +296,7 @@ jobs:
           fi
 
       - name: Create release artifacts
-        run: bash ./scripts/create-release-artifacts.sh macos arm64
+        run: bash ./scripts/create-release-artifacts.sh macos arm64 stable
 
       - name: Create CLI tarball
         run: bash ./scripts/create-cli-tarball.sh macos arm64
@@ -511,7 +511,7 @@ jobs:
           fi
 
       - name: Create release artifacts
-        run: bash ./scripts/create-release-artifacts.sh macos x64
+        run: bash ./scripts/create-release-artifacts.sh macos x64 stable
 
       - name: Create CLI tarball
         run: bash ./scripts/create-cli-tarball.sh macos x64
@@ -603,7 +603,7 @@ jobs:
           ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
 
       - name: Create release artifacts
-        run: bash ./scripts/create-release-artifacts.sh linux x64
+        run: bash ./scripts/create-release-artifacts.sh linux x64 stable
 
       - name: Create CLI tarball
         run: bash ./scripts/create-cli-tarball.sh linux x64
@@ -714,7 +714,7 @@ jobs:
       - name: Create release artifacts (GUI bundle, best-effort)
         continue-on-error: true
         run: |
-          bash ./scripts/create-release-artifacts.sh linux arm64 \
+          bash ./scripts/create-release-artifacts.sh linux arm64 stable \
             || echo "::warning::linux-arm64 GUI bundle not produced (Electrobun arm64 runtime may be unavailable) — shipping the CLI tarball only"
 
       - name: Upload artifacts to S3
