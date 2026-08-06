@@ -22,7 +22,7 @@ export default {
 		// Inbound deep links: `dev3://task/<id>`, `dev3://project/<id>`,
 		// `dev3://new-task?project=<id>&text=<…>`. Electrobun writes CFBundleURLTypes
 		// into Info.plist; macOS only registers it when the app lives in
-		// /Applications. Handled in src/bun/index.ts (open-url). See decisions/144.
+		// /Applications. Handled in src/bun/index.ts (open-url). See decisions/2026/08/04/dev3-url-scheme-deep-links.md.
 		urlSchemes: ["dev3"],
 	},
 	runtime: {
@@ -70,10 +70,10 @@ export default {
 			[cliCopySource]: cliCopyDestination,
 			"src/assets/sounds": "sounds",
 			"src/assets/artifact-template": "artifact-template",
-			// macOS notification-click shim (empty dir on Linux) — see decisions/106.
+			// macOS notification-click shim (empty dir on Linux) — see decisions/2026/07/05/native-notification-click-shim.md.
 			"dist/native": "native",
 			// Bundled self-contained tmux + license notices (empty dir on Linux and
-			// on dev machines without a local tmux build) — see decisions/137.
+			// on dev machines without a local tmux build) — see decisions/2026/07/16/bundle-tmux-macos.md.
 			"dist/tmux": "tmux",
 		},
 		linux: {

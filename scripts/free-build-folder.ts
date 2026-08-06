@@ -12,7 +12,7 @@
  * Order of work matters as much as the process query: the delete is attempted
  * FIRST, so a machine holding nothing never runs a process query at all.
  * Enumeration happens only after the delete failed and we need to name the holder.
- * See decisions/217-windows-build-folder-freed-before-electrobun-wipes-it.md.
+ * See decisions/2026/08/06/windows-build-folder-freed-before-electrobun-wipes-it.md.
  *
  * What it deliberately does NOT kill: the packaged `cli/dev3.exe` sitting in the
  * same folder. Agent hooks in OTHER worktrees invoke the CLI by that absolute path

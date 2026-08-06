@@ -6,7 +6,7 @@
  * with `require.resolve("rcedit/package.json")` frozen to the builder's own CI
  * path, and the failure is a `console.warn`. We own `rcedit` through our lockfile
  * instead, so nothing here depends on a binary being present on the machine.
- * See `decisions/214-vendor-rcedit-for-windows-icons.md`.
+ * See `decisions/2026/08/06/vendor-rcedit-for-windows-icons.md`.
  *
  * Hard only where a human receives the result. `emitsUpdateArchive()` is the same
  * gate the update-archive proof uses: a plain local `bun run dev` must not die
@@ -82,7 +82,7 @@ async function run(): Promise<void> {
 	// loud that they are superseded rather than only announcing success.
 	console.log(
 		"[windows-icons] the two 'Failed to embed icon into launcher.exe/bun.exe' warnings above are EXPECTED and already repaired — " +
-			"electrobun cannot resolve its own rcedit (decisions/214-vendor-rcedit-for-windows-icons.md), so we embed it here instead.",
+			"electrobun cannot resolve its own rcedit (decisions/2026/08/06/vendor-rcedit-for-windows-icons.md), so we embed it here instead.",
 	);
 	console.log(
 		`[windows-icons] app icon embedded and verified in ${targets.map((target) => target.relativePath).join(", ")}. ` +

@@ -9,9 +9,9 @@ on-disk registry alone — with **no tmux involved**.
 This is a proof, not product integration: no `TerminalBackend`, UI, RPC, settings,
 feature flag, or persisted project/task field is added, and the production tmux
 path is untouched. It reuses the isolated registry from seq 1214/1236/1237
-(decisions [151](../../../decisions/151-native-session-registry.md),
-[158](../../../decisions/158-native-client-writer-ownership.md),
-[159](../../../decisions/159-native-host-crash-recovery.md)).
+(decisions [151](../../../decisions/2026/07/22/native-session-registry.md),
+[158](../../../decisions/2026/07/22/native-client-writer-ownership.md),
+[159](../../../decisions/2026/07/22/native-host-crash-recovery.md)).
 
 ## Why a new proof (vs the existing E2Es)
 

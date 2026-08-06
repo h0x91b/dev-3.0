@@ -51,7 +51,7 @@ cp ./dist/index.html "$STAGE_DIR/dist/"
 [ -d ./dist/assets ] && cp -r ./dist/assets "$STAGE_DIR/dist/assets"
 cp -r ./src/assets/artifact-template "$STAGE_DIR/artifact-template"
 
-# macOS tarballs MUST carry the bundled tmux (decisions/137) — brew-less and
+# macOS tarballs MUST carry the bundled tmux (decisions/2026/07/16/bundle-tmux-macos.md) — brew-less and
 # CLT-less machines have no other way to get a working tmux. Hard gate so a
 # release can never silently ship without it. Linux keeps keg/PATH resolution.
 if [ "$OS" = "macos" ]; then

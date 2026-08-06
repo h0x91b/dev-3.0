@@ -18,7 +18,7 @@ import { log } from "./shared";
  * roots. Resolution is gated too: an out-of-scope path must never become a
  * link that then refuses to open, and `..` segments let even a relative
  * candidate escape its base. Same exposure class as `listDirectory` behind
- * the same auth, but bounded — see decisions/208-terminal-file-path-links.md.
+ * the same auth, but bounded — see decisions/2026/08/06/terminal-file-path-links.md.
  */
 
 const RESOLVE_TERMINAL_PATHS_MAX = 64;

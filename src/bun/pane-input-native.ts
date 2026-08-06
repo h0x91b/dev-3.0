@@ -1,7 +1,7 @@
 /**
  * The native adapter: the only place neutral keys become PTY bytes and the only place the
  * writer lease is consulted. It never claims a lease, never attaches a client, and never
- * reports `delivered`. See `decisions/201-backend-neutral-pane-input.md`.
+ * reports `delivered`. See `decisions/2026/08/06/backend-neutral-pane-input.md`.
  */
 
 import type { Task } from "../shared/types";

@@ -10,7 +10,7 @@ an isolation test (`__tests__/isolation.test.ts`) that fails if *any* source fil
 outside the module directory so much as references `native-terminal-registry` —
 the module must stay self-contained and removable. A harness that imports the
 real primitives therefore has to sit inside the module (the guard excludes files
-under the module root). See [decision 164](../../../../decisions/164-load-budget-harness-inside-registry.md).
+under the module root). See [decision 164](../../../../decisions/2026/07/25/load-budget-harness-inside-registry.md).
 
 ## What it is (and is not)
 

@@ -1705,7 +1705,7 @@ async function setupTiledLayout(session: PtySession): Promise<void> {
  * (worktree / project path / ops work dir). Do NOT use `Bun.file(cwd).exists()`
  * here: Bun.file has file semantics and returns `false` for directories, so it
  * reported a bogus "PTY cwd missing" for every valid dir. `fs.access` resolves
- * directories correctly. See decisions/081-pty-cwd-exists-fs-access.md.
+ * directories correctly. See decisions/2026/06/27/pty-cwd-exists-fs-access.md.
  */
 export async function cwdExists(cwd: string): Promise<boolean> {
 	try {

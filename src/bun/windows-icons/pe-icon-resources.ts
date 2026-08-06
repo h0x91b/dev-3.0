@@ -4,7 +4,7 @@
  * An icon is a RESOURCE inside the .exe, so "did the icon get embedded" is a
  * question about bytes on disk — not about whether `rcedit` exited 0. Electrobun's
  * icon step exits 0 while embedding nothing (see
- * `decisions/214-vendor-rcedit-for-windows-icons.md`), which is exactly why the
+ * `decisions/2026/08/06/vendor-rcedit-for-windows-icons.md`), which is exactly why the
  * proof here reads the file rather than trusting a process.
  *
  * Pure byte reading, so it runs on every runner — the assertions do not need a

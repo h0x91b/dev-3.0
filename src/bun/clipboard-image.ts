@@ -11,7 +11,7 @@ import { deflateSync } from "node:zlib";
  * unreadable exactly where it is used.
  *
  * Delete this module once electrobun's Windows `clipboardReadImage` returns PNG.
- * See decisions/216-clipboard-image-dib-to-png.md.
+ * See decisions/2026/08/06/clipboard-image-dib-to-png.md.
  */
 export type ClipboardImageResult =
 	| { ok: true; png: Uint8Array }

@@ -11,7 +11,7 @@
  * committed `inventory.json` differs from the fresh scan.
  *
  * This is **advisory tooling run by hand** at tmux-removal milestones, not a PR
- * gate (`decisions/167-tmux-inventory-advisory-not-gating.md`). It never mutates
+ * gate (`decisions/2026/07/25/tmux-inventory-advisory-not-gating.md`). It never mutates
  * production code.
  */
 

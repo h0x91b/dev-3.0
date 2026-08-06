@@ -95,7 +95,7 @@ jobs:
   # `workflow-windows-proof.test.ts` asserts every job that syncs the feed depends on
   # this one, by detecting publishers from their sync step rather than by name, so a
   # publisher added later is covered the moment it exists.
-  # See decisions/211-windows-proof-post-merge-not-pull-request.md.
+  # See decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.
   windows-proof:
     needs: prepare
     uses: ./.github/workflows/windows-conpty-package.yml
@@ -180,7 +180,7 @@ jobs:
           bun scripts/fix-macho-headerpad.ts fix "$DIST"
 
       # Self-contained tmux shipped inside the app bundle and CLI tarball
-      # (decisions/137). Built natively on this runner's arch; the cache makes
+      # (decisions/2026/07/16/bundle-tmux-macos.md). Built natively on this runner's arch; the cache makes
       # it a no-op unless the build script (pins/flags) changed.
       - name: Restore bundled tmux cache
         uses: actions/cache@v5
@@ -263,7 +263,7 @@ jobs:
               echo "::error::launcher did not print the self-extractor banner"
               exit 1
             fi
-            # Bundled tmux gate (decisions/137): the app payload must carry a
+            # Bundled tmux gate (decisions/2026/07/16/bundle-tmux-macos.md): the app payload must carry a
             # signed, self-contained tmux that can run a real session with a
             # sanitized PATH — i.e. on a machine with NO system/brew tmux.
             TMUX_BIN=$(find "$RUNNER_TEMP/eb-payload" -path "*/Contents/Resources/app/tmux/tmux" -type f | head -1)
@@ -396,7 +396,7 @@ jobs:
           bun scripts/fix-macho-headerpad.ts fix "$DIST"
 
       # Self-contained tmux shipped inside the app bundle and CLI tarball
-      # (decisions/137). Built natively on this runner's arch; the cache makes
+      # (decisions/2026/07/16/bundle-tmux-macos.md). Built natively on this runner's arch; the cache makes
       # it a no-op unless the build script (pins/flags) changed.
       - name: Restore bundled tmux cache
         uses: actions/cache@v5
@@ -478,7 +478,7 @@ jobs:
               echo "::error::launcher did not print the self-extractor banner"
               exit 1
             fi
-            # Bundled tmux gate (decisions/137): the app payload must carry a
+            # Bundled tmux gate (decisions/2026/07/16/bundle-tmux-macos.md): the app payload must carry a
             # signed, self-contained tmux that can run a real session with a
             # sanitized PATH — i.e. on a machine with NO system/brew tmux.
             TMUX_BIN=$(find "$RUNNER_TEMP/eb-payload" -path "*/Contents/Resources/app/tmux/tmux" -type f | head -1)
@@ -901,7 +901,7 @@ jobs:
             depends_on macos: :ventura
             depends_on formula: "git"
             # No tmux dependency: the app bundle ships its own self-contained
-            # pinned tmux (Resources/app/tmux) — see decisions/137. Existing
+            # pinned tmux (Resources/app/tmux) — see decisions/2026/07/16/bundle-tmux-macos.md. Existing
             # installs with the h0x91b/dev3/tmux@3.6 keg keep working (the keg
             # is the second resolution tier after the bundled binary).
             depends_on formula: "cloudflared"
@@ -998,7 +998,7 @@ jobs:
             end
 
             # No tmux dependency on macOS: the tarball ships a self-contained
-            # pinned tmux next to the binary (decisions/137). Linux tarballs
+            # pinned tmux next to the binary (decisions/2026/07/16/bundle-tmux-macos.md). Linux tarballs
             # don't carry it yet, so Linux keeps the pinned keg — without it a
             # fresh Linux install on a tmux-less box would have no tmux at all.
             on_linux do

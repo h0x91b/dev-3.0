@@ -1,7 +1,7 @@
 /**
  * The ONE read-only door from pane input to the session registry, and the one definition
  * of a native pane's process identity, so a pinned program and a live binding cannot
- * drift. See `decisions/201-backend-neutral-pane-input.md`.
+ * drift. See `decisions/2026/08/06/backend-neutral-pane-input.md`.
  */
 
 import { inspectRecordFile, type RecordProblem } from "./native-terminal-registry/record";

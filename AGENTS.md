@@ -48,7 +48,7 @@ The app runs as the **Electrobun desktop** shell **and** as a **headless remote 
 
 ## Code comments — self-documenting first
 
-**Aim for code that explains itself** (clear names, small functions) and add comments only where they earn their place. **Cap: a comment ≤ 3 lines.** The only exception is a genuinely weird, non-obvious use case (a workaround, a subtle invariant, a "why not the obvious thing") — those may go longer, and belong in a `decisions/NNN-*.md` record if substantial. Don't restate what the code already says, don't narrate obvious steps, don't leave changelog-style history in comments.
+**Aim for code that explains itself** (clear names, small functions) and add comments only where they earn their place. **Cap: a comment ≤ 3 lines.** The only exception is a genuinely weird, non-obvious use case (a workaround, a subtle invariant, a "why not the obvious thing") — those may go longer, and belong in a `decisions/` record if substantial. Don't restate what the code already says, don't narrate obvious steps, don't leave changelog-style history in comments.
 
 ## No deprecation — ever (MANDATORY)
 
@@ -73,7 +73,7 @@ Do not fake a team when the tool is missing, and do not skip delegation just bec
 
 ## On-disk data layout — hard invariants (MANDATORY)
 
-The `~/.dev3.0/` directory is shared between **every installed version** of the app on the user's machine (production, dev builds, `bun run dev`, side-by-side channels). Any change that breaks forward/backward compatibility of that directory breaks whichever version opens it next. This already burned us once (PR #486 → reverted in #488; see `decisions/039-revert-project-slug-dash-escape.md`). **Not negotiable, even for "clean" fixes:**
+The `~/.dev3.0/` directory is shared between **every installed version** of the app on the user's machine (production, dev builds, `bun run dev`, side-by-side channels). Any change that breaks forward/backward compatibility of that directory breaks whichever version opens it next. This already burned us once (PR #486 → reverted in #488; see `decisions/2026/04/20/revert-project-slug-dash-escape.md`). **Not negotiable, even for "clean" fixes:**
 
 1. **`projectSlug()` algorithm is frozen.** The function in `src/bun/git.ts` maps `/a/b/c` → `a-b-c` and must not change — it names `~/.dev3.0/data/<slug>/`, `~/.dev3.0/worktrees/<slug>/`, and CLI worktree context detection. If you think you have a good reason to change it — stop and discuss with the user first, with a concrete migration plan that does not touch existing data on disk.
 2. **No automatic renames of anything under `~/.dev3.0/`.** Never `rename`/`renameSync`/`mv` `~/.dev3.0/data/*`, `worktrees/*`, `projects.json`, `tasks.json`, `sockets/*`, or any sibling — not at startup, not in a migration hook, not "just this once". An older version still running on the machine will look at the pre-rename path, find nothing, and silently show an empty Kanban board.
@@ -93,7 +93,7 @@ Two independent update channels deliver different things:
 Hard rules for any feature that leans on an external binary:
 
 - **Never assume a brew dependency exists.** A new `depends_on` in `release.yml` reaches only brew users. Every code path must degrade gracefully when the vendored/pinned binary is absent (fall back to PATH, feature-gate, or log a warning with the install command — never crash or break existing flows).
-- **Explicitly test the "in-app updated, dependency missing" configuration** — it is the *majority* upgrade path, not an edge case. The tmux@3.6 pin shipped green on dev machines (keg present) but broke updater users: PATH resolution found our own `~/.dev3.0/bin/tmux` shim (that dir is first in PATH — it hosts the dev3 CLI) and symlinked it onto itself → ELOOP, every tmux spawn dead (v1.29.1 incident; post-mortem in `decisions/105-pin-tmux-3.6-vendored-keg.md`).
+- **Explicitly test the "in-app updated, dependency missing" configuration** — it is the *majority* upgrade path, not an edge case. The tmux@3.6 pin shipped green on dev machines (keg present) but broke updater users: PATH resolution found our own `~/.dev3.0/bin/tmux` shim (that dir is first in PATH — it hosts the dev3 CLI) and symlinked it onto itself → ELOOP, every tmux spawn dead (v1.29.1 incident; post-mortem in `decisions/2026/07/05/pin-tmux-3.6-vendored-keg.md`).
 - **Any shim placed into `~/.dev3.0/bin` must be excluded from that binary's own PATH resolution** — dereference it, never commit it as the resolved binary, and sanitize a broken shim at startup (reference pattern: `dereferenceTmuxShim`/`sanitizeTmuxShim` in `src/bun/pty-server.ts`).
 
 ## Git
@@ -169,7 +169,13 @@ Rules:
 
 ## Decision records
 
-Non-obvious architectural decisions, hacks, and workarounds go in `decisions/NNN-short-slug.md` (sequential numbering — check existing files for the next number; descriptive slug like `worktree-branch-cleanup`). They record **why**, not just what, for future agents and humans.
+Non-obvious architectural decisions, hacks, and workarounds go in `decisions/YYYY/MM/DD/short-slug.md` — dated directories exactly like `change-logs/`, plus a descriptive slug, e.g. `decisions/2026/08/06/worktree-branch-cleanup.md`. They record **why**, not just what, for future agents and humans.
+
+**Never number a record.** Sequential numbering cannot survive parallel agents: everyone branches off the same `main`, sees the same highest number, and picks it. Before this rule, 98 numbers were shared by two to seven records each — the number was not an identity. The **slug is the identity** and has never collided across 369 records; the date only sorts. All the old `NNN-slug.md` records were moved into the tree once, and [`decisions/README.md`](decisions/README.md) maps every old name to its new path so existing citations still resolve.
+
+**Cite a record by its path or slug, never by a bare number.** `decisions/2026/08/06/foo.md` or "the `foo` record" — "decision 164" pointed at seven different files.
+
+`src/bun/__tests__/decision-record-names.test.ts` enforces all of this: a record outside `YYYY/MM/DD/slug.md`, two records sharing a slug, or a hole in the `README.md` map each fail the suite.
 
 **Create one when you:** relied on undocumented behavior or reverse-engineered internals; chose a non-obvious approach over a simpler one for a specific reason; worked around a dependency bug/limitation; made a decision with trade-offs or known risks.
 
@@ -189,7 +195,7 @@ The five canonical triage roles map to **dev3 labels** with their canonical name
 
 ### Domain docs
 
-Single-context: `AGENTS.md` is the primary domain/architecture doc (no separate `CONTEXT.md`), ADRs live in `decisions/NNN-slug.md` (not `docs/adr/`). See `docs/agents/domain.md`.
+Single-context: `AGENTS.md` is the primary domain/architecture doc (no separate `CONTEXT.md`), ADRs live in `decisions/YYYY/MM/DD/slug.md` (not `docs/adr/`). See `docs/agents/domain.md`.
 
 ## Telling the user how to check the work
 
@@ -228,10 +234,10 @@ Public `dev3` CLI exit codes are a documented contract:
 - **Runtime** — the actor-owned execution phase (`idle`, `preparing`, `running`, or `tearing-down`), independent of the column. `Task.runtimeState` is only a persisted recovery hint and must be verified against tmux/worktree reality at boot.
 - **Activity** — a watcher declared by lifecycle state, such as `mergeWatch` or `prWatch`. Activities deliver findings back through the task mailbox; they never write task status directly.
 - **Actor/mailbox** — the per-task FIFO that serializes lifecycle events while allowing different tasks to run in parallel. RPC callers await their own mailbox event and its synchronous effects.
-- **Draft** — a task the user explicitly marked unfinished ("Save as draft"). A property of the task (`Task.draft`), not a column and not a runtime phase: it lives in To Do, `idle`, with no worktree. No activation path may start it — the lifecycle machine rejects the move, so the UI affordances are only mirrors. The opposite of a *scratch* task (no prompt, launched immediately). Promotion to an ordinary task is one-way; see [decision 180](decisions/180-draft-tasks-lifecycle-enforced-one-way.md).
-- **Hibernated** — a property of the task (`Task.hibernated`), not a column and not a runtime phase. The task keeps its column and its worktree; its agent, tmux session and dev server are destroyed to reclaim memory, and it sinks below every live P4 while refusing column changes. Waking is explicit and manual. It is the counterpart of *draft*: a draft never started and has no worktree; a hibernated task started, and everything it produced is intact. See [decision 184](decisions/184-task-hibernation-property-not-runtime-phase.md).
+- **Draft** — a task the user explicitly marked unfinished ("Save as draft"). A property of the task (`Task.draft`), not a column and not a runtime phase: it lives in To Do, `idle`, with no worktree. No activation path may start it — the lifecycle machine rejects the move, so the UI affordances are only mirrors. The opposite of a *scratch* task (no prompt, launched immediately). Promotion to an ordinary task is one-way; see [decision 180](decisions/2026/07/29/draft-tasks-lifecycle-enforced-one-way.md).
+- **Hibernated** — a property of the task (`Task.hibernated`), not a column and not a runtime phase. The task keeps its column and its worktree; its agent, tmux session and dev server are destroyed to reclaim memory, and it sinks below every live P4 while refusing column changes. Waking is explicit and manual. It is the counterpart of *draft*: a draft never started and has no worktree; a hibernated task started, and everything it produced is intact. See [decision 184](decisions/2026/07/31/task-hibernation-property-not-runtime-phase.md).
 - **Compensating event** — the explicit event dispatched when an `abort` effect fails. The transition table declares the recovery path; the executor must not hide it in ad-hoc catch logic.
-- **Peek** — a read-only observation of another task's terminal (`dev3 peek`): pane summary plus a bounded text tail. It never focuses, writes, resizes, or takes ownership, and it never classifies the peer's state — the caller reads the tail. Invisible from inside the observed task, and the observed task does not have to cooperate. See [decision 199](decisions/199-peek-read-only-coordination-glance.md).
+- **Peek** — a read-only observation of another task's terminal (`dev3 peek`): pane summary plus a bounded text tail. It never focuses, writes, resizes, or takes ownership, and it never classifies the peer's state — the caller reads the tail. Invisible from inside the observed task, and the observed task does not have to cooperate. See [decision 199](decisions/2026/08/06/peek-read-only-coordination-glance.md).
 - **Freshness granularity** — whether a reported last-output time describes one pane or the whole window. Native reports `pane`; tmux reports `window`, because tmux has no per-pane activity variable. Always carried next to the time so a reader knows how precise it is, never smoothed over.
 
 Two-process model:
@@ -260,7 +266,7 @@ Vite builds `src/mainview/` → `dist/`; Electrobun copies `dist/` into `views/m
 
 ### Drag-and-drop files (uploaded into worktree)
 
-WKWebView does not expose native host file paths in drag-and-drop events. Dropped files are **uploaded into the task worktree** (up to 100 MB per file) and pasted as worktree-relative paths. See [decision 036](decisions/036-worktree-uploaded-dnd-files.md).
+WKWebView does not expose native host file paths in drag-and-drop events. Dropped files are **uploaded into the task worktree** (up to 100 MB per file) and pasted as worktree-relative paths. See [decision 036](decisions/2026/04/16/worktree-uploaded-dnd-files.md).
 
 ### Process spawning (`Bun.spawn`)
 
@@ -346,7 +352,7 @@ Two gates, escalating. Committing itself has no gate — commit freely, verify b
 
 **A green suite does not verify a visual surface.** Any change touching what the user sees can break subtly — layout shift, overflow on one viewport, console error, wrong state render. Drive the running UI, look at a screenshot, read the console before handing off. **Being a small change is not a reason to skip it** — small UI changes slip through the most. Only real exceptions: no visual surface at all, or the UI genuinely cannot be brought up. The full recipe (serving the app, the per-task isolated browser session, `agent-browser` usage) is the [`/debug-ui`](.claude/skills/debug-ui/SKILL.md) skill.
 
-**Screenshots are taken in streamer mode — always.** The developer's real accounts, emails, and paths are live in the app, and any screenshot can end up in a PR, an issue, or a recording. Append `&streamer=on` to the app URL — it blurs account emails/labels, orgs, home-dir paths, tunnel URLs, and the remote-access QR (see [decision 161](decisions/161-streamer-mode-css-blur-masking.md)). The only exception is a task about verifying those unmasked values: capture the minimum needed and say so.
+**Screenshots are taken in streamer mode — always.** The developer's real accounts, emails, and paths are live in the app, and any screenshot can end up in a PR, an issue, or a recording. Append `&streamer=on` to the app URL — it blurs account emails/labels, orgs, home-dir paths, tunnel URLs, and the remote-access QR (see [decision 161](decisions/2026/07/23/streamer-mode-css-blur-masking.md)). The only exception is a task about verifying those unmasked values: capture the minimum needed and say so.
 
 ## Key files
 

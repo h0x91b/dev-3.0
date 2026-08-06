@@ -11668,7 +11668,7 @@ describe("resolveBinaryPath", () => {
 	});
 });
 
-// ---- bundledTmuxCandidates (decisions/137) ----
+// ---- bundledTmuxCandidates (decisions/2026/07/16/bundle-tmux-macos.md) ----
 
 describe("bundledTmuxCandidates", () => {
 	it("maps the app-bundle layout: Contents/MacOS → Resources/app/tmux/tmux", () => {

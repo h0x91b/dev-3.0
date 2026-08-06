@@ -117,4 +117,4 @@ covered in-process.
 bun run test:native-host-image   # also part of bun run test / test:bun and CI
 ```
 
-See `decisions/169-packaged-windows-native-host-image.md`.
+See `decisions/2026/07/25/packaged-windows-native-host-image.md`.

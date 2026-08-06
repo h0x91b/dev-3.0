@@ -6,7 +6,7 @@ Reproducible, classified inventory of every remaining production tmux dependency
 (below), at tmux-removal milestones and before **CUT-005 / CUT-006** — not on
 every pull request. Inventory bookkeeping is not a runtime safety invariant, and
 gating CI on it blocked unrelated work
-(see [decision 167](../../../decisions/167-tmux-inventory-advisory-not-gating.md)).
+(see [decision 167](../../../decisions/2026/07/25/tmux-inventory-advisory-not-gating.md)).
 
 Roadmap item **INT-008** (parent Seq 1141 → Seq 1251). This is **tooling and
 documentation only** — it never removes, renames, wraps, or refactors tmux code.

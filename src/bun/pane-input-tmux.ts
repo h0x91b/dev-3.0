@@ -1,7 +1,7 @@
 /**
  * The tmux adapter: the only place neutral keys become tmux key names. One stage is one
  * guarded command list, so no window exists between checking identity and sending.
- * See `decisions/201-backend-neutral-pane-input.md`.
+ * See `decisions/2026/08/06/backend-neutral-pane-input.md`.
  */
 
 import {

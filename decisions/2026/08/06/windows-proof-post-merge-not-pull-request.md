@@ -1,6 +1,6 @@
 # 211 — The packaged Windows proof runs post-merge and before publishing, never on a pull request
 
-**Supersedes the PR-gating half of `decisions/209-required-checks-wait-for-windows-packaging.md`.**
+**Supersedes the PR-gating half of `decisions/2026/08/06/required-checks-wait-for-windows-packaging.md`.**
 Records are cited by full slug here, never by number: four numbering collisions happened in one day.
 Everything 209 says about *why* the packaged Windows jobs matter, why the fix had to live in the repo,
 and why the workflow became reusable still stands. What is reversed is the part that made the required

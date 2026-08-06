@@ -1,6 +1,6 @@
 /**
  * Neutral vocabulary for pane input: the closed key set, the request, the verdicts and the
- * guards. Each backend owns its encoding. See `decisions/201-backend-neutral-pane-input.md`.
+ * guards. Each backend owns its encoding. See `decisions/2026/08/06/backend-neutral-pane-input.md`.
  */
 
 /** Every control key the seam can express. One tuple; the union is derived from it. */

@@ -3,7 +3,7 @@
 # into dist/native/dev3-notifications.dylib.
 #
 # The shim owns UNUserNotificationCenter posting + the click delegate — see the
-# header comment in the .m file and decisions/106-native-notification-click-shim.md.
+# header comment in the .m file and decisions/2026/07/05/native-notification-click-shim.md.
 #
 # On Linux (and on macOS without clang) this produces an empty dist/native/ so
 # the electrobun.config.ts copy rule always has a source; the app degrades to

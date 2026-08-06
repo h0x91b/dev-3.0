@@ -5,7 +5,7 @@
  * Deliberately NO live repository assertions — inventory drift (a new tmux
  * token, a stale snapshot, a stale override) is checked by the manual audit
  * command, not by `bun run test` / required CI. See
- * `decisions/167-tmux-inventory-advisory-not-gating.md`.
+ * `decisions/2026/07/25/tmux-inventory-advisory-not-gating.md`.
  */
 
 import { describe, it, expect } from "vitest";
@@ -104,7 +104,7 @@ describe("tmux audit — boundary is cross-platform and self-excluding", () => {
 
 	it("treats changelogs and ADRs as historical, not inventoried", () => {
 		expect(classifyBoundary("change-logs/2026/07/23/fix-x.md", boundary)).toBe("historical");
-		expect(classifyBoundary("decisions/138-deep-tmux-client.md", boundary)).toBe("historical");
+		expect(classifyBoundary("decisions/2026/07/19/deep-tmux-client.md", boundary)).toBe("historical");
 	});
 
 	it("scans real production paths", () => {

@@ -272,7 +272,7 @@ function checkTmuxShim(deps: DoctorDeps): CheckResult {
 
 /**
  * Where release artifacts place the bundled self-contained tmux
- * (decisions/137): next to the dev3 binary in CLI tarball / brew libexec
+ * (decisions/2026/07/16/bundle-tmux-macos.md): next to the dev3 binary in CLI tarball / brew libexec
  * installs, and under Resources/app/ inside the desktop app bundle.
  */
 function bundledTmuxCandidates(deps: DoctorDeps): string[] {
@@ -290,7 +290,7 @@ function bundledTmuxCandidates(deps: DoctorDeps): string[] {
 }
 
 function checkTmuxBinary(deps: DoctorDeps): CheckResult {
-	// Bundled self-contained tmux (preferred by the app — decisions/137).
+	// Bundled self-contained tmux (preferred by the app — decisions/2026/07/16/bundle-tmux-macos.md).
 	for (const bundled of bundledTmuxCandidates(deps)) {
 		if (!deps.isExecutableFile(bundled)) continue;
 		const version = tmuxVersion(deps, bundled);

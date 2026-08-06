@@ -7,7 +7,7 @@ import sanitizeHtml from "sanitize-html";
 // everything outside this allowlist. sanitize-html is parser-based (htmlparser2),
 // so it behaves identically in the app webview and in the happy-dom test
 // environment — DOMPurify was rejected because it silently fails to sanitize
-// under happy-dom (see decisions/139-pr-comment-markdown-rendering.md).
+// under happy-dom (see decisions/2026/07/19/pr-comment-markdown-sanitizer.md).
 const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
 	allowedTags: [...sanitizeHtml.defaults.allowedTags, "img", "details", "summary", "ins", "del", "sup", "sub", "input"],
 	allowedAttributes: {

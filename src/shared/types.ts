@@ -383,7 +383,7 @@ export interface AgentConfiguration {
 	 *  enabled in Global Settings — it routes `ANTHROPIC_BASE_URL` through the
 	 *  local proxy (`127.0.0.1:${PXPIPE_PROXY_PORT}`). The picker still SHOWS it,
 	 *  but renders it disabled until the user opts in (clicking it deep-links to
-	 *  the Settings section). See PxpipeProxyStatus + decisions/112. */
+	 *  the Settings section). See PxpipeProxyStatus + decisions/2026/07/06/pxpipe-cost-trick-preset.md. */
 	requiresPxpipeProxy?: boolean;
 }
 
@@ -770,7 +770,7 @@ export const DEFAULT_EXTERNAL_APPS: ExternalApp[] = [
  * (agentId, configId) preset, surfaced as a quick-pick chip on the launch
  * picker. Carries no config overrides of its own (custom tweaks live in the
  * agent editor); `uses`/`lastUsedAt` drive chip ordering and eviction. See
- * `src/shared/favorites.ts` and decisions/125-agent-favorites.md.
+ * `src/shared/favorites.ts` and decisions/2026/07/11/agent-favorites.md.
  */
 export interface FavoriteAgentConfig {
 	agentId: string;
@@ -1438,7 +1438,7 @@ export interface Task {
 	 * switcher). Absent → the registry default (the preselect); `null` →
 	 * explicitly the system login (~/.claude / ~/.codex); a string → that managed
 	 * account. Persisted so Retry and session recovery re-launch on the same
-	 * account. See decisions/125-per-launch-agent-account-selection.md.
+	 * account. See decisions/2026/07/12/per-launch-agent-account-selection.md.
 	 */
 	accountId?: string | null;
 	createdAt: string;
@@ -4113,7 +4113,7 @@ export type AppRPCSchema = {
 			 * Navigate from an inbound `dev3://…` deep link while a window is already
 			 * open: jump to a task, open a project board, or open the Create Task
 			 * modal prefilled with `text`. Cold-start (no window) uses the
-			 * consumePendingDeepLinkNav pull instead — see decisions/144.
+			 * consumePendingDeepLinkNav pull instead — see decisions/2026/08/04/dev3-url-scheme-deep-links.md.
 			 */
 			openDeepLink: DeepLinkNav;
 			/**

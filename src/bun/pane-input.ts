@@ -1,6 +1,6 @@
 /**
  * The one entry point for pane input: routing comes from the TASK, never the request.
- * See `decisions/201-backend-neutral-pane-input.md`.
+ * See `decisions/2026/08/06/backend-neutral-pane-input.md`.
  */
 
 import { randomUUID } from "node:crypto";

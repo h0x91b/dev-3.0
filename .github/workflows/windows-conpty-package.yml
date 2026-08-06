@@ -6,7 +6,7 @@ name: Packaged Bun runtime
 # It briefly gated pull requests too; that cost +4m47 on every in-scope PR and was
 # reversed. The 45-entry `on.pull_request.paths` filter that used to live here lives in
 # WINDOWS_SCOPE_PATHS (src/shared/windows-ci-scope.ts), so one list serves both callers.
-# See decisions/211-windows-proof-post-merge-not-pull-request.md.
+# See decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.
 on:
   workflow_call:
   workflow_dispatch:
@@ -237,7 +237,7 @@ jobs:
       # build also produces is NOT uploaded: nothing has ever launched it, and the file a
       # summary tells a human to open must be a file the proof launched. That installer
       # is a KNOWN GAP, not a rejected idea — see
-      # decisions/213-downloadable-windows-build-is-the-launched-tree.md before assuming
+      # decisions/2026/08/06/downloadable-windows-build-is-the-launched-tree.md before assuming
       # it was vetted.
       #
       # NO `if: always()` here, on purpose: a failed launch proof must publish nothing.

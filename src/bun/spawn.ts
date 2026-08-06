@@ -18,7 +18,7 @@
  * bundle cwd dies with ENOENT (posix_spawn resolves the child cwd from ours).
  * Pinning cwd-less children to DEV3_HOME — which lives as long as our data does —
  * sidesteps that without ever moving the process.
- * See decisions/110-no-chdir-pin-child-cwd.md.
+ * See decisions/2026/07/06/no-chdir-pin-child-cwd.md.
  *
  * RULE: Never use Bun.spawn / Bun.spawnSync directly — always use these.
  */

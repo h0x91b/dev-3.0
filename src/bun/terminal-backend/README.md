@@ -10,7 +10,7 @@ session adoption. Since seq 1292 it has exactly ONE production caller —
 `terminalBackend` identity and returns the matching adapter. Everything else must
 go through that resolver (guarded by `__tests__/isolation.test.ts`), so backend
 branches cannot spread through the app. tmux remains the default for every task
-without an explicit `native` marker. See `decisions/171-*`.
+without an explicit `native` marker. See `decisions/2026/07/25/native-primary-task-terminal-opt-in.md`.
 
 ## Files
 
@@ -90,7 +90,7 @@ no surface is advertised. The verdict comes from the host's own record, never fr
 a timer, so it is correct on the first read. The real-host proof (`bun run test:native-capture-e2e`) covers a
 parser-enabled pane and a parser-less one, and
 `bun run test:capture-cost-e2e` measures what turning the parser on would cost.
-See `decisions/202-*`.
+See `decisions/2026/08/04/read-only-pane-capture-seam.md`.
 
 ## Backend differences (deliberate, not negotiated)
 

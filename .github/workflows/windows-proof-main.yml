@@ -1,10 +1,10 @@
 name: Windows proof (main)
 
 # The packaged Windows proof, POST-MERGE. It briefly gated pull requests instead
-# (decisions/209-required-checks-wait-for-windows-packaging.md) and that cost +4m47 on
+# (decisions/2026/08/06/required-checks-wait-for-windows-packaging.md) and that cost +4m47 on
 # every in-scope PR, so the gating half was reversed: nothing here can block a merge.
 # A break is detected within roughly the packaging duration and is attributable to ONE
-# commit. See decisions/211-windows-proof-post-merge-not-pull-request.md.
+# commit. See decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.
 on:
   push:
     branches: [main]

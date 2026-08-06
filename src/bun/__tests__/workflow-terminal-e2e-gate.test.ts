@@ -36,7 +36,7 @@ function stepBlock(workflow: string, name: string): string {
 // It gates PRs through the already-required `test` context rather than through a
 // branch-protection entry, so the wiring that makes it gate lives entirely in this file —
 // and is therefore deletable by accident.
-// See decisions/208-live-terminal-e2e-gated-through-test-context.md — named by slug because
+// See decisions/2026/08/06/live-terminal-e2e-gated-through-test-context.md — named by slug because
 // bare numbers collided three times in one day and a neighbouring record read as permission.
 describe("the live terminal e2e job is wired to gate PRs", () => {
 	it("runs on both macOS and Ubuntu without fail-fast", () => {
@@ -60,7 +60,7 @@ describe("the live terminal e2e job is wired to gate PRs", () => {
 	it("is a dependency of the required `test` context", () => {
 		// Membership, scoped to the `test` job, not an exact list: that array changes as
 		// sibling gates land on or leave the required context (the Windows packaging gate
-		// did both — decisions/211-windows-proof-post-merge-not-pull-request.md). Scoped, because
+		// did both — decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md). Scoped, because
 		// membership checked file-wide would still pass if terminal_e2e were moved into
 		// some other job's needs while the required context stopped waiting for it.
 		const job = jobBlock("test");

@@ -2,13 +2,13 @@
 # Build a self-contained tmux for the macOS app bundle and CLI tarball.
 #
 # Why: the app pins tmux 3.6a (tmux 3.7 client busy-spin regression — see
-# decisions/105-pin-tmux-3.6-vendored-keg.md), but the pin used to be delivered
+# decisions/2026/07/05/pin-tmux-3.6-vendored-keg.md), but the pin used to be delivered
 # only through the Homebrew keg `h0x91b/dev3/tmux@3.6`. DMG installs and the
 # in-app updater cannot run brew, so machines without Homebrew (or that
 # updated in-app after the keg dep was added) had no tmux at all. This script
 # produces a tmux binary that depends ONLY on libraries every macOS ships:
 # libevent_core and utf8proc are statically linked; ncurses, resolv and
-# libSystem come from the OS. See decisions/137-bundle-tmux-macos.md.
+# libSystem come from the OS. See decisions/2026/07/16/bundle-tmux-macos.md.
 #
 # Output: vendor/bundled-tmux/
 #   tmux                      — native binary for the HOST arch (arm64 or x64)

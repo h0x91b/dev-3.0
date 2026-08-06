@@ -9,7 +9,7 @@
  * The list is still what stands between a Windows regression and nobody noticing, but
  * its failure mode is back to the mild one: a missing entry means "Windows was not
  * proved on this merge", not a required context asserting Windows was checked. See
- * decisions/211-windows-proof-post-merge-not-pull-request.md.
+ * decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.
  */
 /** Changed files matching any of these dispatch the packaged Windows workflow. */
 export const WINDOWS_SCOPE_PATHS = [

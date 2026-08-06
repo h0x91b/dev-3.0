@@ -76,7 +76,7 @@ describe("workflow Bun pins", () => {
 	it("makes every Bun-pinning workflow trigger the packaged-runtime proof", () => {
 		// Reads WINDOWS_SCOPE_PATHS, not the packaging workflow's own `paths:`, which no
 		// longer exists. The list now decides which pushes to `main` dispatch the
-		// post-merge proof — decisions/211-windows-proof-post-merge-not-pull-request.md.
+		// post-merge proof — decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.
 		const pinningWorkflows = [...new Set(bunPins().map((pin) => pin.workflow))];
 
 		const untriggered = pinningWorkflows.filter(

@@ -307,7 +307,7 @@ export async function serveStatic(pathname: string, staticRootOverride?: string)
 	// the Cloudflare tunnel origin uses) is unaffected, which is exactly why the
 	// blank-page bug only reproduced over direct LAN access and vanished behind
 	// Cloudflare. Reading the bytes up front bypasses sendfile entirely.
-	// See decisions/113-remote-static-sendfile-lan-headerless.md. readFileSync
+	// See decisions/2026/07/07/remote-static-sendfile-lan-headerless.md. readFileSync
 	// returns an in-memory Buffer — a body Bun.serve never routes through
 	// sendfile, unlike a Bun.file blob backed by an fd.
 	const body = readFileSync(filePath);

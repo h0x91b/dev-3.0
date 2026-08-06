@@ -6,7 +6,7 @@ Last updated: 2026-07-13
 
 > **This matrix is now an interface, not prose.** The per-agent launch/trust/
 > hooks/skill differences live behind one `AgentAdapter` per agent
-> ([decision 124](decisions/124-agent-adapter-interface.md)), in
+> ([decision 124](decisions/2026/07/11/agent-adapter-interface.md)), in
 > `src/shared/agent-adapters/` (pure descriptors + registry, keyed by base
 > command with an explicit `GenericAdapter` fallback), applied by thin executors
 > in `src/bun`. Column → interface member: *System prompt injection / Session
@@ -97,7 +97,7 @@ POSIX output is frozen; Windows differs in three ways:
 
 Codex hooks are identical in shape on both platforms — `dev3 hook codex` always
 exits 0, so they never needed a shell fallback. See
-[decision 172](decisions/172-windows-hook-command-dialect.md).
+[decision 172](decisions/2026/07/26/windows-hook-command-dialect.md).
 
 ## Skill Differences
 
@@ -155,7 +155,7 @@ Known model aliases map to provider-native ids automatically
 dev3 **always pins the model** (the agent never falls back to a different default
 than dev3 expects). The settings model-mapping table is pre-populated and
 inline-editable per model (Manual badge + Revert); a geo-aware provider's geo
-toggle re-prefixes all non-overridden rows. See [decision 089](decisions/089-llm-provider-toggle.md).
+toggle re-prefixes all non-overridden rows. See [decision 089](decisions/2026/07/06/llm-provider-toggle.md).
 
 ## Additional Integrations
 

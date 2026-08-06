@@ -90,4 +90,4 @@ each row.
   manifest parse, immutable staging + diagnostics, explicit rollback selection,
   the boundary parity + verdict matrix, and the session record.
 
-See [decision 161](../../../../decisions/161-staged-host-version-skew.md).
+See [decision 161](../../../../decisions/2026/07/23/staged-host-version-skew.md).

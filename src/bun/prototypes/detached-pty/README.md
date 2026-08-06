@@ -46,7 +46,7 @@ completely unaffected.
 The Job Object bridge uses `bun:ffi` only inside this prototype and only on
 Windows. The detached host self-enrolment removes the root-assignment race without
 reimplementing Bun's ConPTY spawn in a helper. See
-[`decisions/146-windows-job-object-containment.md`](../../../../decisions/146-windows-job-object-containment.md).
+[`decisions/2026/07/21/windows-job-object-containment.md`](../../../../decisions/2026/07/21/windows-job-object-containment.md).
 The minimum runtime contract lives outside this removable prototype in
 `src/shared/native-terminal-runtime.ts`; both packaging and the tracer consume
 that stable boundary.
@@ -100,7 +100,7 @@ and staged paths plus hashes, distinct positive host/PowerShell PIDs, and
 `"systemBunOnPath":false`. The canary installer and updater payload are left
 under `scripts/fixtures/windows-conpty-package/artifacts/`; the `Windows ConPTY
 package` workflow runs this exact proof on native Windows. See
-[decision 150](../../../../decisions/150-package-conpty-capable-bun.md).
+[decision 150](../../../../decisions/2026/07/22/package-conpty-capable-bun.md).
 
 This is deliberately a raw-PTY package proof. It does not feed terminal bytes
 through ghostty-web or claim renderer readiness; Bun 1.3.14 has a separate

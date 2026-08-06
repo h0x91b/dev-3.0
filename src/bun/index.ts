@@ -103,7 +103,7 @@ log.info("Log files", { dir: getLogPath() });
 // The brew-upgrade/in-app-update ENOENT hazard it was meant to fix — a child
 // inheriting a since-deleted bundle cwd — is instead handled in spawn.ts, which
 // pins cwd-less children to DEV3_HOME without ever moving the process. See
-// decisions/110-no-chdir-pin-child-cwd.md.
+// decisions/2026/07/06/no-chdir-pin-child-cwd.md.
 
 // ── CLI binary + agent skills + shell PATH (FIRST — before any async work) ──
 // These must run before resolveShellEnv() because existing tmux sessions
@@ -755,7 +755,7 @@ function tryNavigateFromRecentNotification(source: string): void {
 // via CFBundleURLTypes, requires the app to live in /Applications). We resolve
 // the target against on-disk data, then navigate exactly like a notification
 // click: push to the open window, or (window-less in the dock) stash it and let
-// the reopened renderer pull it on mount. See decisions/144.
+// the reopened renderer pull it on mount. See decisions/2026/08/04/dev3-url-scheme-deep-links.md.
 Electrobun.events.on("open-url", async (e: { data: { url: string } }) => {
 	const raw = e.data?.url ?? "";
 	log.info("[deep-link] open-url received", { url: raw });

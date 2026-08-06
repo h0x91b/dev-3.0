@@ -9,7 +9,7 @@
  * from os.arch() at startup, which reports "x64" under Rosetta, so the install
  * stays on x64 artifacts forever. We surface a startup warning with a
  * copy-pasteable reinstall command instead — see
- * decisions/137-rosetta-warning-over-auto-migration.md.
+ * decisions/2026/07/16/rosetta-warning-over-auto-migration.md.
  */
 
 import { dirname, resolve } from "path";

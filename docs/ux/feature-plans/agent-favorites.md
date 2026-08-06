@@ -2,7 +2,7 @@
 
 **Status:** Implemented (v3 — leading "Favorites" column; see UI section for the v1/v2 trail).
 **Implementation:** `AgentConfigPicker.tsx`, `FavoritesMenu.tsx`, `src/shared/favorites.ts`.
-**Related:** [decision 125](../../../decisions/125-agent-favorites.md), `docs/ux/feature-plans/agent-picker-provider-model-mode.md` (the underlying Provider → Model → Mode picker).
+**Related:** [decision 125](../../../decisions/2026/07/11/agent-favorites.md), `docs/ux/feature-plans/agent-picker-provider-model-mode.md` (the underlying Provider → Model → Mode picker).
 
 ## Problem
 
@@ -77,7 +77,7 @@ New optional field → no migration needed; absent = `[]`. Never auto-purged (se
 **Final form (v3).** The picker is instantiated **once per variant** in `LaunchVariantsModal`, so a
 persistent chips row (v1) duplicated the global list N× and a right-side `[★│▾]` split (v2) dangled
 below the Selects — both wrong. Favorites now live in a **leading "Favorites" column**, peer to
-Provider/Model/Mode. See `decisions/125-agent-favorites.md` for the full rejected-alternatives trail.
+Provider/Model/Mode. See `decisions/2026/07/11/agent-favorites.md` for the full rejected-alternatives trail.
 
 - **Leading column** at the START of the cascade row, with its own `Favorites` label so the control
   aligns in-row with the three Selects. A **narrow fixed-width trigger** (not `flex-1`), so it costs

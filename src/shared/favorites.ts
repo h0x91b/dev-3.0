@@ -7,7 +7,7 @@ import type { FavoriteAgentConfig } from "./types";
  * These helpers are shared between the bun main process (toggle RPC + usage
  * increment) and the renderer (chip ordering). They never read the clock — the
  * caller passes `now` (epoch ms) so the logic stays deterministic and testable.
- * See docs/ux/feature-plans/agent-favorites.md + decisions/125-agent-favorites.md.
+ * See docs/ux/feature-plans/agent-favorites.md + decisions/2026/07/11/agent-favorites.md.
  */
 
 /** Hard cap on stored favorites. Adding past this evicts (see toggleFavorite). */

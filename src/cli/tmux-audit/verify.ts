@@ -4,7 +4,7 @@
  * These are **advisory**: they run from `generate.ts` when a human invokes the
  * audit, not from `bun run test` or required CI. Inventory bookkeeping drift is
  * not a runtime safety invariant, and gating every PR on it blocked unrelated
- * work (see `decisions/167-tmux-inventory-advisory-not-gating.md`).
+ * work (see `decisions/2026/07/25/tmux-inventory-advisory-not-gating.md`).
  *
  * Every function here is pure — it takes an already-built inventory plus the
  * committed snapshot and returns findings, so it is unit-testable without a

@@ -19,7 +19,7 @@ default.
 One logical pane === one registry-owned host === one shell process. The pane's
 registry session id is `<coordinatorId>-<paneId>`, so a fresh controller can
 rediscover every host from the layout alone. Protocol v1 stays a single-PTY
-contract — see [decision 169](../../../decisions/169-one-host-per-pane-multipane-coordinator.md).
+contract — see [decision 169](../../../decisions/2026/07/25/one-host-per-pane-multipane-coordinator.md).
 
 `SplitTree` carries `activePaneId`/`zoomedPaneId` because it was written for a
 single renderer. `focus-mapping.normalizeSharedLayout` strips both before the

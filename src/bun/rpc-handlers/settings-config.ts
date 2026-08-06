@@ -288,7 +288,7 @@ async function checkSystemRequirements(): Promise<RequirementCheckResult[]> {
 		const customPath = settings.customBinaryPaths?.[req.id];
 		// tmux ≥ 3.7 has a client busy-spin regression — prefer the bundled
 		// self-contained tmux, then the vendored tmux@3.6 keg, over PATH
-		// (see tmuxSearchPaths in shared-pure.ts and decisions/137).
+		// (see tmuxSearchPaths in shared-pure.ts and decisions/2026/07/16/bundle-tmux-macos.md).
 		const vendored = req.id === "tmux" ? tmuxSearchPaths() : undefined;
 		const { resolvedPath, customPathError } = resolveBinaryPath(req.id, customPath, vendored);
 

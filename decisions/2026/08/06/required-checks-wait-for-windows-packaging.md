@@ -1,6 +1,6 @@
 # 209 — The required checks wait for the Windows packaging proof
 
-> **PARTLY SUPERSEDED by `decisions/211-windows-proof-post-merge-not-pull-request.md`.** The half of
+> **PARTLY SUPERSEDED by `decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md`.** The half of
 > this record that makes the required `test` context wait for the packaged Windows jobs was **reversed**
 > on measured cost: +4 m 47 s on every in-scope PR (run 31083965892). The proof now runs post-merge on
 > `main` and in front of every release job that publishes. Nothing PR-side described below still exists.
@@ -121,7 +121,7 @@ out-of-scope verdict is visible rather than silent.
   not skippable forever. `release.yml` contained zero Windows, and had the whole time.** This was not a
   stale number: it was a safety argument resting on a fact that was never true, offered while ruling on
   the PR gate. A Windows proof was added to the release path only in
-  `decisions/211-windows-proof-post-merge-not-pull-request.md`.
+  `decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md`.
 
 Other risks:
 

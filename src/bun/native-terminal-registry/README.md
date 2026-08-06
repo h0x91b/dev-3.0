@@ -145,7 +145,7 @@ the version `v`; `NATIVE_SESSION_PROTOCOL_VERSION = 1`.
 handle the new number explicitly — never negotiate a major/minor in-band, add
 capability discovery, or silently reinterpret a foreign version. A mismatched
 client gets exactly one `version-mismatch` error. See
-[decision 154](../../../decisions/154-native-session-protocol-v1.md).
+[decision 154](../../../decisions/2026/07/22/native-session-protocol-v1.md).
 
 | Direction | Frame | `id`? |
 |-----------|-------|-------|
@@ -166,7 +166,7 @@ client gets exactly one `version-mismatch` error. See
 Opt-in proof stage: `start <id> --capture-mode semantic` (env
 `DEV3_NATIVE_SESSION_CAPTURE_MODE=semantic`) makes the host maintain a real Ghostty
 screen while the shell runs. Three hard boundaries, recorded in
-[decision 155](../../../decisions/155-live-parser-outside-terminal-callback.md):
+[decision 155](../../../decisions/2026/07/22/live-parser-outside-terminal-callback.md):
 
 - **Callback boundary.** The `Bun.Terminal` data callback only journals, fans
   out, and enqueues into the byte-capped `ParserEventQueue`. Ghostty runs
@@ -230,7 +230,7 @@ delegates removal to `cleanupStale`, so it stays per-session locked, token-match
 and blind to unreadable state. Recovery never starts a shell, adopts a PID,
 migrates a record, or falls back to tmux. `status()` returns the same entry as
 `recovery`. Driver: `cli.ts recover [--cleanup]`; see
-[decision 171](../../../decisions/171-native-registry-reboot-recovery.md).
+[decision 171](../../../decisions/2026/07/25/native-registry-reboot-recovery.md).
 
 ## Staged host version skew (seq 1248)
 
@@ -296,9 +296,9 @@ For the visible two-window Windows takeover and resize exercise, follow
   structured shell launch, the Win32 handle lifecycle, and import-graph/tmux
   isolation; part of `bun run test`.
 
-See [decision 151](../../../decisions/151-native-session-registry.md) for the
+See [decision 151](../../../decisions/2026/07/22/native-session-registry.md) for the
 record format and lifecycle boundaries, and
-[decision 158](../../../decisions/158-native-client-writer-ownership.md) for the
+[decision 158](../../../decisions/2026/07/22/native-client-writer-ownership.md) for the
 multi-client ownership semantics. See
-[decision 159](../../../decisions/159-native-host-crash-recovery.md) for abrupt
+[decision 159](../../../decisions/2026/07/22/native-host-crash-recovery.md) for abrupt
 host recovery and its platform-specific containment guarantees.

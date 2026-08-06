@@ -2,7 +2,7 @@
  * At-most-once bookkeeping for pane input programs, scoped honestly: one executor
  * process, one pinned pane incarnation, one retention window. Not global dedup. Quarantine
  * guards the NATIVE path; on tmux the server serializes commands across clients.
- * See `decisions/201-backend-neutral-pane-input.md`.
+ * See `decisions/2026/08/06/backend-neutral-pane-input.md`.
  */
 
 import { randomUUID } from "node:crypto";

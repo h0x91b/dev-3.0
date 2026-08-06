@@ -63,7 +63,7 @@ ux_architecture:
       kind:   # observed: Project.kind discriminator
         git: "Repo-backed project; tasks get a git worktree + branch (default when kind absent)."
         virtual: "An 'Operations' board: tasks run an agent + shell in a managed temp dir (or a chosen folder), NO git worktree/branch/diff/PR; review columns hidden. Stored in a separate ~/.dev3.0/virtual-projects.json. One built-in board ships by default and hosts the Quick-shell operation (⇧⌘`)."
-      evidence: ["src/shared/types.ts (Project.kind)", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/079-virtual-operations-board-identity.md"]
+      evidence: ["src/shared/types.ts (Project.kind)", "src/mainview/components/ActivityOverview.tsx", "src/mainview/components/AddProjectModal.tsx", "src/bun/data.ts (addVirtualProject)", "decisions/2026/06/24/virtual-operations-board-identity.md"]
     task:
       label: "Task"
       plural: "Tasks"
@@ -251,7 +251,7 @@ ux_architecture:
             position: "row1.right"
             domain: "drive the session & agents"
             contents: ["spawn_agent", "bug_hunters", "tmux_controls", "send_scheduled_message"]
-            note: "send_scheduled_message (\"Send later\") queues a one-shot prompt to the live agent; it drives the session, so it lives here, NOT in the runtime bar. Offered only when a live agent session exists. See UX_DECISIONS 2026-07-11 + decisions/124."
+            note: "send_scheduled_message (\"Send later\") queues a one-shot prompt to the live agent; it drives the session, so it lives here, NOT in the runtime bar. Offered only when a live agent session exists. See UX_DECISIONS 2026-07-11 + decisions/2026/07/11/scheduled-agent-message.md."
           git:
             position: "row2.left"
             domain: "branch & PR"
@@ -372,7 +372,7 @@ ux_architecture:
       data: "Local only. Completed-task counts/streaks from movedAt (full history); LOC forward-only via Task.completedDiffStats (captured at completion) + live diff for active tasks. Aggregated client-side by utils/productivityStats.ts over the getProductivityStats RPC."
       instrumentation: "First-class consumer of new features: any feature producing a countable, motivational signal should emit it into the stats pipeline at build time and surface a read-only viz here when it motivates — within the honesty/complexity budget. Governed by placement_rules.instrument-and-surface-countable-metrics + PRODUCT_UX_BIBLE §1.1."
       tokens: "Gauge reused verbatim (self-contained palette, accepted exception); new charts use semantic tokens (accent/success/danger, bg-raised, border-edge, text-fg-*)."
-      evidence: ["src/mainview/components/ProductivityStatsView.tsx", "src/mainview/components/stats/*", "src/mainview/utils/productivityStats.ts", "src/bun/rpc-handlers/productivity-stats.ts", "decisions/084-productivity-stats-loc-capture.md", "UX_DECISIONS 2026-06-28"]
+      evidence: ["src/mainview/components/ProductivityStatsView.tsx", "src/mainview/components/stats/*", "src/mainview/utils/productivityStats.ts", "src/bun/rpc-handlers/productivity-stats.ts", "decisions/2026/06/29/productivity-stats-loc-capture.md", "UX_DECISIONS 2026-06-28"]
     toast:
       purpose: "Transient operation feedback (errors)."
       allowed: ["status_message", "error"]
@@ -477,7 +477,7 @@ ux_architecture:
         toggle: "Settings->Behavior 'Auto-open shared images' (default on) disables auto-open."
       status: "observed"
       observed: ["TaskImageViewer.tsx", "shared-images.ts", "show-image.ts", "ui.show-image handler"]
-      evidence: ["decisions/097-show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/036-worktree-uploaded-dnd-files.md"]
+      evidence: ["decisions/2026/07/02/show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/2026/04/16/worktree-uploaded-dnd-files.md"]
     task_artifact_workspace:
       purpose: "Task-bound interactive HTML output surfaced via dev3 show-artifact; docked beside the terminal, horizontally resizable, and fullscreen on demand."
       feature_class: ["object_action", "data_visualization", "notification"]
@@ -488,7 +488,7 @@ ux_architecture:
       security: "iframe sandbox=allow-scripts without allow-same-origin is the security boundary; local CSS (including @import chains), classic JS, and raster references are rewritten to data URLs in rendered srcdoc. CSP intentionally permits all origins plus data/blob/file/views schemes, inline/eval runtimes, fetch, and WebSockets so artifact integrations work without policy tuning. Scripts still originate from null and can self-navigate their iframe, so artifacts are trusted task output rather than an untrusted-code boundary."
       layout: "Desktop: right-side TaskWorkspacePane sibling with persisted width. Narrow: one-at-a-time artifact replaces terminal until closed."
       export: "No assets -> HTML download. Any --assets files -> STORE ZIP containing HTML plus safe asset paths relative to the HTML."
-      evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/bun/shared-artifacts.ts", "decisions/120-task-html-artifacts.md"]
+      evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/bun/shared-artifacts.ts", "decisions/2026/07/09/task-html-artifacts.md"]
 
   action_types:
     primary_action:

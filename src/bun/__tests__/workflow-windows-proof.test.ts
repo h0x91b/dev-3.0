@@ -3,11 +3,11 @@
  * what it has to gate before anything publishes.
  *
  * The proof briefly gated pull requests
- * (decisions/209-required-checks-wait-for-windows-packaging.md — full slugs on purpose,
+ * (decisions/2026/08/06/required-checks-wait-for-windows-packaging.md — full slugs on purpose,
  * bare record numbers collided four times in one day). That cost +4m47 on every
  * in-scope PR and was reversed: it now runs post-merge on `main` and in front of the
  * release's publishing jobs. See
- * decisions/211-windows-proof-post-merge-not-pull-request.md.
+ * decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.
  *
  * These read workflow YAML as raw text, like their siblings — `yaml` is not a declared
  * dependency. Every assertion here must fail naming the CAUSE and the FIX, because a
@@ -79,7 +79,7 @@ describe("the reusable packaged Windows proof", () => {
 	it("has no job-level if:, which no caller could see through", () => {
 		expect(
 			jobLevelKeys(PACKAGE_WORKFLOW, "if"),
-			"A job-level `if:` here skips silently while the workflow still reports success to its caller, so a release could publish on a package that never packaged. Fix: express scope in WINDOWS_SCOPE_PATHS, which the caller evaluates — see decisions/211-windows-proof-post-merge-not-pull-request.md.",
+			"A job-level `if:` here skips silently while the workflow still reports success to its caller, so a release could publish on a package that never packaged. Fix: express scope in WINDOWS_SCOPE_PATHS, which the caller evaluates — see decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.",
 		).toEqual([]);
 	});
 
@@ -97,7 +97,7 @@ describe("the reusable packaged Windows proof", () => {
 		).toMatch(/^\s{2}workflow_call:/m);
 		expect(
 			/^\s{2}pull_request:/m.test(PACKAGE_WORKFLOW),
-			"a pull_request trigger here puts the ~5-minute packaging cost back on every PR, which is exactly what decisions/211-windows-proof-post-merge-not-pull-request.md removed. Fix: leave the trigger to the callers.",
+			"a pull_request trigger here puts the ~5-minute packaging cost back on every PR, which is exactly what decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md removed. Fix: leave the trigger to the callers.",
 		).toBe(false);
 	});
 });
@@ -177,7 +177,7 @@ describe("pull requests do not pay for the Windows proof", () => {
 	it("never calls the packaging workflow from build.yml", () => {
 		expect(
 			BUILD_WORKFLOW.includes("windows-conpty-package.yml"),
-			"build.yml runs on pull_request, so calling the packaging workflow from here charges every in-scope PR ~+4m47 on the required `test` context (measured on run 31083965892) — the cost that decisions/211-windows-proof-post-merge-not-pull-request.md reversed. Fix: leave the proof to windows-proof-main.yml and release.yml.",
+			"build.yml runs on pull_request, so calling the packaging workflow from here charges every in-scope PR ~+4m47 on the required `test` context (measured on run 31083965892) — the cost that decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md reversed. Fix: leave the proof to windows-proof-main.yml and release.yml.",
 		).toBe(false);
 	});
 
@@ -186,7 +186,7 @@ describe("pull requests do not pay for the Windows proof", () => {
 		expect(test, "the `test` job vanished from build.yml; this test needs it").not.toBe("");
 		expect(
 			/windows/i.test(test),
-			"the required `test` context references Windows again. Either the proof is gating PRs once more, or a dead reference to the deleted gate survived. Fix: PR-side Windows gating was removed on purpose — see decisions/211-windows-proof-post-merge-not-pull-request.md.",
+			"the required `test` context references Windows again. Either the proof is gating PRs once more, or a dead reference to the deleted gate survived. Fix: PR-side Windows gating was removed on purpose — see decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.",
 		).toBe(false);
 	});
 });
@@ -199,7 +199,7 @@ describe("the post-merge Windows proof on main", () => {
 		).toMatch(/^on:\n\s{2}push:\n\s{4}branches:\s*\[main\]/m);
 		expect(
 			/^\s{2}pull_request:/m.test(MAIN_WORKFLOW),
-			"a pull_request trigger here re-charges PRs for the proof, undoing decisions/211-windows-proof-post-merge-not-pull-request.md. Fix: keep this workflow post-merge only.",
+			"a pull_request trigger here re-charges PRs for the proof, undoing decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md. Fix: keep this workflow post-merge only.",
 		).toBe(false);
 	});
 
@@ -313,7 +313,7 @@ describe("nothing publishes to the updater feed without the Windows proof", () =
 
 		expect(
 			ungated,
-			`These release jobs publish to the updater feed without the packaged Windows proof gating them:\n${ungated.join("\n")}\nEach one runs its own \`aws s3 sync\`, including the sync to the bucket ROOT that feeds the in-app updater, so a Windows failure would land a partial ship wearing a failed release's clothes. Fix: add \`windows-proof\` to that job's \`needs:\` — not to the \`release\` job, which runs after the publishing already happened. See decisions/211-windows-proof-post-merge-not-pull-request.md.`,
+			`These release jobs publish to the updater feed without the packaged Windows proof gating them:\n${ungated.join("\n")}\nEach one runs its own \`aws s3 sync\`, including the sync to the bucket ROOT that feeds the in-app updater, so a Windows failure would land a partial ship wearing a failed release's clothes. Fix: add \`windows-proof\` to that job's \`needs:\` — not to the \`release\` job, which runs after the publishing already happened. See decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.`,
 		).toEqual([]);
 	});
 

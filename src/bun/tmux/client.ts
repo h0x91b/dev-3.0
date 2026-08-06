@@ -287,7 +287,7 @@ export class TmuxClient {
 	} & SocketOpt): Promise<{ stderr: string }> {
 		// `-f` on every server-starting command: without it tmux falls back to
 		// /etc/tmux.conf + ~/.tmux.conf and the user's personal settings leak
-		// into the dev3 server (decisions/197-isolate-tmux-config.md).
+		// into the dev3 server (decisions/2026/08/02/isolate-tmux-config.md).
 		const args = ["-f", activeTmuxConfigPath(), "new-session", "-d"];
 		for (const [key, value] of Object.entries(opts.env ?? {})) {
 			args.push("-e", `${key}=${value}`);

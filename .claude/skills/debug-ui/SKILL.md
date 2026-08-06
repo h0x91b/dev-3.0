@@ -51,7 +51,7 @@ dev3 dev-server stop          # the port frees a second or two later (graceful s
 
 That's it. `DEV3_REMOTE_PORT=${DEV3_PORT0:-0}` is wired into the repo's `dev` script and
 `portCount: 1` is committed in `.dev3/config.json`, so the dev app binds the exact port shown
-above (see [decision 093](../../../decisions/093-dev-remote-port-from-pool.md)).
+above (see [decision 093](../../../decisions/2026/06/30/dev-remote-port-from-pool.md)).
 
 ## Gotchas
 

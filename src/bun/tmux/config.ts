@@ -23,7 +23,7 @@ import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./themes";
  * silently ignores `-c` on every subsequent new-session/split-window, spawning
  * all new panes in the server's (deleted) cwd instead. The pane cwd must
  * always travel via an explicit `-c` flag; the client itself starts here.
- * See decisions/103-tmux-server-immortal-cwd.md.
+ * See decisions/2026/07/04/tmux-server-immortal-cwd.md.
  */
 export function tmuxClientCwd(): string {
 	try {
@@ -77,7 +77,7 @@ export function setActiveTmuxTheme(theme: "dark" | "light"): string {
 // Shared functional settings (not theme-related)
 const TMUX_CONFIG_FUNCTIONAL = String.raw`
 # System and user tmux configs are deliberately NOT sourced: the dev3 server
-# runs exclusively on this config. See decisions/197-isolate-tmux-config.md.
+# runs exclusively on this config. See decisions/2026/08/02/isolate-tmux-config.md.
 
 # Mouse support
 setw -g mouse on

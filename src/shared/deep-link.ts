@@ -10,7 +10,7 @@
 //   dev3://new-task?project=<projectId>&text=<url-encoded>
 //
 // macOS-only in practice (Electrobun registers CFBundleURLTypes; Windows/Linux
-// have no scheme registration yet) — see decisions/144.
+// have no scheme registration yet) — see decisions/2026/08/04/dev3-url-scheme-deep-links.md.
 
 export const DEEP_LINK_SCHEME = "dev3";
 

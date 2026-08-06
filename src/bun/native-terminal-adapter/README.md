@@ -100,4 +100,4 @@ bun run test:native-parity-e2e   # real-runtime single-view parity vs native (PO
 The real-runtime E2E runs as a standalone `bun` script (vitest stubs the Bun
 global, so a live `Bun.Terminal` cannot run there) and is wired into the
 path-gated `Packaged Bun runtime` CI on Windows, macOS, and Ubuntu with the
-pinned Bun 1.3.14. See [decision 162](../../../decisions/162-native-single-view-adapter.md).
+pinned Bun 1.3.14. See [decision 162](../../../decisions/2026/07/24/native-single-view-adapter.md).

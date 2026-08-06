@@ -12,7 +12,7 @@
 // missing, notification permission denied) — callers then fall back to
 // Electrobun's fire-and-forget path plus the focus-proxy.
 //
-// See decisions/106-native-notification-click-shim.md.
+// See decisions/2026/07/05/native-notification-click-shim.md.
 
 import { join } from "node:path";
 import { existsSync } from "node:fs";

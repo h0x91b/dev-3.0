@@ -758,7 +758,7 @@ Point, don't dig. Name where to look and stop — deep diagnosis is \`/diagnosin
 
 - Environment or setup acting up → \`dev3 doctor\` first.
 - The task's terminal died → **Resume Agent Session** restarts the agent with its conversation intact (\`--continue\`), picking up right where it stopped.
-- "Why does dev3 behave this way?" → the relevant \`decisions/NNN-*.md\` record usually explains it.
+- "Why does dev3 behave this way?" → the relevant record in \`decisions/\` usually explains it.
 - Something crashed or misbehaved → the app logs, plus the decision record for that subsystem.
 
 ## Standalone
@@ -789,7 +789,7 @@ Off the main flow entirely.
 
 dev3 is open source: **https://github.com/h0x91b/dev-3.0**. If the answer isn't on this map, don't guess — go read:
 
-- **Decision records** — \`decisions/NNN-short-slug.md\` — the *why* behind non-obvious behavior, workarounds, and trade-offs. Best first stop for "why does dev3 do X this way?".
+- **Decision records** — \`decisions/YYYY/MM/DD/short-slug.md\` — the *why* behind non-obvious behavior, workarounds, and trade-offs. Best first stop for "why does dev3 do X this way?".
 - **Changelogs** — \`change-logs/YYYY/MM/DD/*.md\` — one plain-text entry per shipped change. Answers "when did X appear?" and "what changed recently?".
 - **Product & architecture docs** — \`concept.md\` (product concept + status tracker), \`AGENTS.md\` (architecture, RPC, data layout), \`docs/ux/\` (UX manifest), \`docs/agents/\` (issue tracker, triage, domain docs), \`docs/cli-exit-codes.md\`, \`agent-support-matrix.md\` (per-agent feature differences).
 - **Code** — \`src/bun/\` (main process + CLI backend), \`src/mainview/\` (React UI), \`src/cli/\` (the \`dev3\` CLI), \`src/shared/types.ts\` (the data model).

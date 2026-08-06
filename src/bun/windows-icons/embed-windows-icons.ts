@@ -5,7 +5,7 @@
  * Electrobun does this itself and cannot: its CLI ships as a `bun --compile`
  * standalone whose `require.resolve("rcedit/package.json")` was frozen to the
  * builder's own CI path, so the call fails on every other machine and is swallowed
- * by a `console.warn`. See `decisions/214-vendor-rcedit-for-windows-icons.md`.
+ * by a `console.warn`. See `decisions/2026/08/06/vendor-rcedit-for-windows-icons.md`.
  */
 import { join } from "node:path";
 import { hasEmbeddedIcon } from "./pe-icon-resources";
@@ -17,7 +17,7 @@ import { hasEmbeddedIcon } from "./pe-icon-resources";
  *
  * The self-extracting installer is deliberately absent: it is built after this
  * hook runs, from electrobun's own extractor stub, and
- * `decisions/213-downloadable-windows-build-is-the-launched-tree.md` records that
+ * `decisions/2026/08/06/downloadable-windows-build-is-the-launched-tree.md` records that
  * it is never launched by anything and is not handed out. Giving the unproven
  * artifact an icon would make it read as vetted.
  *

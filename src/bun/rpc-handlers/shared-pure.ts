@@ -232,7 +232,7 @@ export const VENDORED_TMUX_PATHS = [
 
 /**
  * Candidate locations of the tmux we bundle inside macOS artifacts
- * (decisions/137): DMG installs and the in-app updater cannot run brew, so
+ * (decisions/2026/07/16/bundle-tmux-macos.md): DMG installs and the in-app updater cannot run brew, so
  * the app ships its own statically-linked tmux 3.6a. Pure so tests can cover
  * the layout math; `realExecDir` is the directory of the REAL on-disk binary
  * (realpath'd — brew symlinks bin/dev3 → libexec/dev3).
