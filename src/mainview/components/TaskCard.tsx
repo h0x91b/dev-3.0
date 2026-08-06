@@ -25,7 +25,8 @@ import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TaskDetailModal from "./TaskDetailModal";
 import PipelineDropdown, { PipelineMenuAction } from "./PipelineDropdown";
 import TaskCardRail from "./TaskCardRail";
-import BottomSheet from "./BottomSheet";
+import StatusMenuPortal from "./StatusMenuPortal";
+import { useStatusMenu } from "../hooks/useStatusMenu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import ScheduleMessageModal from "./ScheduleMessageModal";
@@ -80,14 +81,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [moving, setMoving] = useState(false);
 	const [quickCompleting, setQuickCompleting] = useState(false);
 	const [cancellingPreparation, setCancellingPreparation] = useState(false);
-	const [menuOpen, setMenuOpen] = useState(false);
-	const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
-	const [menuVisible, setMenuVisible] = useState(false);
+	const statusMenu = useStatusMenu(narrow);
+	const { open: menuOpen, setOpen: setMenuOpen } = statusMenu;
 	const [detailOpen, setDetailOpen] = useState(false);
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const pickerAnchorRef = useRef<HTMLButtonElement>(null);
-	const menuRef = useRef<HTMLDivElement>(null);
-	const triggerRef = useRef<HTMLButtonElement>(null);
 
 	const groupMembers = task.groupId && siblingMap
 		? (siblingMap.get(task.groupId) ?? [])
@@ -176,59 +174,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		}
 	}
 
-	// Close menu on click outside
-	useEffect(() => {
-		if (!menuOpen) return;
-		function handleClick(e: MouseEvent) {
-			if (
-				menuRef.current &&
-				!menuRef.current.contains(e.target as Node) &&
-				triggerRef.current &&
-				!triggerRef.current.contains(e.target as Node)
-			) {
-				setMenuOpen(false);
-			}
-		}
-		document.addEventListener("mousedown", handleClick);
-		return () => document.removeEventListener("mousedown", handleClick);
-	}, [menuOpen]);
-
-	// Crossing the narrow breakpoint must not strand the open menu — it renders
-	// as a bottom sheet on narrow and an anchored popover on desktop.
-	useEffect(() => {
-		setMenuOpen(false);
-	}, [narrow]);
-
-	// After menu renders (invisible), measure and clamp position within viewport
-	useLayoutEffect(() => {
-		if (!menuOpen || !menuRef.current || !triggerRef.current) return;
-
-		const menu = menuRef.current.getBoundingClientRect();
-		const trigger = triggerRef.current.getBoundingClientRect();
-		const vw = window.innerWidth;
-		const vh = window.innerHeight;
-		const pad = 8;
-
-		let top = trigger.bottom + 6;
-		let left = trigger.left;
-
-		// Flip above trigger if overflows bottom
-		if (top + menu.height > vh - pad) {
-			top = trigger.top - menu.height - 6;
-		}
-		// Clamp right edge
-		if (left + menu.width > vw - pad) {
-			left = vw - menu.width - pad;
-		}
-		// Clamp left edge
-		if (left < pad) left = pad;
-		// Clamp top edge
-		if (top < pad) top = pad;
-
-		setMenuPos({ top, left });
-		setMenuVisible(true);
-	}, [menuOpen]);
-
 	// Ports popover: click outside to close
 	useEffect(() => {
 		if (!portsPopoverOpen) return;
@@ -263,16 +208,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setPortsPopoverPos({ top, left });
 		setPortsPopoverVisible(true);
 	}, [portsPopoverOpen]);
-
-	function toggleMenu(e: React.MouseEvent) {
-		e.stopPropagation();
-		if (!menuOpen && triggerRef.current) {
-			const rect = triggerRef.current.getBoundingClientRect();
-			setMenuPos({ top: rect.bottom + 6, left: rect.left });
-			setMenuVisible(false);
-		}
-		setMenuOpen(!menuOpen);
-	}
 
 	// The ✓ acknowledges the click on the same tick — the dialog it opens still
 	// has a git check streaming into it, so silence here reads as a dead button.
@@ -990,9 +925,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					disabled={isDisabled || isHibernated}
 					canComplete={canQuickComplete}
 					completing={quickCompleting}
-					onOpenMenu={toggleMenu}
+					onOpenMenu={statusMenu.toggle}
 					onComplete={handleQuickComplete}
-					menuTriggerRef={triggerRef}
+					menuTriggerRef={statusMenu.triggerRef}
 					touch={narrow}
 				/>
 
@@ -1215,74 +1150,31 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 
 			{/* Status dropdown menu — bottom sheet on narrow (≥44px touch rows),
-			    anchored portal + smart viewport clamping on desktop. The wrapper
-			    stops clicks bubbling through the portal back to the card. */}
-			{menuOpen && narrow && (
-				<div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-					<BottomSheet
-						open
-						onClose={() => setMenuOpen(false)}
-						title={t("task.moveTo")}
-						testId="task-status-sheet"
-					>
-						<PipelineDropdown
-							currentStatus={task.status}
-							onMove={handleMove}
-							onMoveToCustomColumn={handleMoveToCustomColumn}
-							onDelete={isCancelled ? handleDelete : undefined}
-							customColumns={project.customColumns}
-							currentCustomColumnId={task.customColumnId}
-							project={project}
-							size="touch"
-							hideHeader
+			    anchored portal + smart viewport clamping on desktop. */}
+			<StatusMenuPortal menu={statusMenu} narrow={narrow} title={t("task.moveTo")} sheetTestId="task-status-sheet">
+				<PipelineDropdown
+					currentStatus={task.status}
+					onMove={handleMove}
+					onMoveToCustomColumn={handleMoveToCustomColumn}
+					onDelete={isCancelled ? handleDelete : undefined}
+					customColumns={project.customColumns}
+					currentCustomColumnId={task.customColumnId}
+					project={project}
+					size={narrow ? "touch" : undefined}
+					hideHeader={narrow}
+				/>
+				{hasLiveAgent && (
+					<>
+						<div className="mx-3 my-1 border-t border-edge-active" />
+						<PipelineMenuAction
+							size={narrow ? "touch" : undefined}
+							icon={<ClockIcon className={narrow ? "w-5 h-5" : "w-4 h-4"} />}
+							label={t("task.sendMessageLater")}
+							onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setScheduleMsgOpen(true); }}
 						/>
-						{hasLiveAgent && (
-							<>
-								<div className="mx-3 my-1 border-t border-edge-active" />
-								<PipelineMenuAction
-									size="touch"
-									icon={<ClockIcon className="w-5 h-5" />}
-									label={t("task.sendMessageLater")}
-									onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setScheduleMsgOpen(true); }}
-								/>
-							</>
-						)}
-					</BottomSheet>
-				</div>
-			)}
-			{menuOpen && !narrow && createPortal(
-				<div
-					ref={menuRef}
-					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
-					style={{
-						top: menuPos.top,
-						left: menuPos.left,
-						visibility: menuVisible ? "visible" : "hidden",
-					}}
-					onClick={(e) => e.stopPropagation()}
-				>
-					<PipelineDropdown
-						currentStatus={task.status}
-						onMove={handleMove}
-						onMoveToCustomColumn={handleMoveToCustomColumn}
-						onDelete={isCancelled ? handleDelete : undefined}
-						customColumns={project.customColumns}
-						currentCustomColumnId={task.customColumnId}
-						project={project}
-					/>
-					{hasLiveAgent && (
-						<>
-							<div className="mx-3 my-1 border-t border-edge-active" />
-							<PipelineMenuAction
-								icon={<ClockIcon className="w-4 h-4" />}
-								label={t("task.sendMessageLater")}
-								onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setScheduleMsgOpen(true); }}
-							/>
-						</>
-					)}
-				</div>,
-				document.body
-			)}
+					</>
+				)}
+			</StatusMenuPortal>
 
 			{/* Ports popover */}
 			{portsPopoverOpen && ports && ports.length > 0 && createPortal(

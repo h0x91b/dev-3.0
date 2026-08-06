@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-07 — The Active Tasks sidebar row carries the Kanban card's lifecycle rail
+
+- **Rule:** the sidebar row mounts `TaskCardRail` with `autoLabel` — ring, bell and the glued ✓ → Completed always, and the upright status word only when the rail measures tall enough to hold it whole — then title → signals → a muted identity line; the agent config no longer opens the row. Menu state is one shared `useStatusMenu` + `StatusMenuPortal` across both surfaces. Bible §5 sidebar row, §5.6, §9 budget.
+- **Why:** an upright letter is ~14.4px and the rail is `self-stretch`, so on a short row the word sets the height instead of describing it (144-159px against a 96px baseline) — but a row carrying an overview is 273px and has room to spare, so the answer is per-row, not per-surface. Rejected: always-on full labels, three-letter forms (101px and a second status vocabulary in three locales), and dropping the word outright (71-88px, but it loses the word on the tall rows that had room). Evidence: `ActiveTaskRow.tsx`, `decisions/2026/08/07/sidebar-rail-short-labels.md`.
+- **Status:** Implemented. Evidence: `ActiveTaskRow.tsx`, `useStatusMenu.ts`, `StatusMenuPortal.tsx`, seq 1415.
+
 ## 2026-08-07 — Every toast has one anatomy, and its origin is resolved centrally
 
 - **Rule:** Where a toast came from never changes its shape: source line → message → click target → swipe **and** X **and** timeout. The line falls back task → project → app area (`Settings`/`Update`/`Dashboard`/`Terminal`/`Menu`), first match wins, so no toast is ever bare; an area is a label with no click target. A caller passes ONE token (`taskId`/`projectId`/`source`) and `ToastHost` composes the rest via a resolver injected by `App.tsx`, once at emit, never per render. Bible §5.7, yaml `surfaces.toast`.

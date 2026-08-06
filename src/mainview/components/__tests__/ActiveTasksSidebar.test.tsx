@@ -179,7 +179,12 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.getByText("Claude · Opus 4.7 · Bypass")).toBeInTheDocument();
 		expect(screen.getByText("Codex · GPT-5.5 Heavy Bypass")).toBeInTheDocument();
 		expect(screen.getByTestId("variant-indicator-t1")).toBeInTheDocument();
-		expect(screen.getByTestId("sidebar-status-label-t1").parentElement).toContainElement(screen.getByTestId("variant-indicator-t1"));
+		// The config line is the row's LAST line now — the title leads, and the
+		// agent identity is a muted tail below the signals.
+		const identity = screen.getByTestId("sidebar-identity-t1");
+		expect(identity).toHaveTextContent("Claude · Opus 4.7 · Bypass");
+		const title = within(screen.getByTestId("sidebar-status-rail-t1").parentElement!).getByText("Привет! как сам?");
+		expect(title.compareDocumentPosition(identity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(screen.getAllByText("#494")).toHaveLength(2);
 	});
 
@@ -231,7 +236,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(terminalPreview.close).toHaveBeenCalledTimes(1);
 	});
 
-	it("renders a per-card status color rail (status hue for inactive, accent for active)", () => {
+	it("mounts the Kanban lifecycle rail on every row, tinted with the task's status color", () => {
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar
@@ -256,15 +261,94 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
-		// Active task's rail uses the accent token, not a status hex.
+		// Same component as the board — one lifecycle vocabulary across surfaces.
 		const activeRail = screen.getByTestId("sidebar-status-rail-t1");
-		expect(activeRail.getAttribute("style") ?? "").toMatch(/box-shadow/i);
-		expect(activeRail.querySelector("span")?.getAttribute("style") ?? "").toContain("var(--accent)");
-
-		// Inactive task's rail is tinted inline with its status color.
 		const inactiveRail = screen.getByTestId("sidebar-status-rail-t2");
-		expect(inactiveRail.getAttribute("style") ?? "").not.toMatch(/box-shadow/i);
-		expect(inactiveRail.querySelector("span")?.getAttribute("style") ?? "").toMatch(/background/);
+		expect(within(activeRail).getByTestId("task-card-rail")).toBeInTheDocument();
+		expect(within(inactiveRail).getByTestId("task-card-rail")).toBeInTheDocument();
+
+		// Each rail is tinted with its OWN status hue, inline (the documented
+		// STATUS_COLORS hex exception), and names the status uprightly.
+		expect(within(activeRail).getByTestId("task-card-rail").getAttribute("style") ?? "").toContain("#afbaff");
+		expect(within(inactiveRail).getByTestId("task-card-rail").getAttribute("style") ?? "").toContain("#ffe55f");
+		// Ring yes, stacked word no — an upright letter would set the row height
+		// instead of describing it. The name lives in the tooltip and aria-label.
+		expect(within(activeRail).getByRole("img", { name: "Stage 2 of 7" })).toBeInTheDocument();
+		expect(within(inactiveRail).getByRole("img", { name: "Stage 5 of 7" })).toBeInTheDocument();
+		expect(activeRail.querySelector("[class*=vertical-rl]")).toBeNull();
+		expect(inactiveRail.querySelector("[class*=vertical-rl]")).toBeNull();
+
+		// The busy sheen rides only the working row, never the review one.
+		expect(activeRail.querySelector(".animate-rail-flow")).not.toBeNull();
+		expect(inactiveRail.querySelector(".animate-rail-flow")).toBeNull();
+	});
+
+	it("opens the same Move-to menu as the board when the rail's ring is clicked", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ id: "t1", status: "in-progress" })]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		const rail = screen.getByTestId("sidebar-status-rail-t1");
+		await user.click(within(rail).getByRole("button", { name: /Stage 2 of 7\. Move to/i }));
+
+		expect(screen.getByText("Your Review")).toBeInTheDocument();
+	});
+
+	it("does not navigate to the task when the rail is clicked", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ id: "t1", status: "in-progress" })]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={navigate}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		const rail = screen.getByTestId("sidebar-status-rail-t1");
+		await user.click(within(rail).getByRole("button", { name: /Stage 2 of 7\. Move to/i }));
+
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("carries the attention bell inside the rail instead of over the row's text", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ id: "t1", status: "user-questions" })]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map([["t1", 3]])}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		const rail = screen.getByTestId("sidebar-status-rail-t1");
+		const bell = within(rail).getByTestId("task-card-rail-bell");
+		expect(bell).toHaveTextContent("3");
 	});
 
 	it("toggles between project and global scope and fetches all-project tasks", async () => {
@@ -800,8 +884,8 @@ function makeTask(overrides?: Partial<Task>): Task {
 
 		// The parked card's rail carries the custom column color, not the
 		// review-by-user status hue.
-		const parkedRail = screen.getByTestId("sidebar-status-rail-parked");
-		expect((parkedRail.querySelector("span")?.getAttribute("style") ?? "").toLowerCase()).toContain("#abcdef");
+		const parkedRail = within(screen.getByTestId("sidebar-status-rail-parked")).getByTestId("task-card-rail");
+		expect((parkedRail.getAttribute("style") ?? "").toLowerCase()).toContain("#abcdef");
 	});
 
 	it("orders tasks within a group oldest-first by movedAt (longest-waiting on top)", () => {
@@ -1018,7 +1102,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(p3.className).toContain("text-success");
 	});
 
-	it("renders a compact status label on each card", () => {
+	it("names each row's status in the rail's accessible name, not as visible text", () => {
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar
@@ -1037,8 +1121,10 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
-		expect(screen.getByTestId("sidebar-status-label-q")).toHaveTextContent("Question");
-		expect(screen.getByTestId("sidebar-status-label-w")).toHaveTextContent("Working");
+		// On a short row the status reaches the user through the rail's
+		// accessible name and tooltip, not as a stacked word.
+		expect(within(screen.getByTestId("sidebar-status-rail-q")).getByRole("button", { name: /Has Questions/ })).toBeInTheDocument();
+		expect(within(screen.getByTestId("sidebar-status-rail-w")).getByRole("button", { name: /Agent is Working/ })).toBeInTheDocument();
 	});
 
 	it("groups into readiness tiers with counted sticky headers", () => {
@@ -1141,17 +1227,17 @@ describe("ActiveTasksSidebar — native terminal backend mark", () => {
 		);
 	}
 
-	it("marks a native-backed task between the priority and the agent badge", () => {
+	it("leads the identity line, before everything the agent owns", () => {
 		renderSidebar(makeTask({ terminalBackend: "native", priority: "P2" }));
 
 		const mark = screen.getByTestId("sidebar-native-backend-t1");
-		const row = mark.parentElement!;
-		const priority = within(row).getByText("P2");
-		// Position, not mere presence: the marker qualifies the task, so it sits
-		// after the priority badge and before everything the agent owns.
-		expect(row.contains(priority)).toBe(true);
-		expect(priority.compareDocumentPosition(mark) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-		expect(Array.from(row.children).indexOf(mark)).toBe(1);
+		const identity = screen.getByTestId("sidebar-identity-t1");
+		// Position, not mere presence: the marker qualifies the task, so it opens
+		// the identity line and precedes the agent badge.
+		expect(identity.contains(mark)).toBe(true);
+		expect(Array.from(identity.children).indexOf(mark)).toBe(0);
+		const agentBadge = within(identity).getByRole("img", { name: "Claude" });
+		expect(mark.compareDocumentPosition(agentBadge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
 	// The row is a role=button with its own aria-label, which overrides every

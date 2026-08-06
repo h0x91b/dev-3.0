@@ -117,11 +117,6 @@ const common = {
 	"sidebar.tier.needsYou": "Needs you",
 	"sidebar.tier.waiting": "Waiting",
 	// Compact per-card status labels (statuses merge within a tier, so each card names its kind)
-	"sidebar.statusShort.review": "Review",
-	"sidebar.statusShort.question": "Question",
-	"sidebar.statusShort.aiReview": "AI review",
-	"sidebar.statusShort.prReview": "PR review",
-	"sidebar.statusShort.working": "Working",
 
 	// Task switcher (Option+Tab)
 	"taskSwitcher.title": "Switch Task",

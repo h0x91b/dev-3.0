@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import { useLayoutEffect, useRef, useState, type Ref } from "react";
 import type { Project, TaskStatus } from "../../shared/types";
 import { useT, type TranslationKey } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
@@ -26,9 +26,16 @@ const RAIL_LABEL_KEY: Record<TaskStatus, TranslationKey> = {
 	cancelled: "status.rail.cancelled",
 };
 
-/** A custom column has no short form of its own — clip its name and shout it. */
-export function shortenForRail(name: string): string {
-	return name.slice(0, RAIL_LABEL_MAX).trim().toUpperCase();
+/**
+ * A custom column has no short form of its own — clip its name and shout it.
+ * A whole first word beats a mid-word cut: "On hold" reads as ON, not "ON H".
+ */
+export function shortenForRail(name: string, max: number = RAIL_LABEL_MAX): string {
+	const trimmed = name.trim();
+	if (trimmed.length <= max) return trimmed.toUpperCase();
+	const firstWord = trimmed.split(/\s+/)[0];
+	if (firstWord.length <= max) return firstWord.toUpperCase();
+	return trimmed.slice(0, max).trim().toUpperCase();
 }
 
 interface TaskCardRailProps {
@@ -51,6 +58,14 @@ interface TaskCardRailProps {
 	menuTriggerRef: Ref<HTMLButtonElement>;
 	/** Narrow viewport: widen so both halves clear the 44px touch minimum. */
 	touch?: boolean;
+	/**
+	 * Show the upright word only when the rail is tall enough to hold it whole.
+	 * Set by the Active Tasks sidebar, where a row is 88px when it carries a
+	 * title and 273px when it carries an overview: a stacked word would set the
+	 * short row's height instead of describing it. A card is always tall enough,
+	 * so it leaves this off and always shows the word.
+	 */
+	autoLabel?: boolean;
 }
 
 /**
@@ -71,6 +86,7 @@ export default function TaskCardRail({
 	onComplete,
 	menuTriggerRef,
 	touch = false,
+	autoLabel = false,
 }: TaskCardRailProps) {
 	const t = useT();
 	const stage = getPipelineIndex(status) + 1;
@@ -78,9 +94,27 @@ export default function TaskCardRail({
 	const fullLabel = customColumn ? customColumn.name : getStatusLabel(status, t, project);
 	const railLabel = customColumn ? shortenForRail(customColumn.name) : t(RAIL_LABEL_KEY[status]);
 	const stageLabel = t("pipeline.stageOf", { current: String(stage), total: String(total) });
+	const railRef = useRef<HTMLDivElement>(null);
+	const [labelFits, setLabelFits] = useState(!autoLabel);
+
+	// Measured: an upright letter is ~14.4px, and the ring, the ✓ and the rail's
+	// own padding claim ~58px before the word starts. Showing the word only when
+	// it already fits cannot grow the rail, so this settles in one pass.
+	const neededForLabel = 58 + railLabel.length * 14.4;
+	useLayoutEffect(() => {
+		if (!autoLabel) return;
+		const el = railRef.current;
+		if (!el || typeof ResizeObserver === "undefined") return;
+		const measure = () => setLabelFits(el.getBoundingClientRect().height >= neededForLabel);
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(el);
+		return () => observer.disconnect();
+	}, [autoLabel, neededForLabel]);
 
 	return (
 		<div
+			ref={railRef}
 			data-testid="task-card-rail"
 			className={`flex flex-shrink-0 flex-col items-stretch self-stretch rounded-bl-[0.6875rem] ${touch ? "w-11" : "w-5"}`}
 			style={{ background: `${color}22` }}
@@ -115,13 +149,15 @@ export default function TaskCardRail({
 					{/* Upright stacked letters — read straight down, never rotated. The
 					    accessible name above carries the full label, so the visual
 					    abbreviation is hidden from assistive tech. */}
-					<span
-						aria-hidden="true"
-						className="max-h-32 overflow-hidden font-mono text-dense font-extrabold uppercase leading-none tracking-[0.14em] [text-orientation:upright] [writing-mode:vertical-rl]"
-						style={{ color }}
-					>
-						{railLabel}
-					</span>
+					{labelFits && (
+						<span
+							aria-hidden="true"
+							className="max-h-32 overflow-hidden font-mono text-dense font-extrabold uppercase leading-none tracking-[0.14em] [text-orientation:upright] [writing-mode:vertical-rl]"
+							style={{ color }}
+						>
+							{railLabel}
+						</span>
+					)}
 				</button>
 			</Tooltip>
 

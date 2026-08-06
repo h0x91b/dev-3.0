@@ -1,31 +1,25 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
 import type { CodingAgent, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, ALL_PRIORITIES, DEFAULT_PRIORITY, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, ALL_PRIORITIES, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
-import PriorityBadge from "./PriorityBadge";
 import { groupTasksIntoTiers } from "./sidebarTiers";
 import { toast } from "../toast";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { api } from "../rpc";
 import type { AppAction, Route } from "../state";
-import { useT, useLocale } from "../i18n";
+import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { matchesTaskQuery } from "../utils/taskSearch";
 import { buildFilterGroups, taskQueryContext, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import FilterFunnel from "./FilterFunnel";
-import { ageParts, compactAge, type AgeUnit } from "../utils/statusAge";
-import LabelChip from "./LabelChip";
 import TipCard from "./TipCard";
 import { useTipRotation } from "../hooks/useTipRotation";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
-import AgentLauncherBadge from "./AgentLauncherBadge";
-import VariantDots from "./VariantDots";
-import NativeBackendMark, { isNativeBackendTask } from "./NativeBackendMark";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
-import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import Tooltip from "./Tooltip";
 import { PanelLeftIcon } from "./TaskIcons";
+import ActiveTaskRow from "./ActiveTaskRow";
 
 type SidebarScope = "project" | "global" | "attention";
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
@@ -80,29 +74,6 @@ const STATUS_ORDER: TaskStatus[] = [
 ];
 
 /**
- * Compact per-card status label keys. Statuses merge within a readiness tier, so
- * each card names its kind ("Review", "Question", "Working", …) — the tier header
- * no longer carries that information on its own.
- */
-const SHORT_STATUS_KEYS: Partial<Record<TaskStatus, string>> = {
-	"review-by-user": "sidebar.statusShort.review",
-	"user-questions": "sidebar.statusShort.question",
-	"review-by-ai": "sidebar.statusShort.aiReview",
-	"review-by-colleague": "sidebar.statusShort.prReview",
-	"in-progress": "sidebar.statusShort.working",
-};
-
-/** Maps the single most-significant age unit to its verbose i18n key. */
-const AGE_UNIT_KEY: Record<AgeUnit, string> = {
-	s: "activity.secondsAgo",
-	m: "activity.minutesAgo",
-	h: "activity.hoursAgo",
-	d: "activity.daysAgo",
-	M: "activity.monthsAgo",
-	y: "activity.yearsAgo",
-};
-
-/**
  * Nerd Font scope glyph: outline variant by default, filled variant when the
  * scope is active. Both glyphs stay mounted and cross-fade, so the swap
  * animates in both directions without a motion dependency.
@@ -143,7 +114,6 @@ function ActiveTasksSidebar({
 	disableGlobalFindShortcut = false,
 }: ActiveTasksSidebarProps) {
 	const t = useT();
-	const [locale] = useLocale();
 	const statusColors = useStatusColors();
 	const preview = useTerminalPreview();
 	// Feature-discovery tips in the task view (terminal context leads the rotation).
@@ -635,18 +605,15 @@ function ActiveTasksSidebar({
 							{groupTasks.map((task, idx) => {
 								const isActive = task.id === activeTaskId && task.projectId === project.id;
 								const bellCount = bellCounts.get(task.id) ?? 0;
-								const displayTitle = getTaskTitle(task);
 								const { agent, configLabel } = getTaskAgentMeta(task, agents);
 								const taskLabelIds = task.labelIds ?? [];
-								const taskProject = projectById.get(task.projectId);
-								const labelsPool = (taskProject?.labels ?? projectLabels) as typeof projectLabels;
+								const taskProject = projectById.get(task.projectId) ?? project;
+								const labelsPool = (taskProject.labels ?? projectLabels) as typeof projectLabels;
 								const assignedLabels = taskLabelIds
 									.map((id) => labelsPool.find((l) => l.id === id))
 									.filter(Boolean) as typeof projectLabels;
 								const groupMembers = task.groupId ? siblingMap.get(task.groupId) ?? [task] : [task];
-								const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
 								const showProjectBadge = (scope === "global" || scope === "attention") && task.projectId !== project.id;
-								const projectBadgeName = taskProject?.name ?? t("sidebar.unknownProject");
 
 								return (
 									<div key={task.id}>
@@ -654,270 +621,29 @@ function ActiveTasksSidebar({
 										{idx > 0 && (
 											<div className="mx-3 border-t border-dashed border-edge" />
 										)}
-										<div
-											data-hint-id={`task:${task.id}`}
-											role="button"
-											tabIndex={task.shuttingDown ? -1 : 0}
-											aria-disabled={task.shuttingDown || undefined}
-											// The row's explicit name overrides its descendants, so the
-											// native marker only reaches assistive tech from here.
-											aria-label={
-												isNativeBackendTask(task)
-													? `${displayTitle} — ${t("task.nativeBackendMark")}`
-													: displayTitle
-											}
-											onClick={() => handleTaskClick(task)}
-											onKeyDown={(e) => {
-												// Card is a div (so the nested PriorityBadge button is valid
-												// HTML); restore native button keyboard activation.
-												if (e.target !== e.currentTarget) return;
-												if (e.key === "Enter" || e.key === " ") {
-													e.preventDefault();
-													handleTaskClick(task);
-												}
-											}}
-											onMouseEnter={(e) => {
-												if (!task.shuttingDown) preview.handlers.onMouseEnter(task.id, e.currentTarget);
-											}}
+										<ActiveTaskRow
+											task={task}
+											taskProject={taskProject}
+											isActive={isActive}
+											bellCount={bellCount}
+											agent={agent}
+											agents={agents}
+											configLabel={configLabel}
+											assignedLabels={assignedLabels}
+											groupMembers={groupMembers}
+											projectBadgeName={showProjectBadge ? taskProject.name ?? t("sidebar.unknownProject") : undefined}
+											ports={taskPorts.get(task.id)}
+											statusColors={statusColors}
+											color={taskColor(task)}
+											now={now}
+											dispatch={dispatch}
+											navigate={navigate}
+											onOpen={() => handleTaskClick(task)}
+											onSetPriority={(p) => handleSetPriority(task, p)}
+											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
 											onMouseLeave={preview.handlers.onMouseLeave}
-											className={`w-full text-left px-3 py-2 transition-colors relative cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
-												task.shuttingDown
-													? "grayscale opacity-40 pointer-events-none"
-													: task.hibernated
-														? "grayscale opacity-60 hover:bg-elevated-hover"
-													: isActive
-														? "bg-accent/20 ring-1 ring-inset ring-accent/50"
-														: "hover:bg-elevated-hover"
-											}`}
-										>
-											{/* Faint status wash so the whole card carries its column color
-											    (non-active cards only; active keeps its accent tint). */}
-											{!isActive && (
-												<span
-													className="absolute inset-0 pointer-events-none"
-													style={{ background: statusTint(taskColor(task), 0.06) }}
-												/>
-											)}
-
-											{/* Left rail: status color per card, accent when active. Absolute
-											    so it does not shift content; keeps padding symmetric. For
-											    busy statuses a bright highlight flows down the rail. */}
-											{(() => {
-												const isBusy = task.status === "in-progress" || task.status === "review-by-ai";
-												const railColor = isActive ? "rgb(var(--accent))" : taskColor(task);
-												return (
-													<span
-														className={`absolute left-0 top-0 bottom-0 overflow-hidden ${isActive ? "w-[4px]" : "w-[3px]"}`}
-														style={isActive ? { boxShadow: "0 0 8px rgb(var(--accent) / 0.7)" } : undefined}
-														data-testid={`sidebar-status-rail-${task.id}`}
-													>
-														<span
-															className="absolute inset-0"
-															style={{ background: railColor, opacity: isBusy ? 0.4 : 1 }}
-														/>
-														{isBusy && (
-															<span
-																className="absolute inset-x-0 h-1/2 animate-rail-flow motion-reduce:animate-none"
-																style={{ background: `linear-gradient(180deg, transparent, ${railColor}, transparent)` }}
-															/>
-														)}
-													</span>
-												);
-											})()}
-
-											{task.shuttingDown && <TaskShutdownOverlay />}
-
-											{/* Bell badge */}
-											{bellCount > 0 && (
-												<div
-													className="absolute top-1 right-2 min-w-[1rem] h-4 flex items-center justify-center px-1 rounded-full bg-danger shadow-sm shadow-danger/40"
-												>
-													<span className="text-nano font-bold text-white leading-none">
-														{bellCount > 9 ? "9+" : bellCount}
-													</span>
-												</div>
-											)}
-
-												{/* Project badge (global scope only) */}
-												{showProjectBadge && (
-													<Tooltip content={projectBadgeName}>
-														<div
-															className="mb-1 inline-flex items-center gap-1 max-w-full text-micro font-semibold text-accent bg-accent/10 border border-accent/25 rounded px-1.5 py-[1px]"
-															data-testid={`sidebar-project-badge-${task.id}`}
-														>
-															<span
-																aria-hidden
-																style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-																className="leading-none text-xs"
-															>
-																{"\uEB01"}
-															</span>
-															<span className="truncate">{projectBadgeName}</span>
-														</div>
-													</Tooltip>
-												)}
-
-												<div className="mb-1 flex items-center gap-1.5 min-w-0">
-													{/* Priority badge — first element, always visible incl. P3.
-													    Same component + picker as the kanban card; changing it
-													    re-prioritizes the whole variant group. It stops its own
-													    click, so tapping it never opens the task. */}
-													<PriorityBadge
-														priority={task.priority}
-														onChange={(p) => handleSetPriority(task, p)}
-													/>
-													{/* Backend identity sits between the priority and the agent:
-													    it qualifies the task, not the agent that runs it. */}
-													<NativeBackendMark
-														task={task}
-														className="w-3.5 h-3.5"
-														testId={`sidebar-native-backend-${task.id}`}
-													/>
-													{agent && <AgentLauncherBadge agent={agent} size={14} />}
-													{task.hibernated && (
-														<span
-															data-testid="sidebar-hibernated-badge"
-															title={t("task.hibernatedHint")}
-															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-muted"
-														>
-															{t("task.hibernatedBadge")}
-														</span>
-													)}
-													<Tooltip content={agentSummary} disabled={!agentSummary}>
-														<div
-															className={`min-w-0 flex-1 truncate text-dense font-medium ${
-																isActive ? "text-fg" : "text-fg-2"
-															}`}
-														>
-															{agentSummary || `#${task.seq}`}
-														</div>
-													</Tooltip>
-												</div>
-
-												{/* Title */}
-												<div className={`text-xs leading-snug break-words ${
-													isActive ? "text-fg font-medium" : "text-fg-2"
-												}`}>
-													{displayTitle}
-												</div>
-
-												{/* Overview — shown only for the active task, and only if set.
-												    The user's manual edit (`userOverview`) overrides the agent's
-												    `overview`, so the user always sees the version they authored. */}
-												{(() => {
-													if (!isActive) return null;
-													const effective = task.userOverview?.trim() || task.overview?.trim() || "";
-													if (!effective) return null;
-													return (
-														<div
-															className="mt-1.5 pt-1.5 border-t border-accent/20 text-xs leading-relaxed text-fg-2 whitespace-pre-wrap break-words"
-															data-testid={`active-task-overview-${task.id}`}
-														>
-															{effective}
-														</div>
-													);
-												})()}
-
-												<div className="mt-1 flex items-center gap-1 min-w-0">
-													{/* Compact status label — statuses merge within a tier, so
-													    each card names its kind. Colored by its real status hue
-													    (not the custom-column color) so "Working"/"Review" read. */}
-													{(() => {
-														const statusKey = SHORT_STATUS_KEYS[task.status];
-														if (!statusKey) return null;
-														const hue = statusColors[task.status];
-														return (
-															<span
-																className="shrink-0 text-nano font-semibold uppercase tracking-wide leading-none px-1 py-0.5 rounded"
-																style={{ color: hue, background: statusTint(hue, 0.14) }}
-																data-testid={`sidebar-status-label-${task.id}`}
-															>
-																{t(statusKey as Parameters<typeof t>[0])}
-															</span>
-														);
-													})()}
-													<div className="text-nano text-fg-3 font-mono shrink-0">
-														#{task.seq}
-													</div>
-													{assignedLabels.length > 0 && (
-														<div className="flex flex-wrap gap-0.5 min-w-0">
-															{assignedLabels.map((label) => (
-																<LabelChip
-																	key={label.id}
-																	label={label}
-																	size="xs"
-																/>
-															))}
-														</div>
-													)}
-													<VariantDots
-														groupMembers={groupMembers}
-														currentTaskId={task.id}
-														statusColors={statusColors}
-														agents={agents}
-														navigate={navigate}
-														projectId={task.projectId || project.id}
-														onOpen={preview.close}
-														size="sm"
-														testId={`variant-indicator-${task.id}`}
-													/>
-													{(() => {
-														const part = ageParts(task.movedAt, now);
-														if (!part) return null;
-														const relative =
-															part.unit === "s" && part.value < 1
-																? t("activity.justNow")
-																: t(AGE_UNIT_KEY[part.unit] as Parameters<typeof t>[0], {
-																		count: String(part.value),
-																	});
-														const date = new Date(task.movedAt!).toLocaleString(locale, {
-															dateStyle: "medium",
-															timeStyle: "short",
-														});
-														return (
-															<Tooltip content={t("sidebar.statusChanged", { ago: relative, date })}>
-																<span
-																	className="ml-auto shrink-0 flex items-center gap-0.5 text-nano text-fg-3 font-mono whitespace-nowrap"
-																	data-testid={`sidebar-status-age-${task.id}`}
-																>
-																	<span
-																		aria-hidden
-																		className="leading-none"
-																		style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-																	>
-																		{"\uF017"}
-																	</span>
-																	{compactAge(task.movedAt, now)}
-																</span>
-															</Tooltip>
-														);
-													})()}
-												</div>
-
-												{/* Port indicators */}
-												{(() => {
-													const ports = taskPorts.get(task.id);
-													if (!ports || ports.length === 0) return null;
-													return (
-														<div className="flex flex-wrap gap-1 mt-1">
-															{ports.map((p) => (
-																<Tooltip key={p.port} content={`${p.processName} (PID ${p.pid})`}>
-																	<span
-																		className="inline-flex items-center gap-1 text-nano font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded"
-																		onClick={(e) => {
-																			e.stopPropagation();
-																			window.open(`http://localhost:${p.port}`, "_blank");
-																		}}
-																	>
-																		<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
-																		:{p.port}
-																	</span>
-																</Tooltip>
-															))}
-														</div>
-													);
-												})()}
-										</div>
+											closePreview={preview.close}
+										/>
 									</div>
 								);
 							})}
