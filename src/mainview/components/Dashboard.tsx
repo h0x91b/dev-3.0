@@ -33,7 +33,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 			dispatch({ type: "removeProject", projectId });
 			trackEvent("project_removed", { project_id: projectId });
 		} catch (err) {
-			toast.error(t("dashboard.failedRemove", { error: String(err) }));
+			toast.error(t("dashboard.failedRemove", { error: String(err) }), { projectId });
 		}
 	}
 
@@ -49,7 +49,7 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 			trackEvent("projects_reordered", { project_count: projectIds.length });
 		} catch (err) {
 			dispatch({ type: "setProjects", projects: previousProjects });
-			toast.error(t("dashboard.failedReorder", { error: String(err) }));
+			toast.error(t("dashboard.failedReorder", { error: String(err) }), { source: "dashboard" });
 		}
 	}
 

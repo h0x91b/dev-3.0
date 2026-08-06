@@ -720,7 +720,11 @@ describe("GlobalHeader — update countdown", () => {
 		// Flush the async handleRestart (saveLastRoute → applyUpdate rejection)
 		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
-		expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Update not ready to apply"));
+		expect(toast.error).toHaveBeenCalledWith(
+			expect.stringContaining("Update not ready to apply"),
+			// The toast names where it came from, so it is not a bare sentence.
+			{ source: "update" },
+		);
 		// The UI must not stay stuck on "Restarting..."
 		expect(screen.queryByText("Restarting...")).not.toBeInTheDocument();
 	});

@@ -276,15 +276,17 @@ The user runs many tasks in parallel, so a toast must answer **"which of my task
 
 | Slot | Rule |
 |---|---|
-| Source line | `#seq · project · task title`, one line, `truncate`, `text-micro font-mono text-fg-muted`. Present **iff a task identity resolves**. `#seq` leads so ellipsis eats the title, not the identifier. |
+| Source line | **Where it came from**, one line, `truncate`, `text-micro font-mono text-fg-muted`. Task → `#seq · project · task title`; no task but a project → the project name; neither → the app area (`Settings`, `Update`, `Dashboard`, `Terminal`, `Menu`). `#seq` leads so ellipsis eats the title, not the identifier. |
 | Message | The sentence. `break-words`, no truncation. |
 | Click target | The **most specific surface the toast is about** — image viewer, diff, settings section. The owning task is the *fallback*, never an override. |
 | Dismiss | Swipe right (pointer + touch) **and** the X button **and** auto-timeout. Swipe is never the only way (§12 gesture law). |
 
 Rules:
 
-- **Never fabricate a source line.** A global or project-scoped toast (settings saved, project add failed) has no seq and gets none — "project name alone" is noise, not identity.
-- **Identity is resolved centrally, not composed per call site.** A caller passes `taskId`; `ToastHost` resolves seq/project/title and the default click target through a resolver injected by `App.tsx`. The toast module stays free of app-state imports; ~180 call sites stay one field long; a future toast is correct by default. Explicitly passed `context`/`onClick` always win.
+- **Never fabricate a source line, but never leave one blank that could be filled.** The line answers "where did this come from", and every toast has an answer that is not the app's own name. Falling back to `dev-3.0` on a Settings toast is fabrication by another route: it adds a line that carries nothing.
+- **The fallback order is task → project → app area, first match wins.** An app area is a label, not a destination: it gets no click target, because there is nothing specific to open.
+- **Origin is resolved centrally, not composed per call site.** A caller passes one token — `taskId`, `projectId`, or `source` — and `ToastHost` composes the line and the default click target through a resolver injected by `App.tsx` (areas need no state and are localized in the host). The toast module stays free of app-state imports; ~180 call sites stay one field long; a future toast is correct by default. Explicitly passed `context`/`onClick` always win.
+- **`contextDetail`** appends one more segment after the resolved origin (`dev-3.0 · Nightly digest`) when the toast is about a named thing inside that scope.
 - **The clickable overlay's accessible name is `context — message`**, not the message alone: a screen reader must hear which task it is being sent to.
 
 Evidence: `toast.tsx`, `App.tsx` (`ToastHost` mount, `openTaskFromNotification`).

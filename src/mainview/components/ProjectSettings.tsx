@@ -1406,7 +1406,7 @@ function ProjectSettings({
 			const updated = await api.request.updateProjectSettings({ projectId, sensitive: next });
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			toast.error(t("projectSettings.failedSave", { error: String(err) }));
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
 	}
 
@@ -1418,7 +1418,7 @@ function ProjectSettings({
 			const updated: Project = { ...project, labels: [...(project.labels ?? []), label] };
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			toast.error(t("labels.failedCreate", { error: String(err) }));
+			toast.error(t("labels.failedCreate", { error: String(err) }), { projectId });
 		}
 		setLabelSaving(null);
 	}
@@ -1434,7 +1434,7 @@ function ProjectSettings({
 			};
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			toast.error(t("labels.failedUpdate", { error: String(err) }));
+			toast.error(t("labels.failedUpdate", { error: String(err) }), { projectId });
 		}
 		setLabelSaving(null);
 	}
@@ -1463,7 +1463,7 @@ function ProjectSettings({
 			};
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			toast.error(t("labels.failedDelete", { error: String(err) }));
+			toast.error(t("labels.failedDelete", { error: String(err) }), { projectId });
 		}
 		setLabelSaving(null);
 	}
@@ -1477,7 +1477,7 @@ function ProjectSettings({
 		const reordered = labelOrder.map((id) => byId.get(id)).filter((l): l is Label => l !== undefined);
 		dispatch({ type: "updateProject", project: { ...project, labels: reordered } });
 		api.request.reorderLabels({ projectId, labelOrder }).catch((err) => {
-			toast.error(t("labels.failedReorder", { error: String(err) }));
+			toast.error(t("labels.failedReorder", { error: String(err) }), { projectId });
 		});
 	}
 
@@ -1528,7 +1528,7 @@ function ProjectSettings({
 			const updated: Project = { ...project, customColumns: [...(project.customColumns ?? []), column] };
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			toast.error(t("customColumns.failedCreate", { error: String(err) }));
+			toast.error(t("customColumns.failedCreate", { error: String(err) }), { projectId });
 		}
 		setColumnSaving(null);
 	}
@@ -1544,7 +1544,7 @@ function ProjectSettings({
 			};
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			toast.error(t("customColumns.failedUpdate", { error: String(err) }));
+			toast.error(t("customColumns.failedUpdate", { error: String(err) }), { projectId });
 		}
 		setColumnSaving(null);
 	}
@@ -1571,7 +1571,7 @@ function ProjectSettings({
 			};
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {
-			toast.error(t("customColumns.failedDelete", { error: String(err) }));
+			toast.error(t("customColumns.failedDelete", { error: String(err) }), { projectId });
 		}
 		setColumnSaving(null);
 	}
@@ -1597,7 +1597,7 @@ function ProjectSettings({
 			setProjectConfig(toSave);
 			initialAiReviewRef.current = { agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
 		} catch (err) {
-			toast.error(t("projectSettings.failedSave", { error: String(err) }));
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
 		setSavingProject(false);
 	}
@@ -1616,7 +1616,7 @@ function ProjectSettings({
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
-			toast.error(t("projectSettings.failedSave", { error: String(err) }));
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
 		setSavingWtRepo(false);
 	}
@@ -1632,7 +1632,7 @@ function ProjectSettings({
 			const updatedProjects = await api.request.getProjects();
 			for (const p of updatedProjects) dispatch({ type: "updateProject", project: p });
 		} catch (err) {
-			toast.error(t("projectSettings.failedSave", { error: String(err) }));
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
 		setSavingWtLocal(false);
 	}

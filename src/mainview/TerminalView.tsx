@@ -527,7 +527,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				resolvePaths: async (paths) =>
 					(await api.request.resolveTerminalPaths({ taskId, projectId, paths })).resolved,
 				onActivate: (resolved, _event, line) => {
-					void activateTerminalPath(resolved, tRef.current, line);
+					void activateTerminalPath(resolved, tRef.current, line, taskId);
 				},
 				onResolutionsChanged: () => linkUnderlines?.requestRedraw(),
 			});

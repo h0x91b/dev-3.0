@@ -65,7 +65,7 @@ export default function PxpipeProxySettingsSection({
 		try {
 			setStatus(await api.request.pxpipeProxyStart());
 		} catch (err) {
-			toast.error(t("pxpipe.startError", { error: String(err) }));
+			toast.error(t("pxpipe.startError", { error: String(err) }), { source: "settings" });
 		} finally {
 			setBusy(false);
 		}
@@ -76,7 +76,7 @@ export default function PxpipeProxySettingsSection({
 		try {
 			setStatus(await api.request.pxpipeProxyStop());
 		} catch (err) {
-			toast.error(t("pxpipe.stopError", { error: String(err) }));
+			toast.error(t("pxpipe.stopError", { error: String(err) }), { source: "settings" });
 		} finally {
 			setBusy(false);
 		}

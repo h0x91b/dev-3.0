@@ -237,7 +237,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			await api.request.applyUpdate();
 		} catch (err) {
 			setRestarting(false);
-			toast.error(t("update.applyFailed", { error: String(err) }));
+			toast.error(t("update.applyFailed", { error: String(err) }), { source: "update" });
 		}
 	}
 

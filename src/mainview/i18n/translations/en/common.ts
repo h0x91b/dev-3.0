@@ -58,6 +58,11 @@ const common = {
 	"about.close": "Close",
 
 	// Generic
+	"toast.source.menu": "Menu",
+	"toast.source.settings": "Settings",
+	"toast.source.update": "Update",
+	"toast.source.dashboard": "Dashboard",
+	"toast.source.terminal": "Terminal",
 	"toast.dismiss": "Dismiss",
 	"common.close": "Close",
 

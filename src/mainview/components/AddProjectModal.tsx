@@ -97,7 +97,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 				onClose();
 			} else if (anySucceeded) {
 				onClose();
-				for (const err of errors) toast.error(err);
+				for (const err of errors) toast.error(err, { source: "dashboard" });
 			} else {
 				setError(errors.join("\n"));
 			}

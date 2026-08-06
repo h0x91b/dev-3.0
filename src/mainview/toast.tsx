@@ -1,29 +1,45 @@
 import { useEffect, useRef, useState } from "react";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { useT } from "./i18n";
+import type { TranslationKey } from "./i18n";
 
 export type ToastVariant = "error" | "success" | "info" | "warning";
 
-export interface ToastEntry {
+/**
+ * Where a toast that belongs to no task came from. Resolved to a localized label
+ * (`toast.source.<id>`) by the host, so a call site names its origin with one token
+ * instead of composing a string.
+ */
+export type ToastSource = "settings" | "update" | "dashboard" | "terminal" | "menu";
+
+/** Origin of a toast — the host turns whichever field is set into the source line. */
+export interface ToastOrigin {
+	/** Task identity. Also the durable fallback when capacity eviction drops the toast. */
+	taskId?: string;
+	/** Project identity, for a toast that belongs to a project but to no single task. */
+	projectId?: string;
+	/** App area, for a toast that belongs to neither. */
+	source?: ToastSource;
+	/** Appended after the resolved origin, e.g. an automation's name. */
+	contextDetail?: string;
+}
+
+export interface ToastEntry extends ToastOrigin {
 	id: number;
 	message: string;
 	variant: ToastVariant;
 	durationMs: number;
-	/** Optional task identity used when capacity eviction needs a durable fallback. */
-	taskId?: string;
 	/** Optional click handler — makes the whole toast a button (e.g. navigate to a task). */
 	onClick?: () => void;
-	/** Optional source line shown above the message (e.g. "#804 · project · task title"). */
+	/** Pre-composed source line. Wins over anything the host would resolve. */
 	context?: string;
 }
 
-export interface ToastOpts {
+export interface ToastOpts extends ToastOrigin {
 	durationMs?: number;
-	/** Task identity for task-scoped overflow fallback. */
-	taskId?: string;
 	/** When set, the toast becomes clickable and runs this on click (then dismisses). */
 	onClick?: () => void;
-	/** Optional source line shown above the message (e.g. "#804 · project · task title"). */
+	/** Pre-composed source line. Wins over anything the host would resolve. */
 	context?: string;
 }
 
@@ -37,8 +53,13 @@ export function taskToastContext(
 	return [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ");
 }
 
-/** What the host can learn about a toast's owning task, resolved centrally. */
-export interface ResolvedToastTask {
+/** `"dev-3.0"` + `"Nightly digest"` -> `"dev-3.0 · Nightly digest"`. */
+function joinContext(base: string | undefined, detail: string | undefined): string | undefined {
+	return [base, detail].filter(Boolean).join(" · ") || undefined;
+}
+
+/** What the host can learn about a toast's origin, resolved centrally. */
+export interface ResolvedToastOrigin {
 	/** Source line, already composed (see {@link taskToastContext}). */
 	context?: string;
 	/** Default click target — used only when the call site passed none. */
@@ -49,12 +70,13 @@ export interface ToastHostProps {
 	/** Receives only task-scoped entries evicted by the visible toast capacity limit. */
 	onTaskOverflow?: (entry: ToastEntry) => void;
 	/**
-	 * Turns a bare `taskId` into the source line and the default click target, so a
-	 * call site only has to say WHICH task it is about. `App.tsx` owns the app state
-	 * this needs; the toast service itself stays free of it. Returning `undefined`
-	 * (unknown task) leaves the toast bare — a source line is never fabricated.
+	 * Turns a bare `taskId`/`projectId` into the source line and the default click
+	 * target, so a call site only has to name WHERE it came from. `App.tsx` owns the
+	 * app state this needs; the toast service itself stays free of it. Returning
+	 * `undefined` (unknown task/project) falls through to `source`, and a source line
+	 * is never fabricated from nothing.
 	 */
-	resolveTask?: (taskId: string) => ResolvedToastTask | undefined;
+	resolveOrigin?: (origin: ToastOrigin) => ResolvedToastOrigin | undefined;
 }
 
 type Listener = (entry: ToastEntry) => void;
@@ -99,6 +121,9 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts): void {
 		variant,
 		durationMs: opts?.durationMs ?? DEFAULT_DURATION_MS,
 		taskId: opts?.taskId,
+		projectId: opts?.projectId,
+		source: opts?.source,
+		contextDetail: opts?.contextDetail,
 		onClick: opts?.onClick,
 		context: opts?.context,
 	};
@@ -165,7 +190,7 @@ function rendererIsActive(): boolean {
 	return document.visibilityState === "visible" && focused;
 }
 
-export function ToastHost({ onTaskOverflow, resolveTask }: ToastHostProps = {}) {
+export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}) {
 	const t = useT();
 	const narrow = useNarrowViewport(NARROW_VIEWPORT_PX);
 	const maxVisibleToasts = narrow ? NARROW_MAX_VISIBLE_TOASTS : MAX_VISIBLE_TOASTS;
@@ -173,11 +198,13 @@ export function ToastHost({ onTaskOverflow, resolveTask }: ToastHostProps = {}) 
 	const toastsRef = useRef<RenderedToast[]>([]);
 	const runtimesRef = useRef(new Map<number, ToastRuntime>());
 	const activeRef = useRef(rendererIsActive());
+	const tRef = useRef(t);
 	const overflowHandlerRef = useRef(onTaskOverflow);
-	const resolveTaskRef = useRef(resolveTask);
+	const resolveOriginRef = useRef(resolveOrigin);
 	const maxVisibleToastsRef = useRef(maxVisibleToasts);
+	tRef.current = t;
 	overflowHandlerRef.current = onTaskOverflow;
-	resolveTaskRef.current = resolveTask;
+	resolveOriginRef.current = resolveOrigin;
 	maxVisibleToastsRef.current = maxVisibleToasts;
 
 	function publish(next: RenderedToast[]): void {
@@ -299,11 +326,15 @@ export function ToastHost({ onTaskOverflow, resolveTask }: ToastHostProps = {}) 
 			};
 			runtimesRef.current.set(entry.id, runtime);
 
-			// Resolve identity ONCE, here — not per render. The resolver reads the
+			// Resolve the origin ONCE, here — not per render. The resolver reads the
 			// current project's tasks, so a toast still on screen after the user
 			// navigated away would otherwise silently lose its source line and its
 			// way back to the task, which is exactly when it is needed most.
-			const resolved = entry.taskId ? resolveTaskRef.current?.(entry.taskId) : undefined;
+			const resolved = resolveOriginRef.current?.(entry);
+			// Task -> project -> app area: the first one that resolves wins, and an
+			// area label is localized here so a call site names it with one token.
+			const area = entry.source ? tRef.current(`toast.source.${entry.source}` as TranslationKey) : undefined;
+			const resolvedContext = joinContext(resolved?.context ?? area, entry.contextDetail);
 
 			const previous = toastsRef.current;
 			const capacity = maxVisibleToastsRef.current;
@@ -317,7 +348,7 @@ export function ToastHost({ onTaskOverflow, resolveTask }: ToastHostProps = {}) 
 					paused: !activeRef.current,
 					// Whatever the call site passed explicitly always wins — a toast about
 					// a shared image opens the lightbox, not the task.
-					context: entry.context ?? resolved?.context,
+					context: entry.context ?? resolvedContext,
 					onClick: entry.onClick ?? resolved?.onClick,
 				},
 			];

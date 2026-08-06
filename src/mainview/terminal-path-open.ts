@@ -10,11 +10,13 @@ export interface OpenFilePreviewDetail {
 	path: string;
 	/** 1-based line to scroll to and highlight, from a :line[:col] suffix. */
 	line?: number;
+	/** Owning task, so the preview's toasts can name where they came from. */
+	taskId?: string;
 }
 
-export function openFilePreview(path: string, line?: number): void {
+export function openFilePreview(path: string, line?: number, taskId?: string): void {
 	window.dispatchEvent(
-		new CustomEvent<OpenFilePreviewDetail>(OPEN_FILE_PREVIEW_EVENT, { detail: { path, line } }),
+		new CustomEvent<OpenFilePreviewDetail>(OPEN_FILE_PREVIEW_EVENT, { detail: { path, line, taskId } }),
 	);
 }
 
@@ -23,7 +25,7 @@ export function openFilePreview(path: string, line?: number): void {
  * always previews in-app: `Utils.openPath` would open the file on the HOST
  * machine, invisible to a remote user.
  */
-export async function activateTerminalPath(resolved: ResolvedTerminalPath, t: TFunction, line?: number): Promise<void> {
+export async function activateTerminalPath(resolved: ResolvedTerminalPath, t: TFunction, line?: number, taskId?: string): Promise<void> {
 	let mode: TerminalPathOpenMode = "preview";
 	if (isElectrobun) {
 		try {
@@ -35,7 +37,7 @@ export async function activateTerminalPath(resolved: ResolvedTerminalPath, t: TF
 	try {
 		if (resolved.kind === "directory") {
 			if (!isElectrobun) {
-				toast.info(t("terminal.pathLinkFolderBrowser"));
+				toast.info(t("terminal.pathLinkFolderBrowser"), { taskId, source: "terminal" });
 				return;
 			}
 			await api.request.openTerminalPath({
@@ -45,11 +47,11 @@ export async function activateTerminalPath(resolved: ResolvedTerminalPath, t: TF
 			return;
 		}
 		if (mode === "preview") {
-			openFilePreview(resolved.path, line);
+			openFilePreview(resolved.path, line, taskId);
 		} else {
 			await api.request.openTerminalPath({ path: resolved.path, mode });
 		}
 	} catch (err) {
-		toast.error(t("terminal.pathLinkOpenFailed", { error: String(err) }));
+		toast.error(t("terminal.pathLinkOpenFailed", { error: String(err) }), { taskId, source: "terminal" });
 	}
 }

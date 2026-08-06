@@ -132,6 +132,7 @@ function AgentConfigPicker({
 		// The preset is visible but off. Tell the user and offer a one-click jump
 		// into the Settings section that enables it (the whole toast is the link).
 		toast.info(t("pxpipe.disabledPresetToast"), {
+			source: "settings",
 			onClick: () =>
 				window.dispatchEvent(
 					new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: "proxy" }),

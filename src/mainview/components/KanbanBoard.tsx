@@ -464,11 +464,11 @@ function KanbanBoard({
 			// The create RPC returns only the new column, so persist the full board order
 			// explicitly after creation. The server has committed the column by this point.
 			api.request.reorderColumns({ projectId: project.id, columnOrder }).catch((err) => {
-				toast.error(t("kanban.failedReorderColumns", { error: String(err) }));
+				toast.error(t("kanban.failedReorderColumns", { error: String(err) }), { projectId: project.id });
 			});
 			setAutoEditColumnId(column.id);
 		} catch (err) {
-			toast.error(t("customColumns.failedCreate", { error: String(err) }));
+			toast.error(t("customColumns.failedCreate", { error: String(err) }), { projectId: project.id });
 		}
 	}
 
@@ -484,7 +484,7 @@ function KanbanBoard({
 				project: { ...project, customColumns: customColumns.map((c) => (c.id === columnId ? column : c)) },
 			});
 		} catch (err) {
-			toast.error(t("customColumns.failedUpdate", { error: String(err) }));
+			toast.error(t("customColumns.failedUpdate", { error: String(err) }), { projectId: project.id });
 		}
 	}
 
@@ -548,7 +548,7 @@ function KanbanBoard({
 			.filter((c): c is CustomColumn => c !== undefined);
 		dispatch({ type: "updateProject", project: { ...project, customColumns: reorderedCustom, columnOrder: newOrder } });
 		api.request.reorderColumns({ projectId: project.id, columnOrder: newOrder }).catch((err) => {
-			toast.error(t("kanban.failedReorderColumns", { error: String(err) }));
+			toast.error(t("kanban.failedReorderColumns", { error: String(err) }), { projectId: project.id });
 		});
 	}
 

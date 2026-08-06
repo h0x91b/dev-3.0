@@ -604,7 +604,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			try {
 				await action();
 			} catch (err) {
-				toast.error(err instanceof Error ? err.message : String(err));
+				toast.error(err instanceof Error ? err.message : String(err), { source: "settings" });
 			} finally {
 				setBusy(false);
 				reload();
@@ -635,7 +635,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			await api.request.completeAgentAccountLogin({ kind: addFlow.kind, accountId: addFlow.accountId });
 			setAddFlow(null);
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : String(err));
+			toast.error(err instanceof Error ? err.message : String(err), { source: "settings" });
 			setAddFlow((current) => (current ? { ...current, verifying: false } : current));
 		} finally {
 			reload();
@@ -707,7 +707,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			}
 			closeApiForm();
 		} catch (err) {
-			toast.error(err instanceof Error ? err.message : String(err));
+			toast.error(err instanceof Error ? err.message : String(err), { source: "settings" });
 		} finally {
 			setApiSaving(false);
 			reload();

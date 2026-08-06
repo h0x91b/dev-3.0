@@ -259,13 +259,13 @@ describe("toast service", () => {
 	it("fills the source line and click target from a bare taskId", async () => {
 		const user = userEvent.setup();
 		const openTask = vi.fn();
-		const resolveTask = vi.fn(() => ({ context: "#42 · dev-3.0 · Fix the thing", onClick: openTask }));
-		render(<ToastHost resolveTask={resolveTask} />);
+		const resolveOrigin = vi.fn(() => ({ context: "#42 · dev-3.0 · Fix the thing", onClick: openTask }));
+		render(<ToastHost resolveOrigin={resolveOrigin} />);
 		act(() => {
 			toast.error("Push failed", { taskId: "t1", durationMs: 60_000 });
 		});
 
-		expect(resolveTask).toHaveBeenCalledWith("t1");
+		expect(resolveOrigin).toHaveBeenCalledWith(expect.objectContaining({ taskId: "t1" }));
 		expect(screen.getByText("#42 · dev-3.0 · Fix the thing")).toBeInTheDocument();
 		// The source line is part of the accessible name — a screen reader must hear
 		// which task the click navigates to.
@@ -280,8 +280,8 @@ describe("toast service", () => {
 		const user = userEvent.setup();
 		const ownClick = vi.fn();
 		const resolvedClick = vi.fn();
-		const resolveTask = () => ({ context: "resolved", onClick: resolvedClick });
-		render(<ToastHost resolveTask={resolveTask} />);
+		const resolveOrigin = () => ({ context: "resolved", onClick: resolvedClick });
+		render(<ToastHost resolveOrigin={resolveOrigin} />);
 		act(() => {
 			toast.info("Open the viewer", {
 				taskId: "t1",
@@ -304,7 +304,7 @@ describe("toast service", () => {
 		const openTask = vi.fn();
 		const { rerender } = rtlRender(
 			<I18nProvider>
-				<ToastHost resolveTask={() => ({ context: "#42 · dev-3.0 · Fix the thing", onClick: openTask })} />
+				<ToastHost resolveOrigin={() => ({ context: "#42 · dev-3.0 · Fix the thing", onClick: openTask })} />
 			</I18nProvider>,
 		);
 		act(() => {
@@ -315,7 +315,7 @@ describe("toast service", () => {
 		// while the task was known, so it must keep both its identity and its way back.
 		rerender(
 			<I18nProvider>
-				<ToastHost resolveTask={() => undefined} />
+				<ToastHost resolveOrigin={() => undefined} />
 			</I18nProvider>,
 		);
 		expect(screen.getByText("#42 · dev-3.0 · Fix the thing")).toBeInTheDocument();
@@ -326,7 +326,7 @@ describe("toast service", () => {
 	});
 
 	it("never fabricates a source line for a task it cannot resolve", () => {
-		render(<ToastHost resolveTask={() => undefined} />);
+		render(<ToastHost resolveOrigin={() => undefined} />);
 		act(() => {
 			toast.error("Save failed", { taskId: "gone", durationMs: 60_000 });
 		});
@@ -338,12 +338,73 @@ describe("toast service", () => {
 		expect(card.querySelector(".font-mono")).toBeNull();
 	});
 
-	it("leaves a toast with no task identity bare", () => {
-		render(<ToastHost resolveTask={() => ({ context: "never", onClick: vi.fn() })} />);
+	it("leaves a toast that names no origin at all bare", () => {
+		// The resolver is asked either way; with nothing to resolve it declines,
+		// and the host must not invent a line from the app name.
+		const resolveOrigin = vi.fn(({ taskId, projectId }) =>
+			taskId || projectId ? { context: "never" } : undefined,
+		);
+		render(<ToastHost resolveOrigin={resolveOrigin} />);
 		act(() => {
 			toast.error("Could not add the project", { durationMs: 60_000 });
 		});
 		expect(screen.queryByText("never")).not.toBeInTheDocument();
+		expect(toastCard().querySelector(".font-mono")).toBeNull();
+	});
+
+	it("renders no line at all when the fallback chain runs out", () => {
+		// The fourth case behind task -> project -> area: a resolver that answers but
+		// has no line to give. The slot must vanish, never render as an empty row.
+		render(<ToastHost resolveOrigin={() => ({ onClick: vi.fn() })} />);
+		act(() => {
+			toast.error("Nothing to attribute", { taskId: "t1", durationMs: 60_000 });
+		});
+		const card = toastCard() as HTMLElement;
+		expect(card.querySelector(".font-mono")).toBeNull();
+		expect(within(card).getByText("Nothing to attribute")).toBeInTheDocument();
+	});
+
+	it("falls back from a task to its project", async () => {
+		const user = userEvent.setup();
+		const openBoard = vi.fn();
+		const resolveOrigin = vi.fn(({ taskId }) =>
+			taskId ? undefined : { context: "dev-3.0", onClick: openBoard },
+		);
+		render(<ToastHost resolveOrigin={resolveOrigin} />);
+		act(() => {
+			toast.success("Project settings saved.", { projectId: "p1", durationMs: 60_000 });
+		});
+
+		expect(resolveOrigin).toHaveBeenCalledWith(expect.objectContaining({ projectId: "p1" }));
+		expect(screen.getByText("dev-3.0")).toBeInTheDocument();
+		await user.click(within(screen.getByRole("alert")).getByRole("button", {
+			name: "dev-3.0 — Project settings saved.",
+		}));
+		expect(openBoard).toHaveBeenCalledOnce();
+	});
+
+	it("labels an app-area toast without any app state, and without a click target", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Shortcut reassigned.", { source: "settings", durationMs: 60_000 });
+		});
+
+		const card = toastCard() as HTMLElement;
+		expect(within(card).getByText("Settings")).toBeInTheDocument();
+		// An area is not a destination — nothing to navigate to, so no hit area.
+		expect(within(card).queryByRole("button", { name: /Shortcut reassigned/ })).not.toBeInTheDocument();
+	});
+
+	it("appends a detail after the resolved origin", () => {
+		render(<ToastHost resolveOrigin={() => ({ context: "dev-3.0" })} />);
+		act(() => {
+			toast.warning("Missed 2 scheduled runs.", {
+				projectId: "p1",
+				contextDetail: "Nightly digest",
+				durationMs: 60_000,
+			});
+		});
+		expect(screen.getByText("dev-3.0 · Nightly digest")).toBeInTheDocument();
 	});
 
 	it("composes a source line with the identifier first", () => {

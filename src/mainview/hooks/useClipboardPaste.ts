@@ -63,12 +63,12 @@ export function useClipboardPaste(
 					if (result) onPathPasted(result.path);
 					// A null result means the host clipboard had nothing usable — say so
 					// instead of leaving the user with an unchanged field.
-					else toast.error(t("imagePaste.failed"));
+					else toast.error(t("imagePaste.failed"), { projectId });
 					setIsPasting(false);
 					setPasteKind(null);
 				}).catch(() => {
 					if (!mountedRef.current) return;
-					toast.error(t("imagePaste.failed"));
+					toast.error(t("imagePaste.failed"), { projectId });
 					setIsPasting(false);
 					setPasteKind(null);
 				});

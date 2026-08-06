@@ -83,7 +83,7 @@ export default function KeyboardSettingsSection({
 					const kept = { ...(next[clash.ownerId] ?? {}), [clash.ownerSlot]: null };
 					next = { ...next, [clash.ownerId]: kept };
 					if (bindingsAfter(loser, kept).length === 0) {
-						toast.info(t("keymap.edit.stolen", { name: t(loser.descKey) }));
+						toast.info(t("keymap.edit.stolen", { name: t(loser.descKey) }), { source: "settings" });
 					}
 				}
 			}

@@ -132,14 +132,14 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			const probe = taskSoundDiagnostics();
 			const line = `sound ${status}: ${played ? "play requested" : "skipped — setting off"} · context ${probe.context} · buffers ${probe.buffers} · queued ${probe.queued}`;
 			console.info("[menu][sound-probe]", line);
-			toast.info(line);
+			toast.info(line, { source: "menu" });
 			return;
 		}
 		case "debug-push-sound-completed": {
 			const { pushed } = await api.request.debugEmitTaskSound({ status: "completed" });
 			const line = `backend taskSound push: ${pushed ? "sent" : "suppressed — setting off"}`;
 			console.info("[menu][sound-probe]", line);
-			toast.info(line);
+			toast.info(line, { source: "menu" });
 			return;
 		}
 

@@ -13,6 +13,8 @@ interface FilePreviewModalProps {
 	path: string;
 	/** 1-based line to scroll to and highlight (from a :line[:col] link suffix). */
 	line?: number;
+	/** Task the path was clicked in, so this modal's toasts name their origin. */
+	taskId?: string;
 	onClose: () => void;
 }
 
@@ -33,7 +35,7 @@ const GHOST_BUTTON =
  * "Preview in dev3" mode of the File path click action setting, and the only
  * mode in browser/remote sessions (host-side open would be invisible there).
  */
-export default function FilePreviewModal({ path, line, onClose }: FilePreviewModalProps) {
+export default function FilePreviewModal({ path, line, taskId, onClose }: FilePreviewModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	useEscapeKey(onClose);
@@ -156,20 +158,20 @@ export default function FilePreviewModal({ path, line, onClose }: FilePreviewMod
 
 	async function handleCopyPath() {
 		const method = await writeClipboardText(path);
-		if (method !== "failed") toast.success(t("terminal.filePreviewCopied"));
+		if (method !== "failed") toast.success(t("terminal.filePreviewCopied"), { taskId, source: "terminal" });
 	}
 
 	async function handleCopyContent() {
 		if (textContent === null) return;
 		const method = await writeClipboardText(textContent);
-		if (method !== "failed") toast.success(t("terminal.filePreviewContentCopied"));
+		if (method !== "failed") toast.success(t("terminal.filePreviewContentCopied"), { taskId, source: "terminal" });
 	}
 
 	async function handleOpen(mode: "system" | "reveal") {
 		try {
 			await api.request.openTerminalPath({ path, mode });
 		} catch (err) {
-			toast.error(t("terminal.pathLinkOpenFailed", { error: String(err) }));
+			toast.error(t("terminal.pathLinkOpenFailed", { error: String(err) }), { taskId, source: "terminal" });
 		}
 	}
 

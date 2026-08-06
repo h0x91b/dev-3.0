@@ -430,7 +430,7 @@ export default function AgentAccountIndicator({
 				await api.request.setActiveAgentAccount({ kind: accountKind, accountId });
 				notifyAgentAccountsChanged();
 			} catch (err) {
-				toast.error(err instanceof Error ? err.message : String(err));
+				toast.error(err instanceof Error ? err.message : String(err), { source: "settings" });
 			} finally {
 				setBusy(false);
 			}

@@ -243,10 +243,10 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				setSelectedBranch(result.branch);
 				setDismissedPrUrl(null);
 			} else {
-				toast.error(t("createTask.prResolveFailed", { error: result.error || "" }));
+				toast.error(t("createTask.prResolveFailed", { error: result.error || "" }), { projectId: project.id });
 			}
 		} catch (err) {
-			toast.error(t("createTask.prResolveFailed", { error: String(err) }));
+			toast.error(t("createTask.prResolveFailed", { error: String(err) }), { projectId: project.id });
 		} finally {
 			setPrApplying(false);
 		}
@@ -363,7 +363,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				onClose();
 			}
 		} catch (err) {
-			toast.error(t("createTask.draftSaveFailed", { error: String(err) }));
+			toast.error(t("createTask.draftSaveFailed", { error: String(err) }), { projectId: project.id });
 			setCreating(false);
 		}
 	}
@@ -440,7 +440,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				onClose();
 			}
 		} catch (err) {
-			toast.error(t("kanban.failedCreate", { error: String(err) }));
+			toast.error(t("kanban.failedCreate", { error: String(err) }), { projectId: project.id });
 			setCreating(false);
 		}
 	}

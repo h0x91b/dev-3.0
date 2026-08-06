@@ -41,7 +41,7 @@ import GaugeDemo from "./components/gauges/GaugeDemo";
 import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
-import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry } from "./toast";
+import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -538,7 +538,7 @@ function App() {
 			// Cmd+K, palette, deep link, notification click, hint overlay). Checked
 			// before the dirty-form guard: a refused route must not prompt to save.
 			if (isRouteLocked(route)) {
-				toast.info(t("streamer.projectLocked"));
+				toast.info(t("streamer.projectLocked"), { projectId: projectIdForRoute(route) ?? undefined });
 				return;
 			}
 			if (navigationGuardRef.current?.isDirty()) {
@@ -571,26 +571,6 @@ function App() {
 		[navigate, setTerminalImmersiveActive],
 	);
 
-	// Every toast has the same anatomy, so a call site passes only `taskId` and the
-	// host fills in the source line and the default click target from here. An
-	// unknown task (another project, already deleted) resolves to nothing rather
-	// than to a made-up source line.
-	const currentProjectTasks = state.currentProjectTasks;
-	const projects = state.projects;
-	const resolveToastTask = useCallback(
-		(taskId: string) => {
-			const task = currentProjectTasks.find((candidate) => candidate.id === taskId);
-			if (!task) return undefined;
-			const projectName = projects.find((p) => p.id === task.projectId)?.name;
-			return {
-				// getTaskTitle, not task.title — the push path composes the same line
-				// through it, and the two must not disagree for the same task.
-				context: taskToastContext(task.seq, projectName, getTaskTitle(task)),
-				onClick: () => openTaskFromNotification(task.id, task.projectId),
-			};
-		},
-		[currentProjectTasks, projects, openTaskFromNotification],
-	);
 
 	useEffect(() => {
 		if (terminalImmersive && !isTaskTerminalRoute(state.route)) {
@@ -628,6 +608,32 @@ function App() {
 			);
 		},
 		[navigate, state.route],
+	);
+
+	// Every toast has the same anatomy, so a call site only names where it came from
+	// — a task, a project, or an app area — and the source line plus the default
+	// click target are composed here. Task beats project; an app area needs no state
+	// and is localized by the host itself. An unknown id resolves to nothing rather
+	// than to a made-up source line.
+	const currentProjectTasks = state.currentProjectTasks;
+	const projects = state.projects;
+	const resolveToastOrigin = useCallback(
+		({ taskId, projectId }: ToastOrigin) => {
+			const task = taskId ? currentProjectTasks.find((candidate) => candidate.id === taskId) : undefined;
+			if (task) {
+				const projectName = projects.find((p) => p.id === task.projectId)?.name;
+				return {
+					// getTaskTitle, not task.title — the push path composes the same line
+					// through it, and the two must not disagree for the same task.
+					context: taskToastContext(task.seq, projectName, getTaskTitle(task)),
+					onClick: () => openTaskFromNotification(task.id, task.projectId),
+				};
+			}
+			const project = projectId ? projects.find((p) => p.id === projectId) : undefined;
+			if (project) return { context: project.name, onClick: () => navigateToProject(project.id) };
+			return undefined;
+		},
+		[currentProjectTasks, projects, openTaskFromNotification, navigateToProject],
 	);
 
 	// Route an inbound `dev3://…` deep link (resolved by the backend) to the right
@@ -682,7 +688,7 @@ function App() {
 				navigate({ screen: "project", projectId: task.projectId, activeTaskId: task.id });
 			}
 		} catch (err) {
-			toast.error(String(err));
+			toast.error(String(err), { source: "dashboard" });
 		}
 	}, [navigate]);
 
@@ -1695,11 +1701,11 @@ function App() {
 				detail?: string;
 			};
 			if (status === "dev") {
-				toast.info(t("update.devBuildNotice"));
+				toast.info(t("update.devBuildNotice"), { source: "update" });
 			} else if (status === "none") {
-				toast.info(t("update.upToDateVersion", { version: version ?? "" }));
+				toast.info(t("update.upToDateVersion", { version: version ?? "" }), { source: "update" });
 			} else {
-				toast.error(t("update.checkFailedDetail", { error: detail ?? "" }));
+				toast.error(t("update.checkFailedDetail", { error: detail ?? "" }), { source: "update" });
 			}
 		}
 		window.addEventListener("rpc:updateCheckOutcome", onUpdateCheckOutcome);
@@ -1816,7 +1822,7 @@ function App() {
 		if (!projectId) return;
 		if (!state.projects.find((p) => p.id === projectId)?.sensitive) return;
 		commitNavigation({ screen: "dashboard" });
-		toast.info(t("streamer.projectLocked"));
+		toast.info(t("streamer.projectLocked"), { projectId });
 	}, [streamerModeOn, state.route, state.projects, commitNavigation, t]);
 
 	// Notify user when a column-agent launch fails. Built-in AI Review also parks the
@@ -1856,7 +1862,7 @@ function App() {
 	// missed runs are never silently skipped (scheduler pushes this on startup).
 	useEffect(() => {
 		function onAutomationRunsMissed(e: Event) {
-			const { automationName, missedCount, caughtUp } = (e as CustomEvent).detail as {
+			const { projectId, automationName, missedCount, caughtUp } = (e as CustomEvent).detail as {
 				projectId: string;
 				automationId: string;
 				automationName: string;
@@ -1866,7 +1872,7 @@ function App() {
 			const message = caughtUp
 				? t.plural("automations.missedToastCaughtUp", missedCount, { name: automationName })
 				: t.plural("automations.missedToast", missedCount, { name: automationName });
-			toast.warning(message);
+			toast.warning(message, { projectId, contextDetail: automationName });
 		}
 		window.addEventListener("rpc:automationRunsMissed", onAutomationRunsMissed);
 		return () => window.removeEventListener("rpc:automationRunsMissed", onAutomationRunsMissed);
@@ -2693,6 +2699,7 @@ function App() {
 				<FilePreviewModal
 					path={filePreview.path}
 					line={filePreview.line}
+					taskId={filePreview.taskId}
 					onClose={() => setFilePreview(null)}
 				/>
 			)}
@@ -2702,7 +2709,7 @@ function App() {
 			{showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 			{/* Toasts are transient feedback, not immersive chrome; notification toasts
 			    must remain clickable so their handler can exit fullscreen first. */}
-			<ToastHost onTaskOverflow={handleToastOverflow} resolveTask={resolveToastTask} />
+			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} />
 		</div>
 	);
 

@@ -36,7 +36,7 @@ function AutomationsPanel({ project }: AutomationsPanelProps) {
 	const reload = useCallback(() => {
 		api.request.listAutomations({ projectId: project.id })
 			.then(setAutomations)
-			.catch((err) => toast.error(String(err)))
+			.catch((err) => toast.error(String(err), { projectId: project.id }))
 			.finally(() => setLoading(false));
 	}, [project.id]);
 
@@ -62,16 +62,16 @@ function AutomationsPanel({ project }: AutomationsPanelProps) {
 			});
 			reload();
 		} catch (err) {
-			toast.error(String(err));
+			toast.error(String(err), { projectId: project.id });
 		}
 	}
 
 	async function runNow(automation: Automation) {
 		try {
 			await api.request.runAutomationNow({ projectId: project.id, automationId: automation.id });
-			toast.success(t("automations.runNowStarted", { name: automation.name }));
+			toast.success(t("automations.runNowStarted", { name: automation.name }), { projectId: project.id, contextDetail: automation.name });
 		} catch (err) {
-			toast.error(String(err));
+			toast.error(String(err), { projectId: project.id });
 		}
 	}
 
@@ -87,7 +87,7 @@ function AutomationsPanel({ project }: AutomationsPanelProps) {
 			await api.request.deleteAutomation({ projectId: project.id, automationId: automation.id });
 			reload();
 		} catch (err) {
-			toast.error(String(err));
+			toast.error(String(err), { projectId: project.id });
 		}
 	}
 
