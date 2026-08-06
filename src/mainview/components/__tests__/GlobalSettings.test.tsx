@@ -4,6 +4,7 @@ import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
+import * as confirmService from "../../confirm";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -15,6 +16,8 @@ vi.mock("../../zoom", () => ({
 	MAX_ZOOM: 2.0,
 	ZOOM_CHANGED_EVENT: "zoom-changed",
 }));
+
+vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
 
 vi.mock("../../rpc", () => ({
 	isElectrobun: false,
@@ -117,6 +120,8 @@ async function waitForLoad() {
 }
 
 /** Open a custom Select trigger (by element id) and click the option labeled `label`. */
+const mockedConfirm = vi.mocked(confirmService.confirm);
+
 async function pickFromSelect(user: ReturnType<typeof userEvent.setup>, triggerId: string, label: string) {
 	const trigger = document.getElementById(triggerId) as HTMLButtonElement;
 	await user.click(trigger);
@@ -421,14 +426,51 @@ describe("GlobalSettings", () => {
 			expect(select).toBeInTheDocument();
 		});
 
-		it("select is disabled and cannot be changed", async () => {
+		// The control shipped `disabled` while no unstable feed existed; enabling it is the
+		// point of the channels work. It must NOT be silently disabled again — that state
+		// looks identical to "feature present" on a screenshot.
+		it("is enabled, so the channel is actually choosable", async () => {
 			setupMocks();
 			renderGlobalSettings("system");
 			await waitForLoad();
 
-			const select = screen.getByDisplayValue("Stable");
-			expect(select).toBeDisabled();
-			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
+			expect(
+				screen.getByDisplayValue("Stable"),
+				"the update-channel select must be enabled. It was `disabled` for as long as no unstable feed was published; re-disabling it silently removes the feature while leaving the UI looking complete.",
+			).not.toBeDisabled();
+		});
+
+		it("persists the switch only after the user confirms the consequence", async () => {
+			setupMocks();
+			mockedConfirm.mockResolvedValue(true);
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+
+			await user.selectOptions(screen.getByDisplayValue("Stable"), "unstable");
+
+			expect(
+				mockedConfirm,
+				"switching channels must go through confirm(): unstable is main as it lands, and switching back installs an OLDER build that then reads state a newer one wrote.",
+			).toHaveBeenCalled();
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ updateChannel: "unstable" }),
+			);
+		});
+
+		it("writes nothing when the user cancels the confirmation", async () => {
+			setupMocks();
+			mockedConfirm.mockResolvedValue(false);
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+
+			await user.selectOptions(screen.getByDisplayValue("Stable"), "unstable");
+
+			expect(
+				mockedApi.request.saveGlobalSettings,
+				"a cancelled confirmation must leave the setting untouched. Persisting first and confirming after would put the user on unstable the moment the dialog appeared.",
+			).not.toHaveBeenCalled();
 		});
 	});
 
