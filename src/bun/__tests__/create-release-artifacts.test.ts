@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -70,6 +70,41 @@ describe("create-release-artifacts.sh", () => {
 			"an unknown channel must fail. Otherwise the script happily writes `canary-macos-arm64-*` artifacts that no client ever asks for, and the run goes green.",
 		).not.toBe(0);
 		expect(`${result.stdout}${result.stderr}`).toMatch(/unknown channel 'canary'/);
+	});
+
+
+	// THE RECOVERY PATH (Case 2) IS NOT DEAD CODE — it is what ships when electrobun crashes
+	// after tarring, which is a real and recurring failure. It is also only reachable when
+	// EBUN_TAR_ZST is EMPTY, so a copy-paste that used that variable here produced
+	// `cp: : No such file or directory` and the whole path silently stopped working. It was
+	// invisible to every other test because the happy path (Case 1) never touches it, and it
+	// only surfaced in a real dry run (release.yml run 31098887428, build-macos-x64).
+	it("recovers from a tar left in the build dir when electrobun produced no artifacts", () => {
+		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
+		tempDirs.push(tempDir);
+
+		// A build dir holding only the compressed tar: exactly the state electrobun leaves
+		// when it dies after tarring. No ./artifacts, so the script takes Case 2.
+		const buildDir = join(tempDir, "build", "stable-linux-x64");
+		mkdirSync(buildDir, { recursive: true });
+		writeFileSync(join(buildDir, "dev-3.0.tar.zst"), "not really zstd");
+
+		const result = spawnSync("bash", [SCRIPT_PATH, "linux", "x64", "stable"], {
+			cwd: tempDir,
+			encoding: "utf8",
+		});
+		const output = `${result.stdout}${result.stderr}`;
+
+		expect(
+			output,
+			"the recovery path must reach the staged tarball copy. `cp: : No such file or directory` means the copy source is EMPTY — the classic symptom of using $EBUN_TAR_ZST here, which is empty by definition in this branch. Fix: copy $TAR_ZST.",
+		).not.toMatch(/cp: : No such file/);
+		expect(
+			output,
+			"the recovery path must not be mistaken for the no-tar case; it found a tar.zst.",
+		).not.toMatch(/build failed before tarring/);
+		// The staged artifact must be named for the channel and the app file name.
+		expect(existsSync(join(tempDir, "artifacts-linux-x64", "stable-linux-x64-dev-3.0.tar.zst"))).toBe(true);
 	});
 
 	// Both fields land in the manifest this script is the single writer of. They answer
