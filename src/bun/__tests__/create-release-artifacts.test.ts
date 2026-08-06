@@ -1,11 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const SCRIPT_PATH = resolve(
 	dirname(fileURLToPath(import.meta.url)),
@@ -143,8 +142,33 @@ describe("create-release-artifacts.sh", () => {
 		);
 		// A REAL tar (the script untars it to recover version.json) and deliberately no .zst.
 		spawnSync("tar", ["-cf", join(buildDir, "dev-3.0.app.tar"), "-C", buildDir, "payload"], { encoding: "utf8" });
-		// zig-zstd is resolved relative to cwd, so node_modules has to be reachable from it.
-		symlinkSync(resolve(repoRoot, "node_modules"), join(tempDir, "node_modules"));
+		// A STAND-IN for zig-zstd that enforces its real contract, rather than the installed
+		// binary: `dist-macos-arm64/` only exists on a macOS arm64 install, so symlinking the
+		// repo's node_modules made this pass on the author's laptop and fail on a Linux CI
+		// runner with a misleading assertion. The shim refuses positional arguments exactly
+		// as the real binary does, so the InvalidArgs assertion below keeps its teeth.
+		const zstdDir = join(tempDir, "node_modules", "electrobun", "dist-macos-arm64");
+		mkdirSync(zstdDir, { recursive: true });
+		writeFileSync(
+			join(zstdDir, "zig-zstd"),
+			[
+				"#!/bin/sh",
+				'[ "$1" = "compress" ] || { echo "error: InvalidArgs"; exit 1; }',
+				"shift",
+				'IN=""; OUT=""',
+				'while [ $# -gt 0 ]; do',
+				'  case "$1" in',
+				'    -i) IN="$2"; shift 2 ;;',
+				'    -o) OUT="$2"; shift 2 ;;',
+				'    --*) shift ;;',
+				'    *) echo "error: InvalidArgs"; exit 1 ;;',
+				"  esac",
+				"done",
+				'[ -n "$IN" ] && [ -n "$OUT" ] || { echo "error: InvalidArgs"; exit 1; }',
+				'cp "$IN" "$OUT"',
+			].join("\n"),
+			{ mode: 0o755 },
+		);
 
 		const result = spawnSync("bash", [SCRIPT_PATH, "macos", "arm64", "stable"], { cwd: tempDir, encoding: "utf8" });
 		const output = `${result.stdout}${result.stderr}`;
