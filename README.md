@@ -377,6 +377,23 @@ dev3 doctor --processes        # add --json for scripts
 
 It lists every native terminal host and shell with its task number, pane, role, pid and parent pid, executable, and whether it is still alive. Read-only, works with the app closed, and prints nothing that is unsafe to paste into a bug report.
 
+### Where did my disk go?
+
+Every task gets its own git worktree under `~/.dev3.0/worktrees/`, and each one carries a full `node_modules`. Over hundreds of tasks that adds up to tens of gigabytes — and some of it belongs to task records that no longer exist, so nothing in the app will ever clean it up:
+
+```sh
+dev3 doctor --worktrees        # add --json for scripts
+```
+
+Per project it shows what is on disk and how much is reclaimable, split into open tasks (keep), **orphaned** directories with no task record at all, worktrees whose teardown never finished, and old `diffs/`/`logs/` of tasks finished over a month ago. Report-only — nothing is deleted until you ask:
+
+```sh
+dev3 doctor --worktrees --prune-orphans          # orphans + unfinished teardowns
+dev3 doctor --worktrees --prune-older-than 30d   # old diffs/logs of finished tasks
+```
+
+A directory whose `dev3/task-*` branch is **not merged** into the base branch is reported and skipped — that is unpushed work. Add `--force-unmerged` only when you are sure you want it gone. This is the one dev3 command that deletes anything under `~/.dev3.0/`, and only because you typed the flag.
+
 ### tmux is missing or terminals do not start
 
 macOS releases bundle a self-contained pinned tmux inside the app (`Contents/Resources/app/tmux/tmux`) and the CLI tarball, so no Homebrew or Command Line Tools are needed for it. If `dev3 doctor` reports that no usable tmux binary exists, reinstall the app (or update to the latest version); as an alternative remedy the pinned Homebrew keg still works:

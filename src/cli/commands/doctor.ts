@@ -4,10 +4,24 @@ import { spawnSync } from "node:child_process";
 import { VENDORED_TMUX_PATHS } from "../../bun/rpc-handlers/shared-pure";
 import { resolveSocketPath } from "../context";
 import { BUILD_VERSION } from "../../shared/build-info.generated";
-import { CLI_EXIT_CODE_DOCTOR_PROBLEMS, CLI_EXIT_CODE_SUCCESS } from "../../shared/cli-exit-codes";
+import {
+	CLI_EXIT_CODE_DOCTOR_PROBLEMS,
+	CLI_EXIT_CODE_PRUNE_INCOMPLETE,
+	CLI_EXIT_CODE_SUCCESS,
+	CLI_EXIT_CODE_USAGE_ERROR,
+} from "../../shared/cli-exit-codes";
 import type { ParsedArgs } from "../args";
 import { isExecutableFile } from "../../bun/executable";
 import { collectNativeProcesses, realProcessInventoryDeps, renderNativeProcesses } from "./doctor-processes";
+import {
+	collectWorktreeReport,
+	parseDurationDays,
+	prune,
+	realWorktreeScanDeps,
+	renderPruneOutcomes,
+	renderWorktreeReport,
+	type WorktreeScanDeps,
+} from "./doctor-worktrees";
 
 // `dev3 doctor` — install health check. Deliberately works WITHOUT the app
 // running (and without the socket): its whole purpose is diagnosing installs
@@ -419,7 +433,49 @@ export function renderChecks(results: CheckResult[]): string {
 	return lines.join("\n") + "\n";
 }
 
-export async function handleDoctor(args: ParsedArgs, deps: DoctorDeps = realDoctorDeps()): Promise<void> {
+/**
+ * `--worktrees` — disk-footprint report, and the ONE place in dev3 where deleting
+ * something under `~/.dev3.0/` is allowed, because the user typed the flag.
+ * Report-only exits 0 like `--processes`; a prune that could not reclaim
+ * everything it selected exits {@link CLI_EXIT_CODE_PRUNE_INCOMPLETE}.
+ */
+function handleWorktrees(args: ParsedArgs, scanDeps: WorktreeScanDeps): never {
+	const rawOlderThan = args.flags?.["prune-older-than"];
+	let olderThanDays: number | null = null;
+	if (rawOlderThan !== undefined) {
+		olderThanDays = rawOlderThan === "true" ? null : parseDurationDays(rawOlderThan);
+		if (olderThanDays === null) {
+			process.stderr.write(
+				`--prune-older-than needs a duration like 30d, 2w, 6m or 1y (got ${rawOlderThan === "true" ? "no value" : `"${rawOlderThan}"`}).\n`,
+			);
+			process.exit(CLI_EXIT_CODE_USAGE_ERROR);
+		}
+	}
+	const options = {
+		orphans: args.flags?.["prune-orphans"] === "true",
+		olderThanDays,
+		forceUnmerged: args.flags?.["force-unmerged"] === "true",
+	};
+	const report = collectWorktreeReport(scanDeps);
+	const pruning = options.orphans || options.olderThanDays !== null;
+	const outcomes = pruning ? prune(report, options, scanDeps) : [];
+
+	if (args.flags?.json) {
+		process.stdout.write(`${JSON.stringify({ worktrees: report, pruned: outcomes }, null, 2)}\n`);
+	} else {
+		process.stdout.write(renderWorktreeReport(report));
+		if (pruning) process.stdout.write(`\n${renderPruneOutcomes(outcomes)}`);
+	}
+	const incomplete = outcomes.some((o) => o.action === "skipped" || o.action === "failed");
+	process.exit(incomplete ? CLI_EXIT_CODE_PRUNE_INCOMPLETE : CLI_EXIT_CODE_SUCCESS);
+}
+
+export async function handleDoctor(
+	args: ParsedArgs,
+	deps: DoctorDeps = realDoctorDeps(),
+	scanDeps: WorktreeScanDeps = realWorktreeScanDeps(),
+): Promise<void> {
+	if (args.flags?.worktrees) handleWorktrees(args, scanDeps);
 	// `--processes` is an inventory, not a health check: it has no pass/fail and
 	// always exits 0, so scripting it never trips the doctor problem exit code.
 	if (args.flags?.processes) {

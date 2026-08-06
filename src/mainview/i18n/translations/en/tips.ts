@@ -223,6 +223,8 @@ const tips = {
 	"tip.streamerMode.body": "Streamer mode (⇧⌘P, or the Appearance settings) blurs emails, account names, paths, and tunnel URLs for screencasts.",
 	"tip.terminalPathLinks.title": "Open files the agent mentions",
 	"tip.terminalPathLinks.body": "⌘-click (Ctrl on Linux) any file path in terminal output to preview it in dev3, open it, or reveal it in Finder.",
+	"tip.cliDoctorWorktrees.title": "Reclaim gigabytes of worktrees",
+	"tip.cliDoctorWorktrees.body": "Run `dev3 doctor --worktrees` — it shows what ~/.dev3.0 keeps on disk and which task folders no longer belong to any task.",
 } as const;
 
 export default tips;

@@ -16,6 +16,7 @@ Public `dev3` CLI exit codes are defined in `src/shared/cli-exit-codes.ts`.
 | `9` | `CLI_EXIT_CODE_TASK_IS_DRAFT` | `dev3 task move` was asked to start a task the user saved as a draft. A draft is deliberately unfinished, so no launch path may start it — the human must finish its description and save it as a normal task first. |
 | `10` | `CLI_EXIT_CODE_LAUNCH_DECLINED` | An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) and the user declined the approval dialog. Nothing was launched and the target task stays where it was. |
 | `11` | `CLI_EXIT_CODE_DELIVERY_UNCONFIRMED` | `dev3 message` sent the text but no backend could confirm it arrived — the native terminal host cannot acknowledge input yet, or a tmux send stopped mid-program. The message may well have landed, so **do not re-send it**: a re-send is a second submit into a live agent. Distinct from code `1`, which means nothing was sent. |
+| `12` | `CLI_EXIT_CODE_PRUNE_INCOMPLETE` | `dev3 doctor --worktrees` was asked to prune and at least one selected directory was **not** reclaimed: skipped because its `dev3/task-*` branch is not merged into the base branch and `--force-unmerged` was absent, or the deletion itself failed. Everything else in the run was still deleted. A report-only run always exits `0`. |
 
 `--tolerate-app-offline` turns code `2` into code `0` for a single invocation: the
 "app not running" notice is still written to stderr, but the process exits

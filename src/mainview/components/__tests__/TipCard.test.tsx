@@ -123,6 +123,12 @@ describe("TipCard", () => {
 		expect(named.filter(([, dest]) => !known.has(dest))).toEqual([]);
 	});
 
+	it("renders the disk-reclaim tip's translated title and body", () => {
+		renderCard(vi.fn(), ALL_TIPS.find((t) => t.id === "cli-doctor-worktrees")!);
+		expect(screen.getByText("Reclaim gigabytes of worktrees")).toBeTruthy();
+		expect(screen.getByText(/dev3 doctor --worktrees/)).toBeTruthy();
+	});
+
 	it("pauses the progress bar while the card is hovered", async () => {
 		renderCard();
 		const bar = screen.getByTestId("tip-progress");

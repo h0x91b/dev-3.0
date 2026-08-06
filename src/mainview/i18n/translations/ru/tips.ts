@@ -223,6 +223,8 @@ const tips = {
 	"tip.streamerMode.body": "Режим стримера (⇧⌘P или настройки внешнего вида) размывает почту, аккаунты, пути и tunnel-URL для скринкастов.",
 	"tip.terminalPathLinks.title": "Открывайте файлы из вывода агента",
 	"tip.terminalPathLinks.body": "⌘-клик (Ctrl в Linux) по пути к файлу в терминале — предпросмотр в dev3, открытие или показ в Finder.",
+	"tip.cliDoctorWorktrees.title": "Верните гигабайты с диска",
+	"tip.cliDoctorWorktrees.body": "`dev3 doctor --worktrees` покажет, что лежит в ~/.dev3.0 и какие папки задач уже не принадлежат ни одной задаче.",
 };
 
 export default tips;

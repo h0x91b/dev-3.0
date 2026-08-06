@@ -929,6 +929,14 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["settings", "board"],
 		settingsSection: "appearance",
 	},
+	{
+		id: "cli-doctor-worktrees",
+		titleKey: "tip.cliDoctorWorktrees.title",
+		bodyKey: "tip.cliDoctorWorktrees.body",
+		icon: "\u{F0A0}", // nf-fa-hdd_o
+		score: 4,
+		contexts: ["board", "settings"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

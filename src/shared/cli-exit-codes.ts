@@ -10,6 +10,7 @@ export const CLI_EXIT_CODE_RENDERER_UNAVAILABLE = 8;
 export const CLI_EXIT_CODE_TASK_IS_DRAFT = 9;
 export const CLI_EXIT_CODE_LAUNCH_DECLINED = 10;
 export const CLI_EXIT_CODE_DELIVERY_UNCONFIRMED = 11;
+export const CLI_EXIT_CODE_PRUNE_INCOMPLETE = 12;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -78,5 +79,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_DELIVERY_UNCONFIRMED,
 		description:
 			"`dev3 message` sent the text but no backend could confirm it arrived (the native terminal host cannot acknowledge input, or a tmux send stopped mid-program). The message may well have landed, so DO NOT re-send it — a re-send is a second submit into a live agent. Distinct from exit 1, which means nothing was sent.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_PRUNE_INCOMPLETE",
+		code: CLI_EXIT_CODE_PRUNE_INCOMPLETE,
+		description:
+			"`dev3 doctor --worktrees` was asked to prune and at least one selected directory was NOT reclaimed: it was skipped (its `dev3/task-*` branch is not merged into the base branch and `--force-unmerged` was absent) or the deletion failed. Everything else in the run was still deleted. A report-only run always exits 0.",
 	},
 ] as const;
