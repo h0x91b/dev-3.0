@@ -42,6 +42,11 @@ function workflowFiles(): string[] {
 // it was written was silently unchecked, and a green run never said so. Deriving it also
 // means a future workflow is covered the moment it exists rather than when someone
 // remembers this file.
+//
+// BEFORE YOU "SIMPLIFY" THIS BACK TO A LIST, meet the measured numbers: hardcoding it to a
+// single file takes this suite from NINE TESTS TO TWO and STILL PASSES GREEN. Nothing
+// fails, nothing warns, 78% of the coverage is gone, and the only signal is a test count
+// nobody reads. See decisions/212-stable-unstable-update-channels.md.
 describe("workflow steps that pipe use a pipefail shell", () => {
 	// Zero matches must FAIL: if nothing pipes into tee anywhere, the matcher is dead and
 	// every assertion below passes while guarding nothing.

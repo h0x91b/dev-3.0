@@ -130,6 +130,16 @@ criterion earned it**, and an entry may only be deleted by defeating that specif
 comment that previously justified the workflow entries by the packaged-runtime reason alone was
 stale after the extract and now names both.
 
+## 3a1. Dry-run evidence
+
+PR1's extract was proved by two dry runs rather than by a green suite, because a
+wrongly-skipped step still produces artifacts and a green run. The baseline is the
+**pre-extract commit on the same branch**, not `main`, so any inventory difference has
+exactly one possible cause. Durable evidence is the two run ids — **31098887428** (baseline)
+and **31098996866** (post-extract); the `test-channels-*` tags that triggered them were
+deleted afterwards, because `v*` is the one tag namespace that must stay clean and a run id
+is permanent and unambiguous.
+
 ## 3b. The dry-run guard was PER-STEP, and a reusable workflow cannot inherit it
 
 Found while extracting the per-platform builds, before the mistake existed. It is the most
@@ -159,6 +169,36 @@ reusable workflow is guarded by its callers, and every caller must carry the edg
 independent properties hang off that one enumeration** — gated by the Windows proof, and
 gated by `publish` — asserted separately because a publisher can satisfy either while
 violating the other. They look redundant; deleting either as duplication is how one dies.
+
+## 3c. Coverage caps: discovery by breakage is luck, and the numbers that prove it
+
+Extracting the per-platform builds broke two assertions that were scoped to `release.yml`
+alone — the publisher enumeration in `workflow-windows-proof.test.ts` and the lockfile check
+in `workflow-lockfiles.test.ts`. Both were found by tripping over them. A deliberate sweep of
+every file that reads `.github/workflows` as data then found a **third**, in
+`workflow-pipefail.test.ts`, which this change **cannot** break: `| tee` appears four times
+in `build.yml` and in no other workflow, including `release.yml` and both new reusable files.
+
+**Three caps existed; two were found by breakage, one only by the sweep.** That is the
+evidence that discovery-by-breakage is luck.
+
+The strongest argument against re-capping is a measurement. Hardcoding the pipefail list back
+to a single file takes that suite from **nine tests to two and still passes green** — nothing
+fails, nothing warns, 78% of the coverage is gone, and the only signal is a test count nobody
+reads. Anyone wanting to "simplify" the derive has to meet those numbers first; they are
+repeated in a comment on the derive itself.
+
+Two related rules came out of the same sweep and are recorded where they are used:
+
+- **The scope of an assertion is the scope of the property it asserts.** A property every
+  workflow must hold is enumerated across the directory with a zero-target assertion; a
+  property of one named workflow is read from that file by name, and directory-scoping it
+  would be meaningless rather than safer. Written in `workflow-windows-proof.test.ts`, the
+  file that mixes both scopes and so proves the distinction is real.
+- **A detector that matches nothing must fail.** Every widened check carries its own
+  find-something-to-check assertion, because the alternative is an empty set iterating
+  cleanly. That is not hypothetical here: after the extract, the assertion that every
+  publisher carries the Windows-proof edge PASSED — on an empty publisher list.
 
 ## 4. Risks
 

@@ -9,6 +9,16 @@
  * release's publishing jobs. See
  * decisions/211-windows-proof-post-merge-not-pull-request.md.
  *
+ * THE SCOPE OF AN ASSERTION IS THE SCOPE OF THE PROPERTY IT ASSERTS. This file mixes both
+ * deliberately, which is why the rule is written here. A property EVERY workflow must hold
+ * — "no publisher reaches the feed ungated" — is enumerated across the whole directory,
+ * with a zero-target assertion so an empty set is red rather than green. A property of ONE
+ * NAMED workflow — "the reusable proof owns no trigger of its own", "build.yml never calls
+ * the packaging workflow" — is read from that file by name, and directory-scoping it would
+ * be meaningless rather than safer. Getting this backwards produces either a coverage cap
+ * (a shared invariant checked in one file) or nonsense (a file-specific claim asserted of
+ * every file).
+ *
  * These read workflow YAML as raw text, like their siblings — `yaml` is not a declared
  * dependency. Every assertion here must fail naming the CAUSE and the FIX, because a
  * text pin trips on any reshaping and a message that merely restates the invariant
