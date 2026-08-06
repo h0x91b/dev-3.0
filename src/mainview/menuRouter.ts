@@ -1,6 +1,10 @@
 import { api } from "./rpc";
 import { startClosePanePicker } from "./close-pane-picker";
 import { toggleStreamerMode } from "./streamer-mode";
+import { toast } from "./toast";
+import { playTaskCompletionSound, taskSoundDiagnostics } from "./task-sounds";
+import { moveTaskToStatus } from "./utils/moveTaskToStatus";
+import type { TFunction } from "./i18n";
 import type { AppState, AppAction, Route } from "./state";
 import type { Locale } from "./i18n/types";
 import type { TaskStatus } from "../shared/types";
@@ -21,6 +25,8 @@ interface RouterCtx {
 	state: AppState;
 	dispatch: (action: AppAction) => void;
 	setLocale: (locale: Locale) => void;
+	/** Needed by the shared move helper for its confirmation copy and toasts. */
+	t: TFunction;
 }
 
 function navigate(ctx: RouterCtx, route: Route): void {
@@ -111,6 +117,31 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "native-pane-layout-lab":
 			navigate(ctx, { screen: "native-pane-layout-lab" });
 			return;
+
+		// ── Debug: task-sound probes ──
+		// Deliberately the same calls the real flows make, so a silent chime here
+		// means the pipeline is broken, not the trigger. The toast is raw
+		// diagnostics (like terminal output), not localized product copy.
+		case "debug-play-sound-completed":
+		case "debug-play-sound-cancelled": {
+			const status = action === "debug-play-sound-completed" ? "completed" : "cancelled";
+			const played = playTaskCompletionSound(status);
+			// Decoding is async on the first play, so a same-tick snapshot would
+			// always report zero buffers.
+			await new Promise((resolve) => setTimeout(resolve, 300));
+			const probe = taskSoundDiagnostics();
+			const line = `sound ${status}: ${played ? "play requested" : "skipped — setting off"} · context ${probe.context} · buffers ${probe.buffers} · queued ${probe.queued}`;
+			console.info("[menu][sound-probe]", line);
+			toast.info(line);
+			return;
+		}
+		case "debug-push-sound-completed": {
+			const { pushed } = await api.request.debugEmitTaskSound({ status: "completed" });
+			const line = `backend taskSound push: ${pushed ? "sent" : "suppressed — setting off"}`;
+			console.info("[menu][sound-probe]", line);
+			toast.info(line);
+			return;
+		}
 
 		// ── Help: external links (bun uses Utils.openExternal; browser uses window.open) ──
 		case "help-documentation":
@@ -258,8 +289,28 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			return;
 		}
 
-		// ── Task: lifecycle moves (safe statuses only; destructive
-		// complete/cancel are intentionally not palette/menu quick-actions) ──
+		// ── Task: terminal moves. Routed through the same helper the board uses,
+		// so the chime, the optimistic update and the unpushed-work confirmation
+		// are identical. `alwaysConfirm` because a menu or palette entry is as easy
+		// to mis-hit as the card's one-click ✓, and this destroys the worktree. ──
+		case "task-mark-completed":
+		case "task-mark-cancelled": {
+			const task = currentTask(state);
+			if (!task) return;
+			const project = state.projects?.find((p) => p.id === currentProjectId(state));
+			if (!project) return;
+			await moveTaskToStatus({
+				task,
+				project,
+				newStatus: action === "task-mark-completed" ? "completed" : "cancelled",
+				dispatch: ctx.dispatch,
+				t: ctx.t,
+				alwaysConfirm: true,
+			});
+			return;
+		}
+
+		// ── Task: lifecycle moves (non-terminal) ──
 		case "task-move-todo":
 		case "task-move-in-progress":
 		case "task-move-user-questions":
@@ -393,6 +444,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// View / navigation
 	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "open-settings",
 	"go-back", "go-forward", "gauge-demo", "viewport-lab", "native-pane-layout-lab", "update-popover-preview",
+	"debug-play-sound-completed", "debug-play-sound-cancelled", "debug-push-sound-completed",
 	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette",
 	// Project
 	"project-settings", "project-pull-main", "project-create-pr",
@@ -400,6 +452,8 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// Task (safe, non-destructive)
 	"task-toggle-watch", "task-run-script", "task-open-in-finder", "task-copy-worktree-path",
 	"task-move-todo", "task-move-in-progress", "task-move-user-questions", "task-move-review-ai", "task-move-review-user",
+	// Destructive, but always behind the terminal-move confirmation.
+	"task-mark-completed", "task-mark-cancelled",
 	// Terminal
 	"term-split-h", "term-split-v", "term-zoom-pane", "term-close-pane",
 	"term-layout-tiled", "term-layout-even-h", "term-layout-even-v", "term-layout-main-h", "term-layout-main-v", "term-layout-cycle",

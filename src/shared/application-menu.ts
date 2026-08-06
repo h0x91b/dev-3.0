@@ -89,6 +89,9 @@ export const MENU_ACTIONS = {
 	viewportLab: "viewport-lab",
 	nativePaneLayoutLab: "native-pane-layout-lab",
 	updatePopoverPreview: "update-popover-preview",
+	debugPlaySoundCompleted: "debug-play-sound-completed",
+	debugPlaySoundCancelled: "debug-play-sound-cancelled",
+	debugPushSoundCompleted: "debug-push-sound-completed",
 
 	// ── Terminal — pane ──
 	termSplitH: "term-split-h",
@@ -665,6 +668,13 @@ function viewMenu(): ApplicationMenuItemConfig {
 					item({ label: "Viewport Lab", action: MENU_ACTIONS.viewportLab }),
 					item({ label: "Native Pane Layout Lab", action: MENU_ACTIONS.nativePaneLayoutLab }),
 					item({ label: "Update Popover Preview", action: MENU_ACTIONS.updatePopoverPreview }),
+					SEP,
+					// Task-sound probes. The two "client" items call the exact function
+					// every board/panel/toolbar move calls; the "backend push" item goes
+					// through the same `emitTaskSound` the CLI and merge auto-complete use.
+					item({ label: "Play Completed Sound (client)", action: MENU_ACTIONS.debugPlaySoundCompleted }),
+					item({ label: "Play Cancelled Sound (client)", action: MENU_ACTIONS.debugPlaySoundCancelled }),
+					item({ label: "Push Completed Sound (backend)", action: MENU_ACTIONS.debugPushSoundCompleted }),
 				],
 			},
 		],

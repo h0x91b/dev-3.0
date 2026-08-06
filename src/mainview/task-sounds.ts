@@ -74,6 +74,19 @@ export function playTaskSoundFromPush(status: TaskSoundStatus): void {
 	void playTaskSound(status);
 }
 
+/**
+ * State of the audio pipeline, for the View → Debug sound probes. Never creates
+ * the context — an untouched app must report `none`, not be primed by looking.
+ */
+export function taskSoundDiagnostics(): { context: string; buffers: number; queued: number; enabled: boolean } {
+	return {
+		context: context?.state ?? "none",
+		buffers: buffers.size,
+		queued: pendingQueue.length,
+		enabled: completionSoundEnabled,
+	};
+}
+
 function audioContextCtor(): typeof AudioContext | undefined {
 	if (typeof window === "undefined") return undefined;
 	const scoped = window as typeof globalThis & { webkitAudioContext?: typeof AudioContext };

@@ -3,7 +3,8 @@ import type { TerminalBackendIdentity } from "../../shared/terminal-backend-iden
 import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import { resolveAgentRequest, type AgentLaunchChoice } from "../agent-requests";
-import { loadSettings, recordFavoriteUsages } from "../settings";
+import { loadSettings, loadSettingsSync, recordFavoriteUsages } from "../settings";
+import { emitTaskSound } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
 import { clearMergeNotification } from "../lifecycle/activities";
@@ -219,6 +220,18 @@ export async function moveTask(params: {
 		clientPlayedSound: params.clientPlayedSound,
 		enforceAllowedTransition: params.enforceAllowedTransition,
 	});
+}
+
+/**
+ * View → Debug probe. Pushes `taskSound` through the same `emitTaskSound` a
+ * CLI-driven or merge-driven completion uses, so a silent chime can be pinned on
+ * the backend push or on the renderer's audio pipeline.
+ */
+async function debugEmitTaskSound(params: { status: "completed" | "cancelled" }): Promise<{ pushed: boolean }> {
+	const pushed = loadSettingsSync().playSoundOnTaskComplete !== false;
+	log.info("→ debugEmitTaskSound", { status: params.status, pushed });
+	emitTaskSound(params.status, "debug-probe");
+	return { pushed };
 }
 
 /**
@@ -1028,6 +1041,7 @@ export const taskLifecycleHandlers = {
 	openQuickShell,
 	createTask,
 	moveTask,
+	debugEmitTaskSound,
 	cancelTaskPreparation,
 	reorderTask,
 	setTaskPriority,

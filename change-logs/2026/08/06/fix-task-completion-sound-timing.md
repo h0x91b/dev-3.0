@@ -1,0 +1,3 @@
+Short: Completion chime plays immediately
+
+The completion and cancellation chime now fires as the first thing a terminal move does, instead of after the terminal session, cleanup script and worktree were torn down — so it no longer arrives seconds late, and it is no longer lost when teardown fails. Accepting the "branch merged — complete the task?" prompt plays it locally like every board surface does, Task → Move to Status → Mark Completed / Mark Cancelled now actually work (behind the usual confirmation) instead of doing nothing, and View → Debug gained three probes that play the chime through the exact client and backend paths the real moves use.

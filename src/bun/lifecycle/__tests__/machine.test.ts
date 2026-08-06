@@ -370,6 +370,9 @@ describe("task lifecycle transition table", () => {
 			runId: "teardown-run",
 		});
 		expect(result.effects.map((effect) => effect.type)).toEqual([
+			// The chime leads: teardown takes seconds and aborts the chain when it
+			// fails, so a sound at the tail arrives late or never.
+			"emitTaskSound",
 			"clearTaskRuntime",
 			"releasePorts",
 			"persistRuntime",
@@ -382,9 +385,8 @@ describe("task lifecycle transition table", () => {
 			"persistTerminalTask",
 			"push",
 			"notifyStatusChange",
-			"emitTaskSound",
 		]);
-		expect(result.effects[3]).toMatchObject({
+		expect(result.effects[4]).toMatchObject({
 			type: "push",
 			message: "taskUpdated",
 			view: "shuttingDown",

@@ -3241,6 +3241,13 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean };
 				response: Task;
 			};
+			// View → Debug probe: fires the same `taskSound` push a real CLI /
+			// merge-driven completion fires, with no task involved. `pushed` is false
+			// when the completion-sound setting is off (the real push is gated too).
+			debugEmitTaskSound: {
+				params: { status: "completed" | "cancelled" };
+				response: { pushed: boolean };
+			};
 			cancelTaskPreparation: {
 				params: { taskId: string; projectId: string };
 				response: Task;

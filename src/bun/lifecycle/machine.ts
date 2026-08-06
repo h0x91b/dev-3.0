@@ -294,6 +294,12 @@ function moveTransition(
 			runId,
 		};
 		const effects: LifecycleEffect[] = [
+			// First, before any teardown. Killing the terminal, running the cleanup
+			// script and removing the worktree take seconds, and they abort the
+			// effect chain when they fail — a sound emitted at the end arrives long
+			// after the card left the column, or never (issue: silent completions
+			// from the CLI / agent approval / branch-merge auto-complete).
+			...(event.clientPlayedSound ? [] : [effect({ type: "emitTaskSound", status: terminalStatus })]),
 			effect({ type: "clearTaskRuntime" }),
 			...(state.runtime.phase === "preparing"
 				? [effect({ type: "cancelPreparationProcesses" })]
@@ -325,9 +331,6 @@ function moveTransition(
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
 			effect({ type: "notifyStatusChange", from: oldStatus, to: terminalStatus }),
 		);
-		if (!event.clientPlayedSound) {
-			effects.push(effect({ type: "emitTaskSound", status: terminalStatus }));
-		}
 		return {
 			next: { ...state, column: target, runtime },
 			effects,

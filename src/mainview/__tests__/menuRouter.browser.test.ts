@@ -15,6 +15,7 @@ function makeCtx() {
 		state: { route: { screen: "dashboard" } } as unknown as AppState,
 		dispatch: vi.fn(),
 		setLocale: vi.fn(),
+		t: ((key: string) => key) as never,
 	};
 }
 
@@ -25,13 +26,13 @@ beforeEach(() => {
 
 describe("BROWSER_HANDLED_ACTIONS", () => {
 	it("contains actions the router executes in the browser", () => {
-		for (const a of ["open-new-task", "task-move-todo", "term-split-h", "about", "help-github", "gauge-demo", "native-pane-layout-lab", "view-dashboard"]) {
+		for (const a of ["open-new-task", "task-move-todo", "term-split-h", "about", "help-github", "gauge-demo", "native-pane-layout-lab", "view-dashboard", "task-mark-completed", "task-mark-cancelled"]) {
 			expect(BROWSER_HANDLED_ACTIONS.has(a)).toBe(true);
 		}
 	});
 
 	it("excludes bun-only / unhandled actions", () => {
-		for (const a of ["new-window", "check-for-updates", "toggle-devtools", "zoom-in", "open-logs-directory", "show-remote-qr", "task-rename", "task-mark-completed"]) {
+		for (const a of ["new-window", "check-for-updates", "toggle-devtools", "zoom-in", "open-logs-directory", "show-remote-qr", "task-rename"]) {
 			expect(BROWSER_HANDLED_ACTIONS.has(a)).toBe(false);
 		}
 	});

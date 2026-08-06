@@ -2,12 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { handleMenuAction } from "../menuRouter";
 import type { AppState } from "../state";
 
+const { moveTaskToStatus } = vi.hoisted(() => ({ moveTaskToStatus: vi.fn((_opts: unknown) => Promise.resolve(true)) }));
+vi.mock("../utils/moveTaskToStatus", () => ({ moveTaskToStatus }));
+
 // These palette actions only dispatch a window CustomEvent (App.tsx opens the
 // palette) — they never touch state, dispatch, or locale, so a bare ctx is fine.
 const ctx = {
 	state: { route: { screen: "dashboard" } } as unknown as AppState,
 	dispatch: vi.fn(),
 	setLocale: vi.fn(),
+	t: ((key: string) => key) as never,
 };
 
 describe("handleMenuAction — palette openers", () => {
@@ -46,6 +50,7 @@ describe("handleMenuAction — term-close-pane", () => {
 		state: { route: { screen: "task", projectId: "p1", taskId: "task-42" } } as unknown as AppState,
 		dispatch: vi.fn(),
 		setLocale: vi.fn(),
+		t: ((key: string) => key) as never,
 	};
 
 	it("opens the two-step pane picker for the current task", async () => {
@@ -63,5 +68,46 @@ describe("handleMenuAction — term-close-pane", () => {
 		await handleMenuAction("term-close-pane", ctx);
 		window.removeEventListener("dev3:closePanePicker", listener);
 		expect(listener).not.toHaveBeenCalled();
+	});
+});
+
+describe("handleMenuAction — task-sound probes", () => {
+	it("plays the client sound through the same call the board moves use", async () => {
+		const sounds = await import("../task-sounds");
+		const spy = vi.spyOn(sounds, "playTaskCompletionSound").mockReturnValue(true);
+		await handleMenuAction("debug-play-sound-completed", ctx);
+		await handleMenuAction("debug-play-sound-cancelled", ctx);
+		expect(spy.mock.calls).toEqual([["completed"], ["cancelled"]]);
+		spy.mockRestore();
+	});
+
+});
+
+describe("handleMenuAction — terminal moves from the menu", () => {
+	const task = { id: "task-9", projectId: "p1", status: "in-progress" };
+	const terminalCtx = {
+		state: {
+			route: { screen: "task", projectId: "p1", taskId: "task-9" },
+			projects: [{ id: "p1", name: "demo" }],
+			currentProjectTasks: [task],
+		} as unknown as AppState,
+		dispatch: vi.fn(),
+		setLocale: vi.fn(),
+		t: ((key: string) => key) as never,
+	};
+
+	it("routes Mark Completed / Mark Cancelled through the shared move helper, always confirming", async () => {
+		moveTaskToStatus.mockClear();
+		await handleMenuAction("task-mark-completed", terminalCtx);
+		await handleMenuAction("task-mark-cancelled", terminalCtx);
+		expect(moveTaskToStatus).toHaveBeenCalledTimes(2);
+		expect(moveTaskToStatus.mock.calls[0][0]).toMatchObject({ newStatus: "completed", alwaysConfirm: true });
+		expect(moveTaskToStatus.mock.calls[1][0]).toMatchObject({ newStatus: "cancelled", alwaysConfirm: true });
+	});
+
+	it("is a no-op when no task is focused", async () => {
+		moveTaskToStatus.mockClear();
+		await handleMenuAction("task-mark-completed", ctx);
+		expect(moveTaskToStatus).not.toHaveBeenCalled();
 	});
 });

@@ -2435,7 +2435,10 @@ describe("handlers.moveTask", () => {
 		}
 	});
 
-	it("in-progress → completed: emits renderer sound after teardown finishes", async () => {
+	// The chime belongs to the move, not to the cleanup: teardown takes seconds
+	// and aborts the effect chain when it fails, so a sound emitted at the end
+	// lands long after the card left the column — or never.
+	it("in-progress → completed: emits the renderer sound before teardown starts", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
@@ -2452,7 +2455,7 @@ describe("handlers.moveTask", () => {
 
 		const soundIndex = push.mock.calls.findIndex((call) => call[0] === "taskSound");
 		expect(soundIndex).toBeGreaterThanOrEqual(0);
-		expect(push.mock.invocationCallOrder[soundIndex]).toBeGreaterThan(
+		expect(push.mock.invocationCallOrder[soundIndex]).toBeLessThan(
 			vi.mocked(git.removeWorktree).mock.invocationCallOrder[0],
 		);
 		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed", taskId: task.id });

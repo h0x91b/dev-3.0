@@ -53,7 +53,7 @@ import AboutModal from "./components/AboutModal";
 import FilePreviewModal from "./components/FilePreviewModal";
 import { OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "./terminal-path-open";
 import RosettaWarningModal from "./components/RosettaWarningModal";
-import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
+import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
@@ -183,7 +183,7 @@ function App() {
 		function onMenuAction(e: Event) {
 			const detail = (e as CustomEvent).detail;
 			if (!detail?.action) return;
-			handleMenuAction(detail.action, { state, dispatch, setLocale }).catch((err) => {
+			handleMenuAction(detail.action, { state, dispatch, setLocale, t }).catch((err) => {
 				console.error("[App] handleMenuAction failed", err);
 			});
 		}
@@ -802,7 +802,7 @@ function App() {
 	const runCommand = useCallback(
 		(actionId: string) => {
 			setShowCommandPalette(false);
-			handleMenuAction(actionId, { state, dispatch, setLocale }).catch((err) => {
+			handleMenuAction(actionId, { state, dispatch, setLocale, t }).catch((err) => {
 				console.error("[App] runCommand failed", err);
 			});
 		},
@@ -813,7 +813,7 @@ function App() {
 	// the native menu and the command palette.
 	const handleMenuBarAction = useCallback(
 		(actionId: string) => {
-			handleMenuAction(actionId, { state, dispatch, setLocale }).catch((err) => {
+			handleMenuAction(actionId, { state, dispatch, setLocale, t }).catch((err) => {
 				console.error("[App] menu bar action failed", err);
 			});
 		},
@@ -1496,6 +1496,10 @@ function App() {
 				shouldNotify,
 				onOpenTask: () => openTaskFromNotification(taskId, projectId),
 				onComplete: () => {
+					// Sound first, exactly like `moveTaskToStatus` does for the board
+					// surfaces — this handler is a hand-rolled move and used to leave the
+					// chime to the backend push, which lands after the whole teardown.
+					const playedLocally = playTaskCompletionSound("completed");
 					// If the user is currently inside this task's view, leave it BEFORE
 					// the worktree is destroyed (otherwise TaskTerminal reacts to
 					// ptyDied / missing worktree and shows the "session ended / restart
@@ -1524,12 +1528,14 @@ function App() {
 						taskId,
 						projectId,
 						newStatus: "completed",
+						clientPlayedSound: playedLocally,
 					}).catch(() => {
 						api.request.moveTask({
 							taskId,
 							projectId,
 							newStatus: "completed",
 							force: true,
+							clientPlayedSound: playedLocally,
 						}).catch((err) => console.error("moveTask (branch-merged) failed:", err));
 					});
 				},
