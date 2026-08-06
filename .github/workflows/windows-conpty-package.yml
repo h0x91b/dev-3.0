@@ -190,6 +190,14 @@ jobs:
       # postBuild assembles + validates the host image inside the bundle;
       # postPackage re-verifies it from the final `.tar.zst` and drives the
       # detached lifecycle from the staged copy.
+      #
+      # `package:win-archive` passes electrobun `--env=canary`, and the build below is
+      # handed to a human as-is. That is safe under a CONDITION, not as a property: today
+      # the channel is a NAME only — electrobun's naming.ts suffixes artifact and app
+      # names and records the channel in build.json, nothing else, and no Windows
+      # update.json is published for any channel, so an unsigned CI build cannot behave
+      # differently from a stable one. Seq 1443 is landing real channel semantics; when
+      # it does, re-examine whether a human should get a canary-channel build here.
       - name: Build the real dev3 Windows package and verify the final archive
         run: bun run package:win-archive
 
@@ -200,6 +208,10 @@ jobs:
         timeout-minutes: 10
         env:
           DEV3_REQUIRE_WINDOWS_PROOF: "1"
+          # Extract somewhere durable instead of a temp workspace that dies with the
+          # script, so the tree uploaded below is the one this proof actually spawned —
+          # not a look-alike re-extracted from the same archive afterwards.
+          DEV3_WINDOWS_APP_UNPACK_DIR: ${{ github.workspace }}\windows-app-unpacked
         run: bun run verify:win-app-launch
 
       - name: Upload real Windows archive proof
@@ -212,6 +224,45 @@ jobs:
             artifacts/windows-app-layout.json
             artifacts/windows-app-launch-proof.json
             artifacts/*-update.json
+
+      # The downloadable build, deliberately NOT folded into the proof artifact above:
+      # that one is JSON for CI and gets opened constantly, this one is ~400 MB for a
+      # human and gets opened rarely. Merging them would make every proof download drag
+      # the payload behind it.
+      #
+      # The EXTRACTED tree, not the `.tar.zst`: Windows tar.exe cannot read zstd (this
+      # job ships electrobun's zig-zstd.exe precisely because of that), so the archive is
+      # unopenable without extra tooling, while GitHub zips an artifact on download and
+      # Explorer extracts it with nothing installed. The self-extracting Setup .exe the
+      # build also produces is NOT uploaded: nothing has ever launched it, and the file a
+      # summary tells a human to open must be a file the proof launched. That installer
+      # is a KNOWN GAP, not a rejected idea — see
+      # decisions/213-downloadable-windows-build-is-the-launched-tree.md before assuming
+      # it was vetted.
+      #
+      # NO `if: always()` here, on purpose: a failed launch proof must publish nothing.
+      # `always()` would look like a debugging convenience and would instead hand out
+      # builds that never reached a window, wearing a green download banner.
+      - name: Upload the launched Windows app for download
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-app-${{ github.sha }}
+          path: windows-app-unpacked/
+          # 30 days, not the 90-day default. Storage is free on a public repo, so this is
+          # not a cost call: a months-old build still listed is one somebody downloads
+          # believing it is current. An expired build is re-run, not lost.
+          retention-days: 30
+          # An empty upload would publish a green "download it here" summary pointing at
+          # nothing at all.
+          if-no-files-found: error
+
+      # Reads the launch proof and renders the entry point out of it, so this text cannot
+      # name an executable the proof did not start. Same reason it has no `if:` as above.
+      - name: Explain how to run the downloadable Windows build
+        env:
+          DEV3_WINDOWS_ARTIFACT_NAME: windows-app-${{ github.sha }}
+          DEV3_WINDOWS_ARTIFACT_RETENTION_DAYS: "30"
+        run: bun scripts/windows-download-summary.ts
 
   # The REAL dev3 macOS and Linux packages. Synthesized bundle trees in vitest
   # cannot prove a package ships a launchable host, so this builds the actual

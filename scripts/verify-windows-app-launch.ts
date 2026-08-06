@@ -290,8 +290,17 @@ async function main(): Promise<void> {
 	if (!existsSync(zstdPath)) throw new Error(`Cannot find zig-zstd at ${zstdPath}.`);
 	if (!existsSync(tarPath)) throw new Error(`Cannot find Windows tar at ${tarPath}.`);
 
+	// With DEV3_WINDOWS_APP_UNPACK_DIR set, the extraction lands somewhere durable and
+	// survives this script, so CI can hand a human the exact tree that was launched
+	// rather than a look-alike rebuilt from the same archive. Unset, nothing changes.
+	const retainedUnpackDir = process.env.DEV3_WINDOWS_APP_UNPACK_DIR
+		? resolve(process.env.DEV3_WINDOWS_APP_UNPACK_DIR)
+		: null;
 	const workspace = mkdtempSync(join(tmpdir(), "dev3-app-launch-"));
-	const unpackedDir = join(workspace, "unpacked");
+	const unpackedDir = retainedUnpackDir ?? join(workspace, "unpacked");
+	// A leftover tree from an earlier run would fail the single-bundle-directory check
+	// below with a misleading "found 2".
+	if (retainedUnpackDir) rmSync(retainedUnpackDir, { recursive: true, force: true });
 	mkdirSync(unpackedDir, { recursive: true });
 	let launcherPid: number | null = null;
 	let ownedPids: number[] = [];
@@ -302,7 +311,7 @@ async function main(): Promise<void> {
 			run(zstdPath, ["decompress", "-i", archivePath, "-o", "package.tar"], workspace, process.env, 180_000),
 			"Windows archive decompression",
 		);
-		requireSuccess(run(tarPath, ["-xf", "package.tar", "-C", "unpacked"], workspace, process.env, 180_000), "Windows archive extraction");
+		requireSuccess(run(tarPath, ["-xf", "package.tar", "-C", unpackedDir], workspace, process.env, 180_000), "Windows archive extraction");
 
 		const topLevel = readdirSync(unpackedDir, { withFileTypes: true });
 		const bundleDirs = topLevel.filter((entry) => entry.isDirectory());
@@ -464,6 +473,10 @@ async function main(): Promise<void> {
 			archiveBytes: statSync(archivePath).size,
 			archiveSha256: sha256(archivePath),
 			bundleRoot: relative(unpackedDir, bundleRoot),
+			// Non-null only under DEV3_WINDOWS_APP_UNPACK_DIR. It is what lets the run
+			// summary point a human at bytes this proof launched instead of at a
+			// re-extraction nothing ever started.
+			retainedUnpackDir: retainedUnpackDir ? relative(repoRoot, retainedUnpackDir).split(sep).join("/") : null,
 			desktopExecutableRelativePath,
 			desktopExecutableBytes: statSync(desktopExecutable).size,
 			desktopExecutableSha256: sha256(desktopExecutable),

@@ -102,6 +102,75 @@ describe("the reusable packaged Windows proof", () => {
 	});
 });
 
+/**
+ * The packaged Windows app was built, proved launchable and then discarded, so the one
+ * platform with no local machine in the loop had nothing anybody could obtain. These pin
+ * the shape of the fix, and the load-bearing one is the LAUNCHED-BYTES tripwire: the
+ * directory published for download has to be the directory the launch proof spawned
+ * from, or the download is a look-alike wearing a proof's green tick.
+ */
+describe("the packaged Windows app is downloadable", () => {
+	const UPLOAD_STEP = "Upload the launched Windows app for download";
+	const LAUNCH_STEP = "Launch the packaged Windows app and prove clean shutdown";
+	const upload = stepBlock(PACKAGE_WORKFLOW, UPLOAD_STEP, "windows-conpty-package.yml");
+	const launch = stepBlock(PACKAGE_WORKFLOW, LAUNCH_STEP, "windows-conpty-package.yml");
+	const proofUpload = stepBlock(PACKAGE_WORKFLOW, "Upload real Windows archive proof", "windows-conpty-package.yml");
+
+	/** The single directory name both steps must agree on, read off the upload step. */
+	const publishedDir = /path:\s*([^\s]+?)\/?\s*$/m.exec(upload)?.[1] ?? "";
+
+	it("publishes exactly the tree the launch proof spawned from", () => {
+		expect(
+			publishedDir,
+			`the "${UPLOAD_STEP}" step no longer declares a single \`path:\` directory, so there is nothing to check the launch proof against. Fix: keep it publishing one directory.`,
+		).not.toBe("");
+		expect(
+			launch,
+			`the "${LAUNCH_STEP}" step does not point DEV3_WINDOWS_APP_UNPACK_DIR at ${publishedDir}, so the proof extracts into a temp workspace it deletes and the upload publishes a look-alike nobody ever launched. Fix: set DEV3_WINDOWS_APP_UNPACK_DIR to the same directory the upload step publishes.`,
+		).toMatch(new RegExp(`DEV3_WINDOWS_APP_UNPACK_DIR:.*${publishedDir}`));
+	});
+
+	it("publishes nothing when the launch proof failed", () => {
+		expect(
+			/^\s*if:/m.test(upload),
+			`the "${UPLOAD_STEP}" step grew an \`if:\`. Its absence is what stops a failed launch from publishing a build that never reached a window — \`if: always()\` looks like debugging convenience and is exactly wrong here. Fix: delete the condition and let step order gate it.`,
+		).toBe(false);
+	});
+
+	it("refuses to advertise an empty download", () => {
+		expect(
+			upload,
+			`the "${UPLOAD_STEP}" step no longer sets \`if-no-files-found: error\`, so a build that produced nothing publishes a green "download it here" summary pointing at an empty artifact. Fix: restore it.`,
+		).toMatch(/if-no-files-found:\s*error/);
+	});
+
+	it("keeps the download off the default 90-day retention", () => {
+		expect(
+			upload,
+			`the "${UPLOAD_STEP}" step no longer pins \`retention-days\`, so it falls back to 90 days. The risk is not storage — it is a months-old build still listed and downloaded as if it were current. Fix: set retention-days explicitly, and say so in the run summary.`,
+		).toMatch(/retention-days:\s*\d+/);
+	});
+
+	it("keeps the JSON proof and the payload in separate artifacts", () => {
+		expect(
+			/\.tar\.zst|\.zip|unpacked/.test(proofUpload),
+			"the proof artifact picked up a packaged payload. It is JSON downloaded constantly by CI; folding a ~400 MB build into it makes every proof download drag the payload behind it. Fix: leave the build in its own artifact.",
+		).toBe(false);
+	});
+
+	it("tells a human how to run it, from the proof rather than from prose", () => {
+		const explain = stepBlock(
+			PACKAGE_WORKFLOW,
+			"Explain how to run the downloadable Windows build",
+			"windows-conpty-package.yml",
+		);
+		expect(
+			explain,
+			"the run summary is no longer generated from the launch proof, so nothing stops it naming an executable the proof never started — the failure this path exists to prevent. Fix: keep `bun scripts/windows-download-summary.ts`, which reads windows-app-launch-proof.json.",
+		).toMatch(/bun scripts\/windows-download-summary\.ts/);
+	});
+});
+
 describe("pull requests do not pay for the Windows proof", () => {
 	// The whole point of the reversal. A `needs:` edge back onto the packaging workflow
 	// re-adds +4m47 to the required `test` context on every in-scope PR.
