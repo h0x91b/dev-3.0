@@ -108,6 +108,28 @@ directory the launcher does not run from: the user restarts, sees no change, and
 failure. Those platforms therefore **refuse with a named message** and keep the saved setting — a
 silent no-op is worse than a refusal.
 
+## 3a. WINDOWS_SCOPE_PATHS is a union of two invariants, not one
+
+Establishing this was forced by the extract that PR1 performs. `WINDOWS_SCOPE_PATHS`
+(`src/shared/windows-ci-scope.ts`) looks like one list with one meaning, and it is not:
+
+1. **ships into, or is exercised by, the packaged Windows proof** — `windows-conpty-package.yml`,
+   the host-image scripts, the native terminal registry;
+2. **carries the Bun pin every workflow must hold in lockstep** — drift there means the repo's
+   pins no longer agree, so the packaged proof stops being evidence about the runtime anyone
+   actually ships. This is why `electrobun.config.ts` and `package.json` are on the list even
+   though neither builds Windows.
+
+The extracted reusable build workflow is **IN under (2) and OUT under (1)**: `release.yml` builds
+no Windows at all — it *calls* `windows-conpty-package.yml` as a proof job — so the extracted file
+carries macOS and Linux only, while still installing the Bun that builds and ships the app.
+`unstable-publish.yml` is in under both.
+
+That is two reasons feeding one list, not a contradiction. Each entry therefore states **which
+criterion earned it**, and an entry may only be deleted by defeating that specific reason. The
+comment that previously justified the workflow entries by the packaged-runtime reason alone was
+stale after the extract and now names both.
+
 ## 4. Risks
 
 - `buildOrder` depends on `main` staying squash-merged. Nothing enforces that mechanically.

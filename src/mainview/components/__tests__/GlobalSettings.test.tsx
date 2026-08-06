@@ -444,7 +444,7 @@ describe("GlobalSettings", () => {
 			// failing and names the reason. This asserts the coupling exists at all.
 			expect(
 				UNSTABLE_FEED_AVAILABLE,
-				"UNSTABLE_FEED_AVAILABLE is true, so the feed must now exist and the control must be enabled: update the test above in the same change.",
+				"UNSTABLE_FEED_AVAILABLE must be DELETED, not flipped to true, in the change that lands the publishing workflow — a permanently-true constant is a dead branch and this guard test then asserts nothing. Fix: remove the constant, its `disabled` guard, and both guard tests, and restore the enabled-control assertions instead.",
 			).toBe(false);
 		});
 	});
