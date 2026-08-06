@@ -177,6 +177,9 @@ jobs:
 
       - name: Build release
         env:
+          # Vite inlines these at build time; missing values leave PostHog in no-op mode.
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
           ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
           ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
@@ -390,6 +393,9 @@ jobs:
 
       - name: Build release
         env:
+          # Vite inlines these at build time; missing values leave PostHog in no-op mode.
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
           ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
           ELECTROBUN_TEAMID: ${{ secrets.ELECTROBUN_TEAMID }}
           ELECTROBUN_APPLEID: ${{ secrets.ELECTROBUN_APPLEID }}
@@ -557,6 +563,9 @@ jobs:
 
       - name: Build release
         env:
+          # Vite inlines these at build time; missing values leave PostHog in no-op mode.
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
           COPYFILE_DISABLE: "1"
           COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
         run: |
@@ -653,6 +662,9 @@ jobs:
 
       - name: Build release
         env:
+          # Vite inlines these at build time; missing values leave PostHog in no-op mode.
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
           COPYFILE_DISABLE: "1"
           COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
         run: |
