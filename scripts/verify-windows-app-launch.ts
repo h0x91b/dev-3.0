@@ -49,6 +49,17 @@ const READY_TIMEOUT_MS = Number(
 const GRACEFUL_SHUTDOWN_MS = 10_000;
 const FORCED_SHUTDOWN_MS = 20_000;
 
+/**
+ * Attempts, not a bigger single budget. Run 31098005022 lost the downloadable Windows
+ * build to one 60s stall of the process query, and the same commit passed on re-run, so
+ * the stall is transient rather than a deterministic break. No duration distribution
+ * exists to size a bigger budget from, so the budgets below are unchanged and every
+ * attempt is timed into the proof instead — the next runs produce that distribution.
+ */
+const PROCESS_QUERY_ATTEMPTS = 3;
+const TREE_WALK_TIMEOUT_MS = 60_000;
+const LIVENESS_QUERY_TIMEOUT_MS = 30_000;
+
 export interface ProcessEntry {
 	pid: number;
 	parentPid: number;
@@ -199,6 +210,85 @@ function requireSuccess(result: CommandResult, description: string): string {
 	return result.stdout.trim();
 }
 
+/** What the Windows process queries cost this run, so a budget can be set from measurements. */
+export interface ProcessQueryStats {
+	calls: number;
+	attempts: number;
+	maxMs: number;
+	totalMs: number;
+}
+
+export function newProcessQueryStats(): ProcessQueryStats {
+	return { calls: 0, attempts: 0, maxMs: 0, totalMs: 0 };
+}
+
+/**
+ * A Windows process query, retried a bounded number of times and timed into `stats`.
+ *
+ * Every attempt is measured whether it succeeds or not: the point of the numbers is to
+ * answer "is the budget too small" with data instead of with a guess.
+ */
+export function runProcessQuery(
+	description: string,
+	stats: ProcessQueryStats,
+	attempts: number,
+	execute: () => CommandResult,
+	now: () => number = Date.now,
+): string {
+	stats.calls += 1;
+	let last: CommandResult | undefined;
+	for (let attempt = 0; attempt < attempts; attempt += 1) {
+		const startedAt = now();
+		const result = execute();
+		const elapsedMs = now() - startedAt;
+		stats.attempts += 1;
+		stats.totalMs += elapsedMs;
+		stats.maxMs = Math.max(stats.maxMs, elapsedMs);
+		if (result.status === 0 && !result.error) return result.stdout.trim();
+		last = result;
+	}
+	throw new Error(
+		`${description} failed on all ${attempts} attempts (exit ${last?.status ?? "none"}${last?.error ? `, ${last.error.message}` : ""}).\n` +
+			"CAUSE: the runner's own process query stalled or died. This says nothing about the launched app — " +
+			"one such stall already withheld a Windows build from a green launch (run 31098005022 attempt 1).\n" +
+			"FIX: read processQueryStats in windows-app-launch-proof.json for the durations this run measured. " +
+			"If they sit near the per-attempt budget, move the query off this dialect — the liveness path already " +
+			"uses tasklist.exe, which needs neither PowerShell nor WMI — rather than raising the budget.\n" +
+			`stdout: ${last?.stdout ?? ""}\nstderr: ${last?.stderr ?? ""}`,
+	);
+}
+
+/**
+ * Pids out of `tasklist.exe /FO CSV /NH`. That spelling is deliberate: tasklist
+ * translates its column headers on a localized Windows, so a parser reading the English
+ * header form matches nothing on a German or Russian machine — and "matched nothing"
+ * here would read as "no process is alive".
+ */
+export function parseTasklistPids(output: string): number[] {
+	const pids: number[] = [];
+	for (const line of output.split(/\r?\n/)) {
+		const match = /^"[^"]*","(\d+)"/.exec(line.trim());
+		if (match) pids.push(Number(match[1]));
+	}
+	return pids;
+}
+
+/** The live pids, refusing to read an unparseable process list as an empty machine. */
+export function livePidSet(output: string): Set<number> {
+	const pids = parseTasklistPids(output);
+	if (pids.length === 0) {
+		throw new Error(
+			"tasklist.exe /FO CSV /NH returned no parseable process rows.\n" +
+				'CAUSE: its output no longer matches "image","pid",… — the row shape changed. Windows always lists its own ' +
+				"system processes, so an empty parse cannot mean an empty machine.\n" +
+				"FIX: update parseTasklistPids for the new shape. Never let an unparseable list read as an empty one: " +
+				"that reports every owned process as dead and passes a shutdown that never happened.\n" +
+				`stdout: ${output}`,
+		);
+	}
+	return new Set(pids);
+}
+
 function sha256(path: string): string {
 	return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -239,22 +329,29 @@ async function main(): Promise<void> {
 	const system32 = join(systemRoot, "System32");
 	const powershell = join(system32, "WindowsPowerShell", "v1.0", "powershell.exe");
 	const taskkill = join(system32, "taskkill.exe");
+	const tasklist = join(system32, "tasklist.exe");
+	const treeWalkStats = newProcessQueryStats();
+	const livenessStats = newProcessQueryStats();
 
+	/** Only the two tree walks need parent pids, and only WMI reports them. */
 	function processSnapshot(): ProcessEntry[] {
-		const output = requireSuccess(
-			run(
-				powershell,
-				[
-					"-NoProfile",
-					"-NonInteractive",
-					"-Command",
-					"Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress -Depth 3",
-				],
-				repoRoot,
-				process.env,
-				60_000,
-			),
-			"Process snapshot",
+		const output = runProcessQuery(
+			"Windows process tree snapshot (powershell Get-CimInstance Win32_Process)",
+			treeWalkStats,
+			PROCESS_QUERY_ATTEMPTS,
+			() =>
+				run(
+					powershell,
+					[
+						"-NoProfile",
+						"-NonInteractive",
+						"-Command",
+						"Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress -Depth 3",
+					],
+					repoRoot,
+					process.env,
+					TREE_WALK_TIMEOUT_MS,
+				),
 		);
 		const parsed = JSON.parse(output) as unknown;
 		const rows = Array.isArray(parsed) ? parsed : [parsed];
@@ -264,9 +361,21 @@ async function main(): Promise<void> {
 		});
 	}
 
+	/**
+	 * Liveness needs pids only, never parents, so it goes through tasklist.exe: a native
+	 * exe with no PowerShell start-up and no WMI round-trip. The shutdown poll loops call
+	 * this every 500ms, so this is where nearly every process query of a run lives — it is
+	 * the difference between one stall-prone call per run and roughly fifteen.
+	 */
 	function alivePids(pids: number[]): number[] {
 		if (pids.length === 0) return [];
-		const live = new Set(processSnapshot().map((entry) => entry.pid));
+		const output = runProcessQuery(
+			"Windows live process list (tasklist.exe)",
+			livenessStats,
+			PROCESS_QUERY_ATTEMPTS,
+			() => run(tasklist, ["/FO", "CSV", "/NH"], repoRoot, process.env, LIVENESS_QUERY_TIMEOUT_MS),
+		);
+		const live = livePidSet(output);
 		return pids.filter((pid) => live.has(pid));
 	}
 
@@ -504,6 +613,10 @@ async function main(): Promise<void> {
 			rendererReadyMs: marker.rendererReadyMs,
 			rendererReadyBudgetMs: RENDERER_READY_TIMEOUT_MS,
 			ownedProcessesBeforeShutdown,
+			// Published so a future budget can be read off measurements instead of picked.
+			// `treeWalks` is the WMI dialect that stalled for 60s in run 31098005022 attempt 1;
+			// `liveness` is tasklist.exe, which replaced it everywhere parents are not needed.
+			processQueryStats: { treeWalks: treeWalkStats, liveness: livenessStats },
 			shutdownMethod,
 			shutdownAfterMs,
 			survivingOwnedProcesses: [] as number[],
@@ -516,7 +629,9 @@ async function main(): Promise<void> {
 			`[windows-app-launch] ${desktopExecutableRelativePath} (rejected ${desktopSelection.rejected.length} other executables) ` +
 				`shipped with cli/${expectedCliName} and host image ${discovered.tag}, reached ready in ${readyAfterMs}ms ` +
 				`(renderer ${marker.rendererReadyMs}ms of a ${RENDERER_READY_TIMEOUT_MS}ms budget), ` +
-				`shut down via ${shutdownMethod} with no owned processes left`,
+				`shut down via ${shutdownMethod} with no owned processes left; ` +
+				`process queries: ${treeWalkStats.calls} WMI tree walks (slowest ${treeWalkStats.maxMs}ms of a ${TREE_WALK_TIMEOUT_MS}ms budget), ` +
+				`${livenessStats.calls} tasklist liveness checks (slowest ${livenessStats.maxMs}ms of a ${LIVENESS_QUERY_TIMEOUT_MS}ms budget)`,
 		);
 	} finally {
 		if (launcherPid !== null) {

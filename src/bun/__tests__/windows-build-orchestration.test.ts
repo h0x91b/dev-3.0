@@ -8,6 +8,10 @@ import { nativeBuildPlan } from "../../../scripts/build-native";
 import {
 	descendantPids,
 	isUsableReadyMarker,
+	livePidSet,
+	newProcessQueryStats,
+	parseTasklistPids,
+	runProcessQuery,
 	selectDesktopExecutable,
 	selectWindowsArchive,
 } from "../../../scripts/verify-windows-app-launch";
@@ -199,3 +203,65 @@ describe("owned process tree", () => {
 		expect(descendantPids([{ pid: 7, parentPid: 7, name: "weird.exe" }], 7)).toEqual([]);
 	});
 });
+
+describe("windows process queries", () => {
+	const TASKLIST_CSV = [
+		'"System Idle Process","0","Services","0","8 K"',
+		'"launcher.exe","7652","Console","2","12,340 K"',
+		'"msedgewebview2.exe","6928","Console","2","210,004 K"',
+	].join("\r\n");
+
+	it("reads pids out of tasklist CSV rows regardless of the machine's language", () => {
+		expect(parseTasklistPids(TASKLIST_CSV)).toEqual([0, 7652, 6928]);
+		// A localized Windows translates the memory unit and the session name; only the
+		// quoted image/pid pair is depended on.
+		expect(parseTasklistPids('"launcher.exe","4242","Консоль","2","57 400 КБ"')).toEqual([4242]);
+		expect(parseTasklistPids('INFO: No tasks are running which match the specified criteria.')).toEqual([]);
+	});
+
+	it("refuses to read an unparseable process list as an empty machine", () => {
+		expect([...livePidSet(TASKLIST_CSV)]).toEqual([0, 7652, 6928]);
+		expect(() => livePidSet("PID | NAME\n7652 | launcher.exe")).toThrow(
+			/no parseable process rows[\s\S]*CAUSE[\s\S]*row shape changed[\s\S]*FIX[\s\S]*passes a shutdown that never happened/,
+		);
+	});
+
+	it("times a first-attempt success and does not retry it", () => {
+		const stats = newProcessQueryStats();
+		let calls = 0;
+		const clock = fakeClock([0, 900]);
+		const output = runProcessQuery("tree walk", stats, 3, () => {
+			calls += 1;
+			return { status: 0, stdout: " [] \n", stderr: "" };
+		}, clock);
+		expect(output).toBe("[]");
+		expect(calls).toBe(1);
+		expect(stats).toEqual({ calls: 1, attempts: 1, maxMs: 900, totalMs: 900 });
+	});
+
+	it("survives a stalled attempt and times the stall it survived", () => {
+		const stats = newProcessQueryStats();
+		const results = [timedOut(), timedOut(), { status: 0, stdout: "ok", stderr: "" }];
+		const clock = fakeClock([0, 60_000, 60_000, 61_200, 61_200, 61_800]);
+		expect(runProcessQuery("tree walk", stats, 3, () => results.shift()!, clock)).toBe("ok");
+		expect(stats).toEqual({ calls: 1, attempts: 3, maxMs: 60_000, totalMs: 61_800 });
+	});
+
+	it("blames the runner's process query, not the app, once the attempts are spent", () => {
+		const stats = newProcessQueryStats();
+		expect(() => runProcessQuery("Windows process tree snapshot", stats, 3, timedOut, fakeClock([]))).toThrow(
+			/failed on all 3 attempts[\s\S]*ETIMEDOUT[\s\S]*CAUSE: the runner's own process query[\s\S]*FIX[\s\S]*rather than raising the budget/,
+		);
+		expect(stats.attempts).toBe(3);
+	});
+});
+
+function timedOut(): { status: null; stdout: string; stderr: string; error: Error } {
+	return { status: null, stdout: "", stderr: "", error: new Error("spawnSync powershell.exe ETIMEDOUT") };
+}
+
+/** Reads the listed instants in order, then holds the last one. */
+function fakeClock(instants: number[]): () => number {
+	let index = 0;
+	return () => instants[Math.min(index++, instants.length - 1)] ?? 0;
+}
