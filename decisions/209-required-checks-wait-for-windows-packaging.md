@@ -109,9 +109,13 @@ so the proof is not skippable forever.
 
 Other risks:
 
-- **Wall-clock.** The required `test` context now waits on the packaging jobs on in-scope PRs: p50 ~310 s,
-  p90 ~355 s, worst observed 462 s — about **+250 s p50 (4.2 min)** on top of today's 60–70 s. These are
-  per-job durations excluding runner queueing, so treat them as a floor. Accepted deliberately.
+- **Wall-clock: the required `test` context goes from roughly 1 m 10 s to roughly 5 m 10 s on in-scope
+  PRs, and is unchanged on out-of-scope ones — about +4 minutes.** Today's critical path is the test
+  shards at ~1 m 07 s (measured on run 31082720488, where the live terminal e2e legs at 1 m 01 s and 41 s
+  sat under it and cost nothing). The packaging jobs do not sit under it: `package-runtime (windows-latest)`
+  and `windows-app-archive` are ~305 s p50 each, p90 ~350 s, worst observed 462 s. So unlike the terminal
+  gate, this one does move the critical path, by design. These are per-job durations excluding runner
+  queueing, so treat them as a floor. Accepted deliberately — a cost, not a rounding error.
 - **`strict=false` is untouched and this change does not improve it.** PRs need not be up to date with
   `main`, so the Windows proof can be green against a stale base and merge onto a moved one. Worse, the
   scope decision is computed from the PR's own diff, so a file that becomes Windows-relevant on `main`

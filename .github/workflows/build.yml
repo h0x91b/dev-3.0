@@ -226,10 +226,60 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # Scope for the packaged Windows proof. This job replaces the paths filter that used
+  # to live on windows-conpty-package.yml: the required `test` context now waits for
+  # that workflow, and a filter GitHub evaluates for itself cannot be read by a gate.
+  #
+  # WINDOWS_SCOPE_PATHS is load-bearing in a way the YAML filter was not. A miss no
+  # longer means "Windows quietly did not run", it means the required context goes
+  # green while asserting Windows was checked-and-not-applicable. See
+  # decisions/209-required-checks-wait-for-windows-packaging.md.
+  windows_scope:
+    name: windows scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      in-scope: ${{ steps.scope.outputs.in-scope }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      # No `bun install`: the script imports only src/shared, so this job stays seconds
+      # long and never delays the gate it feeds.
+      - name: Decide whether the packaged Windows proof is in scope
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          # On `pull_request` the checkout is the merge ref, so HEAD^1 is exactly the
+          # base commit GitHub merged into and HEAD^1..HEAD is exactly the PR's diff —
+          # the same file list the deleted paths filter saw. If HEAD is not a merge,
+          # that assumption is wrong and guessing scope would be worse than failing.
+          if ! git rev-parse --verify -q HEAD^2 >/dev/null; then
+            echo "::error title=Windows packaging gate::expected a pull_request merge ref with two parents, found a single-parent HEAD — refusing to guess Windows packaging scope"
+            exit 1
+          fi
+          git diff --name-only HEAD^1 HEAD | bun scripts/windows-ci-scope.ts
+
+  # The packaged Windows proof itself, called as a job so `test` can depend on it.
+  # Its `if:` is the scope gate and is deliberate; the gate step below cross-checks it
+  # so a skip for any OTHER reason cannot pass as a deliberate one.
+  windows_package:
+    name: windows package
+    needs: windows_scope
+    if: needs.windows_scope.outputs.in-scope == 'true'
+    uses: ./.github/workflows/windows-conpty-package.yml
+
   test:
     name: test
     if: always()
-    needs: [test_shards, terminal_e2e]
+    needs: [test_shards, terminal_e2e, windows_scope, windows_package]
     runs-on: ubuntu-latest
     steps:
       # `test` is the required status context, so gating through it makes the terminal
@@ -262,6 +312,49 @@ jobs:
               exit 1
               ;;
           esac
+
+      # Four cases, where the terminal gate above needs three. `skipped` is REACHABLE
+      # AND LEGITIMATE here — it is how "out of scope" expresses itself — so a skip is
+      # only ever a pass when cross-checked against an independently computed scope
+      # result. A skip for any other reason (someone adds a job-level `if:`, a cancelled
+      # parent) is a hard fail. "Deliberately not dispatched" is a claim someone can be
+      # wrong about, which is what makes it testable; "skipped" is only a symptom.
+      # See decisions/209-required-checks-wait-for-windows-packaging.md.
+      - name: Verify the Windows packaging gate
+        id: windows_gate
+        continue-on-error: true
+        shell: bash
+        env:
+          WINDOWS_SCOPE_RESULT: ${{ needs.windows_scope.result }}
+          WINDOWS_IN_SCOPE: ${{ needs.windows_scope.outputs.in-scope }}
+          WINDOWS_PACKAGE_RESULT: ${{ needs.windows_package.result }}
+        run: |
+          set -euo pipefail
+          echo "windows scope: $WINDOWS_SCOPE_RESULT (in-scope=$WINDOWS_IN_SCOPE)"
+          echo "windows package: $WINDOWS_PACKAGE_RESULT"
+
+          if [ "$WINDOWS_SCOPE_RESULT" != "success" ]; then
+            echo "::error title=Windows packaging gate::the job that decides Windows scope did not decide ($WINDOWS_SCOPE_RESULT) — a gate that cannot compute scope fails rather than assuming Windows was not needed; open 'windows scope'"
+            echo "## ❌ Windows packaging gate: scope undecided ($WINDOWS_SCOPE_RESULT)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          if [ "$WINDOWS_IN_SCOPE" != "true" ]; then
+            if [ "$WINDOWS_PACKAGE_RESULT" != "skipped" ]; then
+              echo "::error title=Windows packaging gate::nothing is in Windows packaging scope, yet the packaged Windows jobs reported '$WINDOWS_PACKAGE_RESULT' instead of being skipped — the gate cannot tell what actually ran"
+              echo "## ❌ Windows packaging gate: out of scope but the packaging jobs reported $WINDOWS_PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            echo "::warning title=Windows packaging gate::no changed file matched WINDOWS_SCOPE_PATHS, so the packaged Windows jobs were DELIBERATELY NOT DISPATCHED — nothing was proved about the packaged Windows app on this PR. Absence is not success: if a Windows-affecting file is missing from that list, this line is the hole"
+            echo "## ⚠️ Windows packaging gate: deliberately not dispatched — nothing was proved about the packaged Windows app" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$WINDOWS_PACKAGE_RESULT" != "success" ]; then
+            echo "::error title=Windows packaging gate::changed files are in Windows packaging scope but the packaged Windows jobs reported '$WINDOWS_PACKAGE_RESULT' — open 'windows package / package-runtime (windows-latest)' and 'windows package / windows-app-archive' for the failure"
+            echo "## ❌ Windows packaging gate: $WINDOWS_PACKAGE_RESULT" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
       - name: Download shard results
         uses: actions/download-artifact@v8
@@ -408,14 +501,16 @@ jobs:
 
           exit "$failed"
 
-      - name: Fail if either gate is red
+      - name: Fail if any gate is red
         env:
           TERMINAL_GATE: ${{ steps.terminal_gate.outcome }}
+          WINDOWS_GATE: ${{ steps.windows_gate.outcome }}
           SHARDS: ${{ steps.shards.outcome }}
         run: |
           echo "terminal e2e gate: $TERMINAL_GATE"
+          echo "windows packaging gate: $WINDOWS_GATE"
           echo "test shards: $SHARDS"
-          [ "$TERMINAL_GATE" = "success" ] && [ "$SHARDS" = "success" ]
+          [ "$TERMINAL_GATE" = "success" ] && [ "$WINDOWS_GATE" = "success" ] && [ "$SHARDS" = "success" ]
 
   build-check:
     runs-on: ubuntu-latest

@@ -58,7 +58,13 @@ describe("the live terminal e2e job is wired to gate PRs", () => {
 	});
 
 	it("is a dependency of the required `test` context", () => {
-		expect(build).toMatch(/needs:\s*\[test_shards,\s*terminal_e2e\]/);
+		// Membership, scoped to the `test` job, not an exact list: that array grows as
+		// sibling gates land on the required context (the Windows packaging gate did —
+		// decisions/209-required-checks-wait-for-windows-packaging.md). Scoped, because
+		// membership checked file-wide would still pass if terminal_e2e were moved into
+		// some other job's needs while the required context stopped waiting for it.
+		const job = jobBlock("test");
+		expect(job).toMatch(/needs:\s*\[[^\]]*\bterminal_e2e\b[^\]]*\]/);
 	});
 
 	// The change's own worst moment: a survivor was detected, the detail went to stdout
@@ -103,7 +109,7 @@ describe("the terminal e2e gate step", () => {
 	it("does not swallow the shard report, and is not swallowed by it", () => {
 		expect(gate).toMatch(/continue-on-error:\s*true/);
 		expect(stepBlock(build, "Verify test shards")).toMatch(/continue-on-error:\s*true/);
-		const final = stepBlock(build, "Fail if either gate is red");
+		const final = stepBlock(build, "Fail if any gate is red");
 		expect(final).toMatch(/steps\.terminal_gate\.outcome/);
 		expect(final).toMatch(/steps\.shards\.outcome/);
 	});

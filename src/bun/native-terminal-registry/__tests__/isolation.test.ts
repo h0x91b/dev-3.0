@@ -65,6 +65,52 @@ const SANCTIONED_PRODUCT_CALLERS = [
 	"shared/platform-launch.ts",
 ];
 
+// Two alternatives, because one is not complete. The first catches the four direct reach
+// shapes: static import, re-export, dynamic import, require. The second catches an
+// indirect specifier — a module path parked in a variable and imported later — by flagging
+// any RELATIVE path literal into this directory, whatever it is used for.
+//
+// The relative prefix is what keeps it precise. The repo has no tsconfig path aliases and
+// the registry has no barrel, so a real specifier is always `./` or `../`. Repo-relative
+// mentions like the CI scope list's "src/bun/native-terminal-registry/**" are not
+// specifiers and stay out, which is the false positive this replaced. Both conditions the
+// prefix rests on are pinned below, because they are facts about today.
+//
+// NOT covered: a specifier assembled at runtime from fragments. No static scan can catch
+// that, and the substring detector this replaced missed it too, so it is a known limit
+// rather than a regression.
+const REACHES_REGISTRY =
+	/(?:\bfrom|\bimport\s*\(|\brequire\s*\()\s*["'][^"']*native-terminal-registry|["']\.{1,2}\/[^"']*native-terminal-registry/;
+
+// The detector above is precise only while a specifier into this directory must be
+// relative and must spell the folder name. Both are facts about today, and both would
+// go silently false — no test would notice the guard had stopped seeing a whole shape.
+describe("what the relative-path discriminator rests on", () => {
+	it("has no tsconfig path aliases, which would let an import skip the folder name", () => {
+		const tsconfig = JSON.parse(
+			readFileSync(resolve(sourceRoot, "../tsconfig.json"), "utf8"),
+		) as { compilerOptions?: { paths?: Record<string, unknown>; baseUrl?: string } };
+		expect(
+			tsconfig.compilerOptions?.paths ?? null,
+			"the relative-path discriminator in this test assumes no path aliases: an aliased import would reach the registry without `./` or the folder name, and this guard would not see it. Adding aliases means teaching REACHES_REGISTRY that shape first.",
+		).toBeNull();
+		expect(
+			tsconfig.compilerOptions?.baseUrl ?? null,
+			"a baseUrl makes bare non-relative specifiers resolvable, same blind spot as `paths` — teach REACHES_REGISTRY before adding one.",
+		).toBeNull();
+	});
+
+	it("has no barrel, which would let an import name the directory and nothing else", () => {
+		const barrels = moduleFiles
+			.map((path) => path.slice(moduleRoot.length + 1).replaceAll("\\", "/"))
+			.filter((path) => /^index\.tsx?$/.test(path));
+		expect(
+			barrels,
+			"the relative-path discriminator still works through a barrel, but a barrel invites `from \"../native-terminal-registry\"` with no file after it — supported today, yet it also makes the module reachable in shapes this guard has never been proved against. Re-run the reach matrix before adding one.",
+		).toEqual([]);
+	});
+});
+
 describe("native-session registry isolation", () => {
 	it("reaches production only through the sanctioned callers", () => {
 		const importers = sourceFiles(sourceRoot)
@@ -73,7 +119,16 @@ describe("native-session registry isolation", () => {
 			.filter((path) => !path.startsWith(multipaneRoot))
 			.filter((path) => !path.startsWith(soakRoot))
 			.filter((path) => !path.includes("__tests__"))
-			.filter((path) => readFileSync(path, "utf8").includes("native-terminal-registry"))
+			// Import specifiers, not a bare substring. `includes` also flagged any file that
+			// merely NAMES this directory in a string or a comment — a CI scope list does —
+			// and the failure then read as "an unsanctioned module reaches the registry"
+			// instead of "that is a path, not an import".
+			//
+			// Every way a module can reach the directory is covered, and completeness is
+			// checkable rather than promised: the registry has no barrel and the repo has no
+			// tsconfig path aliases, so a specifier that reaches it MUST contain the folder
+			// name. If either of those ever changes, this filter stops being complete.
+			.filter((path) => REACHES_REGISTRY.test(readFileSync(path, "utf8")))
 			.map((path) => path.slice(sourceRoot.length + 1).replaceAll("\\", "/"))
 			.sort();
 		expect(importers).toEqual(SANCTIONED_PRODUCT_CALLERS);
