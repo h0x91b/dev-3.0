@@ -13,7 +13,7 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 
 	return (
 		<span
-			className={`group/chip inline-flex items-center rounded-full transition-colors ${
+			className={`group/chip inline-flex items-center justify-center rounded-full transition-colors ${
 				isSmall ? "text-dense" : "text-xs"
 			}`}
 			style={
@@ -30,7 +30,7 @@ function LabelChip({ label, size = "xs", active = false, onClick, onRemove }: La
 			<button
 				type="button"
 				onClick={onClick}
-				className={`inline-flex items-center gap-1 rounded-full transition-colors ${
+				className={`inline-flex items-center justify-center gap-1 rounded-full transition-colors ${
 					isSmall ? "pl-1.5 py-0.5" : "pl-2 py-0.5"
 				} ${onRemove ? (isSmall ? "pr-0.5" : "pr-1") : (isSmall ? "pr-1.5" : "pr-2")} ${
 					onClick ? "cursor-pointer" : "cursor-default"

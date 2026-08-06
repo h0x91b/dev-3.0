@@ -1,8 +1,8 @@
-# 223 — The 0.67× factor applies to every screen on a phone (supersedes 107)
+# The 0.67× factor applies to every screen on a phone
 
 ## Context
 
-[Decision 107](107-mobile-dense-terminal-zoom.md) applied `MOBILE_DENSE_FACTOR = 0.67`
+`mobile-dense-terminal-zoom` applied `MOBILE_DENSE_FACTOR = 0.67`
 only to terminal-bearing routes and explicitly rejected a global mobile zoom,
 on the grounds that board, dashboard and settings were "already adapted".
 

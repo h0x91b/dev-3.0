@@ -1,4 +1,4 @@
-# 222 — The coarse-pointer touch floor is 24px, and it never overrides a component's own size
+# The coarse-pointer touch floor is 24px, and it never overrides a component's own size
 
 ## Context
 

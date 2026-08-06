@@ -1,6 +1,6 @@
 # 107 — Mobile terminal/diff screens render denser (dense zoom)
 
-> **Superseded by [223](223-phone-wide-067-zoom-supersedes-dense-terminal-zoom.md).**
+> **Superseded by `phone-wide-067-zoom-supersedes-dense-terminal-zoom`.**
 > The 0.67× factor now applies to every screen on a phone; the refcount and the
 > `useMobileDenseZoom` hook described below no longer exist.
 
