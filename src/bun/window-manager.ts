@@ -3,6 +3,7 @@ import type { AppRPCSchema } from "../shared/types";
 import { createLogger } from "./logger";
 import { loadWindowState, saveWindowState, resolveRestoreFrame, displayContaining, type Rect } from "./window-state";
 import { isFreshStartMode } from "./fresh-start";
+import { applyWindowsWindowIcon } from "./windows-icons/apply-window-icon";
 
 const log = createLogger("window-manager");
 
@@ -130,6 +131,12 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		rpc,
 		frame,
 	});
+
+	// Windows draws a system-fallback icon in the window and the taskbar because
+	// electrobun never assigns one to its window class; we set it ourselves from
+	// the icon already embedded in our executables. No-op off Windows, where the
+	// bundle's own icon already reaches the dock and the launcher.
+	applyWindowsWindowIcon(win.ptr as unknown as number);
 
 	const id = ++seq;
 	const entry: WindowEntry = { window: win, id };
