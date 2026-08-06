@@ -265,7 +265,24 @@ The tests covering the two revived branches deliberately tar a directory that is
 bundle, which exercises path 5 at the same time and skips DMG creation, so they run in ~1.4s
 instead of timing out.
 
-## 8. Coverage caps: discovery by breakage is luck, and the numbers that prove it
+## 8. A stacked pull request gets NO CI here, and an empty checks list is not a pass
+
+`build.yml` triggers on `pull_request: branches: [main]`. A PR whose base is another branch — the
+second half of a stacked pair — therefore fires **no workflow at all**, and `gh pr checks` answers
+*"no checks reported"*. That reads as harmless to anyone skimming, which is the same defect as every
+other one in this record: **absence looking like success.** A local `bun run test` is not a
+substitute — it cannot see the sharded matrix, the two terminal-e2e legs, or the trivy scan.
+
+The `pull_request` trigger was deliberately **not** widened. That is a CI-policy change whose cost
+lands on every stacked branch in the repo, and the gap is bounded: a stacked PR here retargets to
+`main` the moment its parent merges, and it gets the full suite before anyone can merge it.
+
+**That reasoning has an expiry condition, stated so it does not become folklore.** If this repo ever
+grows stacks that live for days, or a stacked PR is ever merged while still targeting a branch, the
+bound is gone and the trigger question comes back. Until then, the mitigation is a warning line in
+the stacked PR's own body naming which checks are unrun.
+
+## 9. Coverage caps: discovery by breakage is luck, and the numbers that prove it
 
 The extract broke two assertions scoped to `release.yml` alone — the publisher enumeration in
 `workflow-windows-proof.test.ts` and the lockfile check in `workflow-lockfiles.test.ts`. Both were
@@ -283,7 +300,7 @@ nothing warns, 78% of the coverage is gone, and the only signal is a test count 
 Anyone wanting to "simplify" the derive has to meet those numbers first; they are repeated in a
 comment on the derive itself.
 
-## 9. Risks
+## 10. Risks
 
 - A reusable workflow's inputs are its whole contract. A caller that forgets `publish` fails at
   parse time (required, no default), but a caller that passes the raw string output type-checks and
@@ -293,7 +310,7 @@ comment on the derive itself.
   the release path.
 - The DMG step's disk margin is unmeasured (section 5).
 
-## 10. Alternatives considered
+## 11. Alternatives considered
 
 - **One reusable workflow for all four platforms** — rejected; see section 2.
 - **A required enum input to switch step order** — rejected; a declared conditional is still a
