@@ -1,9 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const SCRIPT_PATH = resolve(
 	dirname(fileURLToPath(import.meta.url)),
@@ -105,6 +107,60 @@ describe("create-release-artifacts.sh", () => {
 		).not.toMatch(/build failed before tarring/);
 		// The staged artifact must be named for the channel and the app file name.
 		expect(existsSync(join(tempDir, "artifacts-linux-x64", "stable-linux-x64-dev-3.0.tar.zst"))).toBe(true);
+	});
+
+
+	it("names the crash-before-tarring case instead of failing obscurely", () => {
+		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
+		tempDirs.push(tempDir);
+		mkdirSync(join(tempDir, "build", "stable-linux-x64"), { recursive: true });
+
+		const result = spawnSync("bash", [SCRIPT_PATH, "linux", "x64", "stable"], { cwd: tempDir, encoding: "utf8" });
+
+		expect(result.status).not.toBe(0);
+		expect(
+			`${result.stdout}${result.stderr}`,
+			"an empty build dir must say the build failed BEFORE tarring. Without that the operator sees a bare cp/find error and starts debugging this script instead of the build above it.",
+		).toMatch(/build failed before tarring/);
+	});
+
+	// TWO failure-only paths at once, and both were dead.
+	//  1. electrobun can die between writing the tar and compressing it, leaving a .tar with
+	//     no .tar.zst — this branch compresses it itself. It called `zig-zstd <in> -o <out>`,
+	//     but that binary REQUIRES `compress -i <in>`, so it exited `error: InvalidArgs`.
+	//     Dead since PR #12 (2026-03-01) and never noticed, because only a crash reaches it.
+	//  2. version.json not at the expected bundle path — the `find` fallback. Exercised here
+	//     by tarring a directory that is not the .app bundle, which also keeps the test fast
+	//     by skipping DMG creation (hdiutil alone blows the default 5s timeout).
+	it("compresses a tar the build left uncompressed, finding version.json off the expected path", () => {
+		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
+		tempDirs.push(tempDir);
+		const buildDir = join(tempDir, "build", "stable-macos-arm64");
+		mkdirSync(join(buildDir, "payload", "Contents", "Resources"), { recursive: true });
+		writeFileSync(
+			join(buildDir, "payload", "Contents", "Resources", "version.json"),
+			JSON.stringify({ version: "9.9.9", hash: "deadbeef" }),
+		);
+		// A REAL tar (the script untars it to recover version.json) and deliberately no .zst.
+		spawnSync("tar", ["-cf", join(buildDir, "dev-3.0.app.tar"), "-C", buildDir, "payload"], { encoding: "utf8" });
+		// zig-zstd is resolved relative to cwd, so node_modules has to be reachable from it.
+		symlinkSync(resolve(repoRoot, "node_modules"), join(tempDir, "node_modules"));
+
+		const result = spawnSync("bash", [SCRIPT_PATH, "macos", "arm64", "stable"], { cwd: tempDir, encoding: "utf8" });
+		const output = `${result.stdout}${result.stderr}`;
+
+		expect(
+			output,
+			"zig-zstd must be called as `compress -i <in> -o <out>`. `error: InvalidArgs` means it was called positionally, which leaves the uncompressed-tar recovery branch dead.",
+		).not.toMatch(/InvalidArgs/);
+		expect(
+			output,
+			"the fallback must report WHERE it found version.json, so a bundle-layout change is visible in the log instead of silently working.",
+		).toMatch(/version\.json found at unexpected path/);
+		expect(
+			existsSync(join(tempDir, "artifacts-macos-arm64", "stable-macos-arm64-dev-3.0.app.tar.zst")),
+			"the compressed tarball must be staged from a build that only produced the uncompressed tar.",
+		).toBe(true);
 	});
 
 	// Both fields land in the manifest this script is the single writer of. They answer
