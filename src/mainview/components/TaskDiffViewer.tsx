@@ -1856,11 +1856,15 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	// width and the file list moves into a bottom sheet behind a "Files" button.
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [filesSheetOpen, setFilesSheetOpen] = useState(false);
+	const [modeSheetOpen, setModeSheetOpen] = useState(false);
 	// Split view is unusable at phone width (two code columns); force Unified on
 	// narrow, and close the files sheet if the viewport widens back out.
 	useEffect(() => {
 		if (narrow && viewMode === "split") setViewMode("unified");
-		if (!narrow) setFilesSheetOpen(false);
+		if (!narrow) {
+			setFilesSheetOpen(false);
+			setModeSheetOpen(false);
+		}
 	}, [narrow, viewMode]);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
 	// Dismiss the recent-commits preset popover on outside click or Escape.
@@ -3151,6 +3155,104 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		);
 	}
 
+	// The four diff modes are mutually exclusive, and four long labels plus the
+	// tests toggle cannot share a phone row — they stacked into a second row.
+	// One trigger naming the active mode opens a sheet with all four (bible
+	// §12.3 Diff viewer, §12.6 shed-never-stack).
+	const activeModeLabel = currentRequest.mode === "uncommitted"
+		? t("infoPanel.uncommittedDiff")
+		: currentRequest.mode === "unpushed"
+			? t("infoPanel.unpushedDiff")
+			: currentRequest.mode === "recent"
+				? t.plural("infoPanel.diffRecentLabel", recentCount)
+				: t("infoPanel.diffBranch");
+
+	function renderNarrowModeTrigger() {
+		return (
+			<button
+				type="button"
+				onClick={() => setModeSheetOpen(true)}
+				aria-haspopup="dialog"
+				aria-expanded={modeSheetOpen}
+				data-testid="diff-mode-trigger"
+				className="inline-flex min-w-0 items-center gap-1.5 rounded-md border border-accent bg-accent-fill px-2.5 py-1.5 text-micro font-semibold text-white"
+			>
+				<span className="truncate">{activeModeLabel}</span>
+				<span aria-hidden="true" className="text-micro leading-none">{"▾"}</span>
+			</button>
+		);
+	}
+
+	function renderModeSheet() {
+		const modes: Array<{ key: TaskInlineDiffRequest["mode"]; label: string }> = [
+			{ key: "branch", label: t("infoPanel.diffBranch") },
+			{ key: "uncommitted", label: t("infoPanel.uncommittedDiff") },
+			{ key: "unpushed", label: t("infoPanel.unpushedDiff") },
+		];
+		return (
+			<BottomSheet
+				open={modeSheetOpen}
+				onClose={() => setModeSheetOpen(false)}
+				title={t("infoPanel.diffModeSheetTitle")}
+				testId="diff-mode-sheet"
+			>
+				<div className="flex flex-col gap-2">
+					{modes.map(({ key, label }) => (
+						<button
+							key={key}
+							type="button"
+							role="menuitemradio"
+							aria-checked={currentRequest.mode === key}
+							data-testid={`diff-mode-sheet-${key}`}
+							onClick={() => {
+								setModeSheetOpen(false);
+								switchDiffMode(key);
+							}}
+							className={`flex items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm font-medium transition-colors ${
+								currentRequest.mode === key
+									? "border-accent/40 bg-accent/10 text-accent"
+									: "border-edge bg-raised text-fg-2"
+							}`}
+						>
+							<span className="flex-1">{label}</span>
+							{currentRequest.mode === key && <span aria-hidden="true">{"✓"}</span>}
+						</button>
+					))}
+					{/* "Last N commits" is one mode with a count, so its presets stay
+					    inline here instead of becoming three more sheet rows. */}
+					<div className="rounded-lg border border-edge bg-raised px-3 py-2">
+						<div className="mb-2 text-dense font-semibold uppercase tracking-wider text-fg-muted">
+							{t.plural("infoPanel.diffRecentLabel", recentCount)}
+						</div>
+						<div className="flex flex-wrap gap-2">
+							{RECENT_COUNT_PRESETS.map((preset) => {
+								const selected = currentRequest.mode === "recent" && preset === recentCount;
+								return (
+									<button
+										key={preset}
+										type="button"
+										role="menuitemradio"
+										aria-checked={selected}
+										data-testid={`diff-mode-sheet-recent-${preset}`}
+										onClick={() => {
+											setModeSheetOpen(false);
+											selectRecentCount(preset);
+										}}
+										className={`rounded-md border px-3 py-2 text-micro font-semibold transition-colors ${
+											selected ? "border-accent bg-accent-fill text-white" : "border-edge bg-elevated text-fg-2"
+										}`}
+									>
+										{t.plural("infoPanel.diffRecentLabel", preset)}
+									</button>
+								);
+							})}
+						</div>
+					</div>
+				</div>
+			</BottomSheet>
+		);
+	}
+
 	function renderModeToggles(padClass = "py-0.5") {
 		return (
 			<>
@@ -3444,24 +3546,30 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						)}
 					</div>
 				) : (
-				<div className="flex flex-wrap items-center gap-2">
+				// Sheds, never stacks (bible §12.6). A narrowed desktop window used to
+				// wrap this into two rows, which moves every control mid-click. Order,
+				// lowest priority first: info chips → the ± summary → the tests toggle
+				// and help dot → the "Back to Terminal" label. The modes and
+				// Unified/Split always survive; the title block is the shrinkable one.
+				<div className="flex flex-nowrap items-center gap-2 min-w-0 [container-type:inline-size]">
 					<button
 						onClick={requestClose}
-						className="inline-flex items-center gap-2 px-3 py-1 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-semibold"
+						title={t("infoPanel.backToTerminal")}
+						className="inline-flex shrink-0 items-center gap-2 px-3 py-1 rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors text-sm font-semibold"
 					>
 						<span className="text-base-sm leading-none">{"\u2190"}</span>
-						<span>{t("infoPanel.backToTerminal")}</span>
+						<span className="hidden [@container(min-width:900px)]:inline">{t("infoPanel.backToTerminal")}</span>
 					</button>
 					<div className="min-w-0 flex-1 pr-2">
-						<div className="text-sm font-semibold leading-tight text-fg">{t("infoPanel.diffViewer")}</div>
-						<div className="text-micro leading-tight text-fg-3">
+						<div className="truncate text-sm font-semibold leading-tight text-fg">{t("infoPanel.diffViewer")}</div>
+						<div className="truncate text-micro leading-tight text-fg-3">
 							{diffSubtitleLabel}
 						</div>
 					</div>
 					{payload && (
 						<>
 							<span
-								className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-micro font-mono"
+								className="hidden shrink-0 [@container(min-width:1000px)]:inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-micro font-mono"
 								data-testid="diff-toolbar-summary"
 							>
 								<span>{t.plural("infoPanel.diffFileCount", visibleSummary.files)}</span>
@@ -3477,13 +3585,19 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									</span>
 								)}
 							</span>
-							{renderTestsToggle()}
-							{renderInfoChips()}
+							<span className="hidden [@container(min-width:820px)]:contents">
+								{renderTestsToggle()}
+							</span>
+							<span className="hidden [@container(min-width:1120px)]:contents">
+								{renderInfoChips()}
+							</span>
 						</>
 					)}
-					{renderModeToggles()}
+					<span className="contents [&>*]:shrink-0">{renderModeToggles()}</span>
+					<span className="hidden [@container(min-width:820px)]:contents">
 						<HelpSpot topicId="diff.modes" />
-					<div className="ml-auto flex items-center gap-2">
+					</span>
+					<div className="ml-auto flex shrink-0 items-center gap-2">
 						{renderSearchToggle(false)}
 						{isSearchOpen && renderSearchBox(false)}
 						{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
@@ -3756,6 +3870,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</aside>
 				)}
 
+				{narrow && renderModeSheet()}
+
 				{narrow && !error && !isBusy && payload && totalFileCount > 0 && (
 					<BottomSheet
 						open={filesSheetOpen}
@@ -3790,10 +3906,15 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 
 				<div ref={scrollRegionRef} className="flex-1 min-w-0 overflow-auto px-4 pt-1 pb-4" data-testid="inline-diff-scroll-region">
 				{narrow && (
-					<div className="flex flex-wrap items-center gap-1.5 pb-2 pt-1">
-						{renderModeToggles("py-1.5")}
+					/* Sheds, never stacks (bible §12.6). Four mode chips plus the tests
+					   toggle wrapped into a second row on a phone; the modes are now one
+					   trigger + sheet, and the informational chips drop below 360px. */
+					<div className="flex flex-nowrap items-center gap-1.5 pb-2 pt-1 min-w-0 [container-type:inline-size]">
+						{renderNarrowModeTrigger()}
 						{payload && renderTestsToggle()}
-						{renderInfoChips()}
+						<span className="hidden [@container(min-width:360px)]:contents">
+							{renderInfoChips()}
+						</span>
 						<HelpSpot topicId="diff.modes" />
 					</div>
 				)}

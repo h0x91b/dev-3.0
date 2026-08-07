@@ -3000,10 +3000,19 @@ describe("TaskDiffViewer narrow viewport", () => {
 		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
-		expect(screen.getByRole("button", { name: "Branch" })).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "Uncommitted" })).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "Unpushed" })).toBeInTheDocument();
-		expect(screen.getByTestId("diff-mode-recent")).toBeInTheDocument();
+		// Four chips stacked the row into two lines on a phone, so they live behind
+		// one trigger naming the active mode — all four stay one tap away.
+		const trigger = screen.getByTestId("diff-mode-trigger");
+		// It names whichever mode is active (the last one is remembered), never a
+		// generic "Mode" — that is the whole point of collapsing the four chips.
+		expect(trigger.textContent).toMatch(/Branch|Uncommitted|Unpushed|commit/);
+		await act(async () => {
+			fireEvent.click(trigger);
+		});
+		expect(screen.getByTestId("diff-mode-sheet-branch")).toBeInTheDocument();
+		expect(screen.getByTestId("diff-mode-sheet-uncommitted")).toBeInTheDocument();
+		expect(screen.getByTestId("diff-mode-sheet-unpushed")).toBeInTheDocument();
+		expect(screen.getByTestId("diff-mode-sheet-recent-1")).toBeInTheDocument();
 	});
 
 	it("scrolls the mode/filter row with the content instead of pinning it", async () => {

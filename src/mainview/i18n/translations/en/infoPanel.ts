@@ -142,6 +142,7 @@ const infoPanel = {
 	"infoPanel.diffSearchNext": "Next match",
 	"infoPanel.diffSearchNoMatches": "No matches",
 	"infoPanel.diffFiles": "Files",
+	"infoPanel.diffModeSheetTitle": "What to compare",
 	"infoPanel.diffFilesCollapse": "Collapse files panel",
 	"infoPanel.diffFilesExpand": "Expand files panel",
 	"infoPanel.diffRead": "Read",

@@ -33,7 +33,7 @@ import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
 import TaskGitActionsSheet from "./task-info-panel/TaskGitActionsSheet";
 import { useTaskBranchStatus } from "./task-info-panel/useTaskBranchStatus";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
-import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
+import { IncludeTestsIcon, ShowDiffIcon } from "./task-info-panel/GitIcons";
 import {
 	WatchingIcon,
 	WatchIcon,
@@ -798,8 +798,10 @@ function TaskInfoPanel({
 	const priorityBadge = <PriorityBadge priority={task.priority} onChange={handleSetPriority} className="shrink-0" />;
 
 	// On narrow the chip is a primary touch target — bump it to ≥44px (§12.6).
+	// On narrow this is the one shrinkable region of a no-wrap bar: a long
+	// custom-column name truncates here instead of pushing the kebab off screen.
 	const statusDropdownButton = (
-		<div className={`flex items-center rounded-lg hover:bg-elevated transition-colors ${tight && !narrow ? "min-w-0 shrink" : "flex-shrink-0"}`}>
+		<div className={`flex items-center rounded-lg hover:bg-elevated transition-colors ${tight || narrow ? "min-w-0 shrink" : "flex-shrink-0"}`}>
 			<button
 				ref={statusTriggerRef}
 				onClick={toggleStatusMenu}
@@ -814,7 +816,10 @@ function TaskInfoPanel({
 				) : (
 					<PipelineRing status={task.status} size={narrow ? "touch" : "default"} />
 				)}
-				<span className={`font-medium text-fg-2 truncate ${narrow ? "text-sm" : "text-micro"}`}>
+				{/* Last thing the narrow bar sheds (bible §12.6): under 300px the ring
+				    plus the chevron still read as "status, tap to change", and this is
+				    the only survivor still worth its width. `sr-only` keeps it announced. */}
+				<span className={`font-medium text-fg-2 truncate ${narrow ? "text-sm [@container(max-width:299px)]:sr-only" : "text-micro"}`}>
 					{activeCustomColumn ? activeCustomColumn.name : getStatusLabel(task.status, t, project)}
 				</span>
 				<svg className={`flex-shrink-0 text-fg-3 ${narrow ? "w-4 h-4" : "w-3 h-3"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1215,10 +1220,14 @@ function TaskInfoPanel({
 				{diffFilesPopover}
 				{fileOpenInMenuPortal}
 				{statusSheet}
-				{/* Wide diff counters (e.g. "9 files +451 −297") must never clip off
-				    the right edge — the bar wraps instead of keeping a fixed height,
-				    so the badge always stays fully visible and tappable. */}
-				<div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 min-h-[3.25rem] min-w-0" data-testid="task-summary-bar">
+				{/* The bar sheds, it never stacks (bible §12.6). A second row costs a
+				    phone a whole band of screen and moves every control the user was
+				    aiming at — worse than losing the least important one. Priority,
+				    lowest first: diff badge → artifacts → images → the status label.
+				    Thresholds are container queries in PX, not rem: the 0.67× phone
+				    factor makes 1rem ≈ 10.7px, so rem thresholds fire ~1.5× too late.
+				    Everything shed keeps a row in the actions sheet. */}
+				<div className="flex flex-nowrap items-center gap-x-2 px-3 py-2 min-h-[3.25rem] min-w-0 [container-type:inline-size]" data-testid="task-summary-bar">
 					{variantSwitcher}
 					{statusDropdownButton}
 					{/* Priority sits with status (Context domain, §5.1); `sm` gives it a
@@ -1229,13 +1238,20 @@ function TaskInfoPanel({
 					    priority, not only the sheet: they are conditional, and an unread
 					    one has to be seen without opening a menu. Same class as the diff
 					    badge — a readout, not a folded action (bible §12.6). */}
-					<TaskSharedImages task={task} projectId={project.id} compact touch />
-					<TaskArtifacts task={task} projectId={project.id} compact touch />
+					<span className="hidden [@container(min-width:340px)]:contents">
+						<TaskSharedImages task={task} projectId={project.id} compact touch />
+						<TaskArtifacts task={task} projectId={project.id} compact touch />
+					</span>
 					{/* Task title intentionally omitted here — it already shows in the
 					    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
 					    bar; the freed space keeps status + priority + diff readable. */}
 					<div className="flex-1 min-w-0" />
-					{diffSummaryBadge}
+					{/* First to go: it is the widest chip on the bar ("18 files +195 −131"
+					    ≈ 100px) and the only one whose whole content repeats verbatim in
+					    the sheet's Show diff row. */}
+					<span className="hidden [@container(min-width:400px)]:contents" data-testid="summary-bar-diff-slot">
+						{diffSummaryBadge}
+					</span>
 					<Tooltip content={t("infoPanel.actionsTitle")} detail={t("ttip.infoPanel.actions")}>
 						<button
 							type="button"
@@ -1284,6 +1300,27 @@ function TaskInfoPanel({
 								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${task.manualCompletion ? "text-accent" : "text-fg-3"}`} active={task.manualCompletion} />
 								<span className="flex-1 text-sm font-medium">{task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}</span>
 							</button>
+
+							{/* The bar may shed the diff badge on a narrow screen, so the diff
+							    needs a sheet path that does not depend on the task still being
+							    active — TaskGitActionsSheet's own Show diff row requires a live
+							    worktree, and a finished task would otherwise lose the diff
+							    entirely (bible §12.6: nothing is shed without a sheet path). */}
+							{diffSummaryBadge && !(project.kind !== "virtual" && isTaskActive && task.worktreePath) && onOpenInlineDiff && (
+								<button
+									type="button"
+									data-testid="task-actions-show-diff"
+									onClick={() => {
+										setActionsSheetOpen(false);
+										openBranchDiff();
+									}}
+									className={SHEET_ROW_CLASS}
+								>
+									<ShowDiffIcon className="h-5 w-5 shrink-0 text-accent" />
+									<span className="flex-1 text-sm font-medium">{t("infoPanel.showDiff")}</span>
+									<span className="text-xs font-mono text-fg-3 tabular-nums">{visibleDiffFiles}</span>
+								</button>
+							)}
 
 							{isTaskActive && task.worktreePath && (
 								<button type="button" onClick={() => setSpawnModalOpen(true)} className={SHEET_ROW_CLASS}>

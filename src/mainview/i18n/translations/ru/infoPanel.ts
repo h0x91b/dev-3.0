@@ -152,6 +152,7 @@ const infoPanel = {
 	"infoPanel.diffSearchNext": "Следующее совпадение",
 	"infoPanel.diffSearchNoMatches": "Совпадений нет",
 	"infoPanel.diffFiles": "Файлы",
+	"infoPanel.diffModeSheetTitle": "Что сравнивать",
 	"infoPanel.diffFilesCollapse": "Свернуть панель файлов",
 	"infoPanel.diffFilesExpand": "Развернуть панель файлов",
 	"infoPanel.diffRead": "Read",

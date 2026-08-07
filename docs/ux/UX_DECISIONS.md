@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-07 — A narrow control row sheds; it never stacks
+
+- **Rule:** every narrow control row is `flex-nowrap` with a written priority order and drops from the bottom of it as width runs out — the inspector summary bar sheds diff badge → artifacts → images, then takes the status pill icon-only; the diff viewer's four mutually exclusive modes collapse to one trigger + `BottomSheet`. Anything shed must already have a sheet path, and the last survivors truncate rather than clip. Thresholds are container queries on the row, not viewport breakpoints. Bible §12.6 + §12.3 (Diff viewer).
+- **Why:** a second row costs a phone a whole band of screen and moves every control the user was aiming at, which is worse than losing the least important one; measured at 340px the summary bar went 40px → 67px tall. Rejected: JS measured overflow via `ResizeObserver` (oscillates once hiding an item shrinks `scrollWidth`, and needs an offscreen clone to recover the natural width); a viewport breakpoint (the row is not the window — the same width holds a different bar depending on whether a variant switcher and output badges exist); folding the readouts unconditionally (they are status, and §12.6 keeps them resting-visible whenever they fit).
+- **Status:** Decided. Evidence: `TaskInfoPanel.tsx` (`task-summary-bar`, `diff-summary-badge`), `TaskDiffViewer.tsx` (narrow mode row), seq 1459.
+
 ## 2026-08-07 — The Active Tasks sidebar row carries the Kanban card's lifecycle rail
 
 - **Rule:** the sidebar row mounts `TaskCardRail` with `autoLabel` — ring, bell and the glued ✓ → Completed always, and the upright status word only when the rail measures tall enough to hold it whole — then title → signals → a muted identity line; the agent config no longer opens the row. Menu state is one shared `useStatusMenu` + `StatusMenuPortal` across both surfaces. Bible §5 sidebar row, §5.6, §9 budget.

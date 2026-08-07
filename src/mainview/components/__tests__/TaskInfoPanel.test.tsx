@@ -3364,7 +3364,7 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			);
 		});
 
-		it("lets the summary bar wrap so a wide diff badge stays fully tappable", async () => {
+		it("never stacks the summary bar — the wide diff badge sheds by container width", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				diffFiles: 9,
@@ -3376,11 +3376,14 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
 			});
 			const bar = await screen.findByTestId("task-summary-bar");
-			// A fixed-height non-wrapping row clips the badge off-screen when the
-			// counters are wide; the bar must wrap instead.
+			// A second row moves every control the user was aiming at, so the bar
+			// never wraps: it is a container, and the badge hides below 400px.
 			const classes = bar.className.split(/\s+/);
-			expect(classes).toContain("flex-wrap");
-			expect(classes).not.toContain("h-[3.25rem]");
+			expect(classes).toContain("flex-nowrap");
+			expect(classes).not.toContain("flex-wrap");
+			expect(classes).toContain("[container-type:inline-size]");
+			const slot = screen.getByTestId("summary-bar-diff-slot");
+			expect(slot.className).toContain("[@container(min-width:400px)]:contents");
 			expect(screen.getByTestId("diff-summary-badge")).toBeInTheDocument();
 		});
 

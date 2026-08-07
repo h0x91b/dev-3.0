@@ -142,6 +142,7 @@ const infoPanel = {
 	"infoPanel.diffSearchNext": "Siguiente coincidencia",
 	"infoPanel.diffSearchNoMatches": "Sin coincidencias",
 	"infoPanel.diffFiles": "Archivos",
+	"infoPanel.diffModeSheetTitle": "Qué comparar",
 	"infoPanel.diffFilesCollapse": "Contraer panel de archivos",
 	"infoPanel.diffFilesExpand": "Expandir panel de archivos",
 	"infoPanel.diffRead": "Read",
