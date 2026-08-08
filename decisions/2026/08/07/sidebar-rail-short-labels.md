@@ -23,9 +23,10 @@ that had room for it.
 `TaskCardRail` gained `autoLabel`. The sidebar sets it, the card does not (a card
 is always tall enough). With it on, the rail measures itself through a
 `ResizeObserver` and renders the upright word only when its height clears
-`58 + letters * 14.4`. Showing the word only when it already fits cannot grow the
-rail, so the measurement settles in one pass with no oscillation. Verified live:
-88px rows show ring + ✓ only, `PR` appears at 104px, `ON HOLD` at 273px.
+`58 + letters * 14.4`. Verified live: 88px rows show ring + ✓ only, `PR` appears
+at 104px, `ON HOLD` at 273px. This record also claimed that showing the word only
+when it already fits cannot grow the rail — it can, and the fix is in
+`decisions/2026/08/08/rail-label-out-of-flow.md`.
 
 ## Risks
 

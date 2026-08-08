@@ -13,6 +13,9 @@ import Tooltip from "./Tooltip";
  */
 export const RAIL_LABEL_MAX = 8;
 
+const RAIL_LABEL_CLASS =
+	"max-h-32 overflow-hidden font-mono text-dense font-extrabold uppercase leading-none tracking-[0.14em] [text-orientation:upright] [writing-mode:vertical-rl]";
+
 /** Short, uppercase rail forms of the built-in statuses. The full label stays in
  *  the rail's accessible name and tooltip, and in the Move-to menu. */
 const RAIL_LABEL_KEY: Record<TaskStatus, TranslationKey> = {
@@ -98,8 +101,9 @@ export default function TaskCardRail({
 	const [labelFits, setLabelFits] = useState(!autoLabel);
 
 	// Measured: an upright letter is ~14.4px, and the ring, the ✓ and the rail's
-	// own padding claim ~58px before the word starts. Showing the word only when
-	// it already fits cannot grow the rail, so this settles in one pass.
+	// own padding claim ~58px before the word starts. With `autoLabel` the word is
+	// taken out of flow (see below), so the height it measures never includes the
+	// word itself — otherwise the first fit would latch and the row could not shrink.
 	const neededForLabel = 58 + railLabel.length * 14.4;
 	useLayoutEffect(() => {
 		if (!autoLabel) return;
@@ -149,15 +153,20 @@ export default function TaskCardRail({
 					{/* Upright stacked letters — read straight down, never rotated. The
 					    accessible name above carries the full label, so the visual
 					    abbreviation is hidden from assistive tech. */}
-					{labelFits && (
-						<span
-							aria-hidden="true"
-							className="max-h-32 overflow-hidden font-mono text-dense font-extrabold uppercase leading-none tracking-[0.14em] [text-orientation:upright] [writing-mode:vertical-rl]"
-							style={{ color }}
-						>
-							{railLabel}
-						</span>
-					)}
+					{labelFits &&
+						(autoLabel ? (
+							// Out of flow: the word must never add to the height that decides
+							// whether it fits, or a row that once had room keeps it forever.
+							<span className="relative flex min-h-0 w-full flex-1 justify-center overflow-hidden">
+								<span aria-hidden="true" className={`absolute top-0 ${RAIL_LABEL_CLASS}`} style={{ color }}>
+									{railLabel}
+								</span>
+							</span>
+						) : (
+							<span aria-hidden="true" className={RAIL_LABEL_CLASS} style={{ color }}>
+								{railLabel}
+							</span>
+						))}
 				</button>
 			</Tooltip>
 
