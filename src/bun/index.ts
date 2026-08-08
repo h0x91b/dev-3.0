@@ -502,6 +502,28 @@ startResourceMonitor((name, payload) => {
 	}
 });
 
+// Report processes earlier versions leaked out of finished task worktrees. Detect
+// only, never kill: ending a user's process needs a click (PRODUCT_UX_BIBLE §12.6).
+// Detached so a slow lsof cannot delay the window, and delayed so it does not
+// compete with the first paint.
+setTimeout(() => {
+	void (async () => {
+		try {
+			const { scanWorktreeOrphans } = await import("./rpc-handlers/agent-usage");
+			const groups = await scanWorktreeOrphans();
+			if (groups.length === 0) return;
+			log.warn("Leftover processes found in finished tasks' worktrees", {
+				tasks: groups.length,
+				processes: groups.reduce((sum, group) => sum + group.processCount, 0),
+				rss: groups.reduce((sum, group) => sum + group.rss, 0),
+				shortIds: groups.map((group) => group.shortId),
+			});
+		} catch (err) {
+			log.warn("Startup orphan-process scan failed", { error: String(err) });
+		}
+	})();
+}, 5_000);
+
 // Start background agent rate-limit monitor (Claude dump / Codex rollouts + monthly credits)
 startRateLimitMonitor((name, payload) => {
 	try {

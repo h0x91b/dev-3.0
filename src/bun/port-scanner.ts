@@ -33,7 +33,7 @@ async function runText(cmd: string[]): Promise<string> {
 
 const PROCESS_INFO_CACHE_MS = 5_000;
 
-type ProcessInfoResult = {
+export type ProcessInfoResult = {
 	tree: Map<number, number[]>;
 	resources: Map<number, { rss: number; cpu: number }>;
 	/**

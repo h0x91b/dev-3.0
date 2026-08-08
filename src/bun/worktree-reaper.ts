@@ -1,6 +1,8 @@
 import { realpathSync } from "node:fs";
+import type { WorktreeOrphanGroup } from "../shared/types";
 import { createLogger } from "./logger";
-import { buildProcessTree, collectDescendants, collectProcessInfo } from "./port-scanner";
+import { DEV3_HOME } from "./paths";
+import { buildProcessTree, collectDescendants, collectProcessInfo, type ProcessInfoResult } from "./port-scanner";
 import { terminatePidsVerified } from "./process-reaper";
 import { spawn } from "./spawn";
 
@@ -153,4 +155,94 @@ export async function reapWorktreeProcesses(
 		log.error("Worktree processes survived SIGKILL", { label, worktreePath, leftovers });
 	}
 	return { reaped: pids, leftovers };
+}
+
+const WORKTREES_ROOT = `${DEV3_HOME}/worktrees`;
+
+/**
+ * The task short id inside a worktree path, or null when the path is not one.
+ * Layout is frozen (see the on-disk invariants in AGENTS.md):
+ * `~/.dev3.0/worktrees/<project-slug>/<taskId8>/worktree/...`. Exported for tests.
+ */
+export function taskShortIdFromWorktreePath(cwd: string, root = WORKTREES_ROOT): string | null {
+	if (!cwd.startsWith(`${root}/`)) return null;
+	const segments = cwd.slice(root.length + 1).split("/");
+	// [slug, taskId8, ...]; `uploads` / `shared-artifacts` siblings have no id.
+	const shortId = segments[1];
+	return shortId !== undefined && /^[0-9a-f]{8}$/.test(shortId) ? shortId : null;
+}
+
+/**
+ * Leftover processes still running inside task worktrees, grouped per task.
+ *
+ * Two filters make a group trustworthy enough to offer a kill button for:
+ * `PPID === 1` (nobody supervises it — a shell or agent still owning the process
+ * would be its ancestor), and the task having NO live terminal session. The
+ * second one is the important one: an agent working right now legitimately keeps
+ * a daemonized headless browser, and that browser is also reparented to init.
+ *
+ * Never call this from a poller: it costs a full-process-table `lsof`.
+ */
+export async function scanWorktreeOrphans(activeShortIds: Set<string>): Promise<WorktreeOrphanGroup[]> {
+	const [cwds, info] = await Promise.all([listPidCwds(), collectProcessInfo()]);
+	return selectOrphanGroups(cwds, info, activeShortIds);
+}
+
+/** The grouping half of {@link scanWorktreeOrphans}, without the spawns. */
+export function selectOrphanGroups(
+	cwds: Map<number, string>,
+	info: Pick<ProcessInfoResult, "tree" | "resources" | "cmdlines">,
+	activeShortIds: Set<string>,
+	root = WORKTREES_ROOT,
+): WorktreeOrphanGroup[] {
+	const parents = new Map<number, number>();
+	for (const [ppid, children] of info.tree) {
+		for (const child of children) parents.set(child, ppid);
+	}
+	const protectedPids = selectProtectedPids(info.tree, info.cmdlines);
+
+	const groups = new Map<string, WorktreeOrphanGroup>();
+	for (const [pid, cwd] of cwds) {
+		if (protectedPids.has(pid) || parents.get(pid) !== 1) continue;
+		const shortId = taskShortIdFromWorktreePath(cwd, root);
+		if (shortId === null || activeShortIds.has(shortId)) continue;
+
+		const pids = [pid, ...collectDescendants(pid, info.tree).filter((child) => !protectedPids.has(child))];
+		let rss = 0;
+		for (const member of pids) rss += info.resources.get(member)?.rss ?? 0;
+
+		const existing = groups.get(shortId);
+		if (existing) {
+			existing.pids.push(...pids);
+			existing.processCount += pids.length;
+			existing.rss += rss;
+		} else {
+			groups.set(shortId, {
+				shortId,
+				taskId: null,
+				title: "",
+				projectId: "",
+				command: info.cmdlines.get(pid)?.slice(0, 120) ?? "",
+				pids,
+				processCount: pids.length,
+				rss,
+			});
+		}
+	}
+	return [...groups.values()].sort((a, b) => b.rss - a.rss);
+}
+
+/**
+ * Kill an explicit PID set the user asked to reclaim. Takes PIDs rather than
+ * re-scanning so the number in the confirmation is the number that dies —
+ * a rescan between the dialog and the kill would silently change the target.
+ */
+export async function killPids(pids: number[]): Promise<{ killed: number; leftovers: number[] }> {
+	if (pids.length === 0) return { killed: 0, leftovers: [] };
+	const leftovers = await terminatePidsVerified(pids, {
+		termGraceMs: REAP_TERM_GRACE_MS,
+		killWaitMs: REAP_KILL_WAIT_MS,
+	});
+	log.info("Killed leftover worktree processes on request", { requested: pids.length, leftovers });
+	return { killed: pids.length - leftovers.length, leftovers };
 }

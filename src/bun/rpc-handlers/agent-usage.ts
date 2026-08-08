@@ -1,10 +1,11 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AgentUsageReport, SystemMemorySnapshot } from "../../shared/types";
+import type { AgentUsageReport, SystemMemorySnapshot, WorktreeOrphanGroup } from "../../shared/types";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import { getAgentRateLimitsReport } from "../rate-limit-monitor";
-import { getSystemMemorySnapshot } from "../resource-monitor";
+import { getBusyTaskShortIds, getSystemMemorySnapshot, resolveTaskConsumers } from "../resource-monitor";
+import { killPids, scanWorktreeOrphans as scanOrphans } from "../worktree-reaper";
 import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
@@ -109,8 +110,39 @@ async function getSystemMemory(): Promise<SystemMemorySnapshot | null> {
 	return getSystemMemorySnapshot();
 }
 
+/**
+ * Leftover processes inside worktrees whose task is finished. Titles are resolved
+ * here rather than in the reaper so the scanner stays free of data-layer imports.
+ * A scan that cannot prove which tasks are busy reports nothing — never a list the
+ * user might kill live work from.
+ */
+export async function scanWorktreeOrphans(): Promise<WorktreeOrphanGroup[]> {
+	let groups: WorktreeOrphanGroup[];
+	try {
+		groups = await scanOrphans(await getBusyTaskShortIds());
+	} catch {
+		return [];
+	}
+	if (groups.length === 0) return [];
+	const resolved = new Map(
+		(await resolveTaskConsumers(groups.map((g) => ({ shortId: g.shortId, rss: g.rss }))))
+			.map((task) => [task.shortId, task]),
+	);
+	return groups.map((group) => {
+		const task = resolved.get(group.shortId);
+		return task ? { ...group, taskId: task.taskId, title: task.title, projectId: task.projectId } : group;
+	});
+}
+
+async function killWorktreeOrphans({ pids }: { pids: number[] }): Promise<{ killed: number; leftovers: number }> {
+	const { killed, leftovers } = await killPids(pids);
+	return { killed, leftovers: leftovers.length };
+}
+
 export const agentUsageHandlers = {
 	getAgentUsage,
 	getAgentRateLimits,
 	getSystemMemory,
+	scanWorktreeOrphans,
+	killWorktreeOrphans,
 };

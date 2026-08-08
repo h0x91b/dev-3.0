@@ -2555,6 +2555,24 @@ export interface MemoryTaskConsumer {
 	rss: number;
 }
 
+/**
+ * Processes still running inside one finished task's worktree — the app's own
+ * leak, grouped per task so the breakdown can name who left them behind.
+ */
+export interface WorktreeOrphanGroup {
+	/** First 8 chars of the task id, read off the worktree path. */
+	shortId: string;
+	/** Null when no task record survives — the number is still real. */
+	taskId: string | null;
+	title: string;
+	projectId: string;
+	/** Command line of the group's root process, for the row's tooltip. */
+	command: string;
+	pids: number[];
+	processCount: number;
+	rss: number;
+}
+
 export interface SystemMemorySnapshot {
 	/** Bytes still available — the number the header pill shows. */
 	headroom: number;
@@ -3135,6 +3153,20 @@ export type AppRPCSchema = {
 			getSystemMemory: {
 				params: void;
 				response: SystemMemorySnapshot | null;
+			};
+			/**
+			 * Leftover processes inside worktrees of tasks with no live session.
+			 * On demand only (breakdown open / startup) — it costs an `lsof` over the
+			 * whole process table, which is why it is not part of the memory poll.
+			 */
+			scanWorktreeOrphans: {
+				params: void;
+				response: WorktreeOrphanGroup[];
+			};
+			/** Kill exactly the PIDs the user confirmed. Returns how many actually died. */
+			killWorktreeOrphans: {
+				params: { pids: number[] };
+				response: { killed: number; leftovers: number };
 			};
 			/** Agent account switcher (multi-account per agent CLI, hot-swap without re-login). */
 			listAgentAccounts: {

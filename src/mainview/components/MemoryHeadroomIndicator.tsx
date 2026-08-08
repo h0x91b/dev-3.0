@@ -162,7 +162,7 @@ export default function MemoryHeadroomIndicator({ navigate }: MemoryHeadroomIndi
 	const pressureClass = PRESSURE_TEXT_CLASS[snapshot.pressure];
 	const accessibleName = t("memory.ariaLabel", { free: formatBytes(snapshot.headroom) });
 
-	const breakdown = <MemoryBreakdownPanel snapshot={snapshot} onSelectTask={selectTask} />;
+	const breakdown = <MemoryBreakdownPanel snapshot={snapshot} onSelectTask={selectTask} onCloseOverlay={close} />;
 
 	return (
 		<>

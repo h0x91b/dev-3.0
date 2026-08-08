@@ -6,12 +6,21 @@ import MemoryHeadroomIndicator from "../MemoryHeadroomIndicator";
 import type { SystemMemorySnapshot } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { getSystemMemory: vi.fn() } },
+	api: { request: { getSystemMemory: vi.fn(), scanWorktreeOrphans: vi.fn(), killWorktreeOrphans: vi.fn() } },
 }));
 
+vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
+vi.mock("../../toast", () => ({
+	toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
+
+import { confirm } from "../../confirm";
 import { api } from "../../rpc";
 
+const mockedConfirm = confirm as unknown as ReturnType<typeof vi.fn>;
 const mockedGet = api.request.getSystemMemory as ReturnType<typeof vi.fn>;
+const mockedScan = api.request.scanWorktreeOrphans as ReturnType<typeof vi.fn>;
+const mockedKill = api.request.killWorktreeOrphans as ReturnType<typeof vi.fn>;
 
 const GIB = 1024 ** 3;
 
@@ -86,6 +95,14 @@ async function pushSnapshot(next: SystemMemorySnapshot) {
 beforeEach(() => {
 	mockedGet.mockReset();
 	mockedGet.mockResolvedValue(snapshot());
+	// Nothing leaked is the default: the leftovers section must be absent unless a
+	// test says otherwise.
+	mockedScan.mockReset();
+	mockedScan.mockResolvedValue([]);
+	mockedKill.mockReset();
+	mockedKill.mockResolvedValue({ killed: 0, leftovers: 0 });
+	mockedConfirm.mockReset();
+	mockedConfirm.mockResolvedValue(true);
 	mockViewport(1920);
 });
 
@@ -351,5 +368,89 @@ describe("MemoryHeadroomIndicator — the breakdown", () => {
 		const popover = await screen.findByTestId("memory-breakdown-popover");
 		expect(popover).toHaveTextContent(/Nothing outside dev-3\.0/i);
 		expect(popover).toHaveTextContent("0 active tasks");
+	});
+});
+
+describe("MemoryHeadroomIndicator — leftover processes", () => {
+	const LEFTOVERS = [
+		{
+			shortId: "aaaa1111",
+			taskId: "aaaa1111-full",
+			title: "Fix the toast dismiss button",
+			projectId: "p1",
+			command: "node dist/daemon.js",
+			pids: [101, 102],
+			processCount: 2,
+			rss: 6 * GIB,
+		},
+		{
+			shortId: "bbbb2222",
+			taskId: null,
+			title: "",
+			projectId: "",
+			command: "node dist/daemon.js",
+			pids: [201],
+			processCount: 1,
+			rss: 1 * GIB,
+		},
+	];
+
+	it("says nothing at all when nothing leaked", async () => {
+		const user = userEvent.setup();
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.click(pill());
+		await screen.findByTestId("memory-breakdown-popover");
+
+		// A permanent "all clean" line would train the eye to skip the region.
+		expect(screen.queryByTestId("memory-leftovers")).toBeNull();
+	});
+
+	it("lists the leftovers per task with a total, and names an unresolved task by its id", async () => {
+		mockedScan.mockResolvedValue(LEFTOVERS);
+		const user = userEvent.setup();
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.click(pill());
+
+		const section = await screen.findByTestId("memory-leftovers");
+		expect(section).toHaveTextContent("3 processes still running");
+		expect(section).toHaveTextContent("7.0 GB");
+		expect(section).toHaveTextContent("Fix the toast dismiss button");
+		expect(section).toHaveTextContent("bbbb2222");
+	});
+
+	it("kills exactly the PIDs it listed, after a confirmation", async () => {
+		mockedScan.mockResolvedValue(LEFTOVERS);
+		mockedKill.mockResolvedValue({ killed: 3, leftovers: 0 });
+		const user = userEvent.setup();
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.click(pill());
+		await screen.findByTestId("memory-leftovers");
+
+		await user.click(screen.getByTestId("memory-leftovers-kill"));
+
+		// The popover closes before the dialog: a confirm under a hover-dismissed
+		// popover reads as a dialog with no context.
+		expect(screen.queryByTestId("memory-breakdown-popover")).toBeNull();
+		await waitFor(() => expect(mockedConfirm).toHaveBeenCalled());
+		expect(mockedConfirm.mock.calls[0][0]).toMatchObject({ danger: true });
+		await waitFor(() => expect(mockedKill).toHaveBeenCalledWith({ pids: [101, 102, 201] }));
+	});
+
+	it("kills nothing when the confirmation is declined", async () => {
+		mockedScan.mockResolvedValue(LEFTOVERS);
+		mockedConfirm.mockResolvedValue(false);
+		const user = userEvent.setup();
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.click(pill());
+		await screen.findByTestId("memory-leftovers");
+
+		await user.click(screen.getByTestId("memory-leftovers-kill"));
+
+		await waitFor(() => expect(mockedConfirm).toHaveBeenCalled());
+		expect(mockedKill).not.toHaveBeenCalled();
 	});
 });

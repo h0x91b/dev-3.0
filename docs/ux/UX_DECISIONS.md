@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-08 — The memory breakdown may kill leftover worktree processes, and nothing else
+
+- **Rule:** one conditional section at the bottom of the dev3 group in the memory popover/BottomSheet lists processes still running inside task worktrees and offers a single ghost-danger `Kill` behind `confirm({ danger: true })`; gated on `count > 0`, no empty state, scanned on open + once at startup, never in the poller. Bible §12.6, yaml `global_header.ambient_resource_readout.reclaim_action`.
+- **Why:** the readout's charter is answering "who took my memory" without flattering our own share — refusing to let the user reclaim *our* leak would be that flattery. Rejected: a Settings → Maintenance screen (a destination for a rare fault nobody would open); a startup toast (this row explicitly forbids pressure toasts); silently auto-killing everything (a worktree still claimed by a live task can legitimately hold a running browser).
+- **Status:** proposed. Evidence: `MemoryBreakdownPanel.tsx`, `src/bun/worktree-reaper.ts`, `decisions/2026/08/08/reap-worktree-cwd-holders-on-teardown.md`.
+
 ## 2026-08-08 — An archived task reaches its images and artifacts as enumerated rows
 
 - **Rule:** the archived (completed/cancelled) task modal lists every `dev3 show-image` image and `dev3 show-artifact` artifact as its own clickable row above Notes (`SharedOutputsList.tsx`); rows open the App-hosted viewers at their own index, the artifact viewer as a standalone overlay. Bible §3, yaml `task_image_viewer.reached_from` / `task_artifact_workspace.standalone_overlay`.
