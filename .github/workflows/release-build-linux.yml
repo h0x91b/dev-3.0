@@ -77,23 +77,10 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Restore node_modules cache
-        id: cache-deps
-        uses: actions/cache/restore@v5
-        with:
-          path: ./node_modules
-          key: bun-deps-linux-${{ inputs.arch }}-${{ hashFiles('bun.lock') }}
-
+      # Deliberately NOT cached: measured, a cache hit restored in 7s where `bun install`
+      # takes 5s, and the entries ate 4.8 GiB of the 10 GB repo cache the Windows proof needs.
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: bun install
-
-      - name: Save node_modules cache
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ./node_modules
-          key: bun-deps-linux-${{ inputs.arch }}-${{ hashFiles('bun.lock') }}
 
       - name: Clean build directory
         run: rm -rf ./build ./artifacts

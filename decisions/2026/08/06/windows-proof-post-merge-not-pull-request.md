@@ -143,9 +143,13 @@ were proven red on the intended assertion, including "rename the upload command"
 
 ## Alternatives considered
 
-- **Keep the PR gate and shorten the Windows jobs instead.** The 306 s is mostly ~15 sequential E2E
-  steps in one job (209's adjacent finding). Rejected as the *primary* fix: even halved it is minutes on
-  every in-scope PR, and lowering a job to make a gate's numbers look better defeats the gate.
+- **Keep the PR gate and shorten the Windows jobs instead.** Rejected as the *primary* fix: even halved
+  it is minutes on every in-scope PR, and lowering a job to make a gate's numbers look better defeats the
+  gate. ⚠️ The reason given here originally — "the 306 s is mostly ~15 sequential E2E steps in one job" —
+  **repeated 209's adjacent finding, and that finding has since been disproved by per-step measurement**:
+  the E2E steps are 123 s of 486 s, while `bun install` on Windows is 255 s. See the corrected section in
+  `decisions/2026/08/06/required-checks-wait-for-windows-packaging.md`. The rejection stands; only its
+  stated reason was wrong.
 - **Release-only, no post-merge run.** Simplest, and requirement 4 alone would satisfy "a break cannot
   ship". Rejected by Arseny: a break then surfaces at release time against a day or more of merges, and
   attributing it means a bisect. Per-commit attribution is the whole point.

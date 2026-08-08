@@ -18,23 +18,10 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Restore node_modules cache
-        id: cache-deps
-        uses: actions/cache/restore@v5
-        with:
-          path: ./node_modules
-          key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
-
+      # Deliberately NOT cached: measured, a cache hit restored in 7s where `bun install`
+      # takes 5s, and the entries ate 4.8 GiB of the 10 GB repo cache the Windows proof needs.
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: bun install
-
-      - name: Save node_modules cache
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ./node_modules
-          key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
 
       - name: Generate build files
         run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
@@ -58,23 +45,10 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Restore node_modules cache
-        id: cache-deps
-        uses: actions/cache/restore@v5
-        with:
-          path: ./node_modules
-          key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
-
+      # Deliberately NOT cached: measured, a cache hit restored in 7s where `bun install`
+      # takes 5s, and the entries ate 4.8 GiB of the 10 GB repo cache the Windows proof needs.
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: bun install
-
-      - name: Save node_modules cache
-        if: steps.cache-deps.outputs.cache-hit != 'true' && matrix.shard == 1
-        uses: actions/cache/save@v5
-        with:
-          path: ./node_modules
-          key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
 
       - name: Generate build files
         run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
@@ -427,23 +401,10 @@ jobs:
         with:
           bun-version: "1.3.14"
 
-      - name: Restore node_modules cache
-        id: cache-deps
-        uses: actions/cache/restore@v5
-        with:
-          path: ./node_modules
-          key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
-
+      # Deliberately NOT cached: measured, a cache hit restored in 7s where `bun install`
+      # takes 5s, and the entries ate 4.8 GiB of the 10 GB repo cache the Windows proof needs.
       - name: Install dependencies
-        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: bun install
-
-      - name: Save node_modules cache
-        if: steps.cache-deps.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: ./node_modules
-          key: bun-deps-linux-x64-${{ hashFiles('bun.lock') }}
 
       - name: Generate build files
         run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts

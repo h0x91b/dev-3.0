@@ -29,8 +29,32 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      # Windows only, and the asymmetry is the point: the same command in the same run
+      # takes 4-5s on ubuntu, 10-36s on macOS and 255s on windows-latest — ~94k files
+      # materialised onto NTFS, not a slow download. Caching the posix legs would buy
+      # seconds while evicting entries from a repo cache already at its 10 GB ceiling.
+      # Same idiom and same shape as build.yml; the key must stay per-OS, caches do not
+      # travel between runners. See decisions/2026/08/06/required-checks-wait-for-windows-packaging.md.
+      - name: Restore node_modules cache (Windows only)
+        id: cache-deps
+        if: runner.os == 'Windows'
+        uses: actions/cache/restore@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-windows-x64-${{ hashFiles('bun.lock') }}
+
       - name: Install dependencies
+        # Skipped only on a Windows cache hit: on the posix legs the restore step above
+        # never ran, so cache-hit is empty and this stays unconditional there.
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
+
+      - name: Save node_modules cache (Windows only)
+        if: runner.os == 'Windows' && steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-windows-x64-${{ hashFiles('bun.lock') }}
 
       - name: Native shell launch pure tests
         run: bun run test:native-shell-launch
@@ -184,8 +208,26 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      # Same 255s-on-Windows install as the matrix job above, paid a second time in
+      # parallel, so both jobs have to be cached or the gate's duration does not move.
+      # Same key on purpose: same lockfile, same runner, one entry serves both.
+      - name: Restore node_modules cache
+        id: cache-deps
+        uses: actions/cache/restore@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-windows-x64-${{ hashFiles('bun.lock') }}
+
       - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
+
+      - name: Save node_modules cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-windows-x64-${{ hashFiles('bun.lock') }}
 
       # postBuild assembles + validates the host image inside the bundle;
       # postPackage re-verifies it from the final `.tar.zst` and drives the

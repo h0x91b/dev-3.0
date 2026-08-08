@@ -161,11 +161,35 @@ Other risks:
   replicate the paths filter to know whether a run should exist, which is the duplicated-list drift this
   design exists to avoid.
 
-## Adjacent finding, deliberately not fixed here
+## Adjacent finding — ⚠️ DISPROVED BY MEASUREMENT, see below
 
-`package-runtime`'s Windows leg spends its ~306 s largely on roughly 15 sequential E2E steps in one job
-(native shell launch, process naming, two CLI loopback E2Es, packaged host image, four native-session
-E2Es, cross-instance owner routing, product task-terminal, adapter parity, multi-pane coordinator, the
-explicit Windows shell launch matrix, two live-parser probes). Splitting or parallelising them may be a
-cheaper fix to the wall-clock cost than anything in this record. Not touched: lowering a job to make the
-gate's numbers look better would defeat the gate.
+  ⚠️ **FALSE.** The original text claimed `package-runtime`'s Windows leg spends its ~306 s "largely on
+  roughly 15 sequential E2E steps in one job", and suggested splitting or parallelising them as the
+  cheaper fix. **The E2E steps are not where the time goes.** The claim was never measured per step; it
+  was inferred from reading the step list, and it sent Seq 1435 ("Speed up the Windows CI leg") off with
+  the wrong diagnosis already written into its description.
+
+**What the per-step numbers actually say** — release run 31248826195 (v1.42.1), attempt 2,
+`package-runtime (windows-latest)`, 486 s total:
+
+| Step | Time | Share |
+|---|---|---|
+| `bun install --frozen-lockfile` | **255 s** | **52%** |
+| `Build packaged runtime tracer` | 76 s | 16% |
+| All 19 E2E steps together | 123 s | 25% |
+| Set up, checkout, Bun, uploads, teardown | 32 s | 7% |
+
+`windows-app-archive` in the same run pays the same tax: `bun install` 249 s of its 456 s (55%).
+
+**The install is Windows-specific, not network-bound.** Same command, same lockfile, same run:
+ubuntu 4–5 s, macOS 10–36 s, **windows-latest 255 s and 249 s** — a ~50× gap. There is no `actions/cache`
+anywhere in `windows-conpty-package.yml`, while `build.yml` has cached `./node_modules` under
+`bun-deps-linux-x64-${{ hashFiles('bun.lock') }}` the whole time. Both Windows jobs run in parallel and
+both pay it, so this one step sets the duration of the entire `windows-proof` gate.
+
+The original advice is not merely imprecise, it is inverted: perfectly parallelising all 19 E2E steps
+would save at most ~2 minutes, and the install is over 4. Measured under Seq 1472; the cache fix and its
+cold/warm numbers live there.
+
+Unchanged from the original: lowering a job to make the gate's numbers look better would defeat the gate.
+Caching dependency installation proves exactly as much as installing them.
