@@ -12,9 +12,29 @@ name: Unstable publish
 # Scheduled workflows are BEST EFFORT and can fire late. A missed tick is harmless: the next
 # one still sees the sha mismatch and builds, so no commit is ever permanently unpublished.
 on:
-  schedule:
-    # Offset off the hour: the top of the hour is the busiest slot on shared runners.
-    - cron: "23 * * * *"
+  # THE SCHEDULE IS OFF, AND THIS IS NOT A PAUSE FOR CONVENIENCE.
+  #
+  # `electrobun build --env=unstable` cannot produce an unstable build today. The CLI that
+  # actually runs is a COMPILED BINARY that `node_modules/electrobun/bin/electrobun.cjs`
+  # downloads from the vendor's releases (`ensureCliBinary()`); `patches/electrobun@*.patch`
+  # edits `src/cli/index.ts`, which that path never executes. So `--env=unstable` hits the
+  # vendor's own allowlist and degrades to `dev` — caught on run 31251014417 by the built-
+  # folder check in create-release-artifacts.sh (`expected ./build/unstable-linux-x64 but
+  # found ./build/dev-linux-x64`), which is the one guard that asserts a RESULT.
+  #
+  # Left on the schedule, this fails all four builds every hour, forever. An hourly red
+  # nobody can fix is worse than no workflow: it is ignored within a day, and by the same
+  # people who would have to notice the next real failure.
+  #
+  # RE-ENABLE ONLY TOGETHER WITH A BUILD PATH PROVEN TO EMIT `unstable-*` — proven by a check
+  # on the RESULT, not by asserting a patch is applied to a file nobody executes, which is
+  # exactly what stayed green while this was broken. `unstable-publish.test.ts` guards it;
+  # delete that guard in the same change.
+  #   schedule:
+  #     - cron: "23 * * * *"
+  #
+  # Still dispatchable by hand, deliberately: whoever fixes the build path needs to run this
+  # end to end, and a manual run is a person watching it rather than a red left on a wall.
   # Safe to press on an unchanged `main`: every platform skips, and a republish of the same
   # commit reproduces the same `buildOrder` so clients would not reinstall anyway.
   workflow_dispatch:

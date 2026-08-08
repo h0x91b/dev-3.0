@@ -19,6 +19,32 @@ export type UpdateChannel = "stable" | "unstable";
 export const DEFAULT_UPDATE_CHANNEL: UpdateChannel = "stable";
 
 /**
+ * FALSE, because nothing is published under `unstable-*` and nothing can be yet.
+ *
+ * `electrobun build --env=unstable` cannot produce an unstable build: the CLI that actually
+ * runs is a compiled binary the vendor's `bin/electrobun.cjs` downloads (`ensureCliBinary()`),
+ * while `patches/electrobun@*.patch` edits `src/cli/index.ts`, which that path never
+ * executes — so `--env` hits the vendor's allowlist and degrades to `dev`. v1.42.1 shipped
+ * the control live regardless, so a macOS user who picks Unstable gets a bare
+ * `HTTP 403 fetching update.json` and stays in it until they switch back.
+ *
+ * TWO THINGS HANG OFF THIS FLAG, and the second is the one that is easy to omit:
+ *  1. the Settings control is disabled — that protects whoever has NOT switched yet;
+ *  2. {@link coerceUpdateChannel} collapses to stable — the ONLY thing that helps whoever
+ *     ALREADY switched. The control is UI, but the update check reads the persisted
+ *     setting directly, so disabling the select alone would ship a fix that does nothing
+ *     for the single person it exists for.
+ *
+ * The collapse happens in memory, on load. Nothing under `~/.dev3.0/` is rewritten, so an
+ * older installed build reading the same file still finds the value it wrote.
+ *
+ * DELETE THIS CONSTANT — do not flip it to `true` — in the change that gives the second
+ * channel a build path PROVEN to emit its artifacts. A permanently-true constant is a dead
+ * branch whose guard tests then assert nothing.
+ */
+export const UNSTABLE_FEED_AVAILABLE = false;
+
+/**
  * Read a persisted channel value. Anything that is not exactly `"unstable"` becomes
  * `"stable"`.
  *
@@ -31,6 +57,10 @@ export const DEFAULT_UPDATE_CHANNEL: UpdateChannel = "stable";
  * as a compatibility alias.
  */
 export function coerceUpdateChannel(value: unknown): UpdateChannel {
+	// While the second channel has no feed, a value already persisted by v1.42.1 must
+	// collapse too — see {@link UNSTABLE_FEED_AVAILABLE}. Disabling the control alone
+	// leaves the one user who already switched exactly where they were.
+	if (!UNSTABLE_FEED_AVAILABLE) return DEFAULT_UPDATE_CHANNEL;
 	return value === "unstable" ? "unstable" : DEFAULT_UPDATE_CHANNEL;
 }
 

@@ -42,8 +42,15 @@ describe("the persisted channel value", () => {
 		}
 	});
 
-	it("accepts exactly the one opt-in spelling", () => {
-		expect(coerceUpdateChannel("unstable")).toBe("unstable");
+	// While UNSTABLE_FEED_AVAILABLE is false the opt-in spelling collapses too — that is the
+	// half of the patch that reaches a user who ALREADY switched on v1.42.1, since the update
+	// check reads this persisted value rather than the (now disabled) Settings control.
+	// Restore the accepts-the-opt-in-spelling assertion in the change that deletes the flag.
+	it("collapses even the opt-in spelling while the second channel has no feed", () => {
+		expect(
+			coerceUpdateChannel("unstable"),
+			"a value persisted by v1.42.1 must collapse to stable while the feed is unavailable, in memory and without rewriting settings.json. Fix: keep the UNSTABLE_FEED_AVAILABLE guard at the top of coerceUpdateChannel until the channel has a proven build path.",
+		).toBe("stable");
 	});
 });
 

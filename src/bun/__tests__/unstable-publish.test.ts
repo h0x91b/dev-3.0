@@ -94,6 +94,25 @@ describe("deciding whether a platform needs an unstable build", () => {
 });
 
 /**
+ * THE SCHEDULE IS OFF ON PURPOSE, and this guard is what stops that fact from being quietly
+ * undone. `electrobun build --env=unstable` cannot produce an unstable build: the CLI that
+ * runs is a compiled binary the vendor's `bin/electrobun.cjs` downloads, while the patch
+ * edits `src/cli/index.ts`, which that path never executes — so `--env` degrades to `dev`.
+ * Left on the cron, all four builds fail every hour forever, and an hourly red is ignored
+ * within a day by exactly the people who must notice the next real one.
+ */
+describe("the hourly schedule stays off until the build path is proven", () => {
+	it("has no active cron while --env=unstable cannot produce an unstable build", () => {
+		const triggers = WORKFLOW.slice(WORKFLOW.indexOf("\non:"), WORKFLOW.indexOf("\njobs:"));
+		const activeCron = triggers.split("\n").filter((l) => /^\s*-?\s*(schedule:|cron:)/.test(l));
+		expect(
+			activeCron,
+			`the cron is live again. It may only be re-enabled together with a build path PROVEN to emit unstable-* artifacts — proven by a check on the RESULT, like the built-folder comparison in create-release-artifacts.sh, not by asserting that a patch is applied to a source file nobody executes (that is exactly what passed while the feature was broken). Delete this test in the same change that re-enables the schedule.`,
+		).toEqual([]);
+	});
+});
+
+/**
  * THE BOOTSTRAP LOOP, found by probing the live bucket rather than by reading the code.
  *
  * A missing key on h0x91b-releases answers 403 AccessDenied to an anonymous caller — proven

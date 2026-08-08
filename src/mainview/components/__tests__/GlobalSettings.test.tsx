@@ -4,7 +4,7 @@ import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
-import * as confirmService from "../../confirm";
+import { coerceUpdateChannel } from "../../../shared/update-channel";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -118,8 +118,6 @@ async function waitForLoad() {
 		expect(mockedApi.request.getGlobalSettings).toHaveBeenCalled();
 	});
 }
-
-const mockedConfirm = vi.mocked(confirmService.confirm);
 
 /** Open a custom Select trigger (by element id) and click the option labeled `label`. */
 async function pickFromSelect(user: ReturnType<typeof userEvent.setup>, triggerId: string, label: string) {
@@ -426,53 +424,36 @@ describe("GlobalSettings", () => {
 			expect(select).toBeInTheDocument();
 		});
 
-		// The control shipped `disabled` for as long as no unstable feed existed — picking a
-		// channel with no manifest in the bucket gets a 403, which the UI renders as "you are
-		// up to date", forever and silently. The feed exists now, so the gate is gone.
-		// Re-disabling it would look identical to "feature present" on a screenshot.
-		it("is enabled, so the channel is actually choosable", async () => {
+		// The control is `disabled` again, because nothing is published under `unstable-*` and
+		// the build path cannot produce it. v1.42.1 shipped it live: picking the channel gets a
+		// bare `HTTP 403 fetching update.json` on macOS, and the user stays in it. Enabling this
+		// again without a PROVEN build path re-ships that.
+		it("is disabled while the second channel has no feed", async () => {
 			setupMocks();
 			renderGlobalSettings("system");
 			await waitForLoad();
 
 			expect(
 				screen.getByDisplayValue("Stable"),
-				"the update-channel select must be enabled. It was `disabled` while no unstable feed was published; re-disabling it silently removes the feature while leaving the UI looking complete.",
-			).not.toBeDisabled();
+				"the update-channel select must stay disabled while UNSTABLE_FEED_AVAILABLE is false. Fix: DELETE that constant — do not flip it — in the same change that lands a build path proven to emit the channel's artifacts, and restore the enabled-control assertions with it.",
+			).toBeDisabled();
 		});
 
-		it("persists the switch only after the user confirms the consequence", async () => {
-			setupMocks();
-			mockedConfirm.mockResolvedValue(true);
-			const user = userEvent.setup();
-			renderGlobalSettings("system");
-			await waitForLoad();
-
-			await user.selectOptions(screen.getByDisplayValue("Stable"), "unstable");
-
+		// The disabled control protects whoever has NOT switched. This is the half that helps
+		// whoever ALREADY did: the update check reads the persisted setting, not the select.
+		it("collapses a persisted unstable choice back to stable", () => {
 			expect(
-				mockedConfirm,
-				"switching channels must go through confirm(): unstable is main as it lands, and switching back installs an OLDER build that then reads state a newer one wrote.",
-			).toHaveBeenCalled();
-			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
-				expect.objectContaining({ updateChannel: "unstable" }),
-			);
+				coerceUpdateChannel("unstable"),
+				"a channel already saved by v1.42.1 must collapse to stable while the feed is unavailable. Without this the patch disables a control the affected user never touches again and leaves them on the broken channel — a fix that looks complete and helps nobody.",
+			).toBe("stable");
 		});
 
-		it("writes nothing when the user cancels the confirmation", async () => {
-			setupMocks();
-			mockedConfirm.mockResolvedValue(false);
-			const user = userEvent.setup();
-			renderGlobalSettings("system");
-			await waitForLoad();
-
-			await user.selectOptions(screen.getByDisplayValue("Stable"), "unstable");
-
-			expect(
-				mockedApi.request.saveGlobalSettings,
-				"a cancelled confirmation must leave the setting untouched. Persisting first and confirming after would put the user on unstable the moment the dialog appeared.",
-			).not.toHaveBeenCalled();
-		});
+		// The confirmation-flow tests (switch persists only after confirm; cancel writes
+		// nothing; switching back names the direction) drove the select with userEvent, which
+		// cannot operate a disabled control. They are removed rather than weakened, and they
+		// come back with the control itself — restore them in the same change that deletes
+		// UNSTABLE_FEED_AVAILABLE. The confirm() handler they covered is untouched by this
+		// patch; nothing can reach it while the select is disabled.
 	});
 
 	describe("default agent selection", () => {

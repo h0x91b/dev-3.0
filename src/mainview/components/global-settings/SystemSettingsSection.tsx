@@ -1,5 +1,5 @@
 import type { GlobalSettings } from "../../../shared/types";
-import type { UpdateChannel } from "../../../shared/update-channel";
+import { UNSTABLE_FEED_AVAILABLE, type UpdateChannel } from "../../../shared/update-channel";
 import type { TFunction } from "../../i18n";
 import BrowserNotificationsSetting from "./BrowserNotificationsSetting";
 import SettingsEntry from "./SettingsEntry";
@@ -34,7 +34,10 @@ export default function SystemSettingsSection({
 					<select
 						value={globalSettings.updateChannel}
 						onChange={(event) => onUpdateChannelChange(event.target.value as UpdateChannel)}
-						className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none"
+						disabled={!UNSTABLE_FEED_AVAILABLE}
+						className={`w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none${
+							UNSTABLE_FEED_AVAILABLE ? "" : " cursor-not-allowed opacity-50"
+						}`}
 					>
 						<option value="stable">{t("settings.updateChannelStable")}</option>
 						<option value="unstable">{t("settings.updateChannelUnstable")}</option>
