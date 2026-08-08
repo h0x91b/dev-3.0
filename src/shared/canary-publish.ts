@@ -9,12 +9,19 @@
  * See decisions/2026/08/06/stable-canary-update-channels.md.
  */
 
-/** Every platform the canary channel publishes, in the order the workflow declares them. */
+/**
+ * Every platform the canary channel publishes, in the order the workflow declares them.
+ *
+ * The `os` token is the one `getPlatformPrefix()` in src/bun/updater.ts builds its feed URL
+ * from, so Windows is `win`, never `windows`. The same token names electrobun's build folder
+ * (`build/canary-win-x64`) and its artifact prefix, which is why one string serves all three.
+ */
 export const CANARY_PLATFORMS = [
 	{ os: "macos", arch: "arm64" },
 	{ os: "macos", arch: "x64" },
 	{ os: "linux", arch: "x64" },
 	{ os: "linux", arch: "arm64" },
+	{ os: "win", arch: "x64" },
 ] as const;
 
 /**

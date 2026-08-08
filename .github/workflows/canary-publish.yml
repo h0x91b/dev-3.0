@@ -52,6 +52,7 @@ jobs:
       macos-x64: ${{ steps.probe.outputs.macos-x64 }}
       linux-x64: ${{ steps.probe.outputs.linux-x64 }}
       linux-arm64: ${{ steps.probe.outputs.linux-arm64 }}
+      win-x64: ${{ steps.probe.outputs.win-x64 }}
     steps:
       - uses: actions/checkout@v5
 
@@ -96,7 +97,8 @@ jobs:
       needs.decide.outputs.macos-arm64 == 'true' ||
       needs.decide.outputs.macos-x64 == 'true' ||
       needs.decide.outputs.linux-x64 == 'true' ||
-      needs.decide.outputs.linux-arm64 == 'true'
+      needs.decide.outputs.linux-arm64 == 'true' ||
+      needs.decide.outputs.win-x64 == 'true'
     uses: ./.github/workflows/windows-conpty-package.yml
 
   # ──────────────────────────────────────────────────
@@ -159,3 +161,23 @@ jobs:
       tag: ${{ github.sha }}
       publish: true
       bestEffort: true
+
+  # THE ONLY CHANNEL WINDOWS PUBLISHES TO. There is deliberately no Windows caller in
+  # release.yml: the stable feed is what an ordinary user's app polls, and the Windows build
+  # is UNSIGNED — SmartScreen greets its first launch — so it goes where the stakes are low
+  # first. See decisions/2026/08/08/windows-ships-through-canary-first.md.
+  #
+  # `bestEffort: false`: unlike linux-arm64, this platform is proven. The same commit is
+  # packaged, launched and shut down cleanly by the `windows-proof` gate above before this job
+  # starts, so a failure here is a real failure of the publish, not an unproven target.
+  build-win-x64:
+    needs: [decide, windows-proof]
+    if: needs.decide.outputs.win-x64 == 'true'
+    uses: ./.github/workflows/release-build-windows.yml
+    secrets: inherit
+    with:
+      arch: x64
+      runsOn: windows-latest
+      channel: canary
+      tag: ${{ github.sha }}
+      publish: true

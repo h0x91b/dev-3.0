@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Creates release artifacts for a given OS, architecture and update channel.
 # Usage: ./scripts/create-release-artifacts.sh <os> <arch> <channel>
-#   os:      macos or linux
+#   os:      macos, linux or win
 #   arch:    arm64 or x64
 #   channel: stable or canary (must match the `electrobun build --env=` used)
 # Outputs artifacts to ./artifacts-<os>-<arch>/
@@ -18,8 +18,17 @@ set -euo pipefail
 # and `buildOrder` fields the channel logic needs. A second writer would let the feed
 # disagree with itself.
 
-OS="${1:?Usage: $0 <os> <arch> <channel> (os: macos|linux, arch: arm64|x64, channel: stable|canary)}"
-ARCH="${2:?Usage: $0 <os> <arch> <channel> (os: macos|linux, arch: arm64|x64, channel: stable|canary)}"
+OS="${1:?Usage: $0 <os> <arch> <channel> (os: macos|linux|win, arch: arm64|x64, channel: stable|canary)}"
+ARCH="${2:?Usage: $0 <os> <arch> <channel> (os: macos|linux|win, arch: arm64|x64, channel: stable|canary)}"
+# OS IS VALIDATED, and `win` is the whole reason. It is the token getPlatformPrefix() in
+# src/bun/updater.ts builds the feed URL from, so `windows` — the obvious thing to type, and
+# what every runner label and workflow filename says — would produce a perfectly well-formed
+# `canary-windows-x64-update.json` that no client ever asks for, with the run green and the
+# bucket looking populated. Before this guard the unknown OS just fell into the linux branch.
+if [ "$OS" != "macos" ] && [ "$OS" != "linux" ] && [ "$OS" != "win" ]; then
+  echo "::error::unknown os '${OS}' (expected macos|linux|win). This token names electrobun's build folder AND the published manifest key the in-app updater fetches (getPlatformPrefix in src/bun/updater.ts) — Windows is 'win', never 'windows'."
+  exit 1
+fi
 # CHANNEL is REQUIRED and deliberately NOT defaulted. A default would let a future
 # caller publish canary artifacts into the stable feed — every filename here is
 # prefixed with it — and nothing would go red, because a missing argument would read
@@ -43,6 +52,9 @@ BUILD_DIR="./build/${CHANNEL}-${OS}-${ARCH}"
 PLATFORM_PREFIX="${CHANNEL}-${OS}-${ARCH}"
 OUTPUT_DIR="./artifacts-${OS}-${ARCH}"
 ZSTD="./node_modules/electrobun/dist-${OS}-${ARCH}/zig-zstd"
+if [ "$OS" = "win" ]; then
+  ZSTD="${ZSTD}.exe"
+fi
 
 # Identity and ordering for the manifest. `sha` says WHICH COMMIT (the hourly canary
 # workflow compares it against main to decide whether to build at all); `buildOrder`
@@ -104,6 +116,13 @@ if [ "$OS" = "macos" ]; then
   APP_BUNDLE="${APP_FILE_NAME}.app"
   TAR_NAME="${APP_FILE_NAME}.app.tar"
   VERSION_JSON_SUBPATH="${APP_BUNDLE}/Contents/Resources/version.json"
+elif [ "$OS" = "win" ]; then
+  # Same flat bundle shape as Linux, but capital-R `Resources` — measured off the tree the
+  # launch proof extracted on run 31257371545 (`dev-3.0-canary/bin/launcher.exe`,
+  # `dev-3.0-canary/Resources/app/...`). find_version_json's fallback covers a layout change.
+  APP_BUNDLE="${APP_FILE_NAME}"
+  TAR_NAME="${APP_FILE_NAME}.tar"
+  VERSION_JSON_SUBPATH="${APP_BUNDLE}/Resources/version.json"
 else
   APP_BUNDLE="${APP_FILE_NAME}"
   TAR_NAME="${APP_FILE_NAME}.tar"

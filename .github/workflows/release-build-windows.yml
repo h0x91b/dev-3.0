@@ -1,0 +1,182 @@
+name: Release build (Windows)
+
+# The Windows leg of the publishing path, shaped like release-build-macos.yml and
+# release-build-linux.yml so one reader can hold all three. Today it has exactly ONE caller —
+# canary-publish.yml. That is deliberate: the build is UNSIGNED and will never be signed (no
+# certificate, by decision), so its first launch on any machine shows Windows' SmartScreen
+# warning. That belongs on the channel whose users opted into surprises.
+# See decisions/2026/08/08/windows-ships-through-canary-first.md.
+#
+# TWO FILES ARE PUBLISHED, and they are not interchangeable:
+#   `<channel>-win-<arch>-<app>.tar.zst`  the in-app updater's download. Windows tar.exe cannot
+#                                        read zstd, so a human cannot open it.
+#   `<channel>-win-<arch>-<app>.zip`      the first install. The tree the launch proof below
+#                                        actually spawned, zipped, so Explorer extracts it with
+#                                        nothing installed.
+#
+# NO CLI TARBALL. create-cli-tarball.sh has a macos branch and a linux branch and no Windows
+# one; `dev3.exe` ships INSIDE the bundle (`Resources/app/cli/dev3.exe`, asserted by the launch
+# proof), so there is nothing missing here — adding a Windows branch to that script is its own
+# change, with `dev3 self-install` on Windows to think about.
+#
+# EVERY INPUT IS REQUIRED, NO DEFAULTS. A default publishes the wrong channel, or publishes at
+# all from a dry run, with every test still green.
+
+on:
+  workflow_call:
+    inputs:
+      arch:
+        description: "x64 — feeds cache keys, script args and artifact paths (no arm64 Windows target today)"
+        required: true
+        type: string
+      runsOn:
+        description: "Runner label (windows-latest)"
+        required: true
+        type: string
+      channel:
+        description: "stable or canary — prefixes every artifact name and the update manifest"
+        required: true
+        type: string
+      tag:
+        description: "Tag or ref being built, used for the versioned S3 prefix"
+        required: true
+        type: string
+      publish:
+        # THE MOST DANGEROUS INPUT IN THIS FILE, for the reason spelled out at length in
+        # release-build-linux.yml: a reusable workflow cannot read its caller's `needs`, and a
+        # job output is a STRING, so a raw `false` arrives truthy and every dry run becomes a
+        # live publish to the feed real users poll, while the run stays green.
+        description: "Whether to upload to S3. Pass an explicit boolean comparison, never a raw output string."
+        required: true
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runsOn }}
+    # The packaging half of this job is measured at ~3 minutes on windows-latest (run
+    # 31257371545); the rest of the budget is the launch proof's 4-minute readiness window plus
+    # zipping and uploading ~400 MB. Same 35 as the proof job it mirrors.
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history + tags: build-update-changelog.ts resolves the previous release tag and
+          # diffs the changelog window. The shallow default left the update popover empty
+          # (decision 152).
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      # `bun install` costs ~255s on Windows — the one platform where it is worth caching, and
+      # the same key the Windows proof job uses on purpose: same lockfile, same runner, one
+      # entry serves both.
+      - name: Restore node_modules cache
+        id: cache-deps
+        uses: actions/cache/restore@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-windows-x64-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Save node_modules cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-windows-x64-${{ hashFiles('bun.lock') }}
+
+      - name: Clean build directory
+        shell: bash
+        run: rm -rf ./build ./artifacts
+
+      # The same command list as `package:win-archive`, with the channel as an input instead of
+      # hardcoded `canary`. electrobun's own postBuild/postPackage hooks assemble and re-verify
+      # the native terminal host image out of the final archive from here.
+      - name: Build release
+        env:
+          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
+          VITE_POSTHOG_HOST: ${{ secrets.VITE_POSTHOG_HOST }}
+        run: |
+          bun scripts/generate-build-info.ts
+          bun scripts/generate-changelog.ts
+          bunx vite build
+          bun run build:cli
+          bunx electrobun build --env=${{ inputs.channel }}
+
+      - name: Debug build output
+        if: always()
+        shell: bash
+        run: |
+          echo "=== ./build/ ==="
+          find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
+          echo "=== ./artifacts/ ==="
+          ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
+
+      # THE STEP THAT MAKES THIS PUBLISHABLE AT ALL, and it has no `continue-on-error`.
+      # It extracts the very archive published below, launches the desktop executable, waits for
+      # the ready marker and proves the whole process tree dies. A Windows build that never
+      # reached a window must not reach a user, and this is the only thing standing between
+      # those two facts.
+      - name: Launch the packaged Windows app and prove clean shutdown
+        timeout-minutes: 10
+        env:
+          DEV3_REQUIRE_WINDOWS_PROOF: "1"
+          # Durable, not a temp workspace the script deletes: the zip staged in the next step is
+          # built out of THIS directory, so the bytes a human downloads are the bytes that ran.
+          DEV3_WINDOWS_APP_UNPACK_DIR: ${{ github.workspace }}\windows-app-unpacked
+        run: bun run verify:win-app-launch
+
+      - name: Upload Windows launch proof
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-launch-proof-${{ inputs.channel }}-${{ inputs.arch }}
+          path: |
+            artifacts/windows-app-launch-proof.json
+            artifacts/windows-app-layout.json
+            artifacts/windows-conpty-package-proof.json
+
+      # BEFORE create-release-artifacts.sh, which deletes ./artifacts and with it the proof this
+      # reads. Reads `retainedUnpackDir` out of the launch proof, so it cannot zip a tree
+      # nothing launched.
+      - name: Stage the launched tree as the downloadable zip
+        env:
+          DEV3_RELEASE_CHANNEL: ${{ inputs.channel }}
+          DEV3_RELEASE_ARCH: ${{ inputs.arch }}
+        run: bun scripts/package-windows-launched-tree.ts
+
+      - name: Create release artifacts
+        shell: bash
+        run: bash ./scripts/create-release-artifacts.sh win ${{ inputs.arch }} ${{ inputs.channel }}
+
+      - name: Upload artifacts to S3
+        if: inputs.publish
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+        run: |
+          TAG="${{ inputs.tag }}"
+          aws s3 sync "./artifacts-win-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          # THE MANIFEST GOES LAST, AND IT IS THE ONLY FILE CLIENTS DISCOVER BUILDS THROUGH.
+          # Measured on run 31091740061: one sync of the whole directory uploaded
+          # `*-update.json` FIRST on 4 of 4 platforms, advertising a tarball not yet at the root
+          # path for 2.25-2.99s. Splitting the root sync in two closes that window; a client
+          # polling between the two syncs reads the PREVIOUS manifest, which is correct.
+          aws s3 sync "./artifacts-win-${{ inputs.arch }}/" "s3://h0x91b-releases/dev-3.0/" \
+            --exclude "*-update.json"
+          aws s3 cp "./artifacts-win-${{ inputs.arch }}/${{ inputs.channel }}-win-${{ inputs.arch }}-update.json" \
+            "s3://h0x91b-releases/dev-3.0/"
+
+      - name: Upload artifacts for release job
+        uses: actions/upload-artifact@v5
+        with:
+          name: artifacts-win-${{ inputs.arch }}
+          path: ./artifacts-win-${{ inputs.arch }}/

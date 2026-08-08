@@ -88,8 +88,40 @@ describe("deciding whether a platform needs an canary build", () => {
 	it("covers every platform the workflow publishes", () => {
 		expect(
 			CANARY_PLATFORMS.map((p) => `${p.os}-${p.arch}`),
-			"the platform list must match the four caller jobs in canary-publish.yml. A platform present in the workflow but missing here is never probed, so it publishes every hour regardless of whether main moved.",
-		).toEqual(["macos-arm64", "macos-x64", "linux-x64", "linux-arm64"]);
+			"the platform list must match the caller jobs in canary-publish.yml. A platform present in the workflow but missing here is never probed, so it publishes every hour regardless of whether main moved.",
+		).toEqual(["macos-arm64", "macos-x64", "linux-x64", "linux-arm64", "win-x64"]);
+	});
+
+	// The token, not the platform. `windows` is what every runner label, workflow filename and
+	// English sentence says, and it would build a perfectly well-formed
+	// `canary-windows-x64-update.json` that no client ever fetches — green run, populated
+	// bucket, zero Windows users updated, nothing anywhere saying why.
+	it("spells Windows the way the updater spells it, not the way the runner does", () => {
+		const updater = readFileSync(
+			fileURLToPath(new URL("../updater.ts", import.meta.url)),
+			"utf8",
+		);
+		expect(
+			updater,
+			"getPlatformPrefix no longer maps win32 to 'win'. The published manifest key and the key the app asks for are built from two different files, and this is the only thing tying them together. Fix: whichever side changed, change the other in the same commit.",
+		).toMatch(/"win32"\s*\?\s*"win"/);
+		expect(
+			CANARY_PLATFORMS.map((p) => p.os),
+			"a platform is declared as 'windows'. The in-app updater fetches `{channel}-win-{arch}-update.json`, so publishing under 'windows' writes a manifest nobody reads.",
+		).not.toContain("windows");
+	});
+
+	// A platform can be probed and never built, which is the quieter half of the same bug: the
+	// decide job reports BUILD, nothing consumes the output, and the run is green with that
+	// platform silently absent from the feed forever.
+	it("gives every probed platform a caller job that actually builds it", () => {
+		const missing = CANARY_PLATFORMS.map((p) => `${p.os}-${p.arch}`).filter(
+			(key) => !new RegExp(`^ {2}build-${key}:$`, "m").test(WORKFLOW),
+		);
+		expect(
+			missing,
+			`${missing.join(", ")} is probed by the decide job but has no \`build-<platform>\` caller job in canary-publish.yml. The probe would report BUILD, nothing would consume it, and that platform would never appear in the feed — with the run green every hour. Fix: add the caller job.`,
+		).toEqual([]);
 	});
 });
 

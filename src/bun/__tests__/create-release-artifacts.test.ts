@@ -263,6 +263,84 @@ describe("create-release-artifacts.sh", () => {
 		).toBe("1.42.3");
 	});
 
+	// `windows` is the word every runner label, workflow filename and English sentence uses,
+	// and it is the wrong one: the in-app updater fetches `{channel}-win-{arch}-update.json`
+	// (getPlatformPrefix, src/bun/updater.ts). Before the guard, an unknown OS fell through to
+	// the linux branch and produced a flawless `canary-windows-x64-update.json` that no client
+	// ever asks for — green run, files in the bucket, nobody updated.
+	it("rejects 'windows' rather than publishing a manifest key nobody fetches", () => {
+		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
+		tempDirs.push(tempDir);
+
+		const result = spawnSync("bash", [SCRIPT_PATH, "windows", "x64", "canary"], { cwd: tempDir, encoding: "utf8" });
+
+		expect(
+			result.status,
+			"an unknown os must fail. Falling through to the linux branch names every artifact `canary-windows-x64-*`, which is well-formed, published, and invisible to every client.",
+		).not.toBe(0);
+		expect(`${result.stdout}${result.stderr}`).toMatch(/unknown os 'windows'/);
+	});
+
+	// The whole Windows branch in one pass: the build-folder name electrobun uses
+	// (`build/canary-win-x64`), the `.exe` suffix on zig-zstd, the capital-R `Resources`
+	// version.json path measured off run 31257371545, and the `win` token landing in the
+	// manifest the updater keys on. Runs on any host: nothing here is a Windows binary.
+	it("stages the Windows tarball and writes a manifest keyed 'win'", () => {
+		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
+		tempDirs.push(tempDir);
+
+		const buildDir = join(tempDir, "build", "canary-win-x64");
+		mkdirSync(join(buildDir, "dev-3.0-canary", "Resources"), { recursive: true });
+		writeFileSync(
+			join(buildDir, "dev-3.0-canary", "Resources", "version.json"),
+			JSON.stringify({ version: "1.42.2", hash: "3r8kx81pg91jh", channel: "canary" }),
+		);
+		// A real tar and deliberately no .zst, so the compress branch runs and its `.exe` path
+		// is exercised rather than assumed.
+		spawnSync("tar", ["-cf", join(buildDir, "dev-3.0-canary.tar"), "-C", buildDir, "dev-3.0-canary"], {
+			encoding: "utf8",
+		});
+		const zstdDir = join(tempDir, "node_modules", "electrobun", "dist-win-x64");
+		mkdirSync(zstdDir, { recursive: true });
+		writeFileSync(
+			join(zstdDir, "zig-zstd.exe"),
+			['#!/bin/sh', '[ "$1" = "compress" ] || { echo "error: InvalidArgs"; exit 1; }', 'shift', 'IN=""; OUT=""',
+				'while [ $# -gt 0 ]; do', '  case "$1" in', '    -i) IN="$2"; shift 2 ;;', '    -o) OUT="$2"; shift 2 ;;',
+				'    --*) shift ;;', '    *) echo "error: InvalidArgs"; exit 1 ;;', "  esac", "done",
+				'cp "$IN" "$OUT"'].join("\n"),
+			{ mode: 0o755 },
+		);
+
+		const result = spawnSync("bash", [SCRIPT_PATH, "win", "x64", "canary"], { cwd: tempDir, encoding: "utf8" });
+		const output = `${result.stdout}${result.stderr}`;
+
+		expect(
+			output,
+			"zig-zstd on Windows is `zig-zstd.exe`. A missing suffix makes this branch die with 'No such file or directory' only when electrobun crashes between tarring and compressing — the one path nobody exercises.",
+		).not.toMatch(/No such file or directory|InvalidArgs/);
+		expect(
+			output,
+			"version.json must be found at the EXPECTED Windows path. The `find` fallback notice means the bundle layout moved, which the log has to show rather than silently absorb.",
+		).not.toMatch(/version\.json found at unexpected path/);
+		expect(
+			existsSync(join(tempDir, "artifacts-win-x64", "canary-win-x64-dev-3.0-canary.tar.zst")),
+			"the staged tarball must carry electrobun's own Windows name, or the manifest advertises a download that is not in the bucket under that key.",
+		).toBe(true);
+
+		const manifest = JSON.parse(
+			readFileSync(join(tempDir, "artifacts-win-x64", "canary-win-x64-update.json"), "utf8"),
+		) as { os: string; arch: string };
+		expect(
+			manifest.os,
+			"the manifest's os field must be 'win', matching getPlatformPrefix in src/bun/updater.ts. 'windows' here means the file the app fetches disagrees with the file this script wrote.",
+		).toBe("win");
+		expect(manifest.arch).toBe("x64");
+		expect(
+			result.status,
+			"the whole Windows path must EXIT 0. Staging happens before the channel check, so an existing tarball is not proof the script accepted the build.",
+		).toBe(0);
+	});
+
 	// Both fields land in the manifest this script is the single writer of. They answer
 	// different questions: sha says WHICH COMMIT (the hourly workflow's skip check),
 	// buildOrder says WHICH BUILD IS NEWER (canary clients' ordering).

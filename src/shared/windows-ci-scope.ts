@@ -46,6 +46,10 @@ export const WINDOWS_SCOPE_PATHS = [
 	".github/workflows/release.yml",
 	".github/workflows/release-build-macos.yml",
 	".github/workflows/release-build-linux.yml",
+	// The Windows leg, and unlike its two siblings above it is in under BOTH criteria: it pins
+	// Bun AND it is the only workflow that packages the app a Windows user installs. An edit
+	// here changes the shipped Windows build directly, so it must re-run the proof.
+	".github/workflows/release-build-windows.yml",
 	".github/workflows/native-terminal-soak.yml",
 	"electrobun.config.ts",
 	"package.json",
@@ -55,6 +59,7 @@ export const WINDOWS_SCOPE_PATHS = [
 	"scripts/build-terminal-host.ts",
 	"scripts/package-native-host.ts",
 	"scripts/package-posix-native-host.ts",
+	"scripts/package-windows-launched-tree.ts",
 	"scripts/verify-packaged-windows-conpty.ts",
 	"scripts/verify-windows-app-launch.ts",
 	"scripts/verify-windows-conpty-update-archive.ts",
