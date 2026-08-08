@@ -10,6 +10,7 @@ import MoveToProjectPicker from "./MoveToProjectPicker";
 import PriorityBadge from "./PriorityBadge";
 import { NoteItem, formatDate } from "./NoteItem";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
+import SharedOutputsList from "./SharedOutputsList";
 import TaskTerminalBackendRow from "./TaskTerminalBackendRow";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -833,6 +834,10 @@ function ArchivedView({
 									</div>
 								</div>
 							)}
+
+							{/* Everything the agent shared — the archived task's only way back
+							    to its images and artifacts (no Runtime bar without a worktree). */}
+							<SharedOutputsList task={task} projectId={project.id} />
 
 							{/* Notes */}
 							<div className="border-t border-edge pt-4">

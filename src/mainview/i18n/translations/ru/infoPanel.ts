@@ -265,6 +265,8 @@ const infoPanel = {
 	"infoPanel.artifactsBadge_other": "Открыть {count} присланных артефактов",
 	"infoPanel.artifactsLabel": "Артефакты",
 	"infoPanel.sharedItemsUnread": "Есть новые непросмотренные элементы",
+	"infoPanel.openSharedImage": "Открыть картинку {name}",
+	"infoPanel.openSharedArtifact": "Открыть артефакт {name}",
 };
 
 export default infoPanel;

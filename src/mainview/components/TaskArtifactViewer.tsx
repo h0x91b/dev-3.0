@@ -7,12 +7,20 @@ import { toast } from "../toast";
 import { composeArtifactDocument } from "../utils/artifactDocument";
 import { isMac, isRemote } from "../utils/platform";
 import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearchBar";
+import { registerOverlayLayer } from "../utils/overlay-layers";
 
 interface TaskArtifactViewerProps {
 	artifacts: SharedArtifact[];
 	initialIndex: number;
 	onClose: () => void;
 	taskId?: string;
+	/**
+	 * Overlay-only host: opened from a surface with no workspace pane to dock into
+	 * (the archived task modal). Locks the overlay layout, drops the fullscreen
+	 * toggle, and lets Escape close outright — un-fullscreening would render the
+	 * docked panel into nothing.
+	 */
+	standalone?: boolean;
 }
 
 type ArtifactThemeMode = "follow" | "light" | "dark";
@@ -72,12 +80,12 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
 	return /\.[a-z0-9]+$/i.test(base) ? base : `${base}.${ext}`;
 }
 
-export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId }: TaskArtifactViewerProps) {
+export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId, standalone = false }: TaskArtifactViewerProps) {
 	const t = useT();
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
 	const [srcDoc, setSrcDoc] = useState<string | null>(null);
 	const [error, setError] = useState(false);
-	const [fullscreen, setFullscreen] = useState(false);
+	const [fullscreen, setFullscreen] = useState(standalone);
 	const [downloading, setDownloading] = useState(false);
 	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>(() => currentTheme());
 	const [searchOpen, setSearchOpen] = useState(false);
@@ -225,6 +233,8 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		function onKey(event: KeyboardEvent) {
 			if (!fullscreen && !viewerRef.current?.contains(document.activeElement)) return;
 			if (event.key === "Escape") {
+				// Standalone hands the unwind to the overlay-layer stack instead.
+				if (standalone) return;
 				event.preventDefault();
 				event.stopPropagation();
 				// Escape unwinds one layer at a time: search → fullscreen → viewer.
@@ -241,7 +251,22 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		}
 		window.addEventListener("keydown", onKey, { capture: true });
 		return () => window.removeEventListener("keydown", onKey, { capture: true });
-	}, [fullscreen, go, onClose, searchOpen, closeSearch]);
+	}, [fullscreen, go, onClose, searchOpen, closeSearch, standalone]);
+
+	// A standalone overlay sits on top of the archived task modal, whose
+	// capture-phase Escape listener was registered first and stops immediate
+	// propagation — a private listener here would never run and the modal
+	// underneath would close instead. The layer stack fixes the unwind order.
+	const dismissRef = useRef<() => void>(() => {});
+	dismissRef.current = () => { if (searchOpen) closeSearch(); else onClose(); };
+	useEffect(() => {
+		if (!standalone) return;
+		const el = viewerRef.current;
+		if (!el) return;
+		return registerOverlayLayer(el, () => dismissRef.current());
+	// The section element identity is stable for the viewer's lifetime.
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [standalone]);
 
 	// ⌘F (Ctrl+F elsewhere) — find inside the artifact. Gated on focus being inside
 	// this viewer so the browser's native find keeps working everywhere else in
@@ -354,7 +379,9 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 					aria-label={t("artifactViewer.openInBrowser")}
 					title={t("artifactViewer.openInBrowser")}
 				><span style={{ fontFamily: ICON }}>{""}</span></button>
-				<button type="button" data-testid="artifact-viewer-fullscreen" className={iconButton} onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("artifactViewer.exitFullscreen") : t("artifactViewer.fullscreen")}><span style={{ fontFamily: ICON }}>{fullscreen ? "" : ""}</span></button>
+				{!standalone && (
+					<button type="button" data-testid="artifact-viewer-fullscreen" className={iconButton} onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("artifactViewer.exitFullscreen") : t("artifactViewer.fullscreen")}><span style={{ fontFamily: ICON }}>{fullscreen ? "" : ""}</span></button>
+				)}
 				<button type="button" data-testid="artifact-viewer-close" className={iconButton} onClick={onClose} aria-label={t("artifactViewer.close")}><span style={{ fontFamily: ICON }}></span></button>
 			</header>
 			<div className="relative min-h-0 flex-1 bg-base">

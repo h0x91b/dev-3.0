@@ -356,4 +356,37 @@ describe("TaskDetailModal", () => {
 			});
 		});
 	});
+	describe("archived shared outputs", () => {
+		const image = {
+			id: "img-1",
+			storedPath: "/wt/shared-images/img-1.png",
+			originalPath: "/tmp/img-1.png",
+			name: "qa-before.png",
+			mime: "image/png",
+			bytes: 10,
+			createdAt: 1_780_000_000_000,
+		};
+		const artifact = {
+			id: "art-1",
+			kind: "html" as const,
+			title: "QA report",
+			name: "index.html",
+			storedPath: "/wt/shared-artifacts/art-1/index.html",
+			originalPath: "/tmp/index.html",
+			bytes: 10,
+			createdAt: 1_780_000_000_000,
+			assets: [],
+		};
+
+		it("lists the agent's images and artifacts for a completed task", () => {
+			renderModal(makeTodoTask({ status: "completed", sharedImages: [image], sharedArtifacts: [artifact] }));
+			expect(screen.getByTestId("shared-image-link")).toHaveTextContent("qa-before.png");
+			expect(screen.getByTestId("shared-artifact-link")).toHaveTextContent("QA report");
+		});
+
+		it("omits the section when the task produced neither", () => {
+			renderModal(makeTodoTask({ status: "completed" }));
+			expect(screen.queryByTestId("shared-outputs-list")).toBeNull();
+		});
+	});
 });

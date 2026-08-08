@@ -60,6 +60,7 @@ vi.mock("../rpc", () => ({
 				selectedHost: "127.0.0.1",
 			}),
 			stopTunnel: vi.fn().mockResolvedValue(undefined),
+			readArtifactContent: vi.fn().mockResolvedValue({ html: "<p>artifact</p>", assets: [] }),
 		},
 	},
 }));
@@ -1044,6 +1045,24 @@ describe("App keyboard shortcuts", () => {
 			storedPath: `/a/shared-artifacts/${id}/${id}.html`,
 			bytes: 1,
 			createdAt: 0,
+		});
+
+		it("hosts a standalone artifact overlay itself instead of handing it to the workspace pane", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+					detail: { taskId: "t-archived", projectId: "p1", artifacts: [artifact("a")], index: 0, standalone: true },
+				}));
+			});
+
+			expect(await screen.findByTestId("artifact-viewer")).toHaveAttribute("data-fullscreen", "true");
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-count", "0");
+			expect(screen.queryByTestId("artifact-viewer-fullscreen")).toBeNull();
 		});
 
 		it("replaces an open viewer with the latest artifact even when the window loses focus", async () => {

@@ -6,6 +6,7 @@ import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
 import { usePinchZoom } from "../hooks/usePinchZoom";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { registerOverlayLayer } from "../utils/overlay-layers";
 
 interface TaskImageViewerProps {
 	images: SharedImage[];
@@ -125,15 +126,29 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 		return () => el.removeAttribute("data-image-viewer");
 	}, []);
 
-	// Keyboard navigation + Esc close + f = fullscreen. Capture phase +
-	// stopPropagation because this lightbox is a modal that owns the keyboard while
-	// open: the App-level Escape listener is registered first and would otherwise
-	// navigate out of the task workspace behind it (decision 181).
+	// Escape is owned by the overlay-layer stack, not by a listener of our own: a
+	// modal that opened this lightbox (the archived task modal) registered its
+	// capture-phase Escape first and stops immediate propagation, so a private
+	// listener here would never run and the modal underneath would close instead.
+	// Registering as a layer puts us at the top of that unwind order.
+	const dismissRef = useRef<() => void>(() => {});
+	dismissRef.current = () => { if (fullscreen) setFullscreen(false); else onClose(); };
+	useEffect(() => {
+		const el = containerRef.current;
+		if (!el) return;
+		return registerOverlayLayer(el, () => dismissRef.current());
+	// The container element identity is stable for the lightbox's lifetime.
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// Keyboard navigation + f = fullscreen. Capture phase + stopPropagation
+	// because this lightbox is a modal that owns the keyboard while open: the
+	// App-level Escape listener is registered first and would otherwise navigate
+	// out of the task workspace behind it (decision 181).
 	useEffect(() => {
 		function onKey(e: KeyboardEvent) {
 			const consume = () => { e.preventDefault(); e.stopPropagation(); };
-			if (e.key === "Escape") { consume(); if (fullscreen) setFullscreen(false); else onClose(); }
-			else if (e.key === "ArrowRight") { consume(); go(1); }
+			if (e.key === "ArrowRight") { consume(); go(1); }
 			else if (e.key === "ArrowLeft") { consume(); go(-1); }
 			else if (e.key === "Home") { consume(); setIndex(0); }
 			else if (e.key === "End") { consume(); setIndex(images.length - 1); }

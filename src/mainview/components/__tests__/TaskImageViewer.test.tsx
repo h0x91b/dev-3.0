@@ -2,6 +2,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskImageViewer from "../TaskImageViewer";
 import { I18nProvider } from "../../i18n";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import type { SharedImage } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
@@ -163,5 +164,19 @@ describe("TaskImageViewer", () => {
 		expect(document.documentElement.getAttribute("data-image-viewer")).toBe("open");
 		unmount();
 		expect(document.documentElement.getAttribute("data-image-viewer")).toBeNull();
+	});
+	it("wins Escape against the modal that opened it", async () => {
+		const onCloseModal = vi.fn();
+		const onCloseViewer = vi.fn();
+		function ModalWithViewer() {
+			// Registers its capture-phase Escape FIRST, exactly like the archived
+			// task modal that hosts the shared-images list.
+			useEscapeKey(onCloseModal);
+			return <TaskImageViewer images={IMAGES} initialIndex={0} onClose={onCloseViewer} />;
+		}
+		render(<I18nProvider><ModalWithViewer /></I18nProvider>);
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(onCloseViewer).toHaveBeenCalled();
+		expect(onCloseModal).not.toHaveBeenCalled();
 	});
 });

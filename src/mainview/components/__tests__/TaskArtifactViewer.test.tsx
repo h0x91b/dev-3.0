@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { SharedArtifact } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import TaskArtifactViewer from "../TaskArtifactViewer";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 vi.mock("../../rpc", () => ({
 	api: { request: { readArtifactContent: vi.fn(), readArtifactDownload: vi.fn(), openArtifactInBrowser: vi.fn() } },
@@ -287,5 +288,27 @@ describe("TaskArtifactViewer", () => {
 		expect(click).toHaveBeenCalled();
 		createObjectURL.mockRestore();
 		click.mockRestore();
+	});
+	describe("standalone overlay", () => {
+		it("opens as an overlay with no fullscreen toggle to dock back with", async () => {
+			render(<I18nProvider><TaskArtifactViewer standalone artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+			await waitFor(() => expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-fullscreen", "true"));
+			expect(screen.queryByTestId("artifact-viewer-fullscreen")).toBeNull();
+		});
+
+		it("wins Escape against the modal that opened it", async () => {
+			const onCloseModal = vi.fn();
+			const onCloseViewer = vi.fn();
+			function ModalWithViewer() {
+				// Registers its capture-phase Escape FIRST, like the archived task modal.
+				useEscapeKey(onCloseModal);
+				return <TaskArtifactViewer standalone artifacts={[artifact("a")]} initialIndex={0} onClose={onCloseViewer} />;
+			}
+			render(<I18nProvider><ModalWithViewer /></I18nProvider>);
+			await waitFor(() => expect(screen.getByTestId("artifact-viewer")).toBeInTheDocument());
+			fireEvent.keyDown(window, { key: "Escape" });
+			expect(onCloseViewer).toHaveBeenCalled();
+			expect(onCloseModal).not.toHaveBeenCalled();
+		});
 	});
 });

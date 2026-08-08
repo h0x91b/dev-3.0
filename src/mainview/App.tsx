@@ -63,6 +63,7 @@ import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
 import OpenInPickerModal from "./components/OpenInPickerModal";
 import TaskImageViewer from "./components/TaskImageViewer";
+import TaskArtifactViewer from "./components/TaskArtifactViewer";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
 import { HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
@@ -342,7 +343,9 @@ function App() {
 	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
 	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number } | null>(null);
 	const [filePreview, setFilePreview] = useState<OpenFilePreviewDetail | null>(null);
-	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; artifacts: SharedArtifact[]; index: number } | null>(null);
+	// `standalone` requests come from surfaces with no workspace pane to dock into
+	// (the archived task modal) and are hosted as an overlay here instead.
+	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; artifacts: SharedArtifact[]; index: number; standalone?: boolean } | null>(null);
 	const markSharedItemsRead = useCallback((
 		projectId: string,
 		taskId: string,
@@ -1433,7 +1436,9 @@ function App() {
 			const alreadyOpenForTask = artifactViewerRef.current?.taskId === taskId;
 			if (alreadyOpenForTask || (viewingThisTask && foreground)) {
 				markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
+				// An already-open standalone overlay keeps its host; it has no pane to dock into.
+				const standalone = alreadyOpenForTask ? artifactViewerRef.current?.standalone : undefined;
+				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1, standalone });
 				return;
 			}
 			const context = taskToastContext(taskSeq, projectName, taskTitle);
@@ -1452,15 +1457,16 @@ function App() {
 
 	useEffect(() => {
 		function onOpenArtifactViewer(e: Event) {
-			const { taskId, projectId, artifacts, index } = (e as CustomEvent).detail as {
+			const { taskId, projectId, artifacts, index, standalone } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				artifacts: SharedArtifact[];
 				index?: number;
+				standalone?: boolean;
 			};
 			if (!taskId || !projectId || !artifacts?.length) return;
 			markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-			setArtifactViewer({ taskId, artifacts, index: index ?? artifacts.length - 1 });
+			setArtifactViewer({ taskId, artifacts, index: index ?? artifacts.length - 1, standalone });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
@@ -2678,6 +2684,15 @@ function App() {
 					onRespond={(approved, launch) => respondToLaunchRequest(launchRequests[0]!.requestId, approved, launch)}
 				/>
 			)}
+			{artifactViewer?.standalone && (
+				<TaskArtifactViewer
+					standalone
+					taskId={artifactViewer.taskId}
+					artifacts={artifactViewer.artifacts}
+					initialIndex={artifactViewer.index}
+					onClose={closeArtifactViewer}
+				/>
+			)}
 			{imageViewer && (
 				<TaskImageViewer
 					taskId={imageViewer.taskId}
@@ -2767,7 +2782,7 @@ function App() {
 						activeTaskId={route.activeTaskId}
 						taskView={route.taskView}
 						navigationGuardRef={navigationGuardRef}
-						artifactViewer={artifactViewer}
+						artifactViewer={artifactViewer?.standalone ? null : artifactViewer}
 						onCloseArtifactViewer={closeArtifactViewer}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
@@ -2797,7 +2812,7 @@ function App() {
 						navigate={navigate}
 						dispatch={dispatch}
 						navigationGuardRef={navigationGuardRef}
-						artifactViewer={artifactViewer}
+						artifactViewer={artifactViewer?.standalone ? null : artifactViewer}
 						onCloseArtifactViewer={closeArtifactViewer}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}

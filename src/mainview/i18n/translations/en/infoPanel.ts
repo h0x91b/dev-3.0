@@ -245,6 +245,8 @@ const infoPanel = {
 	"infoPanel.artifactsBadge_other": "View {count} shared artifacts",
 	"infoPanel.artifactsLabel": "Artifacts",
 	"infoPanel.sharedItemsUnread": "New items not viewed yet",
+	"infoPanel.openSharedImage": "Open image {name}",
+	"infoPanel.openSharedArtifact": "Open artifact {name}",
 } as const;
 
 export default infoPanel;

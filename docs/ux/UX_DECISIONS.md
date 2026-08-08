@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-08 — An archived task reaches its images and artifacts as enumerated rows
+
+- **Rule:** the archived (completed/cancelled) task modal lists every `dev3 show-image` image and `dev3 show-artifact` artifact as its own clickable row above Notes (`SharedOutputsList.tsx`); rows open the App-hosted viewers at their own index, the artifact viewer as a standalone overlay. Bible §3, yaml `task_image_viewer.reached_from` / `task_artifact_workspace.standalone_overlay`.
+- **Why:** the live task's Runtime-bar count badges are a *status* affordance and need a Runtime bar; an archived task has neither, and re-running a finished task to see its own screenshots is absurd. Rejected: reusing the count badges (one click, no enumeration); a thumbnail grid (up to 30 `readImageBase64` round-trips on modal open — the viewer's own thumbnail rail already covers visual browsing).
+- **Status:** Implemented. Evidence: `SharedOutputsList.tsx`, `TaskDetailModal.tsx (ArchivedView)`, `decisions/2026/08/08/archived-task-shared-outputs.md`, seq 1469.
+
 ## 2026-08-08 — On a phone the memory readout folds into the kebab like everything else
 
 - **Rule:** the global header's ambient resource readout (memory headroom) is a roomy-width slot only; on narrow it moves into the kebab bottom sheet next to `PreventSleepToggle` / `RateLimitIndicator`, keeps its ≥44px target there, and still opens its breakdown as a `BottomSheet`. Bible §12.6, yaml `surfaces.global_header.ambient_resource_readout.narrow`, `responsive.global_header`. Supersedes the narrow half of the 2026-07-30 entry below.
