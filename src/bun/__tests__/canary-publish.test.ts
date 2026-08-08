@@ -94,25 +94,6 @@ describe("deciding whether a platform needs an canary build", () => {
 });
 
 /**
- * THE SCHEDULE IS OFF UNTIL A BUILD HAS BEEN OBSERVED, which is a stricter bar than "the
- * vendor supports this channel name". The previous name could never build — the CLI that runs
- * is a compiled binary the vendor downloads, so the patch we carried edited a file nobody
- * executes — and every tick failed all four builds while three guards asserting that patch
- * stayed green. `canary` is in the vendor's allowlist and *should* build, but nobody has run
- * it, and turning an hourly job on for a prediction is how the last red-on-a-wall happened.
- */
-describe("the hourly schedule stays off until a canary build has been observed", () => {
-	it("has no active cron while no run has emitted canary-* artifacts", () => {
-		const triggers = WORKFLOW.slice(WORKFLOW.indexOf("\non:"), WORKFLOW.indexOf("\njobs:"));
-		const activeCron = triggers.split("\n").filter((l) => /^\s*-?\s*(schedule:|cron:)/.test(l));
-		expect(
-			activeCron,
-			`the cron is live again. It may only be re-enabled together with a run that ACTUALLY EMITTED canary-* artifacts — cite that run. "canary is in electrobun's allowlist so it should build" is a prediction, and this workflow was already switched off once for trusting one: every tick failed all four builds while the guards asserting the vendored patch stayed green. Dispatch it by hand first, then delete this test in the change that restores the schedule.`,
-		).toEqual([]);
-	});
-});
-
-/**
  * THE BOOTSTRAP LOOP, found by probing the live bucket rather than by reading the code.
  *
  * A missing key on h0x91b-releases answers 403 AccessDenied to an anonymous caller — proven

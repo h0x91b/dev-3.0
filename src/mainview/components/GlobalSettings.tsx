@@ -101,6 +101,9 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	);
 	const [tipsResetDone, setTipsResetDone] = useState(false);
 	const [caffeinateAvailable, setCaffeinateAvailable] = useState(true);
+	// FALSE until the host answers: the channel publishes per platform, and defaulting to
+	// true would flash an enabled control that then leads to a 403 on a platform with no build.
+	const [canaryAvailable, setCanaryAvailable] = useState(false);
 	// Null until the host answers — the backend picker stays inert rather than
 	// guessing that native is (un)available.
 	const [nativeTerminalAvailability, setNativeTerminalAvailability] =
@@ -220,6 +223,12 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	useEffect(() => {
 		api.request.checkCaffeinateAvailable()
 			.then((result) => setCaffeinateAvailable(result.available))
+			.catch(() => {});
+	}, []);
+
+	useEffect(() => {
+		api.request.checkCanaryChannelAvailable()
+			.then((result) => setCanaryAvailable(result.available))
 			.catch(() => {});
 	}, []);
 
@@ -694,6 +703,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 							t={t}
 							globalSettings={globalSettings}
 							caffeinateAvailable={caffeinateAvailable}
+							canaryAvailable={canaryAvailable}
 							onUpdateChannelChange={handleUpdateChannelChange}
 							onPreventSleepToggle={handlePreventSleepToggle}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}

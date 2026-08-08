@@ -30,26 +30,32 @@ describe("the persisted channel value", () => {
 
 	it("degrades every unrecognised value to stable, which is what makes the rename safe", () => {
 		// LOAD-BEARING, not tidiness. ~/.dev3.0/settings.json is shared by every installed
-		// version on the machine, so an N-2 build can read a channel name it has never
-		// heard of. Degrading to stable is what lets the old "canary" value be deleted
-		// outright instead of kept as a compatibility alias — and what stops an old build
-		// aiming its updater at a feed that does not exist for it.
-		for (const rejected of ["canary", "beta", "dev", "STABLE", "Canary", "", null, undefined, 7, {}]) {
+		// version on the machine, so an N-2 build can read a channel name it has never heard
+		// of. Degrading to stable is what made the `unstable` → `canary` rename need no
+		// migration at all — the old value simply stops matching — and what stops an old
+		// build aiming its updater at a feed that does not exist for it.
+		// "unstable" leads the list on purpose: it is the retired name, so it is exactly what
+		// a settings file written by v1.42.1 still contains today.
+		for (const rejected of ["unstable", "beta", "dev", "STABLE", "Canary", "", null, undefined, 7, {}]) {
 			expect(
-				coerceUpdateChannel(rejected),
+				coerceUpdateChannel(rejected, true),
 				`coerceUpdateChannel(${JSON.stringify(rejected)}) must fall back to "stable". An unrecognised channel that survives points the updater at a feed with no manifest, which returns 403 and reads to the user as "you are up to date" forever. Fix: keep the exact-match check in src/shared/update-channel.ts.`,
 			).toBe("stable");
 		}
 	});
 
-	// While CANARY_FEED_AVAILABLE is false the opt-in spelling collapses too — that is the
-	// half of the patch that reaches a user who ALREADY switched on v1.42.1, since the update
-	// check reads this persisted value rather than the (now disabled) Settings control.
-	// Restore the accepts-the-opt-in-spelling assertion in the change that deletes the flag.
-	it("collapses even the opt-in spelling while the second channel has no feed", () => {
+	it("accepts exactly the one opt-in spelling where the channel publishes", () => {
+		expect(coerceUpdateChannel("canary", true)).toBe("canary");
+	});
+
+	// The SECOND half of the per-platform gate, and the one that is easy to omit. Disabling
+	// the Settings control protects whoever has not switched; this is what returns whoever
+	// already did on a platform the channel does not publish for — the update check reads
+	// this persisted value, not the control, and an unpublished key answers 403.
+	it("collapses the opt-in spelling on a platform the channel does not publish for", () => {
 		expect(
-			coerceUpdateChannel("canary"),
-			"a value persisted by v1.42.1 must collapse to stable while the feed is unavailable, in memory and without rewriting settings.json. Fix: keep the CANARY_FEED_AVAILABLE guard at the top of coerceUpdateChannel until the channel has a proven build path.",
+			coerceUpdateChannel("canary", false),
+			"a persisted canary choice must collapse to stable where no canary build is published, in memory and without rewriting settings.json. Without it, disabling the select ships a fix that helps nobody who already switched.",
 		).toBe("stable");
 	});
 });

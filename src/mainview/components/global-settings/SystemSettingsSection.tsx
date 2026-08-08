@@ -1,5 +1,5 @@
 import type { GlobalSettings } from "../../../shared/types";
-import { CANARY_FEED_AVAILABLE, type UpdateChannel } from "../../../shared/update-channel";
+import type { UpdateChannel } from "../../../shared/update-channel";
 import type { TFunction } from "../../i18n";
 import BrowserNotificationsSetting from "./BrowserNotificationsSetting";
 import SettingsEntry from "./SettingsEntry";
@@ -10,6 +10,7 @@ export default function SystemSettingsSection({
 	t,
 	globalSettings,
 	caffeinateAvailable,
+	canaryAvailable,
 	onUpdateChannelChange,
 	onPreventSleepToggle,
 	onConfirmBeforeQuitToggle,
@@ -17,6 +18,8 @@ export default function SystemSettingsSection({
 	t: TFunction;
 	globalSettings: GlobalSettings;
 	caffeinateAvailable: boolean;
+	/** The canary feed carries a build for this host. False on platforms it does not publish. */
+	canaryAvailable: boolean;
 	onUpdateChannelChange: (channel: UpdateChannel) => void;
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
@@ -34,14 +37,19 @@ export default function SystemSettingsSection({
 					<select
 						value={globalSettings.updateChannel}
 						onChange={(event) => onUpdateChannelChange(event.target.value as UpdateChannel)}
-						disabled={!CANARY_FEED_AVAILABLE}
+						disabled={!canaryAvailable}
 						className={`w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none${
-							CANARY_FEED_AVAILABLE ? "" : " cursor-not-allowed opacity-50"
+							canaryAvailable ? "" : " cursor-not-allowed opacity-50"
 						}`}
 					>
 						<option value="stable">{t("settings.updateChannelStable")}</option>
 						<option value="canary">{t("settings.updateChannelCanary")}</option>
 					</select>
+					{!canaryAvailable ? (
+						// Says WHY rather than leaving a dimmed control that reads as broken. The
+						// channel publishes per platform, and this machine is not one of them yet.
+						<p className="text-fg-muted text-xs mt-2">{t("settings.updateChannelUnavailableHere")}</p>
+					) : null}
 				</div>
 			</SettingsEntry>
 

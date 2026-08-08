@@ -984,6 +984,11 @@ async function checkCaffeinateAvailable(): Promise<{ available: boolean }> {
 	return { available };
 }
 
+async function checkCanaryChannelAvailable(): Promise<{ available: boolean }> {
+	const { hostPublishesCanary } = await import("../settings");
+	return { available: hostPublishesCanary() };
+}
+
 async function getPreventSleepState(): Promise<{ enabled: boolean; available: boolean; forcedByRemote: boolean }> {
 	const { isCaffeinateAvailable, isPreventSleepEnabled } = await import("../caffeinate");
 	const { isRemoteAccessActive } = await import("../remote-access-server");
@@ -1067,6 +1072,7 @@ export const appHandlers = {
 	updateTipState,
 	resetTipState,
 	checkCaffeinateAvailable,
+	checkCanaryChannelAvailable,
 	getPreventSleepState,
 	setPreventSleep,
 	copyTerminalSelection,

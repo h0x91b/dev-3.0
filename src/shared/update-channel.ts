@@ -19,42 +19,6 @@ export type UpdateChannel = "stable" | "canary";
 export const DEFAULT_UPDATE_CHANNEL: UpdateChannel = "stable";
 
 /**
- * FALSE until the feed has actually been OBSERVED, which is a narrower condition than
- * "the build works".
- *
- * The second channel used to be called `unstable`, and `electrobun build --env=unstable`
- * could never produce it: the CLI that runs is a compiled binary the vendor's
- * `bin/electrobun.cjs` downloads (`ensureCliBinary()`), so a patch to its `src/cli/index.ts`
- * was edits to a file nobody executes. `--env` hit the vendor's allowlist and degraded to
- * `dev`. v1.42.1 shipped the control live regardless, and a macOS user who picked it got a
- * bare `HTTP 403 fetching update.json` and stayed there.
- *
- * `canary` is in the vendor's own allowlist, so that failure mode is gone — the Windows
- * packaging job has been building `--env=canary` and emitting `canary-win-x64-*` all along.
- * What is still NOT observed is a published `canary-{os}-{arch}-update.json`: the schedule
- * has never completed a run. So the gate stays until one has, because "the build path works"
- * and "there is something in the bucket to update to" are different claims, and shipping the
- * control on the first is exactly the mistake v1.42.1 made.
- *
- * TWO THINGS HANG OFF THIS FLAG, and the second is the one that is easy to omit:
- *  1. the Settings control is disabled — that protects whoever has NOT switched yet;
- *  2. {@link coerceUpdateChannel} collapses to stable — the ONLY thing that helps whoever
- *     ALREADY switched on v1.42.1. The control is UI, but the update check reads the
- *     persisted setting directly, so disabling the select alone would ship a fix that does
- *     nothing for the single person it exists for.
- *
- * The collapse happens in memory, on load. Nothing under `~/.dev3.0/` is rewritten, so an
- * older installed build reading the same file still finds the value it wrote.
- *
- * DELETE THIS CONSTANT — do not flip it to `true` — once a manifest is readable in the
- * bucket. A permanently-true constant is a dead branch whose guard tests then assert nothing.
- * That deletion belongs in the SAME change that turns the hourly schedule back on: one
- * observation — a dispatched run that emitted `canary-*` and left a readable manifest —
- * unlocks both, so splitting them would leave one of the two resting on a prediction again.
- */
-export const CANARY_FEED_AVAILABLE = false;
-
-/**
  * Read a persisted channel value. Anything that is not exactly `"canary"` becomes
  * `"stable"`.
  *
@@ -66,11 +30,14 @@ export const CANARY_FEED_AVAILABLE = false;
  * it. It is also what makes the `unstable` → `canary` rename need no migration at all: a
  * value written by v1.42.1 simply stops matching and degrades, in memory, on load.
  */
-export function coerceUpdateChannel(value: unknown): UpdateChannel {
-	// While the second channel has no feed, a value already persisted by v1.42.1 must
-	// collapse too — see {@link CANARY_FEED_AVAILABLE}. Disabling the control alone
-	// leaves the one user who already switched exactly where they were.
-	if (!CANARY_FEED_AVAILABLE) return DEFAULT_UPDATE_CHANNEL;
+export function coerceUpdateChannel(value: unknown, canaryAvailable: boolean): UpdateChannel {
+	// `canaryAvailable` IS REQUIRED AND HAS NO DEFAULT, on purpose. It is a fact about the
+	// HOST — the canary feed carries builds for some platforms and not others — and a default
+	// would let a caller that does not know the host silently answer for it. It is also what
+	// returns a user who switched on a platform that later has no build: the update check
+	// reads this persisted value, not the Settings control, so a disabled select alone would
+	// leave them on a channel that answers 403.
+	if (!canaryAvailable) return DEFAULT_UPDATE_CHANNEL;
 	return value === "canary" ? "canary" : DEFAULT_UPDATE_CHANNEL;
 }
 

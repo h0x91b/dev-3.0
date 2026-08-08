@@ -127,6 +127,7 @@ const settings = {
 	"settings.updateChannelDesc": "Стабильный отдаёт только помеченные релизы. Canary собирается из каждой партии мержей в main — это не протестированный релиз.",
 	"settings.updateChannelStable": "Стабильный",
 	"settings.updateChannelCanary": "Canary",
+	"settings.updateChannelUnavailableHere": "Canary для этой платформы пока не публикуется, поэтому здесь доступен только стабильный канал.",
 	"settings.updateChannelSwitchToCanaryTitle": "Перейти на канал canary?",
 	"settings.updateChannelSwitchToCanaryBody": "Вы будете получать main как он есть — сборка запускается каждый час, если ветка изменилась. Это не протестированные релизы, они могут ломаться. Вернуться на стабильный можно в любой момент.",
 	"settings.updateChannelSwitchToCanaryConfirm": "Перейти на canary",

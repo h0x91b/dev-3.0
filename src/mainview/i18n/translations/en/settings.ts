@@ -127,6 +127,7 @@ const settings = {
 	"settings.updateChannelDesc": "Stable ships only tagged releases. Canary is built from every batch of merges to main — it is not a tested release.",
 	"settings.updateChannelStable": "Stable",
 	"settings.updateChannelCanary": "Canary",
+	"settings.updateChannelUnavailableHere": "Canary is not published for this platform yet, so only Stable is available here.",
 	"settings.updateChannelSwitchToCanaryTitle": "Switch to the canary channel?",
 	"settings.updateChannelSwitchToCanaryBody": "You will get main as it lands, built automatically every hour it changes. These builds are not tested releases and can break. You can switch back to stable at any time.",
 	"settings.updateChannelSwitchToCanaryConfirm": "Use canary",

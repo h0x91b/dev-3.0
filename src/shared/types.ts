@@ -3875,6 +3875,17 @@ export type AppRPCSchema = {
 				params: void;
 				response: { available: boolean };
 			};
+			/**
+			 * Does the canary update feed carry a build for THIS machine? Derived from the
+			 * publisher's own platform list, never from a runtime probe: a missing key in the
+			 * release bucket answers 403, so a client could not tell "no build here" from "no
+			 * permission". Asked of the host because browser-side platform sniffing would
+			 * answer for the wrong machine.
+			 */
+			checkCanaryChannelAvailable: {
+				params: void;
+				response: { available: boolean };
+			};
 			getPreventSleepState: {
 				params: void;
 				response: { enabled: boolean; available: boolean; forcedByRemote: boolean };

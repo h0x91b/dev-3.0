@@ -4,7 +4,6 @@ import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
-import { coerceUpdateChannel } from "../../../shared/update-channel";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -30,6 +29,7 @@ vi.mock("../../rpc", () => ({
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			setTmuxTheme: vi.fn().mockResolvedValue(undefined),
 			checkCaffeinateAvailable: vi.fn().mockResolvedValue({ available: true }),
+			checkCanaryChannelAvailable: vi.fn().mockResolvedValue({ available: true }),
 			getNativeTerminalAvailability: vi
 				.fn()
 				.mockResolvedValue({ available: true, tmuxSupported: true, diagnostics: [] }),
@@ -424,36 +424,37 @@ describe("GlobalSettings", () => {
 			expect(select).toBeInTheDocument();
 		});
 
-		// The control is `disabled` again, because nothing is published under `canary-*` and
-		// the build path cannot produce it. v1.42.1 shipped it live: picking the channel gets a
-		// bare `HTTP 403 fetching update.json` on macOS, and the user stays in it. Enabling this
-		// again without a PROVEN build path re-ships that.
-		it("is disabled while the second channel has no feed", async () => {
+		// The control is ENABLED again: run 31257371545 published canary-macos-arm64,
+		// canary-macos-x64, canary-linux-x64 and canary-linux-arm64 (all HTTP 200, buildOrder
+		// 1618, sha 7a9d230fb). It shipped `disabled` while that was not true, because a
+		// channel with no manifest answers 403 and reads to the user as a bare error.
+		it("is enabled where the canary feed publishes a build", async () => {
 			setupMocks();
 			renderGlobalSettings("system");
 			await waitForLoad();
 
 			expect(
 				screen.getByDisplayValue("Stable"),
-				"the update-channel select must stay disabled while CANARY_FEED_AVAILABLE is false. Fix: DELETE that constant — do not flip it — in the same change that lands a build path proven to emit the channel's artifacts, and restore the enabled-control assertions with it.",
-			).toBeDisabled();
+				"the update-channel select must be enabled when the host answers that canary publishes for it. It was disabled while nothing was published; re-disabling it globally would silently remove the feature on every platform to protect one.",
+			).not.toBeDisabled();
 		});
 
-		// The disabled control protects whoever has NOT switched. This is the half that helps
-		// whoever ALREADY did: the update check reads the persisted setting, not the select.
-		it("collapses a persisted canary choice back to stable", () => {
+		// The per-platform half. Windows has no canary build leg, so `canary-win-x64` answers
+		// 403 — enabling the control there would hand a Windows user the exact bare
+		// `HTTP 403 fetching update.json` that v1.42.1 shipped.
+		it("is disabled, with a reason, where the channel publishes nothing", async () => {
+			setupMocks();
+			mockedApi.request.checkCanaryChannelAvailable.mockResolvedValue({ available: false });
+			renderGlobalSettings("system");
+			await waitForLoad();
+
 			expect(
-				coerceUpdateChannel("canary"),
-				"a channel already saved by v1.42.1 must collapse to stable while the feed is unavailable. Without this the patch disables a control the affected user never touches again and leaves them on the broken channel — a fix that looks complete and helps nobody.",
-			).toBe("stable");
+				await screen.findByText(/not published for this platform yet/i),
+				"a disabled channel picker must SAY why. A dimmed control with no explanation reads as broken rather than as 'not yet published here'.",
+			).toBeInTheDocument();
+			expect(screen.getByDisplayValue("Stable")).toBeDisabled();
 		});
 
-		// The confirmation-flow tests (switch persists only after confirm; cancel writes
-		// nothing; switching back names the direction) drove the select with userEvent, which
-		// cannot operate a disabled control. They are removed rather than weakened, and they
-		// come back with the control itself — restore them in the same change that deletes
-		// CANARY_FEED_AVAILABLE. The confirm() handler they covered is untouched by this
-		// patch; nothing can reach it while the select is disabled.
 	});
 
 	describe("default agent selection", () => {

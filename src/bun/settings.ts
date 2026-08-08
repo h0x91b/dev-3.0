@@ -3,6 +3,15 @@ import type { GlobalSettings, ShortcutOverride } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { coerceUpdateChannel, DEFAULT_UPDATE_CHANNEL } from "../shared/update-channel";
+import { canaryPublishesFor, hostOsName } from "../shared/canary-publish";
+
+/**
+ * Does the canary feed carry a build for THIS machine? Asked here rather than passed in,
+ * because only the host knows its own platform — the renderer would answer for the browser.
+ */
+export function hostPublishesCanary(): boolean {
+	return canaryPublishesFor(hostOsName(process.platform), process.arch);
+}
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -87,7 +96,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
 			defaultConfigId: resolveDefaultConfigId(data.defaultConfigId),
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
-			updateChannel: coerceUpdateChannel(data.updateChannel),
+			updateChannel: coerceUpdateChannel(data.updateChannel, hostPublishesCanary()),
 			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
 			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
@@ -194,7 +203,7 @@ export function loadSettingsSync(): GlobalSettings {
 			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
 			defaultConfigId: resolveDefaultConfigId(data.defaultConfigId),
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
-			updateChannel: coerceUpdateChannel(data.updateChannel),
+			updateChannel: coerceUpdateChannel(data.updateChannel, hostPublishesCanary()),
 			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
 			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,

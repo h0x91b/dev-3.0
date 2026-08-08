@@ -156,12 +156,11 @@ describe("saveSettings", () => {
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskDropPosition: "bottom",
-			// "stable" and not "canary" ON PURPOSE, and it costs this guard something: while
-			// CANARY_FEED_AVAILABLE is false, coerceUpdateChannel collapses every value to
-			// "stable", so this field can no longer distinguish "preserved" from "reset to the
-			// default" here. The collapse itself is asserted in update-channel.test.ts. Put
-			// "canary" back when the flag is deleted, so the drift guard regains its teeth.
-			updateChannel: "stable",
+			// Back to a NON-default value, so this field can once again tell "preserved" from
+			// "reset to the default" — it briefly had to be "stable" while a global flag
+			// collapsed every channel. The collapse is now per-platform, and this suite runs
+			// on platforms the canary feed publishes for.
+			updateChannel: "canary",
 			terminalPathOpenMode: "reveal",
 			theme: "light",
 			resolvedTheme: "light",

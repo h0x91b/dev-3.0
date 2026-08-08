@@ -127,6 +127,7 @@ const settings = {
 	"settings.updateChannelDesc": "Estable entrega solo lanzamientos etiquetados. Canary se compila con cada lote de fusiones en main: no es un lanzamiento probado.",
 	"settings.updateChannelStable": "Estable",
 	"settings.updateChannelCanary": "Canary",
+	"settings.updateChannelUnavailableHere": "Canary aún no se publica para esta plataforma, así que aquí solo está disponible Estable.",
 	"settings.updateChannelSwitchToCanaryTitle": "¿Cambiar al canal canary?",
 	"settings.updateChannelSwitchToCanaryBody": "Recibirás main tal como se fusiona, compilado automáticamente cada hora en que cambie. Estas compilaciones no son lanzamientos probados y pueden fallar. Puedes volver a estable cuando quieras.",
 	"settings.updateChannelSwitchToCanaryConfirm": "Usar canary",

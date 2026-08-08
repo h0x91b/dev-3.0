@@ -12,28 +12,22 @@ name: Canary publish
 # Scheduled workflows are BEST EFFORT and can fire late. A missed tick is harmless: the next
 # one still sees the sha mismatch and builds, so no commit is ever permanently unpublished.
 on:
-  # THE SCHEDULE STAYS OFF UNTIL A BUILD HAS ACTUALLY EMITTED `canary-*`.
+  # THE SCHEDULE IS ON, AND HERE IS THE RUN THAT EARNED IT.
   #
   # This channel was called `unstable`, and `electrobun build --env=unstable` could not
   # produce it: the CLI that runs is a compiled binary the vendor's `bin/electrobun.cjs`
-  # downloads, so patching its `src/cli/index.ts` patched a file nobody executes. `--env`
-  # degraded to `dev` on every run — caught by the built-folder check in
-  # create-release-artifacts.sh (`expected ./build/unstable-linux-x64 but found
-  # ./build/dev-linux-x64`) on run 31251014417, and by nothing else, because the three guards
-  # that asserted the PATCH stayed green throughout.
+  # downloads, so the patch we carried edited a file nobody executes. `--env` degraded to
+  # `dev` on every tick, and the schedule was switched off rather than left failing hourly.
   #
-  # `canary` IS in the vendor's own allowlist, so it should build with nothing of ours holding.
-  # SHOULD. Nobody has run it. That is a prediction, and this workflow was already switched off
-  # once for trusting one — an hourly red is ignored within a day, by the same people who would
-  # have to notice the next real failure. Turning the cron on before a single successful build
-  # would be the same mistake with a different word in it.
+  # `canary` is in the vendor's own allowlist, and that is no longer a prediction: run
+  # 31257371545 (dispatched by hand, 11 of 11 jobs, 11m09s) published
+  # canary-{macos-arm64,macos-x64,linux-x64,linux-arm64}-update.json — all four readable,
+  # buildOrder 1618, sha 7a9d230fb. The built-folder check in create-release-artifacts.sh,
+  # which is what caught the old degradation, passed on the way there.
   #
-  # RE-ENABLE together with the FIRST run that emitted `canary-*` artifacts, and cite it.
-  # Prove it by dispatching this workflow by hand — that is a person watching a run, not a red
-  # left on a wall — and delete the guard in canary-publish.test.ts in that same change.
-  #   schedule:
-  #     - cron: "23 * * * *"   # offset off the hour; the top of the hour is the busiest slot
-  #
+  # Offset off the hour: the top of the hour is the busiest slot on shared runners.
+  schedule:
+    - cron: "23 * * * *"
   # Safe to press on an unchanged `main`: every platform skips, and a republish of the same
   # commit reproduces the same `buildOrder` so clients would not reinstall anyway.
   workflow_dispatch:
