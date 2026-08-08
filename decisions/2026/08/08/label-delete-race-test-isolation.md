@@ -35,6 +35,13 @@ abandoned mid-flight`, suspends a handler, starts the next test's state, release
 the corpse, and asserts nothing leaks. Reverting the per-test identity makes it
 fail with the byte-identical production message.
 
+The same shape sits in `cli-socket-note-race.test.ts` — same `injectAfterLoad`,
+same single temp home, two injection points — and is fixed in the same way, in
+its own commit. `data-race.test.ts` shares the temp home but suspends no
+handler (its `Promise.all` is awaited inside one test), and
+`file-lock-enoent-race.test.ts` already creates a temp dir per test; neither is
+touched.
+
 ## Risks
 
 The suite now leaves several project directories in one temp home instead of
