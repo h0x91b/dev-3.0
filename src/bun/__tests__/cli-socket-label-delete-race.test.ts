@@ -8,12 +8,30 @@ const tempHome = mkdtempSync(join(tmpdir(), "dev3-label-race-"));
 const dev3Home = join(tempHome, ".dev3.0");
 const originalHome = process.env.HOME;
 
-const PROJECT_PATH = "/tmp/label-race-project";
-const PROJECT_SLUG = "tmp-label-race-project";
-
 const LABEL_DELETED = "label-deleted-1111";
 const LABEL_KEPT = "label-kept-2222";
 const LABEL_CONCURRENT = "label-concurrent-3333";
+
+/**
+ * Per-test identity, so no two tests ever address the same tasks.json.
+ *
+ * These tests suspend a `label.delete` handler on purpose. When one of them dies
+ * while suspended (a timeout or hook death under load), its `updateTask` still
+ * completes afterwards — and on a shared project that late write landed in the
+ * NEXT test's tasks.json, which then read back a label it never seeded. `$HOME`
+ * cannot be varied per test to separate them: `vi.mock("../data")` keeps one
+ * module instance alive for the whole file, so `vi.resetModules()` never
+ * re-resolves `paths.ts` and `DEV3_HOME` is fixed at first import. What CAN be
+ * varied is the project — a different id and path means a different slug, a
+ * different tasks.json, and nowhere for a neighbour's late write to be seen.
+ */
+let testIndex = 0;
+let projectId = "";
+let projectPath = "";
+/** `projectSlug()` in git.ts: `/tmp/label-race-project-3` → `tmp-label-race-project-3`. */
+let projectSlug = "";
+/** Every project seeded so far — projects.json is one shared file at the home root. */
+const seededProjects: Project[] = [];
 
 // Injected once, right after the handler reads its (now stale) task snapshot
 // inside `label.delete` — simulates a concurrent UI label change landing in the
@@ -62,9 +80,9 @@ vi.mock("../logger", () => ({
 
 function makeProject(overrides?: Partial<Project>): Project {
 	return {
-		id: "proj-1",
+		id: projectId,
 		name: "Label Race Project",
-		path: PROJECT_PATH,
+		path: projectPath,
 		setupScript: "",
 		devScript: "",
 		cleanupScript: "",
@@ -79,7 +97,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 	return {
 		id: "task-1",
 		seq: 1,
-		projectId: "proj-1",
+		projectId,
 		title: "Label race task",
 		description: "Label race task",
 		status: "in-progress",
@@ -105,28 +123,42 @@ const LABELS: Label[] = [
 
 function seed(tasks: Task[], labels: Label[] = LABELS): Project {
 	const project = makeProject({ labels });
-	writeFileSync(join(dev3Home, "projects.json"), JSON.stringify([project], null, 2));
-	mkdirSync(join(dev3Home, "data", PROJECT_SLUG), { recursive: true });
-	writeFileSync(join(dev3Home, "data", PROJECT_SLUG, "tasks.json"), JSON.stringify(tasks, null, 2));
+	seededProjects.push(project);
+	writeFileSync(join(dev3Home, "projects.json"), JSON.stringify(seededProjects, null, 2));
+	mkdirSync(join(dev3Home, "data", projectSlug), { recursive: true });
+	writeFileSync(join(dev3Home, "data", projectSlug, "tasks.json"), JSON.stringify(tasks, null, 2));
 	return project;
 }
 
-function readTasksRaw(): Task[] {
-	return JSON.parse(readFileSync(join(dev3Home, "data", PROJECT_SLUG, "tasks.json"), "utf8")) as Task[];
+function readTasksRaw(slug: string = projectSlug): Task[] {
+	return JSON.parse(readFileSync(join(dev3Home, "data", slug, "tasks.json"), "utf8")) as Task[];
+}
+
+function readProjectRaw(id: string): Project {
+	const projects = JSON.parse(readFileSync(join(dev3Home, "projects.json"), "utf8")) as Project[];
+	const found = projects.find((p) => p.id === id);
+	if (!found) throw new Error(`Project not found on disk: ${id}`);
+	return found;
 }
 
 function makeRequest(method: string, params: Record<string, unknown>): CliRequest {
 	return { id: "req-1", method, params };
 }
 
+/** Begin a test on state nothing already in flight can reach. */
+function enterFreshTest(): void {
+	vi.resetModules();
+	injectAfterLoad = null;
+	process.env.HOME = tempHome;
+	testIndex += 1;
+	projectId = `proj-${testIndex}`;
+	projectPath = `/tmp/label-race-project-${testIndex}`;
+	projectSlug = `tmp-label-race-project-${testIndex}`;
+	mkdirSync(dev3Home, { recursive: true });
+}
+
 describe("cli-socket label.delete — lost-update race", () => {
-	beforeEach(() => {
-		vi.resetModules();
-		injectAfterLoad = null;
-		process.env.HOME = tempHome;
-		rmSync(tempHome, { recursive: true, force: true });
-		mkdirSync(dev3Home, { recursive: true });
-	});
+	beforeEach(enterFreshTest);
 
 	afterAll(() => {
 		process.env.HOME = originalHome;
@@ -147,7 +179,7 @@ describe("cli-socket label.delete — lost-update race", () => {
 			});
 		};
 
-		const resp = await handleRequest(makeRequest("label.delete", { projectId: "proj-1", labelId: LABEL_DELETED }));
+		const resp = await handleRequest(makeRequest("label.delete", { projectId, labelId: LABEL_DELETED }));
 		expect(resp.ok).toBe(true);
 
 		const [task] = readTasksRaw();
@@ -168,15 +200,14 @@ describe("cli-socket label.delete — lost-update race", () => {
 			makeTask({ id: "task-2", seq: 2, labelIds: [LABEL_KEPT] }),
 		]);
 
-		const resp = await handleRequest(makeRequest("label.delete", { projectId: "proj-1", labelId: LABEL_DELETED }));
+		const resp = await handleRequest(makeRequest("label.delete", { projectId, labelId: LABEL_DELETED }));
 		expect(resp.ok).toBe(true);
 
 		const tasks = readTasksRaw();
 		expect(tasks.find((t) => t.id === "task-1")?.labelIds).toEqual([LABEL_KEPT]);
 		expect(tasks.find((t) => t.id === "task-2")?.labelIds).toEqual([LABEL_KEPT]);
 
-		const projects = JSON.parse(readFileSync(join(dev3Home, "projects.json"), "utf8")) as Project[];
-		expect(projects[0].labels?.map((l) => l.id)).toEqual([LABEL_KEPT, LABEL_CONCURRENT]);
+		expect(readProjectRaw(projectId).labels?.map((l) => l.id)).toEqual([LABEL_KEPT, LABEL_CONCURRENT]);
 	});
 
 	it("keeps the CLI protocol response shape stable (backward compat)", async () => {
@@ -185,7 +216,7 @@ describe("cli-socket label.delete — lost-update race", () => {
 
 		seed([makeTask({ id: "task-1", labelIds: [LABEL_DELETED] })]);
 
-		const resp = await handleRequest(makeRequest("label.delete", { projectId: "proj-1", labelId: LABEL_DELETED }));
+		const resp = await handleRequest(makeRequest("label.delete", { projectId, labelId: LABEL_DELETED }));
 		expect(resp.id).toBe("req-1");
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ deleted: LABEL_DELETED });
@@ -198,7 +229,7 @@ describe("cli-socket label.delete — lost-update race", () => {
 		const seeded = makeTask({ id: "task-1", labelIds: [LABEL_DELETED, LABEL_KEPT] });
 		seed([seeded]);
 
-		await handleRequest(makeRequest("label.delete", { projectId: "proj-1", labelId: LABEL_DELETED }));
+		await handleRequest(makeRequest("label.delete", { projectId, labelId: LABEL_DELETED }));
 
 		const [task] = readTasksRaw();
 		// Every originally-seeded field is still present — nothing dropped, so an
@@ -211,8 +242,52 @@ describe("cli-socket label.delete — lost-update race", () => {
 		expect(task.labelIds).toEqual([LABEL_KEPT]);
 
 		// The on-disk JSON round-trips cleanly back through the data layer.
-		const project = await data.getProject("proj-1");
+		const project = await data.getProject(projectId);
 		const reloaded = (await data.loadTasks(project)).find((t) => t.id === "task-1");
 		expect(reloaded?.labelIds).toEqual([LABEL_KEPT]);
+	});
+
+	// Isolation guard: kill the neighbour deliberately instead of waiting for the
+	// scheduler to do it under load, and assert its late write is unobservable.
+	it("does not observe a write from a neighbour abandoned mid-flight", async () => {
+		let releaseNeighbour!: () => void;
+		let neighbourSuspended!: () => void;
+		const neighbourStalled = new Promise<void>((resolve) => { releaseNeighbour = resolve; });
+		const neighbourReachedStall = new Promise<void>((resolve) => { neighbourSuspended = resolve; });
+
+		const neighbourData = await import("../data");
+		const { handleRequest: neighbourHandle } = await import("../cli-socket-server");
+		const neighbourId = projectId;
+		const neighbourProject = seed([makeTask({ id: "task-1", labelIds: [LABEL_DELETED, LABEL_KEPT] })]);
+
+		injectAfterLoad = async () => {
+			neighbourSuspended();
+			await neighbourStalled;
+			await neighbourData.updateTask(neighbourProject, "task-1", {
+				labelIds: [LABEL_DELETED, LABEL_KEPT, LABEL_CONCURRENT],
+			});
+		};
+		// Deliberately not awaited — this is the neighbour dying with a write pending.
+		const abandoned = neighbourHandle(makeRequest("label.delete", { projectId: neighbourId, labelId: LABEL_DELETED }));
+		await neighbourReachedStall;
+
+		// The next test starts while the neighbour is still suspended.
+		enterFreshTest();
+		const { handleRequest } = await import("../cli-socket-server");
+		seed([
+			makeTask({ id: "task-1", labelIds: [LABEL_DELETED, LABEL_KEPT] }),
+			makeTask({ id: "task-2", seq: 2, labelIds: [LABEL_KEPT] }),
+		]);
+
+		// The corpse finishes its write now, inside the next test's window.
+		releaseNeighbour();
+		await abandoned.catch(() => undefined);
+
+		const resp = await handleRequest(makeRequest("label.delete", { projectId, labelId: LABEL_DELETED }));
+		expect(resp.ok).toBe(true);
+
+		const tasks = readTasksRaw();
+		expect(tasks.find((t) => t.id === "task-1")?.labelIds).toEqual([LABEL_KEPT]);
+		expect(tasks.find((t) => t.id === "task-2")?.labelIds).toEqual([LABEL_KEPT]);
 	});
 });

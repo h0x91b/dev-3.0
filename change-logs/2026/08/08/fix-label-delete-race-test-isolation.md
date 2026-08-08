@@ -1,0 +1,1 @@
+Gave each test in the `label.delete` race suite its own project, so a handler suspended on purpose by one test can no longer land its write in the next test's tasks.json. A new isolation test kills the neighbour deliberately and asserts the late write is unobservable, replacing a failure that only appeared under machine load.
