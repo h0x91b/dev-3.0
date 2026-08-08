@@ -4,7 +4,7 @@ import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
-import { UNSTABLE_FEED_AVAILABLE } from "../../../shared/update-channel";
+import * as confirmService from "../../confirm";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -16,6 +16,8 @@ vi.mock("../../zoom", () => ({
 	MAX_ZOOM: 2.0,
 	ZOOM_CHANGED_EVENT: "zoom-changed",
 }));
+
+vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
 
 vi.mock("../../rpc", () => ({
 	isElectrobun: false,
@@ -116,6 +118,8 @@ async function waitForLoad() {
 		expect(mockedApi.request.getGlobalSettings).toHaveBeenCalled();
 	});
 }
+
+const mockedConfirm = vi.mocked(confirmService.confirm);
 
 /** Open a custom Select trigger (by element id) and click the option labeled `label`. */
 async function pickFromSelect(user: ReturnType<typeof userEvent.setup>, triggerId: string, label: string) {
@@ -422,30 +426,52 @@ describe("GlobalSettings", () => {
 			expect(select).toBeInTheDocument();
 		});
 
-		// The control shipped `disabled` while no unstable feed existed; enabling it is the
-		// point of the channels work. It must NOT be silently disabled again — that state
-		// looks identical to "feature present" on a screenshot.
-		// The control stays unusable until the unstable feed publishes. Enabling it earlier
-		// is the 403-forever trap: the updater fetches a missing manifest, reports "no
-		// update", and the UI renders that as "you are up to date" — permanently, silently.
-		it("stays disabled while no unstable feed is published", async () => {
+		// The control shipped `disabled` for as long as no unstable feed existed — picking a
+		// channel with no manifest in the bucket gets a 403, which the UI renders as "you are
+		// up to date", forever and silently. The feed exists now, so the gate is gone.
+		// Re-disabling it would look identical to "feature present" on a screenshot.
+		it("is enabled, so the channel is actually choosable", async () => {
 			setupMocks();
 			renderGlobalSettings("system");
 			await waitForLoad();
 
 			expect(
 				screen.getByDisplayValue("Stable"),
-				"the update-channel select must stay disabled while UNSTABLE_FEED_AVAILABLE is false. Fix: flip that constant in src/shared/update-channel.ts in the SAME change that lands the publishing workflow — not before, or a user who picks Unstable silently stops receiving updates forever.",
-			).toBeDisabled();
+				"the update-channel select must be enabled. It was `disabled` while no unstable feed was published; re-disabling it silently removes the feature while leaving the UI looking complete.",
+			).not.toBeDisabled();
 		});
 
-		it("keeps the constant and the control in lockstep", () => {
-			// If someone flips the constant without shipping the feed, the test above starts
-			// failing and names the reason. This asserts the coupling exists at all.
+		it("persists the switch only after the user confirms the consequence", async () => {
+			setupMocks();
+			mockedConfirm.mockResolvedValue(true);
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+
+			await user.selectOptions(screen.getByDisplayValue("Stable"), "unstable");
+
 			expect(
-				UNSTABLE_FEED_AVAILABLE,
-				"UNSTABLE_FEED_AVAILABLE must be DELETED, not flipped to true, in the change that lands the publishing workflow — a permanently-true constant is a dead branch and this guard test then asserts nothing. Fix: remove the constant, its `disabled` guard, and both guard tests, and restore the enabled-control assertions instead.",
-			).toBe(false);
+				mockedConfirm,
+				"switching channels must go through confirm(): unstable is main as it lands, and switching back installs an OLDER build that then reads state a newer one wrote.",
+			).toHaveBeenCalled();
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ updateChannel: "unstable" }),
+			);
+		});
+
+		it("writes nothing when the user cancels the confirmation", async () => {
+			setupMocks();
+			mockedConfirm.mockResolvedValue(false);
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+
+			await user.selectOptions(screen.getByDisplayValue("Stable"), "unstable");
+
+			expect(
+				mockedApi.request.saveGlobalSettings,
+				"a cancelled confirmation must leave the setting untouched. Persisting first and confirming after would put the user on unstable the moment the dialog appeared.",
+			).not.toHaveBeenCalled();
 		});
 	});
 

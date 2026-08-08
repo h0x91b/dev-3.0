@@ -15,27 +15,6 @@
 /** The channel a user has selected. Persisted in settings.json. */
 export type UpdateChannel = "stable" | "unstable";
 
-/**
- * Whether the unstable feed actually exists in the release bucket yet.
- *
- * SHIP-ORDERING GATE, and it is deliberately a constant rather than a promise in a review
- * comment. The Settings control must not become usable before the feed publishes: with no
- * `unstable-*-update.json` in the bucket the updater fetches a 403, reports "no update",
- * and the UI renders that as "you are up to date" — forever. The user has silently opted
- * out of all updates and nothing tells them.
- *
- * DELETE THIS CONSTANT in the change that lands the publishing workflow — do NOT flip it
- * to `true`. A constant that is permanently true is a dead branch and a test that asserts
- * nothing, which this project bans outright. That change removes this export, removes the
- * `disabled` guard in `SystemSettingsSection.tsx`, removes the two guard tests in
- * `GlobalSettings.test.tsx`, and replaces them with the enabled-control assertions
- * (enabled / persists only after confirm / writes nothing on cancel).
- *
- * Until then `GlobalSettings.test.tsx` asserts the control is disabled while this is
- * `false`, so the constant and the control cannot drift apart.
- */
-export const UNSTABLE_FEED_AVAILABLE = false;
-
 /** New installs and every unrecognised value land here. Nobody opts in by accident. */
 export const DEFAULT_UPDATE_CHANNEL: UpdateChannel = "stable";
 

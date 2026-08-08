@@ -1,0 +1,15 @@
+diff --git a/src/cli/index.ts b/src/cli/index.ts
+index 88cf526df431ba65071c5d0fb82b6855c5e0b186..9c97a7b7b315d5c505349334aaea0c10ce0c2c74 100644
+--- a/src/cli/index.ts
++++ b/src/cli/index.ts
+@@ -2078,7 +2078,9 @@ ${utiDecls}
+ 		// Get environment
+ 		const envArg =
+ 			process.argv.find((arg) => arg.startsWith("--env="))?.split("=")[1] || "";
+-		const buildEnvironment = ["dev", "canary", "stable"].includes(envArg)
++		const buildEnvironment = ["dev", "canary", "stable", "unstable"].includes(
++			envArg,
++		)
+ 			? envArg
+ 			: "dev";
+ 

@@ -108,6 +108,112 @@ stable version — expected, and `doctor` already says so. An explicit
 `brew upgrade --cask dev3` pulls an unstable user back to stable; that is acceptable because it is
 explicit, and the in-app setting still says unstable, so the next check offers the switch again.
 
+**How the bundle learns it is unstable: a one-line vendored patch, not a fork.** electrobun's CLI
+gates `--env` on `["dev","canary","stable"].includes(envArg) ? envArg : "dev"` (`src/cli/index.ts`)
+— so the obvious `--env=unstable` does not fail, it **silently produces a dev build**. That
+mechanism is the useful part: a future agent will otherwise try the obvious flag and ship a dev
+bundle wearing an unstable name.
+
+Everything below that check is already channel-generic — `getAppFileName`, `getPlatformPrefix`, the
+DMG volume name, the patch naming — and electrobun's own type is
+`BuildEnvironment = "stable" | "canary" | "dev" | (string & {})`, which **explicitly admits arbitrary
+strings**. So `patches/electrobun@1.18.1.patch` does not extend electrobun; it removes a check that
+contradicts electrobun's own type. This is the repo's first patched dependency.
+
+*Why not patch `version.json` after the build instead?* Because there is nothing left to patch:
+electrobun computes the bundle hash, writes `version.json`, tars the bundle, and then **deletes the
+bundle folder** on every non-dev build. The outer self-extracting wrapper carries its own
+`metadata.json` with a `channel` field and is code-signed and notarized. So "just patch the file"
+means untar, patch, re-tar, re-compress, patch the wrapper, re-sign and **re-notarize** — putting
+Apple's notary service on the hot path of an hourly job. Worth recording separately, because it took
+reading to establish: **the hash is computed BEFORE `version.json` is written, so `version.json` is
+not part of the hash** and editing it can never invalidate a bundle.
+
+*Why not publish unstable under the existing `canary` prefix?* It would need no patch at all, and it
+was rejected: it resurrects the name this change deletes, in the bucket **and** inside the bundle,
+and every future reader has to learn that canary means unstable. A stored lie costs more than a
+maintained patch — the patch is visible in `package.json`, the lie is visible only to whoever
+already knows it.
+
+**A lapsed patch must be RED, not silent**, because the failure mode is a dev build published under
+an unstable name: it polls the wrong feed and never updates, and nothing logs it. Three guards:
+
+| Guard | Catches |
+|---|---|
+| `electrobun-channel-patch.test.ts` reads the INSTALLED dependency | patch not declared for the pinned version · declared but not applied · list replaced rather than extended |
+| `create-release-artifacts.sh` compares `version.json`'s channel with its channel argument | a build that succeeded on the wrong channel |
+| the same script's early check for `./build/dev-*` next to a missing `./build/<channel>-*` | names the degradation instead of surfacing later as "build failed before tarring" |
+
+**EXPIRY: this patch dies when electrobun accepts arbitrary channel strings in the CLI**, matching
+its own `BuildEnvironment` type. It touches exactly one place — the `--env` allowlist in
+`src/cli/index.ts` — so that is where an upgrade should look.
+
+**Reported upstream: blackboardsh/electrobun#517.** Searched first — the closest existing issues are
+#261 (reading env inside `electrobun.config.ts`) and #432 (detecting dev vs packaged at runtime), and
+neither covers the `--env` allowlist. The report carries the four facts above plus the ask that
+matters more than accepting custom channels: **fail loudly on an unknown `--env` instead of degrading
+to `dev`.** If either lands, this patch deletes itself.
+
+**The publisher: hourly if `main` moved, decided PER PLATFORM.** `unstable-publish.yml` probes the
+already-published `unstable-{os}-{arch}-update.json` and compares its `sha` with `main`. Per platform
+on purpose: a run that publishes three of four self-heals on the next tick, where one shared decision
+would skip the fourth forever because `main` had not moved. `tag` is the **short sha** — there is no
+tag on this path, and a constant would overwrite one archive prefix forever; the versioned prefix
+therefore grows per commit with **no retention policy today**, stated rather than implied.
+
+**ABSENT means build, UNDECIDABLE means fail** — and the probe, not the decision, is what has to
+tell them apart. Mapping an unproven absence to "absent" turns one bucket-policy change into a full
+sign-and-notarize cycle every hour, forever; mapping it to "present" stops publishing forever. Both
+are silent, so the decision refuses and quotes what the probe actually saw.
+
+**The first version of that probe could never bootstrap, and the live bucket is what proved it.**
+The probe was an anonymous GET, on the belief that a missing key answers 404. It does not here.
+`h0x91b-releases` grants no anonymous `s3:ListBucket`, so a missing key answers **403 AccessDenied**
+— measured, with a deliberately invented key as the control, while `stable-macos-arm64-update.json`
+answered 200 from the same caller. The consequence is a closed loop, not a risk: 403 → refuse to
+build → no manifest is ever written → 403 again, every hour, forever, red every time. It would have
+merged green: the unit tests all passed, because they tested the *rule* and the rule was right.
+
+The fix is to probe **with the publishing credentials** (`aws s3 cp` through the CLI), where a
+missing key answers a clean 404 and `absent` is a fact rather than a guess. That fixes the class
+rather than the instance — a one-off seeding, by hand or by a `force` flag, would have left "no key"
+and "no access" looking identical forever, and the next new platform would hit the same wall without
+this conversation in anyone's memory. `FeedProbe` is therefore a union (`absent` / `present` /
+`undecidable`) rather than an HTTP status: the type no longer lets a caller pass a status it cannot
+interpret.
+
+A `force` input on `workflow_dispatch` survives as the escape hatch — the only way out if the probe
+itself cannot run — and a forced run emits `::warning::FORCED` naming that nothing was compared, so
+it cannot be mistaken in the log for a normal publish. Four assertions pin all of this: the probe is
+authenticated, no `fetch(` returns to it, the credentials reach the step, and the escape exists and
+is wired. All four were mutation-proved.
+
+**AN INVARIANT OVER A DIRECTORY COVERS CODE NOBODY HAS WRITTEN YET.** This publisher is the
+proof rather than the theory: the assertion that every feed publisher is gated by the packaged
+Windows proof is enumerated across the whole workflow directory, so it applied to
+`unstable-publish.yml` the moment the file existed — and it was verified by mutation, removing
+`windows-proof` from one caller's `needs`, which turned it red naming the job. A single-file
+assertion would have been **silent** here, because this file did not exist when the assertion was
+written. That is what buys the small noise a directory-scoped check adds to every unrelated
+workflow edit.
+
+**Cost accepted, but only on hours that publish.** The packaged Windows proof gates this publisher
+too, as it gates every job that syncs the feed. So an hour in which `main` moved pays for the proof
+as well as four builds — the guardrail working as designed, and not free.
+
+It first shipped **unconditional**, on the reasoning that unlike the post-merge proof there is no
+pushed range to scope against. True, and beside the point: the thing to scope against is not a
+changed-path set but *whether anything publishes at all*. `main` is quiet most hours, and on a quiet
+hour every platform skips, so the proof gated nothing and still packaged Windows — roughly 24 runs a
+day, all of them gating an empty set. It now carries `if:` over the four `decide` outputs.
+
+The failure mode of that condition is silent in both directions, so it is pinned by two assertions
+in `unstable-publish.test.ts`: one that the `if:` exists at all, and one that derives the platform
+list from `UNSTABLE_PLATFORMS` rather than re-typing it. A fifth platform added to `decide` but not
+to the condition would leave the proof skipped on its hour — and GitHub skips a job whose `needs`
+was skipped, so that platform's build would skip too and it would stop publishing entirely, with
+nothing red anywhere. Both mutations were run and both fail naming the platform.
+
 **In-place switching is macOS-only, and says so.** `Updater.appDataFolder()` is
 `{appData}/{identifier}/{channel}`. On macOS that folder is only download scratch and the swap
 targets `process.execPath`, so retargeting the cached `localInfo` is coherent. On Linux and

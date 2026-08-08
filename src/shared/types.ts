@@ -771,7 +771,7 @@ export const DEFAULT_EXTERNAL_APPS: ExternalApp[] = [
  * (agentId, configId) preset, surfaced as a quick-pick chip on the launch
  * picker. Carries no config overrides of its own (custom tweaks live in the
  * agent editor); `uses`/`lastUsedAt` drive chip ordering and eviction. See
- * `src/shared/favorites.ts` and decisions/125-agent-favorites.md.
+ * `src/shared/favorites.ts` and decisions/2026/07/11/agent-favorites.md.
  */
 export interface FavoriteAgentConfig {
 	agentId: string;
@@ -1439,7 +1439,7 @@ export interface Task {
 	 * switcher). Absent → the registry default (the preselect); `null` →
 	 * explicitly the system login (~/.claude / ~/.codex); a string → that managed
 	 * account. Persisted so Retry and session recovery re-launch on the same
-	 * account. See decisions/125-per-launch-agent-account-selection.md.
+	 * account. See decisions/2026/07/12/per-launch-agent-account-selection.md.
 	 */
 	accountId?: string | null;
 	createdAt: string;

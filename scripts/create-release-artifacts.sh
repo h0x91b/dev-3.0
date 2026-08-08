@@ -55,6 +55,18 @@ BUILD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_ORDER=$(git rev-list --count HEAD 2>/dev/null || echo "0")
 echo "Manifest identity: sha=${BUILD_SHA} buildOrder=${BUILD_ORDER}"
 
+# THE CHEAP HALF OF THE CHANNEL CHECK, and it runs on every path.
+# electrobun names its build folder after the channel, so `./build/dev-*` existing while
+# `./build/unstable-*` does not is the exact fingerprint of a SILENT degradation: electrobun
+# gates `--env` on an allowlist and falls back to "dev" outside it, and "unstable" is
+# admitted only by a vendored one-line patch. Without this, a lapsed patch surfaces later as
+# "build failed before tarring", which sends the operator to debug the wrong thing.
+if [ ! -d "$BUILD_DIR" ] && [ -d "./build/dev-${OS}-${ARCH}" ]; then
+  echo "::error::expected ${BUILD_DIR} but found ./build/dev-${OS}-${ARCH} — electrobun REJECTED --env=${CHANNEL} and silently fell back to a dev build."
+  echo "::error::Likely cause: the vendored electrobun patch (patches/electrobun@*.patch — the --env allowlist in src/cli/index.ts) stopped applying, usually after an upgrade. Fix: re-apply it, or delete it if electrobun now accepts arbitrary channel strings."
+  exit 1
+fi
+
 # Platform-specific settings
 if [ "$OS" = "macos" ]; then
   APP_BUNDLE="${APP_FILE_NAME}.app"
@@ -232,6 +244,19 @@ VERSION_JSON=$(find_version_json "$RECOVER_DIR")
 HASH=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.hash)")
 VERSION=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.version)")
 echo "Bundle hash: $HASH, version: $VERSION"
+
+# THE BUILT ARTIFACT MUST AGREE WITH THE CHANNEL WE ARE PUBLISHING IT AS.
+# electrobun gates `--env` on an allowlist and falls back to "dev" SILENTLY outside it;
+# "unstable" is admitted by a vendored one-line patch. If that patch ever stops applying —
+# an upgrade is the likely cause — the build still succeeds, produces a DEV bundle, and
+# without this check it would be published under unstable-* names: it would poll the wrong
+# feed and never update again, with nothing in any log saying so.
+BUNDLE_CHANNEL=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.channel)")
+if [ "$BUNDLE_CHANNEL" != "$CHANNEL" ]; then
+  echo "::error::bundle was built for channel '${BUNDLE_CHANNEL}' but is being published as '${CHANNEL}'"
+  echo "::error::'${BUNDLE_CHANNEL}' = 'dev' means electrobun REJECTED --env=${CHANNEL} and silently degraded. Likely cause: the vendored patch (patches/electrobun@*.patch — the --env allowlist in src/cli/index.ts) stopped applying after an upgrade. Fix: re-apply it, or delete it if electrobun now accepts arbitrary channel strings."
+  exit 1
+fi
 
 # Create update.json
 echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"sha\":\"${BUILD_SHA}\",\"buildOrder\":${BUILD_ORDER},\"changelog\":${CHANGELOG_JSON}}" \

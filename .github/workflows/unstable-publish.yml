@@ -1,0 +1,148 @@
+name: Unstable publish
+
+# The unstable channel's feed. No tag: versioning belongs to the human, so this publishes
+# whatever `main` is at, ordered by the monotonic `buildOrder` in the manifest rather than
+# by the version string. See decisions/2026/08/06/stable-unstable-update-channels.md.
+#
+# HOURLY-IF-MAIN-MOVED, NOT PER MERGE. Merges land in batches of four or five back to back,
+# so per-push meant four wasted sign-and-notarize cycles for one meaningful artifact. A cron
+# that compares a sha has no burst to collapse, which is also why there is no
+# `cancel-in-progress` here.
+#
+# Scheduled workflows are BEST EFFORT and can fire late. A missed tick is harmless: the next
+# one still sees the sha mismatch and builds, so no commit is ever permanently unpublished.
+on:
+  schedule:
+    # Offset off the hour: the top of the hour is the busiest slot on shared runners.
+    - cron: "23 * * * *"
+  # Safe to press on an unchanged `main`: every platform skips, and a republish of the same
+  # commit reproduces the same `buildOrder` so clients would not reinstall anyway.
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish every platform without comparing the feed (seeds a channel that has never published)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  # ──────────────────────────────────────────────────
+  # Has main moved since the last publish, per platform?
+  # ──────────────────────────────────────────────────
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      macos-arm64: ${{ steps.probe.outputs.macos-arm64 }}
+      macos-x64: ${{ steps.probe.outputs.macos-x64 }}
+      linux-x64: ${{ steps.probe.outputs.linux-x64 }}
+      linux-arm64: ${{ steps.probe.outputs.linux-arm64 }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      # No `bun install`: the script imports only src/shared, so this job stays seconds long
+      # in front of four sign-and-notarize cycles.
+      #
+      # THE SAME CREDENTIALS THE BUILDS PUBLISH WITH, and the reason is not convenience. The
+      # bucket grants no anonymous `s3:ListBucket`, so an unauthenticated GET answers 403 for
+      # a key that does not exist — indistinguishable from a policy failure, which this
+      # workflow (correctly) refuses to build on. Probing anonymously therefore made the first
+      # publish unreachable: 403 → refuse → no manifest → 403 again, every hour, forever.
+      - name: Probe the published unstable feed
+        id: probe
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+          FORCE_PUBLISH: ${{ inputs.force }}
+        run: bun scripts/decide-unstable-publish.ts
+
+  # ──────────────────────────────────────────────────
+  # The packaged Windows proof gates every publisher
+  # ──────────────────────────────────────────────────
+  # `workflow-windows-proof.test.ts` asserts that every job syncing the feed depends on this,
+  # and that assertion is enumerated across the whole workflow directory precisely so a NEW
+  # publisher like this one cannot skip it. A Windows failure must not land a partial ship.
+  # See decisions/2026/08/06/windows-proof-post-merge-not-pull-request.md.
+  #
+  # NOT SCOPED BY CHANGED PATHS, unlike the post-merge proof — there is no pushed range here.
+  # Scoped instead by whether anything publishes at all: on a quiet hour every platform skips,
+  # so a full Windows packaging run would gate nothing. The condition must name EVERY output
+  # `decide` emits; a platform missing from it silently loses its gate, which is why
+  # unstable-publish.test.ts derives the list from UNSTABLE_PLATFORMS rather than trusting it.
+  windows-proof:
+    needs: decide
+    if: >-
+      needs.decide.outputs.macos-arm64 == 'true' ||
+      needs.decide.outputs.macos-x64 == 'true' ||
+      needs.decide.outputs.linux-x64 == 'true' ||
+      needs.decide.outputs.linux-arm64 == 'true'
+    uses: ./.github/workflows/windows-conpty-package.yml
+
+  # ──────────────────────────────────────────────────
+  # Per-platform builds — each one skipped independently
+  # ──────────────────────────────────────────────────
+  # `tag` is the SHORT SHA, not a version. There is no tag on this path, and passing a
+  # constant like "unstable" would overwrite one archive prefix forever; the short sha makes a
+  # specific unstable build fetchable after the root feed has moved on. The versioned prefix
+  # therefore grows per commit and has NO retention policy today — named rather than implied.
+  #
+  # `publish: true` is a literal here, unlike release.yml's dry-run comparison: this workflow
+  # exists only to publish, and it has no dry-run path. `workflow_dispatch` on an unchanged
+  # main is made safe by the skip above, not by withholding the upload.
+  build-macos-arm64:
+    needs: [decide, windows-proof]
+    if: needs.decide.outputs.macos-arm64 == 'true'
+    uses: ./.github/workflows/release-build-macos.yml
+    secrets: inherit
+    with:
+      arch: arm64
+      runsOn: macos-15
+      channel: unstable
+      tag: ${{ github.sha }}
+      publish: true
+
+  build-macos-x64:
+    needs: [decide, windows-proof]
+    if: needs.decide.outputs.macos-x64 == 'true'
+    uses: ./.github/workflows/release-build-macos.yml
+    secrets: inherit
+    with:
+      arch: x64
+      runsOn: macos-15-intel
+      channel: unstable
+      tag: ${{ github.sha }}
+      publish: true
+
+  build-linux-x64:
+    needs: [decide, windows-proof]
+    if: needs.decide.outputs.linux-x64 == 'true'
+    uses: ./.github/workflows/release-build-linux.yml
+    secrets: inherit
+    with:
+      arch: x64
+      runsOn: ubuntu-22.04
+      channel: unstable
+      tag: ${{ github.sha }}
+      publish: true
+      bestEffort: false
+
+  build-linux-arm64:
+    needs: [decide, windows-proof]
+    if: needs.decide.outputs.linux-arm64 == 'true'
+    uses: ./.github/workflows/release-build-linux.yml
+    secrets: inherit
+    with:
+      arch: arm64
+      runsOn: ubuntu-22.04-arm
+      channel: unstable
+      tag: ${{ github.sha }}
+      publish: true
+      bestEffort: true

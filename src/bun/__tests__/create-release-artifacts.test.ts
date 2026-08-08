@@ -138,7 +138,7 @@ describe("create-release-artifacts.sh", () => {
 		mkdirSync(join(buildDir, "payload", "Contents", "Resources"), { recursive: true });
 		writeFileSync(
 			join(buildDir, "payload", "Contents", "Resources", "version.json"),
-			JSON.stringify({ version: "9.9.9", hash: "deadbeef" }),
+			JSON.stringify({ version: "9.9.9", hash: "deadbeef", channel: "stable" }),
 		);
 		// A REAL tar (the script untars it to recover version.json) and deliberately no .zst.
 		spawnSync("tar", ["-cf", join(buildDir, "dev-3.0.app.tar"), "-C", buildDir, "payload"], { encoding: "utf8" });
@@ -185,12 +185,12 @@ describe("create-release-artifacts.sh", () => {
 			existsSync(join(tempDir, "artifacts-macos-arm64", "stable-macos-arm64-dev-3.0.app.tar.zst")),
 			"the compressed tarball must be staged from a build that only produced the uncompressed tar.",
 		).toBe(true);
-		// Staging happens BEFORE the script's remaining work, so asserting the artifact exists
-		// is NOT the same as asserting the script succeeded — and that gap is how the
-		// version.json fallback stayed broken while this test passed.
+		// The staging copy happens BEFORE the last checks in the script, so asserting the
+		// artifact exists is not the same as asserting the script succeeded. It has to be
+		// both, or a script that stages and then fails reads as a pass.
 		expect(
 			result.status,
-			"the whole recovery path must EXIT 0, not merely produce the tarball. A non-zero exit means something after the staging copy rejected the build; read the output above rather than trusting the artifact's existence.",
+			"the whole recovery path must EXIT 0, not merely produce the tarball. Staging happens before the script's final checks, so a non-zero exit here means something after the copy rejected the build — read the stderr above rather than trusting the artifact's existence.",
 		).toBe(0);
 	});
 
