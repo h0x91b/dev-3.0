@@ -38,7 +38,7 @@ describe("saveSettings", () => {
 	});
 
 	it("does not corrupt the existing settings file if a write crashes mid-save", async () => {
-		const previousSettings = makeSettings({ updateChannel: "unstable" });
+		const previousSettings = makeSettings({ updateChannel: "canary" });
 		writeFileSync(settingsPath, JSON.stringify(previousSettings, null, 2), "utf-8");
 
 		vi.spyOn(Bun, "write").mockImplementation(async (target) => {
@@ -156,11 +156,11 @@ describe("saveSettings", () => {
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskDropPosition: "bottom",
-			// "stable" and not "unstable" ON PURPOSE, and it costs this guard something: while
-			// UNSTABLE_FEED_AVAILABLE is false, coerceUpdateChannel collapses every value to
+			// "stable" and not "canary" ON PURPOSE, and it costs this guard something: while
+			// CANARY_FEED_AVAILABLE is false, coerceUpdateChannel collapses every value to
 			// "stable", so this field can no longer distinguish "preserved" from "reset to the
 			// default" here. The collapse itself is asserted in update-channel.test.ts. Put
-			// "unstable" back when the flag is deleted, so the drift guard regains its teeth.
+			// "canary" back when the flag is deleted, so the drift guard regains its teeth.
 			updateChannel: "stable",
 			terminalPathOpenMode: "reveal",
 			theme: "light",

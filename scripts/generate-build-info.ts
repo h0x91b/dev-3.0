@@ -39,7 +39,7 @@ try {
 
 // Commit count on the current branch. Monotonic on `main` because it is
 // squash-merged (linear history, +1 per merge) — that property, not git itself, is
-// what makes it usable as the unstable channel's ordering key. See
+// what makes it usable as the canary channel's ordering key. See
 // src/shared/update-channel.ts.
 let buildOrder = 0;
 try {

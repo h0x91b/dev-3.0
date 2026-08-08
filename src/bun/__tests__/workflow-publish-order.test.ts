@@ -9,7 +9,7 @@
  *
  * This is enumerated across the WHOLE workflow directory rather than read from named files,
  * because it is a property every publisher must hold — the next publisher is the hourly
- * unstable one, and it must not be able to reintroduce this by writing its own sync.
+ * canary one, and it must not be able to reintroduce this by writing its own sync.
  */
 
 import { readdirSync, readFileSync } from "node:fs";

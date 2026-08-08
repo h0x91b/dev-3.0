@@ -64,13 +64,15 @@ describe("create-release-artifacts.sh", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
 		tempDirs.push(tempDir);
 
-		const result = spawnSync("bash", [SCRIPT_PATH, "macos", "arm64", "canary"], { cwd: tempDir, encoding: "utf8" });
+		// `unstable` on purpose: it is the name this channel USED to have, so it is the exact
+		// string a stale caller, an old workflow copy or a half-applied rename would pass.
+		const result = spawnSync("bash", [SCRIPT_PATH, "macos", "arm64", "unstable"], { cwd: tempDir, encoding: "utf8" });
 
 		expect(
 			result.status,
-			"an unknown channel must fail. Otherwise the script happily writes `canary-macos-arm64-*` artifacts that no client ever asks for, and the run goes green.",
+			"an unknown channel must fail. Otherwise the script happily writes `unstable-macos-arm64-*` artifacts that no client ever asks for — and since that was this channel's previous name, a caller left behind by the rename would publish into a feed nobody polls, with the run green.",
 		).not.toBe(0);
-		expect(`${result.stdout}${result.stderr}`).toMatch(/unknown channel 'canary'/);
+		expect(`${result.stdout}${result.stderr}`).toMatch(/unknown channel 'unstable'/);
 	});
 
 
@@ -196,20 +198,20 @@ describe("create-release-artifacts.sh", () => {
 
 	// Both fields land in the manifest this script is the single writer of. They answer
 	// different questions: sha says WHICH COMMIT (the hourly workflow's skip check),
-	// buildOrder says WHICH BUILD IS NEWER (unstable clients' ordering).
+	// buildOrder says WHICH BUILD IS NEWER (canary clients' ordering).
 	it("writes both manifest identity fields, not one derived from the other", () => {
 		const script = readFileSync(SCRIPT_PATH, "utf8");
 		expect(
 			script,
-			"the published manifest must carry `sha`. Without it the hourly unstable workflow has nothing to compare against main and would rebuild every hour forever.",
+			"the published manifest must carry `sha`. Without it the hourly canary workflow has nothing to compare against main and would rebuild every hour forever.",
 		).toMatch(/\\"sha\\":/);
 		expect(
 			script,
-			"the published manifest must carry `buildOrder`. Without it decideUpdate() reports an error on the unstable channel and no unstable client can ever update.",
+			"the published manifest must carry `buildOrder`. Without it decideUpdate() reports an error on the canary channel and no canary client can ever update.",
 		).toMatch(/\\"buildOrder\\":/);
 		expect(
 			script,
-			"buildOrder must come from `git rev-list --count HEAD` — monotonic only because main is squash-merged (linear history, +1 per merge) — a property of how this repo lands PRs, not of git. Fix: keep the command, and if main ever takes merge commits the unstable ordering has to change with it.",
+			"buildOrder must come from `git rev-list --count HEAD` — monotonic only because main is squash-merged (linear history, +1 per merge) — a property of how this repo lands PRs, not of git. Fix: keep the command, and if main ever takes merge commits the canary ordering has to change with it.",
 		).toMatch(/git rev-list --count HEAD/);
 	});
 });

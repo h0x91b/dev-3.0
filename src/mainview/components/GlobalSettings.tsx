@@ -260,12 +260,12 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	// consequence — the stable direction is the one nobody would guess.
 	const handleUpdateChannelChange = useCallback(
 		async (channel: UpdateChannel) => {
-			const toUnstable = channel === "unstable";
+			const toCanary = channel === "canary";
 			const ok = await confirm({
-				title: t(toUnstable ? "settings.updateChannelSwitchToUnstableTitle" : "settings.updateChannelSwitchToStableTitle"),
-				message: t(toUnstable ? "settings.updateChannelSwitchToUnstableBody" : "settings.updateChannelSwitchToStableBody"),
+				title: t(toCanary ? "settings.updateChannelSwitchToCanaryTitle" : "settings.updateChannelSwitchToStableTitle"),
+				message: t(toCanary ? "settings.updateChannelSwitchToCanaryBody" : "settings.updateChannelSwitchToStableBody"),
 				confirmLabel: t(
-					toUnstable ? "settings.updateChannelSwitchToUnstableConfirm" : "settings.updateChannelSwitchToStableConfirm",
+					toCanary ? "settings.updateChannelSwitchToCanaryConfirm" : "settings.updateChannelSwitchToStableConfirm",
 				),
 			});
 			if (!ok) return;

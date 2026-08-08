@@ -1,16 +1,16 @@
 /**
- * Whether the hourly unstable publisher has anything to build.
+ * Whether the hourly canary publisher has anything to build.
  *
  * The decision is made PER PLATFORM off the manifest already published for that platform,
  * not once for the whole run. A run that publishes three of four platforms then self-heals
  * on the next tick; a single shared decision would skip the fourth forever, because `main`
  * would not have moved.
  *
- * See decisions/2026/08/06/stable-unstable-update-channels.md.
+ * See decisions/2026/08/06/stable-canary-update-channels.md.
  */
 
-/** Every platform the unstable channel publishes, in the order the workflow declares them. */
-export const UNSTABLE_PLATFORMS = [
+/** Every platform the canary channel publishes, in the order the workflow declares them. */
+export const CANARY_PLATFORMS = [
 	{ os: "macos", arch: "arm64" },
 	{ os: "macos", arch: "x64" },
 	{ os: "linux", arch: "x64" },
@@ -18,7 +18,7 @@ export const UNSTABLE_PLATFORMS = [
 ] as const;
 
 /**
- * What one look at `s3://.../unstable-{os}-{arch}-update.json` established.
+ * What one look at `s3://.../canary-{os}-{arch}-update.json` established.
  *
  * ABSENT IS A CLAIM, NOT A GUESS, and it is why this is a union rather than an HTTP status.
  * An ANONYMOUS GET cannot make that claim about this bucket: it grants no `s3:ListBucket`,
@@ -49,7 +49,7 @@ export type PublishDecision =
  */
 export function decidePlatformPublish(probe: FeedProbe, headSha: string): PublishDecision {
 	if (probe.kind === "absent") {
-		return { build: true, reason: "no unstable manifest has ever been published for this platform" };
+		return { build: true, reason: "no canary manifest has ever been published for this platform" };
 	}
 	if (probe.kind === "undecidable") {
 		return {

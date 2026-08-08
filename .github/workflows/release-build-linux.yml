@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       channel:
-        description: "stable or unstable — prefixes every artifact name and the update manifest"
+        description: "stable or canary — prefixes every artifact name and the update manifest"
         required: true
         type: string
       tag:

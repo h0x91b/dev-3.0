@@ -1,7 +1,7 @@
 /**
- * Probes the published unstable feed and writes one GitHub output per platform.
+ * Probes the published canary feed and writes one GitHub output per platform.
  *
- * Thin on purpose: every rule lives in `src/shared/unstable-publish.ts` where it is unit
+ * Thin on purpose: every rule lives in `src/shared/canary-publish.ts` where it is unit
  * tested, and this file only does the I/O — read the object, print, write outputs, set the
  * exit code.
  *
@@ -16,7 +16,7 @@
 
 import { appendFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { decidePlatformPublish, UNSTABLE_PLATFORMS, type FeedProbe } from "../src/shared/unstable-publish";
+import { decidePlatformPublish, CANARY_PLATFORMS, type FeedProbe } from "../src/shared/canary-publish";
 
 const BUCKET_PREFIX = "s3://h0x91b-releases/dev-3.0";
 
@@ -37,7 +37,7 @@ const forced = process.env.FORCE_PUBLISH === "true";
 function probe(os: string, arch: string): FeedProbe {
 	const result = spawnSync(
 		"aws",
-		["s3", "cp", `${BUCKET_PREFIX}/unstable-${os}-${arch}-update.json`, "-"],
+		["s3", "cp", `${BUCKET_PREFIX}/canary-${os}-${arch}-update.json`, "-"],
 		{ encoding: "utf8" },
 	);
 	if (result.error) {
@@ -54,7 +54,7 @@ const outputPath = process.env.GITHUB_OUTPUT;
 let failures = 0;
 let builds = 0;
 
-for (const { os, arch } of UNSTABLE_PLATFORMS) {
+for (const { os, arch } of CANARY_PLATFORMS) {
 	const key = `${os}-${arch}`;
 	const decision = forced
 		? ({ build: true, reason: "forced by workflow_dispatch — the feed was NOT compared" } as const)
@@ -74,9 +74,9 @@ if (forced) {
 	console.log("::warning::FORCED publish — every platform builds and nothing was compared against the feed. Use this only to seed a channel that has never published.");
 }
 if (failures > 0) {
-	console.error(`::error::${failures} of ${UNSTABLE_PLATFORMS.length} platforms could not be decided — refusing to publish a partial guess`);
+	console.error(`::error::${failures} of ${CANARY_PLATFORMS.length} platforms could not be decided — refusing to publish a partial guess`);
 	process.exit(1);
 }
 if (!forced && builds === 0) {
-	console.log("::notice::main has not moved since the last unstable publish on any platform — nothing to build");
+	console.log("::notice::main has not moved since the last canary publish on any platform — nothing to build");
 }

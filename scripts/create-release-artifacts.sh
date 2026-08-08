@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage: ./scripts/create-release-artifacts.sh <os> <arch> <channel>
 #   os:      macos or linux
 #   arch:    arm64 or x64
-#   channel: stable or unstable (must match the `electrobun build --env=` used)
+#   channel: stable or canary (must match the `electrobun build --env=` used)
 # Outputs artifacts to ./artifacts-<os>-<arch>/
 #
 # Expects:
@@ -18,15 +18,15 @@ set -euo pipefail
 # and `buildOrder` fields the channel logic needs. A second writer would let the feed
 # disagree with itself.
 
-OS="${1:?Usage: $0 <os> <arch> <channel> (os: macos|linux, arch: arm64|x64, channel: stable|unstable)}"
-ARCH="${2:?Usage: $0 <os> <arch> <channel> (os: macos|linux, arch: arm64|x64, channel: stable|unstable)}"
+OS="${1:?Usage: $0 <os> <arch> <channel> (os: macos|linux, arch: arm64|x64, channel: stable|canary)}"
+ARCH="${2:?Usage: $0 <os> <arch> <channel> (os: macos|linux, arch: arm64|x64, channel: stable|canary)}"
 # CHANNEL is REQUIRED and deliberately NOT defaulted. A default would let a future
-# caller publish unstable artifacts into the stable feed — every filename here is
+# caller publish canary artifacts into the stable feed — every filename here is
 # prefixed with it — and nothing would go red, because a missing argument would read
 # as a valid choice.
-CHANNEL="${3:?missing <channel> argument (stable|unstable). Refusing to guess: the channel prefixes every artifact name and the update manifest, so guessing it would publish one channel build into the other channel feed.}"
-if [ "$CHANNEL" != "stable" ] && [ "$CHANNEL" != "unstable" ]; then
-  echo "::error::unknown channel '${CHANNEL}' (expected stable|unstable). The channel must match the \`electrobun build --env=\` that produced ./build/, or the artifact names will not match what the updater fetches."
+CHANNEL="${3:?missing <channel> argument (stable|canary). Refusing to guess: the channel prefixes every artifact name and the update manifest, so guessing it would publish one channel build into the other channel feed.}"
+if [ "$CHANNEL" != "stable" ] && [ "$CHANNEL" != "canary" ]; then
+  echo "::error::unknown channel '${CHANNEL}' (expected stable|canary). The channel must match the \`electrobun build --env=\` that produced ./build/, or the artifact names will not match what the updater fetches."
   exit 1
 fi
 APP_NAME="dev-3.0"
@@ -44,10 +44,10 @@ PLATFORM_PREFIX="${CHANNEL}-${OS}-${ARCH}"
 OUTPUT_DIR="./artifacts-${OS}-${ARCH}"
 ZSTD="./node_modules/electrobun/dist-${OS}-${ARCH}/zig-zstd"
 
-# Identity and ordering for the manifest. `sha` says WHICH COMMIT (the hourly unstable
+# Identity and ordering for the manifest. `sha` says WHICH COMMIT (the hourly canary
 # workflow compares it against main to decide whether to build at all); `buildOrder`
-# says WHICH BUILD IS NEWER (clients on unstable compare it, because the unstable
-# version string carries a +unstable.<sha> suffix that semver silently parses away).
+# says WHICH BUILD IS NEWER (clients on canary compare it, because the canary
+# version string carries a +canary.<sha> suffix that semver silently parses away).
 # `buildOrder` is monotonic ONLY because main is squash-merged: linear history, +1 per
 # merge. That is a property of how this repo lands PRs, not of git. See
 # decisions/2026/08/06/extract-reusable-release-build-workflows.md.
@@ -57,13 +57,15 @@ echo "Manifest identity: sha=${BUILD_SHA} buildOrder=${BUILD_ORDER}"
 
 # THE CHEAP HALF OF THE CHANNEL CHECK, and it runs on every path.
 # electrobun names its build folder after the channel, so `./build/dev-*` existing while
-# `./build/unstable-*` does not is the exact fingerprint of a SILENT degradation: electrobun
-# gates `--env` on an allowlist and falls back to "dev" outside it, and "unstable" is
-# admitted only by a vendored one-line patch. Without this, a lapsed patch surfaces later as
-# "build failed before tarring", which sends the operator to debug the wrong thing.
+# `./build/<channel>-*` does not is the exact fingerprint of a SILENT degradation: it gates
+# `--env` on an allowlist and falls back to "dev" outside it, without failing. This check
+# EARNED ITS KEEP: it is what caught `--env=unstable` degrading on every single run, while
+# three guards asserting a vendored patch stayed green — they described a source file the
+# build never executes. Without it the degradation surfaces later as "build failed before
+# tarring", which sends the operator to debug the wrong thing.
 if [ ! -d "$BUILD_DIR" ] && [ -d "./build/dev-${OS}-${ARCH}" ]; then
   echo "::error::expected ${BUILD_DIR} but found ./build/dev-${OS}-${ARCH} — electrobun REJECTED --env=${CHANNEL} and silently fell back to a dev build."
-  echo "::error::Likely cause: the vendored electrobun patch (patches/electrobun@*.patch — the --env allowlist in src/cli/index.ts) stopped applying, usually after an upgrade. Fix: re-apply it, or delete it if electrobun now accepts arbitrary channel strings."
+  echo "::error::'${CHANNEL}' is not in electrobun's --env allowlist on the installed version. Fix: check that allowlist in the installed dependency (do NOT patch its src/cli/index.ts — the CLI that runs is a compiled binary downloaded by bin/electrobun.cjs, so that file is never executed), and publish only channels it admits natively."
   exit 1
 fi
 
@@ -246,15 +248,14 @@ VERSION=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j
 echo "Bundle hash: $HASH, version: $VERSION"
 
 # THE BUILT ARTIFACT MUST AGREE WITH THE CHANNEL WE ARE PUBLISHING IT AS.
-# electrobun gates `--env` on an allowlist and falls back to "dev" SILENTLY outside it;
-# "unstable" is admitted by a vendored one-line patch. If that patch ever stops applying —
-# an upgrade is the likely cause — the build still succeeds, produces a DEV bundle, and
-# without this check it would be published under unstable-* names: it would poll the wrong
-# feed and never update again, with nothing in any log saying so.
+# electrobun gates `--env` on an allowlist and falls back to "dev" SILENTLY outside it. If a
+# future upgrade drops a channel from that list, the build still succeeds, produces a DEV
+# bundle, and without this check it would be published under that channel's names: it would
+# poll the wrong feed and never update again, with nothing in any log saying so.
 BUNDLE_CHANNEL=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.channel)")
 if [ "$BUNDLE_CHANNEL" != "$CHANNEL" ]; then
   echo "::error::bundle was built for channel '${BUNDLE_CHANNEL}' but is being published as '${CHANNEL}'"
-  echo "::error::'${BUNDLE_CHANNEL}' = 'dev' means electrobun REJECTED --env=${CHANNEL} and silently degraded. Likely cause: the vendored patch (patches/electrobun@*.patch — the --env allowlist in src/cli/index.ts) stopped applying after an upgrade. Fix: re-apply it, or delete it if electrobun now accepts arbitrary channel strings."
+  echo "::error::'${BUNDLE_CHANNEL}' = 'dev' means electrobun REJECTED --env=${CHANNEL} and silently degraded. Likely cause: an electrobun upgrade removed '${CHANNEL}' from its --env allowlist. Fix: publish only channels the installed version admits natively — patching its src/cli/index.ts does nothing, because the CLI that runs is a compiled binary downloaded by bin/electrobun.cjs."
   exit 1
 fi
 

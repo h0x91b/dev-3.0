@@ -33,9 +33,9 @@ export const WINDOWS_SCOPE_PATHS = [
 	// in this list — it pins Bun, a pin change is a packaged-runtime change, and a
 	// workflow outside the list cannot dispatch the proof for its own edits.
 	".github/workflows/windows-proof-main.yml",
-	// The hourly unstable publisher. In under BOTH criteria: it dispatches the proof (same
+	// The hourly canary publisher. In under BOTH criteria: it dispatches the proof (same
 	// rule as the line above) and it pins Bun for the builds it calls.
-	".github/workflows/unstable-publish.yml",
+	".github/workflows/canary-publish.yml",
 	// (2) these carry the Bun pin that builds and ships the app, so a pin change here is
 	// a packaged-runtime change and the proof has to re-run. release.yml still pins Bun in
 	// its `prepare` and `release` jobs after the per-platform builds moved out; the two

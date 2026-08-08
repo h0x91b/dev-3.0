@@ -1,8 +1,8 @@
-name: Unstable publish
+name: Canary publish
 
-# The unstable channel's feed. No tag: versioning belongs to the human, so this publishes
+# The canary channel's feed. No tag: versioning belongs to the human, so this publishes
 # whatever `main` is at, ordered by the monotonic `buildOrder` in the manifest rather than
-# by the version string. See decisions/2026/08/06/stable-unstable-update-channels.md.
+# by the version string. See decisions/2026/08/06/stable-canary-update-channels.md.
 #
 # HOURLY-IF-MAIN-MOVED, NOT PER MERGE. Merges land in batches of four or five back to back,
 # so per-push meant four wasted sign-and-notarize cycles for one meaningful artifact. A cron
@@ -12,29 +12,28 @@ name: Unstable publish
 # Scheduled workflows are BEST EFFORT and can fire late. A missed tick is harmless: the next
 # one still sees the sha mismatch and builds, so no commit is ever permanently unpublished.
 on:
-  # THE SCHEDULE IS OFF, AND THIS IS NOT A PAUSE FOR CONVENIENCE.
+  # THE SCHEDULE STAYS OFF UNTIL A BUILD HAS ACTUALLY EMITTED `canary-*`.
   #
-  # `electrobun build --env=unstable` cannot produce an unstable build today. The CLI that
-  # actually runs is a COMPILED BINARY that `node_modules/electrobun/bin/electrobun.cjs`
-  # downloads from the vendor's releases (`ensureCliBinary()`); `patches/electrobun@*.patch`
-  # edits `src/cli/index.ts`, which that path never executes. So `--env=unstable` hits the
-  # vendor's own allowlist and degrades to `dev` — caught on run 31251014417 by the built-
-  # folder check in create-release-artifacts.sh (`expected ./build/unstable-linux-x64 but
-  # found ./build/dev-linux-x64`), which is the one guard that asserts a RESULT.
+  # This channel was called `unstable`, and `electrobun build --env=unstable` could not
+  # produce it: the CLI that runs is a compiled binary the vendor's `bin/electrobun.cjs`
+  # downloads, so patching its `src/cli/index.ts` patched a file nobody executes. `--env`
+  # degraded to `dev` on every run — caught by the built-folder check in
+  # create-release-artifacts.sh (`expected ./build/unstable-linux-x64 but found
+  # ./build/dev-linux-x64`) on run 31251014417, and by nothing else, because the three guards
+  # that asserted the PATCH stayed green throughout.
   #
-  # Left on the schedule, this fails all four builds every hour, forever. An hourly red
-  # nobody can fix is worse than no workflow: it is ignored within a day, and by the same
-  # people who would have to notice the next real failure.
+  # `canary` IS in the vendor's own allowlist, so it should build with nothing of ours holding.
+  # SHOULD. Nobody has run it. That is a prediction, and this workflow was already switched off
+  # once for trusting one — an hourly red is ignored within a day, by the same people who would
+  # have to notice the next real failure. Turning the cron on before a single successful build
+  # would be the same mistake with a different word in it.
   #
-  # RE-ENABLE ONLY TOGETHER WITH A BUILD PATH PROVEN TO EMIT `unstable-*` — proven by a check
-  # on the RESULT, not by asserting a patch is applied to a file nobody executes, which is
-  # exactly what stayed green while this was broken. `unstable-publish.test.ts` guards it;
-  # delete that guard in the same change.
+  # RE-ENABLE together with the FIRST run that emitted `canary-*` artifacts, and cite it.
+  # Prove it by dispatching this workflow by hand — that is a person watching a run, not a red
+  # left on a wall — and delete the guard in canary-publish.test.ts in that same change.
   #   schedule:
-  #     - cron: "23 * * * *"
+  #     - cron: "23 * * * *"   # offset off the hour; the top of the hour is the busiest slot
   #
-  # Still dispatchable by hand, deliberately: whoever fixes the build path needs to run this
-  # end to end, and a manual run is a person watching it rather than a red left on a wall.
   # Safe to press on an unchanged `main`: every platform skips, and a republish of the same
   # commit reproduces the same `buildOrder` so clients would not reinstall anyway.
   workflow_dispatch:
@@ -75,14 +74,14 @@ jobs:
       # a key that does not exist — indistinguishable from a policy failure, which this
       # workflow (correctly) refuses to build on. Probing anonymously therefore made the first
       # publish unreachable: 403 → refuse → no manifest → 403 again, every hour, forever.
-      - name: Probe the published unstable feed
+      - name: Probe the published canary feed
         id: probe
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: eu-west-1
           FORCE_PUBLISH: ${{ inputs.force }}
-        run: bun scripts/decide-unstable-publish.ts
+        run: bun scripts/decide-canary-publish.ts
 
   # ──────────────────────────────────────────────────
   # The packaged Windows proof gates every publisher
@@ -96,7 +95,7 @@ jobs:
   # Scoped instead by whether anything publishes at all: on a quiet hour every platform skips,
   # so a full Windows packaging run would gate nothing. The condition must name EVERY output
   # `decide` emits; a platform missing from it silently loses its gate, which is why
-  # unstable-publish.test.ts derives the list from UNSTABLE_PLATFORMS rather than trusting it.
+  # canary-publish.test.ts derives the list from CANARY_PLATFORMS rather than trusting it.
   windows-proof:
     needs: decide
     if: >-
@@ -110,8 +109,8 @@ jobs:
   # Per-platform builds — each one skipped independently
   # ──────────────────────────────────────────────────
   # `tag` is the SHORT SHA, not a version. There is no tag on this path, and passing a
-  # constant like "unstable" would overwrite one archive prefix forever; the short sha makes a
-  # specific unstable build fetchable after the root feed has moved on. The versioned prefix
+  # constant like "canary" would overwrite one archive prefix forever; the short sha makes a
+  # specific canary build fetchable after the root feed has moved on. The versioned prefix
   # therefore grows per commit and has NO retention policy today — named rather than implied.
   #
   # `publish: true` is a literal here, unlike release.yml's dry-run comparison: this workflow
@@ -125,7 +124,7 @@ jobs:
     with:
       arch: arm64
       runsOn: macos-15
-      channel: unstable
+      channel: canary
       tag: ${{ github.sha }}
       publish: true
 
@@ -137,7 +136,7 @@ jobs:
     with:
       arch: x64
       runsOn: macos-15-intel
-      channel: unstable
+      channel: canary
       tag: ${{ github.sha }}
       publish: true
 
@@ -149,7 +148,7 @@ jobs:
     with:
       arch: x64
       runsOn: ubuntu-22.04
-      channel: unstable
+      channel: canary
       tag: ${{ github.sha }}
       publish: true
       bestEffort: false
@@ -162,7 +161,7 @@ jobs:
     with:
       arch: arm64
       runsOn: ubuntu-22.04-arm
-      channel: unstable
+      channel: canary
       tag: ${{ github.sha }}
       publish: true
       bestEffort: true

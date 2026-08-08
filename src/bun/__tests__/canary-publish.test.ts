@@ -6,20 +6,20 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { decidePlatformPublish, UNSTABLE_PLATFORMS } from "../../shared/unstable-publish";
+import { decidePlatformPublish, CANARY_PLATFORMS } from "../../shared/canary-publish";
 
 const HEAD = "35c68a90fbf37fde8c9288976e30d7a8d5b329e5";
 
 const WORKFLOW = readFileSync(
-	fileURLToPath(new URL("../../../.github/workflows/unstable-publish.yml", import.meta.url)),
+	fileURLToPath(new URL("../../../.github/workflows/canary-publish.yml", import.meta.url)),
 	"utf8",
 );
 
-describe("deciding whether a platform needs an unstable build", () => {
+describe("deciding whether a platform needs an canary build", () => {
 	it("builds when no manifest has ever been published", () => {
 		expect(decidePlatformPublish({ kind: "absent" }, HEAD)).toEqual({
 			build: true,
-			reason: "no unstable manifest has ever been published for this platform",
+			reason: "no canary manifest has ever been published for this platform",
 		});
 	});
 
@@ -87,27 +87,27 @@ describe("deciding whether a platform needs an unstable build", () => {
 
 	it("covers every platform the workflow publishes", () => {
 		expect(
-			UNSTABLE_PLATFORMS.map((p) => `${p.os}-${p.arch}`),
-			"the platform list must match the four caller jobs in unstable-publish.yml. A platform present in the workflow but missing here is never probed, so it publishes every hour regardless of whether main moved.",
+			CANARY_PLATFORMS.map((p) => `${p.os}-${p.arch}`),
+			"the platform list must match the four caller jobs in canary-publish.yml. A platform present in the workflow but missing here is never probed, so it publishes every hour regardless of whether main moved.",
 		).toEqual(["macos-arm64", "macos-x64", "linux-x64", "linux-arm64"]);
 	});
 });
 
 /**
- * THE SCHEDULE IS OFF ON PURPOSE, and this guard is what stops that fact from being quietly
- * undone. `electrobun build --env=unstable` cannot produce an unstable build: the CLI that
- * runs is a compiled binary the vendor's `bin/electrobun.cjs` downloads, while the patch
- * edits `src/cli/index.ts`, which that path never executes — so `--env` degrades to `dev`.
- * Left on the cron, all four builds fail every hour forever, and an hourly red is ignored
- * within a day by exactly the people who must notice the next real one.
+ * THE SCHEDULE IS OFF UNTIL A BUILD HAS BEEN OBSERVED, which is a stricter bar than "the
+ * vendor supports this channel name". The previous name could never build — the CLI that runs
+ * is a compiled binary the vendor downloads, so the patch we carried edited a file nobody
+ * executes — and every tick failed all four builds while three guards asserting that patch
+ * stayed green. `canary` is in the vendor's allowlist and *should* build, but nobody has run
+ * it, and turning an hourly job on for a prediction is how the last red-on-a-wall happened.
  */
-describe("the hourly schedule stays off until the build path is proven", () => {
-	it("has no active cron while --env=unstable cannot produce an unstable build", () => {
+describe("the hourly schedule stays off until a canary build has been observed", () => {
+	it("has no active cron while no run has emitted canary-* artifacts", () => {
 		const triggers = WORKFLOW.slice(WORKFLOW.indexOf("\non:"), WORKFLOW.indexOf("\njobs:"));
 		const activeCron = triggers.split("\n").filter((l) => /^\s*-?\s*(schedule:|cron:)/.test(l));
 		expect(
 			activeCron,
-			`the cron is live again. It may only be re-enabled together with a build path PROVEN to emit unstable-* artifacts — proven by a check on the RESULT, like the built-folder comparison in create-release-artifacts.sh, not by asserting that a patch is applied to a source file nobody executes (that is exactly what passed while the feature was broken). Delete this test in the same change that re-enables the schedule.`,
+			`the cron is live again. It may only be re-enabled together with a run that ACTUALLY EMITTED canary-* artifacts — cite that run. "canary is in electrobun's allowlist so it should build" is a prediction, and this workflow was already switched off once for trusting one: every tick failed all four builds while the guards asserting the vendored patch stayed green. Dispatch it by hand first, then delete this test in the change that restores the schedule.`,
 		).toEqual([]);
 	});
 });
@@ -123,7 +123,7 @@ describe("the hourly schedule stays off until the build path is proven", () => {
  */
 describe("the publisher can reach its own first publish", () => {
 	const SCRIPT = readFileSync(
-		fileURLToPath(new URL("../../../scripts/decide-unstable-publish.ts", import.meta.url)),
+		fileURLToPath(new URL("../../../scripts/decide-canary-publish.ts", import.meta.url)),
 		"utf8",
 	);
 
@@ -177,17 +177,17 @@ describe("the Windows proof is scoped to hours that actually publish", () => {
 	it("is conditional at all, rather than running on every quiet hour", () => {
 		expect(
 			gate,
-			"the windows-proof job in unstable-publish.yml has no `if:`, so it packages Windows every hour whether or not anything publishes. Fix: gate it on the decide outputs — see the comment above the job.",
+			"the windows-proof job in canary-publish.yml has no `if:`, so it packages Windows every hour whether or not anything publishes. Fix: gate it on the decide outputs — see the comment above the job.",
 		).toMatch(/^ {4}if:/m);
 	});
 
 	it("names every platform decide emits, so none loses its gate silently", () => {
-		const missing = UNSTABLE_PLATFORMS.map((p) => `${p.os}-${p.arch}`).filter(
+		const missing = CANARY_PLATFORMS.map((p) => `${p.os}-${p.arch}`).filter(
 			(key) => !gate.includes(`needs.decide.outputs.${key} == 'true'`),
 		);
 		expect(
 			missing,
-			`the windows-proof condition does not mention ${missing.join(", ")}. A platform absent from it publishes on an hour when the proof was skipped — GitHub skips a job whose \`needs\` was skipped, so the build would be skipped too and that platform would stop publishing entirely. Fix: add the missing term to the \`if:\` in unstable-publish.yml.`,
+			`the windows-proof condition does not mention ${missing.join(", ")}. A platform absent from it publishes on an hour when the proof was skipped — GitHub skips a job whose \`needs\` was skipped, so the build would be skipped too and that platform would stop publishing entirely. Fix: add the missing term to the \`if:\` in canary-publish.yml.`,
 		).toEqual([]);
 	});
 });

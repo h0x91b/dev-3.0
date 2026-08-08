@@ -5,7 +5,7 @@
  * settings coercion degrades an unknown channel instead of crashing, the semver comparator
  * swallows build metadata instead of throwing, and a wrong ordering rule reports "no
  * update" rather than an error. None of them produce a stack trace, so none of them would
- * be noticed without a test. See decisions/2026/08/06/stable-unstable-update-channels.md.
+ * be noticed without a test. See decisions/2026/08/06/stable-canary-update-channels.md.
  */
 
 import { describe, expect, it } from "vitest";
@@ -15,16 +15,16 @@ import {
 	coerceUpdateChannel,
 	decideUpdate,
 	DEFAULT_UPDATE_CHANNEL,
-	unstableDisplayVersion,
+	canaryDisplayVersion,
 	type LocalBuild,
 	type UpdateManifest,
 } from "../../shared/update-channel";
 
 const stableBundle: LocalBuild = { version: "1.42.0", hash: "hash-stable", channel: "stable", buildOrder: 1580 };
-const unstableBundle: LocalBuild = { version: "1.42.0", hash: "hash-unstable", channel: "unstable", buildOrder: 1580 };
+const canaryBundle: LocalBuild = { version: "1.42.0", hash: "hash-canary", channel: "canary", buildOrder: 1580 };
 
 describe("the persisted channel value", () => {
-	it("defaults to stable, so nobody is opted into unstable by accident", () => {
+	it("defaults to stable, so nobody is opted into canary by accident", () => {
 		expect(DEFAULT_UPDATE_CHANNEL).toBe("stable");
 	});
 
@@ -34,7 +34,7 @@ describe("the persisted channel value", () => {
 		// heard of. Degrading to stable is what lets the old "canary" value be deleted
 		// outright instead of kept as a compatibility alias — and what stops an old build
 		// aiming its updater at a feed that does not exist for it.
-		for (const rejected of ["canary", "beta", "dev", "STABLE", "Unstable", "", null, undefined, 7, {}]) {
+		for (const rejected of ["canary", "beta", "dev", "STABLE", "Canary", "", null, undefined, 7, {}]) {
 			expect(
 				coerceUpdateChannel(rejected),
 				`coerceUpdateChannel(${JSON.stringify(rejected)}) must fall back to "stable". An unrecognised channel that survives points the updater at a feed with no manifest, which returns 403 and reads to the user as "you are up to date" forever. Fix: keep the exact-match check in src/shared/update-channel.ts.`,
@@ -42,34 +42,34 @@ describe("the persisted channel value", () => {
 		}
 	});
 
-	// While UNSTABLE_FEED_AVAILABLE is false the opt-in spelling collapses too — that is the
+	// While CANARY_FEED_AVAILABLE is false the opt-in spelling collapses too — that is the
 	// half of the patch that reaches a user who ALREADY switched on v1.42.1, since the update
 	// check reads this persisted value rather than the (now disabled) Settings control.
 	// Restore the accepts-the-opt-in-spelling assertion in the change that deletes the flag.
 	it("collapses even the opt-in spelling while the second channel has no feed", () => {
 		expect(
-			coerceUpdateChannel("unstable"),
-			"a value persisted by v1.42.1 must collapse to stable while the feed is unavailable, in memory and without rewriting settings.json. Fix: keep the UNSTABLE_FEED_AVAILABLE guard at the top of coerceUpdateChannel until the channel has a proven build path.",
+			coerceUpdateChannel("canary"),
+			"a value persisted by v1.42.1 must collapse to stable while the feed is unavailable, in memory and without rewriting settings.json. Fix: keep the CANARY_FEED_AVAILABLE guard at the top of coerceUpdateChannel until the channel has a proven build path.",
 		).toBe("stable");
 	});
 });
 
-describe("the unstable version string carries no ordering", () => {
-	// This is WHY unstable needs buildOrder at all. If someone "fixes" isNewerVersion to
+describe("the canary version string carries no ordering", () => {
+	// This is WHY canary needs buildOrder at all. If someone "fixes" isNewerVersion to
 	// understand build metadata, they re-enable a path that cannot work, so the broken
 	// behaviour is pinned here deliberately rather than treated as a latent bug.
-	it("parses the +unstable.<sha> suffix away instead of rejecting it", () => {
-		// "0+unstable" -> Number() -> NaN -> `|| 0` -> 0, so this reads as a plain 1.42.0.
+	it("parses the +canary.<sha> suffix away instead of rejecting it", () => {
+		// "0+canary" -> Number() -> NaN -> `|| 0` -> 0, so this reads as a plain 1.42.0.
 		expect(
-			isNewerVersion("1.42.0", unstableDisplayVersion("1.42.0", "abc1234")),
-			"isNewerVersion must keep reporting `false` here. It splits on `.` and Numbers each part, so the suffix becomes NaN and coerces to 0 — the string parses as a plain 1.42.0 with no throw and no warning. If this now passes, the comparator was changed to understand build metadata, and the unstable channel must be re-checked: it orders by buildOrder precisely because this comparison is meaningless.",
+			isNewerVersion("1.42.0", canaryDisplayVersion("1.42.0", "abc1234")),
+			"isNewerVersion must keep reporting `false` here. It splits on `.` and Numbers each part, so the suffix becomes NaN and coerces to 0 — the string parses as a plain 1.42.0 with no throw and no warning. If this now passes, the comparator was changed to understand build metadata, and the canary channel must be re-checked: it orders by buildOrder precisely because this comparison is meaningless.",
 		).toBe(false);
 	});
 
-	it("cannot tell two unstable builds apart at all", () => {
+	it("cannot tell two canary builds apart at all", () => {
 		expect(
-			isNewerVersion(unstableDisplayVersion("1.42.0", "abc1234"), unstableDisplayVersion("1.42.0", "def5678")),
-			"two different unstable builds must still compare as equal here. That equality is the whole reason unstable orders by buildOrder: routing unstable through semver would report `no update` forever — install once, then sit there until the next stable minor bump.",
+			isNewerVersion(canaryDisplayVersion("1.42.0", "abc1234"), canaryDisplayVersion("1.42.0", "def5678")),
+			"two different canary builds must still compare as equal here. That equality is the whole reason canary orders by buildOrder: routing canary through semver would report `no update` forever — install once, then sit there until the next stable minor bump.",
 		).toBe(false);
 	});
 });
@@ -94,10 +94,10 @@ describe("staying on stable orders by semver", () => {
 	});
 });
 
-describe("staying on unstable orders by the monotonic build counter", () => {
+describe("staying on canary orders by the monotonic build counter", () => {
 	it("offers a build with a higher counter", () => {
 		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-newer", sha: "deadbee", buildOrder: 1581 };
-		expect(decideUpdate(unstableBundle, "unstable", remote, isNewerVersion)).toEqual({
+		expect(decideUpdate(canaryBundle, "canary", remote, isNewerVersion)).toEqual({
 			kind: "update",
 			version: "1.42.0",
 		});
@@ -108,24 +108,24 @@ describe("staying on unstable orders by the monotonic build counter", () => {
 		// same counter is exactly that case, and it must be a no-op for clients.
 		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-rebuilt", sha: "deadbee", buildOrder: 1580 };
 		expect(
-			decideUpdate(unstableBundle, "unstable", remote, isNewerVersion),
-			"a republish of the same commit must offer nothing. buildOrder is reproducible from the commit, so an equal counter means the same source — if this offers an update, pressing the manual dispatch twice costs every unstable user a download and a restart.",
+			decideUpdate(canaryBundle, "canary", remote, isNewerVersion),
+			"a republish of the same commit must offer nothing. buildOrder is reproducible from the commit, so an equal counter means the same source — if this offers an update, pressing the manual dispatch twice costs every canary user a download and a restart.",
 		).toEqual({ kind: "none" });
 	});
 
 	it("never offers a build with a LOWER counter", () => {
 		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-older", sha: "cafe123", buildOrder: 1579 };
-		expect(decideUpdate(unstableBundle, "unstable", remote, isNewerVersion)).toEqual({ kind: "none" });
+		expect(decideUpdate(canaryBundle, "canary", remote, isNewerVersion)).toEqual({ kind: "none" });
 	});
 
 	it("reports an error rather than guessing when the manifest has no counter", () => {
 		// Falling back to semver or hash here is the silent breakage this module exists to
 		// prevent: semver would say "no update" forever, hash would reinstall on republish.
 		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-newer" };
-		const decision = decideUpdate(unstableBundle, "unstable", remote, isNewerVersion);
+		const decision = decideUpdate(canaryBundle, "canary", remote, isNewerVersion);
 		expect(
 			decision.kind,
-			"an unstable manifest with no buildOrder must be an ERROR, not `none` and not a fallback comparison. A fallback would be invisible: semver reports no-update forever, hash reinstalls on every republish. Fix: publish buildOrder from create-release-artifacts.sh.",
+			"an canary manifest with no buildOrder must be an ERROR, not `none` and not a fallback comparison. A fallback would be invisible: semver reports no-update forever, hash reinstalls on every republish. Fix: publish buildOrder from create-release-artifacts.sh.",
 		).toBe("error");
 	});
 });
@@ -134,11 +134,11 @@ describe("crossing channels states a direction, never an update", () => {
 	it("offers the target channel's build when the hashes differ", () => {
 		// Deliberately hash-based: the other channel's build is simply a DIFFERENT build,
 		// and "is it newer" is not the question being asked.
-		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-unstable", sha: "deadbee", buildOrder: 1581 };
-		expect(decideUpdate(stableBundle, "unstable", remote, isNewerVersion)).toEqual({
+		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-canary", sha: "deadbee", buildOrder: 1581 };
+		expect(decideUpdate(stableBundle, "canary", remote, isNewerVersion)).toEqual({
 			kind: "switch",
 			version: "1.42.0",
-			to: "unstable",
+			to: "canary",
 			installsOlderBuild: false,
 		});
 	});
@@ -146,17 +146,17 @@ describe("crossing channels states a direction, never an update", () => {
 	it("offers an OLDER stable build and says so, instead of stranding the user", () => {
 		// The consequence nobody would guess: switching back installs an older app, which
 		// then reads state a newer build already wrote.
-		const runningUnstable: LocalBuild = { ...unstableBundle, version: "1.43.0", buildOrder: 1600 };
+		const runningCanary: LocalBuild = { ...canaryBundle, version: "1.43.0", buildOrder: 1600 };
 		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-stable" };
 		expect(
-			decideUpdate(runningUnstable, "stable", remote, isNewerVersion),
+			decideUpdate(runningCanary, "stable", remote, isNewerVersion),
 			"switching back to stable must OFFER the older build and flag it. Reporting `none` because stable is behind would strand the user on the very build they just rejected — a lockout, not a policy.",
 		).toEqual({ kind: "switch", version: "1.42.0", to: "stable", installsOlderBuild: true });
 	});
 
 	it("offers nothing when both channels happen to be the same build", () => {
 		const remote: UpdateManifest = { version: "1.42.0", hash: "hash-stable", buildOrder: 1580 };
-		expect(decideUpdate(stableBundle, "unstable", remote, isNewerVersion)).toEqual({ kind: "none" });
+		expect(decideUpdate(stableBundle, "canary", remote, isNewerVersion)).toEqual({ kind: "none" });
 	});
 
 	it("rejects a manifest with no hash on every path", () => {
@@ -167,8 +167,8 @@ describe("crossing channels states a direction, never an update", () => {
 describe("the build a user is running is visible in the window title", () => {
 	// The whole "which build am I on?" affordance: no chrome, no header slot, and it
 	// survives browser remote mode as the tab title.
-	it("marks unstable and dev, and leaves stable unmarked", () => {
-		expect(buildChannelTitlePrefix("unstable")).toBe("[UNSTABLE] ");
+	it("marks canary and dev, and leaves stable unmarked", () => {
+		expect(buildChannelTitlePrefix("canary")).toBe("[CANARY] ");
 		expect(buildChannelTitlePrefix("dev")).toBe("[DEV from src] ");
 		expect(
 			buildChannelTitlePrefix("stable"),

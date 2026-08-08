@@ -85,7 +85,7 @@ interface UpdateCheckResult {
 	switchTo?: UpdateChannel;
 	/**
 	 * Only meaningful with {@link switchTo}: the offered build is OLDER than the running
-	 * one. Going unstable → stable normally is, and the user has to be told, because an
+	 * one. Going canary → stable normally is, and the user has to be told, because an
 	 * older build then reads state a newer build already wrote.
 	 */
 	installsOlderBuild?: boolean;
@@ -289,7 +289,7 @@ async function doDownloadUpdateForChannel(
 	// `// todo: allow switching channels` in its Updater. Every URL it builds comes from
 	// the cached `localInfo` object, so pointing it at the other channel means mutating
 	// that cache: `channel` (it prefixes every artifact name) and `name` (non-stable
-	// channels suffix the app file name, e.g. `dev-3.0-unstable`, and the tarball URL is
+	// channels suffix the app file name, e.g. `dev-3.0-canary`, and the tarball URL is
 	// built from it).
 	//
 	// THAT IS SAFE ON macOS AND NOT ELSEWHERE, and the asymmetry is not ours to wish away:
