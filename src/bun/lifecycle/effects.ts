@@ -85,6 +85,7 @@ export type LifecycleEffect =
 	| ({ type: "killDevServer" } & EffectPolicy)
 	| ({ type: "runCleanupScript"; toStatus: TaskStatus | "deleted"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "captureCompletedDiffStats"; allowDerivedPath?: boolean } & EffectPolicy)
+	| ({ type: "reapWorktreeProcesses"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "removeWorktree"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "removeTaskWorkspace"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "deleteTaskRecord" } & EffectPolicy)

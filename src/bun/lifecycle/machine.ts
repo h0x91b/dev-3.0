@@ -96,6 +96,7 @@ function preparationFailureEffects(
 	];
 	if (state.facts.projectKind === "git" && (state.facts.hasWorktree || state.runtime.phase === "preparing")) {
 		effects.push(effect({ type: "runCleanupScript", toStatus: "todo", allowDerivedPath: true }));
+		effects.push(effect({ type: "reapWorktreeProcesses", allowDerivedPath: true }));
 		effects.push(effect({ type: "removeWorktree", allowDerivedPath: true }));
 	}
 	effects.push(
@@ -321,6 +322,9 @@ function moveTransition(
 				effect({ type: "killDevServer" }),
 				effect({ type: "runCleanupScript", toStatus: terminalStatus, allowDerivedPath }),
 				effect({ type: "captureCompletedDiffStats", allowDerivedPath }),
+				// Last thing that runs INSIDE the worktree, so it never kills the
+				// cleanup script or the diff capture above.
+				effect({ type: "reapWorktreeProcesses", allowDerivedPath }),
 			);
 			if (state.facts.projectKind === "git") {
 				effects.push(effect({ type: "removeWorktree", allowDerivedPath }, "abort", teardownFailed));
@@ -439,6 +443,7 @@ function bootTransition(
 			effect({ type: "killDevServer" }),
 			effect({ type: "runCleanupScript", toStatus: terminalStatus, allowDerivedPath: true }),
 			effect({ type: "captureCompletedDiffStats", allowDerivedPath: true }),
+			effect({ type: "reapWorktreeProcesses", allowDerivedPath: true }),
 			...(state.facts.projectKind === "git"
 				? [effect({ type: "removeWorktree", allowDerivedPath: true }, "abort", teardownFailed)]
 				: []),
@@ -483,6 +488,10 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					// touch the worktree until the task's terminal tree is confirmed gone.
 					effect({ type: "destroyTaskPty" }, "abort"),
 					effect({ type: "killDevServer" }),
+					// Hibernation exists to reclaim memory: a detached agent daemon
+					// (watcher, headless browser, MCP server) squatting the worktree
+					// defeats the entire point. The worktree itself survives.
+					effect({ type: "reapWorktreeProcesses" }),
 					effect({ type: "releasePorts" }),
 					effect({ type: "persistRuntime", runtime, taskPatch: { hibernated: true } }, "abort"),
 					effect({ type: "push", message: "taskUpdated", view: "current" }),
@@ -516,6 +525,10 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					effect({
 						type: "runCleanupScript",
 						toStatus: "deleted",
+						allowDerivedPath: state.runtime.phase === "preparing",
+					}),
+					effect({
+						type: "reapWorktreeProcesses",
 						allowDerivedPath: state.runtime.phase === "preparing",
 					}),
 					effect({

@@ -38,6 +38,7 @@ import { loadSettings, loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { dev3TaskTempPath } from "../temp-paths";
+import { reapWorktreeProcesses } from "../worktree-reaper";
 import {
 	activeTmuxConfigPath,
 	cleanupSessionName,
@@ -904,6 +905,15 @@ export async function executeLifecycleEffect(
 				effect.allowDerivedPath && !ctx.sourceTask.worktreePath
 					? { ...ctx.sourceTask, worktreePath: derivedPreparationPath(ctx.project, ctx.sourceTask) }
 					: ctx.sourceTask,
+			);
+			return {};
+		case "reapWorktreeProcesses":
+			// Best-effort on purpose (no "abort" policy): a stubborn foreign process
+			// must not block a completion. Survivors are logged by the reaper.
+			await reapWorktreeProcesses(
+				ctx.sourceTask.worktreePath
+					?? (effect.allowDerivedPath ? derivedPreparationPath(ctx.project, ctx.sourceTask) : null),
+				ctx.sourceTask.id.slice(0, 8),
 			);
 			return {};
 		case "removeWorktree":

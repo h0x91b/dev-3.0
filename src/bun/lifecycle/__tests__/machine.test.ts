@@ -219,6 +219,7 @@ describe("task lifecycle transition table", () => {
 			"destroyTaskPty",
 			"killDevServer",
 			"runCleanupScript",
+			"reapWorktreeProcesses",
 			"removeWorktree",
 			"persistPreparationFailure",
 			"push",
@@ -245,6 +246,25 @@ describe("task lifecycle transition table", () => {
 		const types = result.effects.map((candidate) => candidate.type);
 		expect(types.indexOf("destroyTaskPty")).toBeLessThan(types.indexOf("runCleanupScript"));
 		expect(types.indexOf("runCleanupScript")).toBeLessThan(types.indexOf("removeWorktree"));
+	});
+
+	it("reaps worktree processes after the cleanup script and before the worktree is removed", () => {
+		const result = transition(state("in-progress"), {
+			type: "moveRequested",
+			target: { status: "completed" },
+			runId: "run-reap",
+		});
+		const types = result.effects.map((candidate) => candidate.type);
+
+		// The reap kills everything whose cwd is inside the worktree, so it must run
+		// after the cleanup script and the diff capture (both work in there) and
+		// before the directory disappears.
+		expect(types.indexOf("captureCompletedDiffStats")).toBeLessThan(types.indexOf("reapWorktreeProcesses"));
+		expect(types.indexOf("reapWorktreeProcesses")).toBeLessThan(types.indexOf("removeWorktree"));
+		// Best-effort: one stubborn foreign process must not abort a completion.
+		expect(result.effects.find((candidate) => candidate.type === "reapWorktreeProcesses")).not.toMatchObject({
+			onError: "abort",
+		});
 	});
 
 	it("aborts a delete before cleanup and the record delete when the PTY teardown fails", () => {
@@ -453,6 +473,7 @@ describe("task lifecycle transition table", () => {
 			"killDevServer",
 			"runCleanupScript",
 			"captureCompletedDiffStats",
+			"reapWorktreeProcesses",
 			"removeWorktree",
 			"persistTerminalTask",
 			"push",
@@ -625,6 +646,7 @@ describe("task lifecycle transition table", () => {
 			"destroyTaskPty",
 			"killDevServer",
 			"runCleanupScript",
+			"reapWorktreeProcesses",
 			"removeTaskWorkspace",
 			"deleteTaskRecord",
 		]);
@@ -1036,6 +1058,7 @@ describe("hibernation", () => {
 			"clearTaskRuntime",
 			"destroyTaskPty",
 			"killDevServer",
+			"reapWorktreeProcesses",
 			"releasePorts",
 			"persistRuntime",
 			"push",
