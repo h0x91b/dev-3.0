@@ -10,6 +10,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Why:** the 2026-07-30 rule argued the readout matters most where screen is scarce — in practice a phone header has room for a breadcrumb and one kebab, and a number the user does not act on at a glance is exactly what should give that room back. The desktop half of the rule is unchanged: capacity is still permanent chrome at roomy widths, still capped at one.
 - **Status:** Implemented. Evidence: `GlobalHeader.tsx`, `MemoryHeadroomIndicator.tsx`, seq 1463.
 
+## 2026-08-08 — A phone scales per screen: dense to work in, roomy to browse
+
+- **Rule:** the phone's root font-size factor is chosen by route, not fixed. Working surfaces — a task's terminal, diff and inspector, and the project terminal — keep `MOBILE_DENSE_FACTOR` 0.67, where the point is to fit as much as a ~400px viewport holds. Everything the user only browses and taps — Kanban board, dashboard, settings, stats, changelog — gets `MOBILE_ROOMY_FACTOR` 0.84 (+25%). Mapping in `mobileDensityForRoute()`. A `BottomSheet` is a browse-and-tap surface wherever it opens, so it scales itself up to roomy with a local CSS `zoom` (`overlayScaleUp()`) instead of moving the root — the root would reflow the terminal underneath it.
+- **Why:** 0.67 was tuned against a task and then applied everywhere; on the board it put a card title at 9.4px and turned a column into a thumbnail of a desktop board. Rejected: raising the global factor (costs the task view a third of its content); a user-facing density setting (a preference for something the route already answers); per-component overrides on the board (the whole screen is undersized, not a handful of labels).
+- **Status:** Decided. Evidence: `zoom.ts`, `decisions/2026/08/08/phone-density-is-per-screen-not-global.md`, seq 1459.
+
 ## 2026-08-07 — A narrow control row sheds; it never stacks
 
 - **Rule:** every narrow control row is `flex-nowrap` with a written priority order and drops from the bottom of it as width runs out — the inspector summary bar sheds diff badge → artifacts → images, then takes the status pill icon-only; the diff viewer's four mutually exclusive modes collapse to one trigger + `BottomSheet`. Anything shed must already have a sheet path, and the last survivors truncate rather than clip. Thresholds are container queries on the row, not viewport breakpoints. Bible §12.6 + §12.3 (Diff viewer).

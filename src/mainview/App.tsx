@@ -18,7 +18,7 @@ import { isTypingContext } from "./utils/typing-context";
 import { matchesShortcut } from "./keymap";
 import { setShortcutOverrides } from "./keymap-store";
 import { syncTerminalBidiFromGlobalSettings } from "./terminal-bidi/flag";
-import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
+import { adjustZoom, applyZoom, mobileDensityForRoute, setMobileDensity, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import { useMobile } from "./hooks/useMobile";
 import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
@@ -153,6 +153,11 @@ function App() {
 		};
 	}, []);
 	useViewport(state.route);
+	// A phone scales differently per screen: dense inside a task, roomy on the
+	// screens the user only browses. No-op on a desktop-width viewport.
+	useEffect(() => {
+		setMobileDensity(mobileDensityForRoute(state.route));
+	}, [state.route]);
 	// Android hardware/gesture Back drives in-app navigation in mobile remote
 	// mode: close the topmost layer → route back → double-back-to-exit toast.
 	// Reads history depth through a ref so the popstate handler stays stable.

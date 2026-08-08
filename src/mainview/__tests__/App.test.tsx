@@ -78,6 +78,8 @@ vi.mock("../zoom", () => ({
 	DEFAULT_ZOOM: 1.0,
 	getZoom: vi.fn().mockReturnValue(1.0),
 	bootstrapZoom: vi.fn(),
+	setMobileDensity: vi.fn(),
+	mobileDensityForRoute: vi.fn().mockReturnValue("roomy"),
 	ZOOM_CHANGED_EVENT: "zoom-changed",
 	MIN_ZOOM: 0.5,
 	MAX_ZOOM: 2.0,

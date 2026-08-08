@@ -562,10 +562,39 @@ button {
    Sizing is absolute px, NOT rem: the mobile task screen scales the root
    font-size to 0.67× on a phone (see zoom.ts MOBILE_DENSE_FACTOR),
    which is meant to pack content-heavy terminal/diff surfaces — a touch action
-   sheet must keep true 44px targets and not shrink with it. */
-.touch-actions :is(button, a[role="button"], [role="menuitem"]) {
+   sheet must keep true 44px targets and not shrink with it.
+
+   `:not(.touch-inline)`: a sheet is not only action rows — it also carries a
+   task title, its label chips and a worktree path. Those chips already opt out
+   of the global floor, and without the exclusion this rule (0-2-0) outweighed
+   `.touch-inline` (0-1-0) and blew a 4px label pill up into a 44px square
+   inside the sheet only. */
+.touch-actions :is(button, a[role="button"], [role="menuitem"]):not(.touch-inline) {
 	min-height: 44px;
 	min-width: 44px;
+}
+
+/* Whatever the floor above inflates, centres its content by default. A control
+   drawn at ~28px in a desktop toolbar becomes a 44px box here; without this its
+   glyph sits against the left edge of a square it never asked for — which is
+   what happened to the prevent-sleep toggle in the header's More sheet and to
+   every icon-only button in the task-actions sheet.
+
+   `inline-flex` and not `text-align`, because Tailwind's preflight makes every
+   `svg` a block: an icon-only button is centred by the flex box or not at all.
+   Inline-level, so a button sitting in running text keeps its line.
+
+   Authored in `@layer components` on purpose: a button that wants another
+   layout states it with a Tailwind utility (`flex`, `block`, `justify-between`,
+   `text-left`), and utilities come after components, so the author always wins
+   over this default — every full-width action row already carries `text-left`
+   and its own `flex`. */
+@layer components {
+	.touch-actions :where(button, a[role="button"], [role="menuitem"]) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
 }
 
 /* ---- Close-pane picker: marching-ants selection marquee -------------------

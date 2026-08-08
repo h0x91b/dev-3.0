@@ -20,6 +20,10 @@ import {
 	bootstrapZoom,
 	DEFAULT_ZOOM,
 	MOBILE_DENSE_FACTOR,
+	MOBILE_ROOMY_FACTOR,
+	mobileDensityForRoute,
+	setMobileDensity,
+	overlayScaleUp,
 	MIN_ZOOM,
 	MAX_ZOOM,
 	ZOOM_STEP,
@@ -36,6 +40,7 @@ function setScreenWidth(width: number) {
 describe("zoom", () => {
 	beforeEach(() => {
 		setScreenWidth(DESKTOP_SCREEN_WIDTH);
+		setMobileDensity("dense"); // module state leaks between tests
 		storage.clear();
 		localStorageMock.getItem.mockClear();
 		localStorageMock.setItem.mockClear();
@@ -160,6 +165,7 @@ describe("zoom", () => {
 		it("has expected default values", () => {
 			expect(DEFAULT_ZOOM).toBe(1.0);
 			expect(MOBILE_DENSE_FACTOR).toBe(0.67);
+			expect(MOBILE_ROOMY_FACTOR).toBe(0.84); // dense + 25%
 			expect(MIN_ZOOM).toBe(0.5);
 			expect(MAX_ZOOM).toBe(2.0);
 			expect(ZOOM_STEP).toBe(0.1);
@@ -167,8 +173,64 @@ describe("zoom", () => {
 		});
 	});
 
+	describe("phone density per screen", () => {
+		it("keeps a task dense and everything the user browses roomy", () => {
+			expect(mobileDensityForRoute({ screen: "task", projectId: "p", taskId: "t" })).toBe("dense");
+			expect(mobileDensityForRoute({ screen: "project-terminal", projectId: "p" })).toBe("dense");
+			expect(mobileDensityForRoute({ screen: "project", projectId: "p", taskView: true })).toBe("dense");
+			expect(mobileDensityForRoute({ screen: "project", projectId: "p", activeTaskId: "t" })).toBe("dense");
+			expect(mobileDensityForRoute({ screen: "project", projectId: "p" })).toBe("roomy"); // the board
+			expect(mobileDensityForRoute({ screen: "dashboard" })).toBe("roomy");
+			expect(mobileDensityForRoute({ screen: "settings" })).toBe("roomy");
+		});
+
+		it("re-scales the root font-size when the route switches density", () => {
+			setScreenWidth(MOBILE_SCREEN_WIDTH);
+			applyZoom(DEFAULT_ZOOM);
+			expect(document.documentElement.style.fontSize).toBe(`${16 * MOBILE_DENSE_FACTOR}px`);
+			setMobileDensity("roomy");
+			expect(getEffectiveZoom()).toBe(MOBILE_ROOMY_FACTOR);
+			expect(document.documentElement.style.fontSize).toBe(`${16 * MOBILE_ROOMY_FACTOR}px`);
+		});
+
+		it("tells the terminal about a density change, so its canvas refits", () => {
+			setScreenWidth(MOBILE_SCREEN_WIDTH);
+			applyZoom(DEFAULT_ZOOM);
+			const handler = vi.fn();
+			window.addEventListener(ZOOM_CHANGED_EVENT, handler);
+			setMobileDensity("roomy");
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect((handler.mock.calls[0][0] as CustomEvent).detail).toBe(MOBILE_ROOMY_FACTOR);
+			setMobileDensity("roomy"); // same density → nothing to re-scale
+			expect(handler).toHaveBeenCalledTimes(1);
+			window.removeEventListener(ZOOM_CHANGED_EVENT, handler);
+		});
+
+		it("tells a browse-and-tap overlay how far to scale itself back up", () => {
+			setScreenWidth(MOBILE_SCREEN_WIDTH);
+			expect(overlayScaleUp()).toBe(1.25); // dense screen: the sheet makes up the gap
+			setMobileDensity("roomy");
+			expect(overlayScaleUp()).toBe(1); // already roomy — no second helping
+			setScreenWidth(DESKTOP_SCREEN_WIDTH);
+			setMobileDensity("dense");
+			expect(overlayScaleUp()).toBe(1); // desktop is never scaled at all
+		});
+
+		it("does not touch a desktop viewport, where both densities are 1", () => {
+			setScreenWidth(DESKTOP_SCREEN_WIDTH);
+			applyZoom(DEFAULT_ZOOM);
+			const handler = vi.fn();
+			window.addEventListener(ZOOM_CHANGED_EVENT, handler);
+			setMobileDensity("roomy");
+			expect(getEffectiveZoom()).toBe(DEFAULT_ZOOM);
+			expect(document.documentElement.style.fontSize).toBe("16px");
+			expect(handler).not.toHaveBeenCalled();
+			window.removeEventListener(ZOOM_CHANGED_EVENT, handler);
+		});
+	});
+
 	describe("phone factor", () => {
-		it("scales every screen on a phone, not just the terminal", () => {
+		it("scales a task screen on a phone, not just the terminal", () => {
 			setScreenWidth(MOBILE_SCREEN_WIDTH);
 			applyZoom(DEFAULT_ZOOM);
 			expect(getEffectiveZoom()).toBe(MOBILE_DENSE_FACTOR);

@@ -51,6 +51,30 @@ pixel; measured heights via `getBoundingClientRect` before and after.
   `@media (hover: none)` and the right padding goes back to symmetric; tapping
   the chip opens the label picker, which is how a phone removes a label.
 
+## Follow-up: the sheet floor repeated both faults (2026-08-08)
+
+`.touch-actions :is(button, …)` — the 44px floor inside a bottom sheet — made
+the same two mistakes at a smaller scale, visible only inside sheets:
+
+1. At 0-2-0 it outweighed `.touch-inline` (0-1-0), so a label chip in the
+   task-actions sheet header came back as a 44px square. Fixed in the selector:
+   `…:not(.touch-inline)`.
+2. It inflated icon-only buttons to 44×44 without centring them, so the glyph
+   sat 2px from the left edge of a square it never asked for — the prevent-sleep
+   toggle in the header's More sheet, the note-delete buttons, the edit-title
+   pencil. Fixed with a default in `@layer components`: `display: inline-flex`
+   plus `justify-content`/`align-items: center`. `inline-flex` and not
+   `text-align`, because Tailwind's preflight makes every `svg` a block, so text
+   alignment is inert on exactly the buttons that need it. The components layer
+   is what keeps it a *default*: `flex`, `justify-between` and `text-left` are
+   utilities, emitted after it, so an author's stated layout still wins.
+
+Verified in headless Chromium at 390px by walking every button in five sheets
+and comparing the left and right gap between each button's box and its content:
+eight offenders before, zero after, and the full-width rows kept `text-left`.
+Guarded by `src/mainview/__tests__/touch-target-floor.test.ts` — happy-dom does
+not run the real cascade, so no component test can catch either fault.
+
 ## Risks
 
 Any control that relied on the old blanket 44px and sets no size of its own now

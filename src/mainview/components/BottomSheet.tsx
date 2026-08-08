@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useBackLayer } from "../hooks/useBackLayer";
+import { overlayScaleUp } from "../zoom";
 
 interface BottomSheetProps {
 	open: boolean;
@@ -41,6 +42,10 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [dragY, setDragY] = useState(0);
 	const startY = useRef<number | null>(null);
+	// A sheet is browsed and tapped, never worked in, so it renders at the roomy
+	// phone size even on top of a dense task screen. Read once at mount — the
+	// sheet unmounts on close, so it can never go stale.
+	const scaleUp = useRef(overlayScaleUp()).current;
 
 	// Android hardware Back closes the sheet (mobile remote mode).
 	useBackLayer(onClose);
@@ -87,7 +92,11 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 				tabIndex={-1}
 				data-bottom-sheet
 				className="bottom-sheet-panel w-full max-w-[40rem] bg-overlay border-t border-edge rounded-t-2xl shadow-2xl max-h-[85dvh] overflow-y-auto outline-none"
-				style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}
+				style={{
+					...(scaleUp !== 1 ? { zoom: scaleUp } : null),
+					// dragY is viewport px; inside a zoomed panel a transform scales too.
+					...(dragY ? { transform: `translateY(${dragY / scaleUp}px)` } : null),
+				}}
 			>
 				{/* Grabber + header: also the swipe-down dismiss surface. */}
 				<div
@@ -113,7 +122,7 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 				</div>
 				{/* `touch-actions`: 44px rows are the sheet default, not opt-in per
 				    sheet — the global coarse-pointer floor is only 24px (WCAG 2.5.8),
-				    and the 0.67× phone factor would shrink these rows further. */}
+				    and the phone factor would shrink these rows further. */}
 				<div
 					className="touch-actions px-4 py-3"
 					style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}

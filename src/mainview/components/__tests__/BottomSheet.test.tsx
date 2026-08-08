@@ -4,9 +4,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import BottomSheet from "../BottomSheet";
 import { I18nProvider } from "../../i18n";
 import { closeTopBackLayer, __resetBackLayersForTests } from "../../back-navigation";
+import { overlayScaleUp } from "../../zoom";
+
+vi.mock("../../zoom", () => ({ overlayScaleUp: vi.fn(() => 1) }));
+const mockedScaleUp = vi.mocked(overlayScaleUp);
 
 beforeEach(() => {
 	__resetBackLayersForTests();
+	mockedScaleUp.mockReturnValue(1);
 });
 
 function renderSheet(props: Partial<React.ComponentProps<typeof BottomSheet>> = {}) {
@@ -68,6 +73,17 @@ describe("BottomSheet", () => {
 			expect(closeTopBackLayer()).toBe(true);
 		});
 		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("scales itself up to the roomy size on top of a dense phone screen", () => {
+		mockedScaleUp.mockReturnValue(1.25);
+		renderSheet();
+		expect(screen.getByRole("dialog")).toHaveStyle({ zoom: "1.25" });
+	});
+
+	it("leaves its own scale alone when the screen underneath is already roomy", () => {
+		renderSheet();
+		expect(screen.getByRole("dialog").style.zoom).toBe("");
 	});
 
 	it("does not register a back layer when closed", () => {
