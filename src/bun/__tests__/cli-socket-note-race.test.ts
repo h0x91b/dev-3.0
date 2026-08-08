@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -9,30 +9,39 @@ const dev3Home = join(tempHome, ".dev3.0");
 const originalHome = process.env.HOME;
 
 /**
- * Per-test identity, so no two tests ever address the same tasks.json.
+ * One frozen identity per test, handed to the body instead of read from module
+ * scope.
  *
- * These tests suspend a handler on purpose. When one of them dies while
- * suspended (a timeout or hook death under load), its `updateTask` still
- * completes afterwards — and on a shared project that late write lands in the
- * NEXT test's tasks.json, which then reads back a note it never seeded. `$HOME`
- * cannot be varied per test to separate them: `vi.mock("../data")` keeps one
+ * These tests suspend a handler on purpose, and a suspended test that blows its
+ * time budget does NOT stop running: vitest fails it and starts the next one
+ * while the abandoned body carries on. Per-test projects alone did not separate
+ * them, because the body read the project id/path/slug from mutable module scope
+ * LAZILY — so a corpse reaching `seed()` after the next test began picked up
+ * THAT test's identity and wrote its fixture, and its injected concurrent write,
+ * into that test's tasks.json. A context created synchronously before the body's
+ * first await can only ever address its own project.
+ *
+ * `$HOME` cannot be varied per test instead: `vi.mock("../data")` keeps one
  * module instance alive for the whole file, so `vi.resetModules()` never
- * re-resolves `paths.ts` and `DEV3_HOME` is fixed at first import. What CAN be
- * varied is the project — a different id and path means a different slug, a
- * different tasks.json, and nowhere for a neighbour's late write to be seen.
+ * re-resolves `paths.ts` and `DEV3_HOME` is fixed at first import.
  */
+interface TestCtx {
+	readonly projectId: string;
+	readonly projectPath: string;
+	/** `projectSlug()` in git.ts: `/tmp/note-race-project-3` → `tmp-note-race-project-3`. */
+	readonly projectSlug: string;
+}
+
 let testIndex = 0;
-let projectId = "";
-let projectPath = "";
-/** `projectSlug()` in git.ts: `/tmp/note-race-project-3` → `tmp-note-race-project-3`. */
-let projectSlug = "";
 /** Every project seeded so far — projects.json is one shared file at the home root. */
 const seededProjects: Project[] = [];
 
-// Injected once, right after a handler reads its (now stale) task snapshot —
-// simulates a concurrent note write landing in the window between the resolve
-// read and the per-task update.
-let injectAfterLoad: (() => Promise<void>) | null = null;
+/**
+ * Concurrent writes to inject once, keyed by the project whose `loadTasks` fires
+ * them. Keying matters as much as the context does: a single shared slot let a
+ * corpse arm an injection that the next test's handler then triggered.
+ */
+const injectAfterLoad = new Map<string, () => Promise<void>>();
 
 vi.mock("../data", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../data")>();
@@ -40,10 +49,10 @@ vi.mock("../data", async (importOriginal) => {
 		...actual,
 		loadTasks: vi.fn(async (project: Project) => {
 			const snapshot = await actual.loadTasks(project);
-			if (injectAfterLoad) {
-				const run = injectAfterLoad;
-				injectAfterLoad = null;
-				await run();
+			const inject = injectAfterLoad.get(project.id);
+			if (inject) {
+				injectAfterLoad.delete(project.id);
+				await inject();
 			}
 			return snapshot;
 		}),
@@ -71,11 +80,11 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-function makeProject(overrides?: Partial<Project>): Project {
+function makeProject(ctx: TestCtx, overrides?: Partial<Project>): Project {
 	return {
-		id: projectId,
+		id: ctx.projectId,
 		name: "Note Race Project",
-		path: projectPath,
+		path: ctx.projectPath,
 		setupScript: "",
 		devScript: "",
 		cleanupScript: "",
@@ -86,11 +95,11 @@ function makeProject(overrides?: Partial<Project>): Project {
 	};
 }
 
-function makeTask(overrides?: Partial<Task>): Task {
+function makeTask(ctx: TestCtx, overrides?: Partial<Task>): Task {
 	return {
 		id: "task-1",
 		seq: 1,
-		projectId,
+		projectId: ctx.projectId,
 		title: "Note race task",
 		description: "Note race task",
 		status: "in-progress",
@@ -112,17 +121,19 @@ function makeNote(id: string, content: string): TaskNote {
 	return { id, content, source: "ai", createdAt: "2026-04-15T00:00:00.000Z", updatedAt: "2026-04-15T00:00:00.000Z" };
 }
 
-function seed(tasks: Task[]): Project {
-	const project = makeProject();
-	seededProjects.push(project);
+function seed(ctx: TestCtx, tasks: Task[]): Project {
+	const project = makeProject(ctx);
+	const existing = seededProjects.findIndex((p) => p.id === project.id);
+	if (existing === -1) seededProjects.push(project);
+	else seededProjects[existing] = project;
 	writeFileSync(join(dev3Home, "projects.json"), JSON.stringify(seededProjects, null, 2));
-	mkdirSync(join(dev3Home, "data", projectSlug), { recursive: true });
-	writeFileSync(join(dev3Home, "data", projectSlug, "tasks.json"), JSON.stringify(tasks, null, 2));
+	mkdirSync(join(dev3Home, "data", ctx.projectSlug), { recursive: true });
+	writeFileSync(join(dev3Home, "data", ctx.projectSlug, "tasks.json"), JSON.stringify(tasks, null, 2));
 	return project;
 }
 
-function readTasksRaw(): Task[] {
-	return JSON.parse(readFileSync(join(dev3Home, "data", projectSlug, "tasks.json"), "utf8")) as Task[];
+function readTasksRaw(ctx: TestCtx): Task[] {
+	return JSON.parse(readFileSync(join(dev3Home, "data", ctx.projectSlug, "tasks.json"), "utf8")) as Task[];
 }
 
 function makeRequest(method: string, params: Record<string, unknown>): CliRequest {
@@ -130,83 +141,94 @@ function makeRequest(method: string, params: Record<string, unknown>): CliReques
 }
 
 /** Begin a test on state nothing already in flight can reach. */
-function enterFreshTest(): void {
+function freshCtx(): TestCtx {
 	vi.resetModules();
-	injectAfterLoad = null;
 	process.env.HOME = tempHome;
 	testIndex += 1;
-	projectId = `proj-${testIndex}`;
-	projectPath = `/tmp/note-race-project-${testIndex}`;
-	projectSlug = `tmp-note-race-project-${testIndex}`;
 	mkdirSync(dev3Home, { recursive: true });
+	return {
+		projectId: `proj-${testIndex}`,
+		projectPath: `/tmp/note-race-project-${testIndex}`,
+		projectSlug: `tmp-note-race-project-${testIndex}`,
+	};
+}
+
+/**
+ * Two dynamic imports, several file locks and a JSON round-trip per test. The
+ * default 5s budget is not a correctness signal on a box that routinely runs
+ * many agents at once, and blowing it is what produces the abandoned bodies the
+ * context above defends against.
+ */
+const RACE_TEST_TIMEOUT = 30_000;
+
+function raceIt(name: string, fn: (ctx: TestCtx) => Promise<void>): void {
+	it(name, () => fn(freshCtx()), RACE_TEST_TIMEOUT);
 }
 
 describe("cli-socket note.add / note.delete — lost-update race", () => {
-	beforeEach(enterFreshTest);
-
 	afterAll(() => {
 		process.env.HOME = originalHome;
 		rmSync(tempHome, { recursive: true, force: true });
 	});
 
-	it("note.add does not clobber a note added concurrently after the snapshot read", async () => {
+	raceIt("note.add does not clobber a note added concurrently after the snapshot read", async (ctx) => {
 		const data = await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
-		const project = seed([makeTask({ id: "task-1", notes: [] })]);
+		const project = seed(ctx, [makeTask(ctx, { id: "task-1", notes: [] })]);
 
 		// Concurrent write: another note lands between the handler's resolve read
 		// and its own update.
-		injectAfterLoad = async () => {
+		injectAfterLoad.set(ctx.projectId, async () => {
 			await data.updateTask(project, "task-1", { notes: [makeNote("concurrent", "from other writer")] });
-		};
+		});
 
-		const resp = await handleRequest(makeRequest("note.add", { projectId, taskId: "task-1", content: "mine" }));
+		const resp = await handleRequest(makeRequest("note.add", { projectId: ctx.projectId, taskId: "task-1", content: "mine" }));
 		expect(resp.ok).toBe(true);
 
-		const [task] = readTasksRaw();
+		const [task] = readTasksRaw(ctx);
 		const contents = (task.notes ?? []).map((n) => n.content).sort();
 		// BOTH notes must survive — the concurrent one is not dropped.
 		expect(contents).toEqual(["from other writer", "mine"]);
 	});
 
-	it("note.delete removes the target but keeps a concurrently-added note", async () => {
+	raceIt("note.delete removes the target but keeps a concurrently-added note", async (ctx) => {
 		const data = await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
-		const project = seed([makeTask({ id: "task-1", notes: [makeNote("to-delete", "delete me")] })]);
+		const project = seed(ctx, [makeTask(ctx, { id: "task-1", notes: [makeNote("to-delete", "delete me")] })]);
 
-		injectAfterLoad = async () => {
+		injectAfterLoad.set(ctx.projectId, async () => {
 			await data.updateTask(project, "task-1", {
 				notes: [makeNote("to-delete", "delete me"), makeNote("concurrent", "keep me")],
 			});
-		};
+		});
 
-		const resp = await handleRequest(makeRequest("note.delete", { projectId, taskId: "task-1", noteId: "to-delete" }));
+		const resp = await handleRequest(makeRequest("note.delete", { projectId: ctx.projectId, taskId: "task-1", noteId: "to-delete" }));
 		expect(resp.ok).toBe(true);
 
-		const [task] = readTasksRaw();
+		const [task] = readTasksRaw(ctx);
 		const ids = (task.notes ?? []).map((n) => n.id);
 		expect(ids).not.toContain("to-delete");
 		expect(ids).toContain("concurrent");
 	});
 
-	it("note.add still appends a note with no concurrency (happy path)", async () => {
+	raceIt("note.add still appends a note with no concurrency (happy path)", async (ctx) => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
 
-		seed([makeTask({ id: "task-1", notes: [makeNote("existing", "already here")] })]);
+		seed(ctx, [makeTask(ctx, { id: "task-1", notes: [makeNote("existing", "already here")] })]);
 
-		const resp = await handleRequest(makeRequest("note.add", { projectId, taskId: "task-1", content: "new note" }));
+		const resp = await handleRequest(makeRequest("note.add", { projectId: ctx.projectId, taskId: "task-1", content: "new note" }));
 		expect(resp.ok).toBe(true);
 
-		const [task] = readTasksRaw();
+		const [task] = readTasksRaw(ctx);
 		expect((task.notes ?? []).map((n) => n.content)).toEqual(["already here", "new note"]);
 	});
 
 	// Isolation guard: kill the neighbour deliberately instead of waiting for the
 	// scheduler to do it under load, and assert its late write is unobservable.
-	it("does not observe a write from a neighbour abandoned mid-flight", async () => {
+	raceIt("does not observe a write from a neighbour abandoned mid-flight", async (ctx) => {
 		let releaseNeighbour!: () => void;
 		let neighbourSuspended!: () => void;
 		const neighbourStalled = new Promise<void>((resolve) => { releaseNeighbour = resolve; });
@@ -214,33 +236,67 @@ describe("cli-socket note.add / note.delete — lost-update race", () => {
 
 		const neighbourData = await import("../data");
 		const { handleRequest: neighbourHandle } = await import("../cli-socket-server");
-		const neighbourId = projectId;
-		const neighbourProject = seed([makeTask({ id: "task-1", notes: [] })]);
+		const neighbourProject = seed(ctx, [makeTask(ctx, { id: "task-1", notes: [] })]);
 
-		injectAfterLoad = async () => {
+		injectAfterLoad.set(ctx.projectId, async () => {
 			neighbourSuspended();
 			await neighbourStalled;
 			await neighbourData.updateTask(neighbourProject, "task-1", {
 				notes: [makeNote("concurrent", "from other writer")],
 			});
-		};
+		});
 		// Deliberately not awaited — this is the neighbour dying with a write pending.
-		const abandoned = neighbourHandle(makeRequest("note.add", { projectId: neighbourId, taskId: "task-1", content: "mine" }));
+		const abandoned = neighbourHandle(makeRequest("note.add", { projectId: ctx.projectId, taskId: "task-1", content: "mine" }));
 		await neighbourReachedStall;
 
 		// The next test starts while the neighbour is still suspended.
-		enterFreshTest();
+		const next = freshCtx();
 		const { handleRequest } = await import("../cli-socket-server");
-		seed([makeTask({ id: "task-1", notes: [makeNote("existing", "already here")] })]);
+		seed(next, [makeTask(next, { id: "task-1", notes: [makeNote("existing", "already here")] })]);
 
 		// The corpse finishes its write now, inside the next test's window.
 		releaseNeighbour();
 		await abandoned.catch(() => undefined);
 
-		const resp = await handleRequest(makeRequest("note.add", { projectId, taskId: "task-1", content: "new note" }));
+		const resp = await handleRequest(makeRequest("note.add", { projectId: next.projectId, taskId: "task-1", content: "new note" }));
 		expect(resp.ok).toBe(true);
 
-		const [task] = readTasksRaw();
+		const [task] = readTasksRaw(next);
 		expect((task.notes ?? []).map((n) => n.content)).toEqual(["already here", "new note"]);
+	});
+
+	// The corpse this file actually died of: a body abandoned BEFORE it seeded
+	// anything, resuming inside the next test. It must build its fixture and fire
+	// its injected write against its own project, never the live one.
+	raceIt("a body abandoned before it seeds cannot adopt the next test's project", async (ctx) => {
+		const data = await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+
+		let releaseCorpse!: () => void;
+		const corpseStalled = new Promise<void>((resolve) => { releaseCorpse = resolve; });
+
+		// Suspended where the timed-out test was: past the imports, before seed().
+		const corpse = (async () => {
+			await corpseStalled;
+			const corpseProject = seed(ctx, [makeTask(ctx, { id: "task-1", notes: [] })]);
+			injectAfterLoad.set(ctx.projectId, async () => {
+				await data.updateTask(corpseProject, "task-1", { notes: [makeNote("concurrent", "from other writer")] });
+			});
+			await handleRequest(makeRequest("note.add", { projectId: ctx.projectId, taskId: "task-1", content: "mine" }));
+		})();
+
+		const next = freshCtx();
+		const { handleRequest: nextHandle } = await import("../cli-socket-server");
+		seed(next, [makeTask(next, { id: "task-1", notes: [makeNote("existing", "already here")] })]);
+
+		releaseCorpse();
+		await corpse.catch(() => undefined);
+
+		const resp = await nextHandle(makeRequest("note.add", { projectId: next.projectId, taskId: "task-1", content: "new note" }));
+		expect(resp.ok).toBe(true);
+
+		expect((readTasksRaw(next)[0].notes ?? []).map((n) => n.content)).toEqual(["already here", "new note"]);
+		// The corpse's own project still shows its work — it ran, it just landed elsewhere.
+		expect((readTasksRaw(ctx)[0].notes ?? []).map((n) => n.content).sort()).toEqual(["from other writer", "mine"]);
 	});
 });
