@@ -75,7 +75,7 @@ import {
 	type NativeStreamRole,
 } from "../../shared/native-terminal-stream";
 import { NativeSessionClient } from "../native-terminal-registry/client";
-import { readRecord } from "../native-terminal-registry/record";
+import { readRecord, type NativeSessionRecord } from "../native-terminal-registry/record";
 import { sessionsRootDir } from "../native-terminal-registry/paths";
 import { isProcessAlive } from "../native-terminal-registry/process-identity";
 import { defaultNativeShellLaunchSpec } from "../native-terminal-registry/shell-launch";
@@ -93,6 +93,33 @@ function check(condition: boolean, message: string): void {
 }
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * The session record, waited for rather than assumed.
+ *
+ * A resize ACK does NOT mean the record is on disk. The host applies the resize, fires
+ * `persist()` FIRE-AND-FORGET through a cross-process lock, and answers the ack first
+ * (`native-terminal-registry/host.ts`, resize branch), so every in-band event — ack, role
+ * frame, output byte — outruns the file. Measured on an idle Mac: stale in 60 of 60
+ * samples right after the ack, catching up 1.3–47 ms later. The product's own reader polls
+ * for exactly this reason (`MultiPaneCoordinator.resizePane`). Returns the last record seen,
+ * so a failing check can report what the file actually held.
+ */
+async function awaitRecord(
+	sessionId: string,
+	predicate: (record: NativeSessionRecord) => boolean,
+	timeoutMs = 5000,
+): Promise<NativeSessionRecord | null> {
+	const deadline = Date.now() + timeoutMs;
+	let last = readRecord(sessionId);
+	for (;;) {
+		last = readRecord(sessionId);
+		if (last && predicate(last)) return last;
+		if (Date.now() >= deadline) return last;
+		await delay(20);
+	}
+}
+
 const isWindows = process.platform === "win32";
 const lineEnd = isWindows ? "\r" : "\n";
 const controllerEntry = fileURLToPath(new URL("./native-task-terminal-controller.ts", import.meta.url));
@@ -546,8 +573,11 @@ async function run(): Promise<void> {
 			...SHELL_WARMUP_PROBE,
 		});
 		check(geoSeen !== null, `the shell observed the resized geometry (${cols}x${rows})`);
-		const resized = readRecord(FIRST_PANE_SESSION_ID);
-		check(resized?.cols === cols && resized?.rows === rows, "the host persisted the new geometry in the session record");
+		const resized = await awaitRecord(FIRST_PANE_SESSION_ID, (r) => r.cols === cols && r.rows === rows);
+		check(
+			resized?.cols === cols && resized?.rows === rows,
+			`the host persisted the new geometry in the session record (record: ${resized?.cols ?? "?"}x${resized?.rows ?? "?"})`,
+		);
 
 		// ── 4. detach: the app-side client goes, the terminal does not ──
 		terminal.detach();
@@ -883,10 +913,10 @@ async function run(): Promise<void> {
 		const peerStderr = await new Response(peer.stderr).text();
 		await peer.exited;
 		if (peerStderr.trim()) console.log(`       [peer stderr] ${peerStderr.trim().split("\n").slice(-3).join(" | ")}`);
-		const xpAfterRecord = readRecord(XP_FIRST_PANE_SESSION_ID);
+		const xpAfterRecord = await awaitRecord(XP_FIRST_PANE_SESSION_ID, (r) => r.cols === xpPeerCols && r.rows === xpPeerRows);
 		check(
 			xpAfterRecord?.cols === xpPeerCols && xpAfterRecord?.rows === xpPeerRows,
-			`PTY geometry followed the NEW writer (${xpPeerCols}x${xpPeerRows}, not the displaced 100x30)`,
+			`PTY geometry followed the NEW writer (${xpPeerCols}x${xpPeerRows}, not the displaced 100x30; record: ${xpAfterRecord?.cols ?? "?"}x${xpAfterRecord?.rows ?? "?"})`,
 		);
 		check(
 			isProcessAlive(xpHostPid) && isProcessAlive(xpShellPid) && !isProcessAlive(peerPid),
@@ -910,10 +940,10 @@ async function run(): Promise<void> {
 			(h) => h.t === "role" && "cols" in h && h.cols === backCols && h.rows === backRows,
 			8000,
 		);
-		const backRecord = readRecord(XP_FIRST_PANE_SESSION_ID);
+		const backRecord = await awaitRecord(XP_FIRST_PANE_SESSION_ID, (r) => r.cols === backCols && r.rows === backRows);
 		check(
 			x2FollowedBack && backRecord?.cols === backCols && backRecord?.rows === backRows,
-			`geometry follows the lease BACK to the first process (${backCols}x${backRows})`,
+			`geometry follows the lease BACK to the first process (${backCols}x${backRows}; second viewer told: ${x2FollowedBack}, record: ${backRecord?.cols ?? "?"}x${backRecord?.rows ?? "?"})`,
 		);
 
 		const xpBack = markerProbe(`${nonce}r`, xpShellPid);

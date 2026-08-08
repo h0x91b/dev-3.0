@@ -1,0 +1,1 @@
+The native task-terminal E2E no longer assumes that a resize acknowledgement means the session record is already on disk — the host persists it fire-and-forget after answering, so the record lagged and the Windows release gate failed intermittently. The three geometry reads in that test now wait for the record and print what it actually held when they fail.
