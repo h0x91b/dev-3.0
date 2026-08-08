@@ -1024,6 +1024,34 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		expect(screen.queryByLabelText("Project Terminal (⌘`)")).not.toBeInTheDocument();
 	});
 
+	it("folds the memory readout off the header and into the sheet", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.getSystemMemory.mockResolvedValue({
+			headroom: 12 * 1024 ** 3,
+			used: 52 * 1024 ** 3,
+			total: 64 * 1024 ** 3,
+			cached: 0,
+			pressure: "normal",
+			pressureEstimated: false,
+			swapUsed: 0,
+			swapTotal: 0,
+			swapping: false,
+			topConsumers: [],
+			appRss: 0,
+			activeTaskCount: 0,
+			tasksRssApprox: 0,
+			topTasks: [],
+			medianTaskRss: null,
+		});
+		renderHeader({ screen: "project", projectId: "p1" });
+		// Nothing but the breadcrumb and the kebab survives in a phone header.
+		await act(async () => {});
+		expect(screen.queryByTestId("memory-headroom-indicator")).not.toBeInTheDocument();
+
+		await user.click(screen.getByLabelText("More"));
+		expect(screen.getByTestId("memory-headroom-indicator")).toBeInTheDocument();
+	});
+
 	it("opens a bottom sheet exposing the command palette and folded actions", async () => {
 		const user = userEvent.setup();
 		renderHeader({ screen: "project", projectId: "p1" });

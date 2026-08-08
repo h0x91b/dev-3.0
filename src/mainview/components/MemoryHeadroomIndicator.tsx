@@ -32,10 +32,9 @@ import MemoryBreakdownPanel, { PRESSURE_BAR_CLASS, PRESSURE_TEXT_CLASS } from ".
  * separate on purpose: the bar can say "nearly full" while the colour still says
  * "the OS is fine with it", which on a 128 GB machine is the truth.
  *
- * Unlike its neighbours (prevent-sleep, rate limits) this stays in the header at
- * every width — see the ambient-readout exception in PRODUCT_UX_BIBLE §12.6. On
- * narrow the breakdown opens as a BottomSheet, because there is no hover on touch
- * and a floating popover would overflow a phone.
+ * On narrow it folds into the header kebab sheet alongside prevent-sleep and the
+ * rate limits (PRODUCT_UX_BIBLE §12.6), and its breakdown opens as a BottomSheet:
+ * there is no hover on touch and a floating popover would overflow a phone.
  */
 
 /** Hover-out grace so the pointer can travel from pill to popover. */

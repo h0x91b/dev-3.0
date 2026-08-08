@@ -176,7 +176,7 @@ describe("MemoryHeadroomIndicator — the pill", () => {
 		expect(pill()).toHaveTextContent("3.0 GB");
 	});
 
-	it("stays visible on a narrow viewport with a touch-sized target", async () => {
+	it("keeps a touch-sized target on narrow, where it lives inside the header sheet", async () => {
 		mockViewport(390);
 		renderIndicator();
 		await waitFor(() => expect(pill()).toBeInTheDocument());

@@ -584,14 +584,12 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				    Folded into the kebab bottom sheet on narrow. */}
 				{!isNarrow && <PreventSleepToggle />}
 
-				{/* Memory headroom — the one ambient resource readout allowed in the
-				    header (PRODUCT_UX_BIBLE §12.6). Sits between the two other
-				    "how much is left" widgets. Unlike them it stays visible on narrow
-				    and is NOT duplicated in the kebab sheet: utilities fold because
-				    they are actions you go looking for, while a capacity readout
-				    matters most exactly when screen is scarce and load is high.
-				    There it opens a BottomSheet instead of a popover. */}
-				<MemoryHeadroomIndicator navigate={navigate} />
+				{/* Memory headroom — the one ambient resource readout in the header
+				    (PRODUCT_UX_BIBLE §12.6). Folds into the kebab sheet on narrow
+				    like its neighbours: a phone header has no room for a readout
+				    nobody acts on at a glance. In the sheet it opens a BottomSheet
+				    instead of a popover. */}
+				{!isNarrow && <MemoryHeadroomIndicator navigate={navigate} />}
 
 				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
 				    (folded into the kebab bottom sheet on narrow). */}
@@ -810,11 +808,13 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			>
 				<div className="flex flex-col">
 					{/* Stateful widgets folded off the header on narrow: prevent-sleep,
-					    rate-limit, git-pull, tmux sessions. Reused verbatim so their live
-					    state / popovers / modals keep working (those overlays layer above
-					    the sheet — see the z-index in TmuxSessionManager / GitPullErrorModal). */}
+					    memory headroom, rate-limit, git-pull, tmux sessions. Reused verbatim
+					    so their live state / popovers / modals keep working (those overlays
+					    layer above the sheet — see the z-index in TmuxSessionManager /
+					    GitPullErrorModal). */}
 					<div className="flex flex-wrap items-center gap-1.5 pb-3 mb-1 border-b border-edge/60">
 						<PreventSleepToggle />
+						<MemoryHeadroomIndicator navigate={navigate} />
 						<RateLimitIndicator compact={false} />
 						{currentProjectId && !isVirtualProject && (
 							<GitPullButton projectId={currentProjectId} compact={false} />

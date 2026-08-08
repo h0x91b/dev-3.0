@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-08 — On a phone the memory readout folds into the kebab like everything else
+
+- **Rule:** the global header's ambient resource readout (memory headroom) is a roomy-width slot only; on narrow it moves into the kebab bottom sheet next to `PreventSleepToggle` / `RateLimitIndicator`, keeps its ≥44px target there, and still opens its breakdown as a `BottomSheet`. Bible §12.6, yaml `surfaces.global_header.ambient_resource_readout.narrow`, `responsive.global_header`. Supersedes the narrow half of the 2026-07-30 entry below.
+- **Why:** the 2026-07-30 rule argued the readout matters most where screen is scarce — in practice a phone header has room for a breadcrumb and one kebab, and a number the user does not act on at a glance is exactly what should give that room back. The desktop half of the rule is unchanged: capacity is still permanent chrome at roomy widths, still capped at one.
+- **Status:** Implemented. Evidence: `GlobalHeader.tsx`, `MemoryHeadroomIndicator.tsx`, seq 1463.
+
 ## 2026-08-07 — A narrow control row sheds; it never stacks
 
 - **Rule:** every narrow control row is `flex-nowrap` with a written priority order and drops from the bottom of it as width runs out — the inspector summary bar sheds diff badge → artifacts → images, then takes the status pill icon-only; the diff viewer's four mutually exclusive modes collapse to one trigger + `BottomSheet`. Anything shed must already have a sheet path, and the last survivors truncate rather than clip. Thresholds are container queries on the row, not viewport breakpoints. Bible §12.6 + §12.3 (Diff viewer).
