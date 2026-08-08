@@ -3947,6 +3947,15 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			/**
+			 * PostHog feature-flag values, pushed by the Electrobun renderer every
+			 * FEATURE_FLAG_REFRESH_MS. The bun process never queries PostHog itself
+			 * and holds the last pushed value — see src/bun/feature-flags.ts.
+			 */
+			setFeatureFlags: {
+				params: { flags: Record<string, boolean> };
+				response: void;
+			};
+			/**
 			 * Pushed by the renderer whenever the current route changes; the bun
 			 * side uses it to rebuild the native menu so context-aware items
 			 * (task / project / terminal) render disabled when irrelevant.

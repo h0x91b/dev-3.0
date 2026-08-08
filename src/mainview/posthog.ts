@@ -10,7 +10,16 @@ if ((!apiKey || !apiHost) && import.meta.env.DEV) {
 	);
 }
 
-const client: Pick<typeof posthog, "capture"> = apiKey && apiHost
+// The flag APIs are exposed next to capture so feature-flags.ts can refresh and
+// read flags; the rest of the posthog surface stays out of reach. With no key
+// configured the no-op client reports every flag as unset, which lands the app
+// on the shipped defaults in src/shared/feature-flags.ts.
+type PostHogClient = Pick<
+	typeof posthog,
+	"capture" | "getFeatureFlag" | "onFeatureFlags" | "reloadFeatureFlags"
+>;
+
+const client: PostHogClient = apiKey && apiHost
 	? posthog.init(apiKey, {
 		api_host: apiHost,
 		defaults: "2026-05-30",
@@ -20,6 +29,11 @@ const client: Pick<typeof posthog, "capture"> = apiKey && apiHost
 			capture_console_errors: false,
 		},
 	})
-	: { capture: () => undefined };
+	: {
+		capture: () => undefined,
+		getFeatureFlag: () => undefined,
+		onFeatureFlags: () => () => undefined,
+		reloadFeatureFlags: () => undefined,
+	};
 
 export default client;

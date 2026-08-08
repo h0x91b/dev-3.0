@@ -27,6 +27,9 @@ import {
 	stopNativeTaskPanes,
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
+import { FEATURE_FLAGS } from "../shared/feature-flags";
+import { isFeatureEnabled } from "./feature-flags";
+import { batchWindowMs, isBackedUp } from "./pty-backpressure";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "./task-terminal-backend";
 import {
@@ -170,6 +173,30 @@ interface PtySession {
 }
 
 const sessions = new Map<string, PtySession>();
+
+/** Session key → sockets outside this module that carry the session's output. */
+const backpressureProbes = new Map<string, Set<() => number>>();
+
+/**
+ * Report how many bytes a socket this module cannot see still owes a viewer.
+ *
+ * The remote proxy's browser-facing socket is the only one that ever backs up:
+ * every socket in `session.clients` is loopback. Returns an unregister function.
+ */
+export function registerBackpressureProbe(sessionKey: string, probe: () => number): () => void {
+	let probes = backpressureProbes.get(sessionKey);
+	if (!probes) {
+		probes = new Set();
+		backpressureProbes.set(sessionKey, probes);
+	}
+	probes.add(probe);
+	return () => {
+		const current = backpressureProbes.get(sessionKey);
+		if (!current) return;
+		current.delete(probe);
+		if (current.size === 0) backpressureProbes.delete(sessionKey);
+	};
+}
 let onPtyDiedCallback: ((taskId: string) => void) | null = null;
 let onBellCallback: ((taskId: string) => void) | null = null;
 let onIdleCallback: ((taskId: string) => void) | null = null;
@@ -1576,7 +1603,10 @@ function applyClientSizes(session: PtySession): void {
  * exactly where it stopped. tmux sessions send the bare text they always have.
  */
 function flushPendingData(session: PtySession): void {
-	session.batchTimer = null;
+	if (session.batchTimer) {
+		clearTimeout(session.batchTimer);
+		session.batchTimer = null;
+	}
 	if (!session.pendingData) return;
 	if (session.backend !== "native") {
 		if (session.clients.size === 0) return;
@@ -1606,29 +1636,60 @@ function flushPendingData(session: PtySession): void {
  */
 function settleNativeStream(session: PtySession): void {
 	if (session.backend !== "native" || !session.pendingData) return;
-	if (session.batchTimer) {
-		clearTimeout(session.batchTimer);
-		session.batchTimer = null;
-	}
 	flushPendingData(session);
+}
+
+/**
+ * Bytes still queued in the slowest socket that carries this session's output.
+ *
+ * `session.clients` are all loopback sockets (the desktop renderer, or the
+ * remote proxy), so their own buffers stay near zero however slow the viewer is.
+ * The tunnel-facing socket lives in remote-access-server and reports itself
+ * through a probe — see registerBackpressureProbe.
+ */
+function bufferedBytesFor(session: PtySession): number {
+	let worst = 0;
+	for (const client of session.clients) {
+		const buffered = typeof client?.getBufferedAmount === "function" ? Number(client.getBufferedAmount()) : 0;
+		if (Number.isFinite(buffered) && buffered > worst) worst = buffered;
+	}
+	for (const probe of backpressureProbes.get(session.registryKey) ?? []) {
+		try {
+			const buffered = Number(probe());
+			if (Number.isFinite(buffered) && buffered > worst) worst = buffered;
+		} catch { /* probe owner is gone; close() will unregister it */ }
+	}
+	return worst;
 }
 
 /**
  * Enqueue PTY data for batched delivery to the WebSocket.
  * Instead of sending every chunk immediately (which for Claude Code means
  * thousands of tiny WS messages per second), we accumulate data and flush
- * at ~60fps. The first chunk in a batch is sent immediately for latency,
- * subsequent chunks within the batch window are coalesced.
+ * at ~60fps.
+ *
+ * With FEATURE_FLAGS.remoteTerminalLatency on, the chunk that opens a window is
+ * sent immediately (a lone keystroke echo no longer waits out the full window)
+ * and the window widens while a viewer's socket is behind. The flag is read from
+ * a local cache — no await, no lookup beyond a Map get, on a per-chunk path.
  */
 function enqueuePtyData(session: PtySession, data: string): void {
 	session.pendingData += data;
-	if (!session.batchTimer) {
-		// First chunk — schedule flush. If only one chunk arrives within
-		// the interval, the delay is at most PTY_BATCH_INTERVAL_MS (16ms),
-		// which is imperceptible. For bursty output, all intermediate
-		// chunks are coalesced into a single WS message.
+	if (session.batchTimer) return;
+
+	if (!isFeatureEnabled(FEATURE_FLAGS.remoteTerminalLatency)) {
+		// Trailing edge only: one chunk in the window still costs the full 16ms.
 		session.batchTimer = setTimeout(() => flushPendingData(session), PTY_BATCH_INTERVAL_MS);
+		return;
 	}
+
+	const buffered = bufferedBytesFor(session);
+	// A backed-up socket cannot absorb an immediate send; only widen the window.
+	if (!isBackedUp(buffered)) flushPendingData(session);
+	session.batchTimer = setTimeout(
+		() => flushPendingData(session),
+		batchWindowMs(buffered, PTY_BATCH_INTERVAL_MS),
+	);
 }
 
 async function configureTmux(tmuxSessionName: string, socket: string): Promise<void> {

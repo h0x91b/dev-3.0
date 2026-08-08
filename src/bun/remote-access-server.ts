@@ -340,6 +340,7 @@ export function injectInitialThemeBootstrap(html: string): string {
 // ── PTY proxy ───────────────────────────────────────────────────────
 
 let ptyPortGetter: (() => number) | null = null;
+let backpressureProbeRegistrar: StartOptions["registerBackpressureProbe"] | null = null;
 
 /**
  * Proxy a WebSocket connection to the internal PTY server.
@@ -358,6 +359,13 @@ function proxyToPty(clientWs: any, sessionId: string, sinceSeq: number | null): 
 		sinceSeq === null ? "" : `&${NATIVE_STREAM_SINCE_PARAM}=${sinceSeq}`
 	}`;
 	const upstream = new WebSocket(targetUrl);
+
+	// This socket is the only one in the chain that faces the tunnel, so it is the
+	// only one whose backlog means anything. The PTY server widens its batch
+	// window from this number instead of blasting into a full buffer.
+	const unregisterProbe = backpressureProbeRegistrar?.(sessionId, () =>
+		typeof clientWs?.getBufferedAmount === "function" ? clientWs.getBufferedAmount() : 0,
+	);
 
 	upstream.addEventListener("open", () => {
 		log.info("PTY proxy upstream connected", { session: sessionId.slice(0, 8) });
@@ -385,6 +393,7 @@ function proxyToPty(clientWs: any, sessionId: string, sinceSeq: number | null): 
 
 	// Store upstream ref on the client WS for bidirectional forwarding
 	(clientWs as any)._ptyUpstream = upstream;
+	(clientWs as any)._ptyBackpressureProbeOff = unregisterProbe;
 }
 
 /**
@@ -554,6 +563,8 @@ let serverPort = 0;
 interface StartOptions {
 	rpcHandler: RpcRequestHandler;
 	getPtyPort: () => number;
+	/** pty-server's `registerBackpressureProbe`; injected like `getPtyPort`. */
+	registerBackpressureProbe: (sessionKey: string, probe: () => number) => () => void;
 	onQrTokenConsumed?: () => void;
 }
 
@@ -592,6 +603,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 	await initSecret();
 	requestHandler = options.rpcHandler;
 	ptyPortGetter = options.getPtyPort;
+	backpressureProbeRegistrar = options.registerBackpressureProbe;
 	qrConsumedCallback = options.onQrTokenConsumed ?? null;
 
 	const requestedPort = resolveListenPort();
@@ -742,6 +754,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 					rpcClients.delete(ws);
 					log.info("Remote RPC client disconnected", { total: rpcClients.size });
 				} else if (wsData.type === "pty") {
+					((ws as any)._ptyBackpressureProbeOff as (() => void) | undefined)?.();
 					closeUpstreamSocket((ws as any)._ptyUpstream as WebSocket | undefined);
 				} else if (wsData.type === "shared-proxy") {
 					closeUpstreamSocket((ws as any)._proxyUpstream as WebSocket | undefined);

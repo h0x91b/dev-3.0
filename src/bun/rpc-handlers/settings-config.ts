@@ -17,6 +17,7 @@ import { DEV3_HOME } from "../paths";
 import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
+import { setFeatureFlags as cacheFeatureFlags } from "../feature-flags";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, hasModelProviderSection, tmuxSearchPaths } from "./shared-pure";
 import { isExecutableFile } from "../executable";
@@ -444,8 +445,18 @@ async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dar
 	await pty.applyTmuxTheme(params.theme);
 }
 
+/**
+ * Cache PostHog flag values evaluated by the renderer. Fire-and-forget: the hot
+ * paths that read them (e.g. enqueuePtyData) do a synchronous cached lookup.
+ */
+async function setFeatureFlags(params: { flags: Record<string, boolean> }): Promise<void> {
+	log.debug("→ setFeatureFlags", params.flags);
+	cacheFeatureFlags(params.flags);
+}
+
 export const settingsConfigHandlers = {
 	getResolvedProject,
+	setFeatureFlags,
 	getProjectConfigs,
 	getProjectConfigFiles,
 	updateProjectSettings,

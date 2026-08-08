@@ -8,6 +8,7 @@ import App from "./App";
 import { I18nProvider } from "./i18n";
 import { MobileProvider, detectMobile } from "./hooks/useMobile";
 import { initAnalytics } from "./analytics";
+import { initFeatureFlags } from "./feature-flags";
 import { api, isElectrobun } from "./rpc";
 import { initAutoFullscreen } from "./fullscreen";
 import { bootstrapZoom } from "./zoom";
@@ -87,6 +88,9 @@ initStreamerMode();
 // chrome wastes a big share of a phone screen). Desktop/Electrobun only get
 // the fullscreenchange subscription for the menu toggle. See fullscreen.ts.
 initAutoFullscreen({ mobile: !isElectrobun && detectMobile() });
+
+// Start the PostHog feature-flag refresh loop (desktop renderer only)
+initFeatureFlags();
 
 // Load saved terminal scroll speed into cache before terminals mount
 bootstrapScrollSpeed();
