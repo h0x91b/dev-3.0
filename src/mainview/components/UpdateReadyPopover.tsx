@@ -1,5 +1,7 @@
 import type { UpdateChangelog } from "../../shared/types";
+import { parseDisplayVersion } from "../../shared/update-channel";
 import { useT } from "../i18n";
+import CanaryBadge from "./CanaryBadge";
 import { UpdateReadyIcon } from "./HeaderIcons";
 
 /** Static placeholder countdown shown in the simulator (no real timer runs). */
@@ -21,6 +23,12 @@ interface UpdateWhatsNewProps {
  */
 export function UpdateWhatsNew({ version, changelog, onSeeAllChanges, className }: UpdateWhatsNewProps) {
 	const t = useT();
+	// IN vs SINCE, AND ON CANARY ONLY "SINCE" IS TRUE. The payload is the changelog window
+	// after the previous release tag (scripts/build-update-changelog.ts), so on a tagged
+	// stable release those entries ARE the release. On canary the same list is everything
+	// that has landed on main since — "what's new in v1.42.3" names the one version these
+	// features are provably NOT in.
+	const { core, channel } = parseDisplayVersion(version);
 	if (!changelog || changelog.features.length === 0) return null;
 	const moreFeat = Math.max(0, changelog.featureCount - changelog.features.length);
 	const parts: string[] = [];
@@ -29,7 +37,7 @@ export function UpdateWhatsNew({ version, changelog, onSeeAllChanges, className 
 	return (
 		<div className={`border-t border-edge pt-2.5 space-y-1.5${className ? ` ${className}` : ""}`}>
 			<div className="text-fg-3 text-dense font-semibold uppercase tracking-wider">
-				{t("update.whatsNewVersion", { version })}
+				{t(channel === "canary" ? "update.whatsNewSinceVersion" : "update.whatsNewVersion", { version: core })}
 			</div>
 			<div className="space-y-1">
 				{changelog.features.map((feature, i) => (
@@ -76,12 +84,25 @@ export default function UpdateReadyPopover({
 	preview = false,
 }: UpdateReadyPopoverProps) {
 	const t = useT();
+	// WHICH BUILD IS BEING OFFERED IS READ OFF THE VERSION STRING, not off local state.
+	// During a channel crossing the local channel is the one being LEFT, so it answers the
+	// wrong question; the `+canary.<sha>` suffix in the published manifest is the only thing
+	// that describes the build on offer. A manifest without one renders exactly as before.
+	const { core, channel, sha } = parseDisplayVersion(version);
 	return (
 		<div className="w-72 bg-overlay border border-edge rounded-xl shadow-2xl p-4 space-y-3">
 			<div className="flex items-center gap-2">
 				<UpdateReadyIcon className="w-5 h-5 text-accent flex-shrink-0" />
 				<div>
-					<div className="text-fg text-sm font-semibold">{t("update.readyTitle", { version })}</div>
+					<div className="text-fg text-sm font-semibold">
+						{t("update.readyTitle", { version: core })}
+						{channel === "canary" && sha && (
+							<>
+								{" "}
+								<CanaryBadge sha={sha} fullVersion={version} />
+							</>
+						)}
+					</div>
 					<div className="text-fg-3 text-xs mt-0.5">{t("update.sessionsNote")}</div>
 				</div>
 			</div>

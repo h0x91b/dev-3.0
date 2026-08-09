@@ -22,6 +22,12 @@ const updates = {
 	"update.devBuildNotice": "This is a dev build — updates are disabled. Rebuild from source to update.",
 	"update.applyFailed": "Couldn't apply the update: {error}",
 	"update.whatsNewVersion": "What's new in v{version}",
+	// "SINCE", not "in": on canary the same changelog window is everything that landed on
+	// main AFTER that release, so naming it as the release's contents is simply false.
+	"update.whatsNewSinceVersion": "What's new since v{version}",
+	// The channel name is a proper noun in all locales; the tooltip is what carries the meaning.
+	"update.canaryBadge": "Canary",
+	"update.canaryBadgeTooltip": "Canary build — cut from main, not a tested release. {version}",
 	"update.seeAllChanges": "See all changes",
 	"update.moreFeatures_one": "+{count} more feature",
 	"update.moreFeatures_other": "+{count} more features",

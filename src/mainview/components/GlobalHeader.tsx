@@ -3,6 +3,7 @@ import type { Project, Task, UpdateChangelog } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
+import { parseDisplayVersion } from "../../shared/update-channel";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -14,6 +15,7 @@ import InlineRename from "./InlineRename";
 import NativeBackendMark from "./NativeBackendMark";
 import GitPullButton from "./GitPullButton";
 import UpdateReadyPopover, { UpdateWhatsNew } from "./UpdateReadyPopover";
+import CanaryBadge from "./CanaryBadge";
 import PreventSleepToggle from "./PreventSleepToggle";
 import RateLimitIndicator from "./RateLimitIndicator";
 import MemoryHeadroomIndicator from "./MemoryHeadroomIndicator";
@@ -107,6 +109,11 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			// Remote access server may not be running.
 		}
 	};
+
+	// Which build is on offer, read off the published version string. The toast below
+	// renders its own header rather than reusing UpdateReadyPopover, so it has to split
+	// the version the same way the popover does or the two disagree.
+	const offeredBuild = parseDisplayVersion(updateVersion ?? "");
 
 	// Show toast with 5min countdown on every update announcement — the first one
 	// and each periodic reminder for a postponed, already-downloaded version.
@@ -844,7 +851,13 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					<UpdateReadyIcon className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
 					<div className="flex-1 min-w-0">
 						<div className="text-fg text-sm font-semibold">
-							{t("update.readyTitle", { version: updateVersion })}
+							{t("update.readyTitle", { version: offeredBuild.core })}
+							{offeredBuild.channel === "canary" && offeredBuild.sha && (
+								<>
+									{" "}
+									<CanaryBadge sha={offeredBuild.sha} fullVersion={updateVersion} />
+								</>
+							)}
 						</div>
 						<div className="text-fg-3 text-xs mt-1">
 							{t("update.sessionsNote")}

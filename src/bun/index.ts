@@ -840,7 +840,11 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		log.info("Hard refresh — navigating to home page");
 		focused?.webview.loadURL(url);
 	} else if (e.data.action === MENU_ACTIONS.about) {
-		sendToFocusedWindow("showAbout", { version: APP_VERSION });
+		// The channel BAKED INTO THE BUNDLE, not the one selected in Settings: About answers
+		// "which build am I running", and those two disagree for as long as a switch is
+		// pending. `getLocalVersion` reads it from the bundle's version.json.
+		const local = await getLocalVersion().catch(() => null);
+		sendToFocusedWindow("showAbout", { version: APP_VERSION, buildChannel: local?.channel });
 	} else if (e.data.action === MENU_ACTIONS.openSettings) {
 		sendToFocusedWindow("navigateToSettings");
 	} else if (e.data.action === MENU_ACTIONS.openNewTask) {

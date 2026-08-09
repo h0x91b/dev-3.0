@@ -16,6 +16,7 @@ import {
 	decideUpdate,
 	DEFAULT_UPDATE_CHANNEL,
 	canaryDisplayVersion,
+	parseDisplayVersion,
 	type LocalBuild,
 	type UpdateManifest,
 } from "../../shared/update-channel";
@@ -136,6 +137,31 @@ describe("staying on canary orders by the monotonic build counter", () => {
 	});
 });
 
+describe("the published version says which build it is", () => {
+	it("round-trips what create-release-artifacts.sh writes", () => {
+		// The script writes with canaryDisplayVersion and the UI reads with this. If the two
+		// ever drift, the popover silently stops naming the channel — no error anywhere.
+		expect(parseDisplayVersion(canaryDisplayVersion("1.42.3", "a0981f55"))).toEqual({
+			core: "1.42.3",
+			channel: "canary",
+			sha: "a0981f55",
+		});
+	});
+
+	it("reports no channel for a stable version, so the UI adds no badge", () => {
+		expect(parseDisplayVersion("1.42.3")).toEqual({ core: "1.42.3" });
+	});
+
+	it("degrades to the bare core on a suffix it cannot read", () => {
+		// Manifests published before the suffix existed, and anything malformed: the version
+		// still renders, it just carries no channel claim. Inventing one would be worse.
+		expect(
+			parseDisplayVersion("1.42.3+canary"),
+			"an unparseable suffix must yield no channel rather than a half-read one. The badge is a claim about which build the user is being given; a wrong claim is worse than none.",
+		).toEqual({ core: "1.42.3" });
+	});
+});
+
 describe("crossing channels states a direction, never an update", () => {
 	it("offers the target channel's build when the hashes differ", () => {
 		// Deliberately hash-based: the other channel's build is simply a DIFFERENT build,
@@ -147,6 +173,43 @@ describe("crossing channels states a direction, never an update", () => {
 			to: "canary",
 			installsOlderBuild: false,
 		});
+	});
+
+	// THE SUFFIX MADE THIS A LIVE BUG THE DAY IT REACHED THE FEED, and the fixture above
+	// could not see it because it was written while every canary manifest still published a
+	// bare version. `isNewerVersion` does not ignore `+canary.<sha>` — it turns the patch
+	// component into NaN and then 0 — so an offered `1.42.3+canary.<sha>` compares as
+	// `1.42.0` against a running `1.42.3`.
+	it("does not call the canary build of the SAME release a downgrade", () => {
+		const running: LocalBuild = { ...stableBundle, version: "1.42.3" };
+		const remote: UpdateManifest = {
+			version: canaryDisplayVersion("1.42.3", "a0981f55"),
+			hash: "hash-canary",
+			buildOrder: 1622,
+		};
+		expect(
+			decideUpdate(running, "canary", remote, isNewerVersion),
+			"a stable user switching to the canary build of the SAME release must not be warned about a downgrade. `installsOlderBuild: true` here means the version went into the comparator with its `+canary.<sha>` still attached: the patch reads as 0, `1.42.3+canary.x` compares as `1.42.0`, and the most ordinary crossing there is reports a phantom downgrade. Fix: coreVersion() both sides before comparing — do NOT teach isNewerVersion about build metadata, that path is dead on purpose.",
+		).toEqual({
+			kind: "switch",
+			version: "1.42.3+canary.a0981f55",
+			to: "canary",
+			installsOlderBuild: false,
+		});
+	});
+
+	it("still reports a real downgrade when the canary feed is behind a newer release", () => {
+		// The flag must stay useful, not just quiet: an older canary build IS an older build.
+		const running: LocalBuild = { ...stableBundle, version: "1.43.0" };
+		const remote: UpdateManifest = {
+			version: canaryDisplayVersion("1.42.3", "a0981f55"),
+			hash: "hash-canary",
+			buildOrder: 1622,
+		};
+		expect(
+			(decideUpdate(running, "canary", remote, isNewerVersion) as { installsOlderBuild: boolean }).installsOlderBuild,
+			"stripping the suffix must not blunt the warning. A canary build cut from 1.42.3 IS older than a running 1.43.0, and the user has to be told, because an older build then reads state a newer one already wrote.",
+		).toBe(true);
 	});
 
 	it("offers an OLDER stable build and says so, instead of stranding the user", () => {

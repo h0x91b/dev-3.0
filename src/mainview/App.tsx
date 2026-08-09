@@ -279,6 +279,8 @@ function App() {
 
 	// About dialog (opened from the native menu's "About" item via rpc:showAbout)
 	const [aboutVersion, setAboutVersion] = useState<string | null>(null);
+	/** The channel baked into the running bundle — what tells a canary install from the release. */
+	const [aboutBuildChannel, setAboutBuildChannel] = useState<string | null>(null);
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -1693,8 +1695,9 @@ function App() {
 	// Open the in-app About dialog when the native menu's "About" item is clicked.
 	useEffect(() => {
 		function onShowAbout(e: Event) {
-			const { version } = (e as CustomEvent).detail as { version: string };
+			const { version, buildChannel } = (e as CustomEvent).detail as { version: string; buildChannel?: string };
 			setAboutVersion(version);
+			setAboutBuildChannel(buildChannel ?? null);
 		}
 		window.addEventListener("rpc:showAbout", onShowAbout);
 		return () => window.removeEventListener("rpc:showAbout", onShowAbout);
@@ -2701,7 +2704,13 @@ function App() {
 					onClose={() => setImageViewer(null)}
 				/>
 			)}
-			{aboutVersion && <AboutModal version={aboutVersion} onClose={() => setAboutVersion(null)} />}
+			{aboutVersion && (
+				<AboutModal
+					version={aboutVersion}
+					buildChannel={aboutBuildChannel}
+					onClose={() => setAboutVersion(null)}
+				/>
+			)}
 			{rosettaWarning && (
 				<RosettaWarningModal
 					command={rosettaWarning.command}

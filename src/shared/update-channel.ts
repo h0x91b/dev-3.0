@@ -77,19 +77,47 @@ export interface UpdateManifest {
 /**
  * `isNewerVersion` cannot order two canary builds, and it fails SILENTLY.
  *
- * The canary display version is `1.42.0+canary.<short-sha>`. `isNewerVersion` splits
- * on `.` and runs `Number()` over the parts, so `"0+canary"` becomes `NaN`, then `|| 0`
- * coerces it to `0` — no throw, no warning, and the string parses as a plain `1.42.0`.
- * Two consecutive canary builds therefore compare EQUAL and the routine check would
- * never offer an update: install canary once and sit there until the next stable minor
- * bump. `update-channel.test.ts` pins that behaviour so nobody "fixes" the comparator and
- * silently re-enables the dead path.
+ * The canary display version is `1.42.3+canary.<short-sha>`. `isNewerVersion` splits
+ * on `.` and runs `Number()` over the parts, so `"3+canary"` becomes `NaN`, then `|| 0`
+ * coerces it to `0` — no throw, no warning.
+ *
+ * IT DOES NOT MERELY SWALLOW THE SUFFIX, IT ZEROES THE PATCH: `1.42.3+canary.abc` parses
+ * as `1.42.0`, which is strictly LOWER than the release it was built from. Two consecutive
+ * canary builds still compare EQUAL to each other (same core, both zeroed), which is why
+ * canary orders by buildOrder — but any comparison against a stable version is not just
+ * uninformative, it is backwards. Every caller that compares a possibly-suffixed version
+ * therefore runs it through {@link coreVersion} first. `update-channel.test.ts` pins both
+ * halves so nobody "fixes" the comparator and silently re-enables the dead path.
  */
 export const CANARY_VERSION_IS_NOT_ORDERABLE = true;
 
 /** Build metadata suffix appended to the stable version for DISPLAY on canary. */
 export function canaryDisplayVersion(baseVersion: string, shortSha: string): string {
 	return `${baseVersion}+canary.${shortSha}`;
+}
+
+/**
+ * The inverse of {@link canaryDisplayVersion}: split a published version into the release
+ * it was built from and, when present, the channel and commit that produced it.
+ *
+ * THE SUFFIX IS THE ONLY THING THAT DESCRIBES THE OFFERED BUILD. The local bundle's channel
+ * answers a different question — during a channel crossing it is the channel being left —
+ * so a UI naming the build on offer reads it from here, not from local state. A manifest
+ * published before the suffix existed simply has no `channel`, and the caller degrades to
+ * showing a bare version.
+ */
+export function parseDisplayVersion(version: string): { core: string; channel?: string; sha?: string } {
+	const plus = version.indexOf("+");
+	if (plus < 0) return { core: version };
+	const core = version.slice(0, plus);
+	const [channel, sha] = version.slice(plus + 1).split(".");
+	if (!channel || !sha) return { core };
+	return { core, channel, sha };
+}
+
+/** The release a version was built from, with any `+build.metadata` removed. */
+export function coreVersion(version: string): string {
+	return parseDisplayVersion(version).core;
 }
 
 /**
@@ -141,9 +169,13 @@ export function decideUpdate(
 			kind: "switch",
 			version: remote.version,
 			to: selected,
-			// Compares the CORE versions, so it is honest even though the canary
-			// display version carries a suffix semver ignores.
-			installsOlderBuild: isNewerSemver(remote.version, local.version),
+			// STRIPPING THE SUFFIX HERE IS LOAD-BEARING, not tidiness. `isNewerVersion`
+			// does not ignore `+canary.<sha>`, it turns the patch component into 0, so
+			// the offered 1.42.3+canary.<sha> would compare as 1.42.0 against a running
+			// 1.42.3 and this flag would claim a DOWNGRADE on the most ordinary crossing
+			// there is: stable user switches to canary on the same release. Compare the
+			// releases the two builds were cut from.
+			installsOlderBuild: isNewerSemver(coreVersion(remote.version), coreVersion(local.version)),
 		};
 	}
 

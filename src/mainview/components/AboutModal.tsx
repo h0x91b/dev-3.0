@@ -1,9 +1,18 @@
+import { BUILD_COMMIT } from "../../shared/build-info.generated";
 import { useT } from "../i18n";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import CanaryBadge from "./CanaryBadge";
 
 interface AboutModalProps {
 	version: string;
+	/**
+	 * The channel baked into the running bundle. A canary install and the stable release of
+	 * the same version report the SAME version string here — the bundle's version.json never
+	 * carries the `+canary.<sha>` suffix, because `dev3 doctor` compares it against the CLI
+	 * version by string equality. So this is the only thing that tells them apart.
+	 */
+	buildChannel?: string | null;
 	onClose: () => void;
 }
 
@@ -11,7 +20,7 @@ interface AboutModalProps {
  * In-app About dialog — replaces the native `Utils.showMessageBox` About box so
  * it renders in both the Electrobun desktop shell and remote/browser mode.
  */
-export default function AboutModal({ version, onClose }: AboutModalProps) {
+export default function AboutModal({ version, buildChannel, onClose }: AboutModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	useEscapeKey(onClose);
@@ -37,7 +46,10 @@ export default function AboutModal({ version, onClose }: AboutModalProps) {
 					{"\uf489"}
 				</div>
 				<h2 id="about-dialog-title" className="text-fg text-lg font-semibold">dev-3.0</h2>
-				<p className="text-fg-3 text-xs font-mono">{t("about.version", { version })}</p>
+				<p className="text-fg-3 text-xs font-mono flex items-center justify-center gap-1.5 flex-wrap">
+					{t("about.version", { version })}
+					{buildChannel === "canary" && <CanaryBadge sha={BUILD_COMMIT} />}
+				</p>
 				<p className="text-fg-2 text-sm pt-1">{t("about.tagline")}</p>
 				<p className="text-fg-muted text-xs">{t("about.builtWith")}</p>
 				<div className="flex justify-center gap-2 pt-3">

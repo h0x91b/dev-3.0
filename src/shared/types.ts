@@ -4301,7 +4301,7 @@ export type AppRPCSchema = {
 			 */
 			showQuitDialog: {};
 			/** Open the in-app About modal (replaces the native About message box). */
-			showAbout: { version: string };
+			showAbout: { version: string; buildChannel?: string };
 			/**
 			 * Result of a manual "Check for Updates" menu action, surfaced as a toast.
 			 * `available` updates flow through `updateAvailable` instead (header plaque).

@@ -196,6 +196,73 @@ describe("create-release-artifacts.sh", () => {
 		).toBe(0);
 	});
 
+	// THE CANARY VERSION SUFFIX, ASSERTED ON THE FILE THIS SCRIPT WRITES.
+	//
+	// `canaryDisplayVersion()` shipped with a passing unit test and ZERO production callers,
+	// so every published canary manifest carried a bare `1.42.3` and told the user a build
+	// off main was the stable release. A unit test on the helper cannot see that — it is the
+	// same shape as the three guards that asserted a vendored patch nobody executed. So this
+	// runs the script and reads the manifest, and the control run in the same test is what
+	// proves the suffix is canary-only rather than always-on.
+	function stageBundleAndRun(channel: "stable" | "canary") {
+		const tempDir = mkdtempSync(join(tmpdir(), "dev3-release-artifacts-"));
+		tempDirs.push(tempDir);
+		// A real git repo: BUILD_SHA falls back to the literal "unknown" outside one, which
+		// would make the suffix assertion pass on a string no build ever produces.
+		for (const args of [["init"], ["commit", "--allow-empty", "-m", "seed"]]) {
+			spawnSync("git", args, {
+				cwd: tempDir,
+				encoding: "utf8",
+				env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" },
+			});
+		}
+		const sha = spawnSync("git", ["rev-parse", "HEAD"], { cwd: tempDir, encoding: "utf8" }).stdout.trim();
+
+		const buildDir = join(tempDir, "build", `${channel}-linux-x64`);
+		const bundleName = channel === "stable" ? "dev-3.0" : "dev-3.0-canary";
+		mkdirSync(join(buildDir, bundleName, "resources"), { recursive: true });
+		const versionJson = join(buildDir, bundleName, "resources", "version.json");
+		writeFileSync(versionJson, JSON.stringify({ version: "1.42.3", hash: "bundlehash", channel }));
+		spawnSync("tar", ["-cf", join(buildDir, `${bundleName}.tar`), "-C", buildDir, bundleName], { encoding: "utf8" });
+		// Only a .tar, so the script compresses it itself. Stand-in for zig-zstd, which is
+		// only installed for the host's own platform (see the sibling test above).
+		const zstdDir = join(tempDir, "node_modules", "electrobun", "dist-linux-x64");
+		mkdirSync(zstdDir, { recursive: true });
+		writeFileSync(join(zstdDir, "zig-zstd"), '#!/bin/sh\ncp "$3" "$5"\n', { mode: 0o755 });
+
+		const result = spawnSync("bash", [SCRIPT_PATH, "linux", "x64", channel], { cwd: tempDir, encoding: "utf8" });
+		const manifestPath = join(tempDir, "artifacts-linux-x64", `${channel}-linux-x64-update.json`);
+		return {
+			result,
+			sha,
+			output: `${result.stdout}${result.stderr}`,
+			manifest: existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, "utf8")) : null,
+			recoveredVersionJson: join(buildDir, "recovered", bundleName, "resources", "version.json"),
+		};
+	}
+
+	it("publishes the canary build under a version that says it is a canary build", () => {
+		const canary = stageBundleAndRun("canary");
+		expect(canary.result.status, `the canary run must succeed. Output:\n${canary.output}`).toBe(0);
+		expect(
+			canary.manifest?.version,
+			"the PUBLISHED canary manifest must carry the +canary.<short-sha> suffix. A bare version here is the defect this test exists for: the update popover then offers `v1.42.3 ready to install` with `what's new in v1.42.3` for a build off main, naming a stable release the user is not being given. Fix: keep publish_version() wired into both update.json writes — canaryDisplayVersion() having a green unit test proves nothing about the file.",
+		).toBe(`1.42.3+canary.${canary.sha.slice(0, 8)}`);
+		expect(
+			JSON.parse(readFileSync(canary.recoveredVersionJson, "utf8")).version,
+			"the BUNDLE's version.json must stay bare. `dev3 doctor` compares it against the CLI version by string equality, so a suffix in here reports a spurious CLI/app mismatch on every canary install.",
+		).toBe("1.42.3");
+	});
+
+	it("leaves the stable manifest's version exactly as the bundle reports it", () => {
+		const stable = stageBundleAndRun("stable");
+		expect(stable.result.status, `the stable run must succeed. Output:\n${stable.output}`).toBe(0);
+		expect(
+			stable.manifest?.version,
+			"stable must publish the bundle version untouched. If this ever grows a suffix, every stable client compares a version whose patch component semver silently reads as 0 — they would be offered a permanent phantom downgrade.",
+		).toBe("1.42.3");
+	});
+
 	// Both fields land in the manifest this script is the single writer of. They answer
 	// different questions: sha says WHICH COMMIT (the hourly workflow's skip check),
 	// buildOrder says WHICH BUILD IS NEWER (canary clients' ordering).

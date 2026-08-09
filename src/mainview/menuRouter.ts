@@ -96,8 +96,8 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		// them here directly.
 		case "about": {
 			try {
-				const { version } = await api.request.getAppVersion();
-				window.dispatchEvent(new CustomEvent("rpc:showAbout", { detail: { version } }));
+				const { version, buildChannel } = await api.request.getAppVersion();
+				window.dispatchEvent(new CustomEvent("rpc:showAbout", { detail: { version, buildChannel } }));
 			} catch (err) {
 				console.error("[menu] getAppVersion failed", err);
 			}

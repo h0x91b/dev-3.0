@@ -66,6 +66,10 @@ describe("handleMenuAction — browser-only actions", () => {
 		expect(getAppVersion).toHaveBeenCalledTimes(1);
 		expect(listener).toHaveBeenCalledTimes(1);
 		const detail = (listener.mock.calls[0][0] as CustomEvent).detail;
-		expect(detail).toEqual({ version: "9.9.9" });
+		// buildChannel travels with the version. About has to tell a canary install from the
+		// stable release of the same version, and the bundle's version.json never carries the
+		// `+canary.<sha>` suffix that would say so on its own — this is the browser-mode path,
+		// which must stay in step with the desktop one in src/bun/index.ts.
+		expect(detail).toEqual({ version: "9.9.9", buildChannel: "dev" });
 	});
 });

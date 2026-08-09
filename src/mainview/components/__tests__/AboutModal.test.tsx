@@ -25,6 +25,28 @@ describe("AboutModal", () => {
 		expect(screen.getByText("Version 1.2.3")).toBeInTheDocument();
 	});
 
+	// A canary install and the stable release of the same version report the SAME version
+	// string here: the bundle's version.json never carries the `+canary.<sha>` suffix,
+	// because `dev3 doctor` compares it against the CLI version by string equality. The
+	// channel baked into the bundle is therefore the only thing that can tell them apart.
+	it("marks a canary install so it is not mistaken for the release of the same version", () => {
+		render(
+			<I18nProvider>
+				<AboutModal version="1.42.3" buildChannel="canary" onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		expect(screen.getByText("Canary")).toBeInTheDocument();
+	});
+
+	it("leaves a stable install unmarked", () => {
+		render(
+			<I18nProvider>
+				<AboutModal version="1.42.3" buildChannel="stable" onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		expect(screen.queryByText("Canary")).toBeNull();
+	});
+
 	it("calls onClose when the Close button is clicked", async () => {
 		const user = userEvent.setup();
 		const onClose = renderAbout();

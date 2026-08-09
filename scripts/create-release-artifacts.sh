@@ -53,7 +53,37 @@ ZSTD="./node_modules/electrobun/dist-${OS}-${ARCH}/zig-zstd"
 # decisions/2026/08/06/extract-reusable-release-build-workflows.md.
 BUILD_SHA=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 BUILD_ORDER=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+SHORT_SHA="${BUILD_SHA:0:8}"
 echo "Manifest identity: sha=${BUILD_SHA} buildOrder=${BUILD_ORDER}"
+
+# THE PUBLISHED VERSION IS NOT ALWAYS THE BUNDLE'S VERSION, AND CANARY IS WHY.
+#
+# Canary builds from `main` with no tag, so every one of them reports the last RELEASE's
+# version: the user is offered "v1.42.3", the popover says "what's new in v1.42.3", and a
+# build off main is wearing a stable release's name. The `+canary.<sha>` suffix is what
+# tells the two apart, and THIS IS ITS ONLY PRODUCER — `canaryDisplayVersion()` shipped
+# with a unit test and no caller, so the suffix existed in the tests and never in the feed.
+#
+# It is computed from the shared helper, not re-spelled here, because the app parses it
+# back with the inverse function in the same module.
+#
+# IT MUST NEVER ENTER version.json: `dev3 doctor` compares the bundle version with the CLI
+# version by STRING EQUALITY, so a suffixed bundle reports a spurious mismatch on every
+# canary install. Nothing here can — that file is electrobun's and is already sealed inside
+# the tarball by the time this script runs.
+publish_version() {
+  if [ "$CHANNEL" != "canary" ]; then
+    echo "$1"
+    return
+  fi
+  # Values go through the ENVIRONMENT, never string-interpolated into the -e source, and
+  # the module is addressed relative to THIS SCRIPT rather than the cwd: the release jobs
+  # run from the repo root, the tests run it from a temp dir.
+  BUNDLE_VERSION="$1" SHORT_SHA="$SHORT_SHA" bun -e "
+    const { canaryDisplayVersion } = await import('$(cd "$(dirname "$0")/.." && pwd)/src/shared/update-channel.ts');
+    console.log(canaryDisplayVersion(process.env.BUNDLE_VERSION, process.env.SHORT_SHA));
+  "
+}
 
 # THE CHEAP HALF OF THE CHANNEL CHECK, and it runs on every path.
 # electrobun names its build folder after the channel, so `./build/dev-*` existing while
@@ -185,10 +215,11 @@ if [ -n "$EBUN_TAR_ZST" ]; then
     HASH=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.hash)")
     VERSION=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j.version)")
   fi
-  echo "Bundle hash: $HASH, version: $VERSION"
+  PUBLISH_VERSION=$(publish_version "$VERSION")
+  echo "Bundle hash: $HASH, version: $VERSION, published as: $PUBLISH_VERSION"
 
   # Create update.json with platform prefix
-  echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"sha\":\"${BUILD_SHA}\",\"buildOrder\":${BUILD_ORDER},\"changelog\":${CHANGELOG_JSON}}" \
+  echo "{\"version\":\"${PUBLISH_VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"sha\":\"${BUILD_SHA}\",\"buildOrder\":${BUILD_ORDER},\"changelog\":${CHANGELOG_JSON}}" \
     > "${OUTPUT_DIR}/${PLATFORM_PREFIX}-update.json"
 
   # macOS: create DMG
@@ -260,7 +291,9 @@ if [ "$BUNDLE_CHANNEL" != "$CHANNEL" ]; then
 fi
 
 # Create update.json
-echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"sha\":\"${BUILD_SHA}\",\"buildOrder\":${BUILD_ORDER},\"changelog\":${CHANGELOG_JSON}}" \
+PUBLISH_VERSION=$(publish_version "$VERSION")
+echo "Published version: ${PUBLISH_VERSION} (bundle stays ${VERSION})"
+echo "{\"version\":\"${PUBLISH_VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"sha\":\"${BUILD_SHA}\",\"buildOrder\":${BUILD_ORDER},\"changelog\":${CHANGELOG_JSON}}" \
   > "${OUTPUT_DIR}/${PLATFORM_PREFIX}-update.json"
 
 # macOS: create DMG from recovered .app (with /Applications symlink)
