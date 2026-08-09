@@ -17,7 +17,8 @@ import { DEV3_HOME } from "../paths";
 import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
-import { setFeatureFlags as cacheFeatureFlags } from "../feature-flags";
+import { getAllFeatureFlags, setFeatureFlags as cacheFeatureFlags } from "../feature-flags";
+import { resolveAnalyticsDistinctId as resolveDistinctId } from "../analytics-identity";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, hasModelProviderSection, tmuxSearchPaths } from "./shared-pure";
 import { isExecutableFile } from "../executable";
@@ -454,9 +455,21 @@ async function setFeatureFlags(params: { flags: Record<string, boolean> }): Prom
 	cacheFeatureFlags(params.flags);
 }
 
+/** Read side for Debug -> Feature Flags: what bun actually gates code on. */
+async function getFeatureFlags(): Promise<Record<string, boolean>> {
+	return getAllFeatureFlags();
+}
+
+/** One distinct id per install, seeded from whichever renderer asks first. */
+async function resolveAnalyticsDistinctId(params: { seed?: string }): Promise<{ distinctId: string }> {
+	return { distinctId: await resolveDistinctId(params?.seed) };
+}
+
 export const settingsConfigHandlers = {
 	getResolvedProject,
 	setFeatureFlags,
+	getFeatureFlags,
+	resolveAnalyticsDistinctId,
 	getProjectConfigs,
 	getProjectConfigFiles,
 	updateProjectSettings,

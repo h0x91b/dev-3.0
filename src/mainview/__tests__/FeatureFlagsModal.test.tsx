@@ -1,0 +1,109 @@
+/**
+ * Debug → Feature Flags. What must hold: the values shown are the ones bun gates
+ * code on (re-read while the window is open), the distinct id is copyable and
+ * masked in streamer mode, and a remote browser is told its own id is worthless
+ * rather than being handed a misleading one.
+ */
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
+import { I18nProvider } from "../i18n";
+
+const { state } = vi.hoisted(() => ({
+	state: { flags: { "remote-terminal-latency": false } as Record<string, boolean> },
+}));
+
+vi.mock("../rpc", () => ({
+	api: {
+		request: {
+			getFeatureFlags: vi.fn(() => Promise.resolve(state.flags)),
+			// bun owns the id, so the modal shows the same one in every renderer.
+			resolveAnalyticsDistinctId: vi.fn(() => Promise.resolve({ distinctId: "01234567-89ab-cdef" })),
+		},
+	},
+	isElectrobun: true,
+}));
+
+const { reload } = vi.hoisted(() => ({ reload: vi.fn() }));
+
+vi.mock("../feature-flags", () => ({ refreshFeatureFlagsNow: reload }));
+
+import FeatureFlagsModal from "../components/FeatureFlagsModal";
+
+function renderModal(onClose = vi.fn()) {
+	return render(
+		<I18nProvider>
+			<FeatureFlagsModal onClose={onClose} />
+		</I18nProvider>,
+	);
+}
+
+beforeEach(() => {
+	state.flags = { "remote-terminal-latency": false };
+	vi.clearAllMocks();
+});
+
+afterEach(() => {
+	vi.useRealTimers();
+});
+
+describe("FeatureFlagsModal", () => {
+	it("shows every declared flag with the value bun reports", async () => {
+		state.flags = { "remote-terminal-latency": true, "some-other-flag": false };
+		renderModal();
+
+		await screen.findByText("remote-terminal-latency");
+		expect(screen.getByText("some-other-flag")).toBeInTheDocument();
+		expect(screen.getByText("On")).toBeInTheDocument();
+		expect(screen.getByText("Off")).toBeInTheDocument();
+	});
+
+	it("picks up a flag that flips while the window stays open", async () => {
+		renderModal();
+		await screen.findByText("Off");
+
+		state.flags = { "remote-terminal-latency": true };
+		await waitFor(() => expect(screen.getByText("On")).toBeInTheDocument(), { timeout: 3000 });
+	});
+
+	it("copies the distinct id and confirms it", async () => {
+		// setup() installs its own navigator.clipboard stub, so override it after.
+		const user = userEvent.setup();
+		const writeText = vi.fn(() => Promise.resolve());
+		Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+		renderModal();
+
+		await user.click(await screen.findByRole("button", { name: "Copy" }));
+
+		expect(writeText).toHaveBeenCalledWith("01234567-89ab-cdef");
+		await screen.findByText("Copied");
+	});
+
+	it("shows the id bun owns, not one this renderer minted", async () => {
+		renderModal();
+		await screen.findByText("01234567-89ab-cdef");
+	});
+
+	it("masks the distinct id in streamer mode", async () => {
+		renderModal();
+		const id = await screen.findByText("01234567-89ab-cdef");
+		expect(id).toHaveClass("streamer-private");
+	});
+
+	it("asks PostHog for fresh values instead of waiting out the timer", async () => {
+		const user = userEvent.setup();
+		renderModal();
+
+		await user.click(await screen.findByRole("button", { name: "Refresh now" }));
+		expect(reload).toHaveBeenCalled();
+	});
+
+	it("closes on the Close button", async () => {
+		const onClose = vi.fn();
+		const user = userEvent.setup();
+		renderModal(onClose);
+
+		await user.click(await screen.findByRole("button", { name: "Close" }));
+		expect(onClose).toHaveBeenCalled();
+	});
+});

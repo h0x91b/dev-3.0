@@ -99,6 +99,10 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			updateChannel: coerceUpdateChannel(data.updateChannel, hostPublishesCanary()),
 			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
 			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
+			// Machine identity for analytics — opaque string, never regenerated on load.
+			analyticsDistinctId: typeof data.analyticsDistinctId === "string" && data.analyticsDistinctId
+				? data.analyticsDistinctId
+				: undefined,
 			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
 			customBinaryPaths: data.customBinaryPaths ?? undefined,
 			agentBinaryPaths: data.agentBinaryPaths ?? undefined,

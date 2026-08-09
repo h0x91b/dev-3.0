@@ -24,6 +24,7 @@ import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, re
 import { getTunnelUrl, getTunnelState, tunnelManager } from "./cloudflare-tunnel";
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
+import { analyticsDistinctIdSync } from "./analytics-identity";
 
 const log = createLogger("remote-access");
 
@@ -328,9 +329,14 @@ function getInitialThemeBootstrap(): { preference: "dark" | "light" | "system"; 
 
 export function injectInitialThemeBootstrap(html: string): string {
 	const { preference, resolved } = getInitialThemeBootstrap();
+	// The distinct id has to be on the page before posthog-js initializes, which
+	// happens at module import — an RPC round trip would be too late.
+	const distinctId = analyticsDistinctIdSync();
 	const script =
 		`<script>window.__DEV3_INITIAL_THEME__=${JSON.stringify(preference)};` +
-		`window.__DEV3_INITIAL_RESOLVED_THEME__=${JSON.stringify(resolved)};</script>`;
+		`window.__DEV3_INITIAL_RESOLVED_THEME__=${JSON.stringify(resolved)};` +
+		(distinctId ? `window.__DEV3_DISTINCT_ID__=${JSON.stringify(distinctId)};` : "") +
+		`</script>`;
 
 	return html.includes("</head>")
 		? html.replace("</head>", `${script}</head>`)

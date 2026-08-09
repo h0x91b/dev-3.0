@@ -1,12 +1,12 @@
 /**
- * Feature-flag refresh loop. The renderer owns evaluation (posthog-js is already
- * initialized here and already owns the distinct id) and pushes the values to the
- * bun process, which reads them synchronously on hot paths.
+ * Feature-flag refresh loop. The renderer owns evaluation (posthog-js lives here)
+ * and pushes the values to the bun process, which reads them synchronously on hot
+ * paths.
  *
- * Only the Electrobun renderer runs this: it is the one renderer that exists
- * exactly once per install, so the flags a machine acts on come from a single
- * distinct id. A remote browser has its own anonymous id and would bucket
- * differently on a percentage rollout, giving one machine two answers.
+ * Only the Electrobun renderer refreshes: it exists exactly once per install, so
+ * one poller per machine rather than one per attached browser. The *identity* is
+ * shared either way — bun owns the distinct id and every renderer reports the
+ * same one, so a percentage rollout cannot half-enable a machine.
  *
  * See decisions/2026/08/08/first-posthog-feature-flag.md.
  */
@@ -22,16 +22,19 @@ function pushFlagsToBun(): void {
 	});
 }
 
-/**
- * Start the refresh loop. `onFeatureFlags` fires after every successful load,
- * including the first, so the push is driven by PostHog rather than by a guess
- * at when the values are ready.
- *
- * `reloadFeatureFlags()` is deliberately fire-and-forget: it is neither awaitable
- * nor reactive, and the cached value keeps being served while a refetch is in
- * flight. Holding the last known value through an outage is the behaviour we want.
- */
+/** Ask PostHog for fresh values now instead of waiting out the refresh timer. */
+export function refreshFeatureFlagsNow(): void {
+	posthog.reloadFeatureFlags();
+}
+
 export function initFeatureFlags(): void {
+	// Offer this renderer's own posthog-js id as the seed. bun keeps the first one
+	// it is ever given, so an existing install adopts the id it already had rather
+	// than minting a second person for the same machine.
+	api.request
+		.resolveAnalyticsDistinctId({ seed: posthog.get_distinct_id() || undefined })
+		.catch(() => {});
+
 	if (!isElectrobun) return;
 	posthog.onFeatureFlags(() => pushFlagsToBun());
 	setInterval(() => posthog.reloadFeatureFlags(), FEATURE_FLAG_REFRESH_MS);

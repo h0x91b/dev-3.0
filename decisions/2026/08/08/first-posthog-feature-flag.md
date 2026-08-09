@@ -62,14 +62,29 @@ cloudflared's HTTP/2 stream window stops draining. Backpressure measured only on
   injected through `StartOptions` like `getPtyPort`. Without it the backpressure
   half of the flag would measure nothing but loopback.
 
-**Only the Electrobun renderer pushes flags** (`initFeatureFlags` returns early
-otherwise). It is the one renderer that exists exactly once per install, so a
-machine acts on flags evaluated under a single distinct id. A remote browser has
-its own anonymous `localStorage` id and would bucket differently on a percentage
-rollout, giving one machine two answers and a last-writer-wins race in bun. This
-also keeps flag-request cost at one poller per install regardless of how many
-browsers are attached. No `identify()` call was added — that would change person
-semantics and billing for the sake of flags.
+**bun owns one distinct id per install** (`src/bun/analytics-identity.ts`, stored
+as `GlobalSettings.analyticsDistinctId`). posthog-js mints an anonymous id per
+renderer and keeps it in *that renderer's* `localStorage`, so the desktop window
+and a remote browser were two persons of the same machine — a percentage rollout
+would bucket them independently and half-enable the install. Now:
+
+- The remote HTML shell carries `window.__DEV3_DISTINCT_ID__`, injected next to
+  the existing theme bootstrap (`injectInitialThemeBootstrap`). posthog-js reads
+  it at init as `bootstrap.distinctID` with `isIdentifiedID: false`, which is
+  synchronous — an RPC round trip would land after init.
+- `bootstrap.distinctID` applies only when a renderer has no persisted identity,
+  which is exactly the desired precedence: the desktop renderer keeps the id it
+  already had, and bun *seeds itself from that same id* on first run
+  (`resolveAnalyticsDistinctId({ seed })`). An existing install therefore keeps
+  its person instead of splitting into a second one.
+- No `identify()` call. It would guarantee unification but converts an anonymous
+  person into an identified one, changing person semantics and billing for the
+  sake of flags. Seeding achieves the same id with none of that.
+
+**Only the Electrobun renderer refreshes flags** (`initFeatureFlags` returns
+early otherwise). Not for identity any more — that is shared — but for cost: one
+poller per install regardless of how many browsers are attached, and no
+last-writer-wins race between renderers pushing into bun.
 
 **Defaults, every gap named:**
 
@@ -79,6 +94,7 @@ semantics and billing for the sake of flags.
 | PostHog unreachable | last known value; posthog-js serves its own cache, the renderer keeps pushing it |
 | No PostHog key configured | flags off — the no-op client reports every flag unset |
 | Renderer not up yet | flags off |
+| bun has no stored distinct id yet | the HTML shell omits `__DEV3_DISTINCT_ID__`; that renderer falls back to its own posthog-js id and offers it as the seed |
 | Renderer timers throttled (window hidden or minimized) | last known value, held indefinitely |
 | Key absent from a push payload | last known value — only an explicit `false` turns a flag off |
 
@@ -140,6 +156,11 @@ killed instead, the same deletion runs with the branches swapped.
 - **Our own SSE/WebSocket channel** feeding `updateFlags()` with
   `advanced_disable_feature_flags: true`. The only shape that would be genuinely
   push-based, and it needs a backend dev3 does not have. Rejected, not overlooked.
+- **Letting each renderer keep its own posthog-js id.** What shipped first, and
+  wrong: two ids for one machine, so a percentage rollout could enable the
+  desktop window and not the browser. Caught by the user before release.
+- **`identify(installId)`.** Unifies unconditionally, but creates an identified
+  person for a machine, not a user.
 - **Backpressure measured only on `session.clients`.** Simplest, and inert over the
   tunnel — see Investigation.
 - **Dropping frames under pressure.** Forbidden: the ANSI stream is stateful.

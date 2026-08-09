@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { isFeatureEnabled, setFeatureFlags, _resetFeatureFlagsForTests } from "../feature-flags";
+import { getAllFeatureFlags, isFeatureEnabled, setFeatureFlags, _resetFeatureFlagsForTests } from "../feature-flags";
 import { FEATURE_FLAGS, FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_REFRESH_MS } from "../../shared/feature-flags";
 
 const FLAG = FEATURE_FLAGS.remoteTerminalLatency;
@@ -38,6 +38,12 @@ describe("bun feature-flag cache", () => {
 	it("ignores keys the app does not declare", () => {
 		setFeatureFlags({ "some-other-flag": true });
 		expect(isFeatureEnabled(FLAG)).toBe(false);
+	});
+
+	it("reports every declared flag, not only the ones pushed so far", () => {
+		expect(getAllFeatureFlags()).toEqual({ [FLAG]: false });
+		setFeatureFlags({ [FLAG]: true });
+		expect(getAllFeatureFlags()).toEqual({ [FLAG]: true });
 	});
 
 	it("refreshes every 5 minutes — the accepted worst-case propagation delay", () => {

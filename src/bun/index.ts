@@ -840,6 +840,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 	if (e.data.action === MENU_ACTIONS.hardRefresh) {
 		log.info("Hard refresh — navigating to home page");
 		focused?.webview.loadURL(url);
+	} else if (e.data.action === MENU_ACTIONS.featureFlags) {
+		sendToFocusedWindow("showFeatureFlags", {});
 	} else if (e.data.action === MENU_ACTIONS.about) {
 		// The channel BAKED INTO THE BUNDLE, not the one selected in Settings: About answers
 		// "which build am I running", and those two disagree for as long as a switch is

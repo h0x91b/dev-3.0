@@ -16,13 +16,23 @@ if ((!apiKey || !apiHost) && import.meta.env.DEV) {
 // on the shipped defaults in src/shared/feature-flags.ts.
 type PostHogClient = Pick<
 	typeof posthog,
-	"capture" | "getFeatureFlag" | "onFeatureFlags" | "reloadFeatureFlags"
+	"capture" | "getFeatureFlag" | "onFeatureFlags" | "reloadFeatureFlags" | "get_distinct_id"
 >;
+
+// bun owns one distinct id per install and injects it into the HTML shell before
+// this module runs, so the desktop window and a remote browser are one person
+// rather than two. `bootstrap.distinctID` only applies when this renderer has no
+// persisted identity of its own, which is exactly right: the desktop renderer
+// keeps the id it already had, and bun seeds itself from that same id.
+const injectedDistinctId = (window as unknown as { __DEV3_DISTINCT_ID__?: string }).__DEV3_DISTINCT_ID__;
 
 const client: PostHogClient = apiKey && apiHost
 	? posthog.init(apiKey, {
 		api_host: apiHost,
 		defaults: "2026-05-30",
+		...(injectedDistinctId
+			? { bootstrap: { distinctID: injectedDistinctId, isIdentifiedID: false } }
+			: {}),
 		capture_exceptions: {
 			capture_unhandled_errors: true,
 			capture_unhandled_rejections: true,
@@ -34,6 +44,7 @@ const client: PostHogClient = apiKey && apiHost
 		getFeatureFlag: () => undefined,
 		onFeatureFlags: () => () => undefined,
 		reloadFeatureFlags: () => undefined,
+		get_distinct_id: () => "",
 	};
 
 export default client;

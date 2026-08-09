@@ -102,6 +102,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	menuAction: (payload) => window.dispatchEvent(new CustomEvent("rpc:menuAction", { detail: payload })),
 	showQuitDialog: () => window.dispatchEvent(new CustomEvent("rpc:showQuitDialog")),
 	showAbout: (payload) => window.dispatchEvent(new CustomEvent("rpc:showAbout", { detail: payload })),
+	showFeatureFlags: () => window.dispatchEvent(new CustomEvent("rpc:showFeatureFlags")),
 	updateCheckOutcome: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateCheckOutcome", { detail: payload })),
 };
 

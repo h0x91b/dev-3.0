@@ -49,6 +49,7 @@ import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm } from "./confirm";
 import AgentLaunchRequestModal from "./components/AgentLaunchRequestModal";
 import AboutModal from "./components/AboutModal";
+import FeatureFlagsModal from "./components/FeatureFlagsModal";
 import FilePreviewModal from "./components/FilePreviewModal";
 import { OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "./terminal-path-open";
 import RosettaWarningModal from "./components/RosettaWarningModal";
@@ -281,6 +282,7 @@ function App() {
 	const [aboutVersion, setAboutVersion] = useState<string | null>(null);
 	/** The channel baked into the running bundle — what tells a canary install from the release. */
 	const [aboutBuildChannel, setAboutBuildChannel] = useState<string | null>(null);
+	const [showFeatureFlags, setShowFeatureFlags] = useState(false);
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -1703,6 +1705,15 @@ function App() {
 		return () => window.removeEventListener("rpc:showAbout", onShowAbout);
 	}, []);
 
+	// Debug -> Feature Flags: a read-only look at what the app is gating code on.
+	useEffect(() => {
+		function onShowFeatureFlags() {
+			setShowFeatureFlags(true);
+		}
+		window.addEventListener("rpc:showFeatureFlags", onShowFeatureFlags);
+		return () => window.removeEventListener("rpc:showFeatureFlags", onShowFeatureFlags);
+	}, []);
+
 	// Surface the result of a manual "Check for Updates" menu action as a toast.
 	// (Available updates flow through rpc:updateAvailable → the header plaque.)
 	useEffect(() => {
@@ -2711,6 +2722,7 @@ function App() {
 					onClose={() => setAboutVersion(null)}
 				/>
 			)}
+			{showFeatureFlags && <FeatureFlagsModal onClose={() => setShowFeatureFlags(false)} />}
 			{rosettaWarning && (
 				<RosettaWarningModal
 					command={rosettaWarning.command}

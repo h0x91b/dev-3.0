@@ -57,6 +57,22 @@ const common = {
 	"about.website": "Сайт",
 	"about.close": "Закрыть",
 
+	// Debug -> Feature Flags (developer inspector)
+	"featureFlags.title": "Фича-флаги",
+	"featureFlags.effectiveHint": "Значения, по которым приложение прямо сейчас разводит код.",
+	"featureFlags.loading": "Читаю…",
+	"featureFlags.empty": "Ни одного флага не объявлено.",
+	"featureFlags.emptyHint": "Добавьте его в FEATURE_FLAGS в src/shared/feature-flags.ts, затем заведите в PostHog под тем же ключом.",
+	"featureFlags.on": "Вкл",
+	"featureFlags.off": "Выкл",
+	"featureFlags.distinctIdLabel": "PostHog distinct ID — нацельте выкатку на эту инсталляцию",
+	"featureFlags.distinctIdMissing": "PostHog не настроен",
+	"featureFlags.copy": "Копировать",
+	"featureFlags.copied": "Скопировано",
+	"featureFlags.cadence": "Обновляется примерно раз в {minutes} мин. У PostHog нет push-канала, так что это же и худший случай доезда изменения.",
+	"featureFlags.refreshNow": "Обновить сейчас",
+	"featureFlags.close": "Закрыть",
+
 	// Generic
 	"toast.source.menu": "Меню",
 	"toast.source.settings": "Настройки",

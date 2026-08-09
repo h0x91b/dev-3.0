@@ -386,6 +386,8 @@ export const SETTINGS_ENTRIES = [
 /** GlobalSettings fields intentionally kept outside the visible settings registry. */
 export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"resolvedTheme",
+	// Machine identity for analytics, not a preference — read-only in Debug -> Feature Flags.
+	"analyticsDistinctId",
 	"customBinaryPaths",
 	"agentBinaryPaths",
 	"importShellEnv",
@@ -401,6 +403,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"updateChannel",
 	"theme",
 	"resolvedTheme",
+	"analyticsDistinctId",
 	"cloneBaseDirectory",
 	"customBinaryPaths",
 	"agentBinaryPaths",

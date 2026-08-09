@@ -843,6 +843,13 @@ export interface GlobalSettings {
 	updateChannel: UpdateChannel;
 	theme?: "dark" | "light" | "system";
 	resolvedTheme?: "dark" | "light";
+	/**
+	 * The id PostHog buckets this install by, owned by bun so every renderer —
+	 * desktop window and remote browser alike — reports the same one. Seeded once
+	 * from the desktop renderer's own posthog-js id so existing installs keep
+	 * their person instead of splitting into a second one.
+	 */
+	analyticsDistinctId?: string;
 	cloneBaseDirectory?: string;
 	customBinaryPaths?: Record<string, string>; // requirementId â custom binary path
 	agentBinaryPaths?: Record<string, string>; // agentId â resolved binary path
@@ -3955,6 +3962,19 @@ export type AppRPCSchema = {
 				params: { flags: Record<string, boolean> };
 				response: void;
 			};
+			/** Every declared flag with the value bun currently gates code on. */
+			getFeatureFlags: {
+				params: void;
+				response: Record<string, boolean>;
+			};
+			/**
+			 * The install-wide PostHog distinct id. `seed` is the calling renderer's
+			 * own posthog-js id, adopted only when bun has none stored yet.
+			 */
+			resolveAnalyticsDistinctId: {
+				params: { seed?: string };
+				response: { distinctId: string };
+			};
 			/**
 			 * Pushed by the renderer whenever the current route changes; the bun
 			 * side uses it to rebuild the native menu so context-aware items
@@ -4363,6 +4383,8 @@ export type AppRPCSchema = {
 			showQuitDialog: {};
 			/** Open the in-app About modal (replaces the native About message box). */
 			showAbout: { version: string; buildChannel?: string };
+			/** Open the Debug → Feature Flags inspector. */
+			showFeatureFlags: {};
 			/**
 			 * Result of a manual "Check for Updates" menu action, surfaced as a toast.
 			 * `available` updates flow through `updateAvailable` instead (header plaque).
