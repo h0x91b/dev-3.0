@@ -305,3 +305,15 @@ export function HelpModeIcon({ className }: HeaderIconProps) {
 		</svg>
 	);
 }
+
+// 23 — Rescan: the arc sweeps a full turn while its arrowhead leads.
+export function RescanIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className, 2)}>
+			<g className="hdr hdr-rescan">
+				<path d="M20 12a8 8 0 1 1-2.34-5.66" />
+				<path d="M20 4v5h-5" />
+			</g>
+		</svg>
+	);
+}

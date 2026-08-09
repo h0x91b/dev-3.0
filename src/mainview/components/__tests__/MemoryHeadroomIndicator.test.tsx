@@ -429,7 +429,7 @@ describe("MemoryHeadroomIndicator — leftover processes", () => {
 		await user.click(pill());
 		await screen.findByTestId("memory-leftovers");
 
-		await user.click(screen.getByTestId("memory-leftovers-kill"));
+		await user.click(screen.getByTestId("memory-leftovers-kill-all"));
 
 		// The popover closes before the dialog: a confirm under a hover-dismissed
 		// popover reads as a dialog with no context.
@@ -448,9 +448,43 @@ describe("MemoryHeadroomIndicator — leftover processes", () => {
 		await user.click(pill());
 		await screen.findByTestId("memory-leftovers");
 
-		await user.click(screen.getByTestId("memory-leftovers-kill"));
+		await user.click(screen.getByTestId("memory-leftovers-kill-all"));
 
 		await waitFor(() => expect(mockedConfirm).toHaveBeenCalled());
 		expect(mockedKill).not.toHaveBeenCalled();
+	});
+
+	it("kills one task's leftovers straight from its row, without a dialog", async () => {
+		mockedScan.mockResolvedValue(LEFTOVERS);
+		mockedKill.mockResolvedValue({ killed: 2, leftovers: 0 });
+		const user = userEvent.setup();
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.click(pill());
+		await screen.findByTestId("memory-leftovers");
+
+		await user.click(screen.getByTestId("memory-leftovers-kill-aaaa1111"));
+
+		// One named task with its count on screen — the row vanishing is the receipt.
+		await waitFor(() => expect(mockedKill).toHaveBeenCalledWith({ pids: [101, 102] }));
+		expect(mockedConfirm).not.toHaveBeenCalled();
+		await waitFor(() => expect(screen.queryByTestId("memory-leftovers-kill-aaaa1111")).toBeNull());
+		// The other task survives, and the totals follow it down.
+		expect(screen.getByTestId("memory-leftovers")).toHaveTextContent("1 process still running");
+	});
+
+	it("rescans on demand", async () => {
+		mockedScan.mockResolvedValue(LEFTOVERS);
+		const user = userEvent.setup();
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.click(pill());
+		await screen.findByTestId("memory-leftovers");
+		expect(mockedScan).toHaveBeenCalledTimes(1);
+
+		mockedScan.mockResolvedValue([LEFTOVERS[1]]);
+		await user.click(screen.getByTestId("memory-leftovers-rescan"));
+
+		await waitFor(() => expect(screen.getByTestId("memory-leftovers")).toHaveTextContent("1 process still running"));
 	});
 });
