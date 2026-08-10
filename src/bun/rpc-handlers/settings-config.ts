@@ -64,8 +64,14 @@ async function getProjectConfigFiles(params: { projectId: string }): Promise<{ h
 async function updateProjectSettings(params: { projectId: string } & ProjectSettingsUpdate): Promise<Project> {
 	log.info("→ updateProjectSettings", { projectId: params.projectId });
 	assertValidEnvParam(params.env);
+	const project = await data.getProject(params.projectId);
+	// Fields a .dev3 file already owns are written back to that file — writing them
+	// to projects.json would leave the file shadowing them on the very next read.
+	const configUpdates = project.kind === "virtual"
+		? extractConfigFromParams(params)
+		: await repoConfig.saveConfigToWinningLayer(project.path, extractConfigFromParams(params));
 	const updates = {
-		...extractConfigFromParams(params),
+		...configUpdates,
 		...(params.githubAuthHost !== undefined ? { githubAuthHost: params.githubAuthHost } : {}),
 		...(params.githubAuthLogin !== undefined ? { githubAuthLogin: params.githubAuthLogin } : {}),
 		...(params.sensitive !== undefined ? { sensitive: params.sensitive } : {}),
@@ -75,7 +81,10 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 			? { reviewModePrompt: params.reviewModePrompt.trim() ? params.reviewModePrompt : undefined }
 			: {}),
 	};
-	const updated = await data.updateProject(params.projectId, updates);
+	const saved = await data.updateProject(params.projectId, updates);
+	// Return the RESOLVED project: the caller renders what will actually run,
+	// not a raw record a config file may override.
+	const updated = saved.kind === "virtual" ? saved : await repoConfig.resolveProjectConfig(saved);
 	getPushMessage()?.("projectUpdated", { project: updated });
 	log.info("← updateProjectSettings done");
 	return updated;

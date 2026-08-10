@@ -12110,7 +12110,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 
 		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
 			"builtin-claude",
-			"claude-bypass-sonnet",
+			"claude-auto-opus5-xhigh",
 			expect.objectContaining({
 				taskDescription: expect.stringContaining("Review all changes on this branch"),
 			}),
@@ -12183,7 +12183,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 
 		expect(agents.resolveCommandForAgent).toHaveBeenCalledWith(
 			"builtin-claude",
-			"claude-bypass-sonnet",
+			"claude-auto-opus5-xhigh",
 			expect.anything(),
 			expect.anything(),
 		);

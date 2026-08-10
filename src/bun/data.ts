@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskPriority, TaskStatus, TipState } from "../shared/types";
-import { comparePriority, compareTaskSortRank, DEFAULT_PRIORITY, getTaskOverview, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import { comparePriority, compareTaskSortRank, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
 import {
 	decodeTerminalBackend,
 	isTerminalBackendIdentity,
@@ -194,13 +194,20 @@ async function rawLoadAllProjects(options?: { strict?: boolean; persistMigration
 				if (legacy.enabled !== false) {
 					project.builtinColumnAgents = {
 						"review-by-ai": {
-							agentId: legacy.agentId ?? "builtin-claude",
-							configId: legacy.configId ?? "claude-bypass-sonnet",
+							agentId: legacy.agentId ?? DEFAULT_REVIEW_AGENT_ID,
+							configId: legacy.configId ?? DEFAULT_REVIEW_CONFIG_ID,
 							prompt: legacy.reviewPrompt ?? "",
 						},
 					};
 				}
 				delete (project as any).aiReview;
+				needsSave = true;
+			}
+			// Rewrite column-agent presets whose id no longer exists (e.g. the removed
+			// "claude-bypass-sonnet"), which would otherwise resolve to a random preset.
+			const remapped = remapColumnAgents(project.builtinColumnAgents);
+			if (remapped !== project.builtinColumnAgents) {
+				project.builtinColumnAgents = remapped;
 				needsSave = true;
 			}
 		}

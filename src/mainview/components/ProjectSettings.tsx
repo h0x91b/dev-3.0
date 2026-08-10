@@ -4,7 +4,7 @@ import { confirm } from "../confirm";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
-import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, resolveReviewModePrompt } from "../../shared/types";
+import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveReviewModePrompt } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -16,8 +16,6 @@ import SettingsSection from "./global-settings/SettingsSection";
 import { matchesBranchQuery } from "./BranchSelector";
 import type { NavigationGuard } from "../navigation-guard";
 
-const DEFAULT_REVIEW_AGENT_ID = "builtin-claude";
-const DEFAULT_REVIEW_CONFIG_ID = "claude-bypass-sonnet";
 const CONFIG_BOOLEAN_DEFAULTS = {
 	autoReviewEnabled: false,
 	peerReviewEnabled: true,
@@ -1374,6 +1372,23 @@ function ProjectSettings({
 		const init = initialAiReviewRef.current;
 		return aiReviewAgentId !== init.agentId || aiReviewConfigId !== init.configId || aiReviewPrompt !== init.prompt;
 	}, [aiReviewAgentId, aiReviewConfigId, aiReviewPrompt]);
+
+	// The form is seeded by useState, which only runs on mount — re-sync when the
+	// project's effective review config changes (initial load, save, push update).
+	// Unsaved edits win: never clobber what the user is in the middle of typing.
+	const reviewConfigKey = JSON.stringify(reviewConfig ?? null);
+	useEffect(() => {
+		if (isAiReviewDirty()) return;
+		const next = {
+			agentId: reviewConfig?.agentId ?? DEFAULT_REVIEW_AGENT_ID,
+			configId: reviewConfig?.configId ?? DEFAULT_REVIEW_CONFIG_ID,
+			prompt: reviewConfig?.prompt || DEFAULT_REVIEW_PROMPT,
+		};
+		setAiReviewAgentId(next.agentId);
+		setAiReviewConfigId(next.configId);
+		setAiReviewPrompt(next.prompt);
+		initialAiReviewRef.current = next;
+	}, [reviewConfigKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const isDirty = useCallback(() => {
 		if (activeTab === "project") {

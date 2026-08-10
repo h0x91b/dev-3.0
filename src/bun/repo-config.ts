@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry, ResolvedConfigSource } from "../shared/types";
-import { DEV3_REPO_CONFIG_KEYS } from "../shared/types";
+import { DEV3_REPO_CONFIG_KEYS, remapColumnAgents } from "../shared/types";
 import { sanitizeEnvMap } from "../shared/env-text";
 import { createLogger } from "./logger";
 import * as git from "./git";
@@ -219,6 +219,8 @@ async function applyConfigCascade(
 		val = val ?? (project as any)[key] ?? DEFAULTS[key];
 		if (val !== undefined) (resolved as any)[key] = val;
 	}
+	// A config file may still name a preset that was removed from DEFAULT_AGENTS.
+	resolved.builtinColumnAgents = remapColumnAgents(resolved.builtinColumnAgents);
 
 	// `env` merges PER KEY across layers, unlike every other field: a repo file
 	// that sets one var must not erase UI- or local-configured vars (decision 179).
@@ -353,6 +355,45 @@ export async function migrateProjectConfig(project: Project, configPath?: string
 		fields: Object.keys(config),
 	});
 	await saveRepoConfig(basePath, config);
+}
+
+/**
+ * Route a Project Settings save to the layer that actually wins the cascade.
+ *
+ * Without this, saving a field that a .dev3 file already defines writes to
+ * projects.json, where the file immediately shadows it again — the value looks
+ * saved until the next read and then "resets" (the AI Review preset bug).
+ *
+ * Only keys ALREADY present in an existing file are redirected, so no file is
+ * created and no key silently migrates into git. `env` is never redirected: it
+ * merges per key across layers (decision 179) and may hold personal secrets.
+ *
+ * Returns the keys that still belong on the Project object.
+ */
+export async function saveConfigToWinningLayer(
+	basePath: string,
+	config: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+	const local = readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`);
+	const repo = readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`);
+	const localPatch: Record<string, unknown> = {};
+	const repoPatch: Record<string, unknown> = {};
+	const leftover: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(config)) {
+		const field = key as keyof Dev3RepoConfig;
+		if (field !== "env" && local && effective(local[field]) !== undefined) localPatch[key] = value;
+		else if (field !== "env" && repo && effective(repo[field]) !== undefined) repoPatch[key] = value;
+		else leftover[key] = value;
+	}
+	if (Object.keys(localPatch).length > 0) {
+		writeFileSync(`${basePath}/${LOCAL_CONFIG_FILE}`, JSON.stringify({ ...local, ...localPatch }, null, 2) + "\n");
+		log.info("Saved settings into overriding local config", { path: basePath, fields: Object.keys(localPatch) });
+	}
+	if (Object.keys(repoPatch).length > 0) {
+		writeFileSync(`${basePath}/${CONFIG_FILE}`, JSON.stringify({ ...repo, ...repoPatch }, null, 2) + "\n");
+		log.info("Saved settings into overriding repo config", { path: basePath, fields: Object.keys(repoPatch) });
+	}
+	return leftover;
 }
 
 /** Check if a .dev3/config.json file exists in the project. */

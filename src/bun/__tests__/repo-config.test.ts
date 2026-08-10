@@ -30,6 +30,7 @@ import {
 	resolveProjectEnv,
 	hasRepoConfig,
 	hasLocalConfig,
+	saveConfigToWinningLayer,
 } from "../repo-config";
 import type { Project, Dev3RepoConfig } from "../../shared/types";
 
@@ -964,5 +965,66 @@ describe("env config cascade (per-key merge)", () => {
 		writeConfig(WT_DIR, "config.local.json", { env: { B: "wt-local" } });
 
 		expect(await resolveProjectEnv(project, WT_DIR)).toEqual({ A: "project", B: "wt-local" });
+	});
+});
+
+describe("saveConfigToWinningLayer", () => {
+	const REVIEW = { "review-by-ai": { agentId: "builtin-claude", configId: "claude-auto-opus5-xhigh", prompt: "" } };
+
+	function writeConfig(file: string, content: object) {
+		mkdirSync(join(TEST_DIR, ".dev3"), { recursive: true });
+		writeFileSync(join(TEST_DIR, ".dev3", file), JSON.stringify(content));
+	}
+	function readConfig(file: string): Dev3RepoConfig {
+		return JSON.parse(readFileSync(join(TEST_DIR, ".dev3", file), "utf-8"));
+	}
+
+	it("returns every key for the project object when no config file exists", async () => {
+		const leftover = await saveConfigToWinningLayer(TEST_DIR, { setupScript: "bun install" });
+		expect(leftover).toEqual({ setupScript: "bun install" });
+		expect(existsSync(join(TEST_DIR, ".dev3", "config.json"))).toBe(false);
+	});
+
+	it("writes a key the repo config already owns back into that file", async () => {
+		writeConfig("config.json", { builtinColumnAgents: { "review-by-ai": { agentId: "builtin-claude", configId: "claude-bypass-sonnet", prompt: "" } }, setupScript: "old" });
+
+		const leftover = await saveConfigToWinningLayer(TEST_DIR, { builtinColumnAgents: REVIEW });
+
+		expect(leftover).toEqual({});
+		expect(readConfig("config.json").builtinColumnAgents).toEqual(REVIEW);
+		expect(readConfig("config.json").setupScript).toBe("old");
+	});
+
+	it("prefers the local config when both files own the key", async () => {
+		writeConfig("config.json", { builtinColumnAgents: {} as any, devScript: "repo" });
+		writeConfig("config.local.json", { devScript: "local" });
+
+		const leftover = await saveConfigToWinningLayer(TEST_DIR, { devScript: "next" });
+
+		expect(leftover).toEqual({});
+		expect(readConfig("config.local.json").devScript).toBe("next");
+		expect(readConfig("config.json").devScript).toBe("repo");
+	});
+
+	it("never redirects env — it merges per key and may hold secrets", async () => {
+		writeConfig("config.json", { env: { A: "repo" } });
+
+		const leftover = await saveConfigToWinningLayer(TEST_DIR, { env: { B: "ui" } });
+
+		expect(leftover).toEqual({ env: { B: "ui" } });
+		expect(readConfig("config.json").env).toEqual({ A: "repo" });
+	});
+});
+
+describe("resolveProjectConfig — removed column-agent presets", () => {
+	it("rewrites the stamped legacy review default to the current default", async () => {
+		mkdirSync(join(TEST_DIR, ".dev3"), { recursive: true });
+		writeFileSync(join(TEST_DIR, ".dev3", "config.json"), JSON.stringify({
+			builtinColumnAgents: { "review-by-ai": { agentId: "builtin-claude", configId: "claude-bypass-sonnet", prompt: "" } },
+		}));
+
+		const resolved = await resolveProjectConfig(makeProject());
+
+		expect(resolved.builtinColumnAgents?.["review-by-ai"].configId).toBe("claude-auto-opus5-xhigh");
 	});
 });

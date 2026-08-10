@@ -3,7 +3,7 @@ import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentConfiguration, CodingAgent, LlmProvider, Project } from "../shared/types";
-import { DEFAULT_AGENTS } from "../shared/types";
+import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
@@ -477,17 +477,17 @@ export function findConfig(
 	agent: CodingAgent,
 	configId: string | null | undefined,
 ): AgentConfiguration | undefined {
-	if (!configId) {
-		// Fall back to agent's defaultConfigId, then first config
-		return (
-			agent.configurations.find((c) => c.id === agent.defaultConfigId) ||
-			agent.configurations[0]
-		);
-	}
-	return (
-		agent.configurations.find((c) => c.id === configId) ||
-		agent.configurations[0]
-	);
+	// Fall back to the agent's defaultConfigId, then the first config
+	const fallback = () =>
+		agent.configurations.find((c) => c.id === agent.defaultConfigId) ||
+		agent.configurations[0];
+	if (!configId) return fallback();
+	const exact = agent.configurations.find((c) => c.id === configId);
+	if (exact) return exact;
+	// A removed preset id (e.g. "claude-bypass-sonnet") must land on its documented
+	// successor, never on whatever happens to sit first in the list.
+	const remapped = DEPRECATED_DEFAULT_CONFIG_REMAP[configId];
+	return (remapped && agent.configurations.find((c) => c.id === remapped)) || fallback();
 }
 
 /** Default env vars injected for Claude-based agents. */

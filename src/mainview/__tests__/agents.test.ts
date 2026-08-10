@@ -699,8 +699,18 @@ describe("findConfig", () => {
 		expect(findConfig(agent, undefined)!.name).toBe("Second");
 	});
 
-	it("falls back to first config when configId is invalid", () => {
-		expect(findConfig(agent, "nonexistent")!.name).toBe("First");
+	it("falls back to defaultConfigId when configId is invalid", () => {
+		expect(findConfig(agent, "nonexistent")!.name).toBe("Second");
+	});
+
+	it("falls back to first config when configId is invalid and there is no default", () => {
+		const noDefault: CodingAgent = { ...agent, defaultConfigId: undefined };
+		expect(findConfig(noDefault, "nonexistent")!.name).toBe("First");
+	});
+
+	it("maps a removed preset id to its documented successor", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		expect(findConfig(claude, "claude-bypass-sonnet")!.id).toBe("claude-bypass-sonnet5-xhigh");
 	});
 
 	it("falls back to first config when no defaultConfigId and no configId", () => {

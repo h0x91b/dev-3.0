@@ -15,6 +15,8 @@ import type {
 } from "../../shared/types";
 import {
 	buildTaskDialogSubject,
+	DEFAULT_REVIEW_AGENT_ID,
+	DEFAULT_REVIEW_CONFIG_ID,
 	DEFAULT_REVIEW_PROMPT,
 	getPreparingStageProgress,
 	getTaskTitle,
@@ -497,8 +499,8 @@ async function columnAgentConfig(
 		const configured = resolved.builtinColumnAgents?.["review-by-ai"];
 		return {
 			config: {
-				agentId: configured?.agentId || "builtin-claude",
-				configId: configured?.configId || "claude-bypass-sonnet",
+				agentId: configured?.agentId || DEFAULT_REVIEW_AGENT_ID,
+				configId: configured?.configId || DEFAULT_REVIEW_CONFIG_ID,
 				prompt: configured?.prompt || DEFAULT_REVIEW_PROMPT,
 			},
 			paneTitle: "AI Review",

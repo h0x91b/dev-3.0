@@ -313,9 +313,13 @@ export interface TaskRelation {
 
 export interface ColumnAgentConfig {
 	agentId: string; // e.g. "builtin-claude"
-	configId: string; // e.g. "claude-bypass-sonnet"
+	configId: string; // e.g. "claude-auto-opus5-xhigh"
 	prompt: string; // prompt sent to the agent
 }
+
+/** Agent + preset the "AI Review" column runs when a project never configured one. */
+export const DEFAULT_REVIEW_AGENT_ID = "builtin-claude";
+export const DEFAULT_REVIEW_CONFIG_ID = "claude-auto-opus5-xhigh";
 
 export const DEFAULT_REVIEW_PROMPT = `Review all changes on this branch (use git diff against {baseBranch}).
 Focus on: bugs, logic errors, runtime failures, duplicated code, security issues.
@@ -741,6 +745,30 @@ export const DEPRECATED_DEFAULT_CONFIG_REMAP: Record<string, string> = {
 	// the Bypass Medium tier (its closest surviving behavioral + effort equivalent).
 	"claude-fable5-cost-trick": "claude-fable5-cost-trick-bypass-medium",
 };
+
+/**
+ * Rewrite column-agent presets whose id was removed from DEFAULT_AGENTS. Without
+ * this a stored `claude-bypass-sonnet` matches no option (the select renders
+ * blank) and findConfig silently falls back to the FIRST preset in the list, so
+ * the column runs a model nobody chose. Applied wherever column agents are read.
+ */
+export function remapColumnAgents(
+	agents: Record<string, ColumnAgentConfig> | undefined,
+): Record<string, ColumnAgentConfig> | undefined {
+	if (!agents) return agents;
+	let changed = false;
+	const out: Record<string, ColumnAgentConfig> = {};
+	for (const [column, config] of Object.entries(agents)) {
+		// "claude-bypass-sonnet" was the hardcoded review default the UI stamped onto
+		// every save, so it marks "never chosen" rather than a preference — it follows
+		// the current default instead of the generic successor mapping.
+		const wasStampedDefault = config.agentId === DEFAULT_REVIEW_AGENT_ID && config.configId === "claude-bypass-sonnet";
+		const mapped = wasStampedDefault ? DEFAULT_REVIEW_CONFIG_ID : DEPRECATED_DEFAULT_CONFIG_REMAP[config.configId];
+		if (mapped) changed = true;
+		out[column] = mapped ? { ...config, configId: mapped } : config;
+	}
+	return changed ? out : agents;
+}
 
 // ---- External Apps ("Open in...") ----
 
