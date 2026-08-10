@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-10 — Review export card is a title line; the composer owns the one-shot send
+
+- **Rule:** The export cluster (count + Copy + Send + icon-only Reset) sits on the card's title line, renders nothing when the review is empty, and the count is plain text — never a bordered box; the composer gains `Send now`, which delivers one remark and drops it.
+- **Why:** A reviewer's single remark cost three clicks (add → send → delete) and the card spent a third of the aside on two full-width rare-use buttons plus a boxed number that read as an editable input; keeping the batch buttons full-width was rejected as the thing being complained about.
+- **Status:** Implemented. Evidence: `src/mainview/components/TaskDiffViewer.tsx` (`addAndSendInlineComment`, `InlineCommentComposer`), bible §5.3.
+
 ## 2026-08-08 — The memory breakdown may kill leftover worktree processes, and nothing else
 
 - **Rule:** one conditional section at the bottom of the dev3 group in the memory popover/BottomSheet lists processes still running inside task worktrees; three ghost-danger controls — `Kill all` behind `confirm({ danger: true })`, a hover-revealed per-row kill with no dialog, and a rescan icon. Gated on `count > 0`, no empty state, scanned on open + once at startup, never in the poller. Bible §12.6, yaml `global_header.ambient_resource_readout.reclaim_action`.

@@ -502,7 +502,7 @@ describe("TaskDiffViewer", () => {
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
 
-		expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
+		expect(within(document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement).getByTestId("diff-file-header-path")).toHaveClass("line-through");
 		expect(within(screen.getByRole("button", { name: /open diff file src\/app\.ts/i })).getByText("app.ts")).toHaveClass("line-through");
 		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(1);
@@ -1153,7 +1153,7 @@ describe("TaskDiffViewer", () => {
 
 		await waitForTicks(() => {
 			expect(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i })).toBeChecked();
-			expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
+			expect(within(document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement).getByTestId("diff-file-header-path")).toHaveClass("line-through");
 			expect(screen.queryAllByTestId("mock-diff")).toHaveLength(1);
 		});
 	});
@@ -1786,7 +1786,9 @@ describe("TaskDiffViewer", () => {
 
 		await screen.findAllByTestId("mock-diff");
 		const appSection = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
-		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeDisabled();
+		// Empty review: the export cluster is a bare title line, no buttons at all.
+		expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+		expect(screen.queryByTestId("review-export-count")).not.toBeInTheDocument();
 		await user.click(within(appSection).getByRole("button", { name: "Open inline comment composer" }));
 		expect(screen.getByTestId("mock-widget").querySelector(".dev3-inline-comment--composer")).not.toBeNull();
 
@@ -1801,18 +1803,18 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByText("New line 1")).toBeInTheDocument();
 		expect(document.querySelector(".dev3-inline-comment--thread")).not.toBeNull();
 		expect(screen.queryByTestId("review-export-xml")).not.toBeInTheDocument();
-		expect(screen.getByText("Comment 1")).toBeInTheDocument();
+		expect(screen.getByText("Comment 1/1")).toBeInTheDocument();
 		expect(screen.getByText(truncatedPreview)).toBeInTheDocument();
 		expect(screen.getByTestId("review-export-list")).toHaveClass("max-h-64", "overflow-y-auto");
-		expect(screen.getByRole("button", { name: "Copy to Clipboard" })).toHaveClass("w-full");
-		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeEnabled();
+		expect(screen.getByRole("button", { name: "Copy" })).toHaveClass("h-7");
+		expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
 
-		await user.click(screen.getByRole("button", { name: "Comment 1" }));
+		await user.click(screen.getByRole("button", { name: "Comment 1/1" }));
 		await waitFor(() => {
 			expect(scrollIntoViewMock).toHaveBeenCalled();
 		});
 
-		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		await user.click(screen.getByRole("button", { name: "Copy" }));
 		expect(writeText).toHaveBeenLastCalledWith([
 			"<reviews>",
 			"<review>",
@@ -1826,7 +1828,7 @@ describe("TaskDiffViewer", () => {
 			"---",
 			"Above my comments about code changes, read them carefully and process all of them.",
 		].join("\n"));
-		expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
 
 		const inlineThread = screen.getByTestId("inline-comment-thread");
 		await user.click(within(inlineThread).getByRole("button", { name: "Edit comment" }));
@@ -1838,7 +1840,7 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getAllByText("Rename this callback.").length).toBeGreaterThanOrEqual(1);
 		expect(screen.queryByText(truncatedPreview)).not.toBeInTheDocument();
 
-		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		await user.click(screen.getByRole("button", { name: "Copy" }));
 		expect(writeText).toHaveBeenCalledWith([
 			"<reviews>",
 			"<review>",
@@ -1854,8 +1856,45 @@ describe("TaskDiffViewer", () => {
 		].join("\n"));
 
 		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Delete comment" }));
-		expect(screen.queryByText("Comment 1")).not.toBeInTheDocument();
+		expect(screen.queryByText("Comment 1/1")).not.toBeInTheDocument();
 		expect(screen.queryByText("Rename this callback.")).not.toBeInTheDocument();
+	});
+
+	it("sends a comment straight from the composer without parking it in the review", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValue(undefined as never);
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findAllByTestId("mock-diff");
+		const appSection = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
+		await user.click(within(appSection).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "Rename this callback.");
+		await user.click(screen.getByTestId("inline-comment-composer-send"));
+
+		await waitFor(() => {
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledTimes(1);
+		});
+		const { text, taskId } = vi.mocked(api.request.sendAgentMessageNow).mock.calls[0][0];
+		expect(taskId).toBe("t1");
+		expect(text).toContain('<file src="src/app.ts" line=1>');
+		expect(text).toContain("<comment>Rename this callback.</comment>");
+
+		// Delivered in one click: nothing is left behind in the review card or the diff.
+		await waitFor(() => {
+			expect(screen.queryByTestId("review-export-list")).not.toBeInTheDocument();
+		});
+		expect(screen.queryByTestId("inline-comment-thread")).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
 	});
 
 	it("sends one inline comment on its own and keeps it out of the batch payload", async () => {
@@ -1899,8 +1938,8 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByTestId("review-export-sent-marker")).toHaveTextContent("Sent");
 		expect(screen.getByTestId("review-export-sent-count")).toHaveTextContent("1 sent");
 		expect(screen.getByTestId("review-export-item-sent")).toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeDisabled();
-		expect(screen.getByRole("button", { name: "Copy to Clipboard" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
 
 		// Editing revives it: the new text must be deliverable again.
 		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Edit comment" }));
@@ -1910,8 +1949,8 @@ describe("TaskDiffViewer", () => {
 		await user.click(screen.getByRole("button", { name: "Save comment" }));
 
 		expect(screen.queryByTestId("review-export-sent-marker")).not.toBeInTheDocument();
-		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeEnabled();
-		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+		await user.click(screen.getByRole("button", { name: "Copy" }));
 		expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining("<comment>Rename it to handleSubmit.</comment>"));
 	});
 
@@ -2183,7 +2222,7 @@ describe("TaskDiffViewer", () => {
 			}),
 		});
 
-		await user.click(screen.getByRole("button", { name: "Comment 2" }));
+		await user.click(screen.getByRole("button", { name: "Comment 2/2" }));
 
 		while (rafQueue.length > 0) {
 			const callback = rafQueue.shift();
@@ -2331,7 +2370,7 @@ describe("TaskDiffViewer", () => {
 		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "looks good");
 		await user.click(screen.getByRole("button", { name: "Add comment" }));
 
-		await user.click(screen.getByRole("button", { name: /Copy to Clipboard/i }));
+		await user.click(screen.getByRole("button", { name: /^Copy$/i }));
 		await waitFor(() => {
 			expect(writeText).toHaveBeenCalledTimes(1);
 		});
@@ -2387,7 +2426,7 @@ describe("TaskDiffViewer", () => {
 		await waitFor(() => {
 			expect(screen.getAllByText("persist me").length).toBeGreaterThan(0);
 		});
-		expect(screen.getByText("Comment 1")).toBeInTheDocument();
+		expect(screen.getByText("Comment 1/1")).toBeInTheDocument();
 	});
 
 	it("sweeps expired and corrupt review entries for other tasks on mount", async () => {
@@ -3383,7 +3422,7 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		await user.click(within(thread).getByTestId("github-thread-export-toggle"));
 		expect(screen.getByTestId("review-export-github-marker")).toHaveTextContent("alice");
 
-		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		await user.click(screen.getByRole("button", { name: "Copy" }));
 		const xml = writeText.mock.calls[writeText.mock.calls.length - 1][0] as string;
 		expect(xml).toContain('<review origin="github" author="alice">');
 		expect(xml).toContain('<file src="src/app.ts" line=1>');

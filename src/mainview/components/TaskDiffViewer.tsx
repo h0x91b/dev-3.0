@@ -212,8 +212,6 @@ interface TaskDiffFileSectionProps {
 	diffLib: DiffLibrary;
 	resolvedTheme: "dark" | "light";
 	viewMode: DiffViewMode;
-	/** Phone-width layout: file paths render as one truncating line. */
-	narrow: boolean;
 	searchQuery: string;
 	isCurrentPathMatch: boolean;
 	comments: InlineDiffCommentFileData;
@@ -221,6 +219,13 @@ interface TaskDiffFileSectionProps {
 	expanded: boolean;
 	isRead: boolean;
 	onAddComment: (params: {
+		fileId: string;
+		side: InlineCommentSideKey;
+		startLine: number;
+		endLine: number;
+		body: string;
+	}) => void;
+	onAddAndSendComment: (params: {
 		fileId: string;
 		side: InlineCommentSideKey;
 		startLine: number;
@@ -789,6 +794,7 @@ function InlineCommentComposer({
 	endLine,
 	onCancel,
 	onSubmit,
+	onSubmitAndSend,
 }: {
 	filePath: string;
 	side: InlineCommentSideKey;
@@ -796,6 +802,7 @@ function InlineCommentComposer({
 	endLine: number;
 	onCancel: () => void;
 	onSubmit: (body: string) => void;
+	onSubmitAndSend: (body: string) => void;
 }) {
 	const t = useT();
 	const [value, setValue] = useState("");
@@ -836,6 +843,27 @@ function InlineCommentComposer({
 					className="dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-8 items-center justify-center rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
 				>
 					{t("infoPanel.diffCommentCancel")}
+				</button>
+				{/* One-shot lane: a single remark goes straight to the agent and never
+				    lands in the batch review, so it costs one click instead of three. */}
+				<button
+					type="button"
+					onClick={() => {
+						if (!trimmedValue) {
+							return;
+						}
+						onSubmitAndSend(trimmedValue);
+						setValue("");
+					}}
+					disabled={!trimmedValue}
+					data-testid="inline-comment-composer-send"
+					title={t("infoPanel.diffCommentSubmitSendTooltip")}
+					className="dev3-inline-comment__button dev3-inline-comment__button--secondary inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-edge bg-base px-3 text-xs font-semibold text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+				>
+					<span aria-hidden="true" className="text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+						{"\uf120"}
+					</span>
+					<span>{t("infoPanel.diffCommentSubmitSend")}</span>
 				</button>
 				<button
 					type="submit"
@@ -1203,7 +1231,6 @@ function TaskDiffFileSection({
 	diffLib,
 	resolvedTheme,
 	viewMode,
-	narrow,
 	searchQuery,
 	isCurrentPathMatch,
 	comments,
@@ -1211,6 +1238,7 @@ function TaskDiffFileSection({
 	expanded,
 	isRead,
 	onAddComment,
+	onAddAndSendComment,
 	editingCommentId,
 	onStartEditComment,
 	onCancelEditComment,
@@ -1565,7 +1593,10 @@ function TaskDiffFileSection({
 			data-file-id={file.id}
 		>
 			<div className={`sticky top-0 z-10 px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 backdrop-blur ${isRead ? "bg-elevated/95" : "bg-raised/95"}`}>
-				<div className="min-w-0 flex-1 flex items-center gap-2">
+				{/* basis keeps the identity column from collapsing: without it the
+				    trailing controls win the space at medium widths and the path
+				    shrinks to a one-character-per-line column instead of wrapping. */}
+				<div className="min-w-0 flex-1 basis-[15rem] flex items-center gap-2">
 					<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-micro font-bold ${statusClassName(file.status)}`}>
 						{statusLabel(file.status)}
 					</span>
@@ -1576,15 +1607,18 @@ function TaskDiffFileSection({
 						className="min-w-0 flex items-center text-left hover:text-fg transition-colors"
 						title={file.displayPath}
 					>
-						{narrow ? (() => {
-							// One line, never a multi-row wrap: the directory part
-							// truncates away while the basename always stays visible
-							// (it is what identifies the file on a phone).
+						{(() => {
+							// One line at every width, never a multi-row wrap: the
+							// directory part truncates away while the basename always
+							// stays visible (it is what identifies the file).
 							const slashIdx = file.displayPath.lastIndexOf("/");
 							const dirPart = slashIdx >= 0 ? file.displayPath.slice(0, slashIdx + 1) : "";
 							const basePart = slashIdx >= 0 ? file.displayPath.slice(slashIdx + 1) : file.displayPath;
 							return (
-								<span className={`min-w-0 flex w-full items-baseline font-mono text-sm ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
+								<span
+									data-testid="diff-file-header-path"
+									className={`min-w-0 flex w-full items-baseline font-mono text-sm ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}
+								>
 									{dirPart && (
 										<span className="min-w-0 truncate opacity-70">
 											{renderHighlightedText(dirPart, searchQuery, false)}
@@ -1595,11 +1629,7 @@ function TaskDiffFileSection({
 									</span>
 								</span>
 							);
-						})() : (
-							<span className={`font-mono text-sm break-words min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
-								{renderHighlightedText(file.displayPath, searchQuery, isCurrentPathMatch)}
-							</span>
-						)}
+						})()}
 					</button>
 
 					{/* Quiet ghost square: a bordered, filled box here out-sized the
@@ -1724,6 +1754,16 @@ function TaskDiffFileSection({
 									onCancel={closeComposer}
 									onSubmit={(body) => {
 										onAddComment({
+											fileId: file.id,
+											side: sideKey,
+											startLine,
+											endLine: lineNumber,
+											body,
+										});
+										closeComposer();
+									}}
+									onSubmitAndSend={(body) => {
+										onAddAndSendComment({
 											fileId: file.id,
 											side: sideKey,
 											startLine,
@@ -2334,26 +2374,26 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	}) {
 		const trimmedBody = body.trim();
 		if (!trimmedBody) {
-			return;
+			return null;
 		}
 
 		const lo = Math.min(startLine, endLine);
 		const hi = Math.max(startLine, endLine);
 		// Threads are keyed by the anchor (end) line, where the widget/composer renders.
 		const anchorLine = hi;
+		const nextComment: InlineDiffComment = {
+			id: `${fileId}:${side}:${lo === hi ? lo : `${lo}-${hi}`}:${Date.now().toString(36)}`,
+			body: trimmedBody,
+			createdAt: new Date().toISOString(),
+			startLine: lo,
+			endLine: hi,
+			side,
+		};
 
 		setInlineComments((current) => {
 			const fileComments = current[fileId] ?? createEmptyInlineCommentFileData();
 			const sideComments = fileComments[side];
 			const existingThread = sideComments[anchorLine]?.data;
-			const nextComment: InlineDiffComment = {
-				id: `${fileId}:${side}:${lo === hi ? lo : `${lo}-${hi}`}:${Date.now().toString(36)}`,
-				body: trimmedBody,
-				createdAt: new Date().toISOString(),
-				startLine: lo,
-				endLine: hi,
-				side,
-			};
 			return {
 				...current,
 				[fileId]: {
@@ -2369,6 +2409,61 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				},
 			};
 		});
+		return nextComment.id;
+	}
+
+	/**
+	 * Composer fast lane: park the comment, ship it to the agent, drop it on
+	 * success. The comment lands in the review first so a failed send leaves it
+	 * recoverable instead of vaporising what the reviewer typed.
+	 */
+	function addAndSendInlineComment(params: {
+		fileId: string;
+		side: InlineCommentSideKey;
+		startLine: number;
+		endLine: number;
+		body: string;
+	}) {
+		const file = visibleFiles.find((item) => item.id === params.fileId);
+		const commentId = addInlineComment(params);
+		if (!file || !commentId) {
+			return;
+		}
+		const lo = Math.min(params.startLine, params.endLine);
+		const hi = Math.max(params.startLine, params.endLine);
+		const entry: InlineReviewExportEntry = {
+			id: commentId,
+			fileId: file.id,
+			filePath: getReviewFilePath(file),
+			side: params.side,
+			startLine: lo,
+			endLine: hi,
+			comment: params.body.trim(),
+			snippet: extractReviewSnippet(file, params.side, lo, hi),
+			fileOrder: 0,
+			createdAt: new Date().toISOString(),
+			origin: "local",
+			author: null,
+			sentAt: null,
+		};
+		setSendingCommentIds((current) => ({ ...current, [commentId]: true }));
+		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: buildInlineReviewXml([entry]) })
+			.then((result) => {
+				deleteInlineComment(commentId);
+				toast.success(result?.spilledPath
+					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
+					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId: task.id });
+			})
+			.catch((err) => {
+				toast.error(t("infoPanel.diffReviewSendCommentFailed", { error: String(err) }), { taskId: task.id });
+			})
+			.finally(() => {
+				setSendingCommentIds((current) => {
+					const next = { ...current };
+					delete next[commentId];
+					return next;
+				});
+			});
 	}
 
 	function toggleThreadExport(threadId: string) {
@@ -3658,44 +3753,108 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								</button>
 								<div className="space-y-2">
 									<div className="rounded-lg border border-edge bg-base px-3 py-2 space-y-2">
-										<div className="flex items-start justify-between gap-3">
-											<div className="min-w-0 space-y-1">
-												<div className="flex items-center gap-2">
-													<span
-														aria-hidden="true"
-														className="text-base-sm leading-none text-accent"
-														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-													>
-														{"\u{F0198}"}
-													</span>
-													<span className="text-micro uppercase tracking-wider text-fg-muted font-semibold">
-														{t("infoPanel.diffReviewExport")}
-													</span>
-													<HelpSpot topicId="diff.review" />
-												</div>
-												<p className="text-micro leading-snug text-fg-3">
-													{reviewExportEntries.length > 0
-														? t("infoPanel.diffReviewExportBody")
-														: t("infoPanel.diffReviewExportEmpty")}
-												</p>
-										</div>
-										<span className="flex shrink-0 items-center gap-1">
-											<span className="inline-flex h-6 min-w-[2.25rem] items-center justify-center rounded-md border border-edge bg-raised px-2 text-micro font-mono text-fg-2">
-												{pendingReviewExportEntries.length}
+										{/* One title line carries the count and every action: the
+										    export card is a rare-use cluster and used to eat a
+										    third of the aside with two full-width buttons. */}
+										<div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+											<span className="whitespace-nowrap text-micro uppercase tracking-wider text-fg-muted font-semibold">
+												{t("infoPanel.diffReviewExport")}
 											</span>
-											{sentReviewCommentCount > 0 && (
-												<span
-													data-testid="review-export-sent-count"
-													title={t("infoPanel.diffReviewSentCount", { count: String(sentReviewCommentCount) })}
-													className="inline-flex h-6 items-center justify-center rounded-md border border-success/40 bg-success/10 px-1.5 text-micro font-mono text-success"
-												>
-													{t("infoPanel.diffReviewSentCount", { count: String(sentReviewCommentCount) })}
+											<HelpSpot topicId="diff.review" />
+											{reviewExportEntries.length > 0 && (
+												<span data-testid="review-export-count" className="font-mono text-micro text-fg-3">
+													{pendingReviewExportEntries.length}
+													{sentReviewCommentCount > 0 && (
+														<span data-testid="review-export-sent-count" className="text-success">
+															{` · ${t("infoPanel.diffReviewSentCount", { count: String(sentReviewCommentCount) })}`}
+														</span>
+													)}
 												</span>
 											)}
-										</span>
+											{reviewExportEntries.length > 0 && (
+												<span className="ml-auto flex shrink-0 items-center gap-1">
+													<Tooltip
+														content={t("infoPanel.diffReviewExportCopyTooltipTitle")}
+														detail={t("infoPanel.diffReviewExportCopyTooltip")}
+													>
+														<button
+															type="button"
+															onClick={handleCopyReviewXml}
+															disabled={pendingReviewExportEntries.length === 0}
+															data-testid="review-copy-button"
+															className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md border px-2 text-micro font-semibold transition-colors ${
+																copiedReviewXml
+																	? "border-success/40 bg-success/15 text-success"
+																	: "border-accent bg-accent-fill text-white hover:bg-accent-fill-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+															}`}
+														>
+															<span
+																aria-hidden="true"
+																className="text-sm-plus leading-none"
+																style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+															>
+																{"\u{F0198}"}
+															</span>
+															<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
+														</button>
+													</Tooltip>
+													<Tooltip
+														content={t("infoPanel.diffReviewExportSendTooltipTitle")}
+														detail={t("infoPanel.diffReviewExportSendTooltip")}
+													>
+														<button
+															type="button"
+															onClick={handleSendReviewToAgent}
+															disabled={pendingReviewExportEntries.length === 0 || reviewSendState === "sending"}
+															data-testid="review-send-button"
+															className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md border px-2 text-micro font-semibold transition-colors ${
+																reviewSendState === "sent"
+																	? "border-success/40 bg-success/10 text-success"
+																	: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+															}`}
+														>
+															<span
+																aria-hidden="true"
+																className="text-sm-plus leading-none"
+																style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+															>
+																{""}
+															</span>
+															<span>
+																{reviewSendState === "sending"
+																	? t("infoPanel.diffReviewExportSendSending")
+																	: reviewSendState === "sent"
+																		? t("infoPanel.diffReviewExportSendSent")
+																		: t("infoPanel.diffReviewExportSend")}
+															</span>
+														</button>
+													</Tooltip>
+													<button
+														type="button"
+														onClick={handleResetReview}
+														data-testid="review-reset-button"
+														aria-label={t("infoPanel.diffReviewReset")}
+														title={t("infoPanel.diffReviewReset")}
+														className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-danger/30 bg-transparent text-danger transition-colors hover:bg-danger/10"
+													>
+														<span
+															aria-hidden="true"
+															className="text-sm-plus leading-none"
+															style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+														>
+															{"\uf1f8"}
+														</span>
+													</button>
+												</span>
+											)}
 										</div>
+										{reviewExportEntries.length === 0 && (
+											<p className="text-micro leading-snug text-fg-3">
+												{t("infoPanel.diffReviewExportEmpty")}
+											</p>
+										)}
 
-										{reviewExportEntries.length > 0 ? (
+										{reviewExportEntries.length > 0 && (
 											<div
 												className="max-h-64 space-y-2 overflow-y-auto pr-1"
 												data-testid="review-export-list"
@@ -3716,7 +3875,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 																event.preventDefault();
 																scrollToComment(entry.id, entry.fileId);
 															}}
-															aria-label={isEditing ? undefined : t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}
+															aria-label={isEditing ? undefined : t("infoPanel.diffReviewCommentItemOf", { number: String(index + 1), total: String(reviewExportEntries.length) })}
 															data-testid={entry.sentAt ? "review-export-item-sent" : "review-export-item"}
 															className={`rounded-lg border px-3 py-2 space-y-2 ${
 																isEditing
@@ -3725,7 +3884,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 															}`}
 														>
 															<div className="flex items-center gap-1.5 text-xs font-semibold text-fg">
-																<span>{t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}</span>
+																<span>{t("infoPanel.diffReviewCommentItemOf", { number: String(index + 1), total: String(reviewExportEntries.length) })}</span>
 																{entry.origin === "github" && (
 																	<span className="inline-flex items-center gap-1 rounded border border-edge bg-base px-1 py-px text-dense font-semibold text-fg-3" data-testid="review-export-github-marker">
 																		<span
@@ -3752,84 +3911,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 													);
 												})}
 											</div>
-										) : (
-											<div className="rounded-lg border border-dashed border-edge bg-raised/35 px-3 py-2 text-micro leading-snug text-fg-3">
-												{t("infoPanel.diffReviewExportHint")}
-											</div>
-										)}
-										<div className="grid grid-cols-2 gap-2">
-											<Tooltip
-												content={t("infoPanel.diffReviewExportCopyTooltipTitle")}
-												detail={t("infoPanel.diffReviewExportCopyTooltip")}
-											>
-												<button
-													type="button"
-													onClick={handleCopyReviewXml}
-													disabled={pendingReviewExportEntries.length === 0}
-													className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
-														copiedReviewXml
-															? "border-success/40 bg-success/15 text-success"
-															: "border-accent bg-accent-fill text-white hover:bg-accent-fill-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
-													}`}
-												>
-													<span
-														aria-hidden="true"
-														className="text-base-sm leading-none"
-														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-													>
-														{"\u{F0198}"}
-													</span>
-													<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
-												</button>
-											</Tooltip>
-											<Tooltip
-												content={t("infoPanel.diffReviewExportSendTooltipTitle")}
-												detail={t("infoPanel.diffReviewExportSendTooltip")}
-											>
-												<button
-													type="button"
-													onClick={handleSendReviewToAgent}
-													disabled={pendingReviewExportEntries.length === 0 || reviewSendState === "sending"}
-													data-testid="review-send-button"
-													className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
-														reviewSendState === "sent"
-															? "border-success/40 bg-success/10 text-success"
-															: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-													}`}
-												>
-													<span
-														aria-hidden="true"
-														className="text-base-sm leading-none"
-														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-													>
-														{"\uf120"}
-													</span>
-													<span>
-														{reviewSendState === "sending"
-															? t("infoPanel.diffReviewExportSendSending")
-															: reviewSendState === "sent"
-																? t("infoPanel.diffReviewExportSendSent")
-																: t("infoPanel.diffReviewExportSend")}
-													</span>
-												</button>
-											</Tooltip>
-										</div>
-										{reviewExportEntries.length > 0 && (
-											<button
-												type="button"
-												onClick={handleResetReview}
-												data-testid="review-reset-button"
-												className="inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border border-danger/30 bg-transparent px-3 text-xs font-semibold text-danger transition-colors hover:bg-danger/10"
-											>
-												<span
-													aria-hidden="true"
-													className="text-base-sm leading-none"
-													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-												>
-													{""}
-												</span>
-												<span>{t("infoPanel.diffReviewReset")}</span>
-											</button>
 										)}
 									</div>
 
@@ -3991,7 +4072,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								diffLib={diffLib}
 								resolvedTheme={resolvedTheme}
 								viewMode={viewMode}
-								narrow={narrow}
 								searchQuery={searchQuery}
 								isCurrentPathMatch={currentSearchMatch?.kind === "path" && currentSearchMatch.fileId === file.id}
 								comments={inlineComments[file.id] ?? createEmptyInlineCommentFileData()}
@@ -3999,6 +4079,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								expanded={expandedFiles[file.id] ?? true}
 								isRead={readFiles[file.id] ?? false}
 								onAddComment={addInlineComment}
+							onAddAndSendComment={addAndSendInlineComment}
 								editingCommentId={editingCommentId}
 								onStartEditComment={startEditingComment}
 								onCancelEditComment={cancelEditingComment}
