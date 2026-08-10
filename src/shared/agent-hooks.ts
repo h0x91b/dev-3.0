@@ -138,20 +138,32 @@ function buildStopGroups(
 	return stopGroups;
 }
 
+/**
+ * A settings file is hand-edited and also rewritten by the agent itself, so any
+ * slot can hold a shape we don't expect. Spreading a string or an array here
+ * would inject numeric keys into the user's settings, and calling `.filter` on a
+ * non-array would throw — and the caller swallows that, launching the agent with
+ * no hooks at all. Anything that is not a plain object is treated as absent.
+ */
+function asRecord(value: unknown): Record<string, unknown> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	return value as Record<string, unknown>;
+}
+
 function mergeHookMaps(
 	existing: Record<string, unknown>,
 	newHooks: HookMap,
 ): Record<string, unknown> {
-	const existingHooks = (existing.hooks ?? {}) as HookMap;
-	const merged: HookMap = { ...existingHooks };
+	const settings = asRecord(existing);
+	const merged: HookMap = { ...asRecord(settings.hooks) } as HookMap;
 
 	for (const [event, groups] of Object.entries(newHooks)) {
-		const current = merged[event] ?? [];
-		const filtered = current.filter((g) => !isDev3Entry(g));
+		const current = merged[event];
+		const filtered = Array.isArray(current) ? current.filter((g) => !isDev3Entry(g)) : [];
 		merged[event] = [...filtered, ...groups];
 	}
 
-	return { ...existing, hooks: merged };
+	return { ...settings, hooks: merged };
 }
 
 export function buildClaudeHooks(
@@ -283,7 +295,7 @@ export function buildCodexHooksConfigOverride(
  * is always accepted alongside this platform's.
  */
 function mentionsDev3Cli(command?: string): boolean {
-	if (!command) return false;
+	if (typeof command !== "string" || !command) return false;
 	// Trailing space so the last token gets the same boundary as the others.
 	const normalized = `${normalizeCliMention(command)} `;
 	return normalized.includes("/dev3 ") || normalized.includes("/dev3.exe ");
@@ -303,15 +315,13 @@ function normalizeCliMention(text: string): string {
 
 /** Check if a matcher group (or legacy flat entry) contains a dev3 hook. */
 function isDev3Entry(group: MatcherGroup | HookEntry): boolean {
+	const entry = asRecord(group);
 	// New format: matcher group with nested hooks array
-	if ("hooks" in group && Array.isArray(group.hooks)) {
-		return group.hooks.some((h) => mentionsDev3Cli(h.command));
+	if (Array.isArray(entry.hooks)) {
+		return entry.hooks.some((h) => mentionsDev3Cli(asRecord(h).command as string | undefined));
 	}
 	// Legacy flat format: { type, command } at top level
-	if ("command" in group) {
-		return mentionsDev3Cli((group as HookEntry).command);
-	}
-	return false;
+	return mentionsDev3Cli(entry.command as string | undefined);
 }
 
 export const DEV3_BASH_PERMISSION = "Bash(dev3:*)";
@@ -334,8 +344,8 @@ export function ensureDefaultMode(
 	settings: Record<string, unknown>,
 	mode: PermissionMode,
 ): Record<string, unknown> {
-	const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
-	return { ...settings, permissions: { ...permissions, defaultMode: mode } };
+	const base = asRecord(settings);
+	return { ...base, permissions: { ...asRecord(base.permissions), defaultMode: mode } };
 }
 
 export function mergeClaudeHooks(
@@ -356,12 +366,13 @@ export function mergeCodexHooks(
  * Add Bash(dev3:*) to permissions.allow in a settings object. Idempotent.
  */
 export function ensureDevPermission(settings: Record<string, unknown>): Record<string, unknown> {
-	const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
+	const base = asRecord(settings);
+	const permissions = asRecord(base.permissions);
 	const allow = Array.isArray(permissions.allow) ? [...permissions.allow as string[]] : [];
 	if (!allow.includes(DEV3_BASH_PERMISSION)) {
 		allow.push(DEV3_BASH_PERMISSION);
 	}
-	return { ...settings, permissions: { ...permissions, allow } };
+	return { ...base, permissions: { ...permissions, allow } };
 }
 
 /**
@@ -377,6 +388,20 @@ function resolvePermissionSettingsPath(claudeDir: string): string {
 	if (existsSync(localPath)) return localPath;
 	if (existsSync(sharedPath)) return sharedPath;
 	return localPath;
+}
+
+/**
+ * Read a settings file, tolerating what editors and other tools leave behind: a
+ * missing file, a UTF-8 byte-order mark, or content that parses but is not an
+ * object. Unreadable content yields `{}`, which the callers then overwrite.
+ */
+function readSettingsFile(path: string): Record<string, unknown> {
+	try {
+		if (!existsSync(path)) return {};
+		return asRecord(JSON.parse(readFileSync(path, "utf-8").replace(/^﻿/, "")));
+	} catch {
+		return {};
+	}
 }
 
 /**
@@ -396,14 +421,7 @@ export function writeClaudeHooks(
 	const sameFile = permPath === hooksPath;
 
 	// Read the hooks target (always settings.local.json)
-	let hooksSettings: Record<string, unknown> = {};
-	try {
-		if (existsSync(hooksPath)) {
-			hooksSettings = JSON.parse(readFileSync(hooksPath, "utf-8"));
-		}
-	} catch {
-		// Corrupted file — overwrite
-	}
+	const hooksSettings = readSettingsFile(hooksPath);
 
 	let updatedHooks = mergeClaudeHooks(hooksSettings, options);
 
@@ -422,14 +440,7 @@ export function writeClaudeHooks(
 		// Hooks and permission go to different files
 		writeFileSync(hooksPath, JSON.stringify(updatedHooks, null, 2) + "\n", "utf-8");
 
-		let permSettings: Record<string, unknown> = {};
-		try {
-			if (existsSync(permPath)) {
-				permSettings = JSON.parse(readFileSync(permPath, "utf-8"));
-			}
-		} catch {
-			// Corrupted — overwrite
-		}
+		const permSettings = readSettingsFile(permPath);
 		const updatedPerm = ensureDevPermission(permSettings);
 		if (JSON.stringify(updatedPerm) !== JSON.stringify(permSettings)) {
 			writeFileSync(permPath, JSON.stringify(updatedPerm, null, 2) + "\n", "utf-8");
@@ -447,16 +458,9 @@ export function writeCodexHooks(worktreePath: string): void {
 
 	const hooksPath = join(codexDir, "hooks.json");
 
-	let settings: Record<string, unknown> = {};
-	try {
-		if (existsSync(hooksPath)) {
-			settings = JSON.parse(readFileSync(hooksPath, "utf-8"));
-		}
-	} catch {
-		// This is generated, gitignored worktree state. Replace corruption rather
-		// than blocking every future Codex launch in this task.
-		settings = {};
-	}
+	// This is generated, gitignored worktree state. Corruption is replaced rather
+	// than blocking every future Codex launch in this task.
+	const settings = readSettingsFile(hooksPath);
 
 	const updated = mergeCodexHooks(settings);
 	if (JSON.stringify(updated) === JSON.stringify(settings)) return;
