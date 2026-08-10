@@ -74,6 +74,13 @@ export interface CreateAppWindowOptions {
 	/** Called after the window has been removed from the registry. */
 	onClosed?: (win: BrowserWindow, remaining: number) => void;
 	maxRequestTime?: number;
+	/**
+	 * Inline JS run after HTML parsing, before page scripts. The bundled renderer
+	 * is loaded straight from disk, so this is the only way to hand it a value the
+	 * host knows and it must see before it boots (the served remote HTML gets a
+	 * `<script>` tag instead).
+	 */
+	preload?: string;
 }
 
 /**
@@ -130,6 +137,7 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		url: opts.url,
 		rpc,
 		frame,
+		...(opts.preload ? { preload: opts.preload } : {}),
 	});
 
 	// Windows draws a system-fallback icon in the window and the taskbar because

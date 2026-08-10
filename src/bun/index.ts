@@ -13,6 +13,7 @@ import {
 	isUpdateAlreadyReady,
 } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
+import { distinctIdBootstrapScript } from "./analytics-identity";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { initNativeNotifications } from "./native-notifications";
 import { markPendingNotificationNav } from "./notification-nav";
@@ -400,6 +401,9 @@ async function openMainWindow() {
 		title: makeTitle(APP_VERSION, lastBuildTime, buildChannel),
 		url,
 		handlers: handlers as unknown as Record<string, (...args: unknown[]) => unknown>,
+		// One analytics identity per install: hand it over before posthog-js boots,
+		// or the renderer mints its own and flag targeting aims at the wrong id.
+		preload: distinctIdBootstrapScript(),
 		onDomReady: async (win) => {
 			// dom-ready is the readiness contract: it only fires once a webview
 			// actually rendered, so it is the one signal that proves a renderer.

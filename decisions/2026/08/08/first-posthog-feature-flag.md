@@ -68,23 +68,54 @@ renderer and keeps it in *that renderer's* `localStorage`, so the desktop window
 and a remote browser were two persons of the same machine — a percentage rollout
 would bucket them independently and half-enable the install. Now:
 
-- The remote HTML shell carries `window.__DEV3_DISTINCT_ID__`, injected next to
-  the existing theme bootstrap (`injectInitialThemeBootstrap`). posthog-js reads
-  it at init as `bootstrap.distinctID` with `isIdentifiedID: false`, which is
-  synchronous — an RPC round trip would land after init.
-- `bootstrap.distinctID` applies only when a renderer has no persisted identity,
-  which is exactly the desired precedence: the desktop renderer keeps the id it
-  already had, and bun *seeds itself from that same id* on first run
-  (`resolveAnalyticsDistinctId({ seed })`). An existing install therefore keeps
-  its person instead of splitting into a second one.
+- Both renderers get the id from one place, `distinctIdBootstrapScript()`: the
+  desktop window as a webview **preload** (Electrobun runs inline JS after HTML
+  parsing, before page scripts — `createAppWindow({ preload })`), a remote browser
+  as a `<script>` tag next to the existing theme bootstrap
+  (`injectInitialThemeBootstrap`). posthog-js reads `window.__DEV3_DISTINCT_ID__`
+  at init as `bootstrap.distinctID` with `isIdentifiedID: false`, which has to be
+  synchronous — an RPC round trip lands after init.
+- **The first version injected into the served HTML only**, so the desktop window
+  never received it and evaluated flags under its own posthog-js id while the
+  Debug window displayed bun's. Targeting the displayed id matched nobody, at any
+  rollout percentage. Two further defects hid behind it: `loadSettingsSync` was a
+  hand-kept twin of `loadSettings` that never read `analyticsDistinctId` (so even
+  the browser injection was always empty), and `saveGlobalSettings` wrote the
+  renderer's whole snapshot, erasing an id minted after that snapshot was taken —
+  the install got a new id on every launch. Fixes: one `normalizeSettings()` for
+  both readers, and `saveGlobalSettings` preserves host-owned fields over the
+  payload.
+- **The Debug window shows the id PostHog evaluates as**, read from the renderer
+  (`evaluatingDistinctId()`), and prints the host's stored id next to it when the
+  two disagree. The displayed id is now the one a rollout must target by
+  construction, and a broken handover is visible instead of silent.
+- `bootstrap.distinctID` applies only when a renderer has no persisted identity.
+  For a fresh browser that is exactly right — it adopts the install's id. For a
+  browser that already has an identity of its own (a dev machine that opened the
+  app before) it is not: that renderer keeps evaluating as itself. So **the desktop
+  renderer is authoritative** — `resolveAnalyticsDistinctId({ seed, authoritative })`
+  overwrites the stored id when the desktop window reports a different one, while a
+  browser only ever seeds an empty slot. Without that rule one stale browser could
+  pin the install to an id the desktop window never evaluates as, and the flag
+  would be targeted at nobody. An existing install still keeps its person: the
+  desktop renderer's own posthog-js id is what gets stored.
+- **A build with no `VITE_POSTHOG_KEY` evaluates nothing at all.** `.env` lives in
+  the repo root and is git-ignored, so a task worktree does not have it and its
+  `bun run dev` renderer gets the no-op client: every flag reads as its shipped
+  default, `onFeatureFlags` never fires, and nothing is ever pushed or logged. The
+  Debug window says so outright instead of showing an empty id row. Copy `.env`
+  from the main checkout into the worktree before testing flag behaviour there.
 - No `identify()` call. It would guarantee unification but converts an anonymous
   person into an identified one, changing person semantics and billing for the
   sake of flags. Seeding achieves the same id with none of that.
 
-**Only the Electrobun renderer refreshes flags** (`initFeatureFlags` returns
-early otherwise). Not for identity any more — that is shared — but for cost: one
-poller per install regardless of how many browsers are attached, and no
-last-writer-wins race between renderers pushing into bun.
+**Only the Electrobun renderer polls** (`initFeatureFlags` returns early before
+setting the interval). Not for identity any more — that is shared — but for cost:
+one poller per install regardless of how many browsers are attached. Every
+renderer *pushes* what it evaluated, though: a browser that pushed nothing left
+bun on shipped defaults and made the Debug window's Refresh button a no-op with no
+log line, which is exactly how the broken handover went unnoticed. Since all
+renderers now evaluate as one person, their pushes agree.
 
 **Defaults, every gap named:**
 
@@ -94,7 +125,8 @@ last-writer-wins race between renderers pushing into bun.
 | PostHog unreachable | last known value; posthog-js serves its own cache, the renderer keeps pushing it |
 | No PostHog key configured | flags off — the no-op client reports every flag unset |
 | Renderer not up yet | flags off |
-| bun has no stored distinct id yet | the HTML shell omits `__DEV3_DISTINCT_ID__`; that renderer falls back to its own posthog-js id and offers it as the seed |
+| bun has no stored distinct id yet | preload and HTML shell both omit `__DEV3_DISTINCT_ID__`; that renderer falls back to its own posthog-js id and offers it as the seed |
+| The webview drops the preload (platform difference, future Electrobun change) | that renderer keeps its own id; the Debug window shows the disagreement instead of a misleading id |
 | Renderer timers throttled (window hidden or minimized) | last known value, held indefinitely |
 | Key absent from a push payload | last known value — only an explicit `false` turns a flag off |
 
@@ -159,6 +191,13 @@ killed instead, the same deletion runs with the branches swapped.
 - **Letting each renderer keep its own posthog-js id.** What shipped first, and
   wrong: two ids for one machine, so a percentage rollout could enable the
   desktop window and not the browser. Caught by the user before release.
+- **Handing the desktop renderer the id over RPC after boot.** Too late by
+  construction: posthog-js fixes its identity at `init`, which runs at module
+  import. A preload is the only pre-init channel a bundled renderer has.
+- **Showing only bun's stored id in the Debug window.** What shipped first. It
+  reads as authoritative while being the one id nothing evaluates against, so a
+  broken handover looks like a PostHog misconfiguration and costs a debugging
+  session (it did).
 - **`identify(installId)`.** Unifies unconditionally, but creates an identified
   person for a machine, not a user.
 - **Backpressure measured only on `session.clients`.** Simplest, and inert over the

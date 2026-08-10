@@ -17,18 +17,45 @@ export function analyticsDistinctIdSync(): string | null {
 }
 
 /**
- * Return the stored id, adopting `seed` if there is none yet.
+ * Inline script handing a renderer the install's id before page scripts run.
+ *
+ * Both renderers need it from the same source: the desktop window gets it as a
+ * webview preload, a remote browser as a tag in the served HTML. Without it
+ * posthog-js mints its own id per renderer, so the id the Debug window showed was
+ * not the one flags were evaluated against — and targeting it did nothing.
+ *
+ * Empty until an id exists (first launch), which lands the renderer on its own
+ * posthog-js id — the very id it then reports back as the seed.
+ */
+export function distinctIdBootstrapScript(): string {
+	const id = analyticsDistinctIdSync();
+	return id ? `window.__DEV3_DISTINCT_ID__=${JSON.stringify(id)};` : "";
+}
+
+/**
+ * Return the stored id, adopting `seed` when there is none yet — or whenever the
+ * caller is authoritative.
  *
  * Seeding matters for existing installs: the desktop renderer already has a
  * posthog-js id with history behind it, so taking that one over minting a fresh
  * one keeps the person intact instead of splitting it in two.
+ *
+ * Only the desktop renderer is authoritative, and it has to be: `bootstrap.distinctID`
+ * loses to a renderer that already has its own persisted identity, so a browser with
+ * history of its own keeps evaluating as itself. Letting whoever asked first own the
+ * install forever meant one such browser could pin the stored id to an identity the
+ * desktop window never evaluates as — flags then get targeted at nobody.
  */
-export async function resolveAnalyticsDistinctId(seed?: string): Promise<string> {
+export async function resolveAnalyticsDistinctId(
+	seed?: string,
+	opts: { authoritative?: boolean } = {},
+): Promise<string> {
 	const settings = await loadSettings();
 	const stored = settings.analyticsDistinctId;
-	if (stored) return stored;
+	const trimmed = seed?.trim();
+	if (stored && !(opts.authoritative && trimmed && trimmed !== stored)) return stored;
 
-	const distinctId = seed?.trim() || randomUUID();
+	const distinctId = trimmed || randomUUID();
 	await saveSettings({ ...settings, analyticsDistinctId: distinctId });
 	return distinctId;
 }

@@ -160,8 +160,14 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	if (Object.prototype.hasOwnProperty.call(params, "focusMode")) {
 		setFocusMode(params.focusMode === true);
 	}
-	await saveSettings(params);
-	getPushMessage()?.("globalSettingsUpdated", params);
+	// The renderer sends its whole snapshot, taken when it loaded. Anything the host
+	// owns and the renderer never edits must survive that: the analytics identity was
+	// minted after the snapshot was taken, so trusting the payload erased it on every
+	// settings change and the install got a new id on every launch.
+	const stored = await loadSettings();
+	const next: GlobalSettings = { ...params, analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId };
+	await saveSettings(next);
+	getPushMessage()?.("globalSettingsUpdated", next);
 	log.info("← saveGlobalSettings done");
 }
 
@@ -460,9 +466,9 @@ async function getFeatureFlags(): Promise<Record<string, boolean>> {
 	return getAllFeatureFlags();
 }
 
-/** One distinct id per install, seeded from whichever renderer asks first. */
-async function resolveAnalyticsDistinctId(params: { seed?: string }): Promise<{ distinctId: string }> {
-	return { distinctId: await resolveDistinctId(params?.seed) };
+/** One distinct id per install; the desktop renderer's identity wins (see analytics-identity). */
+async function resolveAnalyticsDistinctId(params: { seed?: string; authoritative?: boolean }): Promise<{ distinctId: string }> {
+	return { distinctId: await resolveDistinctId(params?.seed, { authoritative: params?.authoritative }) };
 }
 
 export const settingsConfigHandlers = {

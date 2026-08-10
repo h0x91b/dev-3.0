@@ -85,70 +85,80 @@ function resolveDefaultConfigId(stored: unknown): string {
 	return looksBuiltin ? DEFAULT_SETTINGS.defaultConfigId : remapped;
 }
 
+/**
+ * Shape the raw file into `GlobalSettings`.
+ *
+ * One function for both loaders on purpose: they used to be hand-kept twins, and
+ * the sync one silently lacked `analyticsDistinctId` — so the value existed on
+ * disk, the async reader saw it, and every synchronous reader got `undefined`.
+ */
+function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const d = data as any;
+	return {
+		defaultAgentId: d.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
+		defaultConfigId: resolveDefaultConfigId(d.defaultConfigId),
+		taskDropPosition: d.taskDropPosition === "bottom" ? "bottom" : "top",
+		updateChannel: coerceUpdateChannel(d.updateChannel, hostPublishesCanary()),
+		theme: d.theme === "light" || d.theme === "system" || d.theme === "dark" ? d.theme : undefined,
+		resolvedTheme: d.resolvedTheme === "light" || d.resolvedTheme === "dark" ? d.resolvedTheme : undefined,
+		// Machine identity for analytics — opaque string, never regenerated on load.
+		analyticsDistinctId: typeof d.analyticsDistinctId === "string" && d.analyticsDistinctId
+			? d.analyticsDistinctId
+			: undefined,
+		cloneBaseDirectory: d.cloneBaseDirectory ?? undefined,
+		customBinaryPaths: d.customBinaryPaths ?? undefined,
+		agentBinaryPaths: d.agentBinaryPaths ?? undefined,
+		playSoundOnTaskComplete: d.playSoundOnTaskComplete ?? true,
+		externalApps: Array.isArray(d.externalApps) ? d.externalApps : undefined,
+		tipsDisabled: d.tipsDisabled === true ? true : undefined,
+		taskOpenMode: d.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
+		terminalPathOpenMode:
+			d.terminalPathOpenMode === "preview" ||
+			d.terminalPathOpenMode === "system" ||
+			d.terminalPathOpenMode === "reveal"
+				? d.terminalPathOpenMode
+				: undefined,
+		defaultDiffViewMode:
+			d.defaultDiffViewMode === "unified"
+				? "unified"
+				: d.defaultDiffViewMode === "split"
+					? "split"
+					: d.defaultDiffViewMode === "auto"
+						? "auto"
+						: undefined,
+		preventSleepWhileRunning: d.preventSleepWhileRunning ?? undefined,
+		skipQuitDialog: d.skipQuitDialog === true ? true : undefined,
+		importShellEnv: d.importShellEnv === false ? false : undefined,
+		focusMode: d.focusMode === true ? true : undefined,
+		// Default-on toggle — only an explicit false is a stored opt-out.
+		agentRateLimitTracking: d.agentRateLimitTracking === false ? false : undefined,
+		// Boolean preference — both true (watch) and false (don't watch) are
+		// meaningful stored choices, so preserve either; only undefined drops.
+		watchByDefault: typeof d.watchByDefault === "boolean" ? d.watchByDefault : undefined,
+		// Default-on toggle — only an explicit false is a stored opt-out.
+		suggestCompletingTasksAfterMerge: d.suggestCompletingTasksAfterMerge === false ? false : undefined,
+		agentsLayoutRevision: typeof d.agentsLayoutRevision === "number" ? d.agentsLayoutRevision : undefined,
+		// Default-off experimental toggle — only an explicit true is a stored opt-in.
+		pxpipeProxyEnabled: d.pxpipeProxyEnabled === true ? true : undefined,
+		// Default-off beta toggle — only an explicit true is a stored opt-in.
+		experimentalTerminalBidi: d.experimentalTerminalBidi === true ? true : undefined,
+		// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
+		favorites: sanitizeFavorites(d.favorites),
+		// User shortcut rebinds; sparse by design — absent means "all defaults".
+		keyboardShortcuts: sanitizeShortcutOverrides(d.keyboardShortcuts),
+		// Custom Review-toggle prompt; blank ⇒ the localized built-in text.
+		reviewModePrompt: typeof d.reviewModePrompt === "string" && d.reviewModePrompt.trim()
+			? d.reviewModePrompt
+			: undefined,
+	};
+}
+
 export async function loadSettings(): Promise<GlobalSettings> {
 	try {
 		const file = Bun.file(SETTINGS_FILE);
-		if (!(await file.exists())) {
-			return { ...DEFAULT_SETTINGS };
-		}
-		const data = await file.json();
-		return {
-			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
-			defaultConfigId: resolveDefaultConfigId(data.defaultConfigId),
-			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
-			updateChannel: coerceUpdateChannel(data.updateChannel, hostPublishesCanary()),
-			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
-			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
-			// Machine identity for analytics — opaque string, never regenerated on load.
-			analyticsDistinctId: typeof data.analyticsDistinctId === "string" && data.analyticsDistinctId
-				? data.analyticsDistinctId
-				: undefined,
-			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
-			customBinaryPaths: data.customBinaryPaths ?? undefined,
-			agentBinaryPaths: data.agentBinaryPaths ?? undefined,
-			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
-			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
-			tipsDisabled: data.tipsDisabled === true ? true : undefined,
-			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
-			terminalPathOpenMode:
-				data.terminalPathOpenMode === "preview" ||
-				data.terminalPathOpenMode === "system" ||
-				data.terminalPathOpenMode === "reveal"
-					? data.terminalPathOpenMode
-					: undefined,
-			defaultDiffViewMode:
-				data.defaultDiffViewMode === "unified"
-					? "unified"
-					: data.defaultDiffViewMode === "split"
-						? "split"
-						: data.defaultDiffViewMode === "auto"
-							? "auto"
-							: undefined,
-			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
-			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
-			importShellEnv: data.importShellEnv === false ? false : undefined,
-			focusMode: data.focusMode === true ? true : undefined,
-			// Default-on toggle — only an explicit false is a stored opt-out.
-			agentRateLimitTracking: data.agentRateLimitTracking === false ? false : undefined,
-			// Boolean preference — both true (watch) and false (don't watch) are
-			// meaningful stored choices, so preserve either; only undefined drops.
-			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
-			// Default-on toggle — only an explicit false is a stored opt-out.
-			suggestCompletingTasksAfterMerge: data.suggestCompletingTasksAfterMerge === false ? false : undefined,
-			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
-			// Default-off experimental toggle — only an explicit true is a stored opt-in.
-			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
-			// Default-off beta toggle — only an explicit true is a stored opt-in.
-			experimentalTerminalBidi: data.experimentalTerminalBidi === true ? true : undefined,
-			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
-			favorites: sanitizeFavorites(data.favorites),
-			// User shortcut rebinds; sparse by design — absent means "all defaults".
-			keyboardShortcuts: sanitizeShortcutOverrides(data.keyboardShortcuts),
-			// Custom Review-toggle prompt; blank ⇒ the localized built-in text.
-			reviewModePrompt: typeof data.reviewModePrompt === "string" && data.reviewModePrompt.trim()
-				? data.reviewModePrompt
-				: undefined,
-		};
+		if (!(await file.exists())) return { ...DEFAULT_SETTINGS };
+		return normalizeSettings(await file.json());
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
 		return { ...DEFAULT_SETTINGS };
@@ -203,63 +213,8 @@ export async function recordFavoriteUsages(
 
 export function loadSettingsSync(): GlobalSettings {
 	try {
-		if (!existsSync(SETTINGS_FILE)) {
-			return { ...DEFAULT_SETTINGS };
-		}
-		const data = JSON.parse(readFileSync(SETTINGS_FILE, "utf-8"));
-		return {
-			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
-			defaultConfigId: resolveDefaultConfigId(data.defaultConfigId),
-			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
-			updateChannel: coerceUpdateChannel(data.updateChannel, hostPublishesCanary()),
-			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
-			resolvedTheme: data.resolvedTheme === "light" || data.resolvedTheme === "dark" ? data.resolvedTheme : undefined,
-			cloneBaseDirectory: data.cloneBaseDirectory ?? undefined,
-			customBinaryPaths: data.customBinaryPaths ?? undefined,
-			agentBinaryPaths: data.agentBinaryPaths ?? undefined,
-			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
-			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
-			tipsDisabled: data.tipsDisabled === true ? true : undefined,
-			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
-			terminalPathOpenMode:
-				data.terminalPathOpenMode === "preview" ||
-				data.terminalPathOpenMode === "system" ||
-				data.terminalPathOpenMode === "reveal"
-					? data.terminalPathOpenMode
-					: undefined,
-			defaultDiffViewMode:
-				data.defaultDiffViewMode === "unified"
-					? "unified"
-					: data.defaultDiffViewMode === "split"
-						? "split"
-						: data.defaultDiffViewMode === "auto"
-							? "auto"
-							: undefined,
-			preventSleepWhileRunning: data.preventSleepWhileRunning ?? undefined,
-			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
-			importShellEnv: data.importShellEnv === false ? false : undefined,
-			focusMode: data.focusMode === true ? true : undefined,
-			// Default-on toggle — only an explicit false is a stored opt-out.
-			agentRateLimitTracking: data.agentRateLimitTracking === false ? false : undefined,
-			// Boolean preference — both true (watch) and false (don't watch) are
-			// meaningful stored choices, so preserve either; only undefined drops.
-			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
-			// Default-on toggle — only an explicit false is a stored opt-out.
-			suggestCompletingTasksAfterMerge: data.suggestCompletingTasksAfterMerge === false ? false : undefined,
-			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
-			// Default-off experimental toggle — only an explicit true is a stored opt-in.
-			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
-			// Default-off beta toggle — only an explicit true is a stored opt-in.
-			experimentalTerminalBidi: data.experimentalTerminalBidi === true ? true : undefined,
-			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
-			favorites: sanitizeFavorites(data.favorites),
-			// User shortcut rebinds; sparse by design — absent means "all defaults".
-			keyboardShortcuts: sanitizeShortcutOverrides(data.keyboardShortcuts),
-			// Custom Review-toggle prompt; blank ⇒ the localized built-in text.
-			reviewModePrompt: typeof data.reviewModePrompt === "string" && data.reviewModePrompt.trim()
-				? data.reviewModePrompt
-				: undefined,
-		};
+		if (!existsSync(SETTINGS_FILE)) return { ...DEFAULT_SETTINGS };
+		return normalizeSettings(JSON.parse(readFileSync(SETTINGS_FILE, "utf-8")));
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });
 		return { ...DEFAULT_SETTINGS };

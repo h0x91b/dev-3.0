@@ -3969,10 +3969,13 @@ export type AppRPCSchema = {
 			};
 			/**
 			 * The install-wide PostHog distinct id. `seed` is the calling renderer's
-			 * own posthog-js id, adopted only when bun has none stored yet.
+			 * own posthog-js id. Adopted when bun has none stored yet, or when the
+			 * caller is `authoritative` — the desktop renderer, whose posthog-js
+			 * identity outlives every attached browser and is the one flags are
+			 * really evaluated against.
 			 */
 			resolveAnalyticsDistinctId: {
-				params: { seed?: string };
+				params: { seed?: string; authoritative?: boolean };
 				response: { distinctId: string };
 			};
 			/**

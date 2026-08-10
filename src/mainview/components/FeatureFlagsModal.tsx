@@ -3,11 +3,15 @@ import { useT } from "../i18n";
 import { api } from "../rpc";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { refreshFeatureFlagsNow } from "../feature-flags";
+import { evaluatingDistinctId, refreshFeatureFlagsNow } from "../feature-flags";
 import { FEATURE_FLAG_REFRESH_MS } from "../../shared/feature-flags";
 
 /** Re-read bun while the window is open, so a flag flip shows up without reopening. */
 const POLL_MS = 1000;
+/** How long the refresh verdict stays on screen before the button goes quiet again. */
+const VERDICT_MS = 4000;
+
+type RefreshState = "idle" | "pending" | "answered" | "silent";
 
 interface FeatureFlagsModalProps {
 	onClose: () => void;
@@ -24,14 +28,20 @@ export default function FeatureFlagsModal({ onClose }: FeatureFlagsModalProps) {
 
 	const [flags, setFlags] = useState<Record<string, boolean> | null>(null);
 	const [copied, setCopied] = useState(false);
-	const [distinctId, setDistinctId] = useState("");
+	const [refreshState, setRefreshState] = useState<RefreshState>("idle");
+	// What PostHog evaluates this renderer as — the id a rollout has to target.
+	// Empty when the build carries no PostHog key: then nothing evaluates at all.
+	const [evaluatingId] = useState(evaluatingDistinctId);
+	// What the host stored. Equal to the above unless the handover broke, and then
+	// seeing both is the whole diagnosis.
+	const [storedId, setStoredId] = useState("");
 
 	const load = useCallback(() => {
 		api.request.getFeatureFlags().then(setFlags).catch(() => {});
 	}, []);
 
 	useEffect(() => {
-		api.request.resolveAnalyticsDistinctId({}).then((r) => setDistinctId(r.distinctId)).catch(() => {});
+		api.request.resolveAnalyticsDistinctId({}).then((r) => setStoredId(r.distinctId)).catch(() => {});
 	}, []);
 
 	useEffect(() => {
@@ -47,7 +57,23 @@ export default function FeatureFlagsModal({ onClose }: FeatureFlagsModalProps) {
 		}).catch(() => {});
 	}
 
+	function handleRefresh() {
+		if (refreshState === "pending") return;
+		setRefreshState("pending");
+		refreshFeatureFlagsNow().then((answered) => {
+			load();
+			setRefreshState(answered ? "answered" : "silent");
+			window.setTimeout(() => setRefreshState("idle"), VERDICT_MS);
+		});
+	}
+
 	const entries = Object.entries(flags ?? {});
+	// No client means no evaluation, so fall back to the host's copy rather than an
+	// empty row — the id is still what a rollout will have to target later.
+	const noClient = !evaluatingId;
+	const distinctId = evaluatingId || storedId;
+	const idMismatch = !!evaluatingId && !!storedId && evaluatingId !== storedId;
+	const refreshLabel = refreshState === "pending" ? t("featureFlags.refreshing") : t("featureFlags.refreshNow");
 
 	return (
 		<div
@@ -98,6 +124,7 @@ export default function FeatureFlagsModal({ onClose }: FeatureFlagsModalProps) {
 				</div>
 
 				<div className="space-y-1">
+					{noClient && <p className="text-warning text-micro">{t("featureFlags.noClient")}</p>}
 					<p className="text-fg-3 text-xs">{t("featureFlags.distinctIdLabel")}</p>
 					<div className="flex items-center gap-2">
 						<code className="streamer-private flex-1 min-w-0 truncate px-3 py-2 rounded-lg bg-elevated border border-edge text-fg-2 text-xs font-mono">
@@ -118,24 +145,42 @@ export default function FeatureFlagsModal({ onClose }: FeatureFlagsModalProps) {
 							{copied ? t("featureFlags.copied") : t("featureFlags.copy")}
 						</button>
 					</div>
+					{idMismatch && (
+						<p className="text-warning text-micro">
+							{t("featureFlags.idMismatch", { stored: storedId })}
+						</p>
+					)}
 				</div>
 
 				<p className="text-fg-muted text-xs">
 					{t("featureFlags.cadence", { minutes: String(Math.round(FEATURE_FLAG_REFRESH_MS / 60000)) })}
 				</p>
 
-				<div className="flex justify-end gap-2 pt-1">
+				<div className="flex items-center justify-end gap-3 pt-1">
+					<span
+						aria-live="polite"
+						className={`mr-auto text-micro transition-opacity ${
+							refreshState === "answered"
+								? "text-success opacity-100"
+								: refreshState === "silent"
+									? "text-danger opacity-100"
+									: "opacity-0"
+						}`}
+					>
+						{refreshState === "silent" ? t("featureFlags.refreshFailed") : t("featureFlags.refreshed")}
+					</span>
 					<button
 						type="button"
-						onClick={refreshFeatureFlagsNow}
-						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+						onClick={handleRefresh}
+						disabled={refreshState === "pending"}
+						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors active:scale-[0.96] disabled:opacity-50 disabled:active:scale-100"
 					>
-						{t("featureFlags.refreshNow")}
+						{refreshLabel}
 					</button>
 					<button
 						type="button"
 						onClick={onClose}
-						className="px-4 py-2 text-sm rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
+						className="px-4 py-2 text-sm rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors active:scale-[0.96]"
 					>
 						{t("featureFlags.close")}
 					</button>

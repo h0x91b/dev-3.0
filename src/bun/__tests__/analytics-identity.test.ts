@@ -13,7 +13,7 @@ vi.mock("../settings", () => ({
 	saveSettings: vi.fn(async (next: Record<string, unknown>) => { store.settings = { ...next }; }),
 }));
 
-import { analyticsDistinctIdSync, resolveAnalyticsDistinctId } from "../analytics-identity";
+import { analyticsDistinctIdSync, distinctIdBootstrapScript, resolveAnalyticsDistinctId } from "../analytics-identity";
 
 beforeEach(() => {
 	store.settings = {};
@@ -43,6 +43,28 @@ describe("analytics distinct id", () => {
 		expect(second).toBe(first);
 	});
 
+	// bootstrap.distinctID loses to a renderer that already has its own identity, so
+	// a browser with history keeps evaluating as itself. If it also owned the stored
+	// id, the desktop window would be targeted at an id it never evaluates as.
+	it("lets the desktop renderer take the identity back from a browser", async () => {
+		await resolveAnalyticsDistinctId("browser-with-history", { authoritative: false });
+		const id = await resolveAnalyticsDistinctId("desktop-id", { authoritative: true });
+		expect(id).toBe("desktop-id");
+		expect(store.settings.analyticsDistinctId).toBe("desktop-id");
+	});
+
+	it("keeps the stored id when the authoritative renderer reports the same one", async () => {
+		await resolveAnalyticsDistinctId("desktop-id", { authoritative: true });
+		const id = await resolveAnalyticsDistinctId("desktop-id", { authoritative: true });
+		expect(id).toBe("desktop-id");
+	});
+
+	it("ignores an authoritative caller with no id of its own, rather than minting a second", async () => {
+		await resolveAnalyticsDistinctId("existing-id");
+		const id = await resolveAnalyticsDistinctId(undefined, { authoritative: true });
+		expect(id).toBe("existing-id");
+	});
+
 	it("reads without minting, so rendering the HTML shell cannot create an id", () => {
 		expect(analyticsDistinctIdSync()).toBeNull();
 		expect(store.settings.analyticsDistinctId).toBeUndefined();
@@ -51,5 +73,21 @@ describe("analytics distinct id", () => {
 	it("exposes the stored id to the HTML shell once it exists", async () => {
 		await resolveAnalyticsDistinctId("desktop-id");
 		expect(analyticsDistinctIdSync()).toBe("desktop-id");
+	});
+});
+
+describe("renderer bootstrap script", () => {
+	it("hands the id over as one global assignment", async () => {
+		await resolveAnalyticsDistinctId("desktop-id");
+		expect(distinctIdBootstrapScript()).toBe('window.__DEV3_DISTINCT_ID__="desktop-id";');
+	});
+
+	it("stays empty before an id exists, so the renderer falls back to its own", () => {
+		expect(distinctIdBootstrapScript()).toBe("");
+	});
+
+	it("escapes the value instead of concatenating it into the script", async () => {
+		await resolveAnalyticsDistinctId('id";alert(1);//');
+		expect(distinctIdBootstrapScript()).toBe('window.__DEV3_DISTINCT_ID__="id\\";alert(1);//";');
 	});
 });

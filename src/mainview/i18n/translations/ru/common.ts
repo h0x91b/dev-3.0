@@ -71,6 +71,11 @@ const common = {
 	"featureFlags.copied": "Скопировано",
 	"featureFlags.cadence": "Обновляется примерно раз в {minutes} мин. У PostHog нет push-канала, так что это же и худший случай доезда изменения.",
 	"featureFlags.refreshNow": "Обновить сейчас",
+	"featureFlags.refreshing": "Спрашиваем PostHog…",
+	"featureFlags.refreshed": "Значения обновлены",
+	"featureFlags.refreshFailed": "PostHog не ответил",
+	"featureFlags.idMismatch": "В настройках хоста лежит другой id ({stored}). Таргетируй тот, что выше — именно по нему считаются флаги.",
+	"featureFlags.noClient": "В этой сборке нет ключа PostHog, поэтому ни один флаг никогда не оценится — выше показаны дефолты из кода. Ниже — id, который хранит хост.",
 	"featureFlags.close": "Закрыть",
 
 	// Generic

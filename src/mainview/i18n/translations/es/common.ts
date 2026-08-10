@@ -71,6 +71,11 @@ const common = {
 	"featureFlags.copied": "Copiado",
 	"featureFlags.cadence": "Se actualiza cada {minutes} min aprox. PostHog no tiene canal push, así que ese es también el peor caso para que llegue un cambio.",
 	"featureFlags.refreshNow": "Actualizar ahora",
+	"featureFlags.refreshing": "Consultando a PostHog…",
+	"featureFlags.refreshed": "Valores actualizados",
+	"featureFlags.refreshFailed": "PostHog no respondió",
+	"featureFlags.idMismatch": "El host guardó otro id ({stored}). Apunta al de arriba: es el que se usa para evaluar los flags.",
+	"featureFlags.noClient": "Esta compilación no tiene clave de PostHog, así que ningún flag se evaluará nunca: arriba están los valores por defecto. El id de abajo es el que guardó el host.",
 	"featureFlags.close": "Cerrar",
 
 	// Generic
