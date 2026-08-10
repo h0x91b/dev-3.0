@@ -25,6 +25,7 @@ import { type AgentPromptDelivery, agentPromptDeliveryFromPaneInput } from "../s
 import { sendPromptToAgentPane, sendPromptToPane } from "./agent-prompt";
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "./agent-prompt-native";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
+import { refreshClaudeHooksForTask } from "./agent-hooks-refresh";
 
 /**
  * Type `prompt` into `task`'s agent (or into one concrete pane) and submit it,
@@ -35,6 +36,11 @@ export async function deliverAgentPrompt(
 	prompt: string,
 	target: ScheduledMessageTarget = { kind: "agent" },
 ): Promise<AgentPromptDelivery> {
+	// The prompt about to land will fire UserPromptSubmit, so the hooks have to be
+	// in place before it is typed, not after. A no-op unless something rewrote the
+	// settings file behind us.
+	await refreshClaudeHooksForTask(task);
+
 	if (taskTerminalBackendIdentity(task) === "native") {
 		return target.kind === "pane"
 			? sendPromptToNativePane(task, target.paneId, prompt)

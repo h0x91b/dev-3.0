@@ -15,9 +15,13 @@ vi.mock("../tmux", () => ({
 	DEFAULT_TMUX_SOCKET: "dev3",
 	taskSessionName: (taskId: string) => `dev3-task-${taskId}`,
 }));
+vi.mock("../agent-hooks-refresh", () => ({
+	refreshClaudeHooksForTask: vi.fn(async () => {}),
+}));
 
 import { sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
+import { refreshClaudeHooksForTask } from "../agent-hooks-refresh";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { PaneSessionEntry, Task } from "../../shared/types";
 
@@ -148,5 +152,20 @@ describe("deliverAgentPrompt — unusable backend marker", () => {
 		).rejects.toThrow(/terminalBackend/);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
+	});
+});
+
+describe("deliverAgentPrompt — hook re-assertion", () => {
+	it("re-asserts the Claude hooks before the prompt is typed, on either backend", async () => {
+		for (const t of [task(), task({ terminalBackend: "native" } as Partial<Task>)]) {
+			vi.clearAllMocks();
+			await deliverAgentPrompt(t, "check CI");
+			expect(refreshClaudeHooksForTask).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }));
+		}
+	});
+
+	it("re-asserts them for a concrete pane target too", async () => {
+		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" });
+		expect(refreshClaudeHooksForTask).toHaveBeenCalledTimes(1);
 	});
 });

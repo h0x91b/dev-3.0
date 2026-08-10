@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -1196,5 +1196,64 @@ describe("writeClaudeHooks with a hostile file on disk", () => {
 		const shared = JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"));
 		expect(shared.permissions.allow).toEqual([DEV3_BASH_PERMISSION]);
 		expect(read().hooks?.Stop).toHaveLength(1);
+	});
+});
+
+// Claude Code holds settings.local.json open, so the periodic re-assertion in
+// agent-hooks-refresh.ts must not churn its mtime when nothing changed.
+describe("writeClaudeHooks write suppression", () => {
+	let tmp: string;
+
+	beforeEach(() => {
+		tmp = mkdtempSync(join(tmpdir(), "dev3-hooks-idem-"));
+	});
+
+	afterEach(() => {
+		rmSync(tmp, { recursive: true, force: true });
+	});
+
+	const settingsPath = () => join(tmp, ".claude", "settings.local.json");
+
+	it("reports a write on the first install and none on the second", () => {
+		expect(writeClaudeHooks(tmp)).toBe(true);
+		expect(writeClaudeHooks(tmp)).toBe(false);
+	});
+
+	it("leaves the file untouched when nothing changed", () => {
+		writeClaudeHooks(tmp);
+		const before = statSync(settingsPath()).mtimeMs;
+
+		writeClaudeHooks(tmp);
+
+		expect(statSync(settingsPath()).mtimeMs).toBe(before);
+	});
+
+	it("writes again once an external rewrite dropped the hooks", () => {
+		writeClaudeHooks(tmp);
+		writeFileSync(settingsPath(), JSON.stringify({ permissions: { allow: ["Bash(gh:*)"] } }));
+
+		expect(writeClaudeHooks(tmp)).toBe(true);
+		expect(JSON.parse(readFileSync(settingsPath(), "utf-8")).hooks?.Stop).toHaveLength(1);
+	});
+
+	it("writes again when the stop target changes", () => {
+		writeClaudeHooks(tmp, { stopTarget: "review-by-user" });
+		expect(writeClaudeHooks(tmp, { stopTarget: "review-by-ai" })).toBe(true);
+	});
+
+	// With only a shared settings.json present, the permission lands there and the
+	// hooks create settings.local.json. From the second run on, the local file
+	// exists and owns the permission too, so that run still writes — the third is
+	// the first quiet one.
+	it("settles after the shared settings.json hands the permission over to the local one", () => {
+		mkdirSync(join(tmp, ".claude"), { recursive: true });
+		writeFileSync(join(tmp, ".claude", "settings.json"), JSON.stringify({ permissions: { allow: [] } }));
+
+		expect(writeClaudeHooks(tmp)).toBe(true);
+		expect(writeClaudeHooks(tmp)).toBe(true);
+		expect(writeClaudeHooks(tmp)).toBe(false);
+
+		const shared = JSON.parse(readFileSync(join(tmp, ".claude", "settings.json"), "utf-8"));
+		expect(shared.permissions.allow).toEqual([DEV3_BASH_PERMISSION]);
 	});
 });

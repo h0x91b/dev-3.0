@@ -408,11 +408,16 @@ function readSettingsFile(path: string): Record<string, unknown> {
  * Read .claude/settings.local.json, merge dev3 hooks, write back.
  * Also ensures Bash(dev3:*) permission in the appropriate settings file.
  * Creates the .claude/ directory if it doesn't exist.
+ *
+ * Returns whether anything was actually written. Callers that re-assert the
+ * hooks periodically (see `agent-hooks-refresh.ts`) lean on the no-write path:
+ * Claude Code holds this file open, so rewriting identical bytes would churn its
+ * mtime on every prompt for nothing.
  */
 export function writeClaudeHooks(
 	worktreePath: string,
 	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode },
-): void {
+): boolean {
 	const claudeDir = join(worktreePath, ".claude");
 	mkdirSync(claudeDir, { recursive: true });
 
@@ -435,17 +440,32 @@ export function writeClaudeHooks(
 	if (sameFile) {
 		// Permission goes into the same file — apply on top of merged hooks
 		updatedHooks = ensureDevPermission(updatedHooks);
-		writeFileSync(hooksPath, JSON.stringify(updatedHooks, null, 2) + "\n", "utf-8");
-	} else {
-		// Hooks and permission go to different files
-		writeFileSync(hooksPath, JSON.stringify(updatedHooks, null, 2) + "\n", "utf-8");
-
-		const permSettings = readSettingsFile(permPath);
-		const updatedPerm = ensureDevPermission(permSettings);
-		if (JSON.stringify(updatedPerm) !== JSON.stringify(permSettings)) {
-			writeFileSync(permPath, JSON.stringify(updatedPerm, null, 2) + "\n", "utf-8");
-		}
+		return writeIfChanged(hooksPath, updatedHooks, hooksSettings);
 	}
+
+	// Hooks and permission go to different files
+	const hooksWritten = writeIfChanged(hooksPath, updatedHooks, hooksSettings);
+
+	const permSettings = readSettingsFile(permPath);
+	const permWritten = writeIfChanged(permPath, ensureDevPermission(permSettings), permSettings);
+	return hooksWritten || permWritten;
+}
+
+/**
+ * Serialize and write only when the result differs from what was read. The
+ * comparison is on the parsed shapes, so reformatting alone never triggers a
+ * write — but a file we could not parse always does, since `readSettingsFile`
+ * reports it as `{}`.
+ */
+function writeIfChanged(
+	path: string,
+	updated: Record<string, unknown>,
+	previous: Record<string, unknown>,
+): boolean {
+	const serialized = JSON.stringify(updated, null, 2) + "\n";
+	if (existsSync(path) && JSON.stringify(previous) === JSON.stringify(updated)) return false;
+	writeFileSync(path, serialized, "utf-8");
+	return true;
 }
 
 /**
