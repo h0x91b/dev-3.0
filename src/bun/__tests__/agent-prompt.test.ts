@@ -166,14 +166,22 @@ describe("sendPromptToAgentPane — target resolution", () => {
 		expect(sentPane(0)).toBe("%1");
 	});
 
-	it("ignores a recorded pane that is live but not a registered agent pane", async () => {
-		// %3 is a live shell split, not in the agent registry.
+	it("never types into a focused shell split: falls back to a live agent pane", async () => {
+		// %3 is a live shell split, not in the agent registry. tmux would report the
+		// send as delivered either way, so aiming there loses the prompt silently.
 		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%2" }, { paneId: "%3" }] as never);
 		vi.mocked(tmux.showOption).mockResolvedValue("%3");
 		vi.mocked(tmux.activePaneId).mockResolvedValue("%3");
 		await runPrompt(sendPromptToAgentPane(TASK, "ping", TWO_AGENTS));
-		// No last-focused agent → ≥2 agents → active pane (%3, the focused shell).
-		expect(sentPane(0)).toBe("%3");
+		expect(sentPane(0)).toBe("%1");
+	});
+
+	it("keeps honouring the focus when the focused pane is itself an agent pane", async () => {
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%2" }, { paneId: "%3" }] as never);
+		vi.mocked(tmux.showOption).mockResolvedValue("");
+		vi.mocked(tmux.activePaneId).mockResolvedValue("%2");
+		await runPrompt(sendPromptToAgentPane(TASK, "ping", TWO_AGENTS));
+		expect(sentPane(0)).toBe("%2");
 	});
 
 	it("marks live agent panes with the focus-hook option (self-heal)", async () => {

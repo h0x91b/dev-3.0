@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-10 — A send marks the review, it never deletes it
+
+- **Rule:** No send path (per-comment, composer `Send now`, or batch) may clear inline review comments; they are stamped `Sent`, and only the confirmed `Reset review` destroys anything.
+- **Why:** A resolved send proves the keystrokes left dev3, not that the agent read them — a reviewer lost a whole review to a send that never landed; the rejected alternative, clearing only on a proven `delivered`, still deletes on the common tmux case where the agent's TUI swallows the paste.
+- **Status:** Implemented. Evidence: `src/mainview/components/TaskDiffViewer.tsx` (`markInlineCommentsSent`), `decisions/2026/08/10/never-destroy-a-review-on-send.md`.
+
 ## 2026-08-10 — Review export card is a title line; the composer owns the one-shot send
 
 - **Rule:** The export cluster (count + Copy + Send + icon-only Reset) sits on the card's title line, renders nothing when the review is empty, and the count is plain text — never a bordered box; the composer gains `Send now`, which delivers one remark and drops it.

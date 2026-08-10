@@ -72,7 +72,9 @@ async function getLastFocusedAgentPane(tmuxSession: string, socket: string): Pro
  *    covers legacy tasks and the brief Codex pre-hook interval, when pane[0]'s
  *    ID has not been persisted yet but a shell split may be focused.
  *  - TWO OR MORE live agent panes with nothing recorded yet → respect the user's
- *    focus and use the session's active pane.
+ *    focus when the focused pane IS one of them, else the first live agent pane.
+ *    Never a shell split: tmux reports "delivered" for any pane, so a hand-off
+ *    typed into a shell reads as a clean send while the agent got nothing.
  *  - ZERO known agent panes (legacy tasks with no sessionState) → fall back to
  *    the active pane, preserving the historical behavior.
  *
@@ -112,9 +114,30 @@ export async function resolveAgentPromptTargetPane(
 		// recorded pane ID. Their session-state entry is pane[0], and tmux lists
 		// that initial pane first, so prefer it over an unrelated focused shell.
 		if (agentPanes?.length === 1 && hasUnresolvedAgentPane) return orderedLivePaneIds[0] ?? null;
-		// ≥2 or 0 live agent panes → fall through to the active pane below.
+		// ≥2 live agents and nothing recorded: honour the user's focus only when it
+		// IS one of them. Typing a hand-off into the focused shell used to look like
+		// a clean delivery (tmux takes the keys either way) while the agent never
+		// saw a word — and a review that clears itself on that "success" is gone.
+		if (liveAgentPanes.length > 0) {
+			if (activePane && liveAgentPanes.includes(activePane)) return activePane;
+			log.info("agent prompt routed to the first live agent pane", {
+				session: tmuxSession,
+				activePane: activePane ?? "none",
+				chosen: liveAgentPanes[0] ?? "none",
+				liveAgents: liveAgentPanes.length,
+			});
+			return liveAgentPanes[0] ?? null;
+		}
+		// No live agent pane at all → fall through to the active pane below.
 	}
 
+	// Legacy tasks with no agent registry: the active pane is the only guess there
+	// is. Logged, because it is also the one route that can land in a plain shell.
+	log.info("agent prompt falling back to the active pane (no live agent pane known)", {
+		session: tmuxSession,
+		activePane: activePane ?? "none",
+		registered: registeredIds.length,
+	});
 	return activePane;
 }
 

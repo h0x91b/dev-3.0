@@ -12885,8 +12885,9 @@ describe("handlers.createPullRequest", () => {
 		expect(sends[1]?.join(" ")).toContain("send-keys -t %5 Enter");
 	});
 
-	// With two or more agent panes the target is ambiguous, so respect focus.
-	it("routes to the active pane when there are two agent panes", async () => {
+	// With two or more agent panes the target is ambiguous — but a focused SHELL
+	// never wins it: tmux reports the send as delivered and the agent sees nothing.
+	it("routes to a live agent pane, not the focused shell, when there are two agent panes", async () => {
 		const project = makeProject();
 		const task = makeTask({
 			id: "task-1",
@@ -12904,10 +12905,10 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %3 -H");
+		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %5 -H");
 	});
 
-	it("routes to the active Codex main pane when its pane id is not persisted", async () => {
+	it("routes to the live agent pane when the Codex main pane id is not persisted", async () => {
 		const project = makeProject();
 		const task = makeTask({
 			id: "task-1",
@@ -12925,7 +12926,7 @@ describe("handlers.createPullRequest", () => {
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
 
-		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %3 -H");
+		expect(guardedSends()[0]?.join(" ")).toContain("send-keys -t %7 -H");
 	});
 
 	it("routes a legacy Codex main pane before a focused shell split", async () => {

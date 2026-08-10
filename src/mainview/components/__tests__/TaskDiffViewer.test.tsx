@@ -1860,7 +1860,7 @@ describe("TaskDiffViewer", () => {
 		expect(screen.queryByText("Rename this callback.")).not.toBeInTheDocument();
 	});
 
-	it("sends a comment straight from the composer without parking it in the review", async () => {
+	it("sends a comment straight from the composer and keeps it, marked as sent", async () => {
 		const user = userEvent.setup();
 		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValue(undefined as never);
 
@@ -1889,12 +1889,13 @@ describe("TaskDiffViewer", () => {
 		expect(text).toContain('<file src="src/app.ts" line=1>');
 		expect(text).toContain("<comment>Rename this callback.</comment>");
 
-		// Delivered in one click: nothing is left behind in the review card or the diff.
+		// One click delivers it, but the text survives: marked as sent, out of the
+		// batch payload, still readable in the card and in the diff.
 		await waitFor(() => {
-			expect(screen.queryByTestId("review-export-list")).not.toBeInTheDocument();
+			expect(screen.getByTestId("review-export-sent-marker")).toBeInTheDocument();
 		});
-		expect(screen.queryByTestId("inline-comment-thread")).not.toBeInTheDocument();
-		expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+		expect(screen.getByTestId("inline-comment-thread")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
 	});
 
 	it("sends one inline comment on its own and keeps it out of the batch payload", async () => {
@@ -2563,7 +2564,7 @@ describe("TaskDiffViewer", () => {
 		expect(localStorage.getItem(reviewKey)).toBeNull();
 	});
 
-	it("clears the review after a successful send, and keeps it when the send fails", async () => {
+	it("keeps the review after a send — marked as sent on success, untouched on failure", async () => {
 		const user = userEvent.setup();
 		const reviewKey = "dev3-inline-diff-review-v1:t1";
 		const showConfirm = vi.mocked(confirm);
@@ -2601,16 +2602,21 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getAllByText("send me").length).toBeGreaterThan(0);
 		expect(localStorage.getItem(reviewKey)).toContain("send me");
 
-		// Successful send: comments are delivered, so they clear without a confirm.
+		// Successful send: a resolved RPC only proves the keys left dev3, so the text
+		// is marked as sent and kept — never destroyed on an unprovable delivery.
 		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValueOnce(undefined as never);
 		await user.click(screen.getByTestId("review-send-button"));
 
 		await waitFor(() => {
-			expect(screen.queryAllByText("send me")).toHaveLength(0);
+			expect(screen.getByTestId("review-export-sent-marker")).toBeInTheDocument();
 		});
+		expect(screen.getAllByText("send me").length).toBeGreaterThan(0);
+		expect(localStorage.getItem(reviewKey)).toContain("send me");
+		expect(localStorage.getItem(reviewKey)).toContain("sentAt");
+		// Nothing is sent twice, and clearing stays an explicit, confirmed action.
+		expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
 		expect(showConfirm).not.toHaveBeenCalled();
-		expect(screen.queryByTestId("review-reset-button")).not.toBeInTheDocument();
-		expect(localStorage.getItem(reviewKey)).toBeNull();
+		expect(screen.getByTestId("review-reset-button")).toBeInTheDocument();
 	});
 
 	it("still saves new comments when the existing localStorage entry is corrupt JSON", async () => {

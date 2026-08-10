@@ -484,9 +484,9 @@ function hasAnyInlineComments(state: InlineDiffCommentsState): boolean {
 }
 
 /** Rewrites one comment anywhere in the review state, leaving every other entry untouched. */
-function mapInlineComment(
+function mapInlineComments(
 	state: InlineDiffCommentsState,
-	commentId: string,
+	matches: (comment: InlineDiffComment) => boolean,
 	transform: (comment: InlineDiffComment) => InlineDiffComment,
 ): InlineDiffCommentsState {
 	const nextState: InlineDiffCommentsState = {};
@@ -497,7 +497,7 @@ function mapInlineComment(
 				nextFileComments[side][lineNumber] = {
 					data: {
 						comments: thread.data.comments.map((comment) => (
-							comment.id === commentId ? transform(comment) : comment
+							matches(comment) ? transform(comment) : comment
 						)),
 					},
 				};
@@ -506,6 +506,12 @@ function mapInlineComment(
 		nextState[fileId] = nextFileComments;
 	}
 	return nextState;
+}
+
+/** Stamp `sentAt` on every comment the caller just handed to the agent. */
+function markInlineCommentsSent(state: InlineDiffCommentsState, ids: ReadonlySet<string>): InlineDiffCommentsState {
+	const sentAt = new Date().toISOString();
+	return mapInlineComments(state, (comment) => ids.has(comment.id), (comment) => ({ ...comment, sentAt }));
 }
 
 function buildInlineReviewExportEntries(
@@ -2449,7 +2455,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setSendingCommentIds((current) => ({ ...current, [commentId]: true }));
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: buildInlineReviewXml([entry]) })
 			.then((result) => {
-				deleteInlineComment(commentId);
+				// Marked, never deleted: a resolved RPC proves the keys were handed
+				// over, not that the agent ingested them, so the text must survive.
+				setInlineComments((current) => markInlineCommentsSent(current, new Set([commentId])));
 				toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId: task.id });
@@ -2495,10 +2503,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setSendingCommentIds((current) => ({ ...current, [commentId]: true }));
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: prompt })
 			.then((result) => {
-				setInlineComments((current) => mapInlineComment(current, commentId, (comment) => ({
-					...comment,
-					sentAt: new Date().toISOString(),
-				})));
+				setInlineComments((current) => markInlineCommentsSent(current, new Set([commentId])));
 				toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewSendCommentSuccessFile", { path: result.spilledPath })
 					: t("infoPanel.diffReviewSendCommentSuccess"), { taskId: task.id });
@@ -2528,13 +2533,15 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			return;
 		}
 		const snapshot = reviewExportXml;
+		const sentIds = new Set(pendingReviewExportEntries.filter((entry) => entry.origin === "local").map((entry) => entry.id));
 		setReviewSendState("sending");
 		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: snapshot })
 			.then((result) => {
 				setReviewSendState("sent");
-				// Delivered comments are dead weight: clear them here so the reviewer
-				// never has to run the destructive "Reset review" as a routine step.
-				setInlineComments({});
+				// Sent comments are marked, never destroyed. A resolved RPC only means
+				// the keys reached the terminal — the agent's TUI can still drop them —
+				// so wiping here silently ate reviews that never arrived.
+				setInlineComments((current) => markInlineCommentsSent(current, sentIds));
 				setEditingCommentId(null);
 				toast.success(result?.spilledPath
 					? t("infoPanel.diffReviewExportSendSuccessFile", { path: result.spilledPath })
@@ -2869,7 +2876,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 
 		// Editing revives the comment: the agent got the old text, so the new text
 		// has to be deliverable again — via its own send or the next batch.
-		setInlineComments((current) => mapInlineComment(current, commentId, (comment) => ({
+		setInlineComments((current) => mapInlineComments(current, (comment) => comment.id === commentId, (comment) => ({
 			...comment,
 			body: trimmedBody,
 			sentAt: undefined,
