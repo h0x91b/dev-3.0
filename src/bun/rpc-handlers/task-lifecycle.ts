@@ -794,6 +794,21 @@ async function toggleTaskWatch(params: { taskId: string; projectId: string; watc
 	return updated;
 }
 
+/**
+ * Own or disown the code a task is about. Set automatically at creation from the
+ * branch; the user may clear it to deliberately run a reviewed branch's own
+ * config, which is their risk to take — dev3 warns, it does not refuse. Applies
+ * on the next launch, since config is re-resolved per launch by design.
+ */
+async function setTaskForeignCode(params: { taskId: string; projectId: string; foreignCode: boolean }): Promise<Task> {
+	log.info("→ setTaskForeignCode", { taskId: params.taskId, foreignCode: params.foreignCode });
+	const project = await data.getProject(params.projectId);
+	const updated = await data.updateTask(project, params.taskId, { foreignCode: params.foreignCode });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info("← setTaskForeignCode done", { taskId: params.taskId });
+	return updated;
+}
+
 async function setTaskManualCompletion(params: { taskId: string; projectId: string; manualCompletion: boolean }): Promise<Task> {
 	log.info("→ setTaskManualCompletion", { taskId: params.taskId, manualCompletion: params.manualCompletion });
 	const project = await data.getProject(params.projectId);
@@ -1071,6 +1086,7 @@ export const taskLifecycleHandlers = {
 	setUserOverview,
 	clearUserOverview,
 	toggleTaskWatch,
+	setTaskForeignCode,
 	setTaskManualCompletion,
 	scheduleTaskLaunch,
 	cancelScheduledLaunch,

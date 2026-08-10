@@ -19,6 +19,7 @@ import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import VariantDots from "./VariantDots";
 import NativeBackendMark from "./NativeBackendMark";
+import ForeignCodeMark from "./ForeignCodeMark";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -878,6 +879,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</Tooltip>
 				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
+				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
 				{isDraft && (
 					<Tooltip content={t("task.draftBadge")} detail={t("task.draftHint")}>
 						<span

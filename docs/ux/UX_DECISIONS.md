@@ -16,6 +16,13 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Why:** Model ids, permission modes and effort levels change faster than dev3 ships, and a fixed list silently caps the user at yesterday's options; a separate Combobox component was rejected because the app would then own two dropdowns with two keyboard contracts.
 - **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §7, `src/mainview/components/Select.tsx`, `src/mainview/components/__tests__/Select.test.tsx`.
 
+## 2026-08-10 — Whose-code identity is accent on the board, warning only on the diff
+
+- **Rule:** `Task.foreignCode` renders as an accent eye glyph (§5.6, second identity marker) on the card and inspector, while the `warning`-toned RUNS badge sits on changed executable-config files in the diff viewer.
+- **Why:** the glyph reports an identity, not a fault, and `danger` already means "deleted" in that same diff row — a rejected amber-card variant would have spent the warning token on the happy path and trained click-through. A branch-level marker on the card was also rejected: the card shows no branch to qualify.
+- **Narrow panes:** a badge added to a file-header row must never buy its space from the file name. The diff file header is its own query container (the pane squeezes it, not the window): under ~28rem the badge's word goes `sr-only` and the sign plus tooltip carry it, under ~22rem the path/copy/stats group drops to a full-width row. Measured cost after that: zero — hiding the badge changes neither header height nor basename width.
+- **Status:** Observed. Evidence: `ForeignCodeMark.tsx`, `TaskDiffViewer.tsx`, `shared/executable-config-files.ts`, `decisions/2026/08/10/trust-the-branch-not-the-project.md`.
+
 ## 2026-08-10 — A send marks the review, it never deletes it
 
 - **Rule:** No send path (per-comment, composer `Send now`, or batch) may clear inline review comments; they are stamped `Sent`, and only the confirmed `Reset review` destroys anything.

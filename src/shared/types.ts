@@ -3726,6 +3726,15 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; manualCompletion: boolean };
 				response: Task;
 			};
+			/**
+			 * Own or disown the code a task is about ({@link Task.foreignCode}). Clearing
+			 * it lets that branch's `.dev3` config and agent trust apply again — the
+			 * user's call, taken with a warning, and it takes effect on the next launch.
+			 */
+			setTaskForeignCode: {
+				params: { taskId: string; projectId: string; foreignCode: boolean };
+				response: Task;
+			};
 			/** Persist a deferred launch on a todo task ("Start in…"). */
 			scheduleTaskLaunch: {
 				params: {

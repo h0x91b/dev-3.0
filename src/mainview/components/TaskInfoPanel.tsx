@@ -62,6 +62,7 @@ import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
+import ForeignCodeMark from "./ForeignCodeMark";
 import VariantSwitcher from "./VariantSwitcher";
 import { isMac } from "../utils/platform";
 import { terminalFullscreenShortcutLabel } from "../utils/terminalFullscreen";
@@ -938,6 +939,27 @@ function TaskInfoPanel({
 		}
 	}
 
+	// Take responsibility for a reviewed branch's config. The user is allowed to do
+	// this — it is their machine — but they must be told what starts running, in
+	// plain words, before they do. Warned, never refused.
+	async function ownForeignCode() {
+		const confirmed = await confirm({
+			title: t("infoPanel.foreignCodeOwnConfirmTitle"),
+			message: t("infoPanel.foreignCodeOwnConfirmBody"),
+			confirmLabel: t("infoPanel.foreignCodeOwnConfirmCta"),
+			danger: true,
+			info: { title: task.branchName ?? task.title },
+		});
+		if (!confirmed) return;
+		try {
+			const updated = await api.request.setTaskForeignCode({ taskId: task.id, projectId: project.id, foreignCode: false });
+			dispatch({ type: "updateTask", task: updated });
+			toast.info(t("infoPanel.foreignCodeOwnedToast"), { taskId: task.id });
+		} catch (err) {
+			toast.error(String(err), { taskId: task.id });
+		}
+	}
+
 	const sendLaterButton = isTaskActive && task.worktreePath ? (
 		<Tooltip content={t("task.sendLater")} detail={t("task.sendLaterHint")}>
 			<button
@@ -1043,6 +1065,26 @@ function TaskInfoPanel({
 								<>
 									<span className="text-fg-3">{t("infoPanel.branch")}</span>
 									<span className="text-fg-2 font-mono">{task.branchName}</span>
+								</>
+							)}
+
+							{/* Whose code, plus the one consequence of the answer. Metadata, not a
+							    quickbar: this is diagnostic ("why did my setup script not run?"),
+							    and it is where the branch it qualifies already lives. */}
+							{task.foreignCode && (
+								<>
+									<span className="text-fg-3">{t("infoPanel.foreignCode")}</span>
+									<span className="flex items-center gap-2 min-w-0">
+										<ForeignCodeMark task={task} className="w-3.5 h-3.5" testId="info-panel-foreign-code" />
+										<span className="text-fg-2 truncate">{t("infoPanel.foreignCodeValue")}</span>
+										<button
+											type="button"
+											onClick={ownForeignCode}
+											className="task-anim flex-shrink-0 rounded border border-edge px-1.5 py-0.5 text-dense text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
+										>
+											{t("infoPanel.foreignCodeOwn")}
+										</button>
+									</span>
 								</>
 							)}
 

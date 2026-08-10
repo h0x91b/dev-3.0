@@ -266,7 +266,7 @@ Rules specific to this surface:
 
 **Owed by every transport-fed screen (data-fetch states):** a fetch over the remote transport may hang or die, so the screen must show a **delayed skeleton** (~200 ms, so local fetches don't flash) instead of its empty state, an **error panel** that names the transport cause and offers Retry, and a **self-heal refetch** when `rpcState` returns to `connected`. **Cached data always wins** — a background refetch or a reconnect must never blank a board the user is already reading. Reference implementation: `ProjectView` + `KanbanBoardSkeleton` / `BoardLoadFailed`; an empty board where a load failed is a bug, not an empty state.
 
-### 5.6 Identity markers — native terminal backend — `Observed`
+### 5.6 Identity markers — task identity glyphs — `Observed`
 
 One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded frame — marks the **three task-identity surfaces**: before the title on the Kanban card, between the `#seq` badge and the title in the Task View breadcrumb, and at the head of the Active Tasks row's **identity line, before the agent badge** (it qualifies the task, not the agent that runs it). It states the task's **persisted terminal-backend identity** and nothing else — never that a terminal is running, connected, healthy, focused, or owns a writer lease.
 
@@ -274,7 +274,14 @@ One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded 
 - **Consumes no action slot and no budget:** not focusable, no shortcut, no setting, no menu item, no tip. Accent-toned, no new design token.
 - **Never colour-only:** localized tooltip + accessible name in en/ru/es. On the sidebar the row is a `role="button"` with its own `aria-label`, which overrides descendants — so the backend label is appended to **that** name, not left on the inner span.
 
-Evidence: `NativeBackendMark.tsx`, `TaskCard.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
+
+**Second member — foreign code (`ForeignCodeMark`, 2026-08-10).** An eye glyph marks a task about commits the user did not write (`Task.foreignCode`): on the Kanban card next to the backend mark, and in the inspector metadata beside the branch it qualifies. Same contract as above — non-interactive, no action slot, no budget, accent-toned, localized name + tooltip.
+
+- **Accent, never warning, on an identity surface.** The glyph answers *whose code*, which is not a fault; most review tasks are ordinary work. The loud signal belongs where the user must act: the `warning`-toned RUNS badge on a changed executable-config file in the diff viewer (`.dev3/config.json`, `.mcp.json`, `.claude/settings.json` — `shared/executable-config-files.ts`). Amber on the board would spend the warning token on the happy path, and `danger` is already "deleted" one badge to its left in that same diff row.
+- **A marker states a property; it never enforces one.** `foreignCode` blocks no transition and makes nothing read-only. The one consequence — this branch's `.dev3` commands and agent trust are not used — is stated in the tooltip and in the inspector row, which also carries the single control that hands trust back (confirm-gated, `TaskInfoPanel`).
+- **The board carries the glyph only because the property belongs to the task.** A branch-level marker was rejected for the card: the card never shows a branch name, so a glyph about the branch has no object there to qualify (board noise is the project's top anti-pattern, §11).
+
+Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `TaskDiffViewer.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
 
 ### 5.7 Toast anatomy — one shape for every origin — `Observed`
 

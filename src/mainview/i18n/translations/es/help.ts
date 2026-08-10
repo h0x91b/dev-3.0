@@ -95,6 +95,10 @@ const help = {
 	"help.diff.githubReview.body":
 		"Cuando la tarea tiene un pull request, sus hilos de revisión de GitHub aparecen aquí y en línea sobre el código — solo lectura. Alterna los hilos resueltos, refresca, o abre cualquier comentario en GitHub. Envía un hilo al agente como prompt de corrección; esta superficie nunca escribe de vuelta en GitHub.",
 
+	"help.diff.execConfig.title": "Archivos que dev3 ejecuta",
+	"help.diff.execConfig.body":
+		"La etiqueta EJECUTA marca un archivo modificado cuyo contenido dev3 o tu agente ejecuta por su cuenta: los scripts de setup, dev y cleanup y las variables de entorno de .dev3/config.json, los comandos de servidores de .mcp.json, los hooks de .claude. Una sola línea puede ejecutar cualquier cosa en tu máquina, así que lee los comandos en lugar de ojear el diff. Si la tarea está marcada como código de otra persona, dev3 ignora las versiones de esos archivos de esa rama hasta que lo autorices.",
+
 	// ── Settings sections ──
 	"help.settings.agents.title": "Agentes",
 	"help.settings.agents.body":

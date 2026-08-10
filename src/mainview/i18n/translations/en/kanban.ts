@@ -133,6 +133,7 @@ const kanban = {
 	"task.terminalBackendWindows": "tmux does not run on Windows.",
 	"task.terminalBackendFailed": "Could not switch the terminal backend: {error}",
 	"task.nativeBackendMark": "Native terminal backend",
+	"task.foreignCodeMark": "Someone else's code",
 	"task.resetTitle": "Reset to auto",
 	"task.failedRename": "Couldn’t rename the task — try again. ({error})",
 	"task.reopenTo": "Reopen as",

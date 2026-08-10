@@ -29,6 +29,8 @@ export const tooltips = {
 	"ttip.task.review": "Estado de revisión del pull request — aprobado, cambios solicitados o aún esperando revisor.",
 	"ttip.task.showDescription": "Lee la descripción completa de la tarea sin abrirla.",
 	"ttip.task.nativeBackendMark": "El terminal de esta tarea usa el backend nativo en lugar de tmux. No indica si hay un terminal en ejecución ahora mismo.",
+	"ttip.task.foreignCodeMark": "Esta tarea trata de código que no escribiste, así que dev3 ignora los scripts de setup, dev y cleanup de esta rama, sus variables de entorno y la confianza del agente, y usa la configuración del proyecto. Nada queda en solo lectura: puedes editar, hacer commit y push.",
+	"ttip.infoPanel.diffExecConfig": "dev3 o tu agente ejecuta comandos de este archivo por su cuenta. Lee los comandos, no solo el diff.",
 	"ttip.task.cancel":
 		"Detiene al agente y elimina el worktree de la tarea (tras ejecutar el script de limpieza). La tarjeta pasa a Cancelled.",
 	"ttip.task.delete": "Elimina definitivamente esta tarea cancelada del tablero.",

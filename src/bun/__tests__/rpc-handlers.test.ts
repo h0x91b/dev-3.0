@@ -82,6 +82,7 @@ vi.mock("../git", () => ({
 	fetchCompareRef: vi.fn().mockResolvedValue(true),
 	fetchFork: vi.fn().mockResolvedValue(true),
 	listRemotes: vi.fn().mockResolvedValue(["origin"]),
+	isForeignBranchRef: vi.fn().mockResolvedValue(false),
 	refExists: vi.fn().mockResolvedValue(true),
 	isRefMergedInto: vi.fn().mockResolvedValue(false),
 	getBranchStatus: vi.fn(),
@@ -12725,6 +12726,100 @@ describe("consumeRecentWatchedNotification", () => {
 // ================================================================
 // toggleTaskWatch handler
 // ================================================================
+
+describe("setTaskForeignCode", () => {
+	const push = vi.fn();
+
+	beforeEach(() => {
+		vi.mocked(data.getProject).mockReset();
+		vi.mocked(data.updateTask).mockReset();
+		push.mockClear();
+		setPushMessage(push);
+	});
+
+	// The user owning a reviewed branch's config is allowed — the handler persists
+	// the decision and pushes it, it never second-guesses the caller.
+	it("clears the flag and pushes the updated task", async () => {
+		const project = makeProject();
+		const task = makeTask({ foreignCode: false });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		const result = await handlers.setTaskForeignCode({ taskId: "task-1", projectId: project.id, foreignCode: false });
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { foreignCode: false });
+		expect(result.foreignCode).toBe(false);
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task });
+	});
+
+	it("can mark an own task as foreign again", async () => {
+		const project = makeProject();
+		const task = makeTask({ foreignCode: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		const result = await handlers.setTaskForeignCode({ taskId: "task-1", projectId: project.id, foreignCode: true });
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { foreignCode: true });
+		expect(result.foreignCode).toBe(true);
+	});
+});
+
+// ================================================================
+// createTask — foreignCode provenance
+// ================================================================
+
+describe("createTask foreignCode", () => {
+	beforeEach(() => {
+		vi.mocked(data.getProject).mockReset();
+		vi.mocked(data.addTask).mockReset();
+		vi.mocked(git.isForeignBranchRef).mockReset();
+		vi.mocked(git.isForeignBranchRef).mockResolvedValue(false);
+	});
+
+	it("marks a task started on a foreign ref", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null, foreignCode: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(git.isForeignBranchRef).mockResolvedValue(true);
+
+		await handlers.createTask({ projectId: project.id, description: "Review the PR", existingBranch: "yanive/feat/x" });
+
+		expect(git.isForeignBranchRef).toHaveBeenCalledWith(project.path, "yanive/feat/x");
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			"Review the PR",
+			"todo",
+			expect.objectContaining({ existingBranch: "yanive/feat/x", foreignCode: true }),
+		);
+	});
+
+	it("leaves the flag off for the user's own work", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+
+		await handlers.createTask({ projectId: project.id, description: "My own task" });
+
+		const extras = vi.mocked(data.addTask).mock.calls[0]?.[3];
+		expect(extras?.foreignCode).toBeUndefined();
+	});
+
+	// A virtual ("Operations") project has no git at all — asking git about a ref
+	// there is meaningless, and the answer must never be "foreign".
+	it("never asks git for a virtual project", async () => {
+		const project = makeProject({ kind: "virtual" });
+		const task = makeTask({ status: "todo", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+
+		await handlers.createTask({ projectId: project.id, description: "An operation" });
+
+		expect(git.isForeignBranchRef).not.toHaveBeenCalled();
+	});
+});
 
 describe("toggleTaskWatch", () => {
 	const push = vi.fn();

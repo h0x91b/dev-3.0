@@ -11,6 +11,7 @@ import type {
 	TaskDiffSkippedFile,
 	TaskPRCommentsPayload,
 } from "../../shared/types";
+import { isExecutableConfigPath } from "../../shared/executable-config-files";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { toast } from "../toast";
@@ -1601,77 +1602,107 @@ function TaskDiffFileSection({
 			className={`border border-edge rounded-xl ${isRead ? "bg-elevated" : "bg-raised"}`}
 			data-file-id={file.id}
 		>
-			<div className={`sticky top-0 z-10 px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 backdrop-blur ${isRead ? "bg-elevated/95" : "bg-raised/95"}`}>
+			{/* Its own query container: what squeezes this row is the pane, not the
+			    window — a phone viewport can hold a full-width diff, while a desktop
+			    window with both side panels open holds a ~300px one. */}
+			<div className={`sticky top-0 z-10 px-4 py-3 border-b border-edge flex flex-wrap items-center gap-3 backdrop-blur [container-type:inline-size] ${isRead ? "bg-elevated/95" : "bg-raised/95"}`}>
 				{/* basis keeps the identity column from collapsing: without it the
 				    trailing controls win the space at medium widths and the path
-				    shrinks to a one-character-per-line column instead of wrapping. */}
-				<div className="min-w-0 flex-1 basis-[15rem] flex items-center gap-2">
+				    shrinks to a one-character-per-line column instead of wrapping.
+				    Last resort under ~22rem of pane: stack instead of starving. */}
+				<div className="min-w-0 flex-1 basis-[15rem] flex items-center gap-2 [@container(max-width:22rem)]:flex-wrap">
 					<span className={`inline-flex items-center justify-center min-w-[1.5rem] px-1.5 py-0.5 rounded-md border text-micro font-bold ${statusClassName(file.status)}`}>
 						{statusLabel(file.status)}
 					</span>
 
-					<button
-						onClick={onToggleExpanded}
-						aria-expanded={expanded}
-						className="min-w-0 flex items-center text-left hover:text-fg transition-colors"
-						title={file.displayPath}
-					>
-						{(() => {
-							// One line at every width, never a multi-row wrap: the
-							// directory part truncates away while the basename always
-							// stays visible (it is what identifies the file).
-							const slashIdx = file.displayPath.lastIndexOf("/");
-							const dirPart = slashIdx >= 0 ? file.displayPath.slice(0, slashIdx + 1) : "";
-							const basePart = slashIdx >= 0 ? file.displayPath.slice(slashIdx + 1) : file.displayPath;
-							return (
-								<span
-									data-testid="diff-file-header-path"
-									className={`min-w-0 flex w-full items-baseline font-mono text-sm ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}
-								>
-									{dirPart && (
-										<span className="min-w-0 truncate opacity-70">
-											{renderHighlightedText(dirPart, searchQuery, false)}
-										</span>
-									)}
-									<span className="min-w-0 max-w-full shrink-0 truncate">
-										{renderHighlightedText(basePart, searchQuery, isCurrentPathMatch)}
-									</span>
+					{/* Warning, not danger: danger already means "deleted" one badge to the
+					    left, and most edits to these files are legitimate. This says "read
+					    the commands", not "something is broken". */}
+					{isExecutableConfigPath(file.newPath ?? file.oldPath ?? file.displayPath) && (
+						<Tooltip content={t("infoPanel.diffExecConfig")} detail={t("ttip.infoPanel.diffExecConfig")}>
+							<span
+								data-testid="diff-exec-config-badge"
+								data-help-id="diff.exec-config"
+								className="inline-flex flex-shrink-0 items-center gap-1 px-1.5 py-0.5 rounded-md border text-micro font-bold bg-warning/10 text-warning border-warning/25"
+							>
+								<span aria-hidden>⚠</span>
+								{/* The word costs the file name ~39px. Under ~28rem of pane it
+								    goes screen-reader-only: the sign plus its tooltip carry the
+								    warning, and the name a reviewer navigates by wins the room. */}
+								<span className="[@container(max-width:28rem)]:sr-only">
+									{t("infoPanel.diffExecConfigBadge")}
 								</span>
-							);
-						})()}
-					</button>
-
-					{/* Quiet ghost square: a bordered, filled box here out-sized the
-					    file identity it sits next to (the status badge and the +/− pill
-					    are both ~22px). Touch keeps the 44px target. */}
-					<button
-						type="button"
-						onClick={handleCopyPath}
-						aria-label={copiedPath
-							? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
-							: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
-						title={copiedPath
-							? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
-							: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
-						className={`inline-flex h-11 w-11 md:h-7 md:w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
-							copiedPath ? "text-success" : "text-fg-3 hover:bg-elevated-hover hover:text-fg"
-						}`}
-					>
-						<span
-							aria-hidden="true"
-							className="text-sm-plus leading-none"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{copiedPath ? "\uF00C" : "\uF4BB"}
-						</span>
-					</button>
-
-					{(fileStats.insertions > 0 || fileStats.deletions > 0) && (
-						<span className="inline-flex items-center gap-1.5 rounded-md border border-edge bg-base/80 px-2 py-0.5 text-micro font-mono">
-							{fileStats.insertions > 0 && <span className="text-success">+{fileStats.insertions}</span>}
-							{fileStats.deletions > 0 && <span className="text-danger">−{fileStats.deletions}</span>}
-						</span>
+							</span>
+						</Tooltip>
 					)}
+
+					{/* Path, copy and +/− travel as one wrap unit with `basis: auto`, so the
+					    narrowest panes drop the whole group onto its own full-width row
+					    instead of starving the file name down to a few characters. */}
+					<div className="min-w-0 flex-auto flex items-center gap-2">
+						<button
+							onClick={onToggleExpanded}
+							aria-expanded={expanded}
+							className="min-w-0 flex items-center text-left hover:text-fg transition-colors"
+							title={file.displayPath}
+						>
+							{(() => {
+								// One line at every width, never a multi-row wrap: the
+								// directory part truncates away while the basename always
+								// stays visible (it is what identifies the file).
+								const slashIdx = file.displayPath.lastIndexOf("/");
+								const dirPart = slashIdx >= 0 ? file.displayPath.slice(0, slashIdx + 1) : "";
+								const basePart = slashIdx >= 0 ? file.displayPath.slice(slashIdx + 1) : file.displayPath;
+								return (
+									<span
+										data-testid="diff-file-header-path"
+										className={`min-w-0 flex w-full items-baseline font-mono text-sm ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}
+									>
+										{dirPart && (
+											<span className="min-w-0 truncate opacity-70">
+												{renderHighlightedText(dirPart, searchQuery, false)}
+											</span>
+										)}
+										<span className="min-w-0 max-w-full shrink-0 truncate">
+											{renderHighlightedText(basePart, searchQuery, isCurrentPathMatch)}
+										</span>
+									</span>
+								);
+							})()}
+						</button>
+
+						{/* Quiet ghost square: a bordered, filled box here out-sized the
+						    file identity it sits next to (the status badge and the +/− pill
+						    are both ~22px). Touch keeps the 44px target. */}
+						<button
+							type="button"
+							onClick={handleCopyPath}
+							aria-label={copiedPath
+								? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
+								: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
+							title={copiedPath
+								? t("infoPanel.diffFilePathCopied", { file: copiedFilePath })
+								: t("infoPanel.diffCopyFilePath", { file: copiedFilePath })}
+							className={`inline-flex h-11 w-11 md:h-7 md:w-7 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
+								copiedPath ? "text-success" : "text-fg-3 hover:bg-elevated-hover hover:text-fg"
+							}`}
+						>
+							<span
+								aria-hidden="true"
+								className="text-sm-plus leading-none"
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{copiedPath ? "\uF00C" : "\uF4BB"}
+							</span>
+						</button>
+
+						{(fileStats.insertions > 0 || fileStats.deletions > 0) && (
+							<span className="inline-flex items-center gap-1.5 rounded-md border border-edge bg-base/80 px-2 py-0.5 text-micro font-mono">
+								{fileStats.insertions > 0 && <span className="text-success">+{fileStats.insertions}</span>}
+								{fileStats.deletions > 0 && <span className="text-danger">−{fileStats.deletions}</span>}
+							</span>
+						)}
+					</div>
 				</div>
 
 				{isMdFile && (

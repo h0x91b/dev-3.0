@@ -101,6 +101,10 @@ const help = {
 	"help.diff.githubReview.body":
 		"When the task has a pull request, its GitHub review threads show here and inline on the code — read-only. Toggle resolved threads, refresh, or open any comment on GitHub. Send a thread to the agent as a fix prompt; this surface never writes back to GitHub.",
 
+	"help.diff.execConfig.title": "Files dev3 runs",
+	"help.diff.execConfig.body":
+		"A RUNS badge marks a changed file whose contents dev3 or your agent executes by itself: .dev3/config.json setup, dev and cleanup scripts and env vars, .mcp.json server commands, .claude hooks. One line here can run anything on your machine, so read the commands rather than skimming the diff. On a task marked as someone else's code, dev3 ignores that branch's versions of these files until you say otherwise.",
+
 	// ── Settings sections ──
 	"help.settings.agents.title": "Agents",
 	"help.settings.agents.body":

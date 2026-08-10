@@ -92,6 +92,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 	{ id: "diff.review", titleKey: "help.diff.review.title", bodyKey: "help.diff.review.body" },
 	{ id: "diff.files-aside", titleKey: "help.diff.filesAside.title", bodyKey: "help.diff.filesAside.body" },
 	{ id: "diff.github-review", titleKey: "help.diff.githubReview.title", bodyKey: "help.diff.githubReview.body" },
+	{ id: "diff.exec-config", titleKey: "help.diff.execConfig.title", bodyKey: "help.diff.execConfig.body" },
 
 	// ── Settings sections ──
 	{ id: "settings.agents", titleKey: "help.settings.agents.title", bodyKey: "help.settings.agents.body" },
@@ -195,6 +196,7 @@ export const REQUIRED_HELP_SURFACES: string[] = [
 	"diff.review",
 	"diff.files-aside",
 	"diff.github-review",
+	"diff.exec-config",
 	// Viewers & workspace
 	"viewer.images",
 	"viewer.artifact",
