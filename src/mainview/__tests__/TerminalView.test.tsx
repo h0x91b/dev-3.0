@@ -20,6 +20,7 @@ const {
 	mockOnDataDispose,
 	mockOnResizeDispose,
 	mockOnSelectionChangeDispose,
+	mockVendorRender,
 	fitAddonHolder,
 } = vi.hoisted(() => {
 	const mockFocus = vi.fn();
@@ -28,6 +29,9 @@ const {
 	const mockOnDataDispose = vi.fn();
 	const mockOnResizeDispose = vi.fn();
 	const mockOnSelectionChangeDispose = vi.fn();
+	// The renderer's own paint. Held separately because TerminalView wraps
+	// `renderer.render` (cursor-visibility gate, bidi view) at mount.
+	const mockVendorRender = vi.fn();
 	// Holds the last-constructed FitAddon so tests can drive proposeDimensions.
 	const fitAddonHolder: { current: null | { proposeDimensions: ReturnType<typeof vi.fn> } } = { current: null };
 	// Plain object — avoids document.createElement at hoist time
@@ -62,7 +66,7 @@ const {
 			charWidth: 8,
 			charHeight: 16,
 			remeasureFont: vi.fn(),
-			render: vi.fn(),
+			render: mockVendorRender,
 		},
 		wasmTerm: {},
 		viewportY: 0,
@@ -85,6 +89,7 @@ const {
 		mockOnDataDispose,
 		mockOnResizeDispose,
 		mockOnSelectionChangeDispose,
+		mockVendorRender,
 		fitAddonHolder,
 	};
 });
@@ -1645,8 +1650,8 @@ describe("TerminalView – right-to-left reordering (beta flag)", () => {
 
 	it("installs and removes it live, repainting every row each time", async () => {
 		await renderAndSetup();
-		// Installing replaces the property, so hold on to the vendor's own spy.
-		const vendorRender = mockTermInstance.renderer.render;
+		// Installing replaces the property, so use the vendor's own spy.
+		const vendorRender = mockVendorRender;
 		vendorRender.mockClear();
 
 		await act(async () => {
@@ -1657,15 +1662,18 @@ describe("TerminalView – right-to-left reordering (beta flag)", () => {
 		// opacity 0 keeps the scrollbar from flashing on a forced frame.
 		expect(vendorRender).toHaveBeenCalledTimes(1);
 		expect(vendorRender.mock.calls[0].slice(1)).toEqual([true, 0, expect.anything(), 0]);
-		// What it received is the visual-order view, not the raw terminal.
-		expect(vendorRender.mock.calls[0][0]).not.toBe(mockTermInstance.wasmTerm);
+		// What it received is the visual-order view: `beginFrame` is the bidi view's
+		// own marker. Plain identity against wasmTerm no longer separates the two —
+		// the cursor-visibility gate also hands the vendor a pass-through view while
+		// the terminal is unfocused, which it is in a test with no real focus.
+		expect(vendorRender.mock.calls[0][0]).toHaveProperty("beginFrame");
 
 		await act(async () => {
 			syncTerminalBidiFromGlobalSettings({ experimentalTerminalBidi: false });
 		});
 		expect(isBidiRenderInstalled(mockTermInstance.renderer)).toBe(false);
 		expect(vendorRender).toHaveBeenCalledTimes(2);
-		expect(vendorRender.mock.calls[1][0]).toBe(mockTermInstance.wasmTerm);
+		expect(vendorRender.mock.calls[1][0]).not.toHaveProperty("beginFrame");
 	});
 });
 

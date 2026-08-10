@@ -22,6 +22,7 @@ import {
 	TERMINAL_BIDI_CHANGED_EVENT,
 } from "./terminal-bidi/flag";
 import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
+import { installCursorVisibilityGate, type CursorVisibilityGate } from "./terminal-cursor-focus";
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer } from "./wheel-pacer";
 import type { TaskPaneAction } from "../shared/task-panes";
@@ -283,6 +284,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const touchComposeModeRef = useRef(touchComposeMode ?? false);
 	touchComposeModeRef.current = touchComposeMode ?? false;
 	const copyDiagnosticsRef = useRef<TerminalCopyDiagnostics | null>(null);
+	/** Hides the cursor while input would not reach this terminal. */
+	const cursorGateRef = useRef<CursorVisibilityGate | null>(null);
 	// Native backend only. The watermark is what a reconnect resumes from, so it
 	// must survive the socket — a tmux session never sets either of these.
 	const nativeSeqRef = useRef<number | null>(null);
@@ -307,6 +310,23 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	);
 	const resolvedThemeRef = useRef(resolvedTheme);
 	resolvedThemeRef.current = resolvedTheme;
+	// Window focus is tracked separately from DOM focus: activeElement stays put
+	// when the app goes to the background, so only this tells the two apart.
+	const windowFocusedRef = useRef(document.hasFocus());
+
+	/**
+	 * Would a keystroke right now reach this terminal? Touch compose mode is
+	 * exempt — there the composer owns the keyboard by design and the terminal
+	 * never holds focus, so gating on focus would hide the cursor forever.
+	 */
+	function inputReachesTerminal() {
+		if (touchComposeModeRef.current) return true;
+		if (!windowFocusedRef.current) return false;
+		const container = containerRef.current;
+		const active = document.activeElement;
+		if (!container || !active) return false;
+		return active === container || container.contains(active);
+	}
 
 	/**
 	 * Narrow renderer→backend diagnostic (decision 199). Same-bridge limitation
@@ -514,6 +534,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 			// Beta: paint right-to-left rows in visual order (Settings → System →
 			// Advanced Experience). The renderer exists only after term.open().
+			// A blinking cursor in a terminal nothing is typing into reads as "your
+			// keystrokes land here" — they land in the artifact iframe, the kanban
+			// board, or another app. Hide it while that is the case. Installed BEFORE
+			// the bidi wrapper so the bidi settings toggle, which restores whatever
+			// render it wrapped, cannot uninstall this gate along the way.
+			if (term.renderer) {
+				cursorGateRef.current = installCursorVisibilityGate(term.renderer);
+				cursorGateRef.current.setCursorVisible(inputReachesTerminal());
+			}
+
 			if (getTerminalBidiEnabled() && term.renderer) {
 				installBidiRender(term.renderer);
 			}
@@ -1533,6 +1563,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			copyDiagnosticsRef.current?.dispose();
 			copyDiagnosticsRef.current = null;
+			cursorGateRef.current?.dispose();
+			cursorGateRef.current = null;
 			pendingWrite = "";
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
@@ -1602,6 +1634,44 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 		} catch { /* disposed */ }
 	}, [resolvedTheme]);
+
+	// Keep the cursor in sync with where input actually goes: focus moving to the
+	// artifact iframe, another pane, or another app must take the cursor with it.
+	useEffect(() => {
+		const container = containerRef.current;
+		if (!container) return;
+
+		const sync = () => cursorGateRef.current?.setCursorVisible(inputReachesTerminal());
+		// focusout fires BEFORE the next element takes focus, and hopping between
+		// the container and its own hidden textarea fires it too — so re-read
+		// activeElement a frame later, once focus has settled.
+		let frame = 0;
+		const syncNextFrame = () => {
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(sync);
+		};
+		const onWindowFocus = () => {
+			windowFocusedRef.current = true;
+			sync();
+		};
+		const onWindowBlur = () => {
+			windowFocusedRef.current = false;
+			sync();
+		};
+
+		sync();
+		container.addEventListener("focusin", sync);
+		container.addEventListener("focusout", syncNextFrame);
+		window.addEventListener("focus", onWindowFocus);
+		window.addEventListener("blur", onWindowBlur);
+		return () => {
+			cancelAnimationFrame(frame);
+			container.removeEventListener("focusin", sync);
+			container.removeEventListener("focusout", syncNextFrame);
+			window.removeEventListener("focus", onWindowFocus);
+			window.removeEventListener("blur", onWindowBlur);
+		};
+	}, [touchComposeMode]);
 
 	// When the user starts typing printable characters but nothing has focus
 	// (activeElement === body), steal focus to the terminal and forward the key.
