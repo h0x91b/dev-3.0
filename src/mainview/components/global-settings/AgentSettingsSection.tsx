@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
 import type {
 	AgentCheckResult,
 	AgentConfiguration,
@@ -15,8 +15,13 @@ import { LLM_PROVIDER } from "../../../shared/types";
 import { randomUUID } from "../../uuid";
 import { ListEditor } from "../ListEditor";
 import AgentConfigPicker from "../AgentConfigPicker";
+import Select, { type SelectOption } from "../Select";
+import { confirm } from "../../confirm";
+import { toast } from "../../toast";
 import { api } from "../../rpc";
 import type { TFunction } from "../../i18n";
+import { buildPickerGroups, getModeLeafLabel, getModelGroupLabel, type PickerGroup } from "../../utils/agentPicker";
+import { useToggleFavorite } from "../../hooks/useToggleFavorite";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import {
@@ -26,12 +31,7 @@ import {
 	getProviderDefinition,
 	providersForAgent,
 } from "../../../shared/llm-provider";
-import {
-	buildCommandPreview,
-	moveItem,
-	reorderToTarget,
-	type DropSide,
-} from "./utils";
+import { buildCommandPreview, moveItem } from "./utils";
 
 const ARROW_UP_GLYPH = "\uF062";
 const ARROW_DOWN_GLYPH = "\uF063";
@@ -124,6 +124,26 @@ function ReorderControls({
 	);
 }
 
+/** One star, recoloured per state: outline = not a favorite, filled = favorite.
+ *  Inline SVG rather than a Nerd Font glyph, which renders as tofu until the
+ *  icon face loads. */
+function StarIcon({ filled }: { filled: boolean }) {
+	return (
+		<svg
+			aria-hidden
+			className="w-3.5 h-3.5 flex-shrink-0"
+			viewBox="0 0 24 24"
+			fill={filled ? "currentColor" : "none"}
+			stroke="currentColor"
+			strokeWidth={1.5}
+			strokeLinecap="round"
+			strokeLinejoin="round"
+		>
+			<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.7l5.9-.8z" />
+		</svg>
+	);
+}
+
 interface AgentSettingsSectionProps {
 	t: TFunction;
 	agents: CodingAgent[];
@@ -131,7 +151,13 @@ interface AgentSettingsSectionProps {
 	onAgentsChange: (updated: CodingAgent[]) => void | Promise<void>;
 	onDefaultAgentChange: (agentId: string) => void;
 	onDefaultConfigChange: (configId: string) => void;
+	/** Fresh settings after a favorite toggle, so the stars re-render. */
+	onGlobalSettingsChange: (settings: GlobalSettings) => void;
 }
+
+/** What the library's one detail pane is showing: the agent itself, or one of
+ *  its presets. */
+type LibrarySelection = { kind: "agent" } | { kind: "preset"; configId: string };
 
 export default function AgentSettingsSection({
 	t,
@@ -140,9 +166,14 @@ export default function AgentSettingsSection({
 	onAgentsChange,
 	onDefaultAgentChange,
 	onDefaultConfigChange,
+	onGlobalSettingsChange,
 }: AgentSettingsSectionProps) {
-	const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null);
-	const [expandedConfigId, setExpandedConfigId] = useState<string | null>(null);
+	const toggleFavorite = useToggleFavorite(onGlobalSettingsChange);
+	const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
+	const [selection, setSelection] = useState<LibrarySelection>({ kind: "agent" });
+	const [presetQuery, setPresetQuery] = useState("");
+	/** Narrow viewports show one pane at a time; wide ones show both. */
+	const [narrowShowsEditor, setNarrowShowsEditor] = useState(false);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>(
 		[],
 	);
@@ -152,25 +183,25 @@ export default function AgentSettingsSection({
 	);
 	const [agentSavingId, setAgentSavingId] = useState<string | null>(null);
 	const [agentCopiedId, setAgentCopiedId] = useState<string | null>(null);
-	const [draggedAgentId, setDraggedAgentId] = useState<string | null>(null);
-	const [agentDropTarget, setAgentDropTarget] = useState<{
-		id: string;
-		side: DropSide;
-	} | null>(null);
-	const [draggedConfig, setDraggedConfig] = useState<{
-		agentId: string;
-		configId: string;
-	} | null>(null);
-	const [configDropTarget, setConfigDropTarget] = useState<{
-		agentId: string;
-		configId: string;
-		side: DropSide;
-	} | null>(null);
 
 	const selectedDefaultAgent = agents.find(
 		(agent) => agent.id === globalSettings.defaultAgentId,
 	);
 	const defaultAgentConfigs = selectedDefaultAgent?.configurations || [];
+
+	const activeAgent = agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
+	const activeAgentIndex = activeAgent ? agents.indexOf(activeAgent) : -1;
+	const availability = agentAvailability.find((item) => item.agentId === activeAgent?.id);
+	const selectedPreset = selection.kind === "preset"
+		? activeAgent?.configurations.find((config) => config.id === selection.configId)
+		: undefined;
+	const favorites = globalSettings.favorites ?? [];
+
+	const groups = useMemo(
+		() => filterPresetGroups(activeAgent, presetQuery),
+		[activeAgent, presetQuery],
+	);
+	const matchCount = groups.reduce((sum, group) => sum + group.configs.length, 0);
 
 	const loadAgentAvailability = useCallback(() => {
 		setAgentCheckLoading(true);
@@ -185,7 +216,21 @@ export default function AgentSettingsSection({
 	}, [loadAgentAvailability]);
 
 	function persistAgents(updated: CodingAgent[]) {
-		onAgentsChange(updated);
+		// Persistence is immediate (§8) — a rejected write used to vanish silently.
+		Promise.resolve(onAgentsChange(updated)).catch(() =>
+			toast.error(t("settings.agentsSaveFailed"), { source: "settings" }),
+		);
+	}
+
+	function selectAgent(agentId: string) {
+		setActiveAgentId(agentId);
+		setSelection({ kind: "agent" });
+		setPresetQuery("");
+	}
+
+	function selectPreset(configId: string) {
+		setSelection({ kind: "preset", configId });
+		setNarrowShowsEditor(true);
 	}
 
 	function updateAgent(agentId: string, patch: Partial<CodingAgent>) {
@@ -212,30 +257,43 @@ export default function AgentSettingsSection({
 		persistAgents(updated);
 	}
 
-	function addConfig(agentId: string) {
-		const newConfig: AgentConfiguration = {
-			id: randomUUID(),
-			name: "New Config",
-		};
+	/** Add a preset, optionally seeded from an existing one — starting from a
+	 *  working preset beats an empty nine-field form. */
+	function addConfig(agentId: string, seed?: AgentConfiguration) {
+		const newConfig: AgentConfiguration = seed
+			? {
+				...seed,
+				id: randomUUID(),
+				name: t("settings.presetCopyName", { name: seed.name }),
+				groupLabel: seed.groupLabel,
+				modeLabel: undefined,
+			}
+			: { id: randomUUID(), name: t("settings.newPresetName") };
 		const updated = agents.map((agent) => {
 			if (agent.id !== agentId) return agent;
-			return {
-				...agent,
-				configurations: [...agent.configurations, newConfig],
-			};
+			const at = seed ? agent.configurations.findIndex((c) => c.id === seed.id) + 1 : agent.configurations.length;
+			const configurations = [...agent.configurations];
+			configurations.splice(at, 0, newConfig);
+			return { ...agent, configurations };
 		});
 		persistAgents(updated);
-		setExpandedConfigId(newConfig.id);
+		setPresetQuery("");
+		selectPreset(newConfig.id);
 	}
 
-	function deleteConfig(agentId: string, configId: string) {
+	async function deleteConfig(agentId: string, config: AgentConfiguration) {
+		const ok = await confirm({
+			title: t("settings.deleteConfigConfirmTitle"),
+			message: t("settings.deleteConfigConfirmMessage", { name: config.name }),
+			confirmLabel: t("settings.deleteConfig"),
+			danger: true,
+		});
+		if (!ok) return;
 		const updated = agents.map((agent) => {
 			if (agent.id !== agentId) return agent;
-			const filtered = agent.configurations.filter(
-				(config) => config.id !== configId,
-			);
+			const filtered = agent.configurations.filter((item) => item.id !== config.id);
 			const newDefault =
-				agent.defaultConfigId === configId
+				agent.defaultConfigId === config.id
 					? filtered[0]?.id
 					: agent.defaultConfigId;
 			return {
@@ -245,9 +303,8 @@ export default function AgentSettingsSection({
 			};
 		});
 		persistAgents(updated);
-		if (expandedConfigId === configId) {
-			setExpandedConfigId(null);
-		}
+		setSelection({ kind: "agent" });
+		setNarrowShowsEditor(false);
 	}
 
 	function addAgent() {
@@ -261,16 +318,25 @@ export default function AgentSettingsSection({
 			defaultConfigId: configId,
 		};
 		persistAgents([...agents, newAgent]);
-		setExpandedAgentId(agentId);
-		setExpandedConfigId(null);
+		selectAgent(agentId);
+		setNarrowShowsEditor(true);
 	}
 
-	function deleteAgent(agentId: string) {
-		persistAgents(agents.filter((agent) => agent.id !== agentId));
-		if (expandedAgentId === agentId) {
-			setExpandedAgentId(null);
-			setExpandedConfigId(null);
-		}
+	async function deleteAgent(agent: CodingAgent) {
+		const ok = await confirm({
+			title: t("settings.deleteAgentConfirmTitle"),
+			message: t("settings.deleteAgentConfirmMessage", {
+				name: agent.name,
+				count: String(agent.configurations.length),
+			}),
+			confirmLabel: t("settings.deleteAgent"),
+			danger: true,
+		});
+		if (!ok) return;
+		const remaining = agents.filter((item) => item.id !== agent.id);
+		persistAgents(remaining);
+		setActiveAgentId(remaining[0]?.id ?? null);
+		setSelection({ kind: "agent" });
 	}
 
 	function moveAgent(agentId: string, direction: -1 | 1) {
@@ -293,74 +359,6 @@ export default function AgentSettingsSection({
 			return {
 				...agent,
 				configurations: moveItem(agent.configurations, fromIndex, toIndex),
-			};
-		});
-		persistAgents(updated);
-	}
-
-	function handleAgentDragOver(
-		event: DragEvent<HTMLDivElement>,
-		agentId: string,
-	) {
-		if (!draggedAgentId || draggedAgentId === agentId) return;
-		event.preventDefault();
-		event.dataTransfer.dropEffect = "move";
-		const rect = event.currentTarget.getBoundingClientRect();
-		const side: DropSide =
-			event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-		setAgentDropTarget({ id: agentId, side });
-	}
-
-	function handleAgentDrop(agentId: string) {
-		const sourceId = draggedAgentId;
-		const side = agentDropTarget?.id === agentId ? agentDropTarget.side : "before";
-		setDraggedAgentId(null);
-		setAgentDropTarget(null);
-		if (!sourceId || sourceId === agentId) return;
-		persistAgents(
-			reorderToTarget(agents, sourceId, agentId, side, (a) => a.id),
-		);
-	}
-
-	function handleConfigDragOver(
-		event: DragEvent<HTMLDivElement>,
-		agentId: string,
-		configId: string,
-	) {
-		if (!draggedConfig) return;
-		if (draggedConfig.agentId !== agentId) return;
-		if (draggedConfig.configId === configId) return;
-		event.preventDefault();
-		event.stopPropagation();
-		event.dataTransfer.dropEffect = "move";
-		const rect = event.currentTarget.getBoundingClientRect();
-		const side: DropSide =
-			event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-		setConfigDropTarget({ agentId, configId, side });
-	}
-
-	function handleConfigDrop(agentId: string, configId: string) {
-		const source = draggedConfig;
-		const side =
-			configDropTarget?.agentId === agentId &&
-			configDropTarget?.configId === configId
-				? configDropTarget.side
-				: "before";
-		setDraggedConfig(null);
-		setConfigDropTarget(null);
-		if (!source || source.agentId !== agentId) return;
-		if (source.configId === configId) return;
-		const updated = agents.map((agent) => {
-			if (agent.id !== agentId) return agent;
-			return {
-				...agent,
-				configurations: reorderToTarget(
-					agent.configurations,
-					source.configId,
-					configId,
-					side,
-					(c) => c.id,
-				),
 			};
 		});
 		persistAgents(updated);
@@ -417,449 +415,210 @@ export default function AgentSettingsSection({
 
 			</SettingsEntry>
 			<SettingsEntry anchor="agents-editor">
-			<div>
-				<div className="space-y-2 mb-3">
-					{agents.map((agent, agentIndex) => {
-						const isExpanded = expandedAgentId === agent.id;
-						const availability = agentAvailability.find(
-							(item) => item.agentId === agent.id,
-						);
-						const toggle = () => {
-							setExpandedAgentId(isExpanded ? null : agent.id);
-							setExpandedConfigId(null);
-						};
-						const isDragged = draggedAgentId === agent.id;
-						const showDropBefore =
-							agentDropTarget?.id === agent.id &&
-							agentDropTarget.side === "before";
-						const showDropAfter =
-							agentDropTarget?.id === agent.id &&
-							agentDropTarget.side === "after";
-						return (
-							<div
-								key={agent.id}
-								className={`relative bg-raised border border-edge rounded-xl overflow-hidden transition-opacity ${isDragged ? "opacity-60" : ""}`}
-								onDragOver={(event) => handleAgentDragOver(event, agent.id)}
-								onDragLeave={(event) => {
-									if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-										setAgentDropTarget((current) =>
-											current?.id === agent.id ? null : current,
-										);
-									}
-								}}
-								onDrop={(event) => {
-									event.preventDefault();
-									handleAgentDrop(agent.id);
-								}}
-							>
-								{showDropBefore ? (
-									<div className="absolute top-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />
-								) : null}
-								{showDropAfter ? (
-									<div className="absolute bottom-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />
-								) : null}
-								<div
-									role="button"
-									tabIndex={0}
-									onClick={toggle}
-									onKeyDown={(event) => {
-										if (event.key === "Enter" || event.key === " ") {
-											event.preventDefault();
-											toggle();
-										}
-									}}
-									className="w-full flex items-center gap-3 px-4 py-3 hover:bg-raised-hover transition-colors text-left cursor-pointer"
-								>
-									<ReorderControls
-										dragHandleProps={{
-											draggable: true,
-											onDragStart: (event) => {
-												setDraggedAgentId(agent.id);
-												event.dataTransfer.setData(
-													"text/plain",
-													`agent:${agent.id}`,
-												);
-												event.dataTransfer.effectAllowed = "move";
-											},
-											onDragEnd: () => {
-												setDraggedAgentId(null);
-												setAgentDropTarget(null);
-											},
-										}}
-										canMoveUp={agentIndex > 0}
-										canMoveDown={agentIndex < agents.length - 1}
-										onMoveUp={() => moveAgent(agent.id, -1)}
-										onMoveDown={() => moveAgent(agent.id, 1)}
-										dragTitle={t("settings.dragAgent")}
-										upTitle={t("settings.moveAgentUp")}
-										downTitle={t("settings.moveAgentDown")}
-										size="md"
-									/>
-									<span className="text-fg-3 text-xs">
-										{isExpanded ? "▼" : "▶"}
-									</span>
-									<span className="text-fg text-sm font-medium flex-1">
-										{agent.name}
-									</span>
-									<span className="text-fg-3 text-xs font-mono">
-										{agent.baseCommand}
-									</span>
-									{availability ? (
-										<span
-											className={`text-xs px-1.5 py-0.5 rounded ${
-												availability.installed
-													? "bg-success/15 text-success"
-													: "bg-danger/15 text-danger"
-											}`}
-										>
-											{availability.installed
-												? t("settings.agentInstalled")
-												: t("settings.agentNotInstalled")}
-										</span>
-									) : null}
-									<span className="text-fg-muted text-xs">
-										{agent.configurations.length} config
-										{agent.configurations.length !== 1 ? "s" : ""}
-									</span>
-									{agent.isDefault ? (
-										<span className="text-fg-muted text-xs px-2 py-0.5 bg-elevated rounded-md">
-											{t("settings.defaultBadge")}
-										</span>
-									) : null}
-								</div>
-
-								{isExpanded ? (
-									<div className="border-t border-edge px-4 py-4 space-y-4">
-										{availability ? (
-											<div
-												className={`p-3 rounded-lg ${
-													availability.installed
-														? "bg-success/5 border border-success/20"
-														: "bg-danger/5 border border-danger/20"
-												}`}
-											>
-												{availability.installed ? (
-													<div className="flex items-center gap-2">
-														<span className="text-success text-sm">
-															&#10003;
-														</span>
-														<span className="text-fg-2 text-xs">
-															{t("settings.agentInstalled")}
-														</span>
-														{availability.resolvedPath ? (
-															<span className="text-fg-muted text-xs font-mono truncate">
-																{availability.resolvedPath}
-															</span>
-														) : null}
-													</div>
-												) : (
-													<div className="space-y-2">
-														<div className="flex items-center gap-2">
-															<span className="text-danger text-sm">
-																&#10007;
-															</span>
-															<span className="text-fg-2 text-xs">
-																{t("settings.agentNotInstalledHint")}
-															</span>
-														</div>
-														{availability.installCommand ? (
-															<div>
-																<p className="text-fg-3 text-xs mb-1">
-																	{t("settings.agentInstallHint")}
-																</p>
-																<div className="flex items-center gap-1.5">
-																	<code className="text-warning bg-warning/10 px-2 py-1 rounded text-xs font-mono">
-																		{availability.installCommand}
-																	</code>
-																	<button
-																		type="button"
-																		onClick={(event) => {
-																			event.stopPropagation();
-																			navigator.clipboard.writeText(
-																				availability.installCommand!,
-																			);
-																			setAgentCopiedId(agent.id);
-																			setTimeout(() => {
-																				setAgentCopiedId((current) =>
-																					current === agent.id ? null : current,
-																				);
-																			}, 2000);
-																		}}
-																		className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
-																		title="Copy"
-																	>
-																		{agentCopiedId === agent.id ? (
-																			<svg
-																				width="14"
-																				height="14"
-																				viewBox="0 0 24 24"
-																				fill="none"
-																				stroke="currentColor"
-																				strokeWidth="2"
-																				strokeLinecap="round"
-																				strokeLinejoin="round"
-																			>
-																				<polyline points="20 6 9 17 4 12" />
-																			</svg>
-																		) : (
-																			<svg
-																				width="14"
-																				height="14"
-																				viewBox="0 0 24 24"
-																				fill="none"
-																				stroke="currentColor"
-																				strokeWidth="2"
-																				strokeLinecap="round"
-																				strokeLinejoin="round"
-																			>
-																				<rect
-																					x="9"
-																					y="9"
-																					width="13"
-																					height="13"
-																					rx="2"
-																					ry="2"
-																				/>
-																				<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-																			</svg>
-																		)}
-																	</button>
-																</div>
-															</div>
-														) : null}
-														<p className="text-fg-muted text-xs">
-															{t("settings.agentLoginReminder")}
-														</p>
-														<div className="pt-2 border-t border-edge/50">
-															<p className="text-fg-3 text-xs mb-1.5">
-																{t("settings.agentCustomPath")}
-															</p>
-															{availability.customPathError ? (
-																<p className="text-danger text-xs mb-1.5">
-																	{t("settings.agentPathNotFound")}
-																</p>
-															) : null}
-															<div className="flex items-center gap-1.5">
-																<input
-																	type="text"
-																	value={agentCustomPaths[agent.id] ?? ""}
-																	onChange={(event) =>
-																		setAgentCustomPaths((current) => ({
-																			...current,
-																			[agent.id]: event.target.value,
-																		}))
-																	}
-																	onClick={(event) => event.stopPropagation()}
-																	placeholder={`/path/to/${agent.baseCommand}`}
-																	className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${
-																		availability.customPathError
-																			? "border-danger"
-																			: "border-edge"
-																	}`}
-																/>
-																<button
-																	type="button"
-																	onClick={async (event) => {
-																		event.stopPropagation();
-																		const path =
-																			agentCustomPaths[agent.id]?.trim();
-																		if (!path) return;
-																		setAgentSavingId(agent.id);
-																		try {
-																			await api.request.setAgentBinaryPath({
-																				agentId: agent.id,
-																				path,
-																			});
-																			loadAgentAvailability();
-																		} catch (error) {
-																			console.error(
-																				"Failed to save agent binary path:",
-																				error,
-																			);
-																		}
-																		setAgentSavingId(null);
-																	}}
-																	disabled={
-																		!agentCustomPaths[agent.id]?.trim() ||
-																		agentSavingId === agent.id
-																	}
-																	className="px-2.5 py-1 rounded bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors shrink-0"
-																>
-																	{t("requirements.setPath")}
-																</button>
-															</div>
-														</div>
-													</div>
-												)}
-											</div>
+			<div className="space-y-3">
+				{/* Toolbar: which agent the library is showing, plus its one primary action. */}
+				<div className="flex flex-wrap items-center gap-2">
+					<div className="w-56 max-w-full">
+						<Select
+							id="agent-library-agent"
+							value={activeAgent?.id ?? ""}
+							options={agents.map((agent): SelectOption => ({ value: agent.id, label: agent.name }))}
+							searchable={agents.length > 6}
+							searchPlaceholder={t("settings.filterAgents")}
+							emptyLabel={t("settings.presetSearchEmpty")}
+							onChange={selectAgent}
+							renderOption={(option) => {
+								const agentAvail = agentAvailability.find((item) => item.agentId === option.value);
+								return (
+									<span className="flex items-center gap-2">
+										{option.label}
+										{agentAvail && !agentAvail.installed ? (
+											<span className="text-danger text-micro font-medium opacity-80">
+												{t("settings.agentNotInstalled")}
+											</span>
 										) : null}
+									</span>
+								);
+							}}
+						/>
+					</div>
+					{activeAgent ? (
+						<span className="text-fg-3 text-xs font-mono">{activeAgent.baseCommand}</span>
+					) : null}
+					{availability ? (
+						<span
+							className={`text-xs px-1.5 py-0.5 rounded ${
+								availability.installed ? "bg-success/15 text-success" : "bg-danger/15 text-danger"
+							}`}
+						>
+							{availability.installed ? t("settings.agentInstalled") : t("settings.agentNotInstalled")}
+						</span>
+					) : null}
+					<span className="flex-1" />
+					{activeAgent ? (
+						<button
+							type="button"
+							onClick={() => addConfig(activeAgent.id)}
+							className="px-3 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-semibold hover:bg-accent-fill-hover transition-colors"
+						>
+							+ {t("settings.newPreset")}
+						</button>
+					) : null}
+				</div>
 
-										<div>
-											<label className="block text-fg-2 text-xs mb-1">
-												{t("settings.agentName")}
-											</label>
-											<input
-												type="text"
-												value={agent.name}
-												onChange={(event) =>
-													updateAgent(agent.id, {
-														name: event.target.value,
-													})
-												}
-												className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
-											/>
-										</div>
-
-										<div>
-											<label className="block text-fg-2 text-xs mb-1">
-												{t("settings.agentBaseCommand")}
-											</label>
-											<input
-												type="text"
-												value={agent.baseCommand}
-												onChange={(event) =>
-													updateAgent(agent.id, {
-														baseCommand: event.target.value,
-													})
-												}
-												placeholder="claude"
-												autoCapitalize="off"
-												autoCorrect="off"
-												spellCheck={false}
-												className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-											/>
-										</div>
-
-										<ProviderSelector
-											t={t}
-											baseCommand={agent.baseCommand}
-											provider={agent.llmProvider ?? "anthropic"}
-											providerConfig={agent.providerConfig}
-											models={modelsForAgent(agent)}
-											onChange={(patch) => updateAgent(agent.id, patch)}
-										/>
-
-										<div>
-											<p className="block text-fg-2 text-xs font-semibold mb-2">
-												{t("settings.configurations")}
-											</p>
-											<div className="space-y-2">
-												{agent.configurations.map((config, configIndex) => {
-													const isConfigExpanded =
-														expandedConfigId === config.id;
-													const isConfigDragged =
-														draggedConfig?.agentId === agent.id &&
-														draggedConfig?.configId === config.id;
-													const showConfigDropBefore =
-														configDropTarget?.agentId === agent.id &&
-														configDropTarget?.configId === config.id &&
-														configDropTarget.side === "before";
-													const showConfigDropAfter =
-														configDropTarget?.agentId === agent.id &&
-														configDropTarget?.configId === config.id &&
-														configDropTarget.side === "after";
-													return (
-														<ConfigEditor
-															key={config.id}
-															config={config}
-															agentBaseCommand={agent.baseCommand}
-															llmProvider={agent.llmProvider}
-															providerConfig={agent.providerConfig}
-															isExpanded={isConfigExpanded}
-															canDelete={agent.configurations.length > 1}
-															canMoveUp={configIndex > 0}
-															canMoveDown={
-																configIndex <
-																agent.configurations.length - 1
-															}
-															isDragged={isConfigDragged}
-															showDropBefore={showConfigDropBefore}
-															showDropAfter={showConfigDropAfter}
-															onDragStart={(event) => {
-																setDraggedConfig({
-																	agentId: agent.id,
-																	configId: config.id,
-																});
-																event.dataTransfer.setData(
-																	"text/plain",
-																	`config:${config.id}`,
-																);
-																event.dataTransfer.effectAllowed = "move";
-															}}
-															onDragEnd={() => {
-																setDraggedConfig(null);
-																setConfigDropTarget(null);
-															}}
-															onDragOver={(event) =>
-																handleConfigDragOver(
-																	event,
-																	agent.id,
-																	config.id,
-																)
-															}
-															onDragLeave={(event) => {
-																if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-																	setConfigDropTarget((current) =>
-																		current?.agentId === agent.id &&
-																		current?.configId === config.id
-																			? null
-																			: current,
-																	);
-																}
-															}}
-															onDrop={(event) => {
-																event.preventDefault();
-																event.stopPropagation();
-																handleConfigDrop(agent.id, config.id);
-															}}
-															onToggle={() =>
-																setExpandedConfigId(
-																	isConfigExpanded ? null : config.id,
-																)
-															}
-															onChange={(patch) =>
-																updateConfig(agent.id, config.id, patch)
-															}
-															onDelete={() =>
-																deleteConfig(agent.id, config.id)
-															}
-															onMoveUp={() =>
-																moveConfig(agent.id, config.id, -1)
-															}
-															onMoveDown={() =>
-																moveConfig(agent.id, config.id, 1)
-															}
-															t={t}
-														/>
-													);
-												})}
-											</div>
-											<button
-												onClick={() => addConfig(agent.id)}
-												className="mt-2 px-3 py-1.5 text-accent text-xs font-semibold hover:bg-accent/10 rounded-lg transition-colors"
-											>
-												+ {t("settings.addConfig")}
-											</button>
-										</div>
-
-										{agent.isDefault ? (
-											<p className="text-fg-muted text-xs italic">
-												{t("settings.cantDeleteDefault")}
-											</p>
-										) : (
-											<button
-												onClick={() => deleteAgent(agent.id)}
-												className="text-danger text-xs hover:underline"
-											>
-												{t("settings.deleteAgent")}
-											</button>
-										)}
+				{activeAgent ? (
+					<div className="bg-raised border border-edge rounded-xl overflow-hidden md:grid md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
+						{/* Left pane — the preset list. */}
+						<div className={`md:border-r border-edge ${narrowShowsEditor ? "hidden md:block" : "block"}`}>
+							<div className="p-2 border-b border-edge">
+								<input
+									type="search"
+									value={presetQuery}
+									onChange={(event) => setPresetQuery(event.target.value)}
+									placeholder={t("settings.presetSearch", {
+										count: String(activeAgent.configurations.length),
+									})}
+									aria-label={t("settings.presetSearchLabel")}
+									className="w-full px-2.5 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-sm placeholder:text-fg-muted outline-none focus:border-accent transition-colors"
+								/>
+							</div>
+							<div className="max-h-[26rem] overflow-y-auto p-1.5" role="listbox" aria-label={t("settings.configurations")}>
+								<button
+									type="button"
+									role="option"
+									aria-selected={selection.kind === "agent"}
+									onClick={() => {
+										setSelection({ kind: "agent" });
+										setNarrowShowsEditor(true);
+									}}
+									className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-sm transition-colors border ${
+										selection.kind === "agent"
+											? "bg-elevated border-accent text-fg"
+											: "border-transparent text-fg-2 hover:bg-elevated-hover hover:text-fg"
+									}`}
+								>
+									<span className="text-fg-3">&#9881;</span>
+									<span className="flex-1 min-w-0 truncate">{t("settings.agentSettingsRow")}</span>
+								</button>
+								{groups.map((group) => (
+									<div key={group.label}>
+										<p className="px-2 pt-3 pb-1 text-fg-muted text-micro font-semibold uppercase tracking-wide">
+											{group.label} · {group.configs.length}
+										</p>
+										{group.configs.map((config) => {
+											const isSelected = selection.kind === "preset" && selection.configId === config.id;
+											const isFavorite = favorites.some(
+												(fav) => fav.agentId === activeAgent.id && fav.configId === config.id,
+											);
+											return (
+												<button
+													key={config.id}
+													type="button"
+													role="option"
+													aria-selected={isSelected}
+													onClick={() => selectPreset(config.id)}
+													className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-sm transition-colors border ${
+														isSelected
+															? "bg-elevated border-accent text-fg"
+															: "border-transparent text-fg-2 hover:bg-elevated-hover hover:text-fg"
+													}`}
+												>
+													<span className={isFavorite ? "text-warning" : "text-transparent"}>
+														<StarIcon filled={isFavorite} />
+													</span>
+													<span className="flex-1 min-w-0 truncate">{getModeLeafLabel(config)}</span>
+													{config.requiresPxpipeProxy ? (
+														<span className="text-warning text-micro shrink-0">{t("settings.presetNeedsProxy")}</span>
+													) : null}
+													{activeAgent.defaultConfigId === config.id ? (
+														<span className="text-accent text-micro shrink-0">{t("settings.defaultBadge")}</span>
+													) : null}
+												</button>
+											);
+										})}
 									</div>
+								))}
+								{matchCount === 0 ? (
+									<p className="px-2 py-3 text-fg-muted text-sm">{t("settings.presetSearchEmpty")}</p>
 								) : null}
 							</div>
-						);
-					})}
-				</div>
+						</div>
+
+						{/* Right pane — exactly one record's editor. */}
+						<div className={`p-4 ${narrowShowsEditor ? "block" : "hidden md:block"}`}>
+							<button
+								type="button"
+								onClick={() => setNarrowShowsEditor(false)}
+								className="md:hidden mb-3 text-accent text-xs font-semibold hover:underline"
+							>
+								&#8249; {t("settings.backToPresets")}
+							</button>
+							{selection.kind === "preset" && selectedPreset ? (
+								<PresetEditor
+									key={selectedPreset.id}
+									t={t}
+									agent={activeAgent}
+									config={selectedPreset}
+									isDefault={activeAgent.defaultConfigId === selectedPreset.id}
+									isFavorite={favorites.some(
+										(fav) => fav.agentId === activeAgent.id && fav.configId === selectedPreset.id,
+									)}
+									onToggleFavorite={() => toggleFavorite(activeAgent.id, selectedPreset.id)}
+									canDelete={activeAgent.configurations.length > 1}
+									canMoveUp={activeAgent.configurations.indexOf(selectedPreset) > 0}
+									canMoveDown={
+										activeAgent.configurations.indexOf(selectedPreset) <
+										activeAgent.configurations.length - 1
+									}
+									onChange={(patch) => updateConfig(activeAgent.id, selectedPreset.id, patch)}
+									onDuplicate={() => addConfig(activeAgent.id, selectedPreset)}
+									onMakeDefault={() => updateAgent(activeAgent.id, { defaultConfigId: selectedPreset.id })}
+									onDelete={() => deleteConfig(activeAgent.id, selectedPreset)}
+									onMoveUp={() => moveConfig(activeAgent.id, selectedPreset.id, -1)}
+									onMoveDown={() => moveConfig(activeAgent.id, selectedPreset.id, 1)}
+								/>
+							) : (
+								<AgentPane
+									t={t}
+									agent={activeAgent}
+									availability={availability}
+									customPath={agentCustomPaths[activeAgent.id] ?? ""}
+									copied={agentCopiedId === activeAgent.id}
+									saving={agentSavingId === activeAgent.id}
+									canMoveUp={activeAgentIndex > 0}
+									canMoveDown={activeAgentIndex < agents.length - 1}
+									onCustomPathChange={(path) =>
+										setAgentCustomPaths((current) => ({ ...current, [activeAgent.id]: path }))
+									}
+									onCopyInstall={(command) => {
+										navigator.clipboard.writeText(command);
+										setAgentCopiedId(activeAgent.id);
+										setTimeout(
+											() => setAgentCopiedId((current) => (current === activeAgent.id ? null : current)),
+											2000,
+										);
+									}}
+									onSavePath={async () => {
+										const path = agentCustomPaths[activeAgent.id]?.trim();
+										if (!path) return;
+										setAgentSavingId(activeAgent.id);
+										try {
+											await api.request.setAgentBinaryPath({ agentId: activeAgent.id, path });
+											loadAgentAvailability();
+										} catch {
+											toast.error(t("settings.agentPathSaveFailed"), { source: "settings" });
+										}
+										setAgentSavingId(null);
+									}}
+									onChange={(patch) => updateAgent(activeAgent.id, patch)}
+									onMoveUp={() => moveAgent(activeAgent.id, -1)}
+									onMoveDown={() => moveAgent(activeAgent.id, 1)}
+									onDelete={() => deleteAgent(activeAgent)}
+								/>
+							)}
+						</div>
+					</div>
+				) : null}
 
 				<div className="flex items-center gap-3">
 					<button
@@ -999,306 +758,473 @@ function CommandPreview({
 	);
 }
 
-function ConfigEditor({
+/** Loose match so "xhigh" finds "X-High" and "opus5" finds "Opus 5". */
+function looseMatch(haystack: string, needle: string): boolean {
+	const strip = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+	return haystack.toLowerCase().includes(needle.toLowerCase()) || strip(haystack).includes(strip(needle));
+}
+
+/** The list pane's rows: the launch picker's own Model → Mode grouping, filtered. */
+function filterPresetGroups(agent: CodingAgent | undefined, query: string): PickerGroup[] {
+	const groups = buildPickerGroups(agent);
+	const trimmed = query.trim();
+	if (!trimmed) return groups;
+	return groups
+		.map((group) => ({
+			label: group.label,
+			configs: group.configs.filter((config) =>
+				looseMatch(`${config.name} ${group.label} ${getModeLeafLabel(config)} ${config.model ?? ""}`, trimmed),
+			),
+		}))
+		.filter((group) => group.configs.length > 0);
+}
+
+/** One labelled field in the editor grid. */
+function Field({
+	label,
+	htmlFor,
+	hint,
+	children,
+}: {
+	label: string;
+	htmlFor?: string;
+	hint?: string;
+	children: ReactNode;
+}) {
+	return (
+		<div>
+			<label htmlFor={htmlFor} className="block text-fg-2 text-xs mb-1">{label}</label>
+			{children}
+			{hint ? <p className="text-fg-muted text-xs mt-1">{hint}</p> : null}
+		</div>
+	);
+}
+
+/** Editor for exactly one preset: identity and actions on top, the five fields
+ *  that decide a launch, the live command, then everything else behind Advanced. */
+function PresetEditor({
+	t,
+	agent,
 	config,
-	agentBaseCommand,
-	llmProvider,
-	providerConfig,
-	isExpanded,
+	isDefault,
+	isFavorite,
 	canDelete,
 	canMoveUp,
 	canMoveDown,
-	isDragged,
-	showDropBefore,
-	showDropAfter,
-	onDragStart,
-	onDragEnd,
-	onDragOver,
-	onDragLeave,
-	onDrop,
-	onToggle,
 	onChange,
+	onDuplicate,
+	onMakeDefault,
+	onToggleFavorite,
 	onDelete,
 	onMoveUp,
 	onMoveDown,
-	t,
 }: {
+	t: TFunction;
+	agent: CodingAgent;
 	config: AgentConfiguration;
-	agentBaseCommand: string;
-	llmProvider?: LlmProvider;
-	providerConfig?: ProviderConfig;
-	isExpanded: boolean;
+	isDefault: boolean;
+	isFavorite: boolean;
 	canDelete: boolean;
 	canMoveUp: boolean;
 	canMoveDown: boolean;
-	isDragged: boolean;
-	showDropBefore: boolean;
-	showDropAfter: boolean;
-	onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
-	onDragEnd: () => void;
-	onDragOver: (event: DragEvent<HTMLDivElement>) => void;
-	onDragLeave: (event: DragEvent<HTMLDivElement>) => void;
-	onDrop: (event: DragEvent<HTMLDivElement>) => void;
-	onToggle: () => void;
 	onChange: (patch: Partial<AgentConfiguration>) => void;
+	onDuplicate: () => void;
+	onMakeDefault: () => void;
+	onToggleFavorite: () => void;
 	onDelete: () => void;
 	onMoveUp: () => void;
 	onMoveDown: () => void;
-	t: TFunction;
 }) {
-	const preview = buildCommandPreview(agentBaseCommand, config, llmProvider, providerConfig);
-	const baseCommandName = agentBaseCommand.split("/").pop() ?? agentBaseCommand;
+	const preview = buildCommandPreview(agent.baseCommand, config, agent.llmProvider, agent.providerConfig);
+	const baseCommandName = agent.baseCommand.split("/").pop() ?? agent.baseCommand;
+	const modelOptions: SelectOption[] = modelsForAgent(agent).map((model) => ({ value: model, label: model }));
+	const filterHint = t("settings.selectFilterHint");
+	const useTyped = (query: string) => t("settings.useTypedValue", { value: query });
+
+	const permissionOptions: SelectOption[] = [
+		{ value: "", label: t("settings.permDefault") },
+		{ value: "plan", label: t("settings.permPlan") },
+		{ value: "auto", label: t("settings.permAuto") },
+		{ value: "acceptEdits", label: t("settings.permAcceptEdits") },
+		{ value: "dontAsk", label: t("settings.permDontAsk") },
+		{ value: "bypassPermissions", label: t("settings.permBypass") },
+	];
+	const effortOptions: SelectOption[] = [
+		{ value: "", label: t("settings.effortDefault") },
+		{ value: "low", label: t("settings.effortLow") },
+		{ value: "medium", label: t("settings.effortMedium") },
+		{ value: "high", label: t("settings.effortHigh") },
+		{ value: "xhigh", label: t("settings.effortXHigh") },
+	];
+	const budgetOptions: SelectOption[] = [
+		{ value: "", label: t("settings.budgetNoCap") },
+		...[1, 5, 10, 20, 50].map((amount) => ({ value: String(amount), label: `$${amount}` })),
+	];
 
 	return (
-		<div
-			className={`relative bg-elevated border border-edge rounded-lg overflow-hidden transition-opacity ${isDragged ? "opacity-60" : ""}`}
-			onDragOver={onDragOver}
-			onDragLeave={onDragLeave}
-			onDrop={onDrop}
-		>
-			{showDropBefore ? (
-				<div className="absolute top-0 left-2 right-2 h-0.5 bg-accent rounded-full z-10" />
-			) : null}
-			{showDropAfter ? (
-				<div className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-full z-10" />
-			) : null}
-			<div
-				role="button"
-				tabIndex={0}
-				onClick={onToggle}
-				onKeyDown={(event) => {
-					if (event.key === "Enter" || event.key === " ") {
-						event.preventDefault();
-						onToggle();
-					}
-				}}
-				className="w-full flex items-center gap-2 px-3 py-2 hover:bg-elevated-hover transition-colors text-left cursor-pointer"
-			>
-				<ReorderControls
-					dragHandleProps={{
-						draggable: true,
-						onDragStart,
-						onDragEnd,
-					}}
-					canMoveUp={canMoveUp}
-					canMoveDown={canMoveDown}
-					onMoveUp={onMoveUp}
-					onMoveDown={onMoveDown}
-					dragTitle={t("settings.dragConfig")}
-					upTitle={t("settings.moveConfigUp")}
-					downTitle={t("settings.moveConfigDown")}
-				/>
-				<span className="text-fg-3 text-xs">{isExpanded ? "▼" : "▶"}</span>
-				<span className="text-fg text-sm flex-1">{config.name}</span>
-				{config.model ? (
-					<span className="text-accent text-xs font-mono px-1.5 py-0.5 bg-accent/10 rounded">
-						{config.model}
-					</span>
-				) : null}
-			</div>
-
-			{isExpanded ? (
-				<div className="border-t border-edge px-3 py-3 space-y-3">
-					<div>
-						<p className="block text-fg-2 text-xs font-semibold mb-1.5">
-							{t("settings.commandPreview")}
-						</p>
-						<CommandPreview
-							command={preview.command}
-							envLine={preview.envLine}
-						/>
-					</div>
-
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configName")}
-						</label>
-						<input
-							type="text"
-							value={config.name}
-							onChange={(event) => onChange({ name: event.target.value })}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
-						/>
-					</div>
-
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configModel")}
-						</label>
-						<input
-							type="text"
-							value={config.model || ""}
-							onChange={(event) =>
-								onChange({ model: event.target.value || undefined })
-							}
-							placeholder={
-								baseCommandName === "codex"
-									? "gpt-5.5, o3, etc."
-									: baseCommandName === "gemini"
-										? "gemini-2.5-pro, etc."
-										: "opus, sonnet, etc."
-							}
-							autoCapitalize="off"
-							autoCorrect="off"
-							spellCheck={false}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-						/>
-					</div>
-
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configPermissionMode")}
-						</label>
-						<select
-							value={config.permissionMode || "default"}
-							onChange={(event) =>
-								onChange({
-									permissionMode:
-										(event.target.value as PermissionMode) === "default"
-											? undefined
-											: (event.target.value as PermissionMode),
-								})
-							}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
+		<div className="space-y-3">
+			{/* Title owns its own row: five actions plus the reorder pair cannot share
+			    one line with a preset name inside a settings pane. */}
+			<div>
+				<div className="min-w-0">
+					<p className="text-fg text-sm font-semibold truncate">{getModeLeafLabel(config)}</p>
+					<p className="text-fg-muted text-xs truncate">
+						{agent.name} · {getModelGroupLabel(config)}
+					</p>
+				</div>
+				<div className="flex flex-wrap items-center gap-1.5 mt-2">
+					<ReorderControls
+						dragHandleProps={{ draggable: false, onDragStart: () => {}, onDragEnd: () => {} }}
+						canMoveUp={canMoveUp}
+						canMoveDown={canMoveDown}
+						onMoveUp={onMoveUp}
+						onMoveDown={onMoveDown}
+						dragTitle={t("settings.dragConfig")}
+						upTitle={t("settings.moveConfigUp")}
+						downTitle={t("settings.moveConfigDown")}
+					/>
+					<button
+						type="button"
+						onClick={onToggleFavorite}
+						aria-pressed={isFavorite}
+						title={isFavorite ? t("settings.favoriteRemoveHint") : t("settings.favoriteAddHint")}
+						className={`px-2.5 py-1 rounded-lg border text-xs flex items-center gap-1.5 transition-colors ${
+							isFavorite
+								? "bg-warning/10 border-warning/30 text-warning hover:bg-warning/15"
+								: "bg-elevated border-edge text-fg-2 hover:text-fg hover:border-edge-active"
+						}`}
+					>
+						<StarIcon filled={isFavorite} />
+						{isFavorite ? t("settings.favoriteRemove") : t("settings.favoriteAdd")}
+					</button>
+					<button
+						type="button"
+						onClick={onDuplicate}
+						className="px-2.5 py-1 rounded-lg bg-elevated border border-edge text-fg-2 text-xs hover:text-fg hover:border-edge-active transition-colors"
+					>
+						{t("settings.duplicatePreset")}
+					</button>
+					{isDefault ? (
+						<span className="px-2.5 py-1 rounded-lg bg-accent/10 text-accent text-xs font-medium">
+							{t("settings.defaultBadge")}
+						</span>
+					) : (
+						<button
+							type="button"
+							onClick={onMakeDefault}
+							className="px-2.5 py-1 rounded-lg bg-elevated border border-edge text-fg-2 text-xs hover:text-fg hover:border-edge-active transition-colors"
 						>
-							<option value="default">{t("settings.permDefault")}</option>
-							<option value="plan">{t("settings.permPlan")}</option>
-							<option value="auto">{t("settings.permAuto")}</option>
-							<option value="acceptEdits">
-								{t("settings.permAcceptEdits")}
-							</option>
-							<option value="dontAsk">{t("settings.permDontAsk")}</option>
-							<option value="bypassPermissions">
-								{t("settings.permBypass")}
-							</option>
-						</select>
-					</div>
-
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configEffort")}
-						</label>
-						<select
-							value={config.effort || ""}
-							onChange={(event) =>
-								onChange({
-									effort: (event.target.value as EffortLevel) || undefined,
-								})
-							}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
-						>
-							<option value="">{t("settings.effortDefault")}</option>
-							<option value="low">{t("settings.effortLow")}</option>
-							<option value="medium">{t("settings.effortMedium")}</option>
-							<option value="high">{t("settings.effortHigh")}</option>
-							<option value="xhigh">{t("settings.effortXHigh")}</option>
-						</select>
-					</div>
-
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configMaxBudget")}
-						</label>
-						<input
-							type="number"
-							min={0}
-							step={0.5}
-							value={config.maxBudgetUsd ?? ""}
-							onChange={(event) =>
-								onChange({
-									maxBudgetUsd: event.target.value
-										? Number(event.target.value)
-										: undefined,
-								})
-							}
-							placeholder="0"
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-						/>
-						<p className="text-fg-muted text-xs mt-1">
-							{t("settings.configMaxBudgetHint")}
-						</p>
-					</div>
-
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configAppendPrompt")}
-						</label>
-						<textarea
-							value={config.appendPrompt || ""}
-							onChange={(event) =>
-								onChange({ appendPrompt: event.target.value || undefined })
-							}
-							rows={3}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
-						/>
-						<p className="text-fg-muted text-xs mt-1">
-							{t("settings.configAppendPromptHint")}
-						</p>
-					</div>
-
-					<div>
-						<p className="block text-fg-2 text-xs mb-1">
-							{t("settings.configAdditionalArgs")}
-						</p>
-						<ListEditor
-							items={config.additionalArgs || []}
-							onChange={(items) =>
-								onChange({
-									additionalArgs: items.length > 0 ? items : undefined,
-								})
-							}
-							placeholder="--flag"
-							addLabel={t("settings.configAddArg")}
-							removeLabel={t("listEditor.removeItem")}
-						/>
-					</div>
-
-					<div>
-						<p className="block text-fg-2 text-xs mb-1">
-							{t("settings.configEnvVars")}
-						</p>
-						<KeyValueEditor
-							entries={config.envVars || {}}
-							onChange={(entries) =>
-								onChange({
-									envVars:
-										Object.keys(entries).length > 0 ? entries : undefined,
-								})
-							}
-							addLabel={t("settings.configAddEnvVar")}
-						/>
-					</div>
-
-					<div>
-						<label className="block text-fg-2 text-xs mb-1">
-							{t("settings.configBaseCommandOverride")}
-						</label>
-						<input
-							type="text"
-							value={config.baseCommandOverride || ""}
-							onChange={(event) =>
-								onChange({
-									baseCommandOverride:
-										event.target.value || undefined,
-								})
-							}
-							autoCapitalize="off"
-							autoCorrect="off"
-							spellCheck={false}
-							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
-						/>
-					</div>
-
+							{t("settings.setDefaultConfig")}
+						</button>
+					)}
 					{canDelete ? (
 						<button
+							type="button"
 							onClick={onDelete}
-							className="text-danger text-xs hover:underline"
+							className="px-2.5 py-1 rounded-lg text-danger text-xs hover:bg-danger/10 border border-transparent hover:border-danger/30 transition-colors"
 						>
 							{t("settings.deleteConfig")}
 						</button>
 					) : null}
 				</div>
+			</div>
+
+			<div className="grid gap-3 sm:grid-cols-2">
+				<Field label={t("settings.configName")}>
+					<input
+						type="text"
+						value={config.name}
+						onChange={(event) => onChange({ name: event.target.value })}
+						className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+					/>
+				</Field>
+				<Field label={t("settings.configModel")} htmlFor="preset-model">
+					<Select
+						id="preset-model"
+						value={config.model ?? ""}
+						options={[{ value: "", label: t("settings.modelAgentDefault") }, ...modelOptions]}
+						allowCustom
+						searchPlaceholder={
+							baseCommandName === "codex"
+								? "gpt-5.6, o3…"
+								: baseCommandName === "gemini"
+									? "gemini-3.1-pro…"
+									: "opus, sonnet…"
+						}
+						customOptionLabel={useTyped}
+						emptyLabel={t("settings.presetSearchEmpty")}
+						onChange={(value) => onChange({ model: value || undefined })}
+					/>
+				</Field>
+				<Field label={t("settings.configPermissionMode")} htmlFor="preset-permission">
+					<Select
+						id="preset-permission"
+						value={config.permissionMode ?? ""}
+						options={permissionOptions}
+						allowCustom
+						searchPlaceholder={filterHint}
+						customOptionLabel={useTyped}
+						emptyLabel={t("settings.presetSearchEmpty")}
+						onChange={(value) => onChange({ permissionMode: (value || undefined) as PermissionMode | undefined })}
+					/>
+				</Field>
+				<Field label={t("settings.configEffort")} htmlFor="preset-effort">
+					<Select
+						id="preset-effort"
+						value={config.effort ?? ""}
+						options={effortOptions}
+						allowCustom
+						searchPlaceholder={filterHint}
+						customOptionLabel={useTyped}
+						emptyLabel={t("settings.presetSearchEmpty")}
+						onChange={(value) => onChange({ effort: (value || undefined) as EffortLevel | undefined })}
+					/>
+				</Field>
+				<Field label={t("settings.configMaxBudget")} htmlFor="preset-budget" hint={t("settings.configMaxBudgetHint")}>
+					<Select
+						id="preset-budget"
+						value={config.maxBudgetUsd == null ? "" : String(config.maxBudgetUsd)}
+						options={budgetOptions}
+						allowCustom
+						inputMode="decimal"
+						searchPlaceholder={t("settings.budgetFilterHint")}
+						customOptionLabel={(query) => `$${query}`}
+						emptyLabel={t("settings.presetSearchEmpty")}
+						onChange={(value) => {
+							const amount = Number(value.replace(/[^0-9.]/g, ""));
+							onChange({ maxBudgetUsd: value && Number.isFinite(amount) && amount > 0 ? amount : undefined });
+						}}
+					/>
+				</Field>
+			</div>
+
+			<div>
+				<p className="block text-fg-2 text-xs font-semibold mb-1.5">{t("settings.commandPreview")}</p>
+				<CommandPreview command={preview.command} envLine={preview.envLine} />
+			</div>
+
+			<details className="group">
+				<summary className="text-fg-3 text-xs cursor-pointer hover:text-fg transition-colors select-none">
+					{t("settings.presetAdvanced")}
+				</summary>
+				<div className="mt-3 space-y-3">
+					<Field label={t("settings.configAppendPrompt")} hint={t("settings.configAppendPromptHint")}>
+						<textarea
+							value={config.appendPrompt || ""}
+							onChange={(event) => onChange({ appendPrompt: event.target.value || undefined })}
+							rows={3}
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+						/>
+					</Field>
+					<div>
+						<p className="block text-fg-2 text-xs mb-1">{t("settings.configAdditionalArgs")}</p>
+						<ListEditor
+							items={config.additionalArgs || []}
+							onChange={(items) => onChange({ additionalArgs: items.length > 0 ? items : undefined })}
+							placeholder="--flag"
+							addLabel={t("settings.configAddArg")}
+							removeLabel={t("listEditor.removeItem")}
+						/>
+					</div>
+					<div>
+						<p className="block text-fg-2 text-xs mb-1">{t("settings.configEnvVars")}</p>
+						<KeyValueEditor
+							entries={config.envVars || {}}
+							onChange={(entries) => onChange({ envVars: Object.keys(entries).length > 0 ? entries : undefined })}
+							addLabel={t("settings.configAddEnvVar")}
+						/>
+					</div>
+					<Field label={t("settings.configBaseCommandOverride")}>
+						<input
+							type="text"
+							value={config.baseCommandOverride || ""}
+							onChange={(event) => onChange({ baseCommandOverride: event.target.value || undefined })}
+							placeholder={agent.baseCommand}
+							autoCapitalize="off"
+							autoCorrect="off"
+							spellCheck={false}
+							className="w-full px-3 py-1.5 bg-base border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+						/>
+					</Field>
+				</div>
+			</details>
+		</div>
+	);
+}
+
+/** The agent itself: install state, identity, backend, order, removal. */
+function AgentPane({
+	t,
+	agent,
+	availability,
+	customPath,
+	copied,
+	saving,
+	canMoveUp,
+	canMoveDown,
+	onCustomPathChange,
+	onCopyInstall,
+	onSavePath,
+	onChange,
+	onMoveUp,
+	onMoveDown,
+	onDelete,
+}: {
+	t: TFunction;
+	agent: CodingAgent;
+	availability: AgentCheckResult | undefined;
+	customPath: string;
+	copied: boolean;
+	saving: boolean;
+	canMoveUp: boolean;
+	canMoveDown: boolean;
+	onCustomPathChange: (path: string) => void;
+	onCopyInstall: (command: string) => void;
+	onSavePath: () => void;
+	onChange: (patch: Partial<CodingAgent>) => void;
+	onMoveUp: () => void;
+	onMoveDown: () => void;
+	onDelete: () => void;
+}) {
+	return (
+		<div className="space-y-4">
+			<div className="flex items-start gap-2">
+				<div className="flex-1 min-w-0">
+					<p className="text-fg text-sm font-semibold truncate">{agent.name}</p>
+					<p className="text-fg-muted text-xs">
+						{t("settings.presetCount", { count: String(agent.configurations.length) })}
+					</p>
+				</div>
+				<ReorderControls
+					dragHandleProps={{ draggable: false, onDragStart: () => {}, onDragEnd: () => {} }}
+					canMoveUp={canMoveUp}
+					canMoveDown={canMoveDown}
+					onMoveUp={onMoveUp}
+					onMoveDown={onMoveDown}
+					dragTitle={t("settings.dragAgent")}
+					upTitle={t("settings.moveAgentUp")}
+					downTitle={t("settings.moveAgentDown")}
+					size="md"
+				/>
+			</div>
+
+			{availability ? (
+				<div
+					className={`p-3 rounded-lg ${
+						availability.installed ? "bg-success/5 border border-success/20" : "bg-danger/5 border border-danger/20"
+					}`}
+				>
+					{availability.installed ? (
+						<div className="flex items-center gap-2">
+							<span className="text-success text-sm">&#10003;</span>
+							<span className="text-fg-2 text-xs">{t("settings.agentInstalled")}</span>
+							{availability.resolvedPath ? (
+								<span className="text-fg-muted text-xs font-mono truncate">{availability.resolvedPath}</span>
+							) : null}
+						</div>
+					) : (
+						<div className="space-y-2">
+							<div className="flex items-center gap-2">
+								<span className="text-danger text-sm">&#10007;</span>
+								<span className="text-fg-2 text-xs">{t("settings.agentNotInstalledHint")}</span>
+							</div>
+							{availability.installCommand ? (
+								<div>
+									<p className="text-fg-3 text-xs mb-1">{t("settings.agentInstallHint")}</p>
+									<div className="flex items-center gap-1.5">
+										<code className="text-warning bg-warning/10 px-2 py-1 rounded text-xs font-mono">
+											{availability.installCommand}
+										</code>
+										<button
+											type="button"
+											onClick={() => onCopyInstall(availability.installCommand as string)}
+											className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
+											title="Copy"
+										>
+											{copied ? (
+												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+													<polyline points="20 6 9 17 4 12" />
+												</svg>
+											) : (
+												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+													<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+													<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+												</svg>
+											)}
+										</button>
+									</div>
+								</div>
+							) : null}
+							<p className="text-fg-muted text-xs">{t("settings.agentLoginReminder")}</p>
+							<div className="pt-2 border-t border-edge/50">
+								<p className="text-fg-3 text-xs mb-1.5">{t("settings.agentCustomPath")}</p>
+								{availability.customPathError ? (
+									<p className="text-danger text-xs mb-1.5">{t("settings.agentPathNotFound")}</p>
+								) : null}
+								<div className="flex items-center gap-1.5">
+									<input
+										type="text"
+										value={customPath}
+										onChange={(event) => onCustomPathChange(event.target.value)}
+										placeholder={`/path/to/${agent.baseCommand}`}
+										className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent ${
+											availability.customPathError ? "border-danger" : "border-edge"
+										}`}
+									/>
+									<button
+										type="button"
+										onClick={onSavePath}
+										disabled={!customPath.trim() || saving}
+										className="px-2.5 py-1 rounded bg-accent-fill text-white text-xs font-medium hover:bg-accent-fill-hover disabled:opacity-50 transition-colors shrink-0"
+									>
+										{t("requirements.setPath")}
+									</button>
+								</div>
+							</div>
+						</div>
+					)}
+				</div>
 			) : null}
+
+			<div className="grid gap-3 sm:grid-cols-2">
+				<Field label={t("settings.agentName")}>
+					<input
+						type="text"
+						value={agent.name}
+						onChange={(event) => onChange({ name: event.target.value })}
+						className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
+					/>
+				</Field>
+				<Field label={t("settings.agentBaseCommand")}>
+					<input
+						type="text"
+						value={agent.baseCommand}
+						onChange={(event) => onChange({ baseCommand: event.target.value })}
+						placeholder="claude"
+						autoCapitalize="off"
+						autoCorrect="off"
+						spellCheck={false}
+						className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors"
+					/>
+				</Field>
+			</div>
+
+			<ProviderSelector
+				t={t}
+				baseCommand={agent.baseCommand}
+				provider={agent.llmProvider ?? "anthropic"}
+				providerConfig={agent.providerConfig}
+				models={modelsForAgent(agent)}
+				onChange={onChange}
+			/>
+
+			{agent.isDefault ? (
+				<p className="text-fg-muted text-xs italic">{t("settings.cantDeleteDefault")}</p>
+			) : (
+				<button type="button" onClick={onDelete} className="text-danger text-xs hover:underline">
+					{t("settings.deleteAgent")}
+				</button>
+			)}
 		</div>
 	);
 }

@@ -4,6 +4,18 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-10 — Settings → Agents is a preset library, not nested accordions
+
+- **Rule:** A Settings entry owning dozens of same-shaped records renders a filterable list plus exactly one detail editor inside the category pane, grouped by the labels the consuming surface already shows (Agents: the launch picker's Model → Mode); narrow shows the list first, then the editor with a back affordance.
+- **Why:** 98 shipped presets behind three accordion levels with no search made finding or editing one a scroll hunt, and opening an editor pushed the other 39 rows off-screen; the rejected alternative — a dense sortable table with a drawer — buys bulk actions nobody asked for at the price of a data-grid pattern Settings has no precedent for.
+- **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §8, `src/mainview/components/global-settings/AgentSettingsSection.tsx`.
+
+## 2026-08-10 — One dropdown, optionally searchable and creatable
+
+- **Rule:** `Select.tsx` stays the app's only dropdown; `searchable` adds an in-panel filter input and `allowCustom` commits typed text as the value, so a shipped enum can never block a value the agent CLI already accepts.
+- **Why:** Model ids, permission modes and effort levels change faster than dev3 ships, and a fixed list silently caps the user at yesterday's options; a separate Combobox component was rejected because the app would then own two dropdowns with two keyboard contracts.
+- **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §7, `src/mainview/components/Select.tsx`, `src/mainview/components/__tests__/Select.test.tsx`.
+
 ## 2026-08-10 — A send marks the review, it never deletes it
 
 - **Rule:** No send path (per-comment, composer `Send now`, or batch) may clear inline review comments; they are stamped `Sent`, and only the confirmed `Reset review` destroys anything.

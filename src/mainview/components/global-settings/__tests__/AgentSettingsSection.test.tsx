@@ -18,12 +18,17 @@ vi.mock("../../../rpc", () => ({
 				}),
 			),
 			setActiveAgentAccount: vi.fn(),
+			toggleFavoriteAgent: vi.fn(() => Promise.resolve({})),
 			checkCodexBedrockConfig: vi.fn(() => Promise.resolve({ configured: true })),
 		},
 	},
 }));
 
+vi.mock("../../../confirm", () => ({ confirm: vi.fn(() => Promise.resolve(true)) }));
+vi.mock("../../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
+
 import { api } from "../../../rpc";
+import { confirm } from "../../../confirm";
 
 const baseSettings: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
@@ -49,17 +54,20 @@ function renderSection(claudePatch: Partial<CodingAgent> = {}, onAgentsChange = 
 				onAgentsChange={onAgentsChange}
 				onDefaultAgentChange={vi.fn()}
 				onDefaultConfigChange={vi.fn()}
+				onGlobalSettingsChange={vi.fn()}
 			/>
 		</I18nProvider>,
 	);
 	return onAgentsChange;
 }
 
-/** Expand an agent's row by clicking its header (so its provider section renders). */
+/** Point the library's one detail pane at an agent (its own settings, not a preset),
+ *  which is what renders the provider section. */
 async function expandAgent(user: ReturnType<typeof userEvent.setup>, name: string) {
-	// The agent header is a role=button containing the agent name.
-	const header = screen.getAllByRole("button", { name: new RegExp(name) })[0];
-	await user.click(header);
+	const trigger = document.getElementById("agent-library-agent");
+	if (!trigger) throw new Error("agent library select is missing");
+	await user.click(trigger);
+	await user.click(screen.getByRole("option", { name: new RegExp(name) }));
 }
 
 /** Pull the patched Claude agent out of the last onAgentsChange call. */
@@ -108,6 +116,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -192,6 +201,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -212,6 +222,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 					onAgentsChange={vi.fn()}
 					onDefaultAgentChange={vi.fn()}
 					onDefaultConfigChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -242,6 +253,15 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		expect(native.className).toContain("bg-accent");
 	});
 
+	it("selecting a preset row swaps the detail pane to that preset's editor", async () => {
+		const user = userEvent.setup();
+		renderSection();
+		// Claude's presets are grouped by model, labelled by the launch picker's mode leaf.
+		await user.click(screen.getAllByRole("option", { name: /Auto · Medium/ })[0]);
+		expect(screen.getByDisplayValue("Auto (Fable 5, Medium)")).toBeTruthy();
+		expect(screen.getByText("settings.commandPreview")).toBeTruthy();
+	});
+
 	it("clicking Revert clears that model's override", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection({
@@ -254,5 +274,136 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		await user.click(screen.getAllByText("settings.providerModelRevert")[0]);
 		// Sole override removed → modelOverrides becomes undefined.
 		expect(lastClaude(onAgentsChange).providerConfig?.bedrock?.modelOverrides).toBeUndefined();
+	});
+});
+
+/** Select the Nth preset row for the active agent (rows carry the mode leaf label). */
+async function openPreset(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
+	await user.click(screen.getAllByRole("option", { name: label })[0]);
+}
+
+describe("AgentSettingsSection — preset library", () => {
+	it("filters the list loosely, so “xhigh” finds “X-High” rows", async () => {
+		const user = userEvent.setup();
+		renderSection();
+		const search = screen.getByLabelText("settings.presetSearchLabel");
+		expect(screen.getAllByRole("option", { name: /Auto · Medium/ }).length).toBeGreaterThan(0);
+
+		await user.type(search, "xhigh");
+		expect(screen.queryByRole("option", { name: /Auto · Medium/ })).toBeNull();
+		expect(screen.getAllByRole("option", { name: /X-High/ }).length).toBeGreaterThan(0);
+	});
+
+	it("says so when the filter matches no preset", async () => {
+		const user = userEvent.setup();
+		renderSection();
+		await user.type(screen.getByLabelText("settings.presetSearchLabel"), "definitelynothing");
+		expect(screen.getAllByText("settings.presetSearchEmpty").length).toBeGreaterThan(0);
+	});
+
+	it("duplicating a preset inserts a copy right after it and selects it", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection();
+		await openPreset(user, /Auto · Medium/);
+		await user.click(screen.getByRole("button", { name: "settings.duplicatePreset" }));
+
+		const configs = lastClaude(onAgentsChange).configurations;
+		const sourceIndex = configs.findIndex((c) => c.id === "claude-auto-fable5-medium");
+		expect(configs[sourceIndex + 1].name).toBe("settings.presetCopyName");
+		expect(configs[sourceIndex + 1].model).toBe("claude-fable-5");
+	});
+
+	it("Make default writes defaultConfigId for the selected preset", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection();
+		await openPreset(user, /Auto · High/);
+		await user.click(screen.getByRole("button", { name: "settings.setDefaultConfig" }));
+		expect(lastClaude(onAgentsChange).defaultConfigId).toBe("claude-auto-fable5-high");
+	});
+
+	it("deleting a preset asks first and only then removes it", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection();
+		await openPreset(user, /Auto · Medium/);
+		await user.click(screen.getByRole("button", { name: "settings.deleteConfig" }));
+
+		expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ danger: true }));
+		expect(
+			lastClaude(onAgentsChange).configurations.some((c) => c.id === "claude-auto-fable5-medium"),
+		).toBe(false);
+	});
+
+	it("keeps a preset when the confirmation is declined", async () => {
+		vi.mocked(confirm).mockResolvedValueOnce(false);
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection();
+		await openPreset(user, /Auto · Medium/);
+		await user.click(screen.getByRole("button", { name: "settings.deleteConfig" }));
+		expect(onAgentsChange).not.toHaveBeenCalled();
+	});
+
+	it("stars the selected preset and offers to unstar it once it is a favorite", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<AgentSettingsSection
+					t={((k: string) => k) as never}
+					agents={DEFAULT_AGENTS}
+					globalSettings={baseSettings}
+					onAgentsChange={vi.fn()}
+					onDefaultAgentChange={vi.fn()}
+					onDefaultConfigChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await openPreset(user, /Auto · Medium/);
+		await user.click(screen.getByRole("button", { name: "settings.favoriteAdd" }));
+		expect(api.request.toggleFavoriteAgent).toHaveBeenCalledWith({
+			agentId: "builtin-claude",
+			configId: "claude-auto-fable5-medium",
+		});
+	});
+
+	it("an already-favorite preset shows the unstar action instead", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<AgentSettingsSection
+					t={((k: string) => k) as never}
+					agents={DEFAULT_AGENTS}
+					globalSettings={{
+						...baseSettings,
+						favorites: [
+							{ agentId: "builtin-claude", configId: "claude-auto-fable5-medium", uses: 3, lastUsedAt: 1 },
+						],
+					}}
+					onAgentsChange={vi.fn()}
+					onDefaultAgentChange={vi.fn()}
+					onDefaultConfigChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await openPreset(user, /Auto · Medium/);
+		const toggle = screen.getByRole("button", { name: "settings.favoriteRemove" });
+		expect(toggle).toHaveAttribute("aria-pressed", "true");
+		expect(screen.queryByRole("button", { name: "settings.favoriteAdd" })).toBeNull();
+	});
+
+	it("an enum field takes a value the app never shipped", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection();
+		await openPreset(user, /Auto · Medium/);
+
+		// The reasoning-effort combobox: type a level dev3 has no option for.
+		await user.click(screen.getByLabelText("settings.configEffort"));
+		const field = screen.getByRole("combobox", { name: "settings.selectFilterHint" });
+		await user.type(field, "ultra{Enter}");
+
+		const config = lastClaude(onAgentsChange).configurations.find(
+			(c) => c.id === "claude-auto-fable5-medium",
+		);
+		expect(config?.effort).toBe("ultra");
 	});
 });

@@ -683,6 +683,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 							onAgentsChange={persistAgents}
 							onDefaultAgentChange={handleDefaultAgentChange}
 							onDefaultConfigChange={handleDefaultConfigChange}
+							onGlobalSettingsChange={setGlobalSettings}
 						/>
 						<AgentRateLimitSettingsSection
 							t={t}

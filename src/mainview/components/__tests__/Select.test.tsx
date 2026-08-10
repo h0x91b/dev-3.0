@@ -102,6 +102,13 @@ describe("Select — combobox keyboard model", () => {
 		expect(onChange).not.toHaveBeenCalled();
 	});
 
+	it("keeps the trigger as the only combobox when there is no filter field", async () => {
+		const user = userEvent.setup();
+		render(<Harness />);
+		await user.click(trigger());
+		expect(screen.getAllByRole("combobox")).toHaveLength(1);
+	});
+
 	it("Escape closes the dropdown without closing the surrounding modal", async () => {
 		const user = userEvent.setup();
 		const onOuterEscape = vi.fn();
@@ -117,5 +124,100 @@ describe("Select — combobox keyboard model", () => {
 		// Second Escape falls through to the modal.
 		await user.keyboard("{Escape}");
 		expect(onOuterEscape).toHaveBeenCalledTimes(1);
+	});
+});
+
+const modes: SelectOption[] = [
+	{ value: "auto", label: "Auto" },
+	{ value: "bypassPermissions", label: "Bypass" },
+	{ value: "xhigh", label: "X-High" },
+];
+
+function CreatableHarness({
+	onChange,
+	initial = "auto",
+	allowCustom = true,
+}: {
+	onChange?: (v: string) => void;
+	initial?: string;
+	allowCustom?: boolean;
+}) {
+	const [value, setValue] = useState(initial);
+	return (
+		<Select
+			value={value}
+			options={modes}
+			searchable
+			allowCustom={allowCustom}
+			searchPlaceholder="Filter or type your own"
+			customOptionLabel={(q) => `Use “${q}”`}
+			emptyLabel="Nothing matches"
+			onChange={(v) => {
+				setValue(v);
+				onChange?.(v);
+			}}
+		/>
+	);
+}
+
+const openBtn = () => screen.getByRole("button");
+const filterField = () => screen.getByRole("combobox", { name: "Filter or type your own" });
+
+describe("Select — searchable + creatable", () => {
+	it("moves the combobox role onto the filter field and focuses it on open", async () => {
+		const user = userEvent.setup();
+		render(<CreatableHarness />);
+		expect(openBtn()).toHaveAttribute("aria-haspopup", "listbox");
+		expect(openBtn()).not.toHaveAttribute("role", "combobox");
+
+		await user.click(openBtn());
+		expect(filterField()).toHaveFocus();
+		expect(screen.getByRole("listbox")).not.toBeNull();
+	});
+
+	it("filters options loosely, so “xhigh” finds “X-High”", async () => {
+		const user = userEvent.setup();
+		render(<CreatableHarness />);
+		await user.click(openBtn());
+		await user.type(filterField(), "xhigh");
+		expect(screen.getByRole("option", { name: "X-High" })).not.toBeNull();
+		expect(screen.queryByRole("option", { name: "Auto" })).toBeNull();
+	});
+
+	it("commits typed text that matches nothing as the value", async () => {
+		const user = userEvent.setup();
+		const onChange = vi.fn();
+		render(<CreatableHarness onChange={onChange} />);
+		await user.click(openBtn());
+		await user.type(filterField(), "yolo-mode");
+		await user.click(screen.getByRole("option", { name: "Use “yolo-mode”" }));
+		expect(onChange).toHaveBeenCalledWith("yolo-mode");
+		expect(openBtn()).toHaveTextContent("yolo-mode");
+	});
+
+	it("Enter commits the active row, so typing then Enter is enough", async () => {
+		const user = userEvent.setup();
+		const onChange = vi.fn();
+		render(<CreatableHarness onChange={onChange} />);
+		await user.click(openBtn());
+		await user.type(filterField(), "bypass{Enter}");
+		expect(onChange).toHaveBeenCalledWith("bypassPermissions");
+	});
+
+	it("shows an off-list current value as a selected row", async () => {
+		const user = userEvent.setup();
+		render(<CreatableHarness initial="claude-opus-6" />);
+		expect(openBtn()).toHaveTextContent("claude-opus-6");
+		await user.click(openBtn());
+		expect(screen.getByRole("option", { name: "claude-opus-6" })).toHaveAttribute("aria-selected", "true");
+	});
+
+	it("says so when nothing matches and custom values are off", async () => {
+		const user = userEvent.setup();
+		render(<CreatableHarness allowCustom={false} />);
+		await user.click(openBtn());
+		await user.type(filterField(), "zzz");
+		expect(screen.getByText("Nothing matches")).not.toBeNull();
+		expect(screen.queryAllByRole("option")).toHaveLength(0);
 	});
 });

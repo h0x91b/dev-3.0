@@ -330,6 +330,10 @@ Tokens are CSS custom properties in `src/mainview/index.css`, mapped to Tailwind
 
 Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-danger/10`), `TaskInfoPanel.tsx:585` (destructive delete).
 
+### One dropdown primitive — `Select`
+
+`src/mainview/components/Select.tsx` is the app's only dropdown. It is portalled, viewport-flipped, keyboard-driven, and registered in the overlay-layer stack. Two opt-in capabilities extend it instead of forking it: `searchable` adds a filter input inside the panel (focus moves into the panel, `aria-activedescendant` rides the input), and `allowCustom` lets the typed text be committed as the value, rendering a "use this" row and marking an off-list current value as custom. Reach for `allowCustom` wherever the app's own enum list may lag reality — model ids, permission modes, effort levels, budgets. Do not add a second combobox component; `LabelPicker`'s create-a-label flow stays label-specific.
+
 ### State colors
 
 | Role | Token | Use for |
@@ -349,6 +353,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 - **List screen** (dashboard, board): header with create entry; label filter (board) / search (sidebar); per-item context menu; open navigates; compact empty states (decision 047).
 - **Detail screen** (task): two-row task header; `TaskInfoPanel` inspector; task-scoped object/git/dev-server actions; full-screen or split terminal.
 - **Settings screen** (Global / Project): Global Settings uses a left-nav master-detail layout with eight Settings categories, localized entry search, and immediate RPC/local persistence; Project Settings keeps its existing tabs; destructive removal stays behind confirmation.
+- **Library inside a Settings category** — sanctioned only where one category owns dozens of same-shaped records. The Settings entry renders a **filterable list + exactly one detail editor**; the record's own actions live in the editor, never repeated on list rows; it stays inside the category's detail pane and is never a second left-nav. First and reference instance: **Settings → Agents**, whose ~100 launch presets are unusable as a flat list. Its list groups presets by the same Model → Mode labels the launch picker derives (`groupLabel`/`modeLabel`), so Settings and launch speak one language. Narrow (<768): list first, picking a record swaps the pane to the editor with a visible back affordance — §12.3's "one thing at a time", one level deeper. Enum fields in such an editor use the searchable creatable `Select` (§7) so a value the app has never heard of stays typeable.
 
 Global Settings vocabulary is deliberate: a left-nav item is a **Settings category**, and each searchable/anchored setting is a **Settings entry** registered in `src/mainview/settings-registry.ts`. The registry documents metadata and integrity, while existing bespoke controls own rendering and CRUD behavior. Legacy deep-link ids remain accepted and map through `LEGACY_SETTINGS_CATEGORY_MAP`; Project Settings' internal `global` tab remains labeled “Board” in its UI (known collision, out of scope).
 
@@ -365,6 +370,7 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 | Task info panel | 4 bars (2×2), ≤ 4 visible per bar | assign new control to one domain bar; overflow after 4 ⇒ promote that domain to its own row (see §5.1) |
 
 | Active Tasks sidebar row | 2 inline controls (lifecycle rail + priority badge) | demote to the row context menu; the row is a navigator, not a board |
+| Settings library toolbar (§8) | 4 visible controls; 5 always-visible editor fields | extra editor fields go behind the single `Advanced` disclosure; list rows stay actionless |
 
 **Split lifecycle controls count as one.** The status control may carry a second half that commits the pipeline's own terminal move (the ✓ → Completed) without spending a second card slot, provided it is glued to the status trigger, shares its hover surface, is desktop-only (narrow keeps the BottomSheet's promoted Completed row at ≥ 44px), and disappears when `getAllowedTransitions` forbids the target. Any action that is not the control's own lifecycle move costs its own slot — this is not a general licence for a second button.
 

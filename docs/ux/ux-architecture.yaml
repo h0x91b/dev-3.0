@@ -606,6 +606,7 @@ ux_architecture:
       deep_links: "Route.section accepts current category ids plus legacy appearance/behavior/workspace/agents/proxy/developer ids, normalized by LEGACY_SETTINGS_CATEGORY_MAP"
       save_apply: "updateProjectSettings / settings RPC handlers"
       danger_zone: "remove project / destructive cleanup behind confirmation"
+      library_entry: "A Settings entry owning dozens of same-shaped records renders a filterable list + exactly ONE detail editor inside the category pane (never a second left-nav); record actions live in the editor, not on list rows. Reference instance: Agents preset library (AgentSettingsSection.tsx), grouped by the launch picker's Model -> Mode labels. Narrow: list first, then editor with a back affordance"
 
   complexity_budgets:
     global_nav:
@@ -624,6 +625,10 @@ ux_architecture:
     toolbar:
       max_visible_actions: 4
       overflow_after: 4     # the app has a documented history of always-visible git/tmux button creep
+    settings_library:
+      max_toolbar_controls: 4
+      max_always_visible_editor_fields: 5
+      note: "Extra editor fields go behind the single Advanced disclosure; list rows carry state (favorite, default, gated) but no actions"
     tabs:
       max_visible_tabs: 6
 

@@ -10,6 +10,15 @@ export interface SelectOption {
 	/** When true the option is shown but not selectable; clicking it runs
 	 *  `onOptionDisabledClick` instead of selecting (used for gated presets). */
 	disabled?: boolean;
+	/** Set by `allowCustom` on rows the caller never declared: the typed value and
+	 *  an off-list current value. Presentation only — it still commits as itself. */
+	custom?: boolean;
+}
+
+/** Substring match that ignores case and separators, so "xhigh" finds "X-High". */
+function looseIncludes(haystack: string, needle: string): boolean {
+	const strip = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+	return haystack.toLowerCase().includes(needle.toLowerCase()) || strip(haystack).includes(strip(needle));
 }
 
 /** Lock badge on a gated option. Inline SVG, not a Nerd Font glyph: the icon
@@ -62,6 +71,15 @@ interface ListboxProps {
 	onHover: (index: number) => void;
 	onPick: (index: number) => void;
 	onDismiss: () => void;
+	/** Filter field rendered inside the panel; focus lives on it while open. */
+	search?: {
+		query: string;
+		placeholder: string;
+		inputMode?: "text" | "decimal";
+		emptyLabel: string;
+		onQueryChange: (query: string) => void;
+		onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => void;
+	};
 }
 
 /** The portalled `role="listbox"` panel. A separate component so the overlay
@@ -79,6 +97,7 @@ function SelectListbox({
 	onHover,
 	onPick,
 	onDismiss,
+	search,
 }: ListboxProps) {
 	const reducedMotion = useReducedMotion();
 	const [pos, setPos] = useState(() => {
@@ -88,8 +107,9 @@ function SelectListbox({
 	const [measured, setMeasured] = useState(false);
 	const [entered, setEntered] = useState(false);
 
-	// Focus stays on the trigger (roving `aria-activedescendant`), so no autoFocus.
-	useOverlayLayer(panelRef, { onDismiss, triggerRef });
+	// Without a filter field focus stays on the trigger (roving
+	// `aria-activedescendant`); with one it moves into the panel's input.
+	useOverlayLayer(panelRef, { onDismiss, triggerRef, autoFocus: !!search });
 
 	useLayoutEffect(() => {
 		const panel = panelRef.current;
@@ -125,7 +145,7 @@ function SelectListbox({
 	// focusout guard can't see the user tabbing away from the trigger.
 	useEffect(() => {
 		const trigger = triggerRef.current;
-		if (!trigger) return;
+		if (!trigger || search) return;
 		function onFocusOut(e: FocusEvent) {
 			const next = e.relatedTarget as Node | null;
 			if (!next || panelRef.current?.contains(next)) return;
@@ -133,7 +153,7 @@ function SelectListbox({
 		}
 		trigger.addEventListener("focusout", onFocusOut);
 		return () => trigger.removeEventListener("focusout", onFocusOut);
-	}, [triggerRef, panelRef, onDismiss]);
+	}, [triggerRef, panelRef, onDismiss, search]);
 
 	useEffect(() => {
 		if (activeIndex < 0) return;
@@ -141,22 +161,8 @@ function SelectListbox({
 		row?.scrollIntoView?.({ block: "nearest" });
 	}, [activeIndex, panelRef]);
 
-	return createPortal(
-		<div
-			ref={panelRef}
-			id={listboxId}
-			role="listbox"
-			style={{
-				position: "fixed",
-				top: pos.top,
-				left: pos.left,
-				width: pos.width,
-				zIndex: 9999,
-			}}
-			className={`bg-overlay border border-edge-active rounded-lg shadow-xl shadow-black/50 overflow-y-auto max-h-72 origin-top ${
-				reducedMotion ? "" : "transition-[opacity,transform] duration-150"
-			} ${entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]"}`}
-		>
+	const rows = (
+		<>
 			{options.map((opt, index) => {
 				const isSelected = opt.value === value;
 				const isActive = index === activeIndex;
@@ -184,7 +190,7 @@ function SelectListbox({
 						}`}
 					>
 						<span className="flex-1 min-w-0 truncate">
-							{renderOption ? (
+							{renderOption && !opt.custom ? (
 								renderOption(opt)
 							) : opt.disabled ? (
 								<span className="flex items-center gap-1.5 opacity-70">
@@ -199,6 +205,51 @@ function SelectListbox({
 					</button>
 				);
 			})}
+			{options.length === 0 && search && (
+				<div className="px-3 py-2 text-sm text-fg-muted">{search.emptyLabel}</div>
+			)}
+		</>
+	);
+
+	const panelClass = `bg-overlay border border-edge-active rounded-lg shadow-xl shadow-black/50 origin-top ${
+		reducedMotion ? "" : "transition-[opacity,transform] duration-150"
+	} ${entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]"}`;
+	const panelStyle = { position: "fixed" as const, top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 };
+
+	if (!search) {
+		return createPortal(
+			<div ref={panelRef} id={listboxId} role="listbox" style={panelStyle} className={`${panelClass} overflow-y-auto max-h-72`}>
+				{rows}
+			</div>,
+			document.body,
+		);
+	}
+
+	return createPortal(
+		<div ref={panelRef} style={panelStyle} className={panelClass}>
+			<div className="p-1.5 border-b border-edge">
+				<input
+					data-overlay-autofocus
+					type="text"
+					role="combobox"
+					aria-expanded
+					aria-controls={listboxId}
+					aria-autocomplete="list"
+					aria-label={search.placeholder}
+					aria-activedescendant={activeIndex >= 0 ? optionIdFor(activeIndex) : undefined}
+					value={search.query}
+					placeholder={search.placeholder}
+					inputMode={search.inputMode}
+					spellCheck={false}
+					autoComplete="off"
+					onChange={(e) => search.onQueryChange(e.target.value)}
+					onKeyDown={search.onKeyDown}
+					className="w-full bg-elevated text-fg text-sm rounded-md px-2.5 py-1.5 border border-edge focus:border-accent outline-none placeholder:text-fg-muted"
+				/>
+			</div>
+			<div id={listboxId} role="listbox" className="overflow-y-auto max-h-64">
+				{rows}
+			</div>
 		</div>,
 		document.body,
 	);
@@ -211,6 +262,13 @@ function Select({
 	onChange,
 	renderOption,
 	onOptionDisabledClick,
+	searchable,
+	allowCustom,
+	placeholder,
+	searchPlaceholder,
+	customOptionLabel,
+	emptyLabel = "Nothing matches",
+	inputMode,
 }: {
 	id?: string;
 	value: string;
@@ -219,25 +277,54 @@ function Select({
 	renderOption?: (option: SelectOption) => ReactNode;
 	/** Called when a `disabled` option is clicked (instead of `onChange`). */
 	onOptionDisabledClick?: (value: string) => void;
+	/** Show a filter field inside the panel. Implied by `allowCustom`. */
+	searchable?: boolean;
+	/** Let the typed text commit as the value, so a list the app shipped never
+	 *  caps what the user can enter (model ids, modes, budgets). */
+	allowCustom?: boolean;
+	/** Trigger text when nothing is selected. */
+	placeholder?: string;
+	searchPlaceholder?: string;
+	/** Label of the row that commits the typed text; defaults to the text itself. */
+	customOptionLabel?: (query: string) => string;
+	emptyLabel?: string;
+	inputMode?: "text" | "decimal";
 }) {
 	const [open, setOpen] = useState(false);
 	const [activeIndex, setActiveIndex] = useState(-1);
+	const [query, setQuery] = useState("");
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const reactId = useId();
 	const listboxId = `${reactId}-listbox`;
 	const optionIdFor = useCallback((index: number) => `${reactId}-option-${index}`, [reactId]);
 	const closeList = useCallback(() => setOpen(false), []);
-	const selectedIndex = options.findIndex((o) => o.value === value);
-	const selected = selectedIndex === -1 ? undefined : options[selectedIndex];
+	const withSearch = !!(searchable || allowCustom);
+	const declared = options.find((o) => o.value === value);
+	/** An off-list current value is a row of its own, so it can read as selected. */
+	const currentCustom: SelectOption | undefined = !declared && value && allowCustom
+		? { value, label: value, custom: true }
+		: undefined;
+	const trimmed = query.trim();
+	const filtered = withSearch && trimmed ? options.filter((o) => looseIncludes(`${o.label} ${o.value}`, trimmed)) : options;
+	const typedIsNew = !!(allowCustom && trimmed) &&
+		!options.some((o) => o.value === trimmed || o.label.toLowerCase() === trimmed.toLowerCase());
+	const rowOptions: SelectOption[] = [
+		...(currentCustom && !trimmed ? [currentCustom] : []),
+		...filtered,
+		...(typedIsNew ? [{ value: trimmed, label: customOptionLabel ? customOptionLabel(trimmed) : trimmed, custom: true }] : []),
+	];
+	const selectedIndex = rowOptions.findIndex((o) => o.value === value);
+	const selected = declared ?? currentCustom;
 
 	function openList(index = selectedIndex === -1 ? 0 : selectedIndex) {
+		setQuery("");
 		setActiveIndex(index);
 		setOpen(true);
 	}
 
 	function commitOption(index: number) {
-		const opt = options[index];
+		const opt = rowOptions[index];
 		if (!opt) return;
 		setOpen(false);
 		if (opt.disabled) {
@@ -247,9 +334,37 @@ function Select({
 		onChange(opt.value);
 	}
 
+	function moveActive(step: number) {
+		const last = rowOptions.length - 1;
+		setActiveIndex((i) => Math.min(last, Math.max(0, (i === -1 ? 0 : i) + step)));
+	}
+
+	function handleSearchKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+		switch (e.key) {
+			case "ArrowDown":
+			case "ArrowUp":
+				e.preventDefault();
+				moveActive(e.key === "ArrowDown" ? 1 : -1);
+				return;
+			case "Home":
+			case "End":
+				if (rowOptions.length === 0) return;
+				e.preventDefault();
+				setActiveIndex(e.key === "Home" ? 0 : rowOptions.length - 1);
+				return;
+			case "Enter":
+				e.preventDefault();
+				commitOption(activeIndex >= 0 ? activeIndex : 0);
+				buttonRef.current?.focus();
+				return;
+			case "Tab":
+				setOpen(false);
+		}
+	}
+
 	function handleKeyDown(e: ReactKeyboardEvent<HTMLButtonElement>) {
-		if (options.length === 0) return;
-		const last = options.length - 1;
+		if (rowOptions.length === 0 && !withSearch) return;
+		const last = rowOptions.length - 1;
 		switch (e.key) {
 			case "ArrowDown":
 			case "ArrowUp": {
@@ -276,8 +391,9 @@ function Select({
 				commitOption(activeIndex);
 				return;
 			default: {
-				if (e.key.length !== 1 || e.altKey || e.ctrlKey || e.metaKey) return;
-				const match = options.findIndex((o) => o.label.toLowerCase().startsWith(e.key.toLowerCase()));
+				// With a filter field the panel's input owns typing.
+				if (withSearch || e.key.length !== 1 || e.altKey || e.ctrlKey || e.metaKey) return;
+				const match = rowOptions.findIndex((o) => o.label.toLowerCase().startsWith(e.key.toLowerCase()));
 				if (match === -1) return;
 				e.preventDefault();
 				if (open) setActiveIndex(match);
@@ -306,18 +422,24 @@ function Select({
 				id={id}
 				ref={buttonRef}
 				type="button"
-				role="combobox"
+				// With a filter field the panel's input is the combobox; the trigger
+				// is then only the thing that opens it.
+				role={withSearch ? undefined : "combobox"}
 				aria-haspopup="listbox"
 				aria-expanded={open}
 				aria-controls={listboxId}
-				aria-activedescendant={open && activeIndex >= 0 ? optionIdFor(activeIndex) : undefined}
+				aria-activedescendant={!withSearch && open && activeIndex >= 0 ? optionIdFor(activeIndex) : undefined}
 				onClick={() => (open ? setOpen(false) : openList())}
 				onKeyDown={handleKeyDown}
 				className={`w-full flex items-center justify-between gap-2 bg-elevated text-fg text-sm rounded-lg px-3 py-1.5 border transition-colors outline-none text-left ${
 					open ? "border-accent" : "border-edge hover:border-edge-active"
 				}`}
 			>
-				<span className="truncate">{selected ? (renderOption ? renderOption(selected) : selected.label) : ""}</span>
+				<span className={`truncate ${selected ? "" : "text-fg-muted"}`}>
+					{selected
+						? (renderOption && !selected.custom ? renderOption(selected) : selected.label)
+						: (placeholder ?? "")}
+				</span>
 				<svg
 					className={`w-3.5 h-3.5 text-fg-3 flex-shrink-0 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
 					viewBox="0 0 12 12"
@@ -338,13 +460,21 @@ function Select({
 					triggerRef={buttonRef}
 					listboxId={listboxId}
 					optionIdFor={optionIdFor}
-					options={options}
+					options={rowOptions}
 					value={value}
 					activeIndex={activeIndex}
 					renderOption={renderOption}
 					onHover={setActiveIndex}
 					onPick={commitOption}
 					onDismiss={closeList}
+					search={withSearch ? {
+						query,
+						placeholder: searchPlaceholder ?? "Filter…",
+						inputMode,
+						emptyLabel,
+						onQueryChange: (q) => { setQuery(q); setActiveIndex(0); },
+						onKeyDown: handleSearchKeyDown,
+					} : undefined}
 				/>
 			)}
 		</div>
