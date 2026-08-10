@@ -496,7 +496,16 @@ async function ensureAgentTrust(
 	projectPath: string,
 	resolvedBaseCmd: string,
 	accountId?: string | null,
+	foreignCode?: boolean,
 ): Promise<void> {
+	// A worktree standing on someone else's branch gets nothing pre-granted: its
+	// committed `.claude/settings.json` hooks and `.mcp.json` servers must face the
+	// agent's own approval prompts, which is precisely what those prompts are for.
+	// The user sees one trust dialog per reviewed branch — the intended cost.
+	if (foreignCode) {
+		log.info("agent trust skipped — task is marked as foreign code", { worktreePath });
+		return;
+	}
 	// The agent adapter declares which trust routines this agent needs, in order
 	// (decision 124). Every adapter includes "claude" first — dev3 has always
 	// registered the worktree in ~/.claude.json (harmless superset + MCP
@@ -701,7 +710,7 @@ export async function launchTaskPty(
 	// command must be resolvable as "$DEV3_PROJECT_PATH/.dev3/<hook>.sh".
 	// Project env (Project Settings / .dev3 config) first — overridable by
 	// lifecycle DEV3_* vars and per-agent-config env.
-	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath);
+	const projectEnv = await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode });
 	const env = {
 		...projectEnv,
 		...buildTaskLifecycleEnv(project, task, worktreePath, opts?.branchName),
@@ -750,7 +759,7 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, task.accountId);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, task.accountId, task.foreignCode);
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
@@ -941,7 +950,7 @@ export async function launchColumnAgent(
 		log.error("launchColumnAgent: failed to resolve command", { error: String(err) });
 		throw err;
 	}
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, undefined, task.foreignCode);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		permissionMode: resolvedPermissionMode,
@@ -949,7 +958,7 @@ export async function launchColumnAgent(
 	});
 
 	const env = {
-		...(await repoConfig.resolveProjectEnv(project, worktreePath)),
+		...(await repoConfig.resolveProjectEnv(project, worktreePath, { foreignCode: task.foreignCode })),
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, worktreePath),
 	};
@@ -1001,7 +1010,7 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
-		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
+		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined, { foreignCode: task.foreignCode });
 
 		if (!resolved.devScript.trim()) throw new Error("No dev script configured");
 		if (!task.worktreePath) throw new Error("Task has no worktree");
@@ -1211,7 +1220,7 @@ export async function stopDevServer(params: { taskId: string; projectId: string;
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
-		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
+		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined, { foreignCode: task.foreignCode });
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const taskSession = taskSessionName(task.id);
 		const native = taskTerminalBackendIdentity(task) === "native";
@@ -1621,7 +1630,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					} else {
 						resumeCmd = agents.buildResumeCommand(pane.agentCmd, paneResume ?? undefined) ?? pane.agentCmd;
 					}
-					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId);
+					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId, task.foreignCode);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 						integration: resumeHooksIntegration,
@@ -2496,14 +2505,14 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	// Register trust / re-patch the agent's config before spawning. The primary
 	// task launch does this; without it a spawned Codex pane runs against a stale
 	// config.toml and crashes on the legacy-profile check (see ensureAgentTrust).
-	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId);
+	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId, task.foreignCode);
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		integration: resolvedHooksIntegration,
 	});
 
 	const env: Record<string, string> = {
-		...(await repoConfig.resolveProjectEnv(project, task.worktreePath)),
+		...(await repoConfig.resolveProjectEnv(project, task.worktreePath, { foreignCode: task.foreignCode })),
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, task.worktreePath),
 	};
@@ -2687,14 +2696,14 @@ async function spawnSingleBugHunterPane(opts: {
 
 	// Same trust/config-ensure the primary launch does — a Codex bug-hunter pane
 	// otherwise launches against a stale config.toml and crashes.
-	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId);
+	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId, opts.task.foreignCode);
 	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		integration: resolvedHooksIntegration,
 	});
 
 	const env: Record<string, string> = {
-		...(await repoConfig.resolveProjectEnv(opts.project, opts.worktreePath)),
+		...(await repoConfig.resolveProjectEnv(opts.project, opts.worktreePath, { foreignCode: opts.task.foreignCode })),
 		...buildAgentEnv(extraEnv, opts.task.id),
 		...ensureArtifactTemplateEnv(opts.project, opts.task, opts.worktreePath),
 	};

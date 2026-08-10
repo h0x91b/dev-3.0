@@ -1616,6 +1616,23 @@ export interface Task {
 	 */
 	hibernated?: boolean;
 	/**
+	 * True when the task exists to look at code the local user did not write —
+	 * it was started on a remote/fork ref (a pull request, a colleague's branch).
+	 * A property of the task, not a column and not a runtime phase: it forbids
+	 * nothing, blocks no transition and makes nothing read-only. It states whose
+	 * code this is, and it gates one thing — dev3 ignores that branch's committed
+	 * command-bearing config (`setupScript`, `devScript`, `cleanupScript`, `env`,
+	 * `builtinColumnAgents`) and skips agent trust / `.mcp.json` pre-approval,
+	 * using the project's own checkout instead (see decision
+	 * `trust-the-branch-not-the-project`).
+	 *
+	 * Set automatically at creation from the branch the task starts on; the user
+	 * owns it and may clear it to run that branch's config deliberately — that is
+	 * their call to make, with a warning, not ours to refuse. Absent/false on
+	 * every pre-existing task, so older app versions see an ordinary task.
+	 */
+	foreignCode?: boolean;
+	/**
 	 * For tasks in a virtual ("Operations") project only: the user-chosen fixed
 	 * working folder picked at creation (e.g. `~/Downloads`). When absent, the
 	 * operation uses a managed temp dir under `~/.dev3.0/ops/<slug>/<taskId>/work`.

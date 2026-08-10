@@ -1449,6 +1449,28 @@ export async function listRemotes(projectPath: string): Promise<string[]> {
 }
 
 /**
+ * True when `existingBranch` names a ref the local user did not author: a
+ * remote-tracking branch (`origin/feature`) or a fork remote's branch
+ * (`arditti/feat/x`, added by {@link fetchFork} for a cross-repo pull request).
+ *
+ * Answered from the remote LIST on purpose, never from `refs/remotes/<ref>`:
+ * a merged pull request's branch is deleted upstream, and a ref check would then
+ * quietly reclassify the task as the user's own work. Remotes outlive branches.
+ */
+export async function isForeignBranchRef(projectPath: string, existingBranch?: string | null): Promise<boolean> {
+	const ref = existingBranch?.trim().replace(/^refs\/remotes\//, "");
+	if (!ref) return false;
+	const slash = ref.indexOf("/");
+	if (slash <= 0) return false; // plain local branch name
+	const remotes = await listRemotes(projectPath);
+	// listRemotes folds git failures into []. A repo that produced a remote-qualified
+	// ref cannot genuinely have zero remotes, so an empty answer means "could not
+	// tell" — and an unknown provenance is treated as foreign, never as trusted.
+	if (remotes.length === 0) return true;
+	return remotes.includes(ref.slice(0, slash));
+}
+
+/**
  * Fetch the branch a task actually compares against. A fork-review base is
  * stored remote-qualified (`arditti/feat/x`) and resolves to
  * `refs/remotes/arditti/feat/x`, so fetching it from `origin` fails with

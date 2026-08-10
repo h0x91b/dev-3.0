@@ -183,13 +183,45 @@ export function resolveConfigProvenance(
 }
 
 /**
+ * Fields a repo file can turn into a running command: a shell script, the
+ * environment every session inherits, or an agent dev3 launches by itself.
+ * Everything else (paths, branch names, port counts, booleans) shapes behaviour
+ * but never executes, so it is read from any layer regardless of provenance.
+ */
+const COMMAND_BEARING_KEYS: ReadonlySet<keyof Dev3RepoConfig> = new Set([
+	"setupScript",
+	"setupScriptLaunchMode",
+	"devScript",
+	"cleanupScript",
+	"env",
+	"builtinColumnAgents",
+]);
+
+/**
+ * One config file plus whether its content is trusted to carry commands.
+ * `trusted: false` marks a layer read out of a worktree standing on someone
+ * else's branch: its non-executable fields still apply, its commands never do.
+ */
+type ConfigLayer = { config: Dev3RepoConfig | null; trusted: boolean };
+
+/** Layer value for one key, or undefined when this layer may not supply it. */
+function layerValue(layer: ConfigLayer, key: keyof Dev3RepoConfig): unknown {
+	if (!layer.trusted && COMMAND_BEARING_KEYS.has(key)) return undefined;
+	return effective(layer.config?.[key]);
+}
+
+/**
  * Build the ordered raw config layers for one path (highest → lowest):
  * .dev3/config.local.json (personal, gitignored), then .dev3/config.json (committed).
+ *
+ * `trusted` is false only for a foreign-code worktree — see
+ * {@link resolveOperationalProjectConfig}. The project's own checkout is always
+ * trusted: the user cloned it and its committed config is theirs to own.
  */
-function pathConfigLayers(basePath: string): (Dev3RepoConfig | null)[] {
+function pathConfigLayers(basePath: string, trusted = true): ConfigLayer[] {
 	return [
-		readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`),
-		readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`),
+		{ config: readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`), trusted },
+		{ config: readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`), trusted },
 	];
 }
 
@@ -206,14 +238,14 @@ function pathConfigLayers(basePath: string): (Dev3RepoConfig | null)[] {
  */
 async function applyConfigCascade(
 	project: Project,
-	layers: (Dev3RepoConfig | null)[],
+	layers: ConfigLayer[],
 	compareRefBasePath: string,
 ): Promise<Project> {
 	const resolved = { ...project };
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
 		let val: unknown;
 		for (const layer of layers) {
-			const v = effective(layer?.[key]);
+			const v = layerValue(layer, key);
 			if (v !== undefined) { val = v; break; }
 		}
 		val = val ?? (project as any)[key] ?? DEFAULTS[key];
@@ -226,7 +258,7 @@ async function applyConfigCascade(
 	// that sets one var must not erase UI- or local-configured vars (decision 179).
 	const envMerged = sanitizeEnvMap(project.env, (m) => log.warn(m));
 	for (let i = layers.length - 1; i >= 0; i--) {
-		Object.assign(envMerged, sanitizeEnvMap(layers[i]?.env, (m) => log.warn(m)));
+		Object.assign(envMerged, sanitizeEnvMap(layerValue(layers[i], "env"), (m) => log.warn(m)));
 	}
 	resolved.env = Object.keys(envMerged).length > 0 ? envMerged : undefined;
 
@@ -234,7 +266,7 @@ async function applyConfigCascade(
 	// else auto-detect from git (resilient to a missing/broken folder). Merge raw
 	// layer values low→high so the highest-priority layer wins, matching the cascade.
 	const merged: Dev3RepoConfig = {};
-	for (let i = layers.length - 1; i >= 0; i--) Object.assign(merged, layers[i] ?? {});
+	for (let i = layers.length - 1; i >= 0; i--) Object.assign(merged, layers[i].config ?? {});
 	if (merged.defaultCompareRef !== undefined) {
 		resolved.defaultCompareRef = merged.defaultCompareRef;
 	} else if (merged.defaultCompareRefMode !== undefined) {
@@ -294,24 +326,44 @@ export async function resolveProjectConfig(project: Project, configPath?: string
  * worktree always outranks main, so a stale/empty value from main or the project
  * object can never shadow a worktree value.
  *
+ * ONE exception, and it is a security boundary: pass `foreignCode` for a task
+ * standing on a branch the user did not write (`Task.foreignCode`). The worktree's
+ * layers then stop supplying {@link COMMAND_BEARING_KEYS} — a pull request cannot
+ * hand dev3 a `setupScript` or a `BASH_ENV` to run before anyone read the diff.
+ * The worktree still supplies everything that does not execute, and the project's
+ * own checkout still supplies the commands, so the task launches normally.
+ *
  * Lives here (not in settings-config.ts) because it depends only on the config
  * cascade — keeping it pure and integration-testable with real files.
  */
-export async function resolveOperationalProjectConfig(project: Project, worktreePath?: string): Promise<Project> {
+export async function resolveOperationalProjectConfig(
+	project: Project,
+	worktreePath?: string,
+	opts?: { foreignCode?: boolean },
+): Promise<Project> {
 	// No worktree (or worktree == project root): plain single-path resolution.
 	if (!worktreePath || worktreePath === project.path) {
 		return resolveProjectConfig(project);
 	}
 	// Worktree files first, then main checkout's — both as [local, repo].
-	const layers = [...pathConfigLayers(worktreePath), ...pathConfigLayers(project.path)];
+	const layers = [
+		...pathConfigLayers(worktreePath, opts?.foreignCode !== true),
+		...pathConfigLayers(project.path),
+	];
 	// Compare-ref auto-detection uses the worktree dir (matches its branch).
 	return applyConfigCascade(project, layers, worktreePath);
 }
 
 /** Per-key-merged project env for a terminal or task session, re-read at launch
- *  time so config-file edits apply on the next launch. Never throws. */
-export async function resolveProjectEnv(project: Project, worktreePath?: string | null): Promise<Record<string, string>> {
-	const resolved = await resolveOperationalProjectConfig(project, worktreePath ?? undefined);
+ *  time so config-file edits apply on the next launch. Never throws.
+ *  Pass the task's `foreignCode` so a reviewed branch cannot export env into
+ *  every session it touches (see {@link resolveOperationalProjectConfig}). */
+export async function resolveProjectEnv(
+	project: Project,
+	worktreePath?: string | null,
+	opts?: { foreignCode?: boolean },
+): Promise<Record<string, string>> {
+	const resolved = await resolveOperationalProjectConfig(project, worktreePath ?? undefined, opts);
 	return resolved.env ?? {};
 }
 

@@ -868,6 +868,8 @@ export async function addTask(
 		watched?: boolean;
 		scratch?: boolean;
 		draft?: boolean;
+		/** Marks a task started on a branch the user did not author — see Task.foreignCode. */
+		foreignCode?: boolean;
 		customTitle?: string | null;
 		titleEditedByUser?: boolean;
 		labelIds?: string[];
@@ -932,6 +934,7 @@ export async function addTask(
 			...(extras?.watched ? { watched: true } : {}),
 			...(extras?.scratch ? { scratch: true } : {}),
 			...(extras?.draft ? { draft: true } : {}),
+			...(extras?.foreignCode ? { foreignCode: true } : {}),
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
 			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),

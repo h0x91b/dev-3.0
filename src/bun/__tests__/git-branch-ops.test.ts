@@ -77,6 +77,7 @@ import {
 	getOriginUrl,
 	deriveForkUrl,
 	fetchFork,
+	isForeignBranchRef,
 	pullOrigin,
 	_resetFetchState,
 	_resetCompareRefCache,
@@ -854,5 +855,53 @@ describe("fetchFork", () => {
 		queueResponse(1, "", "fatal: couldn't find remote ref");         // fetch fails
 		const result = await fetchFork("/repo", "yanive", "nonexistent");
 		expect(result).toBe(false);
+	});
+});
+
+// ─── isForeignBranchRef ──────────────────────────────────────────────────────
+
+describe("isForeignBranchRef", () => {
+	it("no existingBranch → own work (a fresh branch off the base)", async () => {
+		expect(await isForeignBranchRef("/repo", undefined)).toBe(false);
+		expect(await isForeignBranchRef("/repo", null)).toBe(false);
+		expect(await isForeignBranchRef("/repo", "   ")).toBe(false);
+	});
+
+	it("plain local branch name → own work, without asking git", async () => {
+		expect(await isForeignBranchRef("/repo", "feature-login")).toBe(false);
+		expect(spawnMock).not.toHaveBeenCalled();
+	});
+
+	it("a slash alone does not make it foreign — feature/login is a local branch", async () => {
+		queueResponse(0, "origin\n");
+		expect(await isForeignBranchRef("/repo", "feature/login")).toBe(false);
+	});
+
+	it("origin/<branch> → foreign", async () => {
+		queueResponse(0, "origin\n");
+		expect(await isForeignBranchRef("/repo", "origin/feat/x")).toBe(true);
+	});
+
+	it("fork remote's branch → foreign", async () => {
+		queueResponse(0, "origin\nyanive\n");
+		expect(await isForeignBranchRef("/repo", "yanive/feat/x")).toBe(true);
+	});
+
+	it("strips a refs/remotes/ prefix before classifying", async () => {
+		queueResponse(0, "origin\n");
+		expect(await isForeignBranchRef("/repo", "refs/remotes/origin/feat/x")).toBe(true);
+	});
+
+	// The whole reason this asks for remotes instead of `rev-parse refs/remotes/...`:
+	// a merged pull request's branch is deleted upstream, and the ref check would
+	// then quietly hand the task back its own trust.
+	it("still foreign after the upstream branch was deleted", async () => {
+		queueResponse(0, "origin\nyanive\n"); // remote survives, branch does not
+		expect(await isForeignBranchRef("/repo", "yanive/merged-and-deleted")).toBe(true);
+	});
+
+	it("git failure → foreign, never trusted", async () => {
+		queueResponse(1, "", "fatal: not a git repository");
+		expect(await isForeignBranchRef("/not-a-repo", "origin/feat/x")).toBe(true);
 	});
 });

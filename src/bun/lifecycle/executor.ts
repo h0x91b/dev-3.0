@@ -285,7 +285,7 @@ async function prepareTask(
 			effect.runId,
 			"resolving-config",
 			"resolveOperationalProjectConfig",
-			() => resolveOperationalProjectConfig(resolvedProject, worktree.worktreePath),
+			() => resolveOperationalProjectConfig(resolvedProject, worktree.worktreePath, { foreignCode: task.foreignCode }),
 		);
 		if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
 			await preparationStep(
@@ -430,7 +430,7 @@ export async function runCleanupScript(
 	transition: CleanupTransition,
 ): Promise<void> {
 	if (!task.worktreePath || !existsSync(task.worktreePath)) return;
-	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath);
+	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath, { foreignCode: task.foreignCode });
 	const script = resolved.cleanupScript?.trim() || 'echo "Task finished"';
 	const dialect = launchDialect();
 	const scriptPath = dev3TaskTempPath(task.id, `cleanup${dialect.scriptExtension}`);

