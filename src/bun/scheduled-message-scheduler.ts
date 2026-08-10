@@ -13,6 +13,7 @@ import * as data from "./data";
 import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
+import { spillOversizedAgentMessage } from "./agent-message-spill";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
 // this module through cli-socket-server — don't load the real Electrobun-backed
@@ -153,7 +154,10 @@ function validateText(text: string): string {
 	const trimmed = text.trim();
 	if (!trimmed) throw new Error("Message text is required");
 	if (trimmed.length > MAX_SCHEDULED_MESSAGE_LENGTH) {
-		throw new Error(`Message too long (${trimmed.length} chars). Keep it under ${MAX_SCHEDULED_MESSAGE_LENGTH} characters.`);
+		throw new Error(
+			`Message too long: ${trimmed.length} chars, and the limit is ${MAX_SCHEDULED_MESSAGE_LENGTH}. ` +
+				`Write it to a file and send that path instead.`,
+		);
 	}
 	return trimmed;
 }
@@ -168,10 +172,13 @@ export async function scheduleMessage(
 	task: Task,
 	input: { text: string; at: string; target?: ScheduledMessageTarget | null; source?: AgentMessageSource | null },
 ): Promise<Task> {
-	const text = validateText(input.text);
+	const validated = validateText(input.text);
 	if (isTerminal(task.status)) {
 		throw new Error("Cannot schedule a message for a completed or cancelled task");
 	}
+	// Spilled at queue time, not at delivery: the queue lives in tasks.json, and 20
+	// pending messages of the full allowed length would put megabytes in there.
+	const { text } = await spillOversizedAgentMessage(task, validated);
 	const at = new Date(input.at);
 	if (!Number.isFinite(at.getTime()) || at.getTime() <= Date.now()) {
 		throw new Error("Scheduled message time must be in the future");
@@ -223,14 +230,15 @@ export async function sendMessageImmediately(
 	text: string,
 	target?: ScheduledMessageTarget | null,
 	source?: AgentMessageSource | null,
-): Promise<AgentPromptDelivery> {
+): Promise<AgentPromptDelivery & { spilledPath: string | null }> {
 	const trimmed = validateText(text);
 	if (isTerminal(task.status)) {
 		throw new Error("Cannot send a message to a completed or cancelled task");
 	}
+	const { text: payload, spilledPath } = await spillOversizedAgentMessage(task, trimmed);
 	const delivery = await deliverToTarget(task, {
 		id: "",
-		text: trimmed,
+		text: payload,
 		at: "",
 		target: normalizeTarget(target),
 		...(source ? { source } : {}),
@@ -238,7 +246,7 @@ export async function sendMessageImmediately(
 	if (delivery.status === "not-delivered") {
 		throw new Error("Could not deliver the message — the task has no live agent session.");
 	}
-	return delivery;
+	return { ...delivery, spilledPath };
 }
 
 /**

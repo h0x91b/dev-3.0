@@ -1844,16 +1844,22 @@ export interface AgentMessageSource {
 /** Per-task cap on pending scheduled messages; scheduling past this is rejected. */
 export const MAX_SCHEDULED_MESSAGES_PER_TASK = 20;
 
-/** Max length (chars) of a single scheduled message's text; longer is rejected. */
-export const MAX_SCHEDULED_MESSAGE_LENGTH = 10_000;
+/**
+ * Max length (chars) of a single message's text; longer is rejected outright.
+ * Well above what a terminal can be typed into — anything past
+ * {@link AGENT_MESSAGE_SPILL_THRESHOLD_BYTES} is handed over as a file instead.
+ */
+export const MAX_SCHEDULED_MESSAGE_LENGTH = 80_000;
 
 /**
- * Above this, `sendAgentMessageNow` writes the payload to a file and sends the
- * agent that path instead of the raw text. Derived from
- * {@link MAX_SCHEDULED_MESSAGE_LENGTH} with a 20% margin — that guard is the
- * real ceiling a large review hits (decision 198).
+ * UTF-8 bytes of message body that still travel as typed text. Past this the
+ * body is written to a file and the agent receives that path inside the same
+ * envelope. Sized by what tmux can physically accept: its client↔server frame is
+ * 16 KiB, `send-keys -H` spends 3 bytes per byte of text, and the envelope plus
+ * the guarded command list eat the rest — see
+ * `decisions/2026/08/10/spill-oversized-agent-messages-to-a-file.md`.
  */
-export const AGENT_MESSAGE_SPILL_THRESHOLD = 8_000;
+export const AGENT_MESSAGE_SPILL_THRESHOLD_BYTES = 4_000;
 
 /** Raster image extensions accepted by `dev3 show-image` (lowercase, no dot).
  * SVG is excluded on purpose — an inline data-URI SVG in the webview is an XSS
@@ -3739,8 +3745,8 @@ export type AppRPCSchema = {
 			 * Type `text` + Enter into the task's live agent pane right now, without
 			 * queueing (the diff viewer's per-thread "send to agent"). Throws when the
 			 * task has no live agent session. Payloads over
-			 * {@link AGENT_MESSAGE_SPILL_THRESHOLD} are written to a file and the agent
-			 * gets that path — `spilledPath` then names the file for the toast.
+			 * {@link AGENT_MESSAGE_SPILL_THRESHOLD_BYTES} are written to a file and the
+			 * agent gets that path — `spilledPath` then names the file for the toast.
 			 */
 			sendAgentMessageNow: {
 				params: { taskId: string; projectId: string; text: string };

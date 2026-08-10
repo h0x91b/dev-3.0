@@ -28,7 +28,10 @@ export async function handleMessage(
 	const text = (args.positional[0] ?? args.flags.message ?? "").toString().trim();
 	if (!text) exitUsage(USAGE);
 	if (text.length > MAX_SCHEDULED_MESSAGE_LENGTH) {
-		exitUsage(`Message too long (${text.length} chars). Keep it under ${MAX_SCHEDULED_MESSAGE_LENGTH} characters.`);
+		exitUsage(
+			`Message too long: ${text.length} chars, and the limit is ${MAX_SCHEDULED_MESSAGE_LENGTH}. ` +
+				`Write it to a file and send that path instead.`,
+		);
 	}
 
 	const hasIn = "in" in args.flags && args.flags.in !== "true";

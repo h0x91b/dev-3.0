@@ -6,6 +6,8 @@
 // `remote` and `gui` intentionally render their own richer, hand-written help
 // inside their handlers and are NOT listed here (see `ownsHelp` in main.ts).
 
+import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH } from "../shared/types";
+
 /** One subcommand of a command group (e.g. `task create`). */
 export interface SubcommandHelp {
 	/** Subcommand keyword, e.g. "create". */
@@ -403,6 +405,8 @@ const COMMANDS: CommandHelp[] = [
 			"Targets the current worktree's task; override with --task <id>.",
 			"Messaging ANOTHER task from a worktree wraps the text in a <dev3-ai-message> envelope",
 			"carrying your seq + the reply command, so the receiving agent knows who wrote it.",
+			`Hard limit ${MAX_SCHEDULED_MESSAGE_LENGTH} chars. Past ${AGENT_MESSAGE_SPILL_THRESHOLD_BYTES} bytes the body no longer fits a`,
+			"terminal, so it is written to a file and the agent is sent that path in the same envelope.",
 		],
 	},
 	{

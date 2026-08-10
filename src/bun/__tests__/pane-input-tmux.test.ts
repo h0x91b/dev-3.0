@@ -307,6 +307,25 @@ describe("one stage still fits what each backend can physically carry", () => {
 	const MAX_ARG_STRLEN = 131_072;
 	/** The native host control frame, with the payload base64-encoded inside it. */
 	const NATIVE_FRAME_BYTES = 65_536;
+	/**
+	 * tmux's own ceiling, and the one that actually binds: a whole command line rides one
+	 * imsg frame. Measured against tmux 3.6a — 16 344 bytes accepted, 16 345 answered
+	 * `command too long`. Argv arithmetic alone passed happily while every large message
+	 * died at the server.
+	 */
+	const TMUX_COMMAND_BYTES = 16_344;
+
+	it("keeps the worst-case guarded tmux command inside tmux's own command-length ceiling", () => {
+		const chunkPrefix = "send-keys -t %999 -H ".length;
+		const guard = "if-shell -t %999 -F ".length + 160;
+		const worstCaseCommand =
+			PANE_INPUT_LIMITS.maxStageBytes * 3 +
+			PANE_INPUT_LIMITS.maxSteps * chunkPrefix +
+			PANE_INPUT_LIMITS.maxSteps * " ; ".length +
+			"display-message -p dev3-pane-input-sent".length +
+			guard;
+		expect(worstCaseCommand).toBeLessThan(TMUX_COMMAND_BYTES);
+	});
 
 	it("keeps the worst-case tmux argv element and the native frame inside their ceilings", () => {
 		// EVERY piece shares one argv element: the hex (3 bytes per byte of text), one
