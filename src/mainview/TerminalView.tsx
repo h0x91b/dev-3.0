@@ -23,6 +23,7 @@ import {
 } from "./terminal-bidi/flag";
 import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
 import { installCursorVisibilityGate, type CursorVisibilityGate } from "./terminal-cursor-focus";
+import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer } from "./wheel-pacer";
 import type { TaskPaneAction } from "../shared/task-panes";
@@ -286,6 +287,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const copyDiagnosticsRef = useRef<TerminalCopyDiagnostics | null>(null);
 	/** Hides the cursor while input would not reach this terminal. */
 	const cursorGateRef = useRef<CursorVisibilityGate | null>(null);
+	/** Keeps block, box-drawing and powerline glyphs on the cell background's box. */
+	const glyphFitRef = useRef<GlyphCellFit | null>(null);
 	// Native backend only. The watermark is what a reconnect resumes from, so it
 	// must survive the socket — a tmux session never sets either of these.
 	const nativeSeqRef = useRef<number | null>(null);
@@ -542,6 +545,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			if (term.renderer) {
 				cursorGateRef.current = installCursorVisibilityGate(term.renderer);
 				cursorGateRef.current.setCursorVisible(inputReachesTerminal());
+				// Powerline prompts and block-drawn bars are only flush if the glyph
+				// shares the background's cell box; the vendor's own metrics do not.
+				glyphFitRef.current = installGlyphCellFit(term.renderer);
 			}
 
 			if (getTerminalBidiEnabled() && term.renderer) {
@@ -1565,6 +1571,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			copyDiagnosticsRef.current = null;
 			cursorGateRef.current?.dispose();
 			cursorGateRef.current = null;
+			glyphFitRef.current?.dispose();
+			glyphFitRef.current = null;
 			pendingWrite = "";
 			layoutObserver?.disconnect();
 			mouseCleanup?.();

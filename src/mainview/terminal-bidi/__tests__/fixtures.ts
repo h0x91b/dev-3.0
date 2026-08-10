@@ -195,12 +195,17 @@ export function recordingCtx(): {
 		globalAlpha: 1,
 		textBaseline: "alphabetic",
 		textAlign: "left",
+		// A fractional advance under a whole-pixel cell, and a line box taller than
+		// the ink of an "M": both halves of the gap the glyph-cell fit closes.
 		measureText: () => ({
-			width: 10,
+			width: 9.5,
 			actualBoundingBoxAscent: 12,
 			actualBoundingBoxDescent: 3,
+			fontBoundingBoxAscent: 14,
+			fontBoundingBoxDescent: 4,
 		}),
-		scale: () => {},
+		// The renderer scales by its devicePixelRatio once; the suites build it at 1.
+		getTransform: () => ({ a: 1, d: 1 }),
 		beginPath: () => {},
 		moveTo: () => {},
 		lineTo: () => {},
@@ -218,6 +223,14 @@ export function recordingCtx(): {
 	}
 	ctx.fillRect = record("fillRect");
 	ctx.fillText = record("fillText");
+	// Recorded, not stubbed away: the glyph-cell fit's whole behaviour is the
+	// clip + transform it wraps a glyph in.
+	ctx.save = record("save");
+	ctx.restore = record("restore");
+	ctx.translate = record("translate");
+	ctx.scale = record("scale");
+	ctx.rect = record("rect");
+	ctx.clip = record("clip");
 	return { ctx, ops };
 }
 
