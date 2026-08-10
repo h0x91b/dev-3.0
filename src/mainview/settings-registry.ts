@@ -192,6 +192,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "review-mode-prompt",
+		category: "tasks",
+		titleKey: "settings.reviewModePrompt",
+		descriptionKey: "settings.reviewModePromptDesc",
+		anchor: "review-mode-prompt",
+		globalField: "reviewModePrompt",
+		storage: "global",
+	},
+	{
 		id: "tips",
 		category: "tasks",
 		titleKey: "settings.tipsSection",
@@ -413,6 +422,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"pxpipeProxyEnabled",
 	"favorites",
 	"keyboardShortcuts",
+	"reviewModePrompt",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 type RegisteredGlobalSettingsField = (typeof SETTINGS_ENTRIES)[number] extends infer Entry

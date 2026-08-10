@@ -31,6 +31,7 @@ vi.mock("../../rpc", () => ({
 			saveLocalConfig: vi.fn().mockResolvedValue(undefined),
 			getProjects: vi.fn().mockResolvedValue([]),
 			getAgents: vi.fn().mockResolvedValue([]),
+			getGlobalSettings: vi.fn().mockResolvedValue({}),
 		},
 	},
 }));

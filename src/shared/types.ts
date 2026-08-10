@@ -875,6 +875,12 @@ export interface GlobalSettings {
 	 */
 	pxpipeProxyEnabled?: boolean;
 	/**
+	 * Custom text the Review toggle in the create-task popup injects into the
+	 * description. Absent/blank ⇒ the localized built-in prompt. A project can
+	 * override it; see resolveReviewModePrompt.
+	 */
+	reviewModePrompt?: string;
+	/**
 	 * Cross-provider "favorite" agent configs shown as quick-pick chips on the
 	 * launch picker (Launch/Retry, Spawn, Bug Hunters). Thin pointers, capped at
 	 * MAX_FAVORITES with LFU-then-LRU eviction; ordered by uses then recency.
@@ -1168,6 +1174,8 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	githubAuthHost?: string | null;
 	githubAuthLogin?: string | null;
 	sensitive?: boolean;
+	/** Blank string clears the project override and falls back to global. */
+	reviewModePrompt?: string;
 }
 
 export interface Project {
@@ -1225,6 +1233,25 @@ export interface Project {
 	 * gated on streamer mode being on. See PRODUCT_UX_BIBLE §10 + decision 197.
 	 */
 	sensitive?: boolean;
+	/**
+	 * Project-level override of the Review toggle's prompt. Absent/blank ⇒ the
+	 * global setting, then the localized built-in. See resolveReviewModePrompt.
+	 */
+	reviewModePrompt?: string;
+}
+
+/**
+ * The Review toggle's prompt in effect: project override, then the global custom
+ * one, then the localized built-in text. Blank at a layer means "not set", so a
+ * cleared field falls through instead of injecting an empty prompt.
+ */
+export function resolveReviewModePrompt(
+	project: Pick<Project, "reviewModePrompt"> | null | undefined,
+	globalSettings: Pick<GlobalSettings, "reviewModePrompt"> | null | undefined,
+	builtinDefault: string,
+): string {
+	const set = (value: string | undefined) => (value && value.trim() ? value : undefined);
+	return set(project?.reviewModePrompt) ?? set(globalSettings?.reviewModePrompt) ?? builtinDefault;
 }
 
 /**

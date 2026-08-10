@@ -4,7 +4,7 @@ import { confirm } from "../confirm";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
-import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT } from "../../shared/types";
+import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_PROMPT, resolveReviewModePrompt } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -1261,9 +1261,17 @@ function ProjectSettings({
 	});
 	const [availableAgents, setAvailableAgents] = useState<CodingAgent[]>([]);
 
+	// Review-toggle prompt: blank = inherit the global setting (itself falling back
+	// to the localized built-in text).
+	const [reviewModePrompt, setReviewModePrompt] = useState(project?.reviewModePrompt ?? "");
+	const initialReviewModePromptRef = useRef(project?.reviewModePrompt ?? "");
+	const [globalReviewModePrompt, setGlobalReviewModePrompt] = useState<string | undefined>(undefined);
+	const inheritedReviewModePrompt = resolveReviewModePrompt(null, { reviewModePrompt: globalReviewModePrompt }, t("createTask.reviewPrompt"));
+
 	// Load available agents
 	useEffect(() => {
 		api.request.getAgents().then(setAvailableAgents).catch(() => {});
+		api.request.getGlobalSettings().then((s) => setGlobalReviewModePrompt(s.reviewModePrompt)).catch(() => {});
 	}, []);
 
 	// Tasks with active worktrees
@@ -1357,6 +1365,11 @@ function ProjectSettings({
 			&& (a.githubAuthLogin ?? "") === (b.githubAuthLogin ?? "");
 	}, [configsEqual]);
 
+	const isReviewModePromptDirty = useCallback(
+		() => reviewModePrompt.trim() !== initialReviewModePromptRef.current.trim(),
+		[reviewModePrompt],
+	);
+
 	const isAiReviewDirty = useCallback(() => {
 		const init = initialAiReviewRef.current;
 		return aiReviewAgentId !== init.agentId || aiReviewConfigId !== init.configId || aiReviewPrompt !== init.prompt;
@@ -1364,14 +1377,14 @@ function ProjectSettings({
 
 	const isDirty = useCallback(() => {
 		if (activeTab === "project") {
-			return !projectConfigsEqual(projectConfig, loadedProjectConfig.current) || isAiReviewDirty();
+			return !projectConfigsEqual(projectConfig, loadedProjectConfig.current) || isAiReviewDirty() || isReviewModePromptDirty();
 		}
 		if (activeTab === "worktree") {
 			if (worktreeSubTab === "repo") return !configsEqual(wtRepoConfig, loadedWtRepoConfig.current);
 			return !configsEqual(wtLocalConfig, loadedWtLocalConfig.current);
 		}
 		return false; // Global tab uses immediate save
-	}, [activeTab, worktreeSubTab, projectConfig, wtRepoConfig, wtLocalConfig, projectConfigsEqual, configsEqual, isAiReviewDirty]);
+	}, [activeTab, worktreeSubTab, projectConfig, wtRepoConfig, wtLocalConfig, projectConfigsEqual, configsEqual, isAiReviewDirty, isReviewModePromptDirty]);
 
 	const handleSaveRef = useRef<() => Promise<void>>(async () => {});
 
@@ -1591,11 +1604,18 @@ function ProjectSettings({
 				...sanitizeConfigPaths(projectConfig),
 				builtinColumnAgents,
 			};
-			const updated = await api.request.updateProjectSettings({ projectId, ...toSave });
+			// Kept out of `toSave` so it never enters the config-equality baseline —
+			// it lives on the project record, not in .dev3/config.json.
+			const updated = await api.request.updateProjectSettings({
+				projectId,
+				...toSave,
+				reviewModePrompt: reviewModePrompt.trim() ? reviewModePrompt : "",
+			});
 			dispatch({ type: "updateProject", project: updated });
 			loadedProjectConfig.current = toSave;
 			setProjectConfig(toSave);
 			initialAiReviewRef.current = { agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
+			initialReviewModePromptRef.current = reviewModePrompt;
 		} catch (err) {
 			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
@@ -2000,6 +2020,48 @@ function ProjectSettings({
 											spellCheck={false}
 											className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
 										/>
+									</div>
+								</div>
+							</div>
+
+							{/* Review toggle prompt (create-task popup) */}
+							<div className="space-y-4">
+								<div>
+									<span className="block text-fg text-sm font-semibold mb-1">
+										{t("projectSettings.reviewModePrompt")}
+									</span>
+									<p className="text-fg-3 text-sm">
+										{t("projectSettings.reviewModePromptDesc")}
+									</p>
+								</div>
+								<div className="space-y-3 pl-1">
+									<textarea
+										id="project-review-mode-prompt"
+										aria-label={t("projectSettings.reviewModePrompt")}
+										value={reviewModePrompt}
+										onChange={(e) => setReviewModePrompt(e.target.value)}
+										rows={8}
+										placeholder={inheritedReviewModePrompt}
+										autoCapitalize="off"
+										autoCorrect="off"
+										spellCheck={false}
+										className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+									/>
+									<div className="flex items-center gap-3">
+										<button
+											type="button"
+											onClick={() => setReviewModePrompt(reviewModePrompt.trim() ? "" : inheritedReviewModePrompt)}
+											className="text-sm text-fg-3 hover:text-accent transition-colors px-3 py-1.5 rounded-lg border border-edge hover:border-accent/30"
+										>
+											{reviewModePrompt.trim()
+												? t("projectSettings.reviewModePromptReset")
+												: t("projectSettings.reviewModePromptCopyInherited")}
+										</button>
+										<span className="text-fg-muted text-xs">
+											{reviewModePrompt.trim()
+												? t("projectSettings.reviewModePromptOverride")
+												: t("projectSettings.reviewModePromptInherited")}
+										</span>
 									</div>
 								</div>
 							</div>

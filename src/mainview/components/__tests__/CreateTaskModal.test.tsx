@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import CreateTaskModal from "../CreateTaskModal";
 import { splitBranchWords, matchesBranchQuery } from "../BranchSelector";
 import { I18nProvider } from "../../i18n";
-import type { Project, Task, SystemMemorySnapshot } from "../../../shared/types";
+import type { GlobalSettings, Project, Task, SystemMemorySnapshot } from "../../../shared/types";
 import type { AppAction } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -24,6 +24,7 @@ vi.mock("../../rpc", () => ({
 			readImageBase64: vi.fn(),
 			openImageFile: vi.fn(),
 			listAgentSkills: vi.fn(),
+			getGlobalSettings: vi.fn().mockResolvedValue({}),
 		},
 	},
 	isElectrobun: false,
@@ -1205,6 +1206,7 @@ describe("CreateTaskModal — PR link banner", () => {
 		mockedApi.request.createTask.mockResolvedValue(mockTask);
 		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
 		mockedApi.request.listAgentSkills.mockResolvedValue([]);
+		mockedApi.request.getGlobalSettings.mockResolvedValue({} as GlobalSettings);
 	});
 
 	async function pasteIntoDescription(text: string) {
@@ -1255,6 +1257,33 @@ describe("CreateTaskModal — PR link banner", () => {
 		// Branch selected → the selected branch chip renders and the banner is gone.
 		expect(screen.getByText("origin/feature")).toBeInTheDocument();
 		expect(screen.queryByText("Set up review")).not.toBeInTheDocument();
+	});
+
+	it("injects the custom review prompt from global settings instead of the built-in one", async () => {
+		mockedApi.request.getGlobalSettings.mockResolvedValue({ reviewModePrompt: "Only report blockers." } as GlobalSettings);
+		mockedApi.request.resolvePrUrl.mockResolvedValue({
+			ok: true, branch: "origin/feature", number: 42, title: "My PR", isFork: false, error: null,
+		});
+		renderModal();
+		const textarea = await pasteIntoDescription("https://github.com/o/r/pull/42") as HTMLTextAreaElement;
+
+		await userEvent.click(await screen.findByText("Set up review"));
+
+		await waitFor(() => expect(textarea.value).toBe("Only report blockers."));
+		expect(textarea.value).not.toContain("Review the code changes on this branch.");
+	});
+
+	it("prefers the project's review prompt over the global one", async () => {
+		mockedApi.request.getGlobalSettings.mockResolvedValue({ reviewModePrompt: "Global prompt." } as GlobalSettings);
+		mockedApi.request.resolvePrUrl.mockResolvedValue({
+			ok: true, branch: "origin/feature", number: 42, title: "My PR", isFork: false, error: null,
+		});
+		renderModal({ project: { ...mockProject, reviewModePrompt: "Project prompt." } });
+		const textarea = await pasteIntoDescription("https://github.com/o/r/pull/42") as HTMLTextAreaElement;
+
+		await userEvent.click(await screen.findByText("Set up review"));
+
+		await waitFor(() => expect(textarea.value).toBe("Project prompt."));
 	});
 
 	it("keeps the URL as plain text and hides the banner on 'Keep as text'", async () => {

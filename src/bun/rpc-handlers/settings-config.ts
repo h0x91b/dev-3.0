@@ -69,6 +69,11 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		...(params.githubAuthHost !== undefined ? { githubAuthHost: params.githubAuthHost } : {}),
 		...(params.githubAuthLogin !== undefined ? { githubAuthLogin: params.githubAuthLogin } : {}),
 		...(params.sensitive !== undefined ? { sensitive: params.sensitive } : {}),
+		// A blank prompt is how the UI clears the override: dropped from the
+		// record so the global setting takes over again.
+		...(params.reviewModePrompt !== undefined
+			? { reviewModePrompt: params.reviewModePrompt.trim() ? params.reviewModePrompt : undefined }
+			: {}),
 	};
 	const updated = await data.updateProject(params.projectId, updates);
 	getPushMessage()?.("projectUpdated", { project: updated });

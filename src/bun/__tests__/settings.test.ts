@@ -172,6 +172,7 @@ describe("saveSettings", () => {
 			playSoundOnTaskComplete: false,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,
+			reviewModePrompt: "Review the diff and report only blockers.",
 			taskOpenMode: "fullscreen",
 			defaultDiffViewMode: "unified",
 			preventSleepWhileRunning: true,

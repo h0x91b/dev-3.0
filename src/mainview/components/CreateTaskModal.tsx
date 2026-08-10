@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, titleFromDescription, type Project, type Task, type TaskPriority } from "../../shared/types";
+import { DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, resolveReviewModePrompt, titleFromDescription, type GlobalSettings, type Project, type Task, type TaskPriority } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
@@ -192,33 +192,49 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		setDescription((prev) => removeImagePath(prev, path));
 	}, []);
 
-	const reviewPrompt = t("createTask.reviewPrompt");
 	const REVIEW_SEPARATOR = "\n\n---\n\n";
+	// The prompt the Review toggle injects is editable per project and app-wide, so
+	// it comes from settings; `null` = the fetch is still in flight.
+	const [reviewPromptSettings, setReviewPromptSettings] = useState<GlobalSettings | null>(null);
+	const reviewPromptSettingsPromise = useRef<Promise<GlobalSettings | null> | null>(null);
+	useEffect(() => {
+		const pending = api.request.getGlobalSettings().catch(() => null);
+		reviewPromptSettingsPromise.current = pending;
+		void pending.then((loaded) => setReviewPromptSettings(loaded));
+	}, []);
+	const reviewPrompt = resolveReviewModePrompt(project, reviewPromptSettings, t("createTask.reviewPrompt"));
+
+	/** Same value, but safe to call before the settings fetch has landed. */
+	async function ensureReviewPrompt(): Promise<string> {
+		if (reviewPromptSettings) return reviewPrompt;
+		const loaded = await reviewPromptSettingsPromise.current;
+		return resolveReviewModePrompt(project, loaded, t("createTask.reviewPrompt"));
+	}
 
 	// Prompt + (optional) user text. Pure so the PR-apply path can compute the
 	// final description synchronously without racing setState against a stale read.
-	function buildReviewDescription(baseText: string): string {
+	function buildReviewDescription(baseText: string, prompt: string): string {
 		const userText = baseText.trim();
-		return userText ? reviewPrompt + REVIEW_SEPARATOR + userText : reviewPrompt;
+		return userText ? prompt + REVIEW_SEPARATOR + userText : prompt;
 	}
 
-	function handleReviewModeChange(enabled: boolean) {
+	async function handleReviewModeChange(enabled: boolean) {
 		setReviewMode(enabled);
+		const prompt = await ensureReviewPrompt();
 		if (enabled) {
 			// Inject review prompt: if user has text, prepend prompt + separator + user text
-			setDescription(buildReviewDescription(description));
+			setDescription((current) => buildReviewDescription(current, prompt));
 		} else {
 			// Remove review prompt: restore user's original text (if any)
-			const current = description;
-			const sepIdx = current.indexOf(REVIEW_SEPARATOR);
-			if (current.startsWith(reviewPrompt) && sepIdx !== -1) {
-				// Had user text after separator
-				setDescription(current.slice(sepIdx + REVIEW_SEPARATOR.length));
-			} else if (current.startsWith(reviewPrompt)) {
-				// No user text — just the prompt
-				setDescription("");
-			}
-			// If user modified the prompt text manually, leave it as-is
+			setDescription((current) => {
+				const sepIdx = current.indexOf(REVIEW_SEPARATOR);
+				if (current.startsWith(prompt) && sepIdx !== -1) {
+					// Had user text after separator
+					return current.slice(sepIdx + REVIEW_SEPARATOR.length);
+				}
+				// No user text — just the prompt; a manually edited prompt is left alone
+				return current.startsWith(prompt) ? "" : current;
+			});
 		}
 	}
 
@@ -238,7 +254,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				// Strip the URL out of the description, then fold the remaining text
 				// into the review prompt — the URL was the paste, not the task text.
 				const cleaned = description.replace(detectedPr.url, "").replace(/\n{3,}/g, "\n\n").trim();
-				setDescription(buildReviewDescription(cleaned));
+				setDescription(buildReviewDescription(cleaned, await ensureReviewPrompt()));
 				setReviewMode(true);
 				setSelectedBranch(result.branch);
 				setDismissedPrUrl(null);

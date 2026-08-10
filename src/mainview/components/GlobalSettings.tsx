@@ -347,6 +347,13 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
+	const handleReviewModePromptChange = useCallback(
+		(prompt: string) => {
+			persistSettingChange({ reviewModePrompt: prompt.trim() ? prompt : undefined });
+		},
+		[persistSettingChange],
+	);
+
 	const handleTipsReset = useCallback(() => {
 		api.request.resetTipState().then(() => {
 			setTipsResetDone(true);
@@ -644,6 +651,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						onTaskOpenModeChange={handleTaskOpenModeChange}
 						onTipsDisabledToggle={handleTipsDisabledToggle}
 						onTipsReset={handleTipsReset}
+						onReviewModePromptChange={handleReviewModePromptChange}
 					/>
 				);
 			case "keyboard":

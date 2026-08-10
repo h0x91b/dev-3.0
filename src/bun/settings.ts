@@ -140,6 +140,10 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			favorites: sanitizeFavorites(data.favorites),
 			// User shortcut rebinds; sparse by design — absent means "all defaults".
 			keyboardShortcuts: sanitizeShortcutOverrides(data.keyboardShortcuts),
+			// Custom Review-toggle prompt; blank ⇒ the localized built-in text.
+			reviewModePrompt: typeof data.reviewModePrompt === "string" && data.reviewModePrompt.trim()
+				? data.reviewModePrompt
+				: undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -247,6 +251,10 @@ export function loadSettingsSync(): GlobalSettings {
 			favorites: sanitizeFavorites(data.favorites),
 			// User shortcut rebinds; sparse by design — absent means "all defaults".
 			keyboardShortcuts: sanitizeShortcutOverrides(data.keyboardShortcuts),
+			// Custom Review-toggle prompt; blank ⇒ the localized built-in text.
+			reviewModePrompt: typeof data.reviewModePrompt === "string" && data.reviewModePrompt.trim()
+				? data.reviewModePrompt
+				: undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

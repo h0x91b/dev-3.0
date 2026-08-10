@@ -20,6 +20,8 @@ interface BehaviorSettingsSectionProps {
 	onTaskOpenModeChange: (mode: "split" | "fullscreen") => void;
 	onTipsDisabledToggle: (disabled: boolean) => void;
 	onTipsReset: () => void;
+	/** Blank string = follow the localized built-in prompt. */
+	onReviewModePromptChange: (prompt: string) => void;
 }
 
 export default function BehaviorSettingsSection({
@@ -35,7 +37,20 @@ export default function BehaviorSettingsSection({
 	onTaskOpenModeChange,
 	onTipsDisabledToggle,
 	onTipsReset,
+	onReviewModePromptChange,
 }: BehaviorSettingsSectionProps) {
+	const builtinReviewPrompt = t("createTask.reviewPrompt");
+	// Edited locally and persisted on blur — a save per keystroke would rewrite
+	// settings.json on every character.
+	const [reviewPrompt, setReviewPrompt] = useState(
+		globalSettings.reviewModePrompt ?? builtinReviewPrompt,
+	);
+	const reviewPromptIsCustom = reviewPrompt.trim() !== builtinReviewPrompt.trim();
+	const commitReviewPrompt = (value: string) => {
+		// Storing the built-in text verbatim would freeze the prompt to today's
+		// locale, so an untouched field stays "not set".
+		onReviewModePromptChange(value.trim() === builtinReviewPrompt.trim() ? "" : value);
+	};
 	// Auto-open the shared-image viewer when an agent pushes an image while you're
 	// already looking at the task. Local UI preference (like theme/task-open-mode).
 	const [autoOpenImages, setAutoOpenImages] = useState(() => {
@@ -233,6 +248,44 @@ export default function BehaviorSettingsSection({
 									: t("settings.defaultDiffViewModeAuto")}
 						</button>
 					))}
+				</div>
+			</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="review-mode-prompt">
+			<div>
+				<label htmlFor="review-mode-prompt" className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.reviewModePrompt")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.reviewModePromptDesc")}
+				</p>
+				<textarea
+					id="review-mode-prompt"
+					value={reviewPrompt}
+					onChange={(e) => setReviewPrompt(e.target.value)}
+					onBlur={(e) => commitReviewPrompt(e.target.value)}
+					rows={8}
+					autoCapitalize="off"
+					autoCorrect="off"
+					spellCheck={false}
+					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+				/>
+				<div className="mt-3 flex items-center gap-3">
+					<button
+						type="button"
+						disabled={!reviewPromptIsCustom}
+						onClick={() => {
+							setReviewPrompt(builtinReviewPrompt);
+							onReviewModePromptChange("");
+						}}
+						className="text-sm text-fg-3 hover:text-accent transition-colors px-3 py-1.5 rounded-lg border border-edge hover:border-accent/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-fg-3 disabled:hover:border-edge"
+					>
+						{t("settings.reviewModePromptReset")}
+					</button>
+					{reviewPromptIsCustom && (
+						<span className="text-fg-muted text-xs">{t("settings.reviewModePromptCustom")}</span>
+					)}
 				</div>
 			</div>
 			</SettingsEntry>

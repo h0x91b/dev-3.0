@@ -108,6 +108,19 @@ describe("updateProject", () => {
 		expect(all[0].autoReviewEnabled).toBe(true);
 	});
 
+	it("drops a cleared reviewModePrompt from disk so the global setting takes over", async () => {
+		const project = await addProject("/tmp/prompt-repo", "Prompt Repo");
+
+		await updateProject(project.id, { reviewModePrompt: "Only blockers." });
+		expect((await loadProjects())[0].reviewModePrompt).toBe("Only blockers.");
+
+		const cleared = await updateProject(project.id, { reviewModePrompt: undefined });
+
+		expect(cleared.reviewModePrompt).toBeUndefined();
+		const saved = JSON.parse(readFileSync(PROJECTS_FILE, "utf8"));
+		expect("reviewModePrompt" in saved[0]).toBe(false);
+	});
+
 	it("logs env key names without logging their values", async () => {
 		const project = await addProject("/tmp/env-repo", "Env Repo");
 
