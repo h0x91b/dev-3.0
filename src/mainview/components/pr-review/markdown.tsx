@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { marked } from "marked";
 import sanitizeHtml from "sanitize-html";
+import { useDiskMarkdownImages } from "./markdown-images";
 
 // PR comments are arbitrary third-party content, so the pipeline must be
 // XSS-safe by construction: marked renders GFM to HTML, sanitize-html strips
@@ -49,8 +50,16 @@ export function renderMarkdownDocument(body: string): string {
 	return sanitizeHtml(html, SANITIZE_OPTIONS);
 }
 
-export function MarkdownDocument({ body, className }: { body: string; className?: string }) {
-	const html = useMemo(() => renderMarkdownDocument(body), [body]);
+export function MarkdownDocument({ body, className, imageBaseDir, imageRootDir }: {
+	body: string;
+	className?: string;
+	/** Directory of the document, so repo-relative images can be read off disk. */
+	imageBaseDir?: string | null;
+	/** Checkout root, for root-relative image paths (`/docs/shot.png`). */
+	imageRootDir?: string | null;
+}) {
+	const rendered = useMemo(() => renderMarkdownDocument(body), [body]);
+	const html = useDiskMarkdownImages(rendered, imageBaseDir, imageRootDir);
 	return (
 		<div
 			className={`dev3-pr-md dev3-md-doc min-w-0 text-sm leading-relaxed text-fg${className ? ` ${className}` : ""}`}

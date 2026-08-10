@@ -111,7 +111,11 @@ export default function FilePreviewModal({ path, line, taskId, onClose }: FilePr
 				return (
 					<div className="min-h-0 flex-1 overflow-auto p-4">
 						{isMarkdown && !showRaw ? (
-							<MarkdownDocument body={preview.content} className="max-w-[70ch] mx-auto" />
+							<MarkdownDocument
+								body={preview.content}
+								className="max-w-[70ch] mx-auto"
+								imageBaseDir={dirName || null}
+							/>
 						) : (
 							renderCode(preview.content)
 						)}

@@ -1539,6 +1539,9 @@ function TaskDiffFileSection({
 	// removed blocks red); pure adds/deletes have nothing to compare against.
 	const mdRichDiffBlocks = useMarkdownDiffBlocks(file.oldContent, file.newContent);
 	const mdDiffBlocks = isMarkdownRichDiffFile(file) ? mdRichDiffBlocks : null;
+	// Images the document references live next to it in the worktree; without a
+	// worktree (project diff) there is nothing on disk to point at.
+	const mdImageBaseDir = worktreePath ? copiedFilePath.slice(0, copiedFilePath.lastIndexOf("/")) : null;
 
 	// The built diff instance is the only honest source of "is this line on
 	// screen" (the backend ships hunks: null — the library computes the diff
@@ -1723,8 +1726,8 @@ function TaskDiffFileSection({
 					<div className="px-4 py-4" data-testid="diff-md-preview">
 						{mdPreviewSource.trim()
 							? mdDiffBlocks
-								? <MarkdownRichDiff blocks={mdDiffBlocks} />
-								: <MarkdownDocument body={mdPreviewSource} />
+								? <MarkdownRichDiff blocks={mdDiffBlocks} imageBaseDir={mdImageBaseDir} imageRootDir={worktreePath} />
+								: <MarkdownDocument body={mdPreviewSource} imageBaseDir={mdImageBaseDir} imageRootDir={worktreePath} />
 							: <div className="text-sm text-fg-muted">{t("infoPanel.diffMdPreviewEmpty")}</div>}
 					</div>
 				) : buildError ? (

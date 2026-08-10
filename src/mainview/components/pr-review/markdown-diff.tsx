@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { marked } from "marked";
 import { renderMarkdownDocument } from "./markdown";
+import { useDiskMarkdownImages } from "./markdown-images";
 
 export type MarkdownDiffKind = "context" | "added" | "removed";
 
@@ -9,6 +10,9 @@ export type MarkdownDiffBlock = { kind: MarkdownDiffKind; html: string };
 /** One diffable unit of a markdown document: a top-level block, or a single
  * item of a list (so adding one bullet does not repaint the whole list). */
 type Chunk = { raw: string; listItem: boolean };
+
+/** Joins block HTML for the one-pass image resolve; sanitized HTML has no NULs. */
+const BLOCK_SEPARATOR = "\u0000";
 
 // LCS is O(old × new); a pathological pair of huge documents would freeze the
 // webview, so past this many cells the renderer falls back to a plain preview.
@@ -115,7 +119,18 @@ export function buildMarkdownDiffBlocks(oldSource: string, newSource: string): M
 	return groupOps(ops).map(({ kind, source }) => ({ kind, html: renderMarkdownDocument(source) }));
 }
 
-export function MarkdownRichDiff({ blocks }: { blocks: MarkdownDiffBlock[] }) {
+export function MarkdownRichDiff({ blocks, imageBaseDir, imageRootDir }: {
+	blocks: MarkdownDiffBlock[];
+	/** Directory of the document, so repo-relative images can be read off disk. */
+	imageBaseDir?: string | null;
+	/** Checkout root, for root-relative image paths (`/docs/shot.png`). */
+	imageRootDir?: string | null;
+}) {
+	// One resolve pass for the whole diff: the blocks travel as a single string
+	// joined by a separator no HTML can contain, then split back apart.
+	const joined = useMemo(() => blocks.map((block) => block.html).join(BLOCK_SEPARATOR), [blocks]);
+	const resolvedHtml = useDiskMarkdownImages(joined, imageBaseDir, imageRootDir);
+	const htmls = useMemo(() => resolvedHtml.split(BLOCK_SEPARATOR), [resolvedHtml]);
 	return (
 		<div
 			className="dev3-pr-md dev3-md-doc dev3-md-diff min-w-0 text-sm leading-relaxed text-fg"
@@ -127,7 +142,7 @@ export function MarkdownRichDiff({ blocks }: { blocks: MarkdownDiffBlock[] }) {
 					className={`dev3-md-diff-block dev3-md-diff-${block.kind}`}
 					data-diff-kind={block.kind}
 					// eslint-disable-next-line react/no-danger -- sanitized in renderMarkdownDocument
-					dangerouslySetInnerHTML={{ __html: block.html }}
+					dangerouslySetInnerHTML={{ __html: htmls[index] ?? block.html }}
 				/>
 			))}
 		</div>
