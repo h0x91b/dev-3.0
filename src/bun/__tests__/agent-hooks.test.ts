@@ -598,6 +598,63 @@ describe("writeClaudeHooks", () => {
 		expect(hooks.Stop).toHaveLength(1);
 	});
 
+	// A settings.local.json Claude Code wrote itself carries permissions.allow and
+	// enabledMcpjsonServers and no hooks key at all — the shape a worktree ends up
+	// with after the agent answers a permission or .mcp.json prompt.
+	it("installs hooks into a settings.local.json Claude Code wrote itself", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, "settings.local.json"),
+			JSON.stringify({
+				permissions: { allow: ["WebFetch(domain:developers.openai.com)", "Bash(gh:*)"] },
+				enabledMcpjsonServers: ["local-trino", "playwright"],
+			}, null, 2),
+		);
+
+		writeClaudeHooks(tmp, { permissionMode: "auto" });
+
+		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		const hooks = content.hooks as Record<string, MatcherGroup[]>;
+		expect(Object.keys(hooks)).toEqual([
+			"UserPromptSubmit",
+			"PreToolUse",
+			"PostToolUse",
+			"PermissionRequest",
+			"Stop",
+			"StopFailure",
+		]);
+		expect(content.permissions.allow).toEqual([
+			"WebFetch(domain:developers.openai.com)",
+			"Bash(gh:*)",
+			DEV3_BASH_PERMISSION,
+		]);
+		expect(content.permissions.defaultMode).toBe("auto");
+		expect(content.enabledMcpjsonServers).toEqual(["local-trino", "playwright"]);
+	});
+
+	// Claude Code rewrites settings.local.json from its own in-memory snapshot, so
+	// a snapshot taken before the hooks landed drops them. The next agent launch
+	// runs setupAgentHooks again and must put them back.
+	it("restores hooks after an external writer replaced the file without them", () => {
+		writeClaudeHooks(tmp);
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+
+		writeFileSync(
+			settingsPath,
+			JSON.stringify({
+				permissions: { allow: ["Bash(gh:*)"] },
+				enabledMcpjsonServers: ["playwright"],
+			}, null, 2),
+		);
+
+		writeClaudeHooks(tmp);
+
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		expect(content.hooks?.Stop).toHaveLength(1);
+		expect(content.enabledMcpjsonServers).toEqual(["playwright"]);
+	});
+
 	it("produces identical output on repeated writes (no task-specific content)", () => {
 		writeClaudeHooks(tmp);
 		const settingsPath = join(tmp, ".claude", "settings.local.json");

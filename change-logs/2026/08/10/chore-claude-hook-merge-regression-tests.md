@@ -1,0 +1,1 @@
+Added regression tests covering hook installation into a settings.local.json that Claude Code wrote itself (permissions.allow plus enabledMcpjsonServers, no hooks key), and re-installation after an external writer replaced the file without hooks.
