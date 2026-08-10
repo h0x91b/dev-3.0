@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
-import { getAllowedTransitions, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact } from "../../shared/types";
+import { getAllowedTransitions, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact, type SharedImage } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -35,11 +35,6 @@ vi.mock("../shared-images", () => ({
 		createdAt: 1,
 		...(caption ? { caption } : {}),
 	})),
-	pruneSharedImages: vi.fn((existing: unknown[] | undefined, incoming: unknown[]) => ({
-		kept: [...(existing ?? []), ...incoming],
-		dropped: [],
-	})),
-	deleteSharedImageFiles: vi.fn(),
 }));
 
 vi.mock("../shared-artifacts", () => ({
@@ -1199,6 +1194,35 @@ describe("ui.show-image", () => {
 				expect.objectContaining({ originalPath: "/tmp/b.png", caption: "after" }),
 			]),
 		);
+	});
+
+	it("retains image history beyond the previous per-task cap", async () => {
+		const project = makeProject();
+		const existing: SharedImage[] = Array.from({ length: 50 }, (_, index) => ({
+			id: `old-${index}`,
+			storedPath: `/wt/shared-images/old-${index}.png`,
+			originalPath: `/tmp/old-${index}.png`,
+			name: `old-${index}.png`,
+			mime: "image/png",
+			bytes: 10,
+			createdAt: index,
+		}));
+		const task = makeTask({ sharedImages: existing });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		let persisted: Task | undefined;
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => { updates: Partial<Task>; result: unknown })(task);
+			persisted = { ...task, ...updates };
+			return { task: persisted, result } as never;
+		});
+
+		await handleRequest(makeRequest("ui.show-image", { taskId: task.id, projectId: project.id, paths: ["/tmp/new.png"] }));
+
+		expect(persisted?.sharedImages?.map((image) => image.id)).toEqual([
+			...existing.map((image) => image.id),
+			"img-/tmp/new.png",
+		]);
 	});
 
 	it("errors when no paths are given", async () => {

@@ -2,7 +2,6 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SharedImage } from "../../shared/types";
 
 const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/shared-images`);
 
@@ -11,15 +10,7 @@ vi.mock("../paths", () => ({
 	OPS_DIR: `${TEST_HOME}/ops`,
 }));
 
-import {
-	SharedImageError,
-	deleteSharedImageFiles,
-	imageExt,
-	isSupportedImage,
-	pruneSharedImages,
-	saveSharedImage,
-	sharedImagesDir,
-} from "../shared-images";
+import { SharedImageError, imageExt, isSupportedImage, saveSharedImage, sharedImagesDir } from "../shared-images";
 
 const SRC_DIR = mkdtempSync(join(tmpdir(), "dev3-shared-src-"));
 
@@ -27,18 +18,6 @@ afterAll(() => {
 	rmSync(TEST_HOME, { recursive: true, force: true });
 	rmSync(SRC_DIR, { recursive: true, force: true });
 });
-
-function makeImage(id: string, createdAt: number): SharedImage {
-	return {
-		id,
-		storedPath: `${TEST_HOME}/x/${id}.png`,
-		originalPath: `/src/${id}.png`,
-		name: `${id}.png`,
-		mime: "image/png",
-		bytes: 10,
-		createdAt,
-	};
-}
 
 describe("imageExt / isSupportedImage", () => {
 	it("normalizes the extension to lowercase without the dot", () => {
@@ -52,30 +31,6 @@ describe("imageExt / isSupportedImage", () => {
 		expect(isSupportedImage("/a.webp")).toBe(true);
 		expect(isSupportedImage("/a.svg")).toBe(false);
 		expect(isSupportedImage("/a.txt")).toBe(false);
-	});
-});
-
-describe("pruneSharedImages", () => {
-	it("keeps everything when under the cap", () => {
-		const existing = [makeImage("a", 1), makeImage("b", 2)];
-		const incoming = [makeImage("c", 3)];
-		const { kept, dropped } = pruneSharedImages(existing, incoming, 50);
-		expect(kept.map((i) => i.id)).toEqual(["a", "b", "c"]);
-		expect(dropped).toEqual([]);
-	});
-
-	it("drops the oldest when over the cap, keeping newest in order", () => {
-		const existing = [makeImage("a", 1), makeImage("b", 2), makeImage("c", 3)];
-		const incoming = [makeImage("d", 4)];
-		const { kept, dropped } = pruneSharedImages(existing, incoming, 2);
-		expect(kept.map((i) => i.id)).toEqual(["c", "d"]);
-		expect(dropped.map((i) => i.id)).toEqual(["a", "b"]);
-	});
-
-	it("treats undefined existing as empty", () => {
-		const { kept, dropped } = pruneSharedImages(undefined, [makeImage("a", 1)], 50);
-		expect(kept.map((i) => i.id)).toEqual(["a"]);
-		expect(dropped).toEqual([]);
 	});
 });
 
@@ -124,16 +79,5 @@ describe("saveSharedImage", () => {
 		const src = join(SRC_DIR, "notes.txt");
 		writeFileSync(src, "hi");
 		expect(() => saveSharedImage("/my/project", src)).toThrow(/Unsupported image type/);
-	});
-});
-
-describe("deleteSharedImageFiles", () => {
-	it("removes the stored files and never throws on a missing one", () => {
-		const src = join(SRC_DIR, "todelete.png");
-		writeFileSync(src, "X");
-		const rec = saveSharedImage("/my/project", src);
-		expect(existsSync(rec.storedPath)).toBe(true);
-		deleteSharedImageFiles([rec, makeImage("ghost", 1)]);
-		expect(existsSync(rec.storedPath)).toBe(false);
 	});
 });

@@ -3,10 +3,10 @@ import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, 
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
-import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
+import { SharedImageError, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
 import { createAgentRequest, type AgentLaunchChoice } from "./agent-requests";
@@ -1320,12 +1320,11 @@ const handlers: Record<string, Handler> = {
 			throw new Error(`Failed to store image: ${err instanceof Error ? err.message : String(err)}`);
 		}
 
-		// Append + enforce the per-task cap inside the file lock; delete pruned files.
-		const { task: updated, result: dropped } = await data.updateTaskWith<SharedImage[]>(project, task.id, (current) => {
-			const { kept, dropped } = pruneSharedImages(current.sharedImages, incoming, MAX_SHARED_IMAGES_PER_TASK);
-			return { updates: { sharedImages: kept }, result: dropped };
+		// Append inside the file lock. The history is uncapped — the stored files
+		// live in the worktree and die with it.
+		const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
+			return { updates: { sharedImages: [...(current.sharedImages ?? []), ...incoming] }, result: undefined };
 		});
-		if (dropped.length > 0) deleteSharedImageFiles(dropped);
 
 		// Persist to state everywhere (badge + history) regardless of focus mode.
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });

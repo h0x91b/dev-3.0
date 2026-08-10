@@ -479,7 +479,7 @@ ux_architecture:
         store: "~/.dev3.0/worktrees/{slug}/shared-images/ — copied by bun (src/bun/shared-images.ts), sibling of the DnD uploads/ dir (decision 036), in the worktree tree (shares its lifecycle). Model: Task.sharedImages: SharedImage[] in tasks.json (atomic write)."
         rationale: "Worktree location per the user's call (not data/). ADDITIVE — no rename/move/delete of existing on-disk state (frozen ~/.dev3.0/ layout invariants). Works in remote/browser because bun reads the file and returns base64; the renderer never reads a local path."
         bytes_to_webview: "Reuses the existing readImageBase64(path) -> { dataUrl } RPC (base64), works on both transports. Follow-up: custom protocol / dev-server static route if base64 is heavy."
-        retention: "Bounded — last 50 images/task, drop+delete oldest at write time (pruneSharedImages, app-managed content cleanup; NOT a load-time user-state migration)."
+        retention: "Unbounded — every image a task shares is kept, matching shared artifacts; the stored files live in the worktree and are removed with it."
       arrival_policy:
         always: "copy+persist images, mark unseen, raise attention badge (cliAttention/addBell path) + toast (cliToast path with custom onClick -> open viewer)."
         focused_on_this_task: "auto-open the viewer at the newest image (you are already here — it 'pops')."

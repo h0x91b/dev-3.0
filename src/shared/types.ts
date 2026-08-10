@@ -1562,9 +1562,9 @@ export interface Task {
 	completedDiffStats?: CompletedDiffStats | null;
 	/**
 	 * Images the agent surfaced to the human via `dev3 show-image`, oldest→newest.
-	 * Displayed in the TaskImageViewer lightbox. Capped at
-	 * {@link MAX_SHARED_IMAGES_PER_TASK}; the copied files live in the project
-	 * worktree `shared-images/` dir. See {@link SharedImage}.
+	 * Displayed in the TaskImageViewer lightbox. Uncapped — every image the task
+	 * shared is kept; the copied files live in the project worktree
+	 * `shared-images/` dir and die with the worktree. See {@link SharedImage}.
 	 */
 	sharedImages?: SharedImage[];
 	/**
@@ -1792,9 +1792,6 @@ export const MAX_SCHEDULED_MESSAGE_LENGTH = 10_000;
  * real ceiling a large review hits (decision 198).
  */
 export const AGENT_MESSAGE_SPILL_THRESHOLD = 8_000;
-
-/** Per-task cap on retained shared images; oldest are pruned (files deleted) past this. */
-export const MAX_SHARED_IMAGES_PER_TASK = 50;
 
 /** Raster image extensions accepted by `dev3 show-image` (lowercase, no dot).
  * SVG is excluded on purpose — an inline data-URI SVG in the webview is an XSS

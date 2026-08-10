@@ -1,13 +1,10 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { basename, extname } from "node:path";
 import type { SharedImage } from "../shared/types";
 import { MAX_SHARED_IMAGE_BYTES, SHARED_IMAGE_EXTS } from "../shared/types";
 import { DEV3_HOME } from "./paths";
 import { projectStorageKey } from "../shared/project-storage-key";
-import { createLogger } from "./logger";
 import { isFullyQualifiedPath } from "../shared/absolute-path";
-
-const log = createLogger("shared-images");
 
 const SUPPORTED_EXTS = new Set(SHARED_IMAGE_EXTS);
 
@@ -95,30 +92,3 @@ export function saveSharedImage(projectPath: string, sourcePath: string, caption
 	};
 }
 
-/**
- * Merge new images onto the existing history and enforce the per-task cap by
- * dropping the oldest. Returns the kept list plus the dropped records (whose
- * files the caller should delete). Pure — no I/O.
- */
-export function pruneSharedImages(
-	existing: SharedImage[] | undefined,
-	incoming: SharedImage[],
-	cap: number,
-): { kept: SharedImage[]; dropped: SharedImage[] } {
-	const all = [...(existing ?? []), ...incoming];
-	if (all.length <= cap) return { kept: all, dropped: [] };
-	const dropped = all.slice(0, all.length - cap);
-	const kept = all.slice(all.length - cap);
-	return { kept, dropped };
-}
-
-/** Best-effort delete of pruned image files. Never throws. */
-export function deleteSharedImageFiles(images: SharedImage[]): void {
-	for (const img of images) {
-		try {
-			rmSync(img.storedPath, { force: true });
-		} catch (err) {
-			log.debug("Failed to delete pruned shared image", { path: img.storedPath, error: String(err) });
-		}
-	}
-}
