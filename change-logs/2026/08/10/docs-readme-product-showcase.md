@@ -1,0 +1,3 @@
+Short: README is now a product tour
+
+The README was rebuilt as a visual product tour: the board screenshot sits above the fold, then the six-step loop from task to merge with a screenshot or GIF at every step, then capabilities, then why it works this way — the one-person-studio bet and the "not an IDE" refusal — and finally a short quick start. Two screens that had no picture at all are now shown, Productivity stats and the artifact viewer, the five-month-old New Task dialog screenshot was replaced, and the install reference, remote-access guide, troubleshooting and full keyboard-shortcut table moved into focused pages under `docs/` that are linked from both the README and the website footer.

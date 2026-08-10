@@ -935,7 +935,31 @@
 			"roadmapItem": "CUT-006",
 			"depth": "surface",
 			"dependencyKind": "reference",
-			"consumer": "README documents tmux install / version matrix.",
+			"consumer": "README names tmux once in the tech-stack line.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/install.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Install guide documents the tmux install / version matrix per platform.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/troubleshooting.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Troubleshooting covers the missing-tmux and poisoned-shim checks.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/keyboard-shortcuts.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Shortcut reference points at the tmux prefix bindings tab.",
 			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
 		},
 		"AGENTS.md": {
