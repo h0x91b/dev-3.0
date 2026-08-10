@@ -14,6 +14,8 @@
 const SKILL_HEADER = `# dev3 — Task Lifecycle Protocol
 
 You are working inside a **dev-3.0 managed worktree** with a Kanban board task assigned to you.
+
+**This worktree already IS your isolation.** Never create another git worktree, clone, or side checkout for this work — no \`git worktree add\`, no worktree-per-subagent, no "isolated copy of the branch" — even when another skill, workflow, or agent tool asks for one. Work directly here, on this branch. Only an explicit request from the user overrides this.
 `;
 
 const SKILL_BUG_HUNTER_ISOLATION = `

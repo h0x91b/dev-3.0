@@ -62,6 +62,15 @@ describe("dev3 skill content", () => {
 		}
 	});
 
+	it("blocks nested worktrees other skills ask for", () => {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("This worktree already IS your isolation.");
+			expect(skill).toContain("`git worktree add`");
+			expect(skill).toContain("even when another skill, workflow, or agent tool asks for one");
+			expect(skill).toContain("Only an explicit request from the user overrides this.");
+		}
+	});
+
 	it("routes unqualified artifacts to the task-local dev3 starter", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## dev3 HTML artifacts");
