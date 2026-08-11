@@ -1140,7 +1140,7 @@ function AgentPane({
 				<div className="flex-1 min-w-0">
 					<p className="text-fg text-sm font-semibold truncate">{agent.name}</p>
 					<p className="text-fg-muted text-xs">
-						{t("settings.presetCount", { count: String(agent.configurations.length) })}
+						{t.plural("settings.presetCount", agent.configurations.length)}
 					</p>
 				</div>
 				<ReorderControls

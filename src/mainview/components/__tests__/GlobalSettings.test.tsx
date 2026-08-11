@@ -16,7 +16,7 @@ vi.mock("../../zoom", () => ({
 	ZOOM_CHANGED_EVENT: "zoom-changed",
 }));
 
-vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
+vi.mock("../../confirm", () => ({ confirm: vi.fn(() => Promise.resolve(true)) }));
 
 vi.mock("../../rpc", () => ({
 	isElectrobun: false,
@@ -119,6 +119,25 @@ async function waitForLoad() {
 	});
 }
 
+/** Wait for the agents category to finish rendering its library. */
+async function waitForAgentLibrary() {
+	await screen.findByText("Model:");
+	await waitFor(() => {
+		expect(document.getElementById("agent-library-agent")).not.toBeNull();
+	});
+}
+
+/** Point the library's one detail pane at `name`'s own agent settings. */
+async function openAgent(user: ReturnType<typeof userEvent.setup>, name: string) {
+	await user.click(document.getElementById("agent-library-agent")!);
+	await user.click(screen.getByRole("option", { name: new RegExp(`^${name}`) }));
+}
+
+/** Open a preset row in the library's editor (the agent must already be active). */
+async function openPreset(user: ReturnType<typeof userEvent.setup>, label: RegExp) {
+	await user.click(screen.getAllByRole("option", { name: label })[0]);
+}
+
 /** Open a custom Select trigger (by element id) and click the option labeled `label`. */
 async function pickFromSelect(user: ReturnType<typeof userEvent.setup>, triggerId: string, label: string) {
 	const trigger = document.getElementById(triggerId) as HTMLButtonElement;
@@ -195,14 +214,19 @@ describe("GlobalSettings", () => {
 			expect(savedSettings?.externalApps).toBeUndefined();
 		});
 
-		it("renders agent list", async () => {
+		// The library shows one agent at a time: its picker plus that agent's presets.
+		it("renders the agent library for the first agent", async () => {
 			setupMocks();
+			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
+			await waitForAgentLibrary();
 
-			await screen.findByText("Model:");
-			expect(screen.getAllByText("Claude").length).toBeGreaterThanOrEqual(1);
-			expect(screen.getAllByText("Codex").length).toBeGreaterThanOrEqual(1);
+			expect(document.getElementById("agent-library-agent")).toHaveTextContent("Claude");
+			expect(screen.getAllByRole("option", { name: /Plan/ }).length).toBeGreaterThanOrEqual(1);
+
+			await openAgent(user, "Codex");
+			expect(document.getElementById("agent-library-agent")).toHaveTextContent("Codex");
 		});
 	});
 
@@ -530,46 +554,22 @@ describe("GlobalSettings", () => {
 		});
 	});
 
+	// Settings → Agents is a library: one agent picker, a filterable preset list,
+	// and exactly one detail pane. These drive it at screen level (agent CRUD and
+	// save serialization); per-field editing lives in AgentSettingsSection.test.tsx.
 	describe("agent management", () => {
-		it("expands agent when clicked", async () => {
+		it("opens an agent's own settings from the library picker", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
 
-			// Click on agent header to expand
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
+			await openAgent(user, "Codex");
 
-			// Should show agent editing fields
-			expect(screen.getByText("Name")).toBeInTheDocument();
-			expect(screen.getByText("Base Command")).toBeInTheDocument();
-			expect(screen.getByText("Configurations")).toBeInTheDocument();
-		});
-
-		it("collapses agent when clicked again", async () => {
-			setupMocks();
-			const user = userEvent.setup();
-			renderGlobalSettings("agents");
-			await waitForLoad();
-			await screen.findByText("Model:");
-
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-
-			// Expand
-			await user.click(claudeHeader);
-			expect(screen.getByText("Configurations")).toBeInTheDocument();
-
-			// Collapse
-			await user.click(claudeHeader);
-			expect(screen.queryByText("Configurations")).not.toBeInTheDocument();
+			expect(screen.getByDisplayValue("Codex")).toBeInTheDocument();
+			expect(screen.getByDisplayValue("codex")).toBeInTheDocument();
+			expect(screen.getByText("Lifecycle Hooks")).toBeInTheDocument();
 		});
 
 		it("updates agent name", async () => {
@@ -577,16 +577,9 @@ describe("GlobalSettings", () => {
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
+			await openAgent(user, "Codex");
 
-			// Expand Codex (non-default agent)
-			const agentHeaders = screen.getAllByRole("button");
-			const codexHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Codex") && b.textContent?.includes("codex"),
-			)!;
-			await user.click(codexHeader);
-
-			// Find the name input (value = "Codex")
 			const nameInput = screen.getByDisplayValue("Codex");
 			await user.clear(nameInput);
 			await user.type(nameInput, "MyAgent");
@@ -599,13 +592,8 @@ describe("GlobalSettings", () => {
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
-
-			const agentHeaders = screen.getAllByRole("button");
-			const codexHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Codex") && b.textContent?.includes("codex"),
-			)!;
-			await user.click(codexHeader);
+			await waitForAgentLibrary();
+			await openAgent(user, "Codex");
 
 			const cmdInput = screen.getByDisplayValue("codex");
 			await user.clear(cmdInput);
@@ -619,7 +607,7 @@ describe("GlobalSettings", () => {
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
 
 			await user.click(screen.getByText(/Add Agent/));
 
@@ -630,27 +618,21 @@ describe("GlobalSettings", () => {
 			});
 		});
 
-		it("deletes a non-default agent", async () => {
+		it("deletes a non-default agent once the deletion is confirmed", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
+			await openAgent(user, "Codex");
 
-			// Expand Codex
-			const agentHeaders = screen.getAllByRole("button");
-			const codexHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Codex") && b.textContent?.includes("codex"),
-			)!;
-			await user.click(codexHeader);
-
-			// Click delete
 			await user.click(screen.getByText("Delete"));
 
-			// Should save without Codex
-			const lastCall = mockedApi.request.saveAgents.mock.calls[mockedApi.request.saveAgents.mock.calls.length - 1];
-			const savedAgents = lastCall[0].agents as CodingAgent[];
-			expect(savedAgents.find((a) => a.id === "agent-2")).toBeUndefined();
+			await waitFor(() => {
+				const calls = mockedApi.request.saveAgents.mock.calls;
+				const savedAgents = calls[calls.length - 1][0].agents as CodingAgent[];
+				expect(savedAgents.find((a) => a.id === "agent-2")).toBeUndefined();
+			});
 		});
 
 		it("shows cannot delete message for default agents", async () => {
@@ -658,280 +640,109 @@ describe("GlobalSettings", () => {
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
+			await openAgent(user, "Claude");
 
-			// Expand Claude (default agent)
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
-
-			expect(
-				screen.getByText("Default agents cannot be deleted"),
-			).toBeInTheDocument();
+			expect(screen.getByText("Default agents cannot be deleted")).toBeInTheDocument();
 		});
 	});
 
-	describe("configuration management", () => {
-		it("expands config when clicked", async () => {
+	describe("preset management", () => {
+		it("opens a preset in the editor", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
 
-			// Expand Claude agent
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
-
-			// Expand the Default config
-			const configButtons = screen.getAllByRole("button");
-			const defaultConfig = configButtons.find(
-				(b) => b.textContent?.includes("Default") && b.textContent?.includes("sonnet"),
-			)!;
-			await user.click(defaultConfig);
+			await openPreset(user, /Plan/);
 
 			expect(screen.getByText("Command Preview")).toBeInTheDocument();
 			expect(screen.getByText("Permission Mode")).toBeInTheDocument();
 		});
 
-		it("updates config name", async () => {
+		it("updates preset name", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
+			await openPreset(user, /Plan/);
 
-			// Expand Claude agent, then expand first config
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
-
-			const configButtons = screen.getAllByRole("button");
-			const planConfig = configButtons.find(
-				(b) => b.textContent?.includes("Plan") && b.textContent?.includes("opus"),
-			)!;
-			await user.click(planConfig);
-
-			// Change config name input — the "Plan" value in the config editor input
-			const nameInputs = screen.getAllByDisplayValue("Plan");
-			const configNameInput = nameInputs[0];
-			await user.clear(configNameInput);
-			await user.type(configNameInput, "Custom");
+			const nameInput = screen.getAllByDisplayValue("Plan")[0];
+			await user.clear(nameInput);
+			await user.type(nameInput, "Custom");
 
 			expect(mockedApi.request.saveAgents).toHaveBeenCalled();
 		});
 
-		it("adds a new configuration", async () => {
+		it("adds a new preset", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
 
-			// Expand Claude
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
+			await user.click(screen.getByRole("button", { name: /New preset/ }));
 
-			await user.click(screen.getByText(/Add Configuration/));
-
-			const lastCall = mockedApi.request.saveAgents.mock.calls[mockedApi.request.saveAgents.mock.calls.length - 1];
-			const savedAgents = lastCall[0].agents as CodingAgent[];
+			const calls = mockedApi.request.saveAgents.mock.calls;
+			const savedAgents = calls[calls.length - 1][0].agents as CodingAgent[];
 			const claude = savedAgents.find((a) => a.id === "agent-1")!;
 			expect(claude.configurations).toHaveLength(3);
-			expect(claude.configurations[2].name).toBe("New Config");
+			expect(claude.configurations[2].name).toBe("New preset");
 		});
 
-		it("deletes a configuration when there are multiple", async () => {
+		it("deletes a preset when there are multiple", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
+			await openPreset(user, /Plan/);
 
-			// Expand Claude
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
-
-			// Expand Plan config
-			const configButtons = screen.getAllByRole("button");
-			const planConfig = configButtons.find(
-				(b) => b.textContent?.includes("Plan") && b.textContent?.includes("opus"),
-			)!;
-			await user.click(planConfig);
-
-			// Click delete config
 			await user.click(screen.getByText("Delete Configuration"));
 
-			const lastCall = mockedApi.request.saveAgents.mock.calls[mockedApi.request.saveAgents.mock.calls.length - 1];
-			const savedAgents = lastCall[0].agents as CodingAgent[];
-			const claude = savedAgents.find((a) => a.id === "agent-1")!;
-			expect(claude.configurations).toHaveLength(1);
-			expect(claude.configurations[0].id).toBe("cfg-1");
+			await waitFor(() => {
+				const calls = mockedApi.request.saveAgents.mock.calls;
+				const savedAgents = calls[calls.length - 1][0].agents as CodingAgent[];
+				const claude = savedAgents.find((a) => a.id === "agent-1")!;
+				expect(claude.configurations).toHaveLength(1);
+				expect(claude.configurations[0].id).toBe("cfg-1");
+			});
 		});
 
 		it("updates defaultConfigId when active config is deleted", async () => {
-			setupMocks(mockAgents, {
-				...mockGlobalSettings,
-				defaultConfigId: "cfg-2",
-			});
+			setupMocks(mockAgents, { ...mockGlobalSettings, defaultConfigId: "cfg-2" });
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
-
-			// Expand Claude
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
-
-			// Expand Plan config (cfg-2 which is agent's defaultConfigId)
-			const configButtons = screen.getAllByRole("button");
-			const planConfig = configButtons.find(
-				(b) => b.textContent?.includes("Plan") && b.textContent?.includes("opus"),
-			)!;
-			await user.click(planConfig);
+			await waitForAgentLibrary();
+			await openPreset(user, /Plan/);
 
 			await user.click(screen.getByText("Delete Configuration"));
 
-			// Agent's defaultConfigId should switch to the remaining config
-			const lastCall = mockedApi.request.saveAgents.mock.calls[mockedApi.request.saveAgents.mock.calls.length - 1];
-			const savedAgents = lastCall[0].agents as CodingAgent[];
-			const claude = savedAgents.find((a) => a.id === "agent-1")!;
-			// If the deleted config was the agent's defaultConfigId, it updates
-			expect(claude.configurations).toHaveLength(1);
+			await waitFor(() => {
+				const calls = mockedApi.request.saveAgents.mock.calls;
+				const savedAgents = calls[calls.length - 1][0].agents as CodingAgent[];
+				const claude = savedAgents.find((a) => a.id === "agent-1")!;
+				expect(claude.configurations).toHaveLength(1);
+			});
 		});
 
-		it("does not show delete button for single config", async () => {
+		it("does not offer to delete an agent's only preset", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
-
-			// Expand Codex (has only 1 config)
-			const agentHeaders = screen.getAllByRole("button");
-			const codexHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Codex") && b.textContent?.includes("codex"),
-			)!;
-			await user.click(codexHeader);
-
-			// Expand the single config
-			const configButtons = screen.getAllByRole("button");
-			const defaultConfig = configButtons.find(
-				(b) => {
-					const parent = b.closest(".bg-elevated");
-					return parent && b.textContent?.includes("Default") && !b.textContent?.includes("sonnet");
-				},
-			)!;
-			await user.click(defaultConfig);
+			await waitForAgentLibrary();
+			await openAgent(user, "Codex");
+			await openPreset(user, /Default/);
 
 			expect(screen.queryByText("Delete Configuration")).not.toBeInTheDocument();
 		});
 	});
 
 	describe("config fields", () => {
-		async function expandFirstConfig() {
-			const user = userEvent.setup();
-			renderGlobalSettings("agents");
-			await waitForLoad();
-			await screen.findByText("Model:");
-
-			// Expand Claude
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
-
-			// Expand Default config
-			const configButtons = screen.getAllByRole("button");
-			const defaultConfig = configButtons.find(
-				(b) => b.textContent?.includes("Default") && b.textContent?.includes("sonnet"),
-			)!;
-			await user.click(defaultConfig);
-
-			return user;
-		}
-
-		it("updates model field", async () => {
-			setupMocks();
-			const user = await expandFirstConfig();
-
-			const modelInput = screen.getByDisplayValue("sonnet");
-			await user.clear(modelInput);
-			await user.type(modelInput, "opus");
-
-			expect(mockedApi.request.saveAgents).toHaveBeenCalled();
-		});
-
-		it("changes permission mode", async () => {
-			setupMocks();
-			const user = await expandFirstConfig();
-
-			const permSelect = screen.getAllByRole("combobox").find(
-				(s) => (s as HTMLSelectElement).value === "default",
-			)!;
-			await user.selectOptions(permSelect, "plan");
-
-			const lastCall = mockedApi.request.saveAgents.mock.calls[mockedApi.request.saveAgents.mock.calls.length - 1];
-			const savedAgents = lastCall[0].agents as CodingAgent[];
-			const cfg = savedAgents[0].configurations[0];
-			expect(cfg.permissionMode).toBe("plan");
-		});
-
-		it("changes effort level", async () => {
-			setupMocks();
-			const user = await expandFirstConfig();
-
-			// Effort select has empty string as default value. Query native selects
-			// directly — the app's custom Select also reports role="combobox".
-			const effortSelect = Array.from(document.querySelectorAll("select")).find(
-				(el) => el.value === "" && el.options.length === 5,
-			)!;
-			await user.selectOptions(effortSelect, "high");
-
-			const lastCall = mockedApi.request.saveAgents.mock.calls[mockedApi.request.saveAgents.mock.calls.length - 1];
-			const savedAgents = lastCall[0].agents as CodingAgent[];
-			const cfg = savedAgents[0].configurations[0];
-			expect(cfg.effort).toBe("high");
-		});
-
-		it("updates max budget", async () => {
-			setupMocks();
-			const user = await expandFirstConfig();
-
-			const budgetInput = screen.getByRole("spinbutton");
-			await user.type(budgetInput, "5.5");
-
-			expect(mockedApi.request.saveAgents).toHaveBeenCalled();
-		});
-
-		it("updates append prompt", async () => {
-			setupMocks();
-			const user = await expandFirstConfig();
-
-			const textareas = document.querySelectorAll("textarea");
-			expect(textareas.length).toBe(1);
-			await user.type(textareas[0], "extra prompt");
-
-			expect(mockedApi.request.saveAgents).toHaveBeenCalled();
-		});
-
 		it("serializes config saves so the latest base command override wins", async () => {
 			setupMocks();
 			const pending: Array<{
@@ -953,7 +764,13 @@ describe("GlobalSettings", () => {
 					}) as any,
 			);
 
-			const user = await expandFirstConfig();
+			const user = userEvent.setup();
+			renderGlobalSettings("agents");
+			await waitForLoad();
+			await waitForAgentLibrary();
+			await openPreset(user, /Plan/);
+			await user.click(screen.getByText(/^Advanced/));
+
 			const overrideLabel = screen.getByText("Base Command Override");
 			const overrideInput = overrideLabel.closest("div")!.querySelector("input")!;
 
@@ -973,7 +790,7 @@ describe("GlobalSettings", () => {
 
 			await waitFor(() => {
 				const claude = persistedAgents?.find((agent) => agent.id === "agent-1");
-				expect(claude?.configurations[0]?.baseCommandOverride).toBe("xy");
+				expect(claude?.configurations[1]?.baseCommandOverride).toBe("xy");
 			});
 		});
 	});
@@ -983,101 +800,41 @@ describe("GlobalSettings", () => {
 			setupMocks();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
 
-			// Claude is isDefault: true
 			const badges = screen.getAllByText("Default");
 			expect(badges.length).toBeGreaterThanOrEqual(1);
 		});
 	});
 
-		describe("autocapitalize disabled on technical inputs", () => {
+	describe("autocapitalize disabled on technical inputs", () => {
 		it("base command input has autocapitalize off", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
-
-			// Expand Codex
-			const agentHeaders = screen.getAllByRole("button");
-			const codexHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Codex") && b.textContent?.includes("codex"),
-			)!;
-			await user.click(codexHeader);
+			await waitForAgentLibrary();
+			await openAgent(user, "Codex");
 
 			const cmdInput = screen.getByDisplayValue("codex");
 			expect(cmdInput).toHaveAttribute("autocapitalize", "off");
 			expect(cmdInput).toHaveAttribute("autocorrect", "off");
 			expect(cmdInput.getAttribute("spellcheck")).toBe("false");
 		});
-
-		it("model input has autocapitalize off", async () => {
-			setupMocks();
-			const user = userEvent.setup();
-			renderGlobalSettings("agents");
-			await waitForLoad();
-			await screen.findByText("Model:");
-
-			// Expand Claude agent
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
-
-			// Expand Default config
-			const configButtons = screen.getAllByRole("button");
-			const defaultConfig = configButtons.find(
-				(b) => b.textContent?.includes("Default") && b.textContent?.includes("sonnet"),
-			)!;
-			await user.click(defaultConfig);
-
-			const modelInput = screen.getByDisplayValue("sonnet");
-			expect(modelInput).toHaveAttribute("autocapitalize", "off");
-			expect(modelInput).toHaveAttribute("autocorrect", "off");
-			expect(modelInput.getAttribute("spellcheck")).toBe("false");
-		});
-
-		it("base command override input has autocapitalize off", async () => {
-			setupMocks();
-			const user = userEvent.setup();
-			renderGlobalSettings("agents");
-			await waitForLoad();
-			await screen.findByText("Model:");
-
-			// Expand Claude agent
-			const agentHeaders = screen.getAllByRole("button");
-			const claudeHeader = agentHeaders.find((b) =>
-				b.textContent?.includes("Claude") && b.textContent?.includes("claude"),
-			)!;
-			await user.click(claudeHeader);
-
-			// Expand Default config
-			const configButtons = screen.getAllByRole("button");
-			const defaultConfig = configButtons.find(
-				(b) => b.textContent?.includes("Default") && b.textContent?.includes("sonnet"),
-			)!;
-			await user.click(defaultConfig);
-
-			// Find the base command override input (empty by default)
-			const overrideLabel = screen.getByText("Base Command Override");
-			const overrideInput = overrideLabel.closest("div")!.querySelector("input")!;
-			expect(overrideInput).toHaveAttribute("autocapitalize", "off");
-			expect(overrideInput).toHaveAttribute("autocorrect", "off");
-			expect(overrideInput.getAttribute("spellcheck")).toBe("false");
-		});
 	});
 
-	describe("config count display", () => {
-		it("shows correct config count per agent", async () => {
+	describe("preset count display", () => {
+		it("shows the preset count for the active agent", async () => {
 			setupMocks();
+			const user = userEvent.setup();
 			renderGlobalSettings("agents");
 			await waitForLoad();
-			await screen.findByText("Model:");
+			await waitForAgentLibrary();
 
-			expect(screen.getByText("2 configs")).toBeInTheDocument();
-			expect(screen.getByText("1 config")).toBeInTheDocument();
+			expect(screen.getByText("2 presets")).toBeInTheDocument();
+
+			await openAgent(user, "Codex");
+			expect(screen.getByText("1 preset")).toBeInTheDocument();
 		});
 	});
 

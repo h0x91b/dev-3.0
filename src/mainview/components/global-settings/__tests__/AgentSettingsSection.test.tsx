@@ -30,6 +30,12 @@ vi.mock("../../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), in
 import { api } from "../../../rpc";
 import { confirm } from "../../../confirm";
 
+/** Identity translator: keys render verbatim, and `t.plural` answers with the
+ *  suffixed key so a plural call is as assertable as a plain one. */
+const identityT = Object.assign((key: string) => key, {
+	plural: (key: string, count: number) => key + (count === 1 ? "_one" : "_other"),
+});
+
 const baseSettings: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
 	defaultConfigId: "claude-auto-opus48",
@@ -48,7 +54,7 @@ function renderSection(claudePatch: Partial<CodingAgent> = {}, onAgentsChange = 
 	render(
 		<I18nProvider>
 			<AgentSettingsSection
-				t={((k: string) => k) as never}
+				t={identityT as never}
 				agents={agentsWithClaude(claudePatch)}
 				globalSettings={baseSettings}
 				onAgentsChange={onAgentsChange}
@@ -108,7 +114,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		render(
 			<I18nProvider>
 				<AgentSettingsSection
-					t={((k: string) => k) as never}
+					t={identityT as never}
 					agents={DEFAULT_AGENTS.map((a) =>
 						a.baseCommand === "codex" ? { ...a, llmProvider: "bedrock-codex" as const } : a,
 					)}
@@ -193,7 +199,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		render(
 			<I18nProvider>
 				<AgentSettingsSection
-					t={((k: string) => k) as never}
+					t={identityT as never}
 					agents={DEFAULT_AGENTS.map((a) =>
 						a.baseCommand === "codex" ? { ...a, llmProvider: "bedrock-codex" as const } : a,
 					)}
@@ -214,7 +220,7 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		render(
 			<I18nProvider>
 				<AgentSettingsSection
-					t={((k: string) => k) as never}
+					t={identityT as never}
 					agents={DEFAULT_AGENTS.map((a) =>
 						a.baseCommand === "codex" ? { ...a, llmProvider: "bedrock-codex" as const } : a,
 					)}
@@ -347,7 +353,7 @@ describe("AgentSettingsSection — preset library", () => {
 		render(
 			<I18nProvider>
 				<AgentSettingsSection
-					t={((k: string) => k) as never}
+					t={identityT as never}
 					agents={DEFAULT_AGENTS}
 					globalSettings={baseSettings}
 					onAgentsChange={vi.fn()}
@@ -370,7 +376,7 @@ describe("AgentSettingsSection — preset library", () => {
 		render(
 			<I18nProvider>
 				<AgentSettingsSection
-					t={((k: string) => k) as never}
+					t={identityT as never}
 					agents={DEFAULT_AGENTS}
 					globalSettings={{
 						...baseSettings,
@@ -461,5 +467,70 @@ describe("AgentSettingsSection — lifecycle hooks", () => {
 		await openHooksSelect(user);
 		await user.click(screen.getByRole("option", { name: "settings.hooksAuto" }));
 		expect(patchedAgent(onAgentsChange).hooksIntegration).toBeUndefined();
+	});
+});
+
+// Field-level editing moved here when Settings → Agents stopped being accordions;
+// GlobalSettings.test.tsx keeps only the screen-level agent CRUD.
+describe("AgentSettingsSection — preset fields", () => {
+	const PRESET_ID = "claude-auto-fable5-medium";
+
+	function editedPreset(onAgentsChange: ReturnType<typeof vi.fn>) {
+		return lastClaude(onAgentsChange).configurations.find((c) => c.id === PRESET_ID);
+	}
+
+	it("writes the permission mode picked from the list", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection();
+		await openPreset(user, /Auto · Medium/);
+
+		await user.click(screen.getByLabelText("settings.configPermissionMode"));
+		await user.click(screen.getByRole("option", { name: "settings.permPlan" }));
+
+		expect(editedPreset(onAgentsChange)?.permissionMode).toBe("plan");
+	});
+
+	it("takes a typed budget and stores it as a number", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection();
+		await openPreset(user, /Auto · Medium/);
+
+		await user.click(screen.getByLabelText("settings.configMaxBudget"));
+		await user.type(screen.getByRole("combobox", { name: "settings.budgetFilterHint" }), "5.5{Enter}");
+
+		expect(editedPreset(onAgentsChange)?.maxBudgetUsd).toBe(5.5);
+	});
+
+	it("keeps prompt, args and env vars collapsed under Advanced", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection();
+		await openPreset(user, /Auto · Medium/);
+
+		// <details> keeps its children in the DOM, so "collapsed" is the open flag.
+		const advanced = screen.getByText("settings.presetAdvanced").closest("details")!;
+		expect(advanced.open).toBe(false);
+
+		await user.click(screen.getByText("settings.presetAdvanced"));
+		expect(advanced.open).toBe(true);
+
+		// One character: the parent never feeds edited agents back in this harness,
+		// so a controlled input resets between keystrokes.
+		await user.type(advanced.querySelector("textarea")!, "x");
+		expect(editedPreset(onAgentsChange)?.appendPrompt).toBe("x");
+	});
+
+	it("does not autocapitalize the base command override", async () => {
+		const user = userEvent.setup();
+		renderSection();
+		await openPreset(user, /Auto · Medium/);
+		await user.click(screen.getByText("settings.presetAdvanced"));
+
+		const override = screen
+			.getByText("settings.configBaseCommandOverride")
+			.closest("div")!
+			.querySelector("input")!;
+		expect(override).toHaveAttribute("autocapitalize", "off");
+		expect(override).toHaveAttribute("autocorrect", "off");
+		expect(override.getAttribute("spellcheck")).toBe("false");
 	});
 });
