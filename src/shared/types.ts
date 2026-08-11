@@ -412,7 +412,19 @@ export interface CodingAgent {
 	llmProvider?: LlmProvider;
 	/** Per-provider connection settings for this agent (model override, inference-profile region). */
 	providerConfig?: ProviderConfig;
+	/**
+	 * Which agent-native lifecycle hooks dev3 installs into the worktree.
+	 * Undefined = auto-detect from `baseCommand`, which recognizes only the five
+	 * literal CLI names — a wrapper script or an aliased command got no hooks at
+	 * all, and therefore no automatic Kanban transitions, without saying so. This
+	 * lets the user declare "that command is Claude Code"; `"none"` is the
+	 * explicit opt-out. Hooks only: launch flags stay keyed by the command.
+	 */
+	hooksIntegration?: AgentHooksIntegration;
 }
+
+/** Hook family an agent's worktree gets: a CLI whose hooks dev3 knows, or none. */
+export type AgentHooksIntegration = "claude" | "codex" | "none";
 
 /**
  * Prefix used to invoke an installed skill from an agent prompt. Codex reserves

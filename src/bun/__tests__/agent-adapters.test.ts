@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	getAgentAdapter,
+	getHooksAdapter,
+	autoHooksFamily,
+	isKnownAgentCommand,
+	KNOWN_AGENT_COMMANDS,
 	hasAgentAdapter,
 	agentKey,
 	claudeAdapter,
@@ -67,6 +71,54 @@ describe("registry", () => {
 		expect(hasAgentAdapter("aider")).toBe(false);
 		expect(agentKey("/a/b/claude")).toBe("claude");
 		expect(agentKey("codex")).toBe("codex");
+	});
+});
+
+// The renderer discloses what "Auto" resolves to and warns about an
+// unrecognized command, but importing this registry into the app bundle would
+// drag every skill body (~32 KB) along — so hook-families.ts restates the two
+// facts as plain data. These are the tests that keep the copy honest.
+describe("hook families (the renderer's copy of the registry)", () => {
+	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter];
+
+	it("lists exactly the commands that have a first-class adapter", () => {
+		expect([...KNOWN_AGENT_COMMANDS].sort()).toEqual(ADAPTERS.map((a) => a.command).sort());
+		for (const adapter of ADAPTERS) expect(isKnownAgentCommand(adapter.command)).toBe(true);
+		expect(isKnownAgentCommand("my-claude")).toBe(false);
+		expect(isKnownAgentCommand("")).toBe(false);
+	});
+
+	it("reports the same hook family each adapter's hooksSpec returns", () => {
+		for (const adapter of ADAPTERS) {
+			expect(autoHooksFamily(adapter.command)).toBe(adapter.hooksSpec()?.kind ?? "none");
+			expect(autoHooksFamily(`/opt/bin/${adapter.command}`)).toBe(adapter.hooksSpec()?.kind ?? "none");
+		}
+		expect(autoHooksFamily("my-claude")).toBe("none");
+	});
+});
+
+describe("getHooksAdapter", () => {
+	it("keeps the command-name guess when no integration is declared", () => {
+		expect(getHooksAdapter("claude").hooksSpec()).toEqual({ kind: "claude" });
+		expect(getHooksAdapter("/opt/homebrew/bin/codex").hooksSpec()).toEqual({ kind: "codex" });
+		expect(getHooksAdapter("my-claude").hooksSpec()).toBeNull();
+	});
+
+	it("installs the declared family for a command it cannot recognize", () => {
+		// The reported bug: a wrapper script or shell alias launching Claude Code
+		// silently got no hooks, so the task never moved between columns.
+		expect(getHooksAdapter("my-claude-wrapper", "claude").hooksSpec()).toEqual({ kind: "claude" });
+		expect(getHooksAdapter("claude --dangerously-skip-permissions", "claude").hooksSpec()?.kind).toBe("claude");
+		expect(getHooksAdapter("", "codex").hooksSpec()).toEqual({ kind: "codex" });
+	});
+
+	it("threads stopTarget / permissionMode through the declared family", () => {
+		expect(getHooksAdapter("wrapper", "claude").hooksSpec({ stopTarget: "review-by-ai", permissionMode: "plan" }))
+			.toEqual({ kind: "claude", stopTarget: "review-by-ai", permissionMode: "plan" });
+	});
+
+	it("honours an explicit opt-out even for a recognized command", () => {
+		expect(getHooksAdapter("claude", "none").hooksSpec()).toBeNull();
 	});
 });
 

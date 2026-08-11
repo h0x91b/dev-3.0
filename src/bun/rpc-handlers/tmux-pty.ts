@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
-import type { ColumnAgentConfig, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
+import type { AgentHooksIntegration, ColumnAgentConfig, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
@@ -521,7 +521,11 @@ async function applyAgentHooksToCommand(
 	worktreePath: string,
 	baseCommand: string,
 	command: string,
-	options?: { stopTarget?: Task["status"]; permissionMode?: PermissionMode },
+	options?: {
+		stopTarget?: Task["status"];
+		permissionMode?: PermissionMode;
+		integration?: AgentHooksIntegration;
+	},
 ): Promise<string> {
 	try {
 		const codexHookOverride = await setupAgentHooks(worktreePath, baseCommand, options);
@@ -611,6 +615,7 @@ export async function launchTaskPty(
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
 	let resolvedPermissionMode: PermissionMode | undefined;
+	let resolvedHooksIntegration: AgentHooksIntegration | undefined;
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
 
 	try {
@@ -639,6 +644,7 @@ export async function launchTaskPty(
 			extraEnv = resolved.extraEnv;
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 			resolvedPermissionMode = resolved.config?.permissionMode;
+			resolvedHooksIntegration = resolved.agent?.hooksIntegration;
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -653,6 +659,7 @@ export async function launchTaskPty(
 			extraEnv = resolved.extraEnv;
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 			resolvedPermissionMode = resolved.config?.permissionMode;
+			resolvedHooksIntegration = resolved.agent?.hooksIntegration;
 		}
 
 		// Persist session state as pane[0] for the main agent pane.
@@ -749,6 +756,7 @@ export async function launchTaskPty(
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget,
 		permissionMode: resolvedPermissionMode,
+		integration: resolvedHooksIntegration,
 	});
 
 	const nativeBackend = taskTerminalBackendIdentity(task) === "native";
@@ -920,6 +928,7 @@ export async function launchColumnAgent(
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
 	let resolvedPermissionMode: PermissionMode | undefined;
+	let resolvedHooksIntegration: AgentHooksIntegration | undefined;
 
 	try {
 		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, { skipSystemPrompt: true });
@@ -927,6 +936,7 @@ export async function launchColumnAgent(
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedPermissionMode = resolved.config?.permissionMode;
+		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
 	} catch (err) {
 		log.error("launchColumnAgent: failed to resolve command", { error: String(err) });
 		throw err;
@@ -935,6 +945,7 @@ export async function launchColumnAgent(
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		permissionMode: resolvedPermissionMode,
+		integration: resolvedHooksIntegration,
 	});
 
 	const env = {
@@ -1599,18 +1610,21 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
 					let resumeBaseCmd = pane.agentCmd;
+					let resumeHooksIntegration: AgentHooksIntegration | undefined;
 					let extraEnv: Record<string, string> = {};
 					if (pane.agentId) {
 						const resolved = await agents.resolveCommandForAgent(pane.agentId, pane.configId, ctx, cmdOpts);
 						resumeCmd = resolved.command;
 						extraEnv = resolved.extraEnv;
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
+						resumeHooksIntegration = resolved.agent?.hooksIntegration;
 					} else {
 						resumeCmd = agents.buildResumeCommand(pane.agentCmd, paneResume ?? undefined) ?? pane.agentCmd;
 					}
 					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+						integration: resumeHooksIntegration,
 					});
 					const scriptPath = dev3TaskTempPath(params.taskId, `resume-pane-${i}.sh`);
 					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
@@ -2445,6 +2459,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
+	let resolvedHooksIntegration: AgentHooksIntegration | undefined;
 	let launchedAgentId = params.agentId;
 	let launchedConfigId = params.configId;
 
@@ -2458,6 +2473,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
 		launchedAgentId = resolved.agent?.id ?? params.agentId;
 		launchedConfigId = resolved.config?.id ?? params.configId;
 	} else {
@@ -2472,6 +2488,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}
@@ -2482,6 +2499,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId);
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		integration: resolvedHooksIntegration,
 	});
 
 	const env: Record<string, string> = {
@@ -2639,6 +2657,7 @@ async function spawnSingleBugHunterPane(opts: {
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
+	let resolvedHooksIntegration: AgentHooksIntegration | undefined;
 	let launchedAgentId = opts.agentId;
 	let launchedConfigId = opts.configId;
 	if (opts.agentId) {
@@ -2646,6 +2665,7 @@ async function spawnSingleBugHunterPane(opts: {
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
 		launchedAgentId = resolved.agent?.id ?? opts.agentId;
 		launchedConfigId = resolved.config?.id ?? opts.configId;
 	} else {
@@ -2660,6 +2680,7 @@ async function spawnSingleBugHunterPane(opts: {
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}
@@ -2669,6 +2690,7 @@ async function spawnSingleBugHunterPane(opts: {
 	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId);
 	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		integration: resolvedHooksIntegration,
 	});
 
 	const env: Record<string, string> = {

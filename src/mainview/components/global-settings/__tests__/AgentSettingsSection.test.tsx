@@ -407,3 +407,59 @@ describe("AgentSettingsSection — preset library", () => {
 		expect(config?.effort).toBe("ultra");
 	});
 });
+
+// The reported bug: dev3 recognizes only the five literal CLI names, so an agent
+// pointed at a wrapper script or a shell alias got no lifecycle hooks and its
+// task never moved between columns — with nothing on screen saying so.
+describe("AgentSettingsSection — lifecycle hooks", () => {
+	/** The wrapper tests rename baseCommand, so find the agent by its id. */
+	function patchedAgent(onAgentsChange: ReturnType<typeof vi.fn>): CodingAgent {
+		const calls = onAgentsChange.mock.calls;
+		const updated = calls[calls.length - 1][0] as CodingAgent[];
+		return updated.find((a) => a.id === "builtin-claude")!;
+	}
+
+	async function openHooksSelect(user: ReturnType<typeof userEvent.setup>) {
+		await expandAgent(user, "Claude");
+		const trigger = document.getElementById("agent-hooks-builtin-claude");
+		if (!trigger) throw new Error("hooks select is missing");
+		await user.click(trigger);
+	}
+
+	it("says nothing for a command it recognizes", async () => {
+		const user = userEvent.setup();
+		renderSection();
+		await expandAgent(user, "Claude");
+		expect(screen.queryByText("settings.hooksMissingTitle")).toBeNull();
+	});
+
+	it("warns that an unrecognized command gets no hooks", async () => {
+		const user = userEvent.setup();
+		renderSection({ baseCommand: "my-claude" });
+		await expandAgent(user, "Claude");
+		expect(screen.getByText("settings.hooksMissingTitle")).toBeInTheDocument();
+	});
+
+	it("stops warning once the agent declares a hook family", async () => {
+		const user = userEvent.setup();
+		renderSection({ baseCommand: "my-claude", hooksIntegration: "claude" });
+		await expandAgent(user, "Claude");
+		expect(screen.queryByText("settings.hooksMissingTitle")).toBeNull();
+	});
+
+	it("persists the declared family", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection({ baseCommand: "my-claude" });
+		await openHooksSelect(user);
+		await user.click(screen.getByRole("option", { name: "settings.hooksClaude" }));
+		expect(patchedAgent(onAgentsChange).hooksIntegration).toBe("claude");
+	});
+
+	it("clears the field back to auto-detection", async () => {
+		const user = userEvent.setup();
+		const onAgentsChange = renderSection({ baseCommand: "my-claude", hooksIntegration: "codex" });
+		await openHooksSelect(user);
+		await user.click(screen.getByRole("option", { name: "settings.hooksAuto" }));
+		expect(patchedAgent(onAgentsChange).hooksIntegration).toBeUndefined();
+	});
+});

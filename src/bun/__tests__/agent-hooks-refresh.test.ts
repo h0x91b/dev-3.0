@@ -67,6 +67,32 @@ describe("refreshClaudeHooksForTask", () => {
 		expect(writeClaudeHooks).not.toHaveBeenCalled();
 	});
 
+	// A wrapper script or shell alias cannot be recognized by name; the agent's
+	// declared hook family is what makes it get hooks at all.
+	it("re-installs the hooks for a wrapper command that declares the Claude family", async () => {
+		vi.mocked(getAllAgents).mockResolvedValue([
+			{ id: "agent-1", baseCommand: "my-claude", configurations: [], hooksIntegration: "claude" } as unknown as CodingAgent,
+		]);
+		await refreshClaudeHooksForTask(task());
+		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
+	});
+
+	it("writes nothing for a wrapper command with no declared family", async () => {
+		vi.mocked(getAllAgents).mockResolvedValue([
+			{ id: "agent-1", baseCommand: "my-claude", configurations: [] } as unknown as CodingAgent,
+		]);
+		await refreshClaudeHooksForTask(task());
+		expect(writeClaudeHooks).not.toHaveBeenCalled();
+	});
+
+	it("honours an explicit opt-out on a recognized command", async () => {
+		vi.mocked(getAllAgents).mockResolvedValue([
+			{ id: "agent-1", baseCommand: "claude", configurations: [], hooksIntegration: "none" } as unknown as CodingAgent,
+		]);
+		await refreshClaudeHooksForTask(task());
+		expect(writeClaudeHooks).not.toHaveBeenCalled();
+	});
+
 	it.each([
 		["the task has no worktree", { worktreePath: null }],
 		["the task has no agent", { agentId: null }],

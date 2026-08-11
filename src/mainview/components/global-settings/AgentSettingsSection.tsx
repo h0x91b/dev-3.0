@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNo
 import type {
 	AgentCheckResult,
 	AgentConfiguration,
+	AgentHooksIntegration,
 	BedrockGeo,
 	CodingAgent,
 	EffortLevel,
@@ -12,6 +13,7 @@ import type {
 	ProviderSettings,
 } from "../../../shared/types";
 import { LLM_PROVIDER } from "../../../shared/types";
+import { autoHooksFamily, isKnownAgentCommand } from "../../../shared/agent-adapters/hook-families";
 import { randomUUID } from "../../uuid";
 import { ListEditor } from "../ListEditor";
 import AgentConfigPicker from "../AgentConfigPicker";
@@ -1053,6 +1055,52 @@ function PresetEditor({
 }
 
 /** The agent itself: install state, identity, backend, order, removal. */
+/** Which lifecycle hooks this agent's worktrees get, and a warning when the base
+ *  command is one dev3 cannot recognize — the case that used to fail in silence:
+ *  no hooks means the task never moves between columns on its own. */
+function HooksIntegrationField({
+	t,
+	agent,
+	onChange,
+}: {
+	t: TFunction;
+	agent: CodingAgent;
+	onChange: (patch: Partial<CodingAgent>) => void;
+}) {
+	const familyLabel = (family: AgentHooksIntegration) =>
+		family === "claude" ? t("settings.hooksClaude") : family === "codex" ? t("settings.hooksCodex") : t("settings.hooksNone");
+	const options: SelectOption[] = [
+		{ value: "", label: t("settings.hooksAuto", { family: familyLabel(autoHooksFamily(agent.baseCommand)) }) },
+		{ value: "claude", label: t("settings.hooksClaude") },
+		{ value: "codex", label: t("settings.hooksCodex") },
+		{ value: "none", label: t("settings.hooksNone") },
+	];
+	const unrecognized = !agent.hooksIntegration && !isKnownAgentCommand(agent.baseCommand);
+
+	return (
+		<div className="space-y-2">
+			<Field label={t("settings.hooksIntegration")} htmlFor={`agent-hooks-${agent.id}`} hint={t("settings.hooksHint")}>
+				<Select
+					id={`agent-hooks-${agent.id}`}
+					value={agent.hooksIntegration ?? ""}
+					options={options}
+					onChange={(next) =>
+						onChange({ hooksIntegration: next ? (next as AgentHooksIntegration) : undefined })
+					}
+				/>
+			</Field>
+			{unrecognized ? (
+				<div className="p-3 rounded-lg bg-warning/5 border border-warning/20 space-y-1" role="status">
+					<p className="text-warning text-xs font-medium">{t("settings.hooksMissingTitle")}</p>
+					<p className="text-fg-3 text-xs">
+						{t("settings.hooksMissingBody", { command: agent.baseCommand || "—" })}
+					</p>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
 function AgentPane({
 	t,
 	agent,
@@ -1187,16 +1235,18 @@ function AgentPane({
 			) : null}
 
 			<div className="grid gap-3 sm:grid-cols-2">
-				<Field label={t("settings.agentName")}>
+				<Field label={t("settings.agentName")} htmlFor={`agent-name-${agent.id}`}>
 					<input
+						id={`agent-name-${agent.id}`}
 						type="text"
 						value={agent.name}
 						onChange={(event) => onChange({ name: event.target.value })}
 						className="w-full px-3 py-2 bg-elevated border border-edge rounded-lg text-fg text-sm outline-none focus:border-accent/40 transition-colors"
 					/>
 				</Field>
-				<Field label={t("settings.agentBaseCommand")}>
+				<Field label={t("settings.agentBaseCommand")} htmlFor={`agent-base-command-${agent.id}`}>
 					<input
+						id={`agent-base-command-${agent.id}`}
 						type="text"
 						value={agent.baseCommand}
 						onChange={(event) => onChange({ baseCommand: event.target.value })}
@@ -1208,6 +1258,8 @@ function AgentPane({
 					/>
 				</Field>
 			</div>
+
+			<HooksIntegrationField t={t} agent={agent} onChange={onChange} />
 
 			<ProviderSelector
 				t={t}

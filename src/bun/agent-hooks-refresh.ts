@@ -16,21 +16,25 @@
  * launch, so rewriting `.codex/hooks.json` mid-session would change nothing.
  */
 
-import type { Task } from "../shared/types";
+import type { AgentHooksIntegration, Task } from "../shared/types";
 import { createLogger } from "./logger";
-import { getAgentAdapter } from "../shared/agent-adapters/registry";
+import { getHooksAdapter } from "../shared/agent-adapters/registry";
 import { writeClaudeHooks } from "../shared/agent-hooks";
 import { findConfig, getAllAgents } from "./agents";
 import { getProject } from "./data";
 
 const log = createLogger("agent-hooks-refresh");
 
-/** The base command the task's agent was launched with, or null if unknown. */
-async function resolveTaskBaseCommand(task: Task): Promise<string | null> {
+/** The base command + declared hook family of the task's agent, or null if unknown. */
+async function resolveTaskAgentHooks(
+	task: Task,
+): Promise<{ baseCommand: string; integration?: AgentHooksIntegration } | null> {
 	if (!task.agentId) return null;
 	const agent = (await getAllAgents()).find((a) => a.id === task.agentId);
 	if (!agent) return null;
-	return findConfig(agent, task.configId)?.baseCommandOverride || agent.baseCommand || null;
+	const baseCommand = findConfig(agent, task.configId)?.baseCommandOverride || agent.baseCommand;
+	if (!baseCommand) return null;
+	return { baseCommand, integration: agent.hooksIntegration };
 }
 
 /**
@@ -41,10 +45,10 @@ export async function refreshClaudeHooksForTask(task: Task): Promise<void> {
 	try {
 		if (!task.worktreePath) return;
 
-		const baseCommand = await resolveTaskBaseCommand(task);
-		if (!baseCommand) return;
+		const resolved = await resolveTaskAgentHooks(task);
+		if (!resolved) return;
 
-		const spec = getAgentAdapter(baseCommand).hooksSpec();
+		const spec = getHooksAdapter(resolved.baseCommand, resolved.integration).hooksSpec();
 		if (spec?.kind !== "claude") return;
 
 		const project = await getProject(task.projectId);
