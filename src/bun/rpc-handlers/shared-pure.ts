@@ -160,8 +160,9 @@ export function buildAgentRetryWrapper(opts: {
  * The setup/startup wrapper: run the project's setup script, then hand the view
  * to the agent wrapper.
  *
- * The tmux flavour puts the agent in a SECOND pane via `tmux split-window`,
- * which only works because the wrapper runs inside a dev3 tmux pane. A native
+ * The tmux flavour puts the agent in a SECOND pane via `tmux split-window -b`
+ * (agent on top, setup log below), which only works because the wrapper runs
+ * inside a dev3 tmux pane. A native
  * session has one view and no $TMUX, so there the setup script runs first and
  * then EXECs the agent in the same view — never a bare `tmux` shell-out, which
  * outside tmux would target the user's own default socket.
@@ -191,7 +192,9 @@ export function buildSetupStartupWrapper(opts: {
 		return [...d.header(), ...runSetup, setupDone, d.execReplacing(cmdRunner)].join("\n") + "\n";
 	}
 	assertPosixLaunchDialect("the tmux setup/startup wrapper");
-	const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(opts.worktreePath)}" "${escapeForDoubleQuotes(cmdRunner)}"`;
+	// `-b` puts the agent ABOVE the wrapper's own pane, so the setup log sits at
+	// the bottom and the agent keeps the top slot it has without a setup script.
+	const splitCmd = `tmux split-window -v -b -c "${escapeForDoubleQuotes(opts.worktreePath)}" "${escapeForDoubleQuotes(cmdRunner)}"`;
 	return [
 		...d.header(),
 		...(opts.launchMode === "parallel" ? [splitCmd] : []),
