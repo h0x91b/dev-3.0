@@ -22,9 +22,11 @@
       white-space: nowrap;
       border: 0;
     }
-    .app { max-width: 1180px; margin: auto; }
+    /* Stacked top-level blocks are spaced by the container, so any panel order
+       an author writes keeps the same rhythm without per-panel margins. */
+    .app { display: flex; max-width: 1180px; flex-direction: column; gap: 14px; margin: auto; }
     .topbar, .brand, .actions, .segmented, .inline, .table-tools { display: flex; align-items: center; }
-    .topbar { justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+    .topbar { justify-content: space-between; gap: 20px; margin-bottom: 6px; }
     .brand { gap: 13px; }
     .brand img {
       width: 48px;
@@ -42,7 +44,7 @@
       top: 0;
       display: flex;
       gap: 4px;
-      margin: 0 0 14px;
+      margin: 0;
       padding: 5px;
       overflow-x: auto;
       border: 1px solid rgb(var(--dev3-border));
@@ -120,8 +122,10 @@
       color: rgb(var(--dev3-accent));
     }
     .grid { display: grid; gap: 14px; }
-    .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
+    .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .stack { display: grid; gap: 14px; }
     .card {
+      padding: 16px;
       border: 1px solid rgb(var(--dev3-border));
       border-radius: 16px;
       background: rgb(var(--dev3-surface-raised));
@@ -144,7 +148,6 @@
       display: grid;
       grid-template-columns: repeat(12, minmax(0, 1fr));
       gap: 14px;
-      margin-bottom: 14px;
     }
     .dashboard-grid > * { min-width: 0; }
     .velocity-panel { grid-column: span 8; }
@@ -160,7 +163,6 @@
       gap: 12px;
       margin-bottom: 16px;
     }
-    .gallery-panel { margin-bottom: 14px; }
     .section-title { margin: 0; font-size: 15px; font-weight: 700; }
     .section-copy { margin-top: 2px; color: rgb(var(--dev3-text-secondary)); font-size: 12px; }
     .segmented {
@@ -367,7 +369,7 @@
       background: rgb(var(--dev3-accent) / .18);
       color: rgb(var(--dev3-text-primary));
     }
-    .table-card { overflow: hidden; }
+    .table-card { padding: 0; overflow: hidden; }
     .table-head { padding: 16px 18px 12px; }
     .table-tools { gap: 8px; }
     .table-tools input, .table-tools select {
@@ -492,8 +494,8 @@
         color: rgb(var(--dev3-text-primary)) !important;
       }
       body { padding: 0; font-size: 10px; }
-      .app { max-width: none; }
-      .topbar { margin-bottom: 8px; }
+      .app { max-width: none; gap: 8px; }
+      .topbar { margin-bottom: 0; }
       .brand { gap: 9px; }
       .brand img { width: 34px; height: 34px; border-radius: 10px; box-shadow: none; }
       h1 { font-size: 17px; }
@@ -501,12 +503,14 @@
       .muted, .section-copy { font-size: 9px; }
       .actions, .scenario-panel, .table-tools, .toast, .print-hidden { display: none !important; }
       .print-only { display: block !important; }
-      .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+      .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+      .card { padding: 10px; }
+      .table-card { padding: 0; }
       .kpi { padding: 9px 10px; }
       .kpi-top { font-size: 8px; }
       .kpi-value { margin: 3px 0 1px; font-size: 20px; }
       .trend { font-size: 8px; }
-      .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+      .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .velocity-panel { grid-column: 1 / -1; }
       .pie-panel, .radar-panel { grid-column: auto; }
       .card, tr { break-inside: avoid; box-shadow: none; }

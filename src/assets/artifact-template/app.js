@@ -212,6 +212,11 @@
 
   function chartShellOption(option) {
     return {
+      // ECharts derives label contrast from the canvas background. Left
+      // transparent it assumes white paper and paints every value label dark
+      // grey inside a 2px white halo — illegible on the dark theme. Naming the
+      // card surface it actually sits on keeps labels readable in both themes.
+      backgroundColor: tokenColor("--dev3-surface-raised"),
       ...option,
       animation: prefersReducedMotion() ? false : option.animation ?? true,
       aria: { enabled: true, ...(option.aria || {}) },
