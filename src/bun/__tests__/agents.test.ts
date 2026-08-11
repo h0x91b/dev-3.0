@@ -1172,6 +1172,32 @@ describe("resolveLaunchConfig — the shared launch-time model pipeline", () => 
 		const config = makeConfig({ model: "gpt-5.6-sol" });
 		expect(resolveLaunchConfig(config, makeAgent({ baseCommand: "codex" }), "codex", {})).toBe(config);
 	});
+
+	it("a Codex API profile's model wins over the preset, and stands alone without one", () => {
+		const agent = makeAgent({ baseCommand: "codex" });
+		const config = makeConfig({ model: "gpt-5.6-sol" });
+		expect(resolveLaunchConfig(config, agent, "codex", {}, "deepseek-ai/DeepSeek-V4")?.model).toBe("deepseek-ai/DeepSeek-V4");
+		// No preset at all still emits --model: a custom endpoint has no sane default.
+		expect(resolveLaunchConfig(undefined, agent, "codex", {}, "deepseek-ai/DeepSeek-V4")?.model).toBe("deepseek-ai/DeepSeek-V4");
+		expect(config.model).toBe("gpt-5.6-sol");
+	});
+});
+
+describe("resolveAgentCommand — extraProviderArgs (Codex API profile)", () => {
+	it("emits the profile's model_providers block after the registry's own enableArgs", () => {
+		const agent = makeAgent({ baseCommand: "codex" });
+		const command = resolveAgentCommand(agent, makeConfig({ model: "deepseek-ai/DeepSeek-V4" }), makeCtx(), {
+			extraProviderArgs: [
+				"-c",
+				'model_providers.dev3.base_url="https://inference.baseten.co/v1"',
+				"-c",
+				'model_provider="dev3"',
+			],
+		});
+		expect(command).toContain("--model deepseek-ai/DeepSeek-V4");
+		expect(command).toContain("-c 'model_providers.dev3.base_url=\"https://inference.baseten.co/v1\"'");
+		expect(command).toContain("-c 'model_provider=\"dev3\"'");
+	});
 });
 
 describe("applyModelOverride — API profile model beats the preset --model flag", () => {

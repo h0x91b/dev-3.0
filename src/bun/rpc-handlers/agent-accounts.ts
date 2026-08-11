@@ -4,7 +4,7 @@
  */
 
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "../../shared/agent-accounts";
-import type { ClaudeApiProfileDraft } from "../agent-accounts";
+import type { AgentApiProfileDraft } from "../agent-accounts";
 import { parseEnvLines, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import * as accounts from "../agent-accounts";
 import { log } from "./shared";
@@ -52,9 +52,8 @@ async function addAgentApiProfile(params: {
 	envText?: string;
 }): Promise<AgentAccount> {
 	log.info("→ addAgentApiProfile", { kind: params.kind, baseUrl: params.baseUrl, model: params.model });
-	if (params.kind !== "claude") throw new Error("API profiles are only supported for Claude Code");
 	const env = params.envText ? parseEnvLines(params.envText) : {};
-	const account = await accounts.addClaudeApiProfile({
+	const account = await accounts.addAgentApiProfile(params.kind, {
 		label: params.label,
 		baseUrl: params.baseUrl,
 		apiKey: params.apiKey,
@@ -66,10 +65,9 @@ async function addAgentApiProfile(params: {
 	return account;
 }
 
-async function getAgentApiProfileDraft(params: { kind: AgentAccountKind; accountId: string }): Promise<ClaudeApiProfileDraft> {
+async function getAgentApiProfileDraft(params: { kind: AgentAccountKind; accountId: string }): Promise<AgentApiProfileDraft> {
 	log.info("→ getAgentApiProfileDraft", { kind: params.kind, accountId: params.accountId });
-	if (params.kind !== "claude") throw new Error("API profiles are only supported for Claude Code");
-	const draft = await accounts.getClaudeApiProfileDraft(params.accountId);
+	const draft = await accounts.getAgentApiProfileDraft(params.kind, params.accountId);
 	log.info("← getAgentApiProfileDraft", { hasApiKey: draft.hasApiKey });
 	return draft;
 }
@@ -85,9 +83,8 @@ async function updateAgentApiProfile(params: {
 	envText?: string;
 }): Promise<AgentAccount> {
 	log.info("→ updateAgentApiProfile", { kind: params.kind, accountId: params.accountId, baseUrl: params.baseUrl, model: params.model });
-	if (params.kind !== "claude") throw new Error("API profiles are only supported for Claude Code");
 	const env = params.envText !== undefined ? parseEnvLines(params.envText) : undefined;
-	const account = await accounts.updateClaudeApiProfile(params.accountId, {
+	const account = await accounts.updateAgentApiProfile(params.kind, params.accountId, {
 		label: params.label,
 		baseUrl: params.baseUrl,
 		apiKey: params.apiKey,

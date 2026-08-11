@@ -49,7 +49,10 @@ import {
 	CLAUDE_MODEL_SLOTS,
 	DEV3_AGENT_ACCOUNT_ID_ENV,
 	ENV_UNSET,
+	DEV3_CODEX_API_KEY_ENV,
 	claudeApiProfileEnvKeys,
+	codexApiProfileEnvKeys,
+	codexProviderArgs,
 	defaultAccountLabel,
 	defaultApiProfileLabel,
 	parseClaudeIdentity,
@@ -336,7 +339,8 @@ const codexWorkspaceBackfills = new Map<string, Promise<void>>();
 
 async function backfillCodexWorkspaceNames(registry: Registry, paths: AccountPaths): Promise<void> {
 	const missingWorkspaceIds = registry.codex.accounts
-		.filter((entry) => !entry.workspaceName)
+		// API profiles have no ChatGPT workspace at all — never look one up for them.
+		.filter((entry) => entry.auth !== "api" && !entry.workspaceName)
 		.map((entry) => codexAccountIdentity(entry.id, paths)?.accountId ?? entry.id)
 		.sort();
 	if (missingWorkspaceIds.length === 0) return;
@@ -363,13 +367,14 @@ function codexAccountIdentity(id: string, paths: AccountPaths, workspaceName?: s
 	return withCodexWorkspaceName(parseCodexIdentity(safeReadJson(codexAccountAuthFile(id, paths))), workspaceName);
 }
 
-/** On-disk shape of <claude account dir>/api-profile.json (0600 — holds the key). */
+/** On-disk shape of <account dir>/api-profile.json (0600 — holds the key). */
 interface ApiProfileFile {
 	baseUrl: string | null;
 	apiKey: string | null;
-	/** Master override: one model id fanned out to every alias slot. */
+	/** Master override: one model id fanned out to every alias slot (Claude), or
+	 *  simply the model the profile pins (Codex). */
 	model: string | null;
-	/** Per-slot overrides (used when `model` master is empty). */
+	/** Per-slot overrides (Claude only; used when `model` master is empty). */
 	slotModels: ClaudeSlotModels;
 	env: Record<string, string>;
 }
@@ -392,12 +397,16 @@ function parseSlotModels(raw: unknown): ClaudeSlotModels {
 	return out;
 }
 
-function apiProfileFile(id: string, paths: AccountPaths): string {
-	return join(claudeAccountDir(id, paths), "api-profile.json");
+function accountDir(kind: AgentAccountKind, id: string, paths: AccountPaths): string {
+	return kind === "claude" ? claudeAccountDir(id, paths) : codexAccountDir(id, paths);
 }
 
-function readApiProfile(id: string, paths: AccountPaths): ApiProfileFile | null {
-	const raw = safeReadJson(apiProfileFile(id, paths));
+function apiProfileFile(kind: AgentAccountKind, id: string, paths: AccountPaths): string {
+	return join(accountDir(kind, id, paths), "api-profile.json");
+}
+
+function readApiProfile(kind: AgentAccountKind, id: string, paths: AccountPaths): ApiProfileFile | null {
+	const raw = safeReadJson(apiProfileFile(kind, id, paths));
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
 	const data = raw as Record<string, unknown>;
 	const env: Record<string, string> = {};
@@ -427,7 +436,7 @@ function apiProfileInfo(profile: ApiProfileFile | null): AgentApiProfileInfo | n
 }
 
 function toAccount(entry: RegistryEntry, kind: AgentAccountKind, paths: AccountPaths): AgentAccount {
-	const isApi = kind === "claude" && entry.auth === "api";
+	const isApi = entry.auth === "api";
 	return {
 		id: entry.id,
 		kind,
@@ -438,7 +447,7 @@ function toAccount(entry: RegistryEntry, kind: AgentAccountKind, paths: AccountP
 				? claudeAccountIdentity(entry.id, paths)
 				: codexAccountIdentity(entry.id, paths, entry.workspaceName),
 		auth: isApi ? "api" : "oauth",
-		api: isApi ? apiProfileInfo(readApiProfile(entry.id, paths)) : null,
+		api: isApi ? apiProfileInfo(readApiProfile(kind, entry.id, paths)) : null,
 		createdAt: entry.createdAt,
 	};
 }
@@ -458,7 +467,9 @@ function currentCodexIdentity(paths: AccountPaths, registry: Registry): AgentAcc
  *  [] when the registry is unreadable. */
 export function listCodexAccountDirs(paths: AccountPaths = defaultAccountPaths()): string[] {
 	try {
-		return loadRegistry(paths).codex.accounts.map((e) => codexAccountDir(e.id, paths));
+		return loadRegistry(paths)
+			.codex.accounts.filter((e) => e.auth !== "api") // API profiles hold no sessions
+			.map((e) => codexAccountDir(e.id, paths));
 	} catch {
 		return [];
 	}
@@ -541,11 +552,11 @@ function applyApiProfileModelEnv(env: Record<string, string>, profile: ApiProfil
 /** Every env key any registered API profile could have set: the fixed
  *  ANTHROPIC_* + CLAUDE_CONFIG_DIR set plus the union of all profiles' extra
  *  env keys. Used to actively unset stale values after an account switch. */
-function collectClearableEnvKeys(registry: Registry, paths: AccountPaths): Set<string> {
-	const keys = new Set(claudeApiProfileEnvKeys());
-	for (const entry of registry.claude.accounts) {
+function collectClearableEnvKeys(registry: Registry, kind: AgentAccountKind, paths: AccountPaths): Set<string> {
+	const keys = new Set(kind === "claude" ? claudeApiProfileEnvKeys() : codexApiProfileEnvKeys());
+	for (const entry of registry[kind].accounts) {
 		if (entry.auth !== "api") continue;
-		const profile = readApiProfile(entry.id, paths);
+		const profile = readApiProfile(kind, entry.id, paths);
 		for (const key of Object.keys(profile?.env ?? {})) keys.add(key);
 	}
 	return keys;
@@ -582,7 +593,7 @@ export async function getActiveClaudeSessionEnv(
 			selectedDir = dir;
 			env.CLAUDE_CONFIG_DIR = dir;
 			if (entry.auth === "api") {
-				const profile = readApiProfile(entry.id, paths);
+				const profile = readApiProfile("claude", entry.id, paths);
 				if (profile) {
 					// Profile-level vars first, specific fields last so the structured fields win.
 					Object.assign(env, profile.env);
@@ -602,27 +613,62 @@ export async function getActiveClaudeSessionEnv(
 	if (registry.claude.accounts.length > 0) {
 		env[DEV3_AGENT_ACCOUNT_ID_ENV] = selectedDir && entry ? entry.id : ENV_UNSET;
 	}
-	for (const key of collectClearableEnvKeys(registry, paths)) {
+	for (const key of collectClearableEnvKeys(registry, "claude", paths)) {
 		if (!(key in env)) env[key] = ENV_UNSET;
 	}
 	return env;
 }
 
-/** CODEX_HOME to inject into a new Codex session, or {} for the system login
- *  (~/.codex, no override). `accountIdOverride`: undefined → the registry default
- *  (`activeId`); null → force the system login; a string → that managed account.
- *  Unlike the old model this NEVER swaps ~/.codex/auth.json — each session gets
- *  its own CODEX_HOME, so concurrent sessions can run on different accounts. */
-export async function getActiveCodexSessionEnv(
+/** Everything a Codex launch needs from the selected managed account. OAuth
+ *  accounts contribute a per-session CODEX_HOME; API profiles contribute the key
+ *  env var, the `-c model_providers.dev3.…` routing flags and the pinned model. */
+export interface CodexSessionLaunch {
+	env: Record<string, string>;
+	/** Provider routing args appended to the codex command line (never a file). */
+	args: string[];
+	/** Model id the profile pins, overriding the preset's `--model`. */
+	model: string | null;
+}
+
+/** Resolve a new Codex session against the selected managed account.
+ *  `accountIdOverride`: undefined → the registry default (`activeId`); null →
+ *  force the system login (~/.codex); a string → that managed account.
+ *
+ *  OAuth accounts never swap ~/.codex/auth.json — each session gets its own
+ *  CODEX_HOME, so concurrent sessions can run on different accounts. API profiles
+ *  deliberately get NO CODEX_HOME: they have no auth.json, and reusing the real
+ *  ~/.codex keeps the user's profiles, MCP servers and permission modes working. */
+export async function getActiveCodexSessionLaunch(
 	accountIdOverride?: string | null,
 	paths: AccountPaths = defaultAccountPaths(),
-): Promise<Record<string, string>> {
+): Promise<CodexSessionLaunch> {
+	const empty: CodexSessionLaunch = { env: {}, args: [], model: null };
 	const registry = loadRegistry(paths);
+	if (registry.codex.accounts.length === 0) return empty;
+
 	const id = resolveAccountIdOverride(registry.codex.activeId, accountIdOverride);
-	if (!id || !registry.codex.accounts.some((e) => e.id === id)) return {};
-	// Missing snapshot (account added but creds gone) → fall back to system login.
-	if (!existsSync(codexAccountAuthFile(id, paths))) return {};
-	return { CODEX_HOME: ensureCodexAccountHome(id, paths) };
+	const entry = id ? registry.codex.accounts.find((e) => e.id === id) : undefined;
+	const launch: CodexSessionLaunch = { env: {}, args: [], model: null };
+
+	if (entry?.auth === "api") {
+		const profile = readApiProfile("codex", entry.id, paths);
+		if (profile) {
+			Object.assign(launch.env, profile.env);
+			if (profile.apiKey) launch.env[DEV3_CODEX_API_KEY_ENV] = profile.apiKey;
+			launch.args = codexProviderArgs({ label: entry.label, baseUrl: profile.baseUrl });
+			launch.model = profile.model;
+		} else {
+			log.warn("Active Codex API profile has no api-profile.json", { id: entry.id });
+		}
+	} else if (entry && existsSync(codexAccountAuthFile(entry.id, paths))) {
+		// Missing snapshot (account added but creds gone) → fall back to system login.
+		launch.env.CODEX_HOME = ensureCodexAccountHome(entry.id, paths);
+	}
+
+	for (const key of collectClearableEnvKeys(registry, "codex", paths)) {
+		if (!(key in launch.env)) launch.env[key] = ENV_UNSET;
+	}
+	return launch;
 }
 
 /** Create the per-account config dir, symlinking every non-private entry of
@@ -841,13 +887,14 @@ export async function importCurrentClaudeAccount(paths: AccountPaths = defaultAc
 	return registerAccount(registry, "claude", id, identity, paths);
 }
 
-export interface ClaudeApiProfileInput {
+export interface AgentApiProfileInput {
 	label?: string;
 	baseUrl?: string;
 	apiKey?: string;
-	/** Master override: one model id for every alias slot. */
+	/** Master override: one model id for every alias slot (Claude), or the model
+	 *  the profile pins (Codex). */
 	model?: string;
-	/** Per-slot overrides (id + optional display name/description). */
+	/** Per-slot overrides (id + optional display name/description). Claude only. */
 	slotModels?: ClaudeSlotModels;
 	env?: Record<string, string>;
 }
@@ -885,46 +932,70 @@ function validateBaseUrl(baseUrl: string | null): void {
 	}
 }
 
-/** Add an API profile: no login at all — the profile carries ANTHROPIC_* env
- *  (and arbitrary extra vars, e.g. CLAUDE_CODE_USE_BEDROCK=1 + AWS_*) that get
- *  injected into new sessions alongside its own CLAUDE_CONFIG_DIR. */
-export async function addClaudeApiProfile(
-	input: ClaudeApiProfileInput,
+/** Scaffold the account dir an API profile lives in.
+ *
+ *  Claude gets a full CLAUDE_CONFIG_DIR (symlinked ~/.claude entries + a seeded
+ *  .claude.json that pre-approves the key). Codex gets a bare directory on
+ *  purpose: ensureCodexAccountHome() symlinks config.toml straight into the
+ *  user's real ~/.codex, and an API profile has no auth.json to justify a
+ *  CODEX_HOME at all — its provider block ships as `-c` flags instead. */
+function scaffoldApiProfileDir(kind: AgentAccountKind, id: string, apiKey: string | null, paths: AccountPaths): void {
+	const dir = accountDir(kind, id, paths);
+	if (kind !== "claude") {
+		mkdirSync(dir, { recursive: true });
+		return;
+	}
+	scaffoldClaudeAccountDir(dir, paths);
+	const seeded = seedClaudeJson(paths);
+	if (apiKey) approveApiKeyTail(seeded, apiKey);
+	writeFileSync(join(dir, ".claude.json"), JSON.stringify(seeded, null, 2));
+}
+
+function writeApiProfile(kind: AgentAccountKind, id: string, profile: ApiProfileFile, paths: AccountPaths): void {
+	const file = apiProfileFile(kind, id, paths);
+	writeFileSync(file, JSON.stringify(profile, null, 2), { mode: 0o600 });
+	chmodSync(file, 0o600);
+}
+
+/** Add an API profile: no login at all. For Claude the profile carries ANTHROPIC_*
+ *  env (plus arbitrary extra vars, e.g. CLAUDE_CODE_USE_BEDROCK=1 + AWS_*) next to
+ *  its own CLAUDE_CONFIG_DIR; for Codex it carries the key env var and the
+ *  `-c model_providers.dev3.…` routing flags built by codexProviderArgs. */
+export async function addAgentApiProfile(
+	kind: AgentAccountKind,
+	input: AgentApiProfileInput,
 	paths: AccountPaths = defaultAccountPaths(),
 ): Promise<AgentAccount> {
 	const baseUrl = input.baseUrl?.trim() || null;
 	const apiKey = input.apiKey?.trim() || null;
 	const model = input.model?.trim() || null;
-	const slotModels = parseSlotModels(input.slotModels);
+	const slotModels = kind === "claude" ? parseSlotModels(input.slotModels) : {};
 	const env = input.env ?? {};
 	if (!baseUrl && !apiKey && Object.keys(env).length === 0) {
 		throw new Error("Provide an API key, a base URL, or environment variables.");
+	}
+	// Codex routes through a `model_providers` block, which is meaningless without
+	// an endpoint to point it at.
+	if (kind === "codex" && !baseUrl) {
+		throw new Error("A Codex API profile needs a base URL (the OpenAI-compatible endpoint).");
 	}
 	validateBaseUrl(baseUrl);
 
 	const registry = loadRegistry(paths);
 	const id = crypto.randomUUID();
-	const dir = claudeAccountDir(id, paths);
-	scaffoldClaudeAccountDir(dir, paths);
+	scaffoldApiProfileDir(kind, id, apiKey, paths);
+	writeApiProfile(kind, id, { baseUrl, apiKey, model, slotModels, env }, paths);
 
-	const seeded = seedClaudeJson(paths);
-	if (apiKey) approveApiKeyTail(seeded, apiKey);
-	writeFileSync(join(dir, ".claude.json"), JSON.stringify(seeded, null, 2));
-
-	const profile: ApiProfileFile = { baseUrl, apiKey, model, slotModels, env };
-	writeFileSync(apiProfileFile(id, paths), JSON.stringify(profile, null, 2), { mode: 0o600 });
-	chmodSync(apiProfileFile(id, paths), 0o600);
-
-	const apiOrdinal = registry.claude.accounts.filter((e) => e.auth === "api").length + 1;
+	const apiOrdinal = registry[kind].accounts.filter((e) => e.auth === "api").length + 1;
 	const label = input.label?.trim() || defaultApiProfileLabel(baseUrl, apiOrdinal);
-	return registerAccount(registry, "claude", id, null, paths, { auth: "api", label });
+	return registerAccount(registry, kind, id, null, paths, { auth: "api", label });
 }
 
 /** Editable snapshot of an API profile for the settings form. Includes the API
  *  key value: it is the user's own key and the form shows it (masked, with a
  *  reveal toggle). It travels only in this on-demand draft, never in the bulk
  *  `listAgentAccounts` state. */
-export interface ClaudeApiProfileDraft {
+export interface AgentApiProfileDraft {
 	label: string;
 	baseUrl: string;
 	apiKey: string;
@@ -935,15 +1006,16 @@ export interface ClaudeApiProfileDraft {
 	hasApiKey: boolean;
 }
 
-export async function getClaudeApiProfileDraft(
+export async function getAgentApiProfileDraft(
+	kind: AgentAccountKind,
 	accountId: string,
 	paths: AccountPaths = defaultAccountPaths(),
-): Promise<ClaudeApiProfileDraft> {
+): Promise<AgentApiProfileDraft> {
 	const registry = loadRegistry(paths);
-	const entry = registry.claude.accounts.find((e) => e.id === accountId);
-	if (!entry) throw new Error(`Unknown Claude account: ${accountId}`);
+	const entry = registry[kind].accounts.find((e) => e.id === accountId);
+	if (!entry) throw new Error(`Unknown ${kind} account: ${accountId}`);
 	if (entry.auth !== "api") throw new Error("Only API profiles can be edited this way");
-	const profile = readApiProfile(accountId, paths);
+	const profile = readApiProfile(kind, accountId, paths);
 	const envText = profile
 		? Object.entries(profile.env)
 				.map(([k, v]) => `${k}=${v}`)
@@ -964,20 +1036,22 @@ export async function getClaudeApiProfileDraft(
  *  stored key untouched (the form prefills the key, so it normally sends it);
  *  `baseUrl`, `model`, `slotModels` and `env` are full replacements; an empty
  *  `label` keeps the current one. */
-export async function updateClaudeApiProfile(
+export async function updateAgentApiProfile(
+	kind: AgentAccountKind,
 	accountId: string,
-	input: ClaudeApiProfileInput,
+	input: AgentApiProfileInput,
 	paths: AccountPaths = defaultAccountPaths(),
 ): Promise<AgentAccount> {
 	const registry = loadRegistry(paths);
-	const entry = registry.claude.accounts.find((e) => e.id === accountId);
-	if (!entry) throw new Error(`Unknown Claude account: ${accountId}`);
+	const entry = registry[kind].accounts.find((e) => e.id === accountId);
+	if (!entry) throw new Error(`Unknown ${kind} account: ${accountId}`);
 	if (entry.auth !== "api") throw new Error("Only API profiles can be edited this way");
 
-	const existing = readApiProfile(accountId, paths);
+	const existing = readApiProfile(kind, accountId, paths);
 	const baseUrl = input.baseUrl?.trim() || null;
 	const model = input.model?.trim() || null;
-	const slotModels = input.slotModels !== undefined ? parseSlotModels(input.slotModels) : (existing?.slotModels ?? {});
+	const slotModels =
+		kind !== "claude" ? {} : input.slotModels !== undefined ? parseSlotModels(input.slotModels) : (existing?.slotModels ?? {});
 	const env = input.env ?? existing?.env ?? {};
 	// undefined → keep the stored key; a provided string replaces it (empty clears).
 	const apiKey = input.apiKey === undefined ? (existing?.apiKey ?? null) : (input.apiKey.trim() || null);
@@ -985,24 +1059,27 @@ export async function updateClaudeApiProfile(
 	if (!baseUrl && !apiKey && Object.keys(env).length === 0) {
 		throw new Error("Provide an API key, a base URL, or environment variables.");
 	}
+	if (kind === "codex" && !baseUrl) {
+		throw new Error("A Codex API profile needs a base URL (the OpenAI-compatible endpoint).");
+	}
 	validateBaseUrl(baseUrl);
 
-	const dir = claudeAccountDir(accountId, paths);
-	const seededRaw = safeReadJson(join(dir, ".claude.json"));
-	const seeded: Record<string, unknown> =
-		seededRaw && typeof seededRaw === "object" && !Array.isArray(seededRaw)
-			? { ...(seededRaw as Record<string, unknown>) }
-			: seedClaudeJson(paths);
-	if (apiKey) approveApiKeyTail(seeded, apiKey);
-	writeFileSync(join(dir, ".claude.json"), JSON.stringify(seeded, null, 2));
+	if (kind === "claude") {
+		const dir = claudeAccountDir(accountId, paths);
+		const seededRaw = safeReadJson(join(dir, ".claude.json"));
+		const seeded: Record<string, unknown> =
+			seededRaw && typeof seededRaw === "object" && !Array.isArray(seededRaw)
+				? { ...(seededRaw as Record<string, unknown>) }
+				: seedClaudeJson(paths);
+		if (apiKey) approveApiKeyTail(seeded, apiKey);
+		writeFileSync(join(dir, ".claude.json"), JSON.stringify(seeded, null, 2));
+	}
 
-	const profile: ApiProfileFile = { baseUrl, apiKey, model, slotModels, env };
-	writeFileSync(apiProfileFile(accountId, paths), JSON.stringify(profile, null, 2), { mode: 0o600 });
-	chmodSync(apiProfileFile(accountId, paths), 0o600);
+	writeApiProfile(kind, accountId, { baseUrl, apiKey, model, slotModels, env }, paths);
 
 	entry.label = input.label?.trim() || entry.label;
 	saveRegistry(registry, paths);
-	return toAccount(entry, "claude", paths);
+	return toAccount(entry, kind, paths);
 }
 
 /** Scaffold a fresh config dir for a new login and return the command to run.
@@ -1123,7 +1200,7 @@ export async function setActiveClaudeAccount(accountId: string | null, paths: Ac
 }
 
 /** Codex activation is now registry-only — it just moves the default pointer.
- *  Each launch injects its own CODEX_HOME (getActiveCodexSessionEnv), so nothing
+ *  Each launch resolves its own env (getActiveCodexSessionLaunch), so nothing
  *  swaps ~/.codex/auth.json anymore. `null` → the system login (~/.codex) is the
  *  default. Concurrent sessions on different accounts are therefore possible. */
 export async function setActiveCodexAccount(accountId: string | null, paths: AccountPaths = defaultAccountPaths()): Promise<void> {

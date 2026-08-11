@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, un
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-	addClaudeApiProfile,
+	addAgentApiProfile,
 	claudeAccountDir,
 	isPrivateClaudeEntry,
 	codexAccountDir,
@@ -11,8 +11,8 @@ import {
 	completeCodexLogin,
 	getActiveClaudeConfigDir,
 	getActiveClaudeSessionEnv,
-	getActiveCodexSessionEnv,
-	getClaudeApiProfileDraft,
+	getActiveCodexSessionLaunch,
+	getAgentApiProfileDraft,
 	importCurrentClaudeAccount,
 	importCurrentCodexAccount,
 	listAgentAccounts,
@@ -23,7 +23,7 @@ import {
 	renameAgentAccount,
 	setActiveClaudeAccount,
 	setActiveCodexAccount,
-	updateClaudeApiProfile,
+	updateAgentApiProfile,
 	type AccountPaths,
 } from "../agent-accounts";
 import { claudeApiProfileEnvKeys, ENV_UNSET } from "../../shared/agent-accounts";
@@ -514,23 +514,29 @@ describe("codex accounts", () => {
 		expect(state.codex.activeId).toBeNull();
 	});
 
-	it("getActiveCodexSessionEnv injects the selected account's CODEX_HOME; per-launch override wins", async () => {
+	it("getActiveCodexSessionLaunch injects the selected account's CODEX_HOME; per-launch override wins", async () => {
 		seedCodexLogin("acc-1");
 		const account = await importCurrentCodexAccount(paths);
-		// Default points at the imported account.
-		expect(await getActiveCodexSessionEnv(undefined, paths)).toEqual({ CODEX_HOME: codexAccountDir(account.id, paths) });
+		const home = codexAccountDir(account.id, paths);
+		// An OAuth account contributes only CODEX_HOME — no provider args, no model.
+		// The unused API-key var is cleared so a previous profile cannot leak into it.
+		expect(await getActiveCodexSessionLaunch(undefined, paths)).toEqual({
+			env: { CODEX_HOME: home, DEV3_CODEX_API_KEY: ENV_UNSET },
+			args: [],
+			model: null,
+		});
 		// null override → system login (~/.codex), no CODEX_HOME.
-		expect(await getActiveCodexSessionEnv(null, paths)).toEqual({});
+		expect((await getActiveCodexSessionLaunch(null, paths)).env.CODEX_HOME).toBeUndefined();
 		// Explicit id override selects that account even when the default is the system login.
 		await setActiveCodexAccount(null, paths);
-		expect(await getActiveCodexSessionEnv(account.id, paths)).toEqual({ CODEX_HOME: codexAccountDir(account.id, paths) });
+		expect((await getActiveCodexSessionLaunch(account.id, paths)).env.CODEX_HOME).toBe(home);
 	});
 });
 
 describe("claude API profiles", () => {
 	it("creates a profile with its own config dir and 0600 api-profile.json", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile(
+		const account = await addAgentApiProfile("claude",
 			{ baseUrl: "https://openrouter.ai/api", apiKey: "sk-or-key-1234567890abcdef", model: "claude-sonnet-4-6" },
 			paths,
 		);
@@ -556,13 +562,13 @@ describe("claude API profiles", () => {
 	});
 
 	it("rejects an empty profile and a malformed base URL", async () => {
-		await expect(addClaudeApiProfile({}, paths)).rejects.toThrow(/API key, a base URL, or environment/);
-		await expect(addClaudeApiProfile({ baseUrl: "not a url", apiKey: "k" }, paths)).rejects.toThrow(/Invalid base URL/);
+		await expect(addAgentApiProfile("claude", {}, paths)).rejects.toThrow(/API key, a base URL, or environment/);
+		await expect(addAgentApiProfile("claude", { baseUrl: "not a url", apiKey: "k" }, paths)).rejects.toThrow(/Invalid base URL/);
 	});
 
 	it("active API profile injects ANTHROPIC_* and extra env; master model fans out to alias slots", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile(
+		const account = await addAgentApiProfile("claude",
 			{
 				baseUrl: "https://openrouter.ai/api",
 				apiKey: "sk-or-key",
@@ -588,7 +594,7 @@ describe("claude API profiles", () => {
 
 	it("per-slot overrides emit ANTHROPIC_DEFAULT_<slot>_MODEL with name/description", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile(
+		const account = await addAgentApiProfile("claude",
 			{
 				apiKey: "sk-or-key",
 				slotModels: {
@@ -635,7 +641,7 @@ describe("claude API profiles", () => {
 
 	it("switching to OAuth unsets extra env vars carried by an inactive API profile", async () => {
 		seedClaudeLogin();
-		await addClaudeApiProfile({ apiKey: "sk-x", env: { CLAUDE_CODE_USE_BEDROCK: "1" } }, paths);
+		await addAgentApiProfile("claude", { apiKey: "sk-x", env: { CLAUDE_CODE_USE_BEDROCK: "1" } }, paths);
 		const oauth = await importCurrentClaudeAccount(paths);
 		await setActiveClaudeAccount(oauth.id, paths);
 		const env = await getActiveClaudeSessionEnv(undefined, paths);
@@ -645,7 +651,7 @@ describe("claude API profiles", () => {
 
 	it("remove deletes the profile dir together with its key", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile({ apiKey: "sk-x" }, paths);
+		const account = await addAgentApiProfile("claude", { apiKey: "sk-x" }, paths);
 		expect(account.label).toBe("API profile 1");
 		await removeAgentAccount("claude", account.id, paths);
 		expect(existsSync(claudeAccountDir(account.id, paths))).toBe(false);
@@ -654,7 +660,7 @@ describe("claude API profiles", () => {
 
 	it("draft returns the editable fields including the key value and slot overrides", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile(
+		const account = await addAgentApiProfile("claude",
 			{
 				label: "OR",
 				baseUrl: "https://openrouter.ai/api",
@@ -664,7 +670,7 @@ describe("claude API profiles", () => {
 			},
 			paths,
 		);
-		const draft = await getClaudeApiProfileDraft(account.id, paths);
+		const draft = await getAgentApiProfileDraft("claude", account.id, paths);
 		expect(draft).toEqual({
 			label: "OR",
 			baseUrl: "https://openrouter.ai/api",
@@ -678,11 +684,11 @@ describe("claude API profiles", () => {
 
 	it("update rewrites fields and keeps the stored key when apiKey is omitted", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile(
+		const account = await addAgentApiProfile("claude",
 			{ baseUrl: "https://openrouter.ai/api", apiKey: "sk-original", model: "old-model", env: { A: "1" } },
 			paths,
 		);
-		const updated = await updateClaudeApiProfile(
+		const updated = await updateAgentApiProfile("claude", 
 			account.id,
 			{ label: "Renamed", baseUrl: "https://api.anthropic.com", model: "new-model", env: { B: "2" } },
 			paths,
@@ -707,8 +713,8 @@ describe("claude API profiles", () => {
 
 	it("update swaps master override for per-slot overrides", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile({ apiKey: "sk-x", model: "master-model" }, paths);
-		await updateClaudeApiProfile(account.id, { model: "", slotModels: { sonnet: { id: "provider/sonnet" } } }, paths);
+		const account = await addAgentApiProfile("claude", { apiKey: "sk-x", model: "master-model" }, paths);
+		await updateAgentApiProfile("claude", account.id, { model: "", slotModels: { sonnet: { id: "provider/sonnet" } } }, paths);
 		await setActiveClaudeAccount(account.id, paths);
 		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("provider/sonnet");
@@ -717,8 +723,8 @@ describe("claude API profiles", () => {
 
 	it("update replaces the key and re-approves its tail when a new key is given", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile({ apiKey: "sk-original-key" }, paths);
-		await updateClaudeApiProfile(account.id, { apiKey: "sk-brand-new-key-1234567890" }, paths);
+		const account = await addAgentApiProfile("claude", { apiKey: "sk-original-key" }, paths);
+		await updateAgentApiProfile("claude", account.id, { apiKey: "sk-brand-new-key-1234567890" }, paths);
 		await setActiveClaudeAccount(account.id, paths);
 		expect((await getActiveClaudeSessionEnv(undefined, paths)).ANTHROPIC_API_KEY).toBe("sk-brand-new-key-1234567890");
 		const seeded = JSON.parse(readFileSync(join(claudeAccountDir(account.id, paths), ".claude.json"), "utf-8"));
@@ -727,18 +733,98 @@ describe("claude API profiles", () => {
 
 	it("update rejects a profile left with nothing and a malformed base URL", async () => {
 		seedClaudeLogin();
-		const account = await addClaudeApiProfile({ apiKey: "sk-x" }, paths);
-		await expect(updateClaudeApiProfile(account.id, { apiKey: "", env: {} }, paths)).rejects.toThrow(
+		const account = await addAgentApiProfile("claude", { apiKey: "sk-x" }, paths);
+		await expect(updateAgentApiProfile("claude", account.id, { apiKey: "", env: {} }, paths)).rejects.toThrow(
 			/API key, a base URL, or environment/,
 		);
-		await expect(updateClaudeApiProfile(account.id, { baseUrl: "not a url" }, paths)).rejects.toThrow(/Invalid base URL/);
+		await expect(updateAgentApiProfile("claude", account.id, { baseUrl: "not a url" }, paths)).rejects.toThrow(/Invalid base URL/);
 	});
 
 	it("draft and update reject a non-API (oauth) account", async () => {
 		seedClaudeLogin();
 		const oauth = await importCurrentClaudeAccount(paths);
-		await expect(getClaudeApiProfileDraft(oauth.id, paths)).rejects.toThrow(/Only API profiles/);
-		await expect(updateClaudeApiProfile(oauth.id, { model: "x" }, paths)).rejects.toThrow(/Only API profiles/);
+		await expect(getAgentApiProfileDraft("claude", oauth.id, paths)).rejects.toThrow(/Only API profiles/);
+		await expect(updateAgentApiProfile("claude", oauth.id, { model: "x" }, paths)).rejects.toThrow(/Only API profiles/);
+	});
+});
+
+describe("codex API profiles", () => {
+	const BASETEN = { baseUrl: "https://inference.baseten.co/v1", apiKey: "bt-key-123", model: "deepseek-ai/DeepSeek-V4" };
+
+	it("stores the profile without ever touching ~/.codex", async () => {
+		mkdirSync(paths.codexHome, { recursive: true });
+		writeFileSync(join(paths.codexHome, "config.toml"), "[tui]\ntheme = \"user\"\n");
+
+		const account = await addAgentApiProfile("codex", BASETEN, paths);
+
+		expect(account.auth).toBe("api");
+		expect(account.label).toBe("inference.baseten.co");
+		expect(account.api).toEqual({
+			baseUrl: BASETEN.baseUrl,
+			model: BASETEN.model,
+			slotModels: {},
+			hasApiKey: true,
+			envKeys: [],
+		});
+
+		const dir = codexAccountDir(account.id, paths);
+		expect(lstatSync(join(dir, "api-profile.json")).mode & 0o777).toBe(0o600);
+		// The account dir is bare: a symlinked config.toml would make dev3 edit the
+		// user's global Codex config, and an API profile has no auth.json anyway.
+		expect(existsSync(join(dir, "config.toml"))).toBe(false);
+		expect(existsSync(join(dir, "auth.json"))).toBe(false);
+		expect(readFileSync(join(paths.codexHome, "config.toml"), "utf-8")).toBe("[tui]\ntheme = \"user\"\n");
+	});
+
+	it("requires a base URL — a model_providers block without an endpoint is meaningless", async () => {
+		await expect(addAgentApiProfile("codex", { apiKey: "k" }, paths)).rejects.toThrow(/needs a base URL/);
+		const account = await addAgentApiProfile("codex", BASETEN, paths);
+		await expect(updateAgentApiProfile("codex", account.id, { apiKey: "k" }, paths)).rejects.toThrow(/needs a base URL/);
+	});
+
+	it("launch carries the key env var, the provider flags and the pinned model — and no CODEX_HOME", async () => {
+		const account = await addAgentApiProfile("codex", { ...BASETEN, label: "Baseten" }, paths);
+		await setActiveCodexAccount(account.id, paths);
+
+		const launch = await getActiveCodexSessionLaunch(undefined, paths);
+		expect(launch.env).toEqual({ DEV3_CODEX_API_KEY: "bt-key-123" });
+		expect(launch.model).toBe("deepseek-ai/DeepSeek-V4");
+		expect(launch.args).toEqual([
+			"-c",
+			'model_providers.dev3.name="Baseten"',
+			"-c",
+			'model_providers.dev3.base_url="https://inference.baseten.co/v1"',
+			"-c",
+			'model_providers.dev3.env_key="DEV3_CODEX_API_KEY"',
+			"-c",
+			'model_provider="dev3"',
+		]);
+	});
+
+	it("clears a previous profile's key when the selection moves to the system login", async () => {
+		const account = await addAgentApiProfile("codex", BASETEN, paths);
+		await setActiveCodexAccount(account.id, paths);
+		const launch = await getActiveCodexSessionLaunch(null, paths);
+		expect(launch.env).toEqual({ DEV3_CODEX_API_KEY: ENV_UNSET });
+		expect(launch.args).toEqual([]);
+	});
+
+	it("round-trips the edit draft", async () => {
+		const account = await addAgentApiProfile("codex", { ...BASETEN, env: { HTTPS_PROXY: "http://127.0.0.1:8080" } }, paths);
+		const draft = await getAgentApiProfileDraft("codex", account.id, paths);
+		expect(draft).toEqual({
+			label: "inference.baseten.co",
+			baseUrl: BASETEN.baseUrl,
+			apiKey: BASETEN.apiKey,
+			model: BASETEN.model,
+			slotModels: {},
+			envText: "HTTPS_PROXY=http://127.0.0.1:8080",
+			hasApiKey: true,
+		});
+
+		const updated = await updateAgentApiProfile("codex", account.id, { ...BASETEN, label: "Baseten", model: "other/model" }, paths);
+		expect(updated.label).toBe("Baseten");
+		expect(updated.api?.model).toBe("other/model");
 	});
 });
 

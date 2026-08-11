@@ -57,14 +57,55 @@ export function claudeApiProfileEnvKeys(): string[] {
 	return keys;
 }
 
-/** Display-safe description of a Claude API profile. `hasApiKey` tells the UI a
+/** Env var a Codex API profile hands its key to codex through. Codex reads the
+ *  key from the env name declared by `model_providers.<id>.env_key`, so the key
+ *  itself never reaches the command line. */
+export const DEV3_CODEX_API_KEY_ENV = "DEV3_CODEX_API_KEY";
+
+/** The synthetic `model_providers.<id>` block a Codex API profile defines. */
+export const CODEX_API_PROFILE_PROVIDER_ID = "dev3";
+
+/** Every env var the Codex API-profile mechanism can set — cleared with ENV_UNSET
+ *  when the selected account does not set it, so a key from a previously active
+ *  profile cannot linger in the long-lived tmux server env. */
+export function codexApiProfileEnvKeys(): string[] {
+	return [DEV3_CODEX_API_KEY_ENV];
+}
+
+/** Codex provider block for an API profile, delivered as repeated `-c` overrides
+ *  instead of a config file: `codexAccountDir()/config.toml` is a SYMLINK to the
+ *  user's real ~/.codex/config.toml (CODEX_SHARED_ENTRIES), so writing it would
+ *  edit their global Codex config. Same flag-over-file precedent as Bedrock
+ *  (decisions/2026/07/16/codex-bedrock-flag-delivered-provider.md).
+ *
+ *  `wire_api` is deliberately omitted: codex ≥0.146 dropped the "chat" value and
+ *  a provider block declaring it is a config-load error that breaks every codex
+ *  invocation on the machine. */
+export function codexProviderArgs(profile: { label?: string | null; baseUrl: string | null }): string[] {
+	if (!profile.baseUrl?.trim()) return [];
+	const block = `model_providers.${CODEX_API_PROFILE_PROVIDER_ID}`;
+	// JSON.stringify emits a valid TOML basic string (quoted + escaped).
+	return [
+		"-c",
+		`${block}.name=${JSON.stringify(profile.label?.trim() || CODEX_API_PROFILE_PROVIDER_ID)}`,
+		"-c",
+		`${block}.base_url=${JSON.stringify(profile.baseUrl.trim())}`,
+		"-c",
+		`${block}.env_key=${JSON.stringify(DEV3_CODEX_API_KEY_ENV)}`,
+		"-c",
+		`model_provider=${JSON.stringify(CODEX_API_PROFILE_PROVIDER_ID)}`,
+	];
+}
+
+/** Display-safe description of an API profile. `hasApiKey` tells the UI a
  *  key is stored; the key value travels only in the on-demand edit draft, never
  *  in the bulk accounts list. */
 export interface AgentApiProfileInfo {
 	baseUrl: string | null;
 	/** Master override: one model id fanned out to every slot (wins over slotModels). */
 	model: string | null;
-	/** Per-slot overrides (ids + display metadata; used when no master is set). */
+	/** Per-slot overrides (ids + display metadata; used when no master is set).
+	 *  Claude Code only — Codex has no model-alias slots and always uses `model`. */
 	slotModels: ClaudeSlotModels;
 	hasApiKey: boolean;
 	/** Names (not values) of extra env vars carried by the profile. */

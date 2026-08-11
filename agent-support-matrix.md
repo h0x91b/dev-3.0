@@ -42,6 +42,7 @@ Last updated: 2026-07-13
 | **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — | — |
 | **Model selection** | `--model` (omitted on a third-party provider — see below) | `--model` | `--model` | `--model` | `--model` |
 | **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — |
+| **Managed accounts** (Settings → Agent Accounts) | OAuth logins (per-account `CLAUDE_CONFIG_DIR`) + API profiles (`ANTHROPIC_*` env) | — | OAuth logins (per-session `CODEX_HOME`) + API profiles (`-c model_providers.dev3.*` flags + `DEV3_CODEX_API_KEY`; never writes `config.toml` — see `decisions/2026/08/11/codex-api-profiles-flag-delivered-provider.md`) | — | — |
 | **Agent selection** | — | — | — | — | `--agent` |
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
 | **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — |

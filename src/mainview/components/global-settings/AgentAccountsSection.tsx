@@ -453,6 +453,7 @@ function SlotOverrideCard({
 }
 
 function ApiProfileFormCard({
+	kind,
 	draft,
 	saving,
 	editing,
@@ -461,6 +462,7 @@ function ApiProfileFormCard({
 	onCancel,
 	t,
 }: {
+	kind: AgentAccountKind;
 	draft: ApiFormDraft;
 	saving: boolean;
 	/** true when editing an existing profile (vs. creating a new one). */
@@ -471,7 +473,11 @@ function ApiProfileFormCard({
 	t: TFunction;
 }) {
 	const [showKey, setShowKey] = useState(false);
-	const canSave = !saving && !!(draft.baseUrl.trim() || draft.apiKey.trim() || draft.envText.trim());
+	// Codex routes through a `model_providers` block, so the endpoint is mandatory;
+	// Claude falls back to the official Anthropic API when the base URL is empty.
+	const isCodex = kind === "codex";
+	const canSave =
+		!saving && (isCodex ? !!draft.baseUrl.trim() : !!(draft.baseUrl.trim() || draft.apiKey.trim() || draft.envText.trim()));
 	const masterActive = !!draft.model.trim();
 
 	function field(label: string, key: "label" | "baseUrl", placeholder: string, hintBody: string) {
@@ -491,16 +497,26 @@ function ApiProfileFormCard({
 
 	return (
 		<div className="bg-base border border-accent/30 rounded-lg p-3 space-y-2.5 [container-type:inline-size]">
-			<p className="text-fg-2 text-xs">{t("settings.accountsApiHint")}</p>
-			{field(t("settings.accountsApiLabel"), "label", "OpenRouter", t("settings.accountsApiLabelHint"))}
-			{field(t("settings.accountsApiBaseUrl"), "baseUrl", "https://openrouter.ai/api", t("settings.accountsApiBaseUrlHint"))}
+			<p className="text-fg-2 text-xs">{t(isCodex ? "settings.accountsApiHintCodex" : "settings.accountsApiHint")}</p>
+			{field(t("settings.accountsApiLabel"), "label", isCodex ? "Baseten" : "OpenRouter", t("settings.accountsApiLabelHint"))}
+			{isCodex
+				? field(
+						t("settings.accountsApiBaseUrlRequired"),
+						"baseUrl",
+						"https://inference.baseten.co/v1",
+						t("settings.accountsApiBaseUrlHintCodex"),
+					)
+				: field(t("settings.accountsApiBaseUrl"), "baseUrl", "https://openrouter.ai/api", t("settings.accountsApiBaseUrlHint"))}
 			<label className="block space-y-1">
-				<HintLabel text={t("settings.accountsApiKey")} body={t("settings.accountsApiKeyHintDetail")} />
+				<HintLabel
+					text={t("settings.accountsApiKey")}
+					body={t(isCodex ? "settings.accountsApiKeyHintDetailCodex" : "settings.accountsApiKeyHintDetail")}
+				/>
 				<div className="relative">
 					<input
 						type={showKey ? "text" : "password"}
 						value={draft.apiKey}
-						placeholder="sk-ant-…"
+						placeholder={isCodex ? "sk-…" : "sk-ant-…"}
 						onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
 						className={`${API_INPUT_CLASS} pr-9`}
 					/>
@@ -518,38 +534,47 @@ function ApiProfileFormCard({
 				</div>
 			</label>
 			<label className="block space-y-1">
-				<HintLabel text={t("settings.accountsApiModelMaster")} body={t("settings.accountsApiModelMasterHint")} />
+				<HintLabel
+					text={t(isCodex ? "settings.accountsApiModel" : "settings.accountsApiModelMaster")}
+					body={t(isCodex ? "settings.accountsApiModelHintCodex" : "settings.accountsApiModelMasterHint")}
+				/>
 				<input
 					type="text"
 					value={draft.model}
-					placeholder="z-ai/glm-5.2"
+					placeholder={isCodex ? "deepseek-ai/DeepSeek-V4" : "z-ai/glm-5.2"}
 					onChange={(event) => onChange({ ...draft, model: event.target.value })}
 					className={API_INPUT_CLASS}
 				/>
 			</label>
-			<div className="space-y-1.5">
-				<HintLabel
-					text={masterActive ? t("settings.accountsApiSlotsDisabled") : t("settings.accountsApiSlotsTitle")}
-					body={t("settings.accountsApiSlotsHint")}
-				/>
-				<div className="grid grid-cols-1 [@container_(min-width:34rem)]:grid-cols-2 gap-1.5">
-					{CLAUDE_MODEL_SLOTS.map((slot) => (
-						<SlotOverrideCard
-							key={slot}
-							slot={slot}
-							draft={draft.slots[slot]}
-							disabled={masterActive}
-							onChange={(slotDraft) => onChange({ ...draft, slots: { ...draft.slots, [slot]: slotDraft } })}
-							t={t}
-						/>
-					))}
+			{/* Codex has no model-alias slots — one model id is the whole story there. */}
+			{isCodex ? null : (
+				<div className="space-y-1.5">
+					<HintLabel
+						text={masterActive ? t("settings.accountsApiSlotsDisabled") : t("settings.accountsApiSlotsTitle")}
+						body={t("settings.accountsApiSlotsHint")}
+					/>
+					<div className="grid grid-cols-1 [@container_(min-width:34rem)]:grid-cols-2 gap-1.5">
+						{CLAUDE_MODEL_SLOTS.map((slot) => (
+							<SlotOverrideCard
+								key={slot}
+								slot={slot}
+								draft={draft.slots[slot]}
+								disabled={masterActive}
+								onChange={(slotDraft) => onChange({ ...draft, slots: { ...draft.slots, [slot]: slotDraft } })}
+								t={t}
+							/>
+						))}
+					</div>
 				</div>
-			</div>
+			)}
 			<label className="block space-y-1">
-				<HintLabel text={t("settings.accountsApiEnv")} body={t("settings.accountsApiEnvHint")} />
+				<HintLabel
+					text={t("settings.accountsApiEnv")}
+					body={t(isCodex ? "settings.accountsApiEnvHintCodex" : "settings.accountsApiEnvHint")}
+				/>
 				<textarea
 					value={draft.envText}
-					placeholder={"CLAUDE_CODE_USE_BEDROCK=1\nAWS_REGION=us-east-1"}
+					placeholder={isCodex ? "HTTPS_PROXY=http://127.0.0.1:8080" : "CLAUDE_CODE_USE_BEDROCK=1\nAWS_REGION=us-east-1"}
 					rows={3}
 					onChange={(event) => onChange({ ...draft, envText: event.target.value })}
 					className={`${API_INPUT_CLASS} resize-y`}
@@ -580,7 +605,8 @@ function ApiProfileFormCard({
 export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const [state, setState] = useState<AgentAccountsState | null>(null);
 	const [addFlow, setAddFlow] = useState<AddFlow | null>(null);
-	const [apiForm, setApiForm] = useState<ApiFormDraft | null>(null);
+	// The open API-profile form, and which provider block owns it.
+	const [apiForm, setApiForm] = useState<{ kind: AgentAccountKind; draft: ApiFormDraft } | null>(null);
 	// null → the form creates a new profile; set → it edits this existing one.
 	const [apiEdit, setApiEdit] = useState<{ id: string } | null>(null);
 	const [apiSaving, setApiSaving] = useState(false);
@@ -657,14 +683,17 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	const handleStartEditApi = useCallback(
 		(account: AgentAccount) =>
 			run(async () => {
-				const draft = await api.request.getAgentApiProfileDraft({ kind: "claude", accountId: account.id });
+				const draft = await api.request.getAgentApiProfileDraft({ kind: account.kind, accountId: account.id });
 				setApiForm({
-					label: draft.label,
-					baseUrl: draft.baseUrl,
-					apiKey: draft.apiKey,
-					model: draft.model,
-					slots: slotsFromModels(draft.slotModels),
-					envText: draft.envText,
+					kind: account.kind,
+					draft: {
+						label: draft.label,
+						baseUrl: draft.baseUrl,
+						apiKey: draft.apiKey,
+						model: draft.model,
+						slots: slotsFromModels(draft.slotModels),
+						envText: draft.envText,
+					},
 				});
 				setApiEdit({ id: account.id });
 			}),
@@ -678,31 +707,32 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	const handleSaveApiProfile = useCallback(async () => {
 		if (!apiForm) return;
+		const { kind, draft } = apiForm;
 		setApiSaving(true);
 		try {
 			if (apiEdit) {
 				await api.request.updateAgentApiProfile({
-					kind: "claude",
+					kind,
 					accountId: apiEdit.id,
-					label: apiForm.label.trim() || undefined,
+					label: draft.label.trim() || undefined,
 					// undefined clears baseUrl/model; the key field is prefilled, so it is
 					// sent as-is (unchanged unless the user edited it; empty clears it).
-					baseUrl: apiForm.baseUrl.trim() || undefined,
-					apiKey: apiForm.apiKey,
-					model: apiForm.model.trim() || undefined,
-					slotModels: slotsToPayload(apiForm.slots),
+					baseUrl: draft.baseUrl.trim() || undefined,
+					apiKey: draft.apiKey,
+					model: draft.model.trim() || undefined,
+					slotModels: slotsToPayload(draft.slots),
 					// Always sent so clearing the textarea clears the env (full replacement).
-					envText: apiForm.envText,
+					envText: draft.envText,
 				});
 			} else {
 				await api.request.addAgentApiProfile({
-					kind: "claude",
-					label: apiForm.label.trim() || undefined,
-					baseUrl: apiForm.baseUrl.trim() || undefined,
-					apiKey: apiForm.apiKey.trim() || undefined,
-					model: apiForm.model.trim() || undefined,
-					slotModels: slotsToPayload(apiForm.slots),
-					envText: apiForm.envText.trim() || undefined,
+					kind,
+					label: draft.label.trim() || undefined,
+					baseUrl: draft.baseUrl.trim() || undefined,
+					apiKey: draft.apiKey.trim() || undefined,
+					model: draft.model.trim() || undefined,
+					slotModels: slotsToPayload(draft.slots),
+					envText: draft.envText.trim() || undefined,
 				});
 			}
 			closeApiForm();
@@ -773,16 +803,14 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					>
 						{t("settings.accountsAdd")}
 					</button>
-					{kind === "claude" ? (
-						<button
-							type="button"
-							onClick={() => setApiForm(EMPTY_API_FORM)}
-							disabled={busy || addFlow !== null || apiForm !== null}
-							className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
-						>
-							{t("settings.accountsAddApiButton")}
-						</button>
-					) : null}
+					<button
+						type="button"
+						onClick={() => setApiForm({ kind, draft: EMPTY_API_FORM })}
+						disabled={busy || addFlow !== null || apiForm !== null}
+						className="px-2.5 py-1 text-accent text-xs font-medium hover:bg-accent/10 rounded-lg transition-[opacity,color,background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] disabled:opacity-50"
+					>
+						{t("settings.accountsAddApiButton")}
+					</button>
 				</div>
 				<div className="space-y-1.5">
 					<div role="radiogroup" aria-label={title} className="space-y-1.5">
@@ -811,12 +839,13 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 				{addFlow?.kind === kind ? (
 					<LoginFlowCard flow={addFlow} onVerify={handleVerify} onCancel={handleCancelAdd} t={t} />
 				) : null}
-				{kind === "claude" && apiForm ? (
+				{apiForm?.kind === kind ? (
 					<ApiProfileFormCard
-						draft={apiForm}
+						kind={kind}
+						draft={apiForm.draft}
 						saving={apiSaving}
 						editing={apiEdit !== null}
-						onChange={setApiForm}
+						onChange={(draft) => setApiForm({ kind, draft })}
 						onSave={handleSaveApiProfile}
 						onCancel={closeApiForm}
 						t={t}

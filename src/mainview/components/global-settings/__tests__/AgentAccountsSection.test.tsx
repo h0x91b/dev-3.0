@@ -221,7 +221,8 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		await screen.findByText("System login (~/.claude)");
 
-		await user.click(screen.getByText("Add API profile"));
+		// Both provider blocks carry the button; [0] is Claude Code (rendered first).
+		await user.click(screen.getAllByText("Add API profile")[0]);
 		await user.type(screen.getByPlaceholderText("https://openrouter.ai/api"), "https://openrouter.ai/api");
 		await user.type(screen.getByPlaceholderText("sk-ant-…"), "sk-or-123");
 		await user.type(screen.getByPlaceholderText(/CLAUDE_CODE_USE_BEDROCK/), "AWS_REGION=us-east-1");
@@ -245,7 +246,8 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		await screen.findByText("System login (~/.claude)");
 
-		await user.click(screen.getByText("Add API profile"));
+		// Both provider blocks carry the button; [0] is Claude Code (rendered first).
+		await user.click(screen.getAllByText("Add API profile")[0]);
 		expect((screen.getByText("Add profile") as HTMLButtonElement).disabled).toBe(true);
 		expect(mockedApi.request.addAgentApiProfile).not.toHaveBeenCalled();
 	});
@@ -354,7 +356,8 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		await screen.findByText("System login (~/.claude)");
 
-		await user.click(screen.getByText("Add API profile"));
+		// Both provider blocks carry the button; [0] is Claude Code (rendered first).
+		await user.click(screen.getAllByText("Add API profile")[0]);
 		// The Haiku slot's Model ID placeholder is a deepseek example.
 		const haikuId = screen.getByPlaceholderText("deepseek/deepseek-v4-flash");
 		await user.type(haikuId, "provider/my-fast-model");
@@ -456,5 +459,89 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		expect(await screen.findByText("Workspace Base44 ChatGPT Enterprise")).toBeTruthy();
 		expect(screen.queryByText("Workspace b8e0e9ae")).toBeNull();
+	});
+
+	it("adds a Codex API profile: no Claude alias slots, and the base URL is required", async () => {
+		mockedApi.request.addAgentApiProfile.mockResolvedValue({} as any);
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("System login (~/.claude)");
+
+		// [1] is the Codex block (Claude Code renders first).
+		await user.click(screen.getAllByText("Add API profile")[1]);
+		// Codex has no model-alias slots — the Claude-only grid must not render.
+		expect(screen.queryByPlaceholderText("deepseek/deepseek-v4-flash")).toBeNull();
+		// The provider block is meaningless without an endpoint, so save stays off.
+		expect((screen.getByText("Add profile") as HTMLButtonElement).disabled).toBe(true);
+
+		await user.type(screen.getByPlaceholderText("https://inference.baseten.co/v1"), "https://inference.baseten.co/v1");
+		await user.type(screen.getByPlaceholderText("sk-…"), "bt-key");
+		await user.type(screen.getByPlaceholderText("deepseek-ai/DeepSeek-V4"), "deepseek-ai/DeepSeek-V4");
+		await user.click(screen.getByText("Add profile"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.addAgentApiProfile).toHaveBeenCalledWith({
+				kind: "codex",
+				label: undefined,
+				baseUrl: "https://inference.baseten.co/v1",
+				apiKey: "bt-key",
+				model: "deepseek-ai/DeepSeek-V4",
+				slotModels: {},
+				envText: undefined,
+			});
+		});
+	});
+
+	it("edits a Codex API profile through the same form", async () => {
+		mockedApi.request.getAgentApiProfileDraft.mockResolvedValue({
+			label: "Baseten",
+			baseUrl: "https://inference.baseten.co/v1",
+			apiKey: "bt-key",
+			model: "deepseek-ai/DeepSeek-V4",
+			slotModels: {},
+			envText: "",
+			hasApiKey: true,
+		});
+		mockedApi.request.updateAgentApiProfile.mockResolvedValue({} as any);
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				codex: {
+					accounts: [
+						{
+							id: "cx-api-1",
+							kind: "codex",
+							label: "Baseten",
+							identity: null,
+							auth: "api",
+							api: {
+								baseUrl: "https://inference.baseten.co/v1",
+								model: "deepseek-ai/DeepSeek-V4",
+								slotModels: {},
+								hasApiKey: true,
+								envKeys: [],
+							},
+							createdAt: 1,
+						},
+					],
+					activeId: "cx-api-1",
+					currentIdentity: null,
+				},
+			}),
+		);
+		const user = userEvent.setup();
+		renderSection();
+		await screen.findByText("inference.baseten.co");
+
+		await user.click(screen.getByLabelText("Edit API profile — Baseten"));
+		await waitFor(() =>
+			expect(mockedApi.request.getAgentApiProfileDraft).toHaveBeenCalledWith({ kind: "codex", accountId: "cx-api-1" }),
+		);
+
+		await user.click(await screen.findByText("Save changes"));
+		await waitFor(() => {
+			expect(mockedApi.request.updateAgentApiProfile).toHaveBeenCalledWith(
+				expect.objectContaining({ kind: "codex", accountId: "cx-api-1", model: "deepseek-ai/DeepSeek-V4" }),
+			);
+		});
 	});
 });

@@ -12,7 +12,7 @@ import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
-import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv } from "./agent-accounts";
+import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionLaunch } from "./agent-accounts";
 import { ENV_UNSET } from "../shared/agent-accounts";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
@@ -411,6 +411,10 @@ export interface CommandOptions {
 	 *  ANTHROPIC_MODEL, --model omitted) or via a rewritten --model value plus
 	 *  routing args (Codex on Bedrock — `-c model_provider="amazon-bedrock"`). */
 	llmProvider?: LlmProvider;
+	/** Extra backend routing args appended after the provider registry's own
+	 *  `enableArgs`. Codex API profiles deliver their `model_providers.<id>` block
+	 *  this way — on the command line, never through a config file. */
+	extraProviderArgs?: string[];
 	/** Per-launch managed account selection (agent account switcher). `undefined`
 	 *  → use the registry default (the preselect); `null` → force the system
 	 *  login (~/.claude / ~/.codex); a string → that specific managed account.
@@ -463,8 +467,12 @@ export function resolveAgentCommand(
 		// Under an env-delivering backend (e.g. Bedrock for Claude) the model comes
 		// from injected env (ANTHROPIC_MODEL), so the adapter omits --model.
 		skipModelForProvider: providerOmitsModelFlag(options?.llmProvider),
-		// Backend routing args (e.g. Codex on Bedrock), shell-escaped by the adapter.
-		providerArgs: getProviderDefinition(options?.llmProvider)?.enableArgs,
+		// Backend routing args (e.g. Codex on Bedrock, or a Codex API profile's
+		// model_providers block), shell-escaped by the adapter.
+		providerArgs: [
+			...(getProviderDefinition(options?.llmProvider)?.enableArgs ?? []),
+			...(options?.extraProviderArgs ?? []),
+		],
 		// Codex-only: resolve the theme/profile runtime (impure) here so the pure
 		// adapter stays pure. Non-Codex agents skip it (avoids the codex --help probe).
 		codex: adapter.command === "codex" ? codexLaunchRuntime() : undefined,
@@ -542,25 +550,29 @@ async function applyClaudeAccountEnv(
 	}
 }
 
-/** Inject the selected Codex account's CODEX_HOME into a Codex launch. Mirrors
- *  applyClaudeAccountEnv: an explicit CODEX_HOME in the config's envVars disables
- *  the injection, and `accountId` selects a specific account for THIS session
- *  (per-launch selector). Affects new sessions only. */
-async function applyCodexAccountEnv(
+/** Apply the selected Codex account to a launch: fills `extraEnv` (CODEX_HOME for
+ *  OAuth accounts, the key env var for API profiles) and returns the profile's
+ *  routing args + pinned model for the command line. Mirrors applyClaudeAccountEnv:
+ *  an explicit CODEX_HOME in the config's envVars disables the injection, and
+ *  `accountId` selects a specific account for THIS session (per-launch selector). */
+async function applyCodexAccountLaunch(
 	baseCmd: string,
 	extraEnv: Record<string, string>,
 	accountId?: string | null,
-): Promise<void> {
+): Promise<{ args: string[]; model: string | null }> {
+	const none = { args: [], model: null };
 	// Codex account switcher is an orthogonal feature (kept in front of the
 	// adapter seam); a plain command-name gate suffices here.
-	if (agentKey(baseCmd) !== "codex" || extraEnv.CODEX_HOME) return;
+	if (agentKey(baseCmd) !== "codex" || extraEnv.CODEX_HOME) return none;
 	try {
-		const accountEnv = await getActiveCodexSessionEnv(accountId);
-		for (const [key, value] of Object.entries(accountEnv)) {
+		const launch = await getActiveCodexSessionLaunch(accountId);
+		for (const [key, value] of Object.entries(launch.env)) {
 			if (!(key in extraEnv)) extraEnv[key] = value;
 		}
+		return { args: launch.args, model: launch.model };
 	} catch (err) {
 		log.warn("Failed to resolve active Codex account env", { error: String(err) });
+		return none;
 	}
 }
 
@@ -638,12 +650,12 @@ export async function resolveCommandForAgent(
 		Object.assign(extraEnv, config.envVars);
 	}
 	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
-	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
+	const codexLaunch = await applyCodexAccountLaunch(baseCmd, extraEnv, options?.accountId);
 	const command = resolveAgentCommand(
 		agentWithPath,
-		resolveLaunchConfig(config, agentWithPath, baseCmd, extraEnv),
+		resolveLaunchConfig(config, agentWithPath, baseCmd, extraEnv, codexLaunch.model),
 		ctx,
-		providerOpts,
+		{ ...providerOpts, extraProviderArgs: codexLaunch.args },
 	);
 	return { command, agent, config, extraEnv };
 }
@@ -657,8 +669,13 @@ export function resolveLaunchConfig(
 	agent: CodingAgent,
 	baseCmd: string,
 	extraEnv: Record<string, string>,
+	/** Model an active API profile pins directly (Codex) — wins over the preset. */
+	modelOverride?: string | null,
 ): AgentConfiguration | undefined {
-	return applyModelOverride(applyProviderModel(config, agent), baseCmd, extraEnv);
+	const resolved = applyModelOverride(applyProviderModel(config, agent), baseCmd, extraEnv);
+	if (!modelOverride) return resolved;
+	// No preset at all still needs the flag — a custom endpoint has no sane default.
+	return { id: "api-profile", name: "API profile", ...resolved, model: modelOverride };
 }
 
 /** The provider selected on this agent, but only if it's a backend actually
@@ -742,12 +759,12 @@ export async function resolveCommandForProject(
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
 		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
-		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
+		const codexLaunch = await applyCodexAccountLaunch(baseCmd, extraEnv, options?.accountId);
 		const command = resolveAgentCommand(
 			agentWithPath,
-			resolveLaunchConfig(config, agentWithPath, baseCmd, extraEnv),
+			resolveLaunchConfig(config, agentWithPath, baseCmd, extraEnv, codexLaunch.model),
 			ctx,
-			providerOpts,
+			{ ...providerOpts, extraProviderArgs: codexLaunch.args },
 		);
 		return { command, agent, config, extraEnv };
 	}
