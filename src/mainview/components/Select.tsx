@@ -352,11 +352,18 @@ function Select({
 				e.preventDefault();
 				setActiveIndex(e.key === "Home" ? 0 : rowOptions.length - 1);
 				return;
-			case "Enter":
+			case "Enter": {
 				e.preventDefault();
-				commitOption(activeIndex >= 0 ? activeIndex : 0);
+				// Nothing was arrowed to: take what the user typed when it is a value
+				// of its own, and only otherwise fall back to the first row. Loose
+				// matching means "5.5" still lists the shipped "5", and committing
+				// that instead of the typed amount silently changes the value.
+				const typedRow = typedIsNew ? rowOptions.findIndex((o) => o.custom && o.value === trimmed) : -1;
+				const fallback = typedRow >= 0 ? typedRow : 0;
+				commitOption(activeIndex >= 0 ? activeIndex : fallback);
 				buttonRef.current?.focus();
 				return;
+			}
 			case "Tab":
 				setOpen(false);
 		}
@@ -472,7 +479,10 @@ function Select({
 						placeholder: searchPlaceholder ?? "Filter…",
 						inputMode,
 						emptyLabel,
-						onQueryChange: (q) => { setQuery(q); setActiveIndex(0); },
+						// A creatable field highlights nothing while typing: pre-highlighting
+						// the first match makes Enter take a shipped option over the value
+						// the user is in the middle of writing.
+						onQueryChange: (q) => { setQuery(q); setActiveIndex(allowCustom ? -1 : 0); },
 						onKeyDown: handleSearchKeyDown,
 					} : undefined}
 				/>
