@@ -13,7 +13,7 @@ vi.mock("../../rpc", () => ({
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
-				taskDropPosition: "top",
+				taskSortOrder: "oldest-first",
 				updateChannel: "stable",
 			}),
 			reorderColumns: vi.fn().mockResolvedValue(undefined),
@@ -785,5 +785,32 @@ describe("create custom column from board (issue #222)", () => {
 		await waitFor(() =>
 			expect(api.request.updateCustomColumn).toHaveBeenCalledWith({ projectId: "p1", columnId: "col-a", name: "Renamed" }),
 		);
+	});
+});
+
+describe("task sort order follows the settings push", () => {
+	function renderedTaskIds(): string[] {
+		const seen: string[] = [];
+		for (const el of document.querySelectorAll("[data-task-id]")) {
+			const id = el.getAttribute("data-task-id")!;
+			if (!seen.includes(id)) seen.push(id);
+		}
+		return seen;
+	}
+
+	it("reorders the board when another window changes taskSortOrder", async () => {
+		const tasks = [
+			makeTask({ id: "fresh", seq: 1, title: "Fresh", statusEnteredAt: "2025-02-09T00:00:00Z" }),
+			makeTask({ id: "stale", seq: 2, title: "Stale", statusEnteredAt: "2025-02-01T00:00:00Z" }),
+		];
+		await renderBoardWith({ tasks });
+		expect(renderedTaskIds()).toEqual(["stale", "fresh"]);
+
+		await act(async () => {
+			window.dispatchEvent(
+				new CustomEvent("rpc:globalSettingsUpdated", { detail: { taskSortOrder: "newest-first" } }),
+			);
+		});
+		expect(renderedTaskIds()).toEqual(["fresh", "stale"]);
 	});
 });

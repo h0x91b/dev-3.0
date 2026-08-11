@@ -31,8 +31,6 @@ export interface MoveTaskToStatusOptions {
 	alwaysConfirm?: boolean;
 	/** Toggle a per-card "moving" spinner while the background RPC is in flight. */
 	onMovingChange?: (moving: boolean) => void;
-	/** Record an in-session move (kanban column ordering). */
-	onMoved?: () => void;
 	/** Run right after the optimistic update commits (e.g. navigate away from the task screen). */
 	afterOptimistic?: () => void;
 	/** Run only after the server confirms the move (after both RPC attempts succeed). Not called on failure. */
@@ -83,7 +81,6 @@ export async function moveTaskToStatus({
 	confirm = true,
 	alwaysConfirm = false,
 	onMovingChange,
-	onMoved,
 	afterOptimistic,
 	onSuccess,
 	onFailure,
@@ -123,7 +120,6 @@ export async function moveTaskToStatus({
 		dispatch({ type: "clearBell", taskId: task.id });
 		clientPlayedSound = playTaskCompletionSound(newStatus as "completed" | "cancelled");
 	}
-	onMoved?.();
 	afterOptimistic?.();
 
 	onMovingChange?.(true);

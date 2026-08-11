@@ -151,6 +151,14 @@ function KanbanBoard({
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
+		// Follow the settings push, like the sidebar's useTaskSortOrder does: a sort
+		// order changed in another window (or the remote browser) has to reorder this
+		// board too, or the two surfaces disagree until the board remounts.
+		function onSettingsUpdated(e: Event) {
+			setGlobalSettings((e as CustomEvent<GlobalSettings>).detail);
+		}
+		window.addEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
+		return () => window.removeEventListener("rpc:globalSettingsUpdated", onSettingsUpdated);
 	}, []);
 
 	useEffect(() => {
