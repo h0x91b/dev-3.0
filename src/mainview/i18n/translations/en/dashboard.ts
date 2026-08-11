@@ -138,6 +138,8 @@ const dashboard = {
 	"remote.title": "Remote Access",
 	"remote.subtitle": "Scan this QR code to open the UI on your phone or another device",
 	"remote.refreshIn": "Refreshes in {seconds}s",
+	"remote.qrWaitingTunnel": "Preparing the public link…",
+	"remote.qrWaitingTunnelHint": "Nothing to scan yet — the QR appears once Cloudflare hands over the address.",
 	"remote.addressLabel": "Reachable at",
 	"remote.localhostLabel": "Localhost",
 	"remote.anywhereToggle": "Accessible from anywhere (Cloudflare Tunnel)",

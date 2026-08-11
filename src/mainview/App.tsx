@@ -2246,6 +2246,13 @@ function App() {
 	const createTaskProject = createTaskProjectId
 		? state.projects.find((project) => project.id === createTaskProjectId) ?? null
 		: null;
+	// While the public tunnel is still coming up, the QR and the URL still point at
+	// the LAN address. Scanned from another network that link just fails, so publish
+	// nothing until the tunnel hostname lands.
+	const tunnelUrlPending = remoteQR !== null
+		&& tunnelWanted
+		&& remoteQR.cloudflaredInstalled
+		&& (tunnelStarting || remoteQR.tunnelState === "starting");
 	const remoteCopyLabel = qrConsumed
 		? "remote.copyUrl"
 		: remoteUrlCopyState === "copying"
@@ -2468,8 +2475,22 @@ function App() {
 						<h2 className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
 						<p className="text-fg-2 text-sm">{t("remote.subtitle")}</p>
 						<div className="flex justify-center relative">
-							<img src={remoteQR.qrDataUrl} alt="QR Code" className={`w-56 h-56 rounded-lg transition-[opacity,filter] duration-500 streamer-private-media ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
-							{qrConsumed && (
+							{tunnelUrlPending ? (
+								<div
+									data-testid="remote-qr-pending"
+									className="w-56 h-56 rounded-lg bg-base border border-edge flex flex-col items-center justify-center gap-3 px-4"
+								>
+									<svg className="w-7 h-7 animate-spin text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+										<circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25" />
+										<path d="M21 12a9 9 0 0 1-9 9" strokeWidth="3" strokeLinecap="round" />
+									</svg>
+									<span className="text-fg-2 text-sm">{t("remote.qrWaitingTunnel")}</span>
+									<span className="text-fg-muted text-xs leading-snug">{t("remote.qrWaitingTunnelHint")}</span>
+								</div>
+							) : (
+								<img src={remoteQR.qrDataUrl} alt="QR Code" className={`w-56 h-56 rounded-lg transition-[opacity,filter] duration-500 streamer-private-media ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
+							)}
+							{qrConsumed && !tunnelUrlPending && (
 								<div className="absolute inset-0 flex items-center justify-center">
 									<div className="bg-base/90 rounded-lg px-4 py-2">
 										<span className="text-accent text-sm font-medium">{t("remote.connected")}</span>
@@ -2477,7 +2498,7 @@ function App() {
 								</div>
 							)}
 						</div>
-						{!qrConsumed && (
+						{!qrConsumed && !tunnelUrlPending && (
 							<div className="flex items-center justify-center gap-2 text-fg-muted text-xs">
 								<div className="w-4 h-4 relative">
 									<svg className="w-4 h-4 -rotate-90" viewBox="0 0 20 20">
@@ -2518,9 +2539,11 @@ function App() {
 								</select>
 							</div>
 						)}
-						<div className={`bg-base rounded-lg p-3 ${qrConsumed ? "opacity-40" : ""}`}>
-							<code className={`text-xs break-all streamer-private ${qrConsumed ? "text-fg-3" : "text-fg select-all"}`}>{remoteQR.accessUrl}</code>
-						</div>
+						{!tunnelUrlPending && (
+							<div className={`bg-base rounded-lg p-3 ${qrConsumed ? "opacity-40" : ""}`}>
+								<code className={`text-xs break-all streamer-private ${qrConsumed ? "text-fg-3" : "text-fg select-all"}`}>{remoteQR.accessUrl}</code>
+							</div>
+						)}
 
 						{/* Tunnel toggle */}
 						<div className="bg-base rounded-lg p-3 text-left space-y-2">
@@ -2633,7 +2656,7 @@ function App() {
 							<button
 								type="button"
 								onClick={async () => {
-									if (qrConsumed || remoteUrlCopyState === "copying") return;
+									if (qrConsumed || tunnelUrlPending || remoteUrlCopyState === "copying") return;
 									setRemoteUrlCopyState("copying");
 									try {
 										await navigator.clipboard.writeText(remoteQR.accessUrl);
@@ -2643,9 +2666,9 @@ function App() {
 										setRemoteUrlCopyState("idle");
 									}
 								}}
-								disabled={qrConsumed || remoteUrlCopyState === "copying"}
+								disabled={qrConsumed || tunnelUrlPending || remoteUrlCopyState === "copying"}
 								aria-label={t(remoteCopyLabel)}
-								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
+								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-[background-color,color,transform] active:scale-[0.98] ${qrConsumed || tunnelUrlPending ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success-fill text-white hover:bg-success-fill-hover" : "bg-accent-fill text-white hover:bg-accent-fill-hover"}`}
 							>
 								{remoteUrlCopyState === "copying" && (
 									<svg

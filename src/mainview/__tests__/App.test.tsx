@@ -1949,6 +1949,69 @@ describe("App keyboard shortcuts", () => {
 			).toContain("remote-access-active");
 		});
 
+		it("hides the LAN QR and URL until the tunnel hostname lands", async () => {
+			await renderApp();
+			vi.mocked(api.request.getRemoteAccessQR).mockClear();
+			let resolveTunnel!: (value: Awaited<ReturnType<typeof api.request.getRemoteAccessQR>>) => void;
+			vi.mocked(api.request.getRemoteAccessQR).mockImplementation(
+				() => new Promise((resolve) => { resolveTunnel = resolve; }),
+			);
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,local",
+					accessUrl: "http://192.168.0.1:1234/?token=l",
+					tunnelState: "idle",
+					cloudflaredInstalled: true,
+					interfaces: [],
+					selectedHost: "192.168.0.1",
+					autoStartTunnel: true,
+				},
+			}));
+
+			await waitFor(() => expect(screen.getByTestId("remote-qr-pending")).toBeInTheDocument());
+			expect(screen.queryByAltText("QR Code")).not.toBeInTheDocument();
+			expect(screen.queryByText("http://192.168.0.1:1234/?token=l")).not.toBeInTheDocument();
+			expect(screen.getByText("Copy URL")).toBeDisabled();
+
+			await act(async () => {
+				resolveTunnel({
+					qrDataUrl: "data:image/png;base64,tunnel",
+					accessUrl: "https://public.trycloudflare.com/?token=t",
+					tunnelState: "connected",
+					cloudflaredInstalled: true,
+					interfaces: [],
+					selectedHost: "",
+				});
+			});
+
+			await waitFor(() => expect(screen.getByAltText("QR Code")).toBeInTheDocument());
+			expect(screen.queryByTestId("remote-qr-pending")).not.toBeInTheDocument();
+			expect(screen.getByText("https://public.trycloudflare.com/?token=t")).toBeInTheDocument();
+			expect(screen.getByText("Copy URL")).not.toBeDisabled();
+		});
+
+		it("keeps the local QR visible when the tunnel is wanted but cloudflared is missing", async () => {
+			await renderApp();
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,local",
+					accessUrl: "http://192.168.0.1:1234/?token=l",
+					tunnelState: "idle",
+					cloudflaredInstalled: false,
+					interfaces: [],
+					selectedHost: "192.168.0.1",
+				},
+			}));
+			await waitFor(() => expect(screen.getByAltText("QR Code")).toBeInTheDocument());
+
+			await userEvent.click(screen.getByLabelText("Accessible from anywhere (Cloudflare Tunnel)"));
+
+			await waitFor(() => expect(screen.getByText("cloudflared is not installed")).toBeInTheDocument());
+			expect(screen.getByAltText("QR Code")).toBeInTheDocument();
+			expect(screen.queryByTestId("remote-qr-pending")).not.toBeInTheDocument();
+		});
+
 		it("does not restart the tunnel when opened while already connected", async () => {
 			await renderApp();
 			vi.mocked(api.request.getRemoteAccessQR).mockClear();
