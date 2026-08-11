@@ -209,7 +209,7 @@ vi.mock("../updater", () => ({
 }));
 
 vi.mock("../settings", () => ({
-	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
+	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskSortOrder: "oldest-first" })),
 	loadSettingsSync: vi.fn(() => ({ playSoundOnTaskComplete: false })),
 	saveSettings: vi.fn(),
 	recordFavoriteUsages: vi.fn(),
@@ -485,7 +485,7 @@ describe("handleBellAutoStatus", () => {
 		vi.mocked(data.loadProjects).mockReset();
 		vi.mocked(data.loadTasks).mockReset();
 		vi.mocked(data.updateTask).mockReset();
-		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 	});
 
 	it("moves in-progress task to user-questions", async () => {
@@ -504,7 +504,7 @@ describe("handleBellAutoStatus", () => {
 			project,
 			"task-1",
 			expect.objectContaining({ status: "user-questions", runtimeState: expect.objectContaining({ runtime: "running" }) }),
-			{ dropPosition: "top", ifStatus: "in-progress" },
+			{ ifStatus: "in-progress" },
 		);
 		expect(push).toHaveBeenCalledWith("taskUpdated", {
 			projectId: "proj-1",
@@ -532,7 +532,7 @@ describe("handleBellAutoStatus", () => {
 			project,
 			"task-1",
 			expect.objectContaining({ status: "user-questions", runtimeState: expect.objectContaining({ runtime: "running" }) }),
-			{ dropPosition: "top", ifStatus: "in-progress" },
+			{ ifStatus: "in-progress" },
 		);
 		expect(push).not.toHaveBeenCalled();
 	});
@@ -1825,7 +1825,7 @@ describe("handlers.setTmuxTheme", () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		} as GlobalSettings);
 
@@ -2244,7 +2244,7 @@ function tmuxArgvSince(from: number): string[] {
 describe("handlers.moveTask", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 	});
 
 	it("todo → in-progress: creates worktree + PTY", async () => {
@@ -2758,7 +2758,6 @@ describe("handlers.moveTask", () => {
 				customColumnId: null,
 				runtimeState: expect.objectContaining({ runtime: "running" }),
 			}),
-			{ dropPosition: "top" },
 		);
 	});
 
@@ -2821,7 +2820,7 @@ describe("handlers.moveTask", () => {
 			branchName: null,
 			customColumnId: null,
 			runtimeState: expect.objectContaining({ runtime: "idle" }),
-		}), { dropPosition: "top" });
+		}));
 	});
 
 	it("todo → completed (without worktree): just updates status", async () => {
@@ -2959,13 +2958,13 @@ describe("handlers.moveTaskToProject", () => {
 		const moved = makeTask({ id: "task-1", projectId: "to", status: "todo" });
 		vi.mocked(data.getProject).mockImplementation(async (id) => (id === "from" ? from : to));
 		vi.mocked(data.moveTaskToProject).mockResolvedValue(moved);
-		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "bottom" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 		const push = vi.fn();
 		setPushMessage(push);
 
 		const result = await handlers.moveTaskToProject({ taskId: "task-1", fromProjectId: "from", toProjectId: "to" });
 
-		expect(data.moveTaskToProject).toHaveBeenCalledWith(from, to, "task-1", "bottom");
+		expect(data.moveTaskToProject).toHaveBeenCalledWith(from, to, "task-1");
 		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: "to", task: moved });
 		expect(push).toHaveBeenCalledWith("taskRemoved", { projectId: "from", taskId: "task-1" });
 		expect(result).toEqual(moved);
@@ -2993,7 +2992,7 @@ describe("handlers.moveTaskToProject", () => {
 describe("virtual task lifecycle", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 		// has-session probe → 0 (exists) so launchTaskPty treats the session as
 		// pre-existing and skips the split-shell loop (keeps the test fast).
 		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
@@ -4273,7 +4272,7 @@ describe("handlers.spawnVariants", () => {
 			// regression silently pass — force it to reject so any accidental git
 			// call in the virtual path fails loudly.
 			vi.mocked(git.createWorktree).mockReset();
-			vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+			vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 			// has-session probe → 0 (exists) so launchTaskPty skips the split-shell loop.
 			mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
 		});
@@ -4818,7 +4817,6 @@ describe("handlers.addAttempts", () => {
 				worktreePath: "/tmp/attempt-3",
 				branchName: "dev3/a3",
 			}),
-			{ dropPosition: "top" },
 		);
 	});
 });
@@ -8558,7 +8556,7 @@ describe("handlers.openQuickShell", () => {
 		vi.mocked(data.getProject).mockReset();
 		vi.mocked(data.getTask).mockReset();
 		vi.mocked(data.updateTask).mockReset();
-		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
 	});
 
@@ -10117,7 +10115,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
 		vi.mocked(git.createWorktree).mockReset();
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/new-wt", branchName: "dev3/resumed" } as any);
-		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 	});
 
 	it("moves active task to custom column without worktree changes", async () => {
@@ -10137,7 +10135,6 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 				customColumnId: "col-aaa",
 				runtimeState: expect.objectContaining({ runtime: "running" }),
 			}),
-			{ dropPosition: "top" },
 		);
 		expect(result.customColumnId).toBe("col-aaa");
 	});
@@ -10158,7 +10155,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 			branchName: "dev3/resumed",
 			customColumnId: "col-aaa",
 			runtimeState: expect.objectContaining({ runtime: "running" }),
-		}), { dropPosition: "top" });
+		}));
 		expect(result.status).toBe("in-progress");
 		expect(result.customColumnId).toBe("col-aaa");
 	});
@@ -10176,7 +10173,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
 			status: "in-progress",
 			customColumnId: "col-aaa",
-		}), { dropPosition: "top" });
+		}));
 	});
 
 	it("throws when custom column not found", async () => {
@@ -10207,7 +10204,6 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 				customColumnId: null,
 				runtimeState: expect.objectContaining({ runtime: "running" }),
 			}),
-			{ dropPosition: "top" },
 		);
 		expect(result.customColumnId).toBeNull();
 	});
@@ -10813,7 +10809,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		vi.mocked(data.updateTask).mockImplementation(async (_project: Project, taskId: string, patch: Partial<Task>) => (
 			makeTask({ ...patch, id: taskId })
 		));
-		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 	});
 
 	afterEach(() => {
@@ -10898,7 +10894,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		if (settingsOverride) {
 			vi.mocked(loadSettings).mockResolvedValue({
 				updateChannel: "stable",
-				taskDropPosition: "top",
+				taskSortOrder: "oldest-first",
 				...settingsOverride,
 			} as GlobalSettings);
 		}
@@ -11569,7 +11565,7 @@ describe("prepareMergeCompletionPrompt (force re-check)", () => {
 		vi.clearAllMocks();
 		_resetMergePollerState();
 		project = makeProject();
-		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateTask).mockImplementation(async (_p: Project, _id: string, patch: Partial<Task>) => makeTask(patch));
 	});
@@ -11659,7 +11655,7 @@ describe("prepareMergeCompletionPrompt (force re-check)", () => {
 	it("returns a notice-only decision when the global suggestion is off", async () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			updateChannel: "stable",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			suggestCompletingTasksAfterMerge: false,
 		} as GlobalSettings);
 		vi.mocked(data.getTask).mockResolvedValue(makeTask());
@@ -11961,7 +11957,7 @@ describe("checkAgentAvailability", () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		});
 		vi.mocked(saveSettings).mockResolvedValue(undefined);
@@ -11994,7 +11990,7 @@ describe("checkAgentAvailability", () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			agentBinaryPaths: { "builtin-codex": "/custom/codex" },
 		});
@@ -12026,7 +12022,7 @@ describe("checkAgentAvailability", () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			agentBinaryPaths: { "builtin-claude": "/deleted/path/claude" },
 		});
@@ -12048,7 +12044,7 @@ describe("setAgentBinaryPath", () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		});
 		vi.mocked(saveSettings).mockResolvedValue(undefined);
@@ -12391,7 +12387,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 				customColumnId: null,
 				runtimeState: expect.objectContaining({ runtime: "running" }),
 			}),
-			{ dropPosition: "top", ifStatus: "review-by-ai" },
+			{ ifStatus: "review-by-ai" },
 		);
 	});
 
@@ -12420,7 +12416,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 			project,
 			task.id,
 			expect.objectContaining({ status: "review-by-user", customColumnId: null }),
-			{ dropPosition: "top", ifStatus: "review-by-ai" },
+			{ ifStatus: "review-by-ai" },
 		);
 	});
 
@@ -12456,7 +12452,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 			project,
 			task.id,
 			expect.objectContaining({ status: "review-by-user", customColumnId: null }),
-			{ dropPosition: "top", ifStatus: "review-by-ai" },
+			{ ifStatus: "review-by-ai" },
 		);
 	});
 

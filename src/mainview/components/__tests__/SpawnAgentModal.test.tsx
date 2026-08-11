@@ -34,7 +34,7 @@ const agents = [claudeAgent, codexAgent];
 const globalSettings: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
 	defaultConfigId: "claude-default",
-	taskDropPosition: "top",
+	taskSortOrder: "oldest-first",
 	updateChannel: "stable",
 };
 
@@ -67,7 +67,7 @@ vi.mock("../../rpc", () => ({
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
-				taskDropPosition: "top",
+				taskSortOrder: "oldest-first",
 				updateChannel: "stable",
 			}),
 			spawnAgentInTask: vi.fn().mockResolvedValue(undefined),
@@ -222,7 +222,7 @@ describe("SpawnAgentModal", () => {
 		mockedApi.request.getGlobalSettings.mockResolvedValue({
 			defaultAgentId: "deleted-agent",
 			defaultConfigId: "deleted-config",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		});
 		renderModal();

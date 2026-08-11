@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { groupTasksIntoTiers, byPriorityThenMovedAtOldestFirst, type TierGroupingContext } from "../sidebarTiers";
+import { groupTasksIntoTiers, type TierGroupingContext } from "../sidebarTiers";
 import type { Task, TaskPriority, TaskStatus } from "../../../shared/types";
 
 function makeTask(overrides: Partial<Task> & { id: string }): Task {
@@ -25,6 +25,7 @@ function makeTask(overrides: Partial<Task> & { id: string }): Task {
 function ctx(overrides?: Partial<TierGroupingContext>): TierGroupingContext {
 	return {
 		scope: "project",
+		sortOrder: "oldest-first",
 		orderedCustomColumns: [],
 		...overrides,
 	};
@@ -314,40 +315,47 @@ describe("groupTasksIntoTiers — purity", () => {
 });
 
 // ============================================================
-// Comparator (exported for reuse)
+// In-band order follows the global setting
 // ============================================================
 
-describe("byPriorityThenMovedAtOldestFirst", () => {
-	function t(id: string, priority: TaskPriority | undefined, movedAt: string | undefined, seq = 1): Task {
-		return makeTask({ id, status: "review-by-user" as TaskStatus, priority, movedAt, seq });
+describe("groupTasksIntoTiers — in-band order", () => {
+	function t(id: string, priority: TaskPriority | undefined, statusEnteredAt: string | undefined, seq = 1): Task {
+		return makeTask({ id, status: "review-by-user" as TaskStatus, priority, statusEnteredAt, seq });
 	}
 
-	it("orders by priority band first", () => {
-		expect(byPriorityThenMovedAtOldestFirst(t("a", "P0", undefined), t("b", "P1", undefined))).toBeLessThan(0);
+	it("orders by priority band first, whatever the setting says", () => {
+		const tasks = [t("p1", "P1", "2025-01-01T00:00:00Z"), t("p0", "P0", "2025-02-01T00:00:00Z")];
+		for (const sortOrder of ["oldest-first", "newest-first"] as const) {
+			expect(ids(groupTasksIntoTiers(tasks, ctx({ sortOrder }))[0].tasks)).toEqual(["p0", "p1"]);
+		}
 	});
 
-	it("within a band, oldest movedAt first", () => {
-		expect(
-			byPriorityThenMovedAtOldestFirst(
-				t("a", "P1", "2025-01-01T00:00:00Z"),
-				t("b", "P1", "2025-02-01T00:00:00Z"),
-			),
-		).toBeLessThan(0);
+	it("oldest-first puts the longest-untouched task on top", () => {
+		const tasks = [t("fresh", "P2", "2025-02-01T00:00:00Z"), t("stale", "P2", "2025-01-01T00:00:00Z")];
+		expect(ids(groupTasksIntoTiers(tasks, ctx({ sortOrder: "oldest-first" }))[0].tasks)).toEqual(["stale", "fresh"]);
 	});
 
-	it("missing movedAt sinks below a task that has one", () => {
-		expect(
-			byPriorityThenMovedAtOldestFirst(t("a", "P1", undefined), t("b", "P1", "2025-02-01T00:00:00Z")),
-		).toBeGreaterThan(0);
+	it("newest-first flips it", () => {
+		const tasks = [t("stale", "P2", "2025-01-01T00:00:00Z"), t("fresh", "P2", "2025-02-01T00:00:00Z")];
+		expect(ids(groupTasksIntoTiers(tasks, ctx({ sortOrder: "newest-first" }))[0].tasks)).toEqual(["fresh", "stale"]);
+	});
+
+	it("falls back to createdAt when a task predates status-time tracking", () => {
+		const tasks = [
+			makeTask({ id: "new", status: "review-by-user" as TaskStatus, createdAt: "2025-02-01T00:00:00Z" }),
+			makeTask({ id: "ancient", status: "review-by-user" as TaskStatus, createdAt: "2024-01-01T00:00:00Z" }),
+		];
+		expect(ids(groupTasksIntoTiers(tasks, ctx({ sortOrder: "oldest-first" }))[0].tasks)).toEqual(["ancient", "new"]);
 	});
 
 	it("sinks a hibernated task below every live band", () => {
-		const parked = makeTask({ id: "a", status: "review-by-user" as TaskStatus, priority: "P0", hibernated: true });
-		const live = makeTask({ id: "b", status: "review-by-user" as TaskStatus, priority: "P4" });
-		expect(byPriorityThenMovedAtOldestFirst(parked, live)).toBeGreaterThan(0);
+		const parked = makeTask({ id: "parked", status: "review-by-user" as TaskStatus, priority: "P0", hibernated: true });
+		const live = makeTask({ id: "live", status: "review-by-user" as TaskStatus, priority: "P4" });
+		expect(ids(groupTasksIntoTiers([parked, live], ctx())[0].tasks)).toEqual(["live", "parked"]);
 	});
 
 	it("seq breaks the final tie", () => {
-		expect(byPriorityThenMovedAtOldestFirst(t("a", "P1", undefined, 5), t("b", "P1", undefined, 9))).toBeLessThan(0);
+		const tasks = [t("b", "P1", "2025-01-01T00:00:00Z", 9), t("a", "P1", "2025-01-01T00:00:00Z", 5)];
+		expect(ids(groupTasksIntoTiers(tasks, ctx())[0].tasks)).toEqual(["a", "b"]);
 	});
 });

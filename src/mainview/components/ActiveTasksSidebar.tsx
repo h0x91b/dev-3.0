@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
+import { useTaskSortOrder } from "../hooks/useTaskSortOrder";
 import type { CodingAgent, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, ALL_PRIORITIES, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
@@ -331,6 +332,8 @@ function ActiveTasksSidebar({
 		tasks: Task[];
 	}
 
+	const sortOrder = useTaskSortOrder();
+
 	// Custom columns in render order (project order). Scan all projects in global
 	// scope, just the current one otherwise — mirrors the kanban's column order.
 	const orderedCustomColumns = useMemo(() => {
@@ -345,7 +348,7 @@ function ActiveTasksSidebar({
 	// Readiness tiers: NEEDS YOU → custom columns → WAITING (attention scope: one
 	// flat NEEDS-YOU list). Grouping + within-tier ordering is a pure function so
 	// it is unit-tested without rendering; here we only map it to header chrome.
-	const tiers = groupTasksIntoTiers(activeTasks, { scope, orderedCustomColumns });
+	const tiers = groupTasksIntoTiers(activeTasks, { scope, orderedCustomColumns, sortOrder });
 	const grouped: SidebarGroup[] = tiers.map((tier) => {
 		if (tier.kind === "needs-you") {
 			return {

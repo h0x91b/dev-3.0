@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { sortTasksForColumn } from "../sortTasks";
+import { compareTasksInBand, sortTasksForColumn, taskActivityTime } from "../sortTasks";
 import type { Task } from "../../../shared/types";
+
+let nextSeq = 1;
 
 function makeTask(overrides: Partial<Task> & { id: string }): Task {
 	return {
-		seq: 1,
+		seq: nextSeq++,
 		projectId: "p1",
 		title: "Task",
 		description: "desc",
@@ -26,522 +28,139 @@ function ids(tasks: Task[]): string[] {
 	return tasks.map((t) => t.id);
 }
 
-const emptyMap = new Map<string, number>();
+/** ISO stamp N days into 2025-02, so ordering is obvious from the day number. */
+function day(n: number): string {
+	return `2025-02-${String(n).padStart(2, "0")}T00:00:00Z`;
+}
 
-// ============================================================
-// "top" mode — moveOrderMap (in-session moves)
-// ============================================================
-
-describe('sortTasksForColumn — "top" mode with moveOrderMap', () => {
-	it("single moved task goes to top", () => {
-		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z" }),
-			makeTask({ id: "C", createdAt: "2025-01-03T00:00:00Z" }),
-		];
-		const moveOrder = new Map([["B", 1]]);
-		const result = sortTasksForColumn(tasks, "top", moveOrder);
-		expect(ids(result)).toEqual(["B", "A", "C"]);
+describe("taskActivityTime — which clock a task is sorted by", () => {
+	it("prefers statusEnteredAt over movedAt and createdAt", () => {
+		const task = makeTask({ id: "a", createdAt: day(1), movedAt: day(2), statusEnteredAt: day(3) });
+		expect(taskActivityTime(task)).toBe(Date.parse(day(3)));
 	});
 
-	it("multiple moves: most recently moved first", () => {
-		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z" }),
-			makeTask({ id: "C", createdAt: "2025-01-03T00:00:00Z" }),
-		];
-		// Moved in order: A(1), then C(2), then B(3)
-		const moveOrder = new Map([
-			["A", 1],
-			["C", 2],
-			["B", 3],
-		]);
-		const result = sortTasksForColumn(tasks, "top", moveOrder);
-		// B moved last → top, then C, then A
-		expect(ids(result)).toEqual(["B", "C", "A"]);
+	it("falls back to movedAt when statusEnteredAt is absent (task predates status-time tracking)", () => {
+		const task = makeTask({ id: "a", createdAt: day(1), movedAt: day(2) });
+		expect(taskActivityTime(task)).toBe(Date.parse(day(2)));
 	});
 
-	it("unmoved tasks stay in original createdAt ASC order below moved", () => {
-		const tasks = [
-			makeTask({ id: "X", createdAt: "2025-06-01T00:00:00Z" }),
-			makeTask({ id: "Y", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "Z", createdAt: "2025-03-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		// No moves → createdAt ASC: Y(Jan), Z(Mar), X(Jun)
-		expect(ids(result)).toEqual(["Y", "Z", "X"]);
+	it("falls back to createdAt when neither stamp exists", () => {
+		const task = makeTask({ id: "a", createdAt: day(1) });
+		expect(taskActivityTime(task)).toBe(Date.parse(day(1)));
 	});
 
-	it("moved tasks above unmoved tasks", () => {
-		const tasks = [
-			makeTask({ id: "OLD", createdAt: "2020-01-01T00:00:00Z" }),
-			makeTask({ id: "NEW", createdAt: "2026-01-01T00:00:00Z" }),
-		];
-		const moveOrder = new Map([["OLD", 1]]);
-		const result = sortTasksForColumn(tasks, "top", moveOrder);
-		// OLD was moved → goes to top even though it's older
-		expect(ids(result)).toEqual(["OLD", "NEW"]);
+	it("treats an unparseable stamp as the epoch instead of producing NaN", () => {
+		const task = makeTask({ id: "a", statusEnteredAt: "not-a-date" });
+		expect(taskActivityTime(task)).toBe(0);
 	});
 });
 
-// ============================================================
-// "top" mode — variant tasks (grouped)
-// ============================================================
-
-describe('sortTasksForColumn — "top" mode with grouped/variant tasks', () => {
-	it("moveOrderMap overrides variantIndex for grouped tasks", () => {
+describe("sortTasksForColumn — oldest-first (default)", () => {
+	it("floats the task whose status changed longest ago to the top", () => {
 		const tasks = [
-			makeTask({ id: "V2", groupId: "g1", variantIndex: 2, createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "V3", groupId: "g1", variantIndex: 3, createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "V5", groupId: "g1", variantIndex: 5, createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "fresh", statusEnteredAt: day(9) }),
+			makeTask({ id: "stale", statusEnteredAt: day(1) }),
+			makeTask({ id: "middle", statusEnteredAt: day(5) }),
 		];
-		// User moved V5 first, then V2, then V3 (V3 = most recent)
-		const moveOrder = new Map([
-			["V5", 1],
-			["V2", 2],
-			["V3", 3],
-		]);
-		const result = sortTasksForColumn(tasks, "top", moveOrder);
-		// V3 moved last → top, then V2, then V5
-		expect(ids(result)).toEqual(["V3", "V2", "V5"]);
+		expect(ids(sortTasksForColumn(tasks, "oldest-first"))).toEqual(["stale", "middle", "fresh"]);
 	});
 
-	it("grouped tasks without moveOrderMap: fall back to variantIndex ASC", () => {
+	it("keeps priority as the topmost key — every P0 above every P1", () => {
 		const tasks = [
-			makeTask({ id: "V5", groupId: "g1", variantIndex: 5 }),
-			makeTask({ id: "V2", groupId: "g1", variantIndex: 2 }),
-			makeTask({ id: "V3", groupId: "g1", variantIndex: 3 }),
+			makeTask({ id: "p1-stale", priority: "P1", statusEnteredAt: day(1) }),
+			makeTask({ id: "p0-fresh", priority: "P0", statusEnteredAt: day(9) }),
 		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["V2", "V3", "V5"]);
+		expect(ids(sortTasksForColumn(tasks, "oldest-first"))).toEqual(["p0-fresh", "p1-stale"]);
 	});
 
-	it("partially moved variants: moved ones on top, rest by variantIndex", () => {
+	it("sinks hibernated tasks below every live P4, however stale they are", () => {
 		const tasks = [
-			makeTask({ id: "V1", groupId: "g1", variantIndex: 1 }),
-			makeTask({ id: "V2", groupId: "g1", variantIndex: 2 }),
-			makeTask({ id: "V3", groupId: "g1", variantIndex: 3 }),
+			makeTask({ id: "parked", priority: "P0", hibernated: true, statusEnteredAt: day(1) }),
+			makeTask({ id: "live", priority: "P4", statusEnteredAt: day(9) }),
 		];
-		const moveOrder = new Map([["V3", 1]]);
-		const result = sortTasksForColumn(tasks, "top", moveOrder);
-		// V3 moved → top, then V1 and V2 by variantIndex
-		expect(ids(result)).toEqual(["V3", "V1", "V2"]);
-	});
-});
-
-// ============================================================
-// "top" mode — movedAt fallback (persisted, no moveOrderMap)
-// ============================================================
-
-describe('sortTasksForColumn — "top" mode with movedAt fallback', () => {
-	it("tasks with movedAt above tasks without", () => {
-		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-06-01T00:00:00Z", movedAt: "2026-01-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["B", "A"]);
+		expect(ids(sortTasksForColumn(tasks, "oldest-first"))).toEqual(["live", "parked"]);
 	});
 
-	it("multiple movedAt: most recently moved first", () => {
+	it("breaks an exact tie on seq, so the order is stable across reloads", () => {
 		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z", movedAt: "2026-01-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z", movedAt: "2026-02-01T00:00:00Z" }),
-			makeTask({ id: "C", createdAt: "2025-01-03T00:00:00Z" }),
+			makeTask({ id: "b", seq: 20, statusEnteredAt: day(3) }),
+			makeTask({ id: "a", seq: 10, statusEnteredAt: day(3) }),
 		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		// B movedAt is more recent → first, then A, then C (no movedAt)
-		expect(ids(result)).toEqual(["B", "A", "C"]);
+		expect(ids(sortTasksForColumn(tasks, "oldest-first"))).toEqual(["a", "b"]);
+	});
+
+	it("does not hold a variant group together — every task stands on its own", () => {
+		const tasks = [
+			makeTask({ id: "v1", groupId: "g", variantIndex: 0, statusEnteredAt: day(9) }),
+			makeTask({ id: "loner", statusEnteredAt: day(5) }),
+			makeTask({ id: "v2", groupId: "g", variantIndex: 1, statusEnteredAt: day(1) }),
+		];
+		expect(ids(sortTasksForColumn(tasks, "oldest-first"))).toEqual(["v2", "loner", "v1"]);
+	});
+
+	it("ignores a legacy columnOrder left over on disk", () => {
+		const tasks = [
+			makeTask({ id: "pinned", columnOrder: 0, statusEnteredAt: day(9) }),
+			makeTask({ id: "stale", columnOrder: 5, statusEnteredAt: day(1) }),
+		];
+		expect(ids(sortTasksForColumn(tasks, "oldest-first"))).toEqual(["stale", "pinned"]);
 	});
 });
 
-// ============================================================
-// "bottom" mode — moveOrderMap (in-session moves)
-// ============================================================
-
-describe('sortTasksForColumn — "bottom" mode with moveOrderMap', () => {
-	it("single moved task goes to bottom", () => {
+describe("sortTasksForColumn — newest-first", () => {
+	it("puts the most recently active task on top", () => {
 		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z" }),
-			makeTask({ id: "C", createdAt: "2025-01-03T00:00:00Z" }),
+			makeTask({ id: "stale", statusEnteredAt: day(1) }),
+			makeTask({ id: "fresh", statusEnteredAt: day(9) }),
+			makeTask({ id: "middle", statusEnteredAt: day(5) }),
 		];
-		const moveOrder = new Map([["B", 1]]);
-		const result = sortTasksForColumn(tasks, "bottom", moveOrder);
-		// B moved → goes to bottom; A, C stay in createdAt ASC above
-		expect(ids(result)).toEqual(["A", "C", "B"]);
+		expect(ids(sortTasksForColumn(tasks, "newest-first"))).toEqual(["fresh", "middle", "stale"]);
 	});
 
-	it("multiple moves: most recently moved last (bottom)", () => {
+	it("still sorts priority bands first", () => {
 		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z" }),
-			makeTask({ id: "C", createdAt: "2025-01-03T00:00:00Z" }),
+			makeTask({ id: "p2-fresh", priority: "P2", statusEnteredAt: day(9) }),
+			makeTask({ id: "p0-stale", priority: "P0", statusEnteredAt: day(1) }),
 		];
-		// Moved in order: A(1), then C(2), then B(3) → B is most recently moved
-		const moveOrder = new Map([
-			["A", 1],
-			["C", 2],
-			["B", 3],
-		]);
-		const result = sortTasksForColumn(tasks, "bottom", moveOrder);
-		// Moved tasks go to bottom, most recent = last: A(1), C(2), B(3)
-		expect(ids(result)).toEqual(["A", "C", "B"]);
-	});
-
-	it("unmoved tasks stay in original createdAt ASC order above moved", () => {
-		const tasks = [
-			makeTask({ id: "X", createdAt: "2025-06-01T00:00:00Z" }),
-			makeTask({ id: "Y", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "MOVED", createdAt: "2025-03-01T00:00:00Z" }),
-		];
-		const moveOrder = new Map([["MOVED", 1]]);
-		const result = sortTasksForColumn(tasks, "bottom", moveOrder);
-		// Unmoved in createdAt ASC: Y(Jan), X(Jun); then MOVED at bottom
-		expect(ids(result)).toEqual(["Y", "X", "MOVED"]);
+		expect(ids(sortTasksForColumn(tasks, "newest-first"))).toEqual(["p0-stale", "p2-fresh"]);
 	});
 });
 
-// ============================================================
-// "bottom" mode — variant tasks (grouped)
-// ============================================================
-
-describe('sortTasksForColumn — "bottom" mode with grouped/variant tasks', () => {
-	it("moveOrderMap overrides variantIndex for grouped tasks", () => {
+describe("sortTasksForColumn — completed / cancelled columns", () => {
+	it("shows the freshest finish on top regardless of the sort setting", () => {
 		const tasks = [
-			makeTask({ id: "V2", groupId: "g1", variantIndex: 2 }),
-			makeTask({ id: "V3", groupId: "g1", variantIndex: 3 }),
-			makeTask({ id: "V5", groupId: "g1", variantIndex: 5 }),
+			makeTask({ id: "old", status: "completed", movedAt: day(1) }),
+			makeTask({ id: "recent", status: "completed", movedAt: day(9) }),
 		];
-		// User moved V3 first, then V2, then V5 (V5 most recent → should be last)
-		const moveOrder = new Map([
-			["V3", 1],
-			["V2", 2],
-			["V5", 3],
-		]);
-		const result = sortTasksForColumn(tasks, "bottom", moveOrder);
-		expect(ids(result)).toEqual(["V3", "V2", "V5"]);
+		for (const order of ["oldest-first", "newest-first"] as const) {
+			expect(ids(sortTasksForColumn(tasks, order, "completed"))).toEqual(["recent", "old"]);
+		}
 	});
 
-	it("grouped tasks without moveOrderMap: fall back to variantIndex ASC", () => {
+	it("ignores priority there — the terminal column is a log, not a queue", () => {
 		const tasks = [
-			makeTask({ id: "V5", groupId: "g1", variantIndex: 5 }),
-			makeTask({ id: "V2", groupId: "g1", variantIndex: 2 }),
-			makeTask({ id: "V3", groupId: "g1", variantIndex: 3 }),
+			makeTask({ id: "p4-recent", status: "cancelled", priority: "P4", movedAt: day(9) }),
+			makeTask({ id: "p0-old", status: "cancelled", priority: "P0", movedAt: day(1) }),
 		];
-		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
-		expect(ids(result)).toEqual(["V2", "V3", "V5"]);
+		expect(ids(sortTasksForColumn(tasks, "oldest-first", "cancelled"))).toEqual(["p4-recent", "p0-old"]);
 	});
 });
 
-// ============================================================
-// "bottom" mode — movedAt fallback (persisted, no moveOrderMap)
-// ============================================================
-
-describe('sortTasksForColumn — "bottom" mode with movedAt fallback', () => {
-	it("tasks with movedAt below tasks without", () => {
-		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-06-01T00:00:00Z", movedAt: "2026-01-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
-		expect(ids(result)).toEqual(["A", "B"]);
+describe("compareTasksInBand", () => {
+	it("returns 0 only for a task compared with itself", () => {
+		const task = makeTask({ id: "a", statusEnteredAt: day(3) });
+		expect(compareTasksInBand(task, task, "oldest-first")).toBe(0);
 	});
 
-	it("multiple movedAt: most recently moved last (bottom)", () => {
-		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z", movedAt: "2026-02-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-01-02T00:00:00Z", movedAt: "2026-01-01T00:00:00Z" }),
-			makeTask({ id: "C", createdAt: "2025-01-03T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
-		// C has no movedAt → first; B movedAt earlier → second; A movedAt more recent → last (bottom)
-		expect(ids(result)).toEqual(["C", "B", "A"]);
-	});
-});
-
-// ============================================================
-// "bottom" mode — no moveOrderMap (default behavior)
-// ============================================================
-
-describe('sortTasksForColumn — "bottom" mode without moveOrderMap', () => {
-	it("sorts by createdAt ASC (oldest first)", () => {
-		const tasks = [
-			makeTask({ id: "C", createdAt: "2025-03-01T00:00:00Z" }),
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", createdAt: "2025-02-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
-		expect(ids(result)).toEqual(["A", "B", "C"]);
-	});
-});
-
-// ============================================================
-// Group structure tests (both modes)
-// ============================================================
-
-describe("sortTasksForColumn — group structure", () => {
-	it("grouped tasks appear before ungrouped", () => {
-		const tasks = [
-			makeTask({ id: "U1", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "G1", groupId: "g1", variantIndex: 1, createdAt: "2025-06-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["G1", "U1"]);
+	it("is symmetric — swapping the arguments flips the sign", () => {
+		const a = makeTask({ id: "a", statusEnteredAt: day(1) });
+		const b = makeTask({ id: "b", statusEnteredAt: day(2) });
+		expect(Math.sign(compareTasksInBand(a, b, "oldest-first"))).toBe(-Math.sign(compareTasksInBand(b, a, "oldest-first")));
 	});
 
-	it("different groups: sorted by groupId", () => {
-		const tasks = [
-			makeTask({ id: "B1", groupId: "group-b", variantIndex: 1 }),
-			makeTask({ id: "A1", groupId: "group-a", variantIndex: 1 }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["A1", "B1"]);
-	});
-});
-
-// ============================================================
-// User scenario: drag 3, 2, 5 — expect 5 on top (top mode)
-// ============================================================
-
-describe("sortTasksForColumn — user scenario: drag 3, 2, 5 in top mode", () => {
-	it("tasks dragged in order #3, #2, #5 → result is #5, #2, #3", () => {
-		const tasks = [
-			makeTask({ id: "V2", groupId: "g1", variantIndex: 2 }),
-			makeTask({ id: "V3", groupId: "g1", variantIndex: 3 }),
-			makeTask({ id: "V5", groupId: "g1", variantIndex: 5 }),
-		];
-		// User dragged #3 first, then #2, then #5
-		const moveOrder = new Map([
-			["V3", 1],
-			["V2", 2],
-			["V5", 3],
-		]);
-		const result = sortTasksForColumn(tasks, "top", moveOrder);
-		// #5 was moved last → should be at the very top
-		expect(ids(result)).toEqual(["V5", "V2", "V3"]);
-	});
-});
-
-// ============================================================
-// User scenario: drag 4 tasks in bottom mode — expect at bottom
-// ============================================================
-
-describe("sortTasksForColumn — user scenario: insert at bottom", () => {
-	it("task #4 dragged to column with #1, #2, #3 → #4 at bottom", () => {
-		const tasks = [
-			makeTask({ id: "V1", groupId: "g1", variantIndex: 1 }),
-			makeTask({ id: "V2", groupId: "g1", variantIndex: 2 }),
-			makeTask({ id: "V3", groupId: "g1", variantIndex: 3 }),
-			makeTask({ id: "V4", groupId: "g1", variantIndex: 4 }),
-		];
-		// Only V4 was moved (the rest were already there)
-		const moveOrder = new Map([["V4", 1]]);
-		const result = sortTasksForColumn(tasks, "bottom", moveOrder);
-		// V4 moved → should be at bottom; rest in variantIndex order
-		expect(ids(result)).toEqual(["V1", "V2", "V3", "V4"]);
-	});
-});
-
-// ============================================================
-// columnOrder — persisted within-column reordering
-// ============================================================
-
-describe("sortTasksForColumn — columnOrder (persisted reorder)", () => {
-	it("columnOrder sorts tasks in ascending order", () => {
-		const tasks = [
-			makeTask({ id: "A", columnOrder: 2, createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", columnOrder: 0, createdAt: "2025-01-02T00:00:00Z" }),
-			makeTask({ id: "C", columnOrder: 1, createdAt: "2025-01-03T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["B", "C", "A"]);
-	});
-
-	it("columnOrder takes priority over movedAt and createdAt", () => {
-		const tasks = [
-			makeTask({ id: "A", columnOrder: 1, movedAt: "2026-01-01T00:00:00Z", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", columnOrder: 0, movedAt: "2025-01-01T00:00:00Z", createdAt: "2025-06-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		// B has lower columnOrder → goes first despite older movedAt
-		expect(ids(result)).toEqual(["B", "A"]);
-	});
-
-	it("tasks with columnOrder come before tasks without", () => {
-		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", columnOrder: 0, createdAt: "2025-06-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["B", "A"]);
-	});
-
-	it("moveOrderMap overrides columnOrder", () => {
-		const tasks = [
-			makeTask({ id: "A", columnOrder: 0, createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", columnOrder: 1, createdAt: "2025-01-02T00:00:00Z" }),
-		];
-		const moveOrder = new Map([["B", 1]]);
-		const result = sortTasksForColumn(tasks, "top", moveOrder);
-		// B has moveOrderMap entry → goes to top despite columnOrder=1
-		expect(ids(result)).toEqual(["B", "A"]);
-	});
-
-	it("mixed: some with columnOrder, some without — columnOrder group first", () => {
-		const tasks = [
-			makeTask({ id: "A", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "B", columnOrder: 1, createdAt: "2025-01-02T00:00:00Z" }),
-			makeTask({ id: "C", columnOrder: 0, createdAt: "2025-01-03T00:00:00Z" }),
-			makeTask({ id: "D", createdAt: "2025-01-04T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		// C(0), B(1) first (by columnOrder), then A, D (by createdAt)
-		expect(ids(result)).toEqual(["C", "B", "A", "D"]);
-	});
-
-	it("columnOrder works the same in bottom mode", () => {
-		const tasks = [
-			makeTask({ id: "A", columnOrder: 2 }),
-			makeTask({ id: "B", columnOrder: 0 }),
-			makeTask({ id: "C", columnOrder: 1 }),
-		];
-		const result = sortTasksForColumn(tasks, "bottom", emptyMap);
-		expect(ids(result)).toEqual(["B", "C", "A"]);
-	});
-});
-
-// ============================================================
-// priority — strict bands are the TOPMOST sort key
-// ============================================================
-
-describe("sortTasksForColumn — priority bands", () => {
-	it("all higher-priority tasks sit above all lower ones (P0 → P4)", () => {
-		const tasks = [
-			makeTask({ id: "p4", priority: "P4" }),
-			makeTask({ id: "p0", priority: "P0" }),
-			makeTask({ id: "p2", priority: "P2" }),
-			makeTask({ id: "p1", priority: "P1" }),
-			makeTask({ id: "p3", priority: "P3" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["p0", "p1", "p2", "p3", "p4"]);
-	});
-
-	it("priority beats an in-session move order (band is topmost)", () => {
-		const tasks = [
-			makeTask({ id: "p1", priority: "P1", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "p2moved", priority: "P2", createdAt: "2025-01-02T00:00:00Z" }),
-		];
-		// p2moved was just moved (top mode → would normally be first), but P1 still bands above P2.
-		const result = sortTasksForColumn(tasks, "top", new Map([["p2moved", 1]]));
-		expect(ids(result)).toEqual(["p1", "p2moved"]);
-	});
-
-	it("priority beats columnOrder across bands", () => {
-		const tasks = [
-			makeTask({ id: "p2", priority: "P2", columnOrder: 0 }),
-			makeTask({ id: "p0", priority: "P0", columnOrder: 9 }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["p0", "p2"]);
-	});
-
-	it("within a band, existing rules apply unchanged (columnOrder)", () => {
-		const tasks = [
-			makeTask({ id: "b", priority: "P1", columnOrder: 1 }),
-			makeTask({ id: "a", priority: "P1", columnOrder: 0 }),
-			makeTask({ id: "top", priority: "P0", columnOrder: 5 }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["top", "a", "b"]);
-	});
-
-	it("missing priority is treated as the P3 band", () => {
-		const tasks = [
-			makeTask({ id: "legacy" }), // no priority → P3
-			makeTask({ id: "p1", priority: "P1" }),
-			makeTask({ id: "p4", priority: "P4" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["p1", "legacy", "p4"]);
-	});
-
-	it("a variant group (shared priority) stays adjacent and bands together", () => {
-		const tasks = [
-			makeTask({ id: "solo", priority: "P2" }),
-			makeTask({ id: "g-v1", groupId: "g1", variantIndex: 1, priority: "P0" }),
-			makeTask({ id: "g-v2", groupId: "g1", variantIndex: 2, priority: "P0" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		// The P0 group bands above the P2 solo task and stays contiguous, in variantIndex order.
-		expect(ids(result)).toEqual(["g-v1", "g-v2", "solo"]);
-	});
-});
-
-// ============================================================
-// Terminal columns (completed / cancelled) — recency, not priority
-// ============================================================
-
-describe("sortTasksForColumn — completed/cancelled sort by entry time (freshest on top)", () => {
-	it.each(["completed", "cancelled"] as const)("%s: most recently entered on top, ignoring priority", (status) => {
-		const tasks = [
-			// High priority but landed here first → must sink to the bottom.
-			makeTask({ id: "old-p0", priority: "P0", movedAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "mid-p4", priority: "P4", movedAt: "2025-06-01T00:00:00Z" }),
-			makeTask({ id: "new-p2", priority: "P2", movedAt: "2025-12-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap, status);
-		expect(ids(result)).toEqual(["new-p2", "mid-p4", "old-p0"]);
-	});
-
-	it("recency wins over the global 'bottom' drop-position setting", () => {
-		const tasks = [
-			makeTask({ id: "old", movedAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "new", movedAt: "2025-09-01T00:00:00Z" }),
-		];
-		// Even with dropPosition "bottom", terminal columns keep freshest on top.
-		const result = sortTasksForColumn(tasks, "bottom", emptyMap, "completed");
-		expect(ids(result)).toEqual(["new", "old"]);
-	});
-
-	it("variant grouping does NOT keep a group contiguous — pure recency ordering", () => {
-		const tasks = [
-			makeTask({ id: "g-v1", groupId: "g1", variantIndex: 1, movedAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "solo", movedAt: "2025-05-01T00:00:00Z" }),
-			makeTask({ id: "g-v2", groupId: "g1", variantIndex: 2, movedAt: "2025-09-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap, "completed");
-		expect(ids(result)).toEqual(["g-v2", "solo", "g-v1"]);
-	});
-
-	it("falls back to createdAt when movedAt is absent", () => {
-		const tasks = [
-			makeTask({ id: "a", createdAt: "2025-01-01T00:00:00Z" }),
-			makeTask({ id: "b", createdAt: "2025-08-01T00:00:00Z" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap, "cancelled");
-		expect(ids(result)).toEqual(["b", "a"]);
-	});
-
-	it("sinks a hibernated P0 below a live P4", () => {
-		const tasks = [
-			makeTask({ id: "parked", priority: "P0", hibernated: true }),
-			makeTask({ id: "live", priority: "P4" }),
-		];
-		const result = sortTasksForColumn(tasks, "top", emptyMap, "user-questions");
-		expect(ids(result)).toEqual(["live", "parked"]);
-	});
-
-	it("in-session move floats a just-finished card above older entries", () => {
-		const tasks = [
-			makeTask({ id: "recent", movedAt: "2025-12-01T00:00:00Z" }),
-			makeTask({ id: "just-moved", movedAt: "2025-01-01T00:00:00Z" }),
-		];
-		// `just-moved` was dropped in this session; it must jump to the top even
-		// though its persisted movedAt is older (backend refresh not yet applied).
-		const moveOrder = new Map([["just-moved", 1]]);
-		const result = sortTasksForColumn(tasks, "top", moveOrder, "completed");
-		expect(ids(result)).toEqual(["just-moved", "recent"]);
+	it("does not mutate the input array when used through sortTasksForColumn", () => {
+		const tasks = [makeTask({ id: "b", statusEnteredAt: day(9) }), makeTask({ id: "a", statusEnteredAt: day(1) })];
+		sortTasksForColumn(tasks, "oldest-first");
+		expect(ids(tasks)).toEqual(["b", "a"]);
 	});
 });

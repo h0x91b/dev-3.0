@@ -98,9 +98,11 @@ export async function moveTaskToStatus({
 
 	const fromStatus = task.status;
 
-	// Optimistic update. For terminal moves mirror the server's end-state
-	// (worktree/branch cleared, movedAt stamped, column order reset) so the card
-	// doesn't flicker when the real task comes back.
+	// Optimistic update mirroring the server's end-state so the card doesn't
+	// flicker when the real task comes back. `statusEnteredAt` is stamped on every
+	// move, not just terminal ones: it is what both the board and the sidebar sort
+	// by, so without it the card would sit in its old slot until the RPC returns.
+	const movedNow = new Date().toISOString();
 	const optimisticTask: Task = terminal
 		? {
 			...task,
@@ -108,10 +110,10 @@ export async function moveTaskToStatus({
 			worktreePath: null,
 			branchName: null,
 			customColumnId: null,
-			movedAt: new Date().toISOString(),
-			columnOrder: undefined,
+			movedAt: movedNow,
+			statusEnteredAt: movedNow,
 		}
-		: { ...task, status: newStatus, customColumnId: null };
+		: { ...task, status: newStatus, customColumnId: null, movedAt: movedNow, statusEnteredAt: movedNow };
 	dispatch({ type: "updateTask", task: optimisticTask });
 	// When the UI plays the completion sound here, tell the backend to skip its
 	// own `taskSound` push — otherwise it fans out to every other connected

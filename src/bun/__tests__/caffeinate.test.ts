@@ -17,7 +17,7 @@ vi.mock("../settings", () => ({
 	loadSettingsSync: vi.fn(() => ({
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-default",
-		taskDropPosition: "top",
+		taskSortOrder: "oldest-first",
 		updateChannel: "stable",
 	})),
 }));

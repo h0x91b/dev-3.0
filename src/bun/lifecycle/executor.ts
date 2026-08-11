@@ -36,7 +36,7 @@ import * as pty from "../pty-server";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { AuxPaneUnavailableError } from "../task-aux-panes";
 import * as repoConfig from "../repo-config";
-import { loadSettings, loadSettingsSync } from "../settings";
+import { loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { dev3TaskTempPath } from "../temp-paths";
@@ -91,7 +91,6 @@ export interface LifecycleExecutionContext {
 	task: Task;
 	event: LifecycleEvent;
 	nextState: LifecycleState;
-	dropPosition: "top" | "bottom";
 	hooks: LifecycleExecutorHooks;
 	completedDiffStats?: CompletedDiffStats;
 	stateTask?: Task;
@@ -752,10 +751,9 @@ export async function executeLifecycleEffect(
 					} : {}),
 				};
 				const previous = ctx.task;
-				const persisted = await data.updateTask(ctx.project, ctx.task.id, updates, {
-					dropPosition: ctx.dropPosition,
-					...(effect.expectedColumn ? { ifStatus: effect.expectedColumn.status } : {}),
-				});
+				const persisted = effect.expectedColumn
+					? await data.updateTask(ctx.project, ctx.task.id, updates, { ifStatus: effect.expectedColumn.status })
+					: await data.updateTask(ctx.project, ctx.task.id, updates);
 				if (persisted.id !== previous.id) throw new Error(`Lifecycle reservation returned the wrong task: ${persisted.id}`);
 				const persistedColumn = {
 					status: persisted.status,
@@ -978,13 +976,16 @@ export async function executeLifecycleEffect(
 			if (effect.runtime) {
 				updates = { ...updates, ...preparationRuntimeUpdates(effect.runtime) };
 			}
-			const persisted = effect.patch === "preparation" || effect.writeOptions === "none"
-				? await data.updateTask(ctx.project, ctx.task.id, updates)
-				: await data.updateTask(ctx.project, ctx.task.id, updates, {
-					dropPosition: ctx.dropPosition,
+			// Guards are the only write option left; pass none when the effect declares none.
+			const guards = effect.patch === "preparation" || effect.writeOptions === "none"
+				? {}
+				: {
 					...(effect.guards?.ifStatus ? { ifStatus: effect.guards.ifStatus } : {}),
 					...(effect.guards?.ifStatusNot ? { ifStatusNot: effect.guards.ifStatusNot } : {}),
-				});
+				};
+			const persisted = Object.keys(guards).length > 0
+				? await data.updateTask(ctx.project, ctx.task.id, updates, guards)
+				: await data.updateTask(ctx.project, ctx.task.id, updates);
 			const accepted = persisted.status === effect.column.status
 				&& (persisted.customColumnId ?? null) === effect.column.customColumnId;
 			if (!accepted) {
@@ -1005,12 +1006,7 @@ export async function executeLifecycleEffect(
 				runtimeState: runtimeState({ phase: "idle" }),
 				...clearedPreparationFields(),
 			};
-			const persisted = await data.updateTask(
-				ctx.project,
-				ctx.task.id,
-				taskUpdates,
-				{ dropPosition: ctx.dropPosition },
-			);
+			const persisted = await data.updateTask(ctx.project, ctx.task.id, taskUpdates);
 			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, taskUpdates);
 			ctx.stateTask = ctx.task;
 			return {};
@@ -1124,8 +1120,4 @@ export async function executeLifecycleEffect(
 			pushEffect(effect, ctx);
 			return {};
 	}
-}
-
-export async function lifecycleDropPosition(): Promise<"top" | "bottom"> {
-	return (await loadSettings()).taskDropPosition;
 }

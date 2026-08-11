@@ -71,7 +71,7 @@ const mockAgents: CodingAgent[] = [
 const mockGlobalSettings: GlobalSettingsType = {
 	defaultAgentId: "agent-1",
 	defaultConfigId: "cfg-1",
-	taskDropPosition: "top",
+	taskSortOrder: "oldest-first",
 	updateChannel: "stable",
 };
 
@@ -283,26 +283,26 @@ describe("GlobalSettings", () => {
 		});
 	});
 
-	describe("task drop position", () => {
-		it("selects top by default", async () => {
+	describe("task sort order", () => {
+		it("selects oldest-first by default", async () => {
 			setupMocks();
 			renderGlobalSettings("tasks");
 			await waitForLoad();
 
-			const topButton = screen.getByText("Top").closest("button")!;
-			expect(topButton.className).toContain("border-accent");
+			const oldestButton = screen.getByText("Oldest first").closest("button")!;
+			expect(oldestButton.className).toContain("border-accent");
 		});
 
-		it("switches to bottom and saves", async () => {
+		it("switches to newest-first and saves", async () => {
 			setupMocks();
 			const user = userEvent.setup();
 			renderGlobalSettings("tasks");
 			await waitForLoad();
 
-			await user.click(screen.getByText("Bottom"));
+			await user.click(screen.getByText("Newest first"));
 
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
-				expect.objectContaining({ taskDropPosition: "bottom" }),
+				expect.objectContaining({ taskSortOrder: "newest-first" }),
 			);
 		});
 	});
@@ -848,7 +848,7 @@ describe("GlobalSettings", () => {
 			await user.click(screen.getByRole("button", { name: "Tasks & Board" }));
 
 			expect(document.getElementById("settings-category-title")!).toHaveTextContent("Tasks & Board");
-			expect(screen.getByText("Task drop position")).toBeInTheDocument();
+			expect(screen.getByText("Task sort order")).toBeInTheDocument();
 			expect(screen.queryByText("Choose the color theme for dev-3.0.")).not.toBeInTheDocument();
 		});
 

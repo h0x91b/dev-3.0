@@ -1,4 +1,5 @@
-import { compareTaskSortRank, type Task } from "../../shared/types";
+import type { Task } from "../../shared/types";
+import { compareTasksInBand, type TaskSortOrder } from "./sortTasks";
 import { isAttentionTask } from "../utils/taskFacets";
 
 /**
@@ -28,7 +29,7 @@ export interface SidebarTier {
 	 *  component can resolve the column's name and color for its header. */
 	projectId?: string;
 	customColumnId?: string;
-	/** Tasks in final render order (priority band → oldest `movedAt` → `seq`). */
+	/** Tasks in final render order (priority band → activity clock → `seq`). */
 	tasks: Task[];
 }
 
@@ -40,26 +41,12 @@ export interface OrderedCustomColumn {
 
 export interface TierGroupingContext {
 	scope: "project" | "global" | "attention";
+	/** Direction of the in-band activity sort (global setting). */
+	sortOrder: TaskSortOrder;
 	/** Custom columns in the order their tiers should render. For project scope
 	 *  this is the current project's columns; for global scope, every project's
 	 *  columns concatenated. Ignored in attention scope. */
 	orderedCustomColumns: OrderedCustomColumn[];
-}
-
-/**
- * Within-tier order: strict priority bands first (P0 on top), then oldest-first
- * by `movedAt` (the longest-waiting task in a band is most at risk of being
- * forgotten), then `seq` as a stable tiebreak. Tasks without `movedAt` sink to
- * the bottom of their band. A whole variant group shares one priority, so a band
- * never splits a group; a hibernated task sinks below every live band.
- */
-export function byPriorityThenMovedAtOldestFirst(a: Task, b: Task): number {
-	const byPriority = compareTaskSortRank(a, b);
-	if (byPriority !== 0) return byPriority;
-	const aTime = a.movedAt ? new Date(a.movedAt).getTime() : Infinity;
-	const bTime = b.movedAt ? new Date(b.movedAt).getTime() : Infinity;
-	if (aTime !== bTime) return aTime - bTime;
-	return a.seq - b.seq;
 }
 
 /**
@@ -74,14 +61,14 @@ export function byPriorityThenMovedAtOldestFirst(a: Task, b: Task): number {
  * `waiting` tiers are never produced.
  */
 export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): SidebarTier[] {
-	const { scope, orderedCustomColumns } = ctx;
+	const { scope, orderedCustomColumns, sortOrder } = ctx;
+	// The board's in-band comparator verbatim, so the two surfaces can never disagree.
+	const byBand = (a: Task, b: Task) => compareTasksInBand(a, b, sortOrder);
 
 	if (scope === "attention") {
 		const filtered = tasks.filter(isAttentionTask);
 		if (filtered.length === 0) return [];
-		return [
-			{ kind: "needs-you", key: "attention", tasks: filtered.slice().sort(byPriorityThenMovedAtOldestFirst) },
-		];
+		return [{ kind: "needs-you", key: "attention", tasks: filtered.slice().sort(byBand) }];
 	}
 
 	const needsYou: Task[] = [];
@@ -105,7 +92,7 @@ export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): Si
 
 	const tiers: SidebarTier[] = [];
 	if (needsYou.length > 0) {
-		tiers.push({ kind: "needs-you", key: "needs-you", tasks: needsYou.sort(byPriorityThenMovedAtOldestFirst) });
+		tiers.push({ kind: "needs-you", key: "needs-you", tasks: needsYou.sort(byBand) });
 	}
 	for (const { projectId, columnId } of orderedCustomColumns) {
 		const key = `${projectId}|${columnId}`;
@@ -116,12 +103,12 @@ export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): Si
 				key: `custom:${key}`,
 				projectId,
 				customColumnId: columnId,
-				tasks: colTasks.sort(byPriorityThenMovedAtOldestFirst),
+				tasks: colTasks.sort(byBand),
 			});
 		}
 	}
 	if (waiting.length > 0) {
-		tiers.push({ kind: "waiting", key: "waiting", tasks: waiting.sort(byPriorityThenMovedAtOldestFirst) });
+		tiers.push({ kind: "waiting", key: "waiting", tasks: waiting.sort(byBand) });
 	}
 	return tiers;
 }

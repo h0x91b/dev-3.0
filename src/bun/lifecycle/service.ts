@@ -6,7 +6,6 @@ import { TaskActorRegistry } from "./actor";
 import {
 	executeLifecycleEffect,
 	launchLifecycleColumnAgent,
-	lifecycleDropPosition,
 	type LifecycleExecutionContext,
 } from "./executor";
 import type { LifecycleEffect } from "./effects";
@@ -182,7 +181,6 @@ class LifecycleService {
 			task,
 			event,
 			nextState: decision.next,
-			dropPosition: await lifecycleDropPosition(),
 			hooks: {
 				dispatchFollowUp: (nextProjectId, nextTaskId, nextEvent, nextTask) => {
 					if (actorRuntime.removed || generation !== this.generation) return Promise.resolve(nextTask ?? task);

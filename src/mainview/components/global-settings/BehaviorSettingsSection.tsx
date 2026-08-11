@@ -16,7 +16,7 @@ interface BehaviorSettingsSectionProps {
 	onWatchByDefaultToggle: (enabled: boolean) => void;
 	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
 	onFocusModeToggle: (enabled: boolean) => void;
-	onTaskDropPositionChange: (position: "top" | "bottom") => void;
+	onTaskSortOrderChange: (order: GlobalSettings["taskSortOrder"]) => void;
 	onTaskOpenModeChange: (mode: "split" | "fullscreen") => void;
 	onTipsDisabledToggle: (disabled: boolean) => void;
 	onTipsReset: () => void;
@@ -33,7 +33,7 @@ export default function BehaviorSettingsSection({
 	onWatchByDefaultToggle,
 	onSuggestCompletingTasksAfterMergeToggle,
 	onFocusModeToggle,
-	onTaskDropPositionChange,
+	onTaskSortOrderChange,
 	onTaskOpenModeChange,
 	onTipsDisabledToggle,
 	onTipsReset,
@@ -71,27 +71,27 @@ export default function BehaviorSettingsSection({
 	};
 	return (
 		<SettingsSection title={t("settings.categoryTasks")} helpTopicId="settings.tasks">
-			<SettingsEntry anchor="task-drop-position">
+			<SettingsEntry anchor="task-sort-order">
 			<div>
 				<p className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.taskDropPosition")}
+					{t("settings.taskSortOrder")}
 				</p>
 				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.taskDropPositionDesc")}
+					{t("settings.taskSortOrderDesc")}
 				</p>
 				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-					<DropPositionCard
-						label={t("settings.dropToTop")}
-						description={t("settings.dropToTopDesc")}
-						active={globalSettings.taskDropPosition === "top"}
-						onClick={() => onTaskDropPositionChange("top")}
+					<SortOrderCard
+						label={t("settings.taskSortOldest")}
+						description={t("settings.taskSortOldestDesc")}
+						active={globalSettings.taskSortOrder !== "newest-first"}
+						onClick={() => onTaskSortOrderChange("oldest-first")}
 						icon="↑"
 					/>
-					<DropPositionCard
-						label={t("settings.dropToBottom")}
-						description={t("settings.dropToBottomDesc")}
-						active={globalSettings.taskDropPosition === "bottom"}
-						onClick={() => onTaskDropPositionChange("bottom")}
+					<SortOrderCard
+						label={t("settings.taskSortNewest")}
+						description={t("settings.taskSortNewestDesc")}
+						active={globalSettings.taskSortOrder === "newest-first"}
+						onClick={() => onTaskSortOrderChange("newest-first")}
 						icon="↓"
 					/>
 				</div>
@@ -345,7 +345,7 @@ export default function BehaviorSettingsSection({
 	);
 }
 
-function DropPositionCard({
+function SortOrderCard({
 	label,
 	description,
 	active,

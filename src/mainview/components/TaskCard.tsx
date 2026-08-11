@@ -58,7 +58,6 @@ interface TaskCardProps {
 	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
 	onAddAttempts: (task: Task) => void;
 	onDragStart: (taskId: string) => void;
-	onTaskMoved: (taskId: string) => void;
 	resourceUsage?: ResourceUsage;
 	bellCount?: number;
 	/** Accumulated attention reasons (from `dev3 attention`), shown in the hover preview. */
@@ -75,7 +74,7 @@ interface TaskCardProps {
 	onEditDraft?: (task: Task) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -247,7 +246,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			t,
 			onOpenTask: openTaskFromDialog,
 			alwaysConfirm: opts?.alwaysConfirm,
-			onMoved: () => onTaskMoved(task.id),
 			onMovingChange: (moving) =>
 				isTerminal ? onSetMoving?.(task.id, moving) : setMoving(moving),
 		});
@@ -263,7 +261,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				customColumnId,
 			});
 			dispatch({ type: "updateTask", task: updated });
-			onTaskMoved(task.id);
 			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}`, agent_name: agentNameFromId(task.agentId) });
 		} catch (err) {
 			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });

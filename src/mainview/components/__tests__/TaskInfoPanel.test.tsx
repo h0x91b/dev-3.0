@@ -33,7 +33,7 @@ vi.mock("../../rpc", () => ({
 			openPullRequest: vi.fn(),
 			renameTask: vi.fn(),
 			getPortAllocations: vi.fn().mockResolvedValue([]),
-			getGlobalSettings: vi.fn().mockResolvedValue({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default", taskDropPosition: "top", updateChannel: "stable" }),
+			getGlobalSettings: vi.fn().mockResolvedValue({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default", taskSortOrder: "oldest-first", updateChannel: "stable" }),
 			getAvailableApps: vi.fn().mockResolvedValue([
 				{ id: "finder", name: "Finder", macAppName: "Finder" },
 				{ id: "text-mate", name: "TextMate", macAppName: "TextMate" },

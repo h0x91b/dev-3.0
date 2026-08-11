@@ -17,14 +17,14 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 		<I18nProvider>
 			<BehaviorSettingsSection
 				t={t}
-				globalSettings={{ taskDropPosition: "top", ...settings } as GlobalSettings}
+				globalSettings={{ taskSortOrder: "oldest-first", ...settings } as GlobalSettings}
 				tipsResetDone={false}
 				onDefaultDiffViewModeChange={vi.fn()}
 				onSoundToggle={vi.fn()}
 				onWatchByDefaultToggle={vi.fn()}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
 				onFocusModeToggle={vi.fn()}
-				onTaskDropPositionChange={vi.fn()}
+				onTaskSortOrderChange={vi.fn()}
 				onTaskOpenModeChange={vi.fn()}
 				onTipsDisabledToggle={vi.fn()}
 				onTipsReset={vi.fn()}

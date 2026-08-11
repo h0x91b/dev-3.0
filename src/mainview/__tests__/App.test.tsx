@@ -41,7 +41,7 @@ vi.mock("../rpc", () => ({
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
-				taskDropPosition: "top",
+				taskSortOrder: "oldest-first",
 				updateChannel: "stable",
 			}),
 			moveTask: vi.fn().mockResolvedValue({}),

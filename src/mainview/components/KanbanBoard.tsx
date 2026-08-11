@@ -115,7 +115,7 @@ function KanbanBoard({
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-auto",
-		taskDropPosition: "top",
+		taskSortOrder: "oldest-first",
 		updateChannel: "stable",
 	});
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; mode?: "spawn" | "addAttempts" } | null>(null);
@@ -124,10 +124,8 @@ function KanbanBoard({
 	const [editDraftTaskId, setEditDraftTaskId] = useState<string | null>(null);
 	const [dragFromDraft, setDragFromDraft] = useState(false);
 	const [dragFromCustomColumnId, setDragFromCustomColumnId] = useState<string | null>(null);
-	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
 	const [searchQuery, setSearchQuery] = useState("");
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
-	const moveCounterRef = useRef(0);
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
 	const draggedColumnIdRef = useRef<string | null>(null);
@@ -149,11 +147,6 @@ function KanbanBoard({
 			return next;
 		});
 	}, []);
-
-	function recordMove(taskId: string) {
-		moveCounterRef.current += 1;
-		setMoveOrderMap((prev) => new Map(prev).set(taskId, moveCounterRef.current));
-	}
 
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
@@ -255,13 +248,10 @@ function KanbanBoard({
 			setDragFromStatus(null);
 			setDragFromCustomColumnId(null);
 			setDragFromDraft(false);
-			setDraggedTaskId(null);
 		}
 		window.addEventListener("dragend", handleDragEnd);
 		return () => window.removeEventListener("dragend", handleDragEnd);
 	}, []);
-
-	const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
 
 	function handleDragStart(taskId: string) {
 		const task = tasks.find((t) => t.id === taskId);
@@ -269,7 +259,6 @@ function KanbanBoard({
 			setDragFromStatus(task.status);
 			setDragFromCustomColumnId(task.customColumnId ?? null);
 			setDragFromDraft(task.draft === true);
-			setDraggedTaskId(taskId);
 		}
 	}
 
@@ -308,7 +297,6 @@ function KanbanBoard({
 					? { screen: "task", projectId: project.id, taskId: task.id }
 					: { screen: "project", projectId: project.id, activeTaskId: task.id });
 			},
-			onMoved: () => recordMove(task.id),
 			onMovingChange: (moving) => handleSetMoving(task.id, moving),
 		});
 	}
@@ -327,7 +315,6 @@ function KanbanBoard({
 		// Optimistic update
 		const optimisticTask = { ...task, customColumnId };
 		dispatch({ type: "updateTask", task: optimisticTask });
-		recordMove(task.id);
 		setMovingTaskIds((prev) => new Set(prev).add(task.id));
 
 		try {
@@ -346,27 +333,6 @@ function KanbanBoard({
 				next.delete(task.id);
 				return next;
 			});
-		}
-	}
-
-	async function handleReorderTask(taskId: string, targetIndex: number) {
-		try {
-			const updatedTasks = await api.request.reorderTask({
-				taskId,
-				projectId: project.id,
-				targetIndex,
-			});
-			for (const task of updatedTasks) {
-				dispatch({ type: "updateTask", task });
-			}
-			// Clear in-session move order so persisted columnOrder takes effect
-			setMoveOrderMap((prev) => {
-				const next = new Map(prev);
-				next.delete(taskId);
-				return next;
-			});
-		} catch (err) {
-			console.error("Failed to reorder task:", err);
 		}
 	}
 
@@ -504,7 +470,7 @@ function KanbanBoard({
 	for (const status of ALL_STATUSES) {
 		const columnTasks = tasksByStatus.get(status);
 		if (columnTasks && columnTasks.length > 1) {
-			tasksByStatus.set(status, sortTasksForColumn(columnTasks, globalSettings.taskDropPosition, moveOrderMap, status));
+			tasksByStatus.set(status, sortTasksForColumn(columnTasks, globalSettings.taskSortOrder, status));
 		}
 	}
 
@@ -567,6 +533,11 @@ function KanbanBoard({
 			tasksByCustomColumn.get(task.customColumnId!)?.push(task);
 		}
 	}
+	// Custom columns get the same ordering as built-in ones; they used to render in
+	// raw task order, which put a P4 above a P3.
+	for (const [colId, colTasks] of tasksByCustomColumn) {
+		tasksByCustomColumn.set(colId, sortTasksForColumn(colTasks, globalSettings.taskSortOrder));
+	}
 
 	// Find the first column with <2 tasks for the tip card (only one tip across the board)
 	// Exclude collapsed columns from tip placement
@@ -624,19 +595,16 @@ function KanbanBoard({
 		onAddAttempts: (task: Task) =>
 			setLaunchModal({ task, targetStatus: task.status, mode: "addAttempts" }),
 		onTaskDrop: handleTaskDrop,
-		onReorderTask: handleReorderTask,
 		dragFromStatus,
 		dragFromCustomColumnId,
 		dragFromDraft,
 		onEditDraft: (task: Task) => setEditDraftTaskId(task.id),
 		onDragStart: handleDragStart,
-		onTaskMoved: recordMove,
 		bellCounts,
 		bellReasons,
 		taskPorts,
 		taskResourceUsage,
 		activeTaskId,
-		draggedTaskId,
 		movingTaskIds,
 		siblingMap,
 		onSetMoving: handleSetMoving,

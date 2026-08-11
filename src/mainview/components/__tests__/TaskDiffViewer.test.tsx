@@ -449,7 +449,7 @@ describe("TaskDiffViewer", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		});
 		localStorage.clear();
@@ -880,7 +880,7 @@ describe("TaskDiffViewer", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			defaultDiffViewMode: "unified",
 		});
@@ -909,7 +909,7 @@ describe("TaskDiffViewer", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			defaultDiffViewMode: "auto",
 		});
@@ -938,7 +938,7 @@ describe("TaskDiffViewer", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			defaultDiffViewMode: "auto",
 		});
@@ -1960,7 +1960,7 @@ describe("TaskDiffViewer", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			defaultDiffViewMode: "split",
 		});
@@ -2035,7 +2035,7 @@ describe("TaskDiffViewer", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			defaultDiffViewMode: "unified",
 		});
@@ -2926,7 +2926,7 @@ describe("TaskDiffViewer narrow viewport", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		});
 		localStorage.clear();
@@ -3143,7 +3143,7 @@ describe("TaskDiffViewer — recent commits mode", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		});
 		localStorage.clear();
@@ -3333,7 +3333,7 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		} as never);
 		vi.mocked(api.request.getTaskPrComments).mockResolvedValue(makePrPayload() as never);

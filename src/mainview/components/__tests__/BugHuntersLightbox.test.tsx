@@ -66,7 +66,7 @@ describe("BugHuntersLightbox", () => {
 		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 		});
 	});

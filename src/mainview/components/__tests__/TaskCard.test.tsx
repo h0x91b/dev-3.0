@@ -163,7 +163,6 @@ function renderCard(
 		onLaunchVariants?: (task: Task, targetStatus: TaskStatus) => void;
 		onAddAttempts?: (task: Task) => void;
 		onDragStart?: (taskId: string) => void;
-		onTaskMoved?: (taskId: string) => void;
 		bellCount?: number;
 		isActiveInSplit?: boolean;
 		isMoving?: boolean;
@@ -185,7 +184,6 @@ function renderCard(
 				onLaunchVariants={opts?.onLaunchVariants ?? vi.fn()}
 				onAddAttempts={opts?.onAddAttempts ?? vi.fn()}
 				onDragStart={opts?.onDragStart ?? vi.fn()}
-				onTaskMoved={opts?.onTaskMoved ?? vi.fn()}
 				bellCount={opts?.bellCount}
 				isActiveInSplit={opts?.isActiveInSplit}
 				isMoving={opts?.isMoving}
@@ -400,7 +398,6 @@ describe("TaskCard", () => {
 						onLaunchVariants={vi.fn()}
 						onAddAttempts={vi.fn()}
 						onDragStart={vi.fn()}
-						onTaskMoved={vi.fn()}
 					/>
 				</I18nProvider>,
 			);
@@ -1132,12 +1129,11 @@ describe("TaskCard", () => {
 		it("moves in-progress task to completed and dispatches updateTask", async () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
-			const onTaskMoved = vi.fn();
 			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" });
 			const updated = { ...task, status: "completed" as TaskStatus };
 			mockedApi.request.moveTask.mockResolvedValue(updated);
 
-			renderCard(task, { dispatch, onTaskMoved });
+			renderCard(task, { dispatch });
 
 			await user.click(statusTrigger());
 			await user.click(screen.getByText("Completed"));
@@ -1157,7 +1153,6 @@ describe("TaskCard", () => {
 
 			await waitFor(() => {
 				expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
-				expect(onTaskMoved).toHaveBeenCalledWith("t1");
 				expect(mockedTrackEvent).toHaveBeenCalledWith("task_moved", {
 					from_status: "in-progress",
 					to_status: "completed",
@@ -1188,7 +1183,6 @@ describe("TaskCard", () => {
 		it("retries with force when first moveTask fails", async () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
-			const onTaskMoved = vi.fn();
 			const task = makeTask({ status: "user-questions", worktreePath: "/tmp/wt", branchName: "dev3/test" });
 			const updated = { ...task, status: "in-progress" as TaskStatus };
 
@@ -1196,7 +1190,7 @@ describe("TaskCard", () => {
 				.mockRejectedValueOnce(new Error("env broken"))
 				.mockResolvedValueOnce(updated);
 
-			renderCard(task, { dispatch, onTaskMoved });
+			renderCard(task, { dispatch });
 
 			await user.click(statusTrigger());
 			await user.click(screen.getByText("Agent is Working"));
@@ -1219,7 +1213,6 @@ describe("TaskCard", () => {
 				clientPlayedSound: false,
 			});
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
-			expect(onTaskMoved).toHaveBeenCalledWith("t1");
 		});
 
 		it("alerts when both normal and force retry fail", async () => {

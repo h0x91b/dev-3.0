@@ -22,7 +22,7 @@ vi.mock("../../rpc", () => ({
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-default",
-				taskDropPosition: "top",
+				taskSortOrder: "oldest-first",
 			}),
 		},
 	},
@@ -113,7 +113,7 @@ function makeGlobalSettings(overrides?: Partial<GlobalSettings>): GlobalSettings
 	return {
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-default",
-		taskDropPosition: "top",
+		taskSortOrder: "oldest-first",
 		updateChannel: "stable",
 		...overrides,
 	};
@@ -225,7 +225,7 @@ describe("LaunchVariantsModal", () => {
 					{ id: "cfg-b", name: "Beta" },
 				],
 			};
-			const gs = { defaultAgentId: "custom", taskDropPosition: "top" as const } as GlobalSettings;
+			const gs = { defaultAgentId: "custom", taskSortOrder: "oldest-first" as const } as GlobalSettings;
 
 			render(
 				<I18nProvider>

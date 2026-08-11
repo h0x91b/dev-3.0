@@ -59,7 +59,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../settings", () => ({
-	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
+	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskSortOrder: "oldest-first" })),
 	recordFavoriteUsages: vi.fn(),
 }));
 

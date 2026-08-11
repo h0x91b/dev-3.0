@@ -36,19 +36,16 @@ interface KanbanColumnProps {
 	onAddAttempts: (task: Task) => void;
 	onTaskDrop: (taskId: string, targetStatus: TaskStatus) => void;
 	onTaskDropToCustomColumn?: (taskId: string, customColumnId: string) => void;
-	onReorderTask: (taskId: string, targetIndex: number) => void;
 	dragFromStatus: TaskStatus | null;
 	dragFromCustomColumnId?: string | null;
 	/** The card being dragged is an unfinished draft: only To Do may accept it. */
 	dragFromDraft?: boolean;
 	onDragStart: (taskId: string) => void;
-	onTaskMoved: (taskId: string) => void;
 	bellCounts: Map<string, number>;
 	bellReasons?: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
-	draggedTaskId: string | null;
 	movingTaskIds: Set<string>;
 	onSetMoving: (taskId: string, isMoving: boolean) => void;
 	siblingMap: Map<string, Task[]>;
@@ -98,18 +95,15 @@ function KanbanColumn({
 	onAddAttempts,
 	onTaskDrop,
 	onTaskDropToCustomColumn,
-	onReorderTask,
 	dragFromStatus,
 	dragFromCustomColumnId,
 	dragFromDraft = false,
 	onDragStart,
-	onTaskMoved,
 	bellCounts,
 	bellReasons,
 	taskPorts,
 	taskResourceUsage,
 	activeTaskId,
-	draggedTaskId,
 	movingTaskIds,
 	onSetMoving,
 	siblingMap,
@@ -142,7 +136,6 @@ function KanbanColumn({
 	const color = colorOverride ?? statusColors[status];
 	const inkColor = colorOverride ?? statusColorsInk[status];
 	const [dragOver, setDragOver] = useState(false);
-	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const [columnDragSide, setColumnDragSide] = useState<"before" | "after" | null>(null);
 	const [expanded, setExpanded] = useState(false);
 	const [editing, setEditing] = useState(false);
@@ -244,13 +237,8 @@ function KanbanColumn({
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
-	// Is this a same-column reorder drag?
-	const isSameColumnDrag = isCustomColumn
-		? customColumnId !== undefined && dragFromCustomColumnId === customColumnId
-		: dragFromStatus === status && (dragFromCustomColumnId === null || dragFromCustomColumnId === undefined);
-
-	// A draft may be reordered inside To Do but never dragged out of it — the
-	// mouse must not become a loophole around the non-runnable guarantee.
+	// A draft may only ever be dropped back into To Do — the mouse must not become
+	// a loophole around the non-runnable guarantee.
 	const draftBlocksDrop = dragFromDraft && !(!isCustomColumn && status === "todo");
 
 	// Can this column accept a cross-column drop?
@@ -260,10 +248,8 @@ function KanbanColumn({
 		// Built-in columns use transition logic; also accept from custom columns (underlying status governs)
 		: dragFromStatus !== null && getAllowedTransitions(dragFromStatus).includes(status));
 
-	// Clear dropIndex when drag ends globally
 	useEffect(() => {
 		function handleDragEnd() {
-			setDropIndex(null);
 			setColumnDragSide(null);
 		}
 		window.addEventListener("dragend", handleDragEnd);
@@ -285,31 +271,9 @@ function KanbanColumn({
 			return;
 		}
 		// Task drag
-		if (!isCrossColumnTarget && !isSameColumnDrag) return;
+		if (!isCrossColumnTarget) return;
 		e.preventDefault();
 		e.dataTransfer.dropEffect = "move";
-
-		// Calculate drop index for same-column reorder (built-in columns only).
-		// `:scope > [data-task-id]` targets only the per-task wrapper divs — the
-		// TaskCard root also carries `data-task-id`, so a plain `[data-task-id]`
-		// query returns 2N interleaved elements and doubles the computed index.
-		// The default is `visibleTasks.length` (not `tasks.length`): in a
-		// truncated column only the first COLUMN_TASK_LIMIT cards are rendered, so
-		// a drop below them must land right after the last visible card — where
-		// the drop indicator (keyed off `visibleTasks.length`) is actually drawn.
-		if (isSameColumnDrag && !isCustomColumn && taskListRef.current) {
-			const taskElements = taskListRef.current.querySelectorAll(":scope > [data-task-id]");
-			let newDropIndex = visibleTasks.length;
-			for (let i = 0; i < taskElements.length; i++) {
-				const rect = taskElements[i].getBoundingClientRect();
-				const midY = rect.top + rect.height / 2;
-				if (e.clientY < midY) {
-					newDropIndex = i;
-					break;
-				}
-			}
-			setDropIndex(newDropIndex);
-		}
 	}
 
 	function handleDragEnter(e: React.DragEvent) {
@@ -319,15 +283,14 @@ function KanbanColumn({
 			e.preventDefault();
 			return;
 		}
-		if (!isCrossColumnTarget && !isSameColumnDrag) return;
+		if (!isCrossColumnTarget) return;
 		e.preventDefault();
-		if (isCrossColumnTarget) setDragOver(true);
+		setDragOver(true);
 	}
 
 	function handleDragLeave(e: React.DragEvent) {
 		if (e.currentTarget.contains(e.relatedTarget as Node)) return;
 		setDragOver(false);
-		setDropIndex(null);
 		setColumnDragSide(null);
 	}
 
@@ -346,27 +309,14 @@ function KanbanColumn({
 
 		const taskId = e.dataTransfer.getData("text/plain");
 		// Ignore col: prefixed data (column drags that fell through without a side set)
-		if (!taskId || taskId.startsWith("col:")) {
-			setDropIndex(null);
-			return;
-		}
+		if (!taskId || taskId.startsWith("col:")) return;
 
 		if (isCustomColumn && customColumnId) {
 			// Drop into a custom column
 			onTaskDropToCustomColumn?.(taskId, customColumnId);
-		} else if (isSameColumnDrag && dropIndex !== null) {
-			// Same-column reorder
-			const currentIndex = tasks.findIndex((t) => t.id === taskId);
-			const adjustedIndex = currentIndex !== -1 && currentIndex < dropIndex
-				? dropIndex - 1
-				: dropIndex;
-			if (currentIndex !== adjustedIndex) {
-				onReorderTask(taskId, adjustedIndex);
-			}
 		} else if (isCrossColumnTarget) {
 			onTaskDrop(taskId, status);
 		}
-		setDropIndex(null);
 	}
 
 	const showDropHighlight = dragOver && isCrossColumnTarget;
@@ -623,11 +573,8 @@ function KanbanColumn({
 					onAddTask();
 				} : undefined}
 			>
-				{visibleTasks.map((task, index) => (
+				{visibleTasks.map((task) => (
 					<div key={task.id} data-task-id={task.id}>
-						{isSameColumnDrag && dropIndex === index && task.id !== draggedTaskId && (
-							<div className="h-0.5 bg-accent rounded-full mx-1 mb-2" />
-						)}
 						<TaskCard
 							task={task}
 							project={project}
@@ -637,7 +584,6 @@ function KanbanColumn({
 							onLaunchVariants={onLaunchVariants}
 							onAddAttempts={onAddAttempts}
 							onDragStart={onDragStart}
-							onTaskMoved={onTaskMoved}
 							bellCount={bellCounts.get(task.id) ?? 0}
 							bellReasons={bellReasons?.get(task.id)}
 							resourceUsage={taskResourceUsage?.get(task.id.slice(0, 8))}
@@ -652,10 +598,6 @@ function KanbanColumn({
 						/>
 					</div>
 				))}
-				{isSameColumnDrag && dropIndex === visibleTasks.length && (
-					<div className="h-0.5 bg-accent rounded-full mx-1 mt-0" />
-				)}
-
 				{hiddenCount > 0 && (
 					<button
 						onClick={() => setExpanded(true)}

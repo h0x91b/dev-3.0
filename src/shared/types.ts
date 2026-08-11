@@ -851,7 +851,13 @@ export interface NativeTerminalAvailability {
 export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
-	taskDropPosition: "top" | "bottom";
+	/**
+	 * Secondary order inside a priority band, shared by the Kanban board and the
+	 * Active Tasks sidebar. `oldest-first` floats the task whose status changed
+	 * longest ago (the one most at risk of being forgotten); `newest-first` is the
+	 * most-recently-used order. See sortTasks.ts.
+	 */
+	taskSortOrder: "oldest-first" | "newest-first";
 	updateChannel: UpdateChannel;
 	theme?: "dark" | "light" | "system";
 	resolvedTheme?: "dark" | "light";
@@ -1525,6 +1531,13 @@ export interface Task {
 	 * time until the next completion without reconstructing history.
 	 */
 	lifecycleStartedAt?: string;
+	/**
+	 * Legacy manual position inside a column. Nothing reads or writes it any more —
+	 * in-column order is derived from priority + the activity clock (see
+	 * sortTasks.ts). Declared only so older values already sitting in `tasks.json`
+	 * survive a load/save round-trip instead of being stripped for versions of the
+	 * app that still read them (frozen on-disk layout, AGENTS.md).
+	 */
 	columnOrder?: number;
 	tmuxSocket?: string | null;
 	/**
@@ -3378,10 +3391,6 @@ export type AppRPCSchema = {
 			cancelTaskPreparation: {
 				params: { taskId: string; projectId: string };
 				response: Task;
-			};
-			reorderTask: {
-				params: { taskId: string; projectId: string; targetIndex: number };
-				response: Task[];
 			};
 			deleteTask: {
 				params: { taskId: string; projectId: string };

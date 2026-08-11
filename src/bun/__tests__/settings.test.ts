@@ -18,7 +18,7 @@ function makeSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings {
 	return {
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-default",
-		taskDropPosition: "top",
+		taskSortOrder: "oldest-first",
 		updateChannel: "stable",
 		...overrides,
 	};
@@ -155,7 +155,7 @@ describe("saveSettings", () => {
 		const full: Required<GlobalSettings> = {
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
-			taskDropPosition: "bottom",
+			taskSortOrder: "newest-first",
 			// Back to a NON-default value, so this field can once again tell "preserved" from
 			// "reset to the default" — it briefly had to be "stable" while a global flag
 			// collapsed every channel. The collapse is now per-platform, and this suite runs

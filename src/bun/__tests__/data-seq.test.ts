@@ -454,29 +454,3 @@ describe("tasks.json hourly backups", () => {
 		rmSync(backupDir);
 	});
 });
-
-// ============================================================
-// updateTask — columnOrder reset on status change
-// ============================================================
-
-describe("updateTask — clears columnOrder on status change", () => {
-	it("clears columnOrder when status changes", async () => {
-		const tasks = [{ ...makeRawTask({ id: "t1", status: "in-progress" as const }), seq: 1, columnOrder: 3, labelIds: [] }];
-		seedTasks(tasks);
-
-		const updated = await updateTask(testProject, "t1", { status: "completed" });
-
-		expect(updated.columnOrder).toBeUndefined();
-		expect(updated.movedAt).toBeDefined();
-	});
-
-	it("preserves columnOrder when status does not change", async () => {
-		const tasks = [{ ...makeRawTask({ id: "t1", status: "in-progress" as const }), seq: 1, columnOrder: 3, labelIds: [] }];
-		seedTasks(tasks);
-
-		const updated = await updateTask(testProject, "t1", { title: "Updated title" });
-
-		expect(updated.columnOrder).toBe(3);
-		expect(updated.movedAt).toBeUndefined();
-	});
-});

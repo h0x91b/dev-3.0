@@ -209,7 +209,7 @@ function fullContext(sourceTask: Task): LifecycleExecutionContext {
 		sourceTask,
 		task: sourceTask,
 		stateTask: sourceTask,
-		dropPosition: "top",
+		taskSortOrder: "oldest-first",
 		hooks: {
 			dispatchFollowUp: vi.fn(async () => sourceTask),
 			processInline: vi.fn(async () => sourceTask),

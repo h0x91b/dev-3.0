@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskPriority, TaskStatus, TipState } from "../shared/types";
-import { comparePriority, compareTaskSortRank, DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
+import { DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
 import {
 	decodeTerminalBackend,
 	isTerminalBackendIdentity,
@@ -975,7 +975,6 @@ export async function updateTask(
 	taskId: string,
 	updates: Partial<Task>,
 	options?: {
-		dropPosition?: "top" | "bottom";
 		ifStatus?: string;
 		ifStatusNot?: string;
 	},
@@ -997,7 +996,6 @@ export async function updateTaskWith<T>(
 	taskId: string,
 	mutator: (task: Task) => Promise<{ updates: Partial<Task>; result: T }> | { updates: Partial<Task>; result: T },
 	options?: {
-		dropPosition?: "top" | "bottom";
 		ifStatus?: string;
 		ifStatusNot?: string;
 	},
@@ -1143,7 +1141,6 @@ export async function moveTaskToProject(
 	sourceProject: Project,
 	targetProject: Project,
 	taskId: string,
-	dropPosition: "top" | "bottom" = "bottom",
 ): Promise<Task> {
 	if (sourceProject.id === targetProject.id) {
 		throw new Error("Cannot move a task to the project it is already in");
@@ -1191,22 +1188,10 @@ export async function moveTaskToProject(
 				customColumnId: null,
 				opsWorkDir: null,
 				scheduledLaunch: null,
-				// A fresh position in the target column; source ordering is meaningless there.
-				columnOrder: undefined,
 				updatedAt: now,
 			};
 
 			targetTasks.push(moved);
-			// Place the moved card at the top/bottom of the target To Do column per
-			// the user's taskDropPosition, mirroring applyTaskUpdate's drop handling:
-			// reassign sequential columnOrder to the (band-sorted) column so the card
-			// lands where the setting says within its priority band.
-			const columnTasks = sortColumnTasksForReorder(
-				targetTasks.filter((t) => t.status === "todo" && (t.customColumnId ?? null) === null && t.id !== moved.id),
-			);
-			if (dropPosition === "top") columnTasks.unshift(moved);
-			else columnTasks.push(moved);
-			for (let i = 0; i < columnTasks.length; i++) columnTasks[i].columnOrder = i;
 
 			await rawSaveTasks(targetProject, targetTasks);
 
@@ -1236,7 +1221,6 @@ function applyTaskUpdate(
 	idx: number,
 	updates: Partial<Task>,
 	options?: {
-		dropPosition?: "top" | "bottom";
 		ifStatus?: string;
 		ifStatusNot?: string;
 	},
@@ -1249,8 +1233,8 @@ function applyTaskUpdate(
 	const now = new Date().toISOString();
 	// A move to a different RENDERED column happens either when the builtin status
 	// changes, or when only customColumnId changes (builtin <-> custom column that
-	// share the same status). Both must reset columnOrder, refresh movedAt and honor
-	// dropPosition — otherwise a stale columnOrder pins the card mid-column on reload.
+	// share the same status). Both refresh `movedAt`; the card's position inside the
+	// new column is derived from the sort setting, never persisted.
 	const statusChanged = updates.status !== undefined && updates.status !== currentTask.status;
 	const customColumnChanged =
 		updates.customColumnId !== undefined && (updates.customColumnId ?? null) !== (currentTask.customColumnId ?? null);
@@ -1274,27 +1258,7 @@ function applyTaskUpdate(
 	const statusTimePatch: Partial<Task> = statusChanged ? accumulateStatusDuration(currentTask, now) : {};
 
 	if (renderedColumnChanged) {
-		const dropPosition = options?.dropPosition;
-
-		tasks[idx] = { ...tasks[idx], ...updatesWithLifecycle, ...statusTimePatch, movedAt: now, columnOrder: undefined, updatedAt: now };
-
-		if (dropPosition) {
-			const newStatus = tasks[idx].status;
-			const targetCustomColumnId = tasks[idx].customColumnId ?? null;
-			const columnTasks = sortColumnTasksForReorder(
-				tasks.filter((t) => t.status === newStatus && (t.customColumnId ?? null) === targetCustomColumnId && t.id !== tasks[idx].id),
-			);
-
-			if (dropPosition === "top") {
-				columnTasks.unshift(tasks[idx]);
-			} else {
-				columnTasks.push(tasks[idx]);
-			}
-
-			for (let i = 0; i < columnTasks.length; i++) {
-				columnTasks[i].columnOrder = i;
-			}
-		}
+		tasks[idx] = { ...tasks[idx], ...updatesWithLifecycle, ...statusTimePatch, movedAt: now, updatedAt: now };
 	} else {
 		tasks[idx] = { ...tasks[idx], ...updatesWithLifecycle, updatedAt: now };
 	}
@@ -1362,30 +1326,6 @@ export async function addTaskFocusMs(project: Project, taskId: string, ms: numbe
 	});
 }
 
-function isInSameRenderedColumn(task: Task, status: string, customColumnId: string | null | undefined): boolean {
-	return task.status === status && (task.customColumnId ?? null) === (customColumnId ?? null);
-}
-
-/**
- * Order a set of same-column tasks the way the renderer does, for the purpose of
- * mapping a drop index onto the list the user saw: strict priority bands first
- * (P0 on top, hibernated tasks in a sink band below every live P4), then
- * persisted `columnOrder`, then `createdAt`. Deliberately omits
- * the renderer's ephemeral in-session move order (unknown server-side); band
- * membership — all the drop-index mapping needs — is order-independent within a
- * band. Mirrors `sortTasksForColumn` (renderer) at the band level.
- */
-function sortColumnTasksForReorder(tasks: Task[]): Task[] {
-	return [...tasks].sort((a, b) => {
-		const byPriority = compareTaskSortRank(a, b);
-		if (byPriority !== 0) return byPriority;
-		if (a.columnOrder !== undefined && b.columnOrder !== undefined) return a.columnOrder - b.columnOrder;
-		if (a.columnOrder !== undefined) return -1;
-		if (b.columnOrder !== undefined) return 1;
-		return a.createdAt < b.createdAt ? -1 : 1;
-	});
-}
-
 // ---- Preferences ----
 
 const PREFERENCES_FILE = `${DEV3_HOME}/preferences.json`;
@@ -1418,83 +1358,6 @@ export async function setLastPickedFolder(folder: string): Promise<void> {
 		const prefs = await rawLoadPreferences();
 		prefs.lastPickedFolder = folder;
 		await rawSavePreferences(prefs);
-	});
-}
-
-/**
- * Reorder a task (or its variant group) within its current status column.
- * Assigns sequential columnOrder (0, 1, 2, ...) to all tasks in the column.
- * Returns the updated column tasks.
- */
-export async function reorderTasksInColumn(
-	project: Project,
-	taskId: string,
-	targetIndex: number,
-): Promise<Task[]> {
-	const file = tasksFile(project);
-	return withFileLock(file, async () => {
-		log.info("Reordering task in column", { taskId, targetIndex, projectId: project.id });
-		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
-		const task = tasks.find((t) => t.id === taskId);
-		if (!task) throw new Error(`Task not found: ${taskId}`);
-
-		const columnStatus = task.status;
-		const columnCustomColumnId = task.customColumnId ?? null;
-
-		const columnTasks = sortColumnTasksForReorder(
-			tasks.filter((t) => isInSameRenderedColumn(t, columnStatus, columnCustomColumnId)),
-		);
-
-		const movingIds = new Set<string>();
-		if (task.groupId) {
-			for (const t of columnTasks) {
-				if (t.groupId === task.groupId) movingIds.add(t.id);
-			}
-		} else {
-			movingIds.add(taskId);
-		}
-
-		const movingItems = columnTasks.filter((t) => movingIds.has(t.id));
-		const remaining = columnTasks.filter((t) => !movingIds.has(t.id));
-
-		const clampedIndex = Math.max(0, Math.min(targetIndex, remaining.length));
-
-		// Drag re-prioritization (Linear-style): a drop whose landing band differs
-		// from the card's current band re-prioritizes it to that band; a drop inside
-		// its own band is a pure reorder and never mutates priority. The landing band
-		// is the neighbor the card lands ON TOP OF (the one it pushes down) —
-		// remaining[clampedIndex] — falling back to the card above only at the very
-		// bottom. This makes "drag to the top of a band's region" keep that band (the
-		// gap above the first P2 card belongs to P2), while "drag among/above a higher
-		// band" promotes. An empty remaining column (only the moving group) keeps its
-		// priority. Priority belongs to the whole group, so we write every moving item.
-		// Hibernated cards sit in a sink band below every live one while keeping
-		// their own priority, so they must never donate it — dropping a card at the
-		// bottom of a column would otherwise promote it to a parked neighbor's band.
-		const donors = remaining.filter((t) => !t.hibernated);
-		if (donors.length > 0) {
-			const landedOn = clampedIndex < remaining.length ? remaining[clampedIndex] : undefined;
-			const neighbor = landedOn && !landedOn.hibernated ? landedOn : donors[donors.length - 1];
-			const targetPriority = neighbor.priority ?? DEFAULT_PRIORITY;
-			if (comparePriority(targetPriority, task.priority) !== 0) {
-				for (const t of movingItems) t.priority = targetPriority;
-			}
-		}
-
-		remaining.splice(clampedIndex, 0, ...movingItems);
-
-		const now = new Date().toISOString();
-		const updatedColumnTasks: Task[] = [];
-		for (let i = 0; i < remaining.length; i++) {
-			const t = remaining[i];
-			t.columnOrder = i;
-			t.updatedAt = now;
-			updatedColumnTasks.push(t);
-		}
-
-		await rawSaveTasks(project, tasks);
-		log.info("Task reordered", { taskId, targetIndex: clampedIndex, columnTaskCount: updatedColumnTasks.length });
-		return updatedColumnTasks;
 	});
 }
 

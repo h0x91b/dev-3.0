@@ -123,14 +123,11 @@ function renderColumn(overrides: {
 				onLaunchVariants={vi.fn()}
 				onAddAttempts={vi.fn()}
 				onTaskDrop={vi.fn()}
-				onReorderTask={vi.fn()}
 				dragFromStatus={null}
 				dragFromCustomColumnId={null}
 				onDragStart={vi.fn()}
-				onTaskMoved={vi.fn()}
 				bellCounts={new Map()}
 				taskPorts={new Map()}
-				draggedTaskId={null}
 				movingTaskIds={new Set()}
 				onSetMoving={vi.fn()}
 				siblingMap={new Map()}
@@ -175,15 +172,12 @@ function renderBuiltinColumn(overrides: {
 				onLaunchVariants={vi.fn()}
 				onAddAttempts={vi.fn()}
 				onTaskDrop={overrides.onTaskDrop ?? vi.fn()}
-				onReorderTask={vi.fn()}
 				dragFromStatus={overrides.dragFromStatus ?? null}
 				dragFromCustomColumnId={null}
 				dragFromDraft={overrides.dragFromDraft}
 				onDragStart={vi.fn()}
-				onTaskMoved={vi.fn()}
 				bellCounts={new Map()}
 				taskPorts={new Map()}
-				draggedTaskId={null}
 				movingTaskIds={new Set()}
 				onSetMoving={vi.fn()}
 				siblingMap={new Map()}
@@ -434,14 +428,11 @@ describe("KanbanColumn — collapsed state", () => {
 					onLaunchVariants={vi.fn()}
 					onAddAttempts={vi.fn()}
 					onTaskDrop={vi.fn()}
-					onReorderTask={vi.fn()}
 					dragFromStatus={null}
 					dragFromCustomColumnId={null}
 					onDragStart={vi.fn()}
-					onTaskMoved={vi.fn()}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					draggedTaskId={null}
 					movingTaskIds={new Set()}
 					onSetMoving={vi.fn()}
 					siblingMap={new Map()}
@@ -496,14 +487,11 @@ describe("KanbanColumn — collapsed state", () => {
 					onLaunchVariants={vi.fn()}
 					onAddAttempts={vi.fn()}
 					onTaskDrop={vi.fn()}
-					onReorderTask={vi.fn()}
 					dragFromStatus={null}
 					dragFromCustomColumnId={null}
 					onDragStart={vi.fn()}
-					onTaskMoved={vi.fn()}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					draggedTaskId={null}
 					movingTaskIds={new Set()}
 					onSetMoving={vi.fn()}
 					siblingMap={new Map()}
@@ -627,7 +615,7 @@ describe("KanbanColumn — compact empty column on narrow viewport", () => {
 	});
 });
 
-describe("KanbanColumn — task reorder within a built-in column", () => {
+describe("KanbanColumn — same-column drop is inert", () => {
 	function makeTasks(n: number, status: Task["status"] = "in-progress"): Task[] {
 		return Array.from({ length: n }, (_, i) => ({
 			id: `t${i}`,
@@ -648,24 +636,8 @@ describe("KanbanColumn — task reorder within a built-in column", () => {
 		}));
 	}
 
-	/** The scrollable task list's direct-child wrappers (one per rendered card). */
-	function taskWrappers(container: HTMLElement): HTMLElement[] {
-		const list = container.querySelector(".overflow-y-auto") as HTMLElement;
-		return Array.from(list.querySelectorAll(":scope > [data-task-id]")) as HTMLElement[];
-	}
-
-	/** Lay each wrapper out as a 100px-tall row stacked from y=0. */
-	function stackWrappers(wrappers: HTMLElement[], rowHeight = 100) {
-		wrappers.forEach((el, i) => {
-			el.getBoundingClientRect = () =>
-				({ top: i * rowHeight, bottom: (i + 1) * rowHeight, height: rowHeight, left: 0, right: 280, width: 280, x: 0, y: i * rowHeight, toJSON() {} }) as DOMRect;
-		});
-	}
-
-	function dragOver(column: HTMLElement, clientY: number) {
-		const event = new MouseEvent("dragover", { bubbles: true, cancelable: true, clientY });
-		Object.defineProperty(event, "dataTransfer", { value: makeDt() });
-		act(() => { column.dispatchEvent(event); });
+	function makeDt(data: Record<string, string> = {}) {
+		return { dropEffect: "", getData: (k: string) => data[k] ?? "", setData: vi.fn(), types: Object.keys(data) };
 	}
 
 	function dropTask(column: HTMLElement, taskId: string) {
@@ -674,13 +646,16 @@ describe("KanbanColumn — task reorder within a built-in column", () => {
 		act(() => { column.dispatchEvent(event); });
 	}
 
-	function renderReorderColumn(tasks: Task[], onReorderTask: (taskId: string, targetIndex: number) => void) {
-		return render(
+	// In-column order is derived from priority + the activity clock, so dragging a
+	// card onto its own column must do nothing at all — no reorder, no status move.
+	it("dropping a card back on its own column moves nothing", () => {
+		const onTaskDrop = vi.fn();
+		const { container } = render(
 			<I18nProvider>
 				<KanbanColumn
 					status="in-progress"
 					label="In Progress"
-					tasks={tasks}
+					tasks={makeTasks(3)}
 					project={project}
 					dispatch={vi.fn()}
 					navigate={vi.fn()}
@@ -688,59 +663,23 @@ describe("KanbanColumn — task reorder within a built-in column", () => {
 					agents={[]}
 					onLaunchVariants={vi.fn()}
 					onAddAttempts={vi.fn()}
-					onTaskDrop={vi.fn()}
-					onReorderTask={onReorderTask}
-					// Same-column drag: source column status matches, no custom column.
+					onTaskDrop={onTaskDrop}
 					dragFromStatus="in-progress"
 					dragFromCustomColumnId={null}
 					onDragStart={vi.fn()}
-					onTaskMoved={vi.fn()}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					draggedTaskId="t0"
 					movingTaskIds={new Set()}
 					onSetMoving={vi.fn()}
 					siblingMap={new Map()}
 				/>
 			</I18nProvider>,
 		);
-	}
-
-	it("computes the drop index from wrappers only, not the doubled data-task-id node list", () => {
-		// Regression: TaskCard's root ALSO carries data-task-id, so a plain
-		// `[data-task-id]` query returned 2N interleaved nodes and doubled the
-		// index. Dropping task0 over the 3rd of 3 cards must reorder to index 1
-		// (its old slot removed), never index 3 (out of bounds → skipped card).
-		const onReorderTask = vi.fn();
-		const { container } = renderReorderColumn(makeTasks(3), onReorderTask);
 		const column = container.querySelector(".glass-column") as HTMLElement;
-		stackWrappers(taskWrappers(container));
 
-		dragOver(column, 210); // over the 3rd card (top 200, mid 250)
 		dropTask(column, "t0");
 
-		expect(onReorderTask).toHaveBeenCalledTimes(1);
-		expect(onReorderTask).toHaveBeenCalledWith("t0", 1);
-	});
-
-	it("clamps a drop past the last visible card to the visible count in a truncated column", () => {
-		// Regression: dropIndex defaulted to tasks.length. In a column with more
-		// than COLUMN_TASK_LIMIT (15) tasks only 15 render, so a drop below them
-		// silently reordered into the hidden tail (index 17) with no indicator.
-		// It must clamp to the visible boundary instead.
-		const onReorderTask = vi.fn();
-		const { container } = renderReorderColumn(makeTasks(18), onReorderTask);
-		const column = container.querySelector(".glass-column") as HTMLElement;
-		const wrappers = taskWrappers(container);
-		expect(wrappers.length).toBe(15); // COLUMN_TASK_LIMIT
-		stackWrappers(wrappers);
-
-		dragOver(column, 5000); // well below every rendered card
-		dropTask(column, "t0");
-
-		expect(onReorderTask).toHaveBeenCalledTimes(1);
-		// task0 removed, dropped at the visible boundary (15) → adjusted to 14.
-		expect(onReorderTask).toHaveBeenCalledWith("t0", 14);
+		expect(onTaskDrop).not.toHaveBeenCalled();
 	});
 });
 

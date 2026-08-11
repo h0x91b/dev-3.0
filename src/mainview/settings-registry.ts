@@ -129,12 +129,12 @@ export const SETTINGS_ENTRIES = [
 		storage: "local",
 	},
 	{
-		id: "task-drop-position",
+		id: "task-sort-order",
 		category: "tasks",
-		titleKey: "settings.taskDropPosition",
-		descriptionKey: "settings.taskDropPositionDesc",
-		anchor: "task-drop-position",
-		globalField: "taskDropPosition",
+		titleKey: "settings.taskSortOrder",
+		descriptionKey: "settings.taskSortOrderDesc",
+		anchor: "task-sort-order",
+		globalField: "taskSortOrder",
 		storage: "global",
 	},
 	{
@@ -399,7 +399,7 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 export const GLOBAL_SETTINGS_FIELDS = [
 	"defaultAgentId",
 	"defaultConfigId",
-	"taskDropPosition",
+	"taskSortOrder",
 	"updateChannel",
 	"theme",
 	"resolvedTheme",

@@ -1038,7 +1038,10 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.getByText("Beta task")).toBeInTheDocument();
 	});
 
-	it("sinks tasks without movedAt to the bottom of their group", () => {
+	// A task that predates status-time tracking has no statusEnteredAt and no
+	// movedAt; it falls back to createdAt rather than collapsing into one
+	// indistinguishable "forever ago" block at either end of the tier.
+	it("falls back to createdAt for a task with no status or move stamp", () => {
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar
@@ -1049,6 +1052,7 @@ function makeTask(overrides?: Partial<Task>): Task {
 							title: "No timestamp", description: "No timestamp",
 							groupId: null as unknown as string, variantIndex: null,
 							movedAt: undefined,
+							createdAt: "2024-01-01T00:00:00Z",
 						}),
 						makeTask({
 							id: "has-moved", status: "review-by-user",
@@ -1067,9 +1071,11 @@ function makeTask(overrides?: Partial<Task>): Task {
 			</I18nProvider>,
 		);
 
+		// Its 2024 createdAt is older than the other card's 2026 movedAt, so
+		// oldest-first puts it on top.
 		const hasMoved = screen.getByText("Has timestamp");
 		const noMoved = screen.getByText("No timestamp");
-		expect(hasMoved.compareDocumentPosition(noMoved) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(noMoved.compareDocumentPosition(hasMoved) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
 	// ============================================================

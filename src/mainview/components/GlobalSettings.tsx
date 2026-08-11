@@ -248,16 +248,11 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		trackEvent("theme_changed", { theme: nextTheme });
 	}, []);
 
-	const handleTaskDropPositionChange = useCallback(
-		(position: "top" | "bottom") => {
+	const handleTaskSortOrderChange = useCallback(
+		(order: GlobalSettingsType["taskSortOrder"]) => {
 			persistSettingChange(
-				{ taskDropPosition: position },
-				{
-					tracking: {
-						setting: "task_drop_position",
-						value: position,
-					},
-				},
+				{ taskSortOrder: order },
+				{ tracking: { setting: "task_sort_order", value: order } },
 			);
 		},
 		[persistSettingChange],
@@ -647,7 +642,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
 						onFocusModeToggle={handleFocusModeToggle}
-						onTaskDropPositionChange={handleTaskDropPositionChange}
+						onTaskSortOrderChange={handleTaskSortOrderChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}
 						onTipsDisabledToggle={handleTipsDisabledToggle}
 						onTipsReset={handleTipsReset}

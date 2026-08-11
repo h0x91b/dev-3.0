@@ -4,7 +4,7 @@ import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, titleFromDescription } fr
 import * as data from "../data";
 import * as git from "../git";
 import { resolveAgentRequest, type AgentLaunchChoice } from "../agent-requests";
-import { loadSettings, loadSettingsSync, recordFavoriteUsages } from "../settings";
+import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
@@ -307,17 +307,6 @@ async function cancelTaskPreparation(params: { taskId: string; projectId: string
 	return updated;
 }
 
-async function reorderTask(params: { taskId: string; projectId: string; targetIndex: number }): Promise<Task[]> {
-	log.info("→ reorderTask", params);
-	const project = await data.getProject(params.projectId);
-	const updatedColumnTasks = await data.reorderTasksInColumn(project, params.taskId, params.targetIndex);
-	for (const task of updatedColumnTasks) {
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
-	}
-	log.info("← reorderTask done", { count: updatedColumnTasks.length });
-	return updatedColumnTasks;
-}
-
 async function setTaskPriority(params: { taskId: string; projectId: string; priority: TaskPriority }): Promise<Task[]> {
 	log.info("→ setTaskPriority", params);
 	const project = await data.getProject(params.projectId);
@@ -356,7 +345,7 @@ export async function deleteTask(params: { taskId: string; projectId: string }):
 
 // Relocate a To Do task to another project (UI only; no CLI in v1). All the
 // decision-rich logic lives in data.moveTaskToProject — this resolves both
-// projects, threads the drop-position setting, and syncs every renderer:
+// projects and syncs every renderer:
 // `taskUpdated` adds the card to the target board, `taskRemoved` drops it from
 // the source board (both fan out to desktop + remote browser, and cross-instance).
 async function moveTaskToProject(params: { taskId: string; fromProjectId: string; toProjectId: string }): Promise<Task> {
@@ -365,8 +354,7 @@ async function moveTaskToProject(params: { taskId: string; fromProjectId: string
 		data.getProject(params.fromProjectId),
 		data.getProject(params.toProjectId),
 	]);
-	const dropPosition = (await loadSettings()).taskDropPosition;
-	const moved = await data.moveTaskToProject(fromProject, toProject, params.taskId, dropPosition);
+	const moved = await data.moveTaskToProject(fromProject, toProject, params.taskId);
 	getPushMessage()?.("taskUpdated", { projectId: toProject.id, task: moved });
 	getPushMessage()?.("taskRemoved", { projectId: fromProject.id, taskId: params.taskId });
 	log.info("← moveTaskToProject done", { taskId: moved.id.slice(0, 8), to: toProject.id });
@@ -1074,7 +1062,6 @@ export const taskLifecycleHandlers = {
 	moveTask,
 	debugEmitTaskSound,
 	cancelTaskPreparation,
-	reorderTask,
 	setTaskPriority,
 	hibernateTask,
 	deleteTask,

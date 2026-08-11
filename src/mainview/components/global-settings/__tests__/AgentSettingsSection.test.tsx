@@ -39,7 +39,7 @@ const identityT = Object.assign((key: string) => key, {
 const baseSettings: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
 	defaultConfigId: "claude-auto-opus48",
-	taskDropPosition: "top",
+	taskSortOrder: "oldest-first",
 	updateChannel: "stable",
 };
 

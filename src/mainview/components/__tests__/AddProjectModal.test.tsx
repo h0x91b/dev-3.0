@@ -15,7 +15,7 @@ vi.mock("../../rpc", () => ({
 				Promise.resolve({
 					defaultAgentId: "builtin-claude",
 					defaultConfigId: "claude-default",
-					taskDropPosition: "top",
+					taskSortOrder: "oldest-first",
 					updateChannel: "stable",
 				}),
 			),
@@ -197,7 +197,7 @@ describe("AddProjectModal", () => {
 		mockedApi.request.getGlobalSettings.mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			cloneBaseDirectory: "/base",
 		});
@@ -233,7 +233,7 @@ describe("AddProjectModal", () => {
 		mockedApi.request.getGlobalSettings.mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			cloneBaseDirectory: "/base",
 		});
@@ -260,7 +260,7 @@ describe("AddProjectModal", () => {
 		mockedApi.request.getGlobalSettings.mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			cloneBaseDirectory: "/base",
 		});
@@ -297,7 +297,7 @@ describe("AddProjectModal", () => {
 		mockedApi.request.getGlobalSettings.mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			cloneBaseDirectory: "/base",
 		});
@@ -349,7 +349,7 @@ describe("AddProjectModal", () => {
 		mockedApi.request.getGlobalSettings.mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			cloneBaseDirectory: "/base",
 		});
@@ -402,7 +402,7 @@ describe("AddProjectModal", () => {
 		mockedApi.request.getGlobalSettings.mockResolvedValue({
 			defaultAgentId: "builtin-claude",
 			defaultConfigId: "claude-default",
-			taskDropPosition: "top",
+			taskSortOrder: "oldest-first",
 			updateChannel: "stable",
 			cloneBaseDirectory: "/base",
 		});

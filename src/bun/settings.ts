@@ -60,7 +60,7 @@ function sanitizeShortcutOverrides(raw: unknown): GlobalSettings["keyboardShortc
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
 	defaultConfigId: "claude-auto-opus5-medium",
-	taskDropPosition: "top",
+	taskSortOrder: "oldest-first",
 	updateChannel: DEFAULT_UPDATE_CHANNEL,
 };
 
@@ -98,7 +98,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 	return {
 		defaultAgentId: d.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
 		defaultConfigId: resolveDefaultConfigId(d.defaultConfigId),
-		taskDropPosition: d.taskDropPosition === "bottom" ? "bottom" : "top",
+		taskSortOrder: d.taskSortOrder === "newest-first" ? "newest-first" : "oldest-first",
 		updateChannel: coerceUpdateChannel(d.updateChannel, hostPublishesCanary()),
 		theme: d.theme === "light" || d.theme === "system" || d.theme === "dark" ? d.theme : undefined,
 		resolvedTheme: d.resolvedTheme === "light" || d.resolvedTheme === "dark" ? d.resolvedTheme : undefined,

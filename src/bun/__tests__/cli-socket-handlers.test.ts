@@ -120,7 +120,7 @@ vi.mock("../socket-backpressure", () => ({
 }));
 
 vi.mock("../settings", () => ({
-	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
+	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskSortOrder: "oldest-first" })),
 	saveSettings: vi.fn(),
 	recordFavoriteUsages: vi.fn(),
 }));
@@ -2173,7 +2173,7 @@ describe("task.move", () => {
 				worktreePath: null,
 				branchName: null,
 				customColumnId: null,
-			}, { dropPosition: "top" });
+			});
 		});
 	}
 
@@ -2530,7 +2530,7 @@ describe("task.move", () => {
 			worktreePath: null,
 			branchName: null,
 			customColumnId: null,
-		}, { dropPosition: "top" });
+		});
 	});
 
 	it("active → completed: emits renderer sound after cleanup finishes", async () => {

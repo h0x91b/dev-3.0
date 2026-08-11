@@ -69,7 +69,6 @@ function renderCard(task: Task) {
 				onLaunchVariants={vi.fn()}
 				onAddAttempts={vi.fn()}
 				onDragStart={vi.fn()}
-				onTaskMoved={vi.fn()}
 			/>
 		</I18nProvider>,
 	);

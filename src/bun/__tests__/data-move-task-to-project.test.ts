@@ -195,18 +195,17 @@ describe("moveTaskToProject", () => {
 		expect((await loadTasks(source)).some((t) => t.id === "task-move")).toBe(false);
 	});
 
-	it("places the moved card at the top of the target To Do column when dropPosition is top", async () => {
+	it("leaves the target column's own tasks untouched — in-column position is derived, not stored", async () => {
 		seed(source, [makeTask({ id: "task-move" })]);
 		seed(target, [
 			makeTask({ id: "t1", projectId: "proj-tgt", seq: 1, columnOrder: 0 }),
 			makeTask({ id: "t2", projectId: "proj-tgt", seq: 2, columnOrder: 1 }),
 		]);
 
-		const moved = await moveTaskToProject(source, target, "task-move", "top");
+		await moveTaskToProject(source, target, "task-move");
 
-		expect(moved.columnOrder).toBe(0);
 		const persisted = await loadTasks(target);
-		expect(persisted.find((t) => t.id === "t1")!.columnOrder).toBe(1);
-		expect(persisted.find((t) => t.id === "t2")!.columnOrder).toBe(2);
+		expect(persisted.find((t) => t.id === "t1")!.columnOrder).toBe(0);
+		expect(persisted.find((t) => t.id === "t2")!.columnOrder).toBe(1);
 	});
 });

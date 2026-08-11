@@ -136,7 +136,7 @@ describe("an older side-by-side build saving settings.json", () => {
 			JSON.stringify({
 				defaultAgentId: "builtin-claude",
 				defaultConfigId: "claude-auto-opus5-medium",
-				taskDropPosition: "top",
+				taskSortOrder: "oldest-first",
 				updateChannel: "stable",
 				newTaskTerminalBackend: "native",
 			}),

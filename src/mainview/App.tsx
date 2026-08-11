@@ -373,7 +373,7 @@ function App() {
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-auto",
-		taskDropPosition: "top",
+		taskSortOrder: "oldest-first",
 		updateChannel: "stable",
 	});
 	// Auth failure for browser remote access (expired/invalid session).
@@ -1559,7 +1559,6 @@ function App() {
 							worktreePath: null,
 							branchName: null,
 							movedAt: new Date().toISOString(),
-							columnOrder: undefined,
 						} as any,
 					});
 					dispatch({ type: "clearBell", taskId });
