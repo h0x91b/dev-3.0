@@ -27,10 +27,20 @@ still reading them (frozen on-disk layout).
 
 ## Risks
 
-Drag-and-drop also carried Linear-style re-prioritization: dropping a card into another
-priority band rewrote its priority. That is gone with the drag; priority is now changed
-only via the card menu, the inspector badge, or `dev3 task update --priority`. Users with
-a hand-built column order get a one-time reshuffle on upgrade.
+Vertical drag inside a column also carried Linear-style re-prioritization: a card dropped
+into the stretch of the column occupied by a different priority band inherited that band's
+priority (`reorderTasksInColumn` read the neighbour it landed on top of and wrote its
+priority onto the whole variant group). That gesture is gone with the drag; priority is
+now changed only from the card's priority badge menu, the task inspector, the task detail
+modal, the Active Tasks sidebar badge, or `dev3 task update --priority`. Users with a
+hand-built column order get a one-time reshuffle on upgrade.
+
+A variant group is no longer held together inside a column. `sortTasksForColumn` used to
+keep cards sharing a `groupId` adjacent; now every task is placed by its own activity
+clock, so an unrelated card can sit between two variants of the same task (which also
+share one `seq`). Deliberate — variants are independent attempts and priority is written
+group-wide anyway, so they still share a band — but it is a visible change, and the
+grouping is the thing to restore first if epics land.
 
 ## Alternatives considered
 
