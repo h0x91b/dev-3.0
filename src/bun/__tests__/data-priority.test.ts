@@ -22,7 +22,7 @@ beforeEach(() => {
 	mkdirSync(TEST_HOME, { recursive: true });
 });
 
-import { addTask, setTaskPriority } from "../data";
+import { addTask, setTaskPriority, updateTask } from "../data";
 
 const testProject: Project = {
 	id: "proj-1",
@@ -134,5 +134,57 @@ describe("setTaskPriority", () => {
 		seedTasks([makeTask({ id: "a", seq: 1, priority: "P3" })]);
 		const changed = await setTaskPriority(testProject, "a", "P3");
 		expect(changed).toEqual([]);
+	});
+});
+
+// ============================================================
+// Column moves never touch priority
+// ============================================================
+
+/**
+ * Priority is set deliberately (badge menu, inspector, `dev3 task update
+ * --priority`) and must survive every column move. It used to not: vertical
+ * drag inside a column re-prioritized a card to the band it landed in
+ * (`reorderTasksInColumn`, removed together with the drag). Every column move
+ * funnels through `updateTask`, so guarding it here covers the board, the
+ * sidebar, the CLI and the lifecycle machine at once.
+ */
+describe("column moves preserve priority", () => {
+	it("keeps the priority when the built-in status changes", async () => {
+		seedTasks([makeTask({ id: "a", seq: 1, priority: "P0" })]);
+		const moved = await updateTask(testProject, "a", { status: "in-progress" });
+		expect(moved.priority).toBe("P0");
+		expect(readSavedTasks()[0].priority).toBe("P0");
+	});
+
+	it("keeps the priority when the task moves into a custom column", async () => {
+		seedTasks([makeTask({ id: "a", seq: 1, priority: "P1" })]);
+		const moved = await updateTask(testProject, "a", { customColumnId: "col-hold" });
+		expect(moved.customColumnId).toBe("col-hold");
+		expect(moved.priority).toBe("P1");
+	});
+
+	it("keeps the priority when the task leaves a custom column", async () => {
+		seedTasks([makeTask({ id: "a", seq: 1, priority: "P4", customColumnId: "col-hold" })]);
+		const moved = await updateTask(testProject, "a", { customColumnId: null });
+		expect(moved.customColumnId).toBeNull();
+		expect(moved.priority).toBe("P4");
+	});
+
+	it("keeps the priority on a terminal move", async () => {
+		seedTasks([makeTask({ id: "a", seq: 1, priority: "P0" })]);
+		const moved = await updateTask(testProject, "a", { status: "completed" });
+		expect(moved.priority).toBe("P0");
+	});
+
+	it("leaves the rest of a variant group's priority alone when one member moves", async () => {
+		seedTasks([
+			makeTask({ id: "v1", seq: 1, groupId: "g1", variantIndex: 1, priority: "P1" }),
+			makeTask({ id: "v2", seq: 1, groupId: "g1", variantIndex: 2, priority: "P1" }),
+		]);
+		await updateTask(testProject, "v1", { status: "review-by-user" });
+		const saved = readSavedTasks();
+		expect(saved.find((t) => t.id === "v1")!.priority).toBe("P1");
+		expect(saved.find((t) => t.id === "v2")!.priority).toBe("P1");
 	});
 });
