@@ -400,6 +400,18 @@ function App() {
 		initTaskSoundPlayback();
 	}, []);
 
+	// Load the settings this component mirrors into module state (completion
+	// sound, shortcut rebinds, terminal BiDi). Without it they stay at the
+	// hardcoded defaults until the user opens Settings — which re-enabled the
+	// completion sound on every launch for users who had turned it off (#1337).
+	useEffect(() => {
+		let alive = true;
+		api.request.getGlobalSettings()
+			.then((next) => { if (alive) setGlobalSettings(next); })
+			.catch(() => {});
+		return () => { alive = false; };
+	}, []);
+
 	// Mirror the completion-sound setting into the task-sounds module so the UI
 	// can gate its instant client-side playback without a round-trip.
 	useEffect(() => {

@@ -163,7 +163,7 @@ vi.mock("../confirm", () => ({
 	confirm: vi.fn().mockResolvedValue(false),
 	ConfirmHost: () => null,
 }));
-import { initTaskSoundPlayback, playTaskSoundFromPush } from "../task-sounds";
+import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "../task-sounds";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
 import { setStreamerMode } from "../streamer-mode";
 
@@ -1332,6 +1332,22 @@ describe("App keyboard shortcuts", () => {
 		it("initializes task sound playback on mount", async () => {
 			await renderApp();
 			expect(initTaskSoundPlayback).toHaveBeenCalled();
+		});
+
+		// #1337: without a settings load at boot the mirror kept its default and
+		// the chime played on every UI-driven completion despite the setting.
+		it("mirrors the stored completion-sound setting on mount", async () => {
+			vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+				defaultAgentId: "builtin-claude",
+				defaultConfigId: "claude-default",
+				taskSortOrder: "oldest-first",
+				updateChannel: "stable",
+				playSoundOnTaskComplete: false,
+			});
+
+			await renderApp();
+
+			await waitFor(() => expect(setTaskCompletionSoundEnabled).toHaveBeenCalledWith(false));
 		});
 
 		it("opens when rpc:openAddProjectModal fires", async () => {
