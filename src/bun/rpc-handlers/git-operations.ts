@@ -16,6 +16,7 @@ import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
+import { buildTaskPrDeepLinkSection } from "../../shared/deep-link";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
 import {
 	scheduleMessage as scheduleMessageCore,
@@ -534,11 +535,20 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 	log.info("← pushTask (pane opened)", { paneId });
 }
 
-const CREATE_PR_AGENT_PROMPT =
-	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
-
-const CREATE_PR_AUTO_MERGE_AGENT_PROMPT =
-	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation. Finally, enable auto-merge on the PR with gh pr merge --auto so it merges automatically once checks pass.";
+/**
+ * PR handoff prompt. `deepLinkSection` is the markdown block the agent must
+ * append verbatim so the PR carries a deep link back to the originating task
+ * (built from the task id, one source of truth in `shared/deep-link.ts`).
+ */
+function createPrAgentPrompt(deepLinkSection: string, autoMerge: boolean): string {
+	const base =
+		"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
+	const deepLink = ` At the very end of the PR description, append this markdown block exactly as written so reviewers can jump straight back to the originating dev3 task:\n\n${deepLinkSection}`;
+	const merge = autoMerge
+		? " Finally, enable auto-merge on the PR with gh pr merge --auto so it merges automatically once checks pass."
+		: "";
+	return base + deepLink + merge;
+}
 
 const COMMIT_AGENT_PROMPT =
 	"Please commit the current changes in this worktree. Review what changed (git status, git diff), stage everything that belongs to the work in this conversation, and create one or more commits with clear English messages describing the change. Do not push.";
@@ -560,7 +570,7 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 
 	assertGitTask(project, task);
 
-	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
+	const prompt = createPrAgentPrompt(buildTaskPrDeepLinkSection(task.id), params.autoMerge ?? false);
 	const delivery = await deliverAgentPrompt(task, prompt);
 	log.info("← createPullRequest", { taskId: task.id.slice(0, 8), status: delivery.status, reason: delivery.reason });
 	return { delivery };

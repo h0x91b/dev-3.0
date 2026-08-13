@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Opening in dev-3.0…</title>
+<style>
+:root {
+  --bg-deep: #040712;
+  --accent: #4496ff;
+  --accent-soft: rgba(68, 150, 255, 0.12);
+  --text-1: #fafcff;
+  --text-2: #aabbd4;
+  --text-3: #7385a0;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 255, 255, 0.14);
+  --glass-bg: rgba(12, 16, 23, 0.55);
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  color: var(--text-2);
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(68,150,255,0.10), transparent 60%),
+    linear-gradient(170deg, #060915 0%, #0f1731 45%, #180d29 100%);
+  background-color: var(--bg-deep);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.card {
+  width: 100%;
+  max-width: 460px;
+  background: var(--glass-bg);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 36px 32px;
+  text-align: center;
+  backdrop-filter: blur(12px);
+}
+.logo {
+  width: 64px; height: 64px;
+  border-radius: 16px;
+  margin: 0 auto 20px;
+  display: block;
+}
+h1 { color: var(--text-1); font-size: 1.4rem; font-weight: 600; margin-bottom: 8px; }
+p { font-size: 0.95rem; line-height: 1.5; margin-bottom: 8px; }
+.muted { color: var(--text-3); font-size: 0.85rem; }
+.btn {
+  display: inline-block;
+  margin: 20px 0 4px;
+  padding: 12px 26px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #041022;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.btn:hover { filter: brightness(1.1); }
+.raw {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.raw-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-2);
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  word-break: break-all;
+  max-width: 100%;
+}
+.copy-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-3);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.copy-btn:hover { color: var(--text-1); border-color: var(--border-hover); }
+.getlink { color: var(--accent); text-decoration: none; }
+.getlink:hover { text-decoration: underline; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="card">
+  <img class="logo" src="icon-192.png" alt="dev-3.0">
+  <div id="ok">
+    <h1>Opening in dev-3.0…</h1>
+    <p class="muted">Your browser should hand off to the dev-3.0 app. If nothing happens, use the button below.</p>
+    <a class="btn" id="open-btn" href="#">Open in dev-3.0</a>
+    <div class="raw">
+      <p class="muted">Or paste this into Spotlight or your browser's address bar:</p>
+      <div class="raw-link">
+        <code id="raw"></code>
+        <button class="copy-btn" id="copy-btn">Copy</button>
+      </div>
+      <p class="muted" style="margin-top:16px;">
+        Don't have it yet? <a class="getlink" href="/">Get dev-3.0</a>
+      </p>
+    </div>
+  </div>
+  <div id="bad" class="hidden">
+    <h1>Nothing to open</h1>
+    <p class="muted">This link is missing a task or project to open.</p>
+    <p class="muted" style="margin-top:16px;"><a class="getlink" href="/">Go to dev-3.0</a></p>
+  </div>
+</div>
+<script>
+  // Mirror of the dev3:// grammar in src/shared/deep-link.ts. Kept minimal and in
+  // lockstep with that module — this static page cannot import the TypeScript.
+  (function () {
+    var p = new URLSearchParams(location.search);
+    var deepLink = null;
+    if (p.get("task")) {
+      deepLink = "dev3://task/" + encodeURIComponent(p.get("task"));
+    } else if (p.get("project")) {
+      deepLink = "dev3://project/" + encodeURIComponent(p.get("project"));
+    } else if (p.has("new-task") || p.get("text")) {
+      var q = new URLSearchParams();
+      if (p.get("project")) q.set("project", p.get("project"));
+      if (p.get("text")) q.set("text", p.get("text"));
+      var qs = q.toString();
+      deepLink = "dev3://new-task" + (qs ? "?" + qs : "");
+    }
+
+    if (!deepLink) {
+      document.getElementById("ok").classList.add("hidden");
+      document.getElementById("bad").classList.remove("hidden");
+      return;
+    }
+
+    document.getElementById("raw").textContent = deepLink;
+    document.getElementById("open-btn").setAttribute("href", deepLink);
+
+    document.getElementById("copy-btn").addEventListener("click", function () {
+      var btn = this;
+      navigator.clipboard.writeText(deepLink).then(function () {
+        btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = "Copy"; }, 1200);
+      });
+    });
+
+    // Auto-hand-off to the app. Harmless when the scheme is unregistered.
+    window.location.href = deepLink;
+  })();
+</script>
+</body>
+</html>

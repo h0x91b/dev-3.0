@@ -12930,6 +12930,20 @@ describe("handlers.createPullRequest", () => {
 		expect(sends[1]?.join(" ")).toContain("send-keys -t %3 Enter");
 	});
 
+	it("tells the agent to append a deep link back to the origin task", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		tmuxWithLivePanes();
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const prompt = typedText(guardedSends()[0]);
+		expect(prompt).toContain("dev3://task/task-1");
+		expect(prompt).toContain("https://dev3.h0x91b.com/open.html?task=task-1");
+	});
+
 	it("sends the auto-merge variant prompt when autoMerge is set", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });

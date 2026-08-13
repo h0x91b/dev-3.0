@@ -5,6 +5,9 @@ import {
 	buildTaskDeepLink,
 	buildProjectDeepLink,
 	buildNewTaskDeepLink,
+	buildTaskWebLink,
+	buildTaskPrDeepLinkSection,
+	DEEP_LINK_WEB_BASE,
 } from "../../shared/deep-link";
 
 vi.mock("../data", () => ({
@@ -91,6 +94,32 @@ describe("build* + round-trip", () => {
 
 	it("omits absent params", () => {
 		expect(buildNewTaskDeepLink()).toBe("dev3://new-task");
+	});
+});
+
+describe("buildTaskWebLink", () => {
+	it("points at the https open page on the landing domain", () => {
+		expect(buildTaskWebLink("t1")).toBe(`${DEEP_LINK_WEB_BASE}/open.html?task=t1`);
+	});
+
+	it("url-encodes the task id", () => {
+		expect(buildTaskWebLink("a/b c")).toBe(`${DEEP_LINK_WEB_BASE}/open.html?task=a%2Fb%20c`);
+	});
+});
+
+describe("buildTaskPrDeepLinkSection", () => {
+	it("carries both the clickable https link and the raw dev3:// link", () => {
+		const section = buildTaskPrDeepLinkSection("abc-123");
+		expect(section).toContain(buildTaskWebLink("abc-123"));
+		expect(section).toContain(buildTaskDeepLink("abc-123"));
+	});
+
+	it("opens with a markdown horizontal rule so it reads as a footer", () => {
+		expect(buildTaskPrDeepLinkSection("t1").startsWith("---\n")).toBe(true);
+	});
+
+	it("wraps the raw scheme link in a code span for copy-paste", () => {
+		expect(buildTaskPrDeepLinkSection("t1")).toContain("`dev3://task/t1`");
 	});
 });
 
