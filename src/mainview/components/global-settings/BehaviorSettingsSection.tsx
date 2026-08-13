@@ -15,6 +15,7 @@ interface BehaviorSettingsSectionProps {
 	onSoundToggle: (enabled: boolean) => void;
 	onWatchByDefaultToggle: (enabled: boolean) => void;
 	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
+	onPrOriginTaskLinkToggle: (enabled: boolean) => void;
 	onFocusModeToggle: (enabled: boolean) => void;
 	onTaskSortOrderChange: (order: GlobalSettings["taskSortOrder"]) => void;
 	onTaskOpenModeChange: (mode: "split" | "fullscreen") => void;
@@ -32,6 +33,7 @@ export default function BehaviorSettingsSection({
 	onSoundToggle,
 	onWatchByDefaultToggle,
 	onSuggestCompletingTasksAfterMergeToggle,
+	onPrOriginTaskLinkToggle,
 	onFocusModeToggle,
 	onTaskSortOrderChange,
 	onTaskOpenModeChange,
@@ -171,6 +173,26 @@ export default function BehaviorSettingsSection({
 					offLabel={t("settings.off")}
 					onToggle={() =>
 						onSuggestCompletingTasksAfterMergeToggle(globalSettings.suggestCompletingTasksAfterMerge === false)
+					}
+				/>
+			</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="pr-origin-task-link">
+			<div>
+				<p className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.prOriginTaskLink")}
+				</p>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.prOriginTaskLinkDesc")}
+				</p>
+				<SettingsToggle
+					checked={globalSettings.prOriginTaskLink !== false}
+					ariaLabel={t("settings.prOriginTaskLink")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
+					onToggle={() =>
+						onPrOriginTaskLinkToggle(globalSettings.prOriginTaskLink === false)
 					}
 				/>
 			</div>

@@ -210,6 +210,8 @@ const settings = {
 	"settings.watchByDefaultDesc": "Предварительно включает «Следить» при запуске задачи. Для каждой задачи это можно изменить отдельно.",
 	"settings.suggestCompletingTasksAfterMerge": "Предлагать завершить задачу после merge",
 	"settings.suggestCompletingTasksAfterMergeDesc": "Если выключено, после merge показывается информационное уведомление вместо вопроса о завершении задачи.",
+	"settings.prOriginTaskLink": "Ссылка из pull request на задачу",
+	"settings.prOriginTaskLinkDesc": "Если включено, pull request'ы, которые открывает dev3, заканчиваются ссылкой на исходную задачу. Выключите, чтобы не упоминать dev3 в публичных описаниях PR.",
 	"settings.taskOpenMode": "Режим открытия задачи",
 	"settings.taskOpenModeDesc": "Как открываются активные задачи при нажатии на них. Также влияет на Cmd+1..9: «Разделённый вид» сохраняет вид задачи, «Полный экран» переключает на доску.",
 	"settings.taskOpenModeSplit": "Разделённый вид (боковая панель + терминал)",

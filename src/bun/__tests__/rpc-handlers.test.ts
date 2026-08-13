@@ -12930,6 +12930,35 @@ describe("handlers.createPullRequest", () => {
 		expect(sends[1]?.join(" ")).toContain("send-keys -t %3 Enter");
 	});
 
+	it("keeps the deep-link block last so nothing is appended inside it", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		tmuxWithLivePanes();
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id, autoMerge: true });
+
+		const prompt = typedText(guardedSends()[0]);
+		expect(prompt.indexOf("gh pr merge --auto")).toBeLessThan(prompt.indexOf("dev3://task/task-1"));
+		expect(prompt.trimEnd().endsWith("Settings → Tasks.)_")).toBe(true);
+	});
+
+	it("omits the deep link when the user turned the setting off", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(loadSettings).mockResolvedValueOnce({ prOriginTaskLink: false } as never);
+		tmuxWithLivePanes();
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const prompt = typedText(guardedSends()[0]);
+		expect(prompt).not.toContain("dev3://task/task-1");
+		expect(prompt).toContain("gh pr create");
+	});
+
 	it("tells the agent to append a deep link back to the origin task", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });

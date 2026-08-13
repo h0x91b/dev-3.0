@@ -39,6 +39,15 @@ export type DeepLinkNav =
 
 const stripSlashes = (s: string) => s.replace(/^\/+/, "").replace(/\/+$/, "");
 
+/** Ids travel percent-encoded in both the path and the query, so both sides decode. */
+const decodeId = (s: string) => {
+	try {
+		return decodeURIComponent(s);
+	} catch {
+		return s;
+	}
+};
+
 /**
  * Parse a `dev3://…` URL into a target, or `null` when it is malformed or of an
  * unknown kind. Tolerant of case in the host and of trailing slashes; ids and
@@ -56,11 +65,11 @@ export function parseDeepLink(raw: string): DeepLinkTarget | null {
 	const kind = url.hostname.toLowerCase();
 	switch (kind) {
 		case "task": {
-			const taskId = stripSlashes(url.pathname);
+			const taskId = decodeId(stripSlashes(url.pathname));
 			return taskId ? { kind: "task", taskId } : null;
 		}
 		case "project": {
-			const projectId = stripSlashes(url.pathname);
+			const projectId = decodeId(stripSlashes(url.pathname));
 			return projectId ? { kind: "project", projectId } : null;
 		}
 		case "new-task": {
@@ -75,12 +84,12 @@ export function parseDeepLink(raw: string): DeepLinkTarget | null {
 
 /** `dev3://task/<taskId>` */
 export function buildTaskDeepLink(taskId: string): string {
-	return `${DEEP_LINK_SCHEME}://task/${taskId}`;
+	return `${DEEP_LINK_SCHEME}://task/${encodeURIComponent(taskId)}`;
 }
 
 /** `dev3://project/<projectId>` */
 export function buildProjectDeepLink(projectId: string): string {
-	return `${DEEP_LINK_SCHEME}://project/${projectId}`;
+	return `${DEEP_LINK_SCHEME}://project/${encodeURIComponent(projectId)}`;
 }
 
 /** `dev3://new-task?project=…&text=…` — both params optional. */
@@ -108,5 +117,14 @@ export function buildTaskWebLink(taskId: string): string {
  * truth for the PR handoff prompt and its tests.
  */
 export function buildTaskPrDeepLinkSection(taskId: string): string {
-	return `---\n\n🔗 **Origin task in dev3:** [open in dev3](${buildTaskWebLink(taskId)}) · \`${buildTaskDeepLink(taskId)}\``;
+	// The leading blank line is load-bearing: `---` directly under a line of text is
+	// setext syntax, which turns that line into an <h2> and draws no rule at all.
+	return [
+		"",
+		"---",
+		"",
+		`🔗 **Origin task in dev3:** [open in dev3](${buildTaskWebLink(taskId)}) · \`${buildTaskDeepLink(taskId)}\``,
+		"",
+		"_(dev3 added this footer — turn it off in Settings → Tasks.)_",
+	].join("\n");
 }

@@ -335,6 +335,13 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
+	const handlePrOriginTaskLinkToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ prOriginTaskLink: enabled });
+		},
+		[persistSettingChange],
+	);
+
 	const handleTipsDisabledToggle = useCallback(
 		(disabled: boolean) => {
 			persistSettingChange({ tipsDisabled: disabled });
@@ -641,6 +648,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						onSoundToggle={handleSoundToggle}
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
+						onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
 						onFocusModeToggle={handleFocusModeToggle}
 						onTaskSortOrderChange={handleTaskSortOrderChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}

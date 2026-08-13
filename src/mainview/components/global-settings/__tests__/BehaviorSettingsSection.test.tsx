@@ -23,6 +23,7 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				onSoundToggle={vi.fn()}
 				onWatchByDefaultToggle={vi.fn()}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
+				onPrOriginTaskLinkToggle={vi.fn()}
 				onFocusModeToggle={vi.fn()}
 				onTaskSortOrderChange={vi.fn()}
 				onTaskOpenModeChange={vi.fn()}

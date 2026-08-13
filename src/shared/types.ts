@@ -914,6 +914,12 @@ export interface GlobalSettings {
 	/** When false, merged branches show a notice instead of a completion prompt. */
 	suggestCompletingTasksAfterMerge?: boolean;
 	/**
+	 * When false, the Create-PR handoff stops asking the agent to append the
+	 * deep link back to the originating task. Default on; the opt-out exists
+	 * because a public PR would otherwise advertise that dev3 produced it.
+	 */
+	prOriginTaskLink?: boolean;
+	/**
 	 * One-time migration marker: when this is behind the app's current
 	 * revision, built-in agent presets get their configuration order
 	 * resynced to match the declared order in DEFAULT_AGENTS once, then

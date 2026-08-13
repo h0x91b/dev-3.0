@@ -95,6 +95,14 @@ describe("build* + round-trip", () => {
 	it("omits absent params", () => {
 		expect(buildNewTaskDeepLink()).toBe("dev3://new-task");
 	});
+
+	it("round-trips an id that needs escaping, like the web link does", () => {
+		expect(parseDeepLink(buildTaskDeepLink("a/b c"))).toEqual({ kind: "task", taskId: "a/b c" });
+	});
+
+	it("keeps an unescaped legacy link readable", () => {
+		expect(parseDeepLink("dev3://task/plain-id")).toEqual({ kind: "task", taskId: "plain-id" });
+	});
 });
 
 describe("buildTaskWebLink", () => {
@@ -114,12 +122,16 @@ describe("buildTaskPrDeepLinkSection", () => {
 		expect(section).toContain(buildTaskDeepLink("abc-123"));
 	});
 
-	it("opens with a markdown horizontal rule so it reads as a footer", () => {
-		expect(buildTaskPrDeepLinkSection("t1").startsWith("---\n")).toBe(true);
+	it("puts a blank line before the rule so it cannot turn a text line into a heading", () => {
+		expect(buildTaskPrDeepLinkSection("t1").startsWith("\n---\n")).toBe(true);
 	});
 
 	it("wraps the raw scheme link in a code span for copy-paste", () => {
 		expect(buildTaskPrDeepLinkSection("t1")).toContain("`dev3://task/t1`");
+	});
+
+	it("tells the reader the footer can be turned off", () => {
+		expect(buildTaskPrDeepLinkSection("t1")).toContain("Settings → Tasks");
 	});
 });
 
