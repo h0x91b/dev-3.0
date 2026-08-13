@@ -67,6 +67,19 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).importShellEnv).toBeUndefined();
 	});
 
+	it("defaults prOriginTaskLink to on (undefined) and only stores an explicit opt-out", async () => {
+		// No file → default on (consumers gate with `!== false` / `=== false`).
+		expect((await loadSettings()).prOriginTaskLink).toBeUndefined();
+
+		// Explicit false is preserved — the user opted the PR footer out.
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ prOriginTaskLink: false }), null, 2), "utf-8");
+		expect((await loadSettings()).prOriginTaskLink).toBe(false);
+
+		// Explicit true normalizes back to undefined (the default-on representation).
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ prOriginTaskLink: true }), null, 2), "utf-8");
+		expect((await loadSettings()).prOriginTaskLink).toBeUndefined();
+	});
+
 	it("reads tipsDisabled back from disk (async + sync)", async () => {
 		// User toggled "Disable feature tips" → the flag lives in settings.json.
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ tipsDisabled: true }), null, 2), "utf-8");
@@ -183,6 +196,7 @@ describe("saveSettings", () => {
 			agentRateLimitTracking: false,
 			watchByDefault: true,
 			suggestCompletingTasksAfterMerge: false,
+			prOriginTaskLink: false,
 			agentsLayoutRevision: 1,
 			pxpipeProxyEnabled: true,
 			favorites: [{ agentId: "builtin-codex", configId: "codex-default", uses: 3, lastUsedAt: 123 }],

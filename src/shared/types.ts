@@ -914,6 +914,12 @@ export interface GlobalSettings {
 	/** When false, merged branches show a notice instead of a completion prompt. */
 	suggestCompletingTasksAfterMerge?: boolean;
 	/**
+	 * Add a footer with a deep link back to the originating task to pull requests
+	 * dev3 opens. Default on; set to `false` to keep PRs from revealing that they
+	 * were made with dev3.
+	 */
+	prOriginTaskLink?: boolean;
+	/**
 	 * One-time migration marker: when this is behind the app's current
 	 * revision, built-in agent presets get their configuration order
 	 * resynced to match the declared order in DEFAULT_AGENTS once, then

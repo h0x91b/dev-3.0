@@ -12930,11 +12930,12 @@ describe("handlers.createPullRequest", () => {
 		expect(sends[1]?.join(" ")).toContain("send-keys -t %3 Enter");
 	});
 
-	it("tells the agent to append a deep link back to the origin task", async () => {
+	it("tells the agent to append a deep link back to the origin task (default on)", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
 		tmuxWithLivePanes();
 
 		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
@@ -12942,6 +12943,40 @@ describe("handlers.createPullRequest", () => {
 		const prompt = typedText(guardedSends()[0]);
 		expect(prompt).toContain("dev3://task/task-1");
 		expect(prompt).toContain("https://dev3.h0x91b.com/open.html?task=task-1");
+	});
+
+	// Issue #1340, item 1: the opt-out drops the footer entirely.
+	it("omits the deep link when prOriginTaskLink is disabled", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first", prOriginTaskLink: false } as any);
+		tmuxWithLivePanes();
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const prompt = typedText(guardedSends()[0]);
+		expect(prompt).toContain("gh pr create");
+		expect(prompt).not.toContain("dev3://");
+		expect(prompt).not.toContain("open.html");
+	});
+
+	// Issue #1340, item 3: the handoff prompt must be a single line so it cannot
+	// submit early on agents that treat a newline as Enter.
+	it("sends a single-line prompt even with the deep link appended", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskSortOrder: "oldest-first" } as any);
+		tmuxWithLivePanes();
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const prompt = typedText(guardedSends()[0]);
+		expect(prompt).toContain("dev3://task/task-1");
+		expect(prompt).not.toContain("\n");
 	});
 
 	it("sends the auto-merge variant prompt when autoMerge is set", async () => {

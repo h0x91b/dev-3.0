@@ -208,6 +208,8 @@ const settings = {
 	"settings.watchByDefaultDesc": "Preselecciona Observar al iniciar una tarea. Puedes cambiarlo para cada tarea.",
 	"settings.suggestCompletingTasksAfterMerge": "Sugerir completar tareas tras un merge",
 	"settings.suggestCompletingTasksAfterMergeDesc": "Desactivado, una rama fusionada muestra un aviso informativo en lugar de preguntar si se completa la tarea.",
+	"settings.prOriginTaskLink": "Enlace a la tarea en los pull requests",
+	"settings.prOriginTaskLinkDesc": "Cuando dev3 abre un pull request, añade al final de la descripción un enlace a la tarea de origen. Desactívalo si prefieres no revelar que el PR se hizo con dev3.",
 	"settings.taskOpenMode": "Modo de apertura de tarea",
 	"settings.taskOpenModeDesc": "Cómo se abren las tareas activas al hacer clic en ellas. También afecta a Cmd+1..9: Vista dividida mantiene la vista de tarea, Pantalla completa cambia al tablero.",
 	"settings.taskOpenModeSplit": "Vista dividida (barra lateral + terminal)",

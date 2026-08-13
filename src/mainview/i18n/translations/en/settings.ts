@@ -208,6 +208,8 @@ const settings = {
 	"settings.watchByDefaultDesc": "Preselect Watch when launching a task. You can override it for each task.",
 	"settings.suggestCompletingTasksAfterMerge": "Suggest completing tasks after merge",
 	"settings.suggestCompletingTasksAfterMergeDesc": "When off, a merged branch shows an informational toast instead of asking to complete the task.",
+	"settings.prOriginTaskLink": "Task link in pull requests",
+	"settings.prOriginTaskLinkDesc": "When dev3 opens a pull request, end its description with a link back to the originating task. Turn this off if you'd rather not reveal that a PR was made with dev3.",
 	"settings.taskOpenMode": "Task open mode",
 	"settings.taskOpenModeDesc": "How active tasks open when you click on them. Also affects Cmd+1..9: Split keeps the task view, Full screen switches to the board.",
 	"settings.taskOpenModeSplit": "Split view (sidebar + terminal)",

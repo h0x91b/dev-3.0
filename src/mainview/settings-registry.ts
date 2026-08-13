@@ -174,6 +174,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "pr-origin-task-link",
+		category: "tasks",
+		titleKey: "settings.prOriginTaskLink",
+		descriptionKey: "settings.prOriginTaskLinkDesc",
+		anchor: "pr-origin-task-link",
+		globalField: "prOriginTaskLink",
+		storage: "global",
+	},
+	{
 		id: "task-complete-sound",
 		category: "tasks",
 		titleKey: "settings.taskCompleteSound",
@@ -421,6 +430,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentRateLimitTracking",
 	"watchByDefault",
 	"suggestCompletingTasksAfterMerge",
+	"prOriginTaskLink",
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"favorites",

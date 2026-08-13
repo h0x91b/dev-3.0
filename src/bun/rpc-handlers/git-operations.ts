@@ -16,7 +16,8 @@ import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
-import { buildTaskPrDeepLinkSection } from "../../shared/deep-link";
+import { buildTaskPrDeepLinkLine } from "../../shared/deep-link";
+import { loadSettings } from "../settings";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
 import {
 	scheduleMessage as scheduleMessageCore,
@@ -536,14 +537,18 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 }
 
 /**
- * PR handoff prompt. `deepLinkSection` is the markdown block the agent must
- * append verbatim so the PR carries a deep link back to the originating task
- * (built from the task id, one source of truth in `shared/deep-link.ts`).
+ * PR handoff prompt. `deepLinkLine` is the single-line footer content the agent
+ * appends to the PR description (one source of truth in `shared/deep-link.ts`), or
+ * null when the origin-task link is disabled. The whole prompt stays on ONE line —
+ * newlines in a handoff prompt can submit early on agents that read `\n` as Enter
+ * (issue #1340, item 3), so the `---` divider is described in words, not embedded.
  */
-function createPrAgentPrompt(deepLinkSection: string, autoMerge: boolean): string {
+function createPrAgentPrompt(deepLinkLine: string | null, autoMerge: boolean): string {
 	const base =
 		"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
-	const deepLink = ` At the very end of the PR description, append this markdown block exactly as written so reviewers can jump straight back to the originating dev3 task:\n\n${deepLinkSection}`;
+	const deepLink = deepLinkLine
+		? ` At the very end of the PR description, after a blank line followed by a \`---\` divider on its own line, add this exact line so reviewers can jump straight back to the originating dev3 task: ${deepLinkLine}`
+		: "";
 	const merge = autoMerge
 		? " Finally, enable auto-merge on the PR with gh pr merge --auto so it merges automatically once checks pass."
 		: "";
@@ -570,7 +575,11 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 
 	assertGitTask(project, task);
 
-	const prompt = createPrAgentPrompt(buildTaskPrDeepLinkSection(task.id), params.autoMerge ?? false);
+	// Default-on: only an explicit opt-out (GlobalSettings.prOriginTaskLink === false)
+	// drops the footer (issue #1340, item 1).
+	const settings = await loadSettings();
+	const deepLinkLine = settings.prOriginTaskLink === false ? null : buildTaskPrDeepLinkLine(task.id);
+	const prompt = createPrAgentPrompt(deepLinkLine, params.autoMerge ?? false);
 	const delivery = await deliverAgentPrompt(task, prompt);
 	log.info("← createPullRequest", { taskId: task.id.slice(0, 8), status: delivery.status, reason: delivery.reason });
 	return { delivery };

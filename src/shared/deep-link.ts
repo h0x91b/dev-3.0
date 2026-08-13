@@ -96,17 +96,35 @@ export function buildNewTaskDeepLink(opts?: { projectId?: string; text?: string 
  * `https://dev3.h0x91b.com/open.html?task=<taskId>` — the clickable, GitHub-safe
  * form of `buildTaskDeepLink`. The static `docs/open.html` page bounces it to the
  * `dev3://task/<taskId>` scheme so the app opens the task.
+ *
+ * Task and project ids are UUIDs — no URL-significant characters — so the id is
+ * placed verbatim, exactly as `buildTaskDeepLink` does. Keeping both sides
+ * un-encoded means the two links in one PR footer resolve to the identical
+ * target (issue #1340, item 5).
  */
 export function buildTaskWebLink(taskId: string): string {
-	return `${DEEP_LINK_WEB_BASE}/open.html?task=${encodeURIComponent(taskId)}`;
+	return `${DEEP_LINK_WEB_BASE}/open.html?task=${taskId}`;
 }
 
 /**
- * The markdown block dev3 appends to a pull-request description so reviewers can
- * jump back to the originating task: a clickable https link (redirects to the
- * scheme) plus the raw `dev3://` link as a copy-paste fallback. One source of
- * truth for the PR handoff prompt and its tests.
+ * The single-line footer content dev3 asks agents to add to a PR description: a
+ * clickable https link (redirects to the scheme), the raw `dev3://` link as a
+ * copy-paste fallback, and a pointer to the opt-out setting. Deliberately free of
+ * newlines so it can ride inside a single-line agent-handoff prompt — a multi-line
+ * prompt risks submitting early on agents that treat `\n` as Enter (issue #1340,
+ * item 3).
+ */
+export function buildTaskPrDeepLinkLine(taskId: string): string {
+	return `🔗 **Origin task in dev3:** [open in dev3](${buildTaskWebLink(taskId)}) · \`${buildTaskDeepLink(taskId)}\` (this footer can be turned off in dev3 settings)`;
+}
+
+/**
+ * The full markdown footer block: a thematic-break divider then the link line, for
+ * the agent skill and the tests. The two leading newlines are load-bearing —
+ * appended straight after the description, `text\n---` is setext syntax (turns the
+ * previous line into a heading and draws no rule); a blank line before `---` makes
+ * it a horizontal rule (issue #1340, item 2).
  */
 export function buildTaskPrDeepLinkSection(taskId: string): string {
-	return `---\n\n🔗 **Origin task in dev3:** [open in dev3](${buildTaskWebLink(taskId)}) · \`${buildTaskDeepLink(taskId)}\``;
+	return `\n\n---\n\n${buildTaskPrDeepLinkLine(taskId)}`;
 }

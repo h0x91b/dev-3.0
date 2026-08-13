@@ -33,7 +33,9 @@ page" the 144 record said could layer on later without changing the grammar.
 ## Alternatives considered
 
 - **Raw `dev3://` only.** Simplest, but not clickable in a PR — poor UX.
-- **A settings toggle.** Deferred: the link is harmless and low-noise, so it is
-  always on; a toggle can be added later if reviewers want opt-out.
+- **A settings toggle.** Deferred here, then **un-deferred by issue #1340** — a
+  public PR would otherwise advertise dev3 usage. Now a default-on
+  `GlobalSettings.prOriginTaskLink`; see
+  [pr-deeplink-optout-and-fixes](pr-deeplink-optout-and-fixes.md).
 - **Full Universal Links** (apple-app-site-association + notarization). Overkill;
   the client-side redirect page gives the clickable-link win without that wiring.

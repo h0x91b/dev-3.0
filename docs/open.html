@@ -113,7 +113,7 @@ code {
   <div id="ok">
     <h1>Opening in dev-3.0…</h1>
     <p class="muted">Your browser should hand off to the dev-3.0 app. If nothing happens, use the button below.</p>
-    <a class="btn" id="open-btn" href="#">Open in dev-3.0</a>
+    <a class="btn" id="open-btn" href="/">Open in dev-3.0</a>
     <div class="raw">
       <p class="muted">Or paste this into Spotlight or your browser's address bar:</p>
       <div class="raw-link">
@@ -137,16 +137,21 @@ code {
   (function () {
     var p = new URLSearchParams(location.search);
     var deepLink = null;
-    if (p.get("task")) {
-      deepLink = "dev3://task/" + encodeURIComponent(p.get("task"));
-    } else if (p.get("project")) {
-      deepLink = "dev3://project/" + encodeURIComponent(p.get("project"));
-    } else if (p.has("new-task") || p.get("text")) {
+    // Ids are UUIDs (no URL-significant characters), so pass them through verbatim
+    // — exactly as buildTaskDeepLink does, so both links in a PR footer resolve to
+    // the identical target (issue #1340, item 5).
+    // new-task is checked FIRST: it is the only kind that also reads `project`, so a
+    // ?new-task&project=... URL must not be swallowed by the project branch (item 4).
+    if (p.has("new-task")) {
       var q = new URLSearchParams();
       if (p.get("project")) q.set("project", p.get("project"));
       if (p.get("text")) q.set("text", p.get("text"));
       var qs = q.toString();
       deepLink = "dev3://new-task" + (qs ? "?" + qs : "");
+    } else if (p.get("task")) {
+      deepLink = "dev3://task/" + p.get("task");
+    } else if (p.get("project")) {
+      deepLink = "dev3://project/" + p.get("project");
     }
 
     if (!deepLink) {
@@ -162,6 +167,9 @@ code {
       var btn = this;
       navigator.clipboard.writeText(deepLink).then(function () {
         btn.textContent = "Copied";
+        setTimeout(function () { btn.textContent = "Copy"; }, 1200);
+      }).catch(function () {
+        btn.textContent = "Copy failed";
         setTimeout(function () { btn.textContent = "Copy"; }, 1200);
       });
     });

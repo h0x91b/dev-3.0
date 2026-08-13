@@ -138,6 +138,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		watchByDefault: typeof d.watchByDefault === "boolean" ? d.watchByDefault : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		suggestCompletingTasksAfterMerge: d.suggestCompletingTasksAfterMerge === false ? false : undefined,
+		// Default-on toggle — only an explicit false is a stored opt-out.
+		prOriginTaskLink: d.prOriginTaskLink === false ? false : undefined,
 		agentsLayoutRevision: typeof d.agentsLayoutRevision === "number" ? d.agentsLayoutRevision : undefined,
 		// Default-off experimental toggle — only an explicit true is a stored opt-in.
 		pxpipeProxyEnabled: d.pxpipeProxyEnabled === true ? true : undefined,

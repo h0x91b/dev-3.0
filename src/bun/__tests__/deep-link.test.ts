@@ -6,6 +6,7 @@ import {
 	buildProjectDeepLink,
 	buildNewTaskDeepLink,
 	buildTaskWebLink,
+	buildTaskPrDeepLinkLine,
 	buildTaskPrDeepLinkSection,
 	DEEP_LINK_WEB_BASE,
 } from "../../shared/deep-link";
@@ -102,8 +103,29 @@ describe("buildTaskWebLink", () => {
 		expect(buildTaskWebLink("t1")).toBe(`${DEEP_LINK_WEB_BASE}/open.html?task=t1`);
 	});
 
-	it("url-encodes the task id", () => {
-		expect(buildTaskWebLink("a/b c")).toBe(`${DEEP_LINK_WEB_BASE}/open.html?task=a%2Fb%20c`);
+	// Issue #1340, item 5: the id is placed verbatim (ids are UUIDs), so the https
+	// link and the raw scheme link carry byte-identical ids and resolve to the same
+	// target — no encoding on one side and not the other.
+	it("places the task id verbatim, matching buildTaskDeepLink", () => {
+		const id = "2995f62e-9564-4999-8714-d60ad5fe41f6";
+		expect(buildTaskWebLink(id)).toBe(`${DEEP_LINK_WEB_BASE}/open.html?task=${id}`);
+		expect(buildTaskWebLink(id).endsWith(id)).toBe(true);
+		expect(buildTaskDeepLink(id).endsWith(id)).toBe(true);
+	});
+});
+
+describe("buildTaskPrDeepLinkLine", () => {
+	it("carries both links and points at the opt-out setting", () => {
+		const line = buildTaskPrDeepLinkLine("abc-123");
+		expect(line).toContain(buildTaskWebLink("abc-123"));
+		expect(line).toContain("`dev3://task/abc-123`");
+		expect(line.toLowerCase()).toContain("settings");
+	});
+
+	// Issue #1340, item 3: the line rides inside a single-line agent-handoff prompt,
+	// so it must not contain a newline that could submit the prompt early.
+	it("contains no newline", () => {
+		expect(buildTaskPrDeepLinkLine("abc-123")).not.toContain("\n");
 	});
 });
 
@@ -114,8 +136,13 @@ describe("buildTaskPrDeepLinkSection", () => {
 		expect(section).toContain(buildTaskDeepLink("abc-123"));
 	});
 
-	it("opens with a markdown horizontal rule so it reads as a footer", () => {
-		expect(buildTaskPrDeepLinkSection("t1").startsWith("---\n")).toBe(true);
+	// Issue #1340, item 2: a blank line must precede the `---` divider, otherwise
+	// appending it straight after the description makes `text\n---` a setext heading
+	// instead of a horizontal rule.
+	it("separates the --- divider from preceding text with a blank line", () => {
+		const section = buildTaskPrDeepLinkSection("t1");
+		expect(section.startsWith("\n\n---")).toBe(true);
+		expect(section).not.toMatch(/[^\n]\n---/);
 	});
 
 	it("wraps the raw scheme link in a code span for copy-paste", () => {
