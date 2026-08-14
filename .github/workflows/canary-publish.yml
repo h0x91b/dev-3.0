@@ -162,14 +162,16 @@ jobs:
       publish: true
       bestEffort: true
 
-  # THE ONLY CHANNEL WINDOWS PUBLISHES TO. There is deliberately no Windows caller in
-  # release.yml: the stable feed is what an ordinary user's app polls, and the Windows build
-  # is UNSIGNED — SmartScreen greets its first launch — so it goes where the stakes are low
-  # first. See decisions/2026/08/08/windows-ships-through-canary-first.md.
+  # WHERE WINDOWS SHIPPED FIRST, and still the channel that gets it hourly. The build is
+  # UNSIGNED — SmartScreen greets its first launch — so it went where the stakes are low before
+  # it went anywhere else (decisions/2026/08/08/windows-ships-through-canary-first.md). It is now
+  # also attached to tagged releases (decisions/2026/08/14/windows-zip-on-the-release-page.md);
+  # nothing about this job changed when that landed.
   #
-  # `bestEffort: false`: unlike linux-arm64, this platform is proven. The same commit is
-  # packaged, launched and shut down cleanly by the `windows-proof` gate above before this job
-  # starts, so a failure here is a real failure of the publish, not an unproven target.
+  # `bestEffort: false`, and it is the OPPOSITE of what release.yml passes for the same platform.
+  # Here Windows is the only thing this job publishes: a failure is the whole point of the run,
+  # so it must be red. There a Windows failure would hold a proven macOS/Linux release hostage
+  # after those platforms had already synced to the bucket.
   build-win-x64:
     needs: [decide, windows-proof]
     if: needs.decide.outputs.win-x64 == 'true'
@@ -181,3 +183,4 @@ jobs:
       channel: canary
       tag: ${{ github.sha }}
       publish: true
+      bestEffort: false

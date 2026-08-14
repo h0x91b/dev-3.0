@@ -40,8 +40,9 @@ export const WINDOWS_SCOPE_PATHS = [
 	// a packaged-runtime change and the proof has to re-run. release.yml still pins Bun in
 	// its `prepare` and `release` jobs after the per-platform builds moved out; the two
 	// reusable build workflows below pin it for the builds themselves. NOTE that the
-	// reusable files are in under (2) ONLY — release.yml builds no Windows, it CALLS the
-	// proof, so neither reusable file ships into the packaged Windows app.
+	// reusable files are in under (2) ONLY — release.yml packages nothing itself: it CALLS the
+	// proof and (since windows-zip-on-the-release-page.md) the Windows build leg, so nothing in
+	// it ships into the packaged Windows app.
 	".github/workflows/build.yml",
 	".github/workflows/release.yml",
 	".github/workflows/release-build-macos.yml",
@@ -60,6 +61,10 @@ export const WINDOWS_SCOPE_PATHS = [
 	"scripts/package-native-host.ts",
 	"scripts/package-posix-native-host.ts",
 	"scripts/package-windows-launched-tree.ts",
+	// The prose that ships WITH the Windows download — the unsigned-launch warning and the entry
+	// point, rendered into both the run summary and the release body. Under (1): a break here
+	// reaches a human as wrong instructions for a build nothing else describes.
+	"scripts/windows-release-notes.ts",
 	"scripts/verify-packaged-windows-conpty.ts",
 	"scripts/verify-windows-app-launch.ts",
 	"scripts/verify-windows-conpty-update-archive.ts",

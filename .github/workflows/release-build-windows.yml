@@ -1,11 +1,15 @@
 name: Release build (Windows)
 
 # The Windows leg of the publishing path, shaped like release-build-macos.yml and
-# release-build-linux.yml so one reader can hold all three. Today it has exactly ONE caller —
-# canary-publish.yml. That is deliberate: the build is UNSIGNED and will never be signed (no
-# certificate, by decision), so its first launch on any machine shows Windows' SmartScreen
-# warning. That belongs on the channel whose users opted into surprises.
-# See decisions/2026/08/08/windows-ships-through-canary-first.md.
+# release-build-linux.yml so one reader can hold all three. TWO callers:
+# canary-publish.yml (channel canary, hourly) and release.yml (channel stable, per tag).
+#
+# The build is UNSIGNED and will never be signed (no certificate, by the user's decision), so its
+# first launch on any machine shows Windows' SmartScreen warning. It shipped to canary only at
+# first — windows-ships-through-canary-first.md said `release.yml` would get no Windows caller —
+# and the release caller exists because Arseny asked for both surfaces: an unsigned build a human
+# can download beats a signed one that does not exist.
+# See decisions/2026/08/14/windows-zip-on-the-release-page.md.
 #
 # TWO FILES ARE PUBLISHED, and they are not interchangeable:
 #   `<channel>-win-<arch>-<app>.tar.zst`  the in-app updater's download. Windows tar.exe cannot
@@ -49,9 +53,24 @@ on:
         description: "Whether to upload to S3. Pass an explicit boolean comparison, never a raw output string."
         required: true
         type: boolean
+      bestEffort:
+        # SAME INPUT AS release-build-linux.yml, AND THE TWO CALLERS PASS OPPOSITE VALUES ON
+        # PURPOSE. canary passes `false`: Windows is the only thing that run publishes, so a
+        # failure is the run. release.yml passes `true`: by the time this job could fail, macOS
+        # and Linux have already synced to the bucket, and the least mature platform must not
+        # hold a proven release hostage — Arseny's framing is a rough Windows build beating no
+        # Windows build. The caller then has to say out loud that Windows is missing; a
+        # best-effort platform with a silent absence is how a Windows-less release ships
+        # unnoticed for a week. See decisions/2026/08/14/windows-zip-on-the-release-page.md.
+        description: "Allow this platform to fail without failing the caller. The caller MUST warn when the artifact is then absent."
+        required: true
+        type: boolean
 
 jobs:
   build:
+    # Job level, like the Linux sibling: the caller reads the CALLED JOB's result, so a
+    # step-level tolerance here would still fail the workflow and the caller with it.
+    continue-on-error: ${{ inputs.bestEffort }}
     runs-on: ${{ inputs.runsOn }}
     # The packaging half of this job is measured at ~3 minutes on windows-latest (run
     # 31257371545); the rest of the budget is the launch proof's 4-minute readiness window plus
@@ -149,7 +168,22 @@ jobs:
         env:
           DEV3_RELEASE_CHANNEL: ${{ inputs.channel }}
           DEV3_RELEASE_ARCH: ${{ inputs.arch }}
+          # Makes the release-notes fragment link the VERSIONED copy of the zip instead of the
+          # bucket root, which the next build of the same channel overwrites.
+          DEV3_RELEASE_TAG: ${{ inputs.tag }}
         run: bun scripts/package-windows-launched-tree.ts
+
+      # The Windows section of the release body, rendered from THIS job's launch proof by the
+      # step above. release.yml appends it verbatim, so that file never names an executable no
+      # proof started — and a run that produced no Windows build produces no Windows section
+      # rather than a guessed one. Canary runs upload it too and nothing reads it; one artifact
+      # is cheaper than a conditional.
+      - name: Upload the Windows release-notes fragment
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-release-notes-${{ inputs.channel }}-${{ inputs.arch }}
+          path: ./artifacts-win-${{ inputs.arch }}-notes/windows-release-notes.md
+          if-no-files-found: error
 
       - name: Create release artifacts
         shell: bash

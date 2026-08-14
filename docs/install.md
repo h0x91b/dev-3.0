@@ -4,6 +4,7 @@ Every way to get dev-3.0 onto a machine. The two fastest paths (agent-driven and
 in the [README quick start](../README.md#quick-start) — this page is the full reference.
 
 - [macOS desktop app](#macos--desktop-app)
+- [Windows — unsigned zip](#windows--unsigned-zip)
 - [Linux](#linux)
 - [tmux on Linux — the version matters](#tmux-on-linux--the-version-matters)
 - [Cloud VM caveats](#cloud-vm-caveats)
@@ -37,8 +38,29 @@ or [**Intel**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable
 plus `cloudflared` if you want the public-tunnel feature (`brew install cloudflared`; safe to
 skip otherwise).
 
-Apple Silicon and Intel are both supported. Windows is on the roadmap — the desktop app already
-builds and starts there, but no Windows artifact is published in releases yet.
+Apple Silicon and Intel are both supported. For Windows, see the next section.
+
+## Windows — unsigned zip
+
+**x64 only, unsigned, and rough.** No installer, no Homebrew, no auto-updating install flow yet —
+one zip you extract and run:
+
+1. Download [**`stable-win-x64-dev-3.0.zip`**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-win-x64-dev-3.0.zip)
+   (~400 MB). It is attached to every release built after 2026-08-14 — if the latest release
+   predates that, the link 404s and there is no Windows build for it.
+2. Right-click the zip → **Extract All**. Nothing else is needed; the app carries its own runtime.
+3. Open the extracted `dev-3.0` folder and double-click `bin\launcher.exe`.
+4. **The first launch shows a full-screen blue SmartScreen warning.** This build is not
+   code-signed and it never will be — there is no certificate. Two clicks get past it: **More
+   info**, then **Run anyway**, once per build. That dialog means Windows does not recognise the
+   publisher; it is not a virus report.
+
+`git` has to be on `PATH` (dev3 creates a git worktree per task). Terminals run over PowerShell —
+no tmux and no WSL involved. The `dev3` CLI ships inside the bundle at
+`Resources\app\cli\dev3.exe`; there is no standalone Windows CLI tarball yet.
+
+Every published zip is the exact tree CI extracted and launched on a Windows runner before
+publishing — that is the only guarantee on offer, and it is not the same as "tested".
 
 ## Linux
 

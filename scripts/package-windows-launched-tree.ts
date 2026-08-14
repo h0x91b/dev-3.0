@@ -21,8 +21,9 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { renderWindowsReleaseNotes, renderWindowsRunSummary } from "./windows-release-notes";
 
 const BUCKET_BASE = "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0";
 
@@ -113,29 +114,33 @@ zipDirectory(unpackDir, zipPath);
 const zipBytes = statSync(zipPath).size;
 console.log(`Staged ${zipName} (${(zipBytes / 1024 / 1024).toFixed(1)} MB)`);
 
+// EVERY DESTINATION IS RENDERED FROM THE SAME FACTS, AND THE FACTS COME FROM THE PROOF.
+// The tag is optional on purpose: canary publishes to the bucket root, a tagged release also
+// keeps a versioned copy, and the release body should point at the copy that cannot be
+// overwritten by the next build.
+const releaseTag = process.env.DEV3_RELEASE_TAG;
+const facts = {
+	zipName,
+	zipUrl: releaseTag ? `${BUCKET_BASE}/${releaseTag}/${zipName}` : `${BUCKET_BASE}/${zipName}`,
+	zipBytes,
+	bundleRoot,
+	launcherRelative,
+	channel,
+};
+
 // The download instructions live with the artifact, not in a wiki. The SmartScreen paragraph
-// is not decoration: a canary user who meets an unexplained "Windows protected your PC"
-// dialog concludes the app is malware, and there is no certificate coming.
+// is not decoration: a user who meets an unexplained "Windows protected your PC" dialog
+// concludes the app is malware, and there is no certificate coming.
 const summaryPath = process.env.GITHUB_STEP_SUMMARY;
-if (summaryPath) {
-	appendFileSync(
-		summaryPath,
-		[
-			"",
-			"## Windows canary build",
-			"",
-			`**Download:** ${BUCKET_BASE}/${zipName} (${(zipBytes / 1024 / 1024).toFixed(1)} MB)`,
-			"",
-			`1. Download the \`.zip\`, right-click it → **Extract All**. No other tool is needed.`,
-			`2. Open the extracted \`${bundleRoot}\` folder and double-click \`${launcherRelative}\`.`,
-			// MEASURED, not predicted, on a real ru-RU Windows machine: the buttons were
-			// «Подробнее» then «Всё равно запустить» — two clicks, and the app ran normally
-			// afterwards. The title line is deliberately NOT quoted here: it is localised, and
-			// nobody has read the en-US one.
-			`3. **This build is not code-signed, and it never will be.** Windows blanks the screen with a blue SmartScreen warning the first time you run it. Getting past it is two clicks: **More info**, then **Run anyway**. This is Windows telling you it does not recognise the publisher — not a virus report.`,
-			"",
-			`These are the exact bytes the launch proof spawned in this run — bundle root \`${bundleRoot}\`, entry point \`${launcherRelative}\`.`,
-			"",
-		].join("\n"),
-	);
-}
+if (summaryPath) appendFileSync(summaryPath, renderWindowsRunSummary(facts));
+
+// THE RELEASE BODY'S WINDOWS SECTION IS WRITTEN HERE, NOT IN release.yml, and that is the whole
+// point: this process is the only one holding the launch proof, so a hand-written section in the
+// release workflow could name an entry point nothing started, on a platform nobody publishing the
+// release can check. It lands OUTSIDE `artifacts-win-<arch>/` so it is not swept into the bucket
+// as a published file; release.yml picks it up as a CI artifact and appends it verbatim.
+const notesDir = resolve(join(repoRoot, `artifacts-win-${arch}-notes`));
+mkdirSync(notesDir, { recursive: true });
+const notesPath = join(notesDir, "windows-release-notes.md");
+writeFileSync(notesPath, renderWindowsReleaseNotes(facts));
+console.log(`Wrote the release-notes fragment: ${notesPath}`);
