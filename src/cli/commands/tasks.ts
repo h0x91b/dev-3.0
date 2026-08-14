@@ -1,4 +1,4 @@
-import type { Task } from "../../shared/types";
+import type { Task, TaskStatus } from "../../shared/types";
 import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
@@ -8,6 +8,26 @@ import { resolveProjectId, type CliContext } from "../context";
 // Default page size for `tasks list` when --limit is omitted. Keeps large
 // boards (hundreds of tasks) from flooding the terminal; page with --offset.
 const DEFAULT_LIST_LIMIT = 50;
+
+// Listing order: live work first, then the backlog, then the archive. A default
+// page must never be filled with completed tasks while something is running.
+const STATUS_GROUP_RANK: Record<TaskStatus, number> = {
+	"in-progress": 0,
+	"user-questions": 0,
+	"review-by-ai": 0,
+	"review-by-user": 0,
+	"review-by-colleague": 0,
+	todo: 1,
+	completed: 2,
+	cancelled: 3,
+};
+
+// Custom-column tasks are live work too — they left To Do and never reached
+// completed/cancelled, so they rank with the active group.
+function groupRank(task: Task): number {
+	if (task.customColumnId) return 0;
+	return STATUS_GROUP_RANK[task.status] ?? 1;
+}
 
 export async function handleTasks(
 	subcommand: string | undefined,
@@ -57,9 +77,10 @@ export async function handleTasks(
 			tasks = tasks.filter((t) => t.labelIds?.some((id) => id === labelId || id.startsWith(labelId)));
 		}
 
-		// Newest first — sort by seq descending so the most recent tasks lead.
-		// Done before paging so --offset/--limit walk from the newest task.
-		tasks = [...tasks].sort((a, b) => b.seq - a.seq);
+		// Live work first, then To Do, then completed, then cancelled; newest
+		// (highest seq) first inside each group. Done before paging so
+		// --offset/--limit walk the same order the board reads in.
+		tasks = [...tasks].sort((a, b) => groupRank(a) - groupRank(b) || b.seq - a.seq);
 
 		// Client-side paging (server returns all tasks matching status filter).
 		// Defaults to the newest DEFAULT_LIST_LIMIT so large boards don't flood.

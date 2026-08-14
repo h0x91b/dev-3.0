@@ -371,6 +371,105 @@ describe("tasks list default limit", () => {
 	});
 });
 
+// ─── tasks list: status grouping ─────────────────────────────────────────────
+
+describe("tasks list status grouping", () => {
+	function withStatus(seq: number, status: Task["status"], extra: Partial<Task> = {}): Task {
+		return {
+			...TASKS[0],
+			id: `s${String(seq).padStart(8, "0")}-1111-2222-3333-444444444444`,
+			seq,
+			title: `task ${status} ${seq}`,
+			status,
+			...extra,
+		};
+	}
+
+	function order(output: string, ...titles: string[]): number[] {
+		return titles.map((title) => output.indexOf(title));
+	}
+
+	it("puts live work first, then To Do, then completed, then cancelled", async () => {
+		mockSend.mockResolvedValue(
+			okResp([
+				withStatus(1, "cancelled"),
+				withStatus(2, "completed"),
+				withStatus(3, "todo"),
+				withStatus(4, "in-progress"),
+			]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		const [live, todo, done, cancelled] = order(
+			stdoutOutput,
+			"task in-progress 4",
+			"task todo 3",
+			"task completed 2",
+			"task cancelled 1",
+		);
+		expect(live).toBeGreaterThan(-1);
+		expect(live).toBeLessThan(todo);
+		expect(todo).toBeLessThan(done);
+		expect(done).toBeLessThan(cancelled);
+	});
+
+	it("treats every review/question column as live work", async () => {
+		mockSend.mockResolvedValue(
+			okResp([
+				withStatus(10, "todo"),
+				withStatus(1, "user-questions"),
+				withStatus(2, "review-by-ai"),
+				withStatus(3, "review-by-user"),
+				withStatus(4, "review-by-colleague"),
+			]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		const todoIdx = stdoutOutput.indexOf("task todo 10");
+		for (const title of [
+			"task user-questions 1",
+			"task review-by-ai 2",
+			"task review-by-user 3",
+			"task review-by-colleague 4",
+		]) {
+			expect(stdoutOutput.indexOf(title)).toBeLessThan(todoIdx);
+		}
+	});
+
+	it("ranks a custom-column task as live work", async () => {
+		mockSend.mockResolvedValue(
+			okResp([withStatus(9, "todo"), withStatus(1, "todo", { customColumnId: "3d339f70" })]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput.indexOf("task todo 1")).toBeLessThan(stdoutOutput.indexOf("task todo 9"));
+	});
+
+	it("keeps newest-first inside a group", async () => {
+		mockSend.mockResolvedValue(okResp([withStatus(5, "in-progress"), withStatus(7, "in-progress")]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput.indexOf("task in-progress 7")).toBeLessThan(
+			stdoutOutput.indexOf("task in-progress 5"),
+		);
+	});
+
+	it("fills a small --limit with live work before completed tasks", async () => {
+		mockSend.mockResolvedValue(
+			okResp([withStatus(50, "completed"), withStatus(49, "completed"), withStatus(2, "in-progress")]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", limit: "1" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("task in-progress 2");
+		expect(stdoutOutput).not.toContain("task completed 50");
+	});
+});
+
 describe("tasks list --offset paging", () => {
 	it("skips the first N tasks (after newest-first sort)", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));

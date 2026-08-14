@@ -119,8 +119,9 @@ const COMMANDS: CommandHelp[] = [
 			{
 				name: "list",
 				usage: "dev3 tasks list [--status <s>] [--label <id>] [--limit <n>] [--offset <n>]",
-				summary: "List tasks newest-first (default 50 per page).",
+				summary: "List tasks: live work, then To Do, then completed, then cancelled (default 50 per page).",
 				details: [
+					"Newest first (highest seq) inside each group.",
 					"--status <s>   Filter by status.",
 					"--label <id>   Filter by label id (8-char prefix works).",
 					"--limit <n>    Page size (default 50).",
