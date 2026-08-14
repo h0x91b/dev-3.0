@@ -67,6 +67,18 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).importShellEnv).toBeUndefined();
 	});
 
+	it("defaults prOriginTaskLink to on and stores only an explicit opt-out", async () => {
+		// No file → default on; every consumer gates with `!== false` / `=== false`.
+		expect((await loadSettings()).prOriginTaskLink).toBeUndefined();
+
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ prOriginTaskLink: false }), null, 2), "utf-8");
+		expect((await loadSettings()).prOriginTaskLink).toBe(false);
+
+		// Explicit true normalizes back to undefined — the default-on representation.
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ prOriginTaskLink: true }), null, 2), "utf-8");
+		expect((await loadSettings()).prOriginTaskLink).toBeUndefined();
+	});
+
 	it("reads tipsDisabled back from disk (async + sync)", async () => {
 		// User toggled "Disable feature tips" → the flag lives in settings.json.
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ tipsDisabled: true }), null, 2), "utf-8");

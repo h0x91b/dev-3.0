@@ -16,7 +16,7 @@ import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
-import { buildTaskPrDeepLinkSection } from "../../shared/deep-link";
+import { buildTaskPrDeepLinkLine } from "../../shared/deep-link";
 import { loadSettings } from "../settings";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
 import {
@@ -537,23 +537,25 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 }
 
 /**
- * PR handoff prompt. `deepLinkSection` is the markdown block the agent must
- * append verbatim so the PR carries a deep link back to the originating task
- * (built from the task id, one source of truth in `shared/deep-link.ts`), or
- * empty when the user opted out.
+ * PR handoff prompt. `deepLinkLine` is the footer content the agent appends so the
+ * PR carries a deep link back to the originating task (one source of truth in
+ * `shared/deep-link.ts`), or null when the user opted out.
  *
- * The block goes LAST, after the auto-merge sentence: it ends the prompt, and
- * anything appended behind it would read as part of the markdown the agent was
- * told to copy verbatim.
+ * Two rules hold this together:
+ *  - The whole prompt stays on ONE line. It is typed into the pane as raw bytes, so
+ *    an embedded newline can submit it early on an agent that reads `\n` as Enter —
+ *    hence the `---` divider is described in words rather than embedded.
+ *  - The link goes LAST. It ends the prompt, and any sentence behind it would read
+ *    as part of the line the agent was told to copy exactly.
  */
-function createPrAgentPrompt(deepLinkSection: string, autoMerge: boolean): string {
+function createPrAgentPrompt(deepLinkLine: string | null, autoMerge: boolean): string {
 	const base =
 		"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
 	const merge = autoMerge
 		? " Finally, enable auto-merge on the PR with gh pr merge --auto so it merges automatically once checks pass."
 		: "";
-	const deepLink = deepLinkSection
-		? ` At the very end of the PR description, after a blank line, append this markdown block exactly as written so reviewers can jump straight back to the originating dev3 task:\n${deepLinkSection}`
+	const deepLink = deepLinkLine
+		? ` End the PR description with a blank line, then a \`---\` divider on its own line, then exactly this line so reviewers can jump straight back to the originating dev3 task: ${deepLinkLine}`
 		: "";
 	return base + merge + deepLink;
 }
@@ -580,7 +582,7 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 
 	const linkOptOut = (await loadSettings()).prOriginTaskLink === false;
 	const prompt = createPrAgentPrompt(
-		linkOptOut ? "" : buildTaskPrDeepLinkSection(task.id),
+		linkOptOut ? null : buildTaskPrDeepLinkLine(task.id),
 		params.autoMerge ?? false,
 	);
 	const delivery = await deliverAgentPrompt(task, prompt);

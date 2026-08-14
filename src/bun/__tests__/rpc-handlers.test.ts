@@ -12944,6 +12944,22 @@ describe("handlers.createPullRequest", () => {
 		expect(prompt.trimEnd().endsWith("Settings → Tasks.)_")).toBe(true);
 	});
 
+	// A newline reaches the pane as a raw byte and can submit the prompt early on an
+	// agent that reads it as Enter, so the whole handoff stays on one line.
+	it("sends a single-line prompt even with the deep link appended", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		tmuxWithLivePanes();
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const prompt = typedText(guardedSends()[0]);
+		expect(prompt).toContain("dev3://task/task-1");
+		expect(prompt).not.toContain("\n");
+	});
+
 	it("omits the deep link when the user turned the setting off", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });

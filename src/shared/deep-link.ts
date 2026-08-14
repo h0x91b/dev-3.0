@@ -111,20 +111,24 @@ export function buildTaskWebLink(taskId: string): string {
 }
 
 /**
- * The markdown block dev3 appends to a pull-request description so reviewers can
- * jump back to the originating task: a clickable https link (redirects to the
- * scheme) plus the raw `dev3://` link as a copy-paste fallback. One source of
- * truth for the PR handoff prompt and its tests.
+ * The footer content, on ONE line: a clickable https link (redirects to the scheme),
+ * the raw `dev3://` link as a copy-paste fallback, and where to switch the footer
+ * off. Newline-free on purpose — it rides inside the agent-handoff prompt, which
+ * reaches the pane as raw bytes, and a newline can submit the prompt early on an
+ * agent that reads `\n` as Enter.
+ */
+export function buildTaskPrDeepLinkLine(taskId: string): string {
+	return `🔗 **Origin task in dev3:** [open in dev3](${buildTaskWebLink(taskId)}) · \`${buildTaskDeepLink(taskId)}\` _(dev3 added this footer — turn it off in Settings → Tasks.)_`;
+}
+
+/**
+ * The rendered footer: the divider plus {@link buildTaskPrDeepLinkLine}. Used by the
+ * agent skill and the tests; the handoff prompt itself passes the LINE, never this,
+ * because a prompt with newlines is typed into the pane byte for byte.
+ *
+ * The leading blank line is load-bearing: `---` directly under a line of text is
+ * setext syntax, which turns that line into an <h2> and draws no rule at all.
  */
 export function buildTaskPrDeepLinkSection(taskId: string): string {
-	// The leading blank line is load-bearing: `---` directly under a line of text is
-	// setext syntax, which turns that line into an <h2> and draws no rule at all.
-	return [
-		"",
-		"---",
-		"",
-		`🔗 **Origin task in dev3:** [open in dev3](${buildTaskWebLink(taskId)}) · \`${buildTaskDeepLink(taskId)}\``,
-		"",
-		"_(dev3 added this footer — turn it off in Settings → Tasks.)_",
-	].join("\n");
+	return `\n\n---\n\n${buildTaskPrDeepLinkLine(taskId)}`;
 }

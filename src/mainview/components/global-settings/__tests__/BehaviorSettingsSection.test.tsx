@@ -13,6 +13,7 @@ const t = ((key: string) =>
 
 function renderSection(settings: Partial<GlobalSettings> = {}) {
 	const onReviewModePromptChange = vi.fn();
+	const onPrOriginTaskLinkToggle = vi.fn();
 	render(
 		<I18nProvider>
 			<BehaviorSettingsSection
@@ -23,7 +24,7 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				onSoundToggle={vi.fn()}
 				onWatchByDefaultToggle={vi.fn()}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
-				onPrOriginTaskLinkToggle={vi.fn()}
+				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
 				onFocusModeToggle={vi.fn()}
 				onTaskSortOrderChange={vi.fn()}
 				onTaskOpenModeChange={vi.fn()}
@@ -35,7 +36,7 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 	);
 	const textarea = screen.getByLabelText("settings.reviewModePrompt") as HTMLTextAreaElement;
 	const reset = screen.getByRole("button", { name: "settings.reviewModePromptReset" });
-	return { textarea, reset, onReviewModePromptChange };
+	return { textarea, reset, onReviewModePromptChange, onPrOriginTaskLinkToggle };
 }
 
 describe("BehaviorSettingsSection — review prompt", () => {
@@ -75,5 +76,25 @@ describe("BehaviorSettingsSection — review prompt", () => {
 		await userEvent.click(reset);
 		expect(textarea.value).toBe(BUILTIN_PROMPT);
 		expect(onReviewModePromptChange).toHaveBeenCalledWith("");
+	});
+});
+
+describe("BehaviorSettingsSection — PR origin-task link toggle", () => {
+	function prSwitch() {
+		return screen.getByRole("switch", { name: "settings.prOriginTaskLink" });
+	}
+
+	it("is on by default and turning it off reports false", async () => {
+		const { onPrOriginTaskLinkToggle } = renderSection();
+		expect(prSwitch()).toHaveAttribute("aria-checked", "true");
+		await userEvent.click(prSwitch());
+		expect(onPrOriginTaskLinkToggle).toHaveBeenCalledWith(false);
+	});
+
+	it("reflects a stored opt-out and turning it on reports true", async () => {
+		const { onPrOriginTaskLinkToggle } = renderSection({ prOriginTaskLink: false });
+		expect(prSwitch()).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(prSwitch());
+		expect(onPrOriginTaskLinkToggle).toHaveBeenCalledWith(true);
 	});
 });

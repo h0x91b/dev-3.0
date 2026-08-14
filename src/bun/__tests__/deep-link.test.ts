@@ -6,6 +6,7 @@ import {
 	buildProjectDeepLink,
 	buildNewTaskDeepLink,
 	buildTaskWebLink,
+	buildTaskPrDeepLinkLine,
 	buildTaskPrDeepLinkSection,
 	DEEP_LINK_WEB_BASE,
 } from "../../shared/deep-link";
@@ -115,6 +116,21 @@ describe("buildTaskWebLink", () => {
 	});
 });
 
+describe("buildTaskPrDeepLinkLine", () => {
+	it("carries both links and names the opt-out", () => {
+		const line = buildTaskPrDeepLinkLine("abc-123");
+		expect(line).toContain(buildTaskWebLink("abc-123"));
+		expect(line).toContain("`dev3://task/abc-123`");
+		expect(line).toContain("Settings → Tasks");
+	});
+
+	// It rides inside the handoff prompt, which is typed into the pane byte for byte:
+	// one newline could submit the prompt early on a non-Claude agent.
+	it("contains no newline", () => {
+		expect(buildTaskPrDeepLinkLine("abc-123")).not.toContain("\n");
+	});
+});
+
 describe("buildTaskPrDeepLinkSection", () => {
 	it("carries both the clickable https link and the raw dev3:// link", () => {
 		const section = buildTaskPrDeepLinkSection("abc-123");
@@ -123,7 +139,9 @@ describe("buildTaskPrDeepLinkSection", () => {
 	});
 
 	it("puts a blank line before the rule so it cannot turn a text line into a heading", () => {
-		expect(buildTaskPrDeepLinkSection("t1").startsWith("\n---\n")).toBe(true);
+		const section = buildTaskPrDeepLinkSection("t1");
+		expect(section.startsWith("\n\n---")).toBe(true);
+		expect(section).not.toMatch(/[^\n]\n---/);
 	});
 
 	it("wraps the raw scheme link in a code span for copy-paste", () => {
