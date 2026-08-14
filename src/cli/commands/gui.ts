@@ -160,7 +160,7 @@ export async function handleGui(subcommand: string | undefined, args: ParsedArgs
 	}
 	exitError(
 		`dev3 gui is not supported on ${platform} yet`,
-		"Only macOS and Linux are supported. Windows is on the roadmap.",
+		"Only macOS and Linux can launch the app from the CLI. On Windows, download and extract the desktop zip and run bin\\launcher.exe: https://github.com/h0x91b/dev-3.0/blob/main/docs/install.md#windows--canary-zip",
 	);
 }
 

@@ -12,7 +12,7 @@ Follow the steps for the user's OS. Ask before installing anything beyond dev-3.
 uname -s   # Darwin = macOS, Linux = Linux
 ```
 
-Windows is not supported yet — tell the user it's on the roadmap and stop.
+On Windows there is no `uname` — if you are in PowerShell / `cmd`, follow section 2c.
 
 ## 2a. macOS (Darwin)
 
@@ -58,6 +58,18 @@ mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
 Then hand off the same way — the user runs `~/.dev3/dev3 remote` themselves. For the tarball path, make sure `git` and `tmux` are installed via the system package manager (`cloudflared` is optional — without it `dev3 remote` falls back to LAN/SSH-forward URLs).
 
 For a desktop GUI on Linux instead of the browser UI: `dev3 gui` (lazily downloads the bundle on first run and prints the exact `apt`/`dnf`/`pacman` command if GTK/WebKit libs are missing).
+
+## 2c. Windows (x64)
+
+Tell the user this up front: **Windows support is brand new and may still be rough.** There is no installer, no package manager, and no Windows file on the stable download page — the build ships in the rolling `canary` pre-release, which is cut from `main` and is not a tested release. It is also unsigned, so the first launch goes through a Microsoft Defender SmartScreen warning that the user has to click past (expand the details, then choose to run it anyway). Do not tell the user the app will keep itself up to date — automatic updating is not proven on Windows, and the first observed attempt hung. Ask before downloading.
+
+```powershell
+$zip = "$env:TEMP\dev-3.0-canary.zip"
+Invoke-WebRequest -Uri "https://github.com/h0x91b/dev-3.0/releases/download/canary/canary-win-x64-dev-3.0-canary.zip" -OutFile $zip
+Expand-Archive -Path $zip -DestinationPath "$env:LOCALAPPDATA\dev-3.0" -Force
+```
+
+~121 MB to download, ~400 MB extracted. Then the user launches `bin\launcher.exe` from the extracted folder themselves. `git` must be on `PATH`; there is no tmux and no WSL involved — task terminals use the native backend over PowerShell. The `dev3` CLI ships inside the bundle at `Resources\app\cli\dev3.exe`; there is no standalone Windows CLI tarball, so `dev3 --version` will not work from a bare shell unless the user points at that path.
 
 ## 3. Verify
 

@@ -32,7 +32,7 @@
   "url": "https://dev3.h0x91b.com/",
   "image": "https://dev3.h0x91b.com/og-image.jpg",
   "applicationCategory": "DeveloperApplication",
-  "operatingSystem": "macOS, Linux",
+  "operatingSystem": "macOS, Linux, Windows",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
   "downloadUrl": "https://github.com/h0x91b/dev-3.0/releases/latest",
   "license": "https://www.apache.org/licenses/LICENSE-2.0",
@@ -1114,6 +1114,7 @@ nav.scrolled {
 }
 .copy-btn:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.12); }
 .copy-btn.copied { color: var(--green); border-color: rgba(52, 211, 153, 0.4); }
+.install-card-wide { grid-column: 1 / -1; }
 .install-card-note {
   font-size: 13px;
   color: var(--text-3);
@@ -1199,6 +1200,7 @@ nav.scrolled {
   .install-arrow { transform: rotate(90deg); }
   .install-step { min-width: auto; width: 100%; }
   .install-cards { grid-template-columns: 1fr; }
+  .install-card-wide { grid-column: auto; }
 }
 
 /* ======= ARCHITECTURE ======= */
@@ -2044,7 +2046,7 @@ footer {
       Download. Open. Go.
     </h2>
     <p class="section-desc reveal reveal-delay-2" style="margin-left:auto;margin-right:auto">
-      dev-3.0 is a native app for macOS and Linux. The fastest way in: paste one line
+      dev-3.0 is a native app for macOS, Linux and Windows. The fastest way in: paste one line
       into the coding agent you already use &mdash; it installs everything for you.
     </p>
 
@@ -2104,6 +2106,23 @@ dev3 remote</code>
           No Homebrew? <a href="https://github.com/h0x91b/dev-3.0#pre-built-cli-tarball-no-homebrew" target="_blank" rel="noopener">CLI tarball</a>.
         </p>
       </div>
+      <div class="install-card install-card-wide">
+        <div class="install-card-head">
+          <h3>Windows</h3>
+          <span class="install-card-badge" style="background: var(--purple-glow); color: var(--purple); border-color: rgba(168, 85, 247, 0.2);">Brand new &mdash; canary only</span>
+        </div>
+        <p class="install-card-note" style="margin-bottom:12px">
+          <strong style="color:var(--text-2)">Windows support is brand new and may still be rough.</strong>
+          x64 only. Download
+          <a href="https://github.com/h0x91b/dev-3.0/releases/download/canary/canary-win-x64-dev-3.0-canary.zip">canary-win-x64-dev-3.0-canary.zip</a>
+          (~121&nbsp;MB), extract it, run <code style="font-family:var(--font-mono);font-size:0.95em">bin\launcher.exe</code>.
+        </p>
+        <p class="install-card-note">
+          It ships in the canary channel only &mdash; the stable download page has no Windows file yet &mdash;
+          and it is unsigned, so the first launch needs two clicks past a SmartScreen warning.
+          Full steps: <a href="https://github.com/h0x91b/dev-3.0/blob/main/docs/install.md#windows--canary-zip" target="_blank" rel="noopener">install guide</a>.
+        </p>
+      </div>
     </div>
 
     <div class="install-steps reveal reveal-delay-3">
@@ -2142,7 +2161,7 @@ dev3 remote</code>
         Download latest release
       </a>
       <p style="margin-top: 16px; font-size: 13px; color: var(--text-3);">
-        macOS (Apple Silicon &amp; Intel) and Linux &mdash; Windows coming soon
+        macOS (Apple Silicon &amp; Intel) and Linux &mdash; Windows x64 is brand new and may still be rough, and ships in the <a href="https://github.com/h0x91b/dev-3.0/releases/tag/canary" target="_blank" rel="noopener" style="color:var(--text-3);text-decoration:underline">canary</a> channel only
         <br><span style="font-size: 11px; color: var(--text-4);">Free &amp; open source (Apache 2.0) &bull; Upgrade anytime: <code style="color: var(--text-3); background: rgba(255,255,255,0.04); padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); font-size: 11px;">brew trust h0x91b/dev3 && brew upgrade --cask dev3</code></span>
       </p>
     </div>
@@ -2302,7 +2321,7 @@ dev3 remote</code>
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 9h20"/><circle cx="6" cy="6" r="0.5" fill="var(--accent)"/><circle cx="9" cy="6" r="0.5" fill="var(--accent)"/></svg>
         </div>
         <h3>Electrobun</h3>
-        <p>Native macOS webview runtime. Lightweight, fast startup, tiny memory footprint.</p>
+        <p>Native OS webview runtime. Lightweight, fast startup, tiny memory footprint.</p>
       </div>
 
       <div class="arch-card reveal reveal-delay-2">

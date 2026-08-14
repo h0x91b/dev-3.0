@@ -2,7 +2,8 @@
 
 Terminal-centric project manager — iTerm2 meets Kanban. A desktop app for managing multiple AI coding agents (Claude Code, Gemini CLI, etc.) and other terminal-based tools across many tasks and projects from a single interface.
 
-**Target platforms:** cross-platform (macOS, Linux, Windows).
+**Target platforms:** cross-platform (macOS, Linux, Windows). Windows support is brand new and may
+still be rough — it ships in the canary channel only today, unsigned.
 
 ## Status tracker
 

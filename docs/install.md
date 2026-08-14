@@ -4,7 +4,7 @@ Every way to get dev-3.0 onto a machine. The two fastest paths (agent-driven and
 in the [README quick start](../README.md#quick-start) — this page is the full reference.
 
 - [macOS desktop app](#macos--desktop-app)
-- [Windows — unsigned zip](#windows--unsigned-zip)
+- [Windows — canary zip](#windows--canary-zip)
 - [Linux](#linux)
 - [tmux on Linux — the version matters](#tmux-on-linux--the-version-matters)
 - [Cloud VM caveats](#cloud-vm-caveats)
@@ -40,14 +40,20 @@ skip otherwise).
 
 Apple Silicon and Intel are both supported. For Windows, see the next section.
 
-## Windows — unsigned zip
+## Windows — canary zip
 
-**x64 only, unsigned, and rough.** No installer, no Homebrew, no auto-updating install flow yet —
-one zip you extract and run:
+**Windows support is brand new and may still be rough.** x64 only, unsigned, and canary-only:
+no installer, no Homebrew, no auto-updating install flow yet — one zip you extract and run.
+The stable download page carries no Windows file at all today, so take it from the rolling
+canary pre-release:
 
-1. Download [**`stable-win-x64-dev-3.0.zip`**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-win-x64-dev-3.0.zip)
-   (~121 MB, ~400 MB once extracted). It is attached to every release built after 2026-08-14 —
-   if the latest release predates that, the link 404s and there is no Windows build for it.
+1. Download [**`canary-win-x64-dev-3.0-canary.zip`**](https://github.com/h0x91b/dev-3.0/releases/download/canary/canary-win-x64-dev-3.0-canary.zip)
+   (~121 MB to download, ~400 MB once extracted). It lives on the `canary` pre-release, which
+   is rebuilt from `main` and is deliberately not marked "Latest" — canary builds are not tested
+   releases. **Automatic updating is not proven on Windows.** The first observed attempt hung —
+   a blank console window, and a stale `launcher.exe` still holding the extracted tree, which had
+   to be killed by hand before the update finished. Treat a new build as a fresh download of this
+   zip until that is fixed.
 2. Right-click the zip → **Extract All**. Nothing else is needed; the app carries its own runtime.
 3. Open the extracted `dev-3.0` folder and double-click `bin\launcher.exe`.
 4. **The first launch shows a full-screen blue SmartScreen warning.** This build is not
@@ -59,7 +65,7 @@ one zip you extract and run:
 no tmux and no WSL involved. The `dev3` CLI ships inside the bundle at
 `Resources\app\cli\dev3.exe`; there is no standalone Windows CLI tarball yet.
 
-Every published zip is the exact tree CI extracted and launched on a Windows runner before
+Every canary zip is the exact tree CI extracted and launched on a Windows runner before
 publishing — that is the only guarantee on offer, and it is not the same as "tested".
 
 ## Linux

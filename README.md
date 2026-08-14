@@ -14,7 +14,7 @@
   <a href="https://github.com/h0x91b/dev-3.0/releases"><img src="https://img.shields.io/github/v/release/h0x91b/dev-3.0?style=flat-square&color=4496ff" alt="Release"></a>
   <a href="https://github.com/h0x91b/dev-3.0/stargazers"><img src="https://img.shields.io/github/stars/h0x91b/dev-3.0?style=flat-square&color=4496ff" alt="Stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-4496ff?style=flat-square" alt="License"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-4496ff?style=flat-square" alt="Platform: macOS and Linux">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-4496ff?style=flat-square" alt="Platform: macOS, Linux and Windows">
 </p>
 
 <p align="center">
@@ -276,6 +276,13 @@ brew tap h0x91b/dev3 && brew trust h0x91b/dev3 && brew install h0x91b/dev3/dev3
 dev3 remote
 ```
 
+**Windows** — download
+[`canary-win-x64-dev-3.0-canary.zip`](https://github.com/h0x91b/dev-3.0/releases/download/canary/canary-win-x64-dev-3.0-canary.zip)
+(~121 MB), extract it, run `bin\launcher.exe`. Windows support is brand new and may still be
+rough: the build ships in the canary channel only — the stable download page has no Windows
+file yet — and it is unsigned, so the first launch needs two clicks past a SmartScreen warning.
+Details: **[Install guide](docs/install.md#windows--canary-zip)**.
+
 Then: add a project (point it at a git repo), press **⌘N**, describe a task, pick an agent, hit
 Run. That is the whole onboarding.
 
@@ -287,7 +294,7 @@ Run. That is the whole onboarding.
 | | Runs today |
 |---|---|
 | **Agents** | Claude Code · Codex · Gemini CLI · Cursor Agent · opencode · any CLI tool you configure |
-| **Desktop** | macOS — Apple Silicon and Intel. Windows builds and starts, but is not published in releases yet |
+| **Desktop** | macOS — Apple Silicon and Intel. Windows x64 — brand new and may still be rough; published in the canary channel only, unsigned |
 | **Headless** | Linux x64 and arm64 (`dev3` CLI + browser UI) |
 
 Claude Code and Codex additionally report their status back automatically through hooks; the
