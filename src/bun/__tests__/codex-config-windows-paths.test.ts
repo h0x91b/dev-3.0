@@ -11,7 +11,6 @@ import {
 	tomlBasicString,
 } from "../codex-config";
 
-const WIN_HOME = "C:\\Users\\user";
 const WIN_WORKTREES = "C:\\Users\\user\\.dev3.0\\worktrees";
 const WIN_SOCKETS = "C:\\Users\\user\\.dev3.0\\sockets";
 

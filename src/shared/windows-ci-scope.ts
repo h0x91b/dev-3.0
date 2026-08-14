@@ -96,6 +96,11 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/cli/socket-client.ts",
 	"src/bun/__tests__/cli-loopback-transport.bun-e2e.ts",
 	"src/cli/__tests__/cli-packaged-loopback.bun-e2e.ts",
+	// The Codex config dev3 writes into ~/.codex/config.toml. A raw Windows path in a
+	// TOML basic string killed codex machine-wide (Seq 1540); only a Windows run proves
+	// the generated file parses, so an edit here must re-dispatch the proof.
+	"src/bun/codex-config.ts",
+	"src/bun/__tests__/codex-config-windows-paths.test.ts",
 	// This list and the script reading it decide the whole thing; changing either
 	// has to re-prove Windows rather than judging its own change out of scope.
 	"src/shared/windows-ci-scope.ts",
