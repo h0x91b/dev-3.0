@@ -135,7 +135,16 @@ export async function handlePaneExec(rawArgs: string[]): Promise<void> {
 
 	writeStatus(dir, runId, { state: "running", pid: child.pid, startedAt });
 
-	await Promise.all([pump(child.stdout, logFd), pump(child.stderr, logFd)]);
+	// A broken mirror (a full disk, a closed fd) must not abandon the run at
+	// `running` forever — the command keeps going, so its outcome is still its exit
+	// code, and only the log stops here. Said out loud in the status.
+	let mirrorProblem: string | null = null;
+	try {
+		await Promise.all([pump(child.stdout, logFd), pump(child.stderr, logFd)]);
+	} catch (err) {
+		mirrorProblem = `the output could not be mirrored past this point: ${String(err)}`;
+		process.stdout.write(`[dev3] ${mirrorProblem}\n`);
+	}
 	const exitCode = await child.exited;
 	// A signal death surfaces as a null exit code, not as a made-up number: the
 	// difference between "the build failed" and "something killed the build" is
@@ -147,13 +156,23 @@ export async function handlePaneExec(rawArgs: string[]): Promise<void> {
 		exitCode: signalled ? null : exitCode,
 		startedAt,
 		endedAt: new Date().toISOString(),
-		detail: signalled ? `killed by ${child.signalCode}` : null,
+		detail: [signalled ? `killed by ${child.signalCode}` : null, mirrorProblem].filter(Boolean).join("; ") || null,
 	});
 
 	const ending = signalled ? `killed by ${child.signalCode}` : `exit code ${exitCode}`;
 	const summary = `[dev3] run ${runId} finished — ${ending}\n`;
-	mirror(logFd, new TextEncoder().encode(summary));
-	closeSync(logFd);
+	try {
+		mirror(logFd, new TextEncoder().encode(summary));
+	} catch {
+		// The pane already has the line (stdout is written first) and the status file
+		// already carries the outcome — a log that cannot take one more line is not
+		// worth killing the pane over.
+	}
+	try {
+		closeSync(logFd);
+	} catch {
+		// Already closed or already broken — nothing left to do with it.
+	}
 
 	await waitForDismissal();
 	process.exit(CLI_EXIT_CODE_SUCCESS);

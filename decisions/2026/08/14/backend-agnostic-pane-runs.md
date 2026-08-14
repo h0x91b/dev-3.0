@@ -55,6 +55,16 @@ file the pane writes rather than a screen anyone pretends to read.
 - **Vocabulary stays disjoint from `dev3 peek`.** Peek reads a pane's SCREEN, for a pane nobody
   promised you; `pane logs` reads a RUN you started. Peek keeps its freshness-granularity honesty,
   and the skill now states the matching limit out loud: screen reads are tmux-only today.
+- **The same rule caught a second false platform claim in the same text.** The skill told every
+  agent to end a PR description with a `dev3://` origin-task footer, but only the macOS bundle
+  registers that scheme (nothing here writes a Windows registry key or a Linux `.desktop` MimeType),
+  and the `https` form merely redirects back to it. `skillPrLinkInstruction`
+  (`src/shared/agent-skill-content.ts`) now asks `deepLinkSchemeRegistered`
+  (`src/shared/deep-link.ts`) and replaces the instruction outright off macOS — publish nothing,
+  name the task by its `seq` — rather than softening it. Gated on the capability, not on "is this
+  Windows": Linux has no handler either. It reads `process.platform` through a default parameter,
+  the house idiom in `src/shared/`, because the app that generates the skill runs on the same
+  machine as the agent that reads it.
 - **The skill text no longer asserts tmux.** `SKILL_TMUX` became `SKILL_PANES`, `/dev3-tmux` opens
   with a `dev3 pane list` gate before its first tmux command, and a guard test fails if any
   unconditional tmux assertion returns (mutation-verified against four reintroductions).
@@ -72,7 +82,10 @@ tmux-only; native capture activation remains undecided and this change does not 
 command ends, the runner holds the pane open until Enter so a finished build stays on screen, which
 means an unattended pane lives until `dev3 pane close`. The Windows leg is authored per dialect and
 unit-tested, but a dialect is only truly proven by running it on Windows — the acceptance evidence
-for this task is a real run on the user's own box, not a macOS run of the same code.
+for this task is a real run on the user's own box, not a macOS run of the same code. The PR-footer
+gate keys on the platform, so a future Windows or Linux scheme registration must flip
+`deepLinkSchemeRegistered` in the same change or agents there will keep skipping a footer that by
+then works.
 
 ## Alternatives considered
 

@@ -8,6 +8,7 @@ import {
 	buildTaskWebLink,
 	buildTaskPrDeepLinkLine,
 	buildTaskPrDeepLinkSection,
+	deepLinkSchemeRegistered,
 	DEEP_LINK_WEB_BASE,
 } from "../../shared/deep-link";
 
@@ -220,5 +221,15 @@ describe("pending deep-link nav slot", () => {
 		markPendingDeepLinkNav({ kind: "project", projectId: "p1" });
 		expect(consumePendingDeepLinkNav()).toEqual({ kind: "project", projectId: "p1" });
 		expect(consumePendingDeepLinkNav()).toBeNull();
+	});
+});
+
+// Only the macOS bundle registers the scheme; a link is inert everywhere else,
+// which is what gates the PR footer and the injected skill's instruction.
+describe("deepLinkSchemeRegistered", () => {
+	it("is true on macOS and false on every other platform", () => {
+		expect(deepLinkSchemeRegistered("darwin")).toBe(true);
+		expect(deepLinkSchemeRegistered("win32")).toBe(false);
+		expect(deepLinkSchemeRegistered("linux")).toBe(false);
 	});
 });

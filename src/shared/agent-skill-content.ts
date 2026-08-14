@@ -11,6 +11,23 @@
  * body constants must be reachable from the shared layer.
  */
 
+import { deepLinkSchemeRegistered } from "./deep-link";
+
+/**
+ * How the agent should link a PR back to its task — or why it must not. The
+ * footer is only useful where the OS resolves `dev3://`; on any other platform it
+ * would publish a dead link into a public pull request, so the instruction is
+ * replaced rather than softened.
+ */
+export function skillPrLinkInstruction(platform: NodeJS.Platform = process.platform): string {
+	if (!deepLinkSchemeRegistered(platform)) {
+		return `**Do NOT append a dev3 origin-task footer to a pull request on this platform.** \`dev3://\` links only open the app where the OS registered the scheme, which is macOS today — here that footer would publish a dead link into a public PR (the \`https\` form only redirects back to the same scheme). Name the task by its \`seq\` number in plain text instead when a reviewer needs it.`;
+	}
+	return `**Link the PR back to this task.** Unless the user turned it off in dev3 settings, end every PR description you write for this task with a deep link back to it, so a reviewer can jump straight into the task. Take \`<TASK_ID>\` from \`dev3 current\`, and after your description add a blank line, a \`---\` line of its own, then exactly this line — GitHub strips \`dev3://\` links, so the \`https\` form is the clickable one and the raw link is the copy-paste fallback:
+
+\`🔗 **Origin task in dev3:** [open in dev3](https://dev3.h0x91b.com/open.html?task=<TASK_ID>) · \\\`dev3://task/<TASK_ID>\\\`\``;
+}
+
 const SKILL_HEADER = `# dev3 — Task Lifecycle Protocol
 
 You are working inside a **dev-3.0 managed worktree** with a Kanban board task assigned to you.
@@ -103,9 +120,7 @@ const SKILL_COMPLETION_REQUEST = `
 
 **Preservation gate (mandatory):** Never move a task to \`completed\`, and never request completion approval, while the task's work exists only in a disposable worktree. Completion is allowed when either the result is safely preserved in the destination the task requires — commonly a pull request merged into \`main\`, but it may be an external file, task note, shared artifact, or another explicit destination — or the user explicitly asks to complete the task. A local commit, passing tests, or an open/unmerged pull request is not enough by itself. If the required destination is unclear or the work is not safely preserved, keep the task open and ask the user. \`cancelled\` remains fully forbidden via CLI.
 
-**Link the PR back to this task.** Unless the user turned it off in dev3 settings, end every PR description you write for this task with a deep link back to it, so a reviewer can jump straight into the task. Take \`<TASK_ID>\` from \`dev3 current\`, and after your description add a blank line, a \`---\` line of its own, then exactly this line — GitHub strips \`dev3://\` links, so the \`https\` form is the clickable one and the raw link is the copy-paste fallback:
-
-\`🔗 **Origin task in dev3:** [open in dev3](https://dev3.h0x91b.com/open.html?task=<TASK_ID>) · \\\`dev3://task/<TASK_ID>\\\`\`
+${skillPrLinkInstruction()}
 `;
 
 const SKILL_MANUAL_COMPLETION = `

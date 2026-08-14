@@ -14,6 +14,17 @@
 
 export const DEEP_LINK_SCHEME = "dev3";
 
+/**
+ * Whether the OS has a handler for `dev3://` at all. Only the macOS bundle
+ * registers the scheme (CFBundleURLTypes); nothing in this codebase writes a
+ * Windows registry key or a Linux `.desktop` MimeType entry, so a deep link is
+ * inert everywhere else — including the `https` redirect page, which only bounces
+ * back to the same scheme.
+ */
+export function deepLinkSchemeRegistered(platform: NodeJS.Platform = process.platform): boolean {
+	return platform === "darwin";
+}
+
 // GitHub (and most markdown renderers) strip links whose scheme is not http(s)/
 // mailto, so a bare `dev3://…` in a PR body renders as un-clickable text. This
 // https page on the landing-site domain redirects to the `dev3://` scheme, which

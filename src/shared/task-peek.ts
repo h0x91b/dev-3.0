@@ -105,13 +105,22 @@ export function stripTerminalEscapes(text: string): string {
 		.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
 }
 
-/** Last `limit` lines, with trailing blank lines dropped so the tail ends on content. */
-export function tailLines(text: string, limit: number): string {
+/**
+ * Last `limit` lines plus how many there were, with trailing blank lines dropped
+ * so the tail ends on content. The one implementation both surfaces read through:
+ * `dev3 peek` wants the text, `dev3 pane logs` also wants the count.
+ */
+export function tailLinesWithCount(text: string, limit: number): { lines: string[]; totalLines: number } {
 	const lines = stripTerminalEscapes(text).split("\n");
 	let end = lines.length;
 	while (end > 0 && lines[end - 1].trim() === "") end--;
 	const kept = lines.slice(0, end);
-	return kept.slice(Math.max(0, kept.length - limit)).join("\n");
+	return { lines: kept.slice(Math.max(0, kept.length - limit)), totalLines: kept.length };
+}
+
+/** Last `limit` lines, with trailing blank lines dropped so the tail ends on content. */
+export function tailLines(text: string, limit: number): string {
+	return tailLinesWithCount(text, limit).lines.join("\n");
 }
 
 /** Clamp a requested line budget into the supported range. */

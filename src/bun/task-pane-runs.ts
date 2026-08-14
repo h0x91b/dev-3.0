@@ -16,7 +16,18 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+	closeSync,
+	existsSync,
+	mkdirSync,
+	openSync,
+	readFileSync,
+	readSync,
+	readdirSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { Task } from "../shared/types";
 import { WINDOWS_DEV3_CLI_BASENAME, resolveDev3CliPath } from "../shared/dev3-cli-path";
@@ -119,7 +130,9 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 
 	const taskId = spec.task.id;
 	const dir = paneRunDir(taskId);
-	mkdirSync(dir, { recursive: true });
+	// 0700: the OS temp directory is shared with every other user on the machine,
+	// and a run's spec names a command this user's shell will execute.
+	mkdirSync(dir, { recursive: true, mode: 0o700 });
 	const runId = newRunId();
 	writeFileSync(
 		paneRunSpecPath(dir, runId),
@@ -136,22 +149,32 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 
 	const cli = dev3CliExecutable();
 	const argv = [PANE_RUN_VERB, dir, runId];
-	const handle = await splitTaskPane({
-		task: spec.task,
-		placement: spec.placement,
-		size: "40%",
-		cwd: spec.cwd,
-		env: spec.env,
-		socket: socketOf(spec.task),
-		title: label || "Run",
-		// The run id sits in the launch command on BOTH backends, which is how a pane
-		// is re-found later without anything being remembered in RAM (the same trick
-		// the auxiliary panes use with their script paths).
-		tmuxCommand: [cli, ...argv].map(posixQuote).join(" "),
-		nativeLaunch: { executable: cli, argv },
-		// The agent keeps input focus: a run it started must not steal its keyboard.
-		restoreFocus: true,
-	});
+	let handle: AuxPaneHandle;
+	try {
+		handle = await splitTaskPane({
+			task: spec.task,
+			placement: spec.placement,
+			size: "40%",
+			cwd: spec.cwd,
+			env: spec.env,
+			socket: socketOf(spec.task),
+			title: label || "Run",
+			// The run id sits in the launch command on BOTH backends, which is how a pane
+			// is re-found later without anything being remembered in RAM (the same trick
+			// the auxiliary panes use with their script paths).
+			tmuxCommand: [cli, ...argv].map(posixQuote).join(" "),
+			nativeLaunch: { executable: cli, argv },
+			// Native hands input focus back to the pane that had it, so a run an agent
+			// started does not take its keyboard (tmux behaves as it does for every
+			// other dev3 pane: the new pane becomes active).
+			restoreFocus: true,
+		});
+	} catch (err) {
+		// No pane means no run. A spec left behind would show up as a phantom run with
+		// an unknowable outcome in every later `dev3 pane list`.
+		rmSync(paneRunSpecPath(dir, runId), { force: true });
+		throw err;
+	}
 
 	log.info("Started a pane run", { taskId: taskId.slice(0, 8), runId, backend: handle.backend, paneId: handle.paneId });
 	return {
@@ -163,26 +186,41 @@ export async function startPaneRun(spec: StartPaneRunSpec): Promise<StartedPaneR
 	};
 }
 
-/** The pane currently executing `runId`, or null when it is gone. */
-async function findRunPane(task: Task, runId: string): Promise<AuxPaneHandle | null> {
+/**
+ * Every pane of this task that is executing a run, keyed by run id. Read ONCE per
+ * command: on tmux each lookup is a process spawn and on native it is a pane-set
+ * sweep, so asking per run turned a listing of ten runs into ten backend queries.
+ */
+async function runPanes(task: Task): Promise<Map<string, AuxPaneHandle>> {
+	const found = new Map<string, AuxPaneHandle>();
 	if (taskTerminalBackendIdentity(task) === "native") {
-		const panes = await nativeTaskPaneCommands(task.id);
-		const found = panes.find((pane) => pane.command.join(" ").includes(runId));
-		return found ? { backend: "native", paneId: found.paneId } : null;
+		for (const pane of await nativeTaskPaneCommands(task.id)) {
+			const runId = runIdOfCommand(pane.command.join(" "));
+			if (runId && !found.has(runId)) found.set(runId, { backend: "native", paneId: pane.paneId });
+		}
+		return found;
 	}
 	try {
 		const rows = await tmux.listPanes(PANE_START_COMMAND_FORMAT, {
 			target: taskSessionName(task.id),
 			socket: socketOf(task),
 		});
-		const found = rows.find((row) => row.startCommand.includes(runId));
-		return found ? { backend: "tmux", paneId: found.paneId } : null;
+		for (const row of rows) {
+			const runId = runIdOfCommand(row.startCommand);
+			if (runId && !found.has(runId)) found.set(runId, { backend: "tmux", paneId: row.paneId });
+		}
 	} catch (err) {
 		// A task whose tmux session is gone genuinely owns no pane. Anything else is
 		// a lookup that could not run, and must not read as "there is no pane".
-		if (err instanceof TmuxError) return null;
+		if (err instanceof TmuxError) return found;
 		throw err;
 	}
+	return found;
+}
+
+/** The pane currently executing `runId`, or null when it is gone. */
+async function findRunPane(task: Task, runId: string): Promise<AuxPaneHandle | null> {
+	return (await runPanes(task)).get(runId) ?? null;
 }
 
 function readStatus(dir: string, runId: string): { status: PaneRunStatus | null; detail: string | null } {
@@ -211,9 +249,56 @@ function readSpecFile(dir: string, runId: string): { command: string; label: str
 }
 
 /**
+ * Never pull more than this into the app's memory for one read. A run is meant for
+ * servers and watchers, whose log grows without bound — reading a multi-gigabyte
+ * file whole to hand back 200 lines would stall the app long before the tail
+ * existed. Far more than the 2000-line ceiling can hold, so a full tail still fits.
+ */
+const LOG_WINDOW_BYTES = 4 * 1024 * 1024;
+
+/**
+ * The last {@link LOG_WINDOW_BYTES} of a run's log. `windowed` says the file was
+ * longer than that, which makes any line count taken from this text a floor.
+ */
+function readLogWindow(logPath: string, runId: string): { text: string; windowed: boolean } {
+	let size: number;
+	try {
+		size = statSync(logPath).size;
+	} catch {
+		return { text: "", windowed: false };
+	}
+	try {
+		if (size <= LOG_WINDOW_BYTES) return { text: readFileSync(logPath, "utf8"), windowed: false };
+		const fd = openSync(logPath, "r");
+		try {
+			const buffer = Buffer.allocUnsafe(LOG_WINDOW_BYTES);
+			const read = readSync(fd, buffer, 0, LOG_WINDOW_BYTES, size - LOG_WINDOW_BYTES);
+			const text = buffer.toString("utf8", 0, read);
+			// The window opens mid-line, and possibly mid-character: drop everything up
+			// to the first newline rather than hand back half a line as if it were one.
+			const firstBreak = text.indexOf("\n");
+			return { text: firstBreak >= 0 ? text.slice(firstBreak + 1) : "", windowed: true };
+		} finally {
+			closeSync(fd);
+		}
+	} catch (err) {
+		log.warn("Could not read a pane run log", { runId, error: String(err) });
+		return { text: "", windowed: false };
+	}
+}
+
+function logHasOutput(logPath: string): boolean {
+	try {
+		return statSync(logPath).size > 0;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * A run's bounded tail plus its outcome. The tail is bounded BEFORE it is returned,
  * so a dev server that has been writing for an hour cannot arrive in an agent's
- * context whole.
+ * context whole — nor in the app's memory on the way there.
  */
 export async function readPaneRun(task: Task, runId: string, lines?: number): Promise<PaneRunView> {
 	if (!isPaneRunId(runId)) throw new PaneRunError(`${JSON.stringify(runId)} is not a run id`);
@@ -226,13 +311,8 @@ export async function readPaneRun(task: Task, runId: string, lines?: number): Pr
 	const { status, detail } = readStatus(dir, runId);
 	const pane = await findRunPane(task, runId);
 
-	let text = "";
-	try {
-		text = existsSync(logPath) ? readFileSync(logPath, "utf8") : "";
-	} catch (err) {
-		log.warn("Could not read a pane run log", { runId, error: String(err) });
-	}
-	const { lines: tail, totalLines } = paneRunTail(text, clampPaneRunTail(lines));
+	const window = readLogWindow(logPath, runId);
+	const { lines: tail, totalLines } = paneRunTail(window.text, clampPaneRunTail(lines));
 
 	return {
 		runId,
@@ -244,13 +324,20 @@ export async function readPaneRun(task: Task, runId: string, lines?: number): Pr
 		statusDetail: detail,
 		logPath,
 		lines: tail,
-		truncated: tail.length < totalLines,
+		// A windowed log is truncated even when the tail covers every line the window
+		// held — otherwise "showing all 200 lines" would describe a gigabyte-long file.
+		truncated: window.windowed || tail.length < totalLines,
 		totalLines,
+		logWindowed: window.windowed,
 	};
 }
 
-/** Every run of this task, newest first, each with a short tail-free summary. */
-async function listRuns(task: Task): Promise<PaneRunView[]> {
+/**
+ * Every run of this task, newest first, each with a short tail-free summary.
+ * `panes` is passed in so a caller that already read the pane set does not make
+ * the backend answer the same question twice.
+ */
+async function listRuns(task: Task, panes?: Map<string, AuxPaneHandle>): Promise<PaneRunView[]> {
 	const dir = paneRunDir(task.id);
 	if (!existsSync(dir)) return [];
 	let names: string[];
@@ -265,12 +352,31 @@ async function listRuns(task: Task): Promise<PaneRunView[]> {
 		.filter(isPaneRunId)
 		.sort((a, b) => runMtime(dir, b) - runMtime(dir, a));
 
-	const views: PaneRunView[] = [];
-	for (const runId of runIds) {
-		// Zero lines of tail: a listing names outcomes, it does not carry logs.
-		views.push(await readPaneRun(task, runId, 1).then((view) => ({ ...view, lines: [], truncated: view.totalLines > 0 })));
-	}
-	return views;
+	// ONE pane read for the whole listing, and no log read at all: a listing names
+	// outcomes, it does not carry logs, and reading every run's log to count lines
+	// nobody prints is exactly how a listing gets expensive.
+	const paneOfRun = panes ?? (await runPanes(task));
+	const backend = taskTerminalBackendIdentity(task);
+	return runIds.map((runId) => {
+		const { command, label } = readSpecFile(dir, runId);
+		const { status, detail } = readStatus(dir, runId);
+		const pane = paneOfRun.get(runId) ?? null;
+		return {
+			runId,
+			label,
+			command,
+			paneId: pane?.paneId ?? "",
+			backend: pane?.backend ?? backend,
+			status,
+			statusDetail: detail,
+			logPath: paneRunLogPath(dir, runId),
+			lines: [],
+			// Not "the tail was cut" here but "there is output to read with
+			// `dev3 pane logs`" — the listing deliberately carries none of it.
+			truncated: logHasOutput(paneRunLogPath(dir, runId)),
+			totalLines: 0,
+		};
+	});
 }
 
 function runMtime(dir: string, runId: string): number {
@@ -290,14 +396,17 @@ function runMtime(dir: string, runId: string): number {
 export async function paneRunListing(task: Task, selfPaneId: string | null): Promise<PaneRunListing> {
 	const backend = taskTerminalBackendIdentity(task);
 	const panes: PaneRunPaneLine[] = [];
-	const runs = await listRuns(task);
-	const runByPane = new Map(runs.map((run) => [run.paneId, run.runId]));
+	// The pane set is read here, once, and the run list is told what it found —
+	// asking the backend again per run is what made a listing cost a spawn per run.
+	const paneOfRun = new Map<string, AuxPaneHandle>();
 
 	if (backend === "native") {
 		const state = await nativeTaskPanesState(task.id);
 		const commands = state ? await nativeTaskPaneCommands(task.id) : [];
 		state?.panes.forEach((pane, index) => {
 			const command = commands.find((entry) => entry.paneId === pane.paneId)?.command.join(" ") ?? "";
+			const runId = runIdOfCommand(command);
+			if (runId && !paneOfRun.has(runId)) paneOfRun.set(runId, { backend: "native", paneId: pane.paneId });
 			panes.push({
 				paneId: pane.paneId,
 				index: index + 1,
@@ -305,7 +414,7 @@ export async function paneRunListing(task: Task, selfPaneId: string | null): Pro
 				active: pane.paneId === state.activePaneId,
 				self: selfPaneId === pane.paneId,
 				alive: pane.alive,
-				runId: runByPane.get(pane.paneId) ?? runIdOfCommand(command),
+				runId,
 			});
 		});
 	} else {
@@ -315,6 +424,8 @@ export async function paneRunListing(task: Task, selfPaneId: string | null): Pro
 				socket: socketOf(task),
 			});
 			rows.forEach((row, index) => {
+				const runId = runIdOfCommand(row.startCommand);
+				if (runId && !paneOfRun.has(runId)) paneOfRun.set(runId, { backend: "tmux", paneId: row.paneId });
 				panes.push({
 					paneId: row.paneId,
 					index: index + 1,
@@ -322,13 +433,14 @@ export async function paneRunListing(task: Task, selfPaneId: string | null): Pro
 					active: false,
 					self: selfPaneId === row.paneId,
 					alive: null,
-					runId: runByPane.get(row.paneId) ?? runIdOfCommand(row.startCommand),
+					runId,
 				});
 			});
 		} catch (err) {
 			if (!(err instanceof TmuxError)) throw err;
 		}
 	}
+	const runs = await listRuns(task, paneOfRun);
 
 	return {
 		backend,
@@ -345,9 +457,14 @@ export async function paneRunListing(task: Task, selfPaneId: string | null): Pro
 	};
 }
 
+/**
+ * The run a launch command is executing. The LAST match wins: the run id is the
+ * command's final argument, while the run directory earlier in it is a path that
+ * must never be mistaken for one.
+ */
 function runIdOfCommand(command: string): string | null {
-	const match = /run-[0-9a-f]{12}/.exec(command);
-	return match ? match[0] : null;
+	const matches = command.match(/run-[0-9a-f]{12}/g);
+	return matches ? matches[matches.length - 1] : null;
 }
 
 /** Close the pane a run is executing in. Killing the pane kills the command. */

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	applyClaudeSettings,
 	buildClaudeSkillContent,
@@ -15,6 +15,7 @@ import {
 	getTmuxSkillDescription,
 } from "../agent-skills";
 import { ARTIFACT_TEMPLATE_FILES } from "../artifact-template";
+import { skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
 
 // The Claude SKILL.md is deliberately short (the protocol lives in the system
@@ -550,7 +551,7 @@ describe("skill content per platform dialect", () => {
 		expect(claude).not.toContain("2>&1");
 		expect(claude).not.toContain("~/.dev3.0/bin/dev3");
 
-		// The shared protocol body is platform-neutral prose; only the generated
+		// The shared protocol body is dialect-neutral prose; only the generated
 		// session-start block is templated, so assert on that.
 		for (const content of [buildCodexSkillContent(WINDOWS), buildGenericSkillContent(WINDOWS)]) {
 			expect(content).toContain(`- \`${cli} --help\` — learn all available CLI commands`);
@@ -561,5 +562,52 @@ describe("skill content per platform dialect", () => {
 	it("spells the Claude bash permission the same way the generated commands do", () => {
 		expect(claudeBashPermission(POSIX)).toBe("Bash(~/.dev3.0/bin/dev3 *)");
 		expect(claudeBashPermission(WINDOWS)).toBe('Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" *)');
+	});
+});
+
+// The origin-task PR footer is only useful where the OS resolves `dev3://`. On
+// every other platform the injected skill must not order the agent to publish a
+// dead link into a public pull request.
+describe("PR origin-task footer — gated on a real dev3:// handler", () => {
+	it("hands macOS the footer, verbatim", () => {
+		const text = skillPrLinkInstruction("darwin");
+		expect(text).toContain("**Link the PR back to this task.**");
+		expect(text).toContain("https://dev3.h0x91b.com/open.html?task=<TASK_ID>");
+		expect(text).toContain("dev3://task/<TASK_ID>");
+	});
+
+	for (const platform of ["win32", "linux"] as NodeJS.Platform[]) {
+		it(`refuses the footer on ${platform} and hands out no link at all`, () => {
+			const text = skillPrLinkInstruction(platform);
+			expect(text).toContain("Do NOT append a dev3 origin-task footer");
+			expect(text).not.toContain("open.html");
+			expect(text).not.toContain("dev3://task/");
+			expect(text).not.toContain("Origin task in dev3");
+		});
+	}
+
+	it("composes the platform's own variant into every injected body", async () => {
+		const original = process.platform;
+		try {
+			Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+			vi.resetModules();
+			const win = await import("../../shared/agent-skill-content");
+			for (const body of [win.CLAUDE_SKILL_BODY, win.CODEX_SKILL_BODY, win.GENERIC_SKILL_BODY]) {
+				expect(body).toContain("Do NOT append a dev3 origin-task footer");
+				expect(body).not.toContain("Origin task in dev3");
+				expect(body).not.toContain("open.html");
+			}
+
+			Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+			vi.resetModules();
+			const mac = await import("../../shared/agent-skill-content");
+			for (const body of [mac.CLAUDE_SKILL_BODY, mac.CODEX_SKILL_BODY, mac.GENERIC_SKILL_BODY]) {
+				expect(body).toContain("🔗 **Origin task in dev3:**");
+				expect(body).not.toContain("Do NOT append a dev3 origin-task footer");
+			}
+		} finally {
+			Object.defineProperty(process, "platform", { value: original, configurable: true });
+			vi.resetModules();
+		}
 	});
 });

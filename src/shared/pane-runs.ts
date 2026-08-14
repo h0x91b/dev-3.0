@@ -19,7 +19,7 @@
  * vitest configs.
  */
 
-import { stripTerminalEscapes } from "./task-peek";
+import { tailLinesWithCount } from "./task-peek";
 
 /** Default tail budget — a dev server writes forever, so a read is never "all of it". */
 export const PANE_RUN_TAIL_DEFAULT_LINES = 200;
@@ -150,11 +150,7 @@ export function paneRunCommandProblem(command: unknown): string | null {
  * plain text and neither one leaks a progress-bar redraw into its context.
  */
 export function paneRunTail(text: string, limit: number): { lines: string[]; totalLines: number } {
-	const lines = stripTerminalEscapes(text).split("\n");
-	let end = lines.length;
-	while (end > 0 && lines[end - 1].trim() === "") end--;
-	const kept = lines.slice(0, end);
-	return { lines: kept.slice(Math.max(0, kept.length - limit)), totalLines: kept.length };
+	return tailLinesWithCount(text, limit);
 }
 
 /** Clamp a requested tail to the documented window. Out-of-range is corrected, not refused. */
@@ -182,6 +178,12 @@ export interface PaneRunView {
 	readonly lines: readonly string[];
 	readonly truncated: boolean;
 	readonly totalLines: number;
+	/**
+	 * The log was longer than the window ONE read pulls into memory, so `totalLines`
+	 * counts that window and is a floor, not the file's line count. Stated rather
+	 * than implied: "the last 200 of 200 lines" would otherwise read as the whole log.
+	 */
+	readonly logWindowed?: boolean;
 }
 
 /** One line naming the run's outcome — the thing an agent must not have to infer. */
@@ -190,9 +192,18 @@ export function paneRunOutcomeLine(view: PaneRunView): string {
 	if (!status) return `outcome: unknown — ${view.statusDetail ?? "the run's status file could not be read"}`;
 	switch (status.state) {
 		case "starting":
-			return "outcome: starting — the command has not reported a pid yet";
 		case "running":
-			return `outcome: still running${status.pid ? ` (pid ${status.pid})` : ""} — an empty tail means quiet, not finished`;
+			// A run dies with its pane — that is exactly what `dev3 pane close` does —
+			// and a killed runner never gets to write its final status. So a status still
+			// saying "running" with no pane behind it is a stale file, not a live command,
+			// and reporting it as running would leave an agent waiting for an ending that
+			// already happened.
+			if (!view.paneId) {
+				return "outcome: gone — the pane running it is no longer there, so the command has stopped; the tail is everything it printed";
+			}
+			return status.state === "starting"
+				? "outcome: starting — the command has not reported a pid yet"
+				: `outcome: still running${status.pid ? ` (pid ${status.pid})` : ""} — an empty tail means quiet, not finished`;
 		case "exited":
 			return status.exitCode === null
 				? "outcome: finished — killed by a signal, no exit code"
@@ -208,7 +219,7 @@ export function renderPaneRunLog(view: PaneRunView): string {
 		`command: ${view.command}`,
 		paneRunOutcomeLine(view),
 		view.truncated
-			? `showing the last ${view.lines.length} of ${view.totalLines} lines · full log: ${view.logPath}`
+			? `showing the last ${view.lines.length} of ${view.totalLines}${view.logWindowed ? "+" : ""} lines · full log: ${view.logPath}`
 			: `showing all ${view.lines.length} line${view.lines.length === 1 ? "" : "s"} · log: ${view.logPath}`,
 	];
 	return `${head.join("\n")}\n\n${view.lines.join("\n")}${view.lines.length ? "\n" : ""}`;

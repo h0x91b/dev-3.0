@@ -131,6 +131,23 @@ describe("the outcome line — a hung build must never read as a failed one", ()
 		expect(paneRunOutcomeLine(view({ status: { ...view().status!, exitCode: null } }))).toMatch(/killed by a signal, no exit code/);
 	});
 
+	it("reports a run whose pane is gone as stopped, not as still running", () => {
+		// `dev3 pane close` kills the pane, which kills the runner before it can write
+		// a final status. Believing that stale file leaves an agent waiting forever.
+		const line = paneRunOutcomeLine(
+			view({ paneId: "", status: { ...view().status!, state: "running", exitCode: null, endedAt: null } }),
+		);
+		expect(line).toMatch(/^outcome: gone/);
+		expect(line).not.toMatch(/still running/);
+	});
+
+	it("keeps saying still-running while the pane is there", () => {
+		const line = paneRunOutcomeLine(
+			view({ paneId: "pane-2", status: { ...view().status!, state: "starting", exitCode: null, endedAt: null } }),
+		);
+		expect(line).toMatch(/^outcome: starting/);
+	});
+
 	it("reports an unknown status as unknown, never as not-running", () => {
 		const line = paneRunOutcomeLine(view({ status: null, statusDetail: "the status file could not be believed" }));
 		expect(line).toMatch(/^outcome: unknown/);
@@ -163,6 +180,11 @@ describe("rendering", () => {
 	it("states that a tail was truncated, so a first error is not read as the first error", () => {
 		const text = renderPaneRunLog(view({ lines: ["b", "c"], truncated: true, totalLines: 900 }));
 		expect(text).toMatch(/showing the last 2 of 900 lines/);
+	});
+
+	it("marks a line count taken from a windowed log as a floor, not the whole file", () => {
+		const text = renderPaneRunLog(view({ lines: ["b", "c"], truncated: true, totalLines: 900, logWindowed: true }));
+		expect(text).toMatch(/showing the last 2 of 900\+ lines/);
 	});
 
 	it("names the backend and the screen-read limit in the listing", () => {
@@ -209,7 +231,19 @@ describe("paneRunShell — the one place a shell dialect genuinely differs", () 
 
 	it("propagates the Windows exit code explicitly — powershell -Command does not do it by itself", () => {
 		const script = paneRunShell("bun run build", { platform: "win32", env: { WINDIR: "C:\\Windows" } }).argv[3];
-		expect(script.endsWith("; bun run build; exit $LASTEXITCODE")).toBe(true);
+		expect(script).toContain("; bun run build; ");
+		expect(script).toContain("$dev3Code = $LASTEXITCODE");
+		expect(script.endsWith("exit $dev3Code")).toBe(true);
+	});
+
+	it("falls back to $? when nothing set $LASTEXITCODE, so a mistyped command cannot exit 0", () => {
+		const script = paneRunShell("nosuchtool", { platform: "win32", env: { WINDIR: "C:\\Windows" } }).argv[3];
+		// A cmdlet or a command that was never found leaves $LASTEXITCODE null, and a
+		// bare `exit $LASTEXITCODE` would turn "never ran" into "exit code 0".
+		expect(script).not.toMatch(/;\s*exit \$LASTEXITCODE\s*$/);
+		expect(script).toContain("if ($null -eq $dev3Code) { if ($dev3Ok) { exit 0 } else { exit 1 } }");
+		// $? is captured BEFORE anything else runs, or it would describe our own read.
+		expect(script.indexOf("$dev3Ok = $?")).toBeLessThan(script.indexOf("$dev3Code = $LASTEXITCODE"));
 	});
 
 	it("refuses to guess a PowerShell path when Windows names no SystemRoot", () => {

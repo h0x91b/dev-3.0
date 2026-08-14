@@ -52,6 +52,18 @@ export const PANE_RUN_VERB = "__pane-run";
 const POWERSHELL_UTF8_PRELUDE =
 	"[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [Console]::OutputEncoding";
 
+/**
+ * How the command's outcome becomes the process's exit code.
+ *
+ * `$LASTEXITCODE` is set by NATIVE commands only: a mistyped command, or one that
+ * is a PowerShell cmdlet, leaves it `$null`, and a bare `exit $LASTEXITCODE` turns
+ * that into exit 0 — an agent would read "the build never ran" as "the build
+ * passed". `$?` is the fallback that covers those, and both are captured into
+ * variables FIRST because `$?` describes only the statement right before it.
+ */
+const POWERSHELL_EXIT_EPILOGUE =
+	"$dev3Ok = $?; $dev3Code = $LASTEXITCODE; if ($null -eq $dev3Code) { if ($dev3Ok) { exit 0 } else { exit 1 } }; exit $dev3Code";
+
 export interface PaneRunShellSpec {
 	readonly executable: string;
 	readonly argv: readonly string[];
@@ -76,7 +88,12 @@ export function paneRunShell(command: string, lookup: PaneRunShellLookup): PaneR
 		if (!systemRoot) throw new Error("SystemRoot is required to run a pane command on Windows");
 		return {
 			executable: pathWin32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-			argv: ["-NoLogo", "-NoProfile", "-Command", `${POWERSHELL_UTF8_PRELUDE}; ${command}; exit $LASTEXITCODE`],
+			argv: [
+				"-NoLogo",
+				"-NoProfile",
+				"-Command",
+				`${POWERSHELL_UTF8_PRELUDE}; ${command}; ${POWERSHELL_EXIT_EPILOGUE}`,
+			],
 		};
 	}
 	return { executable: "/bin/sh", argv: ["-c", command] };

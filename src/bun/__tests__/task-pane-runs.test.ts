@@ -11,7 +11,7 @@
  *    not a guess from the platform.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Task } from "../../shared/types";
@@ -159,6 +159,15 @@ describe("startPaneRun", () => {
 		expect(JSON.parse(readFileSync(paneRunSpecPath(dir, runId), "utf8")).label).toBe("");
 	});
 
+	it("leaves no spec behind when the pane could not be opened", async () => {
+		mocks.splitTaskPane.mockRejectedValue(new Error("the task terminal is not running"));
+		await expect(
+			startPaneRun({ task: NATIVE_TASK, command: "sleep 1", placement: "right", cwd: "/wt", env: {} }),
+		).rejects.toThrow(/terminal is not running/);
+		// A spec with no pane would be a phantom run in every later listing.
+		expect(readdirSync(dir).filter((name) => name.endsWith(".run.json"))).toEqual([]);
+	});
+
 	it("launches an absolute binary, never a tilde a direct spawn cannot expand", async () => {
 		expect(dev3CliExecutable().startsWith("~")).toBe(false);
 		process.env.DEV3_PANE_RUN_CLI = "/scratch/dev3";
@@ -196,6 +205,28 @@ describe("readPaneRun", () => {
 		expect(view.lines[9]).toBe("line 499");
 		expect(view.truncated).toBe(true);
 		expect(view.totalLines).toBe(500);
+	});
+
+	it("never pulls a whole runaway log into memory, and says the count is a floor", async () => {
+		// 6 MiB of log against a 4 MiB window: what comes back is the window's tail,
+		// and the header must not claim the file has only as many lines as it read.
+		const line = `${"x".repeat(99)}\n`;
+		const runId = await seedRun(NATIVE_TASK, { state: "running", pid: 5 }, line.repeat(63_000));
+		const view = await readPaneRun(NATIVE_TASK, runId, 10);
+		expect(view.lines).toHaveLength(10);
+		expect(view.logWindowed).toBe(true);
+		expect(view.truncated).toBe(true);
+		// The first line of the window is dropped, because the window opens mid-line.
+		expect(view.lines.every((text) => text === "x".repeat(99))).toBe(true);
+		expect(view.totalLines).toBeLessThan(63_000);
+	});
+
+	it("reads a log that fits in the window whole, and says so", async () => {
+		const runId = await seedRun(NATIVE_TASK, { state: "exited", exitCode: 0 }, "one\ntwo\n");
+		const view = await readPaneRun(NATIVE_TASK, runId, 10);
+		expect(view.lines).toEqual(["one", "two"]);
+		expect(view.logWindowed).toBe(false);
+		expect(view.truncated).toBe(false);
 	});
 
 	it("says the status is unknown when the status file cannot be believed", async () => {
@@ -253,6 +284,34 @@ describe("paneRunListing", () => {
 		const tmuxListing = await paneRunListing(TMUX_TASK, "%1");
 		expect(tmuxListing.backend).toBe("tmux");
 		expect(tmuxListing.screenReadable).toBe(true);
+	});
+
+	it("asks the backend for its panes ONCE, however many runs the task has", async () => {
+		mocks.splitTaskPane.mockResolvedValue({ backend: "tmux", paneId: "%9" });
+		for (let i = 0; i < 4; i++) {
+			await startPaneRun({ task: TMUX_TASK, command: `sleep ${i}`, placement: "right", cwd: "/wt", env: {} });
+		}
+		mocks.tmuxListPanes.mockClear();
+
+		const listing = await paneRunListing(TMUX_TASK, "%1");
+		expect(listing.runs).toHaveLength(4);
+		// One list-panes for the whole listing — a lookup per run is a spawn per run.
+		expect(mocks.tmuxListPanes).toHaveBeenCalledTimes(1);
+		// And no log is read for a listing that prints none.
+		expect(listing.runs.every((run) => run.lines.length === 0)).toBe(true);
+	});
+
+	it("points a listed run at the pane still executing it", async () => {
+		mocks.splitTaskPane.mockResolvedValue({ backend: "tmux", paneId: "%9" });
+		const started = await startPaneRun({ task: TMUX_TASK, command: "sleep 60", placement: "right", cwd: "/wt", env: {} });
+		mocks.tmuxListPanes.mockResolvedValue([
+			{ paneId: "%1", startCommand: "zsh" },
+			{ paneId: "%9", startCommand: `dev3 ${PANE_RUN_VERB} ${dir} ${started.runId}` },
+		]);
+
+		const listing = await paneRunListing(TMUX_TASK, "%1");
+		expect(listing.panes[1].runId).toBe(started.runId);
+		expect(listing.runs[0].paneId).toBe("%9");
 	});
 
 	it("survives a tmux session that is simply gone", async () => {
