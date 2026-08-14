@@ -29,7 +29,7 @@ describe("KeyboardShortcutsModal — transport awareness", () => {
 		// Quit is desktop-only — present on desktop.
 		expect(screen.getByText("Quit")).toBeInTheDocument();
 		// No remote notice on desktop.
-		expect(screen.queryByText(/reserved by your browser/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/keeps some combos for itself/i)).not.toBeInTheDocument();
 		// The browser-safe alias is NOT shown on desktop (the ⌘1–9 combo is).
 		expect(screen.queryByText("G then 1–9")).not.toBeInTheDocument();
 	});
@@ -41,7 +41,7 @@ describe("KeyboardShortcutsModal — transport awareness", () => {
 		expect(screen.queryByText("Quit")).not.toBeInTheDocument();
 		expect(screen.queryByText("Hide app")).not.toBeInTheDocument();
 		// The remote notice is rendered.
-		expect(screen.getByText(/reserved by your browser/i)).toBeInTheDocument();
+		expect(screen.getByText(/keeps some combos for itself/i)).toBeInTheDocument();
 		// switch-project shows its browser-safe alias (kbd), not ⌘1–9.
 		expect(screen.getByText("G then 1–9")).toBeInTheDocument();
 	});
@@ -49,6 +49,6 @@ describe("KeyboardShortcutsModal — transport awareness", () => {
 	it("remote notice does not appear on the Terminal tab", () => {
 		setRemote();
 		renderModal("terminal");
-		expect(screen.queryByText(/reserved by your browser/i)).not.toBeInTheDocument();
+		expect(screen.queryByText(/keeps some combos for itself/i)).not.toBeInTheDocument();
 	});
 });

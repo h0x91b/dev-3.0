@@ -30,7 +30,7 @@ function key(
 	} as KeyboardEvent;
 }
 
-const ctx = { mac: true, remote: false, typing: false };
+const ctx = { mac: true, remote: false, typing: false, terminal: false, keyboardLocked: false };
 
 describe("formatting", () => {
 	it("renders mac glyphs without separators and Linux words with plus signs", () => {

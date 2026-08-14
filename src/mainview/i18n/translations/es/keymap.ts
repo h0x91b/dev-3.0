@@ -6,7 +6,7 @@ const keymap = {
 	"keymap.customize": "Personalizar atajos…",
 	"keymap.footerEscape": "Esc para cerrar",
 	"keymap.remoteNotice":
-		"Estás en el navegador. Algunas combinaciones (⌘1–9, ⌘N, zoom, recargar) están reservadas por tu navegador: usa las alternativas indicadas o la Paleta de Comandos (⇧⌘P).",
+		"Estás en el navegador y este se queda con algunas combinaciones (⌘W, ⌘T, ⌘N, ⌘1–9, zoom, recargar). Cada fila de abajo indica qué pulsar en su lugar, y ⌘⇧Space siempre abre la Paleta de Comandos. En pantalla completa con un navegador Chromium la app recupera todo el teclado.",
 
 	"keymap.category.navigation": "Navegación",
 	"keymap.category.create": "Crear",
@@ -78,6 +78,8 @@ const keymap = {
 	"keymap.edit.filterPlaceholder": "Filtrar atajos…",
 	"keymap.edit.noMatches": "Ningún atajo coincide.",
 	"keymap.edit.desktopOnly": "Solo en la app de escritorio",
+	"keymap.edit.browserReserved": "Tu navegador se queda con esta combinación: solo funcionará en la app de escritorio o en pantalla completa.",
+	"keymap.edit.inBrowser": "En el navegador: {keys}",
 	"keymap.edit.changedCount": "{count} cambiados",
 };
 

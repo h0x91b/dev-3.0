@@ -546,7 +546,26 @@ describe("TerminalView – keymap shortcuts", () => {
 		Object.defineProperty(globalThis, "navigator", { value: realNavigator, writable: true, configurable: true });
 	});
 
-	it("Cmd+W calls taskPaneAction with close", async () => {
+	it("Cmd+W closes the pane in the desktop shell", async () => {
+		// `desktopOnly`: in a browser tab this combo closes the TAB and the page
+		// cannot cancel it, so the binding only exists in the desktop shell.
+		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		try {
+			await renderAndSetup();
+			const target = focusInsideTerminal();
+
+			await act(async () => {
+				window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
+			});
+
+			expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "close" } });
+			target.remove();
+		} finally {
+			Reflect.deleteProperty(window, "__electrobunWebviewId");
+		}
+	});
+
+	it("Cmd+W is left to the browser in remote mode — it would close the session's tab", async () => {
 		await renderAndSetup();
 		const target = focusInsideTerminal();
 
@@ -554,7 +573,7 @@ describe("TerminalView – keymap shortcuts", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
 		});
 
-		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "close" } });
+		expect(mockedTaskPaneAction).not.toHaveBeenCalled();
 		target.remove();
 	});
 

@@ -8,8 +8,9 @@ import {
 	type MatchContext,
 } from "./keymap-bindings";
 import { isKeymapCapturing, resolvedSlot } from "./keymap-store";
+import { isKeyboardLocked } from "./keyboard-lock";
 import { isMac, isRemote } from "./utils/platform";
-import { isTypingContext } from "./utils/typing-context";
+import { isTerminalFocus, isTypingContext } from "./utils/typing-context";
 
 /**
  * Single source of truth for every APP-LEVEL keyboard shortcut.
@@ -115,7 +116,14 @@ const mod = (code: string, ...extra: Binding["mods"]): Binding => ({ code, mods:
 export const APP_SHORTCUTS: ShortcutSpec[] = [
 	// ── Navigation ──
 	{ id: "go-to-project", primary: [mod("KeyK")], descKey: "keymap.shortcut.goToProject", category: "navigation" },
-	{ id: "command-palette", primary: [mod("KeyP", "Shift")], descKey: "keymap.shortcut.commandPalette", category: "navigation" },
+	// The alias is the app's one guaranteed key: every action is also a command, so
+	// as long as the palette opens, nothing is unreachable. ⇧⌘P alone could not
+	// carry that — Firefox opens a private window on it, and it is dead while a
+	// terminal has focus off macOS. Mod+Shift+Space survives both.
+	{
+		id: "command-palette", primary: [mod("KeyP", "Shift")], alias: [mod("Space", "Shift")],
+		descKey: "keymap.shortcut.commandPalette", category: "navigation",
+	},
 	{ id: "back", primary: [mod("BracketLeft")], alias: [{ code: "Minus", mods: ["Ctrl"] }], descKey: "keymap.shortcut.back", category: "navigation" },
 	{ id: "forward", primary: [mod("BracketRight")], alias: [{ code: "Minus", mods: ["Ctrl", "Shift"] }], descKey: "keymap.shortcut.forward", category: "navigation" },
 	{ id: "previous-variant", primary: [mod("BracketLeft", "Shift")], descKey: "keymap.shortcut.previousVariant", category: "navigation" },
@@ -130,7 +138,13 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 		remappable: false, fixedReasonKey: "keymap.fixed.digitFamily",
 		display: { mac: "⇧⌘1–9", other: "Ctrl+Shift+1–9" },
 	},
-	{ id: "jump-operations", primary: [mod("Digit0")], descKey: "keymap.shortcut.jumpOperations", category: "navigation" },
+	// ⌘0 is the browser's reset-zoom and cannot be cancelled, so remote gets the
+	// same `G then …` chord the project digits use.
+	{
+		id: "jump-operations", primary: [{ ...mod("Digit0"), desktopOnly: true }],
+		descKey: "keymap.shortcut.jumpOperations", category: "navigation",
+		remoteDisplay: { mac: "G then 0", other: "G then 0" },
+	},
 	{
 		id: "task-switcher", primary: [], descKey: "keymap.shortcut.taskSwitcher", category: "navigation",
 		remappable: false, fixedReasonKey: "keymap.fixed.holdModifier",
@@ -176,21 +190,55 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "open-in", primary: [mod("KeyO")], descKey: "keymap.shortcut.openIn", category: "view", scope: "desktop" },
 	{ id: "keyboard-shortcuts", primary: [mod("Slash")], descKey: "keymap.shortcut.keyboardShortcuts", category: "view" },
 	{ id: "help-mode", primary: [mod("Slash", "Shift")], descKey: "keymap.shortcut.helpMode", category: "view" },
-	{ id: "terminal-fullscreen", primary: [{ code: "F11", mods: [] }], alias: [mod("KeyF", "Shift")], descKey: "keymap.shortcut.terminalFullscreen", category: "view" },
+	// F11 is the browser's own fullscreen off macOS; the ⇧⌘F alias carries remote.
+	{ id: "terminal-fullscreen", primary: [{ code: "F11", mods: [], desktopOnly: true }], alias: [mod("KeyF", "Shift")], descKey: "keymap.shortcut.terminalFullscreen", category: "view" },
 	{ id: "artifact-search", primary: [mod("KeyF")], descKey: "keymap.shortcut.artifactSearch", category: "view", conflictGroup: "artifact" },
 
 	// ── Terminal ──
 	{ id: "toggle-project-terminal", primary: [mod("Backquote")], descKey: "keymap.shortcut.toggleProjectTerminal", category: "terminal" },
 	{ id: "open-quick-shell", primary: [mod("Backquote", "Shift")], descKey: "keymap.shortcut.openQuickShell", category: "terminal" },
-	{ id: "terminal-search", primary: [mod("KeyF")], descKey: "keymap.shortcut.terminalSearch", category: "terminal", conflictGroup: "terminal" },
+	{
+		id: "terminal-search", category: "terminal", conflictGroup: "terminal", descKey: "keymap.shortcut.terminalSearch",
+		// Ctrl+F is readline's forward-char, so off macOS this joins the Ctrl+Shift
+		// family with the rest of the pane keys.
+		primary: [{ code: "KeyF", mods: ["Mod"], platform: "mac" }, { code: "KeyF", mods: ["Ctrl", "Shift"], platform: "other" }],
+	},
 	// Pane control, formerly the opt-in "iTerm2 compatibility" preset and now just
 	// how dev3 works. `terminal` group: they only fire while a terminal has focus,
 	// so they may share a combo with an app-level shortcut. Pane *navigation* is
 	// deliberately absent — tmux already binds ⌥+arrows prefix-free (tmux/config.ts).
-	{ id: "pane-split-vertical", primary: [mod("KeyD")], descKey: "tmux.splitVDesc", category: "terminal", conflictGroup: "terminal" },
-	{ id: "pane-split-horizontal", primary: [mod("KeyD", "Shift")], descKey: "tmux.splitHDesc", category: "terminal", conflictGroup: "terminal" },
-	{ id: "pane-close", primary: [mod("KeyW")], descKey: "tmux.closePaneDesc", category: "terminal", conflictGroup: "terminal" },
-	{ id: "tmux-new-window", primary: [mod("KeyT")], descKey: "cheatSheet.newWindow", category: "terminal", conflictGroup: "terminal" },
+	//
+	// Platform-split on purpose. `Mod` is ⌘ on macOS, where the shell wants none of
+	// it — but Ctrl elsewhere, where ⌘D/⌘W/⌘T would land as ^D (end-of-file), ^W
+	// (kill word) and ^T. Off macOS they therefore sit on Ctrl+Shift, exactly where
+	// gnome-terminal, Terminator and Windows Terminal put theirs. In a browser those
+	// belong to the browser instead (reopen tab / close window), so the bindings are
+	// `desktopOnly` there and the tmux ⌃B prefix is the remote route — until
+	// Keyboard Lock hands them back (keyboard-lock.ts).
+	{
+		id: "pane-split-vertical", category: "terminal", conflictGroup: "terminal", descKey: "tmux.splitVDesc",
+		primary: [{ code: "KeyD", mods: ["Mod"], platform: "mac" }, { code: "KeyE", mods: ["Ctrl", "Shift"], platform: "other" }],
+	},
+	{
+		id: "pane-split-horizontal", category: "terminal", conflictGroup: "terminal", descKey: "tmux.splitHDesc",
+		primary: [{ code: "KeyD", mods: ["Mod", "Shift"], platform: "mac" }, { code: "KeyO", mods: ["Ctrl", "Shift"], platform: "other" }],
+	},
+	{
+		id: "pane-close", category: "terminal", conflictGroup: "terminal", descKey: "tmux.closePaneDesc",
+		primary: [
+			{ code: "KeyW", mods: ["Mod"], platform: "mac", desktopOnly: true },
+			{ code: "KeyW", mods: ["Ctrl", "Shift"], platform: "other", desktopOnly: true },
+		],
+		remoteDisplay: { mac: "⌃B x", other: "Ctrl+B x" },
+	},
+	{
+		id: "tmux-new-window", category: "terminal", conflictGroup: "terminal", descKey: "cheatSheet.newWindow",
+		primary: [
+			{ code: "KeyT", mods: ["Mod"], platform: "mac", desktopOnly: true },
+			{ code: "KeyT", mods: ["Ctrl", "Shift"], platform: "other", desktopOnly: true },
+		],
+		remoteDisplay: { mac: "⌃B c", other: "Ctrl+B c" },
+	},
 
 	// ── Application ──
 	{ id: "quit", primary: [mod("KeyQ")], descKey: "keymap.shortcut.quit", category: "app", scope: "desktop" },
@@ -217,10 +265,21 @@ export function slotDefaults(spec: ShortcutSpec, slot: ShortcutSlot): Binding[] 
 	return (slot === "primary" ? spec.primary : spec.alias) ?? [];
 }
 
-/** The bindings one slot fires on right now (user override, else its default). */
+/**
+ * The bindings one slot fires on right now (user override, else its default).
+ *
+ * A stored override is only a combo — it cannot carry `desktopOnly` or
+ * `platform`, which a default may. Re-recording the same combo would therefore
+ * silently strip its transport protection, so an override that matches a default
+ * combo yields the DEFAULT object, flags included.
+ */
 export function slotBindings(spec: ShortcutSpec, slot: ShortcutSlot): Binding[] {
 	const defaults = slotDefaults(spec, slot);
-	return isRemappable(spec) ? resolvedSlot(spec.id, slot, defaults) : defaults;
+	if (!isRemappable(spec)) return defaults;
+	const resolved = resolvedSlot(spec.id, slot, defaults);
+	if (resolved === defaults) return defaults;
+	const allDefaults = [...spec.primary, ...(spec.alias ?? [])];
+	return resolved.map((binding) => allDefaults.find((d) => bindingsEqual(d, binding)) ?? binding);
 }
 
 /** Every binding a spec fires on right now, both slots, primary first. */
@@ -282,6 +341,8 @@ export function matchesShortcut(e: KeyboardEvent, id: string, ctx?: Partial<Matc
 		mac: ctx?.mac ?? isMac(),
 		remote,
 		typing: ctx?.typing ?? isTypingContext(),
+		terminal: ctx?.terminal ?? isTerminalFocus(),
+		keyboardLocked: ctx?.keyboardLocked ?? isKeyboardLocked(),
 	};
 	return bindingsFor(spec).some((b) => matchesBinding(e, b, full));
 }

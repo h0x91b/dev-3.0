@@ -7,7 +7,7 @@ const keymap = {
 	"keymap.customize": "Customize shortcuts…",
 	"keymap.footerEscape": "Esc to close",
 	"keymap.remoteNotice":
-		"You're in the browser. Some combos (⌘1–9, ⌘N, zoom, refresh) are reserved by your browser — use the shown alternatives or the Command Palette (⇧⌘P).",
+		"You're in the browser, so it keeps some combos for itself (⌘W, ⌘T, ⌘N, ⌘1–9, zoom, refresh). Every row below shows what to press instead, and ⌘⇧Space always opens the Command Palette. Go fullscreen in a Chromium browser and the app takes the whole keyboard back.",
 
 	// Categories (App tab)
 	"keymap.category.navigation": "Navigation",
@@ -81,6 +81,8 @@ const keymap = {
 	"keymap.edit.filterPlaceholder": "Filter shortcuts…",
 	"keymap.edit.noMatches": "No shortcut matches that.",
 	"keymap.edit.desktopOnly": "Desktop app only",
+	"keymap.edit.browserReserved": "Your browser keeps this combo — it will only work in the desktop app, or in fullscreen.",
+	"keymap.edit.inBrowser": "In the browser: {keys}",
 	"keymap.edit.changedCount": "{count} changed",
 } as const;
 

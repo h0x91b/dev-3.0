@@ -37,7 +37,7 @@ import { submitPastedText } from "./terminal-submit";
 import { createFilePathLinkProvider, type FilePathLinkProvider } from "./terminal-file-links";
 import { installFilePathUnderlines, type FilePathUnderlinesHandle } from "./terminal-link-underlines";
 import { activateTerminalPath } from "./terminal-path-open";
-import { isMac, isRemote } from "./utils/platform";
+import { isRemote } from "./utils/platform";
 import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
 import { isFinalPtyCloseCode } from "../shared/pty-ws-close-codes";
@@ -1816,7 +1816,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 			// `typing: false` — focus IS a terminal here, and that is exactly where
 			// these must fire; the flag only exists to protect bare-key bindings.
-			const ctx = { typing: false };
+			// `terminal: true` is NOT relaxed: it is what keeps a plain Ctrl combo
+			// (^D, ^W) with the shell, which is why these defaults sit on Ctrl+Shift
+			// off macOS.
+			const ctx = { typing: false, terminal: true };
 			const fire = (run: () => void) => {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1836,15 +1839,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		return () => window.removeEventListener("keydown", handleKeydown, { capture: true });
 	}, [taskId]);
 
-	// ⌘F (Ctrl+F elsewhere) — search the terminal via tmux copy-mode.
+	// ⌘F (Ctrl+Shift+F elsewhere) — search the terminal via tmux copy-mode.
 	// Capture phase so ghostty can't swallow it; gated on focus being inside
 	// this terminal (or its search bar) so the browser's native find keeps
-	// working everywhere else in remote mode. Ctrl+F is deliberately NOT bound
-	// on macOS — it is readline forward-char and must reach the shell.
+	// working everywhere else in remote mode. The combo comes from the registry
+	// (`terminal-search`) — plain Ctrl+F is readline's forward-char and must
+	// reach the shell.
 	useEffect(() => {
 		function handleSearchShortcut(e: KeyboardEvent) {
-			const combo = isMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-			if (!combo || e.shiftKey || e.altKey || e.code !== "KeyF") return;
+			if (!matchesShortcut(e, "terminal-search", { typing: false, terminal: true })) return;
 			const wrapper = wrapperRef.current;
 			if (!wrapper) return;
 			if (!wrapper.contains(document.activeElement)) return;

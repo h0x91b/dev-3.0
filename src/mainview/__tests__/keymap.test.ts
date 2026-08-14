@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	conflictGroupOf,
 	APP_SHORTCUTS,
 	SHORTCUT_CATEGORY_KEY,
 	SHORTCUT_CATEGORY_ORDER,
@@ -16,7 +17,7 @@ import {
 	slotBindings,
 	slotDefaults,
 } from "../keymap";
-import { serializeBinding } from "../keymap-bindings";
+import { isControlCharBinding, serializeBinding } from "../keymap-bindings";
 import { setShortcutOverrides } from "../keymap-store";
 import en from "../i18n/translations/en";
 
@@ -36,8 +37,8 @@ function key(
 		altKey: !!mods.alt,
 	} as KeyboardEvent;
 }
-
-const desktopMac = { mac: true, remote: false, typing: false };
+const desktopMac = { mac: true, remote: false, typing: false, terminal: false, keyboardLocked: false };
+const desktopLinux = { ...desktopMac, mac: false };
 
 describe("keymap registry", () => {
 	it("has unique shortcut ids", () => {
@@ -86,7 +87,7 @@ describe("keymap registry", () => {
 
 	it("an alias only exists where a second combo is genuinely offered", () => {
 		const withAlias = APP_SHORTCUTS.filter((s) => slotDefaults(s, "alias").length > 0).map((s) => s.id);
-		expect(withAlias).toEqual(["back", "forward", "task-hints", "new-task", "terminal-fullscreen"]);
+		expect(withAlias).toEqual(["command-palette", "back", "forward", "task-hints", "new-task", "terminal-fullscreen"]);
 		// A slot never carries platform variants of its own beyond the primary's.
 		for (const s of APP_SHORTCUTS) {
 			expect(slotDefaults(s, "alias").length, `${s.id} has more than one alias`).toBeLessThanOrEqual(1);
@@ -324,5 +325,65 @@ describe("terminal pane shortcuts", () => {
 		}
 		// Inside the terminal group they still guard each other.
 		expect(findConflict("terminal-search", { code: "KeyW", mods: ["Mod"] })?.ownerId).toBe("pane-close");
+	});
+});
+
+describe("Ctrl belongs to the shell", () => {
+	// The app modifier is ⌘ on macOS but Ctrl elsewhere, and the app's main
+	// content is a terminal: a plain Ctrl combo is a control character there
+	// (^D end-of-file, ^W kill-word, ^[ Escape), never a shortcut.
+	it("no terminal-group default is a plain Ctrl combo off macOS", () => {
+		for (const spec of APP_SHORTCUTS) {
+			if (conflictGroupOf(spec) !== "terminal") continue;
+			for (const binding of bindingsFor(spec)) {
+				if (binding.platform === "mac") continue;
+				expect(
+					isControlCharBinding(binding, false),
+					`${spec.id} would steal ^${binding.code} from the shell`,
+				).toBe(false);
+			}
+		}
+	});
+
+	it("Ctrl+D splits no pane on Linux — it reaches the shell", () => {
+		const inTerminal = { ...desktopLinux, terminal: true };
+		expect(matchesShortcut(key("KeyD", { ctrl: true }), "pane-split-vertical", inTerminal)).toBe(false);
+		// The Linux default is the terminal-emulator convention instead.
+		expect(matchesShortcut(key("KeyE", { ctrl: true, shift: true }), "pane-split-vertical", inTerminal)).toBe(true);
+	});
+
+	it("app-level Ctrl shortcuts stand down while a terminal has focus", () => {
+		for (const [id, code] of [["go-to-project", "KeyK"], ["add-project", "KeyP"], ["back", "BracketLeft"]] as const) {
+			expect(matchesShortcut(key(code, { ctrl: true }), id, desktopLinux)).toBe(true);
+			expect(matchesShortcut(key(code, { ctrl: true }), id, { ...desktopLinux, terminal: true })).toBe(false);
+		}
+		// ⌘ carries no shell meaning, so macOS keeps firing them in the terminal.
+		expect(matchesShortcut(key("KeyK", { meta: true }), "go-to-project", { ...desktopMac, terminal: true })).toBe(true);
+	});
+
+	it("the command palette stays reachable from inside a terminal, on both platforms", () => {
+		for (const ctx of [desktopMac, desktopLinux]) {
+			const mods = ctx.mac ? { meta: true, shift: true } : { ctrl: true, shift: true };
+			expect(matchesShortcut(key("Space", mods), "command-palette", { ...ctx, terminal: true, remote: true })).toBe(true);
+		}
+	});
+});
+
+describe("keyboard lock", () => {
+	it("revives browser-owned bindings while the lock is held", () => {
+		const locked = { ...desktopMac, remote: true, keyboardLocked: true };
+		expect(matchesShortcut(key("KeyN", { meta: true }), "new-task", { ...locked, keyboardLocked: false })).toBe(false);
+		expect(matchesShortcut(key("KeyN", { meta: true }), "new-task", locked)).toBe(true);
+		expect(matchesShortcut(key("Digit0", { meta: true }), "jump-operations", locked)).toBe(true);
+	});
+});
+
+describe("user overrides", () => {
+	it("re-recording a default combo keeps its browser protection", () => {
+		// An override stores only the combo, so a naive round-trip would drop
+		// `desktopOnly` and re-arm ⌘N in the browser.
+		setShortcutOverrides({ "new-task": { primary: "Mod+KeyN" } });
+		expect(matchesShortcut(key("KeyN", { meta: true }), "new-task", { ...desktopMac, remote: true })).toBe(false);
+		expect(matchesShortcut(key("KeyN", { meta: true }), "new-task", desktopMac)).toBe(true);
 	});
 });

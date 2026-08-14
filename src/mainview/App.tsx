@@ -934,6 +934,15 @@ function App() {
 						e.stopPropagation();
 						return armGoToIndex(e.code === "KeyT" ? "task" : "project");
 					}
+					if (e.code === "Digit0") {
+						// `g 0` — the Operations board, mirroring ⌘0. The chord is the
+						// only route in remote, where ⌘0 is the browser's reset-zoom.
+						const ops = state.projects.find((p) => p.builtin && p.kind === "virtual" && !p.deleted);
+						if (!ops) return;
+						e.preventDefault();
+						e.stopPropagation();
+						return navigateToProject(ops.id);
+					}
 					const n = digitFromCode(e.code);
 					if (n !== null) {
 						// `g <digit>` — jump to project N keeping the current view.

@@ -11,6 +11,7 @@ import { initAnalytics } from "./analytics";
 import { initFeatureFlags } from "./feature-flags";
 import { api, isElectrobun } from "./rpc";
 import { initAutoFullscreen } from "./fullscreen";
+import { initKeyboardLock } from "./keyboard-lock";
 import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
@@ -88,6 +89,11 @@ initStreamerMode();
 // chrome wastes a big share of a phone screen). Desktop/Electrobun only get
 // the fullscreenchange subscription for the menu toggle. See fullscreen.ts.
 initAutoFullscreen({ mobile: !isElectrobun && detectMobile() });
+
+// Browser remote mode: while fullscreen, ask the browser for its own combos
+// (⌘W, ⌘T, ⌘1–9, zoom) so the desktop keymap works verbatim. Chromium-only and
+// a pure upgrade — everything still works without it. See keyboard-lock.ts.
+initKeyboardLock();
 
 // Start the PostHog feature-flag refresh loop (desktop renderer only)
 initFeatureFlags();

@@ -4,6 +4,7 @@ import type { ShortcutSlot } from "../../../shared/types";
 import {
 	bindingChips,
 	bindingFromEvent,
+	isBrowserReserved,
 	rejectBinding,
 	type Binding,
 } from "../../keymap-bindings";
@@ -158,22 +159,31 @@ export default function ShortcutRow({ spec, t, remote, onRebind, onReset }: Shor
 					</span>
 					{/* Matches the alias + reset slots on editable rows, so nothing in the
 					    combo column wanders off the shared vertical lines. */}
-					<span className="w-[7.5rem]" />
+					<span className="min-w-[7.5rem]" />
 					<span className="w-7 h-7" />
 				</div>
 			</div>
 		);
 	}
 
+	// A combo the browser keeps is a warning, not a refusal: the user may be
+	// binding it for the desktop app, and Keyboard Lock hands it back in
+	// fullscreen. Refusing it outright would be us guessing at their intent.
+	const browserTaken = remote && candidate ? isBrowserReserved(candidate) : false;
+
 	const meta = recording
 		? rejected
 			? { text: t("keymap.edit.rejectedReserved"), danger: true }
 			: conflictSpec
 				? { text: t("keymap.edit.conflict", { name: t(conflictSpec.descKey) }), danger: true }
-				: { text: t("keymap.edit.recordingHint"), danger: false }
+				: browserTaken
+					? { text: t("keymap.edit.browserReserved"), danger: true }
+					: { text: t("keymap.edit.recordingHint"), danger: false }
 		: spec.scope === "desktop"
 			? { text: t("keymap.edit.desktopOnly"), danger: false }
-			: null;
+			: remote && spec.remoteDisplay
+				? { text: t("keymap.edit.inBrowser", { keys: shortcutKeysForMode(spec, mac, true) }), danger: false }
+				: null;
 
 	/**
 	 * One slot. The chips ARE the control — a separate "Change" button on every
@@ -300,7 +310,7 @@ export default function ShortcutRow({ spec, t, remote, onRebind, onReset }: Shor
 				<Slot slot="primary" />
 				{/* The alias column keeps its width whether or not it holds anything, so
 				    the primary combos stay on one vertical line down the whole list. */}
-				<span className="w-[7.5rem] flex items-center justify-end">
+				<span className="min-w-[7.5rem] flex items-center justify-end">
 					{recording === "primary" ? null : <Slot slot="alias" />}
 				</span>
 				{/* Reserved even with nothing to restore — same reason. */}

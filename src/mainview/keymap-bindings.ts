@@ -187,17 +187,54 @@ export interface MatchContext {
 	remote: boolean;
 	/** True when focus is in a field or the terminal — suppresses bare-key bindings. */
 	typing: boolean;
+	/** True when focus is in a live terminal — suppresses plain-`Ctrl` bindings. */
+	terminal: boolean;
+	/** True while the browser has handed us its own combos (see `keyboard-lock.ts`). */
+	keyboardLocked: boolean;
+}
+
+/**
+ * Whether this binding resolves to a plain `Ctrl+<key>` on the current platform —
+ * which is not a shortcut to a shell, it is a control character. `^D` is
+ * end-of-file, `^W` kills a word, `^[` IS Escape. Adding Shift or Alt takes the
+ * combo out of that space, which is why every terminal emulator puts its own
+ * bindings on `Ctrl+Shift`.
+ */
+export function isControlCharBinding(binding: Binding, mac: boolean): boolean {
+	const need = requiredModifiers(binding, mac);
+	return need.ctrl && !need.shift && !need.alt && !need.meta;
 }
 
 /** Whether a keydown event fires this binding. */
 export function matchesBinding(e: KeyboardEvent, binding: Binding, ctx: MatchContext): boolean {
 	if (binding.platform && (binding.platform === "mac") !== ctx.mac) return false;
-	if (binding.desktopOnly && ctx.remote) return false;
+	// A browser-owned combo comes back to us once the Keyboard Lock API is
+	// engaged — that is the whole point of locking, so honor it here.
+	if (binding.desktopOnly && ctx.remote && !ctx.keyboardLocked) return false;
 	if (!codeMatches(e, binding.code)) return false;
 	if (ctx.typing && isBareKeyBinding(binding)) return false;
+	if (ctx.terminal && isControlCharBinding(binding, ctx.mac)) return false;
 	const need = requiredModifiers(binding, ctx.mac);
 	return e.metaKey === need.meta && e.ctrlKey === need.ctrl
 		&& e.shiftKey === need.shift && e.altKey === need.alt;
+}
+
+/**
+ * Combos a browser keeps for itself and will not let a page cancel. Used to warn
+ * while recording a rebind in remote mode — a warning, never a refusal: the user
+ * may be binding it for the desktop app, and Keyboard Lock can hand it back.
+ */
+const BROWSER_RESERVED = new Set([
+	"Mod+KeyN", "Mod+Shift+KeyN", "Mod+KeyT", "Mod+Shift+KeyT", "Mod+KeyW", "Mod+Shift+KeyW",
+	"Mod+KeyQ", "Mod+KeyL", "Mod+Shift+KeyP", "Mod+Shift+KeyI", "Mod+Shift+KeyJ", "Mod+Shift+KeyC",
+	"Mod+Minus", "Mod+Equal", "Mod+Digit0", "Mod+Tab", "Mod+Shift+Tab",
+	...Array.from({ length: 9 }, (_, i) => `Mod+Digit${i + 1}`),
+	"F5", "F11", "F12",
+]);
+
+/** Whether a browser would swallow this combo before the page sees it. */
+export function isBrowserReserved(binding: Binding): boolean {
+	return BROWSER_RESERVED.has(serializeBinding(binding));
 }
 
 /**
