@@ -36,11 +36,6 @@ export function shellQuote(s: string): string {
 	return launchDialect().quote(s);
 }
 
-/** Quote a literal that must reach a native executable's argv unchanged. */
-export function shellQuoteNativeArg(s: string): string {
-	return launchDialect().quoteNativeArg(s);
-}
-
 /** The shell that interprets dev3's generated wrapper scripts. */
 export function getScriptShellPath(shellPath?: string): string {
 	return getLaunchShellPath(shellPath);

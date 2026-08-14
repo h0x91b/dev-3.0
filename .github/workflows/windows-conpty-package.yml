@@ -65,11 +65,8 @@ jobs:
       # file with a real TOML parser and drive ensureCodexConfigFile against a real
       # temp home, so only the Windows leg can see the composition that broke; the
       # POSIX legs are the control that the escaping did not change their output.
-      # The same suite also spawns real PowerShell and reads back a real process's
-      # argv, because whether the `-c hooks={...}` quotes survive is decided by
-      # Windows argument parsing and by nothing this repo can assert on its own.
-      - name: Codex config + hooks override (real TOML parse, real argv)
-        run: bun run test:codex-windows
+      - name: Codex config generation + repair (real TOML parse)
+        run: bun run test:codex-config-windows
       - name: Windows self-update swap script (pure)
         run: bun run test:windows-update
 

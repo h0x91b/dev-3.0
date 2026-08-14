@@ -66,7 +66,7 @@ import {
 	type AuxPaneHandle,
 	type AuxPanePlacement,
 } from "../task-aux-panes";
-import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, log, resolveBinaryPath, shellQuoteNativeArg, writeLaunchScript } from "./shared-pure";
+import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, log, resolveBinaryPath, shellQuote, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
@@ -539,13 +539,9 @@ async function applyAgentHooksToCommand(
 	try {
 		const codexHookOverride = await setupAgentHooks(worktreePath, baseCommand, options);
 		if (!codexHookOverride) return command;
-		// Codex parses this argument as TOML and silently falls back to a plain
-		// string when it does not parse, so every quote inside it has to survive
-		// the trip into the process's argv — hence the native-arg quoting.
-		const quoted = shellQuoteNativeArg(codexHookOverride);
 		const firstSeparator = command.search(/\s/);
-		if (firstSeparator < 0) return `${command} -c ${quoted}`;
-		return `${command.slice(0, firstSeparator)} -c ${quoted}${command.slice(firstSeparator)}`;
+		if (firstSeparator < 0) return `${command} -c ${shellQuote(codexHookOverride)}`;
+		return `${command.slice(0, firstSeparator)} -c ${shellQuote(codexHookOverride)}${command.slice(firstSeparator)}`;
 	} catch (err) {
 		log.warn("setupAgentHooks failed (non-fatal)", {
 			worktreePath,
