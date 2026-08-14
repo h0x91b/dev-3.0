@@ -38,9 +38,13 @@ until curl -sf "http://localhost:$PORT/?token=$CODE" >/dev/null; do sleep 2; don
 #    path is task-scoped too, so parallel agents never overwrite each other's PNG.
 #    `&streamer=on` is MANDATORY: it enables streamer mode (privacy masking), so screenshots
 #    can't leak the developer's real emails/accounts/paths/tunnel URLs (see Gotchas).
+#    Keep `set viewport` BEFORE `open`, and keep the width ≥ 1024 for desktop QA — the app's
+#    mobile gate reads `screen.width` (see Gotchas).
 agent-browser set viewport 1440 900
 agent-browser open "http://localhost:$PORT/?token=$CODE&streamer=on"
 agent-browser wait --load networkidle
+sleep 2                                       # networkidle can still land mid-render — let it settle
+agent-browser snapshot -i -d 6                # prove it's DRIVABLE, not just screenshot-able
 agent-browser screenshot "/tmp/dev3-ui-${DEV3_TASK_ID%%-*}.png"   # then Read it back to look
 agent-browser errors                          # confirm no console errors
 
@@ -88,6 +92,23 @@ above (see [decision 093](../../../decisions/2026/06/30/dev-remote-port-from-poo
   — see `src/mainview/streamer-mode.tsx` and decision 161. Only capture unmasked when the task
   is explicitly about those values (e.g. testing the accounts UI itself), and say so when
   presenting the image.
+- **App renders but nothing clicks? That's the mobile gate, not the tooling.** The app decides
+  mobile from the *physical* `screen.width` (`< 1024` → mobile; `src/mainview/hooks/useMobile.tsx`,
+  deliberately not `innerWidth`), and a mobile device held in landscape gets
+  `MobilePortraitGate`: a "rotate your device" overlay plus `inert` on the whole app — screenshots
+  still work, clicks do nothing. Current `agent-browser` (0.6.0) emulates `screen.*` together with
+  the viewport, so a `set viewport 1440 900` before `open` reports `screen.width = 1440` and the
+  gate stays off; with no viewport set at all it defaults to 1280×720, also fine. You only hit the
+  gate by asking for a phone-sized landscape viewport — that is the app working as designed.
+  Measured across the common sizes: `2560×1440`, `1920×1080`, `1600×900`, `1440×900`, `1366×768`,
+  `1280×720`, `1024×768`, `768×1024` and phone portrait `390×844` all render and click fine
+  (`screen.width` always equals the requested width); only landscape `844×390` shows the gate, goes
+  `inert`, and reports **zero** interactive elements in `snapshot -i` — that count is the fastest
+  tell. Diagnose in one call:
+  `agent-browser eval "JSON.stringify({sw:screen.width,gate:!!document.querySelector('[data-testid=\"mobile-portrait-gate\"]'),inert:!!document.querySelector('[inert]')})"`.
+  If a future browser tool pins `screen.*` to the real headless display and desktop QA goes inert,
+  that's the moment to add an escape hatch to the app — not before (see
+  [the headless-QA decision](../../../decisions/2026/08/14/headless-qa-mobile-gate-stays-as-is.md)).
 - **No native dialogs** in browser mode. If a confirm/file-picker flow silently no-ops, that's
   an app bug, not a tooling problem — report it.
 - **Show images to the user AFTER you stop this dev-server, not while it runs.**
