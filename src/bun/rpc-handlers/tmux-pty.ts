@@ -66,7 +66,7 @@ import {
 	type AuxPaneHandle,
 	type AuxPanePlacement,
 } from "../task-aux-panes";
-import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, log, resolveBinaryPath, shellQuote, writeLaunchScript } from "./shared-pure";
+import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, shellQuote, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
@@ -962,7 +962,7 @@ export async function launchColumnAgent(
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, worktreePath),
 	};
-	const scriptPath = dev3TaskTempPath(task.id, "col-agent.sh");
+	const scriptPath = dev3TaskTempPath(task.id, generatedScriptName("col-agent"));
 	await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env, {
 		paneTitle: options.paneTitle,
 		onExitCommand: options.onExitCommand,
@@ -982,7 +982,7 @@ export async function launchColumnAgent(
 		socket,
 		title: options.paneTitle,
 		tmuxCommand: `bash "${scriptPath}"`,
-		nativeLaunch: { executable: "/bin/bash", argv: [scriptPath] },
+		nativeLaunch: generatedScriptLaunch(scriptPath),
 	});
 
 	// tmux hands focus to the freshly split pane; the agent (pane 0) keeps it, as it
@@ -2522,7 +2522,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		Object.assign(env, portPool.buildPortEnv(existingPorts));
 	}
 
-	const scriptPath = dev3TaskTempPath(task.id, `spawn-${Date.now()}.sh`);
+	const scriptPath = dev3TaskTempPath(task.id, generatedScriptName(`spawn-${Date.now()}`));
 	await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env));
 
 	const socket = pty.getSessionSocket(params.taskId);
@@ -2544,7 +2544,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 			env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
 			socket,
 			tmuxCommand: `bash "${scriptPath}"`,
-			nativeLaunch: { executable: "/bin/bash", argv: [scriptPath] },
+			nativeLaunch: generatedScriptLaunch(scriptPath),
 		});
 	} catch (err) {
 		log.error("spawnAgentInTask failed", { taskId: params.taskId.slice(0, 8), error: String(err) });
@@ -2712,7 +2712,10 @@ async function spawnSingleBugHunterPane(opts: {
 		Object.assign(env, portPool.buildPortEnv(existingPorts));
 	}
 
-	const scriptPath = dev3TaskTempPath(opts.task.id, `bughunt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sh`);
+	const scriptPath = dev3TaskTempPath(
+		opts.task.id,
+		generatedScriptName(`bughunt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+	);
 	await writeLaunchScript(scriptPath, buildCmdScript(tmuxCmd, env));
 
 	const handle = await splitTaskPane({
@@ -2724,7 +2727,7 @@ async function spawnSingleBugHunterPane(opts: {
 		tmuxTarget: opts.split.tmuxTarget,
 		nativeAnchor: opts.split.nativeAnchor,
 		tmuxCommand: `bash "${scriptPath}"`,
-		nativeLaunch: { executable: "/bin/bash", argv: [scriptPath] },
+		nativeLaunch: generatedScriptLaunch(scriptPath),
 	});
 
 	// sessionState.panes is the tmux pane registry — recovery and `handlePaneExited`

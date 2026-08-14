@@ -101,6 +101,15 @@ export const WINDOWS_SCOPE_PATHS = [
 	// the generated file parses, so an edit here must re-dispatch the proof.
 	"src/bun/codex-config.ts",
 	"src/bun/__tests__/codex-config-windows-paths.test.ts",
+	// The shell a pane's generated wrapper runs under: the dialect spells it, and a
+	// hardcoded `/bin/bash` in the agent-spawn path killed "+ Agent" on Windows
+	// (Seq 1544). Only a Windows run can tell the two dialects apart.
+	"src/shared/platform-launch.ts",
+	"src/shared/launch-failure.ts",
+	"src/bun/rpc-handlers/shared-pure.ts",
+	"src/bun/rpc-handlers/tmux-pty.ts",
+	"src/bun/rpc-handlers/__tests__/agent-spawn-shell-launch.test.ts",
+	"src/bun/__tests__/launch-failure.test.ts",
 	// This list and the script reading it decide the whole thing; changing either
 	// has to re-prove Windows rather than judging its own change out of scope.
 	"src/shared/windows-ci-scope.ts",

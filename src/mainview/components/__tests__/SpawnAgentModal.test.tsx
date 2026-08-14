@@ -197,6 +197,27 @@ describe("SpawnAgentModal", () => {
 		expect(alert.textContent).toMatch(/tmux error/);
 		// The failure must be reachable, not just visible.
 		expect(alert).toHaveFocus();
+		// Cause unknown → the agent-install hint is the honest guess.
+		expect(alert.textContent).toMatch(/Check the agent is installed/);
+	});
+
+	// The Windows failure (Seq 1544) was a shell dev3 could not resolve; telling
+	// the user to check the agent's installation sent them after the wrong thing.
+	it("blames the shell, not the agent, when the shell could not be resolved", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.spawnAgentInTask.mockRejectedValue(
+			new Error("Failed to spawn agent: splitView failed: requested shell executable not found: /bin/bash"),
+		);
+		renderModal();
+
+		await vi.waitFor(() => {
+			expect(screen.getByTestId("spawn-agent-submit")).toBeEnabled();
+		});
+		await user.click(screen.getByTestId("spawn-agent-submit"));
+
+		const alert = await vi.waitFor(() => screen.getByRole("alert"));
+		expect(alert.textContent).toMatch(/could not resolve a shell/);
+		expect(alert.textContent).not.toMatch(/Check the agent is installed/);
 	});
 
 	it("closes on Escape", async () => {

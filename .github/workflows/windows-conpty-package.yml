@@ -67,6 +67,19 @@ jobs:
       # POSIX legs are the control that the escaping did not change their output.
       - name: Codex config generation + repair (real TOML parse)
         run: bun run test:codex-config-windows
+
+      # Seq 1544: "+ Agent" on a native task handed the pane a hardcoded
+      # `/bin/bash`, so adding a second agent died on Windows with "requested
+      # shell executable not found". The spawn path is driven here against the
+      # runner's REAL platform; the POSIX legs are the control that the launch
+      # there is still `/bin/bash <script>.sh`.
+      # `always()`: main was red at an unrelated Codex step on 2026-08-14 (run
+      # 31839045471), and a step that only runs when an unrelated one passes is
+      # evidence about that step, not about this one.
+      - name: Agent spawn shell resolution (real platform)
+        if: always()
+        run: bun run test:agent-spawn-shell
+
       - name: Windows self-update swap script (pure)
         run: bun run test:windows-update
 

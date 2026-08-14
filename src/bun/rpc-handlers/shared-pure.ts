@@ -69,6 +69,36 @@ export async function writeLaunchScript(scriptPath: string, body: string): Promi
 	await Bun.write(scriptPath, launchDialect().scriptByteOrderMark + body);
 }
 
+/**
+ * POSIX generated scripts have always been handed to `/bin/bash` explicitly
+ * (not the login shell), and their bodies are bash text. Keep that byte-exact.
+ */
+const GENERATED_SCRIPT_POSIX_SHELL = "/bin/bash";
+
+/**
+ * How a generated wrapper script is handed to a native pane. The dialect owns
+ * the spelling: bash + the script on POSIX, PowerShell + `-File` on Windows,
+ * where a hardcoded `/bin/bash` simply does not exist.
+ *
+ * `cwd`/`env` are the pane's business (the caller passes them separately), so
+ * only the executable and argv survive here.
+ */
+export function generatedScriptLaunch(scriptPath: string): { executable: string; argv: string[] } {
+	const dialect = launchDialect();
+	const spec = dialect.scriptLaunch(scriptPath, {
+		cwd: ".",
+		env: {},
+		// Windows ignores a non-PowerShell path and resolves PowerShell itself.
+		shellPath: dialect.id === "posix-shell" ? GENERATED_SCRIPT_POSIX_SHELL : undefined,
+	});
+	return { executable: spec.executable, argv: spec.argv };
+}
+
+/** Filename of a generated wrapper script: `.sh` on POSIX, `.ps1` on Windows. */
+export function generatedScriptName(base: string): string {
+	return `${base}${launchDialect().scriptExtension}`;
+}
+
 export function buildCmdScript(
 	tmuxCmd: string,
 	env?: Record<string, string>,
@@ -351,7 +381,9 @@ export function isActive(status: TaskStatus): boolean {
 export function buildAgentEnv(extraEnv: Record<string, string>, taskId: string): Record<string, string> {
 	const dev3Bin = `${DEV3_HOME}/bin`;
 	const currentPath = process.env.PATH || "";
-	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
+	// `delimiter`, not ":" — Windows separates PATH entries with ";", and one wrong
+	// separator makes the whole variable unparsable for the agent we just launched.
+	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}${delimiter}${currentPath}`;
 	return { ...extraEnv, DEV3_TASK_ID: taskId, PATH: pathWithDev3 };
 }
 

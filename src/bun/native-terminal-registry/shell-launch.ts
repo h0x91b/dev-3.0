@@ -1,4 +1,5 @@
 import { win32 as pathWin32 } from "node:path";
+import { SHELL_NOT_FOUND_MARKER } from "../../shared/launch-failure";
 
 export const NATIVE_SESSION_LAUNCH_ENV = "DEV3_NATIVE_SESSION_LAUNCH" as const;
 
@@ -54,7 +55,7 @@ export class ShellExecutableNotFoundError extends Error {
 	readonly code = "executable-not-found" as const;
 
 	constructor(readonly executable: string) {
-		super(`requested shell executable not found: ${executable}`);
+		super(`${SHELL_NOT_FOUND_MARKER}: ${executable}`);
 		this.name = "ShellExecutableNotFoundError";
 	}
 }

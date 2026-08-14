@@ -247,6 +247,7 @@ const kanban = {
 	"launch.launching": "Launching…",
 	"launch.failedLaunch": "Unable to launch. {error}",
 	"launch.failedLaunchHint": "Check the agent is installed, then try again.",
+	"launch.failedLaunchHintShell": "dev3 could not resolve a shell to run the agent's terminal — the agent itself is not the problem. Please report this.",
 	"launch.startIn": "Launch later…",
 	"launch.startInHint": "Schedule this launch for later",
 	"launch.schedule": "Schedule",

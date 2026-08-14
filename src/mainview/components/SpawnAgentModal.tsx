@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
+import { launchFailureHintKey } from "../../shared/launch-failure";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
@@ -205,7 +206,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				{error && (
 					<div ref={errorRef} role="alert" tabIndex={-1} className="px-6 py-2 text-danger text-sm outline-none">
 						{t("spawnAgent.failed", { error })}
-						<span className="text-fg-3 block">{t("launch.failedLaunchHint")}</span>
+						<span className="text-fg-3 block">{t(launchFailureHintKey(error))}</span>
 					</div>
 				)}
 
