@@ -44,6 +44,13 @@ Rules, in order: create when no `.lnk` exists and we never wrote one; leave a co
 **repair** one that points at another directory of ours (an update moved the app); never touch a
 shortcut belonging to something else; and never recreate one the user deleted after we wrote it —
 `~/.dev3.0/windows-shortcuts.json` records what we wrote, a new file that no other version reads.
+
+**On-disk rules for that file** (`AGENTS.md`, "On-disk data layout — hard invariants"): it is purely
+additive, it is never renamed, nothing is migrated or deleted at load time, and an older app version
+that knows nothing about it is unaffected. **Missing, empty or unparsable degrades to "we have no
+record" — meaning create — never to a crash:** `readState()` returns `{}` on any read or `JSON.parse`
+failure and logs a warning. The one cost of that fallback is honest: a user who deleted a shortcut
+and then lost this file gets it back once.
 The file name mirrors electrobun's `windowsShortcutFileName` byte for byte, including its quirk
 that only the literal channel `production` drops the suffix, so a box where Setup also ran does not
 end up with two icons.
