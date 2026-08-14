@@ -7,7 +7,7 @@ import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types
 export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
-import { detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
+import { backupUnparsableCodexConfig, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
@@ -789,7 +789,7 @@ export function buildTaskEnv(
 
 // ---- Gemini Trust ----
 
-const CODEX_CONFIG = `${homedir()}/.codex/config.toml`;
+const CODEX_CONFIG = join(homedir(), ".codex", "config.toml");
 
 const GEMINI_TRUSTED_FOLDERS = `${homedir()}/.gemini/trustedFolders.json`;
 
@@ -832,8 +832,8 @@ export async function ensureCodexTrust(dirPath: string): Promise<void> {
 	try {
 		const resolved = await realpath(dirPath);
 		const home = homedir();
-		const worktreesPath = `${home}/.dev3.0/worktrees`;
-		const socketsPath = `${home}/.dev3.0/sockets`;
+		const worktreesPath = join(home, ".dev3.0", "worktrees");
+		const socketsPath = join(home, ".dev3.0", "sockets");
 
 		let content: string | null = null;
 		try {
@@ -841,6 +841,8 @@ export async function ensureCodexTrust(dirPath: string): Promise<void> {
 		} catch {
 			// File doesn't exist yet — create with defaults below.
 		}
+
+		if (content != null) backupUnparsableCodexConfig(CODEX_CONFIG, content);
 
 		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [worktreesPath, resolved], {
 			codexVersion: getCodexVersionCached(),

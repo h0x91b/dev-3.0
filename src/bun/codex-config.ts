@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { load } from "js-toml";
 import { createLogger } from "./logger";
 import { spawnSync } from "./spawn";
@@ -91,6 +91,131 @@ const MANAGED_DEV3_PROFILES = [
 const DEV3_PROFILE_SETTINGS: Record<string, string> = {
 	web_search: '"live"',
 };
+
+/**
+ * Quote a value as a TOML basic string. A raw Windows path pasted into `"..."`
+ * makes `C:\Users` the escape sequence `\U`, and TOML then demands eight hex
+ * digits — which is why an unescaped path killed the whole config at parse time
+ * (issue: `codex` refused to start on Windows). Escaping is a no-op for POSIX
+ * paths, so macOS/Linux output stays byte-identical.
+ */
+export function tomlBasicString(value: string): string {
+	let out = "";
+	for (const char of value) {
+		switch (char) {
+			case "\\":
+				out += "\\\\";
+				break;
+			case '"':
+				out += '\\"';
+				break;
+			case "\n":
+				out += "\\n";
+				break;
+			case "\r":
+				out += "\\r";
+				break;
+			case "\t":
+				out += "\\t";
+				break;
+			default:
+				out +=
+					char < "\u0020" || char === "\u007f"
+						? `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`
+						: char;
+		}
+	}
+	return `"${out}"`;
+}
+
+/**
+ * The filesystem grants dev3 writes into a permission profile. Paths are joined
+ * with the platform separator (a native Windows path, not a `C:\Users\x/...`
+ * hybrid) and quoted as TOML basic strings.
+ */
+function dev3FilesystemLines(userHome: string, dev3Home: string): string[] {
+	return [
+		`${tomlBasicString(join(userHome, ".codex", "skills"))} = "read"`,
+		`${tomlBasicString(join(userHome, ".agents", "skills"))} = "read"`,
+		`${tomlBasicString(dev3Home)} = "write"`,
+	];
+}
+
+/** A quoted TOML string whose content still looks like a native Windows path. */
+const WINDOWS_PATH_IN_BASIC_STRING = /"([A-Za-z]:\\[^"\n]*)"/g;
+
+/**
+ * Lines dev3 itself emits with a path in them. The repair below only touches
+ * these shapes, so hand-written user content is never rewritten.
+ */
+const DEV3_PATH_LINE_SHAPES = [
+	/^\s*\[projects\."/,
+	/^\s*\[permissions\.[^\]]*\]\s*$/,
+	/^\s*"[A-Za-z]:\\[^"\n]*"\s*=\s*"(read|write|allow|deny)"\s*$/,
+	/^\s*allow_unix_sockets\s*=\s*\[/,
+];
+
+/**
+ * Repair a config.toml that earlier dev3 versions made unparsable on Windows by
+ * writing raw backslash paths into TOML basic strings. Every backslash inside a
+ * dev3-shaped path string is escaped; `\t`/`\n`-looking segments (`C:\temp`)
+ * are included because they parse into a control character instead of a path.
+ * Returns null when nothing matched, so callers can tell "repaired" from
+ * "still broken".
+ */
+export function repairWindowsPathEscapes(content: string): string | null {
+	let changed = false;
+	const repaired = content
+		.split("\n")
+		.map((line) => {
+			if (!DEV3_PATH_LINE_SHAPES.some((shape) => shape.test(line))) return line;
+			return line.replace(WINDOWS_PATH_IN_BASIC_STRING, (match, path: string) => {
+				if (!path.includes("\\")) return match;
+				changed = true;
+				return tomlBasicString(path);
+			});
+		})
+		.join("\n");
+
+	return changed ? repaired : null;
+}
+
+/**
+ * Repair only when the result actually parses. A file broken by something other
+ * than our escaping bug is left exactly as the user wrote it.
+ */
+export function repairIfParsable(content: string): string | null {
+	const repaired = repairWindowsPathEscapes(content);
+	if (repaired == null) return null;
+	try {
+		load(repaired);
+	} catch {
+		return null;
+	}
+	return repaired;
+}
+
+/**
+ * Copy an unparsable config.toml aside once before we rewrite it. The file
+ * belongs to Codex and to the user, so the repair keeps an untouched original
+ * next to it; a second run never overwrites the first backup.
+ */
+export function backupUnparsableCodexConfig(configPath: string, content: string): void {
+	try {
+		load(content);
+		return; // parses fine — nothing to back up
+	} catch {
+		// fall through: the file is broken, keep a copy before repairing it
+	}
+	const backupPath = `${configPath}.dev3-backup`;
+	if (existsSync(backupPath)) return;
+	try {
+		copyFileSync(configPath, backupPath);
+		log.info("Backed up unparsable Codex config.toml before repair", { path: backupPath });
+	} catch (err) {
+		log.warn("Could not back up Codex config.toml (non-fatal)", { error: String(err) });
+	}
+}
 
 export function parseCodexVersion(output: string): CodexVersion | null {
 	const match = output.match(/\bv?(\d+)\.(\d+)\.(\d+)\b/);
@@ -204,8 +329,14 @@ export function ensureCodexConfig(
 		try {
 			parsed = load(config) as CodexConfig;
 		} catch {
-			log.warn("Could not parse existing Codex config.toml, skipping patching");
-			return config;
+			const repaired = repairIfParsable(config);
+			if (repaired == null) {
+				log.warn("Could not parse existing Codex config.toml, skipping patching");
+				return config;
+			}
+			config = repaired;
+			parsed = load(config) as CodexConfig;
+			log.info("Repaired unescaped Windows paths in Codex config.toml");
 		}
 	}
 
@@ -235,7 +366,7 @@ export function ensureCodexConfig(
 	for (const trustedPath of new Set([worktreesPath, ...trustedPaths])) {
 		if (!trustedPath) continue;
 		if (parsed.projects?.[trustedPath] != null) continue;
-		const block = `\n[projects."${trustedPath}"]\ntrust_level = "trusted"\n`;
+		const block = `\n[projects.${tomlBasicString(trustedPath)}]\ntrust_level = "trusted"\n`;
 		config = appendBlock(config, block);
 	}
 
@@ -248,9 +379,7 @@ export function ensureCodexConfig(
 			"",
 			`[permissions.${DEV3_CODEX_PROFILE}.filesystem]`,
 			'":minimal" = "read"',
-			`"${userHome}/.codex/skills" = "read"`,
-			`"${userHome}/.agents/skills" = "read"`,
-			`"${dev3Home}" = "write"`,
+			...dev3FilesystemLines(userHome, dev3Home),
 			"",
 			filesystemRootsHeader(DEV3_CODEX_PROFILE, syntax.filesystemRootKey),
 			'"." = "write"',
@@ -281,9 +410,7 @@ export function ensureCodexConfig(
 		// Ensure skill directories are readable and dev3 data dir is writable
 		const fsHeader = `[permissions.${DEV3_CODEX_PROFILE}.filesystem]`;
 		const requiredFsPaths = [
-			`"${userHome}/.codex/skills" = "read"`,
-			`"${userHome}/.agents/skills" = "read"`,
-			`"${dev3Home}" = "write"`,
+			...dev3FilesystemLines(userHome, dev3Home),
 		];
 		for (const fsLine of requiredFsPaths) {
 			if (!config.includes(fsLine)) {
@@ -526,10 +653,10 @@ function dev3NetworkSocketLines(socketsPath: string, syntax: CodexSyntax): strin
 		return [
 			"",
 			`[permissions.${DEV3_CODEX_PROFILE}.network.unix_sockets]`,
-			`"${socketsPath}" = "allow"`,
+			`${tomlBasicString(socketsPath)} = "allow"`,
 		];
 	}
-	return [`allow_unix_sockets = ["${socketsPath}"]`];
+	return [`allow_unix_sockets = [${tomlBasicString(socketsPath)}]`];
 }
 
 /** Legacy (codex < 0.119): ensure the socket is in the allow_unix_sockets array. */
@@ -543,7 +670,7 @@ function ensureDev3UnixSocketsArray(
 	if (existingSockets.includes(socketsPath)) return config;
 
 	if (existingSockets.length === 0 && !config.includes("allow_unix_sockets")) {
-		return insertAfterSectionHeader(config, netHeader, `allow_unix_sockets = ["${socketsPath}"]`);
+		return insertAfterSectionHeader(config, netHeader, `allow_unix_sockets = [${tomlBasicString(socketsPath)}]`);
 	}
 	// Append to the existing array under dev3.network specifically.
 	const pattern = new RegExp(
@@ -552,7 +679,7 @@ function ensureDev3UnixSocketsArray(
 	);
 	return config.replace(pattern, (_match, prefix, inner) => {
 		const trimmed = inner.trim();
-		const newValue = trimmed ? `${trimmed}, "${socketsPath}"` : `"${socketsPath}"`;
+		const newValue = trimmed ? `${trimmed}, ${tomlBasicString(socketsPath)}` : tomlBasicString(socketsPath);
 		return `${prefix}allow_unix_sockets = [${newValue}]`;
 	});
 }
@@ -583,7 +710,7 @@ function ensureDev3UnixSocketsMap(
 
 	// Upsert each desired path into the map sub-table (creates the table if absent).
 	for (const p of desired) {
-		config = upsertSectionLine(config, mapHeader, `"${p}"`, '"allow"');
+		config = upsertSectionLine(config, mapHeader, tomlBasicString(p), '"allow"');
 	}
 	return config;
 }
@@ -764,9 +891,9 @@ export function ensureCodexProfileFile(
  * installAgentSkills() when the skills installer is invoked directly.
  */
 export function ensureCodexConfigFile(homePath: string): void {
-	const configPath = `${homePath}/.codex/config.toml`;
-	const worktreesPath = `${homePath}/.dev3.0/worktrees`;
-	const socketsPath = `${homePath}/.dev3.0/sockets`;
+	const configPath = join(homePath, ".codex", "config.toml");
+	const worktreesPath = join(homePath, ".dev3.0", "worktrees");
+	const socketsPath = join(homePath, ".dev3.0", "sockets");
 	const codexVersion = detectCodexVersion();
 	const syntax = getCodexSyntaxForVersion(codexVersion);
 
@@ -777,6 +904,8 @@ export function ensureCodexConfigFile(homePath: string): void {
 		} catch {
 			// File doesn't exist — will create with defaults
 		}
+
+		if (content != null) backupUnparsableCodexConfig(configPath, content);
 
 		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [], {
 			codexVersion,
@@ -795,7 +924,7 @@ export function ensureCodexConfigFile(homePath: string): void {
 	if (!syntax.profileV2) return;
 
 	for (const profileName of MANAGED_DEV3_PROFILES) {
-		const profilePath = `${homePath}/.codex/${profileName}.config.toml`;
+		const profilePath = join(homePath, ".codex", `${profileName}.config.toml`);
 		try {
 			let existing: string | null = null;
 			try {
