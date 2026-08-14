@@ -72,6 +72,11 @@ jobs:
     # Same 35 as the proof job it mirrors.
     timeout-minutes: 35
     steps:
+      # PROOF-ONLY SABOTAGE — never merged. Injects the Windows failure this branch exists to
+      # observe, so the release path can be watched refusing to complete.
+      - name: Sabotage the Windows leg on purpose
+        run: exit 1
+
       - uses: actions/checkout@v5
         with:
           # Full history + tags: build-update-changelog.ts resolves the previous release tag and
