@@ -11,7 +11,10 @@ const BUILTIN_PROMPT = "Review the code changes on this branch.";
 const t = ((key: string) =>
 	key === "createTask.reviewPrompt" ? BUILTIN_PROMPT : key) as unknown as TFunction;
 
-function renderSection(settings: Partial<GlobalSettings> = {}) {
+function renderSection(
+	settings: Partial<GlobalSettings> = {},
+	{ prOriginTaskLinkSupported = true }: { prOriginTaskLinkSupported?: boolean } = {},
+) {
 	const onReviewModePromptChange = vi.fn();
 	const onPrOriginTaskLinkToggle = vi.fn();
 	render(
@@ -25,6 +28,7 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				onWatchByDefaultToggle={vi.fn()}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
+				prOriginTaskLinkSupported={prOriginTaskLinkSupported}
 				onFocusModeToggle={vi.fn()}
 				onTaskSortOrderChange={vi.fn()}
 				onTaskOpenModeChange={vi.fn()}
@@ -96,5 +100,20 @@ describe("BehaviorSettingsSection — PR origin-task link toggle", () => {
 		expect(prSwitch()).toHaveAttribute("aria-checked", "false");
 		await userEvent.click(prSwitch());
 		expect(onPrOriginTaskLinkToggle).toHaveBeenCalledWith(true);
+	});
+
+	// Windows: the host registers no dev3:// handler, so the control reads Off and
+	// inert — while the stored `true` on disk stays exactly as the user left it.
+	it("reads off, inert and explained when the host cannot open dev3:// links", async () => {
+		const { onPrOriginTaskLinkToggle } = renderSection(
+			{ prOriginTaskLink: true },
+			{ prOriginTaskLinkSupported: false },
+		);
+		expect(prSwitch()).toHaveAttribute("aria-checked", "false");
+		expect(screen.getByTestId("pr-origin-task-link-unsupported")).toHaveTextContent(
+			"settings.prOriginTaskLinkUnsupported",
+		);
+		await userEvent.click(prSwitch());
+		expect(onPrOriginTaskLinkToggle).not.toHaveBeenCalled();
 	});
 });

@@ -30,6 +30,7 @@ vi.mock("../../rpc", () => ({
 			setTmuxTheme: vi.fn().mockResolvedValue(undefined),
 			checkCaffeinateAvailable: vi.fn().mockResolvedValue({ available: true }),
 			checkCanaryChannelAvailable: vi.fn().mockResolvedValue({ available: true }),
+			checkPrOriginTaskLinkSupported: vi.fn().mockResolvedValue({ supported: true }),
 			getNativeTerminalAvailability: vi
 				.fn()
 				.mockResolvedValue({ available: true, tmuxSupported: true, diagnostics: [] }),

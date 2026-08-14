@@ -104,6 +104,10 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	// FALSE until the host answers: the channel publishes per platform, and defaulting to
 	// true would flash an enabled control that then leads to a 403 on a platform with no build.
 	const [canaryAvailable, setCanaryAvailable] = useState(false);
+	// TRUE until the host answers: the unsupported branch shows Windows-specific copy,
+	// and flashing that on every macOS/Linux launch would put a plainly wrong sentence
+	// on screen — worse than a toggle that is briefly live on Windows.
+	const [prOriginTaskLinkSupported, setPrOriginTaskLinkSupported] = useState(true);
 	// Null until the host answers — the backend picker stays inert rather than
 	// guessing that native is (un)available.
 	const [nativeTerminalAvailability, setNativeTerminalAvailability] =
@@ -229,6 +233,12 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	useEffect(() => {
 		api.request.checkCanaryChannelAvailable()
 			.then((result) => setCanaryAvailable(result.available))
+			.catch(() => {});
+	}, []);
+
+	useEffect(() => {
+		api.request.checkPrOriginTaskLinkSupported()
+			.then((result) => setPrOriginTaskLinkSupported(result.supported))
 			.catch(() => {});
 	}, []);
 
@@ -649,6 +659,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
 						onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
+						prOriginTaskLinkSupported={prOriginTaskLinkSupported}
 						onFocusModeToggle={handleFocusModeToggle}
 						onTaskSortOrderChange={handleTaskSortOrderChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}

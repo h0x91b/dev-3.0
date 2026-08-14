@@ -210,6 +210,7 @@ const settings = {
 	"settings.suggestCompletingTasksAfterMergeDesc": "When off, a merged branch shows an informational toast instead of asking to complete the task.",
 	"settings.prOriginTaskLink": "Link pull requests back to the task",
 	"settings.prOriginTaskLinkDesc": "When on, pull requests dev3 opens end with a deep link back to the originating task. Turn it off to keep dev3 out of public PR descriptions.",
+	"settings.prOriginTaskLinkUnsupported": "This system registers no handler for dev3:// links, so the link would go nowhere in a public PR. Your saved preference is kept and still applies on a machine that has one.",
 	"settings.taskOpenMode": "Task open mode",
 	"settings.taskOpenModeDesc": "How active tasks open when you click on them. Also affects Cmd+1..9: Split keeps the task view, Full screen switches to the board.",
 	"settings.taskOpenModeSplit": "Split view (sidebar + terminal)",

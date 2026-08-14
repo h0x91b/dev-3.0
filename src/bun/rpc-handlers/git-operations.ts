@@ -16,7 +16,7 @@ import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import type { AgentPromptDelivery } from "../../shared/agent-prompt-delivery";
-import { buildTaskPrDeepLinkLine } from "../../shared/deep-link";
+import { buildTaskPrDeepLinkLine, deepLinkSchemeRegistered } from "../../shared/deep-link";
 import { loadSettings } from "../settings";
 import { auxPaneAlive, auxPaneTitle, openAuxPane } from "../task-aux-panes";
 import {
@@ -580,7 +580,10 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 
 	assertGitTask(project, task);
 
-	const linkOptOut = (await loadSettings()).prOriginTaskLink === false;
+	// Only macOS registers a `dev3://` handler, so anywhere else the footer would
+	// publish a dead link into a public PR — the host decides before the preference does.
+	const linkOptOut =
+		!deepLinkSchemeRegistered(process.platform) || (await loadSettings()).prOriginTaskLink === false;
 	const prompt = createPrAgentPrompt(
 		linkOptOut ? null : buildTaskPrDeepLinkLine(task.id),
 		params.autoMerge ?? false,

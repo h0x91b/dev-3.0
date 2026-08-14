@@ -12867,6 +12867,16 @@ describe("toggleTaskWatch", () => {
 });
 
 describe("handlers.createPullRequest", () => {
+	// The handoff asks the host whether a `dev3://` handler is registered, so every
+	// expectation about the footer is platform-dependent — and CI shards run on Linux
+	// while this was written on macOS. Pin macOS for the block; the tests that assert
+	// the footer's ABSENCE set their own platform and this restores it.
+	const hostPlatform = process.platform;
+	const setPlatform = (value: string) =>
+		Object.defineProperty(process, "platform", { value, configurable: true });
+	beforeEach(() => setPlatform("darwin"));
+	afterEach(() => setPlatform(hostPlatform));
+
 	/**
 	 * The guarded sends this handoff performed. One stage is ONE `if-shell` command
 	 * list, so counting these counts stages that actually reached the server.
@@ -12973,6 +12983,26 @@ describe("handlers.createPullRequest", () => {
 		const prompt = typedText(guardedSends()[0]);
 		expect(prompt).not.toContain("dev3://task/task-1");
 		expect(prompt).toContain("gh pr create");
+	});
+
+	// Only macOS registers a `dev3://` handler, so anywhere else the footer would put
+	// a dead link in front of everyone reading a public PR. The host platform decides
+	// before the preference does — and the preference is never rewritten on disk.
+	it.each(["win32", "linux"])("omits the deep link on %s even with the setting stored on", async (platform) => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(loadSettings).mockResolvedValueOnce({ prOriginTaskLink: true } as never);
+		tmuxWithLivePanes();
+		setPlatform(platform);
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const prompt = typedText(guardedSends()[0]);
+		expect(prompt).not.toContain("dev3://task/task-1");
+		expect(prompt).not.toContain("open.html?task=task-1");
+		expect(prompt).toContain("gh pr create");
+		expect(saveSettings).not.toHaveBeenCalled();
 	});
 
 	it("tells the agent to append a deep link back to the origin task", async () => {

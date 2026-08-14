@@ -4067,6 +4067,17 @@ export type AppRPCSchema = {
 				params: void;
 				response: { available: boolean };
 			};
+			/**
+			 * Can THIS host's PRs carry a working `dev3://` back-link? True on macOS only —
+			 * Windows and Linux register no handler for the scheme, so the link would be
+			 * dead for whoever clicks it. Asked of the host because browser-side platform
+			 * sniffing would answer for the machine holding the browser, not the one
+			 * opening the PR.
+			 */
+			checkPrOriginTaskLinkSupported: {
+				params: void;
+				response: { supported: boolean };
+			};
 			getPreventSleepState: {
 				params: void;
 				response: { enabled: boolean; available: boolean; forcedByRemote: boolean };
