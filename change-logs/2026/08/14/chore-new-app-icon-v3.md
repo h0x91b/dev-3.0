@@ -1,0 +1,3 @@
+Short: New app icon and site logo
+
+Replaced the app icon and the website logo with the new DEV-3 artwork: a neon eye framing a mission-control console with the DEV-3 wordmark on a dark rounded tile. The white background of the source render was converted to a real alpha channel (derived from the tile outline, not a rectangular crop), and every size was regenerated from one 1024x1024 master: the full `icon.iconset` (drives the macOS .icns and the embedded Windows executable icon), `docs/icon.png` / `docs/icon-192.png` for the README and landing page, the web favicons and apple-touch-icon served in remote/browser mode, the artifact-template brand asset, and the small logo baked into the social preview image `docs/og-image.jpg`.
