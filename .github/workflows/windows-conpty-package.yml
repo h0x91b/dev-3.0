@@ -67,6 +67,15 @@ jobs:
       # POSIX legs are the control that the escaping did not change their output.
       - name: Codex config generation + repair (real TOML parse)
         run: bun run test:codex-config-windows
+      - name: Windows self-update swap script (pure)
+        run: bun run test:windows-update
+
+      # The swap script is cmd.exe, tasklist and Get-Process — nothing about it can be
+      # proved from macOS. This runs it for real against a live process: once where the
+      # app exits on its own, once where it never does (the hang Arseny hit).
+      - name: Windows self-update swap, executed against a real process
+        if: matrix.os == 'windows-latest'
+        run: bun run test:windows-update-e2e
 
       # THE PUBLISH PATH'S ONE WINDOWS-ONLY FAILURE MODE, RUN ON WINDOWS RATHER THAN
       # ASSERTED ABOUT IT. `create-release-artifacts.sh` runs under Git Bash on the win-x64

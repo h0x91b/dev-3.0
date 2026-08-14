@@ -395,6 +395,16 @@ async function doApplyUpdate(): Promise<void> {
 	// so the `before-quit` gate lets it through instead of popping the quit
 	// confirmation dialog (this is a relaunch, not a user-initiated quit).
 	markQuitConfirmed();
+
+	// Windows runs our own swap script instead of Electrobun's: its handover
+	// waited on process IMAGE NAMES (launcher.exe / bun.exe), so a single stale
+	// launcher anywhere on the machine froze the update behind a silent console.
+	if (process.platform === "win32") {
+		const { applyWindowsUpdate } = await import("./windows-update/apply");
+		await applyWindowsUpdate();
+		return;
+	}
+
 	await Updater.applyUpdate();
 }
 
