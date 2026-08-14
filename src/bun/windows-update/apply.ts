@@ -3,7 +3,7 @@ import { mkdirSync, statSync } from "fs";
 import { Updater, Utils } from "../electrobun-platform";
 import { createLogger } from "../logger";
 import { buildWindowsSwapScript } from "./script";
-import { spawnSync } from "../spawn";
+import { scheduleSwapScript } from "./handover";
 
 const log = createLogger("windows-update");
 
@@ -79,9 +79,8 @@ export async function applyWindowsUpdate(): Promise<void> {
 	// Task Scheduler, not a detached child: the script has to outlive our own
 	// process tree, and this is the handover Electrobun already proved runs.
 	const taskName = `Dev3Update_${Date.now()}`;
-	const scriptPathWin = paths.scriptPath.replace(/\//g, "\\");
-	spawnSync(["schtasks", "/create", "/tn", taskName, "/tr", `cmd /c "${scriptPathWin}"`, "/sc", "once", "/st", "00:00", "/f"]);
-	spawnSync(["schtasks", "/run", "/tn", taskName]);
+	const scheduled = scheduleSwapScript(paths.scriptPath, taskName);
+	if (!scheduled.ok) throw new Error(`Windows update: ${scheduled.error}`);
 
 	log.info("Windows update handed over to the swap script", { taskName, version: info?.version });
 	Utils.quit();

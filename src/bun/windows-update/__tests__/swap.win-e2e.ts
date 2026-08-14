@@ -11,6 +11,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, copyFileSync, readFi
 import { tmpdir } from "os";
 import { join } from "path";
 import { buildWindowsSwapScript } from "../script";
+import { scheduleSwapScript } from "../handover";
 
 if (process.platform !== "win32") {
 	console.log("SKIP: windows-update swap e2e runs on Windows only");
@@ -99,6 +100,22 @@ check(
 	"never-exits: the stuck process is gone",
 	Bun.spawnSync(["tasklist", "/FI", `PID eq ${stuck.pid}`, "/NH"]).stdout.toString().includes(String(stuck.pid)) === false,
 );
+
+// The handover itself: a quoted path travelling through an argv array into a native
+// Windows command line. Untested, this is where the last Windows-only failure in this
+// project lived, so it runs for real rather than being asserted about.
+{
+	const root = mkdtempSync(join(tmpdir(), "dev3-handover-"));
+	const marker = join(root, "ran.txt");
+	const script = join(root, "dev3 update test.cmd"); // a space, on purpose
+	writeFileSync(script, `@echo off\r\necho ran > "${marker}"\r\n`);
+	const taskName = `Dev3UpdateTest_${process.pid}`;
+	const scheduled = scheduleSwapScript(script, taskName);
+	check("handover: schtasks accepted the quoted script path", scheduled.ok, scheduled.error ?? "");
+	for (let i = 0; i < 20 && !existsSync(marker); i++) await Bun.sleep(500);
+	check("handover: the scheduled task actually ran the script", existsSync(marker));
+	Bun.spawnSync(["schtasks", "/delete", "/tn", taskName, "/f"]);
+}
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
