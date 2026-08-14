@@ -2,7 +2,7 @@
  * Zero-dependency JWT module using Bun's Web Crypto API (HMAC-SHA256).
  *
  * Two token types:
- * - "qr"      — short-lived (30s), embedded in QR code URLs, single-use
+ * - "qr"      — short-lived (65s), embedded in QR code URLs, single-use
  * - "session" — long-lived (24h rolling), carried in an HttpOnly cookie,
  *   refreshable
  */
@@ -13,7 +13,7 @@ import { DEV3_HOME } from "./paths";
 
 // ── Constants ────────────────────────────────────────────────────────
 
-const QR_TOKEN_TTL_S = 30;
+const QR_TOKEN_TTL_S = 65;
 // 24 hours — long enough that a "trusted device" (your own phone/laptop)
 // survives overnight idle without rescanning the QR. The session rides an
 // HttpOnly cookie refreshed on load + every 15 min while open, so an active

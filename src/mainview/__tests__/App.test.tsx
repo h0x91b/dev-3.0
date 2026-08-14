@@ -1920,7 +1920,7 @@ describe("App keyboard shortcuts", () => {
 				});
 
 				await act(async () => {
-					await vi.advanceTimersByTimeAsync(25_000);
+					await vi.advanceTimersByTimeAsync(60_000);
 				});
 
 				expect(api.request.getRemoteAccessQR).toHaveBeenCalledWith({ tunnel: true, host: undefined });

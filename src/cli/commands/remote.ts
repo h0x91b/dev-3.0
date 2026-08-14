@@ -36,8 +36,8 @@ Usage:
 What it does:
   Starts a Bun-only dev-3.0 server (no GUI window) and serves the full web UI
   to any browser over HTTP + WebSocket. Prints an ASCII QR code and an access
-  URL signed with a short-lived (30s, single-use) JWT token — the QR is
-  auto-refreshed every 25 seconds, matching the GUI modal's behavior.
+  URL signed with a short-lived (65s, single-use) JWT token — the QR is
+  auto-refreshed every 60 seconds, matching the GUI modal's behavior.
 
   By default a Cloudflare quick tunnel (trycloudflare.com) is started and its
   public URL is included in the QR, so you can connect from any device without

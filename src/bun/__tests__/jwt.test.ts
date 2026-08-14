@@ -91,13 +91,13 @@ describe("createQrToken", () => {
 		}
 	});
 
-	it("creates tokens with type 'qr' and ~30s expiry", async () => {
+	it("creates tokens with type 'qr' and ~65s expiry", async () => {
 		const token = await createQrToken();
 		// Decode the payload (middle part) to inspect
 		const payloadB64 = token.split(".")[1];
 		const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
 		expect(payload.type).toBe("qr");
-		expect(payload.exp - payload.iat).toBe(30);
+		expect(payload.exp - payload.iat).toBe(65);
 		expect(payload.jti).toBeTruthy();
 	});
 
@@ -141,7 +141,7 @@ describe("exchangeQrForSession", () => {
 		const qrToken = await createQrToken();
 		// Manually create an expired token by modifying Date.now
 		const originalNow = Date.now;
-		Date.now = () => originalNow() + 31_000; // 31 seconds later
+		Date.now = () => originalNow() + 66_000; // 66 seconds later
 		const result = await exchangeQrForSession(qrToken);
 		Date.now = originalNow;
 		expect(result).toBeNull();

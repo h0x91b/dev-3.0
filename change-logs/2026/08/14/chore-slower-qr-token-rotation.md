@@ -1,0 +1,1 @@
+The remote-access QR code and its share link now rotate once a minute instead of every 25 seconds (the signed URL's lifetime grew from 30 to 65 seconds to match), so a link you just handed to a phone stays valid noticeably longer.

@@ -16,8 +16,8 @@ That's the whole thing. It prints an ASCII QR code, a public URL, and an SSH-for
 
 ## How the connection works
 
-The access URL is signed with a short-lived JWT — **30 seconds, single use** — and the QR
-auto-refreshes every 25 seconds. Once you scan it, the browser keeps a trusted session for 8
+The access URL is signed with a short-lived JWT — **65 seconds, single use** — and the QR
+auto-refreshes every 60 seconds. Once you scan it, the browser keeps a trusted session for 8
 hours and reconnects on reload without rescanning.
 
 Three ways in, printed on every start:

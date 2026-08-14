@@ -3,7 +3,7 @@
  *
  * Prints an ASCII QR code (via `qrcode` lib) with the access URL and user-facing
  * tips (SSH port-forward template, tunnel hint). Re-generates the QR every
- * 25s to stay within the 30s JWT TTL — same schedule as the GUI modal in
+ * 60s to stay within the 65s JWT TTL — same schedule as the GUI modal in
  * `src/mainview/App.tsx:443-462`.
  *
  * The refresh halts as soon as a client successfully redeems the QR token
@@ -17,7 +17,7 @@ import { tunnelManager } from "./cloudflare-tunnel";
 
 const log = createLogger("remote-console");
 
-const REFRESH_INTERVAL_MS = 25_000; // QR TTL is 30s; refresh with 5s headroom
+const REFRESH_INTERVAL_MS = 60_000; // QR TTL is 65s; refresh with 5s headroom
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 let qrConsumed = false;
@@ -68,7 +68,7 @@ export async function renderHeadlessBanner(opts: BannerOptions): Promise<void> {
 	if (staticCode) {
 		console.log("  URL (static code — no rotation, dev only):");
 	} else {
-		console.log("  URL (includes one-time QR token, regenerated every 25s):");
+		console.log("  URL (includes one-time QR token, regenerated every 60s):");
 	}
 	console.log(`  ${accessUrl}`);
 	if (staticCode) {
@@ -82,9 +82,9 @@ export async function renderHeadlessBanner(opts: BannerOptions): Promise<void> {
 }
 
 /**
- * Start the auto-refresh timer that regenerates the QR every 25s and reprints
+ * Start the auto-refresh timer that regenerates the QR every 60s and reprints
  * just the URL line (we do NOT reprint the QR — it would clobber scrollback).
- * The QR image itself stays valid for 30s from when it was last printed;
+ * The QR image itself stays valid for 65s from when it was last printed;
  * users who want a fresh visual QR can rerun the command.
  *
  * The timer stops automatically when `markQrConsumed()` is called.

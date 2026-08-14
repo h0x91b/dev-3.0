@@ -81,6 +81,9 @@ import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
 
+/** QR token rotation period; the token's own TTL (`QR_TOKEN_TTL_S`) adds 5s headroom. */
+const QR_REFRESH_SECONDS = 60;
+
 type RemoteAccessQRData = {
 	qrDataUrl: string;
 	accessUrl: string;
@@ -2024,7 +2027,7 @@ function App() {
 
 	// QR token consumed — someone connected via the QR code
 	const [qrConsumed, setQrConsumed] = useState(false);
-	const [qrCountdown, setQrCountdown] = useState(25);
+	const [qrCountdown, setQrCountdown] = useState(QR_REFRESH_SECONDS);
 
 	useEffect(() => {
 		function onQrConsumed() {
@@ -2074,7 +2077,7 @@ function App() {
 		return () => window.removeEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
 	}, [applyRemoteQR, startRemoteTunnel]);
 
-	// Auto-refresh QR code every 25 seconds while modal is open (JWT tokens expire in 30s)
+	// Auto-refresh QR code every 60 seconds while modal is open (JWT tokens expire in 65s)
 	// After a QR is consumed, keep polling without visually rotating the token:
 	// a recovered Quick Tunnel gets a new hostname, and the open modal must
 	// reactivate with that new URL instead of staying green on a dead domain.
@@ -2085,19 +2088,19 @@ function App() {
 	qrConsumedRef.current = qrConsumed;
 	const remoteQRRef = useRef(remoteQR);
 	remoteQRRef.current = remoteQR;
-	// Preserve the chosen interface/IP across the 25s token refresh — without
+	// Preserve the chosen interface/IP across the 60s token refresh — without
 	// this, picking a host would snap back to the auto-pick on the next tick.
 	const selectedHostRef = useRef<string | undefined>(undefined);
 	selectedHostRef.current = remoteQR?.selectedHost;
 	useEffect(() => {
 		if (!qrModalOpen) return;
-		setQrCountdown(25);
-		let counter = 25;
+		setQrCountdown(QR_REFRESH_SECONDS);
+		let counter = QR_REFRESH_SECONDS;
 		let refreshInFlight = false;
 		const tick = setInterval(() => {
 			counter -= 1;
 			if (counter <= 0) {
-				counter = 25;
+				counter = QR_REFRESH_SECONDS;
 				const host = tunnelWantedRef.current ? undefined : selectedHostRef.current;
 				if (!refreshInFlight) {
 					refreshInFlight = true;
@@ -2515,7 +2518,7 @@ function App() {
 									<svg className="w-4 h-4 -rotate-90" viewBox="0 0 20 20">
 										<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
 										<circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2"
-											strokeDasharray={`${(qrCountdown / 25) * 50.3} 50.3`}
+											strokeDasharray={`${(qrCountdown / QR_REFRESH_SECONDS) * 50.3} 50.3`}
 											strokeLinecap="round"
 											className="transition-[stroke-dasharray] duration-1000 ease-linear"
 										/>
