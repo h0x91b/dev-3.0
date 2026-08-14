@@ -192,10 +192,10 @@ jobs:
   # also attached to tagged releases (decisions/2026/08/14/windows-zip-on-the-release-page.md);
   # nothing about this job changed when that landed.
   #
-  # `bestEffort: false`, and it is the OPPOSITE of what release.yml passes for the same platform.
-  # Here Windows is the only thing this job publishes: a failure is the whole point of the run,
-  # so it must be red. There a Windows failure would hold a proven macOS/Linux release hostage
-  # after those platforms had already synced to the bucket.
+  # FAIL-CLOSED, and nothing here has to ask for it any more: release-build-windows.yml dropped its
+  # `bestEffort` input when the stable release became fail-closed too, so a Windows failure is red
+  # on both channels by construction. Behaviour on this channel is unchanged — the old
+  # `bestEffort: false` was GitHub's default spelled out.
   build-win-x64:
     needs: [decide, windows-proof]
     if: needs.decide.outputs.win-x64 == 'true'
@@ -207,7 +207,6 @@ jobs:
       channel: canary
       tag: ${{ github.sha }}
       publish: true
-      bestEffort: false
 
   # ──────────────────────────────────────────────────
   # The page a human can click — one rolling pre-release

@@ -44,7 +44,11 @@ download, and it is the only candidate that is both openable and proven.
 - New job `build-win-x64` in `release.yml`, `channel: stable`, `needs: [prepare, windows-proof]`
   like every other publisher, and added to the `release` job's `needs:` so the release body is not
   cut before the zip exists.
-- **`bestEffort: true`, and a mandatory warning when the zip is then absent.** The first draft made
+- **`bestEffort: true`, and a mandatory warning when the zip is then absent.**
+  **SUPERSEDED the same day by `windows-failure-fails-the-release.md`:** Arseny made Windows
+  first-class, the input and the warning step are both gone, and a failed Windows build now stops
+  the entire release. The rest of this bullet is the reasoning that held until then.
+  The first draft made
   the Windows leg fatal, reasoning that `windows-proof` already fails the release on a broken
   Windows build. Raised as a risk before the PR and ruled on: a Windows packaging failure must not
   block the macOS and Linux release, because by then both have already run their own
