@@ -88,40 +88,48 @@ describe("a tagged release builds Windows", () => {
 });
 
 /**
- * A Windows failure must not hold a proven macOS/Linux release hostage — by the time the Windows
- * leg could fail, both have already run their own `aws s3 sync`, including the sync to the bucket
- * root the updater polls. The mechanism is the same `bestEffort` input `linux-arm64` uses, and it
- * comes as a PAIR: tolerate the failure, then say out loud that Windows is missing. Either half
- * alone is a defect — tolerance without the warning ships a silently Windows-less release, and
- * the warning without tolerance is decoration on a failed run.
+ * A Windows failure SINKS THE RELEASE, macOS disk images included. Windows was best-effort until
+ * Arseny made it first-class ("теперь надо фейлить всё"), and the tolerance is gone at the root:
+ * release-build-windows.yml has no `bestEffort` input and no `continue-on-error` at all, so
+ * neither caller can choose to survive a broken Windows build. What these assertions pin is the
+ * absence — a re-added input, or a `continue-on-error` on the build job, restores the old
+ * behaviour with every test that only reads release.yml still green.
+ *
+ * The Linux legs keep their own `bestEffort` (linux-arm64's GUI bundle is genuinely unproven) and
+ * are asserted here so a sweep over this file's diff cannot quietly take them along.
+ * See decisions/2026/08/14/windows-failure-fails-the-release.md.
  */
-describe("a Windows failure does not sink the release", () => {
-	it("gives the Windows leg the same bestEffort switch as the Linux leg", () => {
+describe("a Windows failure sinks the release", () => {
+	it("gives the Windows leg no tolerance switch at all", () => {
 		expect(
 			WINDOWS_BUILD,
-			"release-build-windows.yml no longer takes a `bestEffort` input, so its callers cannot choose whether a Windows failure is fatal — and release.yml's choice (it must not be) is the only reason a tolerated failure is survivable there. Fix: restore the required boolean input.",
-		).toMatch(/^ {6}bestEffort:$/m);
+			"release-build-windows.yml took back a `bestEffort` input. Windows is fail-closed on both channels now, and an input every caller pins to `false` is an escape hatch waiting to be flipped to `true` — which is exactly how a stable release shipped Windows-less while every job stayed green. Fix: delete the input.",
+		).not.toMatch(/^ {6}bestEffort:$/m);
 		expect(
 			WINDOWS_BUILD,
-			"the tolerance is not applied at job level, so the called workflow still fails and takes its caller with it — a step-level `continue-on-error` cannot help, because the caller reads the JOB's result. Fix: `continue-on-error: ${{ inputs.bestEffort }}` on the build job, like release-build-linux.yml.",
-		).toMatch(/^ {4}continue-on-error: \$\{\{ inputs\.bestEffort \}\}$/m);
+			"release-build-windows.yml grew a `continue-on-error`, so a Windows failure can be swallowed before the caller ever reads the job's result. Fix: remove it — the job must fail its caller.",
+		).not.toMatch(/^\s*continue-on-error:/m);
 	});
 
-	it("tolerates it in a tagged release and refuses to in canary", () => {
+	it("refuses the failure in a tagged release and in canary alike", () => {
 		expect(
 			RELEASE_JOBS.get("build-win-x64") ?? "",
-			"release.yml does not pass `bestEffort: true`, so a Windows packaging failure fails the whole release — after macOS and Linux already published to the bucket, which abandons a shipped update halfway and produces no GitHub Release at all.",
-		).toMatch(/^ {6}bestEffort: true$/m);
-		// The canary run publishes NOTHING BUT Windows, so a failure there is the run. `false` is
-		// also GitHub's default for continue-on-error, which is what makes passing it explicitly a
-		// no-op on canary's behaviour rather than a change to it.
-		//
-		// SCOPED TO THE WINDOWS JOB, not the file: canary-publish.yml also passes
-		// `bestEffort: false` for linux-x64, so a file-wide match stays green while the Windows
-		// call site loses the input entirely. Verified by deleting that one line.
+			"release.yml passes `bestEffort` to the Windows leg again. That input no longer exists, so the workflow dies at dispatch time — and if it were restored, a broken Windows build would stop failing the release, which is the behaviour Arseny asked to end.",
+		).not.toMatch(/^ {6}bestEffort:/m);
 		expect(
 			jobs(CANARY).get("build-win-x64") ?? "",
-			"canary-publish.yml stopped passing `bestEffort: false`. Windows is the only thing that run publishes, so tolerating a failure there hides the entire point of the run — and adding a required input without updating this call site fails the workflow at dispatch time, which no test here would otherwise catch.",
+			"canary-publish.yml passes `bestEffort` to the Windows leg again; the input is gone, so GitHub fails the hourly canary at dispatch time with no build at all.",
+		).not.toMatch(/^ {6}bestEffort:/m);
+	});
+
+	it("leaves the Linux legs' best-effort semantics alone", () => {
+		expect(
+			RELEASE_JOBS.get("build-linux-arm64") ?? "",
+			"linux-arm64 stopped passing `bestEffort: true`. Its Electrobun GUI bundle is not proven yet, and making Windows fail-closed was never a reason to let that platform block a release. Fix: restore it.",
+		).toMatch(/^ {6}bestEffort: true$/m);
+		expect(
+			RELEASE_JOBS.get("build-linux-x64") ?? "",
+			"linux-x64 stopped passing `bestEffort: false`; it is a first-class platform and its failure must fail the release.",
 		).toMatch(/^ {6}bestEffort: false$/m);
 	});
 
@@ -162,16 +170,14 @@ describe("a Windows failure does not sink the release", () => {
 		).toEqual([]);
 	});
 
-	it("says out loud when the release ships without Windows", () => {
-		const release = RELEASE_JOBS.get("release") ?? "";
+	it("keeps no step that reports a Windows-less release", () => {
+		// The `release` job cannot start unless build-win-x64 succeeded (asserted above), so a
+		// missing Windows zip is impossible by construction and a step warning about one is a
+		// branch that can never run — the kind this repo deletes rather than deprecates.
 		expect(
-			release,
-			"nothing warns when the Windows zip is absent. With `bestEffort: true` that is the failure mode: release created, macOS and Linux attached, every job green, and the only trace is a missing section in the notes that nobody diffs. Fix: keep the `Warn when the Windows build is missing` step.",
-		).toMatch(/::warning title=Release has NO Windows build::/);
-		expect(
-			release,
-			"the warning does not name the run, so the next reader cannot tell a Windows failure from a Windows build that never started. Fix: include the run URL.",
-		).toMatch(/github\.run_id/);
+			RELEASE_JOBS.get("release") ?? "",
+			"the `Warn when the Windows build is missing` step is back. It was the other half of `bestEffort: true`; with Windows fail-closed it can never fire, and a step whose message says the release ships without Windows now describes a state that cannot exist. Fix: delete it.",
+		).not.toMatch(/Release has NO Windows build/);
 	});
 });
 
