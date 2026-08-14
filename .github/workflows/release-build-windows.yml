@@ -53,24 +53,16 @@ on:
         description: "Whether to upload to S3. Pass an explicit boolean comparison, never a raw output string."
         required: true
         type: boolean
-      bestEffort:
-        # SAME INPUT AS release-build-linux.yml, AND THE TWO CALLERS PASS OPPOSITE VALUES ON
-        # PURPOSE. canary passes `false`: Windows is the only thing that run publishes, so a
-        # failure is the run. release.yml passes `true`: by the time this job could fail, macOS
-        # and Linux have already synced to the bucket, and the least mature platform must not
-        # hold a proven release hostage — Arseny's framing is a rough Windows build beating no
-        # Windows build. The caller then has to say out loud that Windows is missing; a
-        # best-effort platform with a silent absence is how a Windows-less release ships
-        # unnoticed for a week. See decisions/2026/08/14/windows-zip-on-the-release-page.md.
-        description: "Allow this platform to fail without failing the caller. The caller MUST warn when the artifact is then absent."
-        required: true
-        type: boolean
+
+# NO `bestEffort` INPUT, UNLIKE THE LINUX SIBLING, and its absence is the feature. Windows used to
+# take one so release.yml could tolerate a broken build; Arseny made Windows first-class ("теперь
+# надо фейлить всё"), canary was already fail-closed, and an input every caller pins to `false` is
+# just an escape hatch waiting to be flipped back. A Windows failure now fails its caller — the
+# hourly canary and a tagged release alike. See
+# decisions/2026/08/14/windows-failure-fails-the-release.md.
 
 jobs:
   build:
-    # Job level, like the Linux sibling: the caller reads the CALLED JOB's result, so a
-    # step-level tolerance here would still fail the workflow and the caller with it.
-    continue-on-error: ${{ inputs.bestEffort }}
     runs-on: ${{ inputs.runsOn }}
     # The packaging half of this job is measured at ~3 minutes on windows-latest (run
     # 31257371545); the rest of the budget is the launch proof's 4-minute readiness window plus
