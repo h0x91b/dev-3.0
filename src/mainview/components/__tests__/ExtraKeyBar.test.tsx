@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ExtraKeyBar from "../ExtraKeyBar";
 import type { TerminalHandle } from "../../TerminalView";
@@ -74,6 +74,50 @@ describe("ExtraKeyBar", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: "Backspace" }));
 		expect(handle.sendInput).toHaveBeenCalledWith("\x7f");
+	});
+
+	it("repeats Backspace while held, and stops on release", () => {
+		vi.useFakeTimers();
+		try {
+			const handle = makeHandle();
+			renderBar(handle);
+			const key = screen.getByTestId("extra-key-backspace");
+
+			fireEvent.pointerDown(key);
+			vi.advanceTimersByTime(300);
+			// Before the delay the tap alone rules — no auto-repeat yet.
+			expect(handle.sendInput).not.toHaveBeenCalled();
+
+			vi.advanceTimersByTime(100 + 60 * 3);
+			expect(handle.sendInput).toHaveBeenCalledTimes(3);
+			expect(handle.sendInput).toHaveBeenCalledWith("\x7f");
+
+			fireEvent.pointerUp(key);
+			vi.advanceTimersByTime(1000);
+			expect(handle.sendInput).toHaveBeenCalledTimes(3);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("stops the repeat when the finger slides off the key", () => {
+		vi.useFakeTimers();
+		try {
+			const handle = makeHandle();
+			renderBar(handle);
+			const key = screen.getByRole("button", { name: "◀" });
+
+			fireEvent.pointerDown(key);
+			vi.advanceTimersByTime(400 + 60 * 2);
+			expect(handle.sendInput).toHaveBeenCalledWith("\x1b[D");
+			const emitted = vi.mocked(handle.sendInput).mock.calls.length;
+
+			fireEvent.pointerLeave(key);
+			vi.advanceTimersByTime(1000);
+			expect(vi.mocked(handle.sendInput).mock.calls.length).toBe(emitted);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("puts common controls before rarely used modifiers", () => {

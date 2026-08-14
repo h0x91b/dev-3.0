@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { TerminalHandle } from "../TerminalView";
 import { useT } from "../i18n";
 import { useAttachUpload } from "../hooks/useAttachUpload";
@@ -17,6 +17,10 @@ interface ExtraKeyBarProps {
 	onAttachPaths?: (paths: string[]) => void;
 }
 
+/** Hold-to-repeat timings, matching a typical OS key-repeat feel. */
+const REPEAT_DELAY_MS = 400;
+const REPEAT_INTERVAL_MS = 60;
+
 /**
  * Extra key bar for mobile terminal access — provides keys
  * that are missing or hard to reach on mobile keyboards:
@@ -25,6 +29,7 @@ interface ExtraKeyBarProps {
  * The leading ⌨ button (when the host wires onToggleRaw) switches between
  * compose mode (default — TerminalComposer owns text entry) and raw mode
  * (direct typing into the terminal).
+ * Backspace and the arrows repeat while held, like a physical keyboard.
  *
  * Sizing uses `vw` units so buttons scale to actual screen width
  * regardless of the CSS viewport used in browser mode.
@@ -69,6 +74,30 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 		handle.sendInput(data);
 		refocus();
 	}, [handle, ctrlActive, refocus]);
+
+	// Hold-to-repeat: the tap itself is handled by onClick, so the timer only
+	// emits the *extra* presses once the finger stays down past the delay.
+	const repeat = useRef<{ delay?: ReturnType<typeof setTimeout>; tick?: ReturnType<typeof setInterval> }>({});
+
+	const stopRepeat = useCallback(() => {
+		if (repeat.current.delay) clearTimeout(repeat.current.delay);
+		if (repeat.current.tick) clearInterval(repeat.current.tick);
+		repeat.current = {};
+	}, []);
+
+	useEffect(() => stopRepeat, [stopRepeat]);
+
+	const holdProps = useCallback((data: string) => ({
+		onPointerDown: () => {
+			stopRepeat();
+			repeat.current.delay = setTimeout(() => {
+				repeat.current.tick = setInterval(() => send(data), REPEAT_INTERVAL_MS);
+			}, REPEAT_DELAY_MS);
+		},
+		onPointerUp: stopRepeat,
+		onPointerLeave: stopRepeat,
+		onPointerCancel: stopRepeat,
+	}), [send, stopRepeat]);
 
 	const toggleCtrl = useCallback(() => {
 		setCtrlActive((prev) => !prev);
@@ -138,6 +167,7 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 				className={btnNormal}
 				onMouseDown={(e) => e.preventDefault()}
 				onClick={() => send("\x7f")}
+				{...holdProps("\x7f")}
 				aria-label={t("terminal.backspace")}
 				title={t("terminal.backspace")}
 				data-testid="extra-key-backspace"
@@ -147,10 +177,10 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 
 			<div className="w-[0.25vw] h-[7vw] bg-edge mx-[0.5vw]" />
 
-			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[A")}>{"▲"}</button>
-			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[B")}>{"▼"}</button>
-			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[D")}>{"◀"}</button>
-			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[C")}>{"▶"}</button>
+			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[A")} {...holdProps("\x1b[A")}>{"▲"}</button>
+			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[B")} {...holdProps("\x1b[B")}>{"▼"}</button>
+			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[D")} {...holdProps("\x1b[D")}>{"◀"}</button>
+			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[C")} {...holdProps("\x1b[C")}>{"▶"}</button>
 
 			<div className="w-[0.25vw] h-[7vw] bg-edge mx-[0.5vw]" />
 
