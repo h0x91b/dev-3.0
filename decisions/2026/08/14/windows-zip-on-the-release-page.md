@@ -100,8 +100,11 @@ users they reach.
   is loud (warning + run summary), the *cause* is one job page away. Tightening it would mean
   distinguishing "did not build" from "built and failed to upload", which is more machinery than
   the difference buys today.
-- **The zip is ~400 MB** as a release asset, per release, forever. GitHub's per-asset limit is 2 GB
-  and storage on a public repo is free, so this is a listing-clutter cost, not a bill.
+- **The zip is 121.0 MB** as a release asset, per release, forever — measured on windows-latest in
+  the first stable-channel build (run 31799430704), not the ~400 MB every older comment quoted;
+  that figure is the extracted tree, and it had been repeated for the download for months. GitHub's
+  per-asset limit is 2 GB and storage on a public repo is free, so this is a listing-clutter cost,
+  not a bill.
 - **Unsigned means SmartScreen every time.** Two clicks, measured once on one machine, in one
   locale. A browser-side download warning was never reported — unknown, not absent.
 - **"Launched on Windows" is not a property of a commit.** Windows trees are not byte-reproducible:

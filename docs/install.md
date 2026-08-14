@@ -46,8 +46,8 @@ Apple Silicon and Intel are both supported. For Windows, see the next section.
 one zip you extract and run:
 
 1. Download [**`stable-win-x64-dev-3.0.zip`**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-win-x64-dev-3.0.zip)
-   (~400 MB). It is attached to every release built after 2026-08-14 — if the latest release
-   predates that, the link 404s and there is no Windows build for it.
+   (~121 MB, ~400 MB once extracted). It is attached to every release built after 2026-08-14 —
+   if the latest release predates that, the link 404s and there is no Windows build for it.
 2. Right-click the zip → **Extract All**. Nothing else is needed; the app carries its own runtime.
 3. Open the extracted `dev-3.0` folder and double-click `bin\launcher.exe`.
 4. **The first launch shows a full-screen blue SmartScreen warning.** This build is not

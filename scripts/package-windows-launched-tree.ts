@@ -47,8 +47,10 @@ function requireString(proof: LaunchProof, field: keyof LaunchProof, why: string
 }
 
 /**
- * `ZipFile.CreateFromDirectory`, not `Compress-Archive`: the tree is ~400 MB across thousands
- * of files and the cmdlet takes minutes on it, inside a job with a 35-minute budget.
+ * `ZipFile.CreateFromDirectory`, not `Compress-Archive`: the INPUT tree is ~400 MB across
+ * thousands of files and the cmdlet takes minutes on it, inside a job with a 35-minute budget.
+ * (~400 MB is the tree on disk only. The zip it produces is 121.0 MB, measured on
+ * windows-latest in run 31799430704 — 15 seconds of compression.)
  * `includeBaseDirectory: false` keeps the bundle root (`dev-3.0-canary/`) as the zip's single
  * top-level entry, because that root is already the unpack dir's only child — so extracting
  * gives one folder, not a hundred loose files in Downloads.

@@ -164,7 +164,7 @@ describe("the packaged Windows app is downloadable", () => {
 	it("keeps the JSON proof and the payload in separate artifacts", () => {
 		expect(
 			/\.tar\.zst|\.zip|unpacked/.test(proofUpload),
-			"the proof artifact picked up a packaged payload. It is JSON downloaded constantly by CI; folding a ~400 MB build into it makes every proof download drag the payload behind it. Fix: leave the build in its own artifact.",
+			"the proof artifact picked up a packaged payload. It is JSON downloaded constantly by CI; folding a ~124 MB build into it (130 055 428 bytes measured on windows-app-e4b5fcbf5…; ~400 MB is the extracted tree, not the download) makes every proof download drag the payload behind it. Fix: leave the build in its own artifact.",
 		).toBe(false);
 	});
 

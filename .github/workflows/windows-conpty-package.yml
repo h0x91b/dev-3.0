@@ -279,9 +279,14 @@ jobs:
             artifacts/*-update.json
 
       # The downloadable build, deliberately NOT folded into the proof artifact above:
-      # that one is JSON for CI and gets opened constantly, this one is ~400 MB for a
-      # human and gets opened rarely. Merging them would make every proof download drag
-      # the payload behind it.
+      # that one is JSON for CI and gets opened constantly, this one is the whole app for a
+      # human and gets opened rarely. Merging them would make every proof download drag the
+      # payload behind it.
+      #
+      # SIZES, MEASURED, because ~400 MB was quoted here for a long time and is only true of
+      # the tree on disk: GitHub compresses an artifact, so this one downloads at ~124 MB
+      # (windows-app-e4b5fcbf5…, 130 055 428 bytes) and the release zip built from the same
+      # tree is 121.0 MB (run 31799430704, on windows-latest).
       #
       # The EXTRACTED tree, not the `.tar.zst`: Windows tar.exe cannot read zstd (this
       # job ships electrobun's zig-zstd.exe precisely because of that), so the archive is

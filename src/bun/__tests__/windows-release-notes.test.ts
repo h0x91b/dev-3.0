@@ -63,7 +63,9 @@ describe("the release-notes fragment", () => {
 			WINDOWS_UNSIGNED_WARNING,
 		);
 		expect(notes).toContain(FACTS.zipUrl);
-		expect(notes, "a size lets the reader decide before starting a ~400 MB download").toMatch(/397\.7 MB/);
+		// The real one is 121.0 MB (run 31799430704, windows-latest); the fixture is deliberately a
+		// different number so a hardcoded size in the renderer would show up here.
+		expect(notes, "a size lets the reader decide before starting a nine-figure download").toMatch(/397\.7 MB/);
 	});
 
 	it("writes the entry point the way Windows shows it", () => {

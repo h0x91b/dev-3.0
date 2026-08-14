@@ -74,7 +74,10 @@ jobs:
     runs-on: ${{ inputs.runsOn }}
     # The packaging half of this job is measured at ~3 minutes on windows-latest (run
     # 31257371545); the rest of the budget is the launch proof's 4-minute readiness window plus
-    # zipping and uploading ~400 MB. Same 35 as the proof job it mirrors.
+    # compressing a ~400 MB tree down to a 121 MB zip and uploading that. Both numbers are
+    # measured on windows-latest (run 31799430704: `Staged stable-win-x64-dev-3.0.zip (121.0 MB)`,
+    # 15s of zipping) — do not quote 400 MB for anything downloaded, only for the tree on disk.
+    # Same 35 as the proof job it mirrors.
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
