@@ -7,13 +7,21 @@ import type { AppAction } from "../../state";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 
+/** Notes kept inline before the section defers to its own surface. Covers the
+ *  p90 task (5 notes) without letting the 143-note tail own the details body. */
+const PREVIEW_COUNT = 3;
+
 interface TaskNotesProps {
 	task: Task;
 	project: Project;
 	dispatch: Dispatch<AppAction>;
+	/** `full` renders every note and drops the show-all row (used by the overlay). */
+	variant?: "preview" | "full";
+	/** Opens the full-log surface. Absent ⇒ no show-all row, whatever the count. */
+	onShowAll?: () => void;
 }
 
-export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
+export default function TaskNotes({ task, project, dispatch, variant = "preview", onShowAll }: TaskNotesProps) {
 	const t = useT();
 
 	async function handleAddNote() {
@@ -57,13 +65,30 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 		}
 	}
 
+	const notes = task.notes ?? [];
+	const preview = variant === "preview";
+	// The newest notes are the ones worth reading without a tap — a task's note
+	// list is an agent-written log, not a form.
+	const shown = preview ? notes.slice(-PREVIEW_COUNT) : notes;
+	const hidden = notes.length - shown.length;
+
 	return (
-		<div className="mt-3 border-t border-edge pt-3">
+		<div className={preview ? "mt-3 border-t border-edge pt-3" : ""} data-testid="task-notes">
 			<div className="flex items-center justify-between mb-2">
 				<span className="flex items-center gap-1.5">
-					<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">
-						{t("notes.title")}
-					</span>
+					{/* The overlay names itself, and counts what it holds, in its own header. */}
+					{preview && (
+						<>
+							<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">
+								{t("notes.title")}
+							</span>
+							{notes.length > 0 && (
+								<span className="text-dense font-semibold text-accent tabular-nums" data-testid="task-notes-count">
+									{notes.length}
+								</span>
+							)}
+						</>
+					)}
 					<HelpSpot topicId="inspector.notes" />
 				</span>
 				<button
@@ -73,13 +98,23 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 					{t("notes.add")}
 				</button>
 			</div>
-			{(task.notes ?? []).length === 0 && (
+			{notes.length === 0 && (
 				<div className="text-xs text-fg-muted">
 					<p>{t("notes.empty")}</p>
 					<p className="mt-0.5">{t("notes.emptyHint")}</p>
 				</div>
 			)}
-			{(task.notes ?? []).map((note) => (
+			{hidden > 0 && onShowAll && (
+				<button
+					type="button"
+					onClick={onShowAll}
+					className="mb-2 w-full rounded-lg border border-edge px-2 py-1.5 text-xs text-accent hover:bg-elevated hover:text-accent-emphasis transition-colors"
+					data-testid="task-notes-show-all"
+				>
+					{t("notes.showAll", { count: String(notes.length) })}
+				</button>
+			)}
+			{shown.map((note) => (
 				<NoteItem
 					key={note.id}
 					note={note}
@@ -87,6 +122,7 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 					onSave={(content) => handleUpdateNote(note.id, content)}
 					onDelete={() => handleDeleteNote(note.id)}
 					projectId={project.id}
+					clamp
 				/>
 			))}
 		</div>

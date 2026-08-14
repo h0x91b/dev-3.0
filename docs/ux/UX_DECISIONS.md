@@ -10,6 +10,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Why:** The event's whole content is who wrote to whom, and the click target is the receiver's terminal — a sender-only source line would make the accessible name announce the wrong destination; reusing `info` was rejected because blue already means `dev3 notify` / watched-status.
 - **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §5.7, `src/mainview/toast.tsx`, `decisions/2026/08/14/agent-message-toast-two-identities.md`.
 
+## 2026-08-14 — An agent-written log gets a capped preview, not a whole screen
+
+- **Rule:** Object-scoped content an agent appends to without a ceiling (task notes) shows the newest 3 entries on the object's surface, each body clamped to 6 lines with an overflow-gated Show more, plus a count and one `Show all N` row into its own overlay (BottomSheet narrow / dialog wide).
+- **Why:** 2 999 of 3 030 notes are agent-written and the tail is 143 notes / 313 321 chars — 45 900 px of scroll in the mobile actions sheet — but the median task holds exactly one 790-char note, so the rejected alternative (move the whole section behind a row + count badge) taxed >75% of tasks with a tap to fix 5%.
+- **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §5.8 + §10, `src/mainview/components/TaskNotesOverlay.tsx`, `src/mainview/components/task-info-panel/TaskNotes.tsx`.
+
 ## 2026-08-10 — Settings → Agents is a preset library, not nested accordions
 
 - **Rule:** A Settings entry owning dozens of same-shaped records renders a filterable list plus exactly one detail editor inside the category pane, grouped by the labels the consuming surface already shows (Agents: the launch picker's Model → Mode); narrow shows the list first, then the editor with a back affordance.

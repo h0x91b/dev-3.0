@@ -49,6 +49,7 @@ import {
 	ArtifactsIcon,
 } from "./TaskIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
+import TaskNotesOverlay from "./TaskNotesOverlay";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
 import TaskPaneControls from "./task-info-panel/TaskPaneControls";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
@@ -172,6 +173,7 @@ function TaskInfoPanel({
 	const [scheduleMsgOpen, setScheduleMsgOpen] = useState(false);
 	const [hibernating, setHibernating] = useState(false);
 	const [bugHuntersOpen, setBugHuntersOpen] = useState(false);
+	const [notesOverlayOpen, setNotesOverlayOpen] = useState(false);
 	const [metadataBranchState, setMetadataBranchState] = useState<TaskBranchStatusMeta | null>(null);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
 	const [diffFilesHover, setDiffFilesHover] = useState(false);
@@ -1246,7 +1248,17 @@ function TaskInfoPanel({
 							);
 						})()}
 
-						<TaskNotes task={task} project={project} dispatch={dispatch} />
+						<TaskNotes
+							task={task}
+							project={project}
+							dispatch={dispatch}
+							onShowAll={() => {
+								// Narrow reaches the preview from inside the actions sheet;
+								// the log replaces it rather than stacking a second sheet.
+								setActionsSheetOpen(false);
+								setNotesOverlayOpen(true);
+							}}
+						/>
 		</>
 	);
 
@@ -1447,6 +1459,9 @@ function TaskInfoPanel({
 				{bugHuntersOpen && createPortal(
 					<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
 					document.body,
+				)}
+				{notesOverlayOpen && (
+					<TaskNotesOverlay task={task} project={project} dispatch={dispatch} onClose={() => setNotesOverlayOpen(false)} />
 				)}
 			</div>
 		);
@@ -1661,6 +1676,10 @@ function TaskInfoPanel({
 			{scheduleMsgOpen && createPortal(
 				<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
 				document.body,
+			)}
+
+			{notesOverlayOpen && (
+				<TaskNotesOverlay task={task} project={project} dispatch={dispatch} onClose={() => setNotesOverlayOpen(false)} />
 			)}
 		</div>
 	);

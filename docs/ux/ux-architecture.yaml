@@ -230,10 +230,17 @@ ux_architecture:
         overflow_to: "context_menu"
       status: "inferred" # card is dense; treat budget as a guardrail
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
+    task_notes_log:
+      purpose: "The whole agent-written note log of one task, on its own surface."
+      allowed: ["notes", "secondary_edit"]
+      forbidden: ["task_lifecycle_action", "git_action", "global_destination"]
+      narrow_form: "bottom_sheet"   # wide renders the same content as a centered dialog
+      note: "Notes are a log, not a form: 2999 of 3030 notes on disk are agent-written, worst task 143 notes / 313321 chars. The inspector keeps a preview of the newest 3, each body clamped to 6 lines; this surface holds the rest. See bible 5.8."
+      evidence: ["src/mainview/components/TaskNotesOverlay.tsx", "src/mainview/components/task-info-panel/TaskNotes.tsx", "src/mainview/components/NoteItem.tsx"]
     task_info_panel:
       purpose: "Inspector for the active task: git actions, dev server, scripts, notes, pane controls, open-in."
-      allowed: ["object_action", "git_action", "dev_server_action", "metadata", "notes", "secondary_edit"]
-      forbidden: ["global_destination", "cross_project_action"]
+      allowed: ["object_action", "git_action", "dev_server_action", "metadata", "notes_preview", "secondary_edit"]
+      forbidden: ["global_destination", "cross_project_action", "uncapped_note_list"]
       note: "This panel is the densest surface (34K). It is the main complexity-budget risk in the app."
       evidence: ["src/mainview/components/TaskInfoPanel.tsx", "src/mainview/components/task-info-panel/*"]
       bar_model:

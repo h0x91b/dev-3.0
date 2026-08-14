@@ -913,6 +913,35 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("notes", () => {
+		function manyNotes(count: number) {
+			return Array.from({ length: count }, (_, i) => ({
+				id: `n${i}`,
+				content: `note ${i}`,
+				source: "ai" as const,
+				createdAt: "2025-06-15T10:00:00Z",
+				updatedAt: "2025-06-15T10:00:00Z",
+			}));
+		}
+
+		it("opens the full note log in its own dialog", async () => {
+			localStorage.setItem("dev3-panel-collapsed", "false");
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+			await act(async () => {
+				renderPanel(makeTask({ notes: manyNotes(6) }));
+			});
+
+			// Inline preview stops at the newest three.
+			expect(screen.queryByText("note 0")).not.toBeInTheDocument();
+			expect(screen.getByText("note 5")).toBeInTheDocument();
+
+			await user.click(screen.getByTestId("task-notes-show-all"));
+
+			const dialog = screen.getByTestId("task-notes-dialog");
+			expect(within(dialog).getByText("note 0")).toBeInTheDocument();
+			expect(within(dialog).getByText("note 5")).toBeInTheDocument();
+		});
+
 		it("adds a note when clicking Add button", async () => {
 			localStorage.setItem("dev3-panel-collapsed", "false");
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });

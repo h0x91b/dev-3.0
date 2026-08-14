@@ -94,6 +94,9 @@ const columns = {
 	"notes.sourceUser": "Пользователь",
 	"notes.sourceAi": "ИИ",
 	"notes.placeholder": "Напишите заметку...",
+	"notes.showMore": "Показать полностью",
+	"notes.showLess": "Свернуть",
+	"notes.showAll": "Показать все заметки ({count})",
 	"notes.failedAdd": "Не удалось добавить заметку: {error}",
 	"notes.failedDelete": "Не удалось удалить заметку: {error}",
 

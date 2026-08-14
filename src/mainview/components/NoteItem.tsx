@@ -21,19 +21,36 @@ export function formatDate(iso: string): string {
 	}
 }
 
+/** Lines an agent-written note shows before it folds. Written out literally —
+ *  Tailwind scans source text, so an interpolated class name never ships. */
+const CLAMP_CLASS = "line-clamp-6";
+
 interface NoteItemProps {
 	note: TaskNote;
 	onSave: (content: string) => void;
 	onDelete: () => void;
 	projectId?: string;
 	taskId?: string;
+	/** Fold an agent-written body to {@link CLAMP_CLASS} with a show-more toggle. */
+	clamp?: boolean;
 }
 
-export function NoteItem({ note, onSave, onDelete, projectId, taskId }: NoteItemProps) {
+export function NoteItem({ note, onSave, onDelete, projectId, taskId, clamp }: NoteItemProps) {
 	const t = useT();
 	const [value, setValue] = useState(note.content);
 	const isAi = note.source === "ai";
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	const bodyRef = useRef<HTMLDivElement>(null);
+	const [expanded, setExpanded] = useState(false);
+	const [overflows, setOverflows] = useState(false);
+
+	// Only a folded body can be measured, so the verdict is taken while clamped
+	// and kept across the expand — unfolded content never overflows itself.
+	useEffect(() => {
+		const el = bodyRef.current;
+		if (!clamp || expanded || !el) return;
+		setOverflows(el.scrollHeight > el.clientHeight + 1);
+	}, [clamp, expanded, note.content]);
 
 	const insertPath = useCallback((path: string) => {
 		setValue((prev) => {
@@ -81,6 +98,7 @@ export function NoteItem({ note, onSave, onDelete, projectId, taskId }: NoteItem
 	// Sync local value when note updates from outside (e.g. after save returns)
 	useEffect(() => {
 		setValue(note.content);
+		setExpanded(false);
 	}, [note.id]);
 
 	return (
@@ -106,7 +124,23 @@ export function NoteItem({ note, onSave, onDelete, projectId, taskId }: NoteItem
 			</div>
 			{isAi ? (
 				<>
-					<div className="text-xs text-fg-2 whitespace-pre-wrap">{note.content}</div>
+					<div
+						ref={bodyRef}
+						className={`text-xs text-fg-2 whitespace-pre-wrap ${clamp && !expanded ? CLAMP_CLASS : ""}`}
+						data-testid="note-body"
+					>
+						{note.content}
+					</div>
+					{clamp && (overflows || expanded) && (
+						<button
+							type="button"
+							onClick={() => setExpanded((prev) => !prev)}
+							className="mt-1 text-dense text-accent hover:text-accent-emphasis transition-colors"
+							aria-expanded={expanded}
+						>
+							{expanded ? t("notes.showLess") : t("notes.showMore")}
+						</button>
+					)}
 					<ImageAttachmentsStrip text={note.content} />
 				</>
 			) : (

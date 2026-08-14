@@ -862,6 +862,7 @@ function ArchivedView({
 										taskId={task.id}
 										onSave={(content) => onUpdateNote(note.id, content)}
 										onDelete={() => onDeleteNote(note.id)}
+										clamp
 									/>
 								))}
 							</div>

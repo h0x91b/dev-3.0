@@ -88,6 +88,9 @@ const columns = {
 	"notes.sourceUser": "User",
 	"notes.sourceAi": "AI",
 	"notes.placeholder": "Write a note...",
+	"notes.showMore": "Show more",
+	"notes.showLess": "Show less",
+	"notes.showAll": "Show all {count} notes",
 	"notes.failedAdd": "Failed to add note: {error}",
 	"notes.failedDelete": "Failed to delete note: {error}",
 
