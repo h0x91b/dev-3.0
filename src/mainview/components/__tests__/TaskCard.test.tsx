@@ -2017,7 +2017,7 @@ describe("TaskCard", () => {
 			});
 			await user.click(screen.getByLabelText("Open PR #12"));
 			const sheet = await screen.findByTestId("pr-status-sheet");
-			fireEvent.mouseDown(sheet);
+			fireEvent.pointerDown(sheet);
 			await waitFor(() => {
 				expect(screen.queryByTestId("pr-status-sheet")).not.toBeInTheDocument();
 			});

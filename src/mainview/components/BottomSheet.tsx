@@ -79,7 +79,9 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 	return createPortal(
 		<div
 			className="fixed inset-0 z-[70] flex items-end justify-center bg-black/50"
-			onMouseDown={(e) => {
+			// Pointer, not mouse: iOS does not reliably synthesize mouse events for a
+			// tap on a plain non-interactive div, so a backdrop tap gets swallowed.
+			onPointerDown={(e) => {
 				if (e.target === e.currentTarget) onClose();
 			}}
 			data-testid={testId}
@@ -91,8 +93,13 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 				aria-label={ariaLabel ?? title}
 				tabIndex={-1}
 				data-bottom-sheet
-				className="bottom-sheet-panel w-full max-w-[40rem] bg-overlay border-t border-edge rounded-t-2xl shadow-2xl max-h-[85dvh] overflow-y-auto outline-none"
+				className="bottom-sheet-panel w-full max-w-[40rem] bg-overlay border-t border-edge rounded-t-2xl shadow-2xl overflow-y-auto outline-none"
 				style={{
+					// `dvh` resolves against the viewport before `zoom` scales the box,
+					// so a flat 85dvh renders as 85·scaleUp — taller than the screen,
+					// pushing the header (grabber, title, close) above the top edge and
+					// leaving no backdrop to tap. Divide it back out.
+					maxHeight: `calc(85dvh / ${scaleUp})`,
 					...(scaleUp !== 1 ? { zoom: scaleUp } : null),
 					// dragY is viewport px; inside a zoomed panel a transform scales too.
 					...(dragY ? { transform: `translateY(${dragY / scaleUp}px)` } : null),

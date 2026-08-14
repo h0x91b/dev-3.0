@@ -81,6 +81,12 @@ describe("BottomSheet", () => {
 		expect(screen.getByRole("dialog")).toHaveStyle({ zoom: "1.25" });
 	});
 
+	it("divides its max height by the scale so the zoomed panel still fits the viewport", () => {
+		mockedScaleUp.mockReturnValue(1.25);
+		renderSheet();
+		expect(screen.getByRole("dialog").style.maxHeight).toBe("calc(85dvh / 1.25)");
+	});
+
 	it("leaves its own scale alone when the screen underneath is already roomy", () => {
 		renderSheet();
 		expect(screen.getByRole("dialog").style.zoom).toBe("");
