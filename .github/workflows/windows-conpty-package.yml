@@ -59,6 +59,17 @@ jobs:
       - name: Native shell launch pure tests
         run: bun run test:native-shell-launch
 
+      # THE PUBLISH PATH'S ONE WINDOWS-ONLY FAILURE MODE, RUN ON WINDOWS RATHER THAN
+      # ASSERTED ABOUT IT. `create-release-artifacts.sh` runs under Git Bash on the win-x64
+      # build, whose `pwd` speaks MSYS (`/d/a/...`) while bun resolves only `D:\a\...`; the
+      # first ever win-x64 job died on exactly that (run 31789301294). A macOS/Linux test
+      # cannot see this class of bug — there the dialects are the same string — and one
+      # already passed on the broken code. This job gates every publisher, so the proof
+      # lands BEFORE a build reaches the bucket. Runs on all three legs: the POSIX runs are
+      # the control that the suffix logic itself did not change.
+      - name: Release publish-version path (real shell, real bun)
+        run: bun run test:release-publish-version
+
       # Seq 1383: what each OS actually shows for an argv0-named host. The
       # per-platform assertions ARE the contract in decision 192, so they have to
       # run on all three runners — negative ones included (macOS Activity Monitor

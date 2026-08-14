@@ -88,13 +88,26 @@ publish_version() {
     echo "$1"
     return
   fi
-  # Values go through the ENVIRONMENT, never string-interpolated into the -e source, and
-  # the module is addressed relative to THIS SCRIPT rather than the cwd: the release jobs
-  # run from the repo root, the tests run it from a temp dir.
-  BUNDLE_VERSION="$1" SHORT_SHA="$SHORT_SHA" bun -e "
-    const { canaryDisplayVersion } = await import('$(cd "$(dirname "$0")/.." && pwd)/src/shared/update-channel.ts');
-    console.log(canaryDisplayVersion(process.env.BUNDLE_VERSION, process.env.SHORT_SHA));
-  "
+  # Values go through the ENVIRONMENT, never string-interpolated into the -e source.
+  #
+  # NO ABSOLUTE PATH IS EVER HANDED TO BUN, AND WINDOWS IS WHY. This step runs under Git
+  # Bash, whose `pwd` speaks MSYS (`/d/a/dev-3.0/...`); bun on native Windows resolves only
+  # `D:\a\dev-3.0\...`. The same directory, two dialects — so an interpolated
+  # `$(cd "$(dirname "$0")/.." && pwd)/src/shared/update-channel.ts` died with
+  # `Cannot find module '/d/a/...'` on the FIRST win-x64 build (run 31789301294). macOS and
+  # Linux never saw it because there the two dialects are the same string.
+  # Instead the subshell cd's to the repo root — bash's own cd understands both dialects,
+  # and the child bun inherits a cwd already in the platform's native form — and the module
+  # is addressed RELATIVE to that cwd, which is what `bun -e` resolves against. The cd is
+  # still script-relative, not cwd-relative: the release jobs run from the repo root, the
+  # tests run this from a temp dir.
+  (
+    cd "$(dirname "$0")/.." || exit 1
+    BUNDLE_VERSION="$1" SHORT_SHA="$SHORT_SHA" bun -e "
+      const { canaryDisplayVersion } = await import('./src/shared/update-channel.ts');
+      console.log(canaryDisplayVersion(process.env.BUNDLE_VERSION, process.env.SHORT_SHA));
+    "
+  )
 }
 
 # THE CHEAP HALF OF THE CHANNEL CHECK, and it runs on every path.
