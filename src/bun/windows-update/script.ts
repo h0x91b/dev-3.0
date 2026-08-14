@@ -46,7 +46,7 @@ export function buildWindowsSwapScript(opts: WindowsSwapScriptOptions): string {
 	const launcher = toWindowsPath(opts.launcherPath);
 	const log = toWindowsPath(opts.logPath);
 
-	return `@echo off
+	const script = `@echo off
 setlocal enabledelayedexpansion
 title dev3 update
 set "DEV3LOG=${log}"
@@ -60,13 +60,13 @@ if errorlevel 1 goto exited
 set /a waited+=1
 if !waited! GEQ ${exitWait} goto forceclose
 call :say "  dev3 still running after !waited!s"
-timeout /t 1 /nobreak >nul
+ping -n 2 127.0.0.1 >nul
 goto waitloop
 
 :forceclose
 call :say "dev3 did not exit after ${exitWait}s - closing what is still running from the old folder"
 powershell -NoProfile -Command "Get-Process | Where-Object { $_.Path -like '${target}\\*' } | Stop-Process -Force" >>"%DEV3LOG%" 2>&1
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 
 :exited
 call :say "removing the old version"
@@ -78,7 +78,7 @@ if not exist "${target}" goto rmdone
 set /a rmtry+=1
 if !rmtry! GEQ ${removeRetries} goto rmfailed
 call :say "  old folder is locked, retry !rmtry! of ${removeRetries}"
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 goto rmloop
 
 :rmfailed
@@ -115,4 +115,8 @@ echo %~1
 echo [%date% %time%] %~1 >>"%DEV3LOG%"
 exit /b 0
 `;
+	// cmd.exe seeks the batch file by byte offset while it runs. With LF-only line
+	// endings that seek lands mid-line and `call :say` dies with "cannot find the
+	// batch label" — measured on windows-latest, run 31814660786.
+	return script.replace(/\r?\n/g, "\r\n");
 }

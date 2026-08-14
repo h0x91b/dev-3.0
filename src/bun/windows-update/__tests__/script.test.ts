@@ -44,6 +44,21 @@ describe("windows swap script", () => {
 		expect(script.match(/^\s*pause$/gm)?.length ?? 0).toBe(2);
 	});
 
+	it("uses CRLF, because cmd.exe seeks the file by byte offset", () => {
+		// Measured on windows-latest (run 31814660786): with LF-only endings the seek
+		// lands mid-line and `call :say` dies with "cannot find the batch label".
+		expect(script).not.toMatch(/[^\r]\n/);
+		expect(script.split("\r\n").length).toBeGreaterThan(20);
+	});
+
+	it("never delays with `timeout`, which quits when stdin is redirected", () => {
+		// Same run: under Task Scheduler / CI stdin is redirected and `timeout` exits
+		// instantly with "Input redirection is not supported" — every wait becomes a
+		// busy spin, so a 60s give-up fires in milliseconds.
+		expect(script).not.toContain("timeout /t");
+		expect(script).toContain("ping -n 2 127.0.0.1 >nul");
+	});
+
 	it("writes windows paths, never forward slashes", () => {
 		expect(script).not.toMatch(/[A-Z]:\//);
 		expect(script).toContain("C:\\Users\\a\\AppData\\Local\\sh.dev3\\canary\\app");

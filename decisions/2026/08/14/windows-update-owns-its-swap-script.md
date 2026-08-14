@@ -84,3 +84,22 @@ and silencing the wait loop each turn it red.
 `src/bun/windows-update/__tests__/swap.win-e2e.ts` **executes** the script on
 `windows-latest` against a live process — once where it exits on its own, once where it
 never does — and asserts the swap lands and the new launcher starts either way.
+
+## What the first real Windows run taught us (run 31814660786)
+
+The pure guards were green on macOS and the script still failed the moment it executed on
+`windows-latest`. Two Windows-only defects, both inherited from electrobun's script and
+neither visible from any other platform:
+
+- **`timeout /t N /nobreak` refuses to run with redirected stdin** — under Task Scheduler
+  and under CI it prints `ERROR: Input redirection is not supported, exiting the process
+  immediately.` and returns at once, so every "wait one second" became a busy spin: 28
+  ticks in under five seconds. Delays are now `ping -n N 127.0.0.1 >nul`, which needs no
+  console input.
+- **cmd.exe seeks a running batch file by byte offset**, so LF-only line endings drop it
+  mid-line: `The system cannot find the batch label specified - say`. The builder now
+  emits CRLF.
+
+Both are guarded in `script.test.ts` and both were mutation-verified by restoring the old
+form. The timing one is also guarded end-to-end: the Windows e2e fails if a four-second
+process produces more than eight one-second ticks.

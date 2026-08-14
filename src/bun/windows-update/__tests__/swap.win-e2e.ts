@@ -86,8 +86,12 @@ async function runCase(label: string, exitAfterSeconds: number, exitWaitSeconds:
 	return { out, pid };
 }
 
-const clean = await runCase("exits-cleanly", 3, 60);
+const clean = await runCase("exits-cleanly", 4, 60);
 check("exits-cleanly: never needed the force-close path", !clean.out.includes("did not exit after"));
+// A wait that does not actually wait is the bug `timeout` caused: it spun 28 times in
+// under 5 seconds. One tick per second means at most a handful before a 4s process ends.
+const ticks = clean.out.match(/still running after/g)?.length ?? 0;
+check("exits-cleanly: each tick is a real second, not a busy spin", ticks > 0 && ticks <= 8, `${ticks} ticks`);
 
 const stuck = await runCase("never-exits", 60, 3);
 check("never-exits: gave up waiting instead of hanging forever", stuck.out.includes("did not exit after 3s"));
