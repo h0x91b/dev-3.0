@@ -8,10 +8,18 @@ const DEFAULT_TIMEOUT = 5000;
 const DEFAULT_STALE_THRESHOLD = 10000;
 const INITIAL_RETRY_DELAY = 5;
 const MAX_RETRY_DELAY = 50;
+// Extra acquisition attempts after a timeout. Under real contention (several
+// agents, pollers and CLI mutators on one tasks.json) a single 5s window is
+// occasionally lost, and the caller sees a hard failure for a purely transient
+// queue. Retrying keeps the per-attempt deadline short, so a genuinely stuck
+// holder still fails fast-ish and is visible as a warning per attempt — which
+// simply raising the timeout would hide.
+const DEFAULT_RETRIES = 2;
 
 export class FileLockTimeoutError extends Error {
-	constructor(lockPath: string, timeout: number) {
-		super(`Failed to acquire file lock "${lockPath}" within ${timeout}ms`);
+	constructor(lockPath: string, timeout: number, attempts = 1) {
+		const suffix = attempts > 1 ? ` (${attempts} attempts)` : "";
+		super(`Failed to acquire file lock "${lockPath}" within ${timeout}ms${suffix}`);
 		this.name = "FileLockTimeoutError";
 	}
 }
@@ -19,6 +27,8 @@ export class FileLockTimeoutError extends Error {
 export interface FileLockOptions {
 	timeout?: number;
 	staleThreshold?: number;
+	/** Extra acquisition attempts after a timed-out one (default 2). */
+	retries?: number;
 }
 
 /**
@@ -41,9 +51,23 @@ export async function withFileLock<T>(
 ): Promise<T> {
 	const timeout = options?.timeout ?? DEFAULT_TIMEOUT;
 	const staleThreshold = options?.staleThreshold ?? DEFAULT_STALE_THRESHOLD;
+	const retries = Math.max(0, options?.retries ?? DEFAULT_RETRIES);
 	const lockDir = filePath + ".lock";
 
-	await acquireLock(lockDir, timeout, staleThreshold);
+	for (let attempt = 0; ; attempt++) {
+		try {
+			await acquireLock(lockDir, timeout, staleThreshold);
+			break;
+		} catch (err) {
+			if (!(err instanceof FileLockTimeoutError) || attempt >= retries) {
+				if (err instanceof FileLockTimeoutError && attempt > 0) {
+					throw new FileLockTimeoutError(lockDir, timeout, attempt + 1);
+				}
+				throw err;
+			}
+			log.warn("Lock acquisition timed out, retrying", { lockDir, timeout, attempt: attempt + 1 });
+		}
+	}
 	try {
 		return await fn();
 	} finally {
