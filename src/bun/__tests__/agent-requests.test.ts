@@ -9,6 +9,11 @@ vi.mock("../logger", () => ({
 	}),
 }));
 
+const push = vi.fn();
+vi.mock("../rpc-handlers/shared-pure", () => ({
+	getPushMessage: () => push,
+}));
+
 import {
 	createAgentRequest,
 	resolveAgentRequest,
@@ -17,6 +22,7 @@ import {
 
 beforeEach(() => {
 	_resetAgentRequestsForTests();
+	push.mockClear();
 });
 
 describe("createAgentRequest", () => {
@@ -87,6 +93,30 @@ describe("resolveAgentRequest", () => {
 		const { requestId } = createAgentRequest("complete", "task-1", "proj-1");
 		expect(resolveAgentRequest(requestId, { approved: true })).toBe(true);
 		expect(resolveAgentRequest(requestId, { approved: true })).toBe(false);
+	});
+
+	it("broadcasts agentRequestResolved so other clients close their copy of the dialog", () => {
+		const { requestId } = createAgentRequest("launch", "task-1", "proj-1");
+
+		resolveAgentRequest(requestId, { approved: true, launch: { agentId: null, configId: null } });
+
+		expect(push).toHaveBeenCalledWith("agentRequestResolved", {
+			requestId,
+			kind: "launch",
+			taskId: "task-1",
+			projectId: "proj-1",
+		});
+	});
+
+	it("does not broadcast for an unknown or already-resolved request", () => {
+		const { requestId } = createAgentRequest("complete", "task-1", "proj-1");
+		resolveAgentRequest(requestId, { approved: false });
+		push.mockClear();
+
+		resolveAgentRequest(requestId, { approved: false });
+		resolveAgentRequest("nope", { approved: false });
+
+		expect(push).not.toHaveBeenCalled();
 	});
 
 	it("resolves every joined waiter with the same decision", async () => {

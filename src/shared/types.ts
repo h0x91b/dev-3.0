@@ -4256,6 +4256,13 @@ export type AppRPCSchema = {
 			 * names the asking task so the user can see who wants this.
 			 */
 			agentLaunchRequested: AgentLaunchRequest;
+			/**
+			 * An agent-initiated request (`complete` or `launch`) got its answer.
+			 * Both dialogs are broadcast to every connected client, so the first
+			 * answer has to close the copies open on the other windows / remote
+			 * browsers — they can no longer decide anything.
+			 */
+			agentRequestResolved: { requestId: string; kind: "complete" | "launch"; taskId: string; projectId: string };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };

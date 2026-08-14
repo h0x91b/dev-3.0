@@ -56,6 +56,7 @@ import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskCompletionSound, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
+import { createAgentRequestAbort } from "./utils/agentRequestAbort";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
@@ -1676,6 +1677,9 @@ function App() {
 				subject?: TaskDialogSubject;
 			};
 			let approved = false;
+			// The same dialog is up on every connected client; the first answer
+			// closes the rest (see createAgentRequestAbort).
+			const abort = createAgentRequestAbort(requestId);
 			try {
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
@@ -1685,10 +1689,16 @@ function App() {
 					cancelLabel: t("app.agentCompletionCancel"),
 					danger: true,
 					agentInitiated: true,
+					signal: abort.signal,
 				});
 			} catch (err) {
 				console.error("[App] confirm (agent-completion) failed:", err);
+			} finally {
+				abort.cleanup();
 			}
+			// Answered on another client — that client owns every side effect, and
+			// the CLI already has its decision.
+			if (abort.signal.aborted) return;
 			if (approved) {
 				// Leave the task's view BEFORE the worktree is destroyed (same
 				// reasoning as the branch-merged flow above). routeAfterTaskClosed sends
@@ -1718,8 +1728,18 @@ function App() {
 				queue.some((r) => r.requestId === request.requestId) ? queue : [...queue, request]
 			));
 		}
+		// Someone answered on another window / the remote browser: drop the request
+		// here too, whether it is on screen or still waiting in the queue.
+		function onAgentRequestResolved(e: Event) {
+			const { requestId } = (e as CustomEvent).detail as { requestId: string };
+			setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
+		}
 		window.addEventListener("rpc:agentLaunchRequested", onAgentLaunchRequested);
-		return () => window.removeEventListener("rpc:agentLaunchRequested", onAgentLaunchRequested);
+		window.addEventListener("rpc:agentRequestResolved", onAgentRequestResolved);
+		return () => {
+			window.removeEventListener("rpc:agentLaunchRequested", onAgentLaunchRequested);
+			window.removeEventListener("rpc:agentRequestResolved", onAgentRequestResolved);
+		};
 	}, []);
 
 	const respondToLaunchRequest = useCallback((

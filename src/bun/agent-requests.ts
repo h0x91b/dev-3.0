@@ -1,4 +1,5 @@
 import { createLogger } from "./logger";
+import { getPushMessage } from "./rpc-handlers/shared-pure";
 
 const log = createLogger("agent-requests");
 
@@ -82,6 +83,15 @@ export function resolveAgentRequest(requestId: string, decision: AgentRequestDec
 	pendingByRequestId.delete(requestId);
 	requestIdByKey.delete(dedupKey(entry.kind, entry.taskId));
 	entry.resolve(decision);
+	// The dialog was broadcast to every connected client (windows + remote
+	// browsers); whoever answered first owns the decision, so tell the rest to
+	// close theirs instead of leaving a dialog nobody can act on any more.
+	getPushMessage()?.("agentRequestResolved", {
+		requestId,
+		kind: entry.kind,
+		taskId: entry.taskId,
+		projectId: entry.projectId,
+	});
 	log.info("Agent request resolved", {
 		kind: entry.kind,
 		taskId: entry.taskId.slice(0, 8),

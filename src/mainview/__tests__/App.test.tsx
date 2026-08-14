@@ -51,6 +51,8 @@ vi.mock("../rpc", () => ({
 			markTaskSharedItemsRead: vi.fn().mockResolvedValue({ id: "updated-task" }),
 			listAgentSkills: vi.fn().mockResolvedValue([]),
 			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
+			respondToAgentLaunchRequest: vi.fn().mockResolvedValue(undefined),
+			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			getRemoteAccessQR: vi.fn().mockResolvedValue({
 				qrDataUrl: "data:image/png;base64,test",
 				accessUrl: "http://127.0.0.1:1234/?token=test",
@@ -2548,6 +2550,67 @@ describe("App keyboard shortcuts", () => {
 				priority: "P0",
 				labels: [{ id: "l1", name: "Feature", color: "#84cc16" }],
 			});
+		});
+	});
+
+	// Both agent dialogs are broadcast to every connected client (second window,
+	// remote browser). The first answer wins; the rest must close silently.
+	describe("agent request answered on another client", () => {
+		it("closes the completion dialog and skips this client's side effects", async () => {
+			vi.mocked(confirm).mockImplementation(((opts: { signal?: AbortSignal }) =>
+				new Promise<boolean>((resolve) => {
+					opts.signal?.addEventListener("abort", () => resolve(false));
+				})) as never);
+
+			await renderApp();
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", {
+					detail: { requestId: "req-elsewhere", taskId: "t1", projectId: "p1", taskTitle: "Some task" },
+				}));
+			});
+			expect(vi.mocked(confirm)).toHaveBeenCalled();
+			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", {
+					detail: { requestId: "req-elsewhere", kind: "complete", taskId: "t1", projectId: "p1" },
+				}));
+			});
+
+			// The winning client already answered the blocked CLI; this one must not
+			// send a second (declining) answer.
+			expect(api.request.respondToAgentCompletionRequest).not.toHaveBeenCalled();
+		});
+
+		it("closes the launch dialog without answering", async () => {
+			await renderApp();
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentLaunchRequested", {
+					detail: {
+						requestId: "launch-elsewhere",
+						taskId: "t1",
+						projectId: "p1",
+						taskTitle: "Peer task",
+						targetStatus: "in-progress",
+						scratch: false,
+						requesterSeq: 42,
+						requesterTitle: "Asking task",
+						subject: { seqLabel: "7", projectName: "Alpha", overview: "Waiting to start." },
+					},
+				}));
+			});
+			expect(screen.getByRole("dialog", { name: /Peer task|Start/i })).toBeInTheDocument();
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", {
+					detail: { requestId: "launch-elsewhere", kind: "launch", taskId: "t1", projectId: "p1" },
+				}));
+			});
+
+			expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+			expect(api.request.respondToAgentLaunchRequest).not.toHaveBeenCalled();
 		});
 	});
 });
