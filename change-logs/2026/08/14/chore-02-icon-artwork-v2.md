@@ -1,0 +1,3 @@
+Short: Bolder DEV-3 icon artwork
+
+Swapped the app icon and website logo for a bolder redraw of the DEV-3 artwork: thicker neon eye outline, a filled light iris behind the console tiles, and a heavier wordmark, so it stays readable at menu-bar and favicon sizes. This render arrived on a pure-black background instead of white, so the alpha channel is derived from the black surround this time; every size was regenerated from one 1024x1024 master, including the iconset behind the macOS .icns and the Windows executable icon, the README and landing images, the web favicons, the artifact-template brand asset, and the logo baked into the social preview.
