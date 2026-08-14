@@ -439,6 +439,53 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "pane",
+		summary: "Run a command in a neighbouring pane of your own task terminal and read what it printed.",
+		subcommands: [
+			{
+				name: "list",
+				usage: "dev3 pane list [--task <id>] [--json]",
+				summary: "Which terminal backend this task is on, which panes exist, which one is yours.",
+				details: [
+					"Read the backend from here rather than guessing it from the platform — the native",
+					"backend is not Windows-only, and tmux is not guaranteed to exist.",
+					"Also states whether a pane's SCREEN text can be read here at all (see `dev3 peek`).",
+				],
+			},
+			{
+				name: "run",
+				usage: 'dev3 pane run "<command>" [--below] [--label <name>] [--task <id>]',
+				summary: "Open a pane next to yours, run the command there, and mirror its output to a log.",
+				details: [
+					"Put flags AFTER the command so the command is not read as a flag value.",
+					"--below          Split below instead of to the right.",
+					"--label <name>   Short human label for the pane (letters, digits, space, . _ -).",
+					"The command runs through the platform's own shell (sh -c on POSIX, Windows PowerShell",
+					"on Windows) with the task's worktree as cwd and the task's lifecycle env.",
+					"Non-interactive only: stdin is closed, so this is for builds, tests, servers and watchers.",
+					"Prints the run id; read the output with `dev3 pane logs <run-id>`.",
+				],
+			},
+			{
+				name: "logs",
+				usage: "dev3 pane logs <run-id> [--lines <N>] [--task <id>] [--json]",
+				summary: "The run's outcome (still running / exit code) plus a bounded tail of its output.",
+				details: [
+					"--lines <N>   Tail budget, 1..2000 (default 200). A dev server writes forever, so a read",
+					"              is always a tail; the header says whether it was truncated.",
+					"The outcome line distinguishes still-running from finished-with-exit-code, so a hung",
+					"build never reads as a failed one.",
+				],
+			},
+			{
+				name: "close",
+				usage: "dev3 pane close <run-id> [--task <id>]",
+				summary: "Close the pane a run is executing in, which kills the command.",
+				details: ["The run's log stays readable with `dev3 pane logs` after the pane is gone."],
+			},
+		],
+	},
+	{
 		name: "ui",
 		summary: "Inspect the app's current UI state.",
 		subcommands: [

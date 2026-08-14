@@ -159,6 +159,15 @@ import { addVent } from "../vents";
 import { getServerPort } from "../remote-access-server";
 import { saveSharedImage } from "../shared-images";
 import { saveSharedArtifact } from "../shared-artifacts";
+import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
+
+vi.mock("../task-pane-runs", () => ({
+	PaneRunError: class PaneRunError extends Error {},
+	startPaneRun: vi.fn(async () => ({ runId: "run-0123456789ab", paneId: "pane-2", backend: "native", logPath: "/tmp/x.log", command: "bun run build" })),
+	readPaneRun: vi.fn(async () => ({ runId: "run-0123456789ab" })),
+	paneRunListing: vi.fn(async () => ({ backend: "native", panes: [], runs: [] })),
+	closePaneRun: vi.fn(async () => ({ closed: true })),
+}));
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
 	"../cli-socket-server"
@@ -257,6 +266,63 @@ describe("remote.accessUrl", () => {
 			tunnelUrl: null,
 			staticCode: null,
 		});
+	});
+});
+
+
+/**
+ * `dev3 pane` is only real if the CLI's method names are actually registered here.
+ * A green module with no wire to it is the failure mode this block exists to stop.
+ */
+describe("pane.* — the CLI's own pane surface", () => {
+	beforeEach(() => {
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask()]);
+	});
+
+	it("runs a command in a neighbouring pane, with the task's own worktree as cwd", async () => {
+		const resp = await handleRequest(
+			makeRequest("pane.run", { taskId: makeTask().id, command: "bun run build", placement: "below", label: "Build" }),
+		);
+		expect(resp.ok).toBe(true);
+		expect(vi.mocked(startPaneRun).mock.calls[0][0]).toMatchObject({
+			command: "bun run build",
+			placement: "below",
+			label: "Build",
+			cwd: "/tmp/wt",
+		});
+		expect(resp.data).toMatchObject({ runId: "run-0123456789ab" });
+	});
+
+	it("defaults an unknown placement to the pane on the right rather than guessing", async () => {
+		await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls", placement: "sideways" }));
+		expect(vi.mocked(startPaneRun).mock.calls[0][0].placement).toBe("right");
+	});
+
+	it("refuses to split a task with no worktree instead of running the command somewhere else", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ worktreePath: "" })]);
+		const resp = await handleRequest(makeRequest("pane.run", { taskId: makeTask().id, command: "ls" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("no worktree");
+		expect(startPaneRun).not.toHaveBeenCalled();
+	});
+
+	it("reads, lists and closes runs of that task", async () => {
+		expect((await handleRequest(makeRequest("pane.logs", { taskId: makeTask().id, runId: "run-0123456789ab", lines: 50 }))).ok).toBe(true);
+		expect(vi.mocked(readPaneRun).mock.calls[0].slice(1)).toEqual(["run-0123456789ab", 50]);
+
+		expect((await handleRequest(makeRequest("pane.list", { taskId: makeTask().id, selfPaneId: "pane-1" }))).ok).toBe(true);
+		expect(vi.mocked(paneRunListing).mock.calls[0][1]).toBe("pane-1");
+
+		expect((await handleRequest(makeRequest("pane.close", { taskId: makeTask().id, runId: "run-0123456789ab" }))).ok).toBe(true);
+		expect(vi.mocked(closePaneRun).mock.calls[0][1]).toBe("run-0123456789ab");
+	});
+
+	it("needs a task, and says so", async () => {
+		const resp = await handleRequest(makeRequest("pane.list", {}));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("taskId is required");
 	});
 });
 

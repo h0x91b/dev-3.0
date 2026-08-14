@@ -1,0 +1,3 @@
+Short: Run a command in the next pane
+
+Agents can now put a long command in a neighbouring pane and read what it printed on any terminal backend and any OS: `dev3 pane list` names the backend and which pane is yours, `dev3 pane run "<command>"` opens a pane and mirrors its output into a run log, `dev3 pane logs <run-id>` returns the outcome (still running, or the exit code) plus a bounded tail, and `dev3 pane close <run-id>` closes it. The injected dev3 skill no longer claims every agent lives inside a tmux session — false on every Windows task, where tmux does not exist — and the `/dev3-tmux` reference now gates itself on `dev3 pane list` before handing out a single tmux command.

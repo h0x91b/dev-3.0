@@ -26,6 +26,8 @@ import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { syncTaskBranchName } from "./task-branch-sync";
 import { taskPeek } from "./task-peek";
+import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "./task-pane-runs";
+import { buildTaskLifecycleEnv } from "./rpc-handlers/shared-pure";
 import { readTaskTerminalBackendState, switchTaskTerminalBackend } from "./task-terminal-backend-switch";
 import { DEV3_HOME } from "./paths";
 import { cliTransportFor, startCliListener } from "./cli-listener";
@@ -119,6 +121,25 @@ function taskNotFoundError(ref: string): Error {
 		`Task not found: ${ref}. If the task was launched by an older app version its id may have changed — ` +
 		"run `dev3 tasks list` to find it by seq, or address it as `--task seq:<N>`.",
 	);
+}
+
+/**
+ * The task a `dev3 pane` call is about, WITH its project — a pane run needs the
+ * task lifecycle env, which only the project can build. Unlike `task.peek` this is
+ * never cross-project by intent: an agent drives its own terminal, not a peer's.
+ */
+async function requirePaneTask(params: Record<string, unknown>): Promise<{ project: Project; task: Task }> {
+	const taskId = params.taskId as string;
+	if (!taskId) throw new Error("taskId is required");
+	if (params.projectId) {
+		const project = await data.getProject(params.projectId as string);
+		const task = findTaskByRef(await data.loadTasks(project), taskId);
+		if (!task) throw taskNotFoundError(taskId);
+		return { project, task };
+	}
+	const found = await resolveTaskAcrossProjects(taskId);
+	if (!found) throw taskNotFoundError(taskId);
+	return found;
 }
 
 async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Project; task: Task } | null> {
@@ -439,6 +460,41 @@ const handlers: Record<string, Handler> = {
 			pane: params.pane === undefined ? undefined : String(params.pane),
 			lines: params.lines === undefined ? undefined : Number(params.lines),
 		});
+	},
+
+	/**
+	 * `dev3 pane` — run one command in a neighbouring pane of the task's own
+	 * terminal and read what it printed. Backend-neutral and platform-neutral by
+	 * construction; the log a run writes is what makes the output readable on the
+	 * native backend, where a screen read is `not-enabled` (decision 202).
+	 */
+	"pane.run": async (params) => {
+		const { task, project } = await requirePaneTask(params);
+		const cwd = task.worktreePath;
+		if (!cwd) throw new Error(`task ${task.id.slice(0, 8)} has no worktree, so it has no pane to split`);
+		return await startPaneRun({
+			task,
+			command: String(params.command ?? ""),
+			placement: params.placement === "below" ? "below" : "right",
+			label: params.label === undefined ? undefined : String(params.label),
+			cwd,
+			env: buildTaskLifecycleEnv(project, task, cwd),
+		});
+	},
+
+	"pane.logs": async (params) => {
+		const { task } = await requirePaneTask(params);
+		return await readPaneRun(task, String(params.runId ?? ""), params.lines === undefined ? undefined : Number(params.lines));
+	},
+
+	"pane.list": async (params) => {
+		const { task } = await requirePaneTask(params);
+		return await paneRunListing(task, params.selfPaneId === undefined ? null : String(params.selfPaneId));
+	},
+
+	"pane.close": async (params) => {
+		const { task } = await requirePaneTask(params);
+		return await closePaneRun(task, String(params.runId ?? ""));
 	},
 
 	"task.create": async (params) => {

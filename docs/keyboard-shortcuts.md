@@ -61,6 +61,8 @@ above are the whole story.
 
 ## Terminal
 
-Terminal multiplexing uses tmux's `⌃B` prefix bindings — see the **Terminal (tmux)** tab in the
-in-app panel for the current set. They are defined in
-[`src/bun/tmux-config.ts`](../src/bun/tmux-config.ts).
+On a task whose terminal runs on the **tmux** backend, multiplexing uses tmux's `⌃B` prefix
+bindings — see the **Terminal (tmux)** tab in the in-app panel for the current set. They are
+defined in [`src/bun/tmux-config.ts`](../src/bun/tmux-config.ts). A task on the **native**
+backend has no tmux and therefore no `⌃B` prefix; its panes are driven from the app's own
+controls (and, for agents, `dev3 pane`).

@@ -187,7 +187,7 @@ Pull the user back to this task deliberately — enough that they never miss som
 - \`dev3 notify "message" [--level info|success|error] --desktop\` — sends a native OS notification that shows even when the app is backgrounded; do not combine \`--desktop\` with \`--duration\`.
 - \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show the user actual images** (screenshots, \`agent-browser\` captures, rendered charts) in an in-app viewer; files are copied into the worktree, and **each \`--caption\` annotates the image it immediately follows** (e.g. \`dev3 show-image before.png --caption "current bug" after.png --caption "after my fix"\`). If pixels exist and are relevant, put them in front of the user — never just describe a picture or leave a path they must open themselves.
 - \`dev3 show-artifact <file.html> [--assets <file...>] [--title "..."]\` — **show the user an interactive HTML artifact** in a sandboxed task workspace. Local CSS, classic JS, and raster files must be explicitly listed after \`--assets\`, live beside or below the HTML file, and keep their relative paths in the ZIP. Artifacts with local assets download as a ZIP; standalone artifacts download as HTML.
-- \`dev3 ui state\` — focused task/project, app foreground, user idle time (\`userActivity\`), tmux layout (\`--json\`). Check this BEFORE pinging to choose the channel.
+- \`dev3 ui state\` — focused task/project, app foreground, user idle time (\`userActivity\`), plus the pane layout on a tmux task only (\`--json\`); use \`dev3 pane list\` for a layout that works on either backend. Check this BEFORE pinging to choose the channel.
 
 MUST ping — one per logical event, not per step: **blocked** or waiting on a question → \`dev3 attention "the question"\`; **finished** something important → \`dev3 notify "..." --level success\`; something **broke** → \`dev3 notify "..." --level error\`; produced an **image worth seeing** → proactive \`dev3 show-image ... --caption "..."\`; produced an interactive report worth exploring → proactive \`dev3 show-artifact ...\`. SHOULD (only on long runs when the user likely stepped away): a major milestone; a go/no-go before a risky action. Never ping per-step progress, routine tool calls, or anything already visible in the terminal.
 
@@ -202,17 +202,29 @@ const SKILL_PROJECT_CONFIG_REDIRECT = `
 For ANY question about project configuration — setup/dev/cleanup scripts, clone paths, base branch, sparse checkout, \`.dev3/config.json\` / \`.dev3/config.local.json\` — you MUST invoke the \`/dev3-project-config\` skill first; it owns the full schema and workflow. Do NOT attempt to configure the project without it.
 `;
 
-const SKILL_TMUX = `
-## tmux — use it proactively
+const SKILL_PANES = `
+## Panes — run long commands next to yourself
 
-You are running **inside a tmux session** managed by dev-3.0 (socket \`dev3\`, session name \`dev3-<first 8 chars of task ID>\`); the user sees this pane live in the app. Always use \`-L dev3\` (the default socket is a different tmux server).
+Your terminal has panes the user watches live. **Which terminal backend you are on is NOT something to assume** — dev3 runs a tmux backend and a native backend, and tmux does not exist at all on Windows. Ask, never infer from the platform:
 
-- Where am I: \`tmux -L dev3 display-message -p '#S #I #P'\`; layout: \`list-windows\` / \`list-panes\`; all sessions: \`list-sessions\`.
-- For long-running or streaming commands (dev server, log tail, watcher, debug loop) — **split your current pane** (\`split-window\`) and run the command there so the user watches live; check \`list-panes\` first (usually right of the agent, below if taken). Quick one-shot commands stay inline. **Do NOT use \`new-window\` for background processes** — only when the user explicitly asks for a tab.
-- If the user asks to open/split/reorder/resize tabs or panes — just do it via \`tmux -L dev3 ...\`.
-- For \`send-keys\`, pass \`Enter\` as a separate argument — otherwise the command is typed but not executed.
+\`\`\`bash
+dev3 pane list      # the backend, every pane, which one is yours, what a screen read can do here
+\`\`\`
 
-For the full command reference (rename / swap / move windows, resize, capture output, common pitfalls) — load the \`/dev3-tmux\` skill before doing anything beyond these basics.
+For anything long-running or streaming (build, test run, watcher, log tail), put it in a neighbouring pane instead of blocking your own tool call — and read it back from the run's log, which works on every backend and every OS:
+
+\`\`\`bash
+dev3 pane run "bun run build" --label Build   # opens a pane to your right, prints a run id
+dev3 pane logs <run-id>                       # outcome (still running / exit code) + a bounded tail
+dev3 pane logs <run-id> --lines 400           # bigger tail (1..2000, default 200)
+dev3 pane close <run-id>                      # close that pane (kills the command)
+\`\`\`
+
+The outcome line distinguishes **still running** from **finished, exit code N** — never treat a quiet tail as a finished command. Runs are non-interactive (stdin is closed): builds, tests, servers, watchers. Quick one-shot commands stay inline in your own shell, and the project's canonical dev server is \`dev3 dev-server start\`, not a pane run.
+
+Reading the SCREEN of a pane you did not start (the user's own pane, "look at the error on the right") is a different thing and is **tmux-only today**: \`dev3 peek --pane <N>\` returns a screen tail on a tmux task, and on a native task it returns the pane summary with no tail, because the native host publishes no screen snapshot. \`dev3 pane list\` says which case you are in.
+
+If \`dev3 pane list\` says \`tmux\`, you may also drive tmux directly for layout work the user asks for (rename / swap / move windows, resize) — load the \`/dev3-tmux\` skill for that reference. On a native task those commands do not exist.
 `;
 
 const SKILL_SCRATCH_TASK = `
@@ -341,6 +353,6 @@ If \`gh\` is unavailable or unauthenticated, do not silently abandon the report:
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_MANUAL_COMPLETION;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_BUG_HUNTER_ISOLATION + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_ASK_TO_LAUNCH + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_PEEK + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_PANES + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL + SKILL_MANUAL_COMPLETION;

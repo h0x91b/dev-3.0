@@ -12,6 +12,7 @@ import {
 	getGenericSkillContent,
 	getProjectConfigSkillContent,
 	getTmuxSkillContent,
+	getTmuxSkillDescription,
 } from "../agent-skills";
 import { ARTIFACT_TEMPLATE_FILES } from "../artifact-template";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
@@ -170,22 +171,42 @@ describe("dev3 skill content", () => {
 		}
 	});
 
-	it("teaches the agent to use the dev3 tmux session proactively (short summary)", () => {
+	it("teaches the backend-neutral pane commands, so a Windows agent is not sent to a binary it has no chance of finding", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
-			expect(skill).toContain("## tmux — use it proactively");
-			expect(skill).toContain("socket `dev3`");
-			expect(skill).toContain("dev3-<first 8 chars of task ID>");
-			expect(skill).toContain("tmux -L dev3 display-message -p '#S #I #P'");
-			expect(skill).toContain("list-windows");
-			expect(skill).toContain("list-panes");
-			expect(skill).toContain("Always use `-L dev3`");
-			expect(skill).toContain("pass `Enter` as a separate argument");
-			// Short version points to the full skill for deeper guidance
+			expect(skill).toContain("## Panes — run long commands next to yourself");
+			expect(skill).toContain("dev3 pane list");
+			expect(skill).toContain("dev3 pane run");
+			expect(skill).toContain("dev3 pane logs");
+			expect(skill).toContain("dev3 pane close");
+			// The outcome distinction the whole feature exists for.
+			expect(skill).toContain("still running");
+			expect(skill).toContain("exit code N");
+			// Short version still points to the full tmux reference for tmux-only work.
 			expect(skill).toContain("/dev3-tmux");
 		}
 	});
 
-	it("keeps the main /dev3 tmux summary short (does not duplicate the full reference)", () => {
+	/**
+	 * THE guard this task exists for: on a native-backend task every tmux sentence
+	 * in the old skill was false, and an agent that believes a false statement about
+	 * its own environment burns turns proving the obvious. A tmux mention is allowed
+	 * — as a CONDITION, never as a fact about where the agent is.
+	 */
+	it("never states tmux as a fact about the agent's own environment", () => {
+		const forbidden: Array<[RegExp, string]> = [
+			[/(?:You|you) are running\s+\*{0,2}inside a tmux session/, "asserts the agent is inside a tmux session"],
+			[/Always use `-L dev3`/, "orders every command onto a tmux socket"],
+			[/^[^\n]*\btmux -L dev3\b/m, "hands out a raw tmux command as if tmux existed"],
+			[/socket `dev3`, session name/, "states a tmux session name as the agent's own"],
+		];
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			for (const [pattern, why] of forbidden) {
+				expect(pattern.test(skill), `injected skill ${why}: ${pattern}`).toBe(false);
+			}
+		}
+	});
+
+	it("keeps the main /dev3 pane summary short (does not duplicate the full tmux reference)", () => {
 		// The detailed command reference must live in the separate /dev3-tmux skill,
 		// not be duplicated inline in the main skill body.
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
@@ -240,6 +261,33 @@ describe("Claude SKILL.md (short variant — protocol lives in the system prompt
 });
 
 describe("dev3-tmux skill content", () => {
+	/**
+	 * The reference itself is fine; loading it on a task that has no tmux is not.
+	 * The gate has to be the FIRST thing the agent reads, before any command it
+	 * could try, and it has to name the check rather than the platform.
+	 */
+	it("gates itself on the backend before handing out a single tmux command", () => {
+		const skill = getTmuxSkillContent();
+		const gate = skill.indexOf("## Check this first — tmux is not a given");
+		const firstTmuxCommand = skill.indexOf("tmux -L dev3");
+		expect(gate).toBeGreaterThanOrEqual(0);
+		expect(gate).toBeLessThan(firstTmuxCommand);
+		expect(skill).toContain("dev3 pane list");
+		expect(skill).toContain("Everything below applies only if that says `tmux`");
+		// Never "you are on Windows, so…": the native backend is not Windows-only.
+		expect(skill).toContain("Do not infer the backend from the platform");
+		// And it must send the agent to the surface that works everywhere.
+		expect(skill).toContain("dev3 pane run");
+		expect(skill).toContain("dev3 pane logs");
+	});
+
+	it("declares itself tmux-only in the description an agent decides from", () => {
+		const description = getTmuxSkillDescription();
+		expect(description).toMatch(/TMUX-backed task only/i);
+		expect(description).toContain("dev3 pane list");
+		expect(description).toContain("dev3 pane run");
+	});
+
 	it("contains the full tmux command reference", () => {
 		const skill = getTmuxSkillContent();
 		expect(skill).toContain("# dev3-tmux — Full tmux reference");

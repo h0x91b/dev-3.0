@@ -20,6 +20,9 @@ import { handleConversations } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleMessage } from "./commands/message";
 import { handlePeek } from "./commands/peek";
+import { handlePane } from "./commands/pane";
+import { handlePaneExec } from "./commands/pane-exec";
+import { PANE_RUN_VERB } from "../bun/pane-run-store";
 import { handleShowImage } from "./commands/show-image";
 import { handleShowArtifact } from "./commands/show-artifact";
 import { handleStatusLine } from "./commands/statusline";
@@ -76,6 +79,10 @@ Commands:
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
   dev3 show-artifact <file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; local CSS, JS, and images are exported as ZIP
   dev3 peek [--task <id>] [--pane <N|paneId>] [--lines <N>] [--json]  Read-only glance at a task's terminal: pane summary with output freshness + the tail of one pane
+  dev3 pane list [--json]                Which terminal backend you are on, which panes exist, which one is yours
+  dev3 pane run "<command>" [--below] [--label <name>]  Run a command in a neighbouring pane of your own terminal
+  dev3 pane logs <run-id> [--lines <N>]  That run's outcome (running / exit code) + the tail of what it printed
+  dev3 pane close <run-id>               Close the run's pane (kills the command)
   dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
@@ -184,6 +191,12 @@ async function main(): Promise<void> {
 	if (command === "install-skills") {
 		return await handleInstallSkills();
 	}
+	if (command === PANE_RUN_VERB) {
+		// Internal: the process a `dev3 pane run` pane actually runs. It mirrors the
+		// command's output to the pane and to the run's log file, and needs no socket
+		// — a run must keep printing even if the app goes away mid-build.
+		return await handlePaneExec(rawArgs.slice(1));
+	}
 	if (command === "doctor") {
 		// Install health check — must work precisely when the app is broken
 		// or not running, so it never touches the socket.
@@ -263,6 +276,8 @@ async function main(): Promise<void> {
 				return await handleShowArtifact(rawArgs.slice(1), socketPath, context);
 			case "peek":
 				return await handlePeek(args, socketPath, context);
+			case "pane":
+				return await handlePane(subcommand, args, socketPath, context);
 			case "ui":
 				return await handleUi(subcommand, args, socketPath, context);
 			default:

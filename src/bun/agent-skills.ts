@@ -272,13 +272,21 @@ const PROJECT_CONFIG_OPENAI_YAML = `interface:
 // ---- dev3-tmux skill ----
 
 const TMUX_SKILL_DESCRIPTION =
-	"Full tmux reference for dev-3.0 agents. Use when you need to open new panes/windows for long-running commands, reorganize the user's tabs (split, swap, resize, rename), capture pane output, or do anything beyond the basics covered in the main /dev3 skill. Trigger: the user asks for tab/pane manipulation, you want to run a streaming command the user should see live, or the /dev3 skill points you here.";
+	"Full tmux reference for dev-3.0 agents on a TMUX-backed task only — run `dev3 pane list` first and stop if it does not say `tmux` (a native-backend task has no tmux at all, and Windows has none anywhere). Use for reorganizing the user's tabs (split, swap, resize, rename), capturing a pane's screen, or tmux details beyond the basics in the main /dev3 skill. To simply run a long command in a neighbouring pane and read its output, use `dev3 pane run` / `dev3 pane logs` instead — those work on every backend.";
 
 const TMUX_SKILL_BODY = `# dev3-tmux — Full tmux reference for dev-3.0 agents
 
-You are running inside a tmux session managed by the dev-3.0 desktop app. The user sees this session live in the app's terminal UI — every pane, every keystroke, every line of output.
+## Check this first — tmux is not a given
 
-This skill is the **full reference**. The main \`/dev3\` skill carries only a short summary and a pointer here.
+\`\`\`bash
+dev3 pane list      # names your terminal backend
+\`\`\`
+
+**Everything below applies only if that says \`tmux\`.** A task on the native backend has no tmux session, no \`dev3\` socket and no \`tmux\` binary to call — on Windows there is no tmux at all — and every command here will simply fail there. Do not infer the backend from the platform: the native backend is not Windows-only.
+
+To run a long command in a neighbouring pane and read what it printed, prefer \`dev3 pane run "<command>"\` + \`dev3 pane logs <run-id>\` on EITHER backend. Reach for raw tmux for what only tmux offers: reorganizing the user's windows, and reading the screen of a pane you did not start (\`capture-pane\`, also reachable as \`dev3 peek --pane <N>\`).
+
+On a tmux task you are running inside a tmux session managed by the dev-3.0 desktop app. The user sees this session live in the app's terminal UI — every pane, every keystroke, every line of output.
 
 ## 1. Session layout
 
@@ -440,8 +448,8 @@ ${TMUX_SKILL_BODY}`;
 
 const TMUX_OPENAI_YAML = `interface:
   display_name: "dev3 tmux"
-  short_description: "Full tmux reference for opening panes, organizing tabs, and running long commands inside the dev-3.0 session"
-  default_prompt: "Use $dev3-tmux for the full tmux command reference inside the dev-3.0 session."
+  short_description: "Full tmux reference for organizing tabs and reading panes — tmux-backed tasks only; check \`dev3 pane list\` first"
+  default_prompt: "Use \$dev3-tmux for the full tmux command reference, but only after \`dev3 pane list\` confirms this task runs on the tmux backend."
 `;
 
 // ---- dev3 Bug Hunter skill ----
@@ -723,16 +731,16 @@ A starting situation that generates work, then merges onto the main flow.
 - **Reports and richer results → dev3 artifacts.** An artifact is an HTML page shown right inside dev3's UI — it can embed screenshots, tables from CSVs, charts, anything dynamic. Perfect for reports and for validating what the agent did: often you don't even need to launch the dev server yourself — the agent has already screenshotted everything and presents the finished result as one page. To activate it, just tell the agent to *"use a dev3 artifact"*.
 - **Artifacts travel well — the ZIP → PDF trick.** Downloading an artifact gives you the HTML page, and when it references images or other files — a ZIP with everything bundled. A proven workflow for analytics-style reports: view the report in dev3, download it, open the HTML in a browser, print → save as PDF — and send that PDF to people.
 
-## The terminal is tmux — talk to it in panes and windows
+## Talk to the terminal in panes
 
-Every agent running in dev3 knows perfectly well it lives inside a tmux session, so you can speak to it in tmux terms and it will both look and act:
+Every agent running in dev3 knows it lives in a terminal with panes the user can see, so you can speak to it in those terms and it will both look and act:
 
-- **"Look at the pane on the right — there's an error."** Typical case: the dev server runs in a pane next to the agent (or you launched something yourself) and an error shows up. Tell the main agent to look at that pane — it reads the output and keeps working with what it saw.
-- **"Open a pane below / a new window and run X there."** The agent can create panes and whole tmux windows (tmux has windows — they're the tabs), run any command inside them, and keep long-running things visible right next to itself.
-- **"Move it, shrink it, make it bigger."** Rearranging windows, resizing panes, renaming tabs — just ask; the agent manages the layout too.
+- **"Run the build in the pane on the right."** The agent opens a pane next to itself, runs the command there so you watch it live, and reads the result back from the run's own log — so it knows the exit code, not just that "something scrolled by". This works the same on macOS, Linux and Windows.
+- **"Look at the pane on the right — there's an error."** Works today on a **tmux** task, where the agent can read a pane's screen. On the **native** backend (every Windows task, and any task switched to it) dev3 publishes no screen snapshot, so an agent can only read output from a command it started itself — paste the error, or ask it to re-run the thing in a pane.
+- **"Move it, shrink it, make it bigger."** Rearranging windows, resizing panes, renaming tabs — tmux tasks only; the native backend has panes and splits but no tmux windows.
 - **Paste and drop files straight into any terminal.** Hit ⌘V / Ctrl+V with an image in the clipboard — it's uploaded automatically and its file path lands in the terminal, ready for the agent. Drag & drop any file onto the terminal — same story: uploaded, full path typed into stdin. Even a huge pasted text block is saved as a file with its path injected, instead of flooding the terminal.
 
-The full mechanics live in \`/dev3-tmux\` — the agent reaches for it on its own when needed.
+Under the hood the agent uses \`dev3 pane run\` / \`dev3 pane logs\` (either backend); \`/dev3-tmux\` holds the tmux-only layout reference and it reaches for either on its own.
 
 ## More than one agent
 
@@ -806,6 +814,10 @@ const ASK_DEV3_OPENAI_YAML = `interface:
 
 export function getProjectConfigSkillContent(): string {
 	return PROJECT_CONFIG_SKILL_BODY;
+}
+
+export function getTmuxSkillDescription(): string {
+	return TMUX_SKILL_DESCRIPTION;
 }
 
 export function getTmuxSkillContent(): string {
