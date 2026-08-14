@@ -4,10 +4,10 @@ name: Canary publish
 # whatever `main` is at, ordered by the monotonic `buildOrder` in the manifest rather than
 # by the version string. See decisions/2026/08/06/stable-canary-update-channels.md.
 #
-# HOURLY-IF-MAIN-MOVED, NOT PER MERGE. Merges land in batches of four or five back to back,
+# SCHEDULED-IF-MAIN-MOVED, NOT PER MERGE. Merges land in batches of four or five back to back,
 # so per-push meant four wasted sign-and-notarize cycles for one meaningful artifact. A cron
-# that compares a sha has no burst to collapse, which is also why there is no
-# `cancel-in-progress` here.
+# that compares a sha has no burst to collapse, which is why the group below queues instead of
+# cancelling in progress.
 #
 # Scheduled workflows are BEST EFFORT and can fire late. A missed tick is harmless: the next
 # one still sees the sha mismatch and builds, so no commit is ever permanently unpublished.
@@ -26,8 +26,14 @@ on:
   # which is what caught the old degradation, passed on the way there.
   #
   # Offset off the hour: the top of the hour is the busiest slot on shared runners.
+  #
+  # TEMPORARY, at Arseny's request on 2026-08-14, while he is shaking Windows out on canary:
+  # every fix he wants to try on his Windows box waits for a published canary build, and hourly
+  # is the bottleneck. TO REVERT, restore this single line verbatim — nothing else here depends
+  # on the cadence:
+  #     - cron: "23 * * * *"
   schedule:
-    - cron: "23 * * * *"
+    - cron: "3,23,43 * * * *"
   # Safe to press on an unchanged `main`: every platform skips, and a republish of the same
   # commit reproduces the same `buildOrder` so clients would not reinstall anyway.
   workflow_dispatch:
@@ -36,6 +42,24 @@ on:
         description: "Publish every platform without comparing the feed (seeds a channel that has never published)"
         type: boolean
         default: false
+
+# ONE PUBLISH AT A TIME, QUEUED — NEVER CANCELLED MID-RUN. At hourly spacing an 11-minute run
+# could not meet itself; at 20-minute spacing, with scheduled ticks routinely 15-30 minutes
+# late, two runs overlapping is ordinary. Overlapping runs write the same places: the bucket
+# keys are overwritten in place, so one run's manifest can be published over the other's
+# payloads, and the rolling `canary` pre-release MERGES its `canary-assets.json` ledger, which
+# two writers turn into a race. Worse, the second run's probe sees the feed BEFORE the first
+# has published, so it rebuilds the same sha — a duplicate sign-and-notarize cycle for nothing.
+#
+# `cancel-in-progress: false` because cancelling a publish mid-flight is the one outcome worse
+# than racing: it can leave a half-written manifest authoritative. Queuing costs a delayed tick
+# and nothing else — when the queued run finally starts, the sha now matches and every platform
+# skips, which is nearly free. GitHub keeps at most one run pending per group and cancels an
+# older pending one; that is harmless here, because a pending run has built nothing and the
+# next tick still sees any sha mismatch (the same reason a missed tick is harmless).
+concurrency:
+  group: canary-publish
+  cancel-in-progress: false
 
 permissions:
   contents: read
