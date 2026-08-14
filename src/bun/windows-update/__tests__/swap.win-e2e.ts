@@ -114,6 +114,14 @@ check(
 	check("handover: schtasks accepted the quoted script path", scheduled.ok, scheduled.error ?? "");
 	for (let i = 0; i < 20 && !existsSync(marker); i++) await Bun.sleep(500);
 	check("handover: the scheduled task actually ran the script", existsSync(marker));
+	// A task left on the default settings is skipped on battery, silently.
+	const battery = Bun.spawnSync([
+		"powershell",
+		"-NoProfile",
+		"-Command",
+		`(Get-ScheduledTask -TaskName '${taskName}').Settings.DisallowStartIfOnBatteries`,
+	]).stdout.toString().trim();
+	check("handover: the task is allowed to start on battery", battery === "False", `DisallowStartIfOnBatteries=${battery || "unreadable"}`);
 	Bun.spawnSync(["schtasks", "/delete", "/tn", taskName, "/f"]);
 }
 

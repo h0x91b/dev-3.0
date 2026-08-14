@@ -103,7 +103,7 @@ call :say "starting dev3 ${opts.version}"
 start "" "${launcher}"
 call :say "update complete"
 
-for /f "tokens=1" %%t in ('schtasks /query /fo list ^| findstr /i "Dev3Update_"') do (
+for /f "tokens=2" %%t in ('schtasks /query /fo list ^| findstr /i "Dev3Update_"') do (
     schtasks /delete /tn "%%t" /f >nul 2>&1
 )
 ping -n 2 127.0.0.1 >nul

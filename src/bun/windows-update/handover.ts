@@ -26,6 +26,17 @@ export function scheduleSwapScript(scriptPath: string, taskName: string): { ok: 
 	if (create.exitCode !== 0) {
 		return { ok: false, error: `schtasks /create failed (${create.exitCode}): ${create.stderr?.toString() ?? ""}` };
 	}
+	// Task Scheduler refuses to start a task on battery by default, and it refuses
+	// silently — the app quits, the swap never runs, nothing reports a failure.
+	// (Same script, reported upstream as blackboardsh/electrobun#300.) Best effort:
+	// a machine that will not let us relax the condition still gets the /run below.
+	spawnSync([
+		"powershell",
+		"-NoProfile",
+		"-Command",
+		`Set-ScheduledTask -TaskName '${taskName}' -Settings (New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries)`,
+	]);
+
 	const run = spawnSync(["schtasks", "/run", "/tn", taskName]);
 	if (run.exitCode !== 0) {
 		return { ok: false, error: `schtasks /run failed (${run.exitCode}): ${run.stderr?.toString() ?? ""}` };

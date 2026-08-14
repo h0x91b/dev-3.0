@@ -103,3 +103,21 @@ neither visible from any other platform:
 Both are guarded in `script.test.ts` and both were mutation-verified by restoring the old
 form. The timing one is also guarded end-to-end: the Windows e2e fails if a four-second
 process produces more than eight one-second ticks.
+
+## Two more inherited defects, found by reading the upstream tracker
+
+Searching electrobun's issues for duplicates before filing turned up **#300 (closed)**,
+about the same `update.bat` but different symptoms. Both of its findings applied to the
+copy we had just written:
+
+- **Task Scheduler will not start a task on battery** by default, and it refuses
+  silently — the app quits, the swap never runs, nothing reports anything. The handover
+  now relaxes `DisallowStartIfOnBatteries` after creating the task (best effort; the
+  `/run` still follows either way).
+- **The task cleanup never deleted anything.** `schtasks /query /fo list` prints
+  `TaskName:      \Dev3Update_1`, so `tokens=1` yields the literal `TaskName:` and
+  orphaned tasks accumulate. Ours reads `tokens=2`.
+
+Both are guarded: the parsing one in `script.test.ts` (mutation-verified by restoring
+`tokens=1`), the battery one end-to-end on `windows-latest` by reading
+`DisallowStartIfOnBatteries` back off a task the production code path created.

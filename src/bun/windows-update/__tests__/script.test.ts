@@ -59,6 +59,13 @@ describe("windows swap script", () => {
 		expect(script).toContain("ping -n 2 127.0.0.1 >nul");
 	});
 
+	it("parses the task name out of `schtasks /query`, not the label in front of it", () => {
+		// `schtasks /query /fo list` prints "TaskName:      \Dev3Update_1", so tokens=1
+		// deletes nothing and orphaned tasks pile up (blackboardsh/electrobun#300).
+		expect(script).toContain('for /f "tokens=2" %%t in');
+		expect(script).not.toContain('for /f "tokens=1" %%t in');
+	});
+
 	it("writes windows paths, never forward slashes", () => {
 		expect(script).not.toMatch(/[A-Z]:\//);
 		expect(script).toContain("C:\\Users\\a\\AppData\\Local\\sh.dev3\\canary\\app");
