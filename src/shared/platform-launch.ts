@@ -71,6 +71,15 @@ export interface LaunchDialect {
 	header(): string[];
 	/** Quote a literal so the script's parser sees it as one word. */
 	quote(value: string): string;
+	/**
+	 * Quote a literal that must reach a NATIVE executable's argv byte-for-byte.
+	 *
+	 * Not the same job as {@link quote}: PowerShell hands a native process one
+	 * flat command line and does not escape the double quotes inside the value,
+	 * so `CommandLineToArgvW` eats them on the way in. POSIX has no such step —
+	 * there the two are the same function.
+	 */
+	quoteNativeArg(value: string): string;
 	/** Set the terminal pane title (OSC 2). */
 	paneTitle(title: string): string;
 	/** `export K=v` / `unset K` equivalents; {@link ENV_UNSET} means remove. */
@@ -182,6 +191,7 @@ const posixDialect: LaunchDialect = {
 	lastExitCodeExpr: "$?",
 	header: () => ["#!/bin/bash"],
 	quote: posixShellQuote,
+	quoteNativeArg: posixShellQuote,
 	paneTitle: (title) => `printf '\\033]2;${title}\\033\\\\'`,
 	envLines: (env) =>
 		Object.entries(env).map(([key, value]) =>
@@ -250,6 +260,26 @@ export function powerShellQuote(value: string): string {
 	return "'" + value.replace(/'/g, "''") + "'";
 }
 
+/**
+ * Escape a value so a native executable's argv receives it byte-for-byte.
+ *
+ * Windows PowerShell 5.1 builds ONE command line for a native process and copies
+ * the argument in verbatim, escaping nothing. `CommandLineToArgvW` on the other
+ * side then consumes every `"` it sees, so a payload carrying quotes arrives
+ * stripped — which is how dev3's `-c hooks={...}` reached Codex as an unparsable
+ * blob and killed the session (Seq 1540). The `\"` spelling survives both:
+ * PowerShell passes it through, and the argv parser turns it back into `"`.
+ *
+ * Backslashes only become an escape character when they run into a `"`, so a run
+ * of them immediately before one is doubled and every other backslash is left
+ * alone. A value ENDING in a backslash is the one case this cannot settle here:
+ * whether it needs doubling depends on whether PowerShell wraps the argument in
+ * quotes, which it decides from the value's own whitespace.
+ */
+export function windowsNativeArgEscape(value: string): string {
+	return value.replace(/(\\*)"/g, '$1$1\\"');
+}
+
 /** Escape for a PowerShell double-quoted (interpolating) string. */
 function powerShellEscapeDoubleQuoted(value: string): string {
 	return value.replace(/[`"$]/g, "`$&");
@@ -276,6 +306,7 @@ const windowsDialect: LaunchDialect = {
 	// No shebang on Windows; stop on unhandled errors instead of limping on.
 	header: () => ["$ErrorActionPreference = 'Continue'"],
 	quote: powerShellQuote,
+	quoteNativeArg: (value) => powerShellQuote(windowsNativeArgEscape(value)),
 	paneTitle: (title) => `Write-Host -NoNewline "$([char]27)]2;${powerShellEscapeDoubleQuoted(title)}$([char]27)\\"`,
 	envLines: (env) =>
 		Object.entries(env).map(([key, value]) =>

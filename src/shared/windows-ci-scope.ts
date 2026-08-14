@@ -101,6 +101,11 @@ export const WINDOWS_SCOPE_PATHS = [
 	// the generated file parses, so an edit here must re-dispatch the proof.
 	"src/bun/codex-config.ts",
 	"src/bun/__tests__/codex-config-windows-paths.test.ts",
+	// (1) the PowerShell launch dialect: it spells every generated Windows wrapper and
+	// every argument handed to a native agent process. The Codex hooks override reached
+	// codex with its quotes eaten from here (Seq 1540), and only a Windows run can tell.
+	"src/shared/platform-launch.ts",
+	"src/bun/__tests__/codex-hooks-windows-argv.test.ts",
 	// This list and the script reading it decide the whole thing; changing either
 	// has to re-prove Windows rather than judging its own change out of scope.
 	"src/shared/windows-ci-scope.ts",
