@@ -59,6 +59,15 @@ jobs:
       - name: Native shell launch pure tests
         run: bun run test:native-shell-launch
 
+      # Seq 1540: the Codex config dev3 writes into ~/.codex/config.toml. A raw
+      # Windows path in a TOML basic string makes `C:\Users` the escape `\U`, and
+      # codex then refuses to start machine-wide. The tests decode the generated
+      # file with a real TOML parser and drive ensureCodexConfigFile against a real
+      # temp home, so only the Windows leg can see the composition that broke; the
+      # POSIX legs are the control that the escaping did not change their output.
+      - name: Codex config generation + repair (real TOML parse)
+        run: bun run test:codex-config-windows
+
       # THE PUBLISH PATH'S ONE WINDOWS-ONLY FAILURE MODE, RUN ON WINDOWS RATHER THAN
       # ASSERTED ABOUT IT. `create-release-artifacts.sh` runs under Git Bash on the win-x64
       # build, whose `pwd` speaks MSYS (`/d/a/...`) while bun resolves only `D:\a\...`; the
