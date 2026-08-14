@@ -32,6 +32,8 @@ Do not read or edit `app.css` or `app.js` unless the artifact format itself must
 
 `.card` already carries its own padding, so a bare `<section class="card">` looks right with plain content inside it. `.section` and `.kpi` set a roomier padding, and `.table-card` intentionally drops it so a table can run edge to edge. Never re-pad a card from report markup.
 
+The container grows with the viewport up to 1840px, so dense tables and dashboards use a wide monitor instead of leaving it empty. Because the panels are wide, put running prose in `<p class="prose">` (or any `.prose` block) to hold a readable line length; short `.muted` and `.section-copy` lines are capped for you. `.kpis` fits as many cards per row as the width allows, so a report may ship three or six KPI cards without a layout override.
+
 ## Preview and share
 
 Pass every local dependency explicitly after `--assets`:
@@ -84,11 +86,17 @@ Keep form markup native and opt into the polished CDN controls with one attribut
 Use native checkbox, radio, and switch markup from `index.html`; `app.css` supplies the shared skin without report JavaScript.
 When report code changes an enhanced select or range, call `dev3Artifact.setControl(element, value)` so the native value, visual control, events, and output stay synchronized.
 
+## Tables
+
+Every table gets its reading aids from the shell: alternating row tint, a full-row hover highlight, a vertical rule between cells, tabular figures, and a header that stays visible while the rows scroll. Do not re-implement any of it in report code, and do not add per-row background styles.
+
+Mark a sortable heading with `data-sort` plus `tabindex="0"`; the shell maintains `aria-sort` and renders the ascending/descending caret, so report code only has to sort the data. A heading without `data-sort` renders as a plain label with no pointer cursor.
+
 ## Dense evidence tables
 
 Keep decision summaries and charts first, then preserve exhaustive source rows in a visible evidence ledger. Large mechanically produced datasets may live in an additional classic JavaScript asset such as `evidence-data.js`; list it in `--assets`, load it before `report.js`, and keep only rendering logic in `report.js`.
 
-Wrap wide tables in `.evidence-table-scroll` and add `.evidence-table` to the table. The shell keeps every column reachable with horizontal scrolling on narrow screens and lays all columns out for print. Reuse the semantic source markers `.good`, `.bad`, `.sig`, `.flat`, `.dim`, `.sep`, `.regime`, and `.total`; the shell maps them to dev3 tokens, quiet typographic significance emphasis, column separators, rollout boundaries, and total rows.
+Wrap wide tables in `.evidence-table-scroll` and add `.evidence-table` to the table. The shell keeps every column reachable with horizontal scrolling on narrow screens and lays all columns out for print. The first column is pinned while the numbers scroll past it, so put the row's identity there — a day, a cohort, a file — and never a value that only makes sense next to its neighbours. Reuse the semantic source markers `.good`, `.bad`, `.sig`, `.flat`, `.dim`, `.sep`, `.regime`, and `.total`; the shell maps them to dev3 tokens, quiet typographic significance emphasis, column separators, rollout boundaries, and total rows.
 
 ## Print and PDF
 

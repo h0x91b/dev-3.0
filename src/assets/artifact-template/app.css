@@ -24,7 +24,11 @@
     }
     /* Stacked top-level blocks are spaced by the container, so any panel order
        an author writes keeps the same rhythm without per-panel margins. */
-    .app { display: flex; max-width: 1180px; flex-direction: column; gap: 14px; margin: auto; }
+    /* Wide monitors get the room instead of a 1000px empty gutter; prose keeps a
+       readable measure through .prose instead of the container. */
+    .app { display: flex; width: min(100%, clamp(1180px, 88vw, 1840px)); flex-direction: column; gap: 14px; margin: auto; }
+    .prose { max-width: 72ch; }
+    .muted, .section-copy { max-width: 90ch; }
     .topbar, .brand, .actions, .segmented, .inline, .table-tools { display: flex; align-items: center; }
     .topbar { justify-content: space-between; gap: 20px; margin-bottom: 6px; }
     .brand { gap: 13px; }
@@ -122,7 +126,7 @@
       color: rgb(var(--dev3-accent));
     }
     .grid { display: grid; gap: 14px; }
-    .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .kpis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
     .stack { display: grid; gap: 14px; }
     .card {
       padding: 16px;
@@ -369,7 +373,8 @@
       background: rgb(var(--dev3-accent) / .18);
       color: rgb(var(--dev3-text-primary));
     }
-    .table-card { padding: 0; overflow: hidden; }
+    /* clip, not hidden: hidden makes the card a scrollport and unpins the header. */
+    .table-card { padding: 0; overflow: clip; }
     .table-head { padding: 16px 18px 12px; }
     .table-tools { gap: 8px; }
     .table-tools input, .table-tools select {
@@ -381,16 +386,31 @@
       outline: none;
     }
     .table-tools input { width: 190px; }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
     th, td { padding: 11px 18px; border-top: 1px solid rgb(var(--dev3-border)); text-align: left; font-size: 12px; }
+    /* A vertical rule keeps the eye inside one column across a wide row; every
+       cell owns its trailing edge so a pinned column can strengthen its own. */
+    th:not(:last-child), td:not(:last-child) { border-inline-end: 1px solid rgb(var(--dev3-border) / .5); }
     th {
       color: rgb(var(--dev3-text-muted));
       font-weight: 600;
       letter-spacing: .05em;
       text-transform: uppercase;
-      cursor: pointer;
     }
-    tbody tr:hover { background: rgb(var(--dev3-accent) / .04); }
+    /* border-collapse drops borders on sticky cells, so paint them inset. */
+    thead th { position: sticky; z-index: 5; top: var(--dev3-table-head-top, 0px); background: rgb(var(--dev3-surface-raised)); box-shadow: inset 0 -1px 0 rgb(var(--dev3-border)); }
+    th[data-sort] { cursor: pointer; }
+    th[data-sort]:hover { color: rgb(var(--dev3-text-secondary)); }
+    th[data-sort]::after { margin-inline-start: 6px; content: "↕"; font-size: 10px; opacity: .3; }
+    th[data-sort]:hover::after { opacity: .65; }
+    th[aria-sort]::after { color: rgb(var(--dev3-accent)); opacity: 1; }
+    th[aria-sort="ascending"]::after { content: "↑"; }
+    th[aria-sort="descending"]::after { content: "↓"; }
+    /* The tint travels as a variable so a pinned cell can composite the same
+       zebra/hover state over its own opaque base. */
+    tbody tr { background: var(--dev3-row-tint, transparent); transition: background-color .12s ease; }
+    tbody tr:nth-child(even) { --dev3-row-tint: rgb(var(--dev3-text-primary) / .045); }
+    tbody tr:hover { --dev3-row-tint: rgb(var(--dev3-accent) / .1); }
     .evidence-book { display: grid; gap: 16px; }
     .evidence-toolbar, .evidence-legend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .evidence-toolbar { justify-content: space-between; }
@@ -412,7 +432,13 @@
     .evidence-table { width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
     .evidence-table th, .evidence-table td { padding: 6px 9px; white-space: nowrap; text-align: right; font-size: 10.5px; }
     .evidence-table th { background: rgb(var(--dev3-surface-raised)); cursor: default; font-size: 9.5px; }
-    .evidence-table th:first-child, .evidence-table td:first-child { text-align: left; }
+    /* Its own scroller is the scrollport, so the page offset would push the
+       header onto the rows instead of pinning it. */
+    .evidence-table thead th { top: 0; }
+    /* The label column stays put while the numbers scroll past it. */
+    .evidence-table th:first-child, .evidence-table td:first-child { position: sticky; inset-inline-start: 0; border-inline-end-color: rgb(var(--dev3-border)); text-align: left; }
+    .evidence-table thead th:first-child { z-index: 6; }
+    .evidence-table tbody td:first-child { z-index: 1; background-color: rgb(var(--dev3-surface-raised)); background-image: linear-gradient(var(--dev3-row-tint, transparent), var(--dev3-row-tint, transparent)); }
     .evidence-table th.grp { border-left: 1px solid rgb(var(--dev3-border)); text-align: center; color: rgb(var(--dev3-text-secondary)); }
     .evidence-table .sep { border-left: 1px solid rgb(var(--dev3-border)); }
     .evidence-table .day { color: rgb(var(--dev3-text-primary)); font-weight: 650; }
@@ -462,6 +488,10 @@
     .dev3-footer a:hover { text-decoration: underline; }
 
 
+    /* A chart growing sideways needs height, or a wide panel reads as a strip. */
+    @media (min-width: 1500px) {
+      .chart-host { height: 330px; }
+    }
     @media (max-width: 900px) {
       .kpis { grid-template-columns: repeat(2, 1fr); }
       .dashboard-grid { grid-template-columns: 1fr; }
@@ -494,7 +524,7 @@
         color: rgb(var(--dev3-text-primary)) !important;
       }
       body { padding: 0; font-size: 10px; }
-      .app { max-width: none; gap: 8px; }
+      .app { width: auto; gap: 8px; }
       .topbar { margin-bottom: 0; }
       .brand { gap: 9px; }
       .brand img { width: 34px; height: 34px; border-radius: 10px; box-shadow: none; }
@@ -525,6 +555,9 @@
       .table-head { padding: 8px 10px 6px; }
       th, td { padding: 5px 10px; font-size: 8px; }
       thead { display: table-header-group; }
+      /* Repeat the header on every page instead of pinning it to a scrollport. */
+      thead th, .evidence-table th:first-child, .evidence-table td:first-child { position: static; box-shadow: none; }
+      th[data-sort]:not([aria-sort])::after { content: ""; margin: 0; }
       .evidence-book { gap: 8px; }
       .evidence-toolbar, .evidence-legend { display: none !important; }
       .evidence-group { overflow: visible; border-radius: 8px; break-inside: auto; }

@@ -259,6 +259,49 @@ describe("bundled artifact starter contract", () => {
 		expect(html).not.toContain("crossorigin=");
 	});
 
+	it("uses the full width of a wide monitor while prose keeps a measure", () => {
+		const css = readFileSync(cssPath, "utf8");
+		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+
+		expect(css).toContain("width: min(100%, clamp(1180px, 88vw, 1840px))");
+		expect(css).toContain(".prose { max-width: 72ch; }");
+		expect(css).toContain(".kpis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }");
+		expect(css).toContain("@media (min-width: 1500px)");
+		expect(guide).toContain("`.prose`");
+	});
+
+	it("gives every table zebra rows, row hover, column rules, and a pinned header", () => {
+		const css = readFileSync(cssPath, "utf8");
+		const app = readFileSync(appPath, "utf8");
+		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+
+		expect(css).toContain("th:not(:last-child), td:not(:last-child) { border-inline-end:");
+		expect(css).toContain("tbody tr:nth-child(even) { --dev3-row-tint:");
+		expect(css).toContain("tbody tr:hover { --dev3-row-tint:");
+		expect(css).toContain("top: var(--dev3-table-head-top, 0px)");
+		// hidden would turn the card into a scrollport and unpin the header.
+		expect(css).toContain(".table-card { padding: 0; overflow: clip; }");
+		// The evidence scroller is its own scrollport, so the page offset must not apply.
+		expect(css).toContain(".evidence-table thead th { top: 0; }");
+		expect(css).toContain('th[aria-sort="descending"]::after');
+		expect(app).toContain("function trackStickyOffset");
+		expect(app).toContain("--dev3-table-head-top");
+		expect(app).toContain("function initializeSortIndicators");
+		expect(app).toContain('setAttribute("aria-sort", next)');
+		expect(guide).toContain("## Tables");
+	});
+
+	it("keeps the pinned evidence label column readable while the numbers scroll", () => {
+		const css = readFileSync(cssPath, "utf8");
+		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+		const printBlock = css.slice(css.indexOf("@media print"));
+
+		expect(css).toContain("inset-inline-start: 0");
+		expect(css).toContain("background-image: linear-gradient(var(--dev3-row-tint, transparent)");
+		expect(printBlock).toContain(".evidence-table th:first-child, .evidence-table td:first-child { position: static;");
+		expect(guide).toContain("The first column is pinned");
+	});
+
 	it("keeps dense-table significance markers typographic", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const significanceRule = css.match(/\.evidence-table \.sig\s*\{([^}]*)\}/)?.[1] || "";
@@ -335,7 +378,9 @@ describe("bundled artifact starter contract", () => {
 		// makes artifact HTML unreadable for agents (the reason we load from CDN).
 		expect(statSync(htmlPath).size).toBeLessThan(120_000);
 		expect(statSync(htmlPath).size).toBeLessThan(MAX_SHARED_ARTIFACT_HTML_BYTES);
-		expect(statSync(cssPath).size).toBeLessThan(30_000);
+		// The shell stylesheet is not part of the authoring surface, so its budget
+		// only has to stay far below an inlined library.
+		expect(statSync(cssPath).size).toBeLessThan(34_000);
 		expect(statSync(appPath).size).toBeLessThan(30_000);
 		expect(statSync(reportPath).size).toBeLessThan(15_000);
 	});

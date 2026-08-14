@@ -79,6 +79,38 @@
     });
   }
 
+  // A sticky table header must land below the sticky section nav, and sit at the
+  // very top when a report has no nav at all.
+  function trackStickyOffset() {
+    const nav = document.querySelector(".section-nav");
+    const apply = () => {
+      const offset = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+      document.documentElement.style.setProperty("--dev3-table-head-top", `${offset}px`);
+    };
+    apply();
+    window.addEventListener("resize", apply);
+  }
+
+  // Report code owns sorting; the shell owns only the visible sort state, so
+  // every artifact shows which column is sorted and in which direction.
+  function initializeSortIndicators() {
+    document.querySelectorAll("thead").forEach((head) => {
+      const headings = [...head.querySelectorAll("th[data-sort]")];
+      if (!headings.length) return;
+      const mark = (heading) => {
+        const next = heading.getAttribute("aria-sort") === "ascending" ? "descending" : "ascending";
+        headings.forEach((item) => item.removeAttribute("aria-sort"));
+        heading.setAttribute("aria-sort", next);
+      };
+      headings.forEach((heading) => {
+        heading.addEventListener("click", () => mark(heading));
+        heading.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") mark(heading);
+        });
+      });
+    });
+  }
+
   const selectControls = new Map();
   const sliderControls = new Map();
 
@@ -295,6 +327,8 @@
 
   registerDev3ChartTheme();
   initializeNavigation();
+  trackStickyOffset();
+  initializeSortIndicators();
   enhanceControls();
 
   // ---- generic shell controls -----------------------------------------------
