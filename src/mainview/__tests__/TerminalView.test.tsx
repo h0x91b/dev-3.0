@@ -1,5 +1,5 @@
 import { render, act, fireEvent, waitFor } from "@testing-library/react";
-import TerminalView, { type TerminalHandle, buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
+import TerminalView, { type TerminalHandle, TERMINAL_SYNC_GATE_TIMEOUT_MS, buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import type { NativeStreamRole } from "../../shared/native-terminal-stream";
@@ -1728,5 +1728,85 @@ describe("TerminalView – diagnostics must never break cleanup", () => {
 		// term.dispose() is the LAST statement in the cleanup, so reaching it proves
 		// every disposer between the throwing marker and the end still ran.
 		expect(mockTermInstance.dispose).toHaveBeenCalled();
+	});
+});
+
+// The gate that hides a not-yet-repainted canvas in remote mode. Tests run with
+// no `__electrobunWebviewId`, so `isRemote()` is true unless a test sets one.
+describe("TerminalView – remote sync gate", () => {
+	afterEach(() => {
+		delete (window as unknown as Record<string, unknown>).__electrobunWebviewId;
+	});
+
+	it("clears the screen the previous terminal instance left behind", async () => {
+		await renderAndSetup();
+		// ghostty-web hands a new Terminal the old one's screen, so the reset has to
+		// land at open — before any socket output can be written on top of it.
+		// RIS is the first thing written, before any PTY byte can land on top of it.
+		expect(mockTermInstance.write.mock.calls[0][0]).toBe("\x1bc");
+	});
+
+	it("covers the canvas until the socket delivers output", async () => {
+		const view = await renderAndSetup();
+		expect(view.queryByTestId("terminal-sync-gate")).not.toBeNull();
+
+		await act(async () => {
+			lastWebSocket?.onmessage?.({ data: "fresh output" } as MessageEvent);
+		});
+
+		expect(view.queryByTestId("terminal-sync-gate")).toBeNull();
+	});
+
+	it("never arms on the desktop shell, where the redraw is one frame away", async () => {
+		(window as unknown as Record<string, unknown>).__electrobunWebviewId = 1;
+		const view = await renderAndSetup();
+		expect(view.queryByTestId("terminal-sync-gate")).toBeNull();
+	});
+
+	it("lifts itself when nothing ever repaints", async () => {
+		// Fake timers before the render: the gate's deadline is scheduled during
+		// mount, so a timer installed afterwards would never own it.
+		vi.useFakeTimers();
+		try {
+			const view = await renderAndSetup();
+			expect(view.queryByTestId("terminal-sync-gate")).not.toBeNull();
+
+			// The PTY connect itself is deferred by a timer, and that socket re-arms the
+			// gate — so the deadline only starts once this advance has run the connect.
+			await act(async () => { await vi.advanceTimersByTimeAsync(TERMINAL_SYNC_GATE_TIMEOUT_MS); });
+			await act(async () => { await vi.advanceTimersByTimeAsync(TERMINAL_SYNC_GATE_TIMEOUT_MS); });
+
+			expect(view.queryByTestId("terminal-sync-gate")).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("re-arms for the socket that replaces a backgrounded one", async () => {
+		const view = await renderAndSetup();
+		await act(async () => {
+			lastWebSocket?.onmessage?.({ data: "fresh output" } as MessageEvent);
+		});
+		expect(view.queryByTestId("terminal-sync-gate")).toBeNull();
+
+		// Returning to a suspended mobile tab reattaches to the screen it left, so
+		// the stale-screen window opens again.
+		await act(async () => {
+			Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+			document.dispatchEvent(new Event("visibilitychange"));
+			Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+			document.dispatchEvent(new Event("visibilitychange"));
+		});
+
+		expect(view.queryByTestId("terminal-sync-gate")).not.toBeNull();
+	});
+
+	it("lifts when the app refuses the session instead of blurring a dead canvas", async () => {
+		const view = await renderAndSetup();
+		await act(async () => {
+			webSockets[0].readyState = WebSocket.CLOSED;
+			webSockets[0].onclose?.({ code: 4001, reason: "Unknown session", wasClean: false } as CloseEvent);
+		});
+		expect(view.queryByTestId("terminal-sync-gate")).toBeNull();
 	});
 });

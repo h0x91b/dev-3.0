@@ -37,7 +37,7 @@ import { submitPastedText } from "./terminal-submit";
 import { createFilePathLinkProvider, type FilePathLinkProvider } from "./terminal-file-links";
 import { installFilePathUnderlines, type FilePathUnderlinesHandle } from "./terminal-link-underlines";
 import { activateTerminalPath } from "./terminal-path-open";
-import { isMac } from "./utils/platform";
+import { isMac, isRemote } from "./utils/platform";
 import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
 import { isFinalPtyCloseCode } from "../shared/pty-ws-close-codes";
@@ -95,6 +95,13 @@ const TERMINAL_BASE_FONT_SIZE = 14;
  * already three dropped frames — worth a line, while staying quiet in normal use.
  */
 const TERMINAL_DISPOSE_BUDGET_MS = 50;
+
+/**
+ * How long the sync gate waits for the first repaint before lifting itself.
+ * A session that emits nothing after attach (idle shell, refused socket) must
+ * not stay blurred forever, so the gate is a hint with a deadline — not a lock.
+ */
+export const TERMINAL_SYNC_GATE_TIMEOUT_MS = 2_500;
 
 // ghostty-web 0.4.0 FitAddon reserves 15px on width for a native scrollbar
 // that never appears — ghostty draws its scrollbar overlaid on the canvas.
@@ -317,6 +324,40 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	// when the app goes to the background, so only this tells the two apart.
 	const windowFocusedRef = useRef(document.hasFocus());
 
+	// ── Sync gate (remote mode only) ──────────────────────────────────────────
+	// Over a tunnel the redraw that fills this canvas arrives hundreds of ms after
+	// the attach, so whatever the canvas held until then reads as live output —
+	// either the screen this same viewer had before a resume, or nothing at all.
+	// Blur it and say "syncing" until the first batch lands. Desktop never arms it:
+	// locally the redraw is one frame away and a flash of overlay is the worse bug.
+	const [syncing, setSyncing] = useState(() => isRemote());
+	const syncingRef = useRef(syncing);
+	const syncGateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	function clearSyncGateTimer() {
+		if (syncGateTimerRef.current === null) return;
+		clearTimeout(syncGateTimerRef.current);
+		syncGateTimerRef.current = null;
+	}
+
+	/** Raise the gate for a socket that is about to (re)fill the canvas. */
+	function armSyncGate() {
+		if (!isRemote()) return;
+		clearSyncGateTimer();
+		syncGateTimerRef.current = setTimeout(releaseSyncGate, TERMINAL_SYNC_GATE_TIMEOUT_MS);
+		if (syncingRef.current) return;
+		syncingRef.current = true;
+		setSyncing(true);
+	}
+
+	/** The canvas now shows this session's own output — or the wait timed out. */
+	function releaseSyncGate() {
+		clearSyncGateTimer();
+		if (!syncingRef.current) return;
+		syncingRef.current = false;
+		setSyncing(false);
+	}
+
 	/**
 	 * Would a keystroke right now reach this terminal? Touch compose mode is
 	 * exempt — there the composer owns the keyboard by design and the terminal
@@ -534,6 +575,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
+
 
 			// Beta: paint right-to-left rows in visual order (Settings → System →
 			// Advanced Experience). The renderer exists only after term.open().
@@ -1290,6 +1332,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// a single term.write() call per animation frame (~60fps).
 		let pendingWrite = "";
 		let writeRafId: number | null = null;
+		// Guards scheduling separately from the frame id: a callback that runs before
+		// requestAnimationFrame returns would otherwise leave the id set forever and
+		// every later batch would sit in the queue unwritten.
+		let writeScheduled = false;
+		/** Whether the pending batch carries bytes from the PTY, not our own clear. */
+		let pendingFromSocket = false;
 		// Reference to the terminal for batched writes (set by connectPty)
 		let batchTerm: Terminal | null = null;
 		// Rewrites SGR colors unreadable on the current background: pale/dim
@@ -1298,15 +1346,22 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 		function enqueueTermWrite(data: string) {
 			pendingWrite += data;
-			if (writeRafId === null) {
+			if (!writeScheduled) {
+				writeScheduled = true;
 				writeRafId = requestAnimationFrame(() => {
+					writeScheduled = false;
 					writeRafId = null;
 					if (disposed || !pendingWrite || !batchTerm) return;
 					const batch = themeFilter(pendingWrite, resolvedThemeRef.current);
 					pendingWrite = "";
 					if (!batch) return;
+					const fromSocket = pendingFromSocket;
+					pendingFromSocket = false;
 					try {
 						batchTerm.write(batch);
+						// Only the socket's own output proves the canvas is current; the
+						// clear we enqueue ourselves must leave the gate up.
+						if (fromSocket) releaseSyncGate();
 						// Drop any stale selection left floating over the
 						// just-repainted cells when the app owns the screen
 						// (alt-screen or primary+mouse-tracking); ghostty-web
@@ -1366,6 +1421,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			let reset = "";
 			if (header.t === "attach") {
 				nativeSeqRef.current = header.seq;
+				// A resumed attach can carry an empty delta — the screen is already
+				// correct, so the gate has to lift here rather than wait for output.
+				if (header.resumed && !payload) releaseSyncGate();
 				reportNativeRole({ role: header.role, refused: false, writerAttached: header.writerAttached });
 				adoptPtyGeometry(header.cols, header.rows);
 				// RIS in the SAME batch as the replay, so the screen is replaced in one
@@ -1377,7 +1435,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				return;
 			}
 			const cleaned = payload.replace(OSC52_RE, "");
-			if (reset || cleaned) enqueueTermWrite(reset + cleaned);
+			if (reset || cleaned) {
+				pendingFromSocket = true;
+				enqueueTermWrite(reset + cleaned);
+			}
 		}
 
 		function connectPty(term: Terminal, fit: FitAddon) {
@@ -1387,6 +1448,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				reconnectTimer = null;
 			}
 			batchTerm = term;
+			// Every socket refills the canvas, so every socket gets its own gate: a
+			// resume after backgrounding reattaches to the screen it left behind.
+			armSyncGate();
+			// A freshly constructed ghostty-web terminal paints the screen the PREVIOUS
+			// one held — new Terminal, new canvas node, same leftover pixels — so task B
+			// showed task A's output until B's own redraw landed. RIS through the batched
+			// write path, which is what actually repaints. Skipped on a native resume:
+			// there the server sends a delta that expects the screen it left behind.
+			if (nativeSeqRef.current === null) enqueueTermWrite("\x1bc");
 			const diagnosticPtyUrl = ptyUrl.replace(/([?&]token=)[^&]+/, "$1***");
 			console.log("[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
 			let socket: WebSocket;
@@ -1435,11 +1505,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							return;
 						}
 						const cleaned = event.data.replace(OSC52_RE, "");
-						if (cleaned) enqueueTermWrite(cleaned);
+						if (cleaned) { pendingFromSocket = true; enqueueTermWrite(cleaned); }
 					} else {
 						// Binary data — decode and batch with text data
 						const str = new TextDecoder().decode(new Uint8Array(event.data));
-						if (str) enqueueTermWrite(str);
+						if (str) { pendingFromSocket = true; enqueueTermWrite(str); }
 					}
 				} catch {
 					// Swallow ghostty-web rendering errors to avoid flooding
@@ -1457,6 +1527,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					wasClean: event.wasClean,
 				});
 				if (disposed) return;
+				// A socket that will never deliver a redraw must not leave the canvas
+				// blurred behind a "syncing" label that can no longer come true.
+				if (event.code === 1000 || isFinalPtyCloseCode(event.code)) releaseSyncGate();
 				if (event.code === 1000 && event.wasClean) {
 					try { term.writeln("\r\n\x1b[2m[session ended]\x1b[0m"); } catch { /* disposed */ }
 					return;
@@ -1563,6 +1636,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			if (reconnectTimer !== null) clearTimeout(reconnectTimer);
 			if (refitTimer !== null) clearTimeout(refitTimer);
 			// Cancel pending write batch to prevent writing to disposed terminal
+			writeScheduled = false;
 			if (writeRafId !== null) {
 				cancelAnimationFrame(writeRafId);
 				writeRafId = null;
@@ -2028,6 +2102,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		? LIGHT_TERMINAL_THEME.background
 		: DARK_TERMINAL_THEME.background;
 
+	// The gate starts raised in remote mode, before any socket exists, so its
+	// deadline starts with the mount: a setup that never reaches connectPty must
+	// not leave the canvas blurred forever.
+	useEffect(() => {
+		armSyncGate();
+		return clearSyncGateTimer;
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
 	function handleTerminalClick(event: React.MouseEvent<HTMLDivElement>) {
 		try { termRef.current?.focus(); } catch { /* disposed */ }
 		if (touchComposeModeRef.current) return;
@@ -2059,6 +2142,20 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				onDragOver={handleDragOver}
 				onDrop={handleDrop}
 			/>
+			{syncing && (
+				<div
+					data-testid="terminal-sync-gate"
+					role="status"
+					aria-live="polite"
+					aria-busy="true"
+					// Never blocks input: typing goes to the container underneath, and a
+					// click while syncing still focuses the terminal it is covering.
+					className="pointer-events-none absolute inset-0 z-[15] flex items-center justify-center gap-3 bg-base/60 backdrop-blur-[6px]"
+				>
+					<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+					<span className="text-fg-3 text-sm">{t("terminal.syncing")}</span>
+				</div>
+			)}
 			{searchOpen && searchPaneRect && (
 				<div
 					className="pointer-events-none absolute z-20 rounded-sm border-2 border-accent bg-accent/5"
