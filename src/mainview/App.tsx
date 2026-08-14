@@ -1354,6 +1354,38 @@ function App() {
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);
 	}, [openTaskFromNotification]);
 
+	// One agent wrote into another task's agent (`dev3 message` from a worktree).
+	// Its own violet variant and a two-identity source line — the only toast whose
+	// event has a sender AND a receiver. The click goes to the RECEIVER: that is
+	// where the text landed and where the reply gets typed.
+	useEffect(() => {
+		function onAgentMessage(e: Event) {
+			const { taskId, projectId, fromProjectId, toSeq, toTitle, fromSeq, fromTitle, preview } = (e as CustomEvent)
+				.detail as {
+				taskId: string;
+				projectId: string;
+				fromProjectId?: string;
+				toSeq: number;
+				toTitle: string;
+				fromSeq: number;
+				fromTitle?: string;
+				preview: string;
+			};
+			if (!taskId || !preview) return;
+			// Either side sensitive on camera drops the whole toast: it names both.
+			if (isProjectSilencedForDisplay(projectId) || isProjectSilencedForDisplay(fromProjectId)) return;
+			const from = [`#${fromSeq}`, fromTitle].filter(Boolean).join(" ");
+			const to = [`#${toSeq}`, toTitle].filter(Boolean).join(" ");
+			toast.agent(t("toast.agentMessage", { preview }), {
+				context: `${from} → ${to}`,
+				taskId,
+				onClick: () => openTaskFromNotification(taskId, projectId),
+			});
+		}
+		window.addEventListener("rpc:agentMessage", onAgentMessage);
+		return () => window.removeEventListener("rpc:agentMessage", onAgentMessage);
+	}, [openTaskFromNotification, t]);
+
 	// Cmd/Ctrl+Click on a file path in any terminal (preview mode).
 	useEffect(() => {
 		function onOpenFilePreview(e: Event) {

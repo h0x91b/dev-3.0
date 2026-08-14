@@ -198,7 +198,12 @@ async function resolveAgentMessageSource(
 		return null; // ambiguous/broken sender ref — deliver the raw text instead
 	}
 	if (!found || found.task.id === targetTaskId) return null;
-	return { taskId: found.task.id, seq: found.task.seq, title: getTaskTitle(found.task) };
+	return {
+		taskId: found.task.id,
+		seq: found.task.seq,
+		title: getTaskTitle(found.task),
+		projectId: found.task.projectId,
+	};
 }
 
 /** Result of the agent-initiated launch approval flow. */

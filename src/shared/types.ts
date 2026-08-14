@@ -1887,6 +1887,12 @@ export interface AgentMessageSource {
 	seq: number;
 	/** Sender's title, for human-readable context in the envelope. */
 	title?: string;
+	/**
+	 * Sender's project. Carried so the delivery notification can be dropped when
+	 * EITHER side belongs to a sensitive project — the toast names both tasks, so
+	 * gating on the receiver alone would leak the sender's title on camera.
+	 */
+	projectId?: string;
 }
 
 /** Per-task cap on pending scheduled messages; scheduling past this is rejected. */
@@ -4322,6 +4328,27 @@ export type AppRPCSchema = {
 				taskSeq?: number;
 				taskTitle?: string;
 				projectName?: string;
+			};
+			/**
+			 * One agent typed a message into ANOTHER task's agent (`dev3 message` run
+			 * inside a worktree). Its own channel, not `cliToast`, because the event has
+			 * two identities: the toast states sender → receiver and clicks through to
+			 * the receiver, whose terminal now holds the text. Sole emitter:
+			 * `pushAgentMessage` in `src/bun/rpc-handlers/shared.ts`.
+			 */
+			agentMessage: {
+				/** Receiving task — the click target, and the inbox that got the text. */
+				taskId: string;
+				projectId: string;
+				toSeq: number;
+				toTitle: string;
+				/** Sending task's `seq` — also the reply address. */
+				fromSeq: number;
+				fromTitle?: string;
+				/** Sending task's project, so the renderer can silence either side. */
+				fromProjectId?: string;
+				/** One-line, length-clamped preview of what was sent. */
+				preview: string;
 			};
 			/**
 			 * CLI-initiated attention signal (`dev3 attention`). Lights the red bell

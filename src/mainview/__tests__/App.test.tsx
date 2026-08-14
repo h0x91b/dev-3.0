@@ -1109,6 +1109,64 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	describe("agent-to-agent message toast", () => {
+		const twoProjects = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			{ id: "p2", name: "Secret", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "", sensitive: true },
+		];
+
+		afterEach(() => {
+			setStreamerMode(false);
+			delete document.documentElement.dataset.streamer;
+		});
+
+		async function renderWithBoard() {
+			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+			await renderApp();
+		}
+
+		function dispatchAgentMessage(detail: Record<string, unknown> = {}) {
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:agentMessage", {
+					detail: {
+						taskId: "t-receiver",
+						projectId: "p1",
+						toSeq: 42,
+						toTitle: "Receiver",
+						fromSeq: 7,
+						fromTitle: "Coordinator",
+						preview: "check the payload",
+						...detail,
+					},
+				}));
+			});
+		}
+
+		it("names both sides and clicks through to the receiving task", async () => {
+			await renderWithBoard();
+			dispatchAgentMessage();
+
+			expect(screen.getByText("#7 Coordinator → #42 Receiver")).toBeInTheDocument();
+			await userEvent.click(
+				await screen.findByRole("button", { name: "#7 Coordinator → #42 Receiver — “check the payload”" }),
+			);
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
+			});
+		});
+
+		it("drops the toast when the SENDER's project is sensitive on camera", async () => {
+			await renderWithBoard();
+			setStreamerMode(true);
+			dispatchAgentMessage({ fromProjectId: "p2" });
+
+			expect(screen.queryByText(/Coordinator/)).not.toBeInTheDocument();
+		});
+	});
+
 	describe("toast overflow attention routing", () => {
 		const oneProject = [
 			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },

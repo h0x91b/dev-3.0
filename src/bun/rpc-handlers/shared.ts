@@ -201,8 +201,22 @@ export interface TerminalFocusArtifactPayload {
 	projectName?: string;
 }
 
+export interface AgentMessagePayload {
+	/** Receiving task — the click target. */
+	taskId: string;
+	projectId: string;
+	toSeq: number;
+	toTitle: string;
+	fromSeq: number;
+	fromTitle?: string;
+	/** Sending task's project, gated alongside the receiver's (see {@link pushAgentMessage}). */
+	fromProjectId?: string;
+	preview: string;
+}
+
 type QueuedTerminalNotification =
 	| { kind: "task"; task: Task; body: string; projectName?: string }
+	| { kind: "agentMessage"; payload: AgentMessagePayload }
 	| { kind: "toast"; payload: TerminalFocusToastPayload }
 	| { kind: "attention"; payload: TerminalFocusAttentionPayload }
 	| { kind: "terminalBell"; payload: TerminalFocusBellPayload }
@@ -229,6 +243,8 @@ function flushQueuedNotifications(): void {
 	for (const notification of queued) {
 		if (notification.kind === "task") {
 			deliverTaskNotification(notification.task, notification.body, notification.projectName, true);
+		} else if (notification.kind === "agentMessage") {
+			getPushMessage()?.("agentMessage", notification.payload);
 		} else if (notification.kind === "toast") {
 			getPushMessage()?.("cliToast", notification.payload);
 		} else if (notification.kind === "attention") {
@@ -279,6 +295,21 @@ export function pushCliToast(payload: TerminalFocusToastPayload): void {
 		return;
 	}
 	getPushMessage()?.("cliToast", payload);
+}
+
+/**
+ * Announce that one task's agent typed a message into another task's agent.
+ * Dropped (never queued) when EITHER task's project is sensitive on camera: the
+ * toast names both sides, so silencing only the receiver would still show the
+ * sender's seq and title.
+ */
+export function pushAgentMessage(payload: AgentMessagePayload): void {
+	if (isProjectSilenced(payload.projectId) || isProjectSilenced(payload.fromProjectId)) return;
+	if (isNotificationSuppressed()) {
+		queuedTerminalNotifications.push({ kind: "agentMessage", payload });
+		return;
+	}
+	getPushMessage()?.("agentMessage", payload);
 }
 
 export function pushCliAttention(payload: TerminalFocusAttentionPayload): void {

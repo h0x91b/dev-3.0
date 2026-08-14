@@ -19,7 +19,7 @@ import { spillOversizedAgentMessage } from "./agent-message-spill";
 // this module through cli-socket-server — don't load the real Electrobun-backed
 // shared module. Used lazily (inside functions), so the git-operations ↔ this
 // module ↔ barrel import cycle is resolved safely at call time.
-import { getPushMessage, pushCliAttention, pushCliToast } from "./rpc-handlers";
+import { getPushMessage, pushAgentMessage, pushCliAttention, pushCliToast } from "./rpc-handlers";
 import { createLogger } from "./logger";
 
 const log = createLogger("scheduled-message-scheduler");
@@ -66,7 +66,32 @@ async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<A
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
 	const text = message.source ? wrapAgentMessage(message.text, message.source) : message.text;
-	return deliverAgentPrompt(task, text, message.target);
+	const delivery = await deliverAgentPrompt(task, text, message.target);
+	if (message.source) announceAgentMessage(task, message, delivery);
+	return delivery;
+}
+
+/**
+ * Tell the user that one agent wrote to another — the only channel where task
+ * traffic happens with no human in the loop. Raised from the single delivery
+ * seam, so the immediate `dev3 message` send and a queued "Send later" fire
+ * announce identically. Silent for anything the human sent (no `source`) and for
+ * a send that landed nowhere; `unconfirmed` still announces, because the text is
+ * gone from the queue and the terminal is where it has to be checked.
+ */
+function announceAgentMessage(task: Task, message: ScheduledMessage, delivery: AgentPromptDelivery): void {
+	const source = message.source;
+	if (!source || delivery.status === "not-delivered") return;
+	pushAgentMessage({
+		taskId: task.id,
+		projectId: task.projectId,
+		toSeq: task.seq,
+		toTitle: getTaskTitle(task),
+		fromSeq: source.seq,
+		...(source.title ? { fromTitle: source.title } : {}),
+		...(source.projectId ? { fromProjectId: source.projectId } : {}),
+		preview: messagePreview(message.text),
+	});
 }
 
 /** Toast + attention for a late-fire or drop. Silent path never calls this. */

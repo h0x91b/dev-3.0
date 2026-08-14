@@ -30,6 +30,7 @@ export {
 	isProjectSilenced,
 	setStreamerPrivacy,
 	pushCliToast,
+	pushAgentMessage,
 	pushCliAttention,
 	pushTerminalBell,
 	pushCliShowImage,

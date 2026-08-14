@@ -23,6 +23,7 @@ vi.mock("../rpc-handlers", () => ({
 	getPushMessage: vi.fn(() => pushFn),
 	pushCliToast: vi.fn((payload: unknown) => pushFn("cliToast", payload)),
 	pushCliAttention: vi.fn((payload: unknown) => pushFn("cliAttention", payload)),
+	pushAgentMessage: vi.fn((payload: unknown) => pushFn("agentMessage", payload)),
 }));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -326,6 +327,50 @@ describe("cancel / send-now / immediate", () => {
 		const text = vi.mocked(sendPromptToAgentPane).mock.calls[0]![1];
 		expect(text).toContain("<from-task>seq:7</from-task>");
 		expect(message.text).toBe("check CI and continue");
+	});
+
+	it("announces an agent-to-agent send so the user sees who wrote to whom", async () => {
+		const task = makeTask();
+		await sendMessageImmediately(task as never, "check the payload", null, {
+			taskId: "other",
+			seq: 7,
+			title: "Coordinator",
+			projectId: "proj-9",
+		});
+		expect(pushFn).toHaveBeenCalledWith("agentMessage", {
+			taskId: "task-12345678",
+			projectId: "proj-1",
+			toSeq: 42,
+			toTitle: "T",
+			fromSeq: 7,
+			fromTitle: "Coordinator",
+			fromProjectId: "proj-9",
+			preview: "check the payload",
+		});
+	});
+
+	it("stays silent for a message the human sent", async () => {
+		await sendMessageImmediately(makeTask() as never, "hello now");
+		expect(pushFn).not.toHaveBeenCalledWith("agentMessage", expect.anything());
+	});
+
+	it("does not announce an agent-to-agent send that landed nowhere", async () => {
+		vi.mocked(sendPromptToAgentPane).mockResolvedValue(TMUX_PANE_GONE);
+		await expect(
+			sendMessageImmediately(makeTask() as never, "hi", null, { taskId: "other", seq: 7 }),
+		).rejects.toThrow(/no live agent/i);
+		expect(pushFn).not.toHaveBeenCalledWith("agentMessage", expect.anything());
+	});
+
+	it("announces a queued cross-task fire through the same seam", async () => {
+		const message = makeMessage({ source: { taskId: "other", seq: 7, title: "Coordinator" } });
+		const task = makeTask({ scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		await fireScheduledMessage(project, task as never, message as never, { late: false });
+		expect(pushFn).toHaveBeenCalledWith(
+			"agentMessage",
+			expect.objectContaining({ fromSeq: 7, toSeq: 42, preview: "check CI and continue" }),
+		);
 	});
 
 	it("sendMessageImmediately throws when nothing is live to deliver to", async () => {

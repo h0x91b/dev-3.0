@@ -77,6 +77,7 @@ export default {
 					"fill-hover": "rgb(var(--warning-fill-hover) / <alpha-value>)",
 				},
 				"warning-strong": "rgb(var(--warning-strong) / <alpha-value>)",
+				agent: "rgb(var(--agent) / <alpha-value>)",
 				favorite: "rgb(var(--favorite) / <alpha-value>)",
 				awake: {
 					DEFAULT: "rgb(var(--awake) / <alpha-value>)",

@@ -91,6 +91,9 @@ html {
 	   filled buttons. These deeper values give white Lc ≥ 75. */
 	--warning-fill: 133 77 14;
 	--warning-fill-hover: 101 58 10;
+	/* Agent-to-agent traffic: violet, the only hue no state token owns, so
+	   "one agent wrote to another" never reads as status/error/success. */
+	--agent: 178 152 253;
 	--favorite: 249 182 61;    /* gold star for a saved favorite combo */
 	--awake: 244 148 86;
 	--awake-hover: 239 108 1;
@@ -203,6 +206,8 @@ html {
 	/* Solid fills under white ink. */
 	--warning-fill: 105 86 9;
 	--warning-fill-hover: 82 67 7;
+	/* Agent-to-agent traffic — deepened so violet ink carries on tinted paper. */
+	--agent: 109 40 217;
 	--favorite: 162 113 15;    /* deeper gold reads on a light canvas */
 	--awake: 189 94 15;
 	--awake-hover: 161 72 8;

@@ -407,6 +407,18 @@ describe("toast service", () => {
 		expect(screen.getByText("dev-3.0 · Nightly digest")).toBeInTheDocument();
 	});
 
+	it("paints an agent-to-agent toast in its own hue, not a severity one", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.agent("“check the payload”", { context: "#7 Coordinator → #42 Receiver" });
+		});
+		const card = document.querySelector("[data-toast-card]") as HTMLElement;
+		expect(card.className).toContain("border-agent/40");
+		expect(card.querySelector("[data-toast-progress]")?.className).toContain("bg-agent");
+		expect(card.className).not.toContain("border-accent");
+		expect(screen.getByText("#7 Coordinator → #42 Receiver")).toBeInTheDocument();
+	});
+
 	it("composes a source line with the identifier first", () => {
 		expect(taskToastContext(804, "dev-3.0", "Review PR Babysitter")).toBe("#804 · dev-3.0 · Review PR Babysitter");
 		expect(taskToastContext(undefined, "dev-3.0", "No seq")).toBeUndefined();

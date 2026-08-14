@@ -79,6 +79,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	openTaskFromNotification: (payload) => window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", { detail: payload })),
 	openDeepLink: (payload) => window.dispatchEvent(new CustomEvent("rpc:openDeepLink", { detail: payload })),
 	cliToast: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliToast", { detail: payload })),
+	agentMessage: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentMessage", { detail: payload })),
 	cliAttention: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliAttention", { detail: payload })),
 	cliShowImage: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliShowImage", { detail: payload })),
 	cliShowArtifact: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliShowArtifact", { detail: payload })),

@@ -84,6 +84,7 @@ const common = {
 	"toast.source.update": "Actualización",
 	"toast.source.dashboard": "Panel",
 	"toast.source.terminal": "Terminal",
+	"toast.agentMessage": "«{preview}»",
 	"toast.dismiss": "Descartar",
 	"common.close": "Cerrar",
 

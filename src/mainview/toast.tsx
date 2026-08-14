@@ -3,7 +3,13 @@ import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { useT } from "./i18n";
 import type { TranslationKey } from "./i18n";
 
-export type ToastVariant = "error" | "success" | "info" | "warning";
+/**
+ * `agent` is not a severity — it marks traffic between two agents with no human
+ * in the loop (`dev3 message` from another task). It owns the only hue no state
+ * token uses, so the user can tell "a colleague agent wrote to my task" from a
+ * status, a warning, or a failure at a glance.
+ */
+export type ToastVariant = "error" | "success" | "info" | "warning" | "agent";
 
 /**
  * Where a toast that belongs to no task came from. Resolved to a localized label
@@ -159,6 +165,7 @@ export const toast = {
 	success: (message: string, opts?: ToastOpts) => emit(message, "success", opts),
 	info: (message: string, opts?: ToastOpts) => emit(message, "info", opts),
 	warning: (message: string, opts?: ToastOpts) => emit(message, "warning", opts),
+	agent: (message: string, opts?: ToastOpts) => emit(message, "agent", opts),
 };
 
 /** Suppress transient toasts while terminal immersive fullscreen is active. */
@@ -182,6 +189,8 @@ const VARIANT: Record<ToastVariant, { icon: string; border: string; text: string
 	success: { icon: "\uf058", border: "border-success/40", text: "text-success", bar: "bg-success" },
 	info: { icon: "\uf05a", border: "border-accent/40", text: "text-accent", bar: "bg-accent" },
 	warning: { icon: "\uf071", border: "border-warning/40", text: "text-warning", bar: "bg-warning" },
+	// Envelope, not a severity glyph: this toast reports mail between agents.
+	agent: { icon: "\uf0e0", border: "border-agent/40", text: "text-agent", bar: "bg-agent" },
 };
 
 function rendererIsActive(): boolean {

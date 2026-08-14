@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-14 — An agent-to-agent message toast names two tasks and owns its own hue
+
+- **Rule:** The toast for `dev3 message` between two agents renders `#fromSeq title → #toSeq title` as its source line, uses the non-severity `agent` variant (violet `--agent`), and clicks through to the RECEIVER; every other toast keeps one origin and a severity variant.
+- **Why:** The event's whole content is who wrote to whom, and the click target is the receiver's terminal — a sender-only source line would make the accessible name announce the wrong destination; reusing `info` was rejected because blue already means `dev3 notify` / watched-status.
+- **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §5.7, `src/mainview/toast.tsx`, `decisions/2026/08/14/agent-message-toast-two-identities.md`.
+
 ## 2026-08-10 — Settings → Agents is a preset library, not nested accordions
 
 - **Rule:** A Settings entry owning dozens of same-shaped records renders a filterable list plus exactly one detail editor inside the category pane, grouped by the labels the consuming surface already shows (Agents: the launch picker's Model → Mode); narrow shows the list first, then the editor with a back affordance.

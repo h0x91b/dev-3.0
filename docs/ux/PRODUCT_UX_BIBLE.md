@@ -302,6 +302,8 @@ Rules:
 - **`contextDetail`** appends one more segment after the resolved origin (`dev-3.0 · Nightly digest`) when the toast is about a named thing inside that scope.
 - **The clickable overlay's accessible name is `context — message`**, not the message alone: a screen reader must hear which task it is being sent to.
 
+- **One documented exception to "one origin": agent-to-agent traffic.** A `dev3 message` between two agents has a sender AND a receiver, so its source line is the pair — `#7 Coordinator → #42 Receiver` — and the click goes to the **receiver**, whose terminal now holds the text. It also carries the only non-severity variant, `agent` (violet `--agent`): identity, not severity, so it can never be misread as a status, a warning, or a failure. Silent for anything the human sent and for a send that landed nowhere.
+
 Evidence: `toast.tsx`, `App.tsx` (`ToastHost` mount, `openTaskFromNotification`).
 
 ## 6. Action taxonomy — `Observed`
