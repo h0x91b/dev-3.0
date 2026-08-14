@@ -42,11 +42,23 @@ file the pane writes rather than a screen anyone pretends to read.
   encodings, and a POSIX-dialect assumption crossing into Windows is precisely the bug class that
   broke the Windows publish leg. The only per-dialect code is `paneRunShell`
   (`src/bun/pane-run-store.ts`): `sh -c` on POSIX; Windows PowerShell 5.1 with an explicit UTF-8
-  output encoding (5.1 would otherwise hand a pipe the console code page) and an explicit
-  `exit $LASTEXITCODE` (`powershell -Command` does not propagate a native exit code by itself).
+  output encoding (5.1 would otherwise hand a pipe the console code page) and an explicit exit
+  epilogue (`powershell -Command` does not propagate a native exit code by itself). The epilogue
+  cannot be a bare `exit $LASTEXITCODE`: only NATIVE commands set that variable, so a cmdlet or a
+  mistyped command leaves it `$null`, which exits 0 and reads as "the build passed". It captures `$?`
+  and `$LASTEXITCODE` first, then falls back to `$?` when the code is absent.
 - **Reads are bounded and their outcome is explicit.** Default tail 200 lines, ceiling 2000, and the
   header says when it truncated. The outcome line separates *still running* from *finished, exit
   code N* from *killed by a signal* from *never ran* — a hung build must never read as a failed one.
+  Bounded in the APP's memory too, not only in the agent's context: a read maps the last 4 MiB of
+  the log rather than the file (`readLogWindow`), because a watcher's log grows without limit and
+  `readFileSync` on it would stall the whole app; a count taken from that window prints as `900+`,
+  never as the file's line count. A listing reads no log at all and asks the backend for its panes
+  ONCE — a lookup per run was a tmux spawn (or a native pane sweep) per run.
+- **A run with no pane behind it reads as stopped.** Killing a pane kills its runner mid-write, so
+  the status file keeps saying `running` forever; `paneRunOutcomeLine` trusts the pane set over that
+  stale file, or `dev3 pane close` followed by `dev3 pane logs` would leave an agent waiting for an
+  ending that already happened.
 - **Files live in the OS temp directory** under the existing `dev3-<taskId>-…` prefix
   (`paneRunDir`). Not the worktree — a log there would appear in `git status` and in the diff the
   user reviews. Not `~/.dev3.0` — that directory is shared with every other installed version of
