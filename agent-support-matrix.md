@@ -164,5 +164,5 @@ toggle re-prefixes all non-overridden rows. See [decision 089](decisions/2026/07
 | `~/.agents/AGENTS.md` | All (fallback) | Appended rule block for agents that read `AGENTS.md` |
 | `~/.agents/skills/*/agents/openai.yaml` | Shared skill UI | Managed display metadata for `dev3`, `dev3-project-config`, and `dev3 Bug Hunter` |
 | `~/.claude/settings.json` | Claude Code | Auto-adds a `Bash(<dev3 cli> *)` permission — `Bash(~/.dev3.0/bin/dev3 *)` on POSIX, `Bash(<abs path>\dev3.exe *)` on Windows |
-| `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables the Codex hook feature with version-compatible key names |
+| `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables the Codex hook feature with version-compatible key names. Paths are written as escaped TOML basic strings with native separators, and a config an earlier dev3 made unparsable on Windows is repaired in place on next launch (original copied to `config.toml.dev3-backup`) |
 | `<worktree>/.codex/hooks.json` | Codex | Generated, gitignored lifecycle definitions mirrored into each dev3-launched Codex pane as session flags |
