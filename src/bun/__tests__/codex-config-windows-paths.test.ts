@@ -7,6 +7,7 @@ import {
 	backupUnparsableCodexConfig,
 	ensureCodexConfig,
 	ensureCodexConfigFile,
+	joinLike,
 	repairWindowsPathEscapes,
 	tomlBasicString,
 } from "../codex-config";
@@ -50,6 +51,15 @@ describe("codex config with Windows paths", () => {
 		const second = ensureCodexConfig(first, WIN_WORKTREES, WIN_SOCKETS, []);
 		expect(second).toBe(first);
 		expect(() => load(second)).not.toThrow();
+	});
+
+	it("keeps a POSIX fixture in POSIX dialect even when the host is Windows", () => {
+		// node's join() would answer in the HOST's dialect: on a Windows runner
+		// join("/Users/x", ".codex") is "\\Users\\x\\.codex". That turned this file red
+		// on windows-latest while macOS stayed green.
+		expect(joinLike("/Users/x", ".codex", "skills")).toBe("/Users/x/.codex/skills");
+		expect(joinLike("C:\\Users\\user", ".codex", "skills")).toBe("C:\\Users\\user\\.codex\\skills");
+		expect(joinLike("C:\\", ".dev3.0", "worktrees")).toBe("C:\\.dev3.0\\worktrees");
 	});
 
 	it("escapes nothing in a POSIX path — byte-identical output", () => {

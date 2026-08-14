@@ -129,14 +129,27 @@ export function tomlBasicString(value: string): string {
 }
 
 /**
+ * Join path segments in the SAME dialect as `base`, not the host's. These values
+ * are written into a config file, so they must match the paths already in it:
+ * node's `join` answers in the HOST's dialect, which turned a POSIX fixture into
+ * `\Users\x\.codex` on the windows-latest runner and made this file red there
+ * while macOS stayed green.
+ */
+export function joinLike(base: string, ...segments: string[]): string {
+	const separator = /^[A-Za-z]:\\|\\/.test(base) ? "\\" : "/";
+	const trimmed = base.endsWith(separator) ? base.slice(0, -separator.length) : base;
+	return [trimmed, ...segments].join(separator);
+}
+
+/**
  * The filesystem grants dev3 writes into a permission profile. Paths are joined
  * with the platform separator (a native Windows path, not a `C:\Users\x/...`
  * hybrid) and quoted as TOML basic strings.
  */
 function dev3FilesystemLines(userHome: string, dev3Home: string): string[] {
 	return [
-		`${tomlBasicString(join(userHome, ".codex", "skills"))} = "read"`,
-		`${tomlBasicString(join(userHome, ".agents", "skills"))} = "read"`,
+		`${tomlBasicString(joinLike(userHome, ".codex", "skills"))} = "read"`,
+		`${tomlBasicString(joinLike(userHome, ".agents", "skills"))} = "read"`,
 		`${tomlBasicString(dev3Home)} = "write"`,
 	];
 }
@@ -892,8 +905,8 @@ export function ensureCodexProfileFile(
  */
 export function ensureCodexConfigFile(homePath: string): void {
 	const configPath = join(homePath, ".codex", "config.toml");
-	const worktreesPath = join(homePath, ".dev3.0", "worktrees");
-	const socketsPath = join(homePath, ".dev3.0", "sockets");
+	const worktreesPath = joinLike(homePath, ".dev3.0", "worktrees");
+	const socketsPath = joinLike(homePath, ".dev3.0", "sockets");
 	const codexVersion = detectCodexVersion();
 	const syntax = getCodexSyntaxForVersion(codexVersion);
 

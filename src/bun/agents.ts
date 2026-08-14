@@ -7,7 +7,7 @@ import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types
 export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
-import { backupUnparsableCodexConfig, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
+import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
@@ -832,8 +832,8 @@ export async function ensureCodexTrust(dirPath: string): Promise<void> {
 	try {
 		const resolved = await realpath(dirPath);
 		const home = homedir();
-		const worktreesPath = join(home, ".dev3.0", "worktrees");
-		const socketsPath = join(home, ".dev3.0", "sockets");
+		const worktreesPath = joinLikeHome(home, ".dev3.0", "worktrees");
+		const socketsPath = joinLikeHome(home, ".dev3.0", "sockets");
 
 		let content: string | null = null;
 		try {
