@@ -40,6 +40,7 @@ import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
 import { ensureCodexConfigFile } from "./codex-config";
+import { ensureWindowsShortcuts } from "./windows-shortcuts";
 import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
@@ -236,6 +237,21 @@ if (shellEnv.path) {
 // Codex profile migration depends on `codex --version`. Run it only after the
 // user's shell PATH is available; the app bundle starts with a minimal PATH.
 ensureCodexConfigFile(homedir());
+
+// Windows has no other entry point: nothing but the unpublished Setup extractor
+// ever writes a .lnk, so without this a zip user cannot start dev3 after a reboot.
+// The channel decides the shortcut's name, so a wrong one would leave two icons.
+if (process.platform === "win32") {
+	getLocalVersion()
+		.then(({ channel }) =>
+			ensureWindowsShortcuts({
+				appName: electrobunConfig.app.name,
+				identifier: electrobunConfig.app.identifier,
+				channel,
+			}),
+		)
+		.catch((err) => log.warn("Skipping Windows shortcuts: the local channel is unknown", { error: String(err) }));
+}
 
 if (shellEnv.lang) {
 	process.env.LANG = shellEnv.lang;
