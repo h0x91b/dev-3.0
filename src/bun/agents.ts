@@ -8,6 +8,7 @@ export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
+import { binaryPathMatchesCommand } from "./executable";
 import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
@@ -599,10 +600,12 @@ export function applyModelOverride(
 	return { ...config, model: override };
 }
 
-/** Apply saved binary path override if the cached file still exists on disk. */
-function applyBinaryPathOverride(agent: CodingAgent, savedPaths: Record<string, string> | undefined): CodingAgent {
+/** Apply the saved binary path override, but only while it still points at the
+ *  binary the agent's base command names and exists on disk — an edited base
+ *  command must win over a path cached for the previous one. */
+export function applyBinaryPathOverride(agent: CodingAgent, savedPaths: Record<string, string> | undefined): CodingAgent {
 	const savedPath = savedPaths?.[agent.id];
-	return savedPath && existsSync(savedPath)
+	return savedPath && binaryPathMatchesCommand(savedPath, agent.baseCommand) && existsSync(savedPath)
 		? { ...agent, baseCommand: savedPath }
 		: agent;
 }

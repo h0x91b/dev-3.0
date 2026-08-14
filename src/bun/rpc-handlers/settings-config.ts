@@ -21,7 +21,7 @@ import { getAllFeatureFlags, setFeatureFlags as cacheFeatureFlags } from "../fea
 import { resolveAnalyticsDistinctId as resolveDistinctId } from "../analytics-identity";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, hasModelProviderSection, tmuxSearchPaths } from "./shared-pure";
-import { isExecutableFile } from "../executable";
+import { binaryPathMatchesCommand, isExecutableFile } from "../executable";
 import { validateEnvMap } from "../../shared/env-text";
 
 /** Reject malformed env maps at the RPC boundary — the UI validates too, but
@@ -382,7 +382,9 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 	const settings = await loadSettings();
 	const allAgents = await agents.getAllAgents();
 	const results: AgentCheckResult[] = allAgents.map((agent) => {
-		const customPath = settings.agentBinaryPaths?.[agent.id];
+		const savedPath = settings.agentBinaryPaths?.[agent.id];
+		// A path cached for a previous base command is stale, not an error — drop it.
+		const customPath = savedPath && binaryPathMatchesCommand(savedPath, agent.baseCommand) ? savedPath : undefined;
 		const { resolvedPath, customPathError } = resolveBinaryPath(agent.baseCommand, customPath);
 		log.info(`  agent ${agent.id} (${agent.baseCommand}): ${resolvedPath ? "found" : "NOT found"}`, { path: resolvedPath ?? "none" });
 		return {

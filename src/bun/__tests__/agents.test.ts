@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -852,6 +855,39 @@ describe("buildResumeCommand", () => {
 
 	it("works with full paths", () => {
 		expect(buildResumeCommand("/usr/local/bin/claude", "sid-5")).toBe("/usr/local/bin/claude --resume sid-5");
+	});
+});
+
+describe("applyBinaryPathOverride", () => {
+	let dir: string;
+	let claudePath: string;
+
+	beforeEach(() => {
+		dir = mkdtempSync(join(tmpdir(), "dev3-agents-test-"));
+		claudePath = join(dir, "claude");
+		writeFileSync(claudePath, "#!/bin/sh\n", { mode: 0o755 });
+	});
+
+	afterEach(() => {
+		rmSync(dir, { recursive: true, force: true });
+	});
+
+	it("applies the cached path when it names the same binary", () => {
+		const agent = makeAgent({ baseCommand: "claude" });
+		const result = applyBinaryPathOverride(agent, { "test-agent": claudePath });
+		expect(result.baseCommand).toBe(claudePath);
+	});
+
+	it("ignores a cached path once the base command was edited to another binary", () => {
+		const agent = makeAgent({ baseCommand: "claude-codex" });
+		const result = applyBinaryPathOverride(agent, { "test-agent": claudePath });
+		expect(result.baseCommand).toBe("claude-codex");
+	});
+
+	it("ignores a cached path that no longer exists", () => {
+		const agent = makeAgent({ baseCommand: "claude" });
+		const result = applyBinaryPathOverride(agent, { "test-agent": join(dir, "gone") });
+		expect(result.baseCommand).toBe("claude");
 	});
 });
 

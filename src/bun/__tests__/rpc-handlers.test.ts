@@ -12024,6 +12024,27 @@ describe("checkAgentAvailability", () => {
 		}));
 	});
 
+	it("ignores a saved path once the base command was edited to another binary", async () => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude-codex", isDefault: true, configurations: [] },
+		] as any);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentBinaryPaths: { "builtin-claude": "/usr/local/bin/claude" },
+		});
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+
+		const results = await handlers.checkAgentAvailability();
+		const claude = results.find((r) => r.agentId === "builtin-claude");
+		expect(claude?.installed).toBe(false);
+		expect(claude?.resolvedPath).toBeUndefined();
+		expect(claude?.customPathError).toBe(false);
+	});
+
 	it("reports customPathError when saved path no longer exists", async () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
