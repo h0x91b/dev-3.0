@@ -184,3 +184,64 @@ jobs:
       tag: ${{ github.sha }}
       publish: true
       bestEffort: false
+
+  # ──────────────────────────────────────────────────
+  # The page a human can click — one rolling pre-release
+  # ──────────────────────────────────────────────────
+  # A DOWNLOAD SURFACE, NOT A SECOND FEED. Clients discover builds through the manifests the
+  # jobs above sync to S3, ordered by `buildOrder`; nothing in the app reads a GitHub release.
+  # This job exists because the only way to obtain a canary build was a raw bucket URL handed
+  # over by hand — and on Windows that is the ONLY bootstrap there is, because the in-app
+  # channel switch refuses on every non-macOS platform and its error text sends the user to
+  # "the releases page". See decisions/2026/08/14/canary-rolling-github-prerelease.md.
+  #
+  # ONE ROLLING ENTRY, tag `canary`, assets replaced in place. Measured over 145 runs of this
+  # workflow: 4.2 publishes a day, peak 9 — a release per publish is ~30 entries a week and
+  # buries every stable release, which is the opposite of what was asked for.
+  #
+  # `always()` because a partial run is the normal case: each platform skips on its own feed,
+  # so this must refresh whatever DID build. It cannot run on a quiet hour, because every
+  # build job is then skipped and no `result` is 'success'; and it cannot run behind a failed
+  # `decide`, for the same reason.
+  release-page:
+    needs: [decide, build-macos-arm64, build-macos-x64, build-linux-x64, build-linux-arm64, build-win-x64]
+    if: >-
+      always() && (
+      needs.build-macos-arm64.result == 'success' ||
+      needs.build-macos-x64.result == 'success' ||
+      needs.build-linux-x64.result == 'success' ||
+      needs.build-linux-arm64.result == 'success' ||
+      needs.build-win-x64.result == 'success' )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The ONLY job here that writes to the repository, and the tag move is why. Workflow-level
+    # permissions stay `contents: read` so a build job can never edit a release or a ref.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      # `pattern:` IS LOAD-BEARING, not tidiness. This run also carries the Windows proof's
+      # artifacts, including the ~400 MB unpacked launch tree; an unfiltered download would
+      # flatten every loose .exe and .dll of it into the same directory the publisher uploads
+      # from, and attach them to the release one by one.
+      - name: Collect the built artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: artifacts-*
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: ls -lhR all-artifacts/
+
+      # No `bun install`: the script imports only src/shared, like the decide job above.
+      - name: Refresh the rolling canary pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun scripts/publish-canary-release.ts
