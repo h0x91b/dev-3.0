@@ -257,33 +257,6 @@ export function buildCodexHooks(options?: { dialect?: HookCliDialect }): HookMap
 	};
 }
 
-function tomlInline(value: unknown): string {
-	if (typeof value === "string") return JSON.stringify(value);
-	if (typeof value === "number" || typeof value === "boolean") return String(value);
-	if (Array.isArray(value)) return `[${value.map(tomlInline).join(",")}]`;
-	if (value && typeof value === "object") {
-		return `{${Object.entries(value).map(([key, entry]) => {
-			const tomlKey = /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
-			return `${tomlKey}=${tomlInline(entry)}`;
-		}).join(",")}}`;
-	}
-	throw new Error(`Unsupported Codex hook config value: ${String(value)}`);
-}
-
-/**
- * Serialize dev3 hooks as one Codex `-c` override. Current Codex deliberately
- * resolves project hooks from a linked worktree's root checkout, so dev3 must
- * carry its generated worktree definitions as session flags instead.
- */
-export function buildCodexHooksConfigOverride(
-	state: Record<string, { trusted_hash: string }> = {},
-	options?: { dialect?: HookCliDialect },
-): string {
-	const hooks: Record<string, unknown> = { ...buildCodexHooks(options) };
-	if (Object.keys(state).length > 0) hooks.state = state;
-	return `hooks=${tomlInline(hooks)}`;
-}
-
 /**
  * Merge dev3 hooks into an existing settings.local.json object.
  * Preserves any existing hooks for other events, and any non-dev3 hooks

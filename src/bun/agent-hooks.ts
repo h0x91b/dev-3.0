@@ -12,7 +12,7 @@ import type { AgentHooksIntegration, PermissionMode, TaskStatus } from "../share
 import { createLogger } from "./logger";
 import { getHooksAdapter } from "../shared/agent-adapters/registry";
 import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
-import { prepareCodexWorktreeHookOverride } from "./codex-hook-trust";
+import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass } from "./codex-config";
 
 export {
 	buildClaudeHooks,
@@ -25,11 +25,23 @@ export {
 
 const log = createLogger("agent-hooks");
 
+/** `codex --help` is a synchronous child spawn, and this runs on every launch. */
+let cachedHookTrustBypass: boolean | undefined;
+function getCodexHookTrustBypassCached(): boolean {
+	if (cachedHookTrustBypass === undefined) cachedHookTrustBypass = detectCodexHookTrustBypass();
+	return cachedHookTrustBypass;
+}
+
+/** Reset the cached probe. Exposed for test isolation. */
+export function __resetCodexHookTrustBypassCache(): void {
+	cachedHookTrustBypass = undefined;
+}
+
 /**
  * Set up agent-native hooks in the worktree, driven by the agent adapter's
  * declarative hooksSpec (decision 124). The adapter decides *which* hooks (data);
- * this executor performs the I/O. Returns a Codex `-c hooks=...` config override
- * to splice into the launch command, or null when there is nothing to inject.
+ * this executor performs the I/O. Returns an extra launch flag to splice into the
+ * command, or null when there is nothing to add.
  *
  * `options.integration` is the agent's explicit hook family, which beats the
  * command-name guess — without it a wrapper script silently got no hooks.
@@ -66,8 +78,13 @@ export function setupAgentHooks(
 
 	// spec.kind === "codex"
 	writeCodexHooks(worktreePath);
-	return prepareCodexWorktreeHookOverride(worktreePath).then((configOverride) => {
-		log.info("Codex worktree hooks installed with session-scoped trust", { worktreePath });
-		return configOverride;
-	});
+	if (!getCodexHookTrustBypassCached()) {
+		// Worth a line: the definitions are in place, Codex reports them untrusted,
+		// and an untrusted hook is skipped in silence — so the board simply stops
+		// following this task and nothing else would say why.
+		log.warn("Codex cannot bypass hook trust; status hooks will not fire", { worktreePath });
+		return Promise.resolve(null);
+	}
+	log.info("Codex status hooks active (declared in config.toml)", { worktreePath });
+	return Promise.resolve(CODEX_HOOK_TRUST_BYPASS_FLAG);
 }

@@ -40,7 +40,7 @@
 		"test:native-message-e2e": "bun src/bun/__tests__/native-message-owner-routing.bun-e2e.ts",
 		"test:release-publish-version": "bunx vitest run --config vitest.config.bun.ts src/bun/__tests__/create-release-artifacts-win-publish.test.ts",
 		"test:process-naming": "bunx vitest run --config vitest.config.bun.ts src/bun/native-terminal-registry/__tests__/process-naming.test.ts src/bun/native-terminal-registry/__tests__/process-naming-visibility.test.ts src/bun/native-terminal-registry/__tests__/host-launcher-naming.test.ts",
-		"test:codex-config-windows": "bunx vitest run --config vitest.config.bun.ts src/bun/__tests__/codex-config-windows-paths.test.ts src/bun/__tests__/codex-config.test.ts src/bun/__tests__/codex-config-cleanup.test.ts",
+		"test:codex-config-windows": "bunx vitest run --config vitest.config.bun.ts src/bun/__tests__/codex-config-windows-paths.test.ts src/bun/__tests__/codex-config.test.ts src/bun/__tests__/codex-config-cleanup.test.ts src/bun/__tests__/codex-hooks-file.test.ts",
 		"test:windows-update": "bunx vitest run --config vitest.config.bun.ts src/bun/windows-update/__tests__/script.test.ts",
 		"test:agent-spawn-shell": "bunx vitest run --config vitest.config.bun.ts src/bun/rpc-handlers/__tests__/agent-spawn-shell-launch.test.ts src/bun/__tests__/launch-failure.test.ts",
 		"test:git-op-script": "bunx vitest run --config vitest.config.bun.ts src/bun/__tests__/git-op-script.test.ts src/bun/rpc-handlers/__tests__/git-op-pane-launch.test.ts",

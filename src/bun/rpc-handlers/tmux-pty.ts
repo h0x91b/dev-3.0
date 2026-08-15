@@ -66,7 +66,7 @@ import {
 	type AuxPaneHandle,
 	type AuxPanePlacement,
 } from "../task-aux-panes";
-import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, shellQuote, writeLaunchScript } from "./shared-pure";
+import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
@@ -537,11 +537,14 @@ async function applyAgentHooksToCommand(
 	},
 ): Promise<string> {
 	try {
-		const codexHookOverride = await setupAgentHooks(worktreePath, baseCommand, options);
-		if (!codexHookOverride) return command;
+		const hookFlag = await setupAgentHooks(worktreePath, baseCommand, options);
+		if (!hookFlag) return command;
+		// A bare flag by design: the hook definitions themselves live in the user's
+		// config.toml, because the payload that used to travel here as
+		// `-c hooks={...}` never survived the Windows command line.
 		const firstSeparator = command.search(/\s/);
-		if (firstSeparator < 0) return `${command} -c ${shellQuote(codexHookOverride)}`;
-		return `${command.slice(0, firstSeparator)} -c ${shellQuote(codexHookOverride)}${command.slice(firstSeparator)}`;
+		if (firstSeparator < 0) return `${command} ${hookFlag}`;
+		return `${command.slice(0, firstSeparator)} ${hookFlag}${command.slice(firstSeparator)}`;
 	} catch (err) {
 		log.warn("setupAgentHooks failed (non-fatal)", {
 			worktreePath,

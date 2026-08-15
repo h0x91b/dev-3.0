@@ -9894,7 +9894,7 @@ describe("launchTaskPty", () => {
 		});
 	});
 
-	it("adds the generated Codex hook override only to the launched session", async () => {
+	it("adds the Codex hook-trust flag only to the launched session", async () => {
 		const project = makeProject();
 		const task = makeTask();
 		mockSpawnSync.mockReturnValue({
@@ -9909,19 +9909,19 @@ describe("launchTaskPty", () => {
 			agent: { baseCommand: "codex" },
 			config: {},
 		});
-		vi.mocked(setupAgentHooks).mockResolvedValueOnce("hooks={Stop=[]}");
+		vi.mocked(setupAgentHooks).mockResolvedValueOnce("--dangerously-bypass-hook-trust");
 
 		try {
 			await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default");
 
 			const runCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-run.sh"));
-			expect(String(runCall?.[1] ?? "")).toContain("codex -c 'hooks={Stop=[]}' --model gpt-test -- 'Run the task'");
+			expect(String(runCall?.[1] ?? "")).toContain("codex --dangerously-bypass-hook-trust --model gpt-test -- 'Run the task'");
 		} finally {
 			writeSpy.mockRestore();
 		}
 	});
 
-	it("places the Codex hook override before the resume subcommand", async () => {
+	it("places the Codex hook-trust flag before the resume subcommand", async () => {
 		const project = makeProject();
 		const task = makeTask();
 		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
@@ -9936,13 +9936,13 @@ describe("launchTaskPty", () => {
 			agent: { baseCommand: "codex" },
 			config: {},
 		});
-		vi.mocked(setupAgentHooks).mockResolvedValueOnce("hooks={Stop=[]}");
+		vi.mocked(setupAgentHooks).mockResolvedValueOnce("--dangerously-bypass-hook-trust");
 
 		try {
 			await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default", false, true);
 
 			const runCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-run.sh"));
-			expect(String(runCall?.[1] ?? "")).toContain("codex -c 'hooks={Stop=[]}' resume --last --model gpt-test");
+			expect(String(runCall?.[1] ?? "")).toContain("codex --dangerously-bypass-hook-trust resume --last --model gpt-test");
 		} finally {
 			writeSpy.mockRestore();
 		}
@@ -12160,7 +12160,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 		);
 	});
 
-	it("adds the session-scoped hook override to a Codex review agent", async () => {
+	it("adds the Codex hook-trust flag to a review agent", async () => {
 		const project = makeProject({
 			autoReviewEnabled: true,
 			builtinColumnAgents: {
@@ -12176,13 +12176,13 @@ describe("triggerColumnAgentIfNeeded", () => {
 			config: undefined,
 			extraEnv: {},
 		});
-		vi.mocked(setupAgentHooks).mockResolvedValueOnce("hooks={Stop=[]}");
+		vi.mocked(setupAgentHooks).mockResolvedValueOnce("--dangerously-bypass-hook-trust");
 
 		try {
 			await triggerColumnAgentIfNeeded("review-by-ai", project, task);
 
 			const scriptCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-col-agent.sh"));
-			expect(String(scriptCall?.[1] ?? "")).toContain("codex -c 'hooks={Stop=[]}' 'Review'");
+			expect(String(scriptCall?.[1] ?? "")).toContain("codex --dangerously-bypass-hook-trust 'Review'");
 		} finally {
 			writeSpy.mockRestore();
 		}

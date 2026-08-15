@@ -12,7 +12,6 @@ import {
 } from "../agent-hooks";
 import type { MatcherGroup } from "../../shared/agent-hooks";
 import {
-	buildCodexHooksConfigOverride,
 	CODEX_DEV3_HOOK_COMMAND,
 	DEV3_BASH_PERMISSION,
 	ensureDefaultMode,
@@ -21,6 +20,7 @@ import {
 	TOLERATE_APP_OFFLINE_FLAG,
 } from "../../shared/agent-hooks";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
+import { buildDev3CodexHooksBlock } from "../codex-config";
 
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
 
@@ -884,7 +884,6 @@ describe("POSIX hook output (byte-identical contract)", () => {
 			buildClaudeHooks({ stopTarget: "review-by-ai" }),
 		);
 		expect(buildCodexHooks({ dialect: posix })).toEqual(buildCodexHooks());
-		expect(buildCodexHooksConfigOverride({}, { dialect: posix })).toBe(buildCodexHooksConfigOverride());
 	});
 });
 
@@ -949,17 +948,18 @@ describe("Windows hook output", () => {
 		}
 	});
 
-	it("keeps the Codex TOML override free of tildes and shell operators", () => {
-		const override = buildCodexHooksConfigOverride({}, { dialect: WIN_SPACES });
+	it("keeps the Codex hook command free of tildes and shell operators", () => {
+		// The command lands in a TOML file and is executed by codex directly, with
+		// no shell to expand `~` or honour `||` — a Windows hook has neither.
+		const block = buildDev3CodexHooksBlock({ dialect: WIN_SPACES });
 
-		expect(override.startsWith("hooks=")).toBe(true);
 		// TOML basic strings escape the backslashes; the decoded command is absolute.
-		expect(override).toContain(JSON.stringify(`${WIN_SPACES.cli} hook codex`));
-		expect(override).not.toContain("~");
-		expect(override).not.toContain("||");
-		expect(override).not.toContain("&&");
-		expect(override).not.toContain("$?");
-		expect(override).not.toContain("2>&1");
+		expect(block).toContain(JSON.stringify(`${WIN_SPACES.cli} hook codex`));
+		expect(block).not.toContain("~");
+		expect(block).not.toContain("||");
+		expect(block).not.toContain("&&");
+		expect(block).not.toContain("$?");
+		expect(block).not.toContain("2>&1");
 	});
 
 	it("still recognizes and replaces dev3 entries written by a POSIX dev3", () => {

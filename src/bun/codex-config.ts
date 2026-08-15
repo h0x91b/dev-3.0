@@ -1,6 +1,8 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { load } from "js-toml";
+import { buildCodexHooks } from "../shared/agent-hooks";
+import type { HookCliDialect } from "../shared/dev3-cli-path";
 import { createLogger } from "./logger";
 import { spawnSync } from "./spawn";
 import { DEV3_CODEX_DARK_PROFILE, DEV3_CODEX_LIGHT_PROFILE } from "./theme-state";
@@ -297,6 +299,34 @@ export function detectCodexProfileLaunchFlag(): CodexProfileLaunchFlag {
 	}
 }
 
+/** The flag that runs enabled hooks without persisted per-hook trust. */
+export const CODEX_HOOK_TRUST_BYPASS_FLAG = "--dangerously-bypass-hook-trust";
+
+/**
+ * Whether the installed Codex accepts the hook-trust bypass, read from its
+ * `--help`. dev3 declares its own hooks in the user's config.toml, where Codex
+ * reports them as `trustStatus: "untrusted"` and then silently never runs them;
+ * the alternative to this flag is writing per-hook `trusted_hash` values, which
+ * costs an app-server round trip before every launch. Feature-detected rather
+ * than version-gated for the same reason as the profile flag: a codex that does
+ * not know the flag exits 2 and the session never starts.
+ */
+export function supportsCodexHookTrustBypass(helpText: string): boolean {
+	return new RegExp(`${CODEX_HOOK_TRUST_BYPASS_FLAG}(?![\\w-])`).test(helpText);
+}
+
+/** Probe the installed Codex's `--help`. Unreadable help means "assume not". */
+export function detectCodexHookTrustBypass(): boolean {
+	try {
+		const result = spawnSync(["codex", "--help"], { stdout: "pipe", stderr: "pipe" });
+		const stdout = result.stdout ? new TextDecoder().decode(result.stdout) : "";
+		const stderr = result.stderr ? new TextDecoder().decode(result.stderr) : "";
+		return supportsCodexHookTrustBypass(`${stdout}\n${stderr}`);
+	} catch {
+		return false;
+	}
+}
+
 export function detectCodexVersion(): string | null {
 	try {
 		const result = spawnSync(["codex", "--version"], { stdout: "pipe", stderr: "pipe" });
@@ -501,7 +531,58 @@ export function ensureCodexConfig(
 		}
 	}
 
+	// --- 6. Ensure dev3's status hooks are declared in the file ---
+	config = ensureDev3HooksBlock(config);
+
 	return config;
+}
+
+const DEV3_HOOKS_BEGIN = "# >>> dev3 status hooks (generated — do not edit) >>>";
+const DEV3_HOOKS_END = "# <<< dev3 status hooks <<<";
+const DEV3_HOOKS_BLOCK = new RegExp(
+	`\\n*${DEV3_HOOKS_BEGIN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${
+		DEV3_HOOKS_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+	}\\n?`,
+	"g",
+);
+
+/**
+ * Serialize dev3's Codex status hooks as TOML array-of-tables.
+ *
+ * Codex reads hooks from the file `$CODEX_HOME/config.toml` (`source: "user"`),
+ * from a project checkout, or from `-c` session flags — and it does NOT see a
+ * linked worktree's own `.codex/hooks.json`, which is why dev3 used to pass them
+ * as one `-c hooks={...}` argument. That argument never survived the Windows
+ * command line, so the definitions live here instead: a file, no argv, no
+ * quoting. Commands go through `tomlBasicString`, so a Windows CLI path cannot
+ * turn `C:\Users` into a broken escape.
+ */
+export function buildDev3CodexHooksBlock(options?: { dialect?: HookCliDialect }): string {
+	const lines: string[] = [DEV3_HOOKS_BEGIN];
+	for (const [event, groups] of Object.entries(buildCodexHooks(options))) {
+		for (const group of groups) {
+			lines.push("", `[[hooks.${event}]]`);
+			if (group.matcher) lines.push(`matcher = ${tomlBasicString(group.matcher)}`);
+			for (const hook of group.hooks) {
+				lines.push("", `[[hooks.${event}.hooks]]`);
+				lines.push(`type = ${tomlBasicString(hook.type)}`);
+				lines.push(`command = ${tomlBasicString(hook.command)}`);
+				if (typeof hook.timeout === "number") lines.push(`timeout = ${hook.timeout}`);
+			}
+		}
+	}
+	lines.push("", DEV3_HOOKS_END, "");
+	return lines.join("\n");
+}
+
+/**
+ * Replace the managed hooks block, or append it when absent. Delimited by marker
+ * comments so the user's own `[[hooks.*]]` entries — which are legal beside ours,
+ * TOML arrays of tables simply accumulate — are never touched.
+ */
+function ensureDev3HooksBlock(config: string): string {
+	const stripped = config.replace(DEV3_HOOKS_BLOCK, "\n");
+	return appendBlock(stripped, `\n${buildDev3CodexHooksBlock()}`);
 }
 
 /**

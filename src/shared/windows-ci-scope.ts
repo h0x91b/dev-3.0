@@ -101,6 +101,7 @@ export const WINDOWS_SCOPE_PATHS = [
 	// the generated file parses, so an edit here must re-dispatch the proof.
 	"src/bun/codex-config.ts",
 	"src/bun/__tests__/codex-config-windows-paths.test.ts",
+	"src/bun/__tests__/codex-hooks-file.test.ts",
 	// The shell a pane's generated wrapper runs under: the dialect spells it, and a
 	// hardcoded `/bin/bash` in the agent-spawn path killed "+ Agent" on Windows
 	// (Seq 1544). Only a Windows run can tell the two dialects apart.

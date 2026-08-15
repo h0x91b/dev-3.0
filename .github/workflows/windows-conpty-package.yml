@@ -65,6 +65,9 @@ jobs:
       # file with a real TOML parser and drive ensureCodexConfigFile against a real
       # temp home, so only the Windows leg can see the composition that broke; the
       # POSIX legs are the control that the escaping did not change their output.
+      # The status hooks are part of that same file now — they used to ride in as a
+      # quoted `-c hooks={...}` argument and never survived the Windows command line
+      # (Seq 1540) — so their block is decoded here by the same real parser.
       - name: Codex config generation + repair (real TOML parse)
         run: bun run test:codex-config-windows
 
