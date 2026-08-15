@@ -11,13 +11,16 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { resolveUserHome } from "../shared/user-home";
+import { isDev3TrustPath, pruneCodexTrustEntries } from "./codex-config";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 
 const log = createLogger("worktree-trust");
 
+const USER_HOME = resolveUserHome();
+
 /** `~/.gemini/trustedFolders.json` — flat map of absolute path → trust verdict. */
-export const GEMINI_TRUSTED_FOLDERS = `${resolveUserHome()}/.gemini/trustedFolders.json`;
+export const GEMINI_TRUSTED_FOLDERS = `${USER_HOME}/.gemini/trustedFolders.json`;
 
 const WORKTREES_ROOT = `${DEV3_HOME}/worktrees`;
 
@@ -92,6 +95,19 @@ export async function forgetWorktreeTrust(worktreePath: string | null | undefine
 		if (removed.length > 0) {
 			log.info("Pruned worktree from ~/.gemini/trustedFolders.json", { paths: removed });
 		}
+
+		// Codex: the entry was written as a `realpath`, and on Windows the task's own
+		// path may spell its separators differently — so a dead directory counts too,
+		// not just an exact match.
+		const codexRemoved = pruneCodexTrustEntries(
+			USER_HOME,
+			(projectPath) =>
+				isDev3TrustPath(projectPath, DEV3_HOME)
+				&& (targets.includes(normalize(projectPath)) || !existsSync(projectPath)),
+		);
+		if (codexRemoved > 0) {
+			log.info("Pruned worktree trust from ~/.codex/config.toml", { count: codexRemoved });
+		}
 	} catch (err) {
 		log.warn("Failed to prune worktree trust", { error: String(err) });
 	}
@@ -112,6 +128,14 @@ export function sweepStaleWorktreeTrust(): void {
 		});
 		if (removed.length > 0) {
 			log.info("Swept dead worktrees from ~/.gemini/trustedFolders.json", { count: removed.length });
+		}
+
+		const codexRemoved = pruneCodexTrustEntries(
+			USER_HOME,
+			(projectPath) => isDev3TrustPath(projectPath, DEV3_HOME) && !existsSync(projectPath),
+		);
+		if (codexRemoved > 0) {
+			log.info("Swept dead worktrees from ~/.codex/config.toml", { count: codexRemoved });
 		}
 	} catch (err) {
 		log.warn("Failed to sweep stale worktree trust", { error: String(err) });

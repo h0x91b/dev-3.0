@@ -1,0 +1,3 @@
+Short: Codex config stops collecting dead worktrees
+
+dev3 added a `[projects."<worktree>"] trust_level = "trusted"` block to `~/.codex/config.toml` on every task launch and never removed one, so the file grew by one dead block per task forever — 464 blocks in 63 KB on the machine that reported it. Those blocks are now dropped when the worktree is removed, plus a one-time sweep at startup for what earlier versions left behind; only paths under `~/.dev3.0/worktrees` or `~/.dev3.0/ops` whose directory is gone qualify, your own trusted projects are never touched, and any edit that would change anything else in the file is abandoned rather than risked.

@@ -8,10 +8,23 @@ import { join } from "node:path";
 let forgetWorktreeTrust: typeof import("../worktree-trust").forgetWorktreeTrust;
 let sweepStaleWorktreeTrust: typeof import("../worktree-trust").sweepStaleWorktreeTrust;
 let TRUST_FILE: string;
+let CODEX_CONFIG: string;
 
 let tmpHome: string;
 let originalHome: string | undefined;
 let worktreesRoot: string;
+
+function writeCodexConfig(body: string): void {
+	writeFileSync(CODEX_CONFIG, body);
+}
+
+function readCodexConfig(): string {
+	return readFileSync(CODEX_CONFIG, "utf-8");
+}
+
+function codexTrustBlock(path: string): string {
+	return `[projects."${path}"]\ntrust_level = "trusted"\n`;
+}
 
 function writeTrust(data: Record<string, string>): void {
 	writeFileSync(TRUST_FILE, JSON.stringify(data, null, 2));
@@ -38,6 +51,8 @@ beforeAll(async () => {
 	process.env.HOME = tmpHome;
 	worktreesRoot = join(tmpHome, ".dev3.0", "worktrees");
 	mkdirSync(join(tmpHome, ".gemini"), { recursive: true });
+	mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+	CODEX_CONFIG = join(tmpHome, ".codex", "config.toml");
 	const mod = await import("../worktree-trust");
 	forgetWorktreeTrust = mod.forgetWorktreeTrust;
 	sweepStaleWorktreeTrust = mod.sweepStaleWorktreeTrust;
@@ -53,6 +68,7 @@ afterAll(() => {
 beforeEach(() => {
 	rmSync(worktreesRoot, { recursive: true, force: true });
 	rmSync(TRUST_FILE, { force: true });
+	rmSync(CODEX_CONFIG, { force: true });
 });
 
 describe("forgetWorktreeTrust", () => {
@@ -133,5 +149,76 @@ describe("sweepStaleWorktreeTrust", () => {
 		sweepStaleWorktreeTrust();
 
 		expect(readFileSync(TRUST_FILE, "utf-8")).toBe(raw);
+	});
+});
+
+describe("~/.codex/config.toml trust blocks", () => {
+	it("forgets the removed worktree and leaves the rest of the file alone", async () => {
+		const gone = deadWorktreePath("aaaa1111");
+		const alive = makeWorktree("bbbb2222");
+		const ownProject = join(tmpHome, "Desktop", "my-project");
+		writeCodexConfig(`# hand-written comment
+model = "gpt-5.4"
+
+${codexTrustBlock(gone)}
+${codexTrustBlock(alive)}
+${codexTrustBlock(ownProject)}`);
+
+		await forgetWorktreeTrust(gone);
+
+		const result = readCodexConfig();
+		expect(result).not.toContain(gone);
+		expect(result).toContain(alive);
+		expect(result).toContain(ownProject);
+		expect(result).toContain("# hand-written comment");
+	});
+
+	it("sweeps dead dev3 worktrees at startup, keeping live ones and the user's own", () => {
+		const alive = makeWorktree("cccc3333");
+		const ownMissing = join(tmpHome, "Desktop", "deleted-project");
+		writeCodexConfig(`${codexTrustBlock(deadWorktreePath("dddd4444"))}
+${codexTrustBlock(alive)}
+${codexTrustBlock(ownMissing)}`);
+
+		sweepStaleWorktreeTrust();
+
+		const result = readCodexConfig();
+		expect(result).not.toContain("dddd4444");
+		expect(result).toContain(alive);
+		expect(result).toContain(ownMissing);
+	});
+
+	it("never removes the worktrees root entry dev3 trusts on purpose", () => {
+		writeCodexConfig(codexTrustBlock(worktreesRoot));
+
+		sweepStaleWorktreeTrust();
+
+		expect(readCodexConfig()).toContain(`[projects."${worktreesRoot}"]`);
+	});
+
+	it("leaves an unparsable config untouched (fails closed)", () => {
+		const broken = `[projects."C:\\Users\\test\\.dev3.0\\worktrees\\x"]\ntrust_level = "trusted"\n`;
+		writeCodexConfig(broken);
+
+		sweepStaleWorktreeTrust();
+
+		expect(readCodexConfig()).toBe(broken);
+	});
+
+	it("does not rewrite the file when nothing is stale", () => {
+		const alive = makeWorktree("eeee5555");
+		const raw = codexTrustBlock(alive);
+		writeCodexConfig(raw);
+
+		sweepStaleWorktreeTrust();
+
+		expect(readCodexConfig()).toBe(raw);
+	});
+
+	it("is a no-op when there is no Codex config at all", async () => {
+		await forgetWorktreeTrust(deadWorktreePath("ffff6666"));
+		sweepStaleWorktreeTrust();
+
+		expect(() => readCodexConfig()).toThrow();
 	});
 });

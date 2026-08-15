@@ -232,6 +232,248 @@ export function backupUnparsableCodexConfig(configPath: string, content: string)
 	}
 }
 
+// ---- [projects."<path>"] trust-entry pruning ----
+
+/**
+ * Decode one TOML key segment — bare, basic `"..."`, or literal `'...'` — and
+ * report where it ended. Returns null for anything unexpected so the caller can
+ * leave the block alone instead of guessing at a path.
+ */
+function readKeySegment(text: string, start: number): { value: string; next: number } | null {
+	if (text[start] === "'") {
+		const end = text.indexOf("'", start + 1);
+		if (end === -1) return null;
+		return { value: text.slice(start + 1, end), next: end + 1 };
+	}
+	if (text[start] === '"') {
+		let value = "";
+		let i = start + 1;
+		while (i < text.length) {
+			const char = text[i];
+			if (char === '"') return { value, next: i + 1 };
+			if (char !== "\\") {
+				value += char;
+				i++;
+				continue;
+			}
+			const escape = text[i + 1];
+			switch (escape) {
+				case "\\":
+				case '"':
+					value += escape;
+					i += 2;
+					break;
+				case "n":
+					value += "\n";
+					i += 2;
+					break;
+				case "r":
+					value += "\r";
+					i += 2;
+					break;
+				case "t":
+					value += "\t";
+					i += 2;
+					break;
+				case "b":
+					value += "\b";
+					i += 2;
+					break;
+				case "f":
+					value += "\f";
+					i += 2;
+					break;
+				case "u":
+				case "U": {
+					const width = escape === "u" ? 4 : 8;
+					const digits = text.slice(i + 2, i + 2 + width);
+					if (!new RegExp(`^[0-9a-fA-F]{${width}}$`).test(digits)) return null;
+					value += String.fromCodePoint(Number.parseInt(digits, 16));
+					i += 2 + width;
+					break;
+				}
+				default:
+					return null;
+			}
+		}
+		return null;
+	}
+	const bare = /^[A-Za-z0-9_-]+/.exec(text.slice(start));
+	if (bare == null) return null;
+	return { value: bare[0], next: start + bare[0].length };
+}
+
+/** Split a dotted TOML key path into its decoded segments, or null if unparsable. */
+function splitTomlKeyPath(text: string): string[] | null {
+	const segments: string[] = [];
+	let index = 0;
+	while (index < text.length) {
+		while (text[index] === " " || text[index] === "\t") index++;
+		const segment = readKeySegment(text, index);
+		if (segment == null) return null;
+		segments.push(segment.value);
+		index = segment.next;
+		while (text[index] === " " || text[index] === "\t") index++;
+		if (index >= text.length) break;
+		if (text[index] !== ".") return null;
+		index++;
+	}
+	return segments.length > 0 ? segments : null;
+}
+
+/** The project path a `[projects."…"]` header (or a sub-table of one) names. */
+function projectPathFromHeader(line: string): string | null {
+	const trimmed = line.trim();
+	if (!trimmed.startsWith("[") || !trimmed.endsWith("]") || trimmed.startsWith("[[")) return null;
+	const segments = splitTomlKeyPath(trimmed.slice(1, -1));
+	if (segments == null || segments.length < 2 || segments[0] !== "projects") return null;
+	return segments[1];
+}
+
+/** Deterministic serialization, so a before/after comparison ignores key order. */
+function stableStringify(value: unknown): string {
+	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+	if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+	const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+	return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
+}
+
+/** Drop the `[projects."<path>"]` blocks (and their sub-tables) for the given paths. */
+function removeProjectBlocks(content: string, targets: Set<string>): string {
+	const out: string[] = [];
+	let removing = false;
+	let trailingBlanks = 0;
+
+	for (const line of content.split("\n")) {
+		const trimmed = line.trim();
+		const isHeader = trimmed.startsWith("[") && trimmed.endsWith("]");
+		if (isHeader) {
+			const projectPath = projectPathFromHeader(line);
+			if (projectPath != null && targets.has(projectPath)) {
+				if (!removing) {
+					while (trailingBlanks > 0) {
+						out.pop();
+						trailingBlanks--;
+					}
+				}
+				removing = true;
+				continue;
+			}
+			removing = false;
+		}
+
+		if (removing) continue;
+		if (trimmed === "") trailingBlanks++;
+		else trailingBlanks = 0;
+		out.push(line);
+	}
+
+	return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * Remove `[projects."<path>"]` trust blocks the predicate selects, editing the
+ * raw text so the user's comments, formatting and key order survive (js-toml
+ * parses but cannot serialize, and a re-stringify would flatten the file).
+ *
+ * Fails closed: if the file does not parse, if the result does not parse, or if
+ * the result differs from the input by anything other than exactly the selected
+ * project keys, the original content is returned untouched. A broken
+ * `config.toml` stops Codex from starting at all, so an unpruned entry is always
+ * the cheaper outcome.
+ */
+export function pruneCodexProjectEntries(
+	content: string,
+	shouldRemove: (projectPath: string) => boolean,
+	preParsed?: CodexConfig,
+): string {
+	let parsed: CodexConfig;
+	if (preParsed != null) {
+		parsed = preParsed;
+	} else {
+		try {
+			parsed = load(content) as CodexConfig;
+		} catch {
+			log.warn("Could not parse Codex config.toml, leaving trust entries alone");
+			return content;
+		}
+	}
+
+	const targets = new Set(Object.keys(parsed.projects ?? {}).filter(shouldRemove));
+	if (targets.size === 0) return content;
+
+	const stripped = removeProjectBlocks(content, targets);
+
+	let after: CodexConfig;
+	try {
+		after = load(stripped) as CodexConfig;
+	} catch {
+		log.warn("Pruning Codex trust entries would break config.toml, leaving it alone", {
+			entries: targets.size,
+		});
+		return content;
+	}
+
+	const expected = { ...parsed, projects: { ...(parsed.projects ?? {}) } };
+	for (const target of targets) delete expected.projects[target];
+	if (Object.keys(expected.projects).length === 0) delete (expected as CodexConfig).projects;
+
+	if (stableStringify(after) !== stableStringify(expected)) {
+		log.warn("Pruning Codex trust entries changed unrelated config, leaving it alone", {
+			entries: targets.size,
+		});
+		return content;
+	}
+
+	log.info("Pruned dev3 trust entries from Codex config.toml", { entries: targets.size });
+	return stripped;
+}
+
+/**
+ * Whether a trusted path lives inside a dev3-owned root (`worktrees` or `ops`).
+ * Separators are normalized because dev3 writes both dialects on Windows: trust
+ * entries come from `realpath` (backslashes) while `DEV3_HOME` is built with
+ * forward slashes. The roots themselves are NOT dev3 trust paths — dev3 trusts
+ * the worktrees root deliberately and permanently.
+ */
+export function isDev3TrustPath(projectPath: string, dev3Home: string): boolean {
+	const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/+$/, "");
+	const root = normalize(dev3Home);
+	const target = normalize(projectPath);
+	return [`${root}/worktrees/`, `${root}/ops/`].some((prefix) => target.startsWith(prefix));
+}
+
+/**
+ * Remove the `[projects."<path>"]` trust blocks the predicate selects from
+ * `<homePath>/.codex/config.toml`, and report how many went. Best-effort: a
+ * missing, unreadable or unparsable config leaves the file exactly as it is.
+ *
+ * The caller owns the policy (see `worktree-trust.ts`); this owns the file.
+ */
+export function pruneCodexTrustEntries(
+	homePath: string,
+	shouldRemove: (projectPath: string) => boolean,
+): number {
+	const configPath = joinLike(homePath, ".codex", "config.toml");
+	let content: string;
+	try {
+		content = readFileSync(configPath, "utf-8");
+	} catch {
+		return 0; // no config, nothing to prune
+	}
+
+	let removed = 0;
+	const updated = pruneCodexProjectEntries(content, (projectPath) => {
+		if (!shouldRemove(projectPath)) return false;
+		removed++;
+		return true;
+	});
+	if (updated === content) return 0;
+
+	writeFileSync(configPath, updated, "utf-8");
+	return removed;
+}
+
 export function parseCodexVersion(output: string): CodexVersion | null {
 	const match = output.match(/\bv?(\d+)\.(\d+)\.(\d+)\b/);
 	if (match == null) return null;
