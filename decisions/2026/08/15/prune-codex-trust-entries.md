@@ -40,6 +40,9 @@ Codex pruning plugs into the trust seam `src/bun/worktree-trust.ts` (added for G
 - `pruneCodexProjectEntries(content, shouldRemove, preParsed?)` — the pure edit. It removes whole
   `[projects."<path>"]` blocks (and their sub-tables) from the **raw text**, not from a re-serialized parse tree.
   `js-toml` has no serializer, and a re-stringify would flatten the user's comments, formatting and key order.
+  A trailing run of blank/comment lines inside a removed block is re-attached to the next header instead of
+  going with the block: a comment written directly above a kept `[projects."…"]` belongs to that header, and the
+  equality guard cannot see comment loss because comments are not in the parse tree.
 - `pruneCodexTrustEntries(homePath, shouldRemove)` — reads and writes `<home>/.codex/config.toml`.
 - `isDev3TrustPath(path, dev3Home)` — the ownership test: under `~/.dev3.0/worktrees` or `~/.dev3.0/ops`, never
   the roots themselves.

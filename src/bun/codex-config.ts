@@ -341,11 +341,25 @@ function stableStringify(value: unknown): string {
 	return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
 }
 
-/** Drop the `[projects."<path>"]` blocks (and their sub-tables) for the given paths. */
+/**
+ * Drop the `[projects."<path>"]` blocks (and their sub-tables) for the given paths.
+ *
+ * A run of blank/comment lines at the end of a removed block is held back rather
+ * than deleted: a comment sitting right above the next header belongs to that
+ * header, and eating it would silently destroy the user's own text — the very
+ * thing raw-text editing exists to avoid.
+ */
 function removeProjectBlocks(content: string, targets: Set<string>): string {
 	const out: string[] = [];
 	let removing = false;
 	let trailingBlanks = 0;
+	let pending: string[] = [];
+
+	const emit = (line: string): void => {
+		if (line.trim() === "") trailingBlanks++;
+		else trailingBlanks = 0;
+		out.push(line);
+	};
 
 	for (const line of content.split("\n")) {
 		const trimmed = line.trim();
@@ -353,7 +367,9 @@ function removeProjectBlocks(content: string, targets: Set<string>): string {
 		if (isHeader) {
 			const projectPath = projectPathFromHeader(line);
 			if (projectPath != null && targets.has(projectPath)) {
-				if (!removing) {
+				if (removing) {
+					pending = []; // between two removed blocks — nothing to re-attach to
+				} else {
 					while (trailingBlanks > 0) {
 						out.pop();
 						trailingBlanks--;
@@ -362,14 +378,25 @@ function removeProjectBlocks(content: string, targets: Set<string>): string {
 				removing = true;
 				continue;
 			}
+			if (removing) {
+				for (const held of pending) emit(held);
+				pending = [];
+			}
 			removing = false;
 		}
 
-		if (removing) continue;
-		if (trimmed === "") trailingBlanks++;
-		else trailingBlanks = 0;
-		out.push(line);
+		if (removing) {
+			// A real key line proves the held run was inside the block, not before the next one.
+			if (trimmed === "" || trimmed.startsWith("#")) pending.push(line);
+			else pending = [];
+			continue;
+		}
+		emit(line);
 	}
+
+	// At EOF there is no next header to re-attach to; keep the run only if it
+	// carries a comment, so a removed trailing block does not leave blank lines.
+	if (pending.some((held) => held.trim() !== "")) for (const held of pending) emit(held);
 
 	return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }

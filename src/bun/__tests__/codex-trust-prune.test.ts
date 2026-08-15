@@ -27,6 +27,38 @@ ${trustBlock(`${HOME}/other-project`)}`;
 		expect(result.indexOf("my-project")).toBeLessThan(result.indexOf("other-project"));
 	});
 
+	it("keeps a comment that sits between the removed block and the next header", () => {
+		const config = `model = "gpt-5.4"
+
+${trustBlock(`${WORKTREES_PATH}/proj/aaaa/worktree`)}
+# explains the project below, written by the user
+${trustBlock(`${HOME}/keep`)}`;
+
+		const result = pruneCodexProjectEntries(config, (p) => p.startsWith(WORKTREES_PATH));
+
+		expect(result).not.toContain(WORKTREES_PATH);
+		expect(result).toContain("# explains the project below, written by the user");
+		// The comment still introduces the block it was written for.
+		expect(result.indexOf("# explains")).toBeLessThan(result.indexOf('[projects."/Users/testuser/keep"]'));
+		expect(result).toContain('model = "gpt-5.4"\n\n# explains');
+	});
+
+	it("drops the removed block's own comments and leaves no blank tail at EOF", () => {
+		const config = `${trustBlock(`${HOME}/keep`)}
+[projects."${WORKTREES_PATH}/proj/aaaa/worktree"]
+# dev3 wrote this block
+trust_level = "trusted"
+
+`;
+
+		const result = pruneCodexProjectEntries(config, (p) => p.startsWith(WORKTREES_PATH));
+
+		expect(result).not.toContain("# dev3 wrote this block");
+		expect(result).toContain('[projects."/Users/testuser/keep"]');
+		expect(result.trimEnd()).toBe(result.replace(/\n+$/, ""));
+		expect(result.endsWith("\n\n")).toBe(false);
+	});
+
 	it("removes sub-tables of the pruned project too", () => {
 		const path = `${WORKTREES_PATH}/proj/aaaa/worktree`;
 		const config = `${trustBlock(path)}
