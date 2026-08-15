@@ -246,6 +246,9 @@ describe("paneRunShell — the one place a shell dialect genuinely differs", () 
 		expect(script.indexOf("$dev3Ok = $?")).toBeLessThan(script.indexOf("$dev3Code = $LASTEXITCODE"));
 	});
 
+	// Proved on windows-latest: PowerShell 5.1 without %SystemRoot% dies with
+	// "Internal Windows PowerShell error ... 8009001d" and exits 0, so a PATH
+	// fallback would hand the agent a silent no-op instead of this named refusal.
 	it("refuses to guess a PowerShell path when Windows names no SystemRoot", () => {
 		expect(() => paneRunShell("echo hi", { platform: "win32", env: {} })).toThrow(/SystemRoot is required/);
 	});

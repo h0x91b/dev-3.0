@@ -63,6 +63,43 @@ describe("dialect selection", () => {
 	});
 });
 
+/**
+ * The dialect resolves its own shell whenever a caller passes no explicit path.
+ * It REFUSES rather than degrading, and that asymmetry with
+ * `defaultLaunchShellPath` is deliberate: boot must survive a stripped
+ * environment, but a launch into one cannot — Windows PowerShell 5.1 does not
+ * load without %SystemRoot% (error 8009001d, executed on windows-latest; see
+ * decisions/2026/08/15/no-powershell-fallback-without-systemroot.md).
+ */
+describe("Windows shell resolution without %SystemRoot%", () => {
+	const NAMES = ["SystemRoot", "SYSTEMROOT", "WINDIR", "windir"] as const;
+	const saved: Record<string, string | undefined> = {};
+	const d = launchDialect("win32");
+
+	beforeAll(() => {
+		for (const name of NAMES) {
+			saved[name] = process.env[name];
+			delete process.env[name];
+		}
+	});
+	afterAll(() => {
+		for (const name of NAMES) {
+			if (saved[name] === undefined) delete process.env[name];
+			else process.env[name] = saved[name];
+		}
+	});
+
+	it("refuses a launch by name instead of resolving a shell that cannot start", () => {
+		expect(() => d.scriptLaunch("C:\\tmp\\run.ps1", { cwd: "C:\\tmp", env: {} })).toThrow(/SystemRoot/);
+		expect(() => d.interactiveShellLaunch({ cwd: "C:\\tmp", env: {} })).toThrow(/SystemRoot/);
+		expect(() => d.runScript("C:\\tmp\\run.ps1")).toThrow(/SystemRoot/);
+	});
+
+	it("still lets the boot path degrade, which is the one caller that must not die", () => {
+		expect(defaultLaunchShellPath("win32", {})).toBe("powershell.exe");
+	});
+});
+
 describe("Windows PowerShell dialect", () => {
 	const d = launchDialect("win32");
 	const originalSystemRoot = process.env.SystemRoot;

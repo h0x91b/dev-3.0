@@ -142,6 +142,19 @@ jobs:
         timeout-minutes: 5
         run: bun run test:cli-packaged-e2e
 
+      # Seq 1548: `dev3 pane run` EXECUTED rather than asserted about. The pane-run
+      # composition is authored per dialect and every existing test for it runs on
+      # macOS, where PowerShell does not exist — so this runs the real runner against a
+      # real spec file and reads the log back: non-ASCII output intact (the console code
+      # page would mangle it), a non-zero exit code intact, and — Windows only — both
+      # callers of the PowerShell lookup still launching with %SystemRoot% deleted from
+      # the environment, where they used to throw. `always()` so a neighbour's failure
+      # cannot hide this verdict.
+      - name: Pane run executed (real shell, real log)
+        if: always()
+        timeout-minutes: 5
+        run: bun run test:pane-run-exec
+
       # Merged host-image manifest: generator, validator, deterministic assembly,
       # additive staging outside the install root, and rollback selection.
       - name: Packaged host image + manifest tests

@@ -85,6 +85,9 @@ export interface PaneRunShellLookup {
 export function paneRunShell(command: string, lookup: PaneRunShellLookup): PaneRunShellSpec {
 	if (lookup.platform === "win32") {
 		const systemRoot = lookup.env.SystemRoot ?? lookup.env.SYSTEMROOT ?? lookup.env.WINDIR;
+		// Refused rather than guessed: PowerShell 5.1 cannot load without %SystemRoot%
+		// even when the binary is found on PATH, so a fallback would turn a named
+		// refusal into a run that dies with error 8009001d and exits 0.
 		if (!systemRoot) throw new Error("SystemRoot is required to run a pane command on Windows");
 		return {
 			executable: pathWin32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),

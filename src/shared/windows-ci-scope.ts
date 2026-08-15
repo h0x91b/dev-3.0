@@ -118,6 +118,12 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/bun/__tests__/git-op-script.test.ts",
 	"src/bun/__tests__/git-op-pane.bun-e2e.ts",
 	"src/bun/rpc-handlers/__tests__/git-op-pane-launch.test.ts",
+	// The same dialect as spoken by `dev3 pane run` (Seq 1548): its command composition
+	// and the runner that executes it. Under (1) for the same reason — only the Windows
+	// leg runs PowerShell, so an edit to either has to re-run the proof that executes it.
+	"src/bun/pane-run-store.ts",
+	"src/cli/commands/pane-exec.ts",
+	"src/cli/__tests__/pane-run-exec.bun-e2e.ts",
 	// This list and the script reading it decide the whole thing; changing either
 	// has to re-prove Windows rather than judging its own change out of scope.
 	"src/shared/windows-ci-scope.ts",

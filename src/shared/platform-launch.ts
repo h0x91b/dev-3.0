@@ -297,6 +297,12 @@ const POWERSHELL_SCRIPT_ARGS = ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "By
 function powerShellPath(shellPath?: string): string {
 	const explicit = shellPath?.trim();
 	if (explicit && /powershell(\.exe)?$|pwsh(\.exe)?$/i.test(explicit)) return explicit;
+	// NO fallback here, and that is a measured choice, not an oversight. Windows
+	// PowerShell 5.1 cannot load without %SystemRoot% at all — it dies with
+	// "Internal Windows PowerShell error ... 8009001d" and exits 0, proved on
+	// windows-latest (decisions/2026/08/15/no-powershell-fallback-without-systemroot.md).
+	// A PATH lookup would therefore buy a silent broken launch instead of this
+	// named refusal. Boot is the one place that degrades: see defaultLaunchShellPath.
 	return windowsPowerShellPath();
 }
 
