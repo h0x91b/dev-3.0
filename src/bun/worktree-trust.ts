@@ -11,6 +11,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { resolveUserHome } from "../shared/user-home";
+import { forgetClaudeTrustEntries, sweepStaleClaudeTrustEntries } from "./claude-json-prune";
 import { isDev3TrustPath, pruneCodexTrustEntries } from "./codex-config";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -108,6 +109,12 @@ export async function forgetWorktreeTrust(worktreePath: string | null | undefine
 		if (codexRemoved > 0) {
 			log.info("Pruned worktree trust from ~/.codex/config.toml", { count: codexRemoved });
 		}
+
+		const claudeRemoved = forgetClaudeTrustEntries(targets, normalize)
+			.reduce((sum, result) => sum + result.removed, 0);
+		if (claudeRemoved > 0) {
+			log.info("Pruned worktree from Claude Code's .claude.json", { count: claudeRemoved });
+		}
 	} catch (err) {
 		log.warn("Failed to prune worktree trust", { error: String(err) });
 	}
@@ -136,6 +143,14 @@ export function sweepStaleWorktreeTrust(): void {
 		);
 		if (codexRemoved > 0) {
 			log.info("Swept dead worktrees from ~/.codex/config.toml", { count: codexRemoved });
+		}
+
+		// Claude Code's file is the big one: 2 130 dead entries, 48% of 1.9 MB on one
+		// machine. Median 8.6 ms, so it runs every launch rather than behind a flag.
+		const claudeRemoved = sweepStaleClaudeTrustEntries(isUnderWorktreesRoot)
+			.reduce((sum, result) => sum + result.removed, 0);
+		if (claudeRemoved > 0) {
+			log.info("Swept dead worktrees from Claude Code's .claude.json", { count: claudeRemoved });
 		}
 	} catch (err) {
 		log.warn("Failed to sweep stale worktree trust", { error: String(err) });

@@ -222,3 +222,43 @@ ${codexTrustBlock(ownMissing)}`);
 		expect(() => readCodexConfig()).toThrow();
 	});
 });
+
+// Claude Code's ~/.claude.json is pruned through the same two entry points; the
+// per-file rules live in claude-json-prune.test.ts. These two prove the wiring.
+describe("Claude Code's .claude.json goes through the same two entry points", () => {
+	const CLAUDE_JSON = () => join(tmpHome, ".claude.json");
+
+	function writeClaude(projects: Record<string, unknown>): void {
+		writeFileSync(CLAUDE_JSON(), JSON.stringify({ numStartups: 7, projects }, null, 2));
+	}
+
+	function readClaude(): any {
+		return JSON.parse(readFileSync(CLAUDE_JSON(), "utf-8"));
+	}
+
+	it("forgetWorktreeTrust drops the removed worktree's trust entry", async () => {
+		const gone = deadWorktreePath("9999cccc");
+		const alive = makeWorktree("9999dddd");
+		writeClaude({ [gone]: { hasTrustDialogAccepted: true }, [alive]: { hasTrustDialogAccepted: true } });
+
+		await forgetWorktreeTrust(gone);
+
+		expect(Object.keys(readClaude().projects)).toEqual([alive]);
+	});
+
+	it("sweepStaleWorktreeTrust drops dead worktrees and keeps the user's own projects", async () => {
+		const alive = makeWorktree("9999eeee");
+		const ownProject = join(tmpHome, "Desktop", "my-project");
+		writeClaude({
+			[ownProject]: { hasTrustDialogAccepted: true },
+			[alive]: { hasTrustDialogAccepted: true },
+			[deadWorktreePath("9999ffff")]: { hasTrustDialogAccepted: true },
+		});
+
+		sweepStaleWorktreeTrust();
+
+		const after = readClaude();
+		expect(Object.keys(after.projects)).toEqual([ownProject, alive]);
+		expect(after.numStartups).toBe(7);
+	});
+});
