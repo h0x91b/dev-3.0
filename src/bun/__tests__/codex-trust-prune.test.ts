@@ -127,6 +127,17 @@ matcher = "*"
 			hooks: { SessionStart: [{ matcher: "*" }] },
 		});
 	});
+
+	it("prunes a config holding an integer past 2^53, which js-toml decodes as a BigInt", () => {
+		// JSON.stringify throws on a BigInt, so the equality guard used to take the
+		// whole prune down with a TypeError instead of just skipping this file.
+		const config = `max_bytes = 9223372036854775807\n\n${trustBlock(`${WORKTREES_PATH}/proj/aaaa/worktree`)}`;
+
+		const result = pruneCodexProjectEntries(config, () => true);
+
+		expect(result).toContain("max_bytes = 9223372036854775807");
+		expect(result).not.toContain(WORKTREES_PATH);
+	});
 });
 
 describe("isDev3TrustPath", () => {

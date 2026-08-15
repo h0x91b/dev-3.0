@@ -20,12 +20,18 @@ The module is deliberately the shared "forget this worktree everywhere" seam —
 Claude (`~/.claude.json`) and Codex (`~/.codex/config.toml`) pruning belongs in
 these two functions, not in parallel copies.
 
-Two guards make it safe: a key is only touched when it is under
-`${DEV3_HOME}/worktrees` (compared case- and separator-insensitively, because
-older entries were written with different casing), and the sweep additionally
-requires the directory to be gone. Unparsable JSON fails closed — logged, never
-rewritten. `GEMINI_TRUSTED_FOLDERS` now lives here and `agents.ts` imports it, so
-writer and pruner cannot drift apart.
+Two guards make it safe: a key is only touched when it is inside a dev3-managed
+root — `${DEV3_HOME}/worktrees` or `${DEV3_HOME}/ops`, the latter because a
+virtual project's task workspace lives at `ops/<slug>/<taskId>/work` and is
+destroyed the same way (compared case- and separator-insensitively, because older
+entries were written with different casing) — and the sweep additionally requires
+the directory to be gone. Unparsable JSON fails closed — logged, never rewritten.
+`GEMINI_TRUSTED_FOLDERS` now lives here and `agents.ts` imports it, so writer and
+pruner cannot drift apart.
+
+The three files are pruned in separate `try` blocks. They are unrelated, and
+Claude Code's — the largest by far — runs last, so a throw while editing the
+Codex config must not cost the user the other two.
 
 ## Risks
 

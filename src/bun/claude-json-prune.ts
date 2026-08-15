@@ -153,16 +153,16 @@ export function forgetClaudeTrustEntries(
 
 /**
  * Sweep entries left by app versions that never pruned. A key goes only when it is
- * BOTH under the dev3 worktrees root AND points at a directory that no longer
- * exists — the user's own projects, and live worktrees, are never candidates.
+ * BOTH inside a dev3-managed root AND points at a directory that no longer exists
+ * — the user's own projects, and live worktrees, are never candidates.
  *
  * Cheap enough to run on every launch: median 8.6 ms on a real 1.9 MB file holding
  * 2 771 entries, which is why there is no one-shot migration flag.
  */
 export function sweepStaleClaudeTrustEntries(
-	isUnderWorktreesRoot: (path: string) => boolean,
+	isDev3ManagedPath: (path: string) => boolean,
 	opts: PruneOptions = {},
 ): PruneFileResult[] {
 	const exists = opts.exists ?? existsSync;
-	return sweep((keys) => keys.filter((key) => isUnderWorktreesRoot(key) && !exists(key)), opts);
+	return sweep((keys) => keys.filter((key) => isDev3ManagedPath(key) && !exists(key)), opts);
 }

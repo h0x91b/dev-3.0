@@ -332,6 +332,9 @@ function projectPathFromHeader(line: string): string | null {
 
 /** Deterministic serialization, so a before/after comparison ignores key order. */
 function stableStringify(value: unknown): string {
+	// js-toml decodes an integer past 2^53 as a BigInt, which JSON.stringify throws
+	// on — one such key anywhere in the file would abort the whole prune.
+	if (typeof value === "bigint") return `${value}n`;
 	if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
 	if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
 	const entries = Object.entries(value as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));

@@ -59,6 +59,11 @@ string value while still parsing, and only the comparison catches it.
 
 Roots themselves (`~/.dev3.0/worktrees`) are never pruned: dev3 trusts that path deliberately and permanently.
 
+The equality guard serializes both parse trees itself instead of using `JSON.stringify`, because `js-toml` decodes
+an integer past 2^53 as a `BigInt` and `JSON.stringify` throws on those. One such key anywhere in the user's
+config — `max_bytes = 9223372036854775807` is enough — turned the guard into a `TypeError` that escaped
+`pruneCodexProjectEntries` entirely and took the Claude and Gemini prunes down with it.
+
 ## Risks
 
 - A user who keeps their own project *inside* `~/.dev3.0/worktrees` would lose its trust entry. Nothing supports

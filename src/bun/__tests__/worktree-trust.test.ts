@@ -13,6 +13,7 @@ let CODEX_CONFIG: string;
 let tmpHome: string;
 let originalHome: string | undefined;
 let worktreesRoot: string;
+let opsRoot: string;
 
 function writeCodexConfig(body: string): void {
 	writeFileSync(CODEX_CONFIG, body);
@@ -45,11 +46,17 @@ function deadWorktreePath(taskId: string): string {
 	return join(worktreesRoot, "some-project", taskId, "worktree");
 }
 
+/** A virtual project's task workspace: `<opsRoot>/<slug>/<taskId>/work`. */
+function deadOpsWorkspacePath(taskId: string): string {
+	return join(opsRoot, "some-ops-project", taskId, "work");
+}
+
 beforeAll(async () => {
 	originalHome = process.env.HOME;
 	tmpHome = mkdtempSync(join(tmpdir(), "dev3-trust-"));
 	process.env.HOME = tmpHome;
 	worktreesRoot = join(tmpHome, ".dev3.0", "worktrees");
+	opsRoot = join(tmpHome, ".dev3.0", "ops");
 	mkdirSync(join(tmpHome, ".gemini"), { recursive: true });
 	mkdirSync(join(tmpHome, ".codex"), { recursive: true });
 	CODEX_CONFIG = join(tmpHome, ".codex", "config.toml");
@@ -67,8 +74,10 @@ afterAll(() => {
 
 beforeEach(() => {
 	rmSync(worktreesRoot, { recursive: true, force: true });
+	rmSync(opsRoot, { recursive: true, force: true });
 	rmSync(TRUST_FILE, { force: true });
 	rmSync(CODEX_CONFIG, { force: true });
+	rmSync(join(tmpHome, ".claude.json"), { force: true });
 });
 
 describe("forgetWorktreeTrust", () => {
@@ -260,5 +269,67 @@ describe("Claude Code's .claude.json goes through the same two entry points", ()
 		const after = readClaude();
 		expect(Object.keys(after.projects)).toEqual([ownProject, alive]);
 		expect(after.numStartups).toBe(7);
+	});
+});
+
+// A virtual project's task workspace lives under ~/.dev3.0/ops, not under
+// worktrees, and is rm -rf'd the same way — so it leaks trust entries the same way.
+describe("virtual-project workspaces under ~/.dev3.0/ops", () => {
+	const CLAUDE_JSON = () => join(tmpHome, ".claude.json");
+
+	function writeClaudeProjects(projects: Record<string, unknown>): void {
+		writeFileSync(CLAUDE_JSON(), JSON.stringify({ projects }, null, 2));
+	}
+
+	function readClaudeProjects(): Record<string, unknown> {
+		return JSON.parse(readFileSync(CLAUDE_JSON(), "utf-8")).projects;
+	}
+
+	it("forgets a removed ops workspace in all three files", async () => {
+		const gone = deadOpsWorkspacePath("1111aaaa");
+		writeTrust({ [gone]: "TRUST_FOLDER" });
+		writeCodexConfig(codexTrustBlock(gone));
+		writeClaudeProjects({ [gone]: { hasTrustDialogAccepted: true } });
+
+		await forgetWorktreeTrust(gone);
+
+		expect(readTrust()).toEqual({});
+		expect(readCodexConfig()).not.toContain("1111aaaa");
+		expect(readClaudeProjects()).toEqual({});
+	});
+
+	it("sweeps a dead ops workspace at startup, keeping a live one", () => {
+		const gone = deadOpsWorkspacePath("2222bbbb");
+		const alive = deadOpsWorkspacePath("3333cccc");
+		mkdirSync(alive, { recursive: true });
+		writeTrust({ [gone]: "TRUST_FOLDER", [alive]: "TRUST_FOLDER" });
+		writeClaudeProjects({
+			[gone]: { hasTrustDialogAccepted: true },
+			[alive]: { hasTrustDialogAccepted: true },
+		});
+
+		sweepStaleWorktreeTrust();
+
+		expect(readTrust()).toEqual({ [alive]: "TRUST_FOLDER" });
+		expect(Object.keys(readClaudeProjects())).toEqual([alive]);
+	});
+});
+
+describe("one file's failure never costs the others", () => {
+	it("still prunes Claude Code's file when the Codex config holds a huge integer", () => {
+		// js-toml decodes this as a BigInt, and JSON.stringify throws on those — the
+		// Codex equality guard used to take the whole sweep down with it.
+		const gone = deadWorktreePath("4444dddd");
+		writeCodexConfig(`max_bytes = 9223372036854775807\n\n${codexTrustBlock(gone)}`);
+		writeFileSync(
+			join(tmpHome, ".claude.json"),
+			JSON.stringify({ projects: { [gone]: { hasTrustDialogAccepted: true } } }, null, 2),
+		);
+
+		sweepStaleWorktreeTrust();
+
+		expect(JSON.parse(readFileSync(join(tmpHome, ".claude.json"), "utf-8")).projects).toEqual({});
+		expect(readCodexConfig()).toContain("max_bytes = 9223372036854775807");
+		expect(readCodexConfig()).not.toContain("4444dddd");
 	});
 });
