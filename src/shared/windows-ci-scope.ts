@@ -110,6 +110,14 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/bun/rpc-handlers/tmux-pty.ts",
 	"src/bun/rpc-handlers/__tests__/agent-spawn-shell-launch.test.ts",
 	"src/bun/__tests__/launch-failure.test.ts",
+	// The git-operation panes (Seq 1547). Same criterion (1): these scripts push,
+	// rebase and squash-merge, and only a Windows run can tell the two dialects
+	// apart — a bash body handed to PowerShell half-runs instead of failing.
+	"src/bun/git-op-script.ts",
+	"src/bun/rpc-handlers/git-operations.ts",
+	"src/bun/__tests__/git-op-script.test.ts",
+	"src/bun/__tests__/git-op-pane.bun-e2e.ts",
+	"src/bun/rpc-handlers/__tests__/git-op-pane-launch.test.ts",
 	// This list and the script reading it decide the whole thing; changing either
 	// has to re-prove Windows rather than judging its own change out of scope.
 	"src/shared/windows-ci-scope.ts",

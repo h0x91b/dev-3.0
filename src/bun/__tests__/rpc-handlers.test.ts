@@ -7229,6 +7229,9 @@ describe("handlers.mergeTask", () => {
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 } as any);
+		// The branch choice moved out of the script into TypeScript (Seq 1547), so
+		// the local base branch existing is now a mocked git read, not an `elif`.
+		vi.mocked(git.refExists).mockResolvedValue(true);
 		mockSpawn.mockReturnValue({
 			stdout: new Response("%42\n"),
 			stderr: new Response(""),
@@ -7240,14 +7243,17 @@ describe("handlers.mergeTask", () => {
 
 			const mergeScriptCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-git-merge.sh"));
 			const script = String(mergeScriptCall?.[1] ?? "");
-			const checkoutIndex = script.indexOf('git checkout "$TARGET_BRANCH"');
-			const mergeIndex = script.indexOf("git merge --squash dev3/t");
+			const checkoutIndex = script.indexOf("'git' 'checkout' 'feature/abc'");
+			const mergeIndex = script.indexOf("'git' 'merge' '--squash' 'dev3/t'");
 
-			expect(script).toContain(`TARGET_BRANCH='feature/abc'`);
-			expect(script).toContain(`TARGET_REMOTE='origin/feature/abc'`);
 			expect(checkoutIndex).toBeGreaterThanOrEqual(0);
 			expect(mergeIndex).toBeGreaterThanOrEqual(0);
 			expect(checkoutIndex).toBeLessThan(mergeIndex);
+			// The subject travels as a file: a title with a quote must not become
+			// shell syntax in either dialect.
+			const messageCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-git-merge-message.txt"));
+			expect(String(messageCall?.[1] ?? "")).toBe("Merge task\n");
+			expect(script).toContain("'git' 'commit' '-F'");
 		} finally {
 			timeoutSpy.mockRestore();
 			intervalSpy.mockRestore();

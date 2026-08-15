@@ -1,0 +1,3 @@
+Short: Rebase, push and merge work on Windows
+
+The Rebase, Push and Merge buttons opened a pane that ran a hand-written bash script through /bin/bash, so on Windows they did nothing at all. All three now generate their script in the platform's own dialect (bash on macOS/Linux, PowerShell on Windows) and are proved by running real git operations against throwaway repositories on a Windows runner, conflict path included. The merge commit message travels as a file instead of a quoted argument, so a task title containing quotes survives. Opening a pull request from the pane is still unavailable on Windows and now says so with a clear error instead of opening a pane that cannot work — its GitHub-token prelude is a separate port.

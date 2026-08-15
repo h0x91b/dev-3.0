@@ -27,7 +27,15 @@ import {
 import { Semaphore } from "../concurrency";
 import { syncTaskBranchName } from "../task-branch-sync";
 import { getPushMessage, log } from "./shared";
-import { writeLaunchScript } from "./shared-pure";
+import { generatedScriptLaunch, generatedScriptName, writeLaunchScript } from "./shared-pure";
+import {
+	buildGitOpScript,
+	mergeGitOpSpec,
+	pushGitOpSpec,
+	rebaseGitOpSpec,
+	writeMergeCommitMessage,
+} from "../git-op-script";
+import { launchDialectId } from "../../shared/platform-launch";
 import { lifecycleActorRuntime } from "../lifecycle/service";
 import {
 	PR_DETECTION_TIMEOUT_MS,
@@ -77,15 +85,26 @@ async function openGitOpPane(task: Task, cwd: string, scriptPath: string, socket
 		socket,
 		title: auxPaneTitle("gitOp"),
 		tmuxCommand: `bash "${scriptPath}"`,
-		nativeLaunch: { executable: "/bin/bash", argv: [scriptPath] },
+		nativeLaunch: generatedScriptLaunch(scriptPath),
 	});
 	return handle.paneId || null;
+}
+
+/**
+ * Script and verdict paths for one git operation. Deliberately ONE function: the
+ * extension moves with the platform (`.sh` / `.ps1`), and the pane monitor used
+ * to rebuild `git-<op>.sh.exit` by hand — a spelling that silently stops matching
+ * the moment the script is not bash.
+ */
+function gitOpPaths(taskId: string, operation: string): { scriptPath: string; exitFilePath: string } {
+	const scriptPath = dev3TaskTempPath(taskId, generatedScriptName(`git-${operation}`));
+	return { scriptPath, exitFilePath: `${scriptPath}.exit` };
 }
 
 function monitorGitPane(paneId: string | null, task: Task, projectId: string, operation: string, socket: string): void {
 	if (!paneId) return;
 	const taskId = task.id;
-	const exitFilePath = dev3TaskTempPath(taskId, `git-${operation}.sh.exit`);
+	const { exitFilePath } = gitOpPaths(taskId, operation);
 
 	let interval: ReturnType<typeof setInterval> | undefined;
 	let safetyTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -366,7 +385,7 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
-	const scriptPath = dev3TaskTempPath(task.id, "git-rebase.sh");
+	const { scriptPath, exitFilePath } = gitOpPaths(task.id, "rebase");
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
 	// Fetch the ref we will actually rebase onto, not just baseBranch.
@@ -375,30 +394,7 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 		? rebaseTarget.slice("origin/".length)
 		: baseBranch;
 
-	const script = [
-		`#!/bin/bash`,
-		`echo "Fetching origin..."`,
-		`git fetch origin ${fetchBranch} --quiet`,
-		`echo "Rebasing on ${rebaseTarget}..."`,
-		`set -x`,
-		`git rebase ${rebaseTarget}`,
-		`EXIT_CODE=$?`,
-		`set +x`,
-		`echo $EXIT_CODE > "${scriptPath}.exit"`,
-		`echo ""`,
-		`if [ $EXIT_CODE -eq 0 ]; then`,
-		`  printf '\\033[1;32m✓ Rebase complete\\033[0m\\n'`,
-		`  sleep 5`,
-		`else`,
-		`  printf '\\033[1;31m✗ Rebase failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
-		`  echo "Resolve conflicts in the main terminal, then: git rebase --continue"`,
-		`  echo "Or abort with: git rebase --abort"`,
-		`  echo ""`,
-		`  echo "Press any key to close this pane."`,
-		`  read -n 1 -s`,
-		`fi`,
-	].join("\n") + "\n";
-	await writeLaunchScript(scriptPath, script);
+	await writeLaunchScript(scriptPath, buildGitOpScript(rebaseGitOpSpec({ exitFilePath, fetchBranch, rebaseTarget })));
 
 	const paneId = await openGitOpPane(task, task.worktreePath, scriptPath, socket);
 	monitorGitPane(paneId, task, params.projectId, "rebase", socket);
@@ -426,74 +422,36 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	const status = await git.getBranchStatus(task.worktreePath, rebaseCheckRef);
 	if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
-	const scriptPath = dev3TaskTempPath(task.id, "git-merge.sh");
+	const { scriptPath, exitFilePath } = gitOpPaths(task.id, "merge");
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
-	const escapedPath = project.path.replace(/'/g, "'\\''");
-	const escapedBaseBranch = baseBranch.replace(/'/g, "'\\''");
-	const escapedRemoteBaseBranch = `origin/${baseBranch}`.replace(/'/g, "'\\''");
-	const escapedTitle = task.title.replace(/'/g, "'\\''");
+	// The pane's cwd IS the project path, so the bash original's leading `cd` was
+	// already redundant; the branch choice below used to be an if/elif/else over two
+	// `git rev-parse --verify` calls INSIDE the script, and is now decided here,
+	// once, for every platform.
+	const currentBranch = await git.getCurrentBranch(project.path);
+	let checkoutCommand: string[] | null = null;
+	if (currentBranch !== baseBranch) {
+		checkoutCommand = await git.refExists(project.path, baseBranch)
+			? ["git", "checkout", baseBranch]
+			: await git.refExists(project.path, `origin/${baseBranch}`)
+				? ["git", "checkout", "--track", "-b", baseBranch, `origin/${baseBranch}`]
+				: null;
+		// Used to be an in-pane message and exit 1. Refusing here surfaces it in the
+		// UI instead of in a pane that opens only to say it cannot do anything.
+		if (!checkoutCommand) throw new Error(`Base branch ${baseBranch} does not exist locally or on origin`);
+	}
 
-	const script = [
-		`#!/bin/bash`,
-		`cd '${escapedPath}'`,
-		`TARGET_BRANCH='${escapedBaseBranch}'`,
-		`TARGET_REMOTE='${escapedRemoteBaseBranch}'`,
-		`CURRENT_BRANCH=$(git branch --show-current)`,
-		`if [ "$CURRENT_BRANCH" != "$TARGET_BRANCH" ]; then`,
-		`  echo "Switching project branch to ${baseBranch}..."`,
-		`  if git rev-parse --verify "$TARGET_BRANCH" >/dev/null 2>&1; then`,
-		`    set -x`,
-		`    git checkout "$TARGET_BRANCH"`,
-		`    CHECKOUT_CODE=$?`,
-		`    set +x`,
-		`  elif git rev-parse --verify "$TARGET_REMOTE" >/dev/null 2>&1; then`,
-		`    set -x`,
-		`    git checkout --track -b "$TARGET_BRANCH" "$TARGET_REMOTE"`,
-		`    CHECKOUT_CODE=$?`,
-		`    set +x`,
-		`  else`,
-		`    echo "Base branch ${baseBranch} does not exist locally or on origin."`,
-		`    CHECKOUT_CODE=1`,
-		`  fi`,
-		`  if [ $CHECKOUT_CODE -ne 0 ]; then`,
-		`    echo $CHECKOUT_CODE > "${scriptPath}.exit"`,
-		`    echo ""`,
-		`    printf '\\033[1;31m✗ Checkout failed (exit %s)\\033[0m\\n' "$CHECKOUT_CODE"`,
-		`    echo "Press any key to close."`,
-		`    read -n 1 -s`,
-		`    exit $CHECKOUT_CODE`,
-		`  fi`,
-		`fi`,
-		`echo "Squash-merging ${branchForMerge} into $TARGET_BRANCH..."`,
-		`set -x`,
-		`git merge --squash ${branchForMerge}`,
-		`MERGE_CODE=$?`,
-		`set +x`,
-		`if [ $MERGE_CODE -ne 0 ]; then`,
-		`  echo $MERGE_CODE > "${scriptPath}.exit"`,
-		`  echo ""`,
-		`  printf '\\033[1;31m✗ Merge failed (exit %s)\\033[0m\\n' "$MERGE_CODE"`,
-		`  echo "Press any key to close."`,
-		`  read -n 1 -s`,
-		`  exit $MERGE_CODE`,
-		`fi`,
-		`set -x`,
-		`git commit -m '${escapedTitle}'`,
-		`EXIT_CODE=$?`,
-		`set +x`,
-		`echo $EXIT_CODE > "${scriptPath}.exit"`,
-		`echo ""`,
-		`if [ $EXIT_CODE -eq 0 ]; then`,
-		`  printf '\\033[1;32m✓ Merge complete\\033[0m\\n'`,
-		`  sleep 5`,
-		`else`,
-		`  printf '\\033[1;31m✗ Commit failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
-		`  echo "Press any key to close."`,
-		`  read -n 1 -s`,
-		`fi`,
-	].join("\n") + "\n";
-	await writeLaunchScript(scriptPath, script);
+	const messagePath = dev3TaskTempPath(task.id, "git-merge-message.txt");
+	await writeMergeCommitMessage(messagePath, task.title);
+
+	await writeLaunchScript(scriptPath, buildGitOpScript(mergeGitOpSpec({
+		exitFilePath,
+		checkoutCommand,
+		baseBranch,
+		branchForMerge,
+		messagePath,
+	})));
 
 	const paneId = await openGitOpPane(task, project.path, scriptPath, socket);
 	monitorGitPane(paneId, task, params.projectId, "merge", socket);
@@ -508,27 +466,10 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 
 	assertGitTask(project, task);
 
-	const scriptPath = dev3TaskTempPath(task.id, "git-push.sh");
+	const { scriptPath, exitFilePath } = gitOpPaths(task.id, "push");
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
-	const script = [
-		`#!/bin/bash`,
-		`set -x`,
-		`git push origin HEAD`,
-		`EXIT_CODE=$?`,
-		`set +x`,
-		`echo $EXIT_CODE > "${scriptPath}.exit"`,
-		`echo ""`,
-		`if [ $EXIT_CODE -eq 0 ]; then`,
-		`  printf '\\033[1;32m✓ Push complete\\033[0m\\n'`,
-		`  sleep 2`,
-		`else`,
-		`  printf '\\033[1;31m✗ Push failed (exit %s)\\033[0m\\n' "$EXIT_CODE"`,
-		`  echo "Press any key to close."`,
-		`  read -n 1 -s`,
-		`fi`,
-	].join("\n") + "\n";
-	await writeLaunchScript(scriptPath, script);
+	await writeLaunchScript(scriptPath, buildGitOpScript(pushGitOpSpec({ exitFilePath })));
 
 	const paneId = await openGitOpPane(task, task.worktreePath, scriptPath, socket);
 	monitorGitPane(paneId, task, params.projectId, "push", socket);
@@ -639,7 +580,17 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 
 	assertGitTask(project, task);
 
-	const scriptPath = dev3TaskTempPath(task.id, "git-openPR.sh");
+	// The ONE git-op pane still on hand-written bash, and deliberately so: its
+	// prelude is `github.getGitHubShellExports()` — a `gh auth token` subshell,
+	// `[ -z ]`, `export`, `unset` — which lives in github.ts and is a body port of
+	// its own, not a git-op one. Launching it through the dialect would hand that
+	// bash text to PowerShell, which is strictly worse than a clear refusal: the
+	// pane would open, print parse errors, and leave no PR opened and no verdict.
+	if (launchDialectId() === "windows-powershell") {
+		throw new Error("Opening a pull request from the pane is not supported on Windows yet — use the PR link in the task panel");
+	}
+
+	const { scriptPath, exitFilePath } = gitOpPaths(task.id, "openPR");
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	const githubEnvExports = await github.getGitHubShellExports(project);
 
@@ -650,7 +601,7 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 		`gh pr view --web 2>&1`,
 		`EXIT_CODE=$?`,
 		`set +x`,
-		`echo $EXIT_CODE > "${scriptPath}.exit"`,
+		`echo $EXIT_CODE > "${exitFilePath}"`,
 		`echo ""`,
 		`if [ $EXIT_CODE -eq 0 ]; then`,
 		`  printf '\\033[1;32m✓ PR opened in browser\\033[0m\\n'`,

@@ -43,6 +43,8 @@
 		"test:codex-config-windows": "bunx vitest run --config vitest.config.bun.ts src/bun/__tests__/codex-config-windows-paths.test.ts src/bun/__tests__/codex-config.test.ts src/bun/__tests__/codex-config-cleanup.test.ts",
 		"test:windows-update": "bunx vitest run --config vitest.config.bun.ts src/bun/windows-update/__tests__/script.test.ts",
 		"test:agent-spawn-shell": "bunx vitest run --config vitest.config.bun.ts src/bun/rpc-handlers/__tests__/agent-spawn-shell-launch.test.ts src/bun/__tests__/launch-failure.test.ts",
+		"test:git-op-script": "bunx vitest run --config vitest.config.bun.ts src/bun/__tests__/git-op-script.test.ts src/bun/rpc-handlers/__tests__/git-op-pane-launch.test.ts",
+		"test:git-op-pane-e2e": "bun src/bun/__tests__/git-op-pane.bun-e2e.ts",
 		"test:windows-update-e2e": "bun src/bun/windows-update/__tests__/swap.win-e2e.ts",
 		"test:native-shell-launch": "bunx vitest run --config vitest.config.bun.ts src/bun/native-terminal-registry/__tests__/shell-launch.test.ts src/bun/native-terminal-registry/__tests__/shell-probe.test.ts src/bun/native-terminal-registry/__tests__/windows-shell-runner.test.ts src/bun/native-terminal-registry/__tests__/windows-shell-evidence.test.ts src/bun/native-terminal-registry/__tests__/windows-shell-matrix-support.test.ts src/bun/native-terminal-registry/__tests__/host-config.test.ts src/bun/native-terminal-registry/__tests__/protocol.test.ts src/bun/native-terminal-registry/__tests__/registry.test.ts src/bun/native-terminal-registry/__tests__/recovery.test.ts src/bun/native-terminal-registry/__tests__/client.test.ts src/bun/native-terminal-registry/__tests__/isolation.test.ts",
 		"test:native-live-parser-e2e": "bun src/bun/native-terminal-registry/__tests__/live-parser.bun-e2e.ts",

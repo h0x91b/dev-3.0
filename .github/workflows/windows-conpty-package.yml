@@ -80,6 +80,27 @@ jobs:
         if: always()
         run: bun run test:agent-spawn-shell
 
+      # Seq 1547: the git-operation panes (rebase, push, merge) were hand-written
+      # `#!/bin/bash` launched through `/bin/bash`, so they were dead on Windows.
+      # These scripts rewrite history and touch the remote, so "the pane opened"
+      # proves nothing — the E2E RUNS them against throwaway repos on this runner
+      # and checks the operation completed: the remote ref moved, the rebase
+      # replayed, the squash commit landed with its subject intact. It also drives
+      # the conflict path, and it reads the verdict file back the way the app does
+      # (PowerShell 5.1's `>` writes UTF-16LE with a BOM, which would make every
+      # operation read as failed — invisible from macOS).
+      # The pure test pins the POSIX text and asserts the Windows properties.
+      # `always()` for the same reason as the step above: a step that runs only
+      # when an unrelated one passes is evidence about that step.
+      - name: Git-op pane scripts (pure, both dialects)
+        if: always()
+        run: bun run test:git-op-script
+
+      - name: Git-op panes executed against real repos (${{ matrix.os }})
+        if: always()
+        timeout-minutes: 6
+        run: bun run test:git-op-pane-e2e
+
       - name: Windows self-update swap script (pure)
         run: bun run test:windows-update
 
