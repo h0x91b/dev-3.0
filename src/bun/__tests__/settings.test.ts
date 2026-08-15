@@ -180,6 +180,7 @@ describe("saveSettings", () => {
 			cloneBaseDirectory: "/tmp/clones",
 			customBinaryPaths: { git: "/usr/bin/git" },
 			agentBinaryPaths: { "builtin-codex": "/usr/bin/codex" },
+			agentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
 			playSoundOnTaskComplete: false,

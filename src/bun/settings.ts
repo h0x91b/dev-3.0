@@ -109,6 +109,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		cloneBaseDirectory: d.cloneBaseDirectory ?? undefined,
 		customBinaryPaths: d.customBinaryPaths ?? undefined,
 		agentBinaryPaths: d.agentBinaryPaths ?? undefined,
+		agentCustomBinaryPaths: d.agentCustomBinaryPaths ?? undefined,
 		playSoundOnTaskComplete: d.playSoundOnTaskComplete ?? true,
 		externalApps: Array.isArray(d.externalApps) ? d.externalApps : undefined,
 		tipsDisabled: d.tipsDisabled === true ? true : undefined,

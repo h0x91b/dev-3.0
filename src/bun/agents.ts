@@ -8,7 +8,7 @@ export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
-import { binaryPathMatchesCommand } from "./executable";
+import { agentBinaryPathOverride } from "./executable";
 import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
@@ -600,14 +600,16 @@ export function applyModelOverride(
 	return { ...config, model: override };
 }
 
-/** Apply the saved binary path override, but only while it still points at the
- *  binary the agent's base command names and exists on disk — an edited base
- *  command must win over a path cached for the previous one. */
-export function applyBinaryPathOverride(agent: CodingAgent, savedPaths: Record<string, string> | undefined): CodingAgent {
-	const savedPath = savedPaths?.[agent.id];
-	return savedPath && binaryPathMatchesCommand(savedPath, agent.baseCommand) && existsSync(savedPath)
-		? { ...agent, baseCommand: savedPath }
-		: agent;
+/** Apply the binary path override that still exists on disk: a user-chosen path
+ *  always, an auto-cached one only while it still names the binary the agent's
+ *  base command does — an edited base command must win over a stale cache. */
+export function applyBinaryPathOverride(
+	agent: CodingAgent,
+	cachedPaths: Record<string, string> | undefined,
+	customPaths?: Record<string, string>,
+): CodingAgent {
+	const path = agentBinaryPathOverride(agent.id, agent.baseCommand, cachedPaths, customPaths);
+	return path && existsSync(path) ? { ...agent, baseCommand: path } : agent;
 }
 
 export async function resolveCommandForAgent(
@@ -624,7 +626,7 @@ export async function resolveCommandForAgent(
 	const config = findConfig(agent, configId);
 
 	const settings = await loadSettings();
-	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
+	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
 
 	// Resolve the session env BEFORE building the command: an active API
 	// profile's model override must rewrite the preset's --model flag.
@@ -729,7 +731,7 @@ export async function resolveCommandForProject(
 	const agent = allAgents.find((a) => a.id === settings.defaultAgentId);
 
 	if (agent) {
-		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
+		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
 		// Env before command — see resolveCommandForAgent (API profile model override).

@@ -21,7 +21,7 @@ import { getAllFeatureFlags, setFeatureFlags as cacheFeatureFlags } from "../fea
 import { resolveAnalyticsDistinctId as resolveDistinctId } from "../analytics-identity";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, hasModelProviderSection, tmuxSearchPaths } from "./shared-pure";
-import { binaryPathMatchesCommand, isExecutableFile } from "../executable";
+import { agentBinaryPathOverride, isExecutableFile } from "../executable";
 import { validateEnvMap } from "../../shared/env-text";
 
 /** Reject malformed env maps at the RPC boundary — the UI validates too, but
@@ -382,10 +382,10 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 	const settings = await loadSettings();
 	const allAgents = await agents.getAllAgents();
 	const results: AgentCheckResult[] = allAgents.map((agent) => {
-		const savedPath = settings.agentBinaryPaths?.[agent.id];
-		// A path cached for a previous base command is stale, not an error — drop it.
-		const customPath = savedPath && binaryPathMatchesCommand(savedPath, agent.baseCommand) ? savedPath : undefined;
-		const { resolvedPath, customPathError } = resolveBinaryPath(agent.baseCommand, customPath);
+		// The user's own path always applies; a path cached for a previous base
+		// command is stale, not an error — drop it.
+		const overridePath = agentBinaryPathOverride(agent.id, agent.baseCommand, settings.agentBinaryPaths, settings.agentCustomBinaryPaths);
+		const { resolvedPath, customPathError } = resolveBinaryPath(agent.baseCommand, overridePath);
 		log.info(`  agent ${agent.id} (${agent.baseCommand}): ${resolvedPath ? "found" : "NOT found"}`, { path: resolvedPath ?? "none" });
 		return {
 			agentId: agent.id,
@@ -423,9 +423,13 @@ async function setAgentBinaryPath(params: { agentId: string; path: string }): Pr
 		throw new Error(`File not found: ${params.path}`);
 	}
 	const settings = await loadSettings();
-	const paths = settings.agentBinaryPaths ?? {};
-	paths[params.agentId] = params.path;
-	await saveSettings({ ...settings, agentBinaryPaths: paths });
+	// Written to both maps: the custom one is what every launch reads, the cache
+	// copy keeps an older app version on the same ~/.dev3.0 pointing at it too.
+	await saveSettings({
+		...settings,
+		agentCustomBinaryPaths: { ...(settings.agentCustomBinaryPaths ?? {}), [params.agentId]: params.path },
+		agentBinaryPaths: { ...(settings.agentBinaryPaths ?? {}), [params.agentId]: params.path },
+	});
 	log.info("<- setAgentBinaryPath saved");
 }
 

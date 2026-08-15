@@ -889,6 +889,22 @@ describe("applyBinaryPathOverride", () => {
 		const result = applyBinaryPathOverride(agent, { "test-agent": join(dir, "gone") });
 		expect(result.baseCommand).toBe("claude");
 	});
+
+	it("applies a user-chosen path whose file name differs from the base command", () => {
+		const wrapper = join(dir, "claude-wrapper");
+		writeFileSync(wrapper, "#!/bin/sh\n", { mode: 0o755 });
+		const agent = makeAgent({ baseCommand: "claude" });
+		const result = applyBinaryPathOverride(agent, undefined, { "test-agent": wrapper });
+		expect(result.baseCommand).toBe(wrapper);
+	});
+
+	it("prefers the user's path over the auto-cached one", () => {
+		const wrapper = join(dir, "claude-wrapper");
+		writeFileSync(wrapper, "#!/bin/sh\n", { mode: 0o755 });
+		const agent = makeAgent({ baseCommand: "claude" });
+		const result = applyBinaryPathOverride(agent, { "test-agent": claudePath }, { "test-agent": wrapper });
+		expect(result.baseCommand).toBe(wrapper);
+	});
 });
 
 describe("mergeWithDefaults — preserves user-defined order", () => {

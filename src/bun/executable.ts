@@ -22,5 +22,26 @@ export function binaryPathMatchesCommand(savedPath: string, baseCommand: string)
 	const fileName = (value: string) => (value.split(/[\\/]/).pop() ?? "").toLowerCase();
 	const base = fileName(baseCommand);
 	const saved = fileName(savedPath);
-	return !!base && !!saved && (saved === base || saved.startsWith(`${base}.`));
+	if (!base || !saved) return false;
+	if (saved === base) return true;
+	const stripLauncherExt = (name: string) => name.replace(/\.(exe|cmd|bat|com|ps1)$/, "");
+	return stripLauncherExt(saved) === stripLauncherExt(base);
+}
+
+/**
+ * The binary path that stands in for an agent's base command, or undefined to
+ * resolve the command through PATH. A path the user typed in always wins and is
+ * never name-checked; the auto-cached one applies only while it still names the
+ * current base command, so editing the command is not shadowed by the old cache.
+ */
+export function agentBinaryPathOverride(
+	agentId: string,
+	baseCommand: string,
+	cachedPaths: Record<string, string> | undefined,
+	customPaths: Record<string, string> | undefined,
+): string | undefined {
+	const customPath = customPaths?.[agentId];
+	if (customPath) return customPath;
+	const cachedPath = cachedPaths?.[agentId];
+	return cachedPath && binaryPathMatchesCommand(cachedPath, baseCommand) ? cachedPath : undefined;
 }

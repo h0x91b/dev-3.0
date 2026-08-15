@@ -12045,6 +12045,56 @@ describe("checkAgentAvailability", () => {
 		expect(claude?.customPathError).toBe(false);
 	});
 
+	it("keeps a user-chosen path whose file name differs from the base command", async () => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [] },
+		] as any);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
+		});
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/opt/wrappers/claude-wrapper");
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+
+		const results = await handlers.checkAgentAvailability();
+		const claude = results.find((r) => r.agentId === "builtin-claude");
+		expect(claude?.installed).toBe(true);
+		expect(claude?.resolvedPath).toBe("/opt/wrappers/claude-wrapper");
+	});
+
+	it("never auto-saves over a user-chosen path", async () => {
+		vi.mocked(agents.getAllAgents).mockResolvedValue([
+			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [] },
+		] as any);
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskSortOrder: "oldest-first",
+			updateChannel: "stable",
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
+			agentBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
+		});
+		// The bare command resolves too — the wrapper must still win, and the
+		// PATH hit must not be written over the user's entry.
+		vi.mocked(existsSync).mockImplementation((path) =>
+			String(path) === "/opt/wrappers/claude-wrapper" || String(path) === "/usr/local/bin/claude",
+		);
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args[0] === "which" && args[1] === "claude") {
+				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") };
+			}
+			return { exitCode: 1, stdout: null };
+		});
+
+		vi.mocked(saveSettings).mockClear();
+		const results = await handlers.checkAgentAvailability();
+		expect(results.find((r) => r.agentId === "builtin-claude")?.resolvedPath).toBe("/opt/wrappers/claude-wrapper");
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
 	it("reports customPathError when saved path no longer exists", async () => {
 		vi.mocked(loadSettings).mockResolvedValue({
 			defaultAgentId: "builtin-claude",
@@ -12081,6 +12131,13 @@ describe("setAgentBinaryPath", () => {
 		await handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/usr/local/bin/claude" });
 		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
 			agentBinaryPaths: { "builtin-claude": "/usr/local/bin/claude" },
+		}));
+	});
+
+	it("records the path as user-chosen, not only as a cache entry", async () => {
+		await handlers.setAgentBinaryPath({ agentId: "builtin-claude", path: "/opt/wrappers/claude-wrapper" });
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			agentCustomBinaryPaths: { "builtin-claude": "/opt/wrappers/claude-wrapper" },
 		}));
 	});
 

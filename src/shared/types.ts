@@ -872,6 +872,13 @@ export interface GlobalSettings {
 	customBinaryPaths?: Record<string, string>; // requirementId â custom binary path
 	agentBinaryPaths?: Record<string, string>; // agentId â resolved binary path
 	/**
+	 * Paths the user typed into Settings -> Agents -> Custom path, kept apart
+	 * from the auto-cached `agentBinaryPaths`: only the cache may be discarded
+	 * when it stops naming the agent's base command. A deliberate override
+	 * points wherever the user wants and is never second-guessed.
+	 */
+	agentCustomBinaryPaths?: Record<string, string>;
+	/**
 	 * Beta: reorder right-to-left text (Hebrew, Arabic) for display in terminal
 	 * panes. Display-only — copied text keeps its logical order, while mouse
 	 * selection and link hover on those lines stay logical too. Default off.
