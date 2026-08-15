@@ -10,7 +10,7 @@ The bash originals carried two different things. Most lines were commands (`git 
 
 Three Windows-only failure modes showed up while porting. They share one MECHANISM, and it is the mechanism that matters, not the three lines that fix it: **on Windows a step can complete, print nothing alarming, and set a value dev3 then reads as success — while having delivered nothing.** The verdict is a number in a file, the exit code is an ambient variable, and the prompt is a console call; each of the three is a place where the *carrier* of the answer, not the answer, is what differs between the dialects. A POSIX run exercises the identical code and sees none of it.
 
-- **The verdict's encoding.** `$EC > file` in Windows PowerShell 5.1 is `Out-File`, which writes **UTF-16LE with a byte-order mark**. *Measured, and it corrected me:* a mutation run restoring the redirection (run `31874749711`) still passed every decoded check on windows-latest — Bun's text decoder handles the BOM, so `monitorGitPane` would in fact have read `0`. The redirection is still wrong, for a smaller and truer reason: dev3 would be depending on an undocumented decoder behaviour to learn whether a push succeeded. The E2E now asserts the file's **bytes**, not its decoded text, and prints a hexdump on failure.
+- **The verdict's encoding.** `$EC > file` in Windows PowerShell 5.1 is `Out-File`, which writes **UTF-16LE with a byte-order mark** — measured on windows-latest, the file holding `0` is literally `ff fe 30 00 0d 00 0a 00` (run `31875521911`). *The CONSEQUENCE is where the first draft of this record was wrong:* the earlier mutation run (`31874749711`) passed every decoded check, because Bun's text decoder handles the BOM and `monitorGitPane` would in fact have read `0`. The redirection is still wrong, for a smaller and truer reason: dev3 would be depending on an undocumented decoder behaviour to learn whether a push succeeded. The E2E now asserts the file's **bytes**, not its decoded text, and prints that hexdump on failure — which is the only reason the mechanism above is a measurement rather than a plausible story.
 - **The exit code's provenance.** If a native command cannot be LAUNCHED (`git` not on PATH), PowerShell raises `CommandNotFoundException` and leaves `$LASTEXITCODE` at the *previous* command's value — a stale `0` reports a push that never happened as successful.
 - **The prompt's channel.** `$Host.UI.RawUI.ReadKey` and `[Console]::KeyAvailable` **throw** when console input is redirected, which is every non-interactive run.
 
@@ -30,8 +30,10 @@ Both mutations were run on windows-latest against the real branch, one hardcode 
 
 | Mutation | Run | What it proved |
 |---|---|---|
-| Restore `nativeLaunch: { executable: "/bin/bash" }` in `openGitOpPane` | `31874748311` | **A gap, not a pass.** All 18 E2E checks stayed green: the E2E calls `generatedScriptLaunch` itself, so it proves the SCRIPT and never the LAUNCH. `rpc-handlers/__tests__/git-op-pane-launch.test.ts` was added for exactly that, and it fails on the mutation from any platform. |
+| Restore `nativeLaunch: { executable: "/bin/bash" }` in `openGitOpPane` | `31874748311` | **A gap, not a pass.** All 18 E2E checks stayed green: the E2E calls `generatedScriptLaunch` itself, so it proves the SCRIPT and never the LAUNCH. `rpc-handlers/__tests__/git-op-pane-launch.test.ts` was added for exactly that. |
 | Restore the `>` redirection for the verdict file | `31874749711` | The pure test caught it; the E2E did not, because Bun decodes the UTF-16LE BOM. The byte-level assertion above closes that. |
+
+Re-run after both gaps were closed: `31875520414` (bash hardcode) and `31875521911` (redirection) each go **red** on windows-latest, and the clean branch (`31875519217`) stays green. Neither hole was visible before the mutation runs — the proof asserted things that were true and did not assert the two things that were load-bearing.
 
 ## Risks
 
