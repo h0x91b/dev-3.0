@@ -41,6 +41,7 @@ import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { dev3TaskTempPath } from "../temp-paths";
 import { reapWorktreeProcesses } from "../worktree-reaper";
+import { forgetWorktreeTrust } from "../worktree-trust";
 import {
 	activeTmuxConfigPath,
 	cleanupSessionName,
@@ -916,14 +917,17 @@ export async function executeLifecycleEffect(
 				ctx.sourceTask.id.slice(0, 8),
 			);
 			return {};
-		case "removeWorktree":
+		case "removeWorktree": {
+			const worktreePath = effect.allowDerivedPath && !ctx.sourceTask.worktreePath
+				? derivedPreparationPath(ctx.project, ctx.sourceTask)
+				: ctx.sourceTask.worktreePath;
 			await git.removeWorktree(
 				ctx.project,
-				effect.allowDerivedPath && !ctx.sourceTask.worktreePath
-					? { ...ctx.sourceTask, worktreePath: derivedPreparationPath(ctx.project, ctx.sourceTask) }
-					: ctx.sourceTask,
+				worktreePath ? { ...ctx.sourceTask, worktreePath } : ctx.sourceTask,
 			);
+			await forgetWorktreeTrust(worktreePath);
 			return {};
+		}
 		case "removeTaskWorkspace":
 			{
 				const worktreePath = ctx.sourceTask.worktreePath
@@ -937,6 +941,7 @@ export async function executeLifecycleEffect(
 						? { ...ctx.sourceTask, worktreePath }
 						: ctx.sourceTask);
 				}
+				await forgetWorktreeTrust(worktreePath);
 			}
 			return {};
 		case "deleteTaskRecord":

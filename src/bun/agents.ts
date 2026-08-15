@@ -10,6 +10,9 @@ import { createLogger } from "./logger";
 import { backupUnparsableCodexConfig, joinLike as joinLikeHome, detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
 import { agentBinaryPathOverride } from "./executable";
 import { DEV3_HOME } from "./paths";
+// Writer and pruner share one path constant: whatever registers an entry must
+// agree with whatever removes it.
+import { GEMINI_TRUSTED_FOLDERS } from "./worktree-trust";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
@@ -796,7 +799,6 @@ export function buildTaskEnv(
 
 const CODEX_CONFIG = join(homedir(), ".codex", "config.toml");
 
-const GEMINI_TRUSTED_FOLDERS = `${homedir()}/.gemini/trustedFolders.json`;
 
 /**
  * Ensure a directory is marked as trusted in ~/.gemini/trustedFolders.json so

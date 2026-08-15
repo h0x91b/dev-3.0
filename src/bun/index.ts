@@ -316,6 +316,13 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 	});
 }
 
+// Drop agent trust registrations left by app versions that never pruned them:
+// worktrees are disposable, so every dead entry is one task that already ended.
+{
+	const { sweepStaleWorktreeTrust } = await import("./worktree-trust");
+	sweepStaleWorktreeTrust();
+}
+
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
