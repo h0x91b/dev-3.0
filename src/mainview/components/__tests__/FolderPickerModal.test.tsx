@@ -164,6 +164,87 @@ describe("FolderPickerHost", () => {
 		expect(stored).toEqual(["/Users/test/projects/web"]);
 	});
 
+	it("picks the folder the tree is rooted at via the current-folder row", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test/projects", [{ name: "web", isDir: true }]),
+		);
+
+		renderHost();
+		const picked = openFolderPicker({ initialPath: "/Users/test/projects" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		await user.click(await screen.findByTestId("folder-picker-current-row"));
+		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
+		await user.click(screen.getByText("Select"));
+
+		await expect(picked).resolves.toBe("/Users/test/projects");
+	});
+
+	it("creates a new folder inside the highlighted folder, not the tree root", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockImplementation(async ({ path }) =>
+			path === "/Users/test/projects/web"
+				? mockListing("/Users/test/projects/web", [])
+				: mockListing("/Users/test/projects", [{ name: "web", isDir: true }]),
+		);
+		mockedApi.request.createDirectory.mockResolvedValue({
+			ok: true,
+			path: "/Users/test/projects/web/api",
+		});
+
+		renderHost();
+		openFolderPicker({ initialPath: "/Users/test/projects", allowCreateFolder: true });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		await user.click(await screen.findByText("web"));
+		await user.click(await screen.findByText("New folder in web"));
+		await user.type(screen.getByPlaceholderText("Folder name"), "api");
+		await user.click(screen.getByText("Create"));
+
+		await waitFor(() =>
+			expect(mockedApi.request.createDirectory).toHaveBeenCalledWith({
+				parentPath: "/Users/test/projects/web",
+				name: "api",
+			}),
+		);
+	});
+
+	it("leaves the freshly created folder selected so Select works immediately", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockImplementation(async ({ path }) =>
+			path === "/Users/test/projects/api"
+				? mockListing("/Users/test/projects/api", [])
+				: mockListing("/Users/test/projects", []),
+		);
+		mockedApi.request.createDirectory.mockResolvedValue({
+			ok: true,
+			path: "/Users/test/projects/api",
+		});
+
+		renderHost();
+		const picked = openFolderPicker({ initialPath: "/Users/test/projects", allowCreateFolder: true });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		await user.click(await screen.findByText("New folder in projects"));
+		await user.type(screen.getByPlaceholderText("Folder name"), "api");
+		await user.click(screen.getByText("Create"));
+
+		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
+		await user.click(screen.getByText("Select"));
+		await expect(picked).resolves.toBe("/Users/test/projects/api");
+	});
+
+	it("tells the user an empty folder is empty instead of showing a blank pane", async () => {
+		mockedApi.request.listDirectory.mockResolvedValue(mockListing("/Users/test/empty", []));
+
+		renderHost();
+		openFolderPicker({ initialPath: "/Users/test/empty" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		expect(await screen.findByText("This folder is empty")).toBeInTheDocument();
+	});
+
 	it("filter input hides non-matching rows in the loaded tree", async () => {
 		const user = userEvent.setup();
 		// Use names that aren't also sidebar shortcuts so `getByText` finds

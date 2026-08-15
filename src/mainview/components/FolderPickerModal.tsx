@@ -198,6 +198,9 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 	const [newFolderInput, setNewFolderInput] = useState<string | null>(null);
 	const [newFolderError, setNewFolderError] = useState<string | null>(null);
 	const [creatingFolder, setCreatingFolder] = useState(false);
+	// Preselect the tree's "current folder" row after creating a folder, so the
+	// user can hit Select straight away instead of hunting for what they made.
+	const [preselectRoot, setPreselectRoot] = useState(false);
 
 	const listingsRef = useRef<Map<string, FolderListing>>(new Map());
 
@@ -244,8 +247,9 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 		}
 	});
 
-	const navigateTo = useCallback(async (path: string) => {
+	const navigateTo = useCallback(async (path: string, selectOnArrival = false) => {
 		setListingError(null);
+		setPreselectRoot(selectOnArrival);
 		try {
 			const listing = await api.request.listDirectory({ path });
 			listingsRef.current.set(listing.path, listing);
@@ -280,29 +284,34 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 		onClose(selectedPath);
 	}, [selectedPath, onClose]);
 
+	// A new folder goes inside whatever single folder is highlighted in the tree —
+	// including the "current folder" row — and falls back to the folder the tree
+	// is rooted at. Creating blindly in the root is what made nesting painful.
+	const createTarget = selectedPath.length === 1 ? selectedPath[0] : currentRoot;
+
 	const handleCreateFolder = useCallback(async () => {
 		const name = (newFolderInput ?? "").trim();
-		if (!name || !currentRoot) return;
+		if (!name || !createTarget) return;
 		setCreatingFolder(true);
 		setNewFolderError(null);
 		try {
-			const result = await api.request.createDirectory({ parentPath: currentRoot, name });
+			const result = await api.request.createDirectory({ parentPath: createTarget, name });
 			if (!result.ok) {
 				setNewFolderError(result.error);
 				return;
 			}
 			// Invalidate the parent listing so the tree reloads with the new child,
-			// then drill into the freshly created folder so it becomes `selectedPath`
-			// and the user can click "Select" immediately.
-			listingsRef.current.delete(currentRoot);
+			// then drill into the freshly created folder with its "current folder"
+			// row preselected, so "Select" is live immediately.
+			listingsRef.current.delete(createTarget);
 			setNewFolderInput(null);
-			await navigateTo(result.path);
+			await navigateTo(result.path, true);
 		} catch (err) {
 			setNewFolderError(String(err));
 		} finally {
 			setCreatingFolder(false);
 		}
-	}, [newFolderInput, currentRoot, navigateTo]);
+	}, [newFolderInput, createTarget, navigateTo]);
 
 	// Build sidebar shortcuts — only those that actually exist under $HOME.
 	const quickPlaces = useMemo(() => {
@@ -337,7 +346,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				aria-modal="true"
 				aria-labelledby="folder-picker-title"
 				tabIndex={-1}
-				className="bg-overlay border border-edge rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.55)] w-[56rem] max-w-[94vw] flex flex-col overflow-hidden outline-none"
+				className="bg-overlay border border-edge rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.55)] w-[56rem] max-w-[94vw] max-h-[92dvh] flex flex-col overflow-hidden outline-none"
 			>
 				{/* Header */}
 				<div className="px-5 py-3 border-b border-edge flex items-center justify-between gap-3">
@@ -357,9 +366,11 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				{/* Body: sidebar + main. On narrow the vertical sidebar cannot fit
 				     alongside the tree — Places collapse into a horizontal chip strip
 				     above a full-width main column. */}
+				{/* A fixed body height on desktop: the modal must not resize under the
+				     cursor when a folder turns out to be empty or a filter narrows it. */}
 				<div className={narrow
-					? "flex flex-col flex-1 min-h-[18rem] max-h-[80dvh]"
-					: "flex flex-1 min-h-[24rem] max-h-[min(36rem,80vh)]"}>
+					? "flex flex-col flex-1 min-h-[18rem]"
+					: "flex h-[min(36rem,80vh)] min-h-0"}>
 					{narrow ? (
 						<div data-testid="folder-picker-places-strip" className="flex gap-1.5 px-3 py-2 border-b border-edge bg-raised/40 overflow-x-auto flex-shrink-0">
 							{quickPlaces.map((place) => {
@@ -429,7 +440,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 					)}
 
 					{/* Main */}
-					<div className="flex-1 min-w-0 flex flex-col">
+					<div className="flex-1 min-w-0 min-h-0 flex flex-col">
 						{/* Breadcrumbs */}
 						<div className="px-4 py-2 border-b border-edge flex items-center gap-0.5 overflow-x-auto text-xs flex-shrink-0 streamer-private">
 							{breadcrumbs.map((crumb, idx) => (
@@ -486,24 +497,37 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 							</div>
 						</div>
 
-						{/* New folder toolbar (only when enabled by caller) */}
-						{options.allowCreateFolder && currentRoot && (
-							<div className="px-4 py-1.5 border-b border-edge flex items-center gap-2 flex-shrink-0 bg-raised/20">
+						{/* New folder toolbar (only when enabled by caller). The destination
+						     is spelled out on both the button and the form — the folder the
+						     user highlighted, not always the one the tree is rooted at. */}
+						{options.allowCreateFolder && createTarget && (
+							<div className="px-4 py-1.5 border-b border-edge flex flex-col gap-1 flex-shrink-0 bg-raised/20">
 								{newFolderInput === null ? (
 									<button
 										type="button"
 										onClick={() => { setNewFolderInput(""); setNewFolderError(null); }}
-										className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-fg-2 text-xs hover:bg-elevated hover:text-fg transition-colors"
-										title={t("folderPicker.newFolderTitle")}
+										className="self-start inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-fg-2 text-xs hover:bg-elevated hover:text-fg transition-colors"
+										title={t("folderPicker.newFolderTitle", { path: createTarget })}
 									>
 										<Glyph glyph={NF.plus} size="0.7rem" className="text-fg-3" />
-										<span>{t("folderPicker.newFolder")}</span>
+										<span>{t("folderPicker.newFolderIn", {
+											// basename($HOME) is the account name — "~" reads better.
+											name: createTarget === home ? "~" : basename(createTarget),
+										})}</span>
 									</button>
 								) : (
 									<form
 										onSubmit={(e) => { e.preventDefault(); void handleCreateFolder(); }}
 										className="flex items-center gap-2 flex-1 min-w-0"
 									>
+										<span className="text-fg-muted text-xs flex-shrink-0">{t("folderPicker.createIn")}</span>
+										<span
+											className="text-fg-2 text-xs font-mono truncate max-w-[14rem] flex-shrink-0 streamer-private"
+											title={createTarget}
+										>
+											{displayPath(createTarget, home)}
+										</span>
+										<span className="text-fg-muted text-xs flex-shrink-0">/</span>
 										<Glyph glyph={NF.folderClosed} size="0.85rem" color="#f6c653" />
 										<input
 											autoFocus
@@ -542,7 +566,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									</form>
 								)}
 								{newFolderError && (
-									<span className="text-danger text-xs truncate" title={newFolderError}>
+									<span role="alert" className="text-danger text-xs pl-1 break-words">
 										{newFolderError}
 									</span>
 								)}
@@ -558,6 +582,8 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									listingsRef={listingsRef}
 									filterText={filterText}
 									multi={options.multi}
+									home={home}
+									preselectRoot={preselectRoot}
 									onSelect={setSelectedPath}
 									onNavigate={(p) => void navigateTo(p)}
 								/>
@@ -657,11 +683,19 @@ interface FolderTreeProps {
 	listingsRef: React.MutableRefObject<Map<string, FolderListing>>;
 	filterText: string;
 	multi: boolean;
+	home: string;
+	/** Start with the "current folder" row selected (used right after creating one). */
+	preselectRoot: boolean;
 	onSelect: (paths: string[]) => void;
 	onNavigate: (path: string) => void;
 }
 
-function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavigate }: FolderTreeProps) {
+function FolderTree({ rootPath, listingsRef, filterText, multi, home, preselectRoot, onSelect, onNavigate }: FolderTreeProps) {
+	const t = useT();
+	// The folder the tree is rooted at is a legitimate answer, so it gets its own
+	// row. Without it the only way to pick the folder you navigated into was to
+	// go back out to its parent and find it there.
+	const [rootSelected, setRootSelected] = useState(preselectRoot);
 	const dataLoader = useMemo(() => ({
 		async getItem(itemId: string): Promise<FolderNode> {
 			if (itemId === rootPath) {
@@ -682,12 +716,9 @@ function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavi
 		},
 	}), [rootPath, listingsRef]);
 
-	const features = useMemo(
-		() => multi
-			? [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature]
-			: [asyncDataLoaderFeature, selectionFeature],
-		[multi],
-	);
+	// hotkeysCoreFeature is what gives the tree arrow-key navigation, so it is
+	// not optional — a single-select picker has to be keyboard-operable too.
+	const features = useMemo(() => [asyncDataLoaderFeature, selectionFeature, hotkeysCoreFeature], []);
 
 	const tree = useTree<FolderNode>({
 		rootItemId: rootPath,
@@ -701,6 +732,10 @@ function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavi
 	const selectedItems = tree.getSelectedItems();
 	const selectionKey = selectedItems.map((i) => i.getId()).sort().join(",");
 	useEffect(() => {
+		if (rootSelected) {
+			onSelect([rootPath]);
+			return;
+		}
 		const allPaths = selectedItems
 			.map((i) => i.getItemData()?.path)
 			.filter((p): p is string => p !== undefined)
@@ -709,7 +744,12 @@ function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavi
 			(p) => !allPaths.some((ancestor) => ancestor !== p && p.startsWith(ancestor + "/")),
 		);
 		onSelect(topLevel);
-	}, [selectionKey, onSelect]);
+	}, [selectionKey, rootSelected, rootPath, onSelect]);
+
+	const selectRootRow = useCallback(() => {
+		tree.setSelectedItems([]);
+		setRootSelected(true);
+	}, [tree]);
 
 	const handleDoubleClick = useCallback((item: ItemInstance<FolderNode>) => {
 		onNavigate(item.getItemData().path);
@@ -744,9 +784,37 @@ function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavi
 
 	return (
 		<div {...tree.getContainerProps()} className="outline-none flex flex-col" role="tree">
+			{/* The current folder, as a pickable row. */}
+			<button
+				type="button"
+				data-testid="folder-picker-current-row"
+				role="treeitem"
+				aria-selected={rootSelected}
+				onClick={selectRootRow}
+				title={rootPath}
+				style={{ paddingLeft: "0.25rem" }}
+				className={`w-full flex items-center gap-2 text-left pr-2 py-1 text-sm-plus transition-colors border-l-2 ${
+					rootSelected
+						? "bg-accent/10 border-accent text-fg font-medium"
+						: "text-fg-2 border-transparent hover:bg-elevated hover:text-fg"
+				}`}
+			>
+				<ChevronPlaceholder />
+				<FolderGlyph open />
+				<span className="truncate min-w-0 streamer-private">{displayPath(rootPath, home)}</span>
+				<span className="text-fg-muted text-dense uppercase tracking-wide flex-shrink-0">
+					{t("folderPicker.currentFolder")}
+				</span>
+			</button>
+			{empty && !filter && (
+				<div className="px-3 py-6 text-center">
+					<div className="text-fg-3 text-xs">{t("folderPicker.emptyFolder")}</div>
+					<div className="text-fg-muted text-xs mt-1">{t("folderPicker.emptyFolderHint")}</div>
+				</div>
+			)}
 			{empty && filter && (
 				<div className="px-3 py-4 text-fg-muted text-xs text-center">
-					No folders match &ldquo;{filterText}&rdquo; in the currently loaded tree.
+					{t("folderPicker.noMatches", { query: filterText })}
 				</div>
 			)}
 			{visibleItems.map((item) => {
@@ -763,6 +831,7 @@ function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavi
 						type="button"
 						onClick={(e) => {
 							itemProps.onClick?.(e);
+							setRootSelected(false);
 							// Single-select callers expect exactly one folder, but
 							// headless-tree's selectionFeature still honors
 							// Cmd/Ctrl/Shift+click to accumulate selection. Collapse
@@ -771,7 +840,7 @@ function FolderTree({ rootPath, listingsRef, filterText, multi, onSelect, onNavi
 							if (!multi) tree.setSelectedItems([item.getId()]);
 						}}
 						onDoubleClick={() => handleDoubleClick(item)}
-						style={{ paddingLeft: `${0.25 + level * 0.9}rem` }}
+						style={{ paddingLeft: `${0.25 + (level + 1) * 0.9}rem` }}
 						className={`w-full flex items-center gap-2 text-left pr-2 py-1 text-sm-plus transition-colors border-l-2 ${
 							selected
 								? "bg-accent/10 border-accent text-fg font-medium"
