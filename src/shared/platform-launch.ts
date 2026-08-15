@@ -88,6 +88,15 @@ export interface LaunchDialect {
 	/** Pause for whole seconds. */
 	sleepSeconds(seconds: number): string;
 	/**
+	 * Start / stop echoing every executed line INSIDE a script (`set -x`).
+	 *
+	 * Distinct from {@link LaunchScriptOptions.trace}, which traces a whole script
+	 * from the outside: the dev-server wrapper traces only the user's own command,
+	 * so its env exports do not scroll past before the dev server starts.
+	 */
+	traceOn(): string;
+	traceOff(): string;
+	/**
 	 * Write the number held in `varName` to `filePath` as plain ASCII digits.
 	 *
 	 * NOT a redirection. Windows PowerShell 5.1's `>` is `Out-File`, which writes
@@ -225,6 +234,8 @@ const posixDialect: LaunchDialect = {
 	runCommand: (argv) => argv.map(posixShellQuote).join(" "),
 	describeCommand: (argv) => describeArgv(argv, posixShellQuote),
 	sleepSeconds: (seconds) => `sleep ${seconds}`,
+	traceOn: () => "set -x",
+	traceOff: () => "set +x",
 	writeExitCodeFile: (varName, filePath) => `printf '%s' "$${varName}" > ${posixShellQuote(filePath)}`,
 	exitWith: (varName) => `exit $${varName}`,
 	captureExitCode: (varName) => `${varName}=$?`,
@@ -350,6 +361,8 @@ const windowsDialect: LaunchDialect = {
 	runCommand: (argv) => `$global:LASTEXITCODE = $null; & ${argv.map(powerShellQuote).join(" ")}`,
 	describeCommand: (argv) => describeArgv(argv, powerShellQuote),
 	sleepSeconds: (seconds) => `Start-Sleep -Seconds ${seconds}`,
+	traceOn: () => "Set-PSDebug -Trace 1",
+	traceOff: () => "Set-PSDebug -Trace 0",
 	// See the interface doc: `>` here would be UTF-16LE with a BOM.
 	writeExitCodeFile: (varName, filePath) =>
 		`[System.IO.File]::WriteAllText(${powerShellQuote(filePath)}, [string]$${varName})`,

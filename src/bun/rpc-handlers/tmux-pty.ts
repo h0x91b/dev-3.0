@@ -67,8 +67,9 @@ import {
 	type AuxPaneHandle,
 	type AuxPanePlacement,
 } from "../task-aux-panes";
-import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, writeLaunchScript } from "./shared-pure";
+import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildScriptRunnerCommand, buildTaskLifecycleEnv, generatedScriptLaunch, generatedScriptName, log, resolveBinaryPath, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
+import { buildDevServerScript } from "../dev-server-script";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
@@ -1011,8 +1012,6 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 	// Echo the renderer's correlation id so a click that never reached a handler is
 	// distinguishable from one that did (seq 1407).
 	log.info("→ runDevServer", params);
-	// Both backends run the same bash wrapper; only its host differs.
-	assertPosixLaunchDialect("the dev-server pane");
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
@@ -1023,7 +1022,7 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 
 		const native = taskTerminalBackendIdentity(task) === "native";
 		const devSession = devServerSessionName(task.id);
-		const devScriptPath = dev3TaskTempPath(task.id, "dev.sh");
+		const devScriptPath = dev3TaskTempPath(task.id, generatedScriptName("dev"));
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
 		if (await isDevServerRunning(task, socket)) {
@@ -1068,38 +1067,23 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 			});
 		}
 
-		const portExports = devPorts.length > 0
-			? buildEnvExports(portPool.buildPortEnv(devPorts)).join("\n") + "\n"
-			: "";
-		const projectEnvExports = Object.keys(resolved.env ?? {}).length > 0
-			? buildEnvExports(resolved.env ?? {}).join("\n") + "\n"
-			: "";
-		// Same workspace env the setup/cleanup hooks get, so a devScript can
-		// reference root-resolved hooks ("$DEV3_PROJECT_PATH/...") too.
-		const lifecycleExports = buildEnvExports(buildTaskLifecycleEnv(project, task, task.worktreePath)).join("\n") + "\n";
-
-		const wrappedScript = [
-			`#!/bin/bash`,
-			...(projectEnvExports ? [projectEnvExports] : []),
-			lifecycleExports,
-			...(portExports ? [portExports] : []),
-			`set -x`,
-			resolved.devScript,
-			`EXIT_CODE=$?`,
-			`set +x`,
-			`if [ $EXIT_CODE -ne 0 ]; then`,
-			`  echo ""`,
-			`  echo "Process exited with code $EXIT_CODE. Press any key to close."`,
-			`  read -n 1 -s`,
-			`fi`,
-			// Detaching the outer viewer pane before this pane closes lets the inner
-			// tmux redraw without a watching client — it prevents escape-sequence
-			// corruption in the outer tmux. A native pane has no nesting and no
-			// tmux binary to call, so the line is tmux-only.
-			// Use the app-resolved binary: a PATH tmux of a different version cannot
-			// talk to this server at all ("server exited unexpectedly").
-			...(native ? [] : [`"${tmux.binaryPath()}" detach-client 2>/dev/null || true`]),
-		].join("\n") + "\n";
+		// Detaching the outer viewer pane before this pane closes lets the inner tmux
+		// redraw without a watching client — it prevents escape-sequence corruption in
+		// the outer tmux. A native pane has no nesting and no tmux binary to call, so
+		// the line is tmux-only. Use the app-resolved binary: a PATH tmux of a
+		// different version cannot talk to this server ("server exited unexpectedly").
+		const tmuxDetachCommand = native ? null : `"${tmux.binaryPath()}" detach-client 2>/dev/null || true`;
+		const wrappedScript = buildDevServerScript({
+			devScript: resolved.devScript,
+			envGroups: [
+				resolved.env ?? {},
+				// Same workspace env the setup/cleanup hooks get, so a devScript can
+				// reference root-resolved hooks ("$DEV3_PROJECT_PATH/...") too.
+				buildTaskLifecycleEnv(project, task, task.worktreePath),
+				devPorts.length > 0 ? portPool.buildPortEnv(devPorts) : {},
+			],
+			tmuxDetachCommand,
+		});
 		await writeLaunchScript(devScriptPath, wrappedScript);
 
 		// A native task has no tmux anything. The dev script runs directly in a
@@ -1118,7 +1102,7 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 				socket,
 				title: auxPaneTitle("devServer"),
 				tmuxCommand: `bash "${devScriptPath}"`,
-				nativeLaunch: { executable: "/bin/bash", argv: [devScriptPath] },
+				nativeLaunch: generatedScriptLaunch(devScriptPath),
 			});
 			log.info("← runDevServer done (native pane)", {
 				taskId: params.taskId,
@@ -1128,6 +1112,12 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 			return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 		}
 
+		// Everything below hosts the dev server in a NESTED tmux session and views it
+		// through a second tmux pane. That is the tmux backend's shape, not a
+		// platform-neutral one, so it refuses here rather than half-running. A
+		// Windows task is always native (see `newTaskTerminalBackend`), so this is
+		// unreachable there — reaching it would be a wiring bug.
+		assertPosixLaunchDialect("the nested dev-server tmux session");
 		try {
 			// Client cwd is pinned inside newSessionDetached — never a mortal
 			// worktree, or a tmux server started by this client keeps it forever.

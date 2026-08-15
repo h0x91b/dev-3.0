@@ -102,6 +102,11 @@ interface AuxPanePurposeMeta {
 	 * The temp-file suffix whose path identifies this purpose's pane in a launch
 	 * command. Both backends launch a script under the task's temp prefix, so the
 	 * prefix alone is a stable, per-task, per-purpose marker.
+	 *
+	 * It carries NO file extension on purpose: the dialect names the generated
+	 * script `dev.sh` on POSIX and `dev.ps1` on Windows, so a marker ending in
+	 * `.sh` matches nothing on Windows — the pane is invisible to every later
+	 * lookup (is it running, replace it, stop it) even though it launched fine.
 	 */
 	scriptSuffix: string;
 	/** English label shown for the pane in the pager and pane picker. */
@@ -116,9 +121,9 @@ interface AuxPanePurposeMeta {
 }
 
 const AUX_PANE_PURPOSES: Record<AuxPanePurpose, AuxPanePurposeMeta> = {
-	devServer: { scriptSuffix: "dev.sh", title: "Dev Server", provenReplace: false },
+	devServer: { scriptSuffix: "dev", title: "Dev Server", provenReplace: false },
 	gitOp: { scriptSuffix: "git-", title: "Git", provenReplace: false },
-	columnAgent: { scriptSuffix: "col-agent.sh", title: "Column Agent", provenReplace: true },
+	columnAgent: { scriptSuffix: "col-agent", title: "Column Agent", provenReplace: true },
 };
 
 /** The substring that identifies a purpose's pane in a launch command. */

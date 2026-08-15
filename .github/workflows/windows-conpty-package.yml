@@ -104,6 +104,28 @@ jobs:
         timeout-minutes: 6
         run: bun run test:git-op-pane-e2e
 
+      # Seq 1546: the Dev Server button was dead on Windows — it refused with "the
+      # dev-server pane requires the tmux backend, which is POSIX-only" before it
+      # read anything (issue #1387, reproduced by Arseny on his own box), and the
+      # wrapper behind it was hand-written bash launched through `/bin/bash`.
+      # Swapping only the launch would have been WORSE than the outage: PowerShell
+      # would half-run bash text and look like it started. So the E2E RUNS the
+      # wrapper on this runner and checks the dev command executed and read back
+      # all three env blocks, and that a crashed dev server reports its code
+      # instead of hanging on its own keypress prompt with no keyboard attached.
+      # The pure test pins the POSIX text and asserts the Windows properties; the
+      # launch test covers the call site, which an E2E calling the helper cannot.
+      # `always()`: a step that runs only when an unrelated one passes is evidence
+      # about that step, not about this one.
+      - name: Dev-server pane script + launch (pure, both dialects)
+        if: always()
+        run: bun run test:dev-server-script
+
+      - name: Dev-server pane wrapper executed (${{ matrix.os }})
+        if: always()
+        timeout-minutes: 5
+        run: bun run test:dev-server-pane-e2e
+
       - name: Windows self-update swap script (pure)
         run: bun run test:windows-update
 

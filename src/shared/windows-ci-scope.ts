@@ -119,6 +119,15 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/bun/__tests__/git-op-script.test.ts",
 	"src/bun/__tests__/git-op-pane.bun-e2e.ts",
 	"src/bun/rpc-handlers/__tests__/git-op-pane-launch.test.ts",
+	// The dev-server pane (Seq 1546, issue #1387). Same criterion (1): its wrapper is
+	// the user's own dev command surrounded by dev3's, and only a Windows run can tell
+	// the two dialects apart. `task-aux-panes.ts` is in for the marker that re-finds
+	// the pane — it used to carry a `.sh`, which matches nothing on Windows.
+	"src/bun/dev-server-script.ts",
+	"src/bun/task-aux-panes.ts",
+	"src/bun/__tests__/dev-server-script.test.ts",
+	"src/bun/__tests__/dev-server-pane.bun-e2e.ts",
+	"src/bun/rpc-handlers/__tests__/dev-server-pane-launch.test.ts",
 	// The same dialect as spoken by `dev3 pane run` (Seq 1548): its command composition
 	// and the runner that executes it. Under (1) for the same reason — only the Windows
 	// leg runs PowerShell, so an edit to either has to re-run the proof that executes it.

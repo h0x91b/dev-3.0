@@ -299,9 +299,23 @@ describe("native pane lookup by launch-command marker", () => {
 
 	it("owns the column-agent pane by its own marker, distinct from every other purpose", () => {
 		const marker = auxPaneMarker(TASK_ID, "columnAgent");
-		expect(marker).toContain("col-agent.sh");
+		expect(marker).toContain("col-agent");
 		expect(marker).not.toBe(auxPaneMarker(TASK_ID, "devServer"));
 		expect(marker).not.toBe(auxPaneMarker(TASK_ID, "gitOp"));
+	});
+
+	// The dialect names the generated script `.sh` on POSIX and `.ps1` on Windows.
+	// A marker carrying either extension matches only one of them, so the pane
+	// launches on the other platform and is then invisible to every later lookup —
+	// is it running, replace it, stop it (Seq 1546).
+	it("matches the launched script on BOTH platforms' file names", () => {
+		for (const purpose of ["devServer", "columnAgent"] as const) {
+			const marker = auxPaneMarker(TASK_ID, purpose);
+			expect(marker).not.toMatch(/\.(sh|ps1)$/);
+			for (const extension of [".sh", ".ps1"]) {
+				expect(auxPurposeOfCommand(TASK_ID, ["shell", marker + extension])).toBe(purpose);
+			}
+		}
 	});
 });
 

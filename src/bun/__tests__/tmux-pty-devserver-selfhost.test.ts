@@ -157,6 +157,11 @@ vi.mock("../rpc-handlers/shared-pure", () => ({
 	buildScriptRunnerCommand: vi.fn(() => ""),
 	buildTaskLifecycleEnv: vi.fn(() => ({})),
 	escapeForDoubleQuotes: vi.fn((s: string) => s),
+	// The dev-server pane writes and launches its wrapper through the dialect
+	// (Seq 1546); the self-host refusal fires before either actually runs.
+	generatedScriptName: vi.fn((base: string) => `${base}.sh`),
+	generatedScriptLaunch: vi.fn((scriptPath: string) => ({ executable: "/bin/bash", argv: [scriptPath] })),
+	writeLaunchScript: vi.fn(async () => {}),
 	log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 	portableReadKey: vi.fn(() => ""),
 	resolveBinaryPath: vi.fn(() => null),
