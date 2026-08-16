@@ -317,6 +317,27 @@ function getCodexApprovalResumeStatus(
 }
 
 /**
+ * Cheap pre-check for {@link captureCodexPaneSession}: is this exact pane already
+ * carrying this exact session id? Reads through the cache (no lock, no strict
+ * re-parse) and answers false on any doubt — a stale or unreadable read only costs
+ * one trip through the real locked path, which is idempotent anyway.
+ */
+async function codexPaneSessionAlreadyRecorded(
+	project: Project,
+	taskId: string,
+	paneId: string,
+	sessionId: string,
+): Promise<boolean> {
+	try {
+		const task = await data.getTask(project, taskId);
+		const pane = task.sessionState?.panes?.find((p) => p.paneId === paneId);
+		return pane?.sessionId === sessionId;
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Persist a Codex session id onto the sessionState pane it belongs to, so
  * resumeTask can `codex resume <id>` the exact session per pane — targeted
  * recovery for multi-session worktrees (e.g. reviving several bug hunters).
@@ -330,6 +351,11 @@ function getCodexApprovalResumeStatus(
  * paneId, adopt that entry — it is the main pane — recording both its paneId and
  * session id. Ambiguous cases (no match, ≠1 null-paneId entries) are skipped; a
  * later hook fires once ids settle. A no-op once the id is already recorded.
+ *
+ * The steady state is exactly that no-op — codex fires this hook continuously for
+ * the whole life of a session — so it is answered from the cached read BEFORE
+ * taking the file lock. Going through the lock for it made every hook re-parse the
+ * board strictly (14 MB on base44); see the 2026-08-16 freeze record.
  */
 async function captureCodexPaneSession(
 	project: Project,
@@ -338,6 +364,7 @@ async function captureCodexPaneSession(
 	sessionId: string,
 ): Promise<void> {
 	try {
+		if (await codexPaneSessionAlreadyRecorded(project, taskId, paneId, sessionId)) return;
 		const { task: updated, result } = await data.updateTaskWith(project, taskId, (current) => {
 			const panes = current.sessionState?.panes;
 			if (!panes?.length) return { updates: {}, result: { changed: false } };

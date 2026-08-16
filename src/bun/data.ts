@@ -1004,8 +1004,8 @@ export async function updateTask(
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
-		const updatedTask = applyTaskUpdate(tasks, idx, updates, options);
-		await rawSaveTasks(project, tasks);
+		const { task: updatedTask, changed } = applyTaskUpdate(tasks, idx, updates, options);
+		if (changed) await rawSaveTasks(project, tasks);
 		return updatedTask;
 	});
 }
@@ -1026,8 +1026,8 @@ export async function updateTaskWith<T>(
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
 		const { updates, result } = await mutator(tasks[idx]);
-		const task = applyTaskUpdate(tasks, idx, updates, options);
-		await rawSaveTasks(project, tasks);
+		const { task, changed } = applyTaskUpdate(tasks, idx, updates, options);
+		if (changed) await rawSaveTasks(project, tasks);
 		return { task, result };
 	});
 }
@@ -1103,8 +1103,8 @@ export async function setTaskTerminalBackend(
 		const idx = tasks.findIndex((t) => t.id === taskId);
 		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
 		if (tasks[idx][TERMINAL_BACKEND_FIELD] === backend) return tasks[idx];
-		const updated = applyTaskUpdate(tasks, idx, { [TERMINAL_BACKEND_FIELD]: backend });
-		await rawSaveTasks(project, tasks);
+		const { task: updated, changed } = applyTaskUpdate(tasks, idx, { [TERMINAL_BACKEND_FIELD]: backend });
+		if (changed) await rawSaveTasks(project, tasks);
 		return updated;
 	});
 }
@@ -1235,6 +1235,13 @@ export async function moveTaskToProject(
 	);
 }
 
+/**
+ * Apply `updates` to `tasks[idx]` in place. `changed` tells the caller whether the
+ * array was touched at all, so a no-op never rewrites the file: on a big board
+ * (base44 runs a 14 MB tasks.json) an agent hook that reports an already-recorded
+ * value used to burn a full parse+serialize+write per call, ~11 times a second,
+ * which pinned the event loop and froze the UI. See the 2026-08-16 freeze record.
+ */
 function applyTaskUpdate(
 	tasks: Task[],
 	idx: number,
@@ -1243,11 +1250,16 @@ function applyTaskUpdate(
 		ifStatus?: string;
 		ifStatusNot?: string;
 	},
-): Task {
+): { task: Task; changed: boolean } {
 	const currentTask = tasks[idx];
 	// Authoritative guard check (runs inside the file lock).
 	if (isStatusGuardBlocked(currentTask.status, options)) {
-		return currentTask;
+		return { task: currentTask, changed: false };
+	}
+	// An empty patch carries no information — bumping `updatedAt` for it would be
+	// the only reason to write, and nothing displays a timestamp nobody changed.
+	if (Object.keys(updates).length === 0) {
+		return { task: currentTask, changed: false };
 	}
 	const now = new Date().toISOString();
 	// A move to a different RENDERED column happens either when the builtin status
@@ -1284,7 +1296,7 @@ function applyTaskUpdate(
 
 	recordTitleOverviewHistory(tasks, idx, prevTitle, prevOverview, now);
 
-	return tasks[idx];
+	return { task: tasks[idx], changed: true };
 }
 
 /**

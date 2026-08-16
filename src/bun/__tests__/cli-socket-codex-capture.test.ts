@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import type { CliRequest, Project, Task } from "../../shared/types";
 
 // End-to-end for Codex per-pane session capture (decision 125): a real
@@ -149,6 +149,33 @@ describe("cli-socket — Codex per-pane session capture (e2e, real data)", () =>
 		const [main] = readPanes();
 		expect(main?.paneId).toBe("%7");
 		expect(main?.sessionId).toBe("codex-main-sess");
+	});
+
+	it("repeating the same hook never rewrites tasks.json", async () => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+
+		seed([makeTask({ sessionState: { panes: [codexPane("%2", null)] } })]);
+		const tasksFile = join(dev3Home, "data", PROJECT_SLUG, "tasks.json");
+		const hook = agentHook({
+			projectId: "proj-1",
+			taskId: "task-1",
+			event: "UserPromptSubmit",
+			sessionId: "steady-state-sess",
+			paneId: "%2",
+		});
+
+		await handleRequest(hook);
+		expect(readPanes()[0]?.sessionId).toBe("steady-state-sess");
+		// Atomic saves go through rename, so every write lands a NEW inode.
+		const inodeAfterCapture = statSync(tasksFile).ino;
+
+		// Codex fires this hook for the entire life of the session; each repeat used
+		// to cost a full parse+serialize+write of the whole board.
+		for (let i = 0; i < 5; i++) await handleRequest(hook);
+
+		expect(statSync(tasksFile).ino).toBe(inodeAfterCapture);
+		expect(readPanes()[0]?.sessionId).toBe("steady-state-sess");
 	});
 
 	it("is a no-op without a paneId (falls back to resume-last at recovery)", async () => {
