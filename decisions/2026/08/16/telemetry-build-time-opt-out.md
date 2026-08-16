@@ -19,14 +19,19 @@ switch a downstream builder controls.
 ## Decision
 
 One flag, `VITE_TELEMETRY`, read through `telemetryEnabled()` in `src/mainview/telemetry.ts`:
-anything other than the literal `off` means on, so an absent variable keeps today's behaviour
-exactly. `off` early-returns from both `sendToGA` and `initAnalytics`, and forces `posthog.ts`
+`off`, `false`, `0` and `no` (trimmed, case-insensitive) mean off and anything else means on, so
+an absent variable keeps today's behaviour exactly. The spelling is forgiving because the
+expensive failure is the other way round: a packager who writes `false` and gets telemetry anyway
+has no way to notice. `off` early-returns from both `sendToGA` and `initAnalytics`, and forces `posthog.ts`
 onto its existing no-op client regardless of `VITE_POSTHOG_KEY`/`VITE_POSTHOG_HOST` — which also
 suppresses the DEV-mode "key missing" throw, since a build that asked for no telemetry is not
-misconfigured. The flag is read per call rather than captured in a module constant so
-`vi.stubEnv` can flip it in tests; Vite still constant-folds it, and a `VITE_TELEMETRY=off`
-bundle compiles the helper down to `return !1` with both entry points returning before any
-network call.
+misconfigured. `setupErrorTracking()` stays *in front* of the gate: those listeners also drive
+`logToBackend`, which writes the app's own local log file and sends nothing anywhere, so turning
+telemetry off must not cost a build its crash diagnostics — the GA event they raise is dropped by
+`sendToGA` like any other. The GA paths read the flag per call so `vi.stubEnv` can flip it in
+tests, while `posthog.ts` captures it in a module constant because the client is built once at
+import time; the env value is inlined at build, and both entry points return before any network
+call.
 
 ## Risks
 

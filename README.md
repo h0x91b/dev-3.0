@@ -326,7 +326,8 @@ The app reports usage analytics so the project can see what is actually used:
 
 Both are compiled in at build time and can be compiled out. Build from source with
 `VITE_TELEMETRY=off` in the repo-root `.env` (or in the environment) and no analytics code runs:
-no GA4 hits, no public-IP lookup, no PostHog client, no error autocapture. Feature flags then
+no GA4 hits, no public-IP lookup, no PostHog client, no error autocapture (`false`, `0` and `no`
+work the same way; crash logging into the app's own local log file is unaffected). Feature flags then
 fall back to their shipped defaults. Leaving the variable unset means `on`, which is what the
 released binaries do.
 

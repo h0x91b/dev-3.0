@@ -225,8 +225,13 @@ function sendToGA(events: Array<{ name: string; params?: Record<string, unknown>
 
 /** Initialize GA4 with user properties and start heartbeat. */
 export function initAnalytics(appVersion: string): void {
-	// Gated separately from sendToGA: the ipify lookup, the heartbeat interval and
-	// the global error listeners below never pass through the transport.
+	// Wired before the telemetry gate: the listeners are local diagnostics first —
+	// logToBackend writes the app's own log file and never leaves the machine. The
+	// GA event they also raise is dropped by sendToGA when telemetry is off.
+	setupErrorTracking();
+
+	// Gated separately from sendToGA: the ipify lookup and the heartbeat interval
+	// below never pass through the transport.
 	if (!telemetryEnabled()) return;
 
 	clientId = getOrCreateClientId();
@@ -288,9 +293,6 @@ export function initAnalytics(appVersion: string): void {
 			session_duration_sec: getSessionDurationSec(),
 		});
 	}, HEARTBEAT_INTERVAL_MS);
-
-	// Global error tracking
-	setupErrorTracking();
 }
 
 /** Tear down analytics (clears heartbeat interval). */

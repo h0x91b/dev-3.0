@@ -553,8 +553,17 @@ describe("VITE_TELEMETRY=off", () => {
 	});
 
 	it("resumes sending once the flag is back to its default", () => {
-		vi.unstubAllEnvs();
+		vi.stubEnv("VITE_TELEMETRY", "on");
 		initAnalytics("1.0.0");
 		expect(gaHits(fetchMock).length).toBe(1);
 	});
+
+	it.each(["off", "OFF", " Off ", "false", "0", "no"])(
+		"treats %j as off",
+		(value) => {
+			vi.stubEnv("VITE_TELEMETRY", value);
+			initAnalytics("1.0.0");
+			expect(fetchMock).not.toHaveBeenCalled();
+		},
+	);
 });

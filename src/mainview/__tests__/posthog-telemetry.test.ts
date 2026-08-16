@@ -60,6 +60,12 @@ describe("posthog build-time telemetry gate", () => {
 		expect(client.capture("task_created")).toBeUndefined();
 	});
 
+	it.each(["OFF", "false", "0", "no"])("treats %j as off too", async (value) => {
+		vi.stubEnv("VITE_TELEMETRY", value);
+		await loadClient();
+		expect(posthogJs.init).not.toHaveBeenCalled();
+	});
+
 	it("falls back to shipped feature-flag defaults when off", async () => {
 		vi.stubEnv("VITE_TELEMETRY", "off");
 		const client = await loadClient();
