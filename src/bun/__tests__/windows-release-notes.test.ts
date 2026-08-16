@@ -45,6 +45,16 @@ describe("the unsigned-launch warning", () => {
 		).toMatch(/not a virus report/i);
 	});
 
+	it("states the missing signature as a present fact, not a permanent vow", () => {
+		// There is no certificate today and Arseny does not want to buy one — that is the present
+		// tense. "It never will be" turned a budget decision into a promise about every future build.
+		expect(
+			WINDOWS_UNSIGNED_WARNING,
+			"the warning promises the build will never be signed. That is a vow about the future nobody made. Fix: say it is unsigned at this time and leave the future open.",
+		).not.toMatch(/never will be|will never be/i);
+		expect(WINDOWS_UNSIGNED_WARNING).toMatch(/at this time/i);
+	});
+
 	it("does not quote the localised dialog title", () => {
 		// The title was never captured on an en-US machine — it is recorded as unknown, not absent.
 		// Quoting an English title to someone whose Windows shows Russian is worse than describing it.

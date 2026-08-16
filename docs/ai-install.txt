@@ -61,11 +61,11 @@ For a desktop GUI on Linux instead of the browser UI: `dev3 gui` (lazily downloa
 
 ## 2c. Windows (x64)
 
-Tell the user this up front: **Windows support is brand new and may still be rough.** There is no installer, no package manager, and no Windows file on the stable download page — the build ships in the rolling `canary` pre-release, which is cut from `main` and is not a tested release. It is also unsigned, so the first launch goes through a Microsoft Defender SmartScreen warning that the user has to click past (expand the details, then choose to run it anyway). Do not tell the user the app will keep itself up to date — automatic updating is not proven on Windows, and the first observed attempt hung. Ask before downloading.
+Tell the user this up front: **Windows support is brand new and may still be rough.** There is no installer and no package manager — one zip, attached to every tagged release, that the user extracts and runs. It is unsigned at this time (that may change in the future), so the first launch goes through a Microsoft Defender SmartScreen warning that the user has to click past (expand the details, then choose to run it anyway). Do not tell the user the app will keep itself up to date — automatic updating is not proven on Windows, and the first observed attempt hung. Ask before downloading.
 
 ```powershell
-$zip = "$env:TEMP\dev-3.0-canary.zip"
-Invoke-WebRequest -Uri "https://github.com/h0x91b/dev-3.0/releases/download/canary/canary-win-x64-dev-3.0-canary.zip" -OutFile $zip
+$zip = "$env:TEMP\dev-3.0.zip"
+Invoke-WebRequest -Uri "https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-win-x64-dev-3.0.zip" -OutFile $zip
 Expand-Archive -Path $zip -DestinationPath "$env:LOCALAPPDATA\dev-3.0" -Force
 ```
 

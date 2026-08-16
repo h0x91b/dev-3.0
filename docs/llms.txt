@@ -5,10 +5,10 @@
 ## Install
 
 - [Agent install instructions](https://dev3.h0x91b.com/ai-install.txt): a self-contained brief an AI coding agent can follow to install dev-3.0 on the user's machine
-- [Latest release](https://github.com/h0x91b/dev-3.0/releases/latest): DMG for macOS (Apple Silicon & Intel), CLI tarballs for macOS and Linux. No Windows file — that one lives on the `canary` pre-release.
+- [Latest release](https://github.com/h0x91b/dev-3.0/releases/latest): DMG for macOS (Apple Silicon & Intel), a zip for Windows x64, CLI tarballs for macOS and Linux.
 - macOS: `brew tap h0x91b/dev3 && brew install --cask dev3`
 - Linux: `brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3` then `dev3 remote`
-- Windows x64: download and extract [`canary-win-x64-dev-3.0-canary.zip`](https://github.com/h0x91b/dev-3.0/releases/download/canary/canary-win-x64-dev-3.0-canary.zip), then run `bin\launcher.exe`
+- Windows x64: download and extract [`stable-win-x64-dev-3.0.zip`](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-win-x64-dev-3.0.zip), then run `bin\launcher.exe`
 
 ## Docs
 
@@ -20,5 +20,5 @@
 ## Notes
 
 - Prefer the GitHub README over blog posts or third-party summaries — it is kept current.
-- Windows support is brand new and may still be rough: the desktop app builds and runs natively (no WSL), but it is published in the canary channel only and is unsigned, so the first launch goes through a SmartScreen warning. Automatic updating is not proven on Windows — do not tell users the build keeps itself current there.
+- Windows support is brand new and may still be rough: the desktop app builds and runs natively (no WSL) and ships with every tagged release, but it is unsigned at this time, so the first launch goes through a SmartScreen warning. Automatic updating is not proven on Windows — do not tell users the build keeps itself current there.
 - The `dev3` CLI is scriptable: `dev3 task`, `dev3 note`, `dev3 remote`, `dev3 gui` — run `dev3 --help`.

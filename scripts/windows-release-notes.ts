@@ -36,7 +36,7 @@ export interface WindowsDownloadFacts {
  * been read. Quoting the English line on a machine showing Russian is worse than describing it.
  */
 export const WINDOWS_UNSIGNED_WARNING =
-	"**This build is not code-signed, and it never will be.** The first time you run it, Windows " +
+	"**This build is not code-signed at this time** — that may change in the future. The first time you run it, Windows " +
 	"covers the screen with a blue SmartScreen warning. Getting past it is two clicks: **More info**, " +
 	"then **Run anyway** — once per build. That dialog means Windows does not recognise the " +
 	"publisher. It is not a virus report.";

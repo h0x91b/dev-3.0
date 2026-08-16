@@ -10,7 +10,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## What is this
 
-A **terminal-centric project manager** — iTerm2 meets Kanban. Desktop app for managing multiple AI coding agents and terminal tools across tasks and projects. Built with **Electrobun** (not Electron), React 19, Tailwind CSS, Vite; runtime is Bun. Supports macOS, Linux, and Windows — Windows support is brand new and may still be rough (it ships in the canary channel only, unsigned).
+A **terminal-centric project manager** — iTerm2 meets Kanban. Desktop app for managing multiple AI coding agents and terminal tools across tasks and projects. Built with **Electrobun** (not Electron), React 19, Tailwind CSS, Vite; runtime is Bun. Supports macOS, Linux, and Windows — Windows support is brand new and may still be rough (it ships with every release, unsigned at this time).
 
 Key idea: each project is a git repo; each task gets its own **git worktree** + **terminal** running inside **tmux** with a preconfigured command (e.g., `claude`).
 

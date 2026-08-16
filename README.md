@@ -277,11 +277,11 @@ dev3 remote
 ```
 
 **Windows** — download
-[`canary-win-x64-dev-3.0-canary.zip`](https://github.com/h0x91b/dev-3.0/releases/download/canary/canary-win-x64-dev-3.0-canary.zip)
+[`stable-win-x64-dev-3.0.zip`](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-win-x64-dev-3.0.zip)
 (~121 MB), extract it, run `bin\launcher.exe`. Windows support is brand new and may still be
-rough: the build ships in the canary channel only — the stable download page has no Windows
-file yet — and it is unsigned, so the first launch needs two clicks past a SmartScreen warning.
-Details: **[Install guide](docs/install.md#windows--canary-zip)**.
+rough, and the build is unsigned at this time, so the first launch needs two clicks past a
+SmartScreen warning.
+Details: **[Install guide](docs/install.md#windows--zip-download)**.
 
 Then: add a project (point it at a git repo), press **⌘N**, describe a task, pick an agent, hit
 Run. That is the whole onboarding.
@@ -294,7 +294,7 @@ Run. That is the whole onboarding.
 | | Runs today |
 |---|---|
 | **Agents** | Claude Code · Codex · Gemini CLI · Cursor Agent · opencode · any CLI tool you configure |
-| **Desktop** | macOS — Apple Silicon and Intel. Windows x64 — brand new and may still be rough; published in the canary channel only, unsigned |
+| **Desktop** | macOS — Apple Silicon and Intel. Windows x64 — brand new and may still be rough; attached to every release, unsigned at this time |
 | **Headless** | Linux x64 and arm64 (`dev3` CLI + browser UI) |
 
 Claude Code and Codex additionally report their status back automatically through hooks; the
