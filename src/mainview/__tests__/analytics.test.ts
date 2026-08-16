@@ -513,3 +513,48 @@ describe("engagement_time_msec (real foreground time)", () => {
 		expect(initHit.events[1].params.engagement_time_msec).toBeUndefined();
 	});
 });
+
+describe("VITE_TELEMETRY=off", () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		vi.stubEnv("VITE_TELEMETRY", "off");
+		vi.useFakeTimers();
+		for (const key of Object.keys(store)) delete store[key];
+		destroyAnalytics();
+		fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+		fetchMock.mockClear();
+	});
+
+	afterEach(() => {
+		destroyAnalytics();
+		vi.useRealTimers();
+		vi.unstubAllEnvs();
+	});
+
+	it("makes no request at all on init — neither the GA hit nor the public-IP lookup", () => {
+		initAnalytics("1.0.0");
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("starts no heartbeat", () => {
+		initAnalytics("1.0.0");
+		vi.advanceTimersByTime(60 * 60 * 1000);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("drops every explicit track call", () => {
+		initAnalytics("1.0.0");
+		trackEvent("ping");
+		trackPageView({ screen: "dashboard" });
+		trackDiffView("p1", "981-1");
+		trackAgentLaunched([], null, null);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("resumes sending once the flag is back to its default", () => {
+		vi.unstubAllEnvs();
+		initAnalytics("1.0.0");
+		expect(gaHits(fetchMock).length).toBe(1);
+	});
+});

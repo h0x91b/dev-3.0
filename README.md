@@ -315,6 +315,26 @@ rate-limit tracking and skill directories differ per agent — the full grid is 
 | [Diagnostic logs](docs/diagnostic-logs.md) | What is logged locally, for how long, and what is redacted |
 | [AGENTS.md](AGENTS.md) | Architecture and contributor guide |
 
+## Telemetry
+
+The app reports usage analytics so the project can see what is actually used:
+
+| Channel | What it sends |
+|---|---|
+| Google Analytics 4 | App launch, version, OS, screen resolution, language, screen navigation, a 10-minute heartbeat, agent launches, and unhandled errors. Identified by a random per-install id, geolocated via a public-IP lookup against `api.ipify.org`. Project *names* and file paths are deliberately never sent — only internal ids. |
+| PostHog | Task and project actions (created, moved, merged, pushed …) plus unhandled errors, under a random per-install id. Also delivers feature flags. Live in the official release builds; a build from source has no key and stays off. |
+
+Both are compiled in at build time and can be compiled out. Build from source with
+`VITE_TELEMETRY=off` in the repo-root `.env` (or in the environment) and no analytics code runs:
+no GA4 hits, no public-IP lookup, no PostHog client, no error autocapture. Feature flags then
+fall back to their shipped defaults. Leaving the variable unset means `on`, which is what the
+released binaries do.
+
+```bash
+echo 'VITE_TELEMETRY=off' >> .env
+bun run build
+```
+
 ## Development
 
 ```bash
