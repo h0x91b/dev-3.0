@@ -3,6 +3,7 @@
   "devScript": "bun run dev",
   "portCount": 1,
   "clonePaths": [
+    ".npmrc",
     "node_modules",
     "build",
     "dist"

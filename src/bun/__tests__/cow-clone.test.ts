@@ -220,6 +220,7 @@ describe("WELL_KNOWN_CLONE_PATHS", () => {
 		expect(WELL_KNOWN_CLONE_PATHS).toContain("vendor/bundle");
 		expect(WELL_KNOWN_CLONE_PATHS).toContain("target");
 		expect(WELL_KNOWN_CLONE_PATHS).toContain(".env");
+		expect(WELL_KNOWN_CLONE_PATHS).toContain(".npmrc");
 	});
 
 	it("contains no absolute paths", () => {

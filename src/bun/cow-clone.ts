@@ -285,6 +285,9 @@ export const WELL_KNOWN_CLONE_PATHS = [
 	".build",
 
 	// Environment & secrets
+	// A root .npmrc usually carries a private registry or a token, so it is
+	// gitignored — without it a worktree installs against the public registry.
+	".npmrc",
 	".env",
 	".env.local",
 	".env.development.local",

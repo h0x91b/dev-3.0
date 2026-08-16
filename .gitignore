@@ -15,6 +15,9 @@ changelog.json
 # dev-3.0 local config
 .dev3/config.local.json
 
+# Private npm registry / tokens — never ships with the repo
+.npmrc
+
 # Playwright MCP browser-test artifacts (screenshots, snapshots, console logs)
 .playwright-mcp/
 verify-*.png
