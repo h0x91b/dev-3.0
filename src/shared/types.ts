@@ -2345,6 +2345,22 @@ export interface TaskNote {
 }
 
 /**
+ * Per-task note retention (oldest dropped first). A bug-hunting task can pile up
+ * hundreds of agent notes — 251 on one dev-3.0 task — and every one of them is
+ * re-serialized on every save of the whole board.
+ */
+export const MAX_TASK_NOTES_KEPT = 50;
+
+/**
+ * Append `note` to a task's note list, evicting the oldest entries past
+ * {@link MAX_TASK_NOTES_KEPT}. Applied at every insert site so the cap is an
+ * invariant of writing rather than of one caller.
+ */
+export function appendTaskNote(existing: TaskNote[] | undefined, note: TaskNote): TaskNote[] {
+	return [...(existing ?? []), note].slice(-MAX_TASK_NOTES_KEPT);
+}
+
+/**
  * An image an agent surfaced to the human via `dev3 show-image`, bound to a task.
  * The source file is copied into the project's worktree `shared-images/` dir (next
  * to `uploads/`), so the record survives the original (often /tmp) file being

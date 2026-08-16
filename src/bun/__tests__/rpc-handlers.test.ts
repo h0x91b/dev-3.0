@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shared/types";
-import { buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
+import { MAX_TASK_NOTES_KEPT, buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 import {
 	activatePane,
@@ -7027,6 +7027,25 @@ describe("handlers.addTaskNote", () => {
 		expect(result.notes).toHaveLength(2);
 		expect(result.notes?.[0].content).toBe("Old");
 		expect(result.notes?.[1].content).toBe("New");
+	});
+
+	it("drops the oldest note once the task is at the retention cap", async () => {
+		const full = Array.from({ length: MAX_TASK_NOTES_KEPT }, (_, i) => ({
+			id: `n${i}`, content: `Old ${i}`, source: "user" as const, createdAt: "", updatedAt: "",
+		}));
+		const project = makeProject();
+		const task = makeTask({ notes: full });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await mutator(task);
+			return { task: { ...task, ...updates }, result };
+		});
+
+		const result = await handlers.addTaskNote({ taskId: "task-1", projectId: "proj-1", content: "Newest" });
+		expect(result.notes).toHaveLength(MAX_TASK_NOTES_KEPT);
+		expect(result.notes?.map((n) => n.id)).not.toContain("n0");
+		expect(result.notes?.[0].id).toBe("n1");
+		expect(result.notes?.[MAX_TASK_NOTES_KEPT - 1].content).toBe("Newest");
 	});
 });
 

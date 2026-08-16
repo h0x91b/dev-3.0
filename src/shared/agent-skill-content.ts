@@ -138,6 +138,8 @@ Write a note when you: **dug up something non-obvious** (root cause, how subsyst
 
 \`dev3 note list\` truncates bodies to one line; \`dev3 note show <id>\` (8-char prefix) prints the full body. \`dev3 task show\` always prints the task's **current overview**; add \`--notes\` and/or \`--history\` to understand a *neighbouring* task without its worktree or conversation.
 
+**A task keeps its 50 most recent notes.** The 51st evicts the oldest, permanently. That is generous for one task's real findings, but it does mean a note is not an append-only log: don't narrate progress into notes, and if you are about to record a long series, write one consolidated note instead of twenty.
+
 ## Saving context tokens
 
 If the full task description was already your initial prompt (most agents), run \`dev3 current --brief\` instead of \`dev3 current\` to avoid re-printing it.

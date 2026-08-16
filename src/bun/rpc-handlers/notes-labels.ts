@@ -1,5 +1,5 @@
 import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, Task, TaskNote, TaskStatus } from "../../shared/types";
-import { LABEL_COLORS } from "../../shared/types";
+import { LABEL_COLORS, appendTaskNote } from "../../shared/types";
 import * as data from "../data";
 import { getPushMessage, log } from "./shared";
 import { dispatchLifecycleEvent } from "../lifecycle/service";
@@ -269,7 +269,7 @@ async function addTaskNote(params: { taskId: string; projectId: string; content:
 			updatedAt: now,
 		};
 		return {
-			updates: { notes: [...(task.notes ?? []), note] },
+			updates: { notes: appendTaskNote(task.notes, note) },
 			result: note,
 		};
 	});

@@ -3,7 +3,7 @@ import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, 
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import { SharedImageError, saveSharedImage } from "./shared-images";
@@ -765,7 +765,7 @@ const handlers: Record<string, Handler> = {
 				createdAt: now,
 				updatedAt: now,
 			};
-			return { updates: { notes: [...(current.notes ?? []), note] }, result: note };
+			return { updates: { notes: appendTaskNote(current.notes, note) }, result: note };
 		});
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;

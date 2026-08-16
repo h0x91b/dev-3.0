@@ -213,6 +213,41 @@ describe("cli-socket note.add / note.delete — lost-update race", () => {
 		expect(ids).toContain("concurrent");
 	});
 
+	raceIt("note.add evicts the oldest note once the task is at the retention cap", async (ctx) => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		const { MAX_TASK_NOTES_KEPT } = await import("../../shared/types");
+
+		const full = Array.from({ length: MAX_TASK_NOTES_KEPT }, (_, i) => makeNote(`n${i}`, `note ${i}`));
+		seed(ctx, [makeTask(ctx, { id: "task-1", notes: full })]);
+
+		const resp = await handleRequest(makeRequest("note.add", { projectId: ctx.projectId, taskId: "task-1", content: "newest" }));
+		expect(resp.ok).toBe(true);
+
+		const [task] = readTasksRaw(ctx);
+		const notes = task.notes ?? [];
+		expect(notes).toHaveLength(MAX_TASK_NOTES_KEPT);
+		// Oldest gone, everything after it kept in order, newest at the end.
+		expect(notes.map((n) => n.id)).not.toContain("n0");
+		expect(notes[0].id).toBe("n1");
+		expect(notes[notes.length - 1].content).toBe("newest");
+	});
+
+	raceIt("note.add trims a task that is already over the cap from before the limit existed", async (ctx) => {
+		await import("../data");
+		const { handleRequest } = await import("../cli-socket-server");
+		const { MAX_TASK_NOTES_KEPT } = await import("../../shared/types");
+
+		const over = Array.from({ length: MAX_TASK_NOTES_KEPT + 93 }, (_, i) => makeNote(`n${i}`, `note ${i}`));
+		seed(ctx, [makeTask(ctx, { id: "task-1", notes: over })]);
+
+		expect((await handleRequest(makeRequest("note.add", { projectId: ctx.projectId, taskId: "task-1", content: "newest" }))).ok).toBe(true);
+
+		const notes = readTasksRaw(ctx)[0].notes ?? [];
+		expect(notes).toHaveLength(MAX_TASK_NOTES_KEPT);
+		expect(notes[notes.length - 1].content).toBe("newest");
+	});
+
 	raceIt("note.add still appends a note with no concurrency (happy path)", async (ctx) => {
 		await import("../data");
 		const { handleRequest } = await import("../cli-socket-server");
