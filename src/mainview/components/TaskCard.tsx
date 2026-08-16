@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "rea
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isTaskDisconnected } from "../../shared/types";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -117,6 +117,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// Parked: agent, terminal and dev server killed, worktree intact. The card is
 	// inert (no drag, no column change) but still opens, and still completes.
 	const isHibernated = task.hibernated === true;
+	// Its session died with the app (force quit, reboot). Nothing was lost, but
+	// nothing is running either — the card must not pass for live work.
+	const isDisconnected = isTaskDisconnected(task);
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
 	const isCompleting = (moving || isMovingProp) && (task.status === "completed" || task.status === "cancelled");
@@ -746,7 +749,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-card-hover"
-			} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated ? "grayscale opacity-60" : ""}`}
+			} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : isHibernated || isDisconnected ? "grayscale opacity-60" : ""}`}
 			onClick={handleClick}
 		>
 			{/* Moving spinner overlay */}
@@ -894,6 +897,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-fg-muted"
 						>
 							{t("task.hibernatedBadge")}
+						</span>
+					</Tooltip>
+				)}
+				{isDisconnected && (
+					<Tooltip content={t("task.disconnectedBadge")} detail={t("task.disconnectedHint")}>
+						<span
+							data-testid="task-card-disconnected-badge"
+							className="flex-shrink-0 rounded border border-dashed border-edge-active px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-fg-muted"
+						>
+							{t("task.disconnectedBadge")}
 						</span>
 					</Tooltip>
 				)}

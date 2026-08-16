@@ -126,6 +126,36 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(navigate).not.toHaveBeenCalled();
 	});
 
+	it("marks a task whose session died and sinks it under the live ones", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({
+							id: "dead",
+							title: "Dead session",
+							priority: "P0",
+							runtimeState: { runtime: "idle", updatedAt: 1 },
+						}),
+						makeTask({ id: "live", title: "Live session", priority: "P4" }),
+					]}
+					activeTaskId={undefined}
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		expect(screen.getByTestId("sidebar-disconnected-badge")).toHaveTextContent(/disconnected/i);
+		const live = screen.getByText("Live session");
+		const dead = screen.getByText("Dead session");
+		expect(live.compareDocumentPosition(dead) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
 	it("returns to the Kanban board when the focused task is clicked again", async () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();

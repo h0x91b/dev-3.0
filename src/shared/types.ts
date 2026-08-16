@@ -264,23 +264,57 @@ export function comparePriority(
  */
 export const HIBERNATED_SORT_OFFSET = 10;
 
-/** The subset of a task the shared sort comparator reads. */
-export type TaskSortFields = Pick<Task, "priority" | "hibernated">;
+/**
+ * Rank offset added to a disconnected task. Sits between the live band and the
+ * hibernated one: a dead session is not running, but unlike hibernation nobody
+ * chose it, so it stays the first thing under the live work.
+ */
+export const DISCONNECTED_SORT_OFFSET = 5;
 
 /**
- * Sort rank of a task: its {@link priorityRank}, plus {@link HIBERNATED_SORT_OFFSET}
- * when hibernated. Hibernation never writes `priority`, so waking a task returns
- * it to its rightful place in the queue.
+ * The subset of a task the shared sort comparator reads. Every field is
+ * optional: a caller ranking a stub (a test, a CLI row) only has to supply what
+ * it actually knows, and a missing field simply keeps the task in the live band.
  */
-export function taskSortRank(task: TaskSortFields): number {
-	return priorityRank(task.priority) + (task.hibernated ? HIBERNATED_SORT_OFFSET : 0);
+export type TaskSortFields = Partial<
+	Pick<
+		Task,
+		"priority" | "hibernated" | "status" | "worktreePath" | "runtimeState" | "draft" | "preparing" | "shuttingDown"
+	>
+>;
+
+/**
+ * Is this task's agent session gone? True for a task still parked in an active
+ * column with its worktree intact, whose runtime the boot probe found dead —
+ * the app was force-quit or the machine restarted, and tmux/the native host did
+ * not survive it. Derived, never stored: attaching a terminal writes the runtime
+ * hint back to `running` and the task rejoins the live band.
+ */
+export function isTaskDisconnected(task: TaskSortFields): boolean {
+	if (task.hibernated || task.draft || task.preparing || task.shuttingDown) return false;
+	if (!task.worktreePath) return false;
+	if (!task.status || !ACTIVE_STATUSES.includes(task.status)) return false;
+	return task.runtimeState?.runtime === "idle";
 }
 
 /**
- * The one comparator every task list sorts by: strict priority bands with a
- * hibernated sink band underneath. Deliberately splits a variant group when one
- * variant is hibernated — the board should show honestly how many attempts are
- * still alive.
+ * Sort rank of a task: its {@link priorityRank}, plus {@link HIBERNATED_SORT_OFFSET}
+ * when hibernated or {@link DISCONNECTED_SORT_OFFSET} when its session died.
+ * Neither state writes `priority`, so a woken or resumed task returns to its
+ * rightful place in the queue.
+ */
+export function taskSortRank(task: TaskSortFields): number {
+	const offset = task.hibernated
+		? HIBERNATED_SORT_OFFSET
+		: isTaskDisconnected(task) ? DISCONNECTED_SORT_OFFSET : 0;
+	return priorityRank(task.priority) + offset;
+}
+
+/**
+ * The one comparator every task list sorts by: strict priority bands, then a
+ * disconnected band, then a hibernated sink band. Deliberately splits a variant
+ * group when one variant is parked — the board should show honestly how many
+ * attempts are still alive.
  */
 export function compareTaskSortRank(a: TaskSortFields, b: TaskSortFields): number {
 	return taskSortRank(a) - taskSortRank(b);

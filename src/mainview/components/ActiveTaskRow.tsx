@@ -1,6 +1,6 @@
 import { useState, type Dispatch } from "react";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { getAllowedTransitions, getTaskTitle } from "../../shared/types";
+import { getAllowedTransitions, getTaskTitle, isTaskDisconnected } from "../../shared/types";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT, useLocale } from "../i18n";
@@ -98,12 +98,15 @@ export default function ActiveTaskRow({
 	const displayTitle = getTaskTitle(task);
 	const agentSummary = [agent?.name, configLabel].filter(Boolean).join(" · ");
 	const disabled = task.shuttingDown || task.preparing || task.hibernated || moving;
+	// Session gone with the app; the row still opens (that is where recovery is
+	// offered), it just stops counting as one of the sessions running right now.
+	const disconnected = isTaskDisconnected(task);
 	const activeCol = task.customColumnId
 		? (taskProject.customColumns ?? []).find((c) => c.id === task.customColumnId)
 		: null;
 	// Busy statuses keep the flowing highlight the thin rail used to carry — the
 	// ring reports the stage, not that an agent is moving right now.
-	const isBusy = task.status === "in-progress" || task.status === "review-by-ai";
+	const isBusy = (task.status === "in-progress" || task.status === "review-by-ai") && !disconnected;
 
 	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
 		statusMenu.setOpen(false);
@@ -177,7 +180,7 @@ export default function ActiveTaskRow({
 			className={`relative flex w-full items-stretch text-left transition-colors cursor-pointer focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 				task.shuttingDown
 					? "grayscale opacity-40 pointer-events-none"
-					: task.hibernated
+					: task.hibernated || disconnected
 						? "grayscale opacity-60 hover:bg-elevated-hover"
 						: isActive
 							? "bg-accent/20 ring-1 ring-inset ring-accent/50"
@@ -321,6 +324,15 @@ export default function ActiveTaskRow({
 								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-muted"
 							>
 								{t("task.hibernatedBadge")}
+							</span>
+						)}
+						{disconnected && (
+							<span
+								data-testid="sidebar-disconnected-badge"
+								title={t("task.disconnectedHint")}
+								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-muted"
+							>
+								{t("task.disconnectedBadge")}
 							</span>
 						)}
 						<div className="min-w-0 flex-1 truncate text-nano font-mono text-fg-muted">{agentSummary}</div>

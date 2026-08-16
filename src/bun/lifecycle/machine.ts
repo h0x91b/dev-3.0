@@ -453,6 +453,26 @@ function bootTransition(
 	};
 }
 
+/**
+ * A live terminal was observed for this task. The only state it corrects is the
+ * one a boot probe left behind: an active task, worktree intact, runtime `idle`
+ * because its session died with the app. Every other phase is mid-flight work
+ * that owns its own runtime and must not be overwritten from here.
+ */
+function attachTransition(state: LifecycleState): TransitionResult {
+	if (state.runtime.phase !== "idle") return unchanged(state);
+	if (state.facts.hibernated === true) return unchanged(state);
+	if (!ACTIVE_STATUSES.has(state.column.status) || !state.facts.hasWorktree) return unchanged(state);
+	const runtime = { phase: "running" } as const;
+	return {
+		next: { ...state, runtime },
+		effects: [
+			effect({ type: "persistRuntime", runtime }),
+			effect({ type: "push", message: "taskUpdated", view: "current" }),
+		],
+	};
+}
+
 export function transition(state: LifecycleState, event: LifecycleEvent): TransitionResult {
 	switch (event.type) {
 		case "moveRequested":
@@ -810,6 +830,8 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 			};
 		case "bootObserved":
 			return bootTransition(state, event);
+		case "terminalAttached":
+			return attachTransition(state);
 	}
 }
 

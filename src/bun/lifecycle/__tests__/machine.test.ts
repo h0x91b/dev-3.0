@@ -872,6 +872,44 @@ describe("boot runtime reconciliation", () => {
 		},
 	);
 
+	it("puts a disconnected task back to running once a terminal attaches", () => {
+		const disconnected = state("in-progress", { runtime: { phase: "idle" } });
+		const result = transition(disconnected, { type: "terminalAttached" });
+
+		expect(result.next.runtime.phase).toBe("running");
+		expect(result.effects.map((effect) => effect.type)).toEqual(["persistRuntime", "push"]);
+	});
+
+	it("never lets an attaching terminal overwrite a runtime that owns itself", () => {
+		for (const phase of ["running", "preparing", "tearing-down"] as const) {
+			const runtime = phase === "preparing"
+				? { phase, stage: "launching-pty" as const, runId: "r", origin: { status: "todo" as const, customColumnId: null } }
+				: phase === "tearing-down"
+					? { phase, targetStatus: "completed" as const, runId: "r" }
+					: { phase };
+			const result = transition(state("in-progress", { runtime }), { type: "terminalAttached" });
+			expect(result.next.runtime.phase).toBe(phase);
+			expect(result.effects).toEqual([]);
+		}
+	});
+
+	it("ignores an attaching terminal on a hibernated, parked or worktree-less task", () => {
+		const hibernated = state("in-progress", {
+			runtime: { phase: "idle" },
+			facts: { hasWorktree: true, projectKind: "git", hasPrIdentity: false, peerReviewEnabled: true, hibernated: true },
+		});
+		expect(transition(hibernated, { type: "terminalAttached" }).effects).toEqual([]);
+
+		const todo = state("todo", { runtime: { phase: "idle" } });
+		expect(transition(todo, { type: "terminalAttached" }).effects).toEqual([]);
+
+		const noWorktree = state("in-progress", {
+			runtime: { phase: "idle" },
+			facts: { hasWorktree: false, projectKind: "git", hasPrIdentity: false, peerReviewEnabled: true },
+		});
+		expect(transition(noWorktree, { type: "terminalAttached" }).effects).toEqual([]);
+	});
+
 	it("reverts an interrupted preparation with no live tmux process", () => {
 		const current = state("in-progress", {
 			runtime: {

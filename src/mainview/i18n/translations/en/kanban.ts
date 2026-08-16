@@ -76,6 +76,8 @@ const kanban = {
 	"task.draftHint": "Unfinished draft — click to keep writing. Nothing can start it yet.",
 	"task.hibernatedBadge": "Hibernated",
 	"task.hibernatedHint": "Parked — agent, terminal and dev server stopped. The worktree and your uncommitted changes are untouched. Open the task to wake it.",
+	"task.disconnectedBadge": "Disconnected",
+	"task.disconnectedHint": "The agent session did not survive the last shutdown. The worktree and your changes are untouched — open the task to resume the session or start a fresh one.",
 	"task.hibernate": "Hibernate",
 	"task.hibernateShort": "Hibernate",
 	"task.hibernateHint": "Your work is kept: the worktree, your changes and the agent transcript stay exactly as they are. Stops the agent, the terminal and the dev server to free memory — terminal scrollback is lost.",

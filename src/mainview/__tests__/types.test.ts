@@ -1,5 +1,6 @@
 import {
 	compareTaskSortRank,
+	isTaskDisconnected,
 	taskSortRank,
 	hexToRgb,
 	titleFromDescription,
@@ -690,5 +691,45 @@ describe("taskSortRank / compareTaskSortRank", () => {
 
 	it("still bands live tasks strictly by priority", () => {
 		expect(compareTaskSortRank(t("P1"), t("P2"))).toBeLessThan(0);
+	});
+});
+
+describe("isTaskDisconnected — a session that died with the app", () => {
+	const dead = (over: Partial<Task> = {}): Partial<Task> => ({
+		status: "in-progress",
+		worktreePath: "/wt",
+		runtimeState: { runtime: "idle", updatedAt: 1 },
+		...over,
+	});
+
+	it("flags an active task whose worktree survived but whose runtime is idle", () => {
+		expect(isTaskDisconnected(dead())).toBe(true);
+	});
+
+	it("leaves a running task alone", () => {
+		expect(isTaskDisconnected(dead({ runtimeState: { runtime: "running", updatedAt: 1 } }))).toBe(false);
+	});
+
+	it("says nothing about a task whose runtime was never persisted", () => {
+		expect(isTaskDisconnected(dead({ runtimeState: undefined }))).toBe(false);
+	});
+
+	it("never doubles up with hibernation, drafts, preparation or teardown", () => {
+		expect(isTaskDisconnected(dead({ hibernated: true }))).toBe(false);
+		expect(isTaskDisconnected(dead({ draft: true }))).toBe(false);
+		expect(isTaskDisconnected(dead({ preparing: true }))).toBe(false);
+		expect(isTaskDisconnected(dead({ shuttingDown: true }))).toBe(false);
+	});
+
+	it("ignores a task that is not in an active column, or has no worktree", () => {
+		expect(isTaskDisconnected(dead({ status: "todo" }))).toBe(false);
+		expect(isTaskDisconnected(dead({ status: "completed" }))).toBe(false);
+		expect(isTaskDisconnected(dead({ worktreePath: null }))).toBe(false);
+	});
+
+	it("sinks a disconnected P0 below a live P4, but keeps it above hibernation", () => {
+		const disconnectedP0 = dead({ priority: "P0" });
+		expect(compareTaskSortRank(disconnectedP0, { priority: "P4" })).toBeGreaterThan(0);
+		expect(compareTaskSortRank(disconnectedP0, { priority: "P0", hibernated: true })).toBeLessThan(0);
 	});
 });

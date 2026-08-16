@@ -1445,6 +1445,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 				try {
 					await pty.reattachNativeTaskSession(params.taskId, foundProject.id, foundTask.worktreePath);
 					log.info("Reattached to existing native session", { taskId: params.taskId.slice(0, 8) });
+					await markTerminalAttached(foundProject, foundTask);
 				} catch (err) {
 					log.error("Failed to reattach to native session", { taskId: params.taskId.slice(0, 8), error: String(err) });
 				}
@@ -1458,6 +1459,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 						: await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
 					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, false, { skipSessionPersist: true });
 					log.info("Reconnected to existing tmux session", { taskId: params.taskId.slice(0, 8) });
+					await markTerminalAttached(foundProject, foundTask);
 				} catch (err) {
 					log.error("Failed to reconnect to tmux session", { taskId: params.taskId.slice(0, 8), error: String(err) });
 				}
@@ -1476,6 +1478,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 						: await repoConfig.resolveProjectConfig(foundProject, foundTask.worktreePath);
 					await launchTaskPty(resolvedProject, foundTask, foundTask.worktreePath, foundTask.agentId, foundTask.configId, false, false);
 					log.info("Launched fresh PTY session", { taskId: params.taskId.slice(0, 8) });
+					await markTerminalAttached(foundProject, foundTask);
 				} catch (err) {
 					log.error("Failed to launch fresh PTY session", { taskId: params.taskId.slice(0, 8), error: String(err) });
 				}
@@ -1530,6 +1533,24 @@ async function wakeIfHibernated(project: Project, task: Task): Promise<void> {
 	// and this module must stay importable without it.
 	const { dispatchLifecycleEvent } = await import("../lifecycle/service");
 	await dispatchLifecycleEvent(project.id, task.id, { type: "wakeRequested" }, { project, task });
+}
+
+/**
+ * Tell the lifecycle machine a terminal is live again. Only ever corrects a
+ * runtime the boot probe wrote as `idle` because the session died with the app —
+ * without it a resumed task would keep rendering as disconnected forever.
+ */
+async function markTerminalAttached(project: Project, task: Task): Promise<void> {
+	try {
+		// Lazily imported for the same reason as in `wakeIfHibernated`.
+		const { dispatchLifecycleEvent } = await import("../lifecycle/service");
+		await dispatchLifecycleEvent(project.id, task.id, { type: "terminalAttached" }, { project, task });
+	} catch (err) {
+		log.warn("Failed to mark terminal attached (non-fatal)", {
+			taskId: task.id.slice(0, 8),
+			error: String(err),
+		});
+	}
 }
 
 /**
@@ -1657,6 +1678,8 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 		}
 	}
 
+	await markTerminalAttached(project, task);
+
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
 	log.info("← resumeTask", { url });
 	return url;
@@ -1695,6 +1718,8 @@ async function restartTask(params: { taskId: string }): Promise<string> {
 		false,
 		false,
 	);
+
+	await markTerminalAttached(project, task);
 
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
 	log.info("← restartTask", { url });

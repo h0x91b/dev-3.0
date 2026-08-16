@@ -359,6 +359,31 @@ describe("ActivityOverview", () => {
 		expect(screen.getByTestId("activity-hibernated-badge")).toBeInTheDocument();
 	});
 
+	it("sinks a task whose session died below every live one and labels it", async () => {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{
+				projectId: "p1",
+				tasks: [
+					{
+						...mockTask,
+						id: "dead",
+						title: "Dead session",
+						priority: "P0",
+						runtimeState: { runtime: "idle" as const, updatedAt: 1 },
+					},
+					{ ...mockTask, id: "live", title: "Live task", priority: "P4" },
+				],
+			},
+		]);
+
+		renderActivityOverview();
+
+		const live = await screen.findByText("Live task");
+		const dead = screen.getByText("Dead session");
+		expect(live.compareDocumentPosition(dead) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(screen.getByTestId("activity-disconnected-badge")).toBeInTheDocument();
+	});
+
 	it("shows custom-column tasks as rows labeled with the column name", async () => {
 		const projWithColumn: Project = {
 			...mockProject,

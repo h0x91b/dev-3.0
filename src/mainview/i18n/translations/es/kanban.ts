@@ -76,6 +76,8 @@ const kanban = {
 	"task.draftHint": "Borrador sin terminar: haz clic para seguir escribiendo. Todavía nada puede iniciarlo.",
 	"task.hibernatedBadge": "Hibernada",
 	"task.hibernatedHint": "Aparcada: el agente, la terminal y el servidor de desarrollo están detenidos. El worktree y tus cambios sin confirmar siguen intactos. Abre la tarea para despertarla.",
+	"task.disconnectedBadge": "Desconectada",
+	"task.disconnectedHint": "La sesión del agente no sobrevivió al último cierre. El worktree y tus cambios siguen intactos: abre la tarea para reanudar la sesión o empezar una nueva.",
 	"task.hibernate": "Hibernar",
 	"task.hibernateShort": "Hibernar",
 	"task.hibernateHint": "Tu trabajo se conserva: el worktree, tus cambios y la conversación del agente se mantienen igual. Detiene el agente, la terminal y el servidor de desarrollo para liberar memoria; el historial de la terminal se pierde.",

@@ -183,4 +183,11 @@ export type LifecycleEvent =
 			worktreePath?: string | null;
 			branchName?: string | null;
 		};
-	};
+	}
+	/**
+	 * A terminal session for this task is live again — it was just launched,
+	 * reattached, or found alive when the task was opened. Lets the runtime hint
+	 * a boot probe wrote as `idle` (the app was force-quit, the session died with
+	 * it) go back to `running`, so the task stops rendering as disconnected.
+	 */
+	| { type: "terminalAttached" };

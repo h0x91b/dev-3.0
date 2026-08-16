@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Dispatch, DragEvent } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
+import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isTaskDisconnected, orderProjectsForDisplay } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -594,7 +594,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 										return (
 										<div
 											key={task.id}
-											className={`group/row relative flex items-stretch hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0 ${task.hibernated ? "grayscale" : ""}`}
+											className={`group/row relative flex items-stretch hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0 ${task.hibernated || isTaskDisconnected(task) ? "grayscale" : ""}`}
 										>
 										<button
 											data-hint-id={`task:${task.id}`}
@@ -627,6 +627,15 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-3"
 														>
 															{t("task.hibernatedBadge")}
+														</span>
+													)}
+													{isTaskDisconnected(task) && (
+														<span
+															data-testid="activity-disconnected-badge"
+															title={t("task.disconnectedHint")}
+															className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-edge-active px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-fg-3"
+														>
+															{t("task.disconnectedBadge")}
 														</span>
 													)}
 													{bellCounts.has(task.id) && (

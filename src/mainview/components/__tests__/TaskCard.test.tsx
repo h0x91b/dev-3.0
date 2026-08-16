@@ -2130,6 +2130,46 @@ describe("hibernated card", () => {
 	});
 });
 
+describe("disconnected card", () => {
+	function disconnected(overrides?: Partial<Task>): Task {
+		return makeTask({
+			status: "in-progress",
+			worktreePath: "/tmp/wt",
+			branchName: "feat/x",
+			runtimeState: { runtime: "idle", updatedAt: 1 },
+			...overrides,
+		});
+	}
+
+	it("says 'disconnected' on the card and greys it out", () => {
+		const { container } = renderCard(disconnected());
+
+		expect(screen.getByTestId("task-card-disconnected-badge")).toHaveTextContent(/disconnected/i);
+		expect(container.querySelector("[data-task-id='t1']")?.className).toContain("grayscale");
+	});
+
+	it("stays a normal card otherwise — a dead session forbids nothing", () => {
+		const { container } = renderCard(disconnected());
+
+		expect(container.querySelector("[data-task-id='t1']")).toHaveAttribute("draggable", "true");
+		expect(container.querySelector("[data-testid='task-card-rail'] button")).not.toBeDisabled();
+	});
+
+	it("says nothing while the session is running", () => {
+		const { container } = renderCard(disconnected({ runtimeState: { runtime: "running", updatedAt: 1 } }));
+
+		expect(screen.queryByTestId("task-card-disconnected-badge")).toBeNull();
+		expect(container.querySelector("[data-task-id='t1']")?.className).not.toContain("grayscale");
+	});
+
+	it("defers to hibernation rather than badging the same card twice", () => {
+		renderCard(disconnected({ hibernated: true }));
+
+		expect(screen.getByTestId("task-card-hibernated-badge")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-card-disconnected-badge")).toBeNull();
+	});
+});
+
 describe("TaskCard — native terminal backend mark", () => {
 	it("marks a native-backed task next to its title", () => {
 		renderCard(makeTask({ terminalBackend: "native" }));
