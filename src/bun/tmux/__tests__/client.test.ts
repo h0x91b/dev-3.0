@@ -377,6 +377,57 @@ describe("capturePane", () => {
 	});
 });
 
+// capture-pane is the highest-frequency command in the app (one per pane poll).
+// Unbounded, a server that stops answering turned those polls into a pile of
+// ~250 spinning clients per minute — 1323 of them in one field incident, which
+// saturated the machine and froze the app. The bound is what caps the pile.
+describe("the default command bound", () => {
+	/** Never resolves — a client whose server stopped answering. */
+	function wedgedProc() {
+		return makeProc({ stdout: "", stderr: "", exited: new Promise<number>(() => undefined), kill: vi.fn() });
+	}
+
+	// Asserting the DEFAULT is the point: an injected 5ms would stay green even if
+	// the production default were dropped entirely.
+	it("reaps a capture-pane that never answers, after 10s and not before", async () => {
+		const proc = wedgedProc();
+		const client = new TmuxClient({ spawn: vi.fn().mockReturnValue(proc) as never });
+		vi.useFakeTimers();
+		try {
+			const failure = client.capturePane({ target: "dev3-abc" }).catch((err: unknown) => err);
+			await vi.advanceTimersByTimeAsync(9_999);
+			expect(proc.kill).not.toHaveBeenCalled(); // still within budget
+			await vi.advanceTimersByTimeAsync(2);
+			expect(proc.kill).toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(1_100);
+			expect(await failure).toSatisfy(isTmuxTimeoutError);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("bounds a plain query too — a wedged list-sessions cannot hang its caller", async () => {
+		const proc = wedgedProc();
+		const client = new TmuxClient({ spawn: vi.fn().mockReturnValue(proc) as never });
+		vi.useFakeTimers();
+		try {
+			const failure = client.hasSession("dev3-abc").catch((err: unknown) => err);
+			await vi.advanceTimersByTimeAsync(12_000);
+			expect(await failure).toSatisfy(isTmuxTimeoutError);
+			expect(proc.kill).toHaveBeenCalled();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("still lets a caller ask for a tighter bound", async () => {
+		const proc = wedgedProc();
+		const client = new TmuxClient({ spawn: vi.fn().mockReturnValue(proc) as never });
+		const failure = await client.ensureServerToken({ candidate: "srv-token-1", timeoutMs: 5 }).catch((err: unknown) => err);
+		expect(failure).toSatisfy(isTmuxTimeoutError);
+	});
+});
+
 describe("sendKeysGuarded — one server command list, no check/send window", () => {
 	const GUARDED = { pane: "%3", serverToken: "srv-token-1", session: "dev3-task-abc12345" };
 

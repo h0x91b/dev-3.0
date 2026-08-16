@@ -22,6 +22,7 @@ import {
 	probeTmuxVersion,
 	selectTmuxBinary,
 } from "./binary";
+import { type BoundedRunResult, type SpawnBounds, runBounded } from "./bounded-spawn";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
 import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
@@ -72,61 +73,20 @@ const GUARDED_SEND_MARKER = "dev3-pane-input-sent";
 const SERVER_TOKEN_OPTION = "@dev3_server_token";
 /** Bound for the token command: a wedged server must not hold a session's setup open. */
 const SERVER_TOKEN_TIMEOUT_MS = 3_000;
-const TERM_GRACE_MS = 500;
-const KILL_GRACE_MS = 500;
-
-/** Whether `work` settled within `ms`. Never rejects; used only to bound a wait. */
-async function settled(work: Promise<unknown>, ms: number): Promise<boolean> {
-	return await Promise.race([
-		work.then(
-			() => true,
-			() => true,
-		),
-		new Promise<boolean>((resolve) => setTimeout(() => resolve(false), ms)),
-	]);
-}
-
-/** `work`, or `fallback` as soon as `giveUp` settles — so no wait outlives the stop. */
-function until<T>(work: Promise<T>, giveUp: Promise<unknown>, fallback: T): Promise<T> {
-	return Promise.race([work.catch(() => fallback), giveUp.then(() => fallback)]);
-}
 
 /**
- * Read a stream with an OWN reader so the stop can cancel it: handing the stream to
- * `Response` locks it, and an abandoned `Response` read stays pending for the life of the
- * process with the stream locked behind it.
+ * Every tmux command here is non-interactive and answers in milliseconds on a
+ * healthy server. Unbounded, they do not merely hang their caller — they PILE
+ * UP: a field incident collected 1323 spinning `capture-pane` clients in five
+ * minutes (~250/min from the pane pollers), which saturated the machine, drove
+ * the server's own response time from 4ms to 55s, and froze the app. Reaping a
+ * straggler costs one missed pane refresh; the poller just tries again.
+ * Callers needing a tighter or looser bound pass their own.
+ * See decisions/2026/08/16/bound-every-tmux-spawn.md.
  */
-async function readUntil(stream: unknown, giveUp: Promise<unknown>): Promise<string> {
-	const readable = stream as ReadableStream<Uint8Array> | undefined;
-	// Anything that is not a live stream (a string, a Response, a test double) has no
-	// reader to cancel and cannot half-open, so read it the simple way.
-	if (!readable || typeof readable.getReader !== "function") {
-		return await until(new Response(readable as unknown as BodyInit).text(), giveUp, "");
-	}
-	const reader = readable.getReader();
-	void giveUp.then(() => reader.cancel().catch(() => undefined));
-	const decoder = new TextDecoder();
-	let text = "";
-	try {
-		for (;;) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			if (value) text += decoder.decode(value, { stream: true });
-		}
-		text += decoder.decode();
-	} catch {
-		// cancelled, or the pipe broke — whatever arrived is what we report
-	} finally {
-		reader.releaseLock();
-	}
-	return text;
-}
+const DEFAULT_RUN_TIMEOUT_MS = 10_000;
 
-interface RunResult {
-	stdout: string;
-	stderr: string;
-	exitCode: number;
-}
+type RunResult = BoundedRunResult;
 
 export class TmuxClient {
 	private readonly spawnFn: SpawnFn;
@@ -174,11 +134,7 @@ export class TmuxClient {
 		return [getTmuxBinary(), "-L", socket ?? this.defaultSocket, ...args];
 	}
 
-	private async run(
-		socket: string | undefined,
-		args: string[],
-		bounds?: { timeoutMs?: number; signal?: AbortSignal },
-	): Promise<RunResult> {
+	private async run(socket: string | undefined, args: string[], bounds?: SpawnBounds): Promise<RunResult> {
 		let proc: SpawnedProcess;
 		try {
 			proc = this.spawnFn(this.argv(socket, args), { stdout: "pipe", stderr: "pipe" });
@@ -186,54 +142,10 @@ export class TmuxClient {
 			throw new TmuxSpawnError(getTmuxBinary(), err);
 		}
 
-		let resolveStopped: (confirmed: boolean) => void = () => undefined;
-		// Settles when a stop has finished, with whether the child was confirmed gone.
-		const stopped = new Promise<boolean>((resolve) => {
-			resolveStopped = resolve;
-		});
-		let stopping = false;
-		const stop = async (): Promise<void> => {
-			if (stopping) return;
-			stopping = true;
-			// TERM, a bounded wait, then KILL, then a bounded reap.
-			try {
-				proc.kill("SIGTERM");
-			} catch {
-				// already gone
-			}
-			if (await settled(proc.exited, TERM_GRACE_MS)) return resolveStopped(true);
-			try {
-				proc.kill("SIGKILL");
-			} catch {
-				// already gone
-			}
-			resolveStopped(await settled(proc.exited, KILL_GRACE_MS));
-		};
-
-		const timer = bounds?.timeoutMs === undefined ? undefined : setTimeout(() => void stop(), Math.max(0, bounds.timeoutMs));
-		const onAbort = (): void => void stop();
-		bounds?.signal?.addEventListener("abort", onAbort, { once: true });
-
-		try {
-			// Every wait here ends when the stop does, so a half-open pipe or an `exited`
-			// that never settles cannot outlive the decision to give up.
-			const collected = Promise.all([
-				readUntil(proc.stdout, stopped),
-				readUntil(proc.stderr, stopped),
-				until(proc.exited, stopped, -1),
-			]).then(([stdout, stderr, exitCode]) => ({ stdout, stderr, exitCode }));
-
-			const result = await Promise.race([
-				collected.then((value) => ({ kind: "done" as const, value })),
-				stopped.then((confirmed) => ({ kind: "stopped" as const, confirmed })),
-			]);
-			if (result.kind === "done" && !stopping) return result.value;
-			const confirmed = result.kind === "stopped" ? result.confirmed : await stopped;
-			throw new TmuxTimeoutError(args, bounds?.timeoutMs ?? 0, confirmed);
-		} finally {
-			if (timer !== undefined) clearTimeout(timer);
-			bounds?.signal?.removeEventListener("abort", onAbort);
-		}
+		const timeoutMs = bounds?.timeoutMs ?? DEFAULT_RUN_TIMEOUT_MS;
+		const outcome = await runBounded(proc, { ...bounds, timeoutMs });
+		if (outcome.kind === "done") return outcome.value;
+		throw new TmuxTimeoutError(args, timeoutMs, outcome.confirmed);
 	}
 
 	private async runChecked(socket: string | undefined, args: string[]): Promise<RunResult> {

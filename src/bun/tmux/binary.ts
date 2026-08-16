@@ -12,6 +12,7 @@ import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { spawn } from "../spawn";
 import { isExecutableFile } from "../executable";
+import { runBounded } from "./bounded-spawn";
 import { DEFAULT_TMUX_SOCKET } from "./constants";
 
 // Must be initialized before any module-load code below — sanitizeTmuxShim()
@@ -32,9 +33,17 @@ export function getTmuxBinary(): string {
 }
 
 type TmuxServerProbe = {
-	status: "compatible" | "no-server" | "mismatch";
+	status: "compatible" | "no-server" | "mismatch" | "unreachable";
 	serverVersion?: string;
 };
+
+/**
+ * Bounds for the probes below. A tmux client waiting on a wedged server never
+ * exits, so an unbounded probe hangs its caller forever — that is how startup
+ * froze on "Checking system…" (decisions/2026/08/16/bound-every-tmux-spawn.md).
+ * Matches SERVER_TOKEN_TIMEOUT_MS in ./client: a healthy server answers in ms.
+ */
+const PROBE_TIMEOUT_MS = 3_000;
 
 export interface TmuxServerVersionMismatch {
 	clientVersion: string;
@@ -60,11 +69,15 @@ function normalizeTmuxVersion(version: string): string {
 async function probeTmuxServer(binary: string, binaryVersion: string, socket: string): Promise<TmuxServerProbe> {
 	try {
 		const proc = spawn([binary, "-L", socket, "display-message", "-p", "#{version}"], { stdout: "pipe", stderr: "pipe" });
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-			proc.exited,
-		]);
+		const outcome = await runBounded(proc, { timeoutMs: PROBE_TIMEOUT_MS });
+		// A server that does not answer tells us nothing about version skew, so
+		// this must NOT read as "mismatch" — that would send the caller hunting
+		// for a fallback binary and warn about a version it never saw.
+		if (outcome.kind === "stopped") {
+			log.warn("tmux server did not answer a version probe in time — treating it as unreachable", { binary, socket, timeoutMs: PROBE_TIMEOUT_MS });
+			return { status: "unreachable" };
+		}
+		const { stdout, stderr, exitCode } = outcome.value;
 		if (exitCode === 0) {
 			const serverVersion = normalizeTmuxVersion(stdout);
 			return {
@@ -84,9 +97,13 @@ async function probeTmuxServer(binary: string, binaryVersion: string, socket: st
 export async function probeTmuxVersion(binary: string): Promise<string | undefined> {
 	try {
 		const proc = spawn([binary, "-V"], { stdout: "pipe", stderr: "pipe" });
-		const stdout = (await new Response(proc.stdout).text()).trim();
-		const exitCode = await proc.exited;
-		return exitCode === 0 && /^tmux \d/.test(stdout) ? stdout : undefined;
+		const outcome = await runBounded(proc, { timeoutMs: PROBE_TIMEOUT_MS });
+		if (outcome.kind === "stopped") {
+			log.warn("tmux -V did not answer in time — treating this binary as unusable", { binary, timeoutMs: PROBE_TIMEOUT_MS });
+			return undefined;
+		}
+		const stdout = outcome.value.stdout.trim();
+		return outcome.value.exitCode === 0 && /^tmux \d/.test(stdout) ? stdout : undefined;
 	} catch {
 		return undefined;
 	}
@@ -260,7 +277,7 @@ export async function selectTmuxBinary(preferred: string, fallbackCandidates: st
 	}
 	setTmuxBinary(chosen.path);
 	updateTmuxShim(chosen.path);
-	await warnIfKnownBadTmux(chosen.path);
+	warnIfKnownBadTmux(chosen.path, chosen.version);
 	return chosen.path;
 }
 
@@ -270,20 +287,11 @@ export async function selectTmuxBinary(preferred: string, fallbackCandidates: st
 const KNOWN_BAD_TMUX_VERSION = /^tmux 3\.7/;
 let badTmuxWarned = false;
 
-async function warnIfKnownBadTmux(binary: string): Promise<void> {
-	if (badTmuxWarned) return;
-	try {
-		const proc = spawn([binary, "-V"], { stdout: "pipe", stderr: "ignore" });
-		const version = (await new Response(proc.stdout).text()).trim();
-		await proc.exited;
-		if (KNOWN_BAD_TMUX_VERSION.test(version)) {
-			badTmuxWarned = true;
-			log.warn(
-				"tmux 3.7 detected — it has a client busy-spin regression when several dev3 instances share a machine. Install the pinned keg: brew trust h0x91b/dev3 && brew install h0x91b/dev3/tmux@3.6",
-				{ binary, version },
-			);
-		}
-	} catch {
-		log.debug("tmux version probe failed", { binary });
-	}
+function warnIfKnownBadTmux(binary: string, version: string): void {
+	if (badTmuxWarned || !KNOWN_BAD_TMUX_VERSION.test(version)) return;
+	badTmuxWarned = true;
+	log.warn(
+		"tmux 3.7 detected — it has a client busy-spin regression when several dev3 instances share a machine. Install the pinned keg: brew trust h0x91b/dev3 && brew install h0x91b/dev3/tmux@3.6",
+		{ binary, version },
+	);
 }

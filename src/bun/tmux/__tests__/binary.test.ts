@@ -183,6 +183,61 @@ describe("selectTmuxBinary", () => {
 		expect(getTmuxServerVersionMismatch()).toBeNull();
 	});
 
+	// A tmux client talking to a wedged server never exits. These probes used to
+	// `await proc.exited` unbounded, so checkSystemRequirements never settled and
+	// the app sat on "Checking system…" forever, with Retry re-arming the hang.
+	// See decisions/2026/08/16/bound-every-tmux-spawn.md.
+	describe("a tmux process that never exits", () => {
+		/** Never resolves — exactly what a client blocked on a wedged server does. */
+		function wedgedProc() {
+			return { exited: new Promise<number>(() => {}), stdout: "", stderr: "", kill: vi.fn() } as any;
+		}
+
+		/** Run `work` while pushing fake time past the probe timeout + kill grace. */
+		async function underFakeTimers<T>(work: () => Promise<T>): Promise<T> {
+			vi.useFakeTimers();
+			try {
+				const promise = work();
+				await vi.advanceTimersByTimeAsync(10_000);
+				return await promise;
+			} finally {
+				vi.useRealTimers();
+			}
+		}
+
+		it("does not hang probeTmuxVersion — it gives up and reports the binary unusable", async () => {
+			mockSpawn.mockReturnValue(wedgedProc());
+			expect(await underFakeTimers(() => probeTmuxVersion(PREFERRED))).toBeUndefined();
+		});
+
+		it("kills the abandoned probe instead of leaking it", async () => {
+			const proc = wedgedProc();
+			mockSpawn.mockReturnValue(proc);
+			await underFakeTimers(() => probeTmuxVersion(PREFERRED));
+			expect(proc.kill).toHaveBeenCalled();
+		});
+
+		it("does not hang selectTmuxBinary when the server never answers", async () => {
+			mockSpawn.mockImplementation(((args: string[]) =>
+				args[1] === "-V" ? probeResult(0) : wedgedProc()) as any);
+			const chosen = await underFakeTimers(() => selectTmuxBinary(PREFERRED, [PATH_TMUX]));
+			expect(chosen).toBe(PREFERRED);
+			expect(getTmuxBinary()).toBe(PREFERRED);
+		});
+
+		it("does not mistake an unreachable server for a version mismatch", async () => {
+			// "No answer" is not evidence of skew: reporting a mismatch would send
+			// the caller hunting for a fallback binary and tell the user to
+			// kill-server over a version nobody ever read.
+			mockSpawn.mockImplementation(((args: string[]) =>
+				args[1] === "-V" ? probeResult(0) : wedgedProc()) as any);
+			await underFakeTimers(() => selectTmuxBinary(PREFERRED, [PATH_TMUX, "/usr/local/bin/tmux"]));
+			expect(getTmuxServerVersionMismatch()).toBeNull();
+			const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("display-message"));
+			expect(probes).toHaveLength(1); // preferred only — no fallback scan
+		});
+	});
+
 	it("skips fallback candidates that do not exist on disk", async () => {
 		mockVersionAndServer(1, "server exited unexpectedly");
 		mockExistsSync.mockImplementation((path) => path === PREFERRED);
