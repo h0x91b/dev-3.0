@@ -140,10 +140,10 @@ describe("SpawnAgentModal", () => {
 		expect(screen.getByText("Test task")).toBeInTheDocument();
 	});
 
-	it("shows the Provider/Model/Mode picker after loading", async () => {
+	it("shows the Harness/Model/Mode picker after loading", async () => {
 		renderModal();
 		await vi.waitFor(() => {
-			expect(screen.getByText("Provider")).toBeInTheDocument();
+			expect(screen.getByText("Harness")).toBeInTheDocument();
 			expect(screen.getByText("Model")).toBeInTheDocument();
 			expect(screen.getByText("Mode")).toBeInTheDocument();
 		});
@@ -152,7 +152,7 @@ describe("SpawnAgentModal", () => {
 	it("defaults to global default agent and config", async () => {
 		renderModal();
 		await vi.waitFor(() => {
-			const agentBtn = document.getElementById("spawn-provider") as HTMLButtonElement;
+			const agentBtn = document.getElementById("spawn-harness") as HTMLButtonElement;
 			expect(agentBtn?.textContent?.trim()).toBe("Claude");
 		});
 		const configBtn = document.getElementById("spawn-mode") as HTMLButtonElement;
@@ -249,7 +249,7 @@ describe("SpawnAgentModal", () => {
 		renderModal();
 
 		await vi.waitFor(() => {
-			const agentBtn = document.getElementById("spawn-provider") as HTMLButtonElement;
+			const agentBtn = document.getElementById("spawn-harness") as HTMLButtonElement;
 			// Falls back to first agent (Claude)
 			expect(agentBtn?.textContent?.trim()).toBe("Claude");
 		});
@@ -264,10 +264,10 @@ describe("SpawnAgentModal", () => {
 		renderModal();
 
 		await vi.waitFor(() => {
-			expect(document.getElementById("spawn-provider")).toBeInTheDocument();
+			expect(document.getElementById("spawn-harness")).toBeInTheDocument();
 		});
 
-		const agentBtn = document.getElementById("spawn-provider") as HTMLButtonElement;
+		const agentBtn = document.getElementById("spawn-harness") as HTMLButtonElement;
 		await user.click(agentBtn);
 		const codexEl = screen.getByText("Codex");
 		const codexOption = codexEl.closest("button") ?? codexEl;
@@ -283,10 +283,10 @@ describe("SpawnAgentModal", () => {
 		it("does not spawn when the agent Select button is focused", async () => {
 			renderModal();
 			await vi.waitFor(() => {
-				expect(document.getElementById("spawn-provider")).toBeInTheDocument();
+				expect(document.getElementById("spawn-harness")).toBeInTheDocument();
 			});
 
-			(document.getElementById("spawn-provider") as HTMLButtonElement).focus();
+			(document.getElementById("spawn-harness") as HTMLButtonElement).focus();
 			await userEvent.keyboard("{Enter}");
 
 			expect(mockedApi.request.spawnAgentInTask).not.toHaveBeenCalled();
@@ -296,7 +296,7 @@ describe("SpawnAgentModal", () => {
 			renderModal();
 			// Wait until agents + globalSettings have loaded (Enter is gated on globalSettings).
 			await vi.waitFor(() => {
-				const agentBtn = document.getElementById("spawn-provider") as HTMLButtonElement;
+				const agentBtn = document.getElementById("spawn-harness") as HTMLButtonElement;
 				expect(agentBtn?.textContent?.trim()).toBe("Claude");
 			});
 
@@ -376,7 +376,7 @@ describe("SpawnAgentModal", () => {
 			renderModal();
 			const dialog = await screen.findByRole("dialog");
 			await vi.waitFor(() => {
-				expect(document.getElementById("spawn-provider")).toBeInTheDocument();
+				expect(document.getElementById("spawn-harness")).toBeInTheDocument();
 			});
 
 			const outside = document.createElement("button");

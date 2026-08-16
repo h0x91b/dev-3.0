@@ -227,6 +227,8 @@ const tips = {
 	"tip.cliDoctorWorktrees.body": "Ejecuta `dev3 doctor --worktrees`: muestra qué guarda ~/.dev3.0 en disco y qué carpetas de tarea ya no pertenecen a ninguna tarea.",
 	"tip.shareArtifactLink.title": "Comparte un informe como enlace",
 	"tip.shareArtifactLink.body": "Pide al agente que comparta un artefacto: publica el informe como gist secreto y devuelve un enlace que puedes abrir en el móvil.",
+	"tip.modelCatalogRoles.title": "Mezcla modelos en un agente",
+	"tip.modelCatalogRoles.body": "Registra tus propios proveedores y luego da a cada rol del agente su propio modelo en el editor de preajustes.",
 };
 
 export default tips;

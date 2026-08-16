@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import AgentSettingsSection from "../AgentSettingsSection";
 import { I18nProvider } from "../../../i18n";
@@ -20,6 +20,9 @@ vi.mock("../../../rpc", () => ({
 			setActiveAgentAccount: vi.fn(),
 			toggleFavoriteAgent: vi.fn(() => Promise.resolve({})),
 			checkCodexBedrockConfig: vi.fn(() => Promise.resolve({ configured: true })),
+			// The preset editor asks for the model catalog; an empty one keeps the
+			// roles block hidden, which is this suite's subject.
+			modelCatalogGet: vi.fn(() => Promise.resolve({ providers: [], models: [] })),
 		},
 	},
 }));
@@ -542,5 +545,85 @@ describe("AgentSettingsSection — preset fields", () => {
 		expect(override).toHaveAttribute("autocapitalize", "off");
 		expect(override).toHaveAttribute("autocorrect", "off");
 		expect(override.getAttribute("spellcheck")).toBe("false");
+	});
+});
+
+/** The row the list renders for one preset — the same hook the section's own
+ *  scroll-into-view uses. */
+function presetRow(configId: string): HTMLElement | null {
+	return document.querySelector(`[data-preset-row="${configId}"]`);
+}
+
+describe("a deep-link that names one preset", () => {
+	const claude = DEFAULT_AGENTS.find((a) => a.baseCommand === "claude")!;
+	const target = claude.configurations[claude.configurations.length - 1];
+
+	function renderWithFocus(agents: CodingAgent[], onHandled = vi.fn()) {
+		const { rerender } = render(
+			<I18nProvider>
+				<AgentSettingsSection
+					t={identityT as never}
+					agents={agents}
+					globalSettings={baseSettings}
+					onAgentsChange={vi.fn()}
+					onDefaultAgentChange={vi.fn()}
+					onDefaultConfigChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
+					focusPreset={{ agentId: claude.id, configId: target.id }}
+					onFocusPresetHandled={onHandled}
+				/>
+			</I18nProvider>,
+		);
+		return { rerender, onHandled };
+	}
+
+	it("selects that preset instead of leaving the user to find it", async () => {
+		renderWithFocus(DEFAULT_AGENTS);
+		await waitFor(() => expect(presetRow(target.id)).not.toBeNull());
+		expect(presetRow(target.id)!.getAttribute("aria-selected")).toBe("true");
+	});
+
+	it("waits for the agents to load — an empty list is 'not yet', not 'gone'", async () => {
+		const onHandled = vi.fn();
+		const { rerender } = renderWithFocus([], onHandled);
+		expect(onHandled).not.toHaveBeenCalled();
+
+		rerender(
+			<I18nProvider>
+				<AgentSettingsSection
+					t={identityT as never}
+					agents={DEFAULT_AGENTS}
+					globalSettings={baseSettings}
+					onAgentsChange={vi.fn()}
+					onDefaultAgentChange={vi.fn()}
+					onDefaultConfigChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
+					focusPreset={{ agentId: claude.id, configId: target.id }}
+					onFocusPresetHandled={onHandled}
+				/>
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(presetRow(target.id)).not.toBeNull());
+		expect(onHandled).toHaveBeenCalled();
+	});
+
+	it("spends the jump on a preset that no longer exists, rather than retrying forever", async () => {
+		const onHandled = vi.fn();
+		render(
+			<I18nProvider>
+				<AgentSettingsSection
+					t={identityT as never}
+					agents={DEFAULT_AGENTS}
+					globalSettings={baseSettings}
+					onAgentsChange={vi.fn()}
+					onDefaultAgentChange={vi.fn()}
+					onDefaultConfigChange={vi.fn()}
+					onGlobalSettingsChange={vi.fn()}
+					focusPreset={{ agentId: claude.id, configId: "deleted-long-ago" }}
+					onFocusPresetHandled={onHandled}
+				/>
+			</I18nProvider>,
+		);
+		expect(onHandled).toHaveBeenCalled();
 	});
 });

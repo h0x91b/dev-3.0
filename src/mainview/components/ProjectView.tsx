@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject } from "react";
-import type { CodingAgent, PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
+import type { PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
@@ -17,6 +17,7 @@ import { createUnresolvedCommentsDiffRequest, useTaskInlineDiffState } from "./t
 import { trackDiffView } from "../analytics";
 import { taskSeqLabel } from "../../shared/types";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useAgents } from "../hooks/useAgents";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ProjectViewProps {
@@ -62,7 +63,7 @@ function ProjectView({
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
-	const [agents, setAgents] = useState<CodingAgent[]>([]);
+	const agents = useAgents();
 	const inlineDiff = useTaskInlineDiffState(activeTaskId);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const inFlightTaskUpdatesRef = useRef(new Map<string, Task>());
@@ -147,10 +148,6 @@ function ProjectView({
 		transportWasDownRef.current = false;
 		setTasksReloadNonce((n) => n + 1);
 	}, [rpcState]);
-
-	useEffect(() => {
-		api.request.getAgents().then(setAgents).catch(() => {});
-	}, []);
 
 	// Opening the inline diff is a distinct surface but not a route — fire its
 	// page view explicitly (once per open) so it shows up alongside navigation.

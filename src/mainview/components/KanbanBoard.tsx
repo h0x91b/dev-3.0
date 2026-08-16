@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import type { BoardColumnSlot, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 
@@ -24,6 +24,7 @@ import { useColumnCollapse } from "../hooks/useColumnCollapse";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useStatusColors } from "../hooks/useStatusColors";
+import { useAgents } from "../hooks/useAgents";
 import MobileBoardCarousel, { CAROUSEL_MAX_WIDTH, type CarouselColumn } from "./MobileBoardCarousel";
 
 interface KanbanBoardProps {
@@ -111,7 +112,7 @@ function KanbanBoard({
 	const t = useT();
 	const isCarousel = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const statusColors = useStatusColors();
-	const [agents, setAgents] = useState<CodingAgent[]>([]);
+	const agents = useAgents();
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-auto",
@@ -149,7 +150,6 @@ function KanbanBoard({
 	}, []);
 
 	useEffect(() => {
-		api.request.getAgents().then(setAgents).catch(() => {});
 		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
 		// Follow the settings push, like the sidebar's useTaskSortOrder does: a sort
 		// order changed in another window (or the remote browser) has to reorder this

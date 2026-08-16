@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 
@@ -12,6 +12,10 @@ vi.mock("../../rpc", () => ({
 				codex: { accounts: [], activeId: null, currentIdentity: null },
 			}),
 			setActiveAgentAccount: vi.fn(),
+			modelCatalogGet: vi.fn().mockResolvedValue({
+				providers: [{ id: "p-or", kind: "openrouter", label: "OpenRouter", hasKey: true }],
+				models: [{ id: "m-flash", providerId: "p-or", name: "ds-flash", modelId: "deepseek/flash" }],
+			}),
 		},
 	},
 }));
@@ -69,7 +73,7 @@ function Harness({ initial, onChange, showLabels }: { initial: AgentConfigSelect
 	);
 }
 
-const provider = () => document.getElementById("test-provider") as HTMLButtonElement;
+const harnessBtn = () => document.getElementById("test-harness") as HTMLButtonElement;
 const model = () => document.getElementById("test-model") as HTMLButtonElement;
 const mode = () => document.getElementById("test-mode") as HTMLButtonElement;
 const text = (b: HTMLButtonElement) => b?.textContent?.trim() ?? "";
@@ -84,22 +88,22 @@ async function pick(user: ReturnType<typeof userEvent.setup>, button: HTMLButton
 }
 
 describe("AgentConfigPicker", () => {
-	it("decomposes the current config into Provider/Model/Mode", () => {
+	it("decomposes the current config into Harness/Model/Mode", () => {
 		render(<Harness initial={{ agentId: "builtin-claude", configId: "opus-bypass-xhigh" }} />);
-		expect(text(provider())).toBe("Claude");
+		expect(text(harnessBtn())).toBe("Claude");
 		expect(text(model())).toBe("Opus 4.8");
 		expect(text(mode())).toBe("Bypass · X-High");
 	});
 
-	it("changing Provider resets to the new agent's default config", async () => {
+	it("changing Harness resets to the new agent's default config", async () => {
 		const user = userEvent.setup();
 		const onChange = vi.fn();
 		render(<Harness initial={{ agentId: "builtin-claude", configId: "opus-bypass-xhigh" }} onChange={onChange} />);
 
-		await pick(user, provider(), "Codex");
+		await pick(user, harnessBtn(), "Codex");
 
 		expect(onChange).toHaveBeenLastCalledWith({ agentId: "builtin-codex", configId: "codex-default" });
-		expect(text(provider())).toBe("Codex");
+		expect(text(harnessBtn())).toBe("Codex");
 		expect(text(model())).toBe("GPT-5.5");
 		expect(text(mode())).toBe("Default");
 	});
@@ -118,8 +122,8 @@ describe("AgentConfigPicker", () => {
 
 	it("shows the field labels by default (Settings and single-picker dialogs)", () => {
 		render(<Harness initial={{ agentId: "builtin-claude", configId: "fable-auto-medium" }} />);
-		const label = document.querySelector('label[for="test-provider"]');
-		expect(label?.textContent).toBe("Provider");
+		const label = document.querySelector('label[for="test-harness"]');
+		expect(label?.textContent).toBe("Harness");
 		expect(label?.className).not.toContain("sr-only");
 	});
 
@@ -141,5 +145,47 @@ describe("AgentConfigPicker", () => {
 		await pick(user, mode(), "Bypass · X-High");
 
 		expect(onChange).toHaveBeenLastCalledWith({ agentId: "builtin-claude", configId: "fable-bypass-xhigh" });
+	});
+
+	// Provider is a property of the model, so it is a caption on the Model field —
+	// never a fourth thing to pick (AGENTS.md § Model routing glossary).
+	describe("the provider caption", () => {
+		const routedAgent: CodingAgent = {
+			id: "builtin-codex",
+			name: "Codex",
+			baseCommand: "codex",
+			configurations: [
+				{ id: "codex-default", name: "Default (GPT-5.5)", model: "gpt-5.5" },
+				{ id: "ds-flash", name: "DS-Flash", modelRoles: { main: "m-flash" } },
+			],
+			defaultConfigId: "ds-flash",
+		};
+
+		function RoutedHarness() {
+			const [sel, setSel] = useState<AgentConfigSelection>({ agentId: "builtin-codex", configId: "ds-flash" });
+			return (
+				<I18nProvider>
+					<AgentConfigPicker idPrefix="test" agents={[routedAgent]} agentId={sel.agentId} configId={sel.configId} onChange={setSel} />
+				</I18nProvider>
+			);
+		}
+
+		it("names who serves a catalog-bound preset, on the closed field", async () => {
+			render(<RoutedHarness />);
+			await waitFor(() => expect(text(model())).toContain("OpenRouter"));
+			expect(text(model())).toContain("DS-Flash");
+		});
+
+		it("leaves a built-in preset uncaptioned rather than guessing a vendor", async () => {
+			const user = userEvent.setup();
+			render(<RoutedHarness />);
+			await waitFor(() => expect(text(model())).toContain("OpenRouter"));
+
+			await user.click(model());
+			const overlays = document.querySelectorAll(".bg-overlay.border");
+			const rows = Array.from(overlays[overlays.length - 1]?.querySelectorAll("button") ?? []);
+			const builtin = rows.find((b) => b.textContent?.includes("GPT-5.5"));
+			expect(builtin?.textContent).not.toContain("OpenRouter");
+		});
 	});
 });

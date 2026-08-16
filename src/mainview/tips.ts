@@ -945,6 +945,15 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board", "terminal"],
 	},
+	{
+		id: "model-catalog-roles",
+		titleKey: "tip.modelCatalogRoles.title",
+		bodyKey: "tip.modelCatalogRoles.body",
+		icon: "\u{F0BC5}", // nf-md-swap_horizontal_variant
+		score: 4,
+		contexts: ["settings", "board"],
+		settingsSection: "models",
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

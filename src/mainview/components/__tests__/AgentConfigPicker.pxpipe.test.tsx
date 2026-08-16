@@ -38,6 +38,11 @@ describe("AgentConfigPicker — pxpipe-gated model", () => {
 		const option = screen.getByText(COST_TRICK);
 		expect(option.closest("button")).toHaveAttribute("aria-disabled", "true");
 
+		// The padlock is the only thing that says WHY it is dead. It is drawn by
+		// Select, while the Model field also passes its own renderOption for the
+		// provider caption — a custom row must not swallow the option's state.
+		expect(option.closest("button")?.querySelector("svg rect")).toBeTruthy();
+
 		await user.click(option);
 		// Gated click must not commit a selection.
 		expect(onChange).not.toHaveBeenCalledWith(

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, useId, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { AgentCheckResult } from "../../shared/types";
 import { useOverlayLayer } from "../utils/useOverlayLayer";
@@ -13,6 +13,11 @@ export interface SelectOption {
 	/** Set by `allowCustom` on rows the caller never declared: the typed value and
 	 *  an off-list current value. Presentation only — it still commits as itself. */
 	custom?: boolean;
+	/** Heading this option sits under. A heading renders once, above the first
+	 *  option that names it, and is not itself a row: keyboard navigation and the
+	 *  listbox's option indices stay untouched. Options carrying the same section
+	 *  must be adjacent — the caller owns the order. */
+	section?: string;
 }
 
 /** Substring match that ignores case and separators, so "xhigh" finds "X-High". */
@@ -67,6 +72,7 @@ interface ListboxProps {
 	options: SelectOption[];
 	value: string;
 	activeIndex: number;
+	grow?: boolean;
 	renderOption?: (option: SelectOption) => ReactNode;
 	onHover: (index: number) => void;
 	onPick: (index: number) => void;
@@ -75,6 +81,10 @@ interface ListboxProps {
 	search?: {
 		query: string;
 		placeholder: string;
+		/** The field's own name, for the filter input. Falls back to the
+		 *  placeholder, which on an examples-style placeholder reads as a list
+		 *  of values rather than a name. */
+		label?: string;
 		inputMode?: "text" | "decimal";
 		emptyLabel: string;
 		onQueryChange: (query: string) => void;
@@ -93,6 +103,7 @@ function SelectListbox({
 	options,
 	value,
 	activeIndex,
+	grow,
 	renderOption,
 	onHover,
 	onPick,
@@ -115,7 +126,11 @@ function SelectListbox({
 		const panel = panelRef.current;
 		if (!panel) return;
 		const a = anchor.getBoundingClientRect();
-		const height = panel.getBoundingClientRect().height;
+		const rect = panel.getBoundingClientRect();
+		const height = rect.height;
+		// A grown panel is wider than the trigger, so the edge check has to use the
+		// panel's own width — the trigger's would let it run off screen.
+		const width = Math.max(a.width, rect.width);
 		const pad = 8;
 		let top = a.bottom + 4;
 		if (top + height > window.innerHeight - pad) {
@@ -123,7 +138,7 @@ function SelectListbox({
 			top = above >= pad ? above : Math.max(pad, window.innerHeight - pad - height);
 		}
 		let left = a.left;
-		if (left + a.width > window.innerWidth - pad) left = window.innerWidth - a.width - pad;
+		if (left + width > window.innerWidth - pad) left = window.innerWidth - width - pad;
 		if (left < pad) left = pad;
 		setPos({ top, left, width: a.width });
 		setMeasured(true);
@@ -166,9 +181,23 @@ function SelectListbox({
 			{options.map((opt, index) => {
 				const isSelected = opt.value === value;
 				const isActive = index === activeIndex;
+				// Rendered above its first option rather than as a row of its own:
+				// an unselectable row in a listbox breaks arrow-key counting and
+				// reads as an option to a screen reader.
+				const heading =
+					opt.section && opt.section !== options[index - 1]?.section ? (
+						<div
+							key={`section-${opt.section}`}
+							role="presentation"
+							className="px-3 pt-2.5 pb-1 text-micro uppercase tracking-wide text-fg-muted"
+						>
+							{opt.section}
+						</div>
+					) : null;
 				return (
+					<Fragment key={opt.value}>
+					{heading}
 					<button
-						key={opt.value}
 						type="button"
 						role="option"
 						id={optionIdFor(index)}
@@ -189,9 +218,18 @@ function SelectListbox({
 									: "text-fg-2 hover:bg-elevated-hover hover:text-fg"
 						}`}
 					>
+						{/* The lock is the option's state, not its content, so it survives a
+						    caller's renderOption — a custom row must not silently drop it. */}
 						<span className="flex-1 min-w-0 truncate">
 							{renderOption && !opt.custom ? (
-								renderOption(opt)
+								opt.disabled ? (
+									<span className="flex items-center gap-1.5 opacity-70">
+										{renderOption(opt)}
+										<LockIcon />
+									</span>
+								) : (
+									renderOption(opt)
+								)
 							) : opt.disabled ? (
 								<span className="flex items-center gap-1.5 opacity-70">
 									{opt.label}
@@ -203,6 +241,7 @@ function SelectListbox({
 						</span>
 						{isSelected && <CheckIcon />}
 					</button>
+					</Fragment>
 				);
 			})}
 			{options.length === 0 && search && (
@@ -214,7 +253,11 @@ function SelectListbox({
 	const panelClass = `bg-overlay border border-edge-active rounded-lg shadow-xl shadow-black/50 origin-top ${
 		reducedMotion ? "" : "transition-[opacity,transform] duration-150"
 	} ${entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]"}`;
-	const panelStyle = { position: "fixed" as const, top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 };
+	// `grow`: the trigger's width is a floor, not the width. A dropdown narrower
+	// than its own rows makes every row a two-line block or an ellipsis.
+	const panelStyle = grow
+		? { position: "fixed" as const, top: pos.top, left: pos.left, minWidth: pos.width, width: "max-content", maxWidth: "min(26rem, 92vw)", zIndex: 9999 }
+		: { position: "fixed" as const, top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 };
 
 	if (!search) {
 		return createPortal(
@@ -235,7 +278,7 @@ function SelectListbox({
 					aria-expanded
 					aria-controls={listboxId}
 					aria-autocomplete="list"
-					aria-label={search.placeholder}
+					aria-label={search.label ?? search.placeholder}
 					aria-activedescendant={activeIndex >= 0 ? optionIdFor(activeIndex) : undefined}
 					value={search.query}
 					placeholder={search.placeholder}
@@ -261,11 +304,14 @@ function Select({
 	options,
 	onChange,
 	renderOption,
+	growList,
 	onOptionDisabledClick,
 	searchable,
 	allowCustom,
 	placeholder,
 	searchPlaceholder,
+	searchLabel,
+	ariaLabel,
 	customOptionLabel,
 	emptyLabel = "Nothing matches",
 	inputMode,
@@ -275,6 +321,9 @@ function Select({
 	options: SelectOption[];
 	onChange: (value: string) => void;
 	renderOption?: (option: SelectOption) => ReactNode;
+	/** Let the open list be wider than the trigger, up to a cap. For a field whose
+	 *  rows carry a caption the trigger has no room for. */
+	growList?: boolean;
 	/** Called when a `disabled` option is clicked (instead of `onChange`). */
 	onOptionDisabledClick?: (value: string) => void;
 	/** Show a filter field inside the panel. Implied by `allowCustom`. */
@@ -285,6 +334,12 @@ function Select({
 	/** Trigger text when nothing is selected. */
 	placeholder?: string;
 	searchPlaceholder?: string;
+	/** Accessible name for the filter field. Give it whenever the placeholder
+	 *  is a list of example values rather than a name. */
+	searchLabel?: string;
+	/** Accessible name for the trigger, for a select with no visible <label>
+	 *  (a table cell, where the column header names it only visually). */
+	ariaLabel?: string;
 	/** Label of the row that commits the typed text; defaults to the text itself. */
 	customOptionLabel?: (query: string) => string;
 	emptyLabel?: string;
@@ -432,6 +487,7 @@ function Select({
 				// With a filter field the panel's input is the combobox; the trigger
 				// is then only the thing that opens it.
 				role={withSearch ? undefined : "combobox"}
+				aria-label={ariaLabel}
 				aria-haspopup="listbox"
 				aria-expanded={open}
 				aria-controls={listboxId}
@@ -470,6 +526,7 @@ function Select({
 					options={rowOptions}
 					value={value}
 					activeIndex={activeIndex}
+					grow={growList}
 					renderOption={renderOption}
 					onHover={setActiveIndex}
 					onPick={commitOption}
@@ -477,6 +534,7 @@ function Select({
 					search={withSearch ? {
 						query,
 						placeholder: searchPlaceholder ?? "Filter…",
+						label: searchLabel,
 						inputMode,
 						emptyLabel,
 						// A creatable field highlights nothing while typing: pre-highlighting

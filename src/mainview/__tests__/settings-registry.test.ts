@@ -22,11 +22,19 @@ describe("settings registry", () => {
 			"terminal",
 			"agents",
 			"accounts",
+			"models",
 			"workspace",
 			"system",
 		]);
 		const ids = SETTINGS_ENTRIES.map((entry) => entry.id);
 		expect(new Set(ids).size).toBe(ids.length);
+	});
+
+	// Buried in System it was undiscoverable: the catalog is a destination of its
+	// own, sitting next to the Agents and Accounts it exists to feed.
+	it("gives the model catalog its own destination, not a corner of System", () => {
+		const entry = SETTINGS_ENTRIES.find((e) => e.id === "model-catalog");
+		expect(entry?.category).toBe("models");
 	});
 
 	it("has translated metadata for every entry in every locale", () => {

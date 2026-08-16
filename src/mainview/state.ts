@@ -17,13 +17,26 @@ export type { LegacySettingsSectionId, SettingsCategoryId } from "./settings-reg
  *  are normalized by GlobalSettings using the registry map. */
 export const OPEN_SETTINGS_SECTION_EVENT = "dev3:openSettingsSection";
 
+/** One preset a deep-link wants opened and scrolled to in Settings → Agents.
+ *  A section alone lands the user on a screen and leaves them to find the row. */
+export interface SettingsPresetTarget {
+	agentId: string;
+	configId: string;
+}
+
+/** What the event carries. A bare section id is still the common case; the
+ *  object form exists for callers that know exactly which record they mean. */
+export type OpenSettingsSectionDetail =
+	| SettingsSectionId
+	| { section: SettingsSectionId; preset?: SettingsPresetTarget };
+
 export type Route =
 	| { screen: "dashboard" }
 	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean; openUnresolvedComments?: boolean }
 	| { screen: "project-terminal"; projectId: string }
 	| { screen: "task"; projectId: string; taskId: string; openUnresolvedComments?: boolean }
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree" | "automations"; worktreeTaskId?: string }
-	| { screen: "settings"; section?: SettingsSectionId }
+	| { screen: "settings"; section?: SettingsSectionId; preset?: SettingsPresetTarget }
 	| { screen: "changelog" }
 	| { screen: "stats" }
 	| { screen: "gauge-demo" }

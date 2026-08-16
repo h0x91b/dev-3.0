@@ -227,6 +227,8 @@ const tips = {
 	"tip.cliDoctorWorktrees.body": "Run `dev3 doctor --worktrees` — it shows what ~/.dev3.0 keeps on disk and which task folders no longer belong to any task.",
 	"tip.shareArtifactLink.title": "Share a report as a link",
 	"tip.shareArtifactLink.body": "Ask the agent to share an artifact — it publishes the report as a secret gist and hands back a preview URL you can open on your phone.",
+	"tip.modelCatalogRoles.title": "Mix models in one agent",
+	"tip.modelCatalogRoles.body": "Register your own providers, then give each of an agent's roles its own model in the preset editor.",
 } as const;
 
 export default tips;

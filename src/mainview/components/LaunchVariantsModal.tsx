@@ -78,7 +78,7 @@ function LaunchVariantsModal({
 		}
 
 		// Settings resolution can pair defaultAgentId with a defaultConfigId from a
-		// *different* provider (stale builtin id reset to the Claude default); using
+		// *different* harness (stale builtin id reset to the Claude default); using
 		// it verbatim renders an empty Mode. Guard it like Spawn/Bug Hunters.
 		const globalConfigMatchesAgent =
 			!!globalSettings.defaultConfigId &&
@@ -357,7 +357,7 @@ function LaunchVariantsModal({
 						<div className={PICKER_HEADER_CONTAINER_CLASS}>
 							<div className={`${pickerLabelsHeaderClass(true)} text-xs text-fg-3 mb-1`}>
 								<span>{t("launch.favorites")}</span>
-								<span>{t("launch.provider")}</span>
+								<span>{t("launch.harness")}</span>
 								<span>{t("launch.model")}</span>
 								<span>{t("launch.mode")}</span>
 							</div>

@@ -33,7 +33,7 @@ const mockedApi = vi.mocked(api, true);
 
 // ---- Fixtures ----
 //
-// Realistic shape for the Provider → Model → Mode cascade: presets carry a
+// Realistic shape for the Harness → Model → Mode cascade: presets carry a
 // `model` (so they group) and structured `permissionMode`/`effort` where the
 // agent uses them. Claude spans 3 model groups; Codex spans 2.
 
@@ -148,7 +148,7 @@ function renderModal(
 
 /**
  * Custom Select helpers. Each cascade field renders a <button> with id
- * "variant-N-provider" / "variant-N-model" / "variant-N-mode" (the shared
+ * "variant-N-harness" / "variant-N-model" / "variant-N-mode" (the shared
  * AgentConfigPicker uses `${idPrefix}-<field>`); its text is the selected
  * option's label.
  */
@@ -161,7 +161,7 @@ function getButtonsById(prefix: string): HTMLButtonElement[] {
 	}
 	return buttons;
 }
-const getProviderButtons = () => getButtonsById("provider");
+const getHarnessButtons = () => getButtonsById("harness");
 const getModelButtons = () => getButtonsById("model");
 const getModeButtons = () => getButtonsById("mode");
 
@@ -198,11 +198,11 @@ describe("LaunchVariantsModal", () => {
 	});
 
 	describe("initial cascade resolution", () => {
-		it("decomposes the default config into Provider/Model/Mode", () => {
+		it("decomposes the default config into Harness/Model/Mode", () => {
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default" });
 			renderModal(makeProject(), { globalSettings: gs });
 
-			expect(getSelectedText(getProviderButtons()[0])).toBe("Claude");
+			expect(getSelectedText(getHarnessButtons()[0])).toBe("Claude");
 			expect(getSelectedText(getModelButtons()[0])).toBe("Sonnet 5");
 			expect(getSelectedText(getModeButtons()[0])).toBe("Default");
 		});
@@ -246,26 +246,26 @@ describe("LaunchVariantsModal", () => {
 			expect(getSelectedText(getModeButtons()[0])).toBe("Alpha");
 		});
 
-		it("ignores a global defaultConfigId that belongs to another provider (no empty Mode)", () => {
+		it("ignores a global defaultConfigId that belongs to another harness (no empty Mode)", () => {
 			// Reproduces the broken preselect: settings resolution can leave
 			// defaultAgentId (Codex) paired with a defaultConfigId from a different
-			// provider (a Claude preset) after a stale builtin id is reset. The
-			// picker must fall back to the provider's own default instead of a
+			// harness (a Claude preset) after a stale builtin id is reset. The
+			// picker must fall back to the harness's own default instead of a
 			// dangling config that renders an empty Mode field.
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-codex", defaultConfigId: "claude-bypass-opus" });
 			renderModal(makeProject(), { globalSettings: gs });
 
-			expect(getSelectedText(getProviderButtons()[0])).toBe("Codex");
+			expect(getSelectedText(getHarnessButtons()[0])).toBe("Codex");
 			expect(getSelectedText(getModelButtons()[0])).toBe("GPT-5.5");
 			expect(getSelectedText(getModeButtons()[0])).toBe("Default (Heavy Bypass)");
 		});
 	});
 
 	describe("cascade dropdown population", () => {
-		it("provider dropdown lists all agents", async () => {
+		it("harness dropdown lists all agents", async () => {
 			const user = userEvent.setup();
 			renderModal(makeProject());
-			const options = await getDropdownOptions(user, getProviderButtons()[0]);
+			const options = await getDropdownOptions(user, getHarnessButtons()[0]);
 			expect(options).toEqual(["Claude", "Codex", "Gemini"]);
 		});
 
@@ -273,7 +273,9 @@ describe("LaunchVariantsModal", () => {
 			const user = userEvent.setup();
 			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
 			const options = await getDropdownOptions(user, getModelButtons()[0]);
-			expect(options).toEqual(["Sonnet 5", "Opus 4.8", "Fable 5"]);
+			// The last row is not a model: connecting a provider of your own is one
+			// click from every launch surface, whether or not anything is offered.
+			expect(options).toEqual(["Sonnet 5", "Opus 4.8", "Fable 5", "+ Connect a provider…"]);
 		});
 
 		it("mode dropdown shows a single-preset group (Sonnet 5)", async () => {
@@ -297,16 +299,16 @@ describe("LaunchVariantsModal", () => {
 		});
 	});
 
-	describe("provider switching", () => {
-		it("resets model + mode to the new provider's default", async () => {
+	describe("harness switching", () => {
+		it("resets model + mode to the new harness's default", async () => {
 			const user = userEvent.setup();
 			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
 
-			expect(getSelectedText(getProviderButtons()[0])).toBe("Claude");
+			expect(getSelectedText(getHarnessButtons()[0])).toBe("Claude");
 
-			await selectOption(user, getProviderButtons()[0], "Codex");
+			await selectOption(user, getHarnessButtons()[0], "Codex");
 
-			expect(getSelectedText(getProviderButtons()[0])).toBe("Codex");
+			expect(getSelectedText(getHarnessButtons()[0])).toBe("Codex");
 			expect(getSelectedText(getModelButtons()[0])).toBe("GPT-5.5");
 			expect(getSelectedText(getModeButtons()[0])).toBe("Default (Heavy Bypass)");
 		});
@@ -315,8 +317,8 @@ describe("LaunchVariantsModal", () => {
 			const user = userEvent.setup();
 			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
 
-			await selectOption(user, getProviderButtons()[0], "Codex");
-			await selectOption(user, getProviderButtons()[0], "Claude");
+			await selectOption(user, getHarnessButtons()[0], "Codex");
+			await selectOption(user, getHarnessButtons()[0], "Claude");
 
 			expect(getSelectedText(getModelButtons()[0])).toBe("Sonnet 5");
 			expect(getSelectedText(getModeButtons()[0])).toBe("Default");
@@ -355,12 +357,12 @@ describe("LaunchVariantsModal", () => {
 			const user = userEvent.setup();
 			renderModal(makeProject());
 
-			expect(getProviderButtons()).toHaveLength(1);
+			expect(getHarnessButtons()).toHaveLength(1);
 
 			await user.click(screen.getByText("+ Add variant"));
 
-			expect(getProviderButtons()).toHaveLength(2);
-			expect(getSelectedText(getProviderButtons()[1])).toBe("Claude");
+			expect(getHarnessButtons()).toHaveLength(2);
+			expect(getSelectedText(getHarnessButtons()[1])).toBe("Claude");
 			expect(getSelectedText(getModelButtons()[1])).toBe("Sonnet 5");
 			expect(getSelectedText(getModeButtons()[1])).toBe("Default");
 		});
@@ -381,11 +383,11 @@ describe("LaunchVariantsModal", () => {
 			renderModal(makeProject());
 
 			await user.click(screen.getByText("+ Add variant"));
-			expect(getProviderButtons()).toHaveLength(2);
+			expect(getHarnessButtons()).toHaveLength(2);
 
 			await user.click(screen.getAllByTitle("Remove")[0]);
 
-			expect(getProviderButtons()).toHaveLength(1);
+			expect(getHarnessButtons()).toHaveLength(1);
 		});
 
 		it("hides the Add Variant button for virtual (Operations) boards", () => {
@@ -393,7 +395,7 @@ describe("LaunchVariantsModal", () => {
 			renderModal(project);
 
 			expect(screen.queryByText("+ Add variant")).not.toBeInTheDocument();
-			expect(getProviderButtons()).toHaveLength(1);
+			expect(getHarnessButtons()).toHaveLength(1);
 		});
 	});
 
@@ -461,9 +463,9 @@ describe("LaunchVariantsModal", () => {
 	});
 
 	describe("fallback when globalSettings agent is missing", () => {
-		it("selects the global default provider", () => {
+		it("selects the global default harness", () => {
 			renderModal(makeProject());
-			expect(getSelectedText(getProviderButtons()[0])).toBe("Claude");
+			expect(getSelectedText(getHarnessButtons()[0])).toBe("Claude");
 		});
 
 		it("falls back to the first agent when globalSettings agent is nonexistent", async () => {
@@ -621,7 +623,7 @@ describe("LaunchVariantsModal", () => {
 		// Regression: a keyboard user who tab-focuses any cascade Select and
 		// presses Enter to open it must NOT spawn agents (accidental, costly launch).
 		it.each([
-			["provider", () => getProviderButtons()[0]],
+			["harness", () => getHarnessButtons()[0]],
 			["model", () => getModelButtons()[0]],
 			["mode", () => getModeButtons()[0]],
 		])("Enter does not trigger launch when the %s Select button is focused", async (_name, getBtn) => {
@@ -711,9 +713,9 @@ describe("LaunchVariantsModal", () => {
 			expect(document.querySelectorAll(".\\[container-type\\:inline-size\\] > .hidden").length).toBe(1);
 			// …while the row's own label still names the control and only hides itself
 			// where the header takes over (fields in a row).
-			const rowLabel = document.querySelector('label[for="variant-0-provider"]');
+			const rowLabel = document.querySelector('label[for="variant-0-harness"]');
 			expect(rowLabel?.className).toContain("sr-only");
-			expect(screen.getByRole("combobox", { name: "Provider" })).toBe(document.getElementById("variant-0-provider"));
+			expect(screen.getByRole("combobox", { name: "Harness" })).toBe(document.getElementById("variant-0-harness"));
 		});
 
 		it("announces a failed launch and moves focus to it", async () => {
@@ -734,11 +736,11 @@ describe("LaunchVariantsModal", () => {
 			const user = userEvent.setup();
 			renderModal(makeProject());
 
-			const providerBtn = getProviderButtons()[0];
-			providerBtn.focus();
+			const harnessBtn = getHarnessButtons()[0];
+			harnessBtn.focus();
 			await user.keyboard("{Enter}");
 
-			// Provider dropdown is open — "Codex" only appears as a provider option.
+			// Harness dropdown is open — "Codex" only appears as a harness option.
 			expect(screen.getByText("Codex")).toBeInTheDocument();
 
 			await user.tab();

@@ -7,6 +7,7 @@ import {
 	groupLabelForConfig,
 	pickConfigForModelChange,
 	prettifyModel,
+	providerCaptionForConfig,
 	resolveFavoriteChips,
 	MODEL_GROUP_LABELS,
 	type PickerGroup,
@@ -26,6 +27,48 @@ const claude: CodingAgent = {
 	],
 	defaultConfigId: "bypass-opus-xhigh",
 };
+
+describe("providerCaptionForConfig", () => {
+	const catalog = {
+		providers: [
+			{ id: "p-or", label: "OpenRouter" },
+			{ id: "p-oai", label: "OpenAI" },
+		],
+		models: [
+			{ id: "m-flash", providerId: "p-or" },
+			{ id: "m-cheap", providerId: "p-or" },
+			{ id: "m-luna", providerId: "p-oai" },
+		],
+	};
+
+	it("names who serves the models a preset is bound to", () => {
+		expect(
+			providerCaptionForConfig({ id: "a", name: "DS-Flash", modelRoles: { main: "m-flash" } }, catalog),
+		).toBe("OpenRouter");
+	});
+
+	it("names every provider in a mixed preset, without repeating one", () => {
+		expect(
+			providerCaptionForConfig(
+				{ id: "a", name: "Mixed", modelRoles: { main: "m-flash", review: "m-luna", subagent: "m-cheap" } },
+				catalog,
+			),
+		).toBe("OpenRouter · OpenAI");
+	});
+
+	it("says nothing about a preset with no catalog binding", () => {
+		expect(providerCaptionForConfig({ id: "a", name: "Opus", model: "claude-opus-5[1m]" }, catalog)).toBeNull();
+		expect(providerCaptionForConfig({ id: "a", name: "Empty", modelRoles: {} }, catalog)).toBeNull();
+	});
+
+	it("says nothing while the catalog has not loaded", () => {
+		expect(providerCaptionForConfig({ id: "a", name: "DS", modelRoles: { main: "m-flash" } }, null)).toBeNull();
+	});
+
+	it("says nothing rather than guessing when the binding is stale", () => {
+		expect(providerCaptionForConfig({ id: "a", name: "Gone", modelRoles: { main: "m-deleted" } }, catalog)).toBeNull();
+	});
+});
 
 describe("getModelGroupLabel", () => {
 	it("maps known model strings to clean labels", () => {

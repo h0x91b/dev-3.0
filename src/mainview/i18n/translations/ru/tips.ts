@@ -227,6 +227,8 @@ const tips = {
 	"tip.cliDoctorWorktrees.body": "`dev3 doctor --worktrees` покажет, что лежит в ~/.dev3.0 и какие папки задач уже не принадлежат ни одной задаче.",
 	"tip.shareArtifactLink.title": "Отчёт — одной ссылкой",
 	"tip.shareArtifactLink.body": "Попросите агента поделиться артефактом: он выложит отчёт секретным гистом и вернёт ссылку, которую можно открыть с телефона.",
+	"tip.modelCatalogRoles.title": "Смешивай модели в одном агенте",
+	"tip.modelCatalogRoles.body": "Подключите своих провайдеров, затем дайте каждой роли агента свою модель в редакторе пресета.",
 };
 
 export default tips;

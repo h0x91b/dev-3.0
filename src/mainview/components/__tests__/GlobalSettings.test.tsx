@@ -40,6 +40,17 @@ vi.mock("../../rpc", () => ({
 				claude: { accounts: [], activeId: null, systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
 			}),
+			// Model catalog surfaces: an empty catalog keeps them quiet, which is
+			// what every assertion in this suite assumes.
+			modelCatalogGet: vi.fn().mockResolvedValue({ providers: [], models: [] }),
+			modelSidecarStatus: vi.fn().mockResolvedValue({
+				running: false,
+				starting: false,
+				binaryAvailable: false,
+				version: "v1.6.10",
+				providerCount: 0,
+				modelCount: 0,
+			}),
 		},
 	},
 }));
@@ -491,7 +502,7 @@ describe("GlobalSettings", () => {
 			await screen.findByText("Model:");
 
 			// Provider picker starts on Claude (agent-1); switch to Codex (agent-2).
-			await pickFromSelect(user, "default-agent-provider", "Codex");
+			await pickFromSelect(user, "default-agent-harness", "Codex");
 
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -507,7 +518,7 @@ describe("GlobalSettings", () => {
 			await waitForLoad();
 			await screen.findByText("Model:");
 
-			expect(document.getElementById("default-agent-provider")).toBeInTheDocument();
+			expect(document.getElementById("default-agent-harness")).toBeInTheDocument();
 			expect(document.getElementById("default-agent-model")).toBeInTheDocument();
 			expect(document.getElementById("default-agent-mode")).toBeInTheDocument();
 		});

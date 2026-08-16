@@ -1,6 +1,8 @@
 import type { AgentConfiguration, CodingAgent, FavoriteAgentConfig } from "../../shared/types";
 import { DEPRECATED_DEFAULT_CONFIG_REMAP } from "../../shared/types";
 import { orderFavorites } from "../../shared/favorites";
+import { modelRolesForAgent, type CatalogProviderKind } from "../../shared/model-catalog";
+import { unconnectedRecommendations, type RecommendedModel } from "../../shared/recommended-models";
 import { translate } from "../i18n";
 
 /**
@@ -95,6 +97,9 @@ export function prettifyModel(model: string): string {
  *  module is a pure util with no React context. */
 export function getModelGroupLabel(config: AgentConfiguration): string {
 	if (config.groupLabel) return config.groupLabel;
+	// A preset bound to model roles has no single model to name the group after —
+	// its "model" is a set, so the preset's own name is the honest label.
+	if (config.modelRoles && Object.keys(config.modelRoles).length > 0) return config.name;
 	if (config.model) return MODEL_GROUP_LABELS[config.model] ?? prettifyModel(config.model);
 	return translate("launch.modelAgentDefault");
 }
@@ -132,11 +137,67 @@ export function getModeLeafLabel(config: AgentConfiguration): string {
 	return stripped || config.name;
 }
 
+/**
+ * Who serves the models a preset is bound to, for the caption under a Model
+ * option. A provider is a property of the model, never a field the user picks
+ * (AGENTS.md § Model routing glossary), so it is shown and never selected.
+ *
+ * Null for a preset with no catalog bindings: dev3 knows a built-in preset's
+ * model name but not who is behind it, and inventing a vendor would be a guess.
+ * A preset whose roles span several providers names them all — that mix is the
+ * whole point of roles, and collapsing it to one name would misreport it.
+ */
+export function providerCaptionForConfig(
+	config: AgentConfiguration,
+	catalog: { providers: { id: string; label: string }[]; models: { id: string; providerId: string }[] } | null,
+): string | null {
+	const bound = Object.values(config.modelRoles ?? {});
+	if (!catalog || bound.length === 0) return null;
+	const labels: string[] = [];
+	for (const modelId of bound) {
+		const model = catalog.models.find((m) => m.id === modelId);
+		const label = model && catalog.providers.find((p) => p.id === model.providerId)?.label;
+		if (label && !labels.includes(label)) labels.push(label);
+	}
+	return labels.length > 0 ? labels.join(" · ") : null;
+}
+
 export interface PickerGroup {
 	/** The 2nd-field label. */
 	label: string;
 	/** Presets in this model group, in their declared order. */
 	configs: AgentConfiguration[];
+	/** Set when the group is an *offer* rather than a preset: a model dev3
+	 *  recommends but the user has not connected, so there is nothing to launch
+	 *  yet and `configs` is empty. Rendered disabled; clicking it starts the
+	 *  connect flow. */
+	locked?: RecommendedModel;
+}
+
+/** Value of the Model field's always-present "connect a provider" row. Not a
+ *  model — picking it opens the connect flow and leaves the selection alone. */
+export const CONNECT_PROVIDER_VALUE = "__dev3-connect-provider__";
+
+/**
+ * The models dev3 offers this agent but the user has not connected.
+ *
+ * Empty for an agent dev3 cannot route (no roles = no way to put another
+ * model behind it), and empty once the user has any provider of their own —
+ * `unconnectedRecommendations` owns that rule.
+ *
+ * Also empty while the catalog is still loading (`null`): showing offers and
+ * then yanking them a frame later is worse than showing them a frame late.
+ */
+export function lockedModelGroups(
+	agent: CodingAgent | undefined | null,
+	catalog: { providers: { id: string; kind: CatalogProviderKind }[]; models: { providerId: string; modelId: string }[] } | null,
+): PickerGroup[] {
+	if (!agent || !catalog) return [];
+	if (modelRolesForAgent(agent.baseCommand).length === 0) return [];
+	const taken = new Set(buildPickerGroups(agent).map((group) => group.label));
+	return unconnectedRecommendations(catalog)
+		.filter((model) => !taken.has(model.label))
+		.map((model) => ({ label: model.label, configs: [], locked: model }));
 }
 
 /** Group an agent's configurations by model into ordered picker groups.

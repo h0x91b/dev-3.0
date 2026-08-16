@@ -8,6 +8,12 @@ import type {
 } from "../../../shared/types";
 import { agentKey } from "../../../shared/agent-adapters/families";
 import { buildProviderEnv, getProviderDefinition, providerPinnedModel } from "../../../shared/llm-provider";
+import { ENV_UNSET } from "../../../shared/agent-accounts";
+import { type ModelCatalog, resolveModelRoleLaunch, roleUnsetEnv } from "../../../shared/model-catalog";
+
+/** The proxy's port and session key are decided when it starts, so the preview
+ *  shows their shape rather than inventing values it cannot know. */
+const PREVIEW_RUNTIME = { baseUrl: "http://127.0.0.1:PORT", sessionKey: "sk-bf-…" };
 
 export type Theme = "dark" | "light" | "system";
 
@@ -75,16 +81,6 @@ export function resolveDiffViewMode(
 	return resolveAutoDiffViewMode(screenWidthCssPx);
 }
 
-export function moveItem<T>(items: T[], from: number, to: number): T[] {
-	if (from === to) return items;
-	if (from < 0 || from >= items.length) return items;
-	if (to < 0 || to >= items.length) return items;
-	const next = items.slice();
-	const [moved] = next.splice(from, 1);
-	next.splice(to, 0, moved);
-	return next;
-}
-
 export type DropSide = "before" | "after";
 
 export function reorderToTarget<T>(
@@ -125,6 +121,7 @@ export function buildCommandPreview(
 	llmProvider?: LlmProvider,
 	providerConfig?: ProviderConfig,
 	agentFamily?: AgentFamily,
+	catalog?: ModelCatalog,
 ): { command: string; envLine: string | null } {
 	const baseCmd = config.baseCommandOverride || agentBaseCommand || "???";
 	const parts: string[] = [baseCmd];
@@ -144,10 +141,16 @@ export function buildCommandPreview(
 	// be rejected with a 400; the pinned model rides ANTHROPIC_MODEL instead.
 	// Flag-delivering backends (Codex on Bedrock) show the rewritten pinned id.
 	const modelViaEnv = providerDef?.modelEnv != null;
+	// Bound model roles rewrite the launch's own --model, so the preview has to
+	// name the catalog model too — otherwise it shows a model that never runs.
+	const rolePlan = catalog
+		? resolveModelRoleLaunch(cmdName, config.modelRoles, catalog, PREVIEW_RUNTIME, config.model)
+		: undefined;
 	const previewModel =
-		providerDef && !modelViaEnv && config.model
+		rolePlan?.modelFlag ??
+		(providerDef && !modelViaEnv && config.model
 			? (providerPinnedModel(llmProvider, providerConfig, config.model) ?? config.model)
-			: config.model;
+			: config.model);
 
 	// Env channel → no --model at all; flag channel → the (possibly pinned) model.
 	if (!modelViaEnv && previewModel) {
@@ -155,8 +158,8 @@ export function buildCommandPreview(
 		// glob-expanded by the shell (e.g. `claude-opus-4-8[1m]`).
 		parts.push("--model", quoteIfUnsafeForPreview(previewModel));
 	}
-	// Backend routing args (before additionalArgs, as at launch time).
-	for (const arg of providerDef?.enableArgs ?? []) {
+	// Backend routing args, then the role overrides — the launcher's own order.
+	for (const arg of [...(providerDef?.enableArgs ?? []), ...(rolePlan?.args ?? [])]) {
 		parts.push(quoteIfUnsafeForPreview(arg));
 	}
 
@@ -214,8 +217,11 @@ export function buildCommandPreview(
 	const providerEnv = providerDef
 		? buildProviderEnv(llmProvider, providerConfig, config.model)
 		: {};
-	const envPairs = Object.entries({ ...providerEnv, ...config.envVars }).filter(
-		([key]) => key,
+	const roleEnv = rolePlan ? { ...rolePlan.env, ...roleUnsetEnv(rolePlan) } : {};
+	const envPairs = Object.entries({ ...providerEnv, ...roleEnv, ...config.envVars }).filter(
+		// A cleared var is a removal, not an assignment — it has no place on a
+		// command line the user could paste.
+		([key, value]) => key && value !== ENV_UNSET,
 	);
 	const envLine =
 		envPairs.length > 0

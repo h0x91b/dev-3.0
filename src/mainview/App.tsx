@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type Route, type SettingsSectionId } from "./state";
+import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
@@ -618,8 +618,12 @@ function App() {
 	// surface needs a navigate prop threaded through it.
 	useEffect(() => {
 		function onOpenSettingsSection(e: Event) {
-			const section = (e as CustomEvent<SettingsSectionId>).detail;
-			navigate({ screen: "settings", section });
+			const detail = (e as CustomEvent<OpenSettingsSectionDetail>).detail;
+			if (typeof detail === "string") {
+				navigate({ screen: "settings", section: detail });
+				return;
+			}
+			navigate({ screen: "settings", section: detail.section, preset: detail.preset });
 		}
 		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettingsSection);
 		return () => window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettingsSection);
@@ -2983,7 +2987,7 @@ function App() {
 					/>
 				);
 			case "settings":
-				return <GlobalSettings section={route.section} />;
+				return <GlobalSettings section={route.section} preset={route.preset} />;
 			case "changelog":
 				return (
 					<Changelog

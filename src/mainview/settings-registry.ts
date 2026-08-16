@@ -1,7 +1,7 @@
 import type { TranslationKey } from "./i18n";
 import type { GlobalSettings } from "../shared/types";
 
-/** The seven durable-configuration categories shown by Global Settings. */
+/** The durable-configuration categories shown by Global Settings. */
 export const SETTINGS_CATEGORIES = [
 	{
 		id: "appearance",
@@ -32,6 +32,11 @@ export const SETTINGS_CATEGORIES = [
 		id: "accounts",
 		labelKey: "settings.categoryAccounts",
 		descriptionKey: "settings.categoryAccountsDesc",
+	},
+	{
+		id: "models",
+		labelKey: "settings.categoryModels",
+		descriptionKey: "settings.categoryModelsDesc",
 	},
 	{
 		id: "workspace",
@@ -363,6 +368,14 @@ export const SETTINGS_ENTRIES = [
 		descriptionKey: "settings.browserNotificationsDesc",
 		anchor: "browser-notifications",
 		storage: "browser",
+	},
+	{
+		id: "model-catalog",
+		category: "models",
+		titleKey: "catalog.section",
+		descriptionKey: "catalog.sectionDesc",
+		anchor: "model-catalog",
+		storage: "surface",
 	},
 	{
 		id: "token-saving-proxy",

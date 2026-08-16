@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type {
 	AgentCheckResult,
 	AgentConfiguration,
@@ -24,6 +24,8 @@ import { api } from "../../rpc";
 import type { TFunction, TranslationKey } from "../../i18n";
 import { buildPickerGroups, getModeLeafLabel, getModelGroupLabel, type PickerGroup } from "../../utils/agentPicker";
 import { useToggleFavorite } from "../../hooks/useToggleFavorite";
+import PresetModelRoles from "./PresetModelRoles";
+import { useModelCatalog } from "../../hooks/useModelCatalog";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import {
@@ -33,98 +35,8 @@ import {
 	getProviderDefinition,
 	providersForAgent,
 } from "../../../shared/llm-provider";
-import { buildCommandPreview, moveItem } from "./utils";
-
-const ARROW_UP_GLYPH = "\uF062";
-const ARROW_DOWN_GLYPH = "\uF063";
-const GRIP_GLYPH = "\u{F01DB}";
-
-function ReorderControls({
-	dragHandleProps,
-	canMoveUp,
-	canMoveDown,
-	onMoveUp,
-	onMoveDown,
-	dragTitle,
-	upTitle,
-	downTitle,
-	size = "sm",
-}: {
-	dragHandleProps: {
-		draggable: boolean;
-		onDragStart: (event: DragEvent<HTMLButtonElement>) => void;
-		onDragEnd: () => void;
-	};
-	canMoveUp: boolean;
-	canMoveDown: boolean;
-	onMoveUp: () => void;
-	onMoveDown: () => void;
-	dragTitle: string;
-	upTitle: string;
-	downTitle: string;
-	size?: "sm" | "md";
-}) {
-	const fontSize = size === "md" ? "text-sm" : "text-xs";
-	const gripSize = size === "md" ? "text-base" : "text-sm";
-	const padding = size === "md" ? "p-1.5" : "p-1";
-	return (
-		<div className="flex items-center gap-0.5 shrink-0">
-			<button
-				type="button"
-				onClick={(event) => event.stopPropagation()}
-				draggable={dragHandleProps.draggable}
-				onDragStart={dragHandleProps.onDragStart}
-				onDragEnd={dragHandleProps.onDragEnd}
-				className={`${padding} rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors cursor-grab active:cursor-grabbing`}
-				title={dragTitle}
-				aria-label={dragTitle}
-			>
-				<span
-					className={`${gripSize} leading-none`}
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{GRIP_GLYPH}
-				</span>
-			</button>
-			<button
-				type="button"
-				onClick={(event) => {
-					event.stopPropagation();
-					onMoveUp();
-				}}
-				className={`${padding} rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent`}
-				title={upTitle}
-				aria-label={upTitle}
-				disabled={!canMoveUp}
-			>
-				<span
-					className={`${fontSize} leading-none`}
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{ARROW_UP_GLYPH}
-				</span>
-			</button>
-			<button
-				type="button"
-				onClick={(event) => {
-					event.stopPropagation();
-					onMoveDown();
-				}}
-				className={`${padding} rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent`}
-				title={downTitle}
-				aria-label={downTitle}
-				disabled={!canMoveDown}
-			>
-				<span
-					className={`${fontSize} leading-none`}
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{ARROW_DOWN_GLYPH}
-				</span>
-			</button>
-		</div>
-	);
-}
+import { buildCommandPreview } from "./utils";
+import type { SettingsPresetTarget } from "../../state";
 
 /** One star, recoloured per state: outline = not a favorite, filled = favorite.
  *  Inline SVG rather than a Nerd Font glyph, which renders as tofu until the
@@ -155,6 +67,12 @@ interface AgentSettingsSectionProps {
 	onDefaultConfigChange: (configId: string) => void;
 	/** Fresh settings after a favorite toggle, so the stars re-render. */
 	onGlobalSettingsChange: (settings: GlobalSettings) => void;
+	/** A preset a deep-link wants shown: selected, revealed on narrow viewports,
+	 *  and scrolled into view inside the list's own scroll box. */
+	focusPreset?: SettingsPresetTarget | null;
+	/** Fired once the target has been applied — or once it is certain the preset
+	 *  no longer exists — so the caller can drop it. */
+	onFocusPresetHandled?: () => void;
 }
 
 /** What the library's one detail pane is showing: the agent itself, or one of
@@ -169,6 +87,8 @@ export default function AgentSettingsSection({
 	onDefaultAgentChange,
 	onDefaultConfigChange,
 	onGlobalSettingsChange,
+	focusPreset,
+	onFocusPresetHandled,
 }: AgentSettingsSectionProps) {
 	const toggleFavorite = useToggleFavorite(onGlobalSettingsChange);
 	const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
@@ -176,6 +96,7 @@ export default function AgentSettingsSection({
 	const [presetQuery, setPresetQuery] = useState("");
 	/** Narrow viewports show one pane at a time; wide ones show both. */
 	const [narrowShowsEditor, setNarrowShowsEditor] = useState(false);
+	const [scrollToConfigId, setScrollToConfigId] = useState<string | null>(null);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>(
 		[],
 	);
@@ -192,7 +113,6 @@ export default function AgentSettingsSection({
 	const defaultAgentConfigs = selectedDefaultAgent?.configurations || [];
 
 	const activeAgent = agents.find((agent) => agent.id === activeAgentId) ?? agents[0];
-	const activeAgentIndex = activeAgent ? agents.indexOf(activeAgent) : -1;
 	const availability = agentAvailability.find((item) => item.agentId === activeAgent?.id);
 	const selectedPreset = selection.kind === "preset"
 		? activeAgent?.configurations.find((config) => config.id === selection.configId)
@@ -216,6 +136,37 @@ export default function AgentSettingsSection({
 	useEffect(() => {
 		loadAgentAvailability();
 	}, [loadAgentAvailability]);
+
+	// Point the library at the preset a deep-link named. The agents arrive from
+	// an RPC, so an empty list means "not loaded yet" — waiting is the difference
+	// between landing on the preset and landing on whatever was selected before.
+	useEffect(() => {
+		if (!focusPreset || agents.length === 0) return;
+		const agent = agents.find((item) => item.id === focusPreset.agentId);
+		const config = agent?.configurations.find((item) => item.id === focusPreset.configId);
+		if (agent && config) {
+			setActiveAgentId(agent.id);
+			setSelection({ kind: "preset", configId: config.id });
+			// A filter left over from an earlier visit can hide the very row this
+			// jump exists to show.
+			setPresetQuery("");
+			setNarrowShowsEditor(true);
+			setScrollToConfigId(config.id);
+		}
+		// Deleted preset: nothing to select, and the page it lives on is already
+		// open — the jump is spent either way.
+		onFocusPresetHandled?.();
+	}, [agents, focusPreset, onFocusPresetHandled]);
+
+	// Runs after the row has rendered under its (possibly cleared) filter.
+	// `nearest` scrolls the list's own box; `start` would drag the whole settings
+	// page along with it.
+	useEffect(() => {
+		if (!scrollToConfigId) return;
+		const row = document.querySelector(`[data-preset-row="${scrollToConfigId}"]`) as HTMLElement | null;
+		row?.scrollIntoView?.({ block: "nearest" });
+		setScrollToConfigId(null);
+	}, [scrollToConfigId, groups]);
 
 	function persistAgents(updated: CodingAgent[]) {
 		// Persistence is immediate (§8) — a rejected write used to vanish silently.
@@ -339,31 +290,6 @@ export default function AgentSettingsSection({
 		persistAgents(remaining);
 		setActiveAgentId(remaining[0]?.id ?? null);
 		setSelection({ kind: "agent" });
-	}
-
-	function moveAgent(agentId: string, direction: -1 | 1) {
-		const fromIndex = agents.findIndex((agent) => agent.id === agentId);
-		if (fromIndex === -1) return;
-		const toIndex = fromIndex + direction;
-		if (toIndex < 0 || toIndex >= agents.length) return;
-		persistAgents(moveItem(agents, fromIndex, toIndex));
-	}
-
-	function moveConfig(agentId: string, configId: string, direction: -1 | 1) {
-		const updated = agents.map((agent) => {
-			if (agent.id !== agentId) return agent;
-			const fromIndex = agent.configurations.findIndex(
-				(config) => config.id === configId,
-			);
-			if (fromIndex === -1) return agent;
-			const toIndex = fromIndex + direction;
-			if (toIndex < 0 || toIndex >= agent.configurations.length) return agent;
-			return {
-				...agent,
-				configurations: moveItem(agent.configurations, fromIndex, toIndex),
-			};
-		});
-		persistAgents(updated);
 	}
 
 	return (
@@ -518,6 +444,7 @@ export default function AgentSettingsSection({
 													key={config.id}
 													type="button"
 													role="option"
+													data-preset-row={config.id}
 													aria-selected={isSelected}
 													onClick={() => selectPreset(config.id)}
 													className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left text-sm transition-colors border ${
@@ -568,17 +495,10 @@ export default function AgentSettingsSection({
 									)}
 									onToggleFavorite={() => toggleFavorite(activeAgent.id, selectedPreset.id)}
 									canDelete={activeAgent.configurations.length > 1}
-									canMoveUp={activeAgent.configurations.indexOf(selectedPreset) > 0}
-									canMoveDown={
-										activeAgent.configurations.indexOf(selectedPreset) <
-										activeAgent.configurations.length - 1
-									}
 									onChange={(patch) => updateConfig(activeAgent.id, selectedPreset.id, patch)}
 									onDuplicate={() => addConfig(activeAgent.id, selectedPreset)}
 									onMakeDefault={() => updateAgent(activeAgent.id, { defaultConfigId: selectedPreset.id })}
 									onDelete={() => deleteConfig(activeAgent.id, selectedPreset)}
-									onMoveUp={() => moveConfig(activeAgent.id, selectedPreset.id, -1)}
-									onMoveDown={() => moveConfig(activeAgent.id, selectedPreset.id, 1)}
 								/>
 							) : (
 								<AgentPane
@@ -588,8 +508,6 @@ export default function AgentSettingsSection({
 									customPath={agentCustomPaths[activeAgent.id] ?? ""}
 									copied={agentCopiedId === activeAgent.id}
 									saving={agentSavingId === activeAgent.id}
-									canMoveUp={activeAgentIndex > 0}
-									canMoveDown={activeAgentIndex < agents.length - 1}
 									onCustomPathChange={(path) =>
 										setAgentCustomPaths((current) => ({ ...current, [activeAgent.id]: path }))
 									}
@@ -614,8 +532,6 @@ export default function AgentSettingsSection({
 										setAgentSavingId(null);
 									}}
 									onChange={(patch) => updateAgent(activeAgent.id, patch)}
-									onMoveUp={() => moveAgent(activeAgent.id, -1)}
-									onMoveDown={() => moveAgent(activeAgent.id, 1)}
 									onDelete={() => deleteAgent(activeAgent)}
 								/>
 							)}
@@ -809,15 +725,11 @@ function PresetEditor({
 	isDefault,
 	isFavorite,
 	canDelete,
-	canMoveUp,
-	canMoveDown,
 	onChange,
 	onDuplicate,
 	onMakeDefault,
 	onToggleFavorite,
 	onDelete,
-	onMoveUp,
-	onMoveDown,
 }: {
 	t: TFunction;
 	agent: CodingAgent;
@@ -825,17 +737,21 @@ function PresetEditor({
 	isDefault: boolean;
 	isFavorite: boolean;
 	canDelete: boolean;
-	canMoveUp: boolean;
-	canMoveDown: boolean;
 	onChange: (patch: Partial<AgentConfiguration>) => void;
 	onDuplicate: () => void;
 	onMakeDefault: () => void;
 	onToggleFavorite: () => void;
 	onDelete: () => void;
-	onMoveUp: () => void;
-	onMoveDown: () => void;
 }) {
-	const preview = buildCommandPreview(agent.baseCommand, config, agent.llmProvider, agent.providerConfig, agent.agentFamily);
+	const catalog = useModelCatalog();
+	const preview = buildCommandPreview(
+		agent.baseCommand,
+		config,
+		agent.llmProvider,
+		agent.providerConfig,
+		agent.agentFamily,
+		catalog ?? undefined,
+	);
 	const baseCommandName = agent.baseCommand.split("/").pop() ?? agent.baseCommand;
 	const modelOptions: SelectOption[] = modelsForAgent(agent).map((model) => ({ value: model, label: model }));
 	const filterHint = t("settings.selectFilterHint");
@@ -863,8 +779,8 @@ function PresetEditor({
 
 	return (
 		<div className="space-y-3">
-			{/* Title owns its own row: five actions plus the reorder pair cannot share
-			    one line with a preset name inside a settings pane. */}
+			{/* Title owns its own row: five actions cannot share one line with a
+			    preset name inside a settings pane. */}
 			<div>
 				<div className="min-w-0">
 					<p className="text-fg text-sm font-semibold truncate">{getModeLeafLabel(config)}</p>
@@ -873,16 +789,6 @@ function PresetEditor({
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-1.5 mt-2">
-					<ReorderControls
-						dragHandleProps={{ draggable: false, onDragStart: () => {}, onDragEnd: () => {} }}
-						canMoveUp={canMoveUp}
-						canMoveDown={canMoveDown}
-						onMoveUp={onMoveUp}
-						onMoveDown={onMoveDown}
-						dragTitle={t("settings.dragConfig")}
-						upTitle={t("settings.moveConfigUp")}
-						downTitle={t("settings.moveConfigDown")}
-					/>
 					<button
 						type="button"
 						onClick={onToggleFavorite}
@@ -998,6 +904,16 @@ function PresetEditor({
 				</Field>
 			</div>
 
+			{/* Model roles sit with the model, not under "Advanced": they decide which
+			    model actually runs, which is the preset's headline meaning. */}
+			<PresetModelRoles
+				t={t}
+				baseCommand={baseCommandName}
+				config={config}
+				catalog={catalog}
+				onChange={onChange}
+			/>
+
 			<div>
 				<p className="block text-fg-2 text-xs font-semibold mb-1.5">{t("settings.commandPreview")}</p>
 				<CommandPreview command={preview.command} envLine={preview.envLine} />
@@ -1102,14 +1018,10 @@ function AgentPane({
 	customPath,
 	copied,
 	saving,
-	canMoveUp,
-	canMoveDown,
 	onCustomPathChange,
 	onCopyInstall,
 	onSavePath,
 	onChange,
-	onMoveUp,
-	onMoveDown,
 	onDelete,
 }: {
 	t: TFunction;
@@ -1118,14 +1030,10 @@ function AgentPane({
 	customPath: string;
 	copied: boolean;
 	saving: boolean;
-	canMoveUp: boolean;
-	canMoveDown: boolean;
 	onCustomPathChange: (path: string) => void;
 	onCopyInstall: (command: string) => void;
 	onSavePath: () => void;
 	onChange: (patch: Partial<CodingAgent>) => void;
-	onMoveUp: () => void;
-	onMoveDown: () => void;
 	onDelete: () => void;
 }) {
 	return (
@@ -1137,17 +1045,6 @@ function AgentPane({
 						{t.plural("settings.presetCount", agent.configurations.length)}
 					</p>
 				</div>
-				<ReorderControls
-					dragHandleProps={{ draggable: false, onDragStart: () => {}, onDragEnd: () => {} }}
-					canMoveUp={canMoveUp}
-					canMoveDown={canMoveDown}
-					onMoveUp={onMoveUp}
-					onMoveDown={onMoveDown}
-					dragTitle={t("settings.dragAgent")}
-					upTitle={t("settings.moveAgentUp")}
-					downTitle={t("settings.moveAgentDown")}
-					size="md"
-				/>
 			</div>
 
 			{availability ? (
