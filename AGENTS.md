@@ -246,6 +246,20 @@ Two-process model:
 - **Main process** (`src/bun/index.ts`) — runs in Bun via Electrobun APIs (`BrowserWindow`, `Updater`, `Utils`); creates the app window, handles lifecycle.
 - **Renderer** (`src/mainview/`) — React app bundled by Vite; entry `main.tsx`, root component `App.tsx`.
 
+### Model routing glossary
+
+Vocabulary for running an agent CLI against arbitrary LLM providers through dev3's local proxy sidecar. Two layers, deliberately separate: one knows about providers and money and nothing about agents, the other knows about agents and nothing about credentials.
+
+**Three axes, and they are not interchangeable.** A launch picks a **harness**, then a **model**, then a **mode** — and a **provider** is a property of the model, never a fourth axis the user picks. `Provider` used to label the harness column in the launcher, which is how one word came to mean three things on one screen. It now means exactly one: who serves the model.
+
+- **Harness** — the agent CLI that runs: Claude Code, Codex, Gemini, Cursor Agent, Oh My OpenCode. It is the obvious first axis, because everything else is a property of it — which model slots exist, what a mode means, which config files it reads. Named `harness` in UI labels and in code (`launch.harness`, `${idPrefix}-harness`); "provider" for this is banned. `CodingAgent` remains the type name — one preset of one harness.
+- **Model catalog** — the app-wide list of models the user has made available, plus the providers and credentials behind them. One catalog per installation; it is not switchable and has no active/inactive state. dev3 owns the skeleton of the sidecar's config file; the user owns its contents.
+- **Catalog model** — one entry in the catalog: a user-chosen name bound to exactly one provider and one provider-native model id (`fast-gremlin` → OpenRouter, `deepseek-flash`). The name is what travels on the wire as `<provider>/<name>`, so it is limited to letters, digits, dot, dash and underscore; the sidecar resolves it. An entry belongs to a single provider — a name that could resolve to two providers is not a catalog model.
+- **Model roles** — the per-preset binding of catalog models to the roles an agent CLI actually exposes. Roles are that CLI's own, never a dev3-invented common vocabulary: Claude Code has its alias slots, Codex has its main / default-subagent / review models. A preset carrying roles is its own picker group (`groupLabel`), because its "model" is a set, not one model.
+- **Proxy sidecar** — the dev3-managed local process that realizes the catalog. Bound to loopback on one fixed port (`DEFAULT_SIDECAR_PORT`, below the ephemeral range), falling back to the last run's port and then to any free one; launched with an isolated app dir, credentials reaching it only through its child environment. One per app, brought up with the app whenever the catalog has a provider, dies with the app. The user never has to start it — the Start button exists for after a failure.
+- **Local session key** — the secret the agent CLI presents to the sidecar instead of any upstream API key. Remembered with the sidecar's port in its runtime dir and reused across restarts, because both are baked into a running agent's launch environment. Upstream keys never leave dev3's own storage and the sidecar's environment.
+- **Generated model metadata** — the model catalog dev3 hands Codex at launch so a routed model is a known model rather than an unknown slug on placeholder numbers. Cloned from Codex's own catalog, never authored by dev3, and it *replaces* the built-in catalog rather than extending it, so the built-ins are carried forward. Best-effort: if it cannot be generated the session launches on Codex's fallback metadata.
+
 ### RPC protocol
 
 Renderer ↔ main communicate via **Electrobun's built-in RPC** (IPC bridge); schema in `src/shared/types.ts` (`AppRPCSchema`, channels `bun` and `webview`).
