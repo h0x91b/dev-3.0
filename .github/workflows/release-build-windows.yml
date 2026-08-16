@@ -105,6 +105,19 @@ jobs:
           path: ./node_modules
           key: bun-deps-windows-x64-${{ hashFiles('bun.lock') }}
 
+      # Pinned model-catalog proxy sidecar (decisions/2026/08/15/model-catalog-and-model-roles.md).
+      # A pinned target that 404s or drifts fails the build; an unpinned one ships
+      # without the catalog, which the app reports plainly instead of crashing.
+      - name: Fetch pinned model proxy
+        shell: bash
+        run: |
+          if [ -f scripts/bifrost-pinned.json ]; then
+            bun scripts/fetch-bifrost.ts
+            bun scripts/smoke-bifrost.ts
+          else
+            echo "::warning title=Model catalog disabled::scripts/bifrost-pinned.json is absent — this build ships no model proxy. Record a pin with 'bun scripts/fetch-bifrost.ts --record'."
+          fi
+
       - name: Clean build directory
         shell: bash
         run: rm -rf ./build ./artifacts

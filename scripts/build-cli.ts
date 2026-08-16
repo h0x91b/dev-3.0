@@ -44,6 +44,11 @@ function main(): void {
 		`CLI compile into ${plan.outfile}`,
 	);
 
+	// Before the shell steps: signing is one of them, and the staged sidecar must
+	// carry its signature before electrobun signs the outer bundle. Cross-platform
+	// TypeScript because Windows ships too and has no bash.
+	runOrExit([process.execPath, "scripts/stage-bifrost.ts"], "bifrost staging");
+
 	for (const script of plan.shellSteps) runOrExit(["bash", script], script);
 
 	if (plan.shellSteps.length === 0) {

@@ -52,3 +52,6 @@ sign_one dist/dev3
 # Bundled tmux helper (staged by scripts/stage-bundled-tmux.sh) must carry its
 # signature BEFORE electrobun signs/notarizes the outer app bundle.
 sign_one dist/tmux/tmux
+# Same for the model-catalog proxy sidecar (staged by scripts/stage-bifrost.ts):
+# an unsigned nested executable fails Gatekeeper on the packaged app.
+sign_one dist/bifrost/bifrost-http

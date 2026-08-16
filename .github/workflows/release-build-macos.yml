@@ -132,6 +132,19 @@ jobs:
       - name: Build bundled tmux
         run: bash scripts/build-bundled-tmux.sh
 
+      # Pinned model-catalog proxy sidecar (decisions/2026/08/15/model-catalog-and-model-roles.md).
+      # Fetching is gated on a recorded pin: a pinned target that 404s or whose
+      # checksum drifts FAILS the build; an unpinned one ships without the
+      # catalog, which the app reports plainly instead of crashing.
+      - name: Fetch pinned model proxy
+        run: |
+          if [ -f scripts/bifrost-pinned.json ]; then
+            bun scripts/fetch-bifrost.ts
+            bun scripts/smoke-bifrost.ts
+          else
+            echo "::warning title=Model catalog disabled::scripts/bifrost-pinned.json is absent — this build ships no model proxy. Record a pin with 'bun scripts/fetch-bifrost.ts --record'."
+          fi
+
       - name: Clean build directory
         run: rm -rf ./build ./artifacts
 
