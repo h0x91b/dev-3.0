@@ -54,7 +54,7 @@ describe("atomicWriteFile — concurrency and transient failures", () => {
 	});
 
 	it("gives every call its own temp path", async () => {
-		const { atomicWriteFile } = await import("../data");
+		const { atomicWriteFile } = await import("../atomic-write");
 
 		await atomicWriteFile(targetFile, "one");
 		await atomicWriteFile(targetFile, "two");
@@ -65,7 +65,7 @@ describe("atomicWriteFile — concurrency and transient failures", () => {
 	});
 
 	it("survives concurrent writes to the same file inside one process", async () => {
-		const { atomicWriteFile } = await import("../data");
+		const { atomicWriteFile } = await import("../atomic-write");
 
 		const payloads = ["a", "bb", "ccc", "dddd", "eeeee"];
 		// Before the per-call temp suffix, the losers of this race hit ENOENT on
@@ -77,7 +77,7 @@ describe("atomicWriteFile — concurrency and transient failures", () => {
 	});
 
 	it("retries a transient rename failure and then lands the write", async () => {
-		const { atomicWriteFile } = await import("../data");
+		const { atomicWriteFile } = await import("../atomic-write");
 
 		renameFailures = ["EPERM", "EBUSY"];
 		await atomicWriteFile(targetFile, "landed");
@@ -88,7 +88,7 @@ describe("atomicWriteFile — concurrency and transient failures", () => {
 	});
 
 	it("surfaces a non-transient error immediately instead of retrying", async () => {
-		const { atomicWriteFile } = await import("../data");
+		const { atomicWriteFile } = await import("../atomic-write");
 
 		renameFailures = ["EXDEV"];
 		await expect(atomicWriteFile(targetFile, "nope")).rejects.toThrow("simulated EXDEV");
@@ -98,7 +98,7 @@ describe("atomicWriteFile — concurrency and transient failures", () => {
 	});
 
 	it("gives up after the bounded retry budget", async () => {
-		const { atomicWriteFile } = await import("../data");
+		const { atomicWriteFile } = await import("../atomic-write");
 
 		renameFailures = ["EBUSY", "EBUSY", "EBUSY", "EBUSY", "EBUSY"];
 		await expect(atomicWriteFile(targetFile, "nope")).rejects.toThrow("simulated EBUSY");

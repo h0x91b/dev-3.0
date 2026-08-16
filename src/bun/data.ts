@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskPriority, TaskStatus, TipState } from "../shared/types";
 import { DEFAULT_PRIORITY, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, getTaskOverview, getTaskTitle, isStatusGuardBlocked, remapColumnAgents, titleFromDescription } from "../shared/types";
 import {
@@ -10,8 +10,10 @@ import {
 } from "../shared/terminal-backend-identity";
 import { createLogger } from "./logger";
 import { DEV3_HOME, OPS_DIR } from "./paths";
+import { atomicWriteFile } from "./atomic-write";
 import { detectClonePaths } from "./cow-clone";
 import { withFileLock } from "./file-lock";
+import { persistTaskBlobs, splitTaskBlobs } from "./task-blobs";
 import { readNewTaskTerminalBackendPreference } from "./terminal-backend-preference";
 import { projectSlug } from "./git";
 
@@ -64,48 +66,6 @@ export function deriveTaskBaseBranch(project: Project, existingBranch?: string |
 async function ensureDir(filePath: string): Promise<void> {
 	const dir = filePath.slice(0, filePath.lastIndexOf("/"));
 	await mkdir(dir, { recursive: true });
-}
-
-// Per-call counter: the temp name must be unique per CALL, not per process.
-// Two concurrent atomicWriteFile calls to the same file inside one process used
-// to share `<file>.tmp-<pid>`, so the loser's rename() hit ENOENT and its
-// cleanup unlink() could delete the winner's temp file mid-flight.
-let atomicWriteSeq = 0;
-
-// Backoff for a transient failure of the write/rename pair (a Windows indexer
-// or antivirus holding the file, a momentary EACCES). Bounded on purpose — a
-// real permission or disk problem must still surface.
-const ATOMIC_WRITE_RETRY_DELAYS_MS = [10, 30, 90];
-const TRANSIENT_WRITE_ERROR_CODES = new Set(["ENOENT", "EPERM", "EACCES", "EBUSY"]);
-
-/**
- * Crash-safe write: write `content` to a sibling temp file in the SAME
- * directory, then rename() it over `filePath`. rename() within one filesystem
- * is atomic on POSIX, so a crash/power-loss can only ever leave the temp file
- * truncated — never the live file. The temp name (`<file>.tmp-<pid>-<n>`) never
- * matches the exact filenames or backup patterns older versions read, so a
- * leftover is harmless; we still clean it up on failure. The final path and
- * byte content are identical to the old in-place writeFile, so older app
- * versions read/write these files unchanged.
- *
- * Exported for sibling data modules (automations-data.ts) — same guarantees.
- */
-export async function atomicWriteFile(filePath: string, content: string): Promise<void> {
-	for (let attempt = 0; ; attempt++) {
-		const tmpPath = `${filePath}.tmp-${process.pid}-${atomicWriteSeq++}`;
-		try {
-			await writeFile(tmpPath, content);
-			await rename(tmpPath, filePath);
-			return;
-		} catch (err: any) {
-			await unlink(tmpPath).catch(() => {});
-			const retryable = TRANSIENT_WRITE_ERROR_CODES.has(err?.code);
-			if (!retryable || attempt >= ATOMIC_WRITE_RETRY_DELAYS_MS.length) throw err;
-			const delay = ATOMIC_WRITE_RETRY_DELAYS_MS[attempt];
-			log.warn("Atomic write failed, retrying", { filePath, code: err.code, attempt: attempt + 1, delay });
-			await new Promise((resolve) => setTimeout(resolve, delay));
-		}
-	}
 }
 
 // ---- Read cache (inode/mtime/size keyed) ----
@@ -776,7 +736,16 @@ async function rawSaveTasks(
 	await writeHourlyTasksBackup(project, file).catch((err) => {
 		log.warn("Failed to write hourly tasks backup (non-fatal)", { projectId: project.id, err });
 	});
-	await atomicWriteFile(file, JSON.stringify(tasks, null, 2));
+
+	// Cold per-task payload goes to its sidecar BEFORE tasks.json loses it, so a
+	// crash between the two writes duplicates data rather than dropping it.
+	const split = splitTaskBlobs(tasks);
+	if (split.changed) await persistTaskBlobs(project, split.blobs);
+
+	// Compact, not pretty-printed: indentation alone was 3.5 MB of base44's
+	// 13.9 MB file. JSON.parse is indifferent to it, so every older app version
+	// reads the file exactly as before.
+	await atomicWriteFile(file, JSON.stringify(split.tasks));
 	tasksCache.delete(file);
 	log.info(`Saved ${tasks.length} task(s)`, { projectId: project.id });
 }

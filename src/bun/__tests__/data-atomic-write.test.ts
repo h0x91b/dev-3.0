@@ -173,7 +173,7 @@ describe("atomic JSON writes stay backward-compatible on success", () => {
 		expect(listTempSiblings(dev3Home)).toHaveLength(0);
 	});
 
-	it("writes tasks.json with the exact same JSON format and keeps the backup layout", async () => {
+	it("writes tasks.json compact but byte-for-byte parseable by an older version, and keeps the backup layout", async () => {
 		const project = makeProject();
 		const tasksDir = join(dev3Home, "data", "tmp-existing-project");
 		const tasksFile = join(tasksDir, "tasks.json");
@@ -187,7 +187,12 @@ describe("atomic JSON writes stay backward-compatible on success", () => {
 		await data.saveTasks(project, tasks);
 
 		const content = readFileSync(tasksFile, "utf8");
-		expect(content).toBe(JSON.stringify(tasks, null, 2));
+		// Compact since the 14 MB cleanup — indentation alone was 3.5 MB of base44's
+		// file. The compatibility contract is the PARSED value, not the bytes: a
+		// pretty-printed and a compact file are the same document to JSON.parse, so
+		// every older app version reads this unchanged.
+		expect(content).toBe(JSON.stringify(tasks));
+		expect(content).not.toContain("\n");
 		expect(JSON.parse(content)).toEqual(tasks);
 		expect(listTempSiblings(tasksDir)).toHaveLength(0);
 

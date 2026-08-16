@@ -124,7 +124,7 @@ describe("hourly tasks backup I/O", () => {
 		const persisted = JSON.parse(content) as Task[];
 		expect(persisted).toHaveLength(TASK_COUNT);
 		expect(persisted.find((t) => t.id === target.id)?.overview).toBe(`${target.overview}|1|2|3|4|5|6|7|8|9|10`);
-		expect(content.startsWith("[\n  {\n")).toBe(true);
-		expect(content).toBe(JSON.stringify(persisted, null, 2));
+		expect(content.startsWith('[{"')).toBe(true);
+		expect(content).toBe(JSON.stringify(persisted));
 	});
 });

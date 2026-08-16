@@ -2,7 +2,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import type { Automation, AutomationDraft, AutomationRun, Project } from "../shared/types";
 import { MAX_AUTOMATION_RUNS_KEPT } from "../shared/types";
 import { RRuleParseError, isValidTimezone, nextOccurrence, parseRRule } from "../shared/rrule";
-import { atomicWriteFile } from "./data";
+import { atomicWriteFile } from "./atomic-write";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
