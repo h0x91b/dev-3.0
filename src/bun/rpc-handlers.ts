@@ -79,6 +79,7 @@ import { conversationSearchHandlers } from "./rpc-handlers/conversation-search-h
 import { productivityStatsHandlers } from "./rpc-handlers/productivity-stats";
 import { agentUsageHandlers } from "./rpc-handlers/agent-usage";
 import { automationsHandlers } from "./rpc-handlers/automations";
+import { modelCatalogHandlers } from "./rpc-handlers/model-catalog";
 import { pxpipeProxyHandlers } from "./rpc-handlers/pxpipe-proxy";
 import { agentAccountHandlers } from "./rpc-handlers/agent-accounts";
 import { prCommentsHandlers } from "./rpc-handlers/pr-comments";
@@ -99,6 +100,7 @@ export const handlers = {
 	...productivityStatsHandlers,
 	...agentUsageHandlers,
 	...automationsHandlers,
+	...modelCatalogHandlers,
 	...pxpipeProxyHandlers,
 	...agentAccountHandlers,
 	...prCommentsHandlers,

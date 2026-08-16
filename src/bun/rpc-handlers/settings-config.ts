@@ -210,6 +210,9 @@ async function getAgents(): Promise<CodingAgent[]> {
 async function saveAgents(params: { agents: CodingAgent[] }): Promise<void> {
 	log.info("→ saveAgents", { count: params.agents.length });
 	await agents.saveAllAgents(params.agents);
+	// The merged list, not what the caller sent: built-in presets and user
+	// overrides only exist merged, and every listener renders that view.
+	getPushMessage()?.("agentsUpdated", await agents.getAllAgents());
 	log.info("← saveAgents done");
 }
 

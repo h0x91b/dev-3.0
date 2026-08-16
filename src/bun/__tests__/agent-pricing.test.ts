@@ -11,9 +11,12 @@ describe("resolveModelRate", () => {
 		expect(resolveModelRate("claude-opus-5[1m]")).toMatchObject({ input: 5, output: 25 });
 	});
 
-	it("prices Sonnet at $3/$15 regardless of minor version (incl. the sonnet-5 placeholder)", () => {
-		expect(resolveModelRate("claude-sonnet-4-6")?.input).toBe(3);
-		expect(resolveModelRate("claude-sonnet-5")?.output).toBe(15);
+	it("prices Sonnet 5 at its own lower $2/$10, not at the older Sonnet tier", () => {
+		expect(resolveModelRate("claude-sonnet-5")).toMatchObject({ input: 2, output: 10 });
+	});
+
+	it("keeps Sonnet 3.x/4.x at $3/$15", () => {
+		expect(resolveModelRate("claude-sonnet-4-6")).toMatchObject({ input: 3, output: 15 });
 	});
 
 	it("prices Haiku 4.5 at $1/$5", () => {
@@ -26,6 +29,19 @@ describe("resolveModelRate", () => {
 
 	it("prices Fable 5 at $10/$50", () => {
 		expect(resolveModelRate("claude-fable-5")).toMatchObject({ input: 10, output: 50 });
+	});
+
+	it("prices the open-source models dev3 recommends, by their OpenRouter slug", () => {
+		expect(resolveModelRate("deepseek/deepseek-v4-flash-0731")).toMatchObject({ input: 0.0675, output: 0.135 });
+		expect(resolveModelRate("deepseek/deepseek-v4-pro-0813")).toMatchObject({ input: 0.435, output: 0.87 });
+		expect(resolveModelRate("qwen/qwen3.8-2.4t-a95b")).toMatchObject({ input: 2, output: 6 });
+		expect(resolveModelRate("moonshotai/kimi-k3")).toMatchObject({ input: 2.8, output: 14 });
+	});
+
+	it("keeps flash cheaper than pro, so a mis-ordered rule cannot pass unnoticed", () => {
+		const flash = resolveModelRate("deepseek/deepseek-v4-flash-0731");
+		const pro = resolveModelRate("deepseek/deepseek-v4-pro-0813");
+		expect(flash!.output).toBeLessThan(pro!.output);
 	});
 
 	it("prices Codex models with OpenAI cached-input rates", () => {

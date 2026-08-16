@@ -23,6 +23,13 @@ export type AgentAccountAuth = "oauth" | "api";
 export type ClaudeModelSlot = "opus" | "sonnet" | "haiku" | "fable";
 export const CLAUDE_MODEL_SLOTS: ClaudeModelSlot[] = ["fable", "opus", "sonnet", "haiku"];
 
+/** Classify a concrete Claude model id into its alias slot. dev3 presets pass
+ *  concrete ids, not the slot aliases, so slot-keyed env vars alone never bind. */
+export function claudeModelFamily(modelId: string): ClaudeModelSlot | null {
+	const m = modelId.toLowerCase();
+	return CLAUDE_MODEL_SLOTS.find((slot) => m.includes(slot)) ?? null;
+}
+
 /** Per-slot model override: the provider model id plus optional display
  *  name/description surfaced by Claude Code's `/model` picker. */
 export interface ClaudeSlotModel {

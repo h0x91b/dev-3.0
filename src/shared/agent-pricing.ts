@@ -76,8 +76,17 @@ const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBas
 	{ match: (id) => /opus-4-[01]/.test(id) || id.includes("opus-3") || /3-opus/.test(id), rate: { input: 15, output: 75 } },
 	// Any other opus → treat as current tier
 	{ match: (id) => id.includes("opus"), rate: { input: 5, output: 25 } },
-	// Sonnet (all 3.x/4.x and the "sonnet-5" placeholder): $3 / $15
+	// Sonnet 5 undercut its predecessors: $2 / $10
+	{ match: (id) => /sonnet-[5-9]/.test(id), rate: { input: 2, output: 10 } },
+	// Sonnet 3.x / 4.x: $3 / $15
 	{ match: (id) => id.includes("sonnet"), rate: { input: 3, output: 15 } },
+	// --- Open-source models dev3 recommends through the catalog ---
+	// Priced so a routed session is costed like any other, and so the launcher
+	// can show what a slot would cost before the user connects anything.
+	{ match: (id) => id.includes("deepseek-v4-flash"), rate: { input: 0.0675, output: 0.135 } },
+	{ match: (id) => id.includes("deepseek-v4-pro"), rate: { input: 0.435, output: 0.87 } },
+	{ match: (id) => id.includes("qwen3.8"), rate: { input: 2, output: 6 } },
+	{ match: (id) => id.includes("kimi-k3"), rate: { input: 2.8, output: 14 } },
 	// Haiku 4.5 / newer: $1 / $5
 	{ match: (id) => /haiku-4/.test(id) || /haiku-[5-9]/.test(id), rate: { input: 1, output: 5 } },
 	// Haiku 3.5: $0.80 / $4

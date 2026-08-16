@@ -13615,3 +13615,23 @@ describe("handlers.previewUpdatePopover", () => {
 		expect(res.diagnostics.includesUncommitted).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// handlers.saveAgents
+// ---------------------------------------------------------------------------
+
+describe("handlers.saveAgents", () => {
+	it("tells every open surface about the new presets, so no launch picker keeps the old ones", async () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const merged = [{ id: "builtin-claude", name: "Claude", baseCommand: "claude", configurations: [{ id: "c1", name: "OpenRouter" }] }];
+		vi.mocked(agents.getAllAgents).mockResolvedValue(merged as any);
+
+		await handlers.saveAgents({ agents: [] as any });
+
+		const call = push.mock.calls.find((c) => c[0] === "agentsUpdated");
+		expect(call).toBeTruthy();
+		// The merged list, not the caller's payload: overrides only exist merged.
+		expect(call?.[1]).toBe(merged);
+	});
+});

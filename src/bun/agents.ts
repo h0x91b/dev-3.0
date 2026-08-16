@@ -17,7 +17,12 @@ import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv } from "./agent-accounts";
-import { ENV_UNSET } from "../shared/agent-accounts";
+import { ENV_UNSET, claudeModelFamily } from "../shared/agent-accounts";
+export { claudeModelFamily } from "../shared/agent-accounts";
+import { codexModelCatalogArgs, modelRolesForAgent, orphanedRoleBindings, resolveModelRoleLaunch, roleUnsetEnv } from "../shared/model-catalog";
+import { writeCodexModelCatalog } from "./codex-model-catalog";
+import { loadModelCatalog } from "./model-catalog-store";
+import { ensureModelSidecar, preflightModelRoles } from "./model-sidecar";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
 import { autoAgentFamily, isKnownAgentCommand } from "../shared/agent-adapters/families";
@@ -436,6 +441,10 @@ export interface CommandOptions {
 	 *  Threaded into the account env resolution so each spawned session locks to
 	 *  its chosen account instead of a single global active one. */
 	accountId?: string | null;
+	/** Raw CLI args contributed by the preset's model roles (Codex's `-c` config
+	 *  overrides). Appended after the provider's own routing args; the adapter
+	 *  shell-escapes them. */
+	modelRoleArgs?: string[];
 }
 
 /**
@@ -482,14 +491,91 @@ export function resolveAgentCommand(
 		// Under an env-delivering backend (e.g. Bedrock for Claude) the model comes
 		// from injected env (ANTHROPIC_MODEL), so the adapter omits --model.
 		skipModelForProvider: providerOmitsModelFlag(options?.llmProvider),
-		// Backend routing args (e.g. Codex on Bedrock), shell-escaped by the adapter.
-		providerArgs: getProviderDefinition(options?.llmProvider)?.enableArgs,
+		// Backend routing args (e.g. Codex on Bedrock) plus the preset's model-role
+		// overrides, shell-escaped by the adapter.
+		providerArgs: launchExtraArgs(options),
 		// Codex-only: resolve the theme/profile runtime (impure) here so the pure
 		// adapter stays pure. Non-Codex agents skip it (avoids the codex --help probe).
 		codex: adapter.command === "codex" ? codexLaunchRuntime() : undefined,
 	};
 
 	return adapter.launchArgs(baseCmd, config, ctx, adapterOptions).join(" ");
+}
+
+/** Every raw arg a launch adds beyond the preset's own: the selected backend's
+ *  routing args, then the preset's model-role overrides. Undefined when neither
+ *  applies, so nothing changes for an ordinary launch. */
+function launchExtraArgs(options: CommandOptions | undefined): string[] | undefined {
+	const args = [
+		...(getProviderDefinition(options?.llmProvider)?.enableArgs ?? []),
+		...(options?.modelRoleArgs ?? []),
+	];
+	return args.length > 0 ? args : undefined;
+}
+
+/**
+ * Route this launch through the model catalog when its preset binds roles: start
+ * the sidecar, inject the agent's own role delivery, pin the launch model. An
+ * explicit `envVars` entry still wins. Throws rather than launching unrouted,
+ * which would silently hit the agent's native API under the wrong model.
+ */
+export async function applyModelRoleLaunch(
+	baseCmd: string,
+	config: AgentConfiguration | undefined,
+	extraEnv: Record<string, string>,
+	options: CommandOptions,
+): Promise<{ config: AgentConfiguration | undefined; options: CommandOptions; pinnedModel: boolean }> {
+	const bindings = config?.modelRoles;
+	if (!bindings || Object.keys(bindings).length === 0) return { config, options, pinnedModel: false };
+	if (modelRolesForAgent(baseCmd).length === 0) return { config, options, pinnedModel: false };
+
+	const catalog = loadModelCatalog();
+	// A role pointing at a deleted model would otherwise launch unrouted, on the
+	// agent's native API — the exact silent wrong-model case this feature exists
+	// to prevent. Name the roles instead.
+	const orphans = orphanedRoleBindings(bindings, catalog);
+	if (orphans.length > 0) {
+		throw new Error(
+			`These model roles point at catalog models that no longer exist: ${orphans.join(", ")}. Fix the preset in Settings.`,
+		);
+	}
+
+	const runtime = await ensureModelSidecar();
+	const verdict = await preflightModelRoles(baseCmd, bindings, catalog);
+	if (!verdict.ok) {
+		const detail = verdict.problems
+			.map((p) => (p.roleId ? `${p.roleId}: ${p.code}${p.detail ? ` (${p.detail})` : ""}` : p.detail ?? p.code))
+			.join("; ");
+		throw new Error(`The model proxy cannot serve this preset's roles — ${detail}`);
+	}
+
+	const plan = resolveModelRoleLaunch(baseCmd, bindings, catalog, runtime, config?.model);
+	if (!plan) {
+		// Roles are bound but nothing could be built from them — Codex without its
+		// main model is the only way here. Launching would quietly use the agent's
+		// own model instead of the one the preset promises.
+		throw new Error("This preset binds model roles but not the model the agent actually launches with. Fix the preset in Settings.");
+	}
+
+	for (const [key, value] of Object.entries({ ...plan.env, ...roleUnsetEnv(plan) })) {
+		if (config?.envVars && key in config.envVars) continue;
+		extraEnv[key] = value;
+	}
+
+	// Metadata for a model Codex has never heard of. Best-effort by design:
+	// without it the session still runs, on Codex's placeholder numbers.
+	const args = [...plan.args];
+	if (agentKey(baseCmd) === "codex") {
+		const catalogPath = await writeCodexModelCatalog(baseCmd, catalog);
+		if (catalogPath) args.push(...codexModelCatalogArgs(catalogPath));
+	}
+
+	const pinnedModel = Boolean(plan.modelFlag && config);
+	return {
+		config: pinnedModel ? { ...(config as AgentConfiguration), model: plan.modelFlag } : config,
+		options: args.length > 0 ? { ...options, modelRoleArgs: args } : options,
+		pinnedModel,
+	};
 }
 
 export function findConfig(
@@ -585,19 +671,6 @@ async function applyCodexAccountEnv(
 	}
 }
 
-/** Classify a concrete Claude model id into its alias family. dev3 presets pass
- *  concrete ids (`claude-opus-4-8[1m]`, `claude-sonnet-5`, `claude-fable-5`), not
- *  the `opus`/`sonnet`/… aliases, so alias-default env vars alone never bind —
- *  we map the id to a family and rewrite the `--model` flag (applyModelOverride). */
-export function claudeModelFamily(modelId: string): "opus" | "sonnet" | "haiku" | "fable" | null {
-	const m = modelId.toLowerCase();
-	if (m.includes("opus")) return "opus";
-	if (m.includes("sonnet")) return "sonnet";
-	if (m.includes("haiku")) return "haiku";
-	if (m.includes("fable")) return "fable";
-	return null;
-}
-
 /** Rewrite a Claude preset's `--model` flag to the active API profile's override.
  *  Claude Code gives the CLI flag precedence over env, and dev3 presets pass
  *  concrete model ids — so without rewriting the flag, an API profile's per-slot
@@ -691,11 +764,12 @@ export async function resolveCommandForAgent(
 	}
 	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
+	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts);
 	const command = resolveAgentCommand(
 		agentWithPath,
-		resolveLaunchConfig(config, agentWithPath, baseCmd, extraEnv),
+		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
 		ctx,
-		providerOpts,
+		routed.options,
 	);
 	// `agent` stays the stored record — callers derive the base command from it,
 	// and swapping in the override path there would change what they persist.
@@ -714,7 +788,13 @@ export function resolveLaunchConfig(
 	agent: CodingAgent,
 	baseCmd: string,
 	extraEnv: Record<string, string>,
+	modelAlreadyPinned = false,
 ): AgentConfiguration | undefined {
+	// A routed launch already names the catalog model the proxy will serve. Both
+	// rewrites below match on the model STRING, so a catalog model whose name
+	// happens to carry an alias word ("sonnet-cheap") would be swapped for another
+	// role's model — the silent wrong-model case routing exists to prevent.
+	if (modelAlreadyPinned) return config;
 	return applyModelOverride(applyProviderModel(config, agent), baseCmd, extraEnv, agent.agentFamily);
 }
 
@@ -800,11 +880,12 @@ export async function resolveCommandForProject(
 		};
 		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
+		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts);
 		const command = resolveAgentCommand(
 			agentWithPath,
-			resolveLaunchConfig(config, agentWithPath, baseCmd, extraEnv),
+			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
 			ctx,
-			providerOpts,
+			routed.options,
 		);
 		return { command, agent, config, extraEnv, agentFamily: agentWithPath.agentFamily };
 	}

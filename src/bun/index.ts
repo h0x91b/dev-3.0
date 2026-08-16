@@ -551,6 +551,15 @@ startResourceMonitor((name, payload) => {
 	}
 });
 
+// Bring the model-catalog proxy up before anything asks for it, so an agent
+// launched right after boot does not wait on a cold start. Detached and delayed
+// for the same reason as the scan below: the first paint comes first.
+setTimeout(() => {
+	import("./model-sidecar")
+		.then(({ autostartModelSidecar }) => autostartModelSidecar())
+		.catch((err) => log.warn("Model proxy autostart could not be scheduled", { error: String(err) }));
+}, 1500);
+
 // Report processes earlier versions leaked out of finished task worktrees. Detect
 // only, never kill: ending a user's process needs a click (PRODUCT_UX_BIBLE §12.6).
 // Detached so a slow lsof cannot delay the window, and delayed so it does not
@@ -715,6 +724,9 @@ function runGlobalQuitCleanup(): void {
 	// would orphan tunnels (and trycloudflare quotas) on app exit.
 	import("./port-tunnels").then(({ cleanupAllTunnels }) => cleanupAllTunnels()).catch(() => { /* shutdown — best-effort */ });
 	try { stopTunnel(); } catch (err) { log.warn("stopTunnel failed", { error: String(err) }); }
+	// The model-catalog proxy dies with the app — an orphan would keep holding a
+	// loopback port and the user's provider keys in memory.
+	import("./model-sidecar").then(({ stopModelSidecar }) => stopModelSidecar()).catch(() => { /* shutdown — best-effort */ });
 }
 
 // Terminal/OS signals (Ctrl+C in `bun run dev`, kill, shutdown) bypass the

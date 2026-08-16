@@ -294,7 +294,10 @@ describe("resolveAgentCommand — resume", () => {
 			makeCtx({ taskDescription: "Some task" }),
 		);
 
-		expect(cmd).toContain(`-c model_reasoning_effort="high" -c 'tui.theme="dracula"'`);
+		// The dev3 permissions preset now lands between them: this preset names a
+		// profile but decides nothing about permissions.
+		expect(cmd).toContain(`-c model_reasoning_effort="high"`);
+		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
 	});
 
 	it("Codex: appends the dev3 theme after a conflicting user override", () => {
