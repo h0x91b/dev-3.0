@@ -27,6 +27,7 @@ afterEach(() => {
 });
 
 import { addTask, addTaskFocusMs, getTask, updateTask } from "../data";
+import { loadEffectiveTaskHistory } from "../task-blobs";
 
 const testProject: Project = {
 	id: "proj-1",
@@ -128,7 +129,8 @@ describe("addTaskFocusMs", () => {
 		const got = await getTask(testProject, task.id);
 		expect(got.focusMs).toBe(120_000);
 		expect(got.updatedAt).toBe(beforeUpdatedAt);
-		expect(got.history).toHaveLength(1); // only the seeded 'created' entry
+		// History lives in the task's sidecar; still only the seeded 'created' entry.
+		expect(await loadEffectiveTaskHistory(testProject, got)).toHaveLength(1);
 	});
 
 	it("ignores non-positive deltas and unknown task ids", async () => {

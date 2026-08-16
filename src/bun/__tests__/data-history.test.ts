@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, rmSync } from "node:fs";
-import type { Project } from "../../shared/types";
+import type { Project, TaskHistoryEntry } from "../../shared/types";
 
 const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-history`);
 
@@ -31,6 +31,17 @@ afterEach(() => {
 });
 
 import { addTask, updateTask } from "../data";
+import { loadEffectiveTaskHistory } from "../task-blobs";
+
+/**
+ * A task's history no longer rides on the Task object — saving archives it into
+ * the task's sidecar and leaves `history: []` in tasks.json. Every assertion
+ * below is about the history a READER sees (`dev3 task show --history`), so they
+ * go through the same merge that handler uses.
+ */
+async function historyOf(task: { id: string; history?: TaskHistoryEntry[] }): Promise<TaskHistoryEntry[]> {
+	return loadEffectiveTaskHistory(testProject, task);
+}
 
 const testProject: Project = {
 	id: "proj-1",
@@ -46,20 +57,22 @@ const testProject: Project = {
 describe("task title/overview history", () => {
 	it("seeds a 'created' entry capturing the initial title", async () => {
 		const task = await addTask(testProject, "Fix the login flow");
-		expect(task.history).toHaveLength(1);
-		expect(task.history![0]).toMatchObject({
+		const history = await historyOf(task);
+		expect(history).toHaveLength(1);
+		expect(history[0]).toMatchObject({
 			title: "Fix the login flow",
 			overview: null,
 			changed: "created",
 		});
-		expect(typeof task.history![0].at).toBe("string");
+		expect(typeof history[0].at).toBe("string");
 	});
 
 	it("appends an entry when the overview changes", async () => {
 		const task = await addTask(testProject, "Build feature");
 		const updated = await updateTask(testProject, task.id, { overview: "Working on the parser" });
-		expect(updated.history).toHaveLength(2);
-		expect(updated.history![1]).toMatchObject({
+		const history = await historyOf(updated);
+		expect(history).toHaveLength(2);
+		expect(history[1]).toMatchObject({
 			title: "Build feature",
 			overview: "Working on the parser",
 			changed: "overview",
@@ -69,8 +82,9 @@ describe("task title/overview history", () => {
 	it("appends an entry when the custom title changes", async () => {
 		const task = await addTask(testProject, "Some long auto generated description");
 		const updated = await updateTask(testProject, task.id, { customTitle: "Short title" });
-		expect(updated.history).toHaveLength(2);
-		expect(updated.history![1]).toMatchObject({
+		const history = await historyOf(updated);
+		expect(history).toHaveLength(2);
+		expect(history[1]).toMatchObject({
 			title: "Short title",
 			changed: "title",
 		});
@@ -82,14 +96,15 @@ describe("task title/overview history", () => {
 			customTitle: "Renamed",
 			overview: "New overview",
 		});
-		expect(updated.history![1]).toMatchObject({ changed: "both", title: "Renamed", overview: "New overview" });
+		expect((await historyOf(updated))[1]).toMatchObject({ changed: "both", title: "Renamed", overview: "New overview" });
 	});
 
 	it("uses the user override as the effective overview", async () => {
 		const task = await addTask(testProject, "Task");
 		await updateTask(testProject, task.id, { overview: "agent overview" });
 		const updated = await updateTask(testProject, task.id, { userOverview: "user overview" });
-		expect(updated.history![updated.history!.length - 1]).toMatchObject({
+		const history = await historyOf(updated);
+		expect(history[history.length - 1]).toMatchObject({
 			overview: "user overview",
 			changed: "overview",
 		});
@@ -98,7 +113,7 @@ describe("task title/overview history", () => {
 	it("does not append an entry for status-only changes", async () => {
 		const task = await addTask(testProject, "Task");
 		const updated = await updateTask(testProject, task.id, { status: "in-progress" });
-		expect(updated.history).toHaveLength(1);
+		expect(await historyOf(updated)).toHaveLength(1);
 	});
 
 	it("does not append an entry when the effective overview is unchanged", async () => {
@@ -106,7 +121,7 @@ describe("task title/overview history", () => {
 		await updateTask(testProject, task.id, { userOverview: "pinned" });
 		// Agent rewrites the hidden overview — effective value stays "pinned".
 		const updated = await updateTask(testProject, task.id, { overview: "hidden agent text" });
-		const overviewEntries = updated.history!.filter((entry) => entry.changed !== "created");
+		const overviewEntries = (await historyOf(updated)).filter((entry) => entry.changed !== "created");
 		expect(overviewEntries).toHaveLength(1);
 		expect(overviewEntries[0].overview).toBe("pinned");
 	});
@@ -116,8 +131,9 @@ describe("task title/overview history", () => {
 		await updateTask(testProject, task.id, { customTitle: "v2" });
 		await updateTask(testProject, task.id, { overview: "o1" });
 		const updated = await updateTask(testProject, task.id, { customTitle: "v3" });
-		expect(updated.history!.map((entry) => entry.changed)).toEqual(["created", "title", "overview", "title"]);
-		expect(updated.history!.map((entry) => entry.title)).toEqual(["v1", "v2", "v2", "v3"]);
+		const history = await historyOf(updated);
+		expect(history.map((entry) => entry.changed)).toEqual(["created", "title", "overview", "title"]);
+		expect(history.map((entry) => entry.title)).toEqual(["v1", "v2", "v2", "v3"]);
 	});
 });
 
@@ -135,7 +151,7 @@ describe("addTask — carried extras", () => {
 		expect(task.overview).toBe("agent overview");
 		expect(task.userOverview).toBe("user overview");
 		// The seeded 'created' history entry reflects the carried (effective) overview.
-		expect(task.history![0]).toMatchObject({ overview: "user overview", changed: "created" });
+		expect((await historyOf(task))[0]).toMatchObject({ overview: "user overview", changed: "created" });
 	});
 
 	it("omits the carried fields when not provided (no empty-notes noise)", async () => {

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import type { Task, TaskStatus } from "../../shared/types";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import type { Task, TaskHistoryEntry, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES } from "../../shared/types";
 import { projectSlug } from "../../shared/conversation-search-core";
 import { searchConversations, type EngineTask } from "../../bun/conversation-search";
@@ -29,6 +29,28 @@ function loadProjectTasks(dev3Home: string, slug: string): Task[] {
 	} catch {
 		return [];
 	}
+}
+
+/**
+ * Title/overview history moved out of tasks.json into per-task sidecars, and
+ * this command reads the store directly rather than through the app. Reading the
+ * blob directory once keeps the search's history signal intact; a missing or
+ * unparseable sidecar just contributes nothing.
+ */
+function loadArchivedHistory(dev3Home: string, slug: string): Map<string, TaskHistoryEntry[]> {
+	const byTask = new Map<string, TaskHistoryEntry[]>();
+	const dir = `${dev3Home}/data/${slug}/task-blobs`;
+	if (!existsSync(dir)) return byTask;
+	for (const entry of readdirSync(dir)) {
+		if (!entry.endsWith(".json")) continue;
+		try {
+			const blob = JSON.parse(readFileSync(`${dir}/${entry}`, "utf-8")) as { taskId?: string; history?: TaskHistoryEntry[] };
+			if (blob.taskId && blob.history?.length) byTask.set(blob.taskId, blob.history);
+		} catch {
+			// A half-written sidecar is not worth failing a search over.
+		}
+	}
+	return byTask;
 }
 
 async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<void> {
@@ -61,6 +83,8 @@ async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<
 	const allStatuses = args.flags["all-statuses"] === "true";
 	const statuses: TaskStatus[] | undefined = allStatuses ? [...ALL_STATUSES] : undefined;
 
+	const archivedHistory = loadArchivedHistory(dev3Home, slug);
+
 	const engineTasks: EngineTask[] = tasks.map((t) => ({
 		id: t.id,
 		title: t.title,
@@ -68,7 +92,9 @@ async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<
 		overview: t.overview,
 		userOverview: t.userOverview,
 		notes: (t.notes ?? []).map((n) => n.content),
-		historyTexts: (t.history ?? []).flatMap((h) => [h.title, h.overview]).filter((s): s is string => !!s),
+		historyTexts: [...(t.history ?? []), ...(archivedHistory.get(t.id) ?? [])]
+			.flatMap((h) => [h.title, h.overview])
+			.filter((s): s is string => !!s),
 		status: t.status,
 		groupId: t.groupId,
 		agentId: t.agentId,

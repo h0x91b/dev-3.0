@@ -183,6 +183,86 @@ describe("saveTasks — sidecar migration on disk", () => {
 	});
 });
 
+describe("history archive", () => {
+	beforeEach(() => {
+		vi.resetModules();
+		process.env.HOME = tempHome;
+		rmSync(tempHome, { recursive: true, force: true });
+		mkdirSync(tasksDir, { recursive: true });
+	});
+
+	afterAll(() => {
+		process.env.HOME = originalHome;
+		rmSync(tempHome, { recursive: true, force: true });
+	});
+
+	const entry = (at: string, title: string) => ({ at, title, overview: null, changed: "title" as const });
+
+	it("moves history to the sidecar and leaves an empty array behind", async () => {
+		const data = await import("../data");
+		await data.saveTasks(makeProject(), [
+			makeTask({ history: [entry("2026-08-01T00:00:00.000Z", "first"), entry("2026-08-02T00:00:00.000Z", "second")] }),
+		]);
+
+		const persisted = JSON.parse(readFileSync(tasksFile, "utf8")) as Task[];
+		expect(persisted[0].history).toEqual([]);
+
+		const blob = JSON.parse(readFileSync(join(blobsDir, "task-1.json"), "utf8"));
+		expect(blob.history.map((h: { title: string }) => h.title)).toEqual(["first", "second"]);
+	});
+
+	it("unions successive saves instead of replacing — an incremental append keeps the archive", async () => {
+		const data = await import("../data");
+		const project = makeProject();
+		await data.saveTasks(project, [makeTask({ history: [entry("2026-08-01T00:00:00.000Z", "first")] })]);
+
+		// What a later save looks like: the in-memory task was loaded AFTER the
+		// migration, so it carries only the newly appended entry.
+		await data.saveTasks(project, [makeTask({ history: [entry("2026-08-03T00:00:00.000Z", "third")] })]);
+
+		const blob = JSON.parse(readFileSync(join(blobsDir, "task-1.json"), "utf8"));
+		expect(blob.history.map((h: { title: string }) => h.title)).toEqual(["first", "third"]);
+	});
+
+	it("does not duplicate an entry that is saved twice", async () => {
+		const data = await import("../data");
+		const project = makeProject();
+		const same = entry("2026-08-01T00:00:00.000Z", "first");
+		await data.saveTasks(project, [makeTask({ history: [same] })]);
+		await data.saveTasks(project, [makeTask({ history: [same] })]);
+
+		const blob = JSON.parse(readFileSync(join(blobsDir, "task-1.json"), "utf8"));
+		expect(blob.history).toHaveLength(1);
+	});
+
+	it("folds in entries a downgraded version wrote into tasks.json, in chronological order", async () => {
+		const data = await import("../data");
+		const project = makeProject();
+		await data.saveTasks(project, [
+			makeTask({ history: [entry("2026-08-01T00:00:00.000Z", "first"), entry("2026-08-05T00:00:00.000Z", "last")] }),
+		]);
+
+		// The old build knows nothing about the sidecar: it appends to the empty
+		// history it found in tasks.json and writes the whole file back.
+		const onOldVersion = JSON.parse(readFileSync(tasksFile, "utf8")) as Task[];
+		onOldVersion[0].history = [entry("2026-08-03T00:00:00.000Z", "written on the old version")];
+		writeFileSync(tasksFile, JSON.stringify(onOldVersion, null, 2));
+
+		// Upgrade: the next save unions the rollback-window entry into the archive.
+		vi.resetModules();
+		const dataAgain = await import("../data");
+		const tasks = await dataAgain.loadTasks(project);
+		await dataAgain.saveTasks(project, tasks);
+
+		const blob = JSON.parse(readFileSync(join(blobsDir, "task-1.json"), "utf8"));
+		expect(blob.history.map((h: { title: string }) => h.title)).toEqual([
+			"first",
+			"written on the old version",
+			"last",
+		]);
+	});
+});
+
 describe("downgrade safety", () => {
 	beforeEach(() => {
 		vi.resetModules();

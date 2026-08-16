@@ -45,14 +45,39 @@ Three properties make the split safe rather than merely smaller:
    the data in both places, never in neither.
 2. **Nothing is deleted.** `fileStats` is archived, not dropped, so the split is
    reversible and a future per-file feature still has its history.
-3. **Blob writes are one-time.** `splitTaskBlobs` reports `changed: false` once a
-   task carries no `fileStats`, so a steady-state save does no extra I/O.
+3. **Blob writes are proportional to what changed.** `splitTaskBlobs` reports
+   `changed: false` when a task has nothing to archive, so most saves touch no
+   sidecar at all. A save that appends a history entry writes exactly one small
+   sidecar (~1.6 KB) instead of pushing that entry through a multi-megabyte
+   rewrite.
 
 Compaction is a separate, independent win: `JSON.parse` is indifferent to
 whitespace, so a compact file is the same document to every reader.
 
-Measured on the real files: base44 14.05 → 5.06 MB (−64%), dev-3.0 9.78 → 7.90 MB
-(−19%).
+`Task.history` (title/overview snapshots) moved into the same sidecar. It is
+1.2 MB on dev-3.0 spread across 830 tasks — p90 is 9 entries, so a retention cap
+would have recovered almost nothing (7.91 → 7.83 MB) and only the full split
+pays. No renderer reads it; the two readers that exist —
+`dev3 task show --history` via the `task.show` socket handler, and conversation
+search in both its backend and CLI form — hydrate from the sidecar.
+
+History is **unioned** on every blob write, never replaced. A task loaded after
+the migration carries an empty in-memory history, so a replacing write would
+erase the archive on the next unrelated save; and a downgraded version appends
+its entries to tasks.json, which the union folds back in on the next save.
+Entries are keyed on `at` + `changed` + `title` + `overview` and re-sorted by
+`at`, so a late arrival lands chronologically.
+
+Measured by running the real `updateTask` path against a copy of the live store:
+base44's tasks.json went 14.59 → 5.00 MB on the migrating save (153 ms, 277
+sidecars written), and each subsequent edit took ~23 ms. dev-3.0 goes 9.81 →
+6.72 MB (−31%).
+
+Separately, `Task.notes` stays in tasks.json but is now capped at the 50 most
+recent (`MAX_TASK_NOTES_KEPT`, `appendTaskNote` in `src/shared/types.ts`),
+applied at both insert sites. The cap recovers little today — notes are also
+spread thin, median 1–2 per task — but it bounds a list that one long-running
+agent could otherwise grow without limit (251 on one task already).
 
 `atomicWriteFile` moved from `data.ts` to its own `src/bun/atomic-write.ts` so
 `data.ts`, `automations-data.ts` and `task-blobs.ts` can share it without
@@ -61,14 +86,25 @@ importing each other.
 ## Risks
 
 An older app version reading the new file sees `completedDiffStats` without
-`fileStats`. Verified against `v1.39.0`, `v1.42.0` and `v1.45.0`: no unguarded
-`task.notes` / `task.history` access, no `prStatusCache.<member>` access, and no
-reader of `fileStats` at all — so nothing can throw. If an old build rewrites
-tasks.json it simply never touches `task-blobs/`, and the archive survives.
+`fileStats` and an empty `history`. Verified against `v1.39.0`, `v1.42.0` and
+`v1.45.0`: no unguarded `task.notes` / `task.history` access, no
+`prStatusCache.<member>` access, and no reader of `fileStats` at all — so nothing
+can throw. If an old build rewrites tasks.json it never touches `task-blobs/`,
+and the archive survives.
 
-The residual risk is a partially written sidecar leaving an unparseable blob;
-`readTaskBlob` swallows that and returns `null`, which costs nothing because no
-code path depends on the contents today.
+The one visible cost of a rollback is that `dev3 task show --history` and the
+history signal in conversation search go quiet on the old build until the user
+upgrades. No entry is lost: the union write folds the rollback window's own
+entries back in.
+
+A partially written sidecar leaves an unparseable blob; `readTaskBlob` swallows
+that and returns `null`, so a search or a `--history` read degrades to empty
+rather than failing.
+
+The notes cap deletes data by design. A task past 50 notes loses its oldest ones
+the next time a note is added to it — notes are surfaced to future agents by
+`dev3 conversations search`, so the agent skill now states the limit and tells
+agents to consolidate rather than narrate.
 
 ## Alternatives considered
 

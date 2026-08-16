@@ -4,6 +4,7 @@ import type { ConversationMatch } from "../../shared/conversation-search-core";
 import * as data from "../data";
 import { projectSlug } from "../git";
 import { searchConversations, type EngineTask } from "../conversation-search";
+import { readAllTaskBlobs } from "../task-blobs";
 import { log } from "./shared";
 
 async function searchConversationsHandler(params: {
@@ -21,6 +22,10 @@ async function searchConversationsHandler(params: {
 	const currentTask = currentTaskId ? tasks.find((t) => t.id === currentTaskId) : null;
 	const currentGroupId = currentTask?.groupId ?? null;
 
+	// History lives in each task's sidecar, so a search reads the blobs once for
+	// the whole project rather than per task.
+	const blobs = await readAllTaskBlobs(project);
+
 	const engineTasks: EngineTask[] = tasks.map((t) => ({
 		id: t.id,
 		title: t.title,
@@ -28,7 +33,9 @@ async function searchConversationsHandler(params: {
 		overview: t.overview,
 		userOverview: t.userOverview,
 		notes: (t.notes ?? []).map((n) => n.content),
-		historyTexts: (t.history ?? []).flatMap((h) => [h.title, h.overview]).filter((s): s is string => !!s),
+		historyTexts: [...(t.history ?? []), ...(blobs.get(t.id)?.history ?? [])]
+			.flatMap((h) => [h.title, h.overview])
+			.filter((s): s is string => !!s),
 		status: t.status,
 		groupId: t.groupId,
 		agentId: t.agentId,
