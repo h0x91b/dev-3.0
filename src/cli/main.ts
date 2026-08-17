@@ -25,6 +25,7 @@ import { handlePaneExec } from "./commands/pane-exec";
 import { PANE_RUN_VERB } from "../bun/pane-run-store";
 import { handleShowImage } from "./commands/show-image";
 import { handleShowArtifact } from "./commands/show-artifact";
+import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
@@ -78,6 +79,7 @@ Commands:
   dev3 message "text" [--in <dur> | --at <hh:mm>] [--task <id>]  Send text to the task's live agent now, or schedule it (Send later)
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
   dev3 show-artifact <file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; local CSS, JS, and images are exported as ZIP
+  dev3 inline-html <index.html|dir> -o <out.html> [--json]  Fold a multi-file HTML report into one self-contained file (for a gist / preview URL); refuses on missing assets or embedded credentials
   dev3 peek [--task <id>] [--pane <N|paneId>] [--lines <N>] [--json]  Read-only glance at a task's terminal: pane summary with output freshness + the tail of one pane
   dev3 pane list [--json]                Which terminal backend you are on, which panes exist, which one is yours
   dev3 pane run "<command>" [--below] [--label <name>]  Run a command in a neighbouring pane of your own terminal
@@ -201,6 +203,11 @@ async function main(): Promise<void> {
 		// Install health check — must work precisely when the app is broken
 		// or not running, so it never touches the socket.
 		return await handleDoctor(args);
+	}
+	if (command === "inline-html") {
+		// Pure local file transform (fold a multi-file report into one HTML) —
+		// runs before publishing an artifact and needs no app or socket.
+		return await handleInlineHtml(rawArgs.slice(1));
 	}
 	if (command === "conversations") {
 		// Read-only search over local transcript files — no app/socket needed.

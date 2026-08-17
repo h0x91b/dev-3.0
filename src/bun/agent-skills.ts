@@ -729,6 +729,7 @@ A starting situation that generates work, then merges onto the main flow.
 - **Slice features small enough for a 30-second check.** The dev server pays off most when a feature is small enough that pressing the button and clicking around for ~30 seconds tells you whether it's done: the new button is there and works, nothing that should exist has vanished, it looks right. If you can't verify a feature that fast, the task was probably too big — split it.
 - **Screenshots → the agent takes them and shows them to you.** With the dev server up (or any page the agent can reach) and a browser tool at hand (agent-browser, Puppeteer, a browser MCP), just say *"take a screenshot and show it to me in dev3"* — the agent will understand: it drives the browser, captures the pixels, and pushes them into the app (\`dev3 show-image\` under the hood). Prefer pixels over prose when the change is visual.
 - **Reports and richer results → dev3 artifacts.** An artifact is an HTML page shown right inside dev3's UI — it can embed screenshots, tables from CSVs, charts, anything dynamic. Perfect for reports and for validating what the agent did: often you don't even need to launch the dev server yourself — the agent has already screenshotted everything and presents the finished result as one page. To activate it, just tell the agent to *"use a dev3 artifact"*.
+- **Send a report to someone outside dev3 → ask for a link.** An artifact lives inside the app, so *"share this report"* / *"give me a link"* / *"I want to look at it on my phone"* means the agent folds it into one self-contained HTML file (\`dev3 inline-html\`), publishes it as a GitHub gist — secret by default — and hands back a preview URL it has actually opened and screenshotted. That is \`/dev3-share-artifact\`; re-sharing a regenerated report updates the same gist, so a URL already pasted into an issue keeps working. It refuses to publish a page with an embedded credential and names home paths, emails and tunnel URLs before they go public.
 - **Artifacts travel well — the ZIP → PDF trick.** Downloading an artifact gives you the HTML page, and when it references images or other files — a ZIP with everything bundled. A proven workflow for analytics-style reports: view the report in dev3, download it, open the HTML in a browser, print → save as PDF — and send that PDF to people.
 
 ## Talk to the terminal in panes
@@ -793,6 +794,7 @@ Off the main flow entirely.
 - **\`/dev3-project-config\`** — analyze a repo and write its \`.dev3/config.json\`.
 - **\`/dev3-tmux\`** — full tmux reference: panes, windows, capturing output.
 - **\`/dev3-bug-hunter\`** — seeded, review-only bug hunting; shines in multi-variant swarms.
+- **\`/dev3-share-artifact\`** — publish an HTML report as a gist and hand back a verified preview URL.
 
 ## When the map is not enough — read the source
 
@@ -811,6 +813,202 @@ const ASK_DEV3_OPENAI_YAML = `interface:
   short_description: "Ask which dev3 feature or flow fits your situation"
   default_prompt: "Use $ask-dev3 to learn how something is done in dev3 and which flow fits the situation."
 `;
+
+// ---- dev3-share-artifact skill (publish an artifact as a link) ----
+
+const SHARE_ARTIFACT_SKILL_DESCRIPTION =
+	"Publish a local HTML report or dev3 artifact to a GitHub gist and hand back a working, browser-verified preview URL. Folds CSS, JS and images into one self-contained file first, because gists cannot serve multi-file HTML or binaries. Use this whenever the user wants to look at a generated report outside the app — \\\"share this report\\\", \\\"give me a link\\\", \\\"I want to open it in a browser / on my phone\\\", \\\"make a gist\\\", \\\"html preview\\\", \\\"put it online\\\" — and also when they ask to send a report to someone, attach it to a GitHub issue, or re-share an artifact they just regenerated. Reach for it even when the user does not say the word \\\"gist\\\": if the deliverable is a local HTML file and they want it on the web, this is the path.";
+
+const SHARE_ARTIFACT_SKILL_CONTENT = `---
+name: dev3-share-artifact
+description: "${SHARE_ARTIFACT_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+# Share an HTML artifact as a link
+
+\`dev3 show-artifact\` shows a report *inside* the app. This skill is the other half: one URL
+the user can open anywhere — phone, another machine, a comment thread — rendering the report
+exactly as it looks locally.
+
+Three facts drive the whole workflow:
+
+- **A gist is flat and text-only.** It cannot store a PNG, and a relative \`href="app.css"\`
+  does not resolve inside a preview service. So the artifact has to become one file with
+  everything embedded before it can be published.
+- **GitHub does not render gist HTML.** A third-party previewer does the rendering, and they
+  are not equally reliable — see [Preview URLs](#preview-urls).
+- **A link you have not opened is a guess.** Publishing is outward-facing; a stale or
+  rate-limited preview wastes the user's turn. Look at the rendered page before handing the
+  URL over.
+
+**Requires the GitHub CLI** (\`gh\`), authenticated. If \`gh auth status\` fails, stop and say so
+— do not invent another host or upload the report somewhere the user did not ask for.
+
+## Workflow
+
+### 1. Find the artifact, then look for \`.gist-id\`
+
+A dev3 artifact is usually a directory next to the work: \`dev3-artifact-*/index.html\`, with
+\`app.css\`, \`app.js\`, \`report.js\` and an icon beside it. Any directory containing an
+\`index.html\` works the same way, as does a lone HTML file. If several candidates exist, name
+them and ask which one — the user often has an old iteration lying around.
+
+Then, before anything else:
+
+\`\`\`bash
+cat <artifact-dir>/.gist-id 2>/dev/null
+\`\`\`
+
+This one check decides the rest of the run, which is why it comes first. Re-sharing a
+regenerated report is the common case, and **an existing gist should be updated, not
+duplicated** — the old URL may already be pasted into an issue, and a pile of near-identical
+gists is its own mess.
+
+| \`.gist-id\` | Branch |
+|---|---|
+| Found | **Update.** The gist's owner and visibility are already fixed — skip those decisions and go to [3b](#3b-update-an-existing-gist) |
+| Absent | **Create.** Account and visibility have to be decided — [3a](#3a-create-a-new-gist) |
+
+### 2. Fold it into one file
+
+\`\`\`bash
+dev3 inline-html <artifact-dir-or-index.html> -o /tmp/<name>.html
+\`\`\`
+
+Build **outside the repo** — \`/tmp\` or the session scratchpad — so the generated file cannot
+end up staged by accident.
+
+It embeds local stylesheets, scripts, images, SVGs and fonts (including \`url()\` references
+inside CSS), leaves CDN links alone because they resolve fine from a browser, and prints what
+it inlined, what stayed external, and whether the secret scan found anything. \`--json\` gives
+the same report machine-readably.
+
+It refuses to write in two cases, both worth stopping for:
+
+| Exit | Meaning | What to do |
+|---|---|---|
+| \`13\` | A referenced local file is missing | The artifact is incomplete — the page would render broken. Report which file and stop |
+| \`14\` | A credential-shaped string is embedded (\`ghp_…\`, \`sk-…\`, \`AKIA…\`, a private key) | Never publish. Tell the user exactly what was found |
+
+**Possible leaks** — home paths, email addresses, tunnel URLs — are not blockers, but a public
+gist is public forever: surface them in one line before publishing rather than after.
+
+### 3a. Create a new gist
+
+**Pick the account.** If \`gh auth status\` lists more than one account, the wrong one silently
+publishes under the wrong identity — ask the user which account this report belongs under
+unless their own instructions already answer it (many people keep a work account and a
+personal one). Pin the token per command rather than running \`gh auth switch\`: parallel
+agents flip the active account out from under each other, and the failure looks like a
+permissions bug.
+
+**Default to secret.** Secret still means "anyone with the link can open it"; it is only
+absent from the profile listing. That is the right default because artifacts routinely carry
+internal paths, screenshots and half-formed opinions. Go public when the user asks, or when
+the link is heading into a public issue thread — and say which you chose.
+
+The gist filename must be \`index.html\`; previewers default to it.
+
+\`\`\`bash
+GH_TOKEN="\$(gh auth token --user <acct>)" \\
+  gh gist create /tmp/<name>.html --desc "<what this report is>"
+# add --public only on request
+\`\`\`
+
+Record the id so the next share updates instead of duplicating:
+
+\`\`\`bash
+echo "<gist-id>" > <artifact-dir>/.gist-id
+\`\`\`
+
+### 3b. Update an existing gist
+
+Take the account from the gist itself, not from the repo path — if the artifact moved between
+projects a path heuristic points at the wrong token and \`gh gist edit\` fails with a confusing
+permission error:
+
+\`\`\`bash
+OWNER=\$(gh api gists/<gist-id> --jq .owner.login)
+GH_TOKEN="\$(gh auth token --user "\$OWNER")" \\
+  gh gist edit <gist-id> --filename index.html /tmp/<name>.html
+\`\`\`
+
+Silent on success. Two things worth knowing: visibility cannot be flipped after creation
+(secret → public means a new gist and a new URL), and the old \`--desc\` survives the edit —
+refresh it with \`-d\` if the report is now about something else.
+
+### 4. Verify, then hand over the link
+
+Raw gist content is cached for a few minutes, so a just-updated gist can still serve the old
+file. Settle that with a hash rather than by eye — on a re-share you have no memory of what
+the previous version looked like, so "does it look stale" is unanswerable:
+
+\`\`\`bash
+curl -sL "<raw-url>" | shasum -a 256    # certutil -hashfile <file> SHA256 on Windows
+shasum -a 256 /tmp/<name>.html
+\`\`\`
+
+Then look at the rendered page — the previewer can fail even when the content is correct. Use
+whatever browser tool you have (agent-browser, Puppeteer, a browser MCP): open the preview
+URL, wait a moment (previewers fetch the gist after load), screenshot it, and read the
+screenshot. The page must render rather than show a previewer error, and the styling must have
+survived the inlining. With no browser tool at all, say plainly that only the raw content was
+verified, not the rendering.
+
+**If the user mentioned a phone**, check a 390×844 viewport too — a report that overflows
+horizontally on mobile is a common and very visible failure.
+
+## Preview URLs
+
+Both take the same gist and render it; they differ in how they fetch it.
+
+| Purpose | URL |
+|---|---|
+| **Hand this to the user** | \`https://htmlpreview.github.io/?https://gist.githubusercontent.com/<user>/<id>/raw/index.html\` |
+| Raw file, for the hash check | \`https://gist.githubusercontent.com/<user>/<id>/raw/index.html\` |
+| Exact revision, if the hashes disagree | \`…/raw/<sha>/index.html\` — sha from \`gh api gists/<id> --jq '.history[0].version'\` |
+| Source, for editing | \`https://gist.github.com/<user>/<id>\` |
+
+\`gistpreview.github.io/?<id>\` exists and is shorter, but it fetches through the
+unauthenticated GitHub API and returns \`API rate limit exceeded\` from busy IPs.
+\`htmlpreview\` pulls the raw file directly and has no such limit, so lead with it and mention
+\`gistpreview\` only as a fallback.
+
+## Guardrails
+
+- **Never commit the artifact or the generated single file.** Generated deliverables are
+  throwaway output, not source. If \`git status\` shows them, add a local pattern to
+  \`\$(git rev-parse --git-common-dir)/info/exclude\` — \`dev3-artifact-*/\` and \`.gist-id\` —
+  rather than touching the committed \`.gitignore\`.
+- **Deleting or overwriting is the user's call.** Updating an existing gist is fine — that is
+  the point of \`.gist-id\`. Deleting one, or converting secret to public, is not something to
+  do unprompted.
+
+## Reporting back
+
+Lead with the clickable preview URL, then the gist page. Keep the rest to what the user would
+act on:
+
+- which account it went under, and secret versus public;
+- on an update, that the URL is unchanged;
+- anything the leak scan flagged;
+- anything left external — CDN assets still need the network to render;
+- what you actually verified, including the mobile viewport if that was the ask.
+
+If a previewer failed and you fell back to another, say which one you handed over and why —
+otherwise the user hits the broken one next time from memory.
+`;
+
+const SHARE_ARTIFACT_OPENAI_YAML = `interface:
+  display_name: "dev3 Share Artifact"
+  short_description: "Publish an HTML report as a verified preview link"
+  default_prompt: "Use \$dev3-share-artifact to publish a local HTML report as a gist and verify its preview URL."
+`;
+
+export function getShareArtifactSkillContent(): string {
+	return SHARE_ARTIFACT_SKILL_CONTENT;
+}
 
 export function getProjectConfigSkillContent(): string {
 	return PROJECT_CONFIG_SKILL_BODY;
@@ -886,6 +1084,33 @@ const ASK_DEV3_SKILL_DIRS = [
 	".config/opencode/skills/ask-dev3",
 ];
 
+const SHARE_ARTIFACT_SKILL_DIRS = [
+	".claude/skills/dev3-share-artifact",
+	".cursor/skills/dev3-share-artifact",
+	".agents/skills/dev3-share-artifact",
+	".codex/skills/dev3-share-artifact",
+	".opencode/skills/dev3-share-artifact",
+	".config/opencode/skills/dev3-share-artifact",
+];
+
+/**
+ * Every managed skill file this installer writes, relative to the home directory.
+ * `dev3 install-skills` prints this list, so it must stay derived from the dirs
+ * above rather than re-listed by hand.
+ */
+export const MANAGED_SKILL_FILES = [
+	CLAUDE_SKILL_DIR,
+	CODEX_SKILL_DIR,
+	...GENERIC_SKILL_DIRS,
+	CLAUDE_PROJECT_CONFIG_DIR,
+	...GENERIC_PROJECT_CONFIG_DIRS,
+	CLAUDE_TMUX_DIR,
+	...GENERIC_TMUX_DIRS,
+	...BUG_HUNTER_SKILL_DIRS,
+	...ASK_DEV3_SKILL_DIRS,
+	...SHARE_ARTIFACT_SKILL_DIRS,
+].map((dir) => `${dir}/SKILL.md`);
+
 const SHARED_SKILL_OPENAI_CONFIGS = [
 	{
 		dir: ".agents/skills/dev3",
@@ -906,6 +1131,10 @@ const SHARED_SKILL_OPENAI_CONFIGS = [
 	{
 		dir: ".agents/skills/ask-dev3",
 		content: ASK_DEV3_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/dev3-share-artifact",
+		content: SHARE_ARTIFACT_OPENAI_YAML,
 	},
 ];
 
@@ -1258,6 +1487,21 @@ export function installAgentSkills(options: InstallAgentSkillsOptions = {}): voi
 			log.info("ask-dev3 skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install ask-dev3 skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
+	for (const dir of SHARE_ARTIFACT_SKILL_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, SHARE_ARTIFACT_SKILL_CONTENT, "utf-8");
+			log.info("share-artifact skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install share-artifact skill (non-fatal)", {
 				path: skillFile,
 				error: String(err),
 			});

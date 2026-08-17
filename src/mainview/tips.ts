@@ -937,6 +937,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["board", "settings"],
 	},
+	{
+		id: "share-artifact-link",
+		titleKey: "tip.shareArtifactLink.title",
+		bodyKey: "tip.shareArtifactLink.body",
+		icon: "\u{F0337}", // nf-md-link_variant
+		score: 3,
+		contexts: ["board", "terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

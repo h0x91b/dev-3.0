@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-vi.mock("../../bun/agent-skills", () => ({
+// Only the side-effecting installer is faked; MANAGED_SKILL_FILES stays real so
+// the printed list is asserted against what the installer actually writes.
+vi.mock("../../bun/agent-skills", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../../bun/agent-skills")>()),
 	installAgentSkills: vi.fn(),
 }));
 
@@ -41,6 +44,9 @@ describe("install-skills", () => {
 		expect(stdoutOutput).toContain(".codex/skills/dev3-project-config/SKILL.md");
 		expect(stdoutOutput).toContain(".opencode/skills/dev3/SKILL.md");
 		expect(stdoutOutput).toContain(".config/opencode/skills/dev3-bug-hunter/SKILL.md");
+		expect(stdoutOutput).toContain(".claude/skills/ask-dev3/SKILL.md");
+		expect(stdoutOutput).toContain(".claude/skills/dev3-tmux/SKILL.md");
+		expect(stdoutOutput).toContain(".claude/skills/dev3-share-artifact/SKILL.md");
 		expect(stdoutOutput).not.toContain(".gemini/skills/dev3/SKILL.md");
 		expect(stdoutOutput).toContain("~/.agents/skills/*/agents/openai.yaml");
 		expect(stdoutOutput).toContain("AGENTS.md");

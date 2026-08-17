@@ -23,11 +23,11 @@ Last updated: 2026-07-13
 
 | Agent | CLI binary | Skill directories |
 |-------|-----------|-------------------|
-| Claude Code | `claude` | `~/.claude/skills/dev3/`, `~/.claude/skills/dev3-project-config/`, `~/.claude/skills/dev3-bug-hunter/` |
-| Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/`, `~/.cursor/skills/dev3-bug-hunter/` |
-| Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/`, `~/.codex/skills/dev3-bug-hunter/` |
-| Gemini CLI | `gemini` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/`, `~/.agents/skills/dev3-bug-hunter/` |
-| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/`, `~/.opencode/skills/dev3-bug-hunter/`, `~/.config/opencode/skills/dev3-bug-hunter/` |
+| Claude Code | `claude` | `~/.claude/skills/dev3/`, `~/.claude/skills/dev3-project-config/`, `~/.claude/skills/dev3-tmux/`, `~/.claude/skills/dev3-bug-hunter/`, `~/.claude/skills/ask-dev3/`, `~/.claude/skills/dev3-share-artifact/` |
+| Cursor Agent | `agent` | `~/.cursor/skills/dev3/`, `~/.cursor/skills/dev3-project-config/`, `~/.cursor/skills/dev3-tmux/`, `~/.cursor/skills/dev3-bug-hunter/`, `~/.cursor/skills/ask-dev3/`, `~/.cursor/skills/dev3-share-artifact/` |
+| Codex | `codex` | `~/.codex/skills/dev3/`, `~/.codex/skills/dev3-project-config/`, `~/.codex/skills/dev3-tmux/`, `~/.codex/skills/dev3-bug-hunter/`, `~/.codex/skills/ask-dev3/`, `~/.codex/skills/dev3-share-artifact/` |
+| Gemini CLI | `gemini` | `~/.agents/skills/dev3/`, `~/.agents/skills/dev3-project-config/`, `~/.agents/skills/dev3-tmux/`, `~/.agents/skills/dev3-bug-hunter/`, `~/.agents/skills/ask-dev3/`, `~/.agents/skills/dev3-share-artifact/` |
+| OpenCode | — | `~/.opencode/skills/dev3/`, `~/.config/opencode/skills/dev3/`, `~/.opencode/skills/dev3-project-config/`, `~/.config/opencode/skills/dev3-project-config/`, `~/.opencode/skills/dev3-tmux/`, `~/.config/opencode/skills/dev3-tmux/`, `~/.opencode/skills/dev3-bug-hunter/`, `~/.config/opencode/skills/dev3-bug-hunter/`, `~/.opencode/skills/ask-dev3/`, `~/.config/opencode/skills/ask-dev3/`, `~/.opencode/skills/dev3-share-artifact/`, `~/.config/opencode/skills/dev3-share-artifact/` |
 
 ## Feature Matrix
 
@@ -119,6 +119,10 @@ A supplementary skill that teaches agents about `.dev3/config.json` and `.dev3/c
 
 A user-invocable skill that turns the agent into a seeded bug hunter. It generates a random seed, derives an identity letter, chooses a starting area plus analysis style, and then forces the hunt to begin from that assigned area before branching out. The skill is read-only, uses a terminal-friendly findings format with a compact ASCII summary table plus detail sections, asks whether `critical` and `medium` findings should become separate dev3 tasks, and requires those follow-up tasks to validate and reproduce the bug before any fix is attempted. When launched inside an existing task, it skips the main agent's session-start/lifecycle duties and may write only confirmed findings through `dev3 note add`. Same content for all agents.
 
+### dev3-share-artifact (displayed as "dev3 Share Artifact")
+
+A user-invocable skill that publishes a local HTML report — typically a dev3 artifact — as a GitHub gist and hands back a preview URL it has actually opened. It folds the multi-file report into one self-contained file with `dev3 inline-html` (gists are flat and text-only), reuses a recorded `.gist-id` so a re-share updates the same URL instead of duplicating it, defaults to a secret gist, and refuses to publish a page carrying a credential-shaped string (CLI exit `14`) or a missing local asset (exit `13`). Same content for all agents; it carries no machine-specific account mapping and asks the user which `gh` account to publish under when several are authenticated.
+
 For Gemini CLI specifically, dev-3.0 installs these managed skills only via the shared `~/.agents/skills/` alias. Gemini also discovers `~/.gemini/skills/`, but duplicating the same skill name in both user-scope directories triggers same-tier conflict warnings and the alias already has precedence.
 
 ## LLM provider (per-agent backend)
@@ -162,7 +166,7 @@ toggle re-prefixes all non-overridden rows. See [decision 089](decisions/2026/07
 | Integration | Agents | Details |
 |-------------|--------|---------|
 | `~/.agents/AGENTS.md` | All (fallback) | Appended rule block for agents that read `AGENTS.md` |
-| `~/.agents/skills/*/agents/openai.yaml` | Shared skill UI | Managed display metadata for `dev3`, `dev3-project-config`, and `dev3 Bug Hunter` |
+| `~/.agents/skills/*/agents/openai.yaml` | Shared skill UI | Managed display metadata for `dev3`, `dev3-project-config`, `dev3 tmux`, `dev3 Bug Hunter`, `Ask dev3`, and `dev3 Share Artifact` |
 | `~/.claude/settings.json` | Claude Code | Auto-adds a `Bash(<dev3 cli> *)` permission — `Bash(~/.dev3.0/bin/dev3 *)` on POSIX, `Bash(<abs path>\dev3.exe *)` on Windows |
 | `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables the Codex hook feature with version-compatible key names. Paths are written as escaped TOML basic strings with native separators, and a config an earlier dev3 made unparsable on Windows is repaired in place on next launch (original copied to `config.toml.dev3-backup`) |
 | `<worktree>/.codex/hooks.json` | Codex | Generated, gitignored lifecycle definitions mirrored into each dev3-launched Codex pane as session flags |

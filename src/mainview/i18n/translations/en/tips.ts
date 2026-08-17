@@ -225,6 +225,8 @@ const tips = {
 	"tip.terminalPathLinks.body": "⌘-click (Ctrl on Linux) any file path in terminal output to preview it in dev3, open it, or reveal it in Finder.",
 	"tip.cliDoctorWorktrees.title": "Reclaim gigabytes of worktrees",
 	"tip.cliDoctorWorktrees.body": "Run `dev3 doctor --worktrees` — it shows what ~/.dev3.0 keeps on disk and which task folders no longer belong to any task.",
+	"tip.shareArtifactLink.title": "Share a report as a link",
+	"tip.shareArtifactLink.body": "Ask the agent to share an artifact — it publishes the report as a secret gist and hands back a preview URL you can open on your phone.",
 } as const;
 
 export default tips;

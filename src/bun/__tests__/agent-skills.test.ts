@@ -6,14 +6,21 @@ import {
 	buildGenericSkillContent,
 	claudeBashPermission,
 	CLAUDE_SKILL_BODY,
+	getAskDev3SkillContent,
 	getBugHunterSkillContent,
 	getClaudeSkillContent,
 	getCodexSkillContent,
 	getGenericSkillContent,
 	getProjectConfigSkillContent,
 	getTmuxSkillContent,
+	getShareArtifactSkillContent,
 	getTmuxSkillDescription,
+	MANAGED_SKILL_FILES,
 } from "../agent-skills";
+import {
+	CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING,
+	CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND,
+} from "../../shared/cli-exit-codes";
 import { ARTIFACT_TEMPLATE_FILES } from "../artifact-template";
 import { skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
@@ -609,5 +616,78 @@ describe("PR origin-task footer — gated on a real dev3:// handler", () => {
 			Object.defineProperty(process, "platform", { value: original, configurable: true });
 			vi.resetModules();
 		}
+	});
+});
+
+describe("dev3-share-artifact skill content", () => {
+	it("is named with the correct spelling and is user-invocable", () => {
+		const skill = getShareArtifactSkillContent();
+
+		expect(skill).toContain("name: dev3-share-artifact");
+		expect(skill).toContain("user-invocable: true");
+		expect(skill).not.toContain("artefact");
+	});
+
+	it("drives publishing through the dev3 inliner rather than an external script", () => {
+		const skill = getShareArtifactSkillContent();
+
+		expect(skill).toContain("dev3 inline-html <artifact-dir-or-index.html> -o /tmp/<name>.html");
+		expect(skill).not.toContain("inline_html.py");
+		expect(skill).not.toContain("python3");
+	});
+
+	it("documents the two refusals with the CLI's own exit codes", () => {
+		const skill = getShareArtifactSkillContent();
+
+		expect(skill).toContain(`| \`${CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING}\` | A referenced local file is missing`);
+		expect(skill).toContain(`| \`${CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND}\` | A credential-shaped string is embedded`);
+	});
+
+	it("checks .gist-id before deciding create-vs-update, and defaults to secret", () => {
+		const skill = getShareArtifactSkillContent();
+
+		expect(skill).toContain("cat <artifact-dir>/.gist-id 2>/dev/null");
+		expect(skill).toContain("**Default to secret.**");
+		expect(skill).toContain("an existing gist should be updated, not\nduplicated");
+	});
+
+	it("carries no machine-specific account mapping — it ships to every user", () => {
+		const skill = getShareArtifactSkillContent();
+
+		expect(skill).not.toContain("h0x91b");
+		expect(skill).not.toContain("/Users/");
+		expect(skill).not.toContain("Desktop/src");
+		expect(skill).toContain("If `gh auth status` lists more than one account");
+	});
+
+	it("requires the preview URL to be opened before it is handed over", () => {
+		const skill = getShareArtifactSkillContent();
+
+		expect(skill).toContain("A link you have not opened is a guess.");
+		expect(skill).toContain("https://htmlpreview.github.io/?https://gist.githubusercontent.com/");
+	});
+});
+
+describe("managed skill installation surface", () => {
+	it("installs the share-artifact skill for every supported agent", () => {
+		for (const dir of [".claude", ".cursor", ".agents", ".codex", ".opencode", ".config/opencode"]) {
+			expect(MANAGED_SKILL_FILES).toContain(`${dir}/skills/dev3-share-artifact/SKILL.md`);
+		}
+	});
+
+	it("lists every managed skill exactly once so `dev3 install-skills` cannot drift", () => {
+		expect(new Set(MANAGED_SKILL_FILES).size).toBe(MANAGED_SKILL_FILES.length);
+		for (const name of ["dev3", "dev3-project-config", "dev3-tmux", "dev3-bug-hunter", "ask-dev3", "dev3-share-artifact"]) {
+			expect(MANAGED_SKILL_FILES.some((file) => file.includes(`/skills/${name}/`))).toBe(true);
+		}
+	});
+});
+
+describe("ask-dev3 skill routing", () => {
+	it("teaches sharing a report outside the app and lists the sibling skill", () => {
+		const skill = getAskDev3SkillContent();
+
+		expect(skill).toContain("Send a report to someone outside dev3 → ask for a link.");
+		expect(skill).toContain("`/dev3-share-artifact`** — publish an HTML report as a gist");
 	});
 });

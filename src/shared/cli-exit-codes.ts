@@ -11,6 +11,8 @@ export const CLI_EXIT_CODE_TASK_IS_DRAFT = 9;
 export const CLI_EXIT_CODE_LAUNCH_DECLINED = 10;
 export const CLI_EXIT_CODE_DELIVERY_UNCONFIRMED = 11;
 export const CLI_EXIT_CODE_PRUNE_INCOMPLETE = 12;
+export const CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING = 13;
+export const CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND = 14;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -85,5 +87,17 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_PRUNE_INCOMPLETE,
 		description:
 			"`dev3 doctor --worktrees` was asked to prune and at least one selected directory was NOT reclaimed: it was skipped (its `dev3/task-*` branch is not merged into the base branch and `--force-unmerged` was absent) or the deletion failed. Everything else in the run was still deleted. A report-only run always exits 0.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING",
+		code: CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING,
+		description:
+			"`dev3 inline-html` found a local file the HTML references but that does not exist on disk, so the folded page would render broken. Nothing was written; the JSON report lists every missing reference.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND",
+		code: CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND,
+		description:
+			"`dev3 inline-html` found a credential-shaped string (GitHub token, `sk-` key, AWS key id, private-key block) inside the folded page. Nothing was written and the file must not be published until the secret is removed.",
 	},
 ] as const;
