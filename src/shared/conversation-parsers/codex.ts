@@ -13,6 +13,7 @@
  */
 
 import {
+	COMPACTION_RECORD_TYPE,
 	CONVERSATION_PARSER_VERSION,
 	CONVERSATION_SCHEMA_VERSION,
 	emptyStats,
@@ -181,7 +182,12 @@ export function parseCodexTranscript(
 				seq,
 				timestamp: stringAt(record, "timestamp"),
 				kind: "lifecycle",
-				meta: { eventType: eventType || "(missing)" },
+				// Codex reports the compaction as a plain UI event with no metrics; it
+				// still gets the shared marker so a reader sees the boundary.
+				meta:
+					eventType === "compacted"
+						? { recordType: COMPACTION_RECORD_TYPE, eventType }
+						: { eventType: eventType || "(missing)" },
 				usage: eventType === "token_count" ? usageFromTokenCount(payload) : undefined,
 				...(includeRaw ? { raw: record } : {}),
 			});

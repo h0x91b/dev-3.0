@@ -23,6 +23,7 @@
  */
 
 import {
+	COMPACTION_RECORD_TYPE,
 	emptyUsage,
 	type ConversationEvent,
 	type ConversationTurn,
@@ -50,21 +51,21 @@ export const DEFAULT_DUMP_BUDGET: DumpBudget = { action: 2000, payload: 1000 };
  * `ai-title` which is already the `title` field. None of it says anything about
  * the work, and none of it is worth a per-type counter either.
  */
-const KEPT_SESSION_TYPES = new Set([
+const KEPT_SESSION_TYPES = new Set<string>([
 	// The user edited a file outside the agent. The only record here that means
 	// anything in another harness: `git diff` shows the change but not that it was
 	// somebody else's and the reason is unknown.
 	"edited_text_file",
-	// Compaction boundary: where the agent's own context was cut.
-	"context_compacted",
-	"compacted",
+	// Where the agent's own context was cut, and how much it lost.
+	COMPACTION_RECORD_TYPE,
 ]);
 
 /** The dump's own shape: a projection of ParsedConversation, not the same type. */
 export interface ConversationDump extends Omit<ParsedConversation, "turns" | "sessionEvents"> {
 	turns: DumpTurn[];
 	/** The handful of session records that change a takeover decision, with their
-	 *  content: a file edited outside the agent, a hook that failed, a compaction. */
+	 *  content: a file edited outside the agent, and a compaction with how much
+	 *  context it dropped. */
 	notices: ConversationEvent[];
 	/** What this projection dropped, so a reader is never misled about fidelity. */
 	dumpPolicy: {
@@ -80,7 +81,12 @@ export interface ConversationDump extends Omit<ParsedConversation, "turns" | "se
 	};
 }
 
-type DumpTurn = Omit<ConversationTurn, "events"> & { events: ConversationEvent[] };
+type DumpTurn = Omit<ConversationTurn, "events" | "userText" | "assistantText"> & {
+	events: ConversationEvent[];
+	/** Reasoning blocks whose body the transcript withheld. They carry no text, so
+	 *  they are counted here instead of costing one event each. */
+	redactedThinking?: number;
+};
 
 interface Cutter {
 	cut(value: string, budget: number): string;
@@ -123,25 +129,40 @@ function cutDeep(value: unknown, budget: number, cutter: Cutter): unknown {
  * per-role budgets.
  */
 function projectEvent(event: ConversationEvent, budget: DumpBudget, cutter: Cutter): ConversationEvent {
-	const { usage: _usage, tool, ...rest } = event;
-	if (!tool) return rest;
+	const { usage: _usage, tool, meta, ...rest } = event;
+	// `meta` can hold a payload too — an `edited_text_file` snippet is a whole file
+	// with line numbers, and nine of them were 7.6% of a real dump.
+	const projectedMeta = meta ? (cutDeep(meta, budget.payload, cutter) as Record<string, unknown>) : undefined;
+	if (!tool) return { ...rest, ...(projectedMeta ? { meta: projectedMeta } : {}) };
 
+	// `command` and `path` are lifted out of `input`, so keeping them spends the
+	// budget on bytes the reader already has. Compared against the *projected*
+	// input: when truncation cut the tail off, the canonical value is kept, at the
+	// roomier action budget, and stays the only complete copy.
+	const projectedInput = tool.input === undefined ? undefined : cutDeep(tool.input, budget.payload, cutter);
+	const inputJson = projectedInput === undefined ? "" : JSON.stringify(projectedInput);
+	const alreadyInInput = (value: string | undefined): boolean => !!value && inputJson.includes(value);
 	const canonical = tool.canonical
 		? {
 			...tool.canonical,
 			// `body` is a substring of `input` in 98% of calls; keeping both spends
 			// the budget twice on the same bytes.
 			body: undefined,
-			command: tool.canonical.command ? cutter.cut(tool.canonical.command, budget.action) : undefined,
-			path: tool.canonical.path ? cutter.cut(tool.canonical.path, budget.action) : undefined,
+			command: alreadyInInput(tool.canonical.command)
+				? undefined
+				: tool.canonical.command && cutter.cut(tool.canonical.command, budget.action),
+			path: alreadyInInput(tool.canonical.path)
+				? undefined
+				: tool.canonical.path && cutter.cut(tool.canonical.path, budget.action),
 		}
 		: undefined;
 
 	return {
 		...rest,
+		...(projectedMeta ? { meta: projectedMeta } : {}),
 		tool: {
 			...tool,
-			input: tool.input === undefined ? undefined : cutDeep(tool.input, budget.payload, cutter),
+			input: projectedInput,
 			output: tool.output === undefined ? undefined : cutter.cut(tool.output, budget.payload),
 			canonical,
 		},
@@ -156,10 +177,23 @@ export function projectConversationForDump(
 	const cutter = makeCutter();
 
 	const turns: DumpTurn[] = parsed.turns.map((turn) => {
-		// `assistantText` is byte-identical to message events of the same turn; a
-		// reader derives it with `turnAssistantText()` instead.
-		const { assistantText: _assistantText, ...rest } = turn;
-		return { ...rest, events: turn.events.map((event) => projectEvent(event, budget, cutter)) };
+		// `userText` and `assistantText` are byte-identical to message events of the
+		// same turn — together 15% of a real dump. A reader derives both with
+		// `turnUserText()` / `turnAssistantText()`.
+		const { userText: _userText, assistantText: _assistantText, ...rest } = turn;
+		// A reasoning block the transcript withheld has no body to keep, and Claude
+		// withholds all of them: 85 such events cost 12 KB of ids and timestamps to
+		// say "it thought here" 85 times. One count per turn says the same.
+		let redactedThinking = 0;
+		const events: ConversationEvent[] = [];
+		for (const event of turn.events) {
+			if (event.kind === "thinking" && !event.text) {
+				redactedThinking++;
+				continue;
+			}
+			events.push(projectEvent(event, budget, cutter));
+		}
+		return { ...rest, events, ...(redactedThinking ? { redactedThinking } : {}) };
 	});
 
 	const notices = parsed.sessionEvents
@@ -175,7 +209,14 @@ export function projectConversationForDump(
 			budget,
 			truncatedChars: cutter.chars,
 			truncatedValues: cutter.values,
-			omittedDuplicates: ["turns[].assistantText", "events[].tool.canonical.body", "events[].usage"],
+			omittedDuplicates: [
+				"turns[].userText",
+				"turns[].assistantText",
+				"events[].tool.canonical.body",
+				"events[].tool.canonical.command",
+				"events[].tool.canonical.path",
+				"events[].usage",
+			],
 			discardedSessionEvents: parsed.sessionEvents.length - notices.length,
 		},
 	};
@@ -189,6 +230,16 @@ export function sessionRecordType(event: ConversationEvent): string {
 		if (typeof value === "string" && value) return value;
 	}
 	return "unknown";
+}
+
+/** The prompt that opened the turn, derived rather than stored twice. A turn
+ *  whose first message is flagged `compactSummary` was opened by the agent's own
+ *  handover summary, not by the user. */
+export function turnUserText(turn: { events: ConversationEvent[] }): string | undefined {
+	for (const event of turn.events) {
+		if (event.kind === "message" && event.role === "user" && event.text) return event.text;
+	}
+	return undefined;
 }
 
 /** The turn's closing prose reply, derived rather than stored twice. */

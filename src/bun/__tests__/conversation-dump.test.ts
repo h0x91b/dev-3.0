@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { parseClaudeTranscript } from "../../shared/conversation-parsers";
-import type { ConversationEvent } from "../../shared/conversation-model";
+import { COMPACTION_RECORD_TYPE, type ConversationEvent } from "../../shared/conversation-model";
 import {
 	DEFAULT_DUMP_BUDGET,
 	projectConversationForDump,
 	sessionRecordType,
 	turnAssistantText,
+	turnUserText,
 } from "../../shared/conversation-dump";
 
 function jsonl(...records: unknown[]): string {
@@ -79,11 +80,24 @@ describe("projectConversationForDump", () => {
 		expect(dump.dumpPolicy.truncatedChars).toBe(9800);
 	});
 
-	it("keeps paths and commands under the roomier action budget", () => {
-		// An absolute worktree path alone is ~92 chars, so the payload budget would eat it.
-		const dump = projectConversationForDump(parsed(), { action: 2000, payload: 10 });
-		const call = dump.turns[0].events.find((e) => e.kind === "tool-call");
-		expect(call?.tool?.canonical?.path).toBe("/w/big.ts");
+	it("keeps a path the payload budget cut out of the input", () => {
+		// An absolute worktree path alone is ~92 chars, so a tight payload budget eats
+		// it; the canonical copy is what keeps the file identifiable.
+		const path = `/w/${"deep/".repeat(20)}big.ts`;
+		const source = parseClaudeTranscript(
+			jsonl(user("write it"), {
+				...bigWrite,
+				message: {
+					...bigWrite.message,
+					content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: path, content: "X" } }],
+				},
+			}),
+			"/t.jsonl",
+		);
+		const call = projectConversationForDump(source, { action: 2000, payload: 10 }).turns[0].events.find(
+			(e) => e.kind === "tool-call",
+		);
+		expect(call?.tool?.canonical?.path).toBe(path);
 	});
 
 	it("omits the canonical body that duplicates the native input", () => {
@@ -150,8 +164,115 @@ describe("projectConversationForDump", () => {
 			action: 10,
 			payload: 10,
 		});
-		expect(dump.turns[0].userText).toBe(long);
+		expect(turnUserText(dump.turns[0])).toBe(long);
 		expect(dump.turns[0].events[0].text).toBe(long);
+	});
+
+	it("drops userText, which a reader derives from the turn's own events", () => {
+		const dump = projectConversationForDump(parsed());
+		expect((dump.turns[0] as { userText?: string }).userText).toBeUndefined();
+		expect(turnUserText(dump.turns[0])).toBe("write it");
+		expect(dump.dumpPolicy.omittedDuplicates).toContain("turns[].userText");
+	});
+
+	it("omits a canonical path the native input already carries", () => {
+		const dump = projectConversationForDump(parsed());
+		const call = dump.turns[0].events.find((e) => e.kind === "tool-call");
+		expect(call?.tool?.canonical?.path).toBeUndefined();
+		expect((call?.tool?.input as { file_path: string }).file_path).toBe("/w/big.ts");
+	});
+
+	it("keeps a canonical command truncation cut out of the input", () => {
+		// Over the payload budget, under the action budget.
+		const long = `echo ${"z".repeat(1500)}`;
+		const source = parseClaudeTranscript(
+			jsonl(user("run it"), {
+				type: "assistant",
+				uuid: "a9",
+				sessionId: "s1",
+				timestamp: "2026-08-17T10:00:01.000Z",
+				message: {
+					role: "assistant",
+					content: [{ type: "tool_use", id: "t9", name: "Bash", input: { command: long } }],
+				},
+			}),
+			"/t.jsonl",
+		);
+		const call = projectConversationForDump(source).turns[0].events.find((e) => e.kind === "tool-call");
+		// The input was cut at the payload budget, so the canonical copy is the only
+		// one that still holds the command up to the roomier action budget.
+		expect((call?.tool?.input as { command: string }).command).toContain("…[+");
+		expect(call?.tool?.canonical?.command).toBe(long);
+	});
+
+	it("collapses reasoning blocks whose body the transcript withheld", () => {
+		const source = parseClaudeTranscript(
+			jsonl(user("think"), {
+				type: "assistant",
+				uuid: "a8",
+				sessionId: "s1",
+				timestamp: "2026-08-17T10:00:01.000Z",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "", signature: "sig" },
+						{ type: "thinking", thinking: "", signature: "sig" },
+						{ type: "thinking", thinking: "kept" },
+					],
+				},
+			}),
+			"/t.jsonl",
+		);
+		const turn = projectConversationForDump(source).turns[0];
+		expect(turn.redactedThinking).toBe(2);
+		expect(turn.events.filter((e) => e.kind === "thinking").map((e) => e.text)).toEqual(["kept"]);
+	});
+
+	it("keeps a compaction with what it cost, and flags the summary that replaced the history", () => {
+		const source = parseClaudeTranscript(
+			jsonl(
+				user("hi"),
+				{
+					type: "system",
+					uuid: "c1",
+					subtype: "compact_boundary",
+					sessionId: "s1",
+					timestamp: "2026-08-17T10:00:05.000Z",
+					compactMetadata: { trigger: "manual", preTokens: 431273, postTokens: 23420, cumulativeDroppedTokens: 407853, durationMs: 205120 },
+				},
+				{
+					type: "user",
+					uuid: "c2",
+					isCompactSummary: true,
+					sessionId: "s1",
+					timestamp: "2026-08-17T10:00:06.000Z",
+					message: { role: "user", content: "This session is being continued…" },
+				},
+			),
+			"/t.jsonl",
+		);
+		const dump = projectConversationForDump(source);
+
+		expect(dump.notices.map((e: ConversationEvent) => sessionRecordType(e))).toEqual([COMPACTION_RECORD_TYPE]);
+		expect(dump.notices[0].meta).toMatchObject({ trigger: "manual", tokensBefore: 431273, tokensAfter: 23420 });
+		// The summary opens a turn like a prompt does, but it was written by the agent.
+		const opener = dump.turns[1].events[0];
+		expect(opener.meta).toMatchObject({ compactSummary: true });
+	});
+
+	it("truncates a file snippet carried in meta, not just tool payloads", () => {
+		const source = parseClaudeTranscript(
+			jsonl(user("hi"), {
+				type: "attachment",
+				uuid: "s9",
+				sessionId: "s1",
+				timestamp: "2026-08-17T10:00:04.000Z",
+				attachment: { type: "edited_text_file", filename: "/w/a.ts", snippet: "Z".repeat(5000) },
+			}),
+			"/t.jsonl",
+		);
+		const dump = projectConversationForDump(source, { action: 2000, payload: 100 });
+		expect(String(dump.notices[0].meta?.snippet)).toContain("…[+4900 chars]");
 	});
 
 	it("shrinks a real-shaped conversation substantially", () => {

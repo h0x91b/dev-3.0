@@ -10,6 +10,7 @@
  */
 
 import {
+	COMPACTION_RECORD_TYPE,
 	CONVERSATION_PARSER_VERSION,
 	CONVERSATION_SCHEMA_VERSION,
 	emptyStats,
@@ -92,6 +93,9 @@ function eventsFromMessage(
 		timestamp: stringAt(record, "timestamp"),
 		role: roleOf(record, message),
 		sidechain: record.isSidechain === true ? true : undefined,
+		// The prompt that reopens a compacted session is written by the agent, not by
+		// the user. Without the flag a reader takes the summary for a user request.
+		...(record.isCompactSummary === true ? { meta: { compactSummary: true } } : {}),
 		...(includeRaw ? { raw: record } : {}),
 	};
 
@@ -241,6 +245,31 @@ export function parseClaudeTranscript(
 				timestamp: stringAt(record, "timestamp"),
 				kind: "attachment",
 				meta: { attachmentType, ...noticePayload(attachmentType, attachment) },
+				...(includeRaw ? { raw: record } : {}),
+			});
+			return;
+		}
+
+		// A compaction cut the agent's own context in half. The `system` record
+		// carries the metrics; the summary that replaced the history arrives as the
+		// next `user` record, tagged there. Normalized to one shared marker name so
+		// a reader does not need to know whose format it came from.
+		const compaction = recordAt(record, "compactMetadata");
+		if (type === "system" && compaction) {
+			sessionEvents.push({
+				id: stringAt(record, "uuid") ?? String(seq),
+				seq,
+				parentId: stringAt(record, "parentUuid"),
+				timestamp: stringAt(record, "timestamp"),
+				kind: "lifecycle",
+				meta: {
+					recordType: COMPACTION_RECORD_TYPE,
+					trigger: stringAt(compaction, "trigger"),
+					tokensBefore: numberAt(compaction, "preTokens"),
+					tokensAfter: numberAt(compaction, "postTokens"),
+					tokensDropped: numberAt(compaction, "cumulativeDroppedTokens"),
+					durationMs: numberAt(compaction, "durationMs"),
+				},
 				...(includeRaw ? { raw: record } : {}),
 			});
 			return;

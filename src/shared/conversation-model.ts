@@ -30,6 +30,13 @@ export const CONVERSATION_SCHEMA_VERSION = 2;
 /** Bump on any parser behavior change, so stale dumps can be re-derived. */
 export const CONVERSATION_PARSER_VERSION = "2";
 
+/**
+ * Normalized `meta.recordType` for "the agent's own context was compacted here".
+ * Every format names it differently (Claude: a `system` record with
+ * `compactMetadata`; Codex: a `compacted` event); a reader only ever sees this.
+ */
+export const COMPACTION_RECORD_TYPE = "compaction";
+
 export type ConversationEventKind =
 	| "message"
 	| "thinking"
