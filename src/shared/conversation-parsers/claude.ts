@@ -23,7 +23,6 @@ import {
 	toolOutputText,
 	type ConversationEvent,
 	type ConversationRole,
-	type ConversationEnvironment,
 	type ConversationUsage,
 	type ParsedConversation,
 	assembleTurns,
@@ -58,24 +57,17 @@ function usageFrom(message: Record<string, unknown> | undefined): ConversationUs
 }
 
 /**
- * The payload worth keeping behind a session marker. Almost every attachment is
- * environment (skill/tool/MCP catalogues, the output style, hook plumbing) and
- * carries nothing about the work; two of them carry a real signal, so those get
- * their content and the rest stay bare markers. Measured on five real sessions:
- * 810 `hook_success` records hold 301 KB of `{"stdout":"{}\n","exitCode":0}`.
+ * The payload worth keeping behind a session marker. Almost everything in that
+ * layer is environment or plumbing that says nothing about the work — 810
+ * `hook_success` records holding `{"stdout":"{}\n","exitCode":0}`, a skill
+ * catalogue re-listed five times, the output style logged 293 times. Exactly one
+ * record transfers to another harness, so only it gets content.
  */
 function noticePayload(attachmentType: string, attachment: Record<string, unknown> | undefined): Record<string, unknown> {
 	if (attachmentType === "edited_text_file") {
 		// The user changed a file behind the agent's back — the next agent must know
 		// which file, and the snippet shows what they changed it to.
 		return { filename: stringAt(attachment, "filename"), snippet: stringAt(attachment, "snippet") };
-	}
-	if (attachmentType === "hook_non_blocking_error") {
-		return {
-			hookName: stringAt(attachment, "hookName"),
-			exitCode: attachment?.exitCode,
-			stderr: stringAt(attachment, "stderr"),
-		};
 	}
 	return {};
 }
@@ -224,8 +216,6 @@ export function parseClaudeTranscript(
 	let gitBranch: string | null = null;
 	let model: string | null = null;
 	let title: string | null = null;
-	// Settings that repeat once per request; kept as one value, not 127 events.
-	const environment: ConversationEnvironment = { outputStyle: null, permissionMode: null, mode: null };
 
 	scan.records.forEach((record, seq) => {
 		sessionId ??= stringAt(record, "sessionId") ?? stringAt(record, "session_id");
@@ -244,8 +234,6 @@ export function parseClaudeTranscript(
 		if (type === "attachment") {
 			const attachment = recordAt(record, "attachment");
 			const attachmentType = stringAt(attachment, "type") ?? "unknown";
-			// The style/mode records repeat once per request; only the value matters.
-			environment.outputStyle ??= attachmentType === "output_style" ? stringAt(attachment, "style") : null;
 			sessionEvents.push({
 				id: stringAt(record, "uuid") ?? String(seq),
 				seq,
@@ -260,8 +248,6 @@ export function parseClaudeTranscript(
 
 		if (LIFECYCLE_TYPES.has(type)) {
 			title ??= stringAt(record, "aiTitle");
-			environment.permissionMode ??= stringAt(record, "permissionMode");
-			environment.mode ??= stringAt(record, "mode");
 			sessionEvents.push({
 				id: stringAt(record, "uuid") ?? String(seq),
 				seq,
@@ -304,7 +290,6 @@ export function parseClaudeTranscript(
 		gitBranch,
 		model,
 		title,
-		environment,
 		startedAt: span.startedAt,
 		endedAt: span.endedAt,
 		turns,

@@ -94,9 +94,9 @@ export interface WriteDumpOptions {
 	budget?: DumpBudget;
 	/** Keep everything, at full length — format archaeology, not a normal dump. */
 	verbatim?: boolean;
-	/** Indent the JSON. Off by default: indentation alone was 16% of the file, and
-	 *  every reader so far has been a script, not a pair of eyes. */
-	pretty?: boolean;
+	/** Write the JSON on one line. Indentation costs ~16% of the file, but a dump
+	 *  a human opens to read is worth that, so indenting is the default. */
+	compact?: boolean;
 }
 
 /**
@@ -115,7 +115,7 @@ export async function writeConversationDump(
 	const payload = options.verbatim
 		? conversation
 		: projectConversationForDump(conversation, options.budget ?? DEFAULT_DUMP_BUDGET);
-	const json = options.pretty ? JSON.stringify(payload, null, 2) : JSON.stringify(payload);
+	const json = options.compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2);
 	await atomicWriteFile(path, `${json}\n`);
 	return path;
 }

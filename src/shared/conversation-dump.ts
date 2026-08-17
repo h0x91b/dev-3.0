@@ -14,6 +14,12 @@
  * codebase, so a real takeover starts by opening the git branch. That flat curve
  * is what justifies cutting hard. All three also named the same dead weight:
  * the session-event array, per-event token usage, and event ids.
+ *
+ * The session layer is dropped outright rather than summarized. Its content was
+ * inspected record by record: hook results, skill/tool/MCP catalogues, the output
+ * style, the permission mode. All of it is Claude-Code-specific environment that
+ * means nothing to another harness, and a per-type counter of known noise buys
+ * nothing either — `stats.unknownRecords` is what guards against a format change.
  */
 
 import {
@@ -45,10 +51,10 @@ export const DEFAULT_DUMP_BUDGET: DumpBudget = { action: 2000, payload: 1000 };
  * the work, and none of it is worth a per-type counter either.
  */
 const KEPT_SESSION_TYPES = new Set([
-	// The user edited a file outside the agent — the next agent must know.
+	// The user edited a file outside the agent. The only record here that means
+	// anything in another harness: `git diff` shows the change but not that it was
+	// somebody else's and the reason is unknown.
 	"edited_text_file",
-	// A hook failed. A silently swallowed error is the worst kind.
-	"hook_non_blocking_error",
 	// Compaction boundary: where the agent's own context was cut.
 	"context_compacted",
 	"compacted",

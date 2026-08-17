@@ -265,7 +265,7 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "dump",
-				usage: "dev3 conversations dump [--latest] [--verbatim] [--payload N] [--action N] [--pretty] [--raw] [--stdout] [--out <dir>]",
+				usage: "dev3 conversations dump [--latest] [--verbatim] [--payload N] [--action N] [--compact] [--raw] [--stdout] [--out <dir>]",
 				summary: "Parse this task's agent transcripts into dev3's conversation model and write JSON.",
 				details: [
 					"Writes to the task's own conversations/ folder, next to logs/ and diffs/.",
@@ -276,7 +276,7 @@ const COMMANDS: CommandHelp[] = [
 					"--payload N   Characters kept per tool output / file content (default 1000).",
 					"--action N    Characters kept per shell command / file path (default 2000).",
 					"--verbatim    No trimming at all — everything, full length.",
-					"--pretty      Indent the JSON (indentation alone is ~16% of the file).",
+					"--compact     One-line JSON. Indented by default, since dumps get read by hand.",
 					"--raw         Keep each native record alongside the parsed event (much larger).",
 					"--stdout      Print the JSON instead of writing files.",
 					"--out DIR     Write somewhere else.",

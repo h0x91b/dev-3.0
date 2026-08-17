@@ -161,7 +161,7 @@ function numberFlag(raw: string | undefined, fallback: number, label: string): n
  * a dump is a re-derivable cache, stamped with the parser version.
  */
 async function dumpCmd(args: ParsedArgs, _context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["raw", "stdout", "latest", "out", "verbatim", "pretty", "payload", "action"]);
+	rejectUnknownFlags(args, ["raw", "stdout", "latest", "out", "verbatim", "compact", "payload", "action"]);
 
 	const info = detectFromWorktreePath(process.cwd());
 	if (!info) {
@@ -198,7 +198,7 @@ async function dumpCmd(args: ParsedArgs, _context: CliContext | null): Promise<v
 	const writeOptions = {
 		budget,
 		verbatim: args.flags.verbatim === "true",
-		pretty: args.flags.pretty === "true",
+		compact: args.flags.compact === "true",
 	};
 
 	process.stdout.write(`Parsed ${selected.length} conversation(s) → ${dir}\n\n`);

@@ -127,18 +127,16 @@ describe("projectConversationForDump", () => {
 			jsonl(
 				user("hi"),
 				attachment("hook_success", "x1"),
-				// The user edited a file outside the agent; a hook failed silently.
-				attachment("edited_text_file", "x2"),
-				attachment("hook_non_blocking_error", "x3"),
+				// A hook failure is an environment defect, not a fact about the work.
+				attachment("hook_non_blocking_error", "x2"),
+				// The user edited a file outside the agent — the one record that transfers.
+				attachment("edited_text_file", "x3"),
 			),
 			"/t.jsonl",
 		);
 		const dump = projectConversationForDump(source);
 
-		expect(dump.notices.map((e: ConversationEvent) => sessionRecordType(e))).toEqual([
-			"edited_text_file",
-			"hook_non_blocking_error",
-		]);
+		expect(dump.notices.map((e: ConversationEvent) => sessionRecordType(e))).toEqual(["edited_text_file"]);
 	});
 
 	it("records the budget it applied, so fidelity is never implied", () => {

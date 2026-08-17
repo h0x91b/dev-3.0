@@ -124,17 +124,6 @@ export interface ConversationFidelity {
 	warnings: string[];
 }
 
-/**
- * Session settings that repeat once per request in the transcript. They are one
- * value each, not a stream of events: this session logged the output style 293
- * times and the permission mode 127 times, always the same value.
- */
-export interface ConversationEnvironment {
-	outputStyle: string | null;
-	permissionMode: string | null;
-	mode: string | null;
-}
-
 export interface ParsedConversation {
 	schemaVersion: number;
 	parserVersion: string;
@@ -148,8 +137,6 @@ export interface ParsedConversation {
 	model: string | null;
 	/** Agent-generated title, when the format records one. */
 	title: string | null;
-	/** Per-request settings, collapsed to one value each. */
-	environment: ConversationEnvironment;
 	startedAt: string | null;
 	endedAt: string | null;
 	/** The conversation itself, grouped into exchanges. */
