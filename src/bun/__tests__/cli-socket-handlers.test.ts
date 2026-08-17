@@ -135,8 +135,19 @@ vi.mock("../remote-access-server", () => ({
 	getStaticCode: vi.fn(() => null),
 }));
 
+// `tunnelManager` too: `port-tunnels` registers its change hook at module scope,
+// and the socket server reaches that module through the launch path, so a mock
+// without it dies on import rather than in a test.
 vi.mock("../cloudflare-tunnel", () => ({
 	getTunnelUrl: vi.fn(() => null),
+	tunnelManager: {
+		setChangeHook: vi.fn(),
+		get: vi.fn(() => undefined),
+		list: vi.fn(() => []),
+		start: vi.fn(),
+		stop: vi.fn(),
+		stopAll: vi.fn(),
+	},
 }));
 
 vi.mock("node:fs", () => ({
