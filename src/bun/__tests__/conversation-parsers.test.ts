@@ -4,7 +4,10 @@ import {
 	parseClaudeTranscript,
 	parseCodexTranscript,
 } from "../../shared/conversation-parsers";
-import { scanJsonl } from "../../shared/conversation-model";
+import { conversationEvents, scanJsonl, type ParsedConversation } from "../../shared/conversation-model";
+
+/** The conversation layer, flattened out of the turns. */
+const ev = (parsed: ParsedConversation) => conversationEvents(parsed);
 
 /** Records are shaped after the real on-disk transcripts, trimmed to what the parser reads. */
 function jsonl(...records: unknown[]): string {
@@ -58,15 +61,15 @@ describe("parseClaudeTranscript", () => {
 		expect(parsed.cwd).toBe("/w");
 		expect(parsed.gitBranch).toBe("main");
 		expect(parsed.model).toBe("claude-opus-5");
-		expect(parsed.events.map((e) => e.kind)).toEqual(["message", "thinking", "message", "tool-call"]);
-		expect(parsed.events[3].tool).toMatchObject({ callId: "toolu_1", name: "Read" });
+		expect(ev(parsed).map((e) => e.kind)).toEqual(["message", "thinking", "message", "tool-call"]);
+		expect(ev(parsed)[3].tool).toMatchObject({ callId: "toolu_1", name: "Read" });
 		expect(parsed.stats.thinkingBlocks).toBe(1);
 		expect(parsed.stats.toolCalls).toBe(1);
 	});
 
 	it("reads a thinking block from `thinking`, not `text`", () => {
 		const parsed = parseClaudeTranscript(jsonl(claudeAssistant), "/t.jsonl");
-		expect(parsed.events.find((e) => e.kind === "thinking")?.text).toBe("weighing it");
+		expect(ev(parsed).find((e) => e.kind === "thinking")?.text).toBe("weighing it");
 	});
 
 	it("keeps a signature-only thinking block as evidence that reasoning happened", () => {
@@ -76,20 +79,20 @@ describe("parseClaudeTranscript", () => {
 		};
 		const parsed = parseClaudeTranscript(jsonl(redacted), "/t.jsonl");
 		expect(parsed.stats.thinkingBlocks).toBe(1);
-		expect(parsed.events[0]).toMatchObject({ kind: "thinking", meta: { redacted: true } });
-		expect(parsed.events[0].text).toBeUndefined();
+		expect(ev(parsed)[0]).toMatchObject({ kind: "thinking", meta: { redacted: true } });
+		expect(ev(parsed)[0].text).toBeUndefined();
 	});
 
 	it("keeps the parent pointer so the thread stays reconstructable", () => {
 		const parsed = parseClaudeTranscript(jsonl(claudeUser, claudeAssistant), "/t.jsonl");
-		expect(parsed.events[0].parentId).toBeNull();
-		expect(parsed.events[1].parentId).toBe("u1");
+		expect(ev(parsed)[0].parentId).toBeNull();
+		expect(ev(parsed)[1].parentId).toBe("u1");
 	});
 
 	it("pairs a tool result to its call by id, not by adjacency", () => {
 		const parsed = parseClaudeTranscript(jsonl(claudeAssistant, claudeUser, claudeToolResult), "/t.jsonl");
-		const call = parsed.events.find((e) => e.kind === "tool-call");
-		const result = parsed.events.find((e) => e.kind === "tool-result");
+		const call = ev(parsed).find((e) => e.kind === "tool-call");
+		const result = ev(parsed).find((e) => e.kind === "tool-result");
 		expect(result?.tool?.callId).toBe(call?.tool?.callId);
 		expect(result?.tool?.output).toBe("file body");
 		expect(result?.role).toBe("tool");
@@ -114,7 +117,7 @@ describe("parseClaudeTranscript", () => {
 		};
 		const parsed = parseClaudeTranscript(jsonl(thinkingOnly, claudeAssistant), "/t.jsonl");
 		expect(parsed.stats.usage.output).toBe(540);
-		expect(parsed.events[0].usage?.output).toBe(500);
+		expect(ev(parsed)[0].usage?.output).toBe(500);
 	});
 
 	it("records the time span from the first and last timestamps", () => {
@@ -129,14 +132,14 @@ describe("parseClaudeTranscript", () => {
 			"/t.jsonl",
 		);
 		expect(parsed.title).toBe("Parse conversations");
-		expect(parsed.events[0].kind).toBe("lifecycle");
+		expect(parsed.sessionEvents[0].kind).toBe("lifecycle");
 		expect(parsed.stats.unknownRecords).toBe(0);
 	});
 
 	it("flags an unmapped record type instead of silently skipping it", () => {
 		const parsed = parseClaudeTranscript(jsonl({ type: "brand-new-thing", sessionId: "sess-1" }), "/t.jsonl");
 		expect(parsed.stats.unknownRecords).toBe(1);
-		expect(parsed.events).toHaveLength(1);
+		expect(parsed.sessionEvents).toHaveLength(1);
 		expect(parsed.fidelity.level).toBe("partial");
 	});
 
@@ -145,7 +148,7 @@ describe("parseClaudeTranscript", () => {
 		const parsed = parseClaudeTranscript(body, "/t.jsonl");
 		expect(parsed.stats.malformedLines).toBe(0);
 		expect(parsed.fidelity.warnings.join(" ")).toContain("truncated");
-		expect(parsed.events).toHaveLength(1);
+		expect(ev(parsed)).toHaveLength(1);
 	});
 
 	it("counts a broken mid-file line as malformed", () => {
@@ -156,12 +159,12 @@ describe("parseClaudeTranscript", () => {
 
 	it("marks a sidechain record so a subagent branch stays distinguishable", () => {
 		const parsed = parseClaudeTranscript(jsonl({ ...claudeUser, isSidechain: true }), "/t.jsonl");
-		expect(parsed.events[0].sidechain).toBe(true);
+		expect(ev(parsed)[0].sidechain).toBe(true);
 	});
 
 	it("omits raw records unless asked", () => {
-		expect(parseClaudeTranscript(jsonl(claudeUser), "/t.jsonl").events[0].raw).toBeUndefined();
-		expect(parseClaudeTranscript(jsonl(claudeUser), "/t.jsonl", { includeRaw: true }).events[0].raw).toMatchObject({
+		expect(ev(parseClaudeTranscript(jsonl(claudeUser), "/t.jsonl"))[0].raw).toBeUndefined();
+		expect(ev(parseClaudeTranscript(jsonl(claudeUser), "/t.jsonl", { includeRaw: true }))[0].raw).toMatchObject({
 			uuid: "u1",
 		});
 	});
@@ -213,9 +216,9 @@ describe("parseCodexTranscript", () => {
 
 	it("maps messages and tool calls off the response_item stream", () => {
 		const parsed = parseCodexTranscript(jsonl(codexUserItem, codexAssistantItem, codexCall, codexCallOutput), "/r.jsonl");
-		expect(parsed.events.map((e) => e.kind)).toEqual(["message", "message", "tool-call", "tool-result"]);
-		expect(parsed.events[2].tool).toMatchObject({ callId: "call_1", name: "exec_command" });
-		expect(parsed.events[3].tool?.output).toBe("a.ts\n");
+		expect(ev(parsed).map((e) => e.kind)).toEqual(["message", "message", "tool-call", "tool-result"]);
+		expect(ev(parsed)[2].tool).toMatchObject({ callId: "call_1", name: "exec_command" });
+		expect(ev(parsed)[3].tool?.output).toBe("a.ts\n");
 	});
 
 	it("skips the UI events that restate a response_item, counting them as duplicates", () => {
@@ -248,7 +251,7 @@ describe("parseCodexTranscript", () => {
 			payload: { type: "reasoning", id: "r1", summary: [{ type: "summary_text", text: "**Planning**" }] },
 		};
 		const parsed = parseCodexTranscript(jsonl(reasoning), "/r.jsonl");
-		expect(parsed.events[0]).toMatchObject({ kind: "thinking", text: "**Planning**" });
+		expect(ev(parsed)[0]).toMatchObject({ kind: "thinking", text: "**Planning**" });
 		expect(parsed.fidelity.warnings.join(" ")).toContain("encrypted");
 	});
 
@@ -258,7 +261,7 @@ describe("parseCodexTranscript", () => {
 			"/r.jsonl",
 		);
 		expect(parsed.stats.unknownRecords).toBe(1);
-		expect(parsed.events[0].meta).toMatchObject({ itemType: "brand_new_item" });
+		expect(parsed.sessionEvents[0].meta).toMatchObject({ itemType: "brand_new_item" });
 	});
 });
 

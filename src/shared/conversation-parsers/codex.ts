@@ -18,6 +18,7 @@ import {
 	emptyStats,
 	numberAt,
 	recordAt,
+	routeEvents,
 	scanJsonl,
 	stringAt,
 	summarizeEvents,
@@ -28,7 +29,9 @@ import {
 	type ConversationRole,
 	type ConversationUsage,
 	type ParsedConversation,
+	assembleTurns,
 } from "../conversation-model";
+import { normalizeToolCall } from "../conversation-tools";
 import type { ParseConversationOptions } from "./types";
 
 /** UI events whose content is already covered by a `response_item`. */
@@ -86,6 +89,8 @@ function eventsFromResponseItem(
 	// `function_call` carries JSON-string arguments; `custom_tool_call` carries a
 	// free-form `input` string. Both pair with their output via `call_id`.
 	if (type === "function_call" || type === "custom_tool_call") {
+		const name = stringAt(payload, "name") ?? undefined;
+		const input = type === "function_call" ? payload.arguments : payload.input;
 		return [
 			{
 				...base,
@@ -94,8 +99,9 @@ function eventsFromResponseItem(
 				role: "assistant",
 				tool: {
 					callId: stringAt(payload, "call_id") ?? undefined,
-					name: stringAt(payload, "name") ?? undefined,
-					input: type === "function_call" ? payload.arguments : payload.input,
+					name,
+					input,
+					canonical: normalizeToolCall("codex", name, input),
 				},
 			},
 		];
@@ -127,6 +133,7 @@ export function parseCodexTranscript(
 	stats.malformedLines = scan.malformedLines;
 
 	const events: ConversationEvent[] = [];
+	const sessionEvents: ConversationEvent[] = [];
 	const warnings: string[] = [];
 	let sessionId: string | null = null;
 	let cwd: string | null = null;
@@ -139,7 +146,7 @@ export function parseCodexTranscript(
 		if (outer === "session_meta") {
 			sessionId ??= stringAt(payload, "id") ?? stringAt(payload, "session_id");
 			cwd ??= stringAt(payload, "cwd");
-			events.push({
+			sessionEvents.push({
 				id: sessionId ?? String(seq),
 				seq,
 				timestamp: stringAt(record, "timestamp"),
@@ -159,7 +166,7 @@ export function parseCodexTranscript(
 		if (outer === "response_item" && payload) {
 			const produced = eventsFromResponseItem(payload, record, seq, includeRaw);
 			if (produced.some((e) => e.meta?.unknown === true)) stats.unknownRecords++;
-			events.push(...produced);
+			routeEvents(produced, events, sessionEvents);
 			return;
 		}
 
@@ -169,7 +176,7 @@ export function parseCodexTranscript(
 				stats.duplicateRecords++;
 				return;
 			}
-			events.push({
+			sessionEvents.push({
 				id: String(seq),
 				seq,
 				timestamp: stringAt(record, "timestamp"),
@@ -182,7 +189,7 @@ export function parseCodexTranscript(
 		}
 
 		// turn_context / world_state / compacted / anything new: keep the marker.
-		events.push({
+		sessionEvents.push({
 			id: String(seq),
 			seq,
 			timestamp: stringAt(record, "timestamp"),
@@ -192,8 +199,10 @@ export function parseCodexTranscript(
 		});
 	});
 
-	summarizeEvents(events, stats);
-	const span = timeSpanOf(events);
+	summarizeEvents(events, sessionEvents, stats);
+	const turns = assembleTurns(events);
+	stats.turns = turns.length;
+	const span = timeSpanOf([...events, ...sessionEvents].sort((a, b) => a.seq - b.seq));
 
 	if (scan.truncatedTail) warnings.push("Last line was truncated — the session is probably still being written.");
 	if (stats.malformedLines > 0) warnings.push(`${stats.malformedLines} line(s) were not valid JSON.`);
@@ -213,7 +222,8 @@ export function parseCodexTranscript(
 		title: null,
 		startedAt: span.startedAt,
 		endedAt: span.endedAt,
-		events,
+		turns,
+		sessionEvents,
 		stats,
 		fidelity: { level: warnings.length === 0 ? "full" : "partial", warnings },
 	};

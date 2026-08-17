@@ -276,6 +276,19 @@ const COMMANDS: CommandHelp[] = [
 				],
 			},
 			{
+				name: "handoff",
+				usage: "dev3 conversations handoff [--for claude|codex|markdown] [--thinking] [--tool-output N] [--turns N] [--out FILE]",
+				summary: "Retell this task's conversation as one message another agent can be handed.",
+				details: [
+					"Prints to stdout, so it pipes into `dev3 message`.",
+					"--for TARGET      Framing: markdown to read, claude or codex to hand over (default markdown).",
+					"--thinking        Include the previous agent's reasoning (off by default).",
+					"--tool-output N   Characters of tool output kept per call (default 2048, 0 drops it).",
+					"--turns N         Keep only the last N turns.",
+					"--out FILE        Write to a file instead of stdout.",
+				],
+			},
+			{
 				name: "search",
 				usage: 'dev3 conversations search "<query>" [--limit N] [--all-statuses] [--json]',
 				summary: "Search completed/cancelled task conversations for relevant prior work.",

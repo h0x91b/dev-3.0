@@ -17,6 +17,7 @@ import {
 	recordAt,
 	scanJsonl,
 	stringAt,
+	routeEvents,
 	summarizeEvents,
 	timeSpanOf,
 	toolOutputText,
@@ -24,7 +25,9 @@ import {
 	type ConversationRole,
 	type ConversationUsage,
 	type ParsedConversation,
+	assembleTurns,
 } from "../conversation-model";
+import { normalizeToolCall } from "../conversation-tools";
 import type { ParseConversationOptions } from "./types";
 
 /** Non-message record types we map to lifecycle events instead of counting as unknown. */
@@ -106,11 +109,17 @@ function eventsFromMessage(
 		}
 
 		if (type === "tool_use") {
+			const name = stringAt(b, "name") ?? undefined;
 			events.push({
 				...base,
 				id,
 				kind: "tool-call",
-				tool: { callId: stringAt(b, "id") ?? undefined, name: stringAt(b, "name") ?? undefined, input: b.input },
+				tool: {
+					callId: stringAt(b, "id") ?? undefined,
+					name,
+					input: b.input,
+					canonical: normalizeToolCall("claude", name, b.input),
+				},
 			});
 			continue;
 		}
@@ -172,6 +181,7 @@ export function parseClaudeTranscript(
 	stats.malformedLines = scan.malformedLines;
 
 	const events: ConversationEvent[] = [];
+	const sessionEvents: ConversationEvent[] = [];
 	const warnings: string[] = [];
 	let sessionId: string | null = null;
 	let cwd: string | null = null;
@@ -187,13 +197,15 @@ export function parseClaudeTranscript(
 
 		if (type === "user" || type === "assistant") {
 			model ??= stringAt(recordAt(record, "message"), "model");
-			events.push(...eventsFromMessage(record, seq, includeRaw));
+			// A record can yield an attachment or a usage-only marker, which belong
+			// to the session layer even though the record was a message.
+			routeEvents(eventsFromMessage(record, seq, includeRaw), events, sessionEvents);
 			return;
 		}
 
 		if (type === "attachment") {
 			const attachment = recordAt(record, "attachment");
-			events.push({
+			sessionEvents.push({
 				id: stringAt(record, "uuid") ?? String(seq),
 				seq,
 				parentId: stringAt(record, "parentUuid"),
@@ -207,7 +219,7 @@ export function parseClaudeTranscript(
 
 		if (LIFECYCLE_TYPES.has(type)) {
 			title ??= stringAt(record, "aiTitle");
-			events.push({
+			sessionEvents.push({
 				id: stringAt(record, "uuid") ?? String(seq),
 				seq,
 				parentId: stringAt(record, "parentUuid"),
@@ -220,7 +232,7 @@ export function parseClaudeTranscript(
 		}
 
 		stats.unknownRecords++;
-		events.push({
+		sessionEvents.push({
 			id: stringAt(record, "uuid") ?? String(seq),
 			seq,
 			timestamp: stringAt(record, "timestamp"),
@@ -230,8 +242,10 @@ export function parseClaudeTranscript(
 		});
 	});
 
-	summarizeEvents(events, stats);
-	const span = timeSpanOf(events);
+	summarizeEvents(events, sessionEvents, stats);
+	const turns = assembleTurns(events);
+	stats.turns = turns.length;
+	const span = timeSpanOf([...events, ...sessionEvents].sort((a, b) => a.seq - b.seq));
 
 	if (scan.truncatedTail) warnings.push("Last line was truncated — the session is probably still being written.");
 	if (stats.malformedLines > 0) warnings.push(`${stats.malformedLines} line(s) were not valid JSON.`);
@@ -249,7 +263,8 @@ export function parseClaudeTranscript(
 		title,
 		startedAt: span.startedAt,
 		endedAt: span.endedAt,
-		events,
+		turns,
+		sessionEvents,
 		stats,
 		fidelity: { level: warnings.length === 0 ? "full" : "partial", warnings },
 	};

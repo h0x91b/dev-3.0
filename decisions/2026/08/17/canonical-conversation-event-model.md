@@ -31,6 +31,16 @@ So the per-task directory is both durable *and* correctly scoped. One task can a
 
 Verified end to end on a live session of this task: 538 events, 30 thinking blocks, 67 tool calls and all four token counters match an independent Python count of the same file snapshot exactly.
 
+## The generation direction
+
+A parsed conversation that still speaks its source agent's dialect cannot be re-rendered for another client, so three things were added on top of the ingest layer.
+
+**Tool semantics** (`src/shared/conversation-tools.ts`): every native name maps to a canonical operation — Claude's `Bash{command}` and Codex's `exec_command{cmd}` both become `shell.run{command}` — with the native name always retained and anything unmapped kept as `unknown`. The mapping is asymmetric where the agents are: Codex has no file read tool, Claude has no code-mode sandbox. Codex also has no Write/Edit at all, so the files it changed are recovered from `*** Update File:` headers inside `apply_patch` bodies (verified against a real session: 24 patch calls → 9 distinct files).
+
+**Two layers and turns** (`ParsedConversation.turns` + `sessionEvents`): the conversation is grouped into exchanges, and the agent's own bookkeeping is kept aside. This is the difference between a re-encoding and a model — in this task's own session the bookkeeping is 813 records against 401 conversation events, so leaving it inline buries the conversation under its own plumbing.
+
+**A renderer** (`src/shared/conversation-render.ts`, `dev3 conversations handoff`): the retelling, as one message. **A native transcript for another client is deliberately not attempted** — `--resume` reads only the agent's own file, Claude signs its thinking blocks so they cannot be forged, and the tool sets do not match. Any cross-client continue is a retelling; the renderer keeps prompts and replies verbatim and bounds tool output (default 2048 characters per call; this session renders to 76 KB with output dropped, 169 KB with it kept).
+
 ## Risks
 
 - Both formats are private and mutate between releases. Mitigation is the unknown-record counter plus `parserVersion`, so a drift shows up as a warning instead of silent loss.

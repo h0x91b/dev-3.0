@@ -11,7 +11,7 @@ import {
 	writeConversationDump,
 } from "../conversation-parse";
 import { claudeEncodePath } from "../../shared/conversation-search-core";
-import type { ParsedConversation } from "../../shared/conversation-model";
+import { conversationEvents, type ParsedConversation } from "../../shared/conversation-model";
 
 const SLUG = "Users-me-src-proj";
 const SHORT_ID = "5ddc7663";
@@ -56,7 +56,7 @@ describe("dump layout", () => {
 
 	it("creates the directory and writes readable JSON", async () => {
 		const dir = conversationDumpDir(taskContainerDir(`${home}/.dev3.0`, SLUG, SHORT_ID));
-		const conversation = { source: "claude", sessionId: "sess-1", events: [] } as unknown as ParsedConversation;
+		const conversation = { source: "claude", sessionId: "sess-1", turns: [], sessionEvents: [] } as unknown as ParsedConversation;
 		const path = await writeConversationDump(dir, conversationDumpName(conversation), conversation);
 
 		expect(existsSync(path)).toBe(true);
@@ -78,7 +78,7 @@ describe("parseWorktreeConversations", () => {
 		const parsed = parseWorktreeConversations(worktree, { home });
 		expect(parsed).toHaveLength(1);
 		expect(parsed[0].conversation.source).toBe("claude");
-		expect(parsed[0].conversation.events[0].text).toBe("hello there");
+		expect(conversationEvents(parsed[0].conversation)[0].text).toBe("hello there");
 	});
 
 	it("returns nothing for a worktree with no transcripts", () => {

@@ -1,3 +1,3 @@
-Short: Parse agent conversations into JSON
+Short: Hand a conversation to another agent
 
-dev3 can now parse a task's Claude Code and Codex transcripts into one canonical event model (messages, reasoning, tool calls and their results, token usage, fidelity warnings) and write them as JSON via `dev3 conversations dump`. Dumps land in the task's own `conversations/` folder next to its logs and diffs, survive worktree teardown, and are re-derivable caches — the native transcript stays the source of truth. First step toward conversation import and cross-agent handoff.
+dev3 now parses a task's Claude Code and Codex transcripts into one canonical model — turns, messages, reasoning, and tool calls reduced to agent-independent operations (Claude's `Bash` and Codex's `exec_command` both read as `shell.run`) — with the agent's own bookkeeping kept in a separate layer. `dev3 conversations dump` writes the JSON to the task's own `conversations/` folder next to its logs and diffs, and `dev3 conversations handoff` retells the conversation as one message another agent can be handed, with bounded tool output.
