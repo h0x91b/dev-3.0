@@ -71,6 +71,7 @@ Commands:
   dev3 automations run <id>             Fire an automation now (creates its task)
   dev3 automations templates            List built-in templates
   dev3 conversations search "<query>" [--limit N] [--all-statuses] [--json]  Search past task conversations (completed/cancelled)
+  dev3 conversations dump [--latest] [--stdout]  Parse this task's agent transcripts into JSON
   dev3 dev-server start [task-id]       Start a task dev server
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server

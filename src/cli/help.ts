@@ -261,8 +261,20 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "conversations",
-		summary: "Search past task conversations (transcripts + notes/overview).",
+		summary: "Search past task conversations, or parse this task's transcripts into JSON.",
 		subcommands: [
+			{
+				name: "dump",
+				usage: "dev3 conversations dump [--latest] [--raw] [--stdout] [--out <dir>]",
+				summary: "Parse this task's agent transcripts into dev3's conversation model and write JSON.",
+				details: [
+					"Writes to the task's own conversations/ folder, next to logs/ and diffs/.",
+					"--latest    Only the most recently written transcript.",
+					"--raw       Keep each native record alongside the parsed event (much larger).",
+					"--stdout    Print the JSON instead of writing files.",
+					"--out DIR   Write somewhere else.",
+				],
+			},
 			{
 				name: "search",
 				usage: 'dev3 conversations search "<query>" [--limit N] [--all-statuses] [--json]',

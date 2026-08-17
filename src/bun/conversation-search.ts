@@ -256,6 +256,28 @@ const geminiLocator: TranscriptLocator = {
 /** Registered locators — every agent whose store maps to a single task (variant isolation). */
 const LOCATORS: TranscriptLocator[] = [claudeLocator, codexLocator, geminiLocator];
 
+/** One transcript file found on disk, tagged with the agent whose store held it. */
+export interface TranscriptFile {
+	kind: string;
+	path: string;
+}
+
+/**
+ * Every transcript file belonging to one worktree, across all locators. Shared
+ * with the conversation parser so discovery lives in exactly one place — a new
+ * locator here is immediately visible to both search and parsing.
+ */
+export function transcriptFilesForWorktree(worktreePath: string, home: string = homedir()): TranscriptFile[] {
+	const found: TranscriptFile[] = [];
+	for (const locator of LOCATORS) {
+		const index = locator.buildIndex ? locator.buildIndex(home) : null;
+		for (const path of locator.filesForWorktree(worktreePath, home, index)) {
+			found.push({ kind: locator.kind, path });
+		}
+	}
+	return found;
+}
+
 export interface EngineTask {
 	id: string;
 	title?: string | null;
