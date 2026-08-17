@@ -11,6 +11,7 @@ type FakeWindow = {
 	getSize: ReturnType<typeof vi.fn>;
 	setSize: ReturnType<typeof vi.fn>;
 	getFrame: ReturnType<typeof vi.fn>;
+	setFrame: ReturnType<typeof vi.fn>;
 	isFullScreen: ReturnType<typeof vi.fn>;
 	setFullScreen: ReturnType<typeof vi.fn>;
 	focus: ReturnType<typeof vi.fn>;
@@ -33,6 +34,7 @@ vi.mock("electrobun/bun", () => {
 		getSize: ReturnType<typeof vi.fn>;
 		setSize: ReturnType<typeof vi.fn>;
 		getFrame: ReturnType<typeof vi.fn>;
+		setFrame: ReturnType<typeof vi.fn>;
 		isFullScreen: ReturnType<typeof vi.fn>;
 		setFullScreen: ReturnType<typeof vi.fn>;
 		focus: ReturnType<typeof vi.fn>;
@@ -59,6 +61,9 @@ vi.mock("electrobun/bun", () => {
 			this.getSize = vi.fn(() => ({ width: 800, height: 600 }));
 			this.setSize = vi.fn();
 			this.getFrame = vi.fn(() => this.frame ?? { x: 0, y: 0, width: 800, height: 600 });
+			this.setFrame = vi.fn((x: number, y: number, width: number, height: number) => {
+				this.frame = { x, y, width, height };
+			});
 			this.isFullScreen = vi.fn(() => false);
 			this.setFullScreen = vi.fn();
 			this.focus = vi.fn();
@@ -117,6 +122,7 @@ import {
 	getFocusedWindow,
 	getAllWindows,
 	getWindowCount,
+	handleDisplayConfigurationChange,
 	__resetForTests,
 } from "../window-manager";
 
@@ -238,5 +244,60 @@ describe("window-manager", () => {
 
 		expect(onClosed).toHaveBeenCalledTimes(1);
 		expect(onClosed.mock.calls[0][1]).toBe(1);
+	});
+});
+
+describe("handleDisplayConfigurationChange", () => {
+	const shrunkDisplay = [{ id: 1, bounds: { x: 0, y: 0, width: 1280, height: 720 } }];
+
+	function spawnWithFrame(frame: { x: number; y: number; width: number; height: number }) {
+		createAppWindow({ title: "dev-3.0", url: "views://mainview/index.html", handlers: {} });
+		const win = createdWindows[createdWindows.length - 1]!;
+		win.frame = frame;
+		return win;
+	}
+
+	it("pulls a window back when the new layout left it off every screen", () => {
+		const win = spawnWithFrame({ x: 0, y: 0, width: 1900, height: 1000 });
+
+		handleDisplayConfigurationChange("displays", shrunkDisplay);
+
+		expect(win.setFrame).toHaveBeenCalledWith(0, 0, 1280, 720);
+	});
+
+	it("leaves a window that still fits alone", () => {
+		const win = spawnWithFrame({ x: 10, y: 10, width: 800, height: 600 });
+
+		handleDisplayConfigurationChange("displays", shrunkDisplay);
+
+		expect(win.setFrame).not.toHaveBeenCalled();
+	});
+
+	it("never touches the frame of a fullscreen window — macOS owns it", () => {
+		const win = spawnWithFrame({ x: 0, y: 0, width: 1900, height: 1000 });
+		win.isFullScreen.mockReturnValue(true);
+
+		handleDisplayConfigurationChange("displays", shrunkDisplay);
+
+		expect(win.setFrame).not.toHaveBeenCalled();
+	});
+
+	it("keeps going after one window throws", () => {
+		const broken = spawnWithFrame({ x: 0, y: 0, width: 1900, height: 1000 });
+		broken.getFrame.mockImplementation(() => {
+			throw new Error("window is gone");
+		});
+		const healthy = spawnWithFrame({ x: 0, y: 0, width: 1900, height: 1000 });
+
+		expect(() => handleDisplayConfigurationChange("displays", shrunkDisplay)).not.toThrow();
+		expect(healthy.setFrame).toHaveBeenCalledWith(0, 0, 1280, 720);
+	});
+
+	it("handles a wake the same way, so a layout that flipped and flipped back is still checked", () => {
+		const win = spawnWithFrame({ x: 0, y: 0, width: 1900, height: 1000 });
+
+		handleDisplayConfigurationChange("wake", shrunkDisplay);
+
+		expect(win.setFrame).toHaveBeenCalledWith(0, 0, 1280, 720);
 	});
 });

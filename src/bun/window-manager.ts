@@ -1,7 +1,7 @@
 import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { createLogger } from "./logger";
-import { loadWindowState, saveWindowState, resolveRestoreFrame, displayContaining, type Rect } from "./window-state";
+import { loadWindowState, saveWindowState, resolveRestoreFrame, displayContaining, offscreenFrameClamp, type DisplayLike, type Rect } from "./window-state";
 import { isFreshStartMode } from "./fresh-start";
 import { applyWindowsWindowIcon } from "./windows-icons/apply-window-icon";
 
@@ -54,6 +54,50 @@ export function flushWindowState(): void {
 	}
 	const win = getFocusedWindow();
 	if (win) captureWindowState(win);
+}
+
+/**
+ * React to a display-configuration change (or a wake) reported by `display-watch`.
+ *
+ * The geometry line is the point of this function: two field reports of a broken
+ * layout after a resolution change arrived with no way to tell whether the window
+ * had outgrown the screen or the page had merely laid out stale. Pair it with the
+ * renderer's own `viewport` line to compare both sides.
+ *
+ * The clamp itself only fires when part of the window sits on no screen at all —
+ * the saved frame has always been clamped on startup (`resolveRestoreFrame`), the
+ * live window never was.
+ */
+export function handleDisplayConfigurationChange(reason: string, displays: DisplayLike[]): void {
+	for (const entry of windows) {
+		const win = entry.window;
+		try {
+			const frame = win.getFrame();
+			const fullscreen = win.isFullScreen();
+			const host = displayContaining(frame, displays);
+			log.info("Display configuration changed", {
+				reason,
+				id: entry.id,
+				fullscreen,
+				frame: `${frame.width}x${frame.height}+${frame.x}+${frame.y}`,
+				displays: displays.map((d) => `${d.id}:${d.bounds.width}x${d.bounds.height}@${d.scaleFactor ?? 1}`).join(" "),
+				host: host ? host.id : null,
+			});
+			// macOS owns a fullscreen window's frame; setFrame would fight it.
+			if (fullscreen) continue;
+			const pullBack = offscreenFrameClamp(frame, displays);
+			if (!pullBack) continue;
+			log.info("Pulling window back onto a screen", {
+				id: entry.id,
+				from: `${frame.width}x${frame.height}+${frame.x}+${frame.y}`,
+				to: `${pullBack.frame.width}x${pullBack.frame.height}+${pullBack.frame.x}+${pullBack.frame.y}`,
+				display: pullBack.display.id,
+			});
+			win.setFrame(pullBack.frame.x, pullBack.frame.y, pullBack.frame.width, pullBack.frame.height);
+		} catch (err) {
+			log.warn("Display change handling failed for one window", { id: entry.id, error: String(err) });
+		}
+	}
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

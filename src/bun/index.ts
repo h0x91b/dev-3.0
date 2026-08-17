@@ -1,9 +1,11 @@
 import Electrobun, {
 	ApplicationMenu,
 	PATHS,
+	Screen,
 	Updater,
 	Utils,
 } from "electrobun/bun";
+import { startDisplayWatch } from "./display-watch";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground, setFocusMode, pushTerminalBell } from "./rpc-handlers";
 import {
 	startAutoCheck,
@@ -45,7 +47,7 @@ import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
-import { createAppWindow, broadcastToAllWindows, focusFocusedWindow, getFocusedWindow, getWindowCount, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
+import { createAppWindow, broadcastToAllWindows, focusFocusedWindow, getFocusedWindow, getWindowCount, handleDisplayConfigurationChange, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
 import electrobunConfig, { cliBinaryName } from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync, writeSync } from "node:fs";
@@ -521,6 +523,14 @@ startPortScanPoller(
 	},
 	getActiveSessionIds,
 );
+
+// Watch the display layout (no such event exists in Electrobun — see display-watch).
+// Logs both sides of the geometry after a resolution change or a wake, and pulls a
+// window back if the new layout left part of it on no screen.
+startDisplayWatch({
+	getDisplays: () => Screen.getAllDisplays(),
+	onChange: ({ reason, displays }) => handleDisplayConfigurationChange(reason, displays),
+});
 
 // Start background resource usage monitor (discovers tmux sessions directly, not via pty-server)
 startResourceMonitor((name, payload) => {

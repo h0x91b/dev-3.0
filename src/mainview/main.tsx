@@ -14,6 +14,7 @@ import { initAutoFullscreen } from "./fullscreen";
 import { initKeyboardLock } from "./keyboard-lock";
 import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
+import { startViewportDiagnostics } from "./viewport-diagnostics";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
 import { initStreamerMode } from "./streamer-mode";
 import { buildChannelTitlePrefix } from "../shared/update-channel";
@@ -100,6 +101,10 @@ initFeatureFlags();
 
 // Load saved terminal scroll speed into cache before terminals mount
 bootstrapScrollSpeed();
+
+// Mirror the page's own geometry into the backend log — the other half of the
+// display-change diagnostic the backend writes (see viewport-diagnostics.ts).
+startViewportDiagnostics();
 
 // Apply saved locale before React mounts
 const savedLocale = localStorage.getItem("dev3-locale") || "en";

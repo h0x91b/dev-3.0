@@ -882,14 +882,34 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// Adopt the PTY's shape instead and letterbox inside the container.
 				const pty = ptyGeometryRef.current;
 				if (pty && nativeRoleRef.current === "observer") {
-					try { term.resize(pty.cols, pty.rows); } catch { /* disposed */ }
+					try {
+						term.resize(pty.cols, pty.rows);
+					} catch (err) {
+						if (!disposed) {
+							logDiagnostic("refit", "error", "observer term.resize threw", { error: String(err), cols: pty.cols, rows: pty.rows });
+						}
+					}
 					return;
 				}
 				if (!fitAddon) return;
 				let dims: { cols: number; rows: number } | undefined;
-				try { dims = fitAddon.proposeDimensions(); } catch { return; /* disposed */ }
+				// A throw here on a LIVE terminal leaves the canvas frozen with no trace —
+				// exactly the blind spot behind the "terminal shows nothing after a
+				// resolution change" reports. Disposal still throws, and stays silent.
+				try {
+					dims = fitAddon.proposeDimensions();
+				} catch (err) {
+					if (!disposed) logDiagnostic("refit", "error", "proposeDimensions threw", { error: String(err) });
+					return;
+				}
 				if (!dims) return;
-				try { term.resize(dims.cols, dims.rows); } catch { /* disposed */ }
+				try {
+					term.resize(dims.cols, dims.rows);
+				} catch (err) {
+					if (!disposed) {
+						logDiagnostic("refit", "error", "term.resize threw", { error: String(err), cols: dims.cols, rows: dims.rows });
+					}
+				}
 			}
 
 			refitRef.current = refitToContainer;

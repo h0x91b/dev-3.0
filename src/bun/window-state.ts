@@ -28,6 +28,8 @@ export interface WindowState {
 export interface DisplayLike {
 	id: number;
 	bounds: Rect;
+	scaleFactor?: number;
+	isPrimary?: boolean;
 }
 
 // New sibling file under ~/.dev3.0/ — never renames or touches projects.json/tasks.json
@@ -97,6 +99,59 @@ function clamp(v: number, lo: number, hi: number): number {
 	return Math.max(lo, Math.min(hi, v));
 }
 
+/** Fit a frame inside a display's bounds, shrinking it only if it does not fit. */
+export function clampFrameToDisplay(frame: Rect, bounds: Rect): Rect {
+	const width = Math.min(frame.width, bounds.width);
+	const height = Math.min(frame.height, bounds.height);
+	return {
+		x: clamp(frame.x, bounds.x, bounds.x + bounds.width - width),
+		y: clamp(frame.y, bounds.y, bounds.y + bounds.height - height),
+		width,
+		height,
+	};
+}
+
+function intersectionArea(a: Rect, b: Rect): number {
+	const w = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+	const h = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+	return w > 0 && h > 0 ? w * h : 0;
+}
+
+/**
+ * A window is only pulled back when part of it sits on NO screen at all — a
+ * window deliberately spanning two monitors must stay where the user put it, so
+ * we measure coverage against the union of every display (they tile without
+ * overlap in the global coordinate space, so summing intersections is exact).
+ *
+ * Returns null when nothing needs moving.
+ */
+export function offscreenFrameClamp(
+	frame: Rect,
+	displays: DisplayLike[],
+	tolerancePx = 2,
+): { frame: Rect; display: DisplayLike } | null {
+	if (!displays.length) return null;
+	const area = frame.width * frame.height;
+	if (area <= 0) return null;
+	const covered = displays.reduce((sum, d) => sum + intersectionArea(frame, d.bounds), 0);
+	// Slack for a hairline sliver: rounding and shadow insets must not count as offscreen.
+	const slack = tolerancePx * 2 * (frame.width + frame.height);
+	if (covered >= area - slack) return null;
+
+	let host = displays.find((d) => d.isPrimary) ?? displays[0]!;
+	let hostArea = 0;
+	for (const d of displays) {
+		const a = intersectionArea(frame, d.bounds);
+		if (a > hostArea) {
+			hostArea = a;
+			host = d;
+		}
+	}
+	const clamped = clampFrameToDisplay(frame, host.bounds);
+	if (boundsEqual(clamped, frame)) return null;
+	return { frame: clamped, display: host };
+}
+
 /**
  * Resolve a restorable frame for the saved state against the *current* displays.
  * Returns null when the saved screen is gone (e.g. laptop undocked) so the caller
@@ -112,12 +167,7 @@ export function resolveRestoreFrame(
 		displays.find((d) => boundsEqual(d.bounds, state.displayBounds));
 	if (!disp) return null;
 
-	const b = disp.bounds;
 	// Clamp the saved frame inside the display so it stays fully visible even if
 	// the display resolution changed since the state was written.
-	const width = Math.min(state.frame.width, b.width);
-	const height = Math.min(state.frame.height, b.height);
-	const x = clamp(state.frame.x, b.x, b.x + b.width - width);
-	const y = clamp(state.frame.y, b.y, b.y + b.height - height);
-	return { frame: { x, y, width, height }, fullscreen: state.fullscreen };
+	return { frame: clampFrameToDisplay(state.frame, disp.bounds), fullscreen: state.fullscreen };
 }
