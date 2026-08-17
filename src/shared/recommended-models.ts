@@ -175,13 +175,24 @@ export function seedCatalogModels(
 function bindingsForAgent(agent: CodingAgent, catalog: ModelCatalogView): Record<string, string> | null {
 	const roles = modelRolesForAgent(agent.baseCommand);
 	if (roles.length === 0) return null;
-	const byName = new Map(catalog.models.map((m) => [m.name, m.id]));
+	// Resolved by provider-native id under the provider that serves the
+	// recommendations, never by catalog name: `seedCatalogModels` renames a
+	// recommendation whose name is already taken, and a name lookup across the
+	// whole catalog would then bind the role to a DIFFERENT provider's model that
+	// happens to own the name — the silent wrong-model case this feature exists
+	// to prevent.
+	const providerId = recommendedProviderId(catalog);
+	const nativeByName = new Map(RECOMMENDED_MODELS.map((model) => [model.name, model.modelId]));
+	const byNative = new Map(
+		catalog.models.filter((model) => model.providerId === providerId).map((model) => [model.modelId, model.id]),
+	);
 	// Claude's role ids and Codex's are disjoint, so one merged map answers for
 	// both and nothing here has to know which CLI it is looking at.
 	const wanted = { ...recommendedClaudeRoleModelIds(), ...recommendedCodexRoleModelIds() };
 	const bindings: Record<string, string> = {};
 	for (const role of roles) {
-		const catalogId = byName.get(wanted[role.id] ?? "");
+		const native = nativeByName.get(wanted[role.id] ?? "");
+		const catalogId = native ? byNative.get(native) : undefined;
 		if (catalogId) bindings[role.id] = catalogId;
 	}
 	// A partial binding sends the unbound roles to a proxy that cannot serve

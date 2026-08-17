@@ -146,10 +146,18 @@ export function foldCodexEntry(state: UsageState, entry: unknown): void {
 	acc.cacheReadInputTokens += cachedInput;
 }
 
-/** Collapse the per-(date,model) accumulator into per-day rows with priced cost. */
+/**
+ * Collapse the per-(date,model) accumulator into per-day rows with priced cost.
+ *
+ * `pricingId` translates a model string from the transcript into the id the rate
+ * table knows. A routed session records a catalog wire name, whose second half is
+ * a name the user invented, so without the translation the whole day reads as
+ * unpriced. Left as identity when no catalog is available (tests, no routing).
+ */
 export function finalizeUsage(
 	state: UsageState,
 	source: AgentUsageSource,
+	pricingId: (model: string) => string = (model) => model,
 ): { days: AgentUsageDay[]; hasUnpriced: boolean } {
 	const days: AgentUsageDay[] = [];
 	let hasUnpriced = false;
@@ -171,7 +179,7 @@ export function finalizeUsage(
 			row.outputTokens += counts.outputTokens;
 			row.cacheCreationInputTokens += counts.cacheCreationInputTokens;
 			row.cacheReadInputTokens += counts.cacheReadInputTokens;
-			const { costUsd, priced } = computeTokenCostUsd(model, counts);
+			const { costUsd, priced } = computeTokenCostUsd(pricingId(model), counts);
 			row.costUsd += costUsd;
 			if (!priced) {
 				row.fullyPriced = false;

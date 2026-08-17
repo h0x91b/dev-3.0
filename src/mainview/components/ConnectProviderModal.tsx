@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { CUSTOM_API_FORMATS, type CatalogProviderKind, type CustomApiFormat } from "../../shared/model-catalog";
+import { CUSTOM_API_FORMATS, uniqueCustomProviderLabel, type CatalogProviderKind, type CustomApiFormat } from "../../shared/model-catalog";
 import { RECOMMENDED_MODELS, seedAgentPresets, seedCatalogModels } from "../../shared/recommended-models";
 import { useT } from "../i18n";
 import { api } from "../rpc";
@@ -93,13 +93,18 @@ export default function ConnectProviderModal({ onClose, onConnected }: { onClose
 		try {
 			const catalog = await api.request.modelCatalogGet();
 			const providerId = randomUUID();
+			// Every target carries a fixed label, and a custom endpoint's label is
+			// its identity on the wire — so a second Ollama box or a second
+			// hand-entered endpoint would collide with the first and be refused.
+			const label =
+				target.kind === "custom" ? uniqueCustomProviderLabel(catalog.providers, target.label, url) : target.label;
 			const withProvider = {
 				providers: [
 					...catalog.providers,
 					{
 						id: providerId,
 						kind: target.kind,
-						label: target.label,
+						label,
 						baseUrl: target.kind === "custom" ? url : undefined,
 						apiFormat: target.kind === "custom" ? apiFormat : undefined,
 						hasKey: false,
@@ -125,7 +130,10 @@ export default function ConnectProviderModal({ onClose, onConnected }: { onClose
 				// endpoint serves, and only they know what it serves.
 				toast.info(t("connect.connectedManual", { provider: target.label }), {
 					source: "settings",
-					onClick: () => window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: "model-catalog" })),
+					// A CATEGORY id, not the `model-catalog` entry id: anything the
+					// registry does not know resolves to the first category, so the
+					// wrong value here lands the user on Appearance instead.
+					onClick: () => window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: "models" })),
 				});
 			}
 			onConnected?.();

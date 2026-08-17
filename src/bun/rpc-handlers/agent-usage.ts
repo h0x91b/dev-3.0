@@ -6,6 +6,8 @@ import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import { getAgentRateLimitsReport } from "../rate-limit-monitor";
 import { getBusyTaskShortIds, getSystemMemorySnapshot, resolveTaskConsumers } from "../resource-monitor";
 import { killPids, scanWorktreeOrphans as scanOrphans } from "../worktree-reaper";
+import { nativeModelIdForWireName } from "../../shared/model-catalog";
+import { loadModelCatalog } from "../model-catalog-store";
 import { beginCodexRollout, finalizeUsage, foldClaudeEntry, foldCodexEntry, newUsageState, type UsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
@@ -81,8 +83,13 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	collectTranscriptFiles(codexSessionsDir(), codexFiles, true);
 	foldJsonlFiles(codexFiles, codexState, foldCodexEntry, beginCodexRollout);
 
-	const claude = finalizeUsage(claudeState, "claude");
-	const codex = finalizeUsage(codexState, "codex");
+	// A routed session's transcript names the catalog wire name, which the rate
+	// table has never heard of; price it as the provider's own model instead.
+	const catalog = loadModelCatalog();
+	const pricingId = (model: string) => nativeModelIdForWireName(catalog, model) ?? model;
+
+	const claude = finalizeUsage(claudeState, "claude", pricingId);
+	const codex = finalizeUsage(codexState, "codex", pricingId);
 	const days = [...claude.days, ...codex.days].sort(
 		(a, b) => a.startMs - b.startMs || a.source.localeCompare(b.source),
 	);

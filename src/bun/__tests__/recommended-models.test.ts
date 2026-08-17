@@ -153,6 +153,22 @@ describe("seeding a freshly connected provider", () => {
 		expect(new Set(names).size).toBe(names.length);
 	});
 
+	it("binds the model it just seeded, never a stranger's model that owns the same name", () => {
+		// The user already has a model called `ds-pro` on their own endpoint. The
+		// seeded recommendation is renamed around it, so a lookup by curated name
+		// would resolve to THEIR model — the silent wrong-model case.
+		const taken: ModelCatalogView = {
+			providers: [provider, { id: "p2", kind: "custom", label: "Mine", hasKey: false }],
+			models: [{ id: "stranger", providerId: "p2", name: RECOMMENDED_MODELS[1].name, modelId: "mine/whatever" }],
+		};
+		const catalog = seedCatalogModels(taken, "p1", newId);
+		const preset = seedPresetForAgent(claudeAgent(), catalog, newId)!;
+		expect(Object.values(preset.modelRoles!)).not.toContain("stranger");
+		const opus = catalog.models.find((m) => m.id === preset.modelRoles!.opus);
+		expect(opus?.modelId).toBe(RECOMMENDED_MODELS[1].modelId);
+		expect(opus?.providerId).toBe("p1");
+	});
+
 	it("binds every Claude role to a catalog model id, not to a name", () => {
 		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
 		const preset = seedPresetForAgent(claudeAgent(), catalog, newId)!;

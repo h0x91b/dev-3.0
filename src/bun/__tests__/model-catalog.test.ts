@@ -7,11 +7,13 @@ import {
 	catalogModelWireName,
 	isValidCatalogModelName,
 	modelRolesForAgent,
+	nativeModelIdForWireName,
 	orphanedRoleBindings,
 	providerKeyEnvName,
 	resolveModelRoleLaunch,
 	roleBindingWarnings,
 	sidecarProviderKey,
+	uniqueCustomProviderLabel,
 	validateCatalog,
 	type ModelCatalog,
 } from "../../shared/model-catalog";
@@ -58,6 +60,41 @@ describe("wire names", () => {
 
 	it("has no wire name for a model that is gone", () => {
 		expect(catalogModelWireName(catalog(), "m-deleted")).toBeUndefined();
+	});
+
+	it("reads a wire name back to the provider's own model id, so cost can be priced", () => {
+		expect(nativeModelIdForWireName(catalog(), "openrouter/fast-gremlin")).toBe("deepseek/deepseek-flash");
+		expect(nativeModelIdForWireName(catalog(), "custom-my-box/local")).toBe("qwen3");
+	});
+
+	it("does not claim a model string that is not one of ours", () => {
+		expect(nativeModelIdForWireName(catalog(), "claude-opus-5")).toBeUndefined();
+		expect(nativeModelIdForWireName(catalog(), "openrouter/never-added")).toBeUndefined();
+		expect(nativeModelIdForWireName(catalog(), "nosuchprovider/fast-gremlin")).toBeUndefined();
+	});
+});
+
+describe("uniqueCustomProviderLabel", () => {
+	const boxes = (...labels: string[]) => labels.map((label, i) => ({ id: `p${i}`, kind: "custom" as const, label }));
+
+	it("keeps the label when nothing else answers to it", () => {
+		expect(uniqueCustomProviderLabel([], "Ollama", "http://localhost:11434/v1")).toBe("Ollama");
+	});
+
+	it("names the second endpoint after its host, so both can exist", () => {
+		const label = uniqueCustomProviderLabel(boxes("Custom"), "Custom", "https://b.example.com/v1");
+		expect(label).toBe("Custom (b.example.com)");
+		expect(sidecarProviderKey({ id: "p9", kind: "custom", label })).not.toBe("custom-custom");
+	});
+
+	it("counts up when two endpoints share one host", () => {
+		const existing = boxes("Custom", "Custom (b.example.com)");
+		expect(uniqueCustomProviderLabel(existing, "Custom", "https://b.example.com/other")).toBe("Custom 2");
+	});
+
+	it("ignores a known-kind provider's label — only custom endpoints collide", () => {
+		const existing = [{ id: "p0", kind: "openrouter" as const, label: "Ollama" }];
+		expect(uniqueCustomProviderLabel(existing, "Ollama", "http://localhost:11434/v1")).toBe("Ollama");
 	});
 });
 
@@ -211,9 +248,17 @@ describe("resolveModelRoleLaunch — Claude Code", () => {
 		expect(plan?.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("openrouter/fast-gremlin");
 	});
 
-	it("leaves an unassigned slot alone instead of inventing a model for it", () => {
+	it("fills an unassigned slot with the launch model, never a Claude id the proxy cannot serve", () => {
 		const plan = resolveModelRoleLaunch("claude", bindings, catalog(), RUNTIME);
-		expect(plan?.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBeUndefined();
+		expect(plan?.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe(plan?.modelFlag);
+		expect(plan?.env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe(plan?.modelFlag);
+		expect(plan?.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("openai/my-main");
+	});
+
+	it("prefers the slot's own binding over the stand-in", () => {
+		const plan = resolveModelRoleLaunch("claude", { opus: "m-main", haiku: "m-fast" }, catalog(), RUNTIME);
+		expect(plan?.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("openrouter/fast-gremlin");
+		expect(plan?.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("openai/my-main");
 	});
 
 	it("ignores a binding whose catalog model was deleted", () => {

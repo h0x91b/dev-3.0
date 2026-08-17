@@ -213,6 +213,30 @@ describe("starting", () => {
 		expect(getModelSidecarStatus().lastError).toContain("provider openrouter has no key");
 	});
 
+	it("never publishes a proxy that died right after passing its health check", async () => {
+		// It answers /health, then exits before it is handed out — a bad provider
+		// config it only notices on the first real request looks exactly like this.
+		h.spawnMock.mockImplementation(() => {
+			let release: (code: number) => void = () => undefined;
+			const exited = new Promise<number>((resolve) => (release = resolve));
+			vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+				if (!String(url).endsWith("/health")) throw new Error("unexpected call");
+				release(1);
+				// Let the exit handler run before the health check returns.
+				await Promise.resolve();
+				await Promise.resolve();
+				await Promise.resolve();
+				return { ok: true, status: 200 } as Response;
+			}));
+			return { pid: 5152, exited, stdout: streamOf("upstream refused the key"), stderr: streamOf(""), kill: vi.fn() };
+		});
+		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();
+		await expect(ensureModelSidecar()).rejects.toThrow(/exited right after starting/);
+		const status = getModelSidecarStatus();
+		expect(status.running).toBe(false);
+		expect(status.lastError).toMatch(/exited right after starting/);
+	});
+
 	it("says plainly when this build ships no proxy binary", async () => {
 		process.env.DEV3_BIFROST_BINARY = "/nope/bifrost-http";
 		const { ensureModelSidecar, getModelSidecarStatus } = await freshModule();

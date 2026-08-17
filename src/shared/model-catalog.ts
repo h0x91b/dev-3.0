@@ -88,6 +88,33 @@ export function sidecarProviderKey(provider: CatalogProvider): string {
 	return provider.kind === "custom" ? `custom-${slugify(provider.label)}` : provider.kind;
 }
 
+/**
+ * A label no existing custom provider already resolves to.
+ *
+ * The label IS the identity of a custom endpoint — `sidecarProviderKey` slugifies
+ * it — so two endpoints offered the same fixed label (both "Custom", both
+ * "Ollama") collide and the second one cannot be saved at all. The host of the
+ * endpoint is tried first because it says which box this is; a counter is the
+ * fallback for two paths on one host.
+ */
+export function uniqueCustomProviderLabel(existing: CatalogProvider[], desired: string, baseUrl?: string): string {
+	const taken = new Set(existing.filter((p) => p.kind === "custom").map((p) => slugify(p.label)));
+	if (!taken.has(slugify(desired))) return desired;
+
+	let host = "";
+	try {
+		host = baseUrl ? new URL(baseUrl).host : "";
+	} catch {
+		/* not a URL we can read a host out of */
+	}
+	if (host && !taken.has(slugify(`${desired} ${host}`))) return `${desired} (${host})`;
+
+	for (let n = 2; ; n += 1) {
+		const candidate = `${desired} ${n}`;
+		if (!taken.has(slugify(candidate))) return candidate;
+	}
+}
+
 function envSuffix(providerKey: string): string {
 	return providerKey.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
 }
@@ -120,6 +147,25 @@ export function providerCannotListModels(catalog: ModelCatalog, catalogModelId: 
 	const model = catalog.models.find((m) => m.id === catalogModelId);
 	const provider = catalog.providers.find((p) => p.id === model?.providerId);
 	return provider?.kind === "custom" && provider.apiFormat === "anthropic";
+}
+
+/**
+ * The provider-native id behind a wire name, or undefined when the string is not
+ * one of ours.
+ *
+ * Cost is the reason this exists: a routed transcript records the wire name
+ * (`openrouter/ds-pro`), and the rate table keys off the provider's own slug
+ * (`deepseek/deepseek-v4-pro-0813`). Pricing the wire name means pricing a
+ * user-chosen label — it matches only by luck.
+ */
+export function nativeModelIdForWireName(catalog: ModelCatalog, wireName: string): string | undefined {
+	const slash = wireName.indexOf("/");
+	if (slash === -1) return undefined;
+	const providerKey = wireName.slice(0, slash);
+	const name = wireName.slice(slash + 1);
+	const provider = catalog.providers.find((p) => sidecarProviderKey(p) === providerKey);
+	if (!provider) return undefined;
+	return catalog.models.find((m) => m.providerId === provider.id && m.name === name)?.modelId;
 }
 
 /** How a catalog model is addressed on the wire: `<provider>/<name>`. */
@@ -393,15 +439,24 @@ function claudePlan(
 		ANTHROPIC_BASE_URL: `${runtime.baseUrl}/anthropic`,
 		ANTHROPIC_AUTH_TOKEN: runtime.sessionKey,
 	};
-	for (const [role, name] of Object.entries(wire)) {
-		env[`ANTHROPIC_DEFAULT_${role.toUpperCase()}_MODEL`] = name;
+	// Every slot gets a name, not just the bound ones: the base URL is redirected
+	// for the whole session, so an unbound slot would keep its Claude id and ask
+	// the proxy for a model no provider serves. Claude Code uses the haiku slot
+	// for titles and background work, so that failure lands mid-session rather
+	// than at launch. The stand-in is the model the launch itself names — same
+	// choice codexPlan makes with `main`, and it can cost more than the tier the
+	// slot implies.
+	const standIn = claudeLaunchSlot(wire, presetModel);
+	for (const role of CLAUDE_ROLES) {
+		const name = wire[role.id] ?? standIn;
+		if (name) env[`ANTHROPIC_DEFAULT_${role.id.toUpperCase()}_MODEL`] = name;
 	}
 	// The flag outranks every one of these vars, so it must name a catalog model
 	// too — otherwise the session asks the sidecar for a Claude id it cannot serve.
 	return {
 		env,
 		args: [],
-		modelFlag: claudeLaunchSlot(wire, presetModel),
+		modelFlag: standIn,
 		unsetEnv: ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"],
 	};
 }

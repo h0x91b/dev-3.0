@@ -64,6 +64,9 @@ interface RunningSidecar {
 	sessionKey: string;
 	kill: () => void;
 	output: () => string;
+	/** True once the process is gone — including in the window between passing
+	 *  the health check and being published as the running one. */
+	hasExited: () => boolean;
 }
 
 let running: RunningSidecar | null = null;
@@ -280,6 +283,7 @@ async function launchOnce(binary: string, env: Record<string, string>, sessionKe
 		sessionKey,
 		kill: () => proc.kill(),
 		output: buffer.text,
+		hasExited: () => exited,
 	};
 	return self;
 }
@@ -348,6 +352,12 @@ async function startSidecar(): Promise<RunningSidecar> {
 		try {
 			const port = await choosePort(attempt, remembered);
 			const instance = await launchOnce(binary, env, sessionKey, port);
+			// It can die between answering /health and getting here (a bad provider
+			// config it only notices on the first request, a stolen port, an OOM).
+			// Its own exit handler cannot clean that up — it never saw this instance
+			// published — so publishing it would leave the panel saying "running"
+			// forever with every launch routed at a dead port.
+			if (instance.hasExited()) throw new Error(`The model proxy exited right after starting.\n${instance.output()}`.trim());
 			running = instance;
 			saveSidecarEndpoint({ port: instance.port, sessionKey });
 			lastError = undefined;

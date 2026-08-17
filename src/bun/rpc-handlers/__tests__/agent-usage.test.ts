@@ -1,4 +1,4 @@
-import { buildClaudeUsageDays, buildCodexUsageDays } from "../agent-usage-parse";
+import { buildClaudeUsageDays, buildCodexUsageDays, finalizeUsage, foldClaudeEntry, newUsageState } from "../agent-usage-parse";
 
 // Midday-UTC timestamps so local-day bucketing is stable across test-runner timezones.
 function assistant(
@@ -47,6 +47,25 @@ describe("buildClaudeUsageDays", () => {
 
 		expect(hasUnpriced).toBe(true);
 		expect(day1.startMs).toBeLessThan(day2.startMs);
+	});
+
+	it("prices a routed session through the catalog, because the wire name is a label the rate table never saw", () => {
+		const state = newUsageState();
+		// What a routed transcript actually records: <provider>/<the name the user
+		// invented>. Priced raw it is unpriced; translated it is DeepSeek's rate.
+		foldClaudeEntry(
+			state,
+			assistant("m1", "r1", "openrouter/ds-pro", "2026-06-30T12:00:00Z", { input_tokens: 1_000_000 }),
+		);
+
+		const raw = finalizeUsage(state, "claude");
+		expect(raw.days[0].fullyPriced).toBe(false);
+
+		const priced = finalizeUsage(state, "claude", (model) =>
+			model === "openrouter/ds-pro" ? "deepseek/deepseek-v4-pro-0813" : model,
+		);
+		expect(priced.days[0].fullyPriced).toBe(true);
+		expect(priced.days[0].costUsd).toBeCloseTo(0.435, 6);
 	});
 
 	it("returns an empty report for no usable entries", () => {
