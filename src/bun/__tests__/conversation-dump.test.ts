@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseClaudeTranscript } from "../../shared/conversation-parsers";
+import type { ConversationEvent } from "../../shared/conversation-model";
 import {
 	DEFAULT_DUMP_BUDGET,
 	projectConversationForDump,
@@ -105,7 +106,7 @@ describe("projectConversationForDump", () => {
 		expect(turnAssistantText(dump.turns[0])).toBe("done writing");
 	});
 
-	it("collapses routine session records into counts", () => {
+	it("discards environment and plumbing records entirely", () => {
 		const source = parseClaudeTranscript(
 			jsonl(
 				user("hi"),
@@ -117,9 +118,8 @@ describe("projectConversationForDump", () => {
 		);
 		const dump = projectConversationForDump(source);
 
-		expect(dump.sessionSummary).toEqual({ hook_success: 2, output_style: 1 });
-		expect(dump.sessionEvents).toHaveLength(0);
-		expect(dump.dumpPolicy.collapsedSessionEvents).toBe(3);
+		expect(dump.notices).toHaveLength(0);
+		expect(dump.dumpPolicy.discardedSessionEvents).toBe(3);
 	});
 
 	it("keeps the session records that change a takeover decision", () => {
@@ -135,11 +135,10 @@ describe("projectConversationForDump", () => {
 		);
 		const dump = projectConversationForDump(source);
 
-		expect(dump.sessionEvents.map((e) => sessionRecordType(e))).toEqual([
+		expect(dump.notices.map((e: ConversationEvent) => sessionRecordType(e))).toEqual([
 			"edited_text_file",
 			"hook_non_blocking_error",
 		]);
-		expect(dump.sessionSummary).toEqual({ hook_success: 1 });
 	});
 
 	it("records the budget it applied, so fidelity is never implied", () => {

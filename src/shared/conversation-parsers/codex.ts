@@ -220,6 +220,8 @@ export function parseCodexTranscript(
 		gitBranch: null,
 		model,
 		title: null,
+		// Codex's rollout records no output style / permission mode.
+		environment: { outputStyle: null, permissionMode: null, mode: null },
 		startedAt: span.startedAt,
 		endedAt: span.endedAt,
 		turns,

@@ -35,7 +35,15 @@ export interface DumpBudget {
 
 export const DEFAULT_DUMP_BUDGET: DumpBudget = { action: 2000, payload: 1000 };
 
-/** Session-layer record types kept as real events; the rest become counts. */
+/**
+ * The only session-layer records that reach a dump. Everything else in that layer
+ * is environment or plumbing — measured across five real sessions: 810
+ * `hook_success` records holding 301 KB of `{"stdout":"{}\n","exitCode":0}`, a
+ * 158 KB skill catalogue re-listed five times, tool/MCP/agent catalogues, the
+ * output style logged 293 times, `last-prompt` duplicating the prompt, and
+ * `ai-title` which is already the `title` field. None of it says anything about
+ * the work, and none of it is worth a per-type counter either.
+ */
 const KEPT_SESSION_TYPES = new Set([
 	// The user edited a file outside the agent — the next agent must know.
 	"edited_text_file",
@@ -49,10 +57,9 @@ const KEPT_SESSION_TYPES = new Set([
 /** The dump's own shape: a projection of ParsedConversation, not the same type. */
 export interface ConversationDump extends Omit<ParsedConversation, "turns" | "sessionEvents"> {
 	turns: DumpTurn[];
-	/** Only the session records that carry a decision, in full. */
-	sessionEvents: ConversationEvent[];
-	/** Everything else in the session layer, as counts per record type. */
-	sessionSummary: Record<string, number>;
+	/** The handful of session records that change a takeover decision, with their
+	 *  content: a file edited outside the agent, a hook that failed, a compaction. */
+	notices: ConversationEvent[];
 	/** What this projection dropped, so a reader is never misled about fidelity. */
 	dumpPolicy: {
 		budget: DumpBudget;
@@ -62,8 +69,8 @@ export interface ConversationDump extends Omit<ParsedConversation, "turns" | "se
 		truncatedValues: number;
 		/** Fields omitted because another field already holds the same bytes. */
 		omittedDuplicates: string[];
-		/** Session records collapsed into `sessionSummary`. */
-		collapsedSessionEvents: number;
+		/** Session-layer records discarded as environment or plumbing. */
+		discardedSessionEvents: number;
 	};
 }
 
@@ -149,29 +156,21 @@ export function projectConversationForDump(
 		return { ...rest, events: turn.events.map((event) => projectEvent(event, budget, cutter)) };
 	});
 
-	const sessionEvents: ConversationEvent[] = [];
-	const sessionSummary: Record<string, number> = {};
-	for (const event of parsed.sessionEvents) {
-		const type = sessionRecordType(event);
-		if (KEPT_SESSION_TYPES.has(type)) {
-			sessionEvents.push(projectEvent(event, budget, cutter));
-			continue;
-		}
-		sessionSummary[type] = (sessionSummary[type] ?? 0) + 1;
-	}
+	const notices = parsed.sessionEvents
+		.filter((event) => KEPT_SESSION_TYPES.has(sessionRecordType(event)))
+		.map((event) => projectEvent(event, budget, cutter));
 
 	const { turns: _t, sessionEvents: _s, ...header } = parsed;
 	return {
 		...header,
 		turns,
-		sessionEvents,
-		sessionSummary,
+		notices,
 		dumpPolicy: {
 			budget,
 			truncatedChars: cutter.chars,
 			truncatedValues: cutter.values,
 			omittedDuplicates: ["turns[].assistantText", "events[].tool.canonical.body", "events[].usage"],
-			collapsedSessionEvents: parsed.sessionEvents.length - sessionEvents.length,
+			discardedSessionEvents: parsed.sessionEvents.length - notices.length,
 		},
 	};
 }
