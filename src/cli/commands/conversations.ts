@@ -11,6 +11,7 @@ import {
 	writeConversationDump,
 } from "../../bun/conversation-parse";
 import { renderHandoff } from "../../shared/conversation-render";
+import { DEFAULT_DUMP_BUDGET, type DumpBudget } from "../../shared/conversation-dump";
 import { atomicWriteFile } from "../../bun/atomic-write";
 import type { ParsedArgs } from "../args";
 import { detectFromWorktreePath, readProjectDirect, resolveProjectId, type CliContext } from "../context";
@@ -146,13 +147,21 @@ async function searchCmd(args: ParsedArgs, context: CliContext | null): Promise<
 	});
 }
 
+/** Parse a numeric flag, rejecting garbage rather than silently defaulting. */
+function numberFlag(raw: string | undefined, fallback: number, label: string): number {
+	if (raw === undefined) return fallback;
+	const value = Number.parseInt(raw, 10);
+	if (Number.isNaN(value) || value < 0) exitUsage(`${label} must be a non-negative number of characters.`);
+	return value;
+}
+
 /**
  * Parse this worktree's native agent transcripts into dev3's own conversation
  * model and write them out as JSON. The native file stays the source of truth —
  * a dump is a re-derivable cache, stamped with the parser version.
  */
 async function dumpCmd(args: ParsedArgs, _context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["raw", "stdout", "latest", "out"]);
+	rejectUnknownFlags(args, ["raw", "stdout", "latest", "out", "verbatim", "pretty", "payload", "action"]);
 
 	const info = detectFromWorktreePath(process.cwd());
 	if (!info) {
@@ -182,10 +191,19 @@ async function dumpCmd(args: ParsedArgs, _context: CliContext | null): Promise<v
 	}
 
 	const dir = args.flags.out || conversationDumpDir(taskContainer);
+	const budget: DumpBudget = {
+		action: numberFlag(args.flags.action, DEFAULT_DUMP_BUDGET.action, "--action"),
+		payload: numberFlag(args.flags.payload, DEFAULT_DUMP_BUDGET.payload, "--payload"),
+	};
+	const writeOptions = {
+		budget,
+		verbatim: args.flags.verbatim === "true",
+		pretty: args.flags.pretty === "true",
+	};
 
 	process.stdout.write(`Parsed ${selected.length} conversation(s) → ${dir}\n\n`);
 	for (const { conversation } of selected) {
-		const path = await writeConversationDump(dir, conversationDumpName(conversation), conversation);
+		const path = await writeConversationDump(dir, conversationDumpName(conversation), conversation, writeOptions);
 		const s = conversation.stats;
 		process.stdout.write(`${conversation.source}  ${conversation.sessionId ?? "(no session id)"}\n`);
 		process.stdout.write(

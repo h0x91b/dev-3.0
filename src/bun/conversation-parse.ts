@@ -6,6 +6,7 @@ import {
 	type ParseConversationOptions,
 } from "../shared/conversation-parsers";
 import type { ConversationSource, ParsedConversation } from "../shared/conversation-model";
+import { DEFAULT_DUMP_BUDGET, projectConversationForDump, type DumpBudget } from "../shared/conversation-dump";
 import { atomicWriteFile } from "./atomic-write";
 import { transcriptFilesForWorktree } from "./conversation-search";
 
@@ -89,14 +90,32 @@ export function conversationDumpName(conversation: ParsedConversation): string {
 	return `${conversation.source}-${session}.json`;
 }
 
-/** Write one parsed conversation as pretty JSON. Returns the path written. */
+export interface WriteDumpOptions {
+	budget?: DumpBudget;
+	/** Keep everything, at full length — format archaeology, not a normal dump. */
+	verbatim?: boolean;
+	/** Indent the JSON. Off by default: indentation alone was 16% of the file, and
+	 *  every reader so far has been a script, not a pair of eyes. */
+	pretty?: boolean;
+}
+
+/**
+ * Write one conversation's dump. By default this writes the *projection*
+ * (see conversation-dump.ts): duplicates omitted, session bookkeeping collapsed
+ * to counts, payloads truncated per role.
+ */
 export async function writeConversationDump(
 	dir: string,
 	fileName: string,
 	conversation: ParsedConversation,
+	options: WriteDumpOptions = {},
 ): Promise<string> {
 	mkdirSync(dir, { recursive: true });
 	const path = `${dir}/${fileName}`;
-	await atomicWriteFile(path, `${JSON.stringify(conversation, null, 2)}\n`);
+	const payload = options.verbatim
+		? conversation
+		: projectConversationForDump(conversation, options.budget ?? DEFAULT_DUMP_BUDGET);
+	const json = options.pretty ? JSON.stringify(payload, null, 2) : JSON.stringify(payload);
+	await atomicWriteFile(path, `${json}\n`);
 	return path;
 }

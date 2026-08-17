@@ -41,6 +41,24 @@ A parsed conversation that still speaks its source agent's dialect cannot be re-
 
 **A renderer** (`src/shared/conversation-render.ts`, `dev3 conversations handoff`): the retelling, as one message. **A native transcript for another client is deliberately not attempted** — `--resume` reads only the agent's own file, Claude signs its thinking blocks so they cannot be forged, and the tool sets do not match. Any cross-client continue is a retelling; the renderer keeps prompts and replies verbatim and bounds tool output (default 2048 characters per call; this session renders to 76 KB with output dropped, 169 KB with it kept).
 
+## What a dump keeps — decided by cold-agent experiment, not taste
+
+The first dump of this task's own session was 1.09 MB, and the obvious question was whether the full tool input/output earns that. Rather than judge it from inside the conversation, three agents with no prior context were each handed the same dump at a different truncation budget and asked to take the work over cold. A fourth measured the file's byte composition.
+
+| Budget | Size | Takeover score |
+|---|---:|---:|
+| Full | 1 086 286 B | 8 / 10 |
+| 1 000 chars | 764 815 B | 7 / 10 |
+| 100 chars | 589 128 B | 6.5 / 10 |
+
+**The curve is nearly flat, and all three reached the same verdict independently: the dump is an excellent specification and a poor codebase — a real takeover starts by opening the git branch.** Cutting 46% of the file cost 1.5 points, and every loss they named (file contents, command bodies, a 36 KB file-read output) is re-derivable from the repository or by re-running. All three also listed the same dead weight: the session-event array, per-event token usage, and event ids.
+
+The measurement found duplication nobody had noticed: `tool.canonical` was 98.2% byte-identical to the same event's `tool.input`, and `turns[].assistantText` was 100% identical to message events of its own turn — 17.9% of the file stored twice. Pretty-printing was another 16.3%, and the 908 payload-free session records 16.2%.
+
+`src/shared/conversation-dump.ts` therefore makes the dump a **projection** of the lossless in-memory parse: duplicated fields omitted, per-event usage dropped, routine session records collapsed into `sessionSummary` counts (keeping only `edited_text_file`, `hook_non_blocking_error` and compaction markers as real events — the three that change a takeover decision), and payloads truncated per role. Budgets are per role because one number cannot serve both: an absolute worktree path is ~92 characters on its own, so the 100-char cap decapitated every path, while tool output has a median of 243 characters and two values holding 37% of all output bytes. Defaults: 2 000 characters for commands and paths, 1 000 for tool output and file contents. `dumpPolicy` records what was cut, so fidelity is never implied. `--verbatim` opts out entirely.
+
+Result on this task's five sessions (main agent plus four subagents, which is exactly the "many agents in one task" case the per-task directory was chosen for): 1.0 MB total, where the main session alone previously took 1.09 MB.
+
 ## Risks
 
 - Both formats are private and mutate between releases. Mitigation is the unknown-record counter plus `parserVersion`, so a drift shows up as a warning instead of silent loss.

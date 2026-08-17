@@ -136,6 +136,16 @@ describe("parseClaudeTranscript", () => {
 		expect(parsed.stats.unknownRecords).toBe(0);
 	});
 
+	it("knows the subagent-transcript record type", () => {
+		// Found in the wild by the unknown-record counter, not anticipated.
+		const parsed = parseClaudeTranscript(
+			jsonl({ type: "agent-setting", agentSetting: "general-purpose", sessionId: "sess-1" }),
+			"/t.jsonl",
+		);
+		expect(parsed.stats.unknownRecords).toBe(0);
+		expect(parsed.fidelity.level).toBe("full");
+	});
+
 	it("flags an unmapped record type instead of silently skipping it", () => {
 		const parsed = parseClaudeTranscript(jsonl({ type: "brand-new-thing", sessionId: "sess-1" }), "/t.jsonl");
 		expect(parsed.stats.unknownRecords).toBe(1);

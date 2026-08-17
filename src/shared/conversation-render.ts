@@ -20,6 +20,7 @@ import {
 	type ParsedConversation,
 } from "./conversation-model";
 import { describeToolCall, filesTouched } from "./conversation-tools";
+import { turnAssistantText } from "./conversation-dump";
 
 /** Where the retelling is going. Only the framing differs — the body is shared. */
 export type RenderTarget = "markdown" | "claude" | "codex";
@@ -138,8 +139,10 @@ function renderTurn(
 		lines.push("**What it did:**", "", ...actions, "");
 	}
 
-	if (turn.assistantText) {
-		lines.push("**What it answered:**", "", turn.assistantText.trim(), "");
+	// Derived, not read from a stored field — the dump omits that duplicate.
+	const answer = turn.assistantText ?? turnAssistantText(turn);
+	if (answer) {
+		lines.push("**What it answered:**", "", answer.trim(), "");
 	}
 
 	return lines;

@@ -30,8 +30,18 @@ import {
 import { normalizeToolCall } from "../conversation-tools";
 import type { ParseConversationOptions } from "./types";
 
-/** Non-message record types we map to lifecycle events instead of counting as unknown. */
-const LIFECYCLE_TYPES = new Set(["system", "mode", "permission-mode", "last-prompt", "summary", "ai-title"]);
+/** Non-message record types we map to lifecycle events instead of counting as unknown.
+ *  `agent-setting` records the subagent type in use and shows up in subagent
+ *  transcripts — it was found by the unknown-record counter, not by guessing. */
+const LIFECYCLE_TYPES = new Set([
+	"system",
+	"mode",
+	"permission-mode",
+	"last-prompt",
+	"summary",
+	"ai-title",
+	"agent-setting",
+]);
 
 function usageFrom(message: Record<string, unknown> | undefined): ConversationUsage | undefined {
 	const usage = recordAt(message, "usage");
