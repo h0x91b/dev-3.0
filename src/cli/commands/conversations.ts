@@ -37,7 +37,7 @@ function loadProjectTasks(dev3Home: string, slug: string): Task[] {
  * blob directory once keeps the search's history signal intact; a missing or
  * unparseable sidecar just contributes nothing.
  */
-function loadArchivedHistory(dev3Home: string, slug: string): Map<string, TaskHistoryEntry[]> {
+export function loadArchivedHistory(dev3Home: string, slug: string): Map<string, TaskHistoryEntry[]> {
 	const byTask = new Map<string, TaskHistoryEntry[]>();
 	const dir = `${dev3Home}/data/${slug}/task-blobs`;
 	if (!existsSync(dir)) return byTask;
