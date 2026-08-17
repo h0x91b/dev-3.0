@@ -3417,6 +3417,14 @@ export type AppRPCSchema = {
 				params: { catalog: ModelCatalogView; providerKeys?: Record<string, string> };
 				response: ModelCatalogView;
 			};
+			/** One provider's stored key in plain text, for the settings field's reveal
+			 *  control. Asked for per provider and only on an explicit click: a
+			 *  credential crosses to the renderer when the user looks at it, never
+			 *  because a screen happened to load. */
+			modelCatalogRevealKey: {
+				params: { providerId: string };
+				response: { key: string };
+			};
 			/** Live state of the model-catalog proxy sidecar. */
 			modelSidecarStatus: {
 				params: void;

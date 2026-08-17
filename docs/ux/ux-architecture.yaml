@@ -704,6 +704,13 @@ ux_architecture:
       token_role: "neutral (lock glyph text-fg-muted); toast level info"
       status: "proposed"
       rationale: "The flag protects one moment — the camera is on — against one accident: a click into the wrong project. The guard therefore belongs at the routing choke point, not in the ~10 entry points that reach it. Visible-but-locked (blurred name + lock + toast) keeps the demo continuous, which is the same reason decision 161 chose blur over text replacement. See PRODUCT_UX_BIBLE §3 + §10 + UX_DECISIONS 2026-08-05."
+    - id: "stored-secret-revealed-before-edit"
+      when: { feature_class: "configuration", trait: "security_sensitive_stored_credential" }
+      place_in: ["the field's own cell in the settings table: masked read-only input + one resting-visible ghost eye icon button (labelled, aria-pressed, tooltip) that fetches THAT provider's secret through its own RPC; after reveal the field is editable and an emptied field removes the credential on save; the revealed value carries streamer-private"]
+      reject: ["shipping credentials to the renderer with the object they belong to", "an editable field over a secret the user cannot see", "a separate Remove key button next to the field", "hover-to-reveal", "logging or toasting the revealed value"]
+      token_role: "icon / ghost (text-fg-3 resting, text-fg + bg-elevated on hover); the pending-removal caption is text-danger"
+      status: "observed"
+      rationale: "The reveal IS the edit gate: a secret you cannot see cannot be safely replaced, and without it 'clear the field to remove the key' is indistinguishable from 'I typed nothing'. Per-click, per-provider fetching keeps a credential off the wire until the user looks at it — which matters because the same UI is served to a browser over a remote tunnel. See UX_DECISIONS 2026-08-17."
     - id: "inline-help-placement"
       when: { feature_class: "onboarding_help" }
       place_in: ["help.ts registry topic + HelpSpot in a header-bearing section", "help-mode coverage via data-help-id (dense/headerless zones)", "application_menu.Help / ⇧⌘/ / command_palette entry"]

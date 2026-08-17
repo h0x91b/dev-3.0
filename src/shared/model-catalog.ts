@@ -622,30 +622,3 @@ export function orphanedRoleBindings(bindings: ModelRoleBindings | undefined, ca
 		.map(([role]) => role);
 }
 
-export type RoleWarningCode = "openrouter-claude-tools";
-
-export interface RoleWarning {
-	code: RoleWarningCode;
-	roleId: string;
-}
-
-/**
- * Combinations that are allowed but known to disappoint. Currently one: the
- * sidecar's own documentation reports OpenRouter streaming empty tool-call
- * arguments to Claude Code, which breaks every file edit. Unverified on our
- * side — hence a warning in the form, never a block.
- */
-export function roleBindingWarnings(
-	baseCommand: string,
-	bindings: ModelRoleBindings | undefined,
-	catalog: ModelCatalog,
-): RoleWarning[] {
-	if (agentKey(baseCommand) !== "claude" || !bindings) return [];
-	const warnings: RoleWarning[] = [];
-	for (const [roleId, modelId] of Object.entries(bindings)) {
-		const model = catalog.models.find((m) => m.id === modelId);
-		const provider = catalog.providers.find((p) => p.id === model?.providerId);
-		if (provider?.kind === "openrouter") warnings.push({ code: "openrouter-claude-tools", roleId });
-	}
-	return warnings;
-}

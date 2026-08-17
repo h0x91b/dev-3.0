@@ -1,7 +1,8 @@
 /**
  * RPC surface of the model catalog: read it, write it, and drive its proxy
- * sidecar. Credentials go in and never come back out — the renderer only ever
- * learns whether a provider has a key.
+ * sidecar. A credential never rides along with the catalog — the view carries
+ * only `hasKey`, and the one way back out is `modelCatalogRevealKey`, per
+ * provider and only when the user clicks to look at it.
  */
 
 import type { ModelCatalogView, ModelSidecarStatus } from "../../shared/types";
@@ -87,6 +88,16 @@ export async function modelCatalogSave(params: {
 export const modelCatalogHandlers = {
 	modelCatalogGet: (): ModelCatalogView => toView(loadModelCatalog(), loadProviderKeys()),
 	modelCatalogSave,
+	/** The one credential the user asked to look at. Nothing here is logged: the
+	 *  point of the reveal control is a value on screen, not in a log file. */
+	modelCatalogRevealKey: (params: { providerId: string }): { key: string } => {
+		// Only a provider the catalog actually holds: the same file also stores the
+		// sidecar's encryption key under a reserved slot, and nothing may name it.
+		const known = loadModelCatalog().providers.some((p) => p.id === params.providerId);
+		const key = known ? loadProviderKeys()[params.providerId] : undefined;
+		if (!key) throw new Error("This provider has no stored key.");
+		return { key };
+	},
 	modelSidecarStatus: (): ModelSidecarStatus => getModelSidecarStatus(),
 	modelSidecarStart: async (): Promise<ModelSidecarStatus> => {
 		await ensureModelSidecar();

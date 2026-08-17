@@ -11,7 +11,6 @@ import {
 	orphanedRoleBindings,
 	providerKeyEnvName,
 	resolveModelRoleLaunch,
-	roleBindingWarnings,
 	sidecarProviderKey,
 	uniqueCustomProviderLabel,
 	validateCatalog,
@@ -442,18 +441,3 @@ describe("validation", () => {
 	});
 });
 
-describe("warnings", () => {
-	it("warns when an OpenRouter model serves a Claude Code role", () => {
-		expect(roleBindingWarnings("claude", { sonnet: "m-fast" }, catalog())).toEqual([
-			expect.objectContaining({ code: "openrouter-claude-tools", roleId: "sonnet" }),
-		]);
-	});
-
-	it("stays quiet for the same model under Codex", () => {
-		expect(roleBindingWarnings("codex", { main: "m-fast" }, catalog())).toEqual([]);
-	});
-
-	it("stays quiet for a direct provider under Claude Code", () => {
-		expect(roleBindingWarnings("claude", { opus: "m-main" }, catalog())).toEqual([]);
-	});
-});

@@ -1,10 +1,6 @@
 import { useMemo } from "react";
 import type { AgentConfiguration, ModelCatalogView } from "../../../shared/types";
-import {
-	modelRolesForAgent,
-	orphanedRoleBindings,
-	roleBindingWarnings,
-} from "../../../shared/model-catalog";
+import { modelRolesForAgent, orphanedRoleBindings } from "../../../shared/model-catalog";
 import Select, { type SelectOption } from "../Select";
 import type { TFunction } from "../../i18n";
 
@@ -30,7 +26,6 @@ export default function PresetModelRoles({
 		() => ({ providers: catalog?.providers ?? [], models: catalog?.models ?? [] }),
 		[catalog],
 	);
-	const warnings = roleBindingWarnings(baseCommand, bindings, asCatalog);
 	const orphans = orphanedRoleBindings(bindings, asCatalog);
 
 	if (roles.length === 0 || !catalog || catalog.models.length === 0) return null;
@@ -76,13 +71,6 @@ export default function PresetModelRoles({
 
 			{orphans.length > 0 ? (
 				<p className="text-danger text-xs">{t("catalog.roleOrphan", { roles: orphans.join(", ") })}</p>
-			) : null}
-
-			{warnings.length > 0 ? (
-				<div className="rounded-lg border border-warning/30 bg-warning/10 p-2.5">
-					<p className="text-warning text-xs font-semibold">{t("catalog.warnOpenRouterTitle")}</p>
-					<p className="text-fg-2 text-xs leading-relaxed mt-0.5">{t("catalog.warnOpenRouterBody")}</p>
-				</div>
 			) : null}
 		</div>
 	);

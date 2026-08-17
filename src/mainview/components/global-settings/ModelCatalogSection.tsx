@@ -28,6 +28,103 @@ const REMOVE_CLASS =
 	"px-2.5 py-1 rounded-lg text-danger text-xs hover:bg-danger/10 border border-transparent hover:border-danger/30 transition-colors";
 const CELL_CLASS = "align-top px-2 py-2 min-w-0";
 
+/** What a stored key looks like before the user asks to see it. Never leaves the
+ *  renderer: an edit always replaces the whole value, so this cannot be saved. */
+const KEY_MASK = "••••••••••••";
+
+/**
+ * One provider's API key: masked until the user clicks the eye.
+ *
+ * A stored key is READ-ONLY while masked — changing a secret you cannot see is
+ * how a working key gets half-overwritten, and it made "clear the field to
+ * remove the key" impossible to offer. Revealing fetches that one key (nothing
+ * arrives with the catalog), after which the field behaves like any other:
+ * editing replaces the key, emptying it removes the key on save.
+ *
+ * The revealed value carries `streamer-private`, so a recording blurs it —
+ * bible §10 rules identity/secret values, and this is one.
+ */
+function ProviderKeyField({
+	t,
+	provider,
+	draft,
+	onDraft,
+}: {
+	t: TFunction;
+	provider: ModelCatalogView["providers"][number];
+	draft: string | undefined;
+	onDraft: (value: string | undefined) => void;
+}) {
+	const [revealed, setRevealed] = useState<string | null>(null);
+	const [shown, setShown] = useState(false);
+
+	const unlocked = !provider.hasKey || revealed !== null;
+	const value = draft ?? revealed ?? (provider.hasKey ? KEY_MASK : "");
+	const removing = provider.hasKey && draft === "";
+
+	const toggle = async () => {
+		if (!provider.hasKey || revealed !== null) {
+			setShown(!shown);
+			return;
+		}
+		try {
+			const { key } = await api.request.modelCatalogRevealKey({ providerId: provider.id });
+			setRevealed(key);
+			setShown(true);
+		} catch (err) {
+			toast.error(t("catalog.providerKeyRevealError", { error: String(err) }), { source: "settings" });
+		}
+	};
+
+	return (
+		<>
+			<div className="flex items-center gap-1.5">
+				<input
+					id={`provider-key-${provider.id}`}
+					type={shown ? "text" : "password"}
+					aria-label={t("catalog.providerKey")}
+					value={value}
+					readOnly={!unlocked}
+					placeholder="sk-…"
+					autoComplete="off"
+					spellCheck={false}
+					onChange={(event) => onDraft(event.target.value)}
+					className={`${INPUT_CLASS} font-mono ${shown ? "streamer-private" : ""} ${unlocked ? "" : "cursor-default"}`}
+				/>
+				<button
+					type="button"
+					onClick={() => void toggle()}
+					title={shown ? t("catalog.providerKeyHide") : t("catalog.providerKeyShow")}
+					aria-label={shown ? t("catalog.providerKeyHide") : t("catalog.providerKeyShow")}
+					aria-pressed={shown}
+					className="shrink-0 p-1.5 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+				>
+					<KeyEyeIcon off={shown} />
+				</button>
+			</div>
+			<span className={`block text-xs mt-1 ${removing ? "text-danger" : "text-fg-3"}`}>
+				{removing
+					? t("catalog.providerKeyRemoving")
+					: provider.hasKey
+						? t("catalog.providerKeyStored")
+						: t("catalog.providerKeyMissing")}
+			</span>
+		</>
+	);
+}
+
+/** Open eye = "show me"; struck-through eye = "hide it again". Stroke-only, so
+ *  it sits at the same weight as the row's other glyphs. */
+function KeyEyeIcon({ off }: { off: boolean }) {
+	return (
+		<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+			<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" strokeLinecap="round" strokeLinejoin="round" />
+			<circle cx="12" cy="12" r="2.8" />
+			{off ? <path d="M4 20 20 4" strokeLinecap="round" /> : null}
+		</svg>
+	);
+}
+
 /** One editable table. Rows carry the controls; the header names the columns,
  *  and each control repeats that name for screen readers. */
 function EditTable({
@@ -86,6 +183,10 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 	const [saved, setSaved] = useState<ModelCatalogView>(EMPTY);
 	const [draft, setDraft] = useState<ModelCatalogView>(EMPTY);
 	const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+	/** Bumped on every successful save, to remount the key fields: a revealed key
+	 *  is local to its field, and after a save it names a key that no longer
+	 *  exists (removed) or is no longer current (replaced). */
+	const [savedRevision, setSavedRevision] = useState(0);
 	const [status, setStatus] = useState<ModelSidecarStatus | null>(null);
 	const [available, setAvailable] = useState<string[] | null>(null);
 	const [listError, setListError] = useState<string | null>(null);
@@ -232,6 +333,7 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 			setSaved(view);
 			setDraft(view);
 			setKeyDrafts({});
+			setSavedRevision((n) => n + 1);
 			toast.success(t("catalog.saved"), { source: "settings" });
 			void refreshStatus();
 		} catch (err) {
@@ -436,28 +538,18 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 										</span>
 									</td>
 									<td className={`${CELL_CLASS} w-64`}>
-										<input
-											id={`provider-key-${provider.id}`}
-											type="password"
-											aria-label={t("catalog.providerKey")}
-											value={keyDrafts[provider.id] ?? ""}
-											placeholder={provider.hasKey ? "••••••••" : "sk-…"}
-											autoComplete="off"
-											spellCheck={false}
-											onChange={(event) => {
-												// An empty field means "I typed nothing here", not "delete the
-												// key I cannot see": the input shows a masked placeholder, so
-												// clearing it back would silently erase a stored secret.
+										<ProviderKeyField
+											key={`${provider.id}:${savedRevision}`}
+											t={t}
+											provider={provider}
+											draft={keyDrafts[provider.id]}
+											onDraft={(value) => {
 												const next = { ...keyDrafts };
-												if (event.target.value) next[provider.id] = event.target.value;
-												else delete next[provider.id];
+												if (value === undefined) delete next[provider.id];
+												else next[provider.id] = value;
 												setKeyDrafts(next);
 											}}
-											className={`${INPUT_CLASS} font-mono`}
 										/>
-										<span className="block text-fg-3 text-xs mt-1">
-											{provider.hasKey ? t("catalog.providerKeyStored") : t("catalog.providerKeyMissing")}
-										</span>
 									</td>
 									<td className={`${CELL_CLASS} text-right`}>
 										<button type="button" onClick={() => void removeProvider(provider.id)} className={REMOVE_CLASS}>

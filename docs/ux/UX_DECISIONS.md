@@ -10,6 +10,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Why:** Click-only made both readouts unfindable once they left the header bar — a row that reacts to nothing reads as a label. Opening below/over the row was rejected because it covers the menu the pointer is still using; keeping click-only plus a chevron was rejected as chrome that still costs a click to learn.
 - **Status:** Implemented — `src/mainview/utils/menuFlyout.ts`, `MemoryHeadroomIndicator.tsx`, `TmuxSessionManager.tsx`, `GlobalHeader.tsx`; PRODUCT_UX_BIBLE §12.6.
 
+## 2026-08-17 — A stored secret is read-only until the user reveals it
+
+- **Rule:** A settings field holding a saved credential renders a mask and is READ-ONLY; a resting-visible eye icon (`icon`/ghost, labelled + `aria-pressed`) fetches that one secret on click via its own RPC, and only then is the field editable — where emptying it means "remove the key". The revealed value carries `streamer-private`.
+- **Why:** editing a secret you cannot see half-overwrites working keys and makes "clear to remove" impossible to offer, so the reveal is the edit gate; rejected alternative — send every key with the catalog and mask it client-side (a credential would cross to the renderer, including over a remote tunnel, because a screen loaded).
+- **Status:** Implemented. Evidence: `docs/ux/ux-architecture.yaml` `stored-secret-revealed-before-edit`, `src/mainview/components/global-settings/ModelCatalogSection.tsx` (`ProviderKeyField`), `src/bun/rpc-handlers/model-catalog.ts` (`modelCatalogRevealKey`).
+
 ## 2026-08-14 — An agent-to-agent message toast names two tasks and owns its own hue
 
 - **Rule:** The toast for `dev3 message` between two agents renders `#fromSeq title → #toSeq title` as its source line, uses the non-severity `agent` variant (violet `--agent`), and clicks through to the RECEIVER; every other toast keeps one origin and a severity variant.

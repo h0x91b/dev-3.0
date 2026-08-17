@@ -67,16 +67,6 @@ describe("when the block appears at all", () => {
 });
 
 describe("warnings the user must see before launching", () => {
-	it("warns when an OpenRouter model serves a Claude Code role", () => {
-		renderRoles("claude", { modelRoles: { sonnet: "m-fast" } });
-		expect(screen.getByText("catalog.warnOpenRouterTitle")).toBeTruthy();
-	});
-
-	it("keeps quiet for a direct provider", () => {
-		renderRoles("claude", { modelRoles: { opus: "m-main" } });
-		expect(screen.queryByText("catalog.warnOpenRouterTitle")).toBeNull();
-	});
-
 	it("names a role left pointing at a deleted model", () => {
 		renderRoles("claude", { modelRoles: { opus: "m-gone" } });
 		expect(screen.getByText("catalog.roleOrphan")).toBeTruthy();

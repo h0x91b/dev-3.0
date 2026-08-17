@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ModelCatalog } from "../../shared/model-catalog";
 import type { ModelCatalogView } from "../../shared/types";
 
 const h = vi.hoisted(() => ({
 	save: vi.fn(),
-	load: vi.fn(() => ({ providers: [], models: [] })),
+	load: vi.fn((): ModelCatalog => ({ providers: [], models: [] })),
 	loadKeys: vi.fn(() => ({}) as Record<string, string>),
 	setKey: vi.fn(),
 	forget: vi.fn(),
@@ -26,7 +27,7 @@ vi.mock("../model-sidecar", () => ({
 	stopModelSidecar: vi.fn(),
 }));
 
-import { modelCatalogSave } from "../rpc-handlers/model-catalog";
+import { modelCatalogHandlers, modelCatalogSave } from "../rpc-handlers/model-catalog";
 
 const OPENROUTER = { id: "p-1", kind: "openrouter" as const, label: "OpenRouter", hasKey: true };
 
@@ -62,5 +63,29 @@ describe("saving the catalog", () => {
 			models: [],
 		};
 		await expect(modelCatalogSave({ catalog: view })).rejects.toThrow(/already serves "custom-my-box"/);
+	});
+});
+
+describe("revealing a stored key", () => {
+	it("hands back the key of a provider the catalog holds", () => {
+		h.load.mockReturnValue({ providers: [{ id: "p-1", kind: "openrouter", label: "OpenRouter" }], models: [] });
+		h.loadKeys.mockReturnValue({ "p-1": "sk-or-live" });
+		expect(modelCatalogHandlers.modelCatalogRevealKey({ providerId: "p-1" })).toEqual({ key: "sk-or-live" });
+	});
+
+	it("refuses a provider that has no key, instead of answering with an empty string", () => {
+		h.load.mockReturnValue({ providers: [{ id: "p-1", kind: "openrouter", label: "OpenRouter" }], models: [] });
+		h.loadKeys.mockReturnValue({});
+		expect(() => modelCatalogHandlers.modelCatalogRevealKey({ providerId: "p-1" })).toThrow(/no stored key/);
+	});
+
+	// The keys file also holds the sidecar's at-rest encryption key under a
+	// reserved slot. Naming a slot that is not a provider must reveal nothing.
+	it("never reveals a slot that is not a provider in the catalog", () => {
+		h.load.mockReturnValue({ providers: [], models: [] });
+		h.loadKeys.mockReturnValue({ "dev3:sidecar-encryption-key": "deadbeef" });
+		expect(() =>
+			modelCatalogHandlers.modelCatalogRevealKey({ providerId: "dev3:sidecar-encryption-key" }),
+		).toThrow(/no stored key/);
 	});
 });

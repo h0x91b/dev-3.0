@@ -14,6 +14,7 @@ vi.mock("../../../rpc", () => ({
 			modelSidecarStart: vi.fn(),
 			modelSidecarStop: vi.fn(),
 			modelCatalogListModels: vi.fn(),
+			modelCatalogRevealKey: vi.fn(),
 			getAgents: vi.fn(),
 		},
 	},
@@ -88,11 +89,73 @@ describe("editing the catalog", () => {
 		expect(screen.getByDisplayValue("fast-gremlin")).toBeTruthy();
 	});
 
-	it("says a key is stored without ever showing it", async () => {
+	it("shows a stored key as a mask, and refuses to be edited while masked", async () => {
 		renderSection();
 		expect(await screen.findByText("catalog.providerKeyStored")).toBeTruthy();
-		const key = screen.getByPlaceholderText("••••••••") as HTMLInputElement;
-		expect(key.value).toBe("");
+		const key = screen.getByLabelText("catalog.providerKey") as HTMLInputElement;
+		expect(key.type).toBe("password");
+		expect(key.readOnly).toBe(true);
+		// The mask is a stand-in, never the secret: nothing was asked for it.
+		expect(key.value).not.toContain("sk-");
+		expect(api.request.modelCatalogRevealKey).not.toHaveBeenCalled();
+	});
+
+	it("reveals that one provider's key only when asked, and only that one", async () => {
+		vi.mocked(api.request.modelCatalogRevealKey).mockResolvedValue({ key: "sk-or-live" });
+		renderSection();
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.providerKeyShow" }));
+		const key = await screen.findByDisplayValue("sk-or-live");
+		expect((key as HTMLInputElement).type).toBe("text");
+		expect(api.request.modelCatalogRevealKey).toHaveBeenCalledWith({ providerId: "p-or" });
+		expect(api.request.modelCatalogRevealKey).toHaveBeenCalledTimes(1);
+	});
+
+	it("blurs the revealed key under streamer mode instead of putting a secret on the recording", async () => {
+		vi.mocked(api.request.modelCatalogRevealKey).mockResolvedValue({ key: "sk-or-live" });
+		renderSection();
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.providerKeyShow" }));
+		const key = await screen.findByDisplayValue("sk-or-live");
+		expect(key.className).toContain("streamer-private");
+	});
+
+	it("removes the key when the revealed field is emptied", async () => {
+		vi.mocked(api.request.modelCatalogRevealKey).mockResolvedValue({ key: "sk-or-live" });
+		renderSection();
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.providerKeyShow" }));
+		await userEvent.clear(await screen.findByDisplayValue("sk-or-live"));
+		expect(screen.getByText("catalog.providerKeyRemoving")).toBeTruthy();
+		await userEvent.click(screen.getByRole("button", { name: "catalog.save" }));
+		await waitFor(() => expect(api.request.modelCatalogSave).toHaveBeenCalled());
+		expect(vi.mocked(api.request.modelCatalogSave).mock.calls[0][0].providerKeys).toEqual({ "p-or": "" });
+	});
+
+	// The revealed value lives in the field. After a save it names a key that was
+	// just replaced or removed, so leaving it on screen shows a key that is gone.
+	it("goes back to masked after a save, instead of displaying the key it just replaced", async () => {
+		vi.mocked(api.request.modelCatalogRevealKey).mockResolvedValue({ key: "sk-or-live" });
+		renderSection();
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.providerKeyShow" }));
+		const key = await screen.findByDisplayValue("sk-or-live");
+		await userEvent.clear(key);
+		await userEvent.type(key, "sk-newer");
+		await userEvent.click(screen.getByRole("button", { name: "catalog.save" }));
+		await waitFor(() => expect(api.request.modelCatalogSave).toHaveBeenCalled());
+		const after = await waitFor(() => {
+			const input = screen.getByLabelText("catalog.providerKey") as HTMLInputElement;
+			expect(input.readOnly).toBe(true);
+			return input;
+		});
+		expect(after.value).not.toContain("sk-");
+		expect(after.type).toBe("password");
+	});
+
+	it("says so when the stored key cannot be read, instead of showing an empty field", async () => {
+		vi.mocked(api.request.modelCatalogRevealKey).mockRejectedValue(new Error("gone"));
+		renderSection();
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.providerKeyShow" }));
+		const key = screen.getByLabelText("catalog.providerKey") as HTMLInputElement;
+		await waitFor(() => expect(key.readOnly).toBe(true));
+		expect(key.type).toBe("password");
 	});
 
 	it("keeps quiet until something actually changed", async () => {
@@ -109,8 +172,11 @@ describe("editing the catalog", () => {
 	});
 
 	it("sends the edit and the typed key together", async () => {
+		vi.mocked(api.request.modelCatalogRevealKey).mockResolvedValue({ key: "sk-or-live" });
 		renderSection();
-		const key = await screen.findByPlaceholderText("••••••••");
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.providerKeyShow" }));
+		const key = await screen.findByDisplayValue("sk-or-live");
+		await userEvent.clear(key);
 		await userEvent.type(key, "sk-new");
 		await userEvent.click(screen.getByRole("button", { name: "catalog.save" }));
 		await waitFor(() => expect(api.request.modelCatalogSave).toHaveBeenCalled());
