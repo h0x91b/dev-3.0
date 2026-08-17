@@ -26,6 +26,14 @@ describe("evaluateTscOutput", () => {
 		expect(result.failed).toBe(false);
 	});
 
+	// The wrapper pins `--pretty false` precisely so this shape never reaches us:
+	// tsc's pretty output carries no `(line,col):` and would read as a crash, so a
+	// third-party error would fail every local (TTY) run while CI stayed green.
+	it("cannot recognise a pretty-printed third-party diagnostic — hence --pretty false", () => {
+		const combined = "node_modules/electrobun/dist/api/bun/index.ts:32:24 - error TS7016: Could not find a declaration file.";
+		expect(evaluateTscOutput(2, combined).failed).toBe(true);
+	});
+
 	it("fails on a global config error (TS5058 — project file missing)", () => {
 		const combined = "error TS5058: The specified path does not exist: '/tmp/nope.json'.";
 		const result = evaluateTscOutput(1, combined);

@@ -40,7 +40,12 @@ if (!(await Bun.file(changelogBundledPath).exists())) {
 	}
 }
 
-const result = Bun.spawnSync(["bun", "x", "tsc", "--noEmit"], {
+// `--pretty false` is load-bearing, not cosmetic: tsc auto-enables pretty output
+// on a TTY, and a pretty diagnostic reads `file.ts:12:5 - error TS…` instead of
+// `file.ts(12,5): error TS…`. evaluateTscOutput cannot recognise the pretty form,
+// so ANY third-party error would look like a crash and fail the run locally while
+// CI (no TTY, plain output) stayed green.
+const result = Bun.spawnSync(["bun", "x", "tsc", "--noEmit", "--pretty", "false"], {
 	stdout: "pipe",
 	stderr: "pipe",
 	env: process.env,
