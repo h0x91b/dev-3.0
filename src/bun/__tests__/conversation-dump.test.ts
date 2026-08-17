@@ -68,21 +68,49 @@ const attachment = (type: string, uuid: string) => ({
 const parsed = () => parseClaudeTranscript(jsonl(user("write it"), bigWrite, bigResult, reply), "/t.jsonl");
 
 describe("projectConversationForDump", () => {
-	it("truncates tool output and file contents to the payload budget", () => {
-		const dump = projectConversationForDump(parsed(), { action: 2000, payload: 100 });
+	it("keeps a file write's path and drops what it wrote", () => {
+		const dump = projectConversationForDump(parsed());
 		const events = dump.turns[0].events;
 		const call = events.find((e) => e.kind === "tool-call");
 		const result = events.find((e) => e.kind === "tool-result");
 
-		expect((call?.tool?.input as { content: string }).content).toContain("…[+4900 chars]");
-		expect(result?.tool?.output).toContain("…[+4900 chars]");
-		expect(dump.dumpPolicy.truncatedValues).toBe(2);
-		expect(dump.dumpPolicy.truncatedChars).toBe(9800);
+		// The path is the fact worth keeping; the content and the "file updated"
+		// confirmation are both re-derivable from the repository.
+		expect(call?.tool?.canonical).toMatchObject({ op: "file.write", path: "/w/big.ts" });
+		expect(call?.tool?.input).toBeUndefined();
+		expect(call?.tool?.canonical?.body).toBeUndefined();
+		expect(result?.tool?.output).toBeUndefined();
+		expect(dump.dumpPolicy.droppedToolInputs).toBe(1);
+		expect(dump.dumpPolicy.droppedToolOutputs).toBe(1);
 	});
 
-	it("keeps a path the payload budget cut out of the input", () => {
-		// An absolute worktree path alone is ~92 chars, so a tight payload budget eats
-		// it; the canonical copy is what keeps the file identifiable.
+	it("keeps a shell command whole and bounds what it printed", () => {
+		const source = parseClaudeTranscript(
+			jsonl(
+				user("run it"),
+				{
+					type: "assistant",
+					uuid: "a1",
+					sessionId: "s1",
+					timestamp: "2026-08-17T10:00:01.000Z",
+					message: {
+						role: "assistant",
+						content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "bun run lint" } }],
+					},
+				},
+				bigResult,
+			),
+			"/t.jsonl",
+		);
+		const dump = projectConversationForDump(source, { action: 2000, payload: 100 });
+		const events = dump.turns[0].events;
+
+		expect(events.find((e) => e.kind === "tool-call")?.tool?.canonical?.command).toBe("bun run lint");
+		expect(events.find((e) => e.kind === "tool-result")?.tool?.output).toContain("…[+4900 chars]");
+	});
+
+	it("keeps a long path in full — the action budget, not the payload one", () => {
+		// An absolute worktree path alone is ~92 chars, so the payload budget would eat it.
 		const path = `/w/${"deep/".repeat(20)}big.ts`;
 		const source = parseClaudeTranscript(
 			jsonl(user("write it"), {
@@ -98,6 +126,30 @@ describe("projectConversationForDump", () => {
 			(e) => e.kind === "tool-call",
 		);
 		expect(call?.tool?.canonical?.path).toBe(path);
+	});
+
+	it("keeps what a search looked for, and what an unmapped tool was given", () => {
+		const source = parseClaudeTranscript(
+			jsonl(user("look"), {
+				type: "assistant",
+				uuid: "a3",
+				sessionId: "s1",
+				timestamp: "2026-08-17T10:00:01.000Z",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "tool_use", id: "t2", name: "Grep", input: { pattern: "TOOL_POLICY", path: "src" } },
+						{ type: "tool_use", id: "t3", name: "SomeFutureTool", input: { whatever: "keep me" } },
+					],
+				},
+			}),
+			"/t.jsonl",
+		);
+		const calls = projectConversationForDump(source).turns[0].events.filter((e) => e.kind === "tool-call");
+
+		expect(calls[0].tool?.canonical).toMatchObject({ op: "search", body: "TOOL_POLICY", path: "src" });
+		// Unmapped: nothing is known about which argument matters, so all of them stay.
+		expect(calls[1].tool?.canonical).toMatchObject({ op: "unknown", extra: { args: { whatever: "keep me" } } });
 	});
 
 	it("omits the canonical body that duplicates the native input", () => {
@@ -175,34 +227,14 @@ describe("projectConversationForDump", () => {
 		expect(dump.dumpPolicy.omittedDuplicates).toContain("turns[].userText");
 	});
 
-	it("omits a canonical path the native input already carries", () => {
+	it("stores a call's arguments once, in the canonical form only", () => {
 		const dump = projectConversationForDump(parsed());
 		const call = dump.turns[0].events.find((e) => e.kind === "tool-call");
-		expect(call?.tool?.canonical?.path).toBeUndefined();
-		expect((call?.tool?.input as { file_path: string }).file_path).toBe("/w/big.ts");
-	});
-
-	it("keeps a canonical command truncation cut out of the input", () => {
-		// Over the payload budget, under the action budget.
-		const long = `echo ${"z".repeat(1500)}`;
-		const source = parseClaudeTranscript(
-			jsonl(user("run it"), {
-				type: "assistant",
-				uuid: "a9",
-				sessionId: "s1",
-				timestamp: "2026-08-17T10:00:01.000Z",
-				message: {
-					role: "assistant",
-					content: [{ type: "tool_use", id: "t9", name: "Bash", input: { command: long } }],
-				},
-			}),
-			"/t.jsonl",
-		);
-		const call = projectConversationForDump(source).turns[0].events.find((e) => e.kind === "tool-call");
-		// The input was cut at the payload budget, so the canonical copy is the only
-		// one that still holds the command up to the roomier action budget.
-		expect((call?.tool?.input as { command: string }).command).toContain("…[+");
-		expect(call?.tool?.canonical?.command).toBe(long);
+		// Keeping the native arguments too would store the same call twice, in two
+		// dialects — the canonical form is the one every renderer can read.
+		expect(call?.tool?.input).toBeUndefined();
+		expect(call?.tool?.canonical?.path).toBe("/w/big.ts");
+		expect(dump.dumpPolicy.omittedDuplicates).toContain("events[].tool.input");
 	});
 
 	it("collapses reasoning blocks whose body the transcript withheld", () => {

@@ -15,6 +15,11 @@
  * is what justifies cutting hard. All three also named the same dead weight:
  * the session-event array, per-event token usage, and event ids.
  *
+ * Tool payloads are then cut by *operation*, not by size — see `TOOL_POLICY`.
+ * The reasoning: the next agent has the repository and `git diff`, so a file
+ * edit only needs to say which file it touched, while a shell command or a
+ * fetched page is nowhere else and keeps a bounded copy.
+ *
  * The session layer is dropped outright rather than summarized. Its content was
  * inspected record by record: hook results, skill/tool/MCP catalogues, the output
  * style, the permission mode. All of it is Claude-Code-specific environment that
@@ -29,6 +34,65 @@ import {
 	type ConversationTurn,
 	type ParsedConversation,
 } from "./conversation-model";
+import type { CanonicalToolOp } from "./conversation-tools";
+
+/**
+ * What survives per canonical operation. The question is never "how many bytes"
+ * but "can the next agent get this back for free?".
+ *
+ * The native arguments are always dropped: the canonical form already carries the
+ * path, the command, the pattern or the prompt, in one shape for every agent, so
+ * keeping both stores the same call twice in two dialects. What differs per
+ * operation is the *result*, and whether the canonical `body` is content or an
+ * identifier.
+ *
+ * A file operation keeps only its path — the repository and `git diff` hold what
+ * the file says, and the search/replace pair inside an edit is the least useful
+ * thing in a dump: it describes a state that no longer exists. A shell command is
+ * the opposite: it exists nowhere else, so it is kept whole and its output
+ * bounded. Anything from outside the machine — a fetched page, a web search, a
+ * subagent's report — is not re-derivable at all and keeps a bounded copy.
+ */
+interface ToolPolicy {
+	output: "drop" | "cut";
+	/** The canonical `body` is a short identifier (pattern, URL, query, prompt),
+	 *  not bulk content, so it is what the call *meant* and must survive. */
+	keepIdentifier?: boolean;
+}
+
+const TOOL_POLICY: Record<CanonicalToolOp, ToolPolicy> = {
+	// The path is the fact; the bytes are in the repo, and so is the diff.
+	"file.read": { output: "drop" },
+	"file.write": { output: "drop" },
+	"file.edit": { output: "drop" },
+	// `canonical.extra.paths` carries the files the patch named.
+	"file.patch": { output: "drop" },
+	"image.view": { output: "drop" },
+	// A re-run gets the output back, but "what came out" often explains the next step.
+	"shell.run": { output: "cut" },
+	"shell.wait": { output: "cut" },
+	"shell.input": { output: "cut", keepIdentifier: true },
+	// The pattern is the question that was asked; results are re-runnable.
+	search: { output: "cut", keepIdentifier: true },
+	// Not on this machine — nothing can re-derive it.
+	"web.fetch": { output: "cut", keepIdentifier: true },
+	"web.search": { output: "cut", keepIdentifier: true },
+	// The prompt is an instruction, and the report may be a subagent's only trace.
+	"agent.spawn": { output: "cut", keepIdentifier: true },
+	"agent.message": { output: "cut", keepIdentifier: true },
+	"code.exec": { output: "cut", keepIdentifier: true },
+	"image.generate": { output: "drop", keepIdentifier: true },
+	// Intent, not payload: the plan itself lives in `canonical.extra`.
+	"plan.update": { output: "drop", keepIdentifier: true },
+	"user.ask": { output: "cut" },
+	// Unmapped semantics — `canonical.extra` holds the arguments verbatim, because
+	// guessing what is safe to drop there would lose real content.
+	"mcp.call": { output: "cut" },
+	unknown: { output: "cut", keepIdentifier: true },
+};
+
+/** Applied to a tool result whose call is missing, and to any op not in the table. */
+const FALLBACK_POLICY: ToolPolicy = { output: "cut", keepIdentifier: true };
 
 /** Per-role truncation budgets, in characters. */
 export interface DumpBudget {
@@ -74,10 +138,14 @@ export interface ConversationDump extends Omit<ParsedConversation, "turns" | "se
 		truncatedChars: number;
 		/** Values that were truncated. */
 		truncatedValues: number;
-		/** Fields omitted because another field already holds the same bytes. */
+		/** Fields omitted because another field already holds the same content. */
 		omittedDuplicates: string[];
 		/** Session-layer records discarded as environment or plumbing. */
 		discardedSessionEvents: number;
+		/** Tool payloads dropped whole because the operation's own fields already say
+		 *  what happened — a file edit keeps its path, not its search/replace pair. */
+		droppedToolInputs: number;
+		droppedToolOutputs: number;
 	};
 }
 
@@ -92,12 +160,17 @@ interface Cutter {
 	cut(value: string, budget: number): string;
 	chars: number;
 	values: number;
+	/** Payloads dropped whole by the per-operation policy, not truncated. */
+	droppedInputs: number;
+	droppedOutputs: number;
 }
 
 function makeCutter(): Cutter {
 	const state: Cutter = {
 		chars: 0,
 		values: 0,
+		droppedInputs: 0,
+		droppedOutputs: 0,
 		cut(value, budget) {
 			if (value.length <= budget) return value;
 			state.chars += value.length - budget;
@@ -128,32 +201,59 @@ function cutDeep(value: unknown, budget: number, cutter: Cutter): unknown {
  * canonical body that duplicates the native input byte for byte, and apply the
  * per-role budgets.
  */
-function projectEvent(event: ConversationEvent, budget: DumpBudget, cutter: Cutter): ConversationEvent {
+/** Drop or bound a tool result, per its call's policy. */
+function projectOutput(
+	output: string | undefined,
+	policy: ToolPolicy,
+	budget: DumpBudget,
+	cutter: Cutter,
+): string | undefined {
+	if (output === undefined) return undefined;
+	if (policy.output === "drop") {
+		cutter.droppedOutputs++;
+		return undefined;
+	}
+	return cutter.cut(output, budget.payload);
+}
+
+function projectEvent(
+	event: ConversationEvent,
+	budget: DumpBudget,
+	cutter: Cutter,
+	policyByCallId: Map<string, ToolPolicy>,
+): ConversationEvent {
 	const { usage: _usage, tool, meta, ...rest } = event;
 	// `meta` can hold a payload too — an `edited_text_file` snippet is a whole file
 	// with line numbers, and nine of them were 7.6% of a real dump.
 	const projectedMeta = meta ? (cutDeep(meta, budget.payload, cutter) as Record<string, unknown>) : undefined;
 	if (!tool) return { ...rest, ...(projectedMeta ? { meta: projectedMeta } : {}) };
 
-	// `command` and `path` are lifted out of `input`, so keeping them spends the
-	// budget on bytes the reader already has. Compared against the *projected*
-	// input: when truncation cut the tail off, the canonical value is kept, at the
-	// roomier action budget, and stays the only complete copy.
-	const projectedInput = tool.input === undefined ? undefined : cutDeep(tool.input, budget.payload, cutter);
-	const inputJson = projectedInput === undefined ? "" : JSON.stringify(projectedInput);
-	const alreadyInInput = (value: string | undefined): boolean => !!value && inputJson.includes(value);
+	// A result carries no canonical form of its own, so it inherits the policy of
+	// the call it belongs to.
+	const policy = tool.canonical
+		? (TOOL_POLICY[tool.canonical.op] ?? FALLBACK_POLICY)
+		: (tool.callId && policyByCallId.get(tool.callId)) || FALLBACK_POLICY;
+
+	// The canonical form replaces the native arguments outright; only a call that
+	// somehow has none keeps its own input, so nothing is ever left unsaid.
+	let projectedInput: unknown;
+	if (tool.input !== undefined) {
+		if (tool.canonical) cutter.droppedInputs++;
+		else projectedInput = cutDeep(tool.input, budget.payload, cutter);
+	}
+	const cut = (value: string | undefined, limit: number): string | undefined =>
+		value === undefined ? undefined : cutter.cut(value, limit);
 	const canonical = tool.canonical
 		? {
 			...tool.canonical,
-			// `body` is a substring of `input` in 98% of calls; keeping both spends
-			// the budget twice on the same bytes.
-			body: undefined,
-			command: alreadyInInput(tool.canonical.command)
-				? undefined
-				: tool.canonical.command && cutter.cut(tool.canonical.command, budget.action),
-			path: alreadyInInput(tool.canonical.path)
-				? undefined
-				: tool.canonical.path && cutter.cut(tool.canonical.path, budget.action),
+			command: cut(tool.canonical.command, budget.action),
+			path: cut(tool.canonical.path, budget.action),
+			// Bulk content (a file body, an edit's replacement text) is dropped; a
+			// short identifier — pattern, URL, query, prompt — is what the call meant.
+			body: policy.keepIdentifier ? cut(tool.canonical.body, budget.action) : undefined,
+			extra: tool.canonical.extra
+				? (cutDeep(tool.canonical.extra, budget.payload, cutter) as Record<string, unknown>)
+				: undefined,
 		}
 		: undefined;
 
@@ -163,7 +263,7 @@ function projectEvent(event: ConversationEvent, budget: DumpBudget, cutter: Cutt
 		tool: {
 			...tool,
 			input: projectedInput,
-			output: tool.output === undefined ? undefined : cutter.cut(tool.output, budget.payload),
+			output: projectOutput(tool.output, policy, budget, cutter),
 			canonical,
 		},
 	};
@@ -175,6 +275,18 @@ export function projectConversationForDump(
 	budget: DumpBudget = DEFAULT_DUMP_BUDGET,
 ): ConversationDump {
 	const cutter = makeCutter();
+
+	// Results are projected under their call's policy, and a call is not guaranteed
+	// to sit in the same turn as its result, so the map is built over the whole
+	// conversation first.
+	const policyByCallId = new Map<string, ToolPolicy>();
+	for (const turn of parsed.turns) {
+		for (const event of turn.events) {
+			const op = event.tool?.canonical?.op;
+			const callId = event.tool?.callId;
+			if (op && callId) policyByCallId.set(callId, TOOL_POLICY[op] ?? FALLBACK_POLICY);
+		}
+	}
 
 	const turns: DumpTurn[] = parsed.turns.map((turn) => {
 		// `userText` and `assistantText` are byte-identical to message events of the
@@ -191,14 +303,14 @@ export function projectConversationForDump(
 				redactedThinking++;
 				continue;
 			}
-			events.push(projectEvent(event, budget, cutter));
+			events.push(projectEvent(event, budget, cutter, policyByCallId));
 		}
 		return { ...rest, events, ...(redactedThinking ? { redactedThinking } : {}) };
 	});
 
 	const notices = parsed.sessionEvents
 		.filter((event) => KEPT_SESSION_TYPES.has(sessionRecordType(event)))
-		.map((event) => projectEvent(event, budget, cutter));
+		.map((event) => projectEvent(event, budget, cutter, policyByCallId));
 
 	const { turns: _t, sessionEvents: _s, ...header } = parsed;
 	return {
@@ -212,12 +324,13 @@ export function projectConversationForDump(
 			omittedDuplicates: [
 				"turns[].userText",
 				"turns[].assistantText",
+				"events[].tool.input",
 				"events[].tool.canonical.body",
-				"events[].tool.canonical.command",
-				"events[].tool.canonical.path",
 				"events[].usage",
 			],
 			discardedSessionEvents: parsed.sessionEvents.length - notices.length,
+			droppedToolInputs: cutter.droppedInputs,
+			droppedToolOutputs: cutter.droppedOutputs,
 		},
 	};
 }
