@@ -15,7 +15,8 @@ vi.mock("../../rpc", () => ({
 			applyUpdate: vi.fn(),
 			saveLastRoute: vi.fn(),
 			renameTask: vi.fn(),
-			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
+			// `behindOrigin` > 0 keeps the pull button rendered — it hides when there is nothing to pull.
+			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 2 }),
 			pullProjectMain: vi.fn(),
 			getPreventSleepState: vi.fn().mockResolvedValue({ enabled: false, available: false, forcedByRemote: false }),
 			setPreventSleep: vi.fn(),
@@ -976,9 +977,9 @@ describe("GlobalHeader — virtual (Operations) board git affordances", () => {
 		builtin: true,
 	};
 
-	it("shows the Pull button for a git project", () => {
+	it("shows the Pull button for a git project with commits waiting upstream", async () => {
 		renderHeader({ screen: "project", projectId: "p1" });
-		expect(screen.getByText("Pull")).toBeInTheDocument();
+		expect(await screen.findByText("Pull")).toBeInTheDocument();
 	});
 
 	it("hides the Pull button for a virtual project", () => {
@@ -1118,7 +1119,7 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 		await user.click(screen.getByLabelText("More"));
 		// Git pull + tmux manager now live in the sheet's controls strip.
-		expect(screen.getByTestId("git-pull-button")).toBeInTheDocument();
+		expect(await screen.findByTestId("git-pull-button")).toBeInTheDocument();
 		expect(screen.getByLabelText("tmux Sessions")).toBeInTheDocument();
 	});
 });

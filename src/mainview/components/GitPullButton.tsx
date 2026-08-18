@@ -93,7 +93,12 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	}, []);
 
 	const canPull = typeof branch === "string" && PULLABLE_BRANCHES.has(branch);
-	const disabled = !canPull || pulling;
+	/**
+	 * Nothing to pull is nothing to show. `pulling` / `lastResult` keep the button
+	 * mounted after a click, because a successful pull zeroes `behindOrigin` and the
+	 * spinner and result flash still have to be seen.
+	 */
+	const visible = pulling || lastResult !== null || (canPull && behindOrigin > 0);
 
 	const runPull = useCallback(async () => {
 		// Clear any previous flash immediately so user sees the new pull start fresh
@@ -130,7 +135,7 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	}, [branch, flashResult, projectId, refreshBranch, t]);
 
 	function handleClick() {
-		if (disabled) return;
+		if (pulling) return;
 		void runPull();
 	}
 
@@ -178,36 +183,23 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 				label = t("kanban.gitPullFlashFailedLabel");
 				break;
 		}
-	} else if (canPull && typeof branch === "string") {
-		if (behindOrigin > 0) {
-			// Quiet "new commits available" hint — accent tint only, no fill/pulse
-			// (those are reserved for the loud "Update ready" header indicator).
-			title = t.plural("kanban.gitPullBehind", behindOrigin, { branch });
-			stateClass = "text-accent/80 hover:text-accent hover:bg-accent/10";
-		} else {
-			title = t("kanban.gitPullTooltip", { branch });
-			stateClass = "text-fg-3 hover:text-fg hover:bg-elevated";
-		}
-		label = t("header.gitPullLabel");
 	} else {
-		if (branch === null) {
-			title = t("kanban.gitPullDisabledDetached");
-		} else if (typeof branch === "string") {
-			title = t("kanban.gitPullDisabledBranch", { branch });
-		} else {
-			title = t("kanban.gitPullDisabledUnknown");
-		}
-		stateClass = "text-fg-muted cursor-not-allowed opacity-60";
+		// The only remaining rendered state: commits are waiting upstream. A quiet
+		// hint — accent tint only, no fill/pulse (those are reserved for the loud
+		// "Update ready" header indicator).
+		title = t.plural("kanban.gitPullBehind", behindOrigin, { branch: branch ?? "" });
+		stateClass = "text-accent/80 hover:text-accent hover:bg-accent/10";
 		label = t("header.gitPullLabel");
 	}
 
 	return (
 		<>
+			{visible && (
 			<Tooltip content={t("header.gitPullLabel")} detail={title}>
 			<button
 				type="button"
 				onClick={handleClick}
-				aria-disabled={disabled}
+				aria-disabled={pulling}
 				data-testid="git-pull-button"
 				data-pull-flash={lastResult?.kind ?? undefined}
 				className={`${baseClass} ${stateClass}`}
@@ -245,6 +237,7 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 				{!compact && <span className="text-micro font-medium">{label}</span>}
 			</button>
 			</Tooltip>
+			)}
 			{pullError && (
 				<GitPullErrorModal
 					branch={pullError.branch}

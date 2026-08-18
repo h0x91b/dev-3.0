@@ -14,6 +14,16 @@ vi.mock("../../rpc", () => ({
 
 import { api } from "../../rpc";
 
+/** The button only renders when there is something to pull, so `behindOrigin` defaults to a hit. */
+function mockBranch(branch: string | null, behindOrigin = 2) {
+	(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+		branch,
+		isBaseBranch: branch === "main",
+		isDirty: false,
+		behindOrigin,
+	});
+}
+
 async function renderButton() {
 	let result: ReturnType<typeof render>;
 	await act(async () => {
@@ -36,61 +46,57 @@ describe("GitPullButton", () => {
 		(window as any).alert = alertMock;
 	});
 
-	it("is enabled when the project is on main", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+	// ── Visibility: nothing to pull → nothing on screen ───────────────────────
+
+	it("renders on main when origin has new commits", async () => {
+		mockBranch("main", 3);
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
+		expect(btn).toHaveAttribute("aria-disabled", "false");
 		expect(btn.getAttribute("aria-label") || "").toMatch(/main/);
 	});
 
-	it("is enabled when the project is on master", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "master",
-			isBaseBranch: false,
-			isDirty: false,
-		});
+	it("renders on master when origin has new commits", async () => {
+		mockBranch("master", 1);
 		await renderButton();
-		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
+		expect(await screen.findByTestId("git-pull-button")).toHaveAttribute("aria-disabled", "false");
 	});
 
-	it("is disabled on feature branches", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "feat/dev3-something",
-			isBaseBranch: false,
-			isDirty: false,
-		});
+	it("is not rendered when local main is up to date", async () => {
+		mockBranch("main", 0);
 		await renderButton();
-		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() =>
-			expect(btn.getAttribute("aria-label") || "").toMatch(/feat\/dev3-something/),
+		await waitFor(() => expect(api.request.getProjectCurrentBranch).toHaveBeenCalled());
+		expect(screen.queryByTestId("git-pull-button")).toBeNull();
+	});
+
+	it("is not rendered on a feature branch", async () => {
+		mockBranch("feat/dev3-something", 0);
+		await renderButton();
+		await waitFor(() => expect(api.request.getProjectCurrentBranch).toHaveBeenCalled());
+		expect(screen.queryByTestId("git-pull-button")).toBeNull();
+	});
+
+	it("is not rendered on detached HEAD", async () => {
+		mockBranch(null, 0);
+		await renderButton();
+		await waitFor(() => expect(api.request.getProjectCurrentBranch).toHaveBeenCalled());
+		expect(screen.queryByTestId("git-pull-button")).toBeNull();
+	});
+
+	it("is not rendered before the branch is known", () => {
+		(api.request.getProjectCurrentBranch as any).mockReturnValue(new Promise(() => {}));
+		render(
+			<I18nProvider>
+				<GitPullButton projectId="p1" />
+			</I18nProvider>,
 		);
-		expect(btn).toHaveAttribute("aria-disabled", "true");
+		expect(screen.queryByTestId("git-pull-button")).toBeNull();
 	});
 
-	it("is disabled on detached HEAD", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: null,
-			isBaseBranch: true,
-			isDirty: false,
-		});
-		await renderButton();
-		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "true"));
-		expect(btn.getAttribute("aria-label") || "").toMatch(/detached|Detached/);
-	});
+	// ── Pull outcomes ─────────────────────────────────────────────────────────
 
 	it("flashes 'Up to date' on the button and does NOT alert when already up to date", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+		mockBranch("main");
 		(api.request.pullProjectMain as any).mockResolvedValue({
 			ok: true,
 			branch: "main",
@@ -99,7 +105,6 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await waitFor(() => expect(api.request.pullProjectMain).toHaveBeenCalledWith({ projectId: "p1" }));
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("up-to-date"));
@@ -108,11 +113,7 @@ describe("GitPullButton", () => {
 	});
 
 	it("flashes 'Pulled' on the button and does NOT alert when commits were pulled", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+		mockBranch("main");
 		(api.request.pullProjectMain as any).mockResolvedValue({
 			ok: true,
 			branch: "main",
@@ -121,7 +122,6 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
 		expect(btn.textContent || "").toMatch(/Pulled/);
@@ -129,11 +129,7 @@ describe("GitPullButton", () => {
 	});
 
 	it("shows the shared SVG spinner while a pull is in progress", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+		mockBranch("main");
 		let resolvePull: (v: any) => void = () => {};
 		(api.request.pullProjectMain as any).mockReturnValue(
 			new Promise((res) => {
@@ -142,7 +138,6 @@ describe("GitPullButton", () => {
 		);
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		// While pulling we show the same SVG spinner as the "checking for updates" header
 		// indicator instead of a spinning Nerd Font glyph — it spins cleanly around its own
@@ -164,11 +159,7 @@ describe("GitPullButton", () => {
 	});
 
 	it("flashes 'Failed' and opens the error modal with the error text when pullProjectMain reports ok=false", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+		mockBranch("main");
 		(api.request.pullProjectMain as any).mockResolvedValue({
 			ok: false,
 			branch: "main",
@@ -177,7 +168,6 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("failed"));
 		expect(btn.textContent || "").toMatch(/Failed/);
@@ -188,11 +178,7 @@ describe("GitPullButton", () => {
 	});
 
 	it("retries the pull when the retry button is clicked", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+		mockBranch("main");
 		(api.request.pullProjectMain as any)
 			.mockResolvedValueOnce({
 				ok: false,
@@ -208,7 +194,6 @@ describe("GitPullButton", () => {
 			});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		const retry = await screen.findByTestId("git-pull-error-retry");
 		await userEvent.click(retry);
@@ -219,11 +204,7 @@ describe("GitPullButton", () => {
 	});
 
 	it("clears the success flash and error modal when projectId changes (project switch)", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+		mockBranch("main");
 		(api.request.pullProjectMain as any).mockResolvedValue({
 			ok: true,
 			branch: "main",
@@ -240,7 +221,6 @@ describe("GitPullButton", () => {
 			rerender = r.rerender;
 		});
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
 		// Switch project — flash must reset immediately, not stick around for 3 seconds
@@ -252,16 +232,12 @@ describe("GitPullButton", () => {
 			);
 		});
 		await waitFor(() =>
-			expect(screen.getByTestId("git-pull-button").getAttribute("data-pull-flash")).toBeNull(),
+			expect(screen.queryByTestId("git-pull-button")?.getAttribute("data-pull-flash") ?? null).toBeNull(),
 		);
 	});
 
 	it("clears the error modal when projectId changes (project switch)", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+		mockBranch("main");
 		(api.request.pullProjectMain as any).mockResolvedValue({
 			ok: false,
 			branch: "main",
@@ -278,7 +254,6 @@ describe("GitPullButton", () => {
 			rerender = r.rerender;
 		});
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await screen.findByTestId("git-pull-error-text");
 		await act(async () => {
@@ -292,11 +267,7 @@ describe("GitPullButton", () => {
 	});
 
 	it("closes the error modal when Close is clicked", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-		});
+		mockBranch("main");
 		(api.request.pullProjectMain as any).mockResolvedValue({
 			ok: false,
 			branch: "main",
@@ -305,7 +276,6 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		const errorText = await screen.findByTestId("git-pull-error-text");
 		expect(errorText).toBeTruthy();
@@ -315,13 +285,10 @@ describe("GitPullButton", () => {
 		await waitFor(() => expect(screen.queryByTestId("git-pull-error-text")).toBeNull());
 	});
 
+	// ── Behind-origin hint ────────────────────────────────────────────────────
+
 	it("shows the behind-origin dot and accent tint when remote has new commits", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-			behindOrigin: 3,
-		});
+		mockBranch("main", 3);
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
 		await waitFor(() => expect(btn.getAttribute("data-behind-origin")).toBe("3"));
@@ -330,28 +297,8 @@ describe("GitPullButton", () => {
 		expect(btn.getAttribute("aria-label") || "").toMatch(/3 new commits on origin\/main/);
 	});
 
-	it("does not show the behind-origin dot when local main is up to date", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-			behindOrigin: 0,
-		});
-		await renderButton();
-		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
-		expect(btn.getAttribute("data-behind-origin")).toBeNull();
-		expect(screen.queryByTestId("git-pull-behind-dot")).toBeNull();
-		expect(btn.className).not.toMatch(/text-accent/);
-	});
-
-	it("clears the behind-origin dot after a successful pull", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-			behindOrigin: 2,
-		});
+	it("stays mounted through the flash after a pull zeroes the behind count", async () => {
+		mockBranch("main", 2);
 		(api.request.pullProjectMain as any).mockResolvedValue({
 			ok: true,
 			branch: "main",
@@ -362,28 +309,10 @@ describe("GitPullButton", () => {
 		const btn = await screen.findByTestId("git-pull-button");
 		await waitFor(() => expect(btn.getAttribute("data-behind-origin")).toBe("2"));
 		// refreshBranch after pull reports 0 behind
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "main",
-			isBaseBranch: true,
-			isDirty: false,
-			behindOrigin: 0,
-		});
+		mockBranch("main", 0);
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
 		expect(btn.getAttribute("data-behind-origin")).toBeNull();
 		expect(screen.queryByTestId("git-pull-behind-dot")).toBeNull();
-	});
-
-	it("does not call pullProjectMain when disabled", async () => {
-		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
-			branch: "develop",
-			isBaseBranch: false,
-			isDirty: false,
-		});
-		await renderButton();
-		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "true"));
-		await userEvent.click(btn);
-		expect(api.request.pullProjectMain).not.toHaveBeenCalled();
 	});
 });

@@ -312,13 +312,9 @@ const kanban = {
 	// Git pull (Kanban toolbar)
 	"kanban.gitPull": "Git Pull",
 	"kanban.gitPullBranchLabel": "({branch})",
-	"kanban.gitPullTooltip": "Hacer git pull origin/{branch} en el worktree principal",
 	"kanban.gitPullBehind_one": "{count} commit nuevo en origin/{branch} — haz clic para hacer pull",
 	"kanban.gitPullBehind_other": "{count} commits nuevos en origin/{branch} — haz clic para hacer pull",
 	"kanban.gitPullInProgress": "Descargando…",
-	"kanban.gitPullDisabledDetached": "No se puede tirar — el worktree principal está en detached HEAD",
-	"kanban.gitPullDisabledBranch": "Git Pull solo está disponible en main o master (actual: {branch})",
-	"kanban.gitPullDisabledUnknown": "Detectando rama actual…",
 	"kanban.gitPullFailedTitle": "Pull falló en {branch}",
 	"kanban.gitPullFailedUnknown": "error desconocido",
 	"kanban.gitPullErrorRetry": "Reintentar",
