@@ -104,16 +104,29 @@ describe("TaskPaneControls", () => {
 		expect(screen.queryByLabelText("New window")).not.toBeInTheDocument();
 	});
 
-	// ── Layout button: disabled at 1 pane ────────────────────────────────────
+	// ── Single pane: layout / zoom / close are not rendered at all ────────────
 
-	it("disables the layout button with a reason tooltip when only 1 pane", async () => {
+	it("hides layout, zoom and close for a single-pane task", async () => {
 		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_ONE_PANE);
 		renderControls();
 		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
 		await new Promise((r) => setTimeout(r, 20));
-		const layoutBtn = screen.getByLabelText("Cycle layouts");
-		expect(layoutBtn).toBeDisabled();
-		expect(layoutBtn).toHaveAttribute("title", expect.stringContaining("2"));
+		expect(screen.queryByLabelText("Cycle layouts")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Choose pane layout")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Zoom pane (toggle)")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Close pane")).not.toBeInTheDocument();
+		// The controls that still make sense on one pane stay.
+		expect(screen.getByLabelText("Split horizontally")).toBeInTheDocument();
+		expect(screen.getByLabelText("Split vertically")).toBeInTheDocument();
+		expect(screen.getByLabelText("New window")).toBeInTheDocument();
+	});
+
+	it("hides layout, zoom and close until the pane state has loaded", () => {
+		vi.mocked(api.request.taskPaneState).mockReturnValue(new Promise<TaskPaneState>(() => {}));
+		renderControls();
+		expect(screen.queryByLabelText("Cycle layouts")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Zoom pane (toggle)")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Close pane")).not.toBeInTheDocument();
 	});
 
 	it("enables the layout button with 2+ panes", async () => {
@@ -134,7 +147,7 @@ describe("TaskPaneControls", () => {
 
 		renderControls();
 
-		await user.click(screen.getByLabelText("Close pane"));
+		await user.click(await screen.findByLabelText("Close pane"));
 
 		expect(onPicker).toHaveBeenCalledTimes(1);
 		expect((onPicker.mock.calls[0][0] as CustomEvent).detail).toEqual({ taskId: "task-1" });
@@ -156,7 +169,7 @@ describe("TaskPaneControls", () => {
 
 			renderControls();
 
-			await user.click(screen.getByLabelText("Close pane"));
+			await user.click(await screen.findByLabelText("Close pane"));
 
 			await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({
 				taskId: "task-1",
@@ -165,39 +178,15 @@ describe("TaskPaneControls", () => {
 			expect(confirm).not.toHaveBeenCalled();
 		});
 
-		it("asks for confirmation when the last pane is closed, forces kill on accept", async () => {
-			const user = userEvent.setup();
+		it("offers no close control for a single-pane task, so the last pane cannot be killed here", async () => {
 			vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(1));
-			vi.mocked(confirm).mockResolvedValue(true);
-			vi.mocked(api.request.taskPaneAction).mockResolvedValue(makeState(0));
 
 			renderControls();
+			await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
+			await new Promise((r) => setTimeout(r, 20));
 
-			await user.click(screen.getByLabelText("Close pane"));
-
-			expect(confirm).toHaveBeenCalledWith({
-				title: "Close the last pane?",
-				message: expect.stringContaining("only remaining pane"),
-				confirmLabel: "Close pane",
-				danger: true,
-			});
-			await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({
-				taskId: "task-1",
-				action: { kind: "close", force: true },
-			}));
-		});
-
-		it("does not kill the last pane when the confirmation is dismissed", async () => {
-			const user = userEvent.setup();
-			vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(1));
-			vi.mocked(confirm).mockResolvedValue(false);
-
-			renderControls();
-
-			await user.click(screen.getByLabelText("Close pane"));
-
-			expect(confirm).toHaveBeenCalled();
-			expect(api.request.taskPaneAction).not.toHaveBeenCalled();
+			expect(screen.queryByLabelText("Close pane")).not.toBeInTheDocument();
+			expect(confirm).not.toHaveBeenCalled();
 		});
 	});
 
@@ -314,20 +303,6 @@ describe("TaskPaneControls", () => {
 
 		releaseAction(TMUX_TWO_PANE);
 		await waitFor(() => expect(screen.getByLabelText("Split horizontally")).not.toBeDisabled());
-	});
-
-	it("does not say 'needs two panes' for a layout button that is merely busy", async () => {
-		const user = userEvent.setup();
-		vi.mocked(api.request.taskPaneAction).mockReturnValue(new Promise<TaskPaneState>(() => {}));
-		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_TWO_PANE);
-		renderControls();
-		await waitFor(() => expect(screen.getByLabelText("Cycle layouts")).not.toBeDisabled());
-
-		await user.click(screen.getByLabelText("Split horizontally"));
-
-		const layoutBtn = screen.getByLabelText("Cycle layouts");
-		expect(layoutBtn).toBeDisabled();
-		expect(layoutBtn).not.toHaveAttribute("title", expect.stringContaining("2"));
 	});
 
 	it("issues exactly one action for a double click on split", async () => {

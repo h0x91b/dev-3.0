@@ -1,0 +1,1 @@
+The pane toolbar in the task inspector now hides the layout, zoom and close-pane buttons until the task actually has a second pane, leaving only split, new window and the shortcuts cheat sheet on a single-pane terminal.

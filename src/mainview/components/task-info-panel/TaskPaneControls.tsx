@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactM
 import { createPortal } from "react-dom";
 import { useT } from "../../i18n";
 import { api } from "../../rpc";
-import { confirm } from "../../confirm";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
@@ -158,29 +157,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 			return;
 		}
 		if (action === "close") {
-			let count = 0;
-			try {
-				const state = paneState ?? await fetchPaneState(taskId);
-				count = state.panes.length;
-			} catch {
-				count = 0;
-			}
-			if (count <= 1) {
-				let confirmed = false;
-				try {
-					confirmed = await confirm({
-						title: t("tmux.closePaneConfirmTitle"),
-						message: t("tmux.closePaneConfirmMessage"),
-						confirmLabel: t("tmux.closePaneConfirmLabel"),
-						danger: true,
-					});
-				} catch {
-					confirmed = false;
-				}
-				if (!confirmed) return;
-				void withBusy(() => runPaneAction(taskId, { kind: "close", force: true }).catch(() => {}).finally(refreshState));
-				return;
-			}
 			const closeTarget = paneState?.backend === "native" ? currentNativePaneFocus(taskId) ?? undefined : undefined;
 			void withBusy(() => runPaneAction(taskId, { kind: "close", paneId: closeTarget }).catch(() => {}).finally(refreshState));
 			return;
@@ -232,26 +208,19 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 
 	// Capability checks (fall back to permissive defaults while state loads).
 	const supportsSplit = paneState === null || taskPaneSupports(paneState, "split");
-	const supportsZoom = paneState === null || taskPaneSupports(paneState, "zoom");
-	const supportsClose = paneState === null || taskPaneSupports(paneState, "close");
-	const canLayoutCycle = paneState !== null && taskPaneSupports(paneState, "layoutCycle");
-	const canLayoutPreset = paneState !== null && taskPaneSupports(paneState, "layoutPreset");
 	const showNewWindow = paneState !== null && taskPaneSupports(paneState, "newWindow");
 	const isNative = paneState?.backend === "native";
 
-	// An in-flight action withholds every mutating control, not just the one clicked:
-	// they all rewrite the same tree. Capability stays separate so the "needs two
-	// panes" tooltip never fires for a control that is merely busy.
-	const canSplit = supportsSplit && !actionBusy;
-	const canZoom = supportsZoom && !actionBusy;
-	const canClose = supportsClose && !actionBusy;
+	// Layout, zoom and close only mean anything once the task has a second pane —
+	// a single-pane terminal shows just split / new window / shortcuts.
+	const multiPane = (paneState?.panes.length ?? 0) > 1;
 
-	// Layout button is disabled when the backend has no layoutCycle capability (1 pane).
-	const layoutUnsupported = !canLayoutCycle && !canLayoutPreset;
-	const layoutDisabled = layoutUnsupported || actionBusy;
-	const layoutDisabledReason = layoutUnsupported && paneState !== null
-		? t("panes.layoutNeedsTwoPanes")
-		: undefined;
+	// An in-flight action withholds every mutating control, not just the one
+	// clicked: they all rewrite the same tree.
+	const canSplit = supportsSplit && !actionBusy;
+	const canZoom = !actionBusy;
+	const canClose = !actionBusy;
+	const layoutDisabled = actionBusy;
 
 	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
 	const tmuxBtnDisabledClass = "px-1.5 py-1 rounded text-dense font-medium text-fg-muted bg-elevated/50 border border-edge/50 flex items-center gap-1 cursor-not-allowed opacity-50";
@@ -315,23 +284,22 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 					</Tooltip>
 				)}
 
-				<Tooltip content={layoutDisabledReason ?? ""} detail={!layoutDisabled ? undefined : undefined}>
-					<div
-						className={`flex items-stretch rounded ${layoutDisabled ? "opacity-50 cursor-not-allowed" : "text-accent bg-accent/10 border border-accent/25"} overflow-hidden`}
-						onMouseEnter={!layoutUnsupported ? showLayout : undefined}
-						onMouseLeave={!layoutUnsupported ? hideLayout : undefined}
-					>
-						<button
-							className={`tmux-anim px-1.5 py-1 text-dense font-medium transition-colors ${layoutDisabled ? "text-fg-muted bg-elevated/50 border border-edge/50 cursor-not-allowed" : "text-accent hover:bg-accent/20"} flex items-center gap-1`}
-							disabled={layoutDisabled}
-							onClick={!layoutDisabled ? cycleLayout : undefined}
-							aria-label={t("tmux.nextLayoutDesc")}
-							title={layoutDisabledReason}
+				{multiPane && (
+					<Tooltip content={t("tmux.nextLayoutDesc")} detail={t("ttip.tmux.nextLayout")}>
+						<div
+							className={`flex items-stretch rounded ${layoutDisabled ? "opacity-50 cursor-not-allowed" : "text-accent bg-accent/10 border border-accent/25"} overflow-hidden`}
+							onMouseEnter={showLayout}
+							onMouseLeave={hideLayout}
 						>
-							{cycleIcon}
-							{!compact && <span>{t("panes.layoutLabel")}</span>}
-						</button>
-						{!layoutUnsupported && (
+							<button
+								className={`tmux-anim px-1.5 py-1 text-dense font-medium transition-colors ${layoutDisabled ? "text-fg-muted bg-elevated/50 border border-edge/50 cursor-not-allowed" : "text-accent hover:bg-accent/20"} flex items-center gap-1`}
+								disabled={layoutDisabled}
+								onClick={!layoutDisabled ? cycleLayout : undefined}
+								aria-label={t("tmux.nextLayoutDesc")}
+							>
+								{cycleIcon}
+								{!compact && <span>{t("panes.layoutLabel")}</span>}
+							</button>
 							<button
 								ref={layoutTriggerRef}
 								className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
@@ -348,20 +316,22 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 									<path d="M6 9 L12 15 L18 9" stroke="currentColor" />
 								</svg>
 							</button>
-						)}
-					</div>
-				</Tooltip>
+						</div>
+					</Tooltip>
+				)}
 
-				<Tooltip content={t("tmux.zoomDesc")} detail={t("ttip.tmux.zoom")}>
-					<button
-						className={canZoom ? tmuxBtnClass : tmuxBtnDisabledClass}
-						disabled={!canZoom}
-						onClick={canZoom ? handleAction("zoom") : undefined}
-						aria-label={t("tmux.zoomDesc")}
-					>
-						<ZoomPaneIcon className={tmuxSvgClass} />
-					</button>
-				</Tooltip>
+				{multiPane && (
+					<Tooltip content={t("tmux.zoomDesc")} detail={t("ttip.tmux.zoom")}>
+						<button
+							className={canZoom ? tmuxBtnClass : tmuxBtnDisabledClass}
+							disabled={!canZoom}
+							onClick={canZoom ? handleAction("zoom") : undefined}
+							aria-label={t("tmux.zoomDesc")}
+						>
+							<ZoomPaneIcon className={tmuxSvgClass} />
+						</button>
+					</Tooltip>
+				)}
 
 				<button
 					className={tmuxIconBtnClass}
@@ -377,21 +347,25 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 					<TmuxHintsIcon className="w-3.5 h-3.5" />
 				</button>
 
-				<div className="w-px self-stretch bg-edge mx-0.5" aria-hidden="true" />
+				{multiPane && (
+					<>
+						<div className="w-px self-stretch bg-edge mx-0.5" aria-hidden="true" />
 
-				<Tooltip content={t("tmux.closePaneDesc")} detail={t("ttip.tmux.closePane")}>
-					<button
-						className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? "text-danger hover:bg-danger/20 bg-danger/10 border-danger/25" : ""}`}
-						disabled={!canClose}
-						onClick={canClose ? handleClosePane : undefined}
-						aria-label={t("tmux.closePaneDesc")}
-					>
-						<ClosePaneIcon className={tmuxSvgClass} />
-					</button>
-				</Tooltip>
+						<Tooltip content={t("tmux.closePaneDesc")} detail={t("ttip.tmux.closePane")}>
+							<button
+								className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? "text-danger hover:bg-danger/20 bg-danger/10 border-danger/25" : ""}`}
+								disabled={!canClose}
+								onClick={canClose ? handleClosePane : undefined}
+								aria-label={t("tmux.closePaneDesc")}
+							>
+								<ClosePaneIcon className={tmuxSvgClass} />
+							</button>
+						</Tooltip>
+					</>
+				)}
 			</div>
 
-			{!layoutUnsupported && layoutOpen && createPortal(
+			{multiPane && layoutOpen && createPortal(
 				<div
 					ref={layoutMenuRef}
 					role="menu"
