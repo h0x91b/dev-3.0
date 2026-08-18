@@ -253,6 +253,7 @@ const terminal = {
 	"terminal.filePreviewContentCopied": "Содержимое скопировано",
 	"terminal.filePreviewRendered": "Рендер",
 	"terminal.filePreviewRaw": "Исходник",
+	"terminal.rendererCrashed": "Отрисовщик терминала упал и не смог подняться сам. Нажмите, чтобы перезагрузить окно — сессия продолжает работать.",
 };
 
 export default terminal;

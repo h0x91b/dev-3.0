@@ -245,6 +245,7 @@ const terminal = {
 	"terminal.filePreviewContentCopied": "Contenido copiado",
 	"terminal.filePreviewRendered": "Renderizado",
 	"terminal.filePreviewRaw": "Sin formato",
+	"terminal.rendererCrashed": "El renderizador del terminal falló y no pudo reiniciarse solo. Haz clic para recargar la ventana — tu sesión sigue activa.",
 };
 
 export default terminal;

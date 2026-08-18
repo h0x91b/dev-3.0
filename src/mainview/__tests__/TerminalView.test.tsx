@@ -2,6 +2,8 @@ import { render, act, fireEvent, waitFor } from "@testing-library/react";
 import TerminalView, { type TerminalHandle, TERMINAL_SYNC_GATE_TIMEOUT_MS, buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
+import { Terminal } from "ghostty-web";
+import { toast } from "../toast";
 import type { NativeStreamRole } from "../../shared/native-terminal-stream";
 import {
 	resetTerminalBidiForTests,
@@ -1827,5 +1829,118 @@ describe("TerminalView – remote sync gate", () => {
 			webSockets[0].onclose?.({ code: 4001, reason: "Unknown session", wasClean: false } as CloseEvent);
 		});
 		expect(view.queryByTestId("terminal-sync-gate")).toBeNull();
+	});
+});
+
+describe("TerminalView – renderer crash recovery", () => {
+	/**
+	 * ghostty-web's render loop reschedules only after a successful render and is
+	 * private, so one throw out of `term.resize` blanks the pane for good. These
+	 * cover the only cure available from outside: rebuild the terminal.
+	 */
+	const REFIT_DEBOUNCE_MS = 150;
+
+	/**
+	 * TerminalView replaces the addon's `proposeDimensions` with the real
+	 * scrollbar-free measurement, which needs live layout metrics and returns
+	 * undefined in happy-dom — so a refit would never reach `term.resize`. Put a
+	 * fixed geometry back on the very object TerminalView calls.
+	 */
+	function makeRefitsMeasurable() {
+		const addon = fitAddonHolder.current as unknown as { proposeDimensions: () => { cols: number; rows: number } };
+		addon.proposeDimensions = () => ({ cols: 80, rows: 24 });
+	}
+
+	async function settleObserver() {
+		makeRefitsMeasurable();
+		await act(async () => {
+			fireResize?.();
+			await new Promise((resolve) => setTimeout(resolve, REFIT_DEBOUNCE_MS));
+		});
+	}
+
+	async function crashOnNextRefit(error: Error) {
+		// A rebuilt terminal spends its first observer callback on the initial fit
+		// (fitAddon.fit(), which never reaches term.resize), so spend that one first.
+		await settleObserver();
+		mockTermInstance.resize.mockImplementationOnce(() => {
+			throw error;
+		});
+		await settleObserver();
+	}
+
+	it("rebuilds the terminal when a resize throws a WASM trap", async () => {
+		await renderAndSetup();
+		const builtBefore = vi.mocked(Terminal).mock.calls.length;
+
+		await crashOnNextRefit(new Error("RuntimeError: Out of bounds memory access"));
+
+		expect(vi.mocked(Terminal).mock.calls.length).toBeGreaterThan(builtBefore);
+	});
+
+	it("rebuilds it for the out-of-range codepoint crash too", async () => {
+		await renderAndSetup();
+		const builtBefore = vi.mocked(Terminal).mock.calls.length;
+
+		await crashOnNextRefit(new RangeError("Arguments contain a value that is out of range of code points"));
+
+		expect(vi.mocked(Terminal).mock.calls.length).toBeGreaterThan(builtBefore);
+	});
+
+	it("reports the crash to the backend log with the geometry it died on", async () => {
+		await renderAndSetup();
+		vi.mocked(api.request.logRendererDiagnostic).mockClear();
+
+		await crashOnNextRefit(new Error("RuntimeError: Out of bounds memory access"));
+
+		const tags = vi.mocked(api.request.logRendererDiagnostic).mock.calls.map((c) => (c[0] as { tag: string }).tag);
+		expect(tags).toContain("refit");
+		expect(tags).toContain("terminal-recover");
+	});
+
+	it("leaves a healthy terminal alone", async () => {
+		await renderAndSetup();
+		const builtBefore = vi.mocked(Terminal).mock.calls.length;
+		makeRefitsMeasurable();
+
+		await act(async () => {
+			fireResize?.();
+			await new Promise((resolve) => setTimeout(resolve, REFIT_DEBOUNCE_MS));
+		});
+
+		expect(mockTermInstance.resize).toHaveBeenCalled();
+		expect(vi.mocked(Terminal).mock.calls.length).toBe(builtBefore);
+		expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+	});
+
+	it("stops rebuilding after the budget and offers a window reload instead", async () => {
+		await renderAndSetup();
+
+		for (let i = 0; i < 4; i++) {
+			await crashOnNextRefit(new Error("RuntimeError: Out of bounds memory access"));
+		}
+		const builtAfterBudget = vi.mocked(Terminal).mock.calls.length;
+		await crashOnNextRefit(new Error("RuntimeError: Out of bounds memory access"));
+
+		expect(vi.mocked(toast.error)).toHaveBeenCalled();
+		expect(vi.mocked(Terminal).mock.calls.length).toBe(builtAfterBudget);
+	});
+
+	it("earns the budget back after a stretch of health", async () => {
+		await renderAndSetup();
+		for (let i = 0; i < 4; i++) {
+			await crashOnNextRefit(new Error("RuntimeError: Out of bounds memory access"));
+		}
+		expect(vi.mocked(toast.error)).toHaveBeenCalledTimes(1);
+
+		const realNow = Date.now;
+		Date.now = () => realNow() + 10 * 60_000;
+		try {
+			const builtBefore = vi.mocked(Terminal).mock.calls.length;
+			await crashOnNextRefit(new Error("RuntimeError: Out of bounds memory access"));
+			expect(vi.mocked(Terminal).mock.calls.length).toBeGreaterThan(builtBefore);
+		} finally {
+			Date.now = realNow;
+		}
 	});
 });

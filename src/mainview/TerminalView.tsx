@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal, FitAddon } from "ghostty-web";
 import { useT } from "./i18n";
 import { toast } from "./toast";
@@ -95,6 +95,10 @@ const TERMINAL_BASE_FONT_SIZE = 14;
  * already three dropped frames — worth a line, while staying quiet in normal use.
  */
 const TERMINAL_DISPOSE_BUDGET_MS = 50;
+/** Rebuilds allowed per mounted pane before we stop and ask for a window reload. */
+const MAX_RENDERER_RECOVERIES = 3;
+/** A pane healthy for this long earns its rebuild budget back. */
+const RECOVERY_BUDGET_RESET_MS = 60_000;
 
 /**
  * How long the sync gate waits for the first repaint before lifting itself.
@@ -272,6 +276,11 @@ interface TerminalViewProps {
 
 function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSessionLost, touchComposeMode }: TerminalViewProps) {
 	const t = useT();
+	// Rebuild budget for a dead ghostty renderer (see recoverFromRendererCrash).
+	const [terminalGeneration, setTerminalGeneration] = useState(0);
+	const recoveryAttemptsRef = useRef(0);
+	const lastRecoveryAtRef = useRef(0);
+	const recoverFromRendererCrashRef = useRef<((reason: string, error: string) => void) | null>(null);
 	// Mirror t in a ref so the long-lived terminal-setup effect's closures
 	// (e.g. the select-to-copy hint) always read the latest translator.
 	const tRef = useRef(t);
@@ -410,6 +419,42 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	) {
 		logDiagnostic("terminal-copy", level, message, extra);
 	}
+
+	/**
+	 * Rebuild the terminal after ghostty-web's renderer died.
+	 *
+	 * `startRenderLoop` schedules the next frame only AFTER a successful render and
+	 * is private, so a single throw inside `render()` stops the terminal forever:
+	 * the pane goes blank, the PTY and tmux keep running, and neither a resize nor a
+	 * fullscreen toggle can bring it back — only a fresh Terminal can. Both crashes
+	 * seen in the field arrive through `term.resize` (a JS `RangeError` from an
+	 * unguarded `String.fromCodePoint` in the draw path, and a WASM
+	 * `Out of bounds memory access`), which is why this hangs off that one catch.
+	 *
+	 * Bumping the generation re-runs the terminal effect: full dispose, fresh
+	 * Terminal, fresh WASM handle, and tmux repaints into it on attach.
+	 */
+	const recoverFromRendererCrash = useCallback((reason: string, error: string) => {
+		// The budget guards against a rebuild loop, not against a second crash an hour
+		// later — so a pane that has been healthy for a while starts over with a full
+		// budget instead of silently losing the ability to heal itself.
+		const now = Date.now();
+		if (now - lastRecoveryAtRef.current > RECOVERY_BUDGET_RESET_MS) recoveryAttemptsRef.current = 0;
+		lastRecoveryAtRef.current = now;
+		const attempt = recoveryAttemptsRef.current + 1;
+		// A rebuild that instantly dies again means the shared WASM module itself is
+		// corrupt — no number of retries fixes that, so stop and hand the user the
+		// one action that does (reloading the window; tmux keeps the session alive).
+		if (attempt > MAX_RENDERER_RECOVERIES) {
+			logDiagnostic("terminal-recover", "error", "giving up on terminal recovery", { reason, error, attempt });
+			toast.error(t("terminal.rendererCrashed"), { taskId, onClick: () => window.location.reload() });
+			return;
+		}
+		recoveryAttemptsRef.current = attempt;
+		logDiagnostic("terminal-recover", "warn", "rebuilding the terminal after a renderer crash", { reason, error, attempt });
+		setTerminalGeneration((generation) => generation + 1);
+	}, [t, taskId]);
+	recoverFromRendererCrashRef.current = recoverFromRendererCrash;
 
 	useEffect(() => {
 		const observer = new MutationObserver(() => {
@@ -887,6 +932,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					} catch (err) {
 						if (!disposed) {
 							logDiagnostic("refit", "error", "observer term.resize threw", { error: String(err), cols: pty.cols, rows: pty.rows });
+							recoverFromRendererCrashRef.current?.("observer-resize", String(err));
 						}
 					}
 					return;
@@ -899,7 +945,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				try {
 					dims = fitAddon.proposeDimensions();
 				} catch (err) {
-					if (!disposed) logDiagnostic("refit", "error", "proposeDimensions threw", { error: String(err) });
+					if (!disposed) {
+						logDiagnostic("refit", "error", "proposeDimensions threw", { error: String(err) });
+						recoverFromRendererCrashRef.current?.("propose-dimensions", String(err));
+					}
 					return;
 				}
 				if (!dims) return;
@@ -908,6 +957,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				} catch (err) {
 					if (!disposed) {
 						logDiagnostic("refit", "error", "term.resize threw", { error: String(err), cols: dims.cols, rows: dims.rows });
+						recoverFromRendererCrashRef.current?.("fit-resize", String(err));
 					}
 				}
 			}
@@ -1726,7 +1776,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				});
 			}
 		};
-	}, [ptyUrl, taskId]);
+	}, [ptyUrl, taskId, terminalGeneration]);
 
 	useEffect(() => {
 		try {

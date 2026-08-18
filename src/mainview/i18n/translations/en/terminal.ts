@@ -245,6 +245,7 @@ const terminal = {
 	"terminal.filePreviewContentCopied": "Content copied",
 	"terminal.filePreviewRendered": "Rendered",
 	"terminal.filePreviewRaw": "Raw",
+	"terminal.rendererCrashed": "The terminal renderer crashed and could not restart itself. Click to reload the window — your session keeps running.",
 } as const;
 
 export default terminal;
