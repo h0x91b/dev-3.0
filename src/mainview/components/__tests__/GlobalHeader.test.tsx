@@ -881,6 +881,26 @@ describe("GlobalHeader — compact layout", () => {
 		await user.click(more);
 		expect(screen.getByText("Change Log")).toBeInTheDocument();
 	});
+
+	it("keeps prevent-sleep out of the roomy header bar and inside the kebab menu", async () => {
+		mockMatchMedia(false);
+		mockedApi.request.getPreventSleepState.mockResolvedValue({
+			enabled: true,
+			available: true,
+			forcedByRemote: false,
+		});
+		const user = userEvent.setup();
+		renderHeader({ screen: "project", projectId: "p1" });
+		// Nobody switches it off, so the bar itself no longer carries it.
+		await act(async () => {});
+		expect(screen.queryByLabelText("No Sleep")).not.toBeInTheDocument();
+
+		await user.click(screen.getByLabelText("More"));
+		const toggle = await screen.findByLabelText("No Sleep");
+		// Inside the menu, not merely somewhere on screen — that is the whole point.
+		expect(toggle.closest("[role=menu]")).not.toBeNull();
+		expect(toggle).toHaveAttribute("role", "menuitem");
+	});
 });
 
 describe("GlobalHeader — help mode button", () => {

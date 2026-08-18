@@ -587,9 +587,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					</div>
 				)}
 
-				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs.
-				    Folded into the kebab bottom sheet on narrow. */}
-				{!isNarrow && <PreventSleepToggle />}
+				{/* Prevent-sleep lives in the kebab sheet only, at every width: it is on for
+				    everyone and practically never switched off, so a permanent header slot
+				    bought nothing. */}
 
 				{/* Memory headroom — the one ambient resource readout in the header
 				    (PRODUCT_UX_BIBLE §12.6). Folds into the kebab sheet on narrow
@@ -686,6 +686,10 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					</Tooltip>
 						{showOverflowMenu && (
 							<div className="absolute right-0 top-full mt-1.5 w-52 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1" role="menu">
+								{/* The one stateful row here — it stays open on click so the icon
+								    flipping to z's is the confirmation. */}
+								<PreventSleepToggle variant="row" />
+								<div className="my-1 border-t border-edge" />
 								{route.screen !== "stats" && (
 									<button
 										role="menuitem"
