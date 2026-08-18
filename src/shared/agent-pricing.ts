@@ -83,10 +83,11 @@ const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBas
 	// --- Open-source models dev3 recommends through the catalog ---
 	// Priced so a routed session is costed like any other, and so the launcher
 	// can show what a slot would cost before the user connects anything.
-	{ match: (id) => id.includes("deepseek-v4-flash"), rate: { input: 0.0675, output: 0.135 } },
-	{ match: (id) => id.includes("deepseek-v4-pro"), rate: { input: 0.435, output: 0.87 } },
+	{ match: (id) => id.includes("deepseek-v4-flash"), rate: { input: 0.14, output: 0.28 } },
+	{ match: (id) => id.includes("deepseek-v4-pro"), rate: { input: 1.32, output: 3.96 } },
+	{ match: (id) => id.includes("glm-5.2"), rate: { input: 1.19, output: 3.74 } },
 	{ match: (id) => id.includes("qwen3.8"), rate: { input: 2, output: 6 } },
-	{ match: (id) => id.includes("kimi-k3"), rate: { input: 2.8, output: 14 } },
+	{ match: (id) => id.includes("kimi-k3"), rate: { input: 3, output: 15 } },
 	// Haiku 4.5 / newer: $1 / $5
 	{ match: (id) => /haiku-4/.test(id) || /haiku-[5-9]/.test(id), rate: { input: 1, output: 5 } },
 	// Haiku 3.5: $0.80 / $4

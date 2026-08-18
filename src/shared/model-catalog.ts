@@ -154,8 +154,8 @@ export function providerCannotListModels(catalog: ModelCatalog, catalogModelId: 
  * one of ours.
  *
  * Cost is the reason this exists: a routed transcript records the wire name
- * (`openrouter/ds-pro`), and the rate table keys off the provider's own slug
- * (`deepseek/deepseek-v4-pro-0813`). Pricing the wire name means pricing a
+ * (`openrouter/glm-5.2`), and the rate table keys off the provider's own slug
+ * (`z-ai/glm-5.2`). Pricing the wire name means pricing a
  * user-chosen label — it matches only by luck.
  */
 export function nativeModelIdForWireName(catalog: ModelCatalog, wireName: string): string | undefined {

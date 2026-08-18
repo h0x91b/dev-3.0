@@ -32,10 +32,11 @@ describe("resolveModelRate", () => {
 	});
 
 	it("prices the open-source models dev3 recommends, by their OpenRouter slug", () => {
-		expect(resolveModelRate("deepseek/deepseek-v4-flash-0731")).toMatchObject({ input: 0.0675, output: 0.135 });
-		expect(resolveModelRate("deepseek/deepseek-v4-pro-0813")).toMatchObject({ input: 0.435, output: 0.87 });
+		expect(resolveModelRate("deepseek/deepseek-v4-flash-0731")).toMatchObject({ input: 0.14, output: 0.28 });
+		expect(resolveModelRate("deepseek/deepseek-v4-pro-0813")).toMatchObject({ input: 1.32, output: 3.96 });
+		expect(resolveModelRate("z-ai/glm-5.2")).toMatchObject({ input: 1.19, output: 3.74 });
 		expect(resolveModelRate("qwen/qwen3.8-2.4t-a95b")).toMatchObject({ input: 2, output: 6 });
-		expect(resolveModelRate("moonshotai/kimi-k3")).toMatchObject({ input: 2.8, output: 14 });
+		expect(resolveModelRate("moonshotai/kimi-k3")).toMatchObject({ input: 3, output: 15 });
 	});
 
 	it("keeps flash cheaper than pro, so a mis-ordered rule cannot pass unnoticed", () => {

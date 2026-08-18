@@ -53,25 +53,25 @@ export interface RecommendedModel {
  * Do NOT bump for a label, blurb, or price correction: nothing the user runs
  * changes, and the prompt is a promise that something did.
  */
-export const RECOMMENDED_REVISION = 1;
+export const RECOMMENDED_REVISION = 2;
 
 export const RECOMMENDED_MODELS: RecommendedModel[] = [
 	{
 		providerKind: "openrouter",
-		modelId: "qwen/qwen3.8-2.4t-a95b",
-		name: "qwen3.8",
-		label: "Qwen3.8 2.4T",
+		modelId: "moonshotai/kimi-k3",
+		name: "kimi-k3",
+		label: "Kimi K3",
 		claudeRole: "fable",
-		blurbKey: "recommended.qwen38",
+		blurbKey: "recommended.kimiK3",
 	},
 	{
 		providerKind: "openrouter",
-		modelId: "deepseek/deepseek-v4-pro-0813",
-		name: "ds-pro",
-		label: "DeepSeek V4 Pro",
+		modelId: "z-ai/glm-5.2",
+		name: "glm-5.2",
+		label: "GLM 5.2",
 		claudeRole: "opus",
 		codexRole: "main",
-		blurbKey: "recommended.dsPro",
+		blurbKey: "recommended.glm52",
 	},
 	{
 		providerKind: "openrouter",

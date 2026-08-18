@@ -58,11 +58,11 @@ describe("AgentConfigPicker — models the user has not connected", () => {
 		await waitFor(() => expect(modelCatalogGet).toHaveBeenCalled());
 
 		await user.click(screen.getByLabelText("Model"));
-		const offered = await screen.findByText("DeepSeek V4 Pro");
+		const offered = await screen.findByText("GLM 5.2");
 		expect(offered.closest("button")).toHaveAttribute("aria-disabled", "true");
 		// The number is the whole argument. A row that says only "DeepSeek" asks
 		// the user to go and look the price up somewhere else.
-		expect(screen.getByText("$0.87/M vs Opus 5")).toBeTruthy();
+		expect(screen.getByText("$4/M vs Opus 5")).toBeTruthy();
 	});
 
 	it("goes quiet once the user has a provider of their own — any provider", async () => {
@@ -75,7 +75,7 @@ describe("AgentConfigPicker — models the user has not connected", () => {
 		await waitFor(() => expect(modelCatalogGet).toHaveBeenCalled());
 
 		await user.click(screen.getByLabelText("Model"));
-		expect(screen.queryByText("DeepSeek V4 Pro")).toBeNull();
+		expect(screen.queryByText("GLM 5.2")).toBeNull();
 		// The action never depends on the advertising.
 		expect(screen.getByText("+ Connect a provider…")).toBeTruthy();
 	});
@@ -86,7 +86,7 @@ describe("AgentConfigPicker — models the user has not connected", () => {
 		await waitFor(() => expect(modelCatalogGet).toHaveBeenCalled());
 
 		await user.click(screen.getByLabelText("Model"));
-		expect(screen.queryByText("DeepSeek V4 Pro")).toBeNull();
+		expect(screen.queryByText("GLM 5.2")).toBeNull();
 	});
 
 	it("opens the connect flow from the always-present row, and from a locked one", async () => {
@@ -107,7 +107,7 @@ describe("AgentConfigPicker — models the user has not connected", () => {
 		await waitFor(() => expect(modelCatalogGet).toHaveBeenCalled());
 
 		await user.click(screen.getByLabelText("Model"));
-		await user.click(screen.getByText("Qwen3.8 2.4T"));
+		await user.click(screen.getByText("Kimi K3"));
 		expect(await screen.findByTestId("connect-provider-modal")).toBeTruthy();
 	});
 });
@@ -125,7 +125,7 @@ describe("editing the models behind a routed preset", () => {
 		vi.clearAllMocks();
 		modelCatalogGet.mockResolvedValue({
 			providers: [{ id: "p1", kind: "openrouter", label: "OpenRouter", hasKey: true }],
-			models: [{ id: "m1", providerId: "p1", name: "ds-pro", modelId: "deepseek/deepseek-v4-pro-0813" }],
+			models: [{ id: "m1", providerId: "p1", name: "glm-5.2", modelId: "z-ai/glm-5.2" }],
 		});
 	});
 
@@ -186,7 +186,7 @@ describe("a curated list that moved on after the user was seeded", () => {
 		vi.clearAllMocks();
 		modelCatalogGet.mockResolvedValue({
 			providers: [{ id: "p1", kind: "openrouter", label: "OpenRouter", hasKey: true }],
-			models: [{ id: "m1", providerId: "p1", name: "ds-pro", modelId: "deepseek/deepseek-v4-pro-0813" }],
+			models: [{ id: "m1", providerId: "p1", name: "glm-5.2", modelId: "z-ai/glm-5.2" }],
 		});
 		modelCatalogSave.mockResolvedValue({ providers: [], models: [] });
 		getAgents.mockResolvedValue([stale]);
@@ -218,11 +218,11 @@ describe("a curated list that moved on after the user was seeded", () => {
 		);
 		await user.click(await screen.findByTestId("t-recommended-update"));
 		// Both sides of every changing role are on screen — that is the consent.
-		// `ds-pro` is bound already, so it is NOT here: an unchanged role is not a
+		// `glm-5.2` is bound already, so it is NOT here: an unchanged role is not a
 		// change, and listing it would inflate what the user is agreeing to.
 		expect(await screen.findByTestId("recommended-update-modal")).toBeTruthy();
-		expect(screen.getAllByText("qwen3.8").length).toBeGreaterThan(0);
-		expect(screen.queryByText("ds-pro")).toBeNull();
+		expect(screen.getAllByText("kimi-k3").length).toBeGreaterThan(0);
+		expect(screen.queryByText("glm-5.2")).toBeNull();
 		expect(modelCatalogSave).not.toHaveBeenCalled();
 		expect(saveAgents).not.toHaveBeenCalled();
 
@@ -230,7 +230,7 @@ describe("a curated list that moved on after the user was seeded", () => {
 		await waitFor(() => expect(saveAgents).toHaveBeenCalled());
 		// The models have to be in the catalog before a preset may point at them.
 		const savedCatalog = modelCatalogSave.mock.calls[0][0].catalog as ModelCatalogView;
-		expect(savedCatalog.models.map((m) => m.modelId)).toContain("qwen/qwen3.8-2.4t-a95b");
+		expect(savedCatalog.models.map((m) => m.modelId)).toContain("moonshotai/kimi-k3");
 		const savedAgents = saveAgents.mock.calls[0][0].agents as typeof DEFAULT_AGENTS;
 		const seeded = savedAgents[0].configurations.find((c) => c.id === "seeded")!;
 		expect(Object.keys(seeded.modelRoles!).sort()).toEqual(["fable", "haiku", "opus", "sonnet"]);
@@ -260,7 +260,7 @@ describe("a curated list that moved on after the user was seeded", () => {
 				{ id: "p1", kind: "openrouter", label: "OpenRouter", hasKey: true },
 				{ id: "p2", kind: "custom", label: "My box", baseUrl: "http://localhost:11434/v1", hasKey: true },
 			],
-			models: [{ id: "m1", providerId: "p1", name: "ds-pro", modelId: "deepseek/deepseek-v4-pro-0813" }],
+			models: [{ id: "m1", providerId: "p1", name: "glm-5.2", modelId: "z-ai/glm-5.2" }],
 		});
 
 		await user.click(screen.getByTestId("recommended-update-apply"));

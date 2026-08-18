@@ -154,7 +154,7 @@ describe("seeding a freshly connected provider", () => {
 	});
 
 	it("binds the model it just seeded, never a stranger's model that owns the same name", () => {
-		// The user already has a model called `ds-pro` on their own endpoint. The
+		// The user already has a model with the curated name on their own endpoint. The
 		// seeded recommendation is renamed around it, so a lookup by curated name
 		// would resolve to THEIR model — the silent wrong-model case.
 		const taken: ModelCatalogView = {
@@ -267,7 +267,7 @@ describe("keeping an already-seeded user current", () => {
 		expect(update.changes.map((c) => c.roleId).sort()).toEqual(["fable", "haiku", "opus", "sonnet"]);
 		// Both sides named, so the modal can show what is being replaced.
 		expect(update.changes.every((c) => c.from === "legacy")).toBe(true);
-		expect(update.changes.map((c) => c.to)).toContain("ds-pro");
+		expect(update.changes.map((c) => c.to)).toContain(RECOMMENDED_MODELS[1].name);
 	});
 
 	it("says nothing about a preset already on the current revision", () => {
