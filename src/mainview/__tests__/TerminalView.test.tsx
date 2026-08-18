@@ -1898,6 +1898,36 @@ describe("TerminalView – renderer crash recovery", () => {
 		expect(tags).toContain("terminal-recover");
 	});
 
+	it("carries the run-up to the crash, so the trigger can be read off one log line", async () => {
+		await renderAndSetup();
+		vi.mocked(api.request.logRendererDiagnostic).mockClear();
+
+		await crashOnNextRefit(new Error("RuntimeError: Out of bounds memory access"));
+
+		const refit = vi
+			.mocked(api.request.logRendererDiagnostic)
+			.mock.calls.map((c) => c[0] as { tag: string; extra?: Record<string, unknown> })
+			.find((call) => call.tag === "refit");
+		// The successful resizes before the fatal one are the whole point: without them
+		// "did a resize trigger it?" cannot be answered from a log file.
+		expect(String(refit?.extra?.trail)).toMatch(/resize 80x24/);
+		expect(refit?.extra?.cols).toBe(80);
+	});
+
+	it("reports how many panes exist and how many died, which tells one pane from the shared module", async () => {
+		await renderAndSetup();
+		vi.mocked(api.request.logRendererDiagnostic).mockClear();
+
+		await crashOnNextRefit(new Error("RuntimeError: Out of bounds memory access"));
+
+		const recover = vi
+			.mocked(api.request.logRendererDiagnostic)
+			.mock.calls.map((c) => c[0] as { tag: string; extra?: Record<string, unknown> })
+			.find((call) => call.tag === "terminal-recover");
+		expect(recover?.extra?.liveTerminals).toBeGreaterThan(0);
+		expect(recover?.extra?.sessionCrashes).toBeGreaterThan(0);
+	});
+
 	it("leaves a healthy terminal alone", async () => {
 		await renderAndSetup();
 		const builtBefore = vi.mocked(Terminal).mock.calls.length;

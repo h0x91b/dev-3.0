@@ -24,6 +24,7 @@ import {
 import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
 import { installCursorVisibilityGate, type CursorVisibilityGate } from "./terminal-cursor-focus";
 import { installRenderGuard, type RenderGuard } from "./terminal-render-guard";
+import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
 import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer } from "./wheel-pacer";
@@ -100,6 +101,13 @@ const TERMINAL_DISPOSE_BUDGET_MS = 50;
 const MAX_RENDERER_RECOVERIES = 3;
 /** A pane healthy for this long earns its rebuild budget back. */
 const RECOVERY_BUDGET_RESET_MS = 60_000;
+
+/**
+ * App-session totals, deliberately module-level: every terminal shares ONE ghostty
+ * WASM module, so the question a post-mortem asks first is whether one pane broke
+ * or the whole module did. Per-pane numbers cannot answer that; these can.
+ */
+const session = { liveTerminals: 0, frameErrorPanes: 0, crashes: 0 };
 
 /**
  * How long the sync gate waits for the first repaint before lifting itself.
@@ -448,12 +456,25 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// corrupt — no number of retries fixes that, so stop and hand the user the
 		// one action that does (reloading the window; tmux keeps the session alive).
 		if (attempt > MAX_RENDERER_RECOVERIES) {
-			logDiagnostic("terminal-recover", "error", "giving up on terminal recovery", { reason, error, attempt });
+			logDiagnostic("terminal-recover", "error", "giving up on terminal recovery", {
+				reason,
+				error,
+				attempt,
+				liveTerminals: session.liveTerminals,
+				sessionCrashes: session.crashes,
+			});
 			toast.error(t("terminal.rendererCrashed"), { taskId, onClick: () => window.location.reload() });
 			return;
 		}
 		recoveryAttemptsRef.current = attempt;
-		logDiagnostic("terminal-recover", "warn", "rebuilding the terminal after a renderer crash", { reason, error, attempt });
+		session.crashes += 1;
+		logDiagnostic("terminal-recover", "warn", "rebuilding the terminal after a renderer crash", {
+			reason,
+			error,
+			attempt,
+			liveTerminals: session.liveTerminals,
+			sessionCrashes: session.crashes,
+		});
 		setTerminalGeneration((generation) => generation + 1);
 	}, [t, taskId]);
 	recoverFromRendererCrashRef.current = recoverFromRendererCrash;
@@ -547,6 +568,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 	useEffect(() => {
 		let disposed = false;
+		// The run-up to a crash: successful resizes, dpr flips and backgrounding are
+		// invisible in the log otherwise, and they are the only trigger candidates the
+		// field reports name. Attached to every error payload below.
+		const trail = createBreadcrumbTrail();
+		let lastDpr = window.devicePixelRatio;
+		// Owned by this effect run, so a terminal that never opened cannot decrement
+		// the session count on cleanup.
+		let countedLive = false;
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;
 		let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -622,6 +651,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
+			session.liveTerminals += 1;
+			countedLive = true;
+			trail.note("open", `${term.cols}x${term.rows} dpr${lastDpr}`);
 
 
 			// Beta: paint right-to-left rows in visual order (Settings → System →
@@ -650,12 +682,20 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				renderGuardRef.current = installRenderGuard(term.renderer, {
 					onFrameError: (error, consecutive) => {
 						if (disposed) return;
+						if (consecutive === 1) {
+							session.frameErrorPanes += 1;
+							trail.note("frame-error");
+						}
 						logDiagnostic("render-guard", "error", "render frame threw", {
 							error: String(error),
 							consecutive,
 							frames: renderGuardRef.current?.framesPainted() ?? 0,
 							socketBytes,
 							socketBatches,
+							// One pane or the shared WASM module: only the session totals say which.
+							liveTerminals: session.liveTerminals,
+							frameErrorPanes: session.frameErrorPanes,
+							trail: trail.format(),
 						});
 						if (consecutive === 1) recoverFromRendererCrashRef.current?.("render-frame", String(error));
 					},
@@ -671,6 +711,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							msSinceLastByte: lastSocketByteAt ? Date.now() - lastSocketByteAt : null,
 							writeErrors,
 							socketErrors,
+							liveTerminals: session.liveTerminals,
+							frameErrorPanes: session.frameErrorPanes,
+							trail: trail.format(),
 						});
 						recoverFromRendererCrashRef.current?.("render-stalled", `no frames for ${msSinceLastFrame}ms`);
 					},
@@ -962,13 +1005,20 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// its own width: those bytes were laid out for the writer's geometry and
 				// every line reaching the right edge would wrap in the wrong place.
 				// Adopt the PTY's shape instead and letterbox inside the container.
+				// A resolution change moves the whole canvas onto a different backing
+				// scale, which is the reported trigger and is otherwise unrecorded.
+				if (window.devicePixelRatio !== lastDpr) {
+					trail.note("dpr", `${lastDpr}->${window.devicePixelRatio}`);
+					lastDpr = window.devicePixelRatio;
+				}
 				const pty = ptyGeometryRef.current;
 				if (pty && nativeRoleRef.current === "observer") {
 					try {
 						term.resize(pty.cols, pty.rows);
+						trail.note("resize-observer", `${pty.cols}x${pty.rows}`);
 					} catch (err) {
 						if (!disposed) {
-							logDiagnostic("refit", "error", "observer term.resize threw", { error: String(err), cols: pty.cols, rows: pty.rows });
+							logDiagnostic("refit", "error", "observer term.resize threw", { error: String(err), cols: pty.cols, rows: pty.rows, trail: trail.format() });
 							recoverFromRendererCrashRef.current?.("observer-resize", String(err));
 						}
 					}
@@ -983,7 +1033,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					dims = fitAddon.proposeDimensions();
 				} catch (err) {
 					if (!disposed) {
-						logDiagnostic("refit", "error", "proposeDimensions threw", { error: String(err) });
+						logDiagnostic("refit", "error", "proposeDimensions threw", { error: String(err), trail: trail.format() });
 						recoverFromRendererCrashRef.current?.("propose-dimensions", String(err));
 					}
 					return;
@@ -991,9 +1041,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				if (!dims) return;
 				try {
 					term.resize(dims.cols, dims.rows);
+					trail.note("resize", `${dims.cols}x${dims.rows}`);
 				} catch (err) {
 					if (!disposed) {
-						logDiagnostic("refit", "error", "term.resize threw", { error: String(err), cols: dims.cols, rows: dims.rows });
+						logDiagnostic("refit", "error", "term.resize threw", { error: String(err), cols: dims.cols, rows: dims.rows, trail: trail.format() });
 						recoverFromRendererCrashRef.current?.("fit-resize", String(err));
 					}
 				}
@@ -1507,6 +1558,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 								writeErrors,
 								socketBytes,
 								socketBatches,
+								liveTerminals: session.liveTerminals,
+								trail: trail.format(),
 							});
 						}
 						if (writeErrors === 1) recoverFromRendererCrashRef.current?.("term-write", String(err));
@@ -1658,6 +1711,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							error: String(err),
 							socketErrors,
 							socketBytes,
+							trail: trail.format(),
 						});
 					}
 				}
@@ -1730,8 +1784,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			if (disposed) return;
 			if (document.visibilityState === "hidden") {
 				wasHidden = true;
+				trail.note("hidden");
 				return;
 			}
+			// "Lost the terminal after the machine woke up" is the other half of the
+			// report, and a wake arrives here as a long stretch spent hidden.
+			if (wasHidden) trail.note("visible", event.type);
 			const term = termRef.current;
 			const fit = fitAddonRef.current;
 			if (!term || !fit) return;
@@ -1776,6 +1834,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// so a debug line never reaches the file and the marker would not be durable.
 			logDiagnostic("terminal-dispose", "info", "cleanup started");
 			disposed = true;
+			if (countedLive) {
+				countedLive = false;
+				session.liveTerminals = Math.max(0, session.liveTerminals - 1);
+			}
 			document.removeEventListener("visibilitychange", reconnectPtyOnResume);
 			window.removeEventListener("pageshow", reconnectPtyOnResume);
 			window.removeEventListener("online", reconnectPtyOnResume);
