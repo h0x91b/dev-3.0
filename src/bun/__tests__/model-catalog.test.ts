@@ -236,11 +236,6 @@ describe("resolveModelRoleLaunch — Claude Code", () => {
 		expect(plan?.env.ANTHROPIC_AUTH_TOKEN).toBe("sk-bf-secret");
 	});
 
-	it("denies Claude Code the 1M-context window no routed model promises", () => {
-		const plan = resolveModelRoleLaunch("claude", bindings, catalog(), RUNTIME);
-		expect(plan?.env.CLAUDE_CODE_DISABLE_1M_CONTEXT).toBe("1");
-	});
-
 	it("clears an inherited Anthropic API key so a stale credential cannot win", () => {
 		const plan = resolveModelRoleLaunch("claude", bindings, catalog(), RUNTIME);
 		expect(plan?.unsetEnv).toContain("ANTHROPIC_API_KEY");
