@@ -595,6 +595,8 @@ const settings = {
 	"catalog.modelIdEmpty": "Ничего не нашлось — Enter, чтобы взять введённое.",
 	"catalog.addModel": "Добавить модель",
 	"catalog.addModelNeedsProvider": "Сначала добавь провайдера.",
+	"catalog.modelWide": "Контекст 1M",
+	"catalog.modelWideHint": "Отметьте, если модель отдаёт окно на миллион токенов: сессия начнёт сжиматься на миллионе, а не на 200k. По id модели угадывается само, ваш ответ главнее.",
 	"catalog.duplicateModel": "Дублировать",
 	"catalog.removeModel": "Удалить",
 	"catalog.removeModelTitle": "Удалить модель?",

@@ -592,6 +592,8 @@ const settings = {
 	"catalog.modelIdEmpty": "Nada coincide — pulsa Enter para usar lo escrito.",
 	"catalog.addModel": "Añadir modelo",
 	"catalog.addModelNeedsProvider": "Añade antes un proveedor.",
+	"catalog.modelWide": "Contexto de 1M",
+	"catalog.modelWideHint": "Marca si el modelo sirve una ventana de 1M tokens: la sesión se comprimirá al millón en lugar de a 200k. Se deduce del id del modelo; tu respuesta manda.",
 	"catalog.duplicateModel": "Duplicar",
 	"catalog.removeModel": "Eliminar",
 	"catalog.removeModelTitle": "¿Eliminar este modelo?",

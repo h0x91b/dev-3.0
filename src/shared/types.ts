@@ -1141,7 +1141,7 @@ export interface ModelCatalogView {
 		apiFormat?: "openai" | "anthropic";
 		hasKey: boolean;
 	}[];
-	models: { id: string; providerId: string; name: string; modelId: string }[];
+	models: { id: string; providerId: string; name: string; modelId: string; extendedContext?: boolean }[];
 }
 
 /**

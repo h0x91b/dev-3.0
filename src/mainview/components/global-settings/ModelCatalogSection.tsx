@@ -4,6 +4,7 @@ import {
 	CATALOG_PROVIDER_KINDS,
 	CUSTOM_API_FORMATS,
 	isValidCatalogModelName,
+	modelUsesExtendedContext,
 	sidecarProviderKey,
 	validateCatalog,
 	type CatalogProviderKind,
@@ -577,7 +578,7 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 						<p className="text-fg-3 text-sm">{t("catalog.noModels")}</p>
 					) : (
 						<EditTable
-							columns={[t("catalog.modelName"), t("catalog.modelProvider"), t("catalog.modelId")]}
+							columns={[t("catalog.modelName"), t("catalog.modelProvider"), t("catalog.modelId"), t("catalog.modelWide")]}
 							actionsLabel={t("catalog.colActions")}
 						>
 							{draft.models.map((model) => {
@@ -619,6 +620,17 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 												onChange={(value) => patchModel(model.id, { modelId: value })}
 											/>
 											</td>
+										<td className={`${CELL_CLASS} w-16 text-center`}>
+											<input
+												id={`model-wide-${model.id}`}
+												type="checkbox"
+												aria-label={t("catalog.modelWide")}
+												title={t("catalog.modelWideHint")}
+												checked={modelUsesExtendedContext(model)}
+												onChange={(event) => patchModel(model.id, { extendedContext: event.target.checked })}
+												className="h-4 w-4 accent-accent"
+											/>
+										</td>
 										<td className={`${CELL_CLASS} text-right whitespace-nowrap`}>
 											<button type="button" onClick={() => duplicateModel(model.id)} className={BUTTON_CLASS}>
 												{t("catalog.duplicateModel")}
@@ -633,7 +645,10 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 						</EditTable>
 					)}
 					{draft.models.length > 0 ? (
-						<p className="text-fg-3 text-xs">{available ? t("catalog.modelIdTypeAnyway") : t("catalog.modelIdManual")}</p>
+						<>
+							<p className="text-fg-3 text-xs">{available ? t("catalog.modelIdTypeAnyway") : t("catalog.modelIdManual")}</p>
+							<p className="text-fg-3 text-xs">{t("catalog.modelWideHint")}</p>
+						</>
 					) : null}
 					<Gated reason={draft.providers.length === 0 ? t("catalog.addModelNeedsProvider") : null}>
 						<button type="button" onClick={addModel} disabled={draft.providers.length === 0} className={BUTTON_CLASS}>

@@ -89,6 +89,25 @@ describe("editing the catalog", () => {
 		expect(screen.getByDisplayValue("fast-gremlin")).toBeTruthy();
 	});
 
+	it("ticks the 1M box for a model known to serve that window, and takes an answer either way", async () => {
+		vi.mocked(api.request.modelCatalogGet).mockResolvedValue({
+			providers: [{ id: "p-or", kind: "openrouter", label: "OpenRouter", hasKey: true }],
+			models: [
+				{ id: "m-glm", providerId: "p-or", name: "glm-5.2", modelId: "z-ai/glm-5.2" },
+				{ id: "m-old", providerId: "p-or", name: "old", modelId: "some/older-model" },
+			],
+		});
+		renderSection();
+		await screen.findByDisplayValue("glm-5.2");
+		const boxes = screen.getAllByLabelText("catalog.modelWide") as HTMLInputElement[];
+		expect(boxes.map((b) => b.checked)).toEqual([true, false]);
+
+		await userEvent.click(boxes[0]);
+		await userEvent.click(await screen.findByRole("button", { name: "catalog.save" }));
+		const saved = vi.mocked(api.request.modelCatalogSave).mock.calls[0][0].catalog.models;
+		expect(saved[0].extendedContext).toBe(false);
+	});
+
 	it("shows a stored key as a mask, and refuses to be edited while masked", async () => {
 		renderSection();
 		expect(await screen.findByText("catalog.providerKeyStored")).toBeTruthy();

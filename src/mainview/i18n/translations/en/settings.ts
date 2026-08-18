@@ -592,6 +592,8 @@ const settings = {
 	"catalog.modelIdEmpty": "Nothing matches — press Enter to use what you typed.",
 	"catalog.addModel": "Add model",
 	"catalog.addModelNeedsProvider": "Add a provider first.",
+	"catalog.modelWide": "1M context",
+	"catalog.modelWideHint": "Tick when this model serves a 1M-token window: the session then compacts at a million tokens instead of 200k. Guessed from the model id; your answer wins.",
 	"catalog.duplicateModel": "Duplicate",
 	"catalog.removeModel": "Remove",
 	"catalog.removeModelTitle": "Remove this model?",

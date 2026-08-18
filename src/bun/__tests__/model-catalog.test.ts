@@ -250,6 +250,41 @@ describe("resolveModelRoleLaunch — Claude Code", () => {
 		expect(plan?.unsetEnv).toContain("ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION");
 	});
 
+	const wideCatalog = (): ModelCatalog => ({
+		providers: [{ id: "p-or", kind: "openrouter", label: "OpenRouter" }],
+		models: [
+			{ id: "m-1m", providerId: "p-or", name: "glm", modelId: "z-ai/glm-5.2" },
+			{ id: "m-1m-off", providerId: "p-or", name: "glm-short", modelId: "z-ai/glm-5.2", extendedContext: false },
+			{ id: "m-plain", providerId: "p-or", name: "old", modelId: "some/older-model" },
+		],
+	});
+
+	it("runs a 1M model on its own window instead of Claude Code's 200k assumption", () => {
+		const plan = resolveModelRoleLaunch("claude", { opus: "m-1m", sonnet: "m-1m" }, wideCatalog(), RUNTIME);
+		expect(plan?.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("openrouter/glm[1m]");
+		expect(plan?.env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("openrouter/glm[1m]");
+		// The window is read off the model the session selects, so the flag carries it too.
+		expect(plan?.modelFlag).toBe("openrouter/glm[1m]");
+	});
+
+	it("keeps the marker off the slots whose alias does not document it", () => {
+		const plan = resolveModelRoleLaunch("claude", { opus: "m-1m", fable: "m-1m", haiku: "m-1m" }, wideCatalog(), RUNTIME);
+		expect(plan?.env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("openrouter/glm");
+		expect(plan?.env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("openrouter/glm");
+	});
+
+	it("obeys a user who says their model is not a 1M one", () => {
+		const plan = resolveModelRoleLaunch("claude", { opus: "m-1m-off" }, wideCatalog(), RUNTIME);
+		expect(plan?.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("openrouter/glm-short");
+		expect(plan?.modelFlag).toBe("openrouter/glm-short");
+	});
+
+	it("leaves a model nobody claims is 1M alone", () => {
+		const plan = resolveModelRoleLaunch("claude", { opus: "m-plain" }, wideCatalog(), RUNTIME);
+		expect(plan?.env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("openrouter/old");
+		expect(plan?.modelFlag).toBe("openrouter/old");
+	});
+
 	it("clears an inherited Anthropic API key so a stale credential cannot win", () => {
 		const plan = resolveModelRoleLaunch("claude", bindings, catalog(), RUNTIME);
 		expect(plan?.unsetEnv).toContain("ANTHROPIC_API_KEY");

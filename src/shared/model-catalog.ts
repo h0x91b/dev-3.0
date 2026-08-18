@@ -55,7 +55,39 @@ export interface CatalogModel {
 	providerId: string;
 	name: string;
 	modelId: string;
+	/**
+	 * Whether this model serves a 1M-token context window. Absent means "decide
+	 * from the model id" (`hasMillionTokenWindow`) — the field exists so the user
+	 * can contradict that guess in either direction, not so every model needs one.
+	 */
+	extendedContext?: boolean;
 }
+
+/** Provider-native ids known to publish a 1M-token window. Checked against the
+ *  providers' own catalogs on 2026-08-18; a family match, because a dated point
+ *  release keeps the window of the family it belongs to. */
+const MILLION_TOKEN_MODEL_IDS = ["glm-5.2", "kimi-k3", "qwen3.8", "deepseek-v4-flash"];
+
+export function hasMillionTokenWindow(modelId: string): boolean {
+	const id = modelId.toLowerCase();
+	return MILLION_TOKEN_MODEL_IDS.some((known) => id.includes(known));
+}
+
+/**
+ * Whether a routed session may run this model on a 1M-token window.
+ *
+ * Claude Code assumes 200k unless the model it was handed carries `[1m]`, so a
+ * model with a bigger window silently compacts five times earlier than it needs
+ * to. The user's own answer wins over the id guess.
+ */
+export function modelUsesExtendedContext(model: CatalogModel): boolean {
+	return model.extendedContext ?? hasMillionTokenWindow(model.modelId);
+}
+
+/** Claude Code's marker for "run this model on its 1M window". It strips the
+ *  suffix before the request leaves, so no provider ever sees it (verified on the
+ *  wire, decisions/2026/08/18/opt-into-the-million-token-window.md). */
+export const EXTENDED_CONTEXT_SUFFIX = "[1m]";
 
 export interface ModelCatalog {
 	providers: CatalogProvider[];
@@ -159,6 +191,9 @@ export function providerCannotListModels(catalog: ModelCatalog, catalogModelId: 
  * user-chosen label — it matches only by luck.
  */
 export function nativeModelIdForWireName(catalog: ModelCatalog, wireName: string): string | undefined {
+	// A launched session may carry the 1M marker in the model it reports, and the
+	// name behind it is the same model — pricing must not lose it over a suffix.
+	if (wireName.endsWith(EXTENDED_CONTEXT_SUFFIX)) wireName = wireName.slice(0, -EXTENDED_CONTEXT_SUFFIX.length);
 	const slash = wireName.indexOf("/");
 	if (slash === -1) return undefined;
 	const providerKey = wireName.slice(0, slash);
@@ -404,6 +439,7 @@ export function resolveModelRoleLaunch(
 	if (roles.length === 0 || !bindings) return undefined;
 
 	const wire: Record<string, string> = {};
+	const extended: Record<string, boolean> = {};
 	for (const role of roles) {
 		const bound = bindings[role.id];
 		if (!bound) continue;
@@ -412,12 +448,14 @@ export function resolveModelRoleLaunch(
 		// preset would silently bill the wrong provider.
 		if (!name) return undefined;
 		wire[role.id] = name;
+		const model = catalog.models.find((m) => m.id === bound);
+		if (model && modelUsesExtendedContext(model)) extended[role.id] = true;
 	}
 	if (Object.keys(wire).length === 0) return undefined;
 
 	return agentKey(baseCommand) === "codex"
 		? codexPlan(wire, runtime)
-		: claudePlan(wire, runtime, presetModel, catalogDisplay(catalog, bindings));
+		: claudePlan(wire, runtime, presetModel, catalogDisplay(catalog, bindings), extended);
 }
 
 /** What a routed slot should be called in the agent's own model picker: the
@@ -445,19 +483,26 @@ const CLAUDE_LAUNCH_FALLBACK: string[] = ["opus", "sonnet", "fable", "haiku"];
 
 /** Which bound slot the launch's own `--model` should name: the slot the preset
  *  already meant, else the workhorse. Never a Claude id — that is the silent
- *  wrong-model case. */
+ *  wrong-model case. Returns the role, because the launch needs the model behind
+ *  it as well as its name. */
 function claudeLaunchSlot(wire: Record<string, string>, presetModel: string | undefined): string | undefined {
 	const meant = presetModel ? claudeModelFamily(presetModel) : null;
-	if (meant && wire[meant]) return wire[meant];
-	const fallback = CLAUDE_LAUNCH_FALLBACK.find((role) => wire[role]);
-	return fallback ? wire[fallback] : undefined;
+	if (meant && wire[meant]) return meant;
+	return CLAUDE_LAUNCH_FALLBACK.find((role) => wire[role]);
 }
+
+/** The 1M marker belongs on the model a session actually selects — Claude Code
+ *  reads the window off that string. Only the opus and sonnet aliases document
+ *  the suffix, and the launch flag is proven to accept it; fable and haiku keep
+ *  the plain name rather than an undocumented guess. */
+const EXTENDED_CONTEXT_SLOTS = ["opus", "sonnet"];
 
 function claudePlan(
 	wire: Record<string, string>,
 	runtime: { baseUrl: string; sessionKey: string },
 	presetModel: string | undefined,
 	display: Record<string, { name: string; description: string }>,
+	extended: Record<string, boolean>,
 ): RoleLaunchPlan {
 	const env: Record<string, string> = {
 		ANTHROPIC_BASE_URL: `${runtime.baseUrl}/anthropic`,
@@ -470,13 +515,15 @@ function claudePlan(
 	// than at launch. The stand-in is the model the launch itself names — same
 	// choice codexPlan makes with `main`, and it can cost more than the tier the
 	// slot implies.
-	const standIn = claudeLaunchSlot(wire, presetModel);
+	const standInRole = claudeLaunchSlot(wire, presetModel);
+	const standIn = standInRole ? wire[standInRole] : undefined;
 	const staleDisplay: string[] = [];
 	for (const role of CLAUDE_ROLES) {
+		const source = wire[role.id] ? role.id : standInRole;
 		const name = wire[role.id] ?? standIn;
-		if (!name) continue;
+		if (!name || !source) continue;
 		const prefix = `ANTHROPIC_DEFAULT_${role.id.toUpperCase()}_MODEL`;
-		env[prefix] = name;
+		env[prefix] = extended[source] && EXTENDED_CONTEXT_SLOTS.includes(role.id) ? `${name}${EXTENDED_CONTEXT_SUFFIX}` : name;
 		// Claude Code honours `_NAME`/`_DESCRIPTION` for a pinned slot when the base
 		// URL is a gateway — unlike `_SUPPORTED_CAPABILITIES`, which is Bedrock /
 		// Vertex / Foundry only.
@@ -495,7 +542,7 @@ function claudePlan(
 	return {
 		env,
 		args: [],
-		modelFlag: standIn,
+		modelFlag: standIn && standInRole && extended[standInRole] ? `${standIn}${EXTENDED_CONTEXT_SUFFIX}` : standIn,
 		unsetEnv: ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", ...staleDisplay],
 	};
 }
