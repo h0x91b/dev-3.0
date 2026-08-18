@@ -417,7 +417,22 @@ export function resolveModelRoleLaunch(
 
 	return agentKey(baseCommand) === "codex"
 		? codexPlan(wire, runtime)
-		: claudePlan(wire, runtime, presetModel);
+		: claudePlan(wire, runtime, presetModel, catalogDisplay(catalog, bindings));
+}
+
+/** What a routed slot should be called in the agent's own model picker: the
+ *  user's name for the model, and who serves which provider-native id behind it.
+ *  Without this the picker lists the raw wire name against `Custom Opus model`,
+ *  which says neither what the model is nor where it comes from. */
+function catalogDisplay(catalog: ModelCatalog, bindings: ModelRoleBindings): Record<string, { name: string; description: string }> {
+	const display: Record<string, { name: string; description: string }> = {};
+	for (const [roleId, catalogModelId] of Object.entries(bindings)) {
+		const model = catalog.models.find((m) => m.id === catalogModelId);
+		const provider = catalog.providers.find((p) => p.id === model?.providerId);
+		if (!model || !provider) continue;
+		display[roleId] = { name: model.name, description: `${provider.label} · ${model.modelId}` };
+	}
+	return display;
 }
 
 /** Order the launch falls back through when the preset names no model of its
@@ -442,6 +457,7 @@ function claudePlan(
 	wire: Record<string, string>,
 	runtime: { baseUrl: string; sessionKey: string },
 	presetModel: string | undefined,
+	display: Record<string, { name: string; description: string }>,
 ): RoleLaunchPlan {
 	const env: Record<string, string> = {
 		ANTHROPIC_BASE_URL: `${runtime.baseUrl}/anthropic`,
@@ -455,9 +471,24 @@ function claudePlan(
 	// choice codexPlan makes with `main`, and it can cost more than the tier the
 	// slot implies.
 	const standIn = claudeLaunchSlot(wire, presetModel);
+	const staleDisplay: string[] = [];
 	for (const role of CLAUDE_ROLES) {
 		const name = wire[role.id] ?? standIn;
-		if (name) env[`ANTHROPIC_DEFAULT_${role.id.toUpperCase()}_MODEL`] = name;
+		if (!name) continue;
+		const prefix = `ANTHROPIC_DEFAULT_${role.id.toUpperCase()}_MODEL`;
+		env[prefix] = name;
+		// Claude Code honours `_NAME`/`_DESCRIPTION` for a pinned slot when the base
+		// URL is a gateway — unlike `_SUPPORTED_CAPABILITIES`, which is Bedrock /
+		// Vertex / Foundry only.
+		const shown = display[role.id];
+		if (!shown) {
+			// A slot dev3 does not name must not inherit a name from whatever ran
+			// before it — that would label this model as a different one.
+			staleDisplay.push(`${prefix}_NAME`, `${prefix}_DESCRIPTION`);
+			continue;
+		}
+		env[`${prefix}_NAME`] = shown.name;
+		env[`${prefix}_DESCRIPTION`] = shown.description;
 	}
 	// The flag outranks every one of these vars, so it must name a catalog model
 	// too — otherwise the session asks the sidecar for a Claude id it cannot serve.
@@ -465,7 +496,7 @@ function claudePlan(
 		env,
 		args: [],
 		modelFlag: standIn,
-		unsetEnv: ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"],
+		unsetEnv: ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", ...staleDisplay],
 	};
 }
 

@@ -236,6 +236,20 @@ describe("resolveModelRoleLaunch — Claude Code", () => {
 		expect(plan?.env.ANTHROPIC_AUTH_TOKEN).toBe("sk-bf-secret");
 	});
 
+	it("names each bound slot in Claude's own picker instead of leaving it a raw wire name", () => {
+		const plan = resolveModelRoleLaunch("claude", bindings, catalog(), RUNTIME);
+		expect(plan?.env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME).toBe("my-main");
+		expect(plan?.env.ANTHROPIC_DEFAULT_OPUS_MODEL_DESCRIPTION).toBe("OpenAI · gpt-5.6-sol");
+		expect(plan?.env.ANTHROPIC_DEFAULT_SONNET_MODEL_DESCRIPTION).toBe("OpenRouter · deepseek/deepseek-flash");
+	});
+
+	it("clears the display of a slot it does not name, so it cannot inherit another model's label", () => {
+		const plan = resolveModelRoleLaunch("claude", bindings, catalog(), RUNTIME);
+		expect(plan?.env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBeUndefined();
+		expect(plan?.unsetEnv).toContain("ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME");
+		expect(plan?.unsetEnv).toContain("ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION");
+	});
+
 	it("clears an inherited Anthropic API key so a stale credential cannot win", () => {
 		const plan = resolveModelRoleLaunch("claude", bindings, catalog(), RUNTIME);
 		expect(plan?.unsetEnv).toContain("ANTHROPIC_API_KEY");
