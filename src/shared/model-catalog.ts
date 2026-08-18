@@ -446,6 +446,11 @@ function claudePlan(
 	const env: Record<string, string> = {
 		ANTHROPIC_BASE_URL: `${runtime.baseUrl}/anthropic`,
 		ANTHROPIC_AUTH_TOKEN: runtime.sessionKey,
+		// Claude Code appends `[1m]` to whatever an alias slot resolves to and then
+		// treats that model as a 1M-token window — a promise no routed model here
+		// makes. Left on, `/model` offers a default named `<wire name>[1m]` and the
+		// session would not compact until 1M, failing upstream instead.
+		CLAUDE_CODE_DISABLE_1M_CONTEXT: "1",
 	};
 	// Every slot gets a name, not just the bound ones: the base URL is redirected
 	// for the whole session, so an unbound slot would keep its Claude id and ask
