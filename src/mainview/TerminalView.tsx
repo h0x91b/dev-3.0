@@ -23,6 +23,7 @@ import {
 } from "./terminal-bidi/flag";
 import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
 import { installCursorVisibilityGate, type CursorVisibilityGate } from "./terminal-cursor-focus";
+import { installRenderGuard, type RenderGuard } from "./terminal-render-guard";
 import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer } from "./wheel-pacer";
@@ -303,6 +304,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const copyDiagnosticsRef = useRef<TerminalCopyDiagnostics | null>(null);
 	/** Hides the cursor while input would not reach this terminal. */
 	const cursorGateRef = useRef<CursorVisibilityGate | null>(null);
+	const renderGuardRef = useRef<RenderGuard | null>(null);
 	/** Keeps block, box-drawing and powerline glyphs on the cell background's box. */
 	const glyphFitRef = useRef<GlyphCellFit | null>(null);
 	// Native backend only. The watermark is what a reconnect resumes from, so it
@@ -639,6 +641,41 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 			if (getTerminalBidiEnabled() && term.renderer) {
 				installBidiRender(term.renderer);
+			}
+
+			// Outermost render wrapper: it must survive whatever the gates above do, and
+			// it is the only place that can keep the vendor's loop alive through a bad
+			// frame or notice that the loop stopped. Installed last, disposed first.
+			if (term.renderer) {
+				renderGuardRef.current = installRenderGuard(term.renderer, {
+					onFrameError: (error, consecutive) => {
+						if (disposed) return;
+						logDiagnostic("render-guard", "error", "render frame threw", {
+							error: String(error),
+							consecutive,
+							frames: renderGuardRef.current?.framesPainted() ?? 0,
+							socketBytes,
+							socketBatches,
+						});
+						if (consecutive === 1) recoverFromRendererCrashRef.current?.("render-frame", String(error));
+					},
+					onStalled: (msSinceLastFrame) => {
+						if (disposed) return;
+						// The two numbers that make this readable: whether the loop ever ran,
+						// and whether the PTY was feeding it while it went quiet.
+						logDiagnostic("render-guard", "error", "no frames painted while visible", {
+							msSinceLastFrame,
+							frames: renderGuardRef.current?.framesPainted() ?? 0,
+							socketBytes,
+							socketBatches,
+							msSinceLastByte: lastSocketByteAt ? Date.now() - lastSocketByteAt : null,
+							writeErrors,
+							socketErrors,
+						});
+						recoverFromRendererCrashRef.current?.("render-stalled", `no frames for ${msSinceLastFrame}ms`);
+					},
+				});
+				logDiagnostic("render-guard", "info", "render guard installed", { cols: term.cols, rows: term.rows });
 			}
 
 			// File paths in output become Cmd/Ctrl+Click links; open behavior is
@@ -1408,6 +1445,22 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		let writeScheduled = false;
 		/** Whether the pending batch carries bytes from the PTY, not our own clear. */
 		let pendingFromSocket = false;
+			/**
+			 * Byte/frame bookkeeping for the render guard's diagnostics. Without these a
+			 * blank pane cannot be told apart from a pane nothing was sent to — the exact
+			 * ambiguity that made the 2026-08-18 14:00 incident unreadable in the log.
+			 */
+			let socketBytes = 0;
+			let socketBatches = 0;
+			let lastSocketByteAt = 0;
+			let writeErrors = 0;
+			let socketErrors = 0;
+
+			function noteSocketBytes(len: number): void {
+				socketBytes += len;
+				socketBatches += 1;
+				lastSocketByteAt = Date.now();
+			}
 		// Reference to the terminal for batched writes (set by connectPty)
 		let batchTerm: Terminal | null = null;
 		// Rewrites SGR colors unreadable on the current background: pale/dim
@@ -1440,8 +1493,23 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						// ghostty-web never fires onRender, so the write batch is
 						// the "content changed" signal for the link underlines.
 						linkUnderlines?.requestRedraw();
-					} catch {
-						// Swallow ghostty-web rendering errors
+					} catch (err) {
+						// Used to be swallowed outright to keep analytics from drowning in
+						// per-frame exceptions — which also hid the crash that leaves the pane
+						// blank for good. Throttled instead of silent, and it now asks for a
+						// rebuild: a throw here means ghostty's state, not this batch, is gone.
+						writeErrors += 1;
+						if (writeErrors <= 3 || writeErrors % 60 === 0) {
+							logDiagnostic("terminal-write", "error", "term.write threw", {
+								error: String(err),
+								batchLen: batch.length,
+								fromSocket,
+								writeErrors,
+								socketBytes,
+								socketBatches,
+							});
+						}
+						if (writeErrors === 1) recoverFromRendererCrashRef.current?.("term-write", String(err));
 					}
 				});
 			}
@@ -1575,15 +1643,23 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							return;
 						}
 						const cleaned = event.data.replace(OSC52_RE, "");
-						if (cleaned) { pendingFromSocket = true; enqueueTermWrite(cleaned); }
+						if (cleaned) { pendingFromSocket = true; noteSocketBytes(cleaned.length); enqueueTermWrite(cleaned); }
 					} else {
 						// Binary data — decode and batch with text data
 						const str = new TextDecoder().decode(new Uint8Array(event.data));
-						if (str) { pendingFromSocket = true; enqueueTermWrite(str); }
+						if (str) { pendingFromSocket = true; noteSocketBytes(str.length); enqueueTermWrite(str); }
 					}
-				} catch {
-					// Swallow ghostty-web rendering errors to avoid flooding
-					// analytics with thousands of app_exception events per session.
+				} catch (err) {
+					// Same trade as the write batch above: throttled instead of silent, so a
+					// crash on the receiving path stops being invisible.
+					socketErrors += 1;
+					if (socketErrors <= 3 || socketErrors % 60 === 0) {
+						logDiagnostic("terminal-socket", "error", "socket message handling threw", {
+							error: String(err),
+							socketErrors,
+							socketBytes,
+						});
+					}
 				}
 			};
 
@@ -1713,6 +1789,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			copyDiagnosticsRef.current?.dispose();
 			copyDiagnosticsRef.current = null;
+			renderGuardRef.current?.dispose();
+			renderGuardRef.current = null;
 			cursorGateRef.current?.dispose();
 			cursorGateRef.current = null;
 			glyphFitRef.current?.dispose();
