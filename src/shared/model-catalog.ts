@@ -420,14 +420,22 @@ export function resolveModelRoleLaunch(
 		: claudePlan(wire, runtime, presetModel);
 }
 
+/** Order the launch falls back through when the preset names no model of its
+ *  own: the workhorse first, the premium slot only if nothing else is bound.
+ *  Deliberately NOT the display order — starting a session on the most expensive
+ *  bound slot bills premium rates for an ordinary turn, and the premium slot is
+ *  one `/model` away anyway. A preset that wants to start high says so through
+ *  its own `model`. */
+const CLAUDE_LAUNCH_FALLBACK: string[] = ["opus", "sonnet", "fable", "haiku"];
+
 /** Which bound slot the launch's own `--model` should name: the slot the preset
- *  already meant, else the most capable one bound. Never a Claude id — that is
- *  the silent wrong-model case. */
+ *  already meant, else the workhorse. Never a Claude id — that is the silent
+ *  wrong-model case. */
 function claudeLaunchSlot(wire: Record<string, string>, presetModel: string | undefined): string | undefined {
 	const meant = presetModel ? claudeModelFamily(presetModel) : null;
 	if (meant && wire[meant]) return wire[meant];
-	const first = CLAUDE_ROLES.find((role) => wire[role.id]);
-	return first ? wire[first.id] : undefined;
+	const fallback = CLAUDE_LAUNCH_FALLBACK.find((role) => wire[role]);
+	return fallback ? wire[fallback] : undefined;
 }
 
 function claudePlan(

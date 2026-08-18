@@ -78,7 +78,7 @@ function lockedCaption(model: RecommendedModel, t: ReturnType<typeof useT>): str
 		price: formatRate(rate.output),
 		// "Claude Opus 5" does not fit a dropdown that is one third of a launch
 		// dialog wide, and the vendor is not the point — the slot is.
-		builtin: prettifyModel(CLAUDE_ROLE_BUILTIN_MODEL[model.claudeRole]).replace(/^Claude /, ""),
+		builtin: prettifyModel(CLAUDE_ROLE_BUILTIN_MODEL[model.pricedAgainst]).replace(/^Claude /, ""),
 	});
 }
 
@@ -229,7 +229,7 @@ function AgentConfigPicker({
 		if (!catalog) return null;
 		const next = catalogForCurrentRevision(catalog, randomUUID);
 		if (!next) return null;
-		const updates = pendingPresetUpdates(agents, next);
+		const updates = pendingPresetUpdates(agents, next, randomUUID);
 		return updates.length > 0 ? { catalog: next, updates } : null;
 	}, [agents, catalog]);
 	const revisionTouchesSelection = !!(

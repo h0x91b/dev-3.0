@@ -69,7 +69,7 @@ export default function RecommendedUpdateModal({
 				// id, and the ids in this modal's snapshot were invented for a catalog
 				// that is now stale. Stamped either way, so a preset another window
 				// already updated still stops asking.
-				next = applyPresetUpdates(next, pendingPresetUpdates(agents, catalog));
+				next = applyPresetUpdates(next, pendingPresetUpdates(agents, catalog, randomUUID));
 			}
 			await api.request.saveAgents({ agents: next });
 			if (accept) toast.success(t("recommendedUpdate.applied"), { source: "settings" });
@@ -104,9 +104,16 @@ export default function RecommendedUpdateModal({
 
 				<div className="px-6 py-4 overflow-auto flex-1 space-y-4">
 					{updates.map((update) => (
-						<div key={update.configId} className="rounded-xl border border-edge bg-raised p-3">
+						<div
+							key={update.configId}
+							data-testid={`recommended-update-tier-${update.tierId}`}
+							className="rounded-xl border border-edge bg-raised p-3"
+						>
 							<p className="text-fg-2 text-xs font-semibold mb-2">
 								{update.agentName} · {update.presetName}
+								{update.newPreset ? (
+									<span className="text-accent font-normal ml-2">{t("recommendedUpdate.newPreset")}</span>
+								) : null}
 							</p>
 							<ul className="space-y-1">
 								{update.changes.map((change) => (

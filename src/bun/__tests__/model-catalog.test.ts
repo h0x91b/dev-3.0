@@ -270,9 +270,18 @@ describe("resolveModelRoleLaunch — Claude Code", () => {
 		expect(plan?.modelFlag).toBe("openrouter/fast-gremlin");
 	});
 
-	it("falls back to the most capable bound slot when the preset's model matches none", () => {
+	it("falls back to a bound slot when the preset's model matches none", () => {
 		const plan = resolveModelRoleLaunch("claude", { sonnet: "m-fast" }, catalog(), RUNTIME, "claude-opus-5");
 		expect(plan?.modelFlag).toBe("openrouter/fast-gremlin");
+	});
+
+	it("falls back to the workhorse slot, not to the priciest one bound", () => {
+		// A preset with no model of its own must not open on the premium slot: every
+		// ordinary turn would then be billed at premium rates, and the premium model
+		// is one /model away anyway.
+		const plan = resolveModelRoleLaunch("claude", { fable: "m-main", opus: "m-fast" }, catalog(), RUNTIME);
+		expect(plan?.modelFlag).toBe("openrouter/fast-gremlin");
+		expect(plan?.env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("openai/my-main");
 	});
 
 	it("never leaves the launch naming a model the proxy cannot serve", () => {

@@ -6,12 +6,14 @@ import {
 	catalogForCurrentRevision,
 	markRevisionSeen,
 	pendingPresetUpdates,
+	RECOMMENDED_TIERS,
 	SEEDED_GROUP_LABEL,
-	recommendedClaudeRoleModelIds,
-	recommendedCodexRoleModelIds,
+	SMART_GROUP_LABEL,
 	seedAgentPresets,
 	seedCatalogModels,
-	seedPresetForAgent,
+	seedPresetForTier,
+	seedPresetsForAgent,
+	tierOfPreset,
 	unconnectedRecommendations,
 } from "../../shared/recommended-models";
 import type { CodingAgent, ModelCatalogView } from "../../shared/types";
@@ -42,7 +44,7 @@ describe("the curated list itself", () => {
 	it("is actually cheaper than what it replaces — the whole premise", () => {
 		for (const model of RECOMMENDED_MODELS) {
 			const ours = resolveModelRate(model.modelId)!;
-			const theirs = resolveModelRate(CLAUDE_ROLE_BUILTIN_MODEL[model.claudeRole])!;
+			const theirs = resolveModelRate(CLAUDE_ROLE_BUILTIN_MODEL[model.pricedAgainst])!;
 			expect(ours.output, model.modelId).toBeLessThan(theirs.output);
 		}
 	});
@@ -53,25 +55,54 @@ describe("the curated list itself", () => {
 	});
 });
 
-describe("seeded role bindings", () => {
-	it("leaves no Claude slot unbound, since an unbound one reaches a proxy that cannot serve it", () => {
-		const roles = recommendedClaudeRoleModelIds();
-		expect(Object.keys(roles).sort()).toEqual(["fable", "haiku", "opus", "sonnet"]);
+describe("the tiers", () => {
+	const practical = RECOMMENDED_TIERS.find((tier) => tier.id === "practical")!;
+	const smart = RECOMMENDED_TIERS.find((tier) => tier.id === "smart")!;
+	const curated = new Set(RECOMMENDED_MODELS.map((model) => model.name));
+
+	it("names only curated models, since a tier cannot seed a model that is not in the list", () => {
+		for (const tier of RECOMMENDED_TIERS) {
+			for (const name of [...Object.values(tier.claude), ...Object.values(tier.codex)]) {
+				expect(curated.has(name), `${tier.id}: ${name}`).toBe(true);
+			}
+		}
 	});
 
-	it("gives the fast slots the same cheap model", () => {
-		const roles = recommendedClaudeRoleModelIds();
-		expect(roles.haiku).toBe(roles.sonnet);
+	it("leaves no slot of either CLI unbound — an unbound one reaches a proxy that cannot serve it", () => {
+		for (const tier of RECOMMENDED_TIERS) {
+			expect(Object.keys(tier.claude).sort(), tier.id).toEqual(["fable", "haiku", "opus", "sonnet"]);
+			expect(Object.keys(tier.codex).sort(), tier.id).toEqual(["main", "review", "subagent"]);
+		}
+	});
+
+	it("uses distinct ids and distinct labels, because the label IS the Model group", () => {
+		expect(new Set(RECOMMENDED_TIERS.map((tier) => tier.id)).size).toBe(RECOMMENDED_TIERS.length);
+		expect(new Set(RECOMMENDED_TIERS.map((tier) => tier.label)).size).toBe(RECOMMENDED_TIERS.length);
+	});
+
+	it("starts the practical tier on the workhorse and the smart tier on the premium slot", () => {
+		expect(practical.launchSlot).toBe("opus");
+		expect(smart.launchSlot).toBe("fable");
 	});
 
 	it("never puts the cheapest model in Codex review", () => {
-		const roles = recommendedCodexRoleModelIds();
-		expect(roles.review).toBe(roles.main);
-		expect(roles.review).not.toBe(roles.subagent);
+		for (const tier of RECOMMENDED_TIERS) {
+			const rate = (name: string) =>
+				resolveModelRate(RECOMMENDED_MODELS.find((model) => model.name === name)!.modelId)!.output;
+			expect(rate(tier.codex.review), tier.id).toBeGreaterThan(rate(tier.codex.subagent));
+		}
 	});
 
-	it("binds every Codex role", () => {
-		expect(Object.keys(recommendedCodexRoleModelIds()).sort()).toEqual(["main", "review", "subagent"]);
+	it("makes the smart tier genuinely smarter where the work happens, not only on the slot you escalate to", () => {
+		// Two tiers that differ only in the premium slot would be the same tier in
+		// everyday use: Claude Code does its work on opus/sonnet.
+		const everyday = (tier: typeof practical) => [tier.claude.opus, tier.claude.sonnet].join("+");
+		expect(everyday(smart)).not.toBe(everyday(practical));
+	});
+
+	it("keeps the practical tier's label, so an already-seeded preset stays the tier it always was", () => {
+		expect(practical.label).toBe(SEEDED_GROUP_LABEL);
+		expect(smart.label).toBe(SMART_GROUP_LABEL);
 	});
 });
 
@@ -162,16 +193,16 @@ describe("seeding a freshly connected provider", () => {
 			models: [{ id: "stranger", providerId: "p2", name: RECOMMENDED_MODELS[1].name, modelId: "mine/whatever" }],
 		};
 		const catalog = seedCatalogModels(taken, "p1", newId);
-		const preset = seedPresetForAgent(claudeAgent(), catalog, newId)!;
+		const preset = seedPresetForTier(claudeAgent(), catalog, RECOMMENDED_TIERS[0], newId)!;
 		expect(Object.values(preset.modelRoles!)).not.toContain("stranger");
-		const opus = catalog.models.find((m) => m.id === preset.modelRoles!.opus);
-		expect(opus?.modelId).toBe(RECOMMENDED_MODELS[1].modelId);
-		expect(opus?.providerId).toBe("p1");
+		const fable = catalog.models.find((m) => m.id === preset.modelRoles!.fable);
+		expect(fable?.modelId).toBe(RECOMMENDED_MODELS[1].modelId);
+		expect(fable?.providerId).toBe("p1");
 	});
 
 	it("binds every Claude role to a catalog model id, not to a name", () => {
 		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
-		const preset = seedPresetForAgent(claudeAgent(), catalog, newId)!;
+		const preset = seedPresetForTier(claudeAgent(), catalog, RECOMMENDED_TIERS[0], newId)!;
 		const ids = catalog.models.map((m) => m.id);
 		expect(Object.keys(preset.modelRoles!).sort()).toEqual(["fable", "haiku", "opus", "sonnet"]);
 		for (const bound of Object.values(preset.modelRoles!)) expect(ids).toContain(bound);
@@ -179,38 +210,74 @@ describe("seeding a freshly connected provider", () => {
 
 	it("binds Codex's own three roles, not Claude's", () => {
 		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
-		const preset = seedPresetForAgent(codexAgent(), catalog, newId)!;
+		const preset = seedPresetForTier(codexAgent(), catalog, RECOMMENDED_TIERS[0], newId)!;
 		expect(Object.keys(preset.modelRoles!).sort()).toEqual(["main", "review", "subagent"]);
 	});
 
-	it("keeps the default preset's own args and permissions, and drops its pinned model", () => {
+	it("keeps the default preset's own args and permissions, and renames it after its tier", () => {
 		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
-		const preset = seedPresetForAgent(claudeAgent(), catalog, newId)!;
+		const preset = seedPresetForTier(claudeAgent(), catalog, RECOMMENDED_TIERS[0], newId)!;
 		expect(preset.additionalArgs).toEqual(["--verbose"]);
 		expect(preset.permissionMode).toBe("auto");
-		expect(preset.model).toBeUndefined();
 		expect(preset.groupLabel).toBe(SEEDED_GROUP_LABEL);
+		expect(preset.seededTier).toBe("practical");
 		// The clone's name names the model it no longer uses.
 		expect(preset.name).not.toContain("Opus 5");
 	});
 
+	it("pins each tier's launch slot through the preset's own model, so the session does not start on the priciest bound slot", () => {
+		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
+		const [practical, smart] = RECOMMENDED_TIERS.map(
+			(tier) => seedPresetForTier(claudeAgent(), catalog, tier, newId)!,
+		);
+		expect(practical.model).toBe(CLAUDE_ROLE_BUILTIN_MODEL.opus);
+		expect(smart.model).toBe(CLAUDE_ROLE_BUILTIN_MODEL.fable);
+	});
+
+	it("gives a Codex preset no Claude model, because Codex has no slot to choose between", () => {
+		// A Claude id on a Codex preset is invisible while the preset is routed and a
+		// broken launch the moment it is not.
+		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
+		for (const tier of RECOMMENDED_TIERS) {
+			expect(seedPresetForTier(codexAgent(), catalog, tier, newId)!.model, tier.id).toBeUndefined();
+		}
+	});
+
 	it("refuses to seed an agent dev3 cannot route", () => {
 		const gemini: CodingAgent = { ...claudeAgent(), id: "gemini", baseCommand: "gemini" };
-		expect(seedPresetForAgent(gemini, seedCatalogModels(emptyCatalog, "p1", newId), newId)).toBeNull();
+		expect(seedPresetForTier(gemini, seedCatalogModels(emptyCatalog, "p1", newId), RECOMMENDED_TIERS[0], newId)).toBeNull();
+		expect(seedPresetsForAgent(gemini, seedCatalogModels(emptyCatalog, "p1", newId), newId)).toEqual([]);
 	});
 
 	it("refuses a partial binding rather than sending one role to a model the proxy has no idea about", () => {
 		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
-		const short = { ...catalog, models: catalog.models.slice(1) };
-		expect(seedPresetForAgent(claudeAgent(), short, newId)).toBeNull();
+		// Drop a model this tier genuinely needs, not just any model in the list.
+		const needed = RECOMMENDED_TIERS[0].claude.opus;
+		const short = { ...catalog, models: catalog.models.filter((m) => m.name !== needed) };
+		expect(seedPresetForTier(claudeAgent(), short, RECOMMENDED_TIERS[0], newId)).toBeNull();
 	});
 
-	it("seeds each agent once — a second connect adds no second preset", () => {
+	it("seeds one preset per tier, and a second connect adds none of them again", () => {
 		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
+		const tiers = RECOMMENDED_TIERS.length;
 		const once = seedAgentPresets([claudeAgent(), codexAgent()], catalog, newId);
-		expect(once.map((a) => a.configurations.length)).toEqual([2, 2]);
+		expect(once.map((a) => a.configurations.length)).toEqual([1 + tiers, 1 + tiers]);
 		const twice = seedAgentPresets(once, catalog, newId);
-		expect(twice.map((a) => a.configurations.length)).toEqual([2, 2]);
+		expect(twice.map((a) => a.configurations.length)).toEqual([1 + tiers, 1 + tiers]);
+	});
+
+	it("reads a preset seeded before tiers existed as the practical tier, and completes it instead of duplicating it", () => {
+		const catalog = seedCatalogModels(emptyCatalog, "p1", newId);
+		const legacy: CodingAgent = {
+			...claudeAgent(),
+			configurations: [
+				...claudeAgent().configurations,
+				{ id: "old", name: SEEDED_GROUP_LABEL, groupLabel: SEEDED_GROUP_LABEL, modelRoles: { opus: "whatever" } },
+			],
+		};
+		expect(tierOfPreset(legacy.configurations[1])).toBe("practical");
+		const seeded = seedPresetsForAgent(legacy, catalog, newId);
+		expect(seeded.map((preset) => preset.seededTier)).toEqual(["smart"]);
 	});
 
 	it("leaves an agent it cannot route completely untouched", () => {
@@ -299,6 +366,52 @@ describe("keeping an already-seeded user current", () => {
 		const [update] = pendingPresetUpdates([agent], proposed);
 		const rebound = applyPresetUpdates([agent], [update]);
 		expect(pendingPresetUpdates(rebound, proposed)).toEqual([]);
+	});
+
+	it("offers a tier this revision introduced to a user who is already seeded", () => {
+		// Without this, an existing user would never see a new tier at all: the
+		// connect flow is the only other place that seeds, and they connected long ago.
+		const { catalog, agent } = oldWorld();
+		const proposed = catalogForCurrentRevision(catalog, newId)!;
+		const updates = pendingPresetUpdates([agent], proposed, newId);
+		const added = updates.filter((update) => update.newPreset);
+		expect(added.map((update) => update.tierId)).toEqual(["smart"]);
+		// Every role reads as "nothing → model", so the modal shows a whole preset
+		// rather than pretending something was replaced.
+		expect(added[0].changes.every((change) => change.from === null)).toBe(true);
+		expect(added[0].newPreset!.id).not.toBe("");
+	});
+
+	it("appends that tier on approval, and rebinds the old one in the same write", () => {
+		const { catalog, agent } = oldWorld();
+		const proposed = catalogForCurrentRevision(catalog, newId)!;
+		const updates = pendingPresetUpdates([agent], proposed, newId);
+		const [out] = applyPresetUpdates([agent], updates);
+		const tiers = out.configurations.map(tierOfPreset).filter(Boolean);
+		expect(tiers.sort()).toEqual(["practical", "smart"]);
+		expect(out.configurations).toHaveLength(agent.configurations.length + 1);
+		// And the appended one is a launchable preset, not a stub.
+		const smart = out.configurations.find((c) => c.seededTier === "smart")!;
+		expect(smart.groupLabel).toBe(SMART_GROUP_LABEL);
+		expect(Object.keys(smart.modelRoles!).sort()).toEqual(["fable", "haiku", "opus", "sonnet"]);
+	});
+
+	it("stamps the launch slot of the tier it rebinds, so an approved practical preset stops starting on the premium slot", () => {
+		const { catalog, agent } = oldWorld();
+		const proposed = catalogForCurrentRevision(catalog, newId)!;
+		const updates = pendingPresetUpdates([agent], proposed, newId);
+		const [out] = applyPresetUpdates([agent], updates);
+		expect(out.configurations.find((c) => c.id === "seeded")!.model).toBe(CLAUDE_ROLE_BUILTIN_MODEL.opus);
+	});
+
+	it("does not ask again about a declined tier it never created", () => {
+		// Declining leaves the smart preset non-existent. If the decline only
+		// stamped the presets it listed, the offer would return every launch.
+		const { catalog, agent } = oldWorld();
+		const proposed = catalogForCurrentRevision(catalog, newId)!;
+		const [out] = markRevisionSeen([agent], pendingPresetUpdates([agent], proposed, newId));
+		expect(out.configurations).toHaveLength(agent.configurations.length);
+		expect(pendingPresetUpdates([out], proposed, newId)).toEqual([]);
 	});
 
 	it("has nothing to propose when no provider could serve the models", () => {

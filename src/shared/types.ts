@@ -439,6 +439,13 @@ export interface AgentConfiguration {
 	 * asking twice is nagging.
 	 */
 	seededRevision?: number;
+	/**
+	 * Which curated tier this preset was seeded as (`practical`, `smart`). The
+	 * group label used to answer this, back when there was only one tier; a label
+	 * cannot, now that a user may hold several. Absent on a preset seeded before
+	 * tiers existed — that one is the practical tier, and `tierOfPreset` says so.
+	 */
+	seededTier?: string;
 }
 
 export interface CodingAgent {

@@ -218,11 +218,16 @@ describe("a curated list that moved on after the user was seeded", () => {
 		);
 		await user.click(await screen.findByTestId("t-recommended-update"));
 		// Both sides of every changing role are on screen — that is the consent.
-		// `glm-5.2` is bound already, so it is NOT here: an unchanged role is not a
-		// change, and listing it would inflate what the user is agreeing to.
 		expect(await screen.findByTestId("recommended-update-modal")).toBeTruthy();
 		expect(screen.getAllByText("kimi-k3").length).toBeGreaterThan(0);
-		expect(screen.queryByText("glm-5.2")).toBeNull();
+		// The tier this revision added is offered as a whole preset, marked as new.
+		expect(screen.getByText("new preset")).toBeTruthy();
+		// `glm-5.2` is already bound on the existing preset, so the rebind does not
+		// mention it: an unchanged role is not a change, and listing it would inflate
+		// what the user is agreeing to.
+		const rebind = screen.getByTestId("recommended-update-tier-practical");
+		expect(rebind.textContent).not.toContain("glm-5.2");
+		expect(screen.getByTestId("recommended-update-tier-smart").textContent).toContain("glm-5.2");
 		expect(modelCatalogSave).not.toHaveBeenCalled();
 		expect(saveAgents).not.toHaveBeenCalled();
 
@@ -235,6 +240,8 @@ describe("a curated list that moved on after the user was seeded", () => {
 		const seeded = savedAgents[0].configurations.find((c) => c.id === "seeded")!;
 		expect(Object.keys(seeded.modelRoles!).sort()).toEqual(["fable", "haiku", "opus", "sonnet"]);
 		expect(seeded.seededRevision).toBe(RECOMMENDED_REVISION);
+		// …and the new tier is written in the same save, not on some later launch.
+		expect(savedAgents[0].configurations.some((c) => c.seededTier === "smart")).toBe(true);
 		// The answer is saved, but this surface was handed its agents as a prop:
 		// without dropping the notice itself it would go on asking.
 		await waitFor(() => expect(screen.queryByTestId("t-recommended-update")).toBeNull());
