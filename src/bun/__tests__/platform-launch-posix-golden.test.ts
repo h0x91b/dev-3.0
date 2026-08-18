@@ -23,6 +23,8 @@ import { ENV_UNSET } from "../../shared/agent-accounts";
 const SHELL = "/bin/zsh";
 const SETUP_PATH = "/tmp/dev3-T-setup.sh";
 const CMD_PATH = "/tmp/dev3-T-cmd.sh";
+const SETUP_EXIT_PATH = "/tmp/dev3-T-setup-exit";
+const DEV3_CLI = "/Users/x/.dev3.0/bin/dev3";
 const ORIGINAL_CMD_PATH = "/tmp/dev3-T-original-cmd.sh";
 const WORKTREE = "/w/t";
 
@@ -90,6 +92,10 @@ const STARTUP_WRAPPER_NATIVE = [
 	"S=$?",
 	"if [ $S -ne 0 ]; then",
 	"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
+	"  printf '%s' \"$S\" > '/tmp/dev3-T-setup-exit'",
+	"  if command -v '/Users/x/.dev3.0/bin/dev3' &>/dev/null; then",
+	"    '/Users/x/.dev3.0/bin/dev3' 'hook' 'setup-failed'",
+	"  fi",
 	"  exec '/bin/zsh'",
 	"fi",
 	"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
@@ -103,6 +109,10 @@ const STARTUP_WRAPPER_TMUX_PARALLEL = [
 	"S=$?",
 	"if [ $S -ne 0 ]; then",
 	"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
+	"  printf '%s' \"$S\" > '/tmp/dev3-T-setup-exit'",
+	"  if command -v '/Users/x/.dev3.0/bin/dev3' &>/dev/null; then",
+	"    '/Users/x/.dev3.0/bin/dev3' 'hook' 'setup-failed'",
+	"  fi",
 	"  exec '/bin/zsh'",
 	"fi",
 	"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
@@ -117,6 +127,10 @@ const STARTUP_WRAPPER_TMUX_BLOCKING = [
 	"S=$?",
 	"if [ $S -ne 0 ]; then",
 	"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
+	"  printf '%s' \"$S\" > '/tmp/dev3-T-setup-exit'",
+	"  if command -v '/Users/x/.dev3.0/bin/dev3' &>/dev/null; then",
+	"    '/Users/x/.dev3.0/bin/dev3' 'hook' 'setup-failed'",
+	"  fi",
 	"  exec '/bin/zsh'",
 	"fi",
 	"tmux split-window -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\"",
@@ -132,6 +146,8 @@ const startupWrapper = (overrides: { nativeBackend: boolean; launchMode: "parall
 		cmdPath: CMD_PATH,
 		worktreePath: WORKTREE,
 		shellPath: SHELL,
+		setupExitPath: SETUP_EXIT_PATH,
+		dev3CliPath: DEV3_CLI,
 		...overrides,
 	});
 

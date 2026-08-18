@@ -42,7 +42,8 @@ import {
 	validAltClickPanes,
 } from "../tmux";
 import { markAgentPane } from "../agent-prompt";
-import { dev3TaskTempPath } from "../temp-paths";
+import { clearSetupExitCode, dev3TaskTempPath, setupExitCodePath } from "../temp-paths";
+import { dev3CliExecutable } from "../task-pane-runs";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import {
 	focusNativeTaskPane,
@@ -618,6 +619,14 @@ export async function launchTaskPty(
 		skipSessionPersist,
 	});
 
+	// Any launch supersedes the previous run's setup verdict — including the
+	// "start anyway" relaunch, which is itself the answer to that verdict.
+	if (task.setupFailedExitCode != null) {
+		await data.updateTask(project, task.id, { setupFailedExitCode: null });
+		task.setupFailedExitCode = null;
+	}
+	clearSetupExitCode(task.id);
+
 	const ctx: agents.TemplateContext = {
 		taskTitle: task.title,
 		taskDescription: task.description,
@@ -798,6 +807,8 @@ export async function launchTaskPty(
 			shellPath: userShell,
 			nativeBackend,
 			launchMode: setupScriptLaunchMode,
+			setupExitPath: setupExitCodePath(task.id),
+			dev3CliPath: dev3CliExecutable(),
 		});
 		await writeLaunchScript(startupPath, startupScript);
 		tmuxCmd = buildScriptRunnerCommand(startupPath, { shellPath: userShell });

@@ -25,6 +25,11 @@ const terminal = {
 	"terminal.wakeResume": "Разбудить и продолжить агента",
 	"terminal.wakeShell": "Разбудить с чистым шеллом",
 	"terminal.wakeShellDesc": "Чистый шелл поднимается мгновенно; продолжение перечитывает переписку агента.",
+	"terminal.setupFailedTitle": "Setup упал (код {code})",
+	"terminal.setupFailedDesc": "Скрипт настройки проекта не доработал, поэтому агент не был запущен. Его можно запустить всё равно — промпт задачи сохранён.",
+	"terminal.setupFailedStartAnyway": "Всё равно запустить агента",
+	"terminal.setupFailedShowLog": "Показать лог setup",
+	"terminal.setupFailedHint": "Зависимости могут быть не установлены. Setup повторно не запустится.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Панели терминала",

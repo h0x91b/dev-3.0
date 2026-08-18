@@ -1627,6 +1627,14 @@ export interface Task {
 	 * so launch feedback survives a missed push/toast; cleared by the next launch.
 	 */
 	preparationError?: string | null;
+	/**
+	 * Exit code of a `setupScript` that failed during launch, reported by the
+	 * setup wrapper itself (the script runs inside the pane, so bun cannot see
+	 * its result). Non-null means the agent was never started in `blocking` /
+	 * native launches; the task pane offers to start it anyway. Cleared by the
+	 * next launch.
+	 */
+	setupFailedExitCode?: number | null;
 	/** Additive lifecycle runtime hint; older app versions ignore this field. */
 	runtimeState?: TaskRuntimeState;
 	/**

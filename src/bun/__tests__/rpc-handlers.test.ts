@@ -304,6 +304,7 @@ vi.mock("node:fs", () => ({
 	readlinkSync: vi.fn(() => { throw new Error("EINVAL"); }),
 	realpathSync: vi.fn((p: string) => p),
 	unlinkSync: vi.fn(() => undefined),
+	rmSync: vi.fn(() => undefined),
 	symlinkSync: vi.fn(() => undefined),
 }));
 

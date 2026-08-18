@@ -25,6 +25,11 @@ const terminal = {
 	"terminal.wakeResume": "Wake and resume agent",
 	"terminal.wakeShell": "Wake with a plain shell",
 	"terminal.wakeShellDesc": "A plain shell starts instantly; resuming replays the agent's conversation.",
+	"terminal.setupFailedTitle": "Setup failed (exit {code})",
+	"terminal.setupFailedDesc": "The project setup script did not finish, so the agent was not started. You can start it anyway — the task prompt is preserved.",
+	"terminal.setupFailedStartAnyway": "Start agent anyway",
+	"terminal.setupFailedShowLog": "Show setup log",
+	"terminal.setupFailedHint": "Dependencies may be missing. Setup will not be re-run.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Terminal panes",

@@ -120,6 +120,8 @@ vi.mock("../../shared/agent-adapters/registry", () => ({
 vi.mock("../agent-prompt", () => ({ markAgentPane: vi.fn() }));
 vi.mock("../temp-paths", () => ({
 	dev3TaskTempPath: vi.fn((taskId: string, name?: string) => (name ? `/tmp/dev3/${taskId}/${name}` : `/tmp/dev3/${taskId}`)),
+	setupExitCodePath: vi.fn((taskId: string) => `/tmp/dev3/${taskId}/setup-exit`),
+	clearSetupExitCode: vi.fn(),
 }));
 
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
@@ -188,7 +190,9 @@ vi.mock("../rpc-handlers/settings-config", () => ({
 	resolveOperationalProjectConfig: vi.fn(async () => ({ devScript: "", portCount: 0 })),
 }));
 
+import * as data from "../data";
 import * as pty from "../pty-server";
+import { setupExitCodePath } from "../temp-paths";
 import * as sharedPure from "../rpc-handlers/shared-pure";
 import { tmux } from "../tmux";
 
@@ -355,6 +359,30 @@ describe("setup-script wrapper — one flavour per backend", () => {
 		expect(pty.createNativeTaskSession).toHaveBeenCalledTimes(1);
 		expect(pty.createSession).not.toHaveBeenCalled();
 		expect(tmuxCalls()).toEqual([]);
+	});
+
+	// The wrapper is the only thing that can report a failed setupScript, so it
+	// must be handed both halves of that channel — the file it writes and the CLI
+	// it pings. Neither is derivable inside the pure builder.
+	it("hands the wrapper the exit-code path and the CLI to ping", async () => {
+		const task = makeTask();
+		await launchTaskPty(setupProject(), task, WORKTREE, null, null, true);
+
+		const args = vi.mocked(sharedPure.buildSetupStartupWrapper).mock.calls[0][0];
+		expect(args.setupExitPath).toBe(setupExitCodePath(task.id));
+		expect(args.dev3CliPath).toMatch(/dev3(\.exe)?$/);
+	});
+
+	// A launch is the answer to the previous run's verdict — including the "start
+	// anyway" relaunch, which would otherwise re-show the card it came from.
+	it("clears a previous setup failure before launching", async () => {
+		await launchTaskPty(setupProject(), makeTask({ setupFailedExitCode: 127 }), WORKTREE, null, null, true);
+
+		expect(vi.mocked(data.updateTask)).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.any(String),
+			{ setupFailedExitCode: null },
+		);
 	});
 
 	it("asks for the tmux flavour for an unmarked task", async () => {

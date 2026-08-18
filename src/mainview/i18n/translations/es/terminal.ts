@@ -25,6 +25,11 @@ const terminal = {
 	"terminal.wakeResume": "Despertar y reanudar el agente",
 	"terminal.wakeShell": "Despertar con una shell simple",
 	"terminal.wakeShellDesc": "Una shell simple arranca al instante; reanudar vuelve a leer la conversación del agente.",
+	"terminal.setupFailedTitle": "El setup falló (código {code})",
+	"terminal.setupFailedDesc": "El script de configuración del proyecto no terminó, así que el agente no se inició. Puedes iniciarlo igualmente — el prompt de la tarea se conserva.",
+	"terminal.setupFailedStartAnyway": "Iniciar el agente igualmente",
+	"terminal.setupFailedShowLog": "Ver el log del setup",
+	"terminal.setupFailedHint": "Puede que falten dependencias. El setup no se volverá a ejecutar.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Paneles del terminal",

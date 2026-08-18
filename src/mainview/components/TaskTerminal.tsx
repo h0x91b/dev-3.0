@@ -86,6 +86,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// act that clears the flag.
 	const [hibernated, setHibernated] = useState(false);
 	const [restarting, setRestarting] = useState(false);
+	// A `setupScript` that exits non-zero leaves a live shell behind, so nothing
+	// else in here reads as broken — the pane just never got its agent. Dismissing
+	// only hides the card; every launch clears the flag, which re-arms it.
+	const setupFailedExitCode = task?.setupFailedExitCode ?? null;
+	const [setupFailureDismissed, setSetupFailureDismissed] = useState(false);
+	useEffect(() => {
+		if (setupFailedExitCode == null) setSetupFailureDismissed(false);
+	}, [setupFailedExitCode]);
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// ── Native multi-pane state ─────────────────────────────────────────────────
@@ -826,6 +834,40 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		</div>
 	);
 
+	const setupFailedCard = setupFailedExitCode != null && !setupFailureDismissed && (
+		<div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+			<div
+				data-testid="terminal-setup-failed-card"
+				role="alertdialog"
+				aria-labelledby="setup-failed-title"
+				className="bg-raised border border-edge rounded-lg p-6 space-y-4 w-[28rem] max-w-[calc(100vw-2rem)] shadow-2xl"
+			>
+				<div id="setup-failed-title" className="flex items-center gap-2 font-medium text-danger">
+					<span className="text-lg">⚠</span>
+					<span>{t("terminal.setupFailedTitle", { code: String(setupFailedExitCode) })}</span>
+				</div>
+				<p className="text-fg-3 text-sm">{t("terminal.setupFailedDesc")}</p>
+				<div className="flex gap-3 pt-2">
+					<button
+						autoFocus
+						onClick={handleStartFresh}
+						disabled={restarting}
+						className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
+					>
+						{restarting ? t("terminal.connecting") : t("terminal.setupFailedStartAnyway")}
+					</button>
+					<button
+						onClick={() => setSetupFailureDismissed(true)}
+						className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors"
+					>
+						{t("terminal.setupFailedShowLog")}
+					</button>
+				</div>
+				<p className="text-fg-muted text-xs">{t("terminal.setupFailedHint")}</p>
+			</div>
+		</div>
+	);
+
 	return (
 		<div className="relative h-full w-full flex flex-col overflow-hidden">
 			{!hideInfoPanel && task && project && (
@@ -844,14 +886,18 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			)}
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
-				<MobileWindowCarousel taskId={taskId} onSwitch={() => setWindowEpoch((e) => e + 1)}>
-					<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
-				</MobileWindowCarousel>
+				<div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+					<MobileWindowCarousel taskId={taskId} onSwitch={() => setWindowEpoch((e) => e + 1)}>
+						<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
+					</MobileWindowCarousel>
+					{setupFailedCard}
+				</div>
 			) : (
 				<div className="relative isolate flex-1 min-h-0 overflow-hidden">
 					{terminalArea}
 					{ptyUrl && <PaneZoomBadge taskId={taskId} />}
 					{ptyUrl && <ClosePanePicker taskId={taskId} />}
+					{setupFailedCard}
 				</div>
 			)}
 			{touchInput && termHandle && (

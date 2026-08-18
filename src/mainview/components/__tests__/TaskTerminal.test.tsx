@@ -644,4 +644,67 @@ describe("TaskTerminal", () => {
 			});
 		});
 	});
+	// A failed setupScript leaves a live shell in the pane, so nothing else here
+	// reads as broken — the agent simply never started. The card is the only way
+	// back to the task's prompt.
+	describe("setup-failed recovery card", () => {
+		beforeEach(() => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://localhost:1234" });
+		});
+
+		it("stays hidden while the setup script succeeded", async () => {
+			await act(async () => {
+				renderTerminal();
+			});
+
+			await waitFor(() => expect(screen.getByTestId("terminal-view")).toBeInTheDocument());
+			expect(screen.queryByTestId("terminal-setup-failed-card")).not.toBeInTheDocument();
+		});
+
+		it("offers the exit code and both ways out when setup failed", async () => {
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ setupFailedExitCode: 127 })] });
+			});
+
+			const card = await screen.findByTestId("terminal-setup-failed-card");
+			expect(card).toHaveTextContent("127");
+			expect(screen.getByRole("button", { name: /start agent anyway/i })).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: /show setup log/i })).toBeInTheDocument();
+			// The pane keeps running underneath — the card never replaces the log.
+			expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+		});
+
+		it("relaunches the agent without re-running setup", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.restartTask.mockResolvedValue("ws://localhost:4321?session=t1");
+
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ setupFailedExitCode: 1 })] });
+			});
+
+			await screen.findByTestId("terminal-setup-failed-card");
+			await act(async () => {
+				await user.click(screen.getByRole("button", { name: /start agent anyway/i }));
+			});
+
+			expect(mockedApi.request.restartTask).toHaveBeenCalledWith({ taskId: "t1" });
+		});
+
+		it("dismisses to the setup log without touching the session", async () => {
+			const user = userEvent.setup();
+
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ setupFailedExitCode: 1 })] });
+			});
+
+			await screen.findByTestId("terminal-setup-failed-card");
+			await act(async () => {
+				await user.click(screen.getByRole("button", { name: /show setup log/i }));
+			});
+
+			expect(screen.queryByTestId("terminal-setup-failed-card")).not.toBeInTheDocument();
+			expect(mockedApi.request.restartTask).not.toHaveBeenCalled();
+			expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+		});
+	});
 });
