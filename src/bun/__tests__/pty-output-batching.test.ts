@@ -34,6 +34,7 @@ vi.mock("node:fs", async (importOriginal) => {
 vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
 import { spawn, spawnSync } from "../spawn";
+import { throughputSnapshot } from "../pty-throughput";
 import {
 	PTY_BACKPRESSURE_HIGH_WATER_BYTES,
 	PTY_BACKPRESSURE_LOW_WATER_BYTES,
@@ -258,6 +259,45 @@ describe("pressure changing mid-session", () => {
 		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
 
 		expect(client.sent.join("")).toBe("before|during|after|");
+	});
+
+	// The overlay's `q` row answers "is a backlog sitting in the server". Sampled
+	// before the flush it froze at the last chunk's size, so a drained idle session
+	// showed a permanent multi-KB queue in warn colour — measured live at 8.2 KB with
+	// nothing flowing and the socket at zero.
+	it("reports an empty queue once the bytes have been flushed", () => {
+		startSession("task-queue-gauge-1");
+
+		emit("some output|");
+		vi.advanceTimersByTime(BATCH_MS);
+
+		expect(throughputSnapshot()["task-queue-gauge-1"].queued).toBe(0);
+	});
+
+	it("reports the real backlog while the socket cannot take it", () => {
+		const client = startSession("task-queue-gauge-2");
+		client.buffered = PTY_BACKPRESSURE_HIGH_WATER_BYTES;
+
+		emit("held|");
+		emit("and more|");
+
+		// Nothing left, so the gauge has to show it rather than a zero.
+		const snap = throughputSnapshot()["task-queue-gauge-2"];
+		expect(snap.queued).toBe("held|and more|".length);
+		expect(snap.queuedPeak).toBe("held|and more|".length);
+	});
+
+	it("drops the session's throughput counters when the session is destroyed", () => {
+		startSession("task-throughput-1");
+		emit("output|");
+		vi.advanceTimersByTime(BATCH_MS);
+		expect(throughputSnapshot()).toHaveProperty("task-throughput-1");
+
+		destroySession("task-throughput-1");
+
+		// tmux is the DEFAULT backend, so a leak here is one entry per task ever
+		// launched — and the overlay would keep listing sessions that are long gone.
+		expect(throughputSnapshot()).not.toHaveProperty("task-throughput-1");
 	});
 
 	it("does not strand bytes already pending when the pressure lifts", () => {

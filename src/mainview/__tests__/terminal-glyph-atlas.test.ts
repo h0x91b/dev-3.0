@@ -25,7 +25,7 @@ import {
 	CHURN_COOLDOWN_CELLS,
 	type AtlasRenderer,
 } from "../terminal-glyph-atlas";
-import { cell, graphemeCell, recordingCtx, type RecordedOp } from "../terminal-bidi/__tests__/fixtures";
+import { blank, cell, graphemeCell, recordingCtx, type RecordedOp } from "../terminal-bidi/__tests__/fixtures";
 
 let ops: RecordedOp[];
 let getContextSpy: ReturnType<typeof vi.spyOn>;
@@ -204,6 +204,97 @@ describe("what the atlas must NOT take over", () => {
 		paint(renderer, cell("a"), 3);
 
 		expect(glyphAtlasStats(target)).toMatchObject({ hits: 1, misses: 1 });
+	});
+
+	// The vendor underlines a hovered link INSIDE renderCellText, off state that is
+	// not a cell flag — so these are the two decorations a cached blit would drop
+	// with nothing in the cell to warn about it. Driven through the real renderer's
+	// own setters, so the state is wired exactly the way a real hover wires it.
+	describe("a hovered link keeps its underline", () => {
+		it("hands back the cell whose OSC 8 hyperlink is the hovered one", () => {
+			const renderer = newRenderer();
+			renderer.setHoveredHyperlinkId(7);
+			installGlyphAtlas(renderer as unknown as AtlasRenderer);
+
+			paint(renderer, cell("a", { hyperlink_id: 7 }));
+			expect(count("drawImage")).toBe(0);
+
+			ops.length = 0;
+			// A different link, and an unlinked cell, are still cached.
+			paint(renderer, cell("a", { hyperlink_id: 9 }), 1);
+			paint(renderer, cell("a"), 2);
+			expect(count("drawImage")).toBe(2);
+			expect(glyphAtlasStats(renderer as unknown as AtlasRenderer)).toMatchObject({ hits: 2, misses: 1 });
+		});
+
+		it("hands back every cell inside the hovered span, and only those", () => {
+			const renderer = newRenderer();
+			renderer.setHoveredLinkRange({ startX: 2, startY: 1, endX: 4, endY: 3 });
+			installGlyphAtlas(renderer as unknown as AtlasRenderer);
+
+			// Same span test the vendor makes: the first row starts at startX, the last
+			// row ends at endX, and every row between is covered end to end.
+			const inside: Array<[number, number]> = [[2, 1], [9, 1], [0, 2], [9, 2], [0, 3], [4, 3]];
+			const outside: Array<[number, number]> = [[1, 1], [5, 3], [3, 0], [3, 4]];
+			for (const [col, row] of inside) paint(renderer, cell("a"), col, row);
+			for (const [col, row] of outside) paint(renderer, cell("a"), col, row);
+
+			expect(glyphAtlasStats(renderer as unknown as AtlasRenderer)).toMatchObject({
+				hits: outside.length,
+				misses: inside.length,
+			});
+		});
+
+		it("defers a BLANK cell in the span, which the vendor underlines too", () => {
+			const renderer = newRenderer();
+			renderer.setHoveredLinkRange({ startX: 0, startY: 0, endX: 8, endY: 0 });
+			installGlyphAtlas(renderer as unknown as AtlasRenderer);
+
+			paint(renderer, blank(), 4, 0);
+
+			// Claiming it as a free "nothing to draw" hit would eat the underline: the
+			// vendor has to be reached, and reaching it is what a fillText proves.
+			expect(count("fillText")).toBe(1);
+			expect(glyphAtlasStats(renderer as unknown as AtlasRenderer)).toMatchObject({ hits: 0, misses: 1 });
+		});
+
+		it("goes back to caching once the pointer leaves the link", () => {
+			const renderer = newRenderer();
+			renderer.setHoveredLinkRange({ startX: 0, startY: 0, endX: 8, endY: 0 });
+			installGlyphAtlas(renderer as unknown as AtlasRenderer);
+			paint(renderer, cell("a"), 1, 0);
+
+			renderer.setHoveredLinkRange(null);
+			ops.length = 0;
+			paint(renderer, cell("a"), 1, 0);
+
+			expect(count("drawImage")).toBe(1);
+			expect(glyphAtlasStats(renderer as unknown as AtlasRenderer)).toMatchObject({ hits: 1, misses: 1 });
+		});
+	});
+});
+
+describe("dispose", () => {
+	it("gives the strip canvases' backing store back instead of leaving it to the GC", () => {
+		const renderer = newRenderer();
+		const handle = installGlyphAtlas(renderer as unknown as AtlasRenderer);
+		const created: HTMLCanvasElement[] = [];
+		const create = vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
+			const el = Object.getPrototypeOf(document).createElement.call(document, tag);
+			if (tag === "canvas") created.push(el as HTMLCanvasElement);
+			return el;
+		}) as typeof document.createElement);
+
+		paint(renderer, cell("A"));
+		create.mockRestore();
+		expect(created.length).toBe(1);
+		expect(created[0].width).toBeGreaterThan(0);
+
+		handle.dispose();
+
+		// Zeroing the size is what frees it now; dropping the reference alone does not.
+		expect(created[0].width).toBe(0);
+		expect(created[0].height).toBe(0);
 	});
 });
 

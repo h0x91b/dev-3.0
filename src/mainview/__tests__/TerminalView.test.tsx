@@ -837,7 +837,7 @@ describe("TerminalView – mouse report pacing", () => {
 		}
 	});
 
-	it("drops sustained excess instead of queueing it", async () => {
+	it("holds sustained excess back instead of blasting it in one tick", async () => {
 		mockTermInstance.hasMouseTracking.mockReturnValue(true);
 		await renderAndSetup();
 		const wheelHandler = mockTermInstance.attachCustomWheelEventHandler.mock.calls[0]?.[0] as
@@ -852,8 +852,64 @@ describe("TerminalView – mouse report pacing", () => {
 		});
 
 		// 50 events × 5000px would be thousands of reports unpaced; the bucket
-		// only refills with elapsed time, and these all land in the same tick.
+		// only refills with elapsed time, and these all land in the same tick. The
+		// excess is queued, and the drain timer below is what lets it out.
 		expect(countReports()).toBeLessThanOrEqual(20);
+	});
+
+	it("keeps draining the backlog after the finger stops", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		await renderAndSetup();
+		const wheelHandler = mockTermInstance.attachCustomWheelEventHandler.mock.calls[0]?.[0] as
+			| ((event: WheelEvent) => boolean)
+			| undefined;
+
+		mockInput.mockClear();
+		act(() => {
+			wheelHandler?.({ deltaY: 100_000, clientX: 20, clientY: 20 } as WheelEvent);
+		});
+		const atRest = countReports();
+
+		// One event, no further wheel input: a hard flick has to keep arriving.
+		await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });
+
+		expect(countReports()).toBeGreaterThan(atRest);
+		for (const [data] of mockInput.mock.calls) {
+			expect(String(data).length).toBeLessThan(1022);
+		}
+	});
+
+	/**
+	 * A timer has no caller to hand a throw to, and `term.input` throws the moment
+	 * ghostty is gone — the wheel handler that used to own this call caught exactly
+	 * that, so the drain has to as well.
+	 *
+	 * The failure mode is an escaped throw, which no `expect` inside the test can
+	 * see: it lands in the timer, not in this stack. Vitest reports it as an
+	 * unhandled error and exits non-zero even with every test green, so THAT is the
+	 * signal — verified by deleting the try/catch and watching this file exit 1.
+	 * The assertions below only pin the state the guard leaves behind.
+	 */
+	it("stops the drain instead of throwing when the terminal dies mid-flick", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		await renderAndSetup();
+		const wheelHandler = mockTermInstance.attachCustomWheelEventHandler.mock.calls[0]?.[0] as
+			| ((event: WheelEvent) => boolean)
+			| undefined;
+
+		act(() => {
+			wheelHandler?.({ deltaY: 100_000, clientX: 20, clientY: 20 } as WheelEvent);
+		});
+		mockInput.mockImplementation(() => { throw new Error("terminal disposed"); });
+		await act(async () => { await new Promise((resolve) => setTimeout(resolve, 80)); });
+
+		const attemptsAfterDeath = mockInput.mock.calls.length;
+		mockInput.mockReset();
+		await act(async () => { await new Promise((resolve) => setTimeout(resolve, 80)); });
+
+		// The backlog was forgotten, so nothing retries against a dead terminal.
+		expect(attemptsAfterDeath).toBeGreaterThan(0);
+		expect(mockInput).not.toHaveBeenCalled();
 	});
 
 	it("reports a drag once per cell, not once per pixel", async () => {

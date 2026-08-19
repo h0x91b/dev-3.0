@@ -622,6 +622,7 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 			}
 		}
 		session.clients.clear();
+		forgetSession(session.registryKey);
 		sessions.delete(taskId);
 	}
 
@@ -1620,6 +1621,7 @@ function flushPendingData(session: PtySession): void {
 		if (session.clients.size === 0) return;
 		const data = session.pendingData;
 		session.pendingData = "";
+		noteQueued(session.registryKey, 0);
 		noteFlush(session.registryKey, data.length, session.clients.size);
 		for (const client of session.clients) {
 			try { client.sendText(data); } catch { /* dead client */ }
@@ -1628,6 +1630,7 @@ function flushPendingData(session: PtySession): void {
 	}
 	const data = session.pendingData;
 	session.pendingData = "";
+	noteQueued(session.registryKey, 0);
 	// Journal FIRST and unconditionally: with no viewer attached (remote-only use,
 	// or every tab closed) this tail is the entire screen the next one will get.
 	const seq = session.nativeStream?.push(data) ?? 0;
@@ -1687,11 +1690,19 @@ function bufferedBytesFor(session: PtySession): number {
  */
 function enqueuePtyData(session: PtySession, data: string): void {
 	session.pendingData += data;
-	noteQueued(session.registryKey, session.pendingData.length);
-	if (session.batchTimer) return;
+	if (session.batchTimer) {
+		// A window is already open, so these bytes really are held until it closes.
+		noteQueued(session.registryKey, session.pendingData.length);
+		return;
+	}
 
 	const buffered = bufferedBytesFor(session);
 	if (!isBackedUp(buffered)) flushPendingData(session);
+	// What the flush LEFT: nothing on the happy path, everything while the socket is
+	// backed up — which is the backlog this gauge exists to show. Sampling before the
+	// flush instead froze it at the last chunk's size, so an idle session reported a
+	// permanent multi-KB queue.
+	noteQueued(session.registryKey, session.pendingData.length);
 	const windowMs = batchWindowMs(buffered, PTY_BATCH_INTERVAL_MS);
 	noteWindow(session.registryKey, buffered, windowMs);
 	session.batchTimer = setTimeout(() => flushPendingData(session), windowMs);

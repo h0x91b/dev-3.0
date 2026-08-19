@@ -64,6 +64,14 @@ same screen measured 347 ms — four times worse than not having an atlas at all
 
 ## Risks
 
+- **`renderCellText` decorates cells off state that is not a cell flag.** Besides the
+  flags, it underlines the OSC 8 hyperlink in `hoveredHyperlinkId` and every cell inside
+  `hoveredLinkRange` — so those defer too (`isHoverDecorated`), blanks included, or a
+  hovered link would silently lose its underline. Anyone widening the fast path must
+  re-read the vendor's method rather than trust the flag list: the review that found this
+  could not reproduce a visible loss (on a file-path hover the underline on screen comes
+  from `terminal-link-underlines.ts`'s own overlay canvas, and the vendor drew nothing
+  measurable there), so the guard is unit-tested, not screenshot-proven.
 - **Nothing caps the total across panes.** Measured with four live 100x23 panes, each
   on its own 100-colour palette: 14.4 MB each, **57.4 MB together**, all four repainting
   in 25-28 ms. A full-screen 100-colour pane on its own measured 27 MB. The arithmetic

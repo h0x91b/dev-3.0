@@ -1422,13 +1422,21 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				wheelDrainTimer = setTimeout(() => {
 					wheelDrainTimer = null;
 					if (disposed) return;
-					const direction = wheelPacer.direction();
-					const allowed = wheelPacer.drain(performance.now());
-					if (allowed > 0 && direction !== 0) {
-						const [col, row] = lastWheelCell;
-						sgrMouse(direction < 0 ? 64 : 65, col, row, true, allowed);
+					// `term.input` throws once ghostty is gone, and the wheel handler that
+					// used to own this call caught exactly that. A timer has no caller to
+					// hand the throw to, so it stops the drain instead of escaping.
+					try {
+						const direction = wheelPacer.direction();
+						const allowed = wheelPacer.drain(performance.now());
+						if (allowed > 0 && direction !== 0) {
+							const [col, row] = lastWheelCell;
+							sgrMouse(direction < 0 ? 64 : 65, col, row, true, allowed);
+						}
+						latency.noteWheelSent(allowed, wheelPacer.pending());
+					} catch {
+						wheelPacer.reset();
+						return;
 					}
-					latency.noteWheelSent(allowed, wheelPacer.pending());
 					scheduleWheelDrain();
 				}, WHEEL_DRAIN_INTERVAL_MS);
 			}

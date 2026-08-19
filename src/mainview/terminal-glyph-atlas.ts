@@ -44,9 +44,10 @@
  *
  * **Safety rule: the fast path is narrow, and anything else falls through to the
  * vendor's own method.** Selection, inverse video, underline, strikethrough,
- * faint, grapheme clusters, wide cells, the block/powerline glyphs
- * `terminal-glyph-cell-fit` reshapes, and a full atlas all take the original
- * path, so the worst this can do is perform like the code it replaces.
+ * faint, grapheme clusters, wide cells, a hovered link's underline, the
+ * block/powerline glyphs `terminal-glyph-cell-fit` reshapes, and a full atlas all
+ * take the original path, so the worst this can do is perform like the code it
+ * replaces.
  *
  * Installed AFTER `installGlyphCellFit`, which wraps the same method: falling
  * through then reaches the fitted wrapper rather than skipping past it.
@@ -127,10 +128,22 @@ interface AtlasContext {
 	scale(x: number, y: number): void;
 }
 
+/** A hovered link's span, in viewport cells, as the vendor was told it. */
+export interface HoveredLinkRange {
+	startX: number;
+	startY: number;
+	endX: number;
+	endY: number;
+}
+
 /** The vendor renderer's shape, as far as this module touches it. */
 export interface AtlasRenderer {
 	renderCellText(cell: GhosttyCell, col: number, row: number): void;
 	isInSelection?(col: number, row: number): boolean;
+	/** OSC 8 hyperlink under the pointer, 0 when none. */
+	hoveredHyperlinkId?: number;
+	/** Span a link provider resolved under the pointer, null when none. */
+	hoveredLinkRange?: HoveredLinkRange | null;
 	metrics?: { width: number; height: number; baseline: number };
 	fontSize?: number;
 	fontFamily?: string;
@@ -236,6 +249,29 @@ export function isCacheableCodepoint(codepoint: number): boolean {
 /** Nothing to draw at all: an empty cell costs neither a blit nor a fillText. */
 export function isBlankCodepoint(codepoint: number): boolean {
 	return codepoint === 0 || codepoint === 0x20;
+}
+
+/**
+ * Whether the vendor would underline this cell because a link is hovered.
+ *
+ * `renderCellText` paints two decorations that are NOT cell flags: the OSC 8
+ * hyperlink the pointer is on, and the span a link provider resolved (dev3
+ * registers one for file paths). A cached blit carries neither, so a hovered link
+ * would silently lose its underline — these cells go to the vendor. The span test
+ * matches the vendor's own, so only the hovered cells defer, and a blank cell
+ * inside the span defers too: the vendor underlines it.
+ */
+export function isHoverDecorated(
+	renderer: AtlasRenderer, cell: GhosttyCell, col: number, row: number,
+): boolean {
+	const hovered = renderer.hoveredHyperlinkId ?? 0;
+	if (hovered > 0 && cell.hyperlink_id === hovered) return true;
+	const range = renderer.hoveredLinkRange;
+	if (!range) return false;
+	if (row < range.startY || row > range.endY) return false;
+	if (row === range.startY && col < range.startX) return false;
+	if (row === range.endY && col > range.endX) return false;
+	return true;
 }
 
 export interface GlyphAtlasOptions {
@@ -381,6 +417,9 @@ export function createGlyphAtlas(opts: GlyphAtlasOptions = {}): GlyphAtlas {
 			if (flags & DEFERRED_FLAGS) { misses += 1; return false; }
 			if (cell.width !== 1) { misses += 1; return false; }
 			if ((cell.grapheme_len ?? 0) > 0) { misses += 1; return false; }
+			// Two property reads, and both are null/0 unless the pointer is on a link.
+			// Ahead of the blank shortcut: the vendor underlines spaces in the span too.
+			if (isHoverDecorated(renderer, cell, col, row)) { misses += 1; return false; }
 
 			const codepoint = cell.codepoint ?? 0;
 			// A blank cell is genuinely nothing to paint — claim it, draw nothing.
@@ -508,6 +547,10 @@ export function uninstallGlyphAtlas(renderer: AtlasRenderer): void {
 	const original = target[ORIGINAL_CELL_TEXT];
 	if (!original) return;
 	target.renderCellText = original;
+	// Same reason `reset` zeroes the canvases rather than dropping them: tens of
+	// megabytes of strip canvas would otherwise wait on the collector, and a pane
+	// teardown or a font change is exactly when that memory is wanted back.
+	target[ATLAS]?.reset();
 	delete target[ORIGINAL_CELL_TEXT];
 	delete target[ATLAS];
 }
