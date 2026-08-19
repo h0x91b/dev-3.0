@@ -27,8 +27,6 @@ import {
 	stopNativeTaskPanes,
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
-import { FEATURE_FLAGS } from "../shared/feature-flags";
-import { isFeatureEnabled } from "./feature-flags";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "./task-terminal-backend";
@@ -117,6 +115,10 @@ let ptyWsPort = 0;
 // rendering overhead in the frontend terminal emulator. Instead, we batch
 // data and flush at ~60fps (16ms intervals). This reduces WS message count
 // by 10-100x while maintaining perceptual smoothness.
+//
+// The window is a CEILING on the message rate, not a delay every chunk pays:
+// the chunk that opens it is sent at once (see enqueuePtyData), so an idle
+// terminal echoing one keystroke is never held back.
 const PTY_BATCH_INTERVAL_MS = 16;
 
 export type PtySessionType = "task" | "project";
@@ -1663,28 +1665,23 @@ function bufferedBytesFor(session: PtySession): number {
 }
 
 /**
- * Enqueue PTY data for batched delivery to the WebSocket.
- * Instead of sending every chunk immediately (which for Claude Code means
- * thousands of tiny WS messages per second), we accumulate data and flush
- * at ~60fps.
+ * Enqueue PTY data for delivery to the WebSocket.
  *
- * With FEATURE_FLAGS.remoteTerminalLatency on, the chunk that opens a window is
- * sent immediately (a lone keystroke echo no longer waits out the full window)
- * and the window widens while a viewer's socket is behind. The flag is read from
- * a local cache — no await, no lookup beyond a Map get, on a per-chunk path.
+ * The chunk that OPENS a window goes out immediately, and everything that
+ * arrives while the window is open is coalesced into one trailing flush. That
+ * keeps the message rate an agent's output produces bounded (Claude Code would
+ * otherwise push thousands of tiny frames per second) without making a lone
+ * keystroke echo — the only chunk in its window — wait out the full 16 ms.
+ *
+ * While a viewer's socket is behind, the leading-edge send is skipped and the
+ * window widens instead: a backed-up socket is exactly what cannot absorb an
+ * immediate send. Nothing is ever dropped — the ANSI stream is stateful.
  */
 function enqueuePtyData(session: PtySession, data: string): void {
 	session.pendingData += data;
 	if (session.batchTimer) return;
 
-	if (!isFeatureEnabled(FEATURE_FLAGS.remoteTerminalLatency)) {
-		// Trailing edge only: one chunk in the window still costs the full 16ms.
-		session.batchTimer = setTimeout(() => flushPendingData(session), PTY_BATCH_INTERVAL_MS);
-		return;
-	}
-
 	const buffered = bufferedBytesFor(session);
-	// A backed-up socket cannot absorb an immediate send; only widen the window.
 	if (!isBackedUp(buffered)) flushPendingData(session);
 	session.batchTimer = setTimeout(
 		() => flushPendingData(session),

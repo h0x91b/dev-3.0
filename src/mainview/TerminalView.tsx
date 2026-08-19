@@ -25,10 +25,11 @@ import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
 import { installCursorVisibilityGate, type CursorVisibilityGate } from "./terminal-cursor-focus";
 import { installRenderGuard, type RenderGuard } from "./terminal-render-guard";
 import { session } from "./terminal-session-stats";
+import { createTerminalLatencyProbe, registerLatencyProbe } from "./terminal-latency";
 import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
 import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
 import { getScrollThreshold } from "./scroll-speed";
-import { createWheelPacer } from "./wheel-pacer";
+import { createWheelPacer, WHEEL_DRAIN_INTERVAL_MS } from "./wheel-pacer";
 import type { TaskPaneAction } from "../shared/task-panes";
 import { matchesShortcut } from "./keymap";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
@@ -588,6 +589,26 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		const termSubs: Array<{ dispose(): void }> = [];
 		const diagnosticsId = `terminal-copy-${taskId}-${Math.random().toString(36).slice(2, 8)}`;
 
+		// How long this pane actually takes from keystroke to pixel. Read it live with
+		// window.__dev3TerminalLatency(); a summary reaches the log every minute.
+		const latency = createTerminalLatencyProbe({
+			report: (snapshot) => {
+				logDiagnostic("terminal-latency", "info", "keystroke-to-pixel latency", {
+					echoP50: snapshot.echo.p50,
+					echoP95: snapshot.echo.p95,
+					paintP50: snapshot.paint.p50,
+					paintP95: snapshot.paint.p95,
+					paintMax: snapshot.paint.max,
+					writeP95: snapshot.write.p95,
+					frameP50: snapshot.frame.p50,
+					frameP95: snapshot.frame.p95,
+					samples: snapshot.echo.count,
+					frames: snapshot.frame.count,
+				});
+			},
+		});
+		const unregisterLatency = registerLatencyProbe(`${taskId.slice(0, 8)}:${ptyUrl}`, latency);
+
 		// TEMP DIAGNOSTIC: install per-terminal clipboard instrumentation.
 		copyDiagnosticsRef.current = installTerminalCopyDiagnostics({
 			id: diagnosticsId,
@@ -677,6 +698,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// frame or notice that the loop stopped. Installed last, disposed first.
 			if (term.renderer) {
 				renderGuardRef.current = installRenderGuard(term.renderer, {
+					onFrame: (durationMs) => latency.noteFrame(durationMs),
 					onFrameError: (error, consecutive) => {
 						if (disposed) return;
 						if (consecutive === 1) {
@@ -1370,12 +1392,36 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 
 			let scrollAccumulator = 0;
 			const wheelPacer = createWheelPacer();
+			// The cell the backlog reports against — a drain fires after the wheel
+			// event that produced it, so it has no event of its own to read.
+			let lastWheelCell: [number, number] = [1, 1];
+			let wheelDrainTimer: ReturnType<typeof setTimeout> | null = null;
+
+			/**
+			 * Keep emptying the backlog at the paced rate after the finger stopped, so
+			 * a hard flick arrives in full instead of ending where the bucket ran dry.
+			 */
+			function scheduleWheelDrain() {
+				if (wheelDrainTimer !== null || wheelPacer.pending() === 0) return;
+				wheelDrainTimer = setTimeout(() => {
+					wheelDrainTimer = null;
+					if (disposed) return;
+					const direction = wheelPacer.direction();
+					const allowed = wheelPacer.drain(performance.now());
+					if (allowed > 0 && direction !== 0) {
+						const [col, row] = lastWheelCell;
+						sgrMouse(direction < 0 ? 64 : 65, col, row, true, allowed);
+					}
+					scheduleWheelDrain();
+				}, WHEEL_DRAIN_INTERVAL_MS);
+			}
 
 			term.attachCustomWheelEventHandler((e: WheelEvent) => {
 				if (disposed) return false;
 				try {
 					if (!term.hasMouseTracking()) return false;
 					const [col, row] = cellCoords(e);
+					lastWheelCell = [col, row];
 
 					// Read live so the Settings → Appearance scroll-speed slider
 					// takes effect without rebuilding the terminal (cheap cache read).
@@ -1385,21 +1431,27 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					if (lines !== 0) {
 						scrollAccumulator -= lines * threshold;
 						if (lines < 0) tmuxCopyModeMayBeActiveRef.current = true;
-						const code = lines < 0 ? 64 : 65;
+						const direction: 1 | -1 = lines < 0 ? -1 : 1;
 						// Paced and sent as one write — an unpaced flick overruns the
 						// PTY's 1022-byte read window and TUIs paste the sliced tail
-						// into their prompt (decision 175).
+						// into their prompt (decision 175). What the pace holds back is
+						// queued, not dropped, and drained by the timer above.
 						const allowed = wheelPacer.take(
 							Math.abs(lines),
+							direction,
 							performance.now(),
 						);
-						if (allowed > 0) sgrMouse(code, col, row, true, allowed);
+						if (allowed > 0) sgrMouse(direction < 0 ? 64 : 65, col, row, true, allowed);
+						scheduleWheelDrain();
 					}
 					return true;
 				} catch { return false; /* disposed */ }
 			});
 
 			return () => {
+				if (wheelDrainTimer !== null) clearTimeout(wheelDrainTimer);
+				wheelDrainTimer = null;
+				wheelPacer.reset();
 				altClickTarget.removeEventListener("mousedown", onAltClickMove, {
 					capture: true,
 				});
@@ -1480,19 +1532,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		const OSC52_RE =
 			/\x1b\]52;[^;]*;[A-Za-z0-9+/=]*(?:\x07|\x1b\\)/g;
 
-		// ── Terminal write batching ─────────────────────────────────────
-		// AI agents produce thousands of WS messages per second. Writing
-		// each one to ghostty-web individually forces per-write layout and
-		// render passes. Instead, we accumulate incoming data and flush in
-		// a single term.write() call per animation frame (~60fps).
-		let pendingWrite = "";
-		let writeRafId: number | null = null;
-		// Guards scheduling separately from the frame id: a callback that runs before
-		// requestAnimationFrame returns would otherwise leave the id set forever and
-		// every later batch would sit in the queue unwritten.
-		let writeScheduled = false;
-		/** Whether the pending batch carries bytes from the PTY, not our own clear. */
-		let pendingFromSocket = false;
+		// ── Terminal writes ─────────────────────────────────────────────
+		// Deliberately NOT batched into an animation frame, and this is the whole
+		// point of the change: ghostty-web's `write()` only parses into WASM and
+		// marks rows dirty — painting happens in its own rAF loop — so a batch here
+		// coalesces nothing the vendor's loop does not already coalesce, and costs a
+		// whole frame. ghostty registers its next-frame callback from INSIDE its own
+		// callback, so a write scheduled from a socket message that lands between
+		// frames always runs after that frame has already painted, and the bytes wait
+		// for the frame after. The batch was inherited from xterm.js, which really did
+		// render on write. See decisions/2026/08/19/terminal-latency-unbatch-writes.md.
 			/**
 			 * Byte/frame bookkeeping for the render guard's diagnostics. Without these a
 			 * blank pane cannot be told apart from a pane nothing was sent to — the exact
@@ -1509,59 +1558,56 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				socketBatches += 1;
 				lastSocketByteAt = Date.now();
 			}
-		// Reference to the terminal for batched writes (set by connectPty)
+		// Reference to the terminal being written into (set by connectPty)
 		let batchTerm: Terminal | null = null;
 		// Rewrites SGR colors unreadable on the current background: pale/dim
 		// in light mode, too-dark ink in dark mode. See utils/ansi-theme-adapt.ts.
 		const themeFilter = createAnsiThemeFilter();
 
-		function enqueueTermWrite(data: string) {
-			pendingWrite += data;
-			if (!writeScheduled) {
-				writeScheduled = true;
-				writeRafId = requestAnimationFrame(() => {
-					writeScheduled = false;
-					writeRafId = null;
-					if (disposed || !pendingWrite || !batchTerm) return;
-					const batch = themeFilter(pendingWrite, resolvedThemeRef.current);
-					pendingWrite = "";
-					if (!batch) return;
-					const fromSocket = pendingFromSocket;
-					pendingFromSocket = false;
-					try {
-						batchTerm.write(batch);
-						// Only the socket's own output proves the canvas is current; the
-						// clear we enqueue ourselves must leave the gate up.
-						if (fromSocket) releaseSyncGate();
-						// Drop any stale selection left floating over the
-						// just-repainted cells when the app owns the screen
-						// (alt-screen or primary+mouse-tracking); ghostty-web
-						// won't do it on its own.
-						clearStaleSelectionOnWrite(batchTerm);
-						// ghostty-web never fires onRender, so the write batch is
-						// the "content changed" signal for the link underlines.
-						linkUnderlines?.requestRedraw();
-					} catch (err) {
-						// Used to be swallowed outright to keep analytics from drowning in
-						// per-frame exceptions — which also hid the crash that leaves the pane
-						// blank for good. Throttled instead of silent, and it now asks for a
-						// rebuild: a throw here means ghostty's state, not this batch, is gone.
-						writeErrors += 1;
-						if (writeErrors <= 3 || writeErrors % 60 === 0) {
-							logDiagnostic("terminal-write", "error", "term.write threw", {
-								error: String(err),
-								batchLen: batch.length,
-								fromSocket,
-								writeErrors,
-								socketBytes,
-								socketBatches,
-								liveTerminals: session.liveTerminals,
-								trail: trail.format(),
-							});
-						}
-						if (writeErrors === 1) recoverFromRendererCrashRef.current?.("term-write", String(err));
-					}
-				});
+		/**
+		 * Hand one chunk straight to ghostty. `fromSocket` separates PTY output from
+		 * the resets we write ourselves — only the former proves the canvas is current.
+		 *
+		 * Callers must concatenate anything that has to land in ONE write (a reset in
+		 * front of a replay) before calling, exactly as they did with the old batch.
+		 */
+		function writeToTerminal(data: string, fromSocket: boolean) {
+			if (disposed || !batchTerm) return;
+			// The filter carries an incomplete CSI across calls, so chunking is safe.
+			const batch = themeFilter(data, resolvedThemeRef.current);
+			if (!batch) return;
+			try {
+				const startedAt = performance.now();
+				batchTerm.write(batch);
+				latency.noteWrite(performance.now() - startedAt);
+				if (fromSocket) releaseSyncGate();
+				// Drop any stale selection left floating over the
+				// just-repainted cells when the app owns the screen
+				// (alt-screen or primary+mouse-tracking); ghostty-web
+				// won't do it on its own.
+				clearStaleSelectionOnWrite(batchTerm);
+				// ghostty-web never fires onRender, so the write is
+				// the "content changed" signal for the link underlines.
+				linkUnderlines?.requestRedraw();
+			} catch (err) {
+				// Used to be swallowed outright to keep analytics from drowning in
+				// per-frame exceptions — which also hid the crash that leaves the pane
+				// blank for good. Throttled instead of silent, and it now asks for a
+				// rebuild: a throw here means ghostty's state, not this chunk, is gone.
+				writeErrors += 1;
+				if (writeErrors <= 3 || writeErrors % 60 === 0) {
+					logDiagnostic("terminal-write", "error", "term.write threw", {
+						error: String(err),
+						batchLen: batch.length,
+						fromSocket,
+						writeErrors,
+						socketBytes,
+						socketBatches,
+						liveTerminals: session.liveTerminals,
+						trail: trail.format(),
+					});
+				}
+				if (writeErrors === 1) recoverFromRendererCrashRef.current?.("term-write", String(err));
 			}
 		}
 
@@ -1623,10 +1669,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				return;
 			}
 			const cleaned = payload.replace(OSC52_RE, "");
-			if (reset || cleaned) {
-				pendingFromSocket = true;
-				enqueueTermWrite(reset + cleaned);
-			}
+			// RIS and the replay travel as one string so the screen is replaced in a
+			// single write — see the reset comment above.
+			if (reset || cleaned) writeToTerminal(reset + cleaned, true);
 		}
 
 		function connectPty(term: Terminal, fit: FitAddon) {
@@ -1652,7 +1697,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// reset-the-terminal-once-not-every-reconnect.
 			if (nativeSeqRef.current === null && !screenResetForThisTerminal) {
 				screenResetForThisTerminal = true;
-				enqueueTermWrite("\x1bc");
+				writeToTerminal("\x1bc", false);
 			}
 			const diagnosticPtyUrl = ptyUrl.replace(/([?&]token=)[^&]+/, "$1***");
 			console.log("[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
@@ -1693,6 +1738,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				if (socket !== ws) return;
 				if (disposed) return;
 				try {
+					latency.noteOutput();
 					if (typeof event.data === "string") {
 						// A native session frames every message with a watermark header; a
 						// tmux session sends bare terminal text and never enters this branch.
@@ -1702,11 +1748,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							return;
 						}
 						const cleaned = event.data.replace(OSC52_RE, "");
-						if (cleaned) { pendingFromSocket = true; noteSocketBytes(cleaned.length); enqueueTermWrite(cleaned); }
+						if (cleaned) { noteSocketBytes(cleaned.length); writeToTerminal(cleaned, true); }
 					} else {
-						// Binary data — decode and batch with text data
+						// Binary data — decode, then write on the same path as text
 						const str = new TextDecoder().decode(new Uint8Array(event.data));
-						if (str) { pendingFromSocket = true; noteSocketBytes(str.length); enqueueTermWrite(str); }
+						if (str) { noteSocketBytes(str.length); writeToTerminal(str, true); }
 					}
 				} catch (err) {
 					// Same trade as the write batch above: throttled instead of silent, so a
@@ -1762,6 +1808,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				term.onData((data) => {
 					if (disposed) return;
 					if (ws?.readyState === WebSocket.OPEN) {
+						latency.noteInput(data);
 						ws.send(data);
 					}
 				}),
@@ -1849,12 +1896,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			window.removeEventListener("online", reconnectPtyOnResume);
 			if (reconnectTimer !== null) clearTimeout(reconnectTimer);
 			if (refitTimer !== null) clearTimeout(refitTimer);
-			// Cancel pending write batch to prevent writing to disposed terminal
-			writeScheduled = false;
-			if (writeRafId !== null) {
-				cancelAnimationFrame(writeRafId);
-				writeRafId = null;
-			}
+			// Writes are synchronous now, so nothing can be in flight — `disposed`
+			// alone stops any later chunk from reaching a torn-down terminal.
+			unregisterLatency();
+			latency.dispose();
 			copyDiagnosticsRef.current?.dispose();
 			copyDiagnosticsRef.current = null;
 			renderGuardRef.current?.dispose();
@@ -1863,7 +1908,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			cursorGateRef.current = null;
 			glyphFitRef.current?.dispose();
 			glyphFitRef.current = null;
-			pendingWrite = "";
 			layoutObserver?.disconnect();
 			mouseCleanup?.();
 			linkUnderlines?.dispose();

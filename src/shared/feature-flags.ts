@@ -8,23 +8,25 @@
  * See decisions/2026/08/08/first-posthog-feature-flag.md.
  */
 
-export const FEATURE_FLAGS = {
-	/** Leading-edge PTY flush + broadcast backpressure in src/bun/pty-server.ts. */
-	remoteTerminalLatency: "remote-terminal-latency",
-} as const;
+/**
+ * No flag is declared right now: `remote-terminal-latency` graduated — the
+ * leading-edge flush and broadcast backpressure are the only path in
+ * `src/bun/pty-server.ts`, so there is nothing left to gate. Declaring the next
+ * flag here is all it takes to bring the loop below back to life.
+ */
+export const FEATURE_FLAGS = {} as const;
 
 export type FeatureFlagKey = (typeof FEATURE_FLAGS)[keyof typeof FEATURE_FLAGS];
 
-export const FEATURE_FLAG_KEYS: readonly FeatureFlagKey[] = Object.values(FEATURE_FLAGS);
+export const FEATURE_FLAG_KEYS: readonly FeatureFlagKey[] =
+	Object.values(FEATURE_FLAGS) as FeatureFlagKey[];
 
 /**
  * Served before the first successful fetch, when PostHog is unreachable, and
  * when no PostHog key is configured: every flag is off, i.e. the behaviour the
  * app already shipped.
  */
-export const FEATURE_FLAG_DEFAULTS: Record<FeatureFlagKey, boolean> = {
-	[FEATURE_FLAGS.remoteTerminalLatency]: false,
-};
+export const FEATURE_FLAG_DEFAULTS: Record<FeatureFlagKey, boolean> = {};
 
 /** How often the renderer re-asks PostHog. Tune here, never at a call site. */
 export const FEATURE_FLAG_REFRESH_MS = 5 * 60 * 1000;

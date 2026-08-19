@@ -1,52 +1,41 @@
+/**
+ * The bun-side flag cache with an EMPTY registry, which is what the app ships
+ * today: `remote-terminal-latency` graduated and nothing replaced it. What must
+ * hold is that the plumbing is inert rather than broken — a push of undeclared
+ * keys changes nothing, and the read side reports an empty set instead of
+ * throwing. The value-caching behaviour itself is asserted the moment a flag is
+ * declared again; there is nothing honest to assert about it while none is.
+ */
 import { describe, it, expect, beforeEach } from "vitest";
-import { getAllFeatureFlags, isFeatureEnabled, setFeatureFlags, _resetFeatureFlagsForTests } from "../feature-flags";
-import { FEATURE_FLAGS, FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_REFRESH_MS } from "../../shared/feature-flags";
-
-const FLAG = FEATURE_FLAGS.remoteTerminalLatency;
+import { getAllFeatureFlags, setFeatureFlags, _resetFeatureFlagsForTests } from "../feature-flags";
+import {
+	FEATURE_FLAGS,
+	FEATURE_FLAG_DEFAULTS,
+	FEATURE_FLAG_KEYS,
+	FEATURE_FLAG_REFRESH_MS,
+} from "../../shared/feature-flags";
 
 beforeEach(() => {
 	_resetFeatureFlagsForTests();
 });
 
 describe("bun feature-flag cache", () => {
-	it("serves the shipped default before the renderer has pushed anything", () => {
-		expect(isFeatureEnabled(FLAG)).toBe(FEATURE_FLAG_DEFAULTS[FLAG]);
-		expect(FEATURE_FLAG_DEFAULTS[FLAG]).toBe(false);
+	it("declares no flag — the leading-edge PTY flush is unconditional now", () => {
+		expect(FEATURE_FLAG_KEYS).toEqual([]);
+		expect(FEATURE_FLAGS).toEqual({});
+		expect(FEATURE_FLAG_DEFAULTS).toEqual({});
 	});
 
-	it("takes the pushed value in both directions", () => {
-		setFeatureFlags({ [FLAG]: true });
-		expect(isFeatureEnabled(FLAG)).toBe(true);
-		setFeatureFlags({ [FLAG]: false });
-		expect(isFeatureEnabled(FLAG)).toBe(false);
+	it("reports an empty set rather than throwing on an empty registry", () => {
+		expect(getAllFeatureFlags()).toEqual({});
 	});
 
-	it("holds the last known value when a key is missing from the push", () => {
-		setFeatureFlags({ [FLAG]: true });
-		setFeatureFlags({});
-		expect(isFeatureEnabled(FLAG)).toBe(true);
+	it("ignores keys the app does not declare, however many arrive", () => {
+		setFeatureFlags({ "remote-terminal-latency": true, "some-other-flag": true });
+		expect(getAllFeatureFlags()).toEqual({});
 	});
 
-	it("ignores non-boolean values rather than coercing them", () => {
-		setFeatureFlags({ [FLAG]: true });
-		setFeatureFlags({ [FLAG]: undefined as unknown as boolean });
-		expect(isFeatureEnabled(FLAG)).toBe(true);
-		setFeatureFlags({ [FLAG]: "false" as unknown as boolean });
-		expect(isFeatureEnabled(FLAG)).toBe(true);
-	});
-
-	it("ignores keys the app does not declare", () => {
-		setFeatureFlags({ "some-other-flag": true });
-		expect(isFeatureEnabled(FLAG)).toBe(false);
-	});
-
-	it("reports every declared flag, not only the ones pushed so far", () => {
-		expect(getAllFeatureFlags()).toEqual({ [FLAG]: false });
-		setFeatureFlags({ [FLAG]: true });
-		expect(getAllFeatureFlags()).toEqual({ [FLAG]: true });
-	});
-
-	it("refreshes every 5 minutes — the accepted worst-case propagation delay", () => {
+	it("keeps the 5-minute cadence for whichever flag comes next", () => {
 		expect(FEATURE_FLAG_REFRESH_MS).toBe(5 * 60 * 1000);
 	});
 });

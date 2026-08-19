@@ -1852,6 +1852,67 @@ describe("TerminalView – remote sync gate", () => {
 	});
 });
 
+describe("TerminalView – PTY bytes are written without waiting for a frame", () => {
+	/**
+	 * The suite's global rAF stub runs callbacks inline, so a batched write and a
+	 * synchronous one look identical to every other test here — which is exactly
+	 * why the lost frame survived unnoticed. These tests hold rAF callbacks back so
+	 * the difference is visible: with batching restored, `write` would not have been
+	 * called by the time the assertion runs.
+	 */
+	let heldFrames: FrameRequestCallback[];
+
+	beforeEach(() => {
+		heldFrames = [];
+	});
+
+	function holdFrames() {
+		vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+			heldFrames.push(cb);
+			return heldFrames.length;
+		});
+	}
+
+	function releaseFrames() {
+		const pending = heldFrames.splice(0);
+		for (const cb of pending) cb(0);
+	}
+
+	afterEach(() => {
+		vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+			cb(0);
+			return 1;
+		});
+	});
+
+	it("writes socket output before any animation frame has run", async () => {
+		await renderAndSetup();
+		mockTermInstance.write.mockClear();
+		holdFrames();
+
+		await act(async () => {
+			lastWebSocket?.onmessage?.({ data: "echo me" } as MessageEvent);
+		});
+
+		expect(mockTermInstance.write).toHaveBeenCalledWith("echo me");
+		releaseFrames();
+	});
+
+	it("writes each socket message on arrival instead of coalescing them into one frame", async () => {
+		await renderAndSetup();
+		mockTermInstance.write.mockClear();
+		holdFrames();
+
+		await act(async () => {
+			lastWebSocket?.onmessage?.({ data: "one" } as MessageEvent);
+			lastWebSocket?.onmessage?.({ data: "two" } as MessageEvent);
+		});
+
+		expect(mockTermInstance.write.mock.calls.map((call) => call[0])).toEqual(["one", "two"]);
+		releaseFrames();
+	});
+});
+
 describe("TerminalView – renderer crash recovery", () => {
 	/**
 	 * ghostty-web's render loop reschedules only after a successful render and is

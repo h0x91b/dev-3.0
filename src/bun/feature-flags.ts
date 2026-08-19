@@ -28,8 +28,8 @@ export function setFeatureFlags(flags: Record<string, boolean>): void {
 }
 
 /** Every declared flag with its effective value — what the code actually gates on. */
-export function getAllFeatureFlags(): Record<FeatureFlagKey, boolean> {
-	const out = {} as Record<FeatureFlagKey, boolean>;
+export function getAllFeatureFlags(): Record<string, boolean> {
+	const out: Record<string, boolean> = {};
 	for (const key of FEATURE_FLAG_KEYS) out[key] = isFeatureEnabled(key);
 	return out;
 }

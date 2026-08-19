@@ -1,10 +1,12 @@
 /**
- * PTY output batching: leading-edge flush and broadcast backpressure (seq 1470).
+ * PTY output batching: leading-edge flush and broadcast backpressure (seq 1470,
+ * unconditional since seq 1575 — the flag that gated them is gone).
  *
- * Both live behind FEATURE_FLAGS.remoteTerminalLatency, so every behaviour is
- * asserted on BOTH branches — a flagged change covered on one branch is untested.
  * The tests drive the server's real WebSocket handlers with a fake client, the
- * same channel remote mode proxies to a browser.
+ * same channel remote mode proxies to a browser. The behaviour that matters:
+ * a lone echo is never held back, a burst still costs at most one extra frame,
+ * a saturated socket is throttled instead of blasted, and nothing is ever lost
+ * or reordered on any of those paths.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -32,8 +34,6 @@ vi.mock("node:fs", async (importOriginal) => {
 vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
 import { spawn, spawnSync } from "../spawn";
-import { FEATURE_FLAGS } from "../../shared/feature-flags";
-import { setFeatureFlags, _resetFeatureFlagsForTests } from "../feature-flags";
 import {
 	PTY_BACKPRESSURE_HIGH_WATER_BYTES,
 	PTY_BACKPRESSURE_LOW_WATER_BYTES,
@@ -58,7 +58,6 @@ bun.Bun.serve = (config: unknown) => {
 const pty = await import("../pty-server");
 const { createSession, destroySession, hasSession, registerBackpressureProbe } = pty;
 
-const FLAG = FEATURE_FLAGS.remoteTerminalLatency;
 const BATCH_MS = 16;
 
 /** A viewer of the session: every frame the server pushed it, in order. */
@@ -99,7 +98,6 @@ function startSession(taskId: string): FakeClient {
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.clearAllMocks();
-	_resetFeatureFlagsForTests();
 	mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new Uint8Array(0) } as never);
 	mockSpawn.mockImplementation(((_cmd: unknown, opts: { terminal?: { data?: unknown } }) => {
 		const onData = opts?.terminal?.data as ((t: unknown, d: string) => void) | undefined;
@@ -119,23 +117,10 @@ afterEach(() => {
 	}
 	activeSessions.length = 0;
 	vi.useRealTimers();
-	_resetFeatureFlagsForTests();
 });
 
 describe("leading-edge flush", () => {
-	it("makes an isolated keystroke echo wait the full window when the flag is off", () => {
-		setFeatureFlags({ [FLAG]: false });
-		const client = startSession("task-batch-off-1");
-
-		emit("x");
-		expect(client.sent).toEqual([]);
-
-		vi.advanceTimersByTime(BATCH_MS);
-		expect(client.sent).toEqual(["x"]);
-	});
-
-	it("sends an isolated keystroke echo with no delay when the flag is on", () => {
-		setFeatureFlags({ [FLAG]: true });
+	it("sends an isolated keystroke echo with no delay at all", () => {
 		const client = startSession("task-batch-on-1");
 
 		emit("x");
@@ -146,25 +131,40 @@ describe("leading-edge flush", () => {
 		expect(client.sent).toEqual(["x"]);
 	});
 
-	it("still coalesces a burst into one frame per window on both branches", () => {
-		for (const enabled of [false, true]) {
-			_resetFeatureFlagsForTests();
-			setFeatureFlags({ [FLAG]: enabled });
-			const client = startSession(`task-batch-burst-${enabled}`);
+	it("still coalesces a burst into at most two frames per window", () => {
+		const client = startSession("task-batch-burst-1");
 
-			emit("a");
-			emit("b");
-			emit("c");
-			vi.advanceTimersByTime(BATCH_MS);
+		emit("a");
+		emit("b");
+		emit("c");
+		vi.advanceTimersByTime(BATCH_MS);
 
-			// Leading edge sends "a" alone, then "bc"; trailing edge sends "abc".
-			expect(client.sent.join("")).toBe("abc");
-			expect(client.sent.length).toBeLessThanOrEqual(2);
+		// The leading edge sends "a" alone, the window's trailing flush sends "bc".
+		expect(client.sent.join("")).toBe("abc");
+		expect(client.sent.length).toBeLessThanOrEqual(2);
+	});
+
+	it("holds the message rate to two frames per window under a continuous stream", () => {
+		const client = startSession("task-batch-rate-1");
+
+		// 4 ms between chunks for a second: unbatched that is 250 frames.
+		for (let ms = 0; ms < 1000; ms += 4) {
+			emit("o");
+			vi.advanceTimersByTime(4);
 		}
+		vi.advanceTimersByTime(BATCH_MS);
+
+		expect(client.sent.join("")).toBe("o".repeat(250));
+		// TWO per window, not one: the leading edge opens each window with a small
+		// frame and the timer closes it with the coalesced rest. That is the price
+		// of never delaying a lone echo, and it is still an order of magnitude
+		// below the raw chunk rate an agent produces.
+		const windows = 1000 / BATCH_MS;
+		expect(client.sent.length).toBeLessThanOrEqual(2 * windows + 2);
+		expect(client.sent.length).toBeGreaterThan(windows);
 	});
 
 	it("loses no bytes and keeps their order across many windows", () => {
-		setFeatureFlags({ [FLAG]: true });
 		const client = startSession("task-batch-order-1");
 
 		for (let i = 0; i < 50; i++) {
@@ -179,18 +179,7 @@ describe("leading-edge flush", () => {
 });
 
 describe("broadcast backpressure", () => {
-	it("keeps blasting into a saturated socket when the flag is off", () => {
-		setFeatureFlags({ [FLAG]: false });
-		const client = startSession("task-bp-off-1");
-		client.buffered = PTY_BACKPRESSURE_HIGH_WATER_BYTES;
-
-		emit("first");
-		vi.advanceTimersByTime(BATCH_MS);
-		expect(client.sent).toEqual(["first"]);
-	});
-
 	it("widens the window instead of sending into a saturated socket", () => {
-		setFeatureFlags({ [FLAG]: true });
 		const client = startSession("task-bp-on-1");
 		client.buffered = PTY_BACKPRESSURE_HIGH_WATER_BYTES;
 
@@ -207,7 +196,6 @@ describe("broadcast backpressure", () => {
 	});
 
 	it("reads pressure from a registered probe, not only from the local socket", () => {
-		setFeatureFlags({ [FLAG]: true });
 		const client = startSession("task-bp-probe-1");
 		// The loopback socket looks idle; the tunnel-facing one is saturated.
 		client.buffered = 0;
@@ -225,7 +213,6 @@ describe("broadcast backpressure", () => {
 	});
 
 	it("survives a probe that throws because its owner is gone", () => {
-		setFeatureFlags({ [FLAG]: true });
 		const client = startSession("task-bp-probe-2");
 		registerBackpressureProbe("task-bp-probe-2", () => { throw new Error("socket closed"); });
 
@@ -234,7 +221,6 @@ describe("broadcast backpressure", () => {
 	});
 
 	it("returns to the normal cadence once the socket drains", () => {
-		setFeatureFlags({ [FLAG]: true });
 		const client = startSession("task-bp-drain-1");
 		client.buffered = PTY_BACKPRESSURE_LOW_WATER_BYTES;
 
@@ -249,39 +235,40 @@ describe("broadcast backpressure", () => {
 	});
 });
 
-describe("mid-session flag flip", () => {
+describe("pressure changing mid-session", () => {
 	it("switches cadence on a live session without losing or reordering output", () => {
-		setFeatureFlags({ [FLAG]: false });
 		const client = startSession("task-flip-1");
+		client.buffered = PTY_BACKPRESSURE_HIGH_WATER_BYTES;
 
+		// Saturated: no leading edge, and the window is at its widest.
 		emit("before|");
 		expect(client.sent).toEqual([]);
-		vi.advanceTimersByTime(BATCH_MS);
+		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
 		expect(client.sent).toEqual(["before|"]);
 
-		// Flip on mid-stream: the next chunk takes the fast path.
-		setFeatureFlags({ [FLAG]: true });
+		// Drained: the next chunk takes the fast path again.
+		client.buffered = 0;
 		emit("during|");
 		expect(client.sent).toEqual(["before|", "during|"]);
 
-		// Flip back off: the next chunk waits out the window again.
-		setFeatureFlags({ [FLAG]: false });
+		// Saturated again mid-stream.
+		client.buffered = PTY_BACKPRESSURE_HIGH_WATER_BYTES;
 		emit("after|");
 		expect(client.sent).toEqual(["before|", "during|"]);
-		vi.advanceTimersByTime(BATCH_MS);
+		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
 
 		expect(client.sent.join("")).toBe("before|during|after|");
 	});
 
-	it("flushes data already pending when the flag flips", () => {
-		setFeatureFlags({ [FLAG]: false });
+	it("does not strand bytes already pending when the pressure lifts", () => {
 		const client = startSession("task-flip-2");
+		client.buffered = PTY_BACKPRESSURE_HIGH_WATER_BYTES;
 
 		emit("queued|");
-		setFeatureFlags({ [FLAG]: true });
-		// The open window still owns the pending bytes; the flip does not strand them.
+		client.buffered = 0;
+		// The open window still owns the pending bytes; the change does not lose them.
 		emit("next|");
-		vi.advanceTimersByTime(BATCH_MS);
+		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
 
 		expect(client.sent.join("")).toBe("queued|next|");
 	});

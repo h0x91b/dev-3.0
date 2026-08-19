@@ -38,6 +38,13 @@ export interface RenderGuardOptions {
 	onFrameError: (error: unknown, consecutive: number) => void;
 	/** No frame arrived for `stallMs` while the document was visible. */
 	onStalled: (msSinceLastFrame: number) => void;
+	/**
+	 * A frame painted, and how long `render()` took. This is the outermost render
+	 * wrapper, so it is the one place that sees every frame whatever the gates
+	 * below it do — the latency probe hangs off it rather than adding a fourth
+	 * wrapper that the bidi settings toggle could unhook.
+	 */
+	onFrame?: (durationMs: number) => void;
 	/** How long without a frame counts as dead. */
 	stallMs?: number;
 	/** How often to check. */
@@ -86,12 +93,16 @@ export function installRenderGuard(renderer: GuardableRenderer, opts: RenderGuar
 			scrollbackProvider?: unknown,
 			scrollbarOpacity?: number,
 		) {
+			const startedAt = opts.onFrame ? performance.now() : 0;
 			try {
 				original.call(this, buffer, forceAll, viewportY, scrollbackProvider, scrollbarOpacity);
 				frames += 1;
 				consecutive = 0;
 				lastFrameAt = now();
 				stallReported = false;
+				// After the frame, never before: a throwing frame painted nothing and
+				// must not enter the distribution as a fast one.
+				opts.onFrame?.(performance.now() - startedAt);
 			} catch (error) {
 				consecutive += 1;
 				if (consecutive <= 3 || consecutive % ERROR_REPORT_STRIDE === 0) {
