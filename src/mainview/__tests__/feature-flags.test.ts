@@ -1,9 +1,13 @@
 /**
  * Renderer half of the flag loop (seq 1470). What must hold: every renderer pushes
  * what it evaluated (a browser that stayed silent left the host on shipped defaults
- * and made Refresh a dead button), only the desktop one polls, the identity reported
- * to the host is the one PostHog evaluates against, and a manual refresh reports
- * whether an answer actually arrived.
+ * and made Refresh a dead button), the identity reported to the host is the one
+ * PostHog evaluates against, and a manual refresh reports whether an answer
+ * actually arrived.
+ *
+ * The registry is empty today (seq 1575), so the push carries no keys and the
+ * poller does not start at all — polling every install every five minutes to
+ * learn nothing was pure cost. The identity half is unaffected and still runs.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
@@ -85,13 +89,12 @@ describe("renderer feature flags", () => {
 		});
 	});
 
-	it("pushes evaluated values to the host when PostHog answers", () => {
-		ph.flags["remote-terminal-latency"] = true;
+	it("pushes what it evaluated when PostHog answers — an empty set while no flag is declared", () => {
 		initFeatureFlags();
 
 		ph.listeners.forEach((l) => l());
 
-		expect(rpc.pushed).toEqual([{ "remote-terminal-latency": true }]);
+		expect(rpc.pushed).toEqual([{}]);
 	});
 
 	it("pushes from a browser renderer too, so its Debug window is not a liar", () => {
@@ -103,29 +106,24 @@ describe("renderer feature flags", () => {
 		expect(rpc.pushed).toHaveLength(1);
 	});
 
-	it("polls only in the desktop renderer — one poller per install, not per browser", () => {
+	it("does not poll at all while no flag is declared, in either renderer", () => {
 		vi.useFakeTimers();
-		env.isElectrobun = false;
-		initFeatureFlags();
-		vi.advanceTimersByTime(20 * 60 * 1000);
-		expect(ph.reloadCalls).toBe(0);
-
-		env.isElectrobun = true;
-		initFeatureFlags();
-		vi.advanceTimersByTime(20 * 60 * 1000);
-		expect(ph.reloadCalls).toBeGreaterThan(0);
+		for (const electrobun of [false, true]) {
+			env.isElectrobun = electrobun;
+			initFeatureFlags();
+			vi.advanceTimersByTime(20 * 60 * 1000);
+			expect(ph.reloadCalls).toBe(0);
+		}
 	});
 
 	it("resolves true once a manual refresh has been answered and pushed", async () => {
-		ph.flags["remote-terminal-latency"] = false;
 		const pending = refreshFeatureFlagsNow();
 		expect(ph.reloadCalls).toBe(1);
 
-		ph.flags["remote-terminal-latency"] = true;
 		ph.listeners.forEach((l) => l());
 
 		await expect(pending).resolves.toBe(true);
-		expect(rpc.pushed).toEqual([{ "remote-terminal-latency": true }]);
+		expect(rpc.pushed).toEqual([{}]);
 	});
 
 	it("resolves false when PostHog never answers, instead of looking successful", async () => {

@@ -16,13 +16,13 @@
  */
 import posthog from "./posthog";
 import { api, isElectrobun } from "./rpc";
-import { FEATURE_FLAG_KEYS, FEATURE_FLAG_REFRESH_MS, type FeatureFlagKey } from "../shared/feature-flags";
+import { FEATURE_FLAG_KEYS, FEATURE_FLAG_REFRESH_MS } from "../shared/feature-flags";
 
 /** How long a manual refresh waits for PostHog before reporting no answer. */
 const MANUAL_REFRESH_TIMEOUT_MS = 8000;
 
 function pushFlagsToBun(): Promise<void> {
-	const flags = {} as Record<FeatureFlagKey, boolean>;
+	const flags: Record<string, boolean> = {};
 	for (const key of FEATURE_FLAG_KEYS) flags[key] = posthog.getFeatureFlag(key) === true;
 	return api.request.setFeatureFlags({ flags }).catch(() => {
 		// A dropped push leaves bun on its last known value, which is the point.
@@ -71,5 +71,8 @@ export function initFeatureFlags(): void {
 
 	posthog.onFeatureFlags(() => void pushFlagsToBun());
 	if (!isElectrobun) return;
+	// Polling with nothing declared would cost every install ~8 600 PostHog
+	// requests a month to learn nothing. Declaring a flag starts it again.
+	if (FEATURE_FLAG_KEYS.length === 0) return;
 	setInterval(() => posthog.reloadFeatureFlags(), FEATURE_FLAG_REFRESH_MS);
 }
