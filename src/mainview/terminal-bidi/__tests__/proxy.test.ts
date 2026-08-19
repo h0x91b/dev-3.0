@@ -222,6 +222,166 @@ describe("createBidiRenderable", () => {
 	});
 });
 
+describe("createBidiRenderable — per-frame viewport cache", () => {
+	/**
+	 * Mimics ghostty-web: `getViewport()` hands back one reusable pool, and
+	 * `getLine()` re-reads that whole pool for every single row.
+	 */
+	function pooledBuffer(rows: GhosttyCell[][], cols = 4) {
+		const calls = { viewport: 0, update: 0, getLine: 0 };
+		const pool: GhosttyCell[] = [];
+		for (const r of rows) for (let x = 0; x < cols; x++) pool.push({ ...r[x] });
+		return {
+			calls,
+			pool,
+			update() {
+				calls.update += 1;
+			},
+			getViewport() {
+				calls.viewport += 1;
+				return pool;
+			},
+			getLine(y: number) {
+				calls.getLine += 1;
+				this.update();
+				this.getViewport();
+				if (y < 0 || y >= rows.length) return null;
+				return pool.slice(y * cols, y * cols + cols).map((c) => ({ ...c }));
+			},
+			getCursor: () => ({ x: 0, y: 0, visible: true }),
+			getDimensions: () => ({ cols, rows: rows.length }),
+			isRowDirty: () => false,
+			clearDirty: () => {},
+		};
+	}
+
+	const screen = () => [row("abcd"), row("efgh"), row("ijkl")];
+
+	it("reads the whole viewport once per frame, not once per row", () => {
+		const inner = pooledBuffer(screen());
+		const proxy = createBidiRenderable(inner);
+
+		proxy.beginFrame();
+		proxy.getCursor();
+		for (let y = 0; y < 3; y++) proxy.getLine(y);
+
+		expect(inner.calls.viewport).toBe(1);
+		expect(inner.calls.getLine).toBe(0);
+	});
+
+	it("refreshes the render state before reading the pool", () => {
+		const inner = pooledBuffer(screen());
+		const order: string[] = [];
+		const realUpdate = inner.update.bind(inner);
+		const realViewport = inner.getViewport.bind(inner);
+		inner.update = () => {
+			order.push("update");
+			realUpdate();
+		};
+		inner.getViewport = () => {
+			order.push("viewport");
+			return realViewport();
+		};
+
+		const proxy = createBidiRenderable(inner);
+		proxy.beginFrame();
+		proxy.getLine(0);
+
+		expect(order).toEqual(["update", "viewport"]);
+	});
+
+	it("hands back the same cells the vendor's per-row path would", () => {
+		const rows = screen();
+		const cached = createBidiRenderable(pooledBuffer(rows));
+		const uncached = createBidiRenderable(innerBuffer(rows));
+
+		cached.beginFrame();
+		uncached.beginFrame();
+		for (let y = 0; y < 3; y++) {
+			expect(cached.getLine(y)).toEqual(uncached.getLine(y));
+		}
+	});
+
+	it("copies out of the pool instead of aliasing it", () => {
+		const inner = pooledBuffer(screen());
+		const proxy = createBidiRenderable(inner);
+
+		proxy.beginFrame();
+		const line = proxy.getLine(0);
+		inner.pool[0].codepoint = 0x2603;
+
+		expect(line?.[0].codepoint).not.toBe(0x2603);
+	});
+
+	it("re-reads the pool on the next frame", () => {
+		const inner = pooledBuffer(screen());
+		const proxy = createBidiRenderable(inner);
+
+		proxy.beginFrame();
+		proxy.getLine(0);
+		proxy.beginFrame();
+		const second = proxy.getLine(0);
+
+		expect(inner.calls.viewport).toBe(2);
+		expect(second?.[0].codepoint).toBe("a".codePointAt(0));
+	});
+
+	it("serves the cursor row from the same cache", () => {
+		const inner = pooledBuffer(screen());
+		const proxy = createBidiRenderable(inner);
+
+		proxy.beginFrame();
+		proxy.getCursor();
+		proxy.getLine(0);
+
+		expect(inner.calls.viewport).toBe(1);
+	});
+
+	it("returns null past the last row, as the vendor does", () => {
+		const inner = pooledBuffer(screen());
+		const proxy = createBidiRenderable(inner);
+
+		proxy.beginFrame();
+		expect(proxy.getLine(-1)).toBeNull();
+		expect(proxy.getLine(3)).toBeNull();
+	});
+
+	it("falls back to per-row reads when the buffer has no viewport call", () => {
+		const inner = innerBuffer(screen());
+		const proxy = createBidiRenderable(inner);
+
+		proxy.beginFrame();
+		for (let y = 0; y < 3; y++) proxy.getLine(y);
+
+		expect(inner.calls.getLine).toEqual([0, 1, 2]);
+	});
+
+	it("falls back for good when the pool is smaller than the screen", () => {
+		const inner = pooledBuffer(screen());
+		let probes = 0;
+		inner.getViewport = () => {
+			probes += 1;
+			return inner.pool.slice(0, 2);
+		};
+		// Counted on its own, so the fallback's own reads cannot look like probes.
+		inner.getLine = (y: number) => {
+			inner.calls.getLine += 1;
+			if (y < 0 || y >= 3) return null;
+			return inner.pool.slice(y * 4, y * 4 + 4).map((c) => ({ ...c }));
+		};
+		const proxy = createBidiRenderable(inner);
+
+		proxy.beginFrame();
+		expect(proxy.getLine(0)).toEqual(screen()[0]);
+		proxy.getLine(1);
+		proxy.beginFrame();
+		proxy.getLine(2);
+
+		expect(probes).toBe(1);
+		expect(inner.calls.getLine).toBe(3);
+	});
+});
+
 describe("createBidiScrollback", () => {
 	it("reorders scrollback rows and passes the length through", () => {
 		const history = [row("שלום"), row("plain")];

@@ -11,6 +11,10 @@ export interface BidiRenderable {
 	needsFullRedraw?(): boolean;
 	clearDirty(): void;
 	getGraphemeString?(row: number, col: number): string;
+	/** One-WASM-call read of the whole viewport into the emulator's cell pool. */
+	getViewport?(): GhosttyCell[] | null;
+	/** Refreshes the render state the pool is parsed from. */
+	update?(): unknown;
 }
 
 export interface BidiScrollbackProvider {
@@ -50,15 +54,48 @@ export function createBidiRenderable(
 	let lastVisualX = -1;
 	let forcedDirtyRow = -1;
 
+	// Per-frame viewport cache. The vendor's `getLine(y)` re-reads and re-parses
+	// the ENTIRE viewport for every row it is asked for, so a 46-row repaint pays
+	// 46 full-screen parses. The pool is read once per frame here and sliced.
+	let pool: GhosttyCell[] | null = null;
+	let poolCols = 0;
+	let poolRows = 0;
+	let poolUnusable = false;
+
 	function remember(row: number, reordered: ReorderedRow | null) {
 		mappedRow = row;
 		visualToLogical = reordered ? reordered.visualToLogical : null;
 	}
 
+	/**
+	 * A row of cells, copied out of the shared pool exactly as the vendor's own
+	 * `getLine` copies it — the pool is reused, so handing it out raw would alias.
+	 */
+	function readLine(y: number): GhosttyCell[] | null {
+		if (poolUnusable || !inner.getViewport || !inner.update) return inner.getLine(y);
+		if (!pool) {
+			const { cols, rows } = inner.getDimensions();
+			inner.update();
+			const cells = inner.getViewport();
+			if (!cells || cols <= 0 || rows <= 0 || cells.length < cols * rows) {
+				poolUnusable = true;
+				return inner.getLine(y);
+			}
+			pool = cells;
+			poolCols = cols;
+			poolRows = rows;
+		}
+		if (y < 0 || y >= poolRows) return null;
+		const start = y * poolCols;
+		const row: GhosttyCell[] = new Array(poolCols);
+		for (let i = 0; i < poolCols; i++) row[i] = { ...pool[start + i] };
+		return row;
+	}
+
 	function reorderCursorRow(y: number) {
 		if (cursorComputed && cursorRow === y) return;
 		cursorRow = y;
-		cursorLine = inner.getLine(y);
+		cursorLine = readLine(y);
 		cursorReorder = cursorLine ? reorderRow(cursorLine, engine) : null;
 		cursorComputed = true;
 	}
@@ -71,6 +108,7 @@ export function createBidiRenderable(
 			cursorReorder = null;
 			mappedRow = -1;
 			visualToLogical = null;
+			pool = null;
 		},
 
 		getLine(y: number) {
@@ -78,7 +116,7 @@ export function createBidiRenderable(
 				remember(y, cursorReorder);
 				return cursorReorder ? cursorReorder.cells : cursorLine;
 			}
-			const cells = inner.getLine(y);
+			const cells = readLine(y);
 			if (!cells) {
 				remember(-1, null);
 				return cells;
