@@ -13,20 +13,33 @@ Vitest records a timeout failure and moves on, but it cannot stop the test body 
 JavaScript has no way to preempt a running async function. The body keeps
 executing after the verdict.
 
-The socket file made that visible. The test at `socket-client.test.ts` line 141
-("recovers from a transient connect failure") binds the shared socket from inside
-a `setTimeout(..., 120)`. If that test blows its timeout, `afterEach` cleans the
-socket file, the next test starts, and the zombie timer then binds the shared path
-underneath it. The successor's own `createServer` loses the race, its client talks
-to the zombie server, and it dies on `expect(calls).toBe(1)` — a real assertion
-about real state, pointing at innocent code.
+The socket file made that visible, and the leak runs in both directions. Measured
+on a quiet box (1-minute load 5.5 before and after, two runs of each arm):
+
+| Fixture | `--testTimeout=60` | What failed |
+|---|---|---|
+| shared path | 4 failed / 10 passed | 3 timeouts **plus** `expected 4 to be 3` **plus** an unhandled `listen EADDRINUSE` |
+| per-test path | 3 failed / 11 passed | the same 3 timeouts, nothing else |
+
+The two extras are the mechanism. A timed-out `sendRequest` keeps retrying, so its
+**zombie client** connects to a later test's server and inflates the connection
+count that test asserts on — an honest assertion about real state, pointing at
+innocent code. And the deferred `setTimeout` in the test at line 141 binds the
+shared path after the successor already owns it, which throws `EADDRINUSE` out of
+`listen` with no handler attached.
+
+The window matters: at `--testTimeout=125` the same test still times out and
+nothing collateral happens, because its server binds *before* the verdict and
+`afterEach` then orphans it. The cascade needs the zombie's work to land after the
+successor's setup.
 
 Two consequences worth keeping:
 
 - A **cascade** (one timeout plus assertion failures in later tests of the same
   file) is the signature of this mechanism. A run of pure timeouts is just load.
-- `--testTimeout=400` turns a load-dependent version of this into a deterministic
-  reproduction, because it forces the first timeout on a quiet machine.
+- A tightened `--testTimeout` turns a load-dependent version into a deterministic
+  reproduction on a quiet machine. The value has to be tuned per file: 400 ms and
+  125 ms both produced clean timeouts here and only 60 ms reproduced the cascade.
 
 ## Decision
 
