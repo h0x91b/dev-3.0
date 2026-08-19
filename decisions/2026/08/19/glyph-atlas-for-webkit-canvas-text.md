@@ -51,6 +51,13 @@ after `CHURN_COOLDOWN_CELLS`.
 The churn counter increments **before** the cap check, deliberately: once the cap is
 full a drifting palette stops minting styles and would look perfectly settled.
 
+⚠️ **Every millisecond in this record was taken without recording the machine's
+load, and this box runs a dozen agent worktrees.** Treat the timings as
+indicative, not as evidence, until they are re-taken with `uptime` printed either
+side and a 1-minute load average under ~6. What does *not* depend on load, and
+stands as written: the byte counts, the pixel-diff percentages, the style and
+page counters, and whether the churn detector fired.
+
 Measured on the shipped configuration, steady-state frame, vendor → atlas:
 
 | screen | vendor | atlas | detector | strips retained |

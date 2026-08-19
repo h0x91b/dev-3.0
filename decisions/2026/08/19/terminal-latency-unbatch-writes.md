@@ -7,11 +7,32 @@ native terminal. It does. Reading the whole path (seq 1575) found three
 buffering stages in series on the way back from the shell, adding ≈41 ms on a
 60 Hz display where a native terminal adds ≈8 ms:
 
-| Stage | Mean added | Owner |
-|---|---|---|
-| PTY batch, trailing edge only | 16.0 ms | `pty-server.ts` |
-| Waiting for a frame in the renderer's rAF write batch | 8.3 ms | `TerminalView.tsx` |
-| The frame that batch misses (see below) | 16.7 ms | `TerminalView.tsx` |
+| Stage | Added | Worst or average | Owner |
+|---|---|---|---|
+| PTY batch, trailing edge only | 16.0 ms | exact for a lone echo | `pty-server.ts` |
+| Waiting for our own rAF write callback | 8.3 ms | average | `TerminalView.tsx` |
+| The frame that batch misses (see below) | 16.7 ms | exact | `TerminalView.tsx` |
+
+**That table is the cost BEFORE the change, not the saving.** Reading it as a
+saving is what produced three different totals in review, so the arithmetic is
+written out here rather than left to the reader:
+
+- **16.0 ms** — a lone keystroke echo is the chunk that *opens* the batch window,
+  so it waits the whole of `PTY_BATCH_INTERVAL_MS`, not half of it. Exact, not an
+  average. A chunk arriving mid-window waits 8.0 ms on average instead, but that
+  chunk is not the interactive echo this is about.
+- **8.3 ms** — bytes arrive uniformly inside a 16.7 ms frame, so the mean wait for
+  the next rAF boundary is half a frame.
+- **16.7 ms** — at that boundary ghostty's own callback has already run and
+  painted (it re-registers from inside itself), so our write lands too late for
+  that frame and its bytes wait a whole further frame.
+
+After the change the write goes into WASM on arrival, so the only term left is
+the wait for ghostty's next paint: **8.3 ms**, the same wait a native terminal
+pays. Removed = 41.0 − 8.3 = **32.7 ms (derived)**, being the 16.0 ms window plus
+the 16.7 ms missed frame. The 8.3 ms term is *not* removed — it is irreducible on
+a 60 Hz display. Every figure here comes from constants and the refresh rate, so
+none of it depends on how loaded the machine was.
 
 ## Investigation
 
