@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	getAgentAdapter,
-	getHooksAdapter,
-	autoHooksFamily,
+	autoAgentFamily,
 	isKnownAgentCommand,
 	KNOWN_AGENT_COMMANDS,
+	SELECTABLE_AGENT_FAMILIES,
 	hasAgentAdapter,
 	agentKey,
 	claudeAdapter,
@@ -76,9 +76,9 @@ describe("registry", () => {
 
 // The renderer discloses what "Auto" resolves to and warns about an
 // unrecognized command, but importing this registry into the app bundle would
-// drag every skill body (~32 KB) along — so hook-families.ts restates the two
-// facts as plain data. These are the tests that keep the copy honest.
-describe("hook families (the renderer's copy of the registry)", () => {
+// drag every skill body (~32 KB) along — so families.ts restates those facts as
+// plain data. These are the tests that keep the copy honest.
+describe("agent families (the renderer's copy of the registry)", () => {
 	const ADAPTERS = [claudeAdapter, codexAdapter, geminiAdapter, cursorAdapter, opencodeAdapter];
 
 	it("lists exactly the commands that have a first-class adapter", () => {
@@ -88,37 +88,70 @@ describe("hook families (the renderer's copy of the registry)", () => {
 		expect(isKnownAgentCommand("")).toBe(false);
 	});
 
-	it("reports the same hook family each adapter's hooksSpec returns", () => {
+	it("offers every known command plus the explicit opt-out", () => {
+		expect([...SELECTABLE_AGENT_FAMILIES].sort()).toEqual([...ADAPTERS.map((a) => a.command), "none"].sort());
+	});
+
+	it("resolves each adapter's own command, and nothing else", () => {
 		for (const adapter of ADAPTERS) {
-			expect(autoHooksFamily(adapter.command)).toBe(adapter.hooksSpec()?.kind ?? "none");
-			expect(autoHooksFamily(`/opt/bin/${adapter.command}`)).toBe(adapter.hooksSpec()?.kind ?? "none");
+			expect(autoAgentFamily(adapter.command)).toBe(adapter.command);
+			expect(autoAgentFamily(`/opt/bin/${adapter.command}`)).toBe(adapter.command);
 		}
-		expect(autoHooksFamily("my-claude")).toBe("none");
+		expect(autoAgentFamily("my-claude")).toBe("none");
 	});
 });
 
-describe("getHooksAdapter", () => {
-	it("keeps the command-name guess when no integration is declared", () => {
-		expect(getHooksAdapter("claude").hooksSpec()).toEqual({ kind: "claude" });
-		expect(getHooksAdapter("/opt/homebrew/bin/codex").hooksSpec()).toEqual({ kind: "codex" });
-		expect(getHooksAdapter("my-claude").hooksSpec()).toBeNull();
+describe("a declared family overrides the command-name guess", () => {
+	it("keeps the name guess when nothing is declared", () => {
+		expect(getAgentAdapter("claude")).toBe(claudeAdapter);
+		expect(getAgentAdapter("/opt/homebrew/bin/codex")).toBe(codexAdapter);
+		expect(getAgentAdapter("my-claude")).toBe(genericAdapter);
 	});
 
-	it("installs the declared family for a command it cannot recognize", () => {
-		// The reported bug: a wrapper script or shell alias launching Claude Code
-		// silently got no hooks, so the task never moved between columns.
-		expect(getHooksAdapter("my-claude-wrapper", "claude").hooksSpec()).toEqual({ kind: "claude" });
-		expect(getHooksAdapter("claude --dangerously-skip-permissions", "claude").hooksSpec()?.kind).toBe("claude");
-		expect(getHooksAdapter("", "codex").hooksSpec()).toEqual({ kind: "codex" });
+	it("treats a renamed binary as the CLI it declares", () => {
+		// The reported bug: a custom executable for Claude Code was handled as an
+		// unknown CLI — no hooks, no dev3 protocol, and Resume Session re-ran the
+		// task description instead of continuing the conversation.
+		expect(getAgentAdapter("my-claude-wrapper", "claude")).toBe(claudeAdapter);
+		expect(getAgentAdapter("/Users/x/bin/cc", "claude")).toBe(claudeAdapter);
+		expect(getAgentAdapter("", "codex")).toBe(codexAdapter);
+		expect(hasAgentAdapter("my-claude-wrapper", "claude")).toBe(true);
+		expect(agentKey("/Users/x/bin/cc", "claude")).toBe("claude");
+	});
+
+	it("gives a declared wrapper the same resume support as the CLI itself", () => {
+		const adapter = getAgentAdapter("my-claude", "claude");
+		expect(adapter.supportsResume).toBe(true);
+		expect(adapter.supportsPreAssignedSessionId).toBe(true);
+		expect(adapter.buildResumeCommand("my-claude", "abc")).toBe("my-claude --resume abc");
+		expect(adapter.transcriptStore?.("/w", "/home")).toEqual(claudeAdapter.transcriptStore?.("/w", "/home"));
+	});
+
+	it("resumes rather than re-sending the prompt, unlike the generic fallback", () => {
+		const ctx: TemplateContext = {
+			taskTitle: "T",
+			taskDescription: "ORIGINAL PROMPT",
+			projectName: "p",
+			projectPath: "/p",
+			worktreePath: "/w",
+		};
+		const resume: AdapterLaunchOptions = { resume: true, sessionId: "sess-1" };
+		const declared = getAgentAdapter("my-claude", "claude").launchArgs("my-claude", undefined, ctx, resume).join(" ");
+		expect(declared).toContain("--resume sess-1");
+		expect(declared).not.toContain("ORIGINAL PROMPT");
+		// Without the declaration this is byte-identical to a fresh launch.
+		expect(getAgentAdapter("my-claude").launchArgs("my-claude", undefined, ctx, resume).join(" "))
+			.toContain("ORIGINAL PROMPT");
 	});
 
 	it("threads stopTarget / permissionMode through the declared family", () => {
-		expect(getHooksAdapter("wrapper", "claude").hooksSpec({ stopTarget: "review-by-ai", permissionMode: "plan" }))
+		expect(getAgentAdapter("wrapper", "claude").hooksSpec({ stopTarget: "review-by-ai", permissionMode: "plan" }))
 			.toEqual({ kind: "claude", stopTarget: "review-by-ai", permissionMode: "plan" });
 	});
 
 	it("honours an explicit opt-out even for a recognized command", () => {
-		expect(getHooksAdapter("claude", "none").hooksSpec()).toBeNull();
+		expect(getAgentAdapter("claude", "none")).toBe(genericAdapter);
+		expect(hasAgentAdapter("claude", "none")).toBe(false);
 	});
 });
 

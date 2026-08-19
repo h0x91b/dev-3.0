@@ -570,7 +570,7 @@ describe("GlobalSettings", () => {
 
 			expect(screen.getByDisplayValue("Codex")).toBeInTheDocument();
 			expect(screen.getByDisplayValue("codex")).toBeInTheDocument();
-			expect(screen.getByText("Lifecycle Hooks")).toBeInTheDocument();
+			expect(screen.getByText("Which CLI is this")).toBeInTheDocument();
 		});
 
 		it("updates agent name", async () => {

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AgentConfiguration, CodingAgent, LlmProvider, Project } from "../shared/types";
+import type { AgentConfiguration, AgentFamily, CodingAgent, LlmProvider, Project } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
@@ -20,6 +20,7 @@ import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSess
 import { ENV_UNSET } from "../shared/agent-accounts";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
+import { autoAgentFamily, isKnownAgentCommand } from "../shared/agent-adapters/families";
 import type { AdapterLaunchOptions, CodexLaunchRuntime } from "../shared/agent-adapters/types";
 import type { TemplateContext } from "../shared/agent-adapters/template";
 
@@ -250,7 +251,19 @@ export function migrateOldFormat(data: any[]): CodingAgent[] {
 			}));
 	}
 
-	return data as CodingAgent[];
+	return data.map(migrateHooksIntegrationField) as CodingAgent[];
+}
+
+/** `hooksIntegration` declared a wrapper's HOOK family only. It is now
+ *  `agentFamily` and governs the whole adapter, so a declared wrapper resumes
+ *  and gets the dev3 protocol too. Same three values, same meaning, wider reach —
+ *  carried over in place. An older app reading this file finds no
+ *  `hooksIntegration` and falls back to the command-name guess, i.e. exactly the
+ *  behaviour it had before the user ever declared anything. */
+function migrateHooksIntegrationField(agent: any): any {
+	if (!agent || typeof agent !== "object" || !("hooksIntegration" in agent)) return agent;
+	const { hooksIntegration, ...rest } = agent;
+	return { ...rest, ...(rest.agentFamily ? {} : { agentFamily: hooksIntegration }) };
 }
 
 async function loadStoredAgents(): Promise<CodingAgent[]> {
@@ -323,15 +336,17 @@ export const DEV3_SYSTEM_PROMPT_GENERIC = GENERIC_SKILL_BODY;
  */
 export const DEV3_SYSTEM_PROMPT_CODEX = CODEX_SKILL_BODY;
 
-/** Returns true when the resolved base command is the Claude CLI.
+/** Returns true when the agent is the Claude CLI — by its declared family when
+ *  it has one, otherwise by the command name. A renamed binary that declares
+ *  `claude` must reach every one of these paths, or it silently loses managed
+ *  accounts, default env and the model override while still launching fine.
  *  Retained for the Claude-only *feature* code that is orthogonal to the
  *  per-agent launch/trust/hooks seam (managed accounts, statusLine, provider/
  *  Bedrock, default env, MCP pre-approval). The codex/gemini/cursor/opencode
  *  predicates were removed — their logic lives in the agent adapters
  *  (src/shared/agent-adapters), selected via getAgentAdapter. */
-export function isClaudeCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "claude";
+export function isClaudeCommand(baseCmd: string, family?: AgentFamily): boolean {
+	return agentKey(baseCmd, family) === "claude";
 }
 
 let codexProfileLaunchFlagOverride: CodexProfileLaunchFlag | null = null;
@@ -428,20 +443,20 @@ export interface CommandOptions {
  * Used for resuming sessions after tmux death / app restart. Delegated to the
  * agent adapter (single source of truth for resume syntax + capability).
  */
-export function buildResumeCommand(agentCmd: string, sessionId?: string): string | null {
-	return getAgentAdapter(agentCmd).buildResumeCommand(agentCmd, sessionId);
+export function buildResumeCommand(agentCmd: string, sessionId?: string, family?: AgentFamily): string | null {
+	return getAgentAdapter(agentCmd, family).buildResumeCommand(agentCmd, sessionId);
 }
 
 /** Returns true when the agent CLI supports session resumption. */
-export function supportsResume(baseCmd: string): boolean {
-	return getAgentAdapter(baseCmd).supportsResume;
+export function supportsResume(baseCmd: string, family?: AgentFamily): boolean {
+	return getAgentAdapter(baseCmd, family).supportsResume;
 }
 
 /** Returns true when the agent supports pre-assigned session IDs at launch time
  *  (accept a UUID on first launch and resume it later by ID). See each adapter
  *  for the per-agent details (e.g. Codex/OpenCode cannot pre-assign). */
-export function supportsPreAssignedSessionId(baseCmd: string): boolean {
-	return getAgentAdapter(baseCmd).supportsPreAssignedSessionId;
+export function supportsPreAssignedSessionId(baseCmd: string, family?: AgentFamily): boolean {
+	return getAgentAdapter(baseCmd, family).supportsPreAssignedSessionId;
 }
 
 /**
@@ -457,7 +472,7 @@ export function resolveAgentCommand(
 	options?: CommandOptions,
 ): string {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
-	const adapter = getAgentAdapter(baseCmd);
+	const adapter = getAgentAdapter(baseCmd, agent.agentFamily);
 
 	const adapterOptions: AdapterLaunchOptions = {
 		resume: options?.resume,
@@ -500,10 +515,10 @@ export const CLAUDE_DEFAULT_ENV: Record<string, string> = {
 	CLAUDE_CODE_NO_FLICKER: "1",
 };
 
-/** Build default env vars for an agent based on its base command. */
+/** Build default env vars for an agent based on which CLI it is. */
 export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfiguration): Record<string, string> {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
-	if (isClaudeCommand(baseCmd)) {
+	if (isClaudeCommand(baseCmd, agent.agentFamily)) {
 		return { ...CLAUDE_DEFAULT_ENV };
 	}
 	return {};
@@ -534,8 +549,9 @@ async function applyClaudeAccountEnv(
 	baseCmd: string,
 	extraEnv: Record<string, string>,
 	accountId?: string | null,
+	family?: AgentFamily,
 ): Promise<void> {
-	if (!isClaudeCommand(baseCmd) || extraEnv.CLAUDE_CONFIG_DIR) return;
+	if (!isClaudeCommand(baseCmd, family) || extraEnv.CLAUDE_CONFIG_DIR) return;
 	try {
 		const accountEnv = await getActiveClaudeSessionEnv(accountId);
 		for (const [key, value] of Object.entries(accountEnv)) {
@@ -554,10 +570,11 @@ async function applyCodexAccountEnv(
 	baseCmd: string,
 	extraEnv: Record<string, string>,
 	accountId?: string | null,
+	family?: AgentFamily,
 ): Promise<void> {
 	// Codex account switcher is an orthogonal feature (kept in front of the
-	// adapter seam); a plain command-name gate suffices here.
-	if (agentKey(baseCmd) !== "codex" || extraEnv.CODEX_HOME) return;
+	// adapter seam), but it still keys on which CLI this is, not on the file name.
+	if (agentKey(baseCmd, family) !== "codex" || extraEnv.CODEX_HOME) return;
 	try {
 		const accountEnv = await getActiveCodexSessionEnv(accountId);
 		for (const [key, value] of Object.entries(accountEnv)) {
@@ -591,9 +608,10 @@ export function applyModelOverride(
 	config: AgentConfiguration | undefined,
 	baseCmd: string,
 	extraEnv: Record<string, string>,
+	agentFamily?: AgentFamily,
 ): AgentConfiguration | undefined {
 	// No config → no --model flag is emitted, so any env var wins on its own.
-	if (!config?.model || !isClaudeCommand(baseCmd)) return config;
+	if (!config?.model || !isClaudeCommand(baseCmd, agentFamily)) return config;
 	// ENV_UNSET sentinels (cleared vars after an account switch) are "not set".
 	const pick = (v: string | undefined) => (v && v !== ENV_UNSET ? v : undefined);
 	const family = claudeModelFamily(config.model);
@@ -605,14 +623,40 @@ export function applyModelOverride(
 
 /** Apply the binary path override that still exists on disk: a user-chosen path
  *  always, an auto-cached one only while it still names the binary the agent's
- *  base command does — an edited base command must win over a stale cache. */
+ *  base command does — an edited base command must win over a stale cache.
+ *
+ *  Swapping in the path REPLACES the base command, so the agent's identity would
+ *  otherwise be re-guessed from the new file name: pointing built-in Claude at
+ *  `~/bin/my-claude` turned it into an unknown CLI and killed resume, hooks and
+ *  the dev3 protocol, even though the user only said where the binary lives.
+ *  Pin the family the original command resolved to (an explicit declaration
+ *  still wins) so a path override changes only how the agent is spawned. */
 export function applyBinaryPathOverride(
 	agent: CodingAgent,
 	cachedPaths: Record<string, string> | undefined,
 	customPaths?: Record<string, string>,
 ): CodingAgent {
 	const path = agentBinaryPathOverride(agent.id, agent.baseCommand, cachedPaths, customPaths);
-	return path && existsSync(path) ? { ...agent, baseCommand: path } : agent;
+	if (!path || !existsSync(path)) return agent;
+	// Only pin a family the ORIGINAL command actually resolved to. When it was
+	// unrecognized too, leave the field alone so the path's own name still gets
+	// its chance — pinning "none" there would be strictly worse than today.
+	const pinned = isKnownAgentCommand(agent.baseCommand) ? autoAgentFamily(agent.baseCommand) : undefined;
+	const agentFamily = agent.agentFamily ?? pinned;
+	return { ...agent, baseCommand: path, ...(agentFamily ? { agentFamily } : {}) };
+}
+
+/** A resolved launch: the command line, the records it came from, the env to
+ *  inject, and — separately from the agent record — which CLI this launch IS.
+ *  The family is what every downstream step (resume, trust, hooks, skill prefix)
+ *  must key on; deriving it again from the command name would re-open the very
+ *  hole that made a renamed Claude binary unresumable. */
+export interface ResolvedAgentCommand<A extends CodingAgent | null = CodingAgent> {
+	command: string;
+	agent: A;
+	config: AgentConfiguration | undefined;
+	extraEnv: Record<string, string>;
+	agentFamily: AgentFamily | undefined;
 }
 
 export async function resolveCommandForAgent(
@@ -620,7 +664,7 @@ export async function resolveCommandForAgent(
 	configId: string | null,
 	ctx: TemplateContext,
 	options?: CommandOptions,
-): Promise<{ command: string; agent: CodingAgent; config: AgentConfiguration | undefined; extraEnv: Record<string, string> }> {
+): Promise<ResolvedAgentCommand> {
 	const allAgents = await getAllAgents();
 	const agent = allAgents.find((a) => a.id === agentId);
 	if (!agent) {
@@ -645,15 +689,20 @@ export async function resolveCommandForAgent(
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
-	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
-	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
+	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
+	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 	const command = resolveAgentCommand(
 		agentWithPath,
 		resolveLaunchConfig(config, agentWithPath, baseCmd, extraEnv),
 		ctx,
 		providerOpts,
 	);
-	return { command, agent, config, extraEnv };
+	// `agent` stays the stored record — callers derive the base command from it,
+	// and swapping in the override path there would change what they persist.
+	// The family rides alongside instead: a path override can pin one the stored
+	// record does not carry, and every caller needs the same answer to resume,
+	// trust and hook this launch exactly the way it was built.
+	return { command, agent, config, extraEnv, agentFamily: agentWithPath.agentFamily };
 }
 
 /** The launch-time model pipeline shared by both resolveCommand* entry points:
@@ -666,7 +715,7 @@ export function resolveLaunchConfig(
 	baseCmd: string,
 	extraEnv: Record<string, string>,
 ): AgentConfiguration | undefined {
-	return applyModelOverride(applyProviderModel(config, agent), baseCmd, extraEnv);
+	return applyModelOverride(applyProviderModel(config, agent), baseCmd, extraEnv, agent.agentFamily);
 }
 
 /** The provider selected on this agent, but only if it's a backend actually
@@ -674,8 +723,8 @@ export function resolveLaunchConfig(
 function agentProvider(agent: CodingAgent, config: AgentConfiguration | undefined): LlmProvider | undefined {
 	const def = getProviderDefinition(agent.llmProvider);
 	if (!def) return undefined;
-	const baseCmd = (config?.baseCommandOverride || agent.baseCommand).split("/").pop() ?? "";
-	return def.agentCommand === baseCmd ? agent.llmProvider : undefined;
+	const key = agentKey(config?.baseCommandOverride || agent.baseCommand, agent.agentFamily);
+	return def.agentCommand === key ? agent.llmProvider : undefined;
 }
 
 /** For backends that deliver the model via the --model flag (no `modelEnv`,
@@ -720,7 +769,7 @@ export async function resolveCommandForProject(
 	worktreePath: string,
 	configId?: string | null,
 	options?: CommandOptions,
-): Promise<{ command: string; agent: CodingAgent | null; config: AgentConfiguration | undefined; extraEnv: Record<string, string> }> {
+): Promise<ResolvedAgentCommand<CodingAgent | null>> {
 	const ctx: TemplateContext = {
 		taskTitle,
 		taskDescription,
@@ -749,15 +798,15 @@ export async function resolveCommandForProject(
 			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
-		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
-		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
+		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
+		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 		const command = resolveAgentCommand(
 			agentWithPath,
 			resolveLaunchConfig(config, agentWithPath, baseCmd, extraEnv),
 			ctx,
 			providerOpts,
 		);
-		return { command, agent, config, extraEnv };
+		return { command, agent, config, extraEnv, agentFamily: agentWithPath.agentFamily };
 	}
 
 	log.warn("Default agent not found, falling back to bash", {
@@ -769,6 +818,7 @@ export async function resolveCommandForProject(
 		agent: null,
 		config: undefined,
 		extraEnv: buildTaskEnv(project, taskTitle, "", worktreePath),
+		agentFamily: undefined,
 	};
 }
 

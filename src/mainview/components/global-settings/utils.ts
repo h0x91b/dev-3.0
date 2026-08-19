@@ -1,10 +1,12 @@
 import type {
 	AgentConfiguration,
+	AgentFamily,
 	ExternalApp,
 	GlobalSettings,
 	LlmProvider,
 	ProviderConfig,
 } from "../../../shared/types";
+import { agentKey } from "../../../shared/agent-adapters/families";
 import { buildProviderEnv, getProviderDefinition, providerPinnedModel } from "../../../shared/llm-provider";
 
 export type Theme = "dark" | "light" | "system";
@@ -122,11 +124,14 @@ export function buildCommandPreview(
 	config: AgentConfiguration,
 	llmProvider?: LlmProvider,
 	providerConfig?: ProviderConfig,
+	agentFamily?: AgentFamily,
 ): { command: string; envLine: string | null } {
 	const baseCmd = config.baseCommandOverride || agentBaseCommand || "???";
 	const parts: string[] = [baseCmd];
 
-	const cmdName = baseCmd.split("/").pop() ?? "";
+	// Mirror the launcher: which CLI this is, not what the file happens to be
+	// called — a declared wrapper previews the flags it will actually get.
+	const cmdName = agentKey(baseCmd, agentFamily);
 	const isCursor = cmdName === "agent";
 	const isCodex = cmdName === "codex";
 	const isClaude = cmdName === "claude";

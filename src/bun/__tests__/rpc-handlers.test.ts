@@ -12191,6 +12191,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 			agent: { id: "builtin-claude", name: "Claude", baseCommand: "claude", configurations: [], defaultConfigId: "" } as any,
 			config: undefined,
 			extraEnv: {},
+			agentFamily: undefined,
 		});
 	});
 
@@ -12272,6 +12273,7 @@ describe("triggerColumnAgentIfNeeded", () => {
 			agent: { id: "builtin-codex", name: "Codex", baseCommand: "codex", configurations: [], defaultConfigId: "" } as any,
 			config: undefined,
 			extraEnv: {},
+			agentFamily: undefined,
 		});
 		vi.mocked(setupAgentHooks).mockResolvedValueOnce("--dangerously-bypass-hook-trust");
 

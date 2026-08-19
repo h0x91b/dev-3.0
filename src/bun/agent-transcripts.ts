@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { resolveUserHome } from "../shared/user-home";
 import { getAgentAdapter } from "../shared/agent-adapters/registry";
+import type { AgentFamily } from "../shared/types";
 
 /**
  * Verifies a stored agent session id against the transcripts actually on disk
@@ -28,8 +29,9 @@ export function listResumableSessionIds(
 	agentCmd: string,
 	worktreePath: string,
 	home: string = resolveUserHome(),
+	family?: AgentFamily,
 ): string[] {
-	const store = getAgentAdapter(agentCmd).transcriptStore?.(worktreePath, home) ?? null;
+	const store = getAgentAdapter(agentCmd, family).transcriptStore?.(worktreePath, home) ?? null;
 	if (!store) return [];
 	return sessionIdsNewestFirst(store.dir, store.ext);
 }
@@ -45,9 +47,10 @@ export function resolveResumableSessionId(
 	worktreePath: string,
 	storedSessionId: string | null | undefined,
 	home: string = resolveUserHome(),
+	family?: AgentFamily,
 ): ResumeTarget {
 	const stored = storedSessionId ?? null;
-	const store = getAgentAdapter(agentCmd).transcriptStore?.(worktreePath, home) ?? null;
+	const store = getAgentAdapter(agentCmd, family).transcriptStore?.(worktreePath, home) ?? null;
 	if (!store || !existsSync(store.dir)) return { sessionId: stored, substituted: false };
 	if (!stored) return { sessionId: null, substituted: false };
 

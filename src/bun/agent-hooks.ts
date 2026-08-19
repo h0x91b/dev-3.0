@@ -8,9 +8,9 @@
  * Currently supports Claude Code and Codex. Extensible for Gemini, Cursor, etc.
  */
 
-import type { AgentHooksIntegration, PermissionMode, TaskStatus } from "../shared/types";
+import type { AgentFamily, PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
-import { getHooksAdapter } from "../shared/agent-adapters/registry";
+import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
 import { CODEX_HOOK_TRUST_BYPASS_FLAG, detectCodexHookTrustBypass } from "./codex-config";
 
@@ -43,7 +43,7 @@ export function __resetCodexHookTrustBypassCache(): void {
  * this executor performs the I/O. Returns an extra launch flag to splice into the
  * command, or null when there is nothing to add.
  *
- * `options.integration` is the agent's explicit hook family, which beats the
+ * `options.family` is which CLI this command actually is, which beats the
  * command-name guess — without it a wrapper script silently got no hooks.
  */
 export function setupAgentHooks(
@@ -52,17 +52,17 @@ export function setupAgentHooks(
 	options?: {
 		stopTarget?: TaskStatus;
 		permissionMode?: PermissionMode;
-		integration?: AgentHooksIntegration;
+		family?: AgentFamily;
 	},
 ): Promise<string | null> {
-	const spec = getHooksAdapter(baseCommand, options?.integration).hooksSpec(options);
+	const spec = getAgentAdapter(baseCommand, options?.family).hooksSpec(options);
 	if (!spec) {
 		// The one silent failure class worth a log line: no hooks means the task
 		// never moves between columns on its own, and nothing else says so.
 		log.info("No agent-native hooks for this command", {
 			worktreePath,
 			baseCommand,
-			integration: options?.integration ?? "auto",
+			family: options?.family ?? "auto",
 		});
 		return Promise.resolve(null);
 	}

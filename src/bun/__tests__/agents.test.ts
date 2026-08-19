@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, migrateOldFormat, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -904,6 +904,112 @@ describe("applyBinaryPathOverride", () => {
 		const agent = makeAgent({ baseCommand: "claude" });
 		const result = applyBinaryPathOverride(agent, { "test-agent": claudePath }, { "test-agent": wrapper });
 		expect(result.baseCommand).toBe(wrapper);
+	});
+
+	// The reported bug: pointing built-in Claude at a differently named binary
+	// re-guessed the CLI from the new file name, turning it into an unknown agent
+	// that lost resume, hooks and the dev3 protocol. The user only said WHERE the
+	// binary is, never that it is a different agent.
+	it("keeps the agent's CLI identity when the path renames the binary", () => {
+		const wrapper = join(dir, "my-claude");
+		writeFileSync(wrapper, "#!/bin/sh\n", { mode: 0o755 });
+		const agent = makeAgent({ baseCommand: "claude" });
+		const result = applyBinaryPathOverride(agent, undefined, { "test-agent": wrapper });
+		expect(result.baseCommand).toBe(wrapper);
+		expect(result.agentFamily).toBe("claude");
+		expect(supportsResume(result.baseCommand, result.agentFamily)).toBe(true);
+		expect(supportsPreAssignedSessionId(result.baseCommand, result.agentFamily)).toBe(true);
+	});
+
+	it("never overrides a family the user declared explicitly", () => {
+		const wrapper = join(dir, "my-claude");
+		writeFileSync(wrapper, "#!/bin/sh\n", { mode: 0o755 });
+		const agent = makeAgent({ baseCommand: "claude", agentFamily: "none" });
+		expect(applyBinaryPathOverride(agent, undefined, { "test-agent": wrapper }).agentFamily).toBe("none");
+	});
+
+	it("leaves the family unset when the original command was unrecognized too", () => {
+		// Pinning "none" here would be worse than today: the path's own name still
+		// deserves its chance (e.g. a custom agent pointed at the real `claude`).
+		const real = join(dir, "claude");
+		const agent = makeAgent({ baseCommand: "some-wrapper" });
+		const result = applyBinaryPathOverride(agent, undefined, { "test-agent": real });
+		expect(result.agentFamily).toBeUndefined();
+		expect(supportsResume(result.baseCommand, result.agentFamily)).toBe(true);
+	});
+});
+
+// A custom executable for Claude Code must run through the very same code as
+// `claude` itself — the whole point of declaring the family.
+describe("a declared family reaches the launch command", () => {
+	it("resumes instead of re-sending the task description", () => {
+		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
+		const cmd = resolveAgentCommand(agent, makeConfig(), makeCtx(), { resume: true, sessionId: "sess-1" });
+		expect(cmd).toContain("my-claude --resume sess-1");
+		expect(cmd).not.toContain("Fix the login bug");
+	});
+
+	it("mints a session id on a fresh launch, so there is something to resume", () => {
+		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
+		expect(resolveAgentCommand(agent, makeConfig(), makeCtx(), { sessionId: "fresh-1" }))
+			.toContain("--session-id fresh-1");
+		expect(buildResumeCommand("my-claude", "sess-1", "claude")).toBe("my-claude --resume sess-1");
+	});
+
+	it("injects the dev3 protocol and the bypass switch, like plain claude does", () => {
+		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
+		const cmd = resolveAgentCommand(agent, makeConfig(), makeCtx());
+		expect(cmd).toContain("--append-system-prompt");
+		expect(cmd).toContain("--allow-dangerously-skip-permissions");
+	});
+
+	it("still applies the Claude-only model override", () => {
+		const config = makeConfig({ model: "claude-opus-5[1m]" });
+		const agent = makeAgent({ baseCommand: "my-claude", agentFamily: "claude" });
+		const result = resolveLaunchConfig(config, agent, "my-claude", { ANTHROPIC_DEFAULT_OPUS_MODEL: "pinned-opus" });
+		expect(result?.model).toBe("pinned-opus");
+	});
+
+	it("leaves an undeclared custom binary on the generic path", () => {
+		const agent = makeAgent({ baseCommand: "my-claude" });
+		const cmd = resolveAgentCommand(agent, makeConfig(), makeCtx(), { resume: true, sessionId: "sess-1" });
+		expect(cmd).not.toContain("--resume");
+		expect(cmd).toContain("Fix the login bug");
+	});
+});
+
+// `hooksIntegration` declared a wrapper's HOOK family only; `agentFamily` now
+// governs the whole adapter. Same three values, wider reach — carried over in
+// place so a user who already declared his wrapper gains resume for free.
+describe("migrateOldFormat — hooksIntegration becomes agentFamily", () => {
+	it("carries the declared family over and drops the old key", () => {
+		const [agent] = migrateOldFormat([
+			{ id: "a", name: "Wrapper", baseCommand: "my-claude", configurations: [], hooksIntegration: "claude" },
+		]) as any[];
+		expect(agent.agentFamily).toBe("claude");
+		expect("hooksIntegration" in agent).toBe(false);
+	});
+
+	it("carries the explicit opt-out over too", () => {
+		const [agent] = migrateOldFormat([
+			{ id: "a", name: "W", baseCommand: "claude", configurations: [], hooksIntegration: "none" },
+		]) as any[];
+		expect(agent.agentFamily).toBe("none");
+	});
+
+	it("leaves an agent that never declared anything alone", () => {
+		const [agent] = migrateOldFormat([
+			{ id: "a", name: "Claude", baseCommand: "claude", configurations: [] },
+		]) as any[];
+		expect(agent.agentFamily).toBeUndefined();
+	});
+
+	it("lets an already-migrated value win over a stale old key", () => {
+		const [agent] = migrateOldFormat([
+			{ id: "a", name: "W", baseCommand: "x", configurations: [], hooksIntegration: "codex", agentFamily: "claude" },
+		]) as any[];
+		expect(agent.agentFamily).toBe("claude");
+		expect("hooksIntegration" in agent).toBe(false);
 	});
 });
 

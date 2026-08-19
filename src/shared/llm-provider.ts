@@ -32,7 +32,8 @@
  * This module is pure (no I/O) so it is fully unit-testable.
  */
 
-import { LLM_PROVIDER, type BedrockGeo, type LlmProvider, type ProviderConfig } from "./types";
+import { agentKey } from "./agent-adapters/families";
+import { LLM_PROVIDER, type AgentFamily, type BedrockGeo, type LlmProvider, type ProviderConfig } from "./types";
 
 /** Strip dev3's `[1m]` 1M-context marker and any `@`-dated snapshot suffix to
  *  get the canonical Anthropic model family key (e.g. `claude-opus-4-8`). */
@@ -155,14 +156,9 @@ const NATIVE_PROVIDER_LABEL: Record<string, string> = {
 	codex: "settings.providerOpenAI",
 };
 
-/** Resolve a base command to its agent key (last path segment, e.g. `claude`). */
-function agentKey(baseCommand: string): string {
-	return baseCommand.split("/").pop() ?? baseCommand;
-}
-
-/** The third-party provider definitions registered for a given agent command. */
-export function thirdPartyProvidersForAgent(baseCommand: string): ProviderDefinition[] {
-	const key = agentKey(baseCommand);
+/** The third-party provider definitions registered for a given agent. */
+export function thirdPartyProvidersForAgent(baseCommand: string, family?: AgentFamily): ProviderDefinition[] {
+	const key = agentKey(baseCommand, family);
 	return Object.values(PROVIDER_REGISTRY)
 		.filter((def): def is ProviderDefinition => def != null && def.agentCommand === key);
 }
@@ -175,10 +171,11 @@ export function thirdPartyProvidersForAgent(baseCommand: string): ProviderDefini
  */
 export function providersForAgent(
 	baseCommand: string,
+	family?: AgentFamily,
 ): { id: LlmProvider; labelKey: string }[] {
-	const third = thirdPartyProvidersForAgent(baseCommand);
+	const third = thirdPartyProvidersForAgent(baseCommand, family);
 	if (third.length === 0) return [];
-	const nativeLabel = NATIVE_PROVIDER_LABEL[agentKey(baseCommand)] ?? "settings.providerNative";
+	const nativeLabel = NATIVE_PROVIDER_LABEL[agentKey(baseCommand, family)] ?? "settings.providerNative";
 	return [
 		{ id: LLM_PROVIDER.Native, labelKey: nativeLabel },
 		...third.map((def) => ({ id: def.id, labelKey: def.labelKey })),

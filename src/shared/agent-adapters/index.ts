@@ -10,8 +10,13 @@ export type {
 	TrustKind,
 	TemplateContext,
 } from "./types";
-export { getAgentAdapter, getHooksAdapter, hasAgentAdapter, agentKey } from "./registry";
-export { autoHooksFamily, isKnownAgentCommand, KNOWN_AGENT_COMMANDS } from "./hook-families";
+export { getAgentAdapter, hasAgentAdapter, agentKey } from "./registry";
+export {
+	autoAgentFamily,
+	isKnownAgentCommand,
+	KNOWN_AGENT_COMMANDS,
+	SELECTABLE_AGENT_FAMILIES,
+} from "./families";
 export { shellEscape, quoteIfUnsafe } from "./shell";
 export { interpolateTemplate, buildTaskPrompt } from "./template";
 export { claudeAdapter } from "./claude";

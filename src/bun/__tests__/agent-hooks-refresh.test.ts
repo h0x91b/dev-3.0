@@ -68,10 +68,10 @@ describe("refreshClaudeHooksForTask", () => {
 	});
 
 	// A wrapper script or shell alias cannot be recognized by name; the agent's
-	// declared hook family is what makes it get hooks at all.
+	// declared CLI family is what makes it get hooks at all.
 	it("re-installs the hooks for a wrapper command that declares the Claude family", async () => {
 		vi.mocked(getAllAgents).mockResolvedValue([
-			{ id: "agent-1", baseCommand: "my-claude", configurations: [], hooksIntegration: "claude" } as unknown as CodingAgent,
+			{ id: "agent-1", baseCommand: "my-claude", configurations: [], agentFamily: "claude" } as unknown as CodingAgent,
 		]);
 		await refreshClaudeHooksForTask(task());
 		expect(writeClaudeHooks).toHaveBeenCalledWith("/tmp/worktree", { stopTarget: "review-by-user" });
@@ -87,7 +87,7 @@ describe("refreshClaudeHooksForTask", () => {
 
 	it("honours an explicit opt-out on a recognized command", async () => {
 		vi.mocked(getAllAgents).mockResolvedValue([
-			{ id: "agent-1", baseCommand: "claude", configurations: [], hooksIntegration: "none" } as unknown as CodingAgent,
+			{ id: "agent-1", baseCommand: "claude", configurations: [], agentFamily: "none" } as unknown as CodingAgent,
 		]);
 		await refreshClaudeHooksForTask(task());
 		expect(writeClaudeHooks).not.toHaveBeenCalled();

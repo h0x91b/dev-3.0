@@ -447,26 +447,33 @@ export interface CodingAgent {
 	/** Per-provider connection settings for this agent (model override, inference-profile region). */
 	providerConfig?: ProviderConfig;
 	/**
-	 * Which agent-native lifecycle hooks dev3 installs into the worktree.
-	 * Undefined = auto-detect from `baseCommand`, which recognizes only the five
-	 * literal CLI names — a wrapper script or an aliased command got no hooks at
-	 * all, and therefore no automatic Kanban transitions, without saying so. This
-	 * lets the user declare "that command is Claude Code"; `"none"` is the
-	 * explicit opt-out. Hooks only: launch flags stay keyed by the command.
+	 * Which agent CLI this command actually is. Undefined = auto-detect from
+	 * `baseCommand`, which recognizes only the five literal CLI names — a wrapper
+	 * script, a shell alias or a renamed build of Claude Code got treated as an
+	 * unknown CLI: no lifecycle hooks, no session resume, no dev3 protocol, no
+	 * pre-assigned session id. This lets the user declare "that command IS Claude
+	 * Code" and get byte-identical handling; `"none"` is the explicit opt-out.
 	 */
-	hooksIntegration?: AgentHooksIntegration;
+	agentFamily?: AgentFamily;
 }
 
-/** Hook family an agent's worktree gets: a CLI whose hooks dev3 knows, or none. */
-export type AgentHooksIntegration = "claude" | "codex" | "none";
+/**
+ * The agent CLI a command belongs to, keyed by that CLI's own command name (the
+ * agent-adapter registry's key), plus `"none"` for "an unknown CLI, handle it
+ * generically". Governs EVERYTHING dev3 does per agent — launch flags, session
+ * resume, transcripts, trust, lifecycle hooks, skill prefix — so a differently
+ * named binary runs through exactly the same code as the CLI it wraps.
+ */
+export type AgentFamily = "claude" | "codex" | "gemini" | "agent" | "opencode" | "none";
 
 /**
  * Prefix used to invoke an installed skill from an agent prompt. Codex reserves
  * `/` for built-in commands, while the other supported agent CLIs use `/` for
  * skills. Unknown commands keep the broadly compatible slash default.
  */
-export function skillInvocationPrefix(baseCommand: string): "$" | "/" {
-	return (baseCommand.split("/").pop() ?? "") === "codex" ? "$" : "/";
+export function skillInvocationPrefix(baseCommand: string, family?: AgentFamily): "$" | "/" {
+	const key = family ? family : (baseCommand.split("/").pop() ?? "");
+	return key === "codex" ? "$" : "/";
 }
 
 /** Fixed port of the optional local `pxpipe-proxy` (token-saving image proxy).
@@ -2105,6 +2112,12 @@ export interface PaneSessionEntry {
 	/** Managed agent account used at launch time — re-injected on resume so a
 	 *  recovered session keeps running under the same account (absent → default). */
 	accountId?: string | null;
+	/** The agent CLI this pane runs, snapshotted at launch. Resume paths hold only
+	 *  a pane, and `agentCmd` alone cannot identify a differently named binary —
+	 *  without this a wrapper resumed as an unknown CLI, i.e. as a fresh launch
+	 *  carrying the task description. Absent on panes stored by older versions,
+	 *  which fall back to the command-name guess. */
+	agentFamily?: AgentFamily | null;
 }
 
 /** Captured session state for agent recovery after tmux death / app restart. */

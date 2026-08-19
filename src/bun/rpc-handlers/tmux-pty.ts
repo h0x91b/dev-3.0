@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
-import type { AgentHooksIntegration, ColumnAgentConfig, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
+import type { AgentFamily, ColumnAgentConfig, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
@@ -499,6 +499,7 @@ async function ensureAgentTrust(
 	resolvedBaseCmd: string,
 	accountId?: string | null,
 	foreignCode?: boolean,
+	family?: AgentFamily,
 ): Promise<void> {
 	// A worktree standing on someone else's branch gets nothing pre-granted: its
 	// committed `.claude/settings.json` hooks and `.mcp.json` servers must face the
@@ -512,7 +513,7 @@ async function ensureAgentTrust(
 	// (decision 124). Every adapter includes "claude" first — dev3 has always
 	// registered the worktree in ~/.claude.json (harmless superset + MCP
 	// pre-approval) for every agent — then any agent-native trust (codex/gemini).
-	for (const kind of getAgentAdapter(resolvedBaseCmd).trustKinds) {
+	for (const kind of getAgentAdapter(resolvedBaseCmd, family).trustKinds) {
 		try {
 			if (kind === "claude") await agents.ensureClaudeTrust(worktreePath, projectPath, accountId);
 			else if (kind === "codex") await agents.ensureCodexTrust(worktreePath);
@@ -535,7 +536,7 @@ async function applyAgentHooksToCommand(
 	options?: {
 		stopTarget?: Task["status"];
 		permissionMode?: PermissionMode;
-		integration?: AgentHooksIntegration;
+		family?: AgentFamily;
 	},
 ): Promise<string> {
 	try {
@@ -629,7 +630,7 @@ export async function launchTaskPty(
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
 	let resolvedPermissionMode: PermissionMode | undefined;
-	let resolvedHooksIntegration: AgentHooksIntegration | undefined;
+	let resolvedAgentFamily: AgentFamily | undefined;
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
 
 	try {
@@ -658,7 +659,7 @@ export async function launchTaskPty(
 			extraEnv = resolved.extraEnv;
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 			resolvedPermissionMode = resolved.config?.permissionMode;
-			resolvedHooksIntegration = resolved.agent?.hooksIntegration;
+			resolvedAgentFamily = resolved.agentFamily;
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -673,20 +674,21 @@ export async function launchTaskPty(
 			extraEnv = resolved.extraEnv;
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 			resolvedPermissionMode = resolved.config?.permissionMode;
-			resolvedHooksIntegration = resolved.agent?.hooksIntegration;
+			resolvedAgentFamily = resolved.agentFamily;
 		}
 
 		// Persist session state as pane[0] for the main agent pane.
 		// Skip when reconnecting to an existing tmux session (sessionState is already correct).
 		if (!skipSessionPersist) {
 			const effectiveSessionId = resume ? sessionId
-				: (agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null);
+				: (agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null);
 			const paneEntry = {
 				agentCmd: resolvedBaseCmd,
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
 				accountId: task.accountId,
+				agentFamily: resolvedAgentFamily,
 			};
 			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry] };
@@ -766,13 +768,13 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, task.accountId, task.foreignCode);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, task.accountId, task.foreignCode, resolvedAgentFamily);
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget,
 		permissionMode: resolvedPermissionMode,
-		integration: resolvedHooksIntegration,
+		family: resolvedAgentFamily,
 	});
 
 	const nativeBackend = taskTerminalBackendIdentity(task) === "native";
@@ -944,7 +946,7 @@ export async function launchColumnAgent(
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
 	let resolvedPermissionMode: PermissionMode | undefined;
-	let resolvedHooksIntegration: AgentHooksIntegration | undefined;
+	let resolvedAgentFamily: AgentFamily | undefined;
 
 	try {
 		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, { skipSystemPrompt: true });
@@ -952,16 +954,16 @@ export async function launchColumnAgent(
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 		resolvedPermissionMode = resolved.config?.permissionMode;
-		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
+		resolvedAgentFamily = resolved.agentFamily;
 	} catch (err) {
 		log.error("launchColumnAgent: failed to resolve command", { error: String(err) });
 		throw err;
 	}
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, undefined, task.foreignCode);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, undefined, task.foreignCode, resolvedAgentFamily);
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 		permissionMode: resolvedPermissionMode,
-		integration: resolvedHooksIntegration,
+		family: resolvedAgentFamily,
 	});
 
 	const env = {
@@ -1560,7 +1562,13 @@ async function markTerminalAttached(project: Project, task: Task): Promise<void>
  * (decision 189). Returns null to let the agent pick its own latest session.
  */
 function resolveResumeTarget(task: Task, pane: PaneSessionEntry, label: string): string | null {
-	const target = resolveResumableSessionId(pane.agentCmd, task.worktreePath ?? "", pane.sessionId);
+	const target = resolveResumableSessionId(
+		pane.agentCmd,
+		task.worktreePath ?? "",
+		pane.sessionId,
+		undefined,
+		pane.agentFamily ?? undefined,
+	);
 	if (target.substituted) {
 		log.warn("Stored session id has no transcript — resuming the newest conversation instead", {
 			taskId: task.id.slice(0, 8),
@@ -1636,21 +1644,24 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
 					let resumeBaseCmd = pane.agentCmd;
-					let resumeHooksIntegration: AgentHooksIntegration | undefined;
+					// The pane's own snapshot is the fallback: without an agent record
+					// there is nothing but the command string, and guessing the CLI from
+					// a renamed binary is exactly what broke resume.
+					let resumeAgentFamily: AgentFamily | undefined = pane.agentFamily ?? undefined;
 					let extraEnv: Record<string, string> = {};
 					if (pane.agentId) {
 						const resolved = await agents.resolveCommandForAgent(pane.agentId, pane.configId, ctx, cmdOpts);
 						resumeCmd = resolved.command;
 						extraEnv = resolved.extraEnv;
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
-						resumeHooksIntegration = resolved.agent?.hooksIntegration;
+						resumeAgentFamily = resolved.agentFamily ?? resumeAgentFamily;
 					} else {
-						resumeCmd = agents.buildResumeCommand(pane.agentCmd, paneResume ?? undefined) ?? pane.agentCmd;
+						resumeCmd = agents.buildResumeCommand(pane.agentCmd, paneResume ?? undefined, resumeAgentFamily) ?? pane.agentCmd;
 					}
-					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId, task.foreignCode);
+					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId, task.foreignCode, resumeAgentFamily);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
-						integration: resumeHooksIntegration,
+						family: resumeAgentFamily,
 					});
 					const scriptPath = dev3TaskTempPath(params.taskId, `resume-pane-${i}.sh`);
 					await writeLaunchScript(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
@@ -2489,7 +2500,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
-	let resolvedHooksIntegration: AgentHooksIntegration | undefined;
+	let resolvedAgentFamily: AgentFamily | undefined;
 	let launchedAgentId = params.agentId;
 	let launchedConfigId = params.configId;
 
@@ -2503,7 +2514,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
-		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
+		resolvedAgentFamily = resolved.agentFamily;
 		launchedAgentId = resolved.agent?.id ?? params.agentId;
 		launchedConfigId = resolved.config?.id ?? params.configId;
 	} else {
@@ -2518,7 +2529,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
-		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
+		resolvedAgentFamily = resolved.agentFamily;
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}
@@ -2526,10 +2537,10 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	// Register trust / re-patch the agent's config before spawning. The primary
 	// task launch does this; without it a spawned Codex pane runs against a stale
 	// config.toml and crashes on the legacy-profile check (see ensureAgentTrust).
-	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId, task.foreignCode);
+	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId, task.foreignCode, resolvedAgentFamily);
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
-		integration: resolvedHooksIntegration,
+		family: resolvedAgentFamily,
 	});
 
 	const env: Record<string, string> = {
@@ -2585,10 +2596,11 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	const paneEntry = {
 		paneId: newPaneId,
 		agentCmd: resolvedBaseCmd,
-		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null,
+		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null,
 		agentId: launchedAgentId,
 		configId: launchedConfigId,
 		accountId: params.accountId,
+		agentFamily: resolvedAgentFamily,
 	};
 	const existingPanes = task.sessionState?.panes ?? [];
 	try {
@@ -2634,10 +2646,10 @@ export function resolveBugHunterCompareRef(task: Task, project: Project): string
 	return `origin/${taskBaseBranch}`;
 }
 
-export function buildBugHunterPrompt(task: Task, project: Project, baseCmd = ""): string {
+export function buildBugHunterPrompt(task: Task, project: Project, baseCmd = "", family?: AgentFamily): string {
 	const ref = resolveBugHunterCompareRef(task, project);
 	const branch = task.branchName || "HEAD";
-	const prefix = agents.skillInvocationPrefix(baseCmd);
+	const prefix = agents.skillInvocationPrefix(baseCmd, family);
 	return (
 		`${prefix}dev3-bug-hunter ` +
 		`You are a read-only helper inside a task owned by the main agent. ` +
@@ -2672,7 +2684,7 @@ async function spawnSingleBugHunterPane(opts: {
 	configId: string | null;
 	accountId?: string | null;
 	split: { placement: AuxPanePlacement; size: string; tmuxTarget: string; nativeAnchor?: string };
-}): Promise<{ handle: AuxPaneHandle; baseCmd: string }> {
+}): Promise<{ handle: AuxPaneHandle; baseCmd: string; agentFamily: AgentFamily | undefined }> {
 	const ctx: agents.TemplateContext = {
 		taskTitle: "",
 		taskDescription: "",
@@ -2687,7 +2699,7 @@ async function spawnSingleBugHunterPane(opts: {
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
-	let resolvedHooksIntegration: AgentHooksIntegration | undefined;
+	let resolvedAgentFamily: AgentFamily | undefined;
 	let launchedAgentId = opts.agentId;
 	let launchedConfigId = opts.configId;
 	if (opts.agentId) {
@@ -2695,7 +2707,7 @@ async function spawnSingleBugHunterPane(opts: {
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
-		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
+		resolvedAgentFamily = resolved.agentFamily;
 		launchedAgentId = resolved.agent?.id ?? opts.agentId;
 		launchedConfigId = resolved.config?.id ?? opts.configId;
 	} else {
@@ -2710,17 +2722,17 @@ async function spawnSingleBugHunterPane(opts: {
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
-		resolvedHooksIntegration = resolved.agent?.hooksIntegration;
+		resolvedAgentFamily = resolved.agentFamily;
 		launchedAgentId = resolved.agent?.id ?? null;
 		launchedConfigId = resolved.config?.id ?? null;
 	}
 
 	// Same trust/config-ensure the primary launch does — a Codex bug-hunter pane
 	// otherwise launches against a stale config.toml and crashes.
-	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId, opts.task.foreignCode);
+	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId, opts.task.foreignCode, resolvedAgentFamily);
 	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
-		integration: resolvedHooksIntegration,
+		family: resolvedAgentFamily,
 	});
 
 	const env: Record<string, string> = {
@@ -2759,10 +2771,11 @@ async function spawnSingleBugHunterPane(opts: {
 		const paneEntry = {
 			paneId: handle.paneId,
 			agentCmd: resolvedBaseCmd,
-			sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null,
+			sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null,
 			agentId: launchedAgentId,
 			configId: launchedConfigId,
 			accountId: opts.accountId,
+			agentFamily: resolvedAgentFamily,
 		};
 		try {
 			const freshTask = await data.getTask(opts.project, opts.task.id);
@@ -2776,7 +2789,7 @@ async function spawnSingleBugHunterPane(opts: {
 		}
 	}
 
-	return { handle, baseCmd: resolvedBaseCmd };
+	return { handle, baseCmd: resolvedBaseCmd, agentFamily: resolvedAgentFamily };
 }
 
 /**
@@ -2909,6 +2922,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	});
 	if (first.handle.paneId) handles.push(first.handle);
 	const resolvedBaseCmd = first.baseCmd;
+	const resolvedHunterFamily = first.agentFamily;
 
 	// Subsequent hunters: split the right column vertically off the previous
 	// hunter's pane. tmux needs an explicit -p per split so the whole right column
@@ -2989,7 +3003,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	// After the agents have had time to boot, paste the branch-scoped bug-hunter
 	// slash command into each pane. The scope clause is mandatory: hunters must
 	// only inspect files changed in this branch, never the whole codebase.
-	const prompt = buildBugHunterPrompt(task, project, resolvedBaseCmd);
+	const prompt = buildBugHunterPrompt(task, project, resolvedBaseCmd, resolvedHunterFamily);
 
 	// The agent keeps the keyboard: a hunter pane became active on every split, and
 	// the main agent must not lose input just because hunters started.

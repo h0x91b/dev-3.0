@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNo
 import type {
 	AgentCheckResult,
 	AgentConfiguration,
-	AgentHooksIntegration,
+	AgentFamily,
 	BedrockGeo,
 	CodingAgent,
 	EffortLevel,
@@ -13,7 +13,7 @@ import type {
 	ProviderSettings,
 } from "../../../shared/types";
 import { LLM_PROVIDER } from "../../../shared/types";
-import { autoHooksFamily, isKnownAgentCommand } from "../../../shared/agent-adapters/hook-families";
+import { agentKey, autoAgentFamily, isKnownAgentCommand, SELECTABLE_AGENT_FAMILIES } from "../../../shared/agent-adapters/families";
 import { randomUUID } from "../../uuid";
 import { ListEditor } from "../ListEditor";
 import AgentConfigPicker from "../AgentConfigPicker";
@@ -21,7 +21,7 @@ import Select, { type SelectOption } from "../Select";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import { api } from "../../rpc";
-import type { TFunction } from "../../i18n";
+import type { TFunction, TranslationKey } from "../../i18n";
 import { buildPickerGroups, getModeLeafLabel, getModelGroupLabel, type PickerGroup } from "../../utils/agentPicker";
 import { useToggleFavorite } from "../../hooks/useToggleFavorite";
 import SettingsEntry from "./SettingsEntry";
@@ -406,6 +406,7 @@ export default function AgentSettingsSection({
 						<ConfigPreviewCard
 							config={selectedConfig}
 							agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
+							agentFamily={selectedDefaultAgent?.agentFamily}
 							t={t}
 							llmProvider={selectedDefaultAgent?.llmProvider}
 							providerConfig={selectedDefaultAgent?.providerConfig}
@@ -653,23 +654,20 @@ export default function AgentSettingsSection({
 function ConfigPreviewCard({
 	config,
 	agentBaseCommand,
+	agentFamily,
 	t,
 	llmProvider,
 	providerConfig,
 }: {
 	config: AgentConfiguration;
 	agentBaseCommand: string;
+	agentFamily?: AgentFamily;
 	t: TFunction;
 	llmProvider?: LlmProvider;
 	providerConfig?: ProviderConfig;
 }) {
 	const tags: { label: string; value: string }[] = [];
-	const cmdName = (
-		config.baseCommandOverride ||
-		agentBaseCommand ||
-		""
-	).split("/").pop() ?? "";
-	const isCodex = cmdName === "codex";
+	const isCodex = agentKey(config.baseCommandOverride || agentBaseCommand || "", agentFamily) === "codex";
 
 	if (config.model) {
 		tags.push({ label: t("settings.configModel"), value: config.model });
@@ -705,7 +703,7 @@ function ConfigPreviewCard({
 		});
 	}
 
-	const { command, envLine } = buildCommandPreview(agentBaseCommand, config, llmProvider, providerConfig);
+	const { command, envLine } = buildCommandPreview(agentBaseCommand, config, llmProvider, providerConfig, agentFamily);
 
 	return (
 		<div className="mt-3 bg-base border border-edge rounded-xl p-3 space-y-2">
@@ -837,7 +835,7 @@ function PresetEditor({
 	onMoveUp: () => void;
 	onMoveDown: () => void;
 }) {
-	const preview = buildCommandPreview(agent.baseCommand, config, agent.llmProvider, agent.providerConfig);
+	const preview = buildCommandPreview(agent.baseCommand, config, agent.llmProvider, agent.providerConfig, agent.agentFamily);
 	const baseCommandName = agent.baseCommand.split("/").pop() ?? agent.baseCommand;
 	const modelOptions: SelectOption[] = modelsForAgent(agent).map((model) => ({ value: model, label: model }));
 	const filterHint = t("settings.selectFilterHint");
@@ -1055,10 +1053,10 @@ function PresetEditor({
 }
 
 /** The agent itself: install state, identity, backend, order, removal. */
-/** Which lifecycle hooks this agent's worktrees get, and a warning when the base
- *  command is one dev3 cannot recognize — the case that used to fail in silence:
- *  no hooks means the task never moves between columns on its own. */
-function HooksIntegrationField({
+/** Which agent CLI this command actually is, and a warning when the base command
+ *  is one dev3 cannot recognize — the case that used to fail in silence: an
+ *  unrecognized command loses hooks, session resume and the dev3 protocol. */
+function AgentFamilyField({
 	t,
 	agent,
 	onChange,
@@ -1067,33 +1065,29 @@ function HooksIntegrationField({
 	agent: CodingAgent;
 	onChange: (patch: Partial<CodingAgent>) => void;
 }) {
-	const familyLabel = (family: AgentHooksIntegration) =>
-		family === "claude" ? t("settings.hooksClaude") : family === "codex" ? t("settings.hooksCodex") : t("settings.hooksNone");
+	const familyLabel = (family: AgentFamily) =>
+		family === "none" ? t("settings.familyNone") : t(`settings.family.${family}` as TranslationKey);
 	const options: SelectOption[] = [
-		{ value: "", label: t("settings.hooksAuto", { family: familyLabel(autoHooksFamily(agent.baseCommand)) }) },
-		{ value: "claude", label: t("settings.hooksClaude") },
-		{ value: "codex", label: t("settings.hooksCodex") },
-		{ value: "none", label: t("settings.hooksNone") },
+		{ value: "", label: t("settings.familyAuto", { family: familyLabel(autoAgentFamily(agent.baseCommand)) }) },
+		...SELECTABLE_AGENT_FAMILIES.map((family) => ({ value: family, label: familyLabel(family) })),
 	];
-	const unrecognized = !agent.hooksIntegration && !isKnownAgentCommand(agent.baseCommand);
+	const unrecognized = !agent.agentFamily && !isKnownAgentCommand(agent.baseCommand);
 
 	return (
 		<div className="space-y-2">
-			<Field label={t("settings.hooksIntegration")} htmlFor={`agent-hooks-${agent.id}`} hint={t("settings.hooksHint")}>
+			<Field label={t("settings.agentFamily")} htmlFor={`agent-family-${agent.id}`} hint={t("settings.familyHint")}>
 				<Select
-					id={`agent-hooks-${agent.id}`}
-					value={agent.hooksIntegration ?? ""}
+					id={`agent-family-${agent.id}`}
+					value={agent.agentFamily ?? ""}
 					options={options}
-					onChange={(next) =>
-						onChange({ hooksIntegration: next ? (next as AgentHooksIntegration) : undefined })
-					}
+					onChange={(next) => onChange({ agentFamily: next ? (next as AgentFamily) : undefined })}
 				/>
 			</Field>
 			{unrecognized ? (
 				<div className="p-3 rounded-lg bg-warning/5 border border-warning/20 space-y-1" role="status">
-					<p className="text-warning text-xs font-medium">{t("settings.hooksMissingTitle")}</p>
+					<p className="text-warning text-xs font-medium">{t("settings.familyMissingTitle")}</p>
 					<p className="text-fg-3 text-xs">
-						{t("settings.hooksMissingBody", { command: agent.baseCommand || "—" })}
+						{t("settings.familyMissingBody", { command: agent.baseCommand || "—" })}
 					</p>
 				</div>
 			) : null}
@@ -1259,11 +1253,12 @@ function AgentPane({
 				</Field>
 			</div>
 
-			<HooksIntegrationField t={t} agent={agent} onChange={onChange} />
+			<AgentFamilyField t={t} agent={agent} onChange={onChange} />
 
 			<ProviderSelector
 				t={t}
 				baseCommand={agent.baseCommand}
+				agentFamily={agent.agentFamily}
 				provider={agent.llmProvider ?? "anthropic"}
 				providerConfig={agent.providerConfig}
 				models={modelsForAgent(agent)}
@@ -1380,6 +1375,7 @@ function modelsForAgent(agent: CodingAgent): string[] {
 function ProviderSelector({
 	t,
 	baseCommand,
+	agentFamily,
 	provider,
 	providerConfig,
 	models,
@@ -1387,20 +1383,20 @@ function ProviderSelector({
 }: {
 	t: TFunction;
 	baseCommand: string;
+	agentFamily?: AgentFamily;
 	provider: LlmProvider;
 	providerConfig: ProviderConfig | undefined;
 	models: string[];
 	onChange: (patch: Partial<CodingAgent>) => void;
 }) {
-	const options = providersForAgent(baseCommand);
+	const options = providersForAgent(baseCommand, agentFamily);
 	const setProvider = (next: LlmProvider) => onChange({ llmProvider: next });
 
 	// Mirror the launcher: only a backend registered for THIS agent's command
 	// applies (same guard as agentProvider in agents.ts); a stale id — e.g. after
 	// the base command was edited — renders and behaves as the native default.
 	const def = getProviderDefinition(provider);
-	const cmdName = baseCommand.split("/").pop() ?? "";
-	const activeDef = def && def.agentCommand === cmdName ? def : undefined;
+	const activeDef = def && def.agentCommand === agentKey(baseCommand, agentFamily) ? def : undefined;
 	const effectiveProvider = activeDef ? provider : LLM_PROVIDER.Native;
 	const settings = activeDef ? providerConfig?.[activeDef.id] : undefined;
 	const geo = settings?.geo ?? DEFAULT_BEDROCK_GEO;

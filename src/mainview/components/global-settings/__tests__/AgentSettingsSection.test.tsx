@@ -415,9 +415,10 @@ describe("AgentSettingsSection — preset library", () => {
 });
 
 // The reported bug: dev3 recognizes only the five literal CLI names, so an agent
-// pointed at a wrapper script or a shell alias got no lifecycle hooks and its
-// task never moved between columns — with nothing on screen saying so.
-describe("AgentSettingsSection — lifecycle hooks", () => {
+// pointed at a custom executable — a wrapper, an alias, a renamed build — was
+// handled as an unknown CLI: no hooks, no session resume, no dev3 protocol, and
+// nothing on screen saying so.
+describe("AgentSettingsSection — which CLI is this", () => {
 	/** The wrapper tests rename baseCommand, so find the agent by its id. */
 	function patchedAgent(onAgentsChange: ReturnType<typeof vi.fn>): CodingAgent {
 		const calls = onAgentsChange.mock.calls;
@@ -425,10 +426,10 @@ describe("AgentSettingsSection — lifecycle hooks", () => {
 		return updated.find((a) => a.id === "builtin-claude")!;
 	}
 
-	async function openHooksSelect(user: ReturnType<typeof userEvent.setup>) {
+	async function openFamilySelect(user: ReturnType<typeof userEvent.setup>) {
 		await expandAgent(user, "Claude");
-		const trigger = document.getElementById("agent-hooks-builtin-claude");
-		if (!trigger) throw new Error("hooks select is missing");
+		const trigger = document.getElementById("agent-family-builtin-claude");
+		if (!trigger) throw new Error("agent family select is missing");
 		await user.click(trigger);
 	}
 
@@ -436,37 +437,46 @@ describe("AgentSettingsSection — lifecycle hooks", () => {
 		const user = userEvent.setup();
 		renderSection();
 		await expandAgent(user, "Claude");
-		expect(screen.queryByText("settings.hooksMissingTitle")).toBeNull();
+		expect(screen.queryByText("settings.familyMissingTitle")).toBeNull();
 	});
 
-	it("warns that an unrecognized command gets no hooks", async () => {
+	it("warns that an unrecognized command is handled as an unknown CLI", async () => {
 		const user = userEvent.setup();
 		renderSection({ baseCommand: "my-claude" });
 		await expandAgent(user, "Claude");
-		expect(screen.getByText("settings.hooksMissingTitle")).toBeInTheDocument();
+		expect(screen.getByText("settings.familyMissingTitle")).toBeInTheDocument();
 	});
 
-	it("stops warning once the agent declares a hook family", async () => {
+	it("stops warning once the agent declares its CLI", async () => {
 		const user = userEvent.setup();
-		renderSection({ baseCommand: "my-claude", hooksIntegration: "claude" });
+		renderSection({ baseCommand: "my-claude", agentFamily: "claude" });
 		await expandAgent(user, "Claude");
-		expect(screen.queryByText("settings.hooksMissingTitle")).toBeNull();
+		expect(screen.queryByText("settings.familyMissingTitle")).toBeNull();
 	});
 
 	it("persists the declared family", async () => {
 		const user = userEvent.setup();
 		const onAgentsChange = renderSection({ baseCommand: "my-claude" });
-		await openHooksSelect(user);
-		await user.click(screen.getByRole("option", { name: "settings.hooksClaude" }));
-		expect(patchedAgent(onAgentsChange).hooksIntegration).toBe("claude");
+		await openFamilySelect(user);
+		await user.click(screen.getByRole("option", { name: "settings.family.claude" }));
+		expect(patchedAgent(onAgentsChange).agentFamily).toBe("claude");
+	});
+
+	it("offers every supported CLI, not just the two with hooks", async () => {
+		const user = userEvent.setup();
+		renderSection({ baseCommand: "my-claude" });
+		await openFamilySelect(user);
+		for (const key of ["claude", "codex", "gemini", "agent", "opencode"]) {
+			expect(screen.getByRole("option", { name: `settings.family.${key}` })).toBeInTheDocument();
+		}
 	});
 
 	it("clears the field back to auto-detection", async () => {
 		const user = userEvent.setup();
-		const onAgentsChange = renderSection({ baseCommand: "my-claude", hooksIntegration: "codex" });
-		await openHooksSelect(user);
-		await user.click(screen.getByRole("option", { name: "settings.hooksAuto" }));
-		expect(patchedAgent(onAgentsChange).hooksIntegration).toBeUndefined();
+		const onAgentsChange = renderSection({ baseCommand: "my-claude", agentFamily: "codex" });
+		await openFamilySelect(user);
+		await user.click(screen.getByRole("option", { name: "settings.familyAuto" }));
+		expect(patchedAgent(onAgentsChange).agentFamily).toBeUndefined();
 	});
 });
 
