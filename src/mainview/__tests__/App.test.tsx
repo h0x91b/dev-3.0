@@ -775,7 +775,13 @@ describe("App keyboard shortcuts", () => {
 			});
 
 			await renderApp();
-			setStreamerMode(true);
+			// Must be flushed before the keystroke: the Cmd+1..9 guard reads the flag
+			// through React state, so an unflushed toggle lets the jump into the
+			// sensitive project through, and the eviction effect then removes the whole
+			// project screen — which is why this failed as a missing testid.
+			await act(async () => {
+				setStreamerMode(true);
+			});
 
 			await userEvent.keyboard("{Meta>}2{/Meta}");
 

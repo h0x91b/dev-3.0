@@ -171,9 +171,6 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 	() => {
 		let ghostty: InstanceType<typeof Ghostty>;
 		let tmpDir: string;
-		let readyFifo: string;
-		let doneFifo: string;
-		let captureFile: string;
 		let tmuxSocket: string;
 		let tmuxSession: string;
 		let pythonProc: ChildProcess | undefined;
@@ -197,10 +194,6 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 
 			// Temp directory for FIFOs and capture file
 			tmpDir = mkdtempSync(join(tmpdir(), "dev3-e2e-"));
-			readyFifo = join(tmpDir, "ready");
-			doneFifo = join(tmpDir, "done");
-			captureFile = join(tmpDir, "capture");
-			cpSpawnSync("mkfifo", [readyFifo, doneFifo]);
 
 			// Write the production tmux config to a temp file
 			const tmuxConfigPath = join(tmpDir, "tmux.conf");
@@ -283,6 +276,8 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 
 		// ── Core pipeline runner ──────────────────────────────────────────────
 
+		let pipelineRuns = 0;
+
 		/**
 		 * Send `bytes` through the real PTY → tmux pipeline and return what
 		 * the inner pane captured.
@@ -306,6 +301,16 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			if (bridgeExitCode !== null) {
 				throw new Error(`PTY bridge exited with code ${bridgeExitCode}: ${bridgeStderr.trim()}`);
 			}
+			// Fresh FIFOs and capture file per run. Shared ones turned the first
+			// timeout into 19 failures: a test that blows its budget keeps running,
+			// its inner pane later writes the ready byte, and the next test read that
+			// stale signal instead of its own. See the vitest-timeout-keeps-running
+			// decision record.
+			const run = ++pipelineRuns;
+			const readyFifo = join(tmpDir, `ready-${run}`);
+			const doneFifo = join(tmpDir, `done-${run}`);
+			const captureFile = join(tmpDir, `capture-${run}`);
+			cpSpawnSync("mkfifo", [readyFifo, doneFifo]);
 			const N = Buffer.byteLength(bytes, "utf8");
 			const innerCmd =
 				`stty -icanon -icrnl -echo && sleep 0.2 && printf R > ${readyFifo} && ` +

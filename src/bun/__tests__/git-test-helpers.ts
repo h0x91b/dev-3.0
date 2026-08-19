@@ -220,7 +220,14 @@ export function createSpawnMock(getGhResponse?: () => string) {
 			// of failing with a readable message.
 			const exited = new Promise<number>((resolve) => {
 				child.on("close", (code: number | null) => resolve(code ?? 1));
-				child.on("error", () => resolve(1));
+				child.on("error", (err: NodeJS.ErrnoException) => {
+					// Exit code 1 is indistinguishable from a real git failure, so the test
+					// then dies on an assertion about git output and reads exactly like a
+					// product regression. Name the real cause in the log — under fork
+					// pressure this is EAGAIN, not the diff under test.
+					console.error(`[git-test-helpers] spawn failed (${err.code ?? err.message}): ${cmd.join(" ")}`);
+					resolve(1);
+				});
 			});
 
 			return {
