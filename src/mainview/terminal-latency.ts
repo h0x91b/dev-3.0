@@ -35,6 +35,8 @@
  * {@link REPORT_INTERVAL_MS}, which is what survives a restart.
  */
 
+import { createRollingRate, ROLLING_WINDOW_MS } from "../shared/rolling-rate";
+
 /** Samples kept per stage. At 60 fps `frame` covers the last ~4 seconds. */
 export const MAX_SAMPLES = 240;
 /** Silence required before a keystroke may start a round trip. */
@@ -44,7 +46,7 @@ export const SAMPLE_TIMEOUT_MS = 1000;
 /** How often a summary is pushed to the log sink. */
 export const REPORT_INTERVAL_MS = 60_000;
 /** The counters report events per this many milliseconds. */
-export const RATE_WINDOW_MS = 1000;
+export const RATE_WINDOW_MS = ROLLING_WINDOW_MS;
 /** A gap longer than this missed its slot on a 60 Hz display. */
 export const LONG_FRAME_MS = 24;
 /**
@@ -64,6 +66,8 @@ export interface StageStats {
 	p95: number;
 	max: number;
 }
+
+const RATE_KEYS = ["fps", "updates", "bytes", "messages", "wheelEvents", "wheelLines", "longFrames"] as const;
 
 /** Everything counted over the last {@link RATE_WINDOW_MS}, expressed per second. */
 export interface RateCounters {
@@ -119,10 +123,6 @@ function emptyStats(): StageStats {
 	return { count: 0, p50: 0, p95: 0, max: 0 };
 }
 
-function zeroCounters(): RateCounters {
-	return { fps: 0, updates: 0, bytes: 0, messages: 0, wheelEvents: 0, wheelLines: 0, longFrames: 0 };
-}
-
 /** Nearest-rank percentile over a copy, so the ring buffer keeps arrival order. */
 export function percentile(sorted: number[], fraction: number): number {
 	if (sorted.length === 0) return 0;
@@ -155,10 +155,7 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 	let lastOutputAt = -Infinity;
 	let lastFrameAt: number | null = null;
 
-	/** The window being filled, and the last one that closed. */
-	let current = zeroCounters();
-	let reported = zeroCounters();
-	let windowStart = now();
+	const rates = createRollingRate(RATE_KEYS, now);
 	let wheelBacklog = 0;
 
 	function push(stage: LatencyStage, ms: number): void {
@@ -168,31 +165,7 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 		if (bucket.length > MAX_SAMPLES) bucket.shift();
 	}
 
-	/**
-	 * Close the counting window if it is old enough. Scaling by the real elapsed
-	 * time matters when the caller went quiet: a window left open for four
-	 * seconds holds four seconds of events, and reporting it raw would claim a
-	 * rate four times what happened.
-	 */
-	function rollWindow(at: number): void {
-		const elapsed = at - windowStart;
-		if (elapsed < RATE_WINDOW_MS) return;
-		const scale = RATE_WINDOW_MS / elapsed;
-		reported = {
-			fps: Math.round(current.fps * scale),
-			updates: Math.round(current.updates * scale),
-			bytes: Math.round(current.bytes * scale),
-			messages: Math.round(current.messages * scale),
-			wheelEvents: Math.round(current.wheelEvents * scale),
-			wheelLines: Math.round(current.wheelLines * scale),
-			longFrames: Math.round(current.longFrames * scale),
-		};
-		current = zeroCounters();
-		windowStart = at;
-	}
-
 	function snapshot(): LatencySnapshot {
-		rollWindow(now());
 		const out = {} as LatencySnapshot;
 		for (const stage of STAGES) {
 			const bucket = samples[stage];
@@ -208,7 +181,7 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 				max: round(sorted[sorted.length - 1]),
 			};
 		}
-		out.rates = { ...reported };
+		out.rates = rates.read();
 		out.wheelBacklog = wheelBacklog;
 		return out;
 	}
@@ -235,8 +208,7 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 		},
 		noteOutput() {
 			const at = now();
-			rollWindow(at);
-			current.messages += 1;
+			rates.add("messages");
 			lastOutputAt = at;
 			if (pendingInputAt === null) return;
 			const elapsed = at - pendingInputAt;
@@ -247,25 +219,21 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 			pendingPaintFrom = at - elapsed;
 		},
 		noteBytes(count) {
-			if (!Number.isFinite(count) || count <= 0) return;
-			rollWindow(now());
-			current.bytes += count;
+			rates.add("bytes", count);
 		},
 		noteWrite(ms) {
-			rollWindow(now());
-			current.updates += 1;
+			rates.add("updates");
 			push("write", ms);
 		},
 		noteFrame(ms) {
 			const at = now();
-			rollWindow(at);
-			current.fps += 1;
+			rates.add("fps");
 			if (lastFrameAt !== null) {
 				const gap = at - lastFrameAt;
 				// A hidden tab paints nothing; that stretch is not a dropped frame.
 				if (gap <= FRAME_GAP_CEILING_MS) {
 					push("gap", gap);
-					if (gap > LONG_FRAME_MS) current.longFrames += 1;
+					if (gap > LONG_FRAME_MS) rates.add("longFrames");
 				}
 			}
 			lastFrameAt = at;
@@ -277,12 +245,10 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 			push("paint", elapsed);
 		},
 		noteWheelEvent() {
-			rollWindow(now());
-			current.wheelEvents += 1;
+			rates.add("wheelEvents");
 		},
 		noteWheelSent(lines, backlog) {
-			rollWindow(now());
-			if (lines > 0) current.wheelLines += lines;
+			rates.add("wheelLines", lines);
 			wheelBacklog = Math.max(0, backlog);
 		},
 		snapshot,

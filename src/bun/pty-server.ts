@@ -28,6 +28,7 @@ import {
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
+import { forgetSession, noteBytesIn, noteFlush, noteQueued, noteWindow } from "./pty-throughput";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "./task-terminal-backend";
 import {
@@ -293,6 +294,9 @@ function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
 	const cleaned = handleOsc52(str, session);
 	checkForBell(cleaned, session.taskId);
 	if (!cleaned) return;
+	// Counted before the batcher can hide it: this is the only place that sees the
+	// shell's real production rate, which is what "are we behind" is measured against.
+	noteBytesIn(session.registryKey, cleaned.length);
 	// A native session always enqueues: the batch lands in its bounded journal even
 	// with no viewer attached, which is what lets a remote tab attach to a running
 	// shell and see the screen. tmux replays its own pane, so it stays as it was.
@@ -665,6 +669,7 @@ function releaseNativeSession(session: PtySession): void {
 		}
 	}
 	session.clients.clear();
+	forgetSession(session.registryKey);
 	sessions.delete(session.taskId);
 	// Release all composite-keyed PtySession entries for additional panes of this task.
 	sweepNativePaneSessions(session.taskId);
@@ -677,6 +682,7 @@ function sweepNativePaneSessions(taskId: string): void {
 		if (parsed?.taskId === taskId) {
 			if (s.batchTimer) clearTimeout(s.batchTimer);
 			s.pendingData = "";
+			forgetSession(s.registryKey);
 			s.native?.detach();
 			s.native = null;
 			for (const client of s.clients) {
@@ -1614,6 +1620,7 @@ function flushPendingData(session: PtySession): void {
 		if (session.clients.size === 0) return;
 		const data = session.pendingData;
 		session.pendingData = "";
+		noteFlush(session.registryKey, data.length, session.clients.size);
 		for (const client of session.clients) {
 			try { client.sendText(data); } catch { /* dead client */ }
 		}
@@ -1626,6 +1633,7 @@ function flushPendingData(session: PtySession): void {
 	const seq = session.nativeStream?.push(data) ?? 0;
 	if (session.clients.size === 0) return;
 	const framed = outputMessage(seq, data);
+	noteFlush(session.registryKey, framed.length, session.clients.size);
 	for (const client of session.clients) {
 		try { client.sendText(framed); } catch { /* dead client */ }
 	}
@@ -1679,14 +1687,14 @@ function bufferedBytesFor(session: PtySession): number {
  */
 function enqueuePtyData(session: PtySession, data: string): void {
 	session.pendingData += data;
+	noteQueued(session.registryKey, session.pendingData.length);
 	if (session.batchTimer) return;
 
 	const buffered = bufferedBytesFor(session);
 	if (!isBackedUp(buffered)) flushPendingData(session);
-	session.batchTimer = setTimeout(
-		() => flushPendingData(session),
-		batchWindowMs(buffered, PTY_BATCH_INTERVAL_MS),
-	);
+	const windowMs = batchWindowMs(buffered, PTY_BATCH_INTERVAL_MS);
+	noteWindow(session.registryKey, buffered, windowMs);
+	session.batchTimer = setTimeout(() => flushPendingData(session), windowMs);
 }
 
 async function configureTmux(tmuxSessionName: string, socket: string): Promise<void> {
