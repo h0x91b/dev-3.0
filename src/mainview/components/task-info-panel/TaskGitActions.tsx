@@ -415,7 +415,9 @@ export default function TaskGitActions({
 	) : null;
 
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
-	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
+	// Neutral like the rest of the session bar (see the #1418 pass): the colour in this
+	// row belongs to the status badges (ahead/behind, PR, conflicts), not to the actions.
+	const enabledBtnClass = "text-fg-3 hover:text-fg hover:bg-elevated border border-edge";
 
 	const gitIcon = (icon: ReactNode, spin = false) => (
 		// Fixed square slot so the idle icon and the in-progress ring share one footprint
@@ -456,7 +458,7 @@ export default function TaskGitActions({
 					onClick={openBranchDiff}
 					disabled={showDiffDisabled}
 					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-semibold transition-colors ${
-						showDiffDisabled ? disabledBtnClass : "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/30"
+						showDiffDisabled ? disabledBtnClass : enabledBtnClass
 					}`}
 					aria-label={t("infoPanel.showDiff")}
 				>

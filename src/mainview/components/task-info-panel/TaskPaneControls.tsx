@@ -221,7 +221,9 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	const canClose = !actionBusy;
 	const layoutDisabled = actionBusy;
 
-	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
+	// Neutral like the rest of the session bar (see the #1418 pass): only Close pane
+	// keeps a colour, because red here means "destroys something".
+	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge flex items-center gap-1";
 	const tmuxBtnDisabledClass = "px-1.5 py-1 rounded text-dense font-medium text-fg-muted bg-elevated/50 border border-edge/50 flex items-center gap-1 cursor-not-allowed opacity-50";
 	const tmuxSvgClass = "w-4 h-4";
 
@@ -282,12 +284,12 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 				{multiPane && (
 					<Tooltip content={t("tmux.nextLayoutDesc")} detail={t("ttip.tmux.nextLayout")}>
 						<div
-							className={`flex items-stretch rounded ${layoutDisabled ? "opacity-50 cursor-not-allowed" : "text-accent bg-accent/10 border border-accent/25"} overflow-hidden`}
+							className={`flex items-stretch rounded ${layoutDisabled ? "opacity-50 cursor-not-allowed" : "text-fg-3 border border-edge"} overflow-hidden`}
 							onMouseEnter={showLayout}
 							onMouseLeave={hideLayout}
 						>
 							<button
-								className={`tmux-anim px-1.5 py-1 text-dense font-medium transition-colors ${layoutDisabled ? "text-fg-muted bg-elevated/50 border border-edge/50 cursor-not-allowed" : "text-accent hover:bg-accent/20"} flex items-center gap-1`}
+								className={`tmux-anim px-1.5 py-1 text-dense font-medium transition-colors ${layoutDisabled ? "text-fg-muted bg-elevated/50 border border-edge/50 cursor-not-allowed" : "text-fg-3 hover:text-fg hover:bg-elevated"} flex items-center gap-1`}
 								disabled={layoutDisabled}
 								onClick={!layoutDisabled ? cycleLayout : undefined}
 								aria-label={t("tmux.nextLayoutDesc")}
@@ -297,7 +299,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 							</button>
 							<button
 								ref={layoutTriggerRef}
-								className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
+								className="px-1 py-1 transition-colors hover:text-fg hover:bg-elevated border-l border-edge flex items-center justify-center"
 								disabled={actionBusy}
 								onClick={(event) => {
 									event.stopPropagation();
@@ -333,8 +335,10 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 						<div className="w-px self-stretch bg-edge mx-0.5" aria-hidden="true" />
 
 						<Tooltip content={t("tmux.closePaneDesc")} detail={t("ttip.tmux.closePane")}>
+							{/* Amber, matching Hibernate: the pane goes away, the work in the
+							    worktree does not. Red is reserved for the irreversible. */}
 							<button
-								className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? "text-danger hover:bg-danger/20 bg-danger/10 border-danger/25" : ""}`}
+								className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? "text-warning hover:text-warning hover:bg-warning/15 border-warning/30" : ""}`}
 								disabled={!canClose}
 								onClick={canClose ? handleClosePane : undefined}
 								aria-label={t("tmux.closePaneDesc")}
