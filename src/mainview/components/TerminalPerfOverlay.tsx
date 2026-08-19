@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
+import { api } from "../rpc";
+import type { PtyThroughputStats } from "../../shared/types";
 import {
 	snapshotAllPanes,
 	LONG_FRAME_MS,
@@ -28,6 +30,8 @@ import {
 
 /** How often the HUD re-reads the probes. Fast enough to watch, cheap enough to ignore. */
 const POLL_MS = 500;
+/** The server half costs an RPC round trip, so it goes slower. */
+const SERVER_POLL_MS = 1000;
 
 /** Below this the render loop is not keeping up with a 60 Hz display. */
 const FPS_WARN = 55;
@@ -59,10 +63,14 @@ function countTone(n: number): Tone {
 	return "ok";
 }
 
+function humanSize(bytes: number): string {
+	if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${bytes} B`;
+}
+
 function humanBytes(perSecond: number): string {
-	if (perSecond >= 1024 * 1024) return `${(perSecond / (1024 * 1024)).toFixed(1)} MB/s`;
-	if (perSecond >= 1024) return `${(perSecond / 1024).toFixed(1)} KB/s`;
-	return `${perSecond} B/s`;
+	return `${humanSize(perSecond)}/s`;
 }
 
 function Row({ label, value, tone = "ok", hint }: { label: string; value: string; tone?: Tone; hint?: string }) {
@@ -71,6 +79,44 @@ function Row({ label, value, tone = "ok", hint }: { label: string; value: string
 			<span className="w-12 shrink-0 text-fg-muted">{label}</span>
 			<span className={`flex-1 tabular-nums ${toneClass(tone)}`}>{value}</span>
 			{hint && <span className="text-fg-muted">{hint}</span>}
+		</div>
+	);
+}
+
+/**
+ * The half the renderer cannot see. `in` is what the shell produced, `out` is what
+ * the server got onto a socket — a sustained gap between them IS the backlog, and
+ * `q`/`sock` say whether it is sitting here or further downstream in the renderer.
+ */
+function ServerBlock({ sessionKey, stats }: { sessionKey: string; stats: PtyThroughputStats }) {
+	const behind = stats.bytesIn > stats.bytesOut * 1.2 && stats.bytesIn > 64 * 1024;
+	return (
+		<div className="border-t border-edge pt-2">
+			<div className="truncate text-fg-3 mb-1" title={sessionKey}>srv · {sessionKey}</div>
+			<Row
+				label="in→out"
+				value={`${humanBytes(stats.bytesIn)} → ${humanBytes(stats.bytesOut)}`}
+				tone={behind ? "bad" : "ok"}
+				hint={`${stats.messages} msg/s`}
+			/>
+			<Row
+				label="q"
+				value={humanSize(stats.queued)}
+				tone={stats.queued > 256 * 1024 ? "bad" : stats.queued > 0 ? "warn" : "ok"}
+				hint={`peak ${humanSize(stats.queuedPeak)}`}
+			/>
+			<Row
+				label="sock"
+				value={humanSize(stats.socketBuffered)}
+				tone={stats.socketBuffered > 256 * 1024 ? "bad" : stats.socketBuffered > 0 ? "warn" : "ok"}
+				hint={`peak ${humanSize(stats.socketPeak)}`}
+			/>
+			<Row
+				label="win"
+				value={`${stats.windowMs} ms`}
+				tone={stats.windowMs > 100 ? "bad" : stats.windowMs > 16 ? "warn" : "ok"}
+				hint={stats.drops ? `${stats.drops} drop/s` : ""}
+			/>
 		</div>
 	);
 }
@@ -136,13 +182,33 @@ function PaneBlock({ paneKey, snap }: { paneKey: string; snap: LatencySnapshot }
 export default function TerminalPerfOverlay({ onClose }: { onClose: () => void }) {
 	const t = useT();
 	const [panes, setPanes] = useState<Record<string, LatencySnapshot>>(() => snapshotAllPanes());
+	const [server, setServer] = useState<Record<string, PtyThroughputStats>>({});
 
 	useEffect(() => {
 		const timer = setInterval(() => setPanes(snapshotAllPanes()), POLL_MS);
 		return () => clearInterval(timer);
 	}, []);
 
+	// The server half is an RPC round trip, so it polls on its own slower timer and
+	// skips its turn while one is still in flight — a stalled main thread must not
+	// queue requests behind itself.
+	useEffect(() => {
+		let inFlight = false;
+		let live = true;
+		const timer = setInterval(() => {
+			if (inFlight) return;
+			inFlight = true;
+			api.request
+				.terminalPtyStats()
+				.then((res) => { if (live) setServer(res.sessions); })
+				.catch(() => { /* a dropped poll just leaves the last numbers up */ })
+				.finally(() => { inFlight = false; });
+		}, SERVER_POLL_MS);
+		return () => { live = false; clearInterval(timer); };
+	}, []);
+
 	const keys = Object.keys(panes);
+	const serverKeys = Object.keys(server);
 
 	return (
 		<div
@@ -162,12 +228,15 @@ export default function TerminalPerfOverlay({ onClose }: { onClose: () => void }
 				</button>
 			</div>
 
-			{keys.length === 0 ? (
+			{keys.length === 0 && serverKeys.length === 0 ? (
 				<p className="text-fg-muted">{t("terminal.perf.noPanes")}</p>
 			) : (
 				<div className="space-y-2">
 					{keys.map((key) => (
 						<PaneBlock key={key} paneKey={key} snap={panes[key]} />
+					))}
+					{serverKeys.map((key) => (
+						<ServerBlock key={key} sessionKey={key} stats={server[key]} />
 					))}
 				</div>
 			)}

@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
-import type { AgentFamily, ColumnAgentConfig, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
+import type { AgentFamily, ColumnAgentConfig, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
@@ -10,6 +10,7 @@ import * as repoConfig from "../repo-config";
 import { buildProcessTree, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, waitForPortsFree } from "../port-scanner";
 import { getPidCwd, terminatePidsVerified } from "../process-reaper";
 import { getResourceUsage } from "../resource-monitor";
+import { throughputSnapshot } from "../pty-throughput";
 import { loadSettings, recordFavoriteUsages } from "../settings";
 import { getUserShell } from "../shell-env";
 import { agentBinaryPathOverride } from "../executable";
@@ -3133,7 +3134,19 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 	}
 }
 
+/**
+ * What the PTY server read versus what it managed to send, per live session.
+ *
+ * Read by the Debug → Terminal Performance overlay, which otherwise only sees
+ * what the renderer already processed and so cannot tell a quiet shell from a
+ * backlog. See `pty-throughput.ts`.
+ */
+function terminalPtyStats(): { sessions: Record<string, PtyThroughputStats> } {
+	return { sessions: throughputSnapshot() };
+}
+
 export const tmuxPtyHandlers = {
+	terminalPtyStats,
 	runDevServer,
 	checkDevServer,
 	stopDevServer,
