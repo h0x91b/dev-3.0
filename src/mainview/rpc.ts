@@ -105,6 +105,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	showQuitDialog: () => window.dispatchEvent(new CustomEvent("rpc:showQuitDialog")),
 	showAbout: (payload) => window.dispatchEvent(new CustomEvent("rpc:showAbout", { detail: payload })),
 	showFeatureFlags: () => window.dispatchEvent(new CustomEvent("rpc:showFeatureFlags")),
+	toggleTerminalPerf: () => window.dispatchEvent(new CustomEvent("rpc:toggleTerminalPerf")),
 	updateCheckOutcome: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateCheckOutcome", { detail: payload })),
 };
 

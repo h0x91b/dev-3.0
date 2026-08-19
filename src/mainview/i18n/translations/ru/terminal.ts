@@ -254,6 +254,10 @@ const terminal = {
 	"terminal.filePreviewRendered": "Рендер",
 	"terminal.filePreviewRaw": "Исходник",
 	"terminal.rendererCrashed": "Отрисовщик терминала упал и не смог подняться сам. Нажмите, чтобы перезагрузить окно — сессия продолжает работать.",
+	"terminal.perf.title": "Производительность терминала",
+	"terminal.perf.close": "Закрыть панель производительности",
+	"terminal.perf.noPanes": "Ни один терминал не открыт. Откройте терминал задачи, чтобы начать измерения.",
+	"terminal.perf.legend": "p50 / p95 / max. fps — это цикл отрисовки, upd — как часто менялась картинка.",
 };
 
 export default terminal;

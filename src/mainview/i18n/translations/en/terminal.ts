@@ -246,6 +246,12 @@ const terminal = {
 	"terminal.filePreviewRendered": "Rendered",
 	"terminal.filePreviewRaw": "Raw",
 	"terminal.rendererCrashed": "The terminal renderer crashed and could not restart itself. Click to reload the window — your session keeps running.",
+	// TerminalPerfOverlay (View → Debug). Metric names inside the HUD name code —
+	// `fps`, `render`, `write`, `p50` — and stay untranslated like terminal output.
+	"terminal.perf.title": "Terminal Performance",
+	"terminal.perf.close": "Close the performance overlay",
+	"terminal.perf.noPanes": "No terminal is open. Open a task terminal to start measuring.",
+	"terminal.perf.legend": "p50 / p95 / max. fps is the render loop, upd is how often the picture changed.",
 } as const;
 
 export default terminal;

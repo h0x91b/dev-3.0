@@ -90,6 +90,7 @@ export const MENU_ACTIONS = {
 	featureFlags: "feature-flags",
 	nativePaneLayoutLab: "native-pane-layout-lab",
 	updatePopoverPreview: "update-popover-preview",
+	terminalPerfOverlay: "terminal-perf-overlay",
 	debugPlaySoundCompleted: "debug-play-sound-completed",
 	debugPlaySoundCancelled: "debug-play-sound-cancelled",
 	debugPushSoundCompleted: "debug-push-sound-completed",
@@ -670,6 +671,7 @@ function viewMenu(): ApplicationMenuItemConfig {
 			item({ label: "Feature Flags", action: MENU_ACTIONS.featureFlags }),
 					item({ label: "Native Pane Layout Lab", action: MENU_ACTIONS.nativePaneLayoutLab }),
 					item({ label: "Update Popover Preview", action: MENU_ACTIONS.updatePopoverPreview }),
+					item({ label: "Terminal Performance (Toggle)", action: MENU_ACTIONS.terminalPerfOverlay }),
 					SEP,
 					// Task-sound probes. The two "client" items call the exact function
 					// every board/panel/toolbar move calls; the "backend push" item goes

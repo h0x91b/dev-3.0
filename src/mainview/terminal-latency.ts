@@ -1,26 +1,37 @@
 /**
- * Terminal latency probe — the number the "it feels laggy" reports are about.
+ * Terminal performance probe — the numbers the "it feels laggy" reports are about.
  *
  * Before this there was no end-to-end instrumentation anywhere in the app, so
  * every latency claim (including the audit that produced it) was reasoning about
- * code rather than measurement. Four rolling distributions, sampled from the
- * terminal that is already running:
+ * code rather than measurement.
+ *
+ * **Five rolling distributions**, sampled from the terminal that is already running:
  *
  *  - `echo`   keystroke → the PTY's bytes back in the renderer. Everything
  *             outside the browser: socket, bun's batch window, tmux, the shell.
  *  - `paint`  keystroke → the first ghostty frame painted after those bytes were
  *             written. What the user actually waits for.
  *  - `write`  time inside `term.write()` — the WASM parse.
- *  - `frame`  time inside `renderer.render()` — the canvas cost per frame, the
- *             headroom any renderer work would buy.
+ *  - `frame`  time inside `renderer.render()` — the canvas cost per frame.
+ *  - `gap`    wall-clock between two painted frames. `frame` says how expensive a
+ *             frame was; `gap` says whether the loop kept its slot at all, which
+ *             is the one that reads as choppy.
  *
- * Only IDLE typing is sampled: a round trip is started by a single printable
- * keystroke after {@link QUIET_BEFORE_MS} of silence, so an agent streaming
- * output can never be mistaken for an echo. An unanswered keystroke is
- * abandoned after {@link SAMPLE_TIMEOUT_MS} rather than recorded as a huge one.
+ * **Plus per-second counters** ({@link RateCounters}), because a distribution
+ * cannot answer "is anything even arriving". ghostty renders on an unconditional
+ * `requestAnimationFrame` loop, so `fps` near 60 is the loop being healthy and
+ * says nothing about smoothness — `updates` (how many frames carried new bytes)
+ * is the rate at which the picture actually changed.
+ *
+ * Only IDLE typing is sampled for `echo`/`paint`: a round trip is started by a
+ * single printable keystroke after {@link QUIET_BEFORE_MS} of silence, so an
+ * agent streaming output can never be mistaken for an echo. An unanswered
+ * keystroke is abandoned after {@link SAMPLE_TIMEOUT_MS} rather than recorded as
+ * a huge one.
  *
  * Read it live from devtools or an automated browser session with
- * `window.__dev3TerminalLatency()`; a summary also goes to the backend log every
+ * `window.__dev3TerminalLatency()`, or watch it in View → Debug → Terminal
+ * Performance; a summary also goes to the backend log every
  * {@link REPORT_INTERVAL_MS}, which is what survives a restart.
  */
 
@@ -32,10 +43,20 @@ export const QUIET_BEFORE_MS = 150;
 export const SAMPLE_TIMEOUT_MS = 1000;
 /** How often a summary is pushed to the log sink. */
 export const REPORT_INTERVAL_MS = 60_000;
+/** The counters report events per this many milliseconds. */
+export const RATE_WINDOW_MS = 1000;
+/** A gap longer than this missed its slot on a 60 Hz display. */
+export const LONG_FRAME_MS = 24;
+/**
+ * A gap longer than this is not a dropped frame — the tab was hidden, the pane
+ * was detached, or the machine slept. Recording it would poison both the
+ * distribution and the long-frame count.
+ */
+export const FRAME_GAP_CEILING_MS = 500;
 
-export type LatencyStage = "echo" | "paint" | "write" | "frame";
+export type LatencyStage = "echo" | "paint" | "write" | "frame" | "gap";
 
-const STAGES: readonly LatencyStage[] = ["echo", "paint", "write", "frame"];
+const STAGES: readonly LatencyStage[] = ["echo", "paint", "write", "frame", "gap"];
 
 export interface StageStats {
 	count: number;
@@ -44,17 +65,45 @@ export interface StageStats {
 	max: number;
 }
 
-export type LatencySnapshot = Record<LatencyStage, StageStats>;
+/** Everything counted over the last {@link RATE_WINDOW_MS}, expressed per second. */
+export interface RateCounters {
+	/** Frames the vendor's render loop actually painted. ~60 on a healthy loop. */
+	fps: number;
+	/** `term.write()` calls — how often the picture had new content to show. */
+	updates: number;
+	/** Bytes the PTY delivered. */
+	bytes: number;
+	/** WebSocket messages. Two per 16 ms window is bun's leading+trailing flush. */
+	messages: number;
+	/** Wheel events the browser delivered. */
+	wheelEvents: number;
+	/** Scroll lines the pacer let through to tmux. */
+	wheelLines: number;
+	/** Frames that missed their slot ({@link LONG_FRAME_MS}). */
+	longFrames: number;
+}
+
+export type LatencySnapshot = Record<LatencyStage, StageStats> & {
+	rates: RateCounters;
+	/** Scroll lines the pacer is still holding, right now. Not a rate. */
+	wheelBacklog: number;
+};
 
 export interface TerminalLatencyProbe {
 	/** A keystroke left the terminal. Only a lone printable one starts a sample. */
 	noteInput(data: string): void;
-	/** Bytes arrived from the PTY, before they are written. */
+	/** A message arrived from the PTY, before it is decoded or written. */
 	noteOutput(): void;
+	/** How many bytes that message carried, once known. */
+	noteBytes(count: number): void;
 	/** How long `term.write()` took. */
 	noteWrite(ms: number): void;
 	/** A ghostty frame finished painting, and how long it took. */
 	noteFrame(ms: number): void;
+	/** The browser delivered a wheel event. */
+	noteWheelEvent(): void;
+	/** The pacer released `lines` to tmux and is still holding `backlog`. */
+	noteWheelSent(lines: number, backlog: number): void;
 	snapshot(): LatencySnapshot;
 	dispose(): void;
 }
@@ -68,6 +117,10 @@ export interface ProbeOptions {
 
 function emptyStats(): StageStats {
 	return { count: 0, p50: 0, p95: 0, max: 0 };
+}
+
+function zeroCounters(): RateCounters {
+	return { fps: 0, updates: 0, bytes: 0, messages: 0, wheelEvents: 0, wheelLines: 0, longFrames: 0 };
 }
 
 /** Nearest-rank percentile over a copy, so the ring buffer keeps arrival order. */
@@ -93,13 +146,20 @@ export function isSamplableKeystroke(data: string): boolean {
 
 export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLatencyProbe {
 	const now = opts.now ?? (() => performance.now());
-	const samples: Record<LatencyStage, number[]> = { echo: [], paint: [], write: [], frame: [] };
+	const samples: Record<LatencyStage, number[]> = { echo: [], paint: [], write: [], frame: [], gap: [] };
 
 	/** Keystroke waiting for its echo. */
 	let pendingInputAt: number | null = null;
 	/** Echo that arrived and is waiting for the frame that shows it. */
 	let pendingPaintFrom: number | null = null;
 	let lastOutputAt = -Infinity;
+	let lastFrameAt: number | null = null;
+
+	/** The window being filled, and the last one that closed. */
+	let current = zeroCounters();
+	let reported = zeroCounters();
+	let windowStart = now();
+	let wheelBacklog = 0;
 
 	function push(stage: LatencyStage, ms: number): void {
 		if (!Number.isFinite(ms) || ms < 0) return;
@@ -108,7 +168,31 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 		if (bucket.length > MAX_SAMPLES) bucket.shift();
 	}
 
+	/**
+	 * Close the counting window if it is old enough. Scaling by the real elapsed
+	 * time matters when the caller went quiet: a window left open for four
+	 * seconds holds four seconds of events, and reporting it raw would claim a
+	 * rate four times what happened.
+	 */
+	function rollWindow(at: number): void {
+		const elapsed = at - windowStart;
+		if (elapsed < RATE_WINDOW_MS) return;
+		const scale = RATE_WINDOW_MS / elapsed;
+		reported = {
+			fps: Math.round(current.fps * scale),
+			updates: Math.round(current.updates * scale),
+			bytes: Math.round(current.bytes * scale),
+			messages: Math.round(current.messages * scale),
+			wheelEvents: Math.round(current.wheelEvents * scale),
+			wheelLines: Math.round(current.wheelLines * scale),
+			longFrames: Math.round(current.longFrames * scale),
+		};
+		current = zeroCounters();
+		windowStart = at;
+	}
+
 	function snapshot(): LatencySnapshot {
+		rollWindow(now());
 		const out = {} as LatencySnapshot;
 		for (const stage of STAGES) {
 			const bucket = samples[stage];
@@ -124,6 +208,8 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 				max: round(sorted[sorted.length - 1]),
 			};
 		}
+		out.rates = { ...reported };
+		out.wheelBacklog = wheelBacklog;
 		return out;
 	}
 
@@ -149,6 +235,8 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 		},
 		noteOutput() {
 			const at = now();
+			rollWindow(at);
+			current.messages += 1;
 			lastOutputAt = at;
 			if (pendingInputAt === null) return;
 			const elapsed = at - pendingInputAt;
@@ -158,16 +246,44 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 			push("echo", elapsed);
 			pendingPaintFrom = at - elapsed;
 		},
+		noteBytes(count) {
+			if (!Number.isFinite(count) || count <= 0) return;
+			rollWindow(now());
+			current.bytes += count;
+		},
 		noteWrite(ms) {
+			rollWindow(now());
+			current.updates += 1;
 			push("write", ms);
 		},
 		noteFrame(ms) {
+			const at = now();
+			rollWindow(at);
+			current.fps += 1;
+			if (lastFrameAt !== null) {
+				const gap = at - lastFrameAt;
+				// A hidden tab paints nothing; that stretch is not a dropped frame.
+				if (gap <= FRAME_GAP_CEILING_MS) {
+					push("gap", gap);
+					if (gap > LONG_FRAME_MS) current.longFrames += 1;
+				}
+			}
+			lastFrameAt = at;
 			push("frame", ms);
 			if (pendingPaintFrom === null) return;
-			const elapsed = now() - pendingPaintFrom;
+			const elapsed = at - pendingPaintFrom;
 			pendingPaintFrom = null;
 			if (elapsed > SAMPLE_TIMEOUT_MS) return;
 			push("paint", elapsed);
+		},
+		noteWheelEvent() {
+			rollWindow(now());
+			current.wheelEvents += 1;
+		},
+		noteWheelSent(lines, backlog) {
+			rollWindow(now());
+			if (lines > 0) current.wheelLines += lines;
+			wheelBacklog = Math.max(0, backlog);
 		},
 		snapshot,
 		dispose() {
@@ -179,9 +295,9 @@ export function createTerminalLatencyProbe(opts: ProbeOptions = {}): TerminalLat
 }
 
 // ── Live read-out ────────────────────────────────────────────────────
-// One global function rather than a panel: it needs no UI surface, works in
-// devtools and in a scripted browser session alike, and reports every pane at
-// once — which is the view an audit wants.
+// A registry rather than a prop chain: the panes that matter are mounted deep
+// inside the task view, and both readers — the devtools function and the Debug
+// overlay — want every pane at once, which is the view an audit needs.
 
 const liveProbes = new Map<string, TerminalLatencyProbe>();
 
@@ -191,14 +307,17 @@ declare global {
 	}
 }
 
+/** Every registered pane, keyed the way it registered itself. */
+export function snapshotAllPanes(): Record<string, LatencySnapshot> {
+	const out: Record<string, LatencySnapshot> = {};
+	for (const [key, live] of liveProbes) out[key] = live.snapshot();
+	return out;
+}
+
 export function registerLatencyProbe(paneKey: string, probe: TerminalLatencyProbe): () => void {
 	liveProbes.set(paneKey, probe);
 	if (typeof window !== "undefined" && !window.__dev3TerminalLatency) {
-		window.__dev3TerminalLatency = () => {
-			const out: Record<string, LatencySnapshot> = {};
-			for (const [key, live] of liveProbes) out[key] = live.snapshot();
-			return out;
-		};
+		window.__dev3TerminalLatency = snapshotAllPanes;
 	}
 	return () => {
 		if (liveProbes.get(paneKey) === probe) liveProbes.delete(paneKey);

@@ -608,12 +608,22 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					writeP95: snapshot.write.p95,
 					frameP50: snapshot.frame.p50,
 					frameP95: snapshot.frame.p95,
+					gapP95: snapshot.gap.p95,
+					gapMax: snapshot.gap.max,
+					fps: snapshot.rates.fps,
+					updates: snapshot.rates.updates,
+					longFrames: snapshot.rates.longFrames,
 					samples: snapshot.echo.count,
 					frames: snapshot.frame.count,
 				});
 			},
 		});
-		const unregisterLatency = registerLatencyProbe(`${taskId.slice(0, 8)}:${ptyUrl}`, latency);
+		// The key is also what the Debug overlay labels the pane with, so it drops
+		// the token and the scheme rather than printing a secret at 2 Hz.
+		const unregisterLatency = registerLatencyProbe(
+			`${taskId.slice(0, 8)} · ${ptyUrl.replace(/[?&]token=[^&]*/g, "").replace(/^wss?:\/\//, "")}`,
+			latency,
+		);
 
 		// TEMP DIAGNOSTIC: install per-terminal clipboard instrumentation.
 		copyDiagnosticsRef.current = installTerminalCopyDiagnostics({
@@ -1418,6 +1428,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						const [col, row] = lastWheelCell;
 						sgrMouse(direction < 0 ? 64 : 65, col, row, true, allowed);
 					}
+					latency.noteWheelSent(allowed, wheelPacer.pending());
 					scheduleWheelDrain();
 				}, WHEEL_DRAIN_INTERVAL_MS);
 			}
@@ -1426,6 +1437,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				if (disposed) return false;
 				try {
 					if (!term.hasMouseTracking()) return false;
+					latency.noteWheelEvent();
 					const [col, row] = cellCoords(e);
 					lastWheelCell = [col, row];
 
@@ -1448,6 +1460,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							performance.now(),
 						);
 						if (allowed > 0) sgrMouse(direction < 0 ? 64 : 65, col, row, true, allowed);
+						latency.noteWheelSent(allowed, wheelPacer.pending());
 						scheduleWheelDrain();
 					}
 					return true;
@@ -1754,11 +1767,19 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							return;
 						}
 						const cleaned = event.data.replace(OSC52_RE, "");
-						if (cleaned) { noteSocketBytes(cleaned.length); writeToTerminal(cleaned, true); }
+						if (cleaned) {
+							noteSocketBytes(cleaned.length);
+							latency.noteBytes(cleaned.length);
+							writeToTerminal(cleaned, true);
+						}
 					} else {
 						// Binary data — decode, then write on the same path as text
 						const str = new TextDecoder().decode(new Uint8Array(event.data));
-						if (str) { noteSocketBytes(str.length); writeToTerminal(str, true); }
+						if (str) {
+							noteSocketBytes(str.length);
+							latency.noteBytes(str.length);
+							writeToTerminal(str, true);
+						}
 					}
 				} catch (err) {
 					// Same trade as the write batch above: throttled instead of silent, so a

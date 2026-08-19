@@ -4562,6 +4562,8 @@ export type AppRPCSchema = {
 			showAbout: { version: string; buildChannel?: string };
 			/** Open the Debug → Feature Flags inspector. */
 			showFeatureFlags: {};
+			/** Show or hide the Debug → Terminal Performance overlay. */
+			toggleTerminalPerf: {};
 			/**
 			 * Result of a manual "Check for Updates" menu action, surfaced as a toast.
 			 * `available` updates flow through `updateAvailable` instead (header plaque).
