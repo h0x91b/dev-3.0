@@ -64,7 +64,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 					<button
 						ref={openInBtnRef}
 						onClick={handleOpenInClick}
-						className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-accent hover:text-accent-emphasis hover:bg-accent/15 border border-accent/30"
+						className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 					>
 						<OpenInIcon className="w-[1.05rem] h-[1.05rem]" />
 						{!compact && <span className="text-micro font-semibold">{t("openIn.menuTitle")}</span>}
@@ -89,7 +89,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 							className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 								!isTaskActive
 									? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
-									: "text-accent hover:text-accent-emphasis hover:bg-accent/15 border border-accent/30"
+									: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 							}`}
 							aria-label={t("header.fileBrowser")}
 						>

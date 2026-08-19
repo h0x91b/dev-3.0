@@ -234,6 +234,21 @@ function TaskInfoPanel({
 			</button>
 		</Tooltip>
 	) : null;
+	// Lives on the ops row (next to the ports/artifacts chips), immediately left of
+	// the panel collapse chevron — it is a view control, not a session action.
+	const terminalFullscreenButton = (
+		<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
+			<button
+				onClick={toggleTerminalFullscreen}
+				className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+				aria-label={terminalFullscreenLabel}
+			>
+				{terminalFullscreenActive
+					? <FullscreenExitIcon className="w-3.5 h-3.5" />
+					: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
+			</button>
+		</Tooltip>
+	);
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
 	// Narrow viewport renders no TaskGitActions (the desktop git bar), which is
@@ -891,7 +906,7 @@ function TaskInfoPanel({
 		<Tooltip content={t("tmux.spawnExtraAgentDesc")} detail={t("ttip.infoPanel.spawnAgent")}>
 			<button
 				onClick={() => setSpawnModalOpen(true)}
-				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:bg-success/15 border border-success/30"
+				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 				aria-label={t("tmux.spawnExtraAgentDesc")}
 			>
 				<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
@@ -979,9 +994,9 @@ function TaskInfoPanel({
 	// agent-session controls — never on the board card (a hibernated card is inert
 	// by design, and waking must be an explicit act inside the task).
 	// Amber, not danger: red in this app means "destroys something you cannot get
-	// back", and the neighbouring Bug Hunters button already owns it here. The skull
-	// is the one filled glyph in this bar on purpose — it has to stop the eye before
-	// the tooltip explains that the worktree survives.
+	// back". It is the only coloured button left in this bar, and the skull is its
+	// one filled glyph on purpose — it has to stop the eye before the tooltip
+	// explains that the worktree survives.
 	const hibernateButton = isTaskActive && task.worktreePath && !task.hibernated && !task.preparing && !task.shuttingDown ? (
 		<Tooltip content={t("task.hibernate")} detail={t("task.hibernateHint")}>
 			<button
@@ -1019,7 +1034,7 @@ function TaskInfoPanel({
 		<Tooltip content={t("bugHunters.buttonTooltip")} detail={t("ttip.infoPanel.bugHunters")}>
 		<button
 			onClick={() => setBugHuntersOpen(true)}
-			className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-danger hover:text-danger hover:bg-danger/15 border border-danger/30"
+			className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 			aria-label={t("bugHunters.buttonTooltip")}
 		>
 			<FindBugsIcon className="w-[1.05rem] h-[1.05rem]" />
@@ -1518,17 +1533,6 @@ function TaskInfoPanel({
 						{worktreeSettingsButton}
 						<TerminalShortcutsButton taskId={task.id} />
 						{showPanelButton}
-						<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
-							<button
-								onClick={toggleTerminalFullscreen}
-								className="task-anim flex-shrink-0 p-1 rounded hover:bg-accent/10 transition-colors text-accent hover:text-accent-emphasis"
-								aria-label={terminalFullscreenLabel}
-							>
-								{terminalFullscreenActive
-									? <FullscreenExitIcon className="w-3.5 h-3.5" />
-									: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
-							</button>
-						</Tooltip>
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
@@ -1561,6 +1565,7 @@ function TaskInfoPanel({
 							<TaskExposedPorts task={task} compact={tight} />
 							<TaskSharedImages task={task} projectId={project.id} compact={tight} />
 							<TaskArtifacts task={task} projectId={project.id} compact={tight} />
+							{terminalFullscreenButton}
 							{collapseToggleButton}
 						</div>
 					</div>
@@ -1598,17 +1603,6 @@ function TaskInfoPanel({
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 							<TerminalShortcutsButton taskId={task.id} />
 							{showPanelButton}
-							<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
-								<button
-									onClick={toggleTerminalFullscreen}
-									className="task-anim flex-shrink-0 p-1 rounded hover:bg-accent/10 transition-colors text-accent hover:text-accent-emphasis"
-									aria-label={terminalFullscreenLabel}
-								>
-									{terminalFullscreenActive
-										? <FullscreenExitIcon className="w-3.5 h-3.5" />
-										: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
-								</button>
-							</Tooltip>
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
@@ -1640,6 +1634,7 @@ function TaskInfoPanel({
 								<TaskExposedPorts task={task} compact={tight} />
 								<TaskSharedImages task={task} projectId={project.id} compact={tight} />
 								<TaskArtifacts task={task} projectId={project.id} compact={tight} />
+								{terminalFullscreenButton}
 								{collapseToggleButton}
 							</div>
 						</div>

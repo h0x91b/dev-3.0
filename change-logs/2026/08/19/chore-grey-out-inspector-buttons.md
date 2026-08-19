@@ -1,0 +1,1 @@
+The inspector session bar is quieter: Find bugs and + Agent are now neutral grey instead of red and green, Open in… / the file browser / the scripts button lost their blue and green too, and the new tmux window button matches the blue of the split buttons next to it. Full screen also turned grey and moved down to the runtime bar, right before the panel collapse chevron.

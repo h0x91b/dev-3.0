@@ -223,7 +223,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 
 	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
 	const tmuxBtnDisabledClass = "px-1.5 py-1 rounded text-dense font-medium text-fg-muted bg-elevated/50 border border-edge/50 flex items-center gap-1 cursor-not-allowed opacity-50";
-	const tmuxNewWindowBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-success hover:bg-success/20 bg-success/10 border border-success/35 flex items-center gap-1";
 	const tmuxSvgClass = "w-4 h-4";
 
 	const cycleIcon: ReactNode = <CycleLayoutIcon className={tmuxSvgClass} />;
@@ -271,7 +270,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 				{showNewWindow && (
 					<Tooltip content={t("tmux.newWindowDesc")}>
 						<button
-							className={tmuxNewWindowBtnClass}
+							className={tmuxBtnClass}
 							onClick={(e) => { e.stopPropagation(); api.request.tmuxNewWindow({ taskId }).catch(() => {}); }}
 							aria-label={t("tmux.newWindowDesc")}
 						>

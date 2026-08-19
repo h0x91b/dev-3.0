@@ -746,8 +746,10 @@ describe("TaskInfoPanel", () => {
 			const toggle = screen.getByLabelText("Expand panel");
 			const images = screen.getByTestId("shared-images-badge");
 			expect(images.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-			// It left the panel chrome: Full screen must no longer be its neighbour.
-			expect(toggle.parentElement?.parentElement).not.toContainElement(screen.getByLabelText("Full screen"));
+			// Full screen moved down here too, and sits immediately left of the toggle.
+			const fullScreen = screen.getByLabelText("Full screen");
+			expect(fullScreen.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			expect(images.compareDocumentPosition(fullScreen) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		});
 
 		it("ends the Runtime bar, right of Images, in the expanded panel", async () => {
