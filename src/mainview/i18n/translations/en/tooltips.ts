@@ -82,9 +82,6 @@ export const tooltips = {
 		"tmux: closes a pane and terminates whatever runs inside. A picker opens first, so you choose exactly which pane dies.",
 
 	// Git bar
-	"ttip.git.changeRef": "Change comparison branch",
-	"ttip.git.refDropdown":
-		"Choose which branch the diff and the ahead/behind counters compare against — usually the base branch you'll merge into.",
 	"ttip.git.commit":
 		"Hands the commit to the agent in the task terminal: it reviews the changes, stages them and writes the message. Nothing is pushed.",
 	"ttip.git.rebase": "Replays this task's commits on top of the latest base branch. Keeps the diff honest and surfaces conflicts early.",

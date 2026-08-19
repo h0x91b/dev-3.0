@@ -80,9 +80,6 @@ export const tooltips = {
 		"tmux: cierra un panel y termina lo que corre dentro. Primero se abre un selector, así eliges exactamente qué panel muere.",
 
 	// Git bar
-	"ttip.git.changeRef": "Cambiar rama de comparación",
-	"ttip.git.refDropdown":
-		"Elige contra qué rama se comparan el diff y los contadores ahead/behind — normalmente la rama base donde harás merge.",
 	"ttip.git.commit":
 		"Delega el commit al agente en la terminal de la tarea: revisa los cambios, los prepara y escribe el mensaje. No hace push.",
 	"ttip.git.rebase": "Reaplica los commits de la tarea sobre la rama base más reciente. El diff se mantiene honesto y los conflictos aparecen antes.",

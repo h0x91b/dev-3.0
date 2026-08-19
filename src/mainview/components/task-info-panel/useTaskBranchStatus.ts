@@ -414,11 +414,6 @@ export function useTaskBranchStatus({
 		}
 	}, [branchStatus?.prUrl]);
 
-	function selectCompareRef(nextCompareRef: string) {
-		setCompareRef(nextCompareRef);
-		setBranchStatus(null);
-	}
-
 	return {
 		baseBranch,
 		branchStatus,
@@ -437,7 +432,6 @@ export function useTaskBranchStatus({
 		pushing,
 		rebasing,
 		refreshingStatus,
-		selectCompareRef,
 		statusLoading: enabled && isTaskActive && !!task.worktreePath && !branchStatus,
 	};
 }

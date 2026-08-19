@@ -1422,11 +1422,71 @@ describe("TaskInfoPanel", () => {
 				});
 
 			await act(async () => {
-				renderPanel(makeTask({ baseBranch: "develop" }));
+				renderPanel(makeTask({ baseBranch: "develop" }), { onOpenInlineDiff: vi.fn() });
 			});
 
-				expect(screen.getAllByText(/vs develop/).length).toBeGreaterThanOrEqual(1);
+				// The bar no longer prints "vs <ref>" — the compare target lives in the
+				// name of the control that acts on it.
+				expect(screen.queryByText(/vs develop/)).not.toBeInTheDocument();
+				expect(screen.getAllByLabelText(/vs develop/).length).toBeGreaterThanOrEqual(1);
 			});
+
+		it("opens the diff when the ahead/behind and line counts are clicked", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const onOpenInlineDiff = vi.fn();
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 1,
+				behind: 1,
+				insertions: 46,
+				deletions: 19,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+
+			// One control carries both halves, so clicking either number opens the diff.
+			const summary = screen.getByText("+46").closest("button")!;
+			expect(summary).toContainElement(screen.getByText("1 ahead"));
+			await user.click(summary);
+
+			expect(onOpenInlineDiff).toHaveBeenCalledWith({
+				mode: "branch",
+				compareLabel: "origin/main",
+			});
+		});
+
+		it("keeps no separator between the commit counts and the line counts", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 1,
+				behind: 1,
+				insertions: 46,
+				deletions: 19,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
+			});
+
+			const summary = screen.getByText("+46").closest("button")!;
+			expect(summary.textContent).not.toContain("|");
+		});
+
+		it("drops the compare-ref picker — the project setting owns that choice", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 1,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
+			});
+
+			expect(screen.queryByText(/vs origin\/main/)).not.toBeInTheDocument();
+			expect(screen.queryByLabelText("Change comparison branch")).not.toBeInTheDocument();
+		});
 	});
 
 	describe("git action buttons", () => {
@@ -1781,7 +1841,6 @@ describe("TaskInfoPanel", () => {
 					});
 				});
 
-				expect(screen.getAllByText(/vs feat-uber-extra/).length).toBeGreaterThanOrEqual(1);
 				await waitFor(() => {
 					expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
 						taskId: "t1",
@@ -1804,7 +1863,6 @@ describe("TaskInfoPanel", () => {
 					});
 				});
 
-				expect(screen.getAllByText(/vs feat-uber-extra/).length).toBeGreaterThanOrEqual(1);
 				await waitFor(() => {
 					expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
 						taskId: "t1",
