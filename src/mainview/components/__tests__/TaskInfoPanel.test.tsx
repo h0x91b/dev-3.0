@@ -2504,14 +2504,38 @@ describe("TaskInfoPanel", () => {
 			expect(vi.mocked(toast.info)).not.toHaveBeenCalled();
 		});
 
-		it("keeps completion ownership legible in the compact task bar", async () => {
-			mockMatchMedia(true);
-
+		it("carries completion ownership as an icon only, with the sentence in the name", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ manualCompletion: true }));
 			});
 
-			expect(screen.getByText("I decide")).toBeInTheDocument();
+			// The label cost bar width for a state the accent icon already carries; what
+			// the control does has to survive somewhere the user can reach — the name.
+			expect(screen.queryByText("I decide")).not.toBeInTheDocument();
+			const button = screen.getByLabelText(/complete it myself/i);
+			expect(button).toHaveAttribute("aria-pressed", "true");
+			expect(button.querySelector("svg")).toBeTruthy();
+		});
+
+		it("puts completion ownership to the RIGHT of the status chip", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ manualCompletion: true }));
+			});
+
+			const owner = screen.getByLabelText(/complete it myself/i);
+			const status = screen.getByText("Agent is Working");
+			expect(
+				status.compareDocumentPosition(owner) & Node.DOCUMENT_POSITION_FOLLOWING,
+			).toBeTruthy();
+		});
+
+		it("shows the watch toggle as a bare bell, the words only in its name", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ watched: true }));
+			});
+
+			expect(screen.queryByText("Watching")).not.toBeInTheDocument();
+			expect(screen.getByLabelText(/stop notifications/i).querySelector("svg")).toBeTruthy();
 		});
 
 		it("persists self-managed completion from the merge popup", async () => {

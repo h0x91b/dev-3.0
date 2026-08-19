@@ -35,7 +35,7 @@ import {
 	GitHubIcon,
 	ReportBugIcon,
 	ChangelogIcon,
-	KebabIcon,
+	OverflowDotsIcon,
 	WrenchIcon,
 	SlidersIcon,
 	UpdateReadyIcon,
@@ -164,9 +164,12 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				setShowOverflowMenu(false);
 			}
 		}
-		document.addEventListener("mousedown", handleClick);
+		// Capture phase: a click landing on a surface that stops mousedown from
+		// bubbling (a task card, the terminal) never reaches a bubble-phase document
+		// listener, which left the menu open until the trigger was clicked again.
+		document.addEventListener("mousedown", handleClick, true);
 		return () => {
-			document.removeEventListener("mousedown", handleClick);
+			document.removeEventListener("mousedown", handleClick, true);
 		};
 	}, [showUpdateDropdown, showProjectDropdown, showOverflowMenu]);
 
@@ -592,29 +595,18 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				    bought nothing. */}
 
 				{/* Memory headroom — the one ambient resource readout in the header
-				    (PRODUCT_UX_BIBLE §12.6). Folds into the kebab sheet on narrow
-				    like its neighbours: a phone header has no room for a readout
-				    nobody acts on at a glance. In the sheet it opens a BottomSheet
-				    instead of a popover. */}
+				    (PRODUCT_UX_BIBLE §12.6). The bar carries it only while the OS
+				    reports pressure; with headroom to spare it lives in the overflow
+				    menu instead (the component decides — see its `variant`). Folds into
+				    the kebab sheet on narrow, where the breakdown is a BottomSheet. */}
 				{!isNarrow && <MemoryHeadroomIndicator navigate={navigate} />}
 
 				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
 				    (folded into the kebab bottom sheet on narrow). */}
 				{!isNarrow && <RateLimitIndicator compact={compact} />}
 
-				{/* Quick Shell — opens the built-in Operations shell in $HOME (folded into the kebab on narrow) */}
-				{!isNarrow && (
-					<Tooltip content={t("quickShell.tooltipWithShortcut")} detail={t("ttip.header.quickShell")}>
-						<button
-							onClick={() => window.dispatchEvent(new CustomEvent("menu:open-quick-shell"))}
-							className="header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
-							aria-label={t("quickShell.tooltipWithShortcut")}
-						>
-							<QuickShellIcon className="w-[1.125rem] h-[1.125rem]" />
-							{!compact && <span className="text-micro font-medium">{t("quickShell.open")}</span>}
-						</button>
-				</Tooltip>
-				)}
+				{/* Quick Shell lives in the overflow menu at every width — it is a
+				    keyboard action (⌘⇧`) far more than a button. */}
 
 				{/* Project Terminal — visible when inside a git project. Hidden for
 				    virtual ("Operations") boards: their synthetic path is created
@@ -663,8 +655,8 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				</Tooltip>
 				)}
 
-				{/* Tmux Session Manager — folded into the kebab bottom sheet on narrow. */}
-				{!isNarrow && <TmuxSessionManager navigate={navigate} />}
+				{/* The tmux session list lives in the overflow menu at every width —
+				    a diagnostic panel nobody opens on the happy path. */}
 
 				{/* Overflow menu — low-frequency actions (Stats / GitHub / Report / Changelog)
 				    always live under a single kebab to keep the header lean.
@@ -672,23 +664,42 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{!isNarrow && (
 					<div className="relative" ref={overflowMenuRef}>
 						<Tooltip content={t("header.moreActions")} detail={t("ttip.header.moreActions")}>
+							{/* Horizontal dots inside a visible chip: the old vertical kebab, borderless
+							    and next to real `|` separators, read as one more separator instead of a
+							    control. The border is what says "button", the row of dots says "menu". */}
 							<button
 								onClick={() => setShowOverflowMenu((v) => !v)}
-								className={`header-anim flex items-center transition-colors px-1.5 py-1 rounded-lg ${
-									showOverflowMenu ? "text-fg bg-elevated" : "text-fg-3 hover:text-fg hover:bg-elevated"
+								className={`header-anim flex items-center transition-colors px-1.5 py-1 rounded-lg border ${
+									showOverflowMenu
+										? "text-fg bg-elevated border-edge-active"
+										: "text-fg-2 border-edge bg-raised/60 hover:text-fg hover:bg-elevated hover:border-edge-active"
 								}`}
 								aria-label={t("header.moreActions")}
 								aria-haspopup="menu"
 								aria-expanded={showOverflowMenu}
 							>
-								<KebabIcon className="w-[1.125rem] h-[1.125rem]" />
+								<OverflowDotsIcon className="w-[1.125rem] h-[1.125rem]" />
 							</button>
 					</Tooltip>
 						{showOverflowMenu && (
 							<div className="absolute right-0 top-full mt-1.5 w-52 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1" role="menu">
-								{/* The one stateful row here — it stays open on click so the icon
-								    flipping to z's is the confirmation. */}
+								{/* Stateful rows: they keep the menu open on click, because the row
+								    itself (icon state, session count, memory number) is the answer. */}
 								<PreventSleepToggle variant="row" />
+								<MemoryHeadroomIndicator navigate={navigate} variant="menu" />
+								<TmuxSessionManager navigate={navigate} variant="menu" />
+								<button
+									role="menuitem"
+									onClick={() => {
+										setShowOverflowMenu(false);
+										window.dispatchEvent(new CustomEvent("menu:open-quick-shell"));
+									}}
+									className="header-anim w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+									aria-label={t("quickShell.tooltipWithShortcut")}
+								>
+									<QuickShellIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
+									<span className="text-sm">{t("quickShell.open")}</span>
+								</button>
 								<div className="my-1 border-t border-edge" />
 								{route.screen !== "stats" && (
 									<button
@@ -800,11 +811,11 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					<Tooltip content={t("header.moreActions")} detail={t("ttip.header.moreActions")}>
 						<button
 							onClick={() => setShowActionSheet(true)}
-							className="header-anim flex items-center justify-center w-9 h-9 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+							className="header-anim flex items-center justify-center w-9 h-9 rounded-lg border border-edge bg-raised/60 text-fg-2 hover:text-fg hover:bg-elevated hover:border-edge-active transition-colors"
 							aria-label={t("header.moreActions")}
 							aria-haspopup="dialog"
 						>
-							<KebabIcon className="w-[1.125rem] h-[1.125rem]" />
+							<OverflowDotsIcon className="w-[1.125rem] h-[1.125rem]" />
 						</button>
 				</Tooltip>
 				)}

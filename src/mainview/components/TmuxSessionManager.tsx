@@ -14,11 +14,13 @@ import Tooltip from "./Tooltip";
 
 interface TmuxSessionManagerProps {
 	navigate: (route: Route) => void;
+	/** `bar` is the icon-only header chip; `menu` is the labelled row in the header's overflow menu. */
+	variant?: "bar" | "menu";
 }
 
 const SESSION_REFRESH_FRESH_MS = 5000;
 
-function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
+function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerProps) {
 	const t = useT();
 	const privacy = useProjectPrivacy();
 
@@ -197,28 +199,50 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 
 	const count = sessions.length;
 
+	const glyph = (
+		<span
+			className="text-lg leading-none"
+			style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+		>
+			{"\u{EBC8}"}
+		</span>
+	);
+
+	const countBadge = count > 0 ? (
+		<span className="min-w-[1.125rem] h-[1.125rem] flex items-center justify-center text-dense font-bold bg-accent/20 text-accent rounded-full px-1">
+			{count}
+		</span>
+	) : null;
+
+	const trigger = variant === "menu" ? (
+		<button
+			ref={buttonRef}
+			role="menuitem"
+			onClick={togglePopover}
+			className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+			aria-label={t("tmuxSessions.title")}
+		>
+			<span className="flex w-[1.125rem] justify-center flex-shrink-0">{glyph}</span>
+			<span className="text-sm flex-1 text-left">{t("tmuxSessions.title")}</span>
+			{countBadge}
+		</button>
+	) : (
+		<Tooltip content={t("tmuxSessions.title")} detail={t("ttip.header.tmuxSessions")}>
+		<button
+			ref={buttonRef}
+			onClick={togglePopover}
+			className={`flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated ${popoverOpen ? "bg-elevated text-fg" : ""}`}
+			aria-label={t("tmuxSessions.title")}
+		>
+			{glyph}
+			{countBadge}
+		</button>
+		</Tooltip>
+	);
+
 	return (
 		<>
-			<Tooltip content={t("tmuxSessions.title")} detail={t("ttip.header.tmuxSessions")}>
-			<button
-				ref={buttonRef}
-				onClick={togglePopover}
-				className={`flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated ${popoverOpen ? "bg-elevated text-fg" : ""}`}
-				aria-label={t("tmuxSessions.title")}
-			>
-				<span
-					className="text-lg leading-none"
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{"\u{EBC8}"}
-				</span>
-				{count > 0 && (
-					<span className="min-w-[1.125rem] h-[1.125rem] flex items-center justify-center text-dense font-bold bg-accent/20 text-accent rounded-full px-1">
-						{count}
-					</span>
-				)}
-			</button>
-			</Tooltip>
+			{trigger}
 
 			{popoverOpen &&
 				createPortal(

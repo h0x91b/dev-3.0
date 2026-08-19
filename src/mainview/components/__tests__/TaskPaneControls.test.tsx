@@ -80,7 +80,7 @@ describe("TaskPaneControls", () => {
 
 	// ── tmux task: standard controls ─────────────────────────────────────────
 
-	it("shows split, layout, zoom, hints, close controls for a tmux task", async () => {
+	it("shows split, layout, zoom and close controls for a tmux task", async () => {
 		renderControls();
 		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
 		expect(screen.getByLabelText("Split horizontally")).toBeInTheDocument();
@@ -271,16 +271,6 @@ describe("TaskPaneControls", () => {
 		}));
 	});
 
-	// ── Hints popover: backend-aware ──────────────────────────────────────────
-
-	it("hints button has correct title for tmux task", async () => {
-		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_TWO_PANE);
-		renderControls();
-		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
-		await new Promise((r) => setTimeout(r, 20));
-		expect(screen.getByTitle("tmux Shortcuts")).toBeInTheDocument();
-	});
-
 	// ── Immediate feedback + duplicate suppression (seq 1382) ─────────────────
 
 	it("holds every mutating control while a split is in flight, then releases them", async () => {
@@ -351,13 +341,11 @@ describe("TaskPaneControls", () => {
 		stop();
 	});
 
-	it("hints button has localized title for a native task", async () => {
-		vi.mocked(api.request.taskPaneState).mockResolvedValue(NATIVE_TWO_PANE);
+	it("carries no shortcuts button — that moved next to the panel chrome", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TMUX_TWO_PANE);
 		renderControls();
 		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
 		await new Promise((r) => setTimeout(r, 20));
-		// Native: title is "Terminal Shortcuts", not "tmux Shortcuts"
 		expect(screen.queryByTitle("tmux Shortcuts")).not.toBeInTheDocument();
-		expect(screen.getByTitle("Terminal Shortcuts")).toBeInTheDocument();
 	});
 });

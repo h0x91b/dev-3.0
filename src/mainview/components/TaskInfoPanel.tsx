@@ -52,6 +52,7 @@ import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskNotesOverlay from "./TaskNotesOverlay";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
 import TaskPaneControls from "./task-info-panel/TaskPaneControls";
+import TerminalShortcutsButton from "./task-info-panel/TerminalShortcutsButton";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { isTestFile } from "../../shared/test-files";
@@ -759,14 +760,12 @@ function TaskInfoPanel({
 			}`}
 			aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
 		>
+			{/* Icon only, at every width: the accent bell already says "watching", and
+			    the word cost bar space the tags and the status chip need more. The
+			    sentence stays in the tooltip and in the mobile sheet row. */}
 			{task.watched
 				? <WatchingIcon className="w-[0.95rem] h-[0.95rem]" />
 				: <WatchIcon className="w-[0.95rem] h-[0.95rem]" />}
-			{!compact && (
-				<span className="text-micro font-medium">
-					{task.watched ? t("task.watching") : t("task.watch")}
-				</span>
-			)}
 		</button>
 		</Tooltip>
 	);
@@ -786,14 +785,10 @@ function TaskInfoPanel({
 						: "text-fg-3 hover:text-fg hover:bg-elevated"
 				}`}
 			>
+				{/* Icon only. Even the short "I decide" label cost bar width for a state
+				    the accent icon already carries; the full sentence lives in the
+				    tooltip and in the mobile sheet row. */}
 				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={task.manualCompletion} />
-				{/* Always the short label: the full sentence ("I'll complete it myself")
-				    costs ~180px of bar — more in ru/es — for a state the accent icon
-				    already carries. The sentence stays in the tooltip and in the mobile
-				    sheet row. A tight bar drops even the short label. */}
-				{!tight && (
-					<span className="text-micro font-medium">{t("task.manualCompletionShort")}</span>
-				)}
 			</button>
 		</Tooltip>
 	);
@@ -1484,9 +1479,9 @@ function TaskInfoPanel({
 						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
 							{variantSwitcher}
 							{watchToggleButton}
-							{manualCompletionToggleButton}
 							{priorityBadge}
 							{statusDropdownButton}
+							{manualCompletionToggleButton}
 							{diffSummaryBadge}
 							{diffIncludeTestsToggle}
 							{labelStrip}
@@ -1503,6 +1498,7 @@ function TaskInfoPanel({
 							<TaskPaneControls taskId={task.id} compact={tight} />
 						</div>
 						{worktreeSettingsButton}
+						<TerminalShortcutsButton taskId={task.id} />
 						{showPanelButton}
 						<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 							<button
@@ -1573,10 +1569,10 @@ function TaskInfoPanel({
 							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.context-bar">
 								{variantSwitcher}
 								{watchToggleButton}
-								{manualCompletionToggleButton}
 								{priorityBadge}
 								{statusDropdownButton}
 								{statusDropdownPortal}
+								{manualCompletionToggleButton}
 								{diffSummaryBadge}
 								{diffIncludeTestsToggle}
 								{labelStrip}
@@ -1592,6 +1588,7 @@ function TaskInfoPanel({
 								<TaskPaneControls taskId={task.id} compact={tight} />
 							</div>
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
+							<TerminalShortcutsButton taskId={task.id} />
 							{showPanelButton}
 							<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 								<button

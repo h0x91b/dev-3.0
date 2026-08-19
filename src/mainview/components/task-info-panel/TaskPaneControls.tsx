@@ -18,7 +18,6 @@ import {
 	NewWindowIcon,
 	SplitHIcon,
 	SplitVIcon,
-	TmuxHintsIcon,
 	ZoomPaneIcon,
 } from "../TmuxIcons";
 import type { TaskPaneState } from "../../../shared/task-panes";
@@ -225,7 +224,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
 	const tmuxBtnDisabledClass = "px-1.5 py-1 rounded text-dense font-medium text-fg-muted bg-elevated/50 border border-edge/50 flex items-center gap-1 cursor-not-allowed opacity-50";
 	const tmuxNewWindowBtnClass = "tmux-anim px-1.5 py-1 rounded text-dense font-medium transition-colors text-success hover:bg-success/20 bg-success/10 border border-success/35 flex items-center gap-1";
-	const tmuxIconBtnClass = "tmux-anim px-1.5 py-1 rounded text-fg-muted hover:text-fg-2 hover:bg-elevated border border-edge transition-colors flex items-center justify-center flex-shrink-0";
 	const tmuxSvgClass = "w-4 h-4";
 
 	const cycleIcon: ReactNode = <CycleLayoutIcon className={tmuxSvgClass} />;
@@ -245,8 +243,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 		{ action: "layoutMainH", descKey: "tmux.layoutMainHDesc", shortcut: "⌃B M-3" },
 		{ action: "layoutMainV", descKey: "tmux.layoutMainVDesc", shortcut: "⌃B M-4" },
 	];
-
-	const hintsTitle = isNative ? t("panes.nativeHintsTitle") : t("tmux.title");
 
 	return (
 		<>
@@ -332,20 +328,6 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 						</button>
 					</Tooltip>
 				)}
-
-				<button
-					className={tmuxIconBtnClass}
-					onClick={(event) => {
-						event.stopPropagation();
-						// The ⌘/ overlay's Terminal tab is the same cheat sheet, only complete
-						// and searchable — so this opens that instead of a partial popover.
-						window.dispatchEvent(new Event("menu:show-tmux-cheat-sheet"));
-					}}
-					title={hintsTitle}
-					aria-label={hintsTitle}
-				>
-					<TmuxHintsIcon className="w-3.5 h-3.5" />
-				</button>
 
 				{multiPane && (
 					<>

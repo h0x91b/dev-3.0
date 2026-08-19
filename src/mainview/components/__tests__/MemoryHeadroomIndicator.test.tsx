@@ -30,7 +30,10 @@ function snapshot(overrides?: Partial<SystemMemorySnapshot>): SystemMemorySnapsh
 		used: 52 * GIB,
 		total: 64 * GIB,
 		cached: 8 * GIB,
-		pressure: "normal",
+		// The header pill only renders while the OS reports pressure, so the shared
+		// fixture is a machine under warning — the tests that need a calm machine
+		// (and the menu row) pass `normal` explicitly.
+		pressure: "warn",
 		pressureEstimated: false,
 		swapUsed: 0,
 		swapTotal: 2 * GIB,
@@ -72,13 +75,17 @@ function mockViewport(width: number) {
 	});
 }
 
-function renderIndicator(navigate = vi.fn()) {
+function renderIndicator(navigate = vi.fn(), variant: "bar" | "menu" = "bar") {
 	const result = render(
 		<I18nProvider>
-			<MemoryHeadroomIndicator navigate={navigate} />
+			<MemoryHeadroomIndicator navigate={navigate} variant={variant} />
 		</I18nProvider>,
 	);
 	return { ...result, navigate };
+}
+
+function renderMenuRow(navigate = vi.fn()) {
+	return renderIndicator(navigate, "menu");
 }
 
 function pill() {
@@ -104,6 +111,74 @@ beforeEach(() => {
 	mockedConfirm.mockReset();
 	mockedConfirm.mockResolvedValue(true);
 	mockViewport(1920);
+});
+
+describe("MemoryHeadroomIndicator — where it lives", () => {
+	it("keeps the header bar clean while the OS says the memory is fine", async () => {
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderIndicator();
+		await waitFor(() => expect(mockedGet).toHaveBeenCalled());
+		expect(screen.queryByTestId("memory-headroom-indicator")).toBeNull();
+	});
+
+	it("appears in the bar the moment the OS starts warning", async () => {
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderIndicator();
+		await waitFor(() => expect(mockedGet).toHaveBeenCalled());
+		expect(screen.queryByTestId("memory-headroom-indicator")).toBeNull();
+
+		await pushSnapshot(snapshot({ pressure: "warn" }));
+		expect(pill()).toBeInTheDocument();
+		expect(pill().className).toContain("text-warning");
+	});
+
+	it("leaves again once the pressure is gone", async () => {
+		renderIndicator();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await pushSnapshot(snapshot({ pressure: "normal" }));
+		expect(screen.queryByTestId("memory-headroom-indicator")).toBeNull();
+	});
+
+	it("is always there as a menu row, pressure or not", async () => {
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderMenuRow();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		expect(pill()).toHaveAttribute("role", "menuitem");
+		expect(pill()).toHaveTextContent("Memory left");
+		expect(pill()).toHaveTextContent("12 GB");
+	});
+
+	it("is neutral in the menu at normal pressure — green would read as a claim", async () => {
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderMenuRow();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		const number = pill().querySelector(".tabular-nums") as HTMLElement;
+		expect(number.className).toContain("text-fg-3");
+		expect(number.className).not.toContain("text-success");
+	});
+
+	it("colours the level bar from the OS verdict, never from the percentage", async () => {
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderMenuRow();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		const bar = () => pill().querySelector(".hdr-mem-bar") as HTMLElement;
+		// 81% used, yet the OS says normal — on a big machine that is genuinely fine,
+		// so the bar must stay accent rather than turning red on our own threshold.
+		expect(bar().className).toContain("bg-accent");
+
+		await pushSnapshot(snapshot({ pressure: "critical" }));
+		expect(bar().className).toContain("bg-danger");
+		expect(bar().className).not.toContain("bg-accent");
+	});
+
+	it("opens the breakdown from the menu row on click", async () => {
+		const user = userEvent.setup();
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderMenuRow();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.click(pill());
+		expect(await screen.findByTestId("memory-breakdown-popover")).toBeInTheDocument();
+	});
 });
 
 describe("MemoryHeadroomIndicator — the pill", () => {
@@ -132,19 +207,6 @@ describe("MemoryHeadroomIndicator — the pill", () => {
 		expect(bar.style.width).toBe("81%");
 	});
 
-	it("colours the bar from the OS verdict, never from the percentage", async () => {
-		renderIndicator();
-		await waitFor(() => expect(pill()).toBeInTheDocument());
-		const bar = () => pill().querySelector(".hdr-mem-bar") as HTMLElement;
-		// 81% used, yet the OS says normal — on a big machine that is genuinely fine,
-		// so the bar must stay accent rather than turning red on our own threshold.
-		expect(bar().className).toContain("bg-accent");
-
-		await pushSnapshot(snapshot({ pressure: "critical" }));
-		expect(bar().className).toContain("bg-danger");
-		expect(bar().className).not.toContain("bg-accent");
-	});
-
 	it("says 'free' in its accessible name, so the number is never ambiguous", async () => {
 		renderIndicator();
 		await waitFor(() => expect(pill()).toBeInTheDocument());
@@ -163,13 +225,6 @@ describe("MemoryHeadroomIndicator — the pill", () => {
 		renderIndicator();
 		await waitFor(() => expect(mockedGet).toHaveBeenCalled());
 		expect(screen.queryByTestId("memory-headroom-indicator")).toBeNull();
-	});
-
-	it("is neutral at normal pressure — green would read as a claim", async () => {
-		renderIndicator();
-		await waitFor(() => expect(pill()).toBeInTheDocument());
-		expect(pill().className).toContain("text-fg-3");
-		expect(pill().className).not.toContain("text-success");
 	});
 
 	it("turns warning yellow under pressure", async () => {

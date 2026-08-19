@@ -43,9 +43,15 @@ const POPOVER_WIDTH = 26 * 16;
 
 interface MemoryHeadroomIndicatorProps {
 	navigate: (route: Route) => void;
+	/**
+	 * `bar` is the header pill — it renders ONLY while the OS reports pressure, so a
+	 * machine that is fine carries no readout at all. `menu` is the labelled row in
+	 * the header's overflow menu, where the number is always available on demand.
+	 */
+	variant?: "bar" | "menu";
 }
 
-export default function MemoryHeadroomIndicator({ navigate }: MemoryHeadroomIndicatorProps) {
+export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: MemoryHeadroomIndicatorProps) {
 	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [snapshot, setSnapshot] = useState<SystemMemorySnapshot | null>(null);
@@ -158,26 +164,91 @@ export default function MemoryHeadroomIndicator({ navigate }: MemoryHeadroomIndi
 	// cause exactly the header layout shift the UX manifest warns about.
 	if (!snapshot) return null;
 
+	// A machine with headroom is not news. The header bar earns the readout only once
+	// the OS itself says the memory is tight (yellow); until then it lives in the
+	// menu. Narrow is exempt: there the same `bar` markup IS the sheet row (the phone
+	// header never carries it), and a sheet the user opened should not be empty.
+	if (variant === "bar" && !isNarrow && snapshot.pressure === "normal") return null;
+
 	const usedRatio = snapshot.total > 0 ? snapshot.used / snapshot.total : 0;
 	const pressureClass = PRESSURE_TEXT_CLASS[snapshot.pressure];
 	const accessibleName = t("memory.ariaLabel", { free: formatBytes(snapshot.headroom) });
 
 	const breakdown = <MemoryBreakdownPanel snapshot={snapshot} onSelectTask={selectTask} onCloseOverlay={close} />;
 
+	const level = (
+		<span aria-hidden="true" className="h-0.5 w-full overflow-hidden rounded-full bg-edge">
+			<span
+				className={`hdr-mem-bar block h-full rounded-full ${PRESSURE_BAR_CLASS[snapshot.pressure]}`}
+				style={{ width: `${Math.round(Math.min(1, Math.max(0, usedRatio)) * 100)}%` }}
+			/>
+		</span>
+	);
+
+	const togglePinned = () => {
+		if (pinned) {
+			close();
+			return;
+		}
+		cancelClose();
+		setOpen(true);
+		setPinned(true);
+	};
+
+	// Menu row: click-only. Hover-to-open inside an open menu would fire while the
+	// pointer is merely travelling down the list.
+	if (variant === "menu") {
+		return (
+			<>
+				<button
+					ref={anchorRef}
+					type="button"
+					role="menuitem"
+					onClick={togglePinned}
+					aria-label={accessibleName}
+					aria-expanded={open}
+					aria-haspopup="dialog"
+					data-testid="memory-headroom-indicator"
+					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+				>
+					<span className="flex w-[1.125rem] flex-col justify-center gap-[0.1875rem]">{level}</span>
+					<span className="text-sm flex-1 text-left">{t("memory.label")}</span>
+					<span className={`text-micro font-medium tabular-nums ${pressureClass}`}>
+						{formatBytesCompact(snapshot.headroom)}
+					</span>
+				</button>
+				{open && !isNarrow && createPortal(
+					<div
+						ref={popRef}
+						role="dialog"
+						aria-label={t("memory.label")}
+						onMouseEnter={cancelClose}
+						onMouseLeave={scheduleClose}
+						data-testid="memory-breakdown-popover"
+						className="fixed z-[1200] overflow-y-auto overflow-x-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
+						style={{
+							top: pos?.top ?? 0,
+							left: pos?.left ?? 0,
+							width: POPOVER_WIDTH,
+							maxWidth: "calc(100vw - 2rem)",
+							maxHeight: "28rem",
+							visibility: pos ? "visible" : "hidden",
+						}}
+					>
+						{breakdown}
+					</div>,
+					document.body,
+				)}
+			</>
+		);
+	}
+
 	return (
 		<>
 			<button
 				ref={anchorRef}
 				type="button"
-				onClick={() => {
-					if (pinned) {
-						close();
-						return;
-					}
-					cancelClose();
-					setOpen(true);
-					setPinned(true);
-				}}
+				onClick={togglePinned}
 				onMouseEnter={isNarrow ? undefined : () => { cancelClose(); setOpen(true); }}
 				onMouseLeave={isNarrow ? undefined : scheduleClose}
 				onFocus={(e) => {
@@ -198,12 +269,7 @@ export default function MemoryHeadroomIndicator({ navigate }: MemoryHeadroomIndi
 				{/* The level lives in a bar under the number, not in a glyph: at header
 				    size a drawn memory module loses the detail that made it readable,
 				    while a bar the full width of the pill cannot lose anything. */}
-				<span aria-hidden="true" className="h-0.5 w-full overflow-hidden rounded-full bg-edge">
-					<span
-						className={`hdr-mem-bar block h-full rounded-full ${PRESSURE_BAR_CLASS[snapshot.pressure]}`}
-						style={{ width: `${Math.round(Math.min(1, Math.max(0, usedRatio)) * 100)}%` }}
-					/>
-				</span>
+				{level}
 			</button>
 
 			{isNarrow ? (

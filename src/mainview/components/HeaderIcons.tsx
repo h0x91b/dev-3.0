@@ -245,13 +245,18 @@ export function ChangelogIcon({ className }: HeaderIconProps) {
 	);
 }
 
-// 18 — Overflow kebab: the dots do the wave, top to bottom.
-export function KebabIcon({ className }: HeaderIconProps) {
+
+/**
+ * Overflow menu ("More"): the same three dots laid out HORIZONTALLY. The vertical
+ * column read as one of the header's `|` separators — the one thing the icon must
+ * never look like. The dots keep the kebab's bounce animation.
+ */
+export function OverflowDotsIcon({ className }: HeaderIconProps) {
 	return (
 		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-			<circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" className="hdr hdr-kb1" />
-			<circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" className="hdr hdr-kb2" />
-			<circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" className="hdr hdr-kb3" />
+			<circle cx="5" cy="12" r="1.7" fill="currentColor" stroke="none" className="hdr hdr-kb1" />
+			<circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none" className="hdr hdr-kb2" />
+			<circle cx="19" cy="12" r="1.7" fill="currentColor" stroke="none" className="hdr hdr-kb3" />
 		</svg>
 	);
 }

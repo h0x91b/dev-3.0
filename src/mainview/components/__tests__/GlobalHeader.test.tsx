@@ -758,24 +758,39 @@ describe("GlobalHeader — project terminal button", () => {
 		expect(screen.getByText("Terminal")).toBeInTheDocument();
 	});
 
-	it("shows quick shell before project terminal", () => {
+	it("keeps quick shell out of the bar and inside the kebab menu, icon included", async () => {
+		const user = userEvent.setup();
 		renderHeader({ screen: "project", projectId: "p1" });
+		expect(screen.queryByLabelText("Quick Shell — new scratch in Operations (⌘⇧`)")).not.toBeInTheDocument();
 
-		const quickShellButton = screen.getByLabelText("Quick Shell \u2014 new scratch in Operations (\u2318\u21e7`)");
-		const projectButton = screen.getByLabelText("Project Terminal (\u2318`)");
-
-		expect(
-			quickShellButton.compareDocumentPosition(projectButton) & Node.DOCUMENT_POSITION_FOLLOWING,
-		).toBeTruthy();
+		await user.click(screen.getByLabelText("More"));
+		const quickShellButton = screen.getByLabelText("Quick Shell — new scratch in Operations (⌘⇧`)");
+		expect(quickShellButton).toHaveAttribute("role", "menuitem");
+		expect(quickShellButton.querySelector("svg")).toBeTruthy();
+		expect(quickShellButton.className).toContain("header-anim");
 	});
 
-	it("renders a Quick Shell icon (regression: was an empty placeholder)", () => {
+	it("fires the quick-shell event from the menu row and closes the menu", async () => {
+		const user = userEvent.setup();
+		const handler = vi.fn();
+		window.addEventListener("menu:open-quick-shell", handler);
 		renderHeader({ screen: "project", projectId: "p1" });
-		// Migrated to Tooltip (aria-label, no native title) with an animated SVG icon.
-		const quickShellButton = screen.getByLabelText("Quick Shell — new scratch in Operations (⌘⇧`)");
-		const icon = quickShellButton.querySelector("svg");
-		expect(icon).toBeTruthy();
-		expect(quickShellButton.className).toContain("header-anim");
+
+		await user.click(screen.getByLabelText("More"));
+		await user.click(screen.getByLabelText("Quick Shell — new scratch in Operations (⌘⇧`)"));
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+		window.removeEventListener("menu:open-quick-shell", handler);
+	});
+
+	it("keeps the tmux session list in the kebab menu too", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "project", projectId: "p1" });
+		expect(screen.queryByLabelText("tmux Sessions")).not.toBeInTheDocument();
+
+		await user.click(screen.getByLabelText("More"));
+		expect(screen.getByLabelText("tmux Sessions")).toHaveAttribute("role", "menuitem");
 	});
 
 	it("does not show terminal button on dashboard", () => {
