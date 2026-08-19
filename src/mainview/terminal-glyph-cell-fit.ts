@@ -54,6 +54,15 @@ export interface GlyphCellFit {
 }
 
 /**
+ * Whether this codepoint is one the cell fit reshapes. The glyph atlas asks,
+ * because a cached flat raster of a powerline cap would undo the fit and put the
+ * hairline back — the ranges must not be copied into a second place.
+ */
+export function isCellFittedGlyph(codepoint: number): boolean {
+	return fitKindFor(codepoint) !== null;
+}
+
+/**
  * How a glyph's source box is chosen:
  * - `ink` — the glyph's ink covers the whole design box by definition (a full
  *   block, a powerline separator), so fitting the ink box lands it exactly on
@@ -64,7 +73,7 @@ export interface GlyphCellFit {
  */
 type FitKind = "ink" | "line-box";
 
-function fitKindFor(codepoint: number): FitKind | null {
+export function fitKindFor(codepoint: number): FitKind | null {
 	if (codepoint === 0x2588) return "ink";
 	if (codepoint >= 0xe0b0 && codepoint <= 0xe0bf) return "ink";
 	// Box drawing + block elements, then the Nerd Fonts powerline-extra shapes.

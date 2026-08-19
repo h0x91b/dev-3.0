@@ -28,6 +28,7 @@ import { session } from "./terminal-session-stats";
 import { createTerminalLatencyProbe, registerLatencyProbe } from "./terminal-latency";
 import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
 import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
+import { installGlyphAtlas, type GlyphAtlasHandle } from "./terminal-glyph-atlas";
 import { getScrollThreshold } from "./scroll-speed";
 import { createWheelPacer, WHEEL_DRAIN_INTERVAL_MS } from "./wheel-pacer";
 import type { TaskPaneAction } from "../shared/task-panes";
@@ -310,6 +311,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 	const renderGuardRef = useRef<RenderGuard | null>(null);
 	/** Keeps block, box-drawing and powerline glyphs on the cell background's box. */
 	const glyphFitRef = useRef<GlyphCellFit | null>(null);
+	const glyphAtlasRef = useRef<GlyphAtlasHandle | null>(null);
 	// Native backend only. The watermark is what a reconnect resumes from, so it
 	// must survive the socket — a tmux session never sets either of these.
 	const nativeSeqRef = useRef<number | null>(null);
@@ -697,6 +699,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// Powerline prompts and block-drawn bars are only flush if the glyph
 				// shares the background's cell box; the vendor's own metrics do not.
 				glyphFitRef.current = installGlyphCellFit(term.renderer);
+				// AFTER the cell fit, which wraps the same method: a glyph the fit
+				// reshapes has to reach it, so the atlas defers exactly those, and
+				// anything else it cannot cache falls through into the fitted wrapper.
+				glyphAtlasRef.current = installGlyphAtlas(term.renderer as never);
 			}
 
 			if (getTerminalBidiEnabled() && term.renderer) {
@@ -1927,6 +1933,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			renderGuardRef.current = null;
 			cursorGateRef.current?.dispose();
 			cursorGateRef.current = null;
+			// Before the cell fit: this wrapper sits on top of it, and restoring the
+			// inner one first would drop this one on the floor.
+			glyphAtlasRef.current?.dispose();
+			glyphAtlasRef.current = null;
 			glyphFitRef.current?.dispose();
 			glyphFitRef.current = null;
 			layoutObserver?.disconnect();

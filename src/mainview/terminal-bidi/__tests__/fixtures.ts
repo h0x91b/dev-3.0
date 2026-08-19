@@ -231,6 +231,12 @@ export function recordingCtx(): {
 	ctx.scale = record("scale");
 	ctx.rect = record("rect");
 	ctx.clip = record("clip");
+	ctx.clearRect = record("clearRect");
+	// The glyph atlas blits from a strip canvas. The image argument is dropped from
+	// the record: it is a live canvas node, and only the geometry is assertable.
+	ctx.drawImage = (_image: unknown, ...rest: number[]) => {
+		ops.push({ op: "drawImage", args: rest, fillStyle: String(ctx.fillStyle), font: String(ctx.font) });
+	};
 	return { ctx, ops };
 }
 
