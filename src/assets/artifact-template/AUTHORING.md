@@ -60,7 +60,7 @@ The starter already pins ECharts 6.1.0, Choices.js 11.2.3, and noUiSlider 15.8.1
 
 `index.html` loads Apache ECharts 6.1.0 through a versioned cdnjs tag. Keep that tag intact when the report has charts. Offline, chart hosts show a notice while the rest of the report remains usable.
 
-The stable bridge lives in `app.js` and exposes `window.dev3Artifact.chart()`, `.color()`, `.enhance()`, `.setControl()`, and `.toast()`. Keep chart options, values, labels, filters, and interactions in `report.js`; use the exposed helpers there without editing the shell. The chart helper applies dev3 tokens, uses the SVG renderer for crisp print/PDF output, adds aria descriptions, re-renders on theme changes, and resizes with its container.
+The stable bridge lives in `app.js` and exposes `window.dev3Artifact.chart()`, `.color()`, `.enhance()`, `.popover()`, `.setControl()`, and `.toast()`. Keep chart options, values, labels, filters, and interactions in `report.js`; use the exposed helpers there without editing the shell. The chart helper applies dev3 tokens, uses the SVG renderer for crisp print/PDF output, adds aria descriptions, re-renders on theme changes, and resizes with its container.
 
 The shell declares the card surface as each chart's `backgroundColor`, because ECharts derives value-label contrast from it — without that, every label renders dark grey inside a white halo, which is illegible on the dark theme. Keep report code out of that decision: do not set `backgroundColor` or hand-color value labels unless the chart sits on a surface other than `--dev3-surface-raised`.
 
@@ -85,6 +85,29 @@ Keep form markup native and opt into the polished CDN controls with one attribut
 
 Use native checkbox, radio, and switch markup from `index.html`; `app.css` supplies the shared skin without report JavaScript.
 When report code changes an enhanced select or range, call `dev3Artifact.setControl(element, value)` so the native value, visual control, events, and output stay synchronized.
+
+## Menus, dropdowns, and anything that opens over the report
+
+**Never hand-roll `position: absolute` + `z-index` for a panel that opens.** It is the most common broken artifact: the card, the horizontal scroller, or the sticky table header around it clips the panel, and no z-index can win because the clip happens before stacking. Use the shell's popover — it puts the panel in the browser top layer, where no ancestor can clip it or paint over it:
+
+```html
+<div class="popover-anchor">
+  <button type="button" data-popover-trigger="branchMenu">refactor/…header-controls <span class="popover-caret" aria-hidden="true">▾</span></button>
+  <div class="popover" id="branchMenu">
+    <div class="popover-title">Branch</div>
+    <button type="button" data-action="copy-path">Copy worktree path</button>
+    <button type="button" data-action="checkout">Copy checkout command</button>
+    <hr>
+    <a href="https://example.com/pr/1412">Open pull request</a>
+  </div>
+</div>
+```
+
+The shell owns opening, `aria-expanded`, `aria-haspopup`, placement against the trigger, flipping above it when the viewport is short, clamping inside the viewport, repositioning on scroll and resize, arrow-key movement, Escape, outside-click dismissal, focus return, and hiding in print. Report code only listens for clicks on its own items. A menu closes on the item that was clicked; add `data-popover-keep-open` to an item that must not close it (a filter panel rather than a menu).
+
+For a panel built after load, register it with `dev3Artifact.popover(panel, triggerElement)` and drive it through the returned `open()`, `close()`, `toggle()`, and `isOpen`. Enhanced selects need nothing: the shell already lifts the Choices list into the top layer, so a filter inside `.table-card` or `.evidence-group` keeps every option reachable.
+
+Style overlays only through `.popover`, `.popover-title`, and plain `button`/`a`/`hr` children. Do not set `position`, `top`, `left`, `inset`, or `z-index` on a popover — the shell writes those. When something genuinely needs its own stacking order, use the `--dev3-z-nav`, `--dev3-z-overlay`, and `--dev3-z-toast` tokens instead of a new number.
 
 ## Tables
 
@@ -117,6 +140,7 @@ Choose Auto, Light, or Dark in the report, then print with Cmd/Ctrl+P. The style
 - Keep `Built with dev3 Artifacts` in the footer.
 - Keep the Auto → Light → Dark theme control.
 - Keep local navigation functional: a click must scroll, focus the section heading, and expose `aria-current`.
-- Use only the bundled `--dev3-*` semantic tokens for color.
+- Use only the bundled `--dev3-*` semantic tokens for color, and the `--dev3-z-*` tokens for stacking.
+- Route every panel that opens over the report through `.popover` / `dev3Artifact.popover()`; never hand-roll an absolutely positioned menu.
 - Keep the page responsive and keyboard-accessible.
 - Keep report content/data local; external libraries and live integrations are allowed.

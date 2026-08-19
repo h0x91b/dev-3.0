@@ -325,6 +325,46 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain(".choices__item--selectable.is-highlighted");
 	});
 
+	it("opens every menu and dropdown in the browser top layer instead of stacking guesses", () => {
+		const html = readFileSync(htmlPath, "utf8");
+		const css = readFileSync(cssPath, "utf8");
+		const app = readFileSync(appPath, "utf8");
+		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+		const printBlock = css.slice(css.indexOf("@media print"));
+
+		// A hand-rolled absolute panel is clipped by the card around it, so the
+		// shell promotes overlays instead of ordering them.
+		expect(app).toContain("showPopover");
+		expect(app).toContain("hidePopover");
+		expect(app).toContain('setAttribute("popover", "manual")');
+		expect(app).toContain("function placeOverlay");
+		expect(app).toContain("function initializePopovers");
+		// The Choices list is anchored to its field, so it needs the same lift.
+		expect(app).toContain('select.addEventListener("showDropdown"');
+		expect(app).toContain('select.addEventListener("hideDropdown"');
+		// Placement, dismissal, and focus belong to the shell, not to report code.
+		expect(app).toContain('dataset.placement = flip ? "top" : "bottom"');
+		expect(app).toContain('if (event.key !== "Escape") return');
+		expect(app).toContain("scheduleReposition");
+		expect(app).toContain("popover: popoverApi");
+
+		// Anything that competes across panels goes through the scale; the single
+		// digits left are a table ordering its own pinned cells.
+		for (const token of ["--dev3-z-nav", "--dev3-z-overlay", "--dev3-z-toast"]) expect(css).toContain(token);
+		expect(css).toContain("z-index: var(--dev3-z-nav)");
+		expect(css).toContain("z-index: var(--dev3-z-overlay)");
+		expect(css).toContain("z-index: var(--dev3-z-toast)");
+		expect(css).not.toMatch(/z-index:\s*\d{2}/);
+		expect(css).toContain(".popover:not([data-open]) { display: none; }");
+		expect(printBlock).toContain(".popover, [popover] { display: none !important; }");
+
+		// The starter demonstrates the pattern where it used to break: inside a card.
+		expect(html).toContain('data-popover-trigger="runsMenu"');
+		expect(html).toContain('<div class="popover" id="runsMenu">');
+		expect(guide).toContain("Never hand-roll `position: absolute` + `z-index`");
+		expect(guide).toContain("dev3Artifact.popover(panel, triggerElement)");
+	});
+
 	it("keeps the selected theme and report structure in print output", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");

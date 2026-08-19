@@ -111,6 +111,145 @@
     });
   }
 
+  // ---- top-layer overlays ---------------------------------------------------
+  // The classic artifact bug is a menu nested in a card: the card clips it, a
+  // sticky header covers it, and the author is left tuning z-index numbers that
+  // cannot win. Every panel that opens over the report is promoted into the
+  // browser top layer instead, where no ancestor overflow or stacking context
+  // reaches it, and the shell places it against its trigger by hand.
+  const topLayerSupported = typeof HTMLElement.prototype.showPopover === "function";
+  const openOverlays = new Map();
+  const VIEWPORT_MARGIN = 8;
+
+  function placeOverlay(panel, anchor, options = {}) {
+    const gap = options.gap ?? 5;
+    const box = anchor.getBoundingClientRect();
+    panel.style.position = "fixed";
+    if (options.matchWidth) panel.style.width = `${Math.round(box.width)}px`;
+    panel.style.maxHeight = "";
+    const natural = panel.getBoundingClientRect().height;
+    const roomBelow = window.innerHeight - box.bottom - gap - VIEWPORT_MARGIN;
+    const roomAbove = box.top - gap - VIEWPORT_MARGIN;
+    const flip = natural > roomBelow && roomAbove > roomBelow;
+    const height = Math.min(natural, Math.max(flip ? roomAbove : roomBelow, 96));
+    panel.style.maxHeight = `${Math.round(height)}px`;
+    panel.style.top = `${Math.round(flip ? box.top - gap - height : box.bottom + gap)}px`;
+    const width = panel.getBoundingClientRect().width;
+    const overflowRight = box.left + width - (window.innerWidth - VIEWPORT_MARGIN);
+    const left = Math.max(VIEWPORT_MARGIN, box.left - Math.max(0, overflowRight));
+    panel.style.left = `${Math.round(left)}px`;
+    panel.dataset.placement = flip ? "top" : "bottom";
+  }
+
+  let overlayFrame;
+  function repositionOverlays() {
+    overlayFrame = undefined;
+    openOverlays.forEach((entry, panel) => placeOverlay(panel, entry.anchor, entry.options));
+  }
+  function scheduleReposition() {
+    if (!openOverlays.size || overlayFrame) return;
+    overlayFrame = requestAnimationFrame(repositionOverlays);
+  }
+  window.addEventListener("scroll", scheduleReposition, { capture: true, passive: true });
+  window.addEventListener("resize", scheduleReposition);
+
+  function openOverlay(panel, anchor, options = {}) {
+    panel.dataset.open = "true";
+    if (topLayerSupported) {
+      if (!panel.hasAttribute("popover")) panel.setAttribute("popover", "manual");
+      if (!panel.matches(":popover-open")) panel.showPopover();
+    }
+    openOverlays.set(panel, { anchor, options });
+    placeOverlay(panel, anchor, options);
+  }
+
+  function closeOverlay(panel) {
+    openOverlays.delete(panel);
+    delete panel.dataset.open;
+    if (topLayerSupported && panel.matches(":popover-open")) panel.hidePopover();
+  }
+
+  // ---- declarative popover menus --------------------------------------------
+  const popoverTriggers = new Map();
+
+  function popoverItems(panel) {
+    return [...panel.querySelectorAll('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')]
+      .filter((item) => !item.disabled && item.offsetParent !== null);
+  }
+
+  function closePopover(panel, restoreFocus = true) {
+    const trigger = popoverTriggers.get(panel);
+    if (!panel.dataset.open) return;
+    const hadFocus = panel.contains(document.activeElement);
+    closeOverlay(panel);
+    trigger?.setAttribute("aria-expanded", "false");
+    if (restoreFocus && hadFocus) trigger?.focus();
+  }
+
+  function closeAllPopovers(except) {
+    popoverTriggers.forEach((_, panel) => { if (panel !== except) closePopover(panel, false); });
+  }
+
+  function openPopover(panel) {
+    const trigger = popoverTriggers.get(panel);
+    if (!trigger) return;
+    closeAllPopovers(panel);
+    openOverlay(panel, trigger, { gap: 6 });
+    trigger.setAttribute("aria-expanded", "true");
+    (popoverItems(panel)[0] || panel).focus({ preventScroll: true });
+  }
+
+  function togglePopover(panel) {
+    if (panel.dataset.open) closePopover(panel);
+    else openPopover(panel);
+  }
+
+  function initializePopovers(root) {
+    root.querySelectorAll("[data-popover-trigger]:not([data-popover-ready])").forEach((trigger) => {
+      const panel = document.getElementById(trigger.getAttribute("data-popover-trigger"));
+      if (!panel) return;
+      trigger.dataset.popoverReady = "true";
+      trigger.setAttribute("aria-haspopup", "true");
+      trigger.setAttribute("aria-expanded", "false");
+      panel.classList.add("popover");
+      if (!panel.hasAttribute("tabindex")) panel.setAttribute("tabindex", "-1");
+      popoverTriggers.set(panel, trigger);
+
+      trigger.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        togglePopover(panel);
+      });
+      // A menu closes on the action it was opened for; opt out per item when the
+      // panel is a filter panel rather than a menu.
+      panel.addEventListener("click", (event) => {
+        const item = event.target.closest("button, a[href]");
+        if (item && panel.contains(item) && !item.hasAttribute("data-popover-keep-open")) closePopover(panel);
+      });
+      panel.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        const items = popoverItems(panel);
+        if (!items.length) return;
+        event.preventDefault();
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        const index = items.indexOf(document.activeElement);
+        items[(index + step + items.length) % items.length].focus();
+      });
+    });
+  }
+
+  document.addEventListener("pointerdown", (event) => {
+    popoverTriggers.forEach((trigger, panel) => {
+      if (!panel.dataset.open) return;
+      if (panel.contains(event.target) || trigger.contains(event.target)) return;
+      closePopover(panel, false);
+    });
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    popoverTriggers.forEach((_, panel) => { if (panel.dataset.open) closePopover(panel); });
+  });
+
   const selectControls = new Map();
   const sliderControls = new Map();
 
@@ -127,6 +266,15 @@
       });
       select.setAttribute("aria-hidden", "true");
       selectControls.set(select, instance);
+
+      // Choices anchors its list to the field, so a card with overflow eats it.
+      // The same top-layer lift keeps every option reachable.
+      const container = select.closest(".choices");
+      const dropdown = container?.querySelector(".choices__list--dropdown, .choices__list[aria-expanded]");
+      const field = container?.querySelector(".choices__inner");
+      if (!dropdown || !field) return;
+      select.addEventListener("showDropdown", () => openOverlay(dropdown, field, { matchWidth: true }));
+      select.addEventListener("hideDropdown", () => closeOverlay(dropdown));
     });
   }
 
@@ -193,6 +341,7 @@
   }
 
   function enhanceControls(root = document) {
+    initializePopovers(root);
     initializeSelects(root);
     initializeSliders(root);
   }
@@ -306,6 +455,7 @@
 
   const printClosedDetails = new Set();
   window.addEventListener("beforeprint", () => {
+    closeAllPopovers();
     document.querySelectorAll("details:not([open])").forEach((detail) => {
       printClosedDetails.add(detail);
       detail.open = true;
@@ -364,10 +514,36 @@
     applyArtifactTheme();
   });
 
+  // Report code that builds a panel after load registers it the same way the
+  // markup does, so a dynamic menu gets the same top layer and dismissal.
+  function popoverApi(panelOrId, anchor) {
+    const panel = typeof panelOrId === "string" ? document.getElementById(panelOrId) : panelOrId;
+    if (!panel) return { open() {}, close() {}, toggle() {}, get isOpen() { return false; } };
+    if (anchor) {
+      panel.classList.add("popover");
+      if (!panel.hasAttribute("tabindex")) panel.setAttribute("tabindex", "-1");
+      popoverTriggers.set(panel, anchor);
+      if (!panel.dataset.popoverReady) {
+        panel.dataset.popoverReady = "true";
+        panel.addEventListener("click", (event) => {
+          const item = event.target.closest("button, a[href]");
+          if (item && panel.contains(item) && !item.hasAttribute("data-popover-keep-open")) closePopover(panel);
+        });
+      }
+    }
+    return {
+      open: () => openPopover(panel),
+      close: () => closePopover(panel),
+      toggle: () => togglePopover(panel),
+      get isOpen() { return Boolean(panel.dataset.open); },
+    };
+  }
+
   window.dev3Artifact = Object.freeze({
     chart: dev3Chart,
     color: tokenColor,
     enhance: enhanceControls,
+    popover: popoverApi,
     setControl: setControlValue,
     toast: showToast,
   });

@@ -92,7 +92,22 @@
     <section class="card table-card section-anchor" id="runs">
       <div class="section-head table-head">
         <div><h2 class="section-title">Recent agent runs</h2><div class="section-copy">Click a column heading to sort</div></div>
-        <div class="table-tools"><input id="search" type="search" placeholder="Search runs…"><select id="statusFilter" aria-label="Filter by status" data-ui-select><option value="all">All statuses</option><option value="Shipped">Shipped</option><option value="Review">Review</option><option value="Running">Running</option></select></div>
+        <div class="table-tools">
+          <input id="search" type="search" placeholder="Search runs…">
+          <select id="statusFilter" aria-label="Filter by status" data-ui-select><option value="all">All statuses</option><option value="Shipped">Shipped</option><option value="Review">Review</option><option value="Running">Running</option></select>
+          <!-- A menu inside a card: the shell lifts it into the top layer, so the
+               card's overflow and the sticky table header cannot clip it. -->
+          <div class="popover-anchor">
+            <button type="button" data-popover-trigger="runsMenu">Export <span class="popover-caret" aria-hidden="true">▾</span></button>
+            <div class="popover" id="runsMenu">
+              <div class="popover-title">Export runs</div>
+              <button type="button" data-export="csv">Copy as CSV</button>
+              <button type="button" data-export="markdown">Copy as Markdown</button>
+              <hr>
+              <button type="button" data-export="print">Open print view</button>
+            </div>
+          </div>
+        </div>
       </div>
       <table><thead><tr><th data-sort="name" tabindex="0">Run</th><th data-sort="status" tabindex="0">Status</th><th data-sort="agent" tabindex="0">Agent</th><th data-sort="progress" tabindex="0">Progress</th><th data-sort="cycle" tabindex="0">Cycle</th></tr></thead><tbody id="runRows"></tbody></table>
       <div class="empty" id="empty" hidden>No matching runs.</div>

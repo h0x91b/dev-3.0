@@ -294,6 +294,16 @@
   });
   search?.addEventListener("input", renderTable);
   statusFilter?.addEventListener("change", renderTable);
+  document.getElementById("runsMenu")?.addEventListener("click", (event) => {
+    const format = event.target.closest("button[data-export]")?.dataset.export;
+    if (!format) return;
+    if (format === "print") return window.print();
+    const rows = [["Run", "Status", "Agent", "Cycle"], ...runs.map((r) => [r.name, r.status, r.agent, r.cycle])];
+    const text = rows.map((row) => (format === "csv" ? row.join(",") : `| ${row.join(" | ")} |`)).join("\n");
+    Promise.resolve(navigator.clipboard?.writeText(text))
+      .then(() => showToast(`${runs.length} runs copied`))
+      .catch(() => showToast("Copying needs clipboard permission"));
+  });
   document.querySelectorAll("th[data-sort]").forEach((heading) => {
     const sort = () => {
       sortDirection = sortKey === heading.dataset.sort ? -sortDirection : 1;

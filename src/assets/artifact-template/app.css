@@ -1,4 +1,8 @@
     * { box-sizing: border-box; }
+    /* One scale for everything that stacks, so no panel has to guess a number.
+       Overlays live in the browser top layer, so their z-index only orders them
+       against each other. */
+    :root { --dev3-z-nav: 20; --dev3-z-overlay: 900; --dev3-z-toast: 1000; }
     html, body {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -44,7 +48,7 @@
     .actions { gap: 8px; }
     .section-nav {
       position: sticky;
-      z-index: 20;
+      z-index: var(--dev3-z-nav);
       top: 0;
       display: flex;
       gap: 4px;
@@ -352,7 +356,7 @@
     .choices[data-type*="select-one"].is-open::after { margin-top: -2px; border-color: rgb(var(--dev3-accent)); transform: rotate(225deg); }
     .choices__list--single { padding: 0; }
     .choices__list--dropdown, .choices__list[aria-expanded] {
-      z-index: 30;
+      z-index: var(--dev3-z-overlay);
       margin-top: 5px;
       overflow: hidden;
       border: 1px solid rgb(var(--dev3-border));
@@ -373,6 +377,68 @@
       background: rgb(var(--dev3-accent) / .18);
       color: rgb(var(--dev3-text-primary));
     }
+    /* An open panel is lifted into the top layer, where the viewport is its
+       containing block, so the shell owns its coordinates and the UA defaults
+       (centred inset, auto margin, own border) must go. */
+    .choices__list--dropdown[popover], .choices__list[aria-expanded][popover],
+    .choices.is-flipped .choices__list--dropdown[popover] {
+      inset: auto;
+      margin: 0;
+      padding: 0;
+    }
+    /* Nothing an author writes can clip a menu that is in the top layer: a card
+       with overflow, a horizontal scroller, and a sticky header all stop
+       mattering. Hand-rolled `position: absolute` panels are the bug this
+       replaces — see AUTHORING.md. */
+    .popover-anchor { position: relative; }
+    .popover {
+      position: fixed;
+      z-index: var(--dev3-z-overlay);
+      min-width: 210px;
+      max-width: min(360px, calc(100vw - 24px));
+      overflow-y: auto;
+      inset: auto;
+      margin: 0;
+      padding: 4px;
+      border: 1px solid rgb(var(--dev3-border));
+      border-radius: 12px;
+      background: rgb(var(--dev3-surface-elevated));
+      box-shadow: 0 18px 44px rgb(var(--dev3-shadow) / .3);
+      color: rgb(var(--dev3-text-primary));
+      overscroll-behavior: contain;
+    }
+    .popover:not([data-open]) { display: none; }
+    .popover-title {
+      padding: 7px 10px 5px;
+      color: rgb(var(--dev3-text-muted));
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .popover hr { margin: 4px 2px; border: 0; border-top: 1px solid rgb(var(--dev3-border)); }
+    .popover button, .popover a {
+      display: flex;
+      width: 100%;
+      min-height: 36px;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      font-size: 12px;
+      text-align: start;
+      text-decoration: none;
+    }
+    .popover button:hover, .popover a:hover, .popover button:focus-visible, .popover a:focus-visible {
+      background: rgb(var(--dev3-accent) / .14);
+      color: rgb(var(--dev3-accent));
+      transform: none;
+    }
+    [data-popover-trigger] .caret, [data-popover-trigger] .popover-caret { transition: transform .16s ease; }
+    [data-popover-trigger][aria-expanded="true"] .caret,
+    [data-popover-trigger][aria-expanded="true"] .popover-caret { transform: rotate(180deg); }
     /* clip, not hidden: hidden makes the card a scrollport and unpins the header. */
     .table-card { padding: 0; overflow: clip; }
     .table-head { padding: 16px 18px 12px; }
@@ -458,6 +524,7 @@
     .mini-fill { height: 100%; border-radius: 99px; background: rgb(var(--dev3-accent)); }
     .toast {
       position: fixed;
+      z-index: var(--dev3-z-toast);
       right: 22px;
       bottom: 22px;
       padding: 11px 14px;
@@ -532,6 +599,8 @@
       .eyebrow { font-size: 8px; }
       .muted, .section-copy { font-size: 9px; }
       .actions, .scenario-panel, .table-tools, .toast, .print-hidden { display: none !important; }
+      /* An overlay is a live interaction, never static output. */
+      .popover, [popover] { display: none !important; }
       .print-only { display: block !important; }
       .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
       .card { padding: 10px; }
