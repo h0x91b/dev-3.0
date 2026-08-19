@@ -206,30 +206,22 @@ export function buildSetupStartupWrapper(opts: {
 	launchMode: "parallel" | "blocking";
 	/** Where the fail branch records the setup exit code for the app to read. */
 	setupExitPath: string;
-	/** Absolute path of the dev3 CLI the fail branch pings. */
-	dev3CliPath: string;
 }): string {
 	const d = launchDialect();
 	const cmdRunner = d.runScript(opts.cmdPath, { shellPath: opts.shellPath });
 	const setupDone = d.print(d.style("✓ Setup done", "success"));
-	// The script runs inside the pane, so bun never sees its exit code. Record it
-	// and ping the app, which turns it into the pane's "start the agent anyway"
-	// card. Guarded on the CLI existing and ordered after the file write, so a
-	// missing/offline dev3 costs the user nothing but the card.
-	const reportFailure = [
-		d.writeExitCodeFile("S", opts.setupExitPath),
-		...d.ifCommandExists(
-			opts.dev3CliPath,
-			indentLines(2, [d.runCommand([opts.dev3CliPath, "hook", "setup-failed"])]),
-		),
-	];
+	// The script runs inside the pane, so bun never sees its exit code. Writing it
+	// is the ONLY report: the app watches this path itself (watchSetupFailure) and
+	// turns the code into the pane's "start the agent anyway" card. Deliberately
+	// not a `dev3` call — the CLI on PATH belongs to whichever instance launched
+	// last, and its socket may address a different app entirely.
 	const runSetup = [
 		d.runScript(opts.setupPath, { shellPath: opts.shellPath, trace: true }),
 		d.captureExitCode("S"),
 		...d.branchOnFailure("S", {
 			fail: indentLines(2, [
 				d.print(d.style("✗ Setup failed (exit %s)", "error"), { args: [d.exitCodeArg("S")] }),
-				...reportFailure,
+				d.writeExitCodeFile("S", opts.setupExitPath),
 				d.execReplacing(d.interactiveShellCommand(opts.shellPath)),
 			]),
 		}),

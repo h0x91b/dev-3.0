@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { agentReplyRef } from "../shared/agent-message-envelope";
@@ -21,7 +21,6 @@ import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./age
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "./pane-input-native";
 import type { PaneInputProgram } from "../shared/pane-input";
 import { getUserIdleSeconds } from "./user-activity";
-import { setupExitCodePath } from "./temp-paths";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { addVent } from "./vents";
@@ -720,28 +719,6 @@ const handlers: Record<string, Handler> = {
 			updated = { ...updated, priority };
 		}
 		return { task: updated, titlePreserved };
-	},
-
-	/**
-	 * Internal, called by the setup wrapper (`dev3 hook setup-failed`). The exit
-	 * code arrives through a file rather than a parameter: the wrapper writes it
-	 * from inside a shell where interpolating a variable into an argv differs per
-	 * dialect, while the file writer already handles that (and Windows encoding).
-	 */
-	"task.setupFailed": async (params) => {
-		const { project, task } = await resolveTaskFromParams(params);
-		let raw = "";
-		try {
-			raw = readFileSync(setupExitCodePath(task.id), "utf-8");
-		} catch {
-			// The wrapper died before it could write, or the file is gone. The
-			// failure itself is not in doubt — only its code.
-		}
-		const parsed = Number.parseInt(raw.trim(), 10);
-		const exitCode = Number.isFinite(parsed) && parsed !== 0 ? parsed : 1;
-		const updated = await data.updateTask(project, task.id, { setupFailedExitCode: exitCode });
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		return updated;
 	},
 
 	"overview.set": async (params) => {

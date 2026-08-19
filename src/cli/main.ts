@@ -29,7 +29,6 @@ import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
-import { handleSetupFailed } from "./commands/setup-failed";
 import { handleDoctor } from "./commands/doctor";
 import { TOLERATE_APP_OFFLINE_FLAG } from "../shared/agent-hooks";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
@@ -190,11 +189,6 @@ async function main(): Promise<void> {
 			socketPath || context?.socketPath || null,
 			context,
 		);
-	}
-	if (command === "hook" && subcommand === "setup-failed") {
-		// Internal: the setup wrapper reporting a non-zero setupScript. Silent and
-		// successful whatever happens — it runs while a launch is already failing.
-		return await handleSetupFailed(socketPath || context?.socketPath || null, context);
 	}
 	if (command === "install-skills") {
 		return await handleInstallSkills();

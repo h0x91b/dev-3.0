@@ -43,7 +43,7 @@ import {
 } from "../tmux";
 import { markAgentPane } from "../agent-prompt";
 import { clearSetupExitCode, dev3TaskTempPath, setupExitCodePath } from "../temp-paths";
-import { dev3CliExecutable } from "../task-pane-runs";
+import { stopSetupFailureWatch, watchSetupFailure } from "../setup-failure-watch";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import {
 	focusNativeTaskPane,
@@ -625,6 +625,7 @@ export async function launchTaskPty(
 		await data.updateTask(project, task.id, { setupFailedExitCode: null });
 		task.setupFailedExitCode = null;
 	}
+	stopSetupFailureWatch(task.id);
 	clearSetupExitCode(task.id);
 
 	const ctx: agents.TemplateContext = {
@@ -808,11 +809,15 @@ export async function launchTaskPty(
 			nativeBackend,
 			launchMode: setupScriptLaunchMode,
 			setupExitPath: setupExitCodePath(task.id),
-			dev3CliPath: dev3CliExecutable(),
 		});
 		await writeLaunchScript(startupPath, startupScript);
 		tmuxCmd = buildScriptRunnerCommand(startupPath, { shellPath: userShell });
 		isSetupWrapper = true;
+		// Only this process can see the wrapper's verdict — see setup-failure-watch.
+		watchSetupFailure(task.id, async (exitCode) => {
+			const updated = await data.updateTask(project, task.id, { setupFailedExitCode: exitCode });
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		});
 	}
 
 	const runScriptPath = dev3TaskTempPath(task.id, `run${dialect.scriptExtension}`);
