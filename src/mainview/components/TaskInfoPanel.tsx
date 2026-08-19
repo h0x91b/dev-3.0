@@ -813,13 +813,18 @@ function TaskInfoPanel({
 	// On narrow the chip is a primary touch target — bump it to ≥44px (§12.6).
 	// On narrow this is the one shrinkable region of a no-wrap bar: a long
 	// custom-column name truncates here instead of pushing the kebab off screen.
+	// Boxed like its neighbours (watch toggle, completion-owner) so the quick-complete
+	// check reads as a segment of the status control and not as a homeless icon: the
+	// border owns the group, the hairline divides the two click targets, and hover
+	// lives on the segments so each one still answers separately.
+	const showQuickComplete = !narrow && !movingStatus && getAllowedTransitions(task.status).includes("completed");
 	const statusDropdownButton = (
-		<div className={`flex items-center rounded-lg hover:bg-elevated transition-colors ${tight || narrow ? "min-w-0 shrink" : "flex-shrink-0"}`}>
+		<div className={`flex items-center rounded-lg border border-edge hover:border-edge-active transition-colors ${tight || narrow ? "min-w-0 shrink" : "flex-shrink-0"}`}>
 			<button
 				ref={statusTriggerRef}
 				onClick={toggleStatusMenu}
 				disabled={movingStatus}
-				className={`flex min-w-0 items-center gap-2 rounded-lg ${narrow ? "px-3 min-h-[2.75rem]" : "px-2.5 py-1"}`}
+				className={`flex min-w-0 items-center gap-2 transition-colors hover:bg-elevated ${showQuickComplete ? "rounded-l-lg" : "rounded-lg"} ${narrow ? "px-3 min-h-[2.75rem]" : "px-2.5 py-1"}`}
 			>
 				{activeCustomColumn ? (
 					<div
@@ -839,24 +844,27 @@ function TaskInfoPanel({
 					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
 				</svg>
 			</button>
-			{!narrow && !movingStatus && getAllowedTransitions(task.status).includes("completed") && (
-				<Tooltip content={t("pipeline.completeTooltip")} disabled={quickCompleting}>
-					<button
-						data-testid="task-info-quick-complete"
-						onClick={handleQuickComplete}
-						disabled={quickCompleting}
-						aria-label={t("pipeline.completeTooltip")}
-						className={`mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success transition-[color,background-color,opacity] ${
-							quickCompleting ? "bg-success/25 opacity-100" : "opacity-60 hover:bg-success/20 hover:opacity-100"
-						}`}
-					>
-						{quickCompleting ? (
-							<span className="h-3 w-3 animate-spin rounded-full border-2 border-success/30 border-t-success" />
-						) : (
-							<CompleteCheckIcon className="w-3 h-3" />
-						)}
-					</button>
-				</Tooltip>
+			{showQuickComplete && (
+				<>
+					<span className="h-4 w-px flex-shrink-0 bg-edge" aria-hidden="true" />
+					<Tooltip content={t("pipeline.completeTooltip")} disabled={quickCompleting}>
+						<button
+							data-testid="task-info-quick-complete"
+							onClick={handleQuickComplete}
+							disabled={quickCompleting}
+							aria-label={t("pipeline.completeTooltip")}
+							className={`flex flex-shrink-0 items-center justify-center self-stretch rounded-r-lg px-1.5 text-success transition-[color,background-color,opacity] ${
+								quickCompleting ? "bg-success/25 opacity-100" : "opacity-75 hover:bg-success/20 hover:opacity-100"
+							}`}
+						>
+							{quickCompleting ? (
+								<span className="h-3 w-3 animate-spin rounded-full border-2 border-success/30 border-t-success" />
+							) : (
+								<CompleteCheckIcon className="w-3 h-3" />
+							)}
+						</button>
+					</Tooltip>
+				</>
 			)}
 		</div>
 	);
