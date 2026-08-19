@@ -1822,6 +1822,26 @@ describe("TerminalView – remote sync gate", () => {
 		expect(view.queryByTestId("terminal-sync-gate")).not.toBeNull();
 	});
 
+	it("resets the screen once per terminal, not on every reconnect", async () => {
+		// The regression this guards: RIS on every socket meant a full ghostty reset
+		// on each resume from background, which corrupted the shared WASM buffer and
+		// killed panes from 2026-08-15 on. Leftover pixels belong to constructing a
+		// Terminal — a reconnect reuses the same one and must not reset it.
+		await renderAndSetup();
+		const resetsAfterFirstConnect = mockTermInstance.write.mock.calls.filter((call) => call[0] === "\x1bc").length;
+		expect(resetsAfterFirstConnect).toBe(1);
+
+		await act(async () => {
+			Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+			document.dispatchEvent(new Event("visibilitychange"));
+			Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+			document.dispatchEvent(new Event("visibilitychange"));
+		});
+		await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
+
+		expect(mockTermInstance.write.mock.calls.filter((call) => call[0] === "\x1bc").length).toBe(1);
+	});
+
 	it("lifts when the app refuses the session instead of blurring a dead canvas", async () => {
 		const view = await renderAndSetup();
 		await act(async () => {

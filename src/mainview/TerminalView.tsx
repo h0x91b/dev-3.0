@@ -576,6 +576,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// Owned by this effect run, so a terminal that never opened cannot decrement
 		// the session count on cleanup.
 		let countedLive = false;
+		// One screen reset per Terminal instance. A rebuild re-runs this effect and
+		// therefore earns a fresh one; a reconnect does not.
+		let screenResetForThisTerminal = false;
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;
 		let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1647,7 +1650,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// showed task A's output until B's own redraw landed. RIS through the batched
 			// write path, which is what actually repaints. Skipped on a native resume:
 			// there the server sends a delta that expects the screen it left behind.
-			if (nativeSeqRef.current === null) enqueueTermWrite("\x1bc");
+			//
+			// ONCE PER TERMINAL, never per socket: leftover pixels are a property of
+			// constructing a Terminal, and a reconnect (resume from background, socket
+			// churn) reuses the same one. Resetting it on every reconnect is what
+			// started killing panes on 2026-08-15 — see the decision record
+			// reset-the-terminal-once-not-every-reconnect.
+			if (nativeSeqRef.current === null && !screenResetForThisTerminal) {
+				screenResetForThisTerminal = true;
+				enqueueTermWrite("\x1bc");
+			}
 			const diagnosticPtyUrl = ptyUrl.replace(/([?&]token=)[^&]+/, "$1***");
 			console.log("[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
 			let socket: WebSocket;
