@@ -457,12 +457,70 @@ describe("TaskInfoPanel", () => {
 			expect(screen.queryByText("nonexistent")).not.toBeInTheDocument();
 		});
 
-		it("renders branch name", async () => {
+		it("carries the branch as a labelled chip, the name in its accessible name", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ branchName: "dev3/my-branch" }));
 			});
-			// Branch appears in both collapsed and expanded, but collapsed is default
-			expect(screen.getAllByText("dev3/my-branch").length).toBeGreaterThanOrEqual(1);
+			// The bar shows the word, not the string: the name is 200px of mono text and
+			// only the chip's name / its menu heading have to carry it.
+			const chip = screen.getByTestId("branch-chip");
+			expect(chip).toHaveTextContent("Branch");
+			expect(chip.getAttribute("aria-label")).toContain("dev3/my-branch");
+			expect(screen.queryByText("dev3/my-branch")).not.toBeInTheDocument();
+		});
+
+		it("opens a menu with the full name and the three copy actions", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask({ branchName: "dev3/my-branch", worktreePath: "/tmp/wt/t1" }));
+			});
+
+			await user.click(screen.getByTestId("branch-chip"));
+
+			const menu = screen.getByRole("menu");
+			expect(menu).toHaveTextContent("dev3/my-branch");
+			expect(within(menu).getByRole("menuitem", { name: "Copy branch name" })).toBeInTheDocument();
+			expect(within(menu).getByRole("menuitem", { name: "Copy worktree path" })).toBeInTheDocument();
+			expect(within(menu).getByRole("menuitem", { name: "Copy checkout command" })).toBeInTheDocument();
+		});
+
+		it("copies the checkout command and says so out loud", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const writeText = vi.fn().mockResolvedValue(undefined);
+			Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+			await act(async () => {
+				renderPanel(makeTask({ branchName: "dev3/my-branch" }));
+			});
+
+			await user.click(screen.getByTestId("branch-chip"));
+			await user.click(screen.getByRole("menuitem", { name: "Copy checkout command" }));
+
+			expect(writeText).toHaveBeenCalledWith("git checkout dev3/my-branch");
+			// Confirmation used to live inside the tooltip, where it was invisible — and it
+			// only fires once the clipboard write actually resolved.
+			await waitFor(() => {
+				expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Checkout command copied", { taskId: "t1" });
+			});
+			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+		});
+
+		it("says it failed when the clipboard refuses", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+			Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+			await act(async () => {
+				renderPanel(makeTask({ branchName: "dev3/my-branch" }));
+			});
+
+			await user.click(screen.getByTestId("branch-chip"));
+			await user.click(screen.getByRole("menuitem", { name: "Copy branch name" }));
+
+			await waitFor(() => {
+				expect(vi.mocked(toast.error)).toHaveBeenCalledWith("Couldn't copy to the clipboard", { taskId: "t1" });
+			});
+			expect(vi.mocked(toast.success)).not.toHaveBeenCalled();
 		});
 
 		it("does not render metadata grid in collapsed state", async () => {
@@ -504,8 +562,9 @@ describe("TaskInfoPanel", () => {
 			await act(async () => {
 				renderPanel(makeTask({ branchName: "dev3/task-abc" }));
 			});
-			const branchTexts = screen.getAllByText("dev3/task-abc");
-			expect(branchTexts.length).toBeGreaterThanOrEqual(2); // header row + metadata
+			// The bar carries a chip now, so the metadata grid is the one place the full
+			// name is printed without opening anything.
+			expect(screen.getAllByText("dev3/task-abc").length).toBe(1);
 		});
 
 		it("renders description when present", async () => {
@@ -3224,7 +3283,7 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 		await act(async () => {
 			renderPanel(makeTask({ branchName: "dev3/task-shown", worktreePath: "/tmp/wt/t1" }));
 		});
-		expect(await screen.findByText("dev3/task-shown")).toBeInTheDocument();
+		expect(await screen.findByTestId("branch-chip")).toBeInTheDocument();
 	});
 
 	it("fills the empty git slot with a muted 'Git is not available' note", async () => {

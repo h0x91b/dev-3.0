@@ -31,6 +31,19 @@ function svgBase(className?: string): SVGProps<SVGSVGElement> {
 	};
 }
 
+// B1 — Branch (the chip that opens the branch menu): a side branch forks off the trunk.
+export function BranchIcon({ className }: GitIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<line x1="7" y1="4.5" x2="7" y2="19.5" />
+			<circle cx="7" cy="19.5" r="1.8" />
+			<circle cx="7" cy="4.5" r="1.8" />
+			<circle cx="17" cy="9.5" r="1.8" />
+			<path d="M8.8 4.5 H13 a4 4 0 0 1 4 4 v-.2" />
+		</svg>
+	);
+}
+
 // 1B — Show Diff (unified): + line types in, − line struck out.
 export function ShowDiffIcon({ className }: GitIconProps) {
 	return (

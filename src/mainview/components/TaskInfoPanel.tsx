@@ -1542,9 +1542,7 @@ function TaskInfoPanel({
 									dispatch={dispatch}
 									navigate={navigate}
 									isTaskActive={isTaskActive}
-									showWorktreeCopy
 									showLoading
-									branchNameClassName={`text-fg-3 text-xs font-mono flex-shrink-0 truncate ${veryTight ? "max-w-[4rem]" : tight ? "max-w-[6rem]" : "max-w-[12.5rem]"}`}
 									compact={compact}
 									onBranchStatusChange={setMetadataBranchState}
 									onOpenInlineDiff={onOpenInlineDiff}
@@ -1624,7 +1622,6 @@ function TaskInfoPanel({
 										dispatch={dispatch}
 										navigate={navigate}
 										isTaskActive={isTaskActive}
-										branchNameClassName={`text-fg-3 text-xs font-mono flex-shrink-0 truncate ${veryTight ? "max-w-[4rem]" : tight ? "max-w-[6rem]" : "max-w-[12.5rem]"}`}
 										compact={compact}
 										onBranchStatusChange={setMetadataBranchState}
 										onOpenInlineDiff={onOpenInlineDiff}

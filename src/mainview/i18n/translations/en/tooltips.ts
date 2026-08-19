@@ -82,6 +82,8 @@ export const tooltips = {
 		"tmux: closes a pane and terminates whatever runs inside. A picker opens first, so you choose exactly which pane dies.",
 
 	// Git bar
+	"ttip.infoPanel.branchChip":
+		"The task's git branch. Click for the full name plus one-click copies: the branch, the worktree path, and a ready checkout command.",
 	"ttip.git.commit":
 		"Hands the commit to the agent in the task terminal: it reviews the changes, stages them and writes the message. Nothing is pushed.",
 	"ttip.git.rebase": "Replays this task's commits on top of the latest base branch. Keeps the diff honest and surfaces conflicts early.",
