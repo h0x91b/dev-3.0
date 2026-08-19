@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { api } from "../rpc";
 import type { PtyThroughputStats } from "../../shared/types";
+import { PTY_DROP_RESUME_BYTES } from "../../shared/pty-flow-control";
 import {
 	snapshotAllPanes,
 	LONG_FRAME_MS,
@@ -86,7 +87,9 @@ function Row({ label, value, tone = "ok", hint }: { label: string; value: string
 /**
  * The half the renderer cannot see. `in` is what the shell produced, `out` is what
  * the server got onto a socket — a sustained gap between them IS the backlog, and
- * `q`/`sock` say whether it is sitting here or further downstream in the renderer.
+ * `q`/`sock`/`lag` say where it sits. `lag` is the one that matters: it counts
+ * what this viewer was sent but has not acknowledged, which is the only way to
+ * see a queue that lives past our sockets, in the browser's own receive path.
  */
 function ServerBlock({ sessionKey, stats }: { sessionKey: string; stats: PtyThroughputStats }) {
 	const behind = stats.bytesIn > stats.bytesOut * 1.2 && stats.bytesIn > 64 * 1024;
@@ -112,10 +115,16 @@ function ServerBlock({ sessionKey, stats }: { sessionKey: string; stats: PtyThro
 				hint={`peak ${humanSize(stats.socketPeak)}`}
 			/>
 			<Row
+				label="lag"
+				value={humanSize(stats.outstanding)}
+				tone={stats.dropping ? "bad" : stats.outstanding > PTY_DROP_RESUME_BYTES ? "warn" : "ok"}
+				hint={stats.dropping ? "DROPPING" : `peak ${humanSize(stats.outstandingPeak)}`}
+			/>
+			<Row
 				label="win"
 				value={`${stats.windowMs} ms`}
 				tone={stats.windowMs > 100 ? "bad" : stats.windowMs > 16 ? "warn" : "ok"}
-				hint={stats.drops ? `${stats.drops} drop/s` : ""}
+				hint={stats.drops ? `${stats.drops} drop/s · ${humanBytes(stats.droppedBytes)}` : ""}
 			/>
 		</div>
 	);

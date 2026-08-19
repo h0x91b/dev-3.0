@@ -9,6 +9,7 @@ import { TmuxError, TmuxSpawnError, isTmuxError, isTmuxSpawnError, isTmuxTimeout
 import {
 	PANE_ID_FORMAT,
 	PANE_IN_MODE_FORMAT,
+	CLIENT_NAME_FORMAT,
 	SESSION_OVERVIEW_FORMAT,
 	WINDOW_SWITCHER_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
@@ -334,6 +335,7 @@ describe("command methods build the documented argv", () => {
 		["setEnvironment", (c) => c.setEnvironment("dev3-a", "K", "v"), ["set-environment", "-t", "dev3-a", "K", "v"]],
 		["removeEnvironment", (c) => c.removeEnvironment("dev3-a", "K"), ["set-environment", "-r", "-t", "dev3-a", "K"]],
 		["sourceFile", (c) => c.sourceFile("/tmp/conf"), ["source-file", "/tmp/conf"]],
+		["refreshClient", (c) => c.refreshClient("/dev/ttys012"), ["refresh-client", "-t", "/dev/ttys012"]],
 	];
 
 	for (const [name, run, expected] of CASES) {
@@ -343,6 +345,26 @@ describe("command methods build the documented argv", () => {
 			expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", ...expected]);
 		});
 	}
+});
+
+describe("listClients", () => {
+	it("lists the clients of ONE session, never the whole server", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "/dev/ttys012\n/dev/ttys031\n" });
+
+		const clients = await client.listClients(CLIENT_NAME_FORMAT, { target: "dev3-abc" });
+
+		expect(clients).toEqual([{ name: "/dev/ttys012" }, { name: "/dev/ttys031" }]);
+		// -t is load-bearing: without it tmux answers for every task on the socket,
+		// and the repaint would hit some other task's terminal.
+		expect(argvOf(spawnFn)).toEqual([
+			"tmux", "-L", "dev3", "list-clients", "-t", "dev3-abc", "-F", CLIENT_NAME_FORMAT.formatString,
+		]);
+	});
+
+	it("reads no clients on a detached session", async () => {
+		const { client } = makeClient({ stdout: "" });
+		expect(await client.listClients(CLIENT_NAME_FORMAT, { target: "dev3-abc" })).toEqual([]);
+	});
 });
 
 describe("showOption", () => {

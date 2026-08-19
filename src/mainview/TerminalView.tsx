@@ -5,6 +5,7 @@ import { toast } from "./toast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { encodeResizeSequence } from "../shared/resize-protocol";
+import { encodeAckSequence } from "../shared/pty-flow-control";
 import {
 	claimMessage,
 	decodeNativeStreamMessage,
@@ -1731,6 +1732,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			ws = socket;
 			wsRef.current = ws;
+			/** Running total this socket has acknowledged — see ackConsumed below. */
+			let consumedBytes = 0;
 			console.log("[TerminalView] WebSocket created, readyState:", ws.readyState);
 
 			socket.onopen = () => {
@@ -1753,9 +1756,28 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				}
 			};
 
+			/**
+			 * Tell the server this socket has consumed everything sent so far.
+			 *
+			 * Sent after the write, not on arrival: the number has to mean "on the
+			 * screen's side of the parser", or the server sees a viewer that is
+			 * keeping up while its backlog grows. Cumulative and per-socket, so a
+			 * lost ack costs nothing — the next one carries the same truth.
+			 */
+			function ackConsumed(rawLength: number): void {
+				if (socket !== ws || socket.readyState !== WebSocket.OPEN) return;
+				consumedBytes += rawLength;
+				try { socket.send(encodeAckSequence(consumedBytes)); } catch { /* closing */ }
+			}
+
 			socket.onmessage = (event) => {
 				if (socket !== ws) return;
 				if (disposed) return;
+				// The length the SERVER sent, not the cleaned text: the ack is a position
+				// in that stream, so stripping OSC 52 first would drift it out of step.
+				const rawLength = typeof event.data === "string"
+					? event.data.length
+					: Number((event.data as ArrayBuffer | undefined)?.byteLength ?? 0);
 				try {
 					latency.noteOutput();
 					if (typeof event.data === "string") {
@@ -1793,6 +1815,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 							trail: trail.format(),
 						});
 					}
+				} finally {
+					// Even a message that threw is off the queue. Skipping the ack here
+					// would leave the server permanently convinced this viewer is behind.
+					ackConsumed(rawLength);
 				}
 			};
 

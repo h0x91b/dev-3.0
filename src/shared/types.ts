@@ -2977,6 +2977,11 @@ export interface PtyThroughputStats {
 	windowMs: number;
 	queuedPeak: number;
 	socketPeak: number;
+	/** Bytes sent to the slowest viewer that it has not acknowledged consuming. */
+	outstanding: number;
+	outstandingPeak: number;
+	/** Output is currently being discarded because that viewer cannot keep up. */
+	dropping: boolean;
 }
 
 // ---- System requirements ----

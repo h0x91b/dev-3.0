@@ -267,6 +267,12 @@ export const WINDOW_SWITCHER_FORMAT = tmuxFormat()
 	.tail("name", "window_name")
 	.build();
 
+/**
+ * Attached clients of one session, for the forced repaint after dropped output.
+ * A client name is its tty path, so it rides as the tail field.
+ */
+export const CLIENT_NAME_FORMAT = tmuxFormat().tail("name", "client_name").build();
+
 /** Session overview for the tmux sessions screen. */
 export const SESSION_OVERVIEW_FORMAT = tmuxFormat()
 	.string("name", "session_name")

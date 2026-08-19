@@ -7,10 +7,11 @@
  * report in seq 1575: a viewer showing content from forty seconds ago.
  *
  * `bytesIn` against `bytesOut` answers it. When `in` outruns `out` for any
- * length of time the difference is sitting in a queue, and the two gauges say
- * which one: `queued` is this module's own accumulator, `socketBuffered` is what
- * the sockets still owe. If both stay small while the viewer lags, the backlog
- * is downstream of here — in the renderer's own event loop.
+ * length of time the difference is sitting in a queue, and the gauges say which
+ * one: `queued` is this module's own accumulator, `socketBuffered` is what the
+ * sockets still owe, and `outstanding` is what a viewer has been sent but not
+ * acknowledged — the only one that can see a backlog living in the renderer's
+ * own receive path, which is where it actually turned out to be.
  */
 import { createRollingRate } from "../shared/rolling-rate";
 import type { PtyThroughputStats } from "../shared/types";
@@ -25,6 +26,9 @@ interface Counters {
 	windowMs: number;
 	queuedPeak: number;
 	socketPeak: number;
+	outstanding: number;
+	outstandingPeak: number;
+	dropping: boolean;
 }
 
 const bySession = new Map<string, Counters>();
@@ -39,6 +43,9 @@ function countersFor(key: string): Counters {
 			windowMs: 0,
 			queuedPeak: 0,
 			socketPeak: 0,
+			outstanding: 0,
+			outstandingPeak: 0,
+			dropping: false,
 		};
 		bySession.set(key, counters);
 	}
@@ -79,6 +86,18 @@ export function noteWindow(key: string, socketBuffered: number, windowMs: number
 	if (socketBuffered > counters.socketPeak) counters.socketPeak = socketBuffered;
 }
 
+/**
+ * How far the slowest viewer is behind by its own admission, and whether that
+ * is currently costing it output. The one gauge that can see a queue living
+ * past our sockets, so it is what proves the drop policy is working.
+ */
+export function noteOutstanding(key: string, outstanding: number, dropping: boolean): void {
+	const counters = countersFor(key);
+	counters.outstanding = outstanding;
+	counters.dropping = dropping;
+	if (outstanding > counters.outstandingPeak) counters.outstandingPeak = outstanding;
+}
+
 export function forgetSession(key: string): void {
 	bySession.delete(key);
 }
@@ -94,6 +113,9 @@ export function throughputSnapshot(): Record<string, PtyThroughputStats> {
 			windowMs: counters.windowMs,
 			queuedPeak: counters.queuedPeak,
 			socketPeak: counters.socketPeak,
+			outstanding: counters.outstanding,
+			outstandingPeak: counters.outstandingPeak,
+			dropping: counters.dropping,
 		};
 	}
 	return out;

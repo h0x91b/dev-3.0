@@ -28,7 +28,8 @@ import {
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
-import { forgetSession, noteBytesIn, noteFlush, noteQueued, noteWindow } from "./pty-throughput";
+import { isAckSequence, outstandingBytes, parseAckSequence, shouldDropOutput } from "../shared/pty-flow-control";
+import { forgetSession, noteBytesIn, noteDrop, noteFlush, noteOutstanding, noteQueued, noteWindow } from "./pty-throughput";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "./task-terminal-backend";
 import {
@@ -41,6 +42,7 @@ import {
 	setActiveTmuxTheme,
 	parseWindowLayout,
 	PANE_ID_FORMAT,
+	CLIENT_NAME_FORMAT,
 	WINDOW_OVERVIEW_FORMAT,
 	PANE_GEOMETRY_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
@@ -173,6 +175,12 @@ interface PtySession {
 	 *  detect same-size resizes that need a forced redraw — see applyClientSizes. */
 	appliedCols?: number;
 	appliedRows?: number;
+	/** Output is being discarded: a viewer is too far behind to replay to. */
+	droppingOutput: boolean;
+	/** Something was discarded, so this viewer owes a repaint once it catches up. */
+	needsRepaint: boolean;
+	/** A repaint is already on its way; a second one would only cost tmux spawns. */
+	repainting: boolean;
 }
 
 const sessions = new Map<string, PtySession>();
@@ -272,6 +280,9 @@ export function createSession(
 		batchTimer: null,
 		configureTimer: null,
 		osc52Buffer: "",
+		droppingOutput: false,
+		needsRepaint: false,
+		repainting: false,
 	};
 	sessions.set(taskId, session);
 	// Spawn immediately in the background — don't wait for WS connection
@@ -370,6 +381,9 @@ export async function createNativeTaskSession(
 		batchTimer: null,
 		configureTimer: null,
 		osc52Buffer: "",
+		droppingOutput: false,
+		needsRepaint: false,
+		repainting: false,
 		appliedCols: size.cols,
 		appliedRows: size.rows,
 	};
@@ -456,6 +470,9 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		batchTimer: null,
 		configureTimer: null,
 		osc52Buffer: "",
+		droppingOutput: false,
+		needsRepaint: false,
+		repainting: false,
 	};
 	if (session.nativeAttaching) return true;
 	session.nativeAttaching = true;
@@ -546,6 +563,9 @@ export async function ensureNativePanePtySession(
 		batchTimer: null,
 		configureTimer: null,
 		osc52Buffer: "",
+		droppingOutput: false,
+		needsRepaint: false,
+		repainting: false,
 	};
 	session.nativeAttaching = true;
 	sessions.set(key, session);
@@ -1620,10 +1640,20 @@ function flushPendingData(session: PtySession): void {
 		if (session.clients.size === 0) return;
 		const data = session.pendingData;
 		session.pendingData = "";
-		noteFlush(session.registryKey, data.length, session.clients.size);
-		for (const client of session.clients) {
-			try { client.sendText(data); } catch { /* dead client */ }
+		// A viewer this far behind would render this chunk many seconds late, and
+		// every chunk after it later still. Throw it away and owe it a repaint —
+		// tmux still holds the real screen, so nothing is lost but the animation.
+		refreshFlowControl(session);
+		if (session.droppingOutput) {
+			noteDrop(session.registryKey, data.length);
+			session.needsRepaint = true;
+			return;
 		}
+		// Output resumed before the last ack landed — the repaint is still owed,
+		// and it has to go out before this chunk lands on a corrupted screen.
+		releaseRepaintIfCaughtUp(session);
+		noteFlush(session.registryKey, data.length, session.clients.size);
+		sendToViewers(session, data);
 		return;
 	}
 	const data = session.pendingData;
@@ -1634,8 +1664,18 @@ function flushPendingData(session: PtySession): void {
 	if (session.clients.size === 0) return;
 	const framed = outputMessage(seq, data);
 	noteFlush(session.registryKey, framed.length, session.clients.size);
+	// Never dropped: a native session's journal is the only screen a reconnecting
+	// viewer can rebuild from, so a gap here has nothing to repaint it.
+	sendToViewers(session, framed);
+}
+
+/** Broadcast one batch and record what each viewer now owes an ack for. */
+function sendToViewers(session: PtySession, payload: string): void {
 	for (const client of session.clients) {
-		try { client.sendText(framed); } catch { /* dead client */ }
+		try {
+			client.sendText(payload);
+			client.ptyBytesSent = Number(client.ptyBytesSent ?? 0) + payload.length;
+		} catch { /* dead client */ }
 	}
 }
 
@@ -1670,6 +1710,78 @@ function bufferedBytesFor(session: PtySession): number {
 		} catch { /* probe owner is gone; close() will unregister it */ }
 	}
 	return worst;
+}
+
+// ── Viewer flow control (tmux only) ────────────────────────────────
+// See shared/pty-flow-control.ts for why the renderer has to report this and
+// the server cannot measure it: every socket here is loopback, so the backlog
+// that made the screen run in slow motion is invisible from this side.
+
+/** Bytes this socket has been handed, and the last total it confirmed consuming. */
+function viewerProgress(client: any): { sent: number; acked: number | null } {
+	return { sent: Number(client?.ptyBytesSent ?? 0), acked: client?.ptyBytesAcked ?? null };
+}
+
+/**
+ * Re-read how far the slowest viewer is behind and decide whether output is
+ * being discarded right now. Publishes the gauge either way, so the overlay
+ * shows the backlog even on a session that never trips the threshold.
+ */
+function refreshFlowControl(session: PtySession): number {
+	const outstanding = outstandingBytes(Array.from(session.clients, viewerProgress));
+	session.droppingOutput = shouldDropOutput(outstanding, session.droppingOutput);
+	noteOutstanding(session.registryKey, outstanding, session.droppingOutput);
+	return outstanding;
+}
+
+/**
+ * Make the viewer's screen true again after output was thrown away.
+ *
+ * tmux owns the authoritative screen, so asking every client attached to this
+ * session to repaint costs one full pane redraw and replaces whatever the drop
+ * corrupted. Best-effort throughout: a failed repaint leaves a stale screen,
+ * which the next real output or resize fixes anyway, and is never worth
+ * throwing into the PTY read path.
+ */
+async function repaintTmuxViewers(session: PtySession): Promise<void> {
+	if (session.backend === "native" || session.repainting) return;
+	session.repainting = true;
+	try {
+		const clients = await tmux.listClients(CLIENT_NAME_FORMAT, {
+			target: session.tmuxSessionName,
+			socket: session.tmuxSocket,
+		});
+		for (const client of clients) {
+			await tmux.refreshClient(client.name, { socket: session.tmuxSocket, bestEffort: true });
+		}
+	} catch (err) {
+		log.debug("tmux repaint after dropped output failed", {
+			taskId: shortId(session.taskId),
+			error: String(err),
+		});
+	} finally {
+		session.repainting = false;
+	}
+}
+
+/** Pay off the repaint owed for discarded output, once the viewer can take it. */
+function releaseRepaintIfCaughtUp(session: PtySession): void {
+	if (session.droppingOutput || !session.needsRepaint) return;
+	session.needsRepaint = false;
+	void repaintTmuxViewers(session);
+}
+
+/**
+ * A viewer reported its progress. An ack is normally the only event left once
+ * the shell has gone quiet, so this is where a pending repaint gets released.
+ */
+function handleViewerAck(session: PtySession, client: any, ackedBytes: number): void {
+	// Monotonic: a reconnect or a reordered frame must not walk the total back
+	// and manufacture a backlog that already drained.
+	const previous = Number(client.ptyBytesAcked ?? 0);
+	client.ptyBytesAcked = Math.min(Number(client.ptyBytesSent ?? 0), Math.max(previous, ackedBytes));
+	refreshFlowControl(session);
+	releaseRepaintIfCaughtUp(session);
 }
 
 /**
@@ -2147,13 +2259,23 @@ const ptyServer = Bun.serve({
 				if (!sessionId) return;
 				const session = sessions.get(sessionId);
 				if (!session) return;
-				const shell = sessionShell(session);
-				if (!shell) return;
 
 				const data =
 					typeof message === "string"
 						? message
 						: new TextDecoder().decode(message);
+
+				// Before the shell lookup: a viewer keeps reporting progress while it
+				// drains a backlog, and a dead shell must not swallow the ack that
+				// would otherwise release its repaint.
+				if (isAckSequence(data)) {
+					const acked = parseAckSequence(data);
+					if (acked !== null) handleViewerAck(session, ws, acked);
+					return;
+				}
+
+				const shell = sessionShell(session);
+				if (!shell) return;
 
 				if (session.backend === "native") {
 					const control = decodeNativeStreamMessage(data);
@@ -2223,6 +2345,10 @@ const ptyServer = Bun.serve({
 					// closing only releases its own lease.
 					const promoted = session.nativeLease?.detach(ws as any) ?? null;
 					session.clients.delete(ws as any);
+					// The viewer that was holding everyone back may be the one that just
+					// left, so the drop state has to be recomputed without it.
+					refreshFlowControl(session);
+					releaseRepaintIfCaughtUp(session);
 					// EFFECTIVE role, never a raw `writer`: another app process may hold the host
 					// lease, and telling this viewer it can type means it discovers otherwise
 					// only when its first keystroke is refused.

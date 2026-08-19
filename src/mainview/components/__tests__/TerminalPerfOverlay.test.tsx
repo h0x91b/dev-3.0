@@ -153,7 +153,7 @@ describe("TerminalPerfOverlay", () => {
 					bytesIn: 4 * 1024 * 1024, bytesOut: 1024 * 1024, messages: 16,
 					drops: 0, droppedBytes: 0,
 					queued: 512 * 1024, socketBuffered: 0, windowMs: 250,
-					queuedPeak: 8 * 1024 * 1024, socketPeak: 0,
+					queuedPeak: 8 * 1024 * 1024, socketPeak: 0, outstanding: 0, outstandingPeak: 0, dropping: false,
 				},
 			},
 		});
@@ -173,7 +173,7 @@ describe("TerminalPerfOverlay", () => {
 					bytesIn: 900, bytesOut: 300, messages: 2,
 					drops: 0, droppedBytes: 0,
 					queued: 0, socketBuffered: 0, windowMs: 16,
-					queuedPeak: 0, socketPeak: 0,
+					queuedPeak: 0, socketPeak: 0, outstanding: 0, outstandingPeak: 0, dropping: false,
 				},
 			},
 		});
@@ -183,12 +183,50 @@ describe("TerminalPerfOverlay", () => {
 		expect(screen.getByText("900 B/s → 300 B/s")).not.toHaveClass("text-danger");
 	});
 
+	it("says a viewer is behind, and says out loud when that is costing it output", async () => {
+		terminalPtyStats.mockResolvedValue({
+			sessions: {
+				"task-1": {
+					bytesIn: 6 * 1024 * 1024, bytesOut: 1024 * 1024, messages: 90,
+					drops: 12, droppedBytes: 3 * 1024 * 1024,
+					queued: 0, socketBuffered: 0, windowMs: 16, queuedPeak: 0, socketPeak: 0,
+					outstanding: 900 * 1024, outstandingPeak: 4 * 1024 * 1024, dropping: true,
+				},
+			},
+		});
+		renderOverlay();
+		await pollServer();
+
+		// The backlog the server's own gauges cannot see, and the drop it caused.
+		expect(screen.getByText("900.0 KB")).toHaveClass("text-danger");
+		expect(screen.getByText("DROPPING")).toBeInTheDocument();
+		expect(screen.getByText("12 drop/s · 3.0 MB/s")).toBeInTheDocument();
+	});
+
+	it("does not cry backlog when the viewer is merely a little behind", async () => {
+		terminalPtyStats.mockResolvedValue({
+			sessions: {
+				calm: {
+					bytesIn: 2048, bytesOut: 2048, messages: 4, drops: 0, droppedBytes: 0,
+					queued: 0, socketBuffered: 0, windowMs: 16, queuedPeak: 0, socketPeak: 0,
+					outstanding: 1024, outstandingPeak: 4096, dropping: false,
+				},
+			},
+		});
+		renderOverlay();
+		await pollServer();
+
+		expect(screen.getByText("1.0 KB")).not.toHaveClass("text-danger");
+		expect(screen.queryByText("DROPPING")).not.toBeInTheDocument();
+		expect(screen.getByText("peak 4.0 KB")).toBeInTheDocument();
+	});
+
 	it("keeps the last numbers up when a poll fails", async () => {
 		terminalPtyStats.mockResolvedValue({
 			sessions: {
 				"task-1": {
 					bytesIn: 2048, bytesOut: 2048, messages: 4, drops: 0, droppedBytes: 0,
-					queued: 0, socketBuffered: 0, windowMs: 16, queuedPeak: 0, socketPeak: 0,
+					queued: 0, socketBuffered: 0, windowMs: 16, queuedPeak: 0, socketPeak: 0, outstanding: 0, outstandingPeak: 0, dropping: false,
 				},
 			},
 		});

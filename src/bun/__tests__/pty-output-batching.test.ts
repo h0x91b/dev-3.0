@@ -39,12 +39,15 @@ import {
 	PTY_BACKPRESSURE_LOW_WATER_BYTES,
 	PTY_BATCH_INTERVAL_MAX_MS,
 } from "../pty-backpressure";
+import { encodeAckSequence, PTY_DROP_HIGH_WATER_BYTES } from "../../shared/pty-flow-control";
+import { tmux, taskSessionName } from "../tmux";
 
 // The PTY server's WebSocket handlers are part of the unit under test; intercept
 // the config `Bun.serve` is handed at module load.
 interface WsHandlers {
 	open(ws: unknown): void;
 	close(ws: unknown): void;
+	message(ws: unknown, message: string): void;
 }
 let wsHandlers: WsHandlers;
 const bun = globalThis as unknown as { Bun: { serve: (config: unknown) => unknown } };
@@ -84,6 +87,8 @@ const mockSpawn = vi.mocked(spawn);
 const mockSpawnSync = vi.mocked(spawnSync);
 
 let emit: (data: string) => void;
+/** The PTY the last spawned shell writes to — what a keystroke would reach. */
+let shellTerminal: { write: ReturnType<typeof vi.fn> };
 const activeSessions: string[] = [];
 
 /** A tmux-backed session with one attached viewer, ready to receive output. */
@@ -102,9 +107,10 @@ beforeEach(() => {
 	mockSpawn.mockImplementation(((_cmd: unknown, opts: { terminal?: { data?: unknown } }) => {
 		const onData = opts?.terminal?.data as ((t: unknown, d: string) => void) | undefined;
 		if (onData) emit = (data: string) => onData(null, data);
+		shellTerminal = { close: vi.fn(), resize: vi.fn(), write: vi.fn() } as never;
 		return {
 			pid: 100,
-			terminal: { close: vi.fn(), resize: vi.fn(), write: vi.fn() },
+			terminal: shellTerminal,
 			kill: vi.fn(),
 			exited: new Promise(() => {}),
 		};
@@ -271,5 +277,162 @@ describe("pressure changing mid-session", () => {
 		vi.advanceTimersByTime(PTY_BATCH_INTERVAL_MAX_MS);
 
 		expect(client.sent.join("")).toBe("queued|next|");
+	});
+});
+
+/**
+ * Viewer flow control — the honest half of the fix for seq 1575's slow motion.
+ *
+ * Backpressure above can only widen the window; it never drops, so a viewer
+ * slower than the shell falls further behind forever and replays history as a
+ * video. These tests pin the escape: past the high-water mark output is thrown
+ * away, and tmux is asked to repaint once the viewer is back.
+ */
+describe("viewer flow control", () => {
+	/** Fill 128 KB per chunk — four of them cross the 512 KB high-water mark. */
+	const CHUNK = "z".repeat(128 * 1024);
+
+	/** Tell the server this client has consumed `total` bytes on its socket. */
+	function ack(client: FakeClient, total: number): void {
+		wsHandlers.message(client, encodeAckSequence(total));
+	}
+
+	/** Everything the client was actually handed, in bytes. */
+	function received(client: FakeClient): number {
+		return client.sent.reduce((sum, frame) => sum + frame.length, 0);
+	}
+
+	let listClients: ReturnType<typeof vi.spyOn>;
+	let refreshClient: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		listClients = vi.spyOn(tmux, "listClients").mockResolvedValue([{ name: "/dev/ttys009" }] as never);
+		refreshClient = vi.spyOn(tmux, "refreshClient").mockResolvedValue(undefined as never);
+	});
+
+	afterEach(() => {
+		listClients.mockRestore();
+		refreshClient.mockRestore();
+	});
+
+	it("never drops for a viewer that does not report progress at all", () => {
+		const client = startSession("task-fc-silent");
+
+		// An older renderer, or any plain WebSocket client: it opts out by saying
+		// nothing, and must keep the old never-drop behaviour rather than starve.
+		for (let i = 0; i < 20; i++) {
+			emit(CHUNK);
+			vi.advanceTimersByTime(BATCH_MS);
+		}
+
+		expect(received(client)).toBe(20 * CHUNK.length);
+	});
+
+	it("never drops for a viewer that keeps up", () => {
+		const client = startSession("task-fc-fast");
+		ack(client, 0);
+
+		for (let i = 0; i < 20; i++) {
+			emit(CHUNK);
+			vi.advanceTimersByTime(BATCH_MS);
+			ack(client, received(client));
+		}
+
+		expect(received(client)).toBe(20 * CHUNK.length);
+	});
+
+	it("stops sending to a viewer that stopped consuming", () => {
+		const client = startSession("task-fc-stalled");
+		ack(client, 0);
+
+		for (let i = 0; i < 20; i++) {
+			emit(CHUNK);
+			vi.advanceTimersByTime(BATCH_MS);
+		}
+
+		// It never acked again, so it is held just past the high-water mark and the
+		// rest is discarded instead of queued into a slow-motion replay.
+		expect(received(client)).toBeLessThan(PTY_DROP_HIGH_WATER_BYTES + CHUNK.length);
+		expect(received(client)).toBeGreaterThan(0);
+	});
+
+	it("repaints from tmux once the viewer catches up, and resumes sending", async () => {
+		const client = startSession("task-fc-recover");
+		ack(client, 0);
+
+		for (let i = 0; i < 20; i++) {
+			emit(CHUNK);
+			vi.advanceTimersByTime(BATCH_MS);
+		}
+		const droppedFrom = received(client);
+		expect(refreshClient).not.toHaveBeenCalled();
+
+		// Caught up: the discarded bytes left the screen wrong, so tmux — which
+		// still holds the real screen — is asked to redraw it.
+		ack(client, droppedFrom);
+		await vi.advanceTimersByTimeAsync(0);
+
+		// THIS session's clients, not every client on the shared tmux socket:
+		// refreshing the wrong one repaints somebody else's task.
+		expect(listClients).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ target: taskSessionName("task-fc-recover") }),
+		);
+		expect(refreshClient).toHaveBeenCalledWith("/dev/ttys009", expect.objectContaining({ bestEffort: true }));
+
+		// And the stream is live again, not stuck in the dropping state.
+		emit("after|");
+		expect(client.sent[client.sent.length - 1]).toBe("after|");
+	});
+
+	it("does not repaint when nothing was ever dropped", async () => {
+		const client = startSession("task-fc-nodrop");
+		ack(client, 0);
+
+		emit("small");
+		ack(client, received(client));
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(refreshClient).not.toHaveBeenCalled();
+	});
+
+	it("keeps an ack out of the shell — it is protocol, not keystrokes", () => {
+		const client = startSession("task-fc-not-typed");
+
+		wsHandlers.message(client, encodeAckSequence(4096));
+
+		expect(shellTerminal.write).not.toHaveBeenCalled();
+	});
+
+	it("survives an ack that claims more than was ever sent", () => {
+		const client = startSession("task-fc-overack");
+		ack(client, Number.MAX_SAFE_INTEGER);
+
+		// A backlog computed from that ack would be hugely negative; clamping keeps
+		// the viewer at zero outstanding and the stream flowing.
+		emit("still flowing");
+		expect(client.sent[client.sent.length - 1]).toBe("still flowing");
+	});
+
+	it("frees the stream when the viewer that was holding it back disconnects", () => {
+		const slow = startSession("task-fc-two-viewers");
+		const fast = new FakeClient("task-fc-two-viewers");
+		wsHandlers.open(fast);
+		ack(slow, 0);
+		ack(fast, 0);
+
+		for (let i = 0; i < 20; i++) {
+			emit(CHUNK);
+			vi.advanceTimersByTime(BATCH_MS);
+			ack(fast, received(fast));
+		}
+		// One broadcast, so the slowest viewer decided for both.
+		const stalled = received(fast);
+
+		wsHandlers.close(slow);
+		emit("free now");
+
+		expect(received(fast)).toBeGreaterThan(stalled);
+		expect(fast.sent[fast.sent.length - 1]).toBe("free now");
 	});
 });

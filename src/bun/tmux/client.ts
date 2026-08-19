@@ -603,6 +603,28 @@ export class TmuxClient {
 		return this.runCommand(opts.socket, args, opts);
 	}
 
+	// ── Clients ────────────────────────────────────────────────────────
+
+	/** `list-clients -t <session> -F` — the clients currently attached to a session. */
+	async listClients<T>(format: TmuxFormat<T>, opts: { target: string } & SocketOpt): Promise<T[]> {
+		const { stdout } = await this.runChecked(opts.socket, ["list-clients", "-t", opts.target, "-F", format.formatString]);
+		return format.parse(stdout);
+	}
+
+	/**
+	 * `refresh-client -t <client>` — force one attached client to repaint from
+	 * tmux's own screen state.
+	 *
+	 * The recovery half of PTY flow control: after output is discarded for a
+	 * viewer that fell too far behind, this is what makes the next thing it sees
+	 * correct instead of corrupt. `-t` takes a CLIENT (a tty path from
+	 * {@link listClients}), never a session — tmux would otherwise resolve "the
+	 * best client", which on our shared socket is some other task's.
+	 */
+	refreshClient(client: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["refresh-client", "-t", client], opts);
+	}
+
 	/** `send-keys -X cancel` — leave copy-mode in the target pane. */
 	exitCopyMode(target: string, opts?: CommandOpts): Promise<void> {
 		return this.runCommand(opts?.socket, ["send-keys", "-t", target, "-X", "cancel"], opts);
