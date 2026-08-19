@@ -61,10 +61,17 @@ what is left — ghostty-web re-parses the whole viewport once per rendered row,
    rate ceiling that decision 175 exists to enforce is untouched — only the
    duration changes.
 4. **`src/mainview/terminal-latency.ts` measures the result.** `echo`, `paint`,
-   `write` and `frame` distributions per pane, sampled only from idle typing,
-   read live via `window.__dev3TerminalLatency()` and summarised into the
-   backend log every minute. It hangs off `installRenderGuard`'s new `onFrame`
-   callback rather than adding a fourth render wrapper.
+   `write`, `frame` and `gap` distributions per pane plus per-second counters
+   (fps, writes, PTY bytes/messages, wheel events/lines, missed frames), sampled
+   only from idle typing for the round-trip stages, read live via
+   `window.__dev3TerminalLatency()` and summarised into the backend log every
+   minute. It hangs off `installRenderGuard`'s new `onFrame` callback rather
+   than adding a fourth render wrapper.
+5. **`TerminalPerfOverlay` puts those numbers on screen**, behind View → Debug →
+   Terminal Performance (menu-only, like every other Debug entry; its state
+   persists in `localStorage` so a dev-server restart does not cost a trip back
+   to the menu). It exists because the first round of fixes was invisible to the
+   person feeling the lag — see the alternative below, which this reverses.
 
 ## Risks
 
@@ -99,6 +106,10 @@ what is left — ghostty-web re-parses the whole viewport once per rendered row,
   nothing over writing on arrival.
 - **Raise the wheel pacer's rate instead of queueing.** Directly reopens the
   1022-byte read-window bug decision 175 fixed.
-- **A latency panel in the UI.** A visible surface needs the `/ux-principal`
-  pass and a place in the manifest; a global function and a log line answer the
-  audit question today without spending that.
+- **A latency panel in the UI.** Rejected first, then built the same day. The
+  reasoning was that a global function and a log line answer the audit question
+  without spending a `/ux-principal` pass — true for the audit, false for the
+  user, who ran the fixed build, still felt choppy scrolling, and had no way to
+  see whether anything had changed. The pass was cheap: the overlay is
+  manifest-compliant (a Debug entry, menu-only, zero chrome on the happy path)
+  and needed no manifest edit.

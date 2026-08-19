@@ -10,9 +10,13 @@ import {
 	percentile,
 	registerLatencyProbe,
 	__resetLatencyProbesForTests,
+	snapshotAllPanes,
 	QUIET_BEFORE_MS,
 	SAMPLE_TIMEOUT_MS,
 	MAX_SAMPLES,
+	RATE_WINDOW_MS,
+	LONG_FRAME_MS,
+	FRAME_GAP_CEILING_MS,
 } from "../terminal-latency";
 
 /** A clock the test drives by hand, so no assertion depends on real time. */
@@ -171,9 +175,134 @@ describe("createTerminalLatencyProbe", () => {
 
 	it("starts empty rather than undefined for every stage", () => {
 		const snap = createTerminalLatencyProbe().snapshot();
-		for (const stage of ["echo", "paint", "write", "frame"] as const) {
+		for (const stage of ["echo", "paint", "write", "frame", "gap"] as const) {
 			expect(snap[stage]).toEqual({ count: 0, p50: 0, p95: 0, max: 0 });
 		}
+		expect(snap.rates).toEqual({
+			fps: 0, updates: 0, bytes: 0, messages: 0, wheelEvents: 0, wheelLines: 0, longFrames: 0,
+		});
+		expect(snap.wheelBacklog).toBe(0);
+	});
+});
+
+/**
+ * The gap between frames, not the cost of one. ghostty renders on an
+ * unconditional rAF loop, so a frame that took 0.4 ms and a frame that never
+ * happened look identical in `frame` — only `gap` tells them apart, and it is
+ * the number that reads as choppy.
+ */
+describe("frame gaps", () => {
+	it("measures the wall-clock between painted frames, skipping the first", () => {
+		const clock = fakeClock();
+		const probe = createTerminalLatencyProbe({ now: clock.now });
+
+		probe.noteFrame(0.4);
+		clock.advance(16);
+		probe.noteFrame(0.4);
+		clock.advance(17);
+		probe.noteFrame(0.4);
+
+		const snap = probe.snapshot();
+		expect(snap.gap).toMatchObject({ count: 2, p50: 16, max: 17 });
+	});
+
+	it("counts a frame that missed its slot, and leaves a healthy one alone", () => {
+		const clock = fakeClock();
+		const probe = createTerminalLatencyProbe({ now: clock.now });
+
+		probe.noteFrame(0.4);
+		clock.advance(16);
+		probe.noteFrame(0.4);
+		clock.advance(LONG_FRAME_MS + 1);
+		probe.noteFrame(0.4);
+		clock.advance(RATE_WINDOW_MS);
+
+		expect(probe.snapshot().rates.longFrames).toBe(1);
+	});
+
+	it("does not call a hidden tab a dropped frame", () => {
+		const clock = fakeClock();
+		const probe = createTerminalLatencyProbe({ now: clock.now });
+
+		probe.noteFrame(0.4);
+		clock.advance(FRAME_GAP_CEILING_MS + 1);
+		probe.noteFrame(0.4);
+		clock.advance(RATE_WINDOW_MS);
+
+		const snap = probe.snapshot();
+		expect(snap.gap.count).toBe(0);
+		expect(snap.rates.longFrames).toBe(0);
+	});
+});
+
+describe("per-second counters", () => {
+	it("reports what happened in the window that just closed", () => {
+		const clock = fakeClock();
+		const probe = createTerminalLatencyProbe({ now: clock.now });
+
+		for (let i = 0; i < 60; i++) probe.noteFrame(0.4);
+		probe.noteOutput();
+		probe.noteBytes(2048);
+		probe.noteWrite(0.1);
+		probe.noteWrite(0.1);
+
+		// The window is still open: nothing is claimed yet.
+		expect(probe.snapshot().rates.fps).toBe(0);
+
+		clock.advance(RATE_WINDOW_MS);
+		const snap = probe.snapshot();
+		expect(snap.rates).toMatchObject({ fps: 60, updates: 2, bytes: 2048, messages: 1 });
+	});
+
+	it("scales a window that stayed open longer than a second instead of overstating it", () => {
+		const clock = fakeClock();
+		const probe = createTerminalLatencyProbe({ now: clock.now });
+
+		// 120 frames spread over four seconds is 30 fps, not 120.
+		for (let i = 0; i < 120; i++) probe.noteFrame(0.4);
+		clock.advance(4 * RATE_WINDOW_MS);
+
+		expect(probe.snapshot().rates.fps).toBe(30);
+	});
+
+	it("forgets the previous window rather than repeating it forever", () => {
+		const clock = fakeClock();
+		const probe = createTerminalLatencyProbe({ now: clock.now });
+
+		probe.noteWrite(0.1);
+		clock.advance(RATE_WINDOW_MS);
+		expect(probe.snapshot().rates.updates).toBe(1);
+
+		clock.advance(RATE_WINDOW_MS);
+		expect(probe.snapshot().rates.updates).toBe(0);
+	});
+
+	it("separates wheel events the browser sent from lines the pacer let through", () => {
+		const clock = fakeClock();
+		const probe = createTerminalLatencyProbe({ now: clock.now });
+
+		probe.noteWheelEvent();
+		probe.noteWheelEvent();
+		probe.noteWheelSent(3, 0);
+		probe.noteWheelSent(0, 12);
+		clock.advance(RATE_WINDOW_MS);
+
+		const snap = probe.snapshot();
+		expect(snap.rates).toMatchObject({ wheelEvents: 2, wheelLines: 3 });
+		// The backlog is a gauge, not a rate: it survives the window closing.
+		expect(snap.wheelBacklog).toBe(12);
+	});
+
+	it("ignores a byte count that is not a positive number", () => {
+		const clock = fakeClock();
+		const probe = createTerminalLatencyProbe({ now: clock.now });
+
+		probe.noteBytes(0);
+		probe.noteBytes(-5);
+		probe.noteBytes(Number.NaN);
+		clock.advance(RATE_WINDOW_MS);
+
+		expect(probe.snapshot().rates.bytes).toBe(0);
 	});
 });
 
@@ -188,6 +317,15 @@ describe("registerLatencyProbe", () => {
 
 		off();
 		expect(window.__dev3TerminalLatency?.()).toEqual({});
+	});
+
+	it("hands the overlay the same panes as the devtools global", () => {
+		const probe = createTerminalLatencyProbe();
+		probe.noteWrite(3);
+		registerLatencyProbe("pane-a", probe);
+
+		expect(snapshotAllPanes()["pane-a"].write.count).toBe(1);
+		expect(Object.keys(snapshotAllPanes())).toEqual(Object.keys(window.__dev3TerminalLatency?.() ?? {}));
 	});
 
 	it("does not let a stale unregister evict the pane that replaced it", () => {

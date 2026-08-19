@@ -111,6 +111,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "feature-flags":
 			window.dispatchEvent(new CustomEvent("rpc:showFeatureFlags"));
 			return;
+		case "terminal-perf-overlay":
+			window.dispatchEvent(new CustomEvent("rpc:toggleTerminalPerf"));
+			return;
 		case "gauge-demo":
 			navigate(ctx, { screen: "gauge-demo" });
 			return;
@@ -447,6 +450,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// View / navigation
 	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "open-settings",
 	"go-back", "go-forward", "gauge-demo", "viewport-lab", "native-pane-layout-lab", "update-popover-preview", "feature-flags",
+	"terminal-perf-overlay",
 	"debug-play-sound-completed", "debug-play-sound-cancelled", "debug-push-sound-completed",
 	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette",
 	// Project

@@ -890,6 +890,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		focused?.webview.loadURL(url);
 	} else if (e.data.action === MENU_ACTIONS.featureFlags) {
 		sendToFocusedWindow("showFeatureFlags", {});
+	} else if (e.data.action === MENU_ACTIONS.terminalPerfOverlay) {
+		sendToFocusedWindow("toggleTerminalPerf", {});
 	} else if (e.data.action === MENU_ACTIONS.about) {
 		// The channel BAKED INTO THE BUNDLE, not the one selected in Settings: About answers
 		// "which build am I running", and those two disagree for as long as a switch is

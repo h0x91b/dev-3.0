@@ -251,6 +251,10 @@ const terminal = {
 	"terminal.filePreviewRendered": "Renderizado",
 	"terminal.filePreviewRaw": "Sin formato",
 	"terminal.rendererCrashed": "El renderizador del terminal falló y no pudo reiniciarse solo. Haz clic para recargar la ventana — tu sesión sigue activa.",
+	"terminal.perf.title": "Rendimiento del terminal",
+	"terminal.perf.close": "Cerrar el panel de rendimiento",
+	"terminal.perf.noPanes": "No hay ningún terminal abierto. Abre el terminal de una tarea para empezar a medir.",
+	"terminal.perf.legend": "p50 / p95 / max. fps es el bucle de render, upd es con qué frecuencia cambió la imagen.",
 };
 
 export default terminal;

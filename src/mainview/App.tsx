@@ -50,6 +50,7 @@ import { ConfirmHost, confirm } from "./confirm";
 import AgentLaunchRequestModal from "./components/AgentLaunchRequestModal";
 import AboutModal from "./components/AboutModal";
 import FeatureFlagsModal from "./components/FeatureFlagsModal";
+import TerminalPerfOverlay from "./components/TerminalPerfOverlay";
 import FilePreviewModal from "./components/FilePreviewModal";
 import { OPEN_FILE_PREVIEW_EVENT, type OpenFilePreviewDetail } from "./terminal-path-open";
 import RosettaWarningModal from "./components/RosettaWarningModal";
@@ -84,6 +85,9 @@ const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
 
 /** QR token rotation period; the token's own TTL (`QR_TOKEN_TTL_S`) adds 5s headroom. */
 const QR_REFRESH_SECONDS = 60;
+
+/** Whether the Debug → Terminal Performance overlay is showing. */
+const TERMINAL_PERF_KEY = "dev3-terminal-perf";
 
 type RemoteAccessQRData = {
 	qrDataUrl: string;
@@ -287,6 +291,11 @@ function App() {
 	/** The channel baked into the running bundle — what tells a canary install from the release. */
 	const [aboutBuildChannel, setAboutBuildChannel] = useState<string | null>(null);
 	const [showFeatureFlags, setShowFeatureFlags] = useState(false);
+	// Perf work means restarting the app between code changes, so the HUD survives
+	// a reload rather than making the user re-open the menu every single time.
+	const [showTerminalPerf, setShowTerminalPerf] = useState(
+		() => localStorage.getItem(TERMINAL_PERF_KEY) === "1",
+	);
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
@@ -1789,6 +1798,19 @@ function App() {
 		return () => window.removeEventListener("rpc:showFeatureFlags", onShowFeatureFlags);
 	}, []);
 
+	// Debug -> Terminal Performance: the live fps/latency HUD. A toggle, because
+	// the menu item is the only way in and the only way back out of it.
+	useEffect(() => {
+		function onToggle() {
+			setShowTerminalPerf((on) => {
+				localStorage.setItem(TERMINAL_PERF_KEY, on ? "0" : "1");
+				return !on;
+			});
+		}
+		window.addEventListener("rpc:toggleTerminalPerf", onToggle);
+		return () => window.removeEventListener("rpc:toggleTerminalPerf", onToggle);
+	}, []);
+
 	// Surface the result of a manual "Check for Updates" menu action as a toast.
 	// (Available updates flow through rpc:updateAvailable → the header plaque.)
 	useEffect(() => {
@@ -2821,6 +2843,14 @@ function App() {
 				/>
 			)}
 			{showFeatureFlags && <FeatureFlagsModal onClose={() => setShowFeatureFlags(false)} />}
+			{showTerminalPerf && (
+				<TerminalPerfOverlay
+					onClose={() => {
+						localStorage.setItem(TERMINAL_PERF_KEY, "0");
+						setShowTerminalPerf(false);
+					}}
+				/>
+			)}
 			{rosettaWarning && (
 				<RosettaWarningModal
 					command={rosettaWarning.command}
