@@ -25,15 +25,17 @@ on:
   # buildOrder 1618, sha 7a9d230fb. The built-folder check in create-release-artifacts.sh,
   # which is what caught the old degradation, passed on the way there.
   #
-  # Offset off the hour: the top of the hour is the busiest slot on shared runners.
+  # HALF-HOURLY ON THE ROUND HALF HOUR, at Arseny's request on 2026-08-19. It replaces the
+  # 20-minute cadence added on 2026-08-14 to shorten the wait for Windows canary builds: at
+  # 20-minute spacing a publish routinely met the next tick, and a Linux runner that hung an
+  # hour on `apt-get update` left a wall of queued-then-cancelled runs. Half-hourly still beats
+  # the original hourly `23 * * * *` and gives one run room to finish.
   #
-  # TEMPORARY, at Arseny's request on 2026-08-14, while he is shaking Windows out on canary:
-  # every fix he wants to try on his Windows box waits for a published canary build, and hourly
-  # is the bottleneck. TO REVERT, restore this single line verbatim — nothing else here depends
-  # on the cadence:
-  #     - cron: "23 * * * *"
+  # Round times are deliberate and cost something: the top of the hour is the busiest slot on
+  # shared runners, so these ticks fire later than an offset one would. Nothing here depends on
+  # the cadence, so it is safe to change again.
   schedule:
-    - cron: "3,23,43 * * * *"
+    - cron: "0,30 * * * *"
   # Safe to press on an unchanged `main`: every platform skips, and a republish of the same
   # commit reproduces the same `buildOrder` so clients would not reinstall anyway.
   workflow_dispatch:

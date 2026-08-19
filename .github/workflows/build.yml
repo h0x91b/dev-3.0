@@ -168,8 +168,11 @@ jobs:
 
       # The runner image may or may not ship tmux, and guard grammar is version
       # sensitive, so install on demand and print what we actually got.
+      # Bounded for the same reason release-build-linux.yml bounds its apt step: `apt-get update`
+      # stalls silently rather than failing, and an unbounded stall burns the whole job's clock.
       - name: Ensure tmux
         shell: bash
+        timeout-minutes: 10
         run: |
           if ! command -v tmux >/dev/null 2>&1; then
             if [ "$RUNNER_OS" = "macOS" ]; then
