@@ -1,20 +1,31 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createServer, type Server } from "node:net";
 import { unlinkSync, existsSync } from "node:fs";
 import { sendRequest } from "../socket-client";
+import { testScopedPath } from "../../../test-scoped-path";
 
-const TEST_SOCKET = `${process.env.DEV3_TEST_ROOT}/socket-client.sock`;
 const NONEXISTENT_SOCKET = `${process.env.DEV3_TEST_ROOT}/nonexistent.sock`;
 
-function cleanSocket() {
+/**
+ * Every test binds its OWN socket path, captured in a local const. A test that
+ * fails by timeout keeps executing, and one shared path let the zombie rebind
+ * it under the next test — see the vitest-timeout-keeps-running decision record.
+ * The short "s.sock" name is deliberate: the isolated run root already eats most
+ * of the ~104-byte unix socket path budget.
+ */
+function socketPath(): string {
+	return testScopedPath("s.sock");
+}
+
+function cleanSocket(socket: string) {
 	try {
-		if (existsSync(TEST_SOCKET)) unlinkSync(TEST_SOCKET);
+		if (existsSync(socket)) unlinkSync(socket);
 	} catch {}
 }
 
-function createMockServer(handler: (data: string) => string): Promise<Server> {
+function createMockServer(socket: string, handler: (data: string) => string): Promise<Server> {
 	return new Promise((resolve) => {
-		cleanSocket();
+		cleanSocket(socket);
 		const server = createServer((conn) => {
 			let buf = "";
 			conn.on("data", (chunk) => {
@@ -28,18 +39,15 @@ function createMockServer(handler: (data: string) => string): Promise<Server> {
 				}
 			});
 		});
-		server.listen(TEST_SOCKET, () => resolve(server));
+		server.listen(socket, () => resolve(server));
 	});
 }
 
-afterEach(() => {
-	cleanSocket();
-});
-
 describe("sendRequest", () => {
 	it("sends NDJSON request and parses response", async () => {
+		const TEST_SOCKET = socketPath();
 		let receivedReq: any = null;
-		const server = await createMockServer((data) => {
+		const server = await createMockServer(TEST_SOCKET, (data) => {
 			receivedReq = JSON.parse(data);
 			return JSON.stringify({ id: receivedReq.id, ok: true, data: { hello: "world" } });
 		});
@@ -62,8 +70,9 @@ describe("sendRequest", () => {
 	});
 
 	it("sends empty params by default", async () => {
+		const TEST_SOCKET = socketPath();
 		let receivedReq: any = null;
-		const server = await createMockServer((data) => {
+		const server = await createMockServer(TEST_SOCKET, (data) => {
 			receivedReq = JSON.parse(data);
 			return JSON.stringify({ id: receivedReq.id, ok: true, data: null });
 		});
@@ -77,7 +86,8 @@ describe("sendRequest", () => {
 	});
 
 	it("returns error response correctly", async () => {
-		const server = await createMockServer((data) => {
+		const TEST_SOCKET = socketPath();
+		const server = await createMockServer(TEST_SOCKET, (data) => {
 			const req = JSON.parse(data);
 			return JSON.stringify({ id: req.id, ok: false, error: "Task not found" });
 		});
@@ -113,7 +123,8 @@ describe("sendRequest", () => {
 	});
 
 	it("matches request and response IDs", async () => {
-		const server = await createMockServer((data) => {
+		const TEST_SOCKET = socketPath();
+		const server = await createMockServer(TEST_SOCKET, (data) => {
 			const req = JSON.parse(data);
 			return JSON.stringify({ id: req.id, ok: true, data: "matched" });
 		});
@@ -127,14 +138,18 @@ describe("sendRequest", () => {
 		}
 	});
 
-	it("recovers from a transient connect failure once the app socket accepts (issue #714)", async () => {
+	// The only test here with a timer that outlives its own failure: `signal` is
+	// aborted on timeout, so the deferred bind is cancelled instead of running on
+	// after the verdict.
+	it("recovers from a transient connect failure once the app socket accepts (issue #714)", async ({ signal }) => {
+		const TEST_SOCKET = socketPath();
 		// Reproduces the false "app not running" verdict: the socket is briefly
 		// unavailable (no listener yet, like a busy app that can't accept()), then
 		// the app starts accepting. Without retry, sendRequest gives up on the very
 		// first ECONNREFUSED/ENOENT; with retry it must eventually connect.
-		cleanSocket();
+		cleanSocket(TEST_SOCKET);
 		const serverPromise = new Promise<Server>((resolve) => {
-			setTimeout(() => {
+			const timer = setTimeout(() => {
 				const srv = createServer((conn) => {
 					conn.on("data", (chunk) => {
 						const req = JSON.parse(chunk.toString().trim());
@@ -144,6 +159,7 @@ describe("sendRequest", () => {
 				});
 				srv.listen(TEST_SOCKET, () => resolve(srv));
 			}, 120);
+			signal.addEventListener("abort", () => clearTimeout(timer));
 		});
 
 		try {
@@ -164,8 +180,9 @@ describe("sendRequest", () => {
 	});
 
 	it("does not retry a real error response from the server", async () => {
+		const TEST_SOCKET = socketPath();
 		let calls = 0;
-		const server = await createMockServer((data) => {
+		const server = await createMockServer(TEST_SOCKET, (data) => {
 			calls++;
 			const req = JSON.parse(data);
 			return JSON.stringify({ id: req.id, ok: false, error: "Task not found" });
@@ -186,7 +203,8 @@ describe("sendRequest", () => {
 	// with zero bytes; the settle-and-retry window must reconnect and get the
 	// real status instead of surfacing the empty-response error (vents 07-04/06).
 	it("retries an empty response and succeeds once the server replies", async () => {
-		cleanSocket();
+		const TEST_SOCKET = socketPath();
+		cleanSocket(TEST_SOCKET);
 		let connections = 0;
 		const server = await new Promise<Server>((resolve) => {
 			const srv = createServer((conn) => {
@@ -219,7 +237,8 @@ describe("sendRequest", () => {
 	});
 
 	it("does NOT retry an empty response unless the caller opts in", async () => {
-		cleanSocket();
+		const TEST_SOCKET = socketPath();
+		cleanSocket(TEST_SOCKET);
 		let connections = 0;
 		const server = await new Promise<Server>((resolve) => {
 			const srv = createServer((conn) => {
@@ -241,7 +260,8 @@ describe("sendRequest", () => {
 	});
 
 	it("gives up with 'Empty response from server' after exhausting empty-response retries", async () => {
-		cleanSocket();
+		const TEST_SOCKET = socketPath();
+		cleanSocket(TEST_SOCKET);
 		let connections = 0;
 		const server = await new Promise<Server>((resolve) => {
 			const srv = createServer((conn) => {
@@ -266,6 +286,7 @@ describe("sendRequest", () => {
 	});
 
 	it("handles large responses without truncation", async () => {
+		const TEST_SOCKET = socketPath();
 		// Generate a large payload (~50KB) similar to tasks.list with many tasks
 		const largeTasks = Array.from({ length: 100 }, (_, i) => ({
 			id: crypto.randomUUID(),
@@ -281,7 +302,7 @@ describe("sendRequest", () => {
 			updatedAt: new Date().toISOString(),
 		}));
 
-		const server = await createMockServer((data) => {
+		const server = await createMockServer(TEST_SOCKET, (data) => {
 			const req = JSON.parse(data);
 			return JSON.stringify({ id: req.id, ok: true, data: largeTasks });
 		});
@@ -296,6 +317,7 @@ describe("sendRequest", () => {
 	});
 
 	it("fails with truncated large response (reproduces tasks.list bug)", async () => {
+		const TEST_SOCKET = socketPath();
 		// Simulate what happens when Bun's socket.write() does a partial write
 		// on a large response and socket.end() is called immediately after,
 		// truncating the JSON mid-stream.
@@ -306,7 +328,7 @@ describe("sendRequest", () => {
 			status: "in-progress",
 		}));
 
-		cleanSocket();
+		cleanSocket(TEST_SOCKET);
 		const server = await new Promise<Server>((resolve) => {
 			const srv = createServer((conn) => {
 				conn.on("data", (chunk) => {
