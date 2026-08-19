@@ -179,6 +179,37 @@ describe("MemoryHeadroomIndicator — where it lives", () => {
 		await user.click(pill());
 		expect(await screen.findByTestId("memory-breakdown-popover")).toBeInTheDocument();
 	});
+
+	it("opens on hover too — click-only made the row read as a label", async () => {
+		const user = userEvent.setup();
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderMenuRow();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.hover(pill());
+		// Real timers: the hover dwell is short enough to await for real.
+		expect(await screen.findByTestId("memory-breakdown-popover")).toBeInTheDocument();
+	});
+
+	it("does not open while the pointer is merely passing the row", async () => {
+		const user = userEvent.setup();
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderMenuRow();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.hover(pill());
+		await user.unhover(pill());
+		await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+		expect(screen.queryByTestId("memory-breakdown-popover")).toBeNull();
+	});
+
+	it("marks the flyout so the menu around it stays open while it is used", async () => {
+		const user = userEvent.setup();
+		mockedGet.mockResolvedValue(snapshot({ pressure: "normal" }));
+		renderMenuRow();
+		await waitFor(() => expect(pill()).toBeInTheDocument());
+		await user.click(pill());
+		const flyout = await screen.findByTestId("memory-breakdown-popover");
+		expect(flyout).toHaveAttribute("data-header-flyout", "true");
+	});
 });
 
 describe("MemoryHeadroomIndicator — the pill", () => {

@@ -6,6 +6,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { formatBytes, formatBytesCompact } from "../utils/formatBytes";
 import { computeAnchoredPosition } from "../utils/popoverPosition";
+import { computeMenuFlyoutPosition, MENU_FLYOUT_CLOSE_MS, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
@@ -67,6 +68,7 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 	const anchorRef = useRef<HTMLButtonElement | null>(null);
 	const popRef = useRef<HTMLDivElement | null>(null);
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -96,36 +98,59 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 		}
 	}, []);
 
+	const cancelOpen = useCallback(() => {
+		if (openTimer.current !== null) {
+			clearTimeout(openTimer.current);
+			openTimer.current = null;
+		}
+	}, []);
+
 	const close = useCallback(() => {
 		cancelClose();
+		cancelOpen();
 		setOpen(false);
 		setPinned(false);
 		setPos(null);
-	}, [cancelClose]);
+	}, [cancelClose, cancelOpen]);
 
 	const scheduleClose = useCallback(() => {
 		cancelClose();
+		cancelOpen();
 		closeTimer.current = setTimeout(() => {
 			closeTimer.current = null;
 			setOpen((wasOpen) => (pinned ? wasOpen : false));
 			if (!pinned) setPos(null);
-		}, CLOSE_DELAY_MS);
-	}, [cancelClose, pinned]);
+		}, variant === "menu" ? MENU_FLYOUT_CLOSE_MS : CLOSE_DELAY_MS);
+	}, [cancelClose, cancelOpen, pinned, variant]);
 
-	useEffect(() => cancelClose, [cancelClose]);
+	/** Hover intent for the menu row: a pointer merely passing by must not open it. */
+	const scheduleOpen = useCallback(() => {
+		cancelClose();
+		cancelOpen();
+		openTimer.current = setTimeout(() => {
+			openTimer.current = null;
+			setOpen(true);
+		}, MENU_FLYOUT_HOVER_MS);
+	}, [cancelClose, cancelOpen]);
 
-	// Position the popover once it has a measurable size.
+	useEffect(() => () => { cancelClose(); cancelOpen(); }, [cancelClose, cancelOpen]);
+
+	// Position the popover once it has a measurable size. The menu row hangs its
+	// flyout off the menu's outboard edge; the header pill drops it below itself.
 	useLayoutEffect(() => {
 		if (isNarrow || !open || !anchorRef.current || !popRef.current) return;
-		const anchor = anchorRef.current.getBoundingClientRect();
 		const rect = popRef.current.getBoundingClientRect();
-		const { top, left } = computeAnchoredPosition(
-			anchor,
-			{ width: rect.width, height: rect.height },
-			{ placement: "bottom", align: "end" },
-		);
+		const size = { width: rect.width, height: rect.height };
+		if (variant === "menu") {
+			setPos(computeMenuFlyoutPosition(anchorRef.current, size));
+			return;
+		}
+		const { top, left } = computeAnchoredPosition(anchorRef.current.getBoundingClientRect(), size, {
+			placement: "bottom",
+			align: "end",
+		});
 		setPos({ top, left });
-	}, [open, isNarrow, snapshot]);
+	}, [open, isNarrow, snapshot, variant]);
 
 	// Escape closes and hands focus back to the trigger.
 	useEffect(() => {
@@ -195,8 +220,8 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 		setPinned(true);
 	};
 
-	// Menu row: click-only. Hover-to-open inside an open menu would fire while the
-	// pointer is merely travelling down the list.
+	// Menu row: hover opens the flyout after a dwell, a click pins it. Click-only
+	// made the row read as a label — nobody found the breakdown behind it.
 	if (variant === "menu") {
 		return (
 			<>
@@ -205,6 +230,11 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 					type="button"
 					role="menuitem"
 					onClick={togglePinned}
+					onMouseEnter={isNarrow ? undefined : scheduleOpen}
+					onMouseLeave={isNarrow ? undefined : scheduleClose}
+					onFocus={(e) => {
+						if (!isNarrow && e.target.matches(":focus-visible")) setOpen(true);
+					}}
 					aria-label={accessibleName}
 					aria-expanded={open}
 					aria-haspopup="dialog"
@@ -225,6 +255,9 @@ export default function MemoryHeadroomIndicator({ navigate, variant = "bar" }: M
 						onMouseEnter={cancelClose}
 						onMouseLeave={scheduleClose}
 						data-testid="memory-breakdown-popover"
+						// Portaled outside the kebab, so the menu's outside-click handler
+						// needs this marker to keep itself open while the flyout is used.
+						data-header-flyout="true"
 						className="fixed z-[1200] overflow-y-auto overflow-x-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
 						style={{
 							top: pos?.top ?? 0,

@@ -10,6 +10,7 @@ import { useProjectPrivacy } from "../sensitive-projects";
 import HelpSpot from "./HelpSpot";
 import { formatBytes } from "../utils/formatBytes";
 import { startVisibilityAwarePoll } from "../utils/poll";
+import { computeMenuFlyoutPosition, MENU_FLYOUT_CLOSE_MS, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
 import Tooltip from "./Tooltip";
 
 interface TmuxSessionManagerProps {
@@ -30,9 +31,16 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 	const [popoverVisible, setPopoverVisible] = useState(false);
 	const [copiedName, setCopiedName] = useState<string | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
+	/**
+	 * Hover opens the menu flyout, a click PINS it: without the distinction the
+	 * click that follows a hover-open would immediately close the panel again.
+	 */
+	const [pinned, setPinned] = useState(false);
 
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const popoverRef = useRef<HTMLDivElement>(null);
+	const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const lastLoadedAtRef = useRef(0);
 	const inFlightFetchRef = useRef<Promise<TmuxSessionInfo[]> | null>(null);
 	const sessionsRef = useRef<TmuxSessionInfo[]>([]);
@@ -97,6 +105,43 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 		setRefreshing(false);
 	}
 
+	const cancelTimers = useCallback(() => {
+		if (openTimer.current !== null) {
+			clearTimeout(openTimer.current);
+			openTimer.current = null;
+		}
+		if (closeTimer.current !== null) {
+			clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+	}, []);
+
+	useEffect(() => cancelTimers, [cancelTimers]);
+
+	const closePopover = useCallback(() => {
+		cancelTimers();
+		setPopoverOpen(false);
+		setPinned(false);
+	}, [cancelTimers]);
+
+	/** Hover intent, menu row only: a pointer travelling past must not open it. */
+	const scheduleOpen = useCallback(() => {
+		cancelTimers();
+		openTimer.current = setTimeout(() => {
+			openTimer.current = null;
+			setPopoverVisible(false);
+			setPopoverOpen(true);
+		}, MENU_FLYOUT_HOVER_MS);
+	}, [cancelTimers]);
+
+	const scheduleClose = useCallback(() => {
+		cancelTimers();
+		closeTimer.current = setTimeout(() => {
+			closeTimer.current = null;
+			setPopoverOpen((wasOpen) => (pinned ? wasOpen : false));
+		}, MENU_FLYOUT_CLOSE_MS);
+	}, [cancelTimers, pinned]);
+
 	// Click outside to close
 	useEffect(() => {
 		if (!popoverOpen) return;
@@ -107,20 +152,26 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 				buttonRef.current &&
 				!buttonRef.current.contains(e.target as Node)
 			) {
-				setPopoverOpen(false);
+				closePopover();
 			}
 		}
 		document.addEventListener("mousedown", handleClick);
 		return () => document.removeEventListener("mousedown", handleClick);
-	}, [popoverOpen]);
+	}, [popoverOpen, closePopover]);
 
 	// Escape to close
-	useEscapeKey(() => setPopoverOpen(false), { enabled: popoverOpen });
+	useEscapeKey(closePopover, { enabled: popoverOpen });
 
-	// Viewport clamping
+	// Placement: the menu row hangs its flyout off the menu's outboard edge so the
+	// list stays clickable underneath; the header chip drops it below itself.
 	useLayoutEffect(() => {
 		if (!popoverOpen || !popoverRef.current || !buttonRef.current) return;
 		const menu = popoverRef.current.getBoundingClientRect();
+		if (variant === "menu") {
+			setPopoverPos(computeMenuFlyoutPosition(buttonRef.current, { width: menu.width, height: menu.height }));
+			setPopoverVisible(true);
+			return;
+		}
 		const trigger = buttonRef.current.getBoundingClientRect();
 		const vw = window.innerWidth;
 		const vh = window.innerHeight;
@@ -136,15 +187,21 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 
 		setPopoverPos({ top, left });
 		setPopoverVisible(true);
-	}, [popoverOpen, sessions.length]);
+	}, [popoverOpen, sessions.length, variant]);
 
 	function togglePopover() {
+		if (popoverOpen && (pinned || variant !== "menu")) {
+			closePopover();
+			return;
+		}
 		if (!popoverOpen && buttonRef.current) {
 			const rect = buttonRef.current.getBoundingClientRect();
 			setPopoverPos({ top: rect.bottom + 6, left: rect.right });
 			setPopoverVisible(false);
 		}
-		setPopoverOpen(!popoverOpen);
+		cancelTimers();
+		setPopoverOpen(true);
+		setPinned(true);
 	}
 
 	async function handleKill(sessionName: string) {
@@ -190,10 +247,10 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 	function handleSessionClick(session: TmuxSessionInfo) {
 		if (session.isProjectTerminal && session.projectId) {
 			navigate({ screen: "project-terminal", projectId: session.projectId });
-			setPopoverOpen(false);
+			closePopover();
 		} else if (session.taskId && session.projectId) {
 			navigate({ screen: "project", projectId: session.projectId, activeTaskId: session.taskId });
-			setPopoverOpen(false);
+			closePopover();
 		}
 	}
 
@@ -219,6 +276,10 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 			ref={buttonRef}
 			role="menuitem"
 			onClick={togglePopover}
+			onMouseEnter={scheduleOpen}
+			onMouseLeave={scheduleClose}
+			aria-haspopup="dialog"
+			aria-expanded={popoverOpen}
 			className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
 			aria-label={t("tmuxSessions.title")}
 		>
@@ -248,6 +309,11 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 				createPortal(
 					<div
 						ref={popoverRef}
+						onMouseEnter={variant === "menu" ? cancelTimers : undefined}
+						onMouseLeave={variant === "menu" ? scheduleClose : undefined}
+						// Portaled outside the kebab, so the menu's outside-click handler
+						// needs this marker to keep itself open while the flyout is used.
+						data-header-flyout={variant === "menu" ? "true" : undefined}
 						// z-[80] so the popover layers above the narrow header bottom sheet
 						// (z-[70]) when the tmux manager is folded into it on mobile.
 						className="fixed z-[80] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[22.5rem] max-w-[30rem] max-h-[25rem] flex flex-col"

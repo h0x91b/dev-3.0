@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-19 — A data-bearing menu row opens on hover, and its flyout sits beside the menu
+
+- **Rule:** Header-kebab rows that own a detail panel (memory breakdown, tmux sessions) open on ~180 ms hover intent with a click-to-pin, and the panel is anchored on the *menu's* outboard edge level with the row, never over the list; the portaled panel is exempted from the menu's outside-click dismissal via `data-header-flyout`.
+- **Why:** Click-only made both readouts unfindable once they left the header bar — a row that reacts to nothing reads as a label. Opening below/over the row was rejected because it covers the menu the pointer is still using; keeping click-only plus a chevron was rejected as chrome that still costs a click to learn.
+- **Status:** Implemented — `src/mainview/utils/menuFlyout.ts`, `MemoryHeadroomIndicator.tsx`, `TmuxSessionManager.tsx`, `GlobalHeader.tsx`; PRODUCT_UX_BIBLE §12.6.
+
 ## 2026-08-14 — An agent-to-agent message toast names two tasks and owns its own hue
 
 - **Rule:** The toast for `dev3 message` between two agents renders `#fromSeq title → #toSeq title` as its source line, uses the non-severity `agent` variant (violet `--agent`), and clicks through to the RECEIVER; every other toast keeps one origin and a severity variant.

@@ -917,6 +917,35 @@ describe("GlobalHeader — compact layout", () => {
 		expect(toggle).toHaveAttribute("role", "menuitem");
 	});
 
+	it("stays open while a menu row's flyout is clicked — it is portaled, not outside", async () => {
+		mockMatchMedia(false);
+		const user = userEvent.setup();
+		renderHeader({ screen: "project", projectId: "p1" });
+		await act(async () => {});
+
+		await user.click(screen.getByLabelText("More"));
+		expect(screen.getByText("Change Log")).toBeInTheDocument();
+
+		// The memory / tmux detail panels render into <body>, so by DOM they are
+		// "outside" the menu. Clicking one must not dismiss the menu underneath.
+		const flyout = document.createElement("div");
+		flyout.setAttribute("data-header-flyout", "true");
+		const inner = document.createElement("button");
+		flyout.appendChild(inner);
+		document.body.appendChild(flyout);
+		await act(async () => {
+			fireEvent.mouseDown(inner);
+		});
+		expect(screen.getByText("Change Log")).toBeInTheDocument();
+
+		// An ordinary outside click still closes it.
+		await act(async () => {
+			fireEvent.mouseDown(document.body);
+		});
+		expect(screen.queryByText("Change Log")).not.toBeInTheDocument();
+		flyout.remove();
+	});
+
 	it("opens the utilities cluster — nothing sits left of the kebab", async () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 		await act(async () => {});

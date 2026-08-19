@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TmuxSessionManager from "../TmuxSessionManager";
 import { I18nProvider } from "../../i18n";
@@ -22,6 +22,17 @@ function renderManager(navigate?: (route: Route) => void) {
 	return render(
 		<I18nProvider>
 			<TmuxSessionManager navigate={navigate ?? vi.fn()} />
+		</I18nProvider>,
+	);
+}
+
+/** The row as it lives inside the header kebab — hover-openable, flyout to the side. */
+function renderMenuRow(navigate?: (route: Route) => void) {
+	return render(
+		<I18nProvider>
+			<div role="menu">
+				<TmuxSessionManager navigate={navigate ?? vi.fn()} variant="menu" />
+			</div>
 		</I18nProvider>,
 	);
 }
@@ -288,5 +299,57 @@ describe("TmuxSessionManager", () => {
 
 		await user.click(nameEl);
 		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	describe("as a row of the header kebab", () => {
+		it("opens the session list on hover — click-only made the row read as a label", async () => {
+			mockedApi.request.listTmuxSessions.mockResolvedValue([taskSession]);
+			const user = userEvent.setup();
+			renderMenuRow();
+			await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+
+			await user.hover(screen.getByLabelText("tmux Sessions"));
+			// Real timers: the hover dwell is short enough to await for real.
+			expect(await screen.findByText("Fix some bug")).toBeInTheDocument();
+		});
+
+		it("stays shut while the pointer is merely passing the row", async () => {
+			mockedApi.request.listTmuxSessions.mockResolvedValue([taskSession]);
+			const user = userEvent.setup();
+			renderMenuRow();
+			await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+
+			const row = screen.getByLabelText("tmux Sessions");
+			await user.hover(row);
+			await user.unhover(row);
+			await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+			expect(screen.queryByText("Fix some bug")).toBeNull();
+		});
+
+		it("marks its flyout so the menu around it stays open while it is used", async () => {
+			mockedApi.request.listTmuxSessions.mockResolvedValue([taskSession]);
+			const user = userEvent.setup();
+			renderMenuRow();
+			await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+
+			await user.click(screen.getByLabelText("tmux Sessions"));
+			await screen.findByText("Fix some bug");
+			expect(document.querySelector("[data-header-flyout]")).not.toBeNull();
+		});
+
+		it("keeps a hover-opened list open after a click, so it can be worked in", async () => {
+			mockedApi.request.listTmuxSessions.mockResolvedValue([taskSession]);
+			const user = userEvent.setup();
+			renderMenuRow();
+			await waitFor(() => expect(screen.getByText("1")).toBeInTheDocument());
+
+			const row = screen.getByLabelText("tmux Sessions");
+			await user.hover(row);
+			await screen.findByText("Fix some bug");
+			await user.click(row);
+			await user.unhover(row);
+			await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+			expect(screen.getByText("Fix some bug")).toBeInTheDocument();
+		});
 	});
 });

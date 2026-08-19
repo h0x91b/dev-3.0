@@ -160,7 +160,11 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			if (showProjectDropdown && projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
 				setShowProjectDropdown(false);
 			}
-			if (showOverflowMenu && overflowMenuRef.current && !overflowMenuRef.current.contains(e.target as Node)) {
+			// A menu row's flyout (memory breakdown, tmux sessions) is portaled to
+			// <body>, so it is "outside" the menu by DOM — without this exemption the
+			// first click inside it closed the menu and unmounted the flyout with it.
+			const inFlyout = (e.target as Element | null)?.closest?.("[data-header-flyout]") != null;
+			if (showOverflowMenu && overflowMenuRef.current && !overflowMenuRef.current.contains(e.target as Node) && !inFlyout) {
 				setShowOverflowMenu(false);
 			}
 		}
