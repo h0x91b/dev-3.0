@@ -92,6 +92,8 @@ const infoPanel = {
 	"infoPanel.movedAt": "Movido",
 	"infoPanel.baseBranch": "Rama base",
 	"infoPanel.branchChip": "Rama",
+	"infoPanel.compareAgainst": "Comparar con",
+	"infoPanel.compareRefLocal": "{branch} (local)",
 	"infoPanel.copyFailed": "No se pudo copiar al portapapeles",
 	"infoPanel.branchMenuLabel": "Rama {branch} — acciones de copia",
 	"infoPanel.copyBranchItem": "Copiar el nombre de la rama",

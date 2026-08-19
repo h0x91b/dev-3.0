@@ -92,6 +92,8 @@ const infoPanel = {
 	"infoPanel.movedAt": "Перемещено",
 	"infoPanel.baseBranch": "Базовая ветка",
 	"infoPanel.branchChip": "Ветка",
+	"infoPanel.compareAgainst": "Сравнивать с",
+	"infoPanel.compareRefLocal": "{branch} (локальная)",
 	"infoPanel.copyFailed": "Не удалось скопировать в буфер",
 	"infoPanel.branchMenuLabel": "Ветка {branch} — что скопировать",
 	"infoPanel.copyBranchItem": "Скопировать имя ветки",

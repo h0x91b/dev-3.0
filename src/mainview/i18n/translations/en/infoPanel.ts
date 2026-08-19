@@ -92,6 +92,8 @@ const infoPanel = {
 	"infoPanel.movedAt": "Moved",
 	"infoPanel.baseBranch": "Base Branch",
 	"infoPanel.branchChip": "Branch",
+	"infoPanel.compareAgainst": "Compare against",
+	"infoPanel.compareRefLocal": "{branch} (local)",
 	"infoPanel.copyFailed": "Couldn't copy to the clipboard",
 	"infoPanel.branchMenuLabel": "Branch {branch} — copy actions",
 	"infoPanel.copyBranchItem": "Copy branch name",

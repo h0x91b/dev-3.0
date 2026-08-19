@@ -414,6 +414,15 @@ export function useTaskBranchStatus({
 		}
 	}, [branchStatus?.prUrl]);
 
+	/**
+	 * Switching the compare ref invalidates the status that was measured against the
+	 * old one, so drop it and let the effect refetch instead of showing stale numbers.
+	 */
+	function selectCompareRef(nextCompareRef: string) {
+		setCompareRef(nextCompareRef);
+		setBranchStatus(null);
+	}
+
 	return {
 		baseBranch,
 		branchStatus,
@@ -432,6 +441,7 @@ export function useTaskBranchStatus({
 		pushing,
 		rebasing,
 		refreshingStatus,
+		selectCompareRef,
 		statusLoading: enabled && isTaskActive && !!task.worktreePath && !branchStatus,
 	};
 }

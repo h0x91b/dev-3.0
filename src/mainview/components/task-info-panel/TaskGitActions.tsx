@@ -101,6 +101,7 @@ export default function TaskGitActions({
 	const [pushedPRStatus, setPushedPRStatus] = useState<TaskPRBadgeInfo | null>(null);
 	const initialPrRefreshTaskRef = useRef<string | null>(null);
 	const {
+		baseBranch,
 		branchStatus,
 		committing,
 		compareRef,
@@ -116,6 +117,7 @@ export default function TaskGitActions({
 		pushing,
 		rebasing,
 		refreshingStatus,
+		selectCompareRef,
 		statusLoading,
 	} = useTaskBranchStatus({
 		task,
@@ -589,6 +591,19 @@ export default function TaskGitActions({
 		]
 		: [];
 
+	/**
+	 * The compare-ref picker is back — inside the menu this time. It used to print
+	 * "vs origin/main ▾" in the bar, spending permanent width to state a setting the
+	 * project already owns; here it costs nothing until the menu is open.
+	 */
+	const compareOptions = [
+		{ value: "", ref: `origin/${baseBranch}`, label: `origin/${baseBranch}` },
+		{ value: baseBranch, ref: baseBranch, label: t("infoPanel.compareRefLocal", { branch: baseBranch }) },
+	];
+	// Match on the RESOLVED ref, never on the raw value: a project whose default is
+	// spelled "origin/main" holds that string in `compareRef`, while the remote option
+	// carries "" (meaning "the default"), so a raw comparison ticks neither row.
+
 	const branchChip = task.branchName ? (
 		<Tooltip content={task.branchName} detail={t("ttip.infoPanel.branchChip")}>
 			<button
@@ -646,6 +661,31 @@ export default function TaskGitActions({
 					{item.label}
 				</button>
 			))}
+			<div className="mt-1 border-t border-edge pt-1">
+				<div className="px-3 py-1 text-dense font-semibold uppercase tracking-wider text-fg-muted">
+					{t("infoPanel.compareAgainst")}
+				</div>
+				{compareOptions.map((option) => (
+					<button
+						key={option.value}
+						role="menuitemradio"
+						type="button"
+						aria-checked={displayRef === option.ref}
+						onClick={() => {
+							selectCompareRef(option.value);
+							setBranchMenuOpen(false);
+						}}
+						className={`git-anim flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-micro transition-colors hover:bg-elevated-hover ${
+							displayRef === option.ref ? "text-accent font-medium" : "text-fg-2 hover:text-fg"
+						}`}
+					>
+						<span aria-hidden="true" className="w-2.5 flex-shrink-0">
+							{displayRef === option.ref ? "✓" : ""}
+						</span>
+						<span className="font-mono">{option.label}</span>
+					</button>
+				))}
+			</div>
 		</div>,
 		document.body,
 	);

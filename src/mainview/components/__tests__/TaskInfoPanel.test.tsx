@@ -505,6 +505,37 @@ describe("TaskInfoPanel", () => {
 			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 		});
 
+		it("carries the compare-ref picker inside the menu, not in the bar", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask({ branchName: "dev3/my-branch" }), { onOpenInlineDiff: vi.fn() });
+			});
+
+			// The bar stays clean; the setting lives one click deep.
+			expect(screen.queryByText(/vs origin\/main/)).not.toBeInTheDocument();
+
+			await user.click(screen.getByTestId("branch-chip"));
+			const menu = screen.getByRole("menu");
+			expect(menu).toHaveTextContent("Compare against");
+
+			const remote = within(menu).getByRole("menuitemradio", { name: /origin\/main/ });
+			const local = within(menu).getByRole("menuitemradio", { name: /main \(local\)/ });
+			expect(remote).toHaveAttribute("aria-checked", "true");
+			expect(local).toHaveAttribute("aria-checked", "false");
+
+			await user.click(local);
+
+			// Picking a ref refetches the status against it and closes the menu.
+			await waitFor(() => {
+				expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					compareRef: "main",
+				});
+			});
+			expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+		});
+
 		it("says it failed when the clipboard refuses", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const writeText = vi.fn().mockRejectedValue(new Error("denied"));
