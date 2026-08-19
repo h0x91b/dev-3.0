@@ -259,6 +259,37 @@ describe("task.move — agent-initiated launch approval", () => {
 		}));
 	});
 
+	it("addresses variants by task id — a variant group shares one seq", async () => {
+		const target = makeTask();
+		const variantRequester = { ...requester, variantIndex: 1 };
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([target, variantRequester]);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress", variantIndex: 2 });
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		resolveAgentRequest(payload.requestId as string, {
+			approved: true,
+			launch: { agentId: "builtin-claude", configId: "claude-auto", accountId: null },
+		});
+
+		const resp = await respPromise;
+		expect((resp.data as { replyCommand: string }).replyCommand).toBe(`dev3 message --task ${TARGET_ID} "your message"`);
+		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
+			source: expect.objectContaining({ seq: 3, variantIndex: 1 }),
+		}));
+	});
+
 	it("launches nothing when the user declines", async () => {
 		setupBoard(makeTask());
 		const pushFn = vi.fn();

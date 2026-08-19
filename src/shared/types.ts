@@ -1931,8 +1931,14 @@ export interface ScheduledMessage {
 export interface AgentMessageSource {
 	/** Sender task id (used to skip wrapping when a task messages itself). */
 	taskId: string;
-	/** Sender's stable `seq` — the reply address (`--task seq:<N>`). */
+	/** Sender's stable `seq` — the reply address (`--task seq:<N>`) unless it is a variant. */
 	seq: number;
+	/**
+	 * Sender's variant index, when it is one attempt of a variant group. A group
+	 * shares one `seq`, so the reply address falls back to `taskId` — see
+	 * `agentReplyRef`.
+	 */
+	variantIndex?: number | null;
 	/** Sender's title, for human-readable context in the envelope. */
 	title?: string;
 	/**

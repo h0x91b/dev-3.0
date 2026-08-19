@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
+import { agentReplyRef } from "../shared/agent-message-envelope";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
@@ -233,6 +234,7 @@ async function resolveAgentMessageSource(
 	return {
 		taskId: found.task.id,
 		seq: found.task.seq,
+		variantIndex: found.task.variantIndex,
 		title: getTaskTitle(found.task),
 		projectId: found.task.projectId,
 	};
@@ -299,7 +301,7 @@ async function requestAgentLaunchApproval(opts: {
 		task: launched,
 		seq: launched.seq,
 		title: getTaskTitle(launched),
-		replyCommand: `dev3 message --task seq:${launched.seq} "your message"`,
+		replyCommand: `dev3 message --task ${agentReplyRef(launched)} "your message"`,
 	};
 }
 
