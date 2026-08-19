@@ -52,6 +52,24 @@ describe("a preset without roles", () => {
 	});
 });
 
+describe("a wrapper binary declared as an agent family", () => {
+	const config = preset({ modelRoles: { opus: "m-main" } });
+
+	it("routes through the slots of the CLI it says it is, not of its file name", async () => {
+		const env: Record<string, string> = {};
+		const result = await applyModelRoleLaunch("my-claude-wrapper", config, env, {}, "claude");
+		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("openai/my-main");
+		expect(result.pinnedModel).toBe(true);
+	});
+
+	it("leaves a wrapper that claims no family unrouted rather than guessing", async () => {
+		const env: Record<string, string> = {};
+		const result = await applyModelRoleLaunch("my-claude-wrapper", config, env, {}, "none");
+		expect(env).toEqual({});
+		expect(result.pinnedModel).toBe(false);
+	});
+});
+
 describe("a Claude preset with roles", () => {
 	const config = preset({ modelRoles: { opus: "m-main", sonnet: "m-fast" } });
 

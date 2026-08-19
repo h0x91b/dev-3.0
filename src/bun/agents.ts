@@ -524,10 +524,14 @@ export async function applyModelRoleLaunch(
 	config: AgentConfiguration | undefined,
 	extraEnv: Record<string, string>,
 	options: CommandOptions,
+	family?: AgentFamily,
 ): Promise<{ config: AgentConfiguration | undefined; options: CommandOptions; pinnedModel: boolean }> {
 	const bindings = config?.modelRoles;
 	if (!bindings || Object.keys(bindings).length === 0) return { config, options, pinnedModel: false };
-	if (modelRolesForAgent(baseCmd).length === 0) return { config, options, pinnedModel: false };
+	// Which CLI this is, not what the binary is called: a declared wrapper routes
+	// through the slots of the agent it actually is.
+	const cli = agentKey(baseCmd, family);
+	if (modelRolesForAgent(cli).length === 0) return { config, options, pinnedModel: false };
 
 	const catalog = loadModelCatalog();
 	// A role pointing at a deleted model would otherwise launch unrouted, on the
@@ -541,7 +545,7 @@ export async function applyModelRoleLaunch(
 	}
 
 	const runtime = await ensureModelSidecar();
-	const verdict = await preflightModelRoles(baseCmd, bindings, catalog);
+	const verdict = await preflightModelRoles(cli, bindings, catalog);
 	if (!verdict.ok) {
 		const detail = verdict.problems
 			.map((p) => (p.roleId ? `${p.roleId}: ${p.code}${p.detail ? ` (${p.detail})` : ""}` : p.detail ?? p.code))
@@ -549,7 +553,7 @@ export async function applyModelRoleLaunch(
 		throw new Error(`The model proxy cannot serve this preset's roles — ${detail}`);
 	}
 
-	const plan = resolveModelRoleLaunch(baseCmd, bindings, catalog, runtime, config?.model);
+	const plan = resolveModelRoleLaunch(cli, bindings, catalog, runtime, config?.model);
 	if (!plan) {
 		// Roles are bound but nothing could be built from them — Codex without its
 		// main model is the only way here. Launching would quietly use the agent's
@@ -565,7 +569,7 @@ export async function applyModelRoleLaunch(
 	// Metadata for a model Codex has never heard of. Best-effort by design:
 	// without it the session still runs, on Codex's placeholder numbers.
 	const args = [...plan.args];
-	if (agentKey(baseCmd) === "codex") {
+	if (cli === "codex") {
 		const catalogPath = await writeCodexModelCatalog(baseCmd, catalog);
 		if (catalogPath) args.push(...codexModelCatalogArgs(catalogPath));
 	}
@@ -764,7 +768,7 @@ export async function resolveCommandForAgent(
 	}
 	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
-	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts);
+	const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 	const command = resolveAgentCommand(
 		agentWithPath,
 		resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
@@ -880,7 +884,7 @@ export async function resolveCommandForProject(
 		};
 		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
 		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId, agentWithPath.agentFamily);
-		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts);
+		const routed = await applyModelRoleLaunch(baseCmd, config, extraEnv, providerOpts, agentWithPath.agentFamily);
 		const command = resolveAgentCommand(
 			agentWithPath,
 			resolveLaunchConfig(routed.config, agentWithPath, baseCmd, extraEnv, routed.pinnedModel),
