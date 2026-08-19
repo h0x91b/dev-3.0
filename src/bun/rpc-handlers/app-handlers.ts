@@ -23,6 +23,7 @@ import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn, spawnSync } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
 import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererDiagnostic, setActiveContext, setAppForeground, setStreamerPrivacy, setTerminalFocus } from "./shared";
+import { recordRendererHeartbeat } from "../renderer-watchdog";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
 import { loadSharedArtifactContent, loadSharedArtifactDownload, sharedArtifactHtmlPath } from "../shared-artifacts";
 import { isFullyQualifiedPath } from "../../shared/absolute-path";
@@ -1034,6 +1035,7 @@ async function copyTerminalSelection(params: { taskId: string; text: string; mou
 export const appHandlers = {
 	logRendererError,
 	logRendererDiagnostic,
+	rendererHeartbeat: recordRendererHeartbeat,
 	quitApp,
 	requestQuit,
 	consumePendingQuitDialog,

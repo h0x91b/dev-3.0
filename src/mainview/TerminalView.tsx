@@ -24,6 +24,7 @@ import {
 import { installBidiRender, uninstallBidiRender } from "./terminal-bidi/proxy";
 import { installCursorVisibilityGate, type CursorVisibilityGate } from "./terminal-cursor-focus";
 import { installRenderGuard, type RenderGuard } from "./terminal-render-guard";
+import { session } from "./terminal-session-stats";
 import { createBreadcrumbTrail } from "./terminal-breadcrumbs";
 import { installGlyphCellFit, type GlyphCellFit } from "./terminal-glyph-cell-fit";
 import { getScrollThreshold } from "./scroll-speed";
@@ -101,13 +102,6 @@ const TERMINAL_DISPOSE_BUDGET_MS = 50;
 const MAX_RENDERER_RECOVERIES = 3;
 /** A pane healthy for this long earns its rebuild budget back. */
 const RECOVERY_BUDGET_RESET_MS = 60_000;
-
-/**
- * App-session totals, deliberately module-level: every terminal shares ONE ghostty
- * WASM module, so the question a post-mortem asks first is whether one pane broke
- * or the whole module did. Per-pane numbers cannot answer that; these can.
- */
-const session = { liveTerminals: 0, frameErrorPanes: 0, crashes: 0 };
 
 /**
  * How long the sync gate waits for the first repaint before lifting itself.

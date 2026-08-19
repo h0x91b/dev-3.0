@@ -1,0 +1,1 @@
+A frozen app window now leaves a record in the log instead of nothing: each window beats into the backend every two seconds, and the backend — which survives the freeze — reports when the beats stop, what the window had on screen, and when they come back. A healthy session costs one log line per window, and repeated stalls are capped at five reports so the log stays readable.

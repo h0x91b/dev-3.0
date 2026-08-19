@@ -4047,6 +4047,23 @@ export type AppRPCSchema = {
 				};
 				response: void;
 			};
+			/**
+			 * Liveness beat from a renderer, every ~2s. A wedged renderer cannot report
+			 * on itself — every timer and error handler in it is dead too — so the
+			 * backend judges the silence instead. See bun/renderer-watchdog.ts.
+			 */
+			rendererHeartbeat: {
+				params: {
+					clientId: string;
+					sinceLastBeatMs: number;
+					visible: boolean;
+					/** The gap spans a hidden stretch, where throttling explains it. */
+					hiddenSinceLastBeat: boolean;
+					terminals: number;
+					frameErrorPanes: number;
+				};
+				response: void;
+			};
 			listBranches: {
 				params: { projectId: string };
 				response: Array<{ name: string; isRemote: boolean }>;

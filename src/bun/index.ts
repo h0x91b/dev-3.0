@@ -6,7 +6,8 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import { startDisplayWatch } from "./display-watch";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground, setFocusMode, pushTerminalBell } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground, setFocusMode, pushTerminalBell, getActiveContext } from "./rpc-handlers";
+import { startRendererWatchdog } from "./renderer-watchdog";
 import {
 	startAutoCheck,
 	checkForUpdateWithChannel,
@@ -502,6 +503,15 @@ await startRemoteAccessServer({
 // Silent during normal operation — only fires on stalls (e.g. accidental
 // sync I/O, GC pauses, runaway regex).
 startLoopMonitor();
+
+// The renderer half of the same idea: a wedged window cannot report itself, so we
+// judge the silence between its heartbeats from here. See renderer-watchdog.ts.
+startRendererWatchdog({
+	context: () => {
+		const { projectId, taskId } = getActiveContext();
+		return { activeProject: projectId?.slice(0, 8) ?? null, activeTask: taskId?.slice(0, 8) ?? null };
+	},
+});
 
 // Reconcile persisted lifecycle hints before background activity starts.
 await rehydrateTaskLifecycles();

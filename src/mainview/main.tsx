@@ -15,6 +15,7 @@ import { initKeyboardLock } from "./keyboard-lock";
 import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
 import { startViewportDiagnostics } from "./viewport-diagnostics";
+import { startRendererHeartbeat } from "./renderer-heartbeat";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
 import { initStreamerMode } from "./streamer-mode";
 import { buildChannelTitlePrefix } from "../shared/update-channel";
@@ -105,6 +106,10 @@ bootstrapScrollSpeed();
 // Mirror the page's own geometry into the backend log — the other half of the
 // display-change diagnostic the backend writes (see viewport-diagnostics.ts).
 startViewportDiagnostics();
+
+// Beat into the backend log so a window that freezes leaves a record — the
+// backend outlives the freeze and names it (see bun/renderer-watchdog.ts).
+startRendererHeartbeat();
 
 // Apply saved locale before React mounts
 const savedLocale = localStorage.getItem("dev3-locale") || "en";
