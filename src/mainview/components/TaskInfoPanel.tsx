@@ -782,7 +782,7 @@ function TaskInfoPanel({
 				className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 					task.manualCompletion
 						? "text-accent bg-accent/10 border border-accent/25"
-						: "text-fg-3 hover:text-fg hover:bg-elevated"
+						: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
 				}`}
 			>
 				{/* Icon only. Even the short "I decide" label cost bar width for a state
@@ -1032,7 +1032,7 @@ function TaskInfoPanel({
 		<Tooltip content={t("projectSettings.tabWorktree")} detail={t("ttip.infoPanel.worktreeConfig")}>
 			<button
 				onClick={() => navigate({ screen: "project-settings", projectId: project.id, tab: "worktree", worktreeTaskId: task.id })}
-				className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+				className="task-anim flex-shrink-0 px-1.5 py-1 rounded border border-edge hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 				aria-label={t("projectSettings.tabWorktree")}
 			>
 				<WorktreeSettingsIcon className="w-4 h-4" />
