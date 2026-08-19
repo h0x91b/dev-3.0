@@ -1489,7 +1489,7 @@ function TaskInfoPanel({
 			{diffFilesPopover}
 			{fileOpenInMenuPortal}
 			{collapsed ? (
-				<div className="flex flex-col h-full px-4 gap-1 justify-center">
+				<div className="flex flex-col h-full px-2 gap-1 justify-center">
 					<div className="flex items-center gap-1.5 min-w-0">
 						{/* Same bar boxing as the expanded rows: the Context bar is the only
 						    shrinkable region, so the Session bar and the pinned chrome to
@@ -1569,7 +1569,7 @@ function TaskInfoPanel({
 				</div>
 			) : (
 				<div className="flex flex-col h-full">
-					<div className="flex flex-col px-4">
+					<div className="flex flex-col px-2">
 						<div className="flex items-center gap-1.5 min-w-0 pt-1">
 							{/* `overflow-hidden` is the backstop that keeps a bar's contents
 							    inside its own box: without it the shrink-0 children spill
@@ -1648,7 +1648,7 @@ function TaskInfoPanel({
 						</div>
 					</div>
 
-					<div className="flex-1 overflow-auto px-4 pb-2">
+					<div className="flex-1 overflow-auto px-2 pb-2">
 						{taskDetailsBody}
 					</div>
 

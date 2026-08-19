@@ -916,6 +916,21 @@ describe("GlobalHeader — compact layout", () => {
 		expect(toggle.closest("[role=menu]")).not.toBeNull();
 		expect(toggle).toHaveAttribute("role", "menuitem");
 	});
+
+	it("opens the utilities cluster — nothing sits left of the kebab", async () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+		await act(async () => {});
+
+		const more = screen.getByLabelText("More");
+		const cluster = document.querySelector('[data-help-id="header.utilities"]')!;
+		expect(cluster).toContainElement(more);
+		// Every other control in the cluster must follow it in document order.
+		const others = [...cluster.querySelectorAll("button")].filter((b) => b !== more && !more.contains(b));
+		expect(others.length).toBeGreaterThan(0);
+		for (const other of others) {
+			expect(more.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		}
+	});
 });
 
 describe("GlobalHeader — help mode button", () => {

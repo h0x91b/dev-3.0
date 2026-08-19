@@ -378,7 +378,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 	return (
 		<>
-		<div className="relative z-30 flex items-center justify-between px-5 py-2.5 border-b border-edge flex-shrink-0 glass-header" data-collapse-on-compose>
+		<div className="relative z-30 flex items-center justify-between px-2.5 py-2.5 border-b border-edge flex-shrink-0 glass-header" data-collapse-on-compose>
 			{/* Breadcrumbs */}
 			<nav className="flex items-center gap-2 text-sm min-w-0" aria-label={t("nav.appHeader")}>
 				{/* Back / forward navigation — segmented history control (Safari toolbar style) */}
@@ -590,76 +590,13 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					</div>
 				)}
 
-				{/* Prevent-sleep lives in the kebab sheet only, at every width: it is on for
-				    everyone and practically never switched off, so a permanent header slot
-				    bought nothing. */}
-
-				{/* Memory headroom — the one ambient resource readout in the header
-				    (PRODUCT_UX_BIBLE §12.6). The bar carries it only while the OS
-				    reports pressure; with headroom to spare it lives in the overflow
-				    menu instead (the component decides — see its `variant`). Folds into
-				    the kebab sheet on narrow, where the breakdown is a BottomSheet. */}
-				{!isNarrow && <MemoryHeadroomIndicator navigate={navigate} />}
-
-				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
-				    (folded into the kebab bottom sheet on narrow). */}
-				{!isNarrow && <RateLimitIndicator compact={compact} />}
-
-				{/* Quick Shell lives in the overflow menu at every width — it is a
-				    keyboard action (⌘⇧`) far more than a button. */}
-
-				{/* Project Terminal — visible when inside a git project. Hidden for
-				    virtual ("Operations") boards: their synthetic path is created
-				    lazily per-task, so opening one throws "Project path does not
-				    exist" (same reason Git Pull below is hidden). */}
-				{"projectId" in route && !isVirtualProject && !isNarrow && (
-					<Tooltip content={t("projectTerminal.tooltipWithShortcut")} detail={t("ttip.header.projectTerminal")}>
-						<button
-							onClick={() => {
-								if (route.screen === "project-terminal") {
-									navigate({ screen: "project", projectId: route.projectId });
-								} else {
-									navigate({ screen: "project-terminal", projectId: route.projectId });
-								}
-							}}
-							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
-								route.screen === "project-terminal"
-									? "text-accent bg-accent/15 hover:bg-accent/25"
-									: "text-fg-3 hover:text-fg hover:bg-elevated"
-							}`}
-							aria-label={t("projectTerminal.tooltipWithShortcut")}
-						>
-							<ProjectTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
-							{!compact && <span className="text-micro font-medium">{t("projectTerminal.open")}</span>}
-						</button>
-				</Tooltip>
-				)}
-
-				{/* Git Pull — quick pull of origin/{main|master} into project main worktree.
-				    Hidden for virtual ("Operations") boards, which have no git repo.
-				    Folded into the kebab bottom sheet on narrow. */}
-				{"projectId" in route && !isVirtualProject && !isNarrow && (
-					<GitPullButton projectId={route.projectId} compact={compact} />
-				)}
-
-				{/* Remote Access QR Code (folded into the kebab on narrow) */}
-				{!isNarrow && (
-					<Tooltip content={t("header.remoteAccessTooltip")} detail={t("ttip.header.remoteAccess")}>
-						<button
-							onClick={() => { void openRemoteAccess(); }}
-							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${remoteAccessActive ? "text-accent bg-accent/15 hover:bg-accent/25 remote-access-active" : "text-fg-3 hover:text-fg hover:bg-elevated"}`}
-							aria-label={t("header.remoteAccessTooltip")}
-						>
-							<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />
-						</button>
-				</Tooltip>
-				)}
-
 				{/* The tmux session list lives in the overflow menu at every width —
 				    a diagnostic panel nobody opens on the happy path. */}
 
 				{/* Overflow menu — low-frequency actions (Stats / GitHub / Report / Changelog)
-				    always live under a single kebab to keep the header lean.
+				    always live under a single kebab to keep the header lean. It opens the
+				    cluster (leftmost) because it is the one control present on every screen,
+				    so nothing shifts under the cursor; the settings pair keeps the right end.
 				    On narrow the whole cluster folds into the action sheet below instead. */}
 				{!isNarrow && (
 					<div className="relative" ref={overflowMenuRef}>
@@ -752,6 +689,71 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 							</div>
 						)}
 					</div>
+				)}
+
+				{/* Prevent-sleep lives in the kebab sheet only, at every width: it is on for
+				    everyone and practically never switched off, so a permanent header slot
+				    bought nothing. */}
+
+				{/* Memory headroom — the one ambient resource readout in the header
+				    (PRODUCT_UX_BIBLE §12.6). The bar carries it only while the OS
+				    reports pressure; with headroom to spare it lives in the overflow
+				    menu instead (the component decides — see its `variant`). Folds into
+				    the kebab sheet on narrow, where the breakdown is a BottomSheet. */}
+				{!isNarrow && <MemoryHeadroomIndicator navigate={navigate} />}
+
+				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
+				    (folded into the kebab bottom sheet on narrow). */}
+				{!isNarrow && <RateLimitIndicator compact={compact} />}
+
+				{/* Quick Shell lives in the overflow menu at every width — it is a
+				    keyboard action (⌘⇧`) far more than a button. */}
+
+				{/* Project Terminal — visible when inside a git project. Hidden for
+				    virtual ("Operations") boards: their synthetic path is created
+				    lazily per-task, so opening one throws "Project path does not
+				    exist" (same reason Git Pull below is hidden). */}
+				{"projectId" in route && !isVirtualProject && !isNarrow && (
+					<Tooltip content={t("projectTerminal.tooltipWithShortcut")} detail={t("ttip.header.projectTerminal")}>
+						<button
+							onClick={() => {
+								if (route.screen === "project-terminal") {
+									navigate({ screen: "project", projectId: route.projectId });
+								} else {
+									navigate({ screen: "project-terminal", projectId: route.projectId });
+								}
+							}}
+							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
+								route.screen === "project-terminal"
+									? "text-accent bg-accent/15 hover:bg-accent/25"
+									: "text-fg-3 hover:text-fg hover:bg-elevated"
+							}`}
+							aria-label={t("projectTerminal.tooltipWithShortcut")}
+						>
+							<ProjectTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
+							{!compact && <span className="text-micro font-medium">{t("projectTerminal.open")}</span>}
+						</button>
+				</Tooltip>
+				)}
+
+				{/* Git Pull — quick pull of origin/{main|master} into project main worktree.
+				    Hidden for virtual ("Operations") boards, which have no git repo.
+				    Folded into the kebab bottom sheet on narrow. */}
+				{"projectId" in route && !isVirtualProject && !isNarrow && (
+					<GitPullButton projectId={route.projectId} compact={compact} />
+				)}
+
+				{/* Remote Access QR Code (folded into the kebab on narrow) */}
+				{!isNarrow && (
+					<Tooltip content={t("header.remoteAccessTooltip")} detail={t("ttip.header.remoteAccess")}>
+						<button
+							onClick={() => { void openRemoteAccess(); }}
+							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${remoteAccessActive ? "text-accent bg-accent/15 hover:bg-accent/25 remote-access-active" : "text-fg-3 hover:text-fg hover:bg-elevated"}`}
+							aria-label={t("header.remoteAccessTooltip")}
+						>
+							<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />
+						</button>
+				</Tooltip>
 				)}
 
 				{/* Help mode ("Explain this screen") — bright accent "?", always inline on
