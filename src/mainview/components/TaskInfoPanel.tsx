@@ -1259,6 +1259,24 @@ function TaskInfoPanel({
 
 	const height = collapsed ? `${COLLAPSED_HEIGHT_REM}rem` : panelHeight;
 
+	// Ends the Runtime bar (right of Images / Artifacts) instead of sitting in the
+	// panel chrome above: it is the rarest control up there, and crowding it next
+	// to Full screen made the two easy to confuse.
+	const collapseToggleButton = (
+		<Tooltip
+			content={collapsed ? t("infoPanel.expand") : t("infoPanel.collapse")}
+			detail={collapsed ? t("ttip.infoPanel.expand") : t("ttip.infoPanel.collapse")}
+		>
+			<button
+				onClick={toggleCollapsed}
+				className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+				aria-label={collapsed ? t("infoPanel.expand") : t("infoPanel.collapse")}
+			>
+				<PanelChevronIcon direction={collapsed ? "down" : "up"} className="w-3.5 h-3.5" />
+			</button>
+		</Tooltip>
+	);
+
 	// Narrow viewport (phone / narrow window): the two dense desktop toolbars do
 	// not fit. Collapse them into a thin summary bar (status + title + diff) and
 	// fold every action + the full details grid into an actions BottomSheet — the
@@ -1511,15 +1529,6 @@ function TaskInfoPanel({
 									: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
 							</button>
 						</Tooltip>
-						<Tooltip content={t("infoPanel.expand")} detail={t("ttip.infoPanel.expand")}>
-							<button
-								onClick={toggleCollapsed}
-								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-								aria-label={t("infoPanel.expand")}
-							>
-								<PanelChevronIcon direction="down" className="w-3.5 h-3.5" />
-							</button>
-					</Tooltip>
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
@@ -1554,6 +1563,7 @@ function TaskInfoPanel({
 							<TaskExposedPorts task={task} compact={tight} />
 							<TaskSharedImages task={task} projectId={project.id} compact={tight} />
 							<TaskArtifacts task={task} projectId={project.id} compact={tight} />
+							{collapseToggleButton}
 						</div>
 					</div>
 				</div>
@@ -1601,15 +1611,6 @@ function TaskInfoPanel({
 										: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
 								</button>
 							</Tooltip>
-							<Tooltip content={t("infoPanel.collapse")} detail={t("ttip.infoPanel.collapse")}>
-								<button
-									onClick={toggleCollapsed}
-									className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-									aria-label={t("infoPanel.collapse")}
-								>
-									<PanelChevronIcon direction="up" className="w-3.5 h-3.5" />
-								</button>
-						</Tooltip>
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
@@ -1642,6 +1643,7 @@ function TaskInfoPanel({
 								<TaskExposedPorts task={task} compact={tight} />
 								<TaskSharedImages task={task} projectId={project.id} compact={tight} />
 								<TaskArtifacts task={task} projectId={project.id} compact={tight} />
+								{collapseToggleButton}
 							</div>
 						</div>
 					</div>

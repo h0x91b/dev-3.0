@@ -647,6 +647,31 @@ describe("TaskInfoPanel", () => {
 			await user.click(screen.getByLabelText("Expand panel"));
 			expect(localStorage.getItem("dev3-panel-collapsed")).toBe("false");
 		});
+
+		it("ends the Runtime bar, right of Images, in the collapsed panel", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ sharedImages: [{ id: "i1", storedPath: "/a.png", originalPath: "/a.png", name: "a.png", mime: "image/png", bytes: 1, createdAt: 1 }] }));
+			});
+
+			const toggle = screen.getByLabelText("Expand panel");
+			const images = screen.getByTestId("shared-images-badge");
+			expect(images.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+			// It left the panel chrome: Full screen must no longer be its neighbour.
+			expect(toggle.parentElement?.parentElement).not.toContainElement(screen.getByLabelText("Full screen"));
+		});
+
+		it("ends the Runtime bar, right of Images, in the expanded panel", async () => {
+			localStorage.setItem("dev3-panel-collapsed", "false");
+			await act(async () => {
+				renderPanel(makeTask({ sharedImages: [{ id: "i1", storedPath: "/a.png", originalPath: "/a.png", name: "a.png", mime: "image/png", bytes: 1, createdAt: 1 }] }));
+			});
+
+			const toggle = screen.getByLabelText("Collapse panel");
+			const runtimeBar = document.querySelector('[data-help-id="inspector.runtime-bar"]');
+			expect(runtimeBar).toContainElement(toggle);
+			const images = screen.getByTestId("shared-images-badge");
+			expect(images.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		});
 	});
 
 	describe("status dropdown", () => {
