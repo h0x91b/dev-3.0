@@ -213,7 +213,7 @@ export default function TerminalPerfOverlay({ onClose }: { onClose: () => void }
 	return (
 		<div
 			data-testid="terminal-perf-overlay"
-			className="fixed bottom-4 right-4 z-50 w-72 max-h-[70vh] overflow-auto rounded-lg border border-edge bg-overlay/95 shadow-xl backdrop-blur-sm px-3 py-2 font-mono text-[11px] text-fg-2"
+			className="fixed bottom-4 right-4 z-50 w-72 max-h-[70vh] overflow-auto rounded-lg border border-edge bg-overlay/95 shadow-xl backdrop-blur-sm px-3 py-2 font-mono text-micro text-fg-2"
 		>
 			<div className="flex items-center justify-between gap-2 mb-2">
 				<span className="font-semibold text-fg">{t("terminal.perf.title")}</span>

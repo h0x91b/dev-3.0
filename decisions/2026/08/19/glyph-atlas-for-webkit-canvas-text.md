@@ -64,9 +64,11 @@ same screen measured 347 ms — four times worse than not having an atlas at all
 
 ## Risks
 
-- **27 MB per terminal** on a 100-colour screen, and nothing caps the total across
-  panes. A many-pane layout on such content could add up; not measured with several
-  panes live at once.
+- **Nothing caps the total across panes.** Measured with four live 100x23 panes, each
+  on its own 100-colour palette: 14.4 MB each, **57.4 MB together**, all four repainting
+  in 25-28 ms. A full-screen 100-colour pane on its own measured 27 MB. The arithmetic
+  worst case — 128 styles each filling all four pages — would be roughly 75 MB per pane
+  and has not been produced by any real screen so far.
 - **Two to three expensive frames before the detector fires.** Overflowing screens
   showed 1370 ms and 1073 ms early frames before shutting down.
 - **Antialiasing differs from the vendor.** 22.74% of pixels differ on a dense screen;
