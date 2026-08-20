@@ -59,6 +59,15 @@ prose, because the widget is only as honest as its definition:
 - **The headline is the median, jitter is mean absolute deviation from it, and a
   stalled request is a loss, never a large sample.** Averaging a timeout in would
   drag the median toward a value no round trip ever had.
+- **A window where nothing answered still renders, as a dash.** The widget hides
+  only while nothing has been *attempted*; `count === 0` with losses is the worst
+  news it has, and an earlier version hid exactly there. The panel then says
+  nothing answered instead of printing the zeros that stand in for measurements
+  which never happened.
+- **The route label never names Cloudflare on a guess.** Only a
+  `trycloudflare.com` / `cfargotunnel.com` suffix is called a tunnel; a bare LAN
+  name or a Tailscale host reads "route unknown". Accusing a specific carrier for
+  a hostname we cannot classify is the one error this widget must not make.
 - **Sampling is every 5 s while visible, paused when hidden.** ~135 bytes per
   sample, under a thousandth of the terminal stream on the same link. A hidden
   tab's throttled timers would measure the browser, not the link.
@@ -72,6 +81,11 @@ prose, because the widget is only as honest as its definition:
   The number is still always readable as the `Connection` row in the kebab, whose
   hover flyout is the same breakdown panel. On narrow both fold into the header
   sheet, where the row is unconditional — an opened sheet must not be empty.
+- **The open/pin/position behaviour is one hook, not a copy.** Matching the memory
+  readout's behaviour first meant duplicating ~200 lines of it; that machinery is
+  now `hooks/useHeaderFlyout.ts` plus `components/HeaderFlyoutPanel.tsx`, and both
+  readouts hold only their own content. `TmuxSessionManager` still carries its own
+  copy — a wider migration than this change, deliberately left alone.
 
 ## Risks
 

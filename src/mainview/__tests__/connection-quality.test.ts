@@ -195,3 +195,33 @@ describe("connection-quality sampler", () => {
 		expect(probe).not.toHaveBeenCalled();
 	});
 });
+
+describe("connection-quality sampler housekeeping", () => {
+	it("clears the deadline timer once the answer arrives", async () => {
+		const cleared: unknown[] = [];
+		const sampler = createConnectionQualitySampler({
+			probe: async () => ({ rttMs: 12, serverMs: 1 }),
+			setIntervalFn: (() => 0) as any,
+			setTimeoutFn: (() => "deadline-1") as any,
+			clearTimeoutFn: ((id: unknown) => cleared.push(id)) as any,
+		});
+		await sampler.sampleNow();
+		// Left pending, one per sample, this is what hangs a fake-timer test.
+		expect(cleared).toEqual(["deadline-1"]);
+	});
+
+	it("clears the deadline timer after a loss too", async () => {
+		const cleared: unknown[] = [];
+		const sampler = createConnectionQualitySampler({
+			probe: async () => {
+				throw new Error("socket gone");
+			},
+			setIntervalFn: (() => 0) as any,
+			setTimeoutFn: (() => "deadline-2") as any,
+			clearTimeoutFn: ((id: unknown) => cleared.push(id)) as any,
+		});
+		await sampler.sampleNow();
+		expect(cleared).toEqual(["deadline-2"]);
+		expect(sampler.stats().lost).toBe(1);
+	});
+});

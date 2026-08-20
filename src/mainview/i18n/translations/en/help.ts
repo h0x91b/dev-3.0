@@ -228,6 +228,9 @@ const help = {
 		"When on, identity-bearing values — account emails and names, organizations, home-folder paths, tunnel URLs, and the remote-access QR code — are blurred across the UI. Terminal content is NOT masked: panes print whatever agents output. Toggle it quickly from the ⇧⌘P command palette.",
 	"help.header.memory.title": "The memory pill shows what is LEFT",
 	"help.header.memory.body": "The number is free memory, not used — hover it to see who actually took the rest. dev-3.0 itself holds a few hundred megabytes; the gigabytes belong to the agents you launched, and to whatever else is running.",
+	"help.header.connectionQuality.title": "How slow this connection is",
+	"help.header.connectionQuality.body":
+		"Only when you view dev3 from another device: the round trip of a real request over the same connection the app uses. It appears here once the link stops being quick, and otherwise waits in this menu. Hover it to see how much of the wait was spent on your computer versus on the network.",
 } as const;
 
 export default help;

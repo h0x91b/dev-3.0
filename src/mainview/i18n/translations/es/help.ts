@@ -221,6 +221,9 @@ const help = {
 	"help.field.streamerMode.body":
 		"Al activarlo, los valores que revelan identidad — correos y nombres de cuentas, organizaciones, rutas de la carpeta personal, URLs de túnel y el código QR de acceso remoto — se difuminan en toda la interfaz. El contenido del terminal NO se oculta: los paneles muestran lo que impriman los agentes. Actívalo rápido desde la paleta de comandos ⇧⌘P.",
 	"help.header.memory.title": "La píldora de memoria muestra lo que QUEDA",
+	"help.header.connectionQuality.title": "Qué tan lenta es esta conexión",
+	"help.header.connectionQuality.body":
+		"Solo cuando ves dev3 desde otro dispositivo: es la ida y vuelta de una petición real por la misma conexión que usa la aplicación. Sube a la cabecera cuando el enlace deja de ser rápido; el resto del tiempo espera en este menú. Pasa el cursor para ver cuánto se gastó en tu ordenador y cuánto en la red.",
 	"help.header.memory.body": "El número es memoria libre, no usada. Pasa el cursor para ver quién se llevó el resto: dev-3.0 en sí ocupa unos cientos de megabytes; los gigabytes son de los agentes que lanzaste y de lo demás que esté corriendo.",
 } as const;
 

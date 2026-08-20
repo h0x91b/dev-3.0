@@ -149,6 +149,14 @@ export const HELP_TOPICS: HelpTopic[] = [
 	},
 	{ id: "header.rateLimits", titleKey: "help.header.rateLimits.title", bodyKey: "help.header.rateLimits.body" },
 	{ id: "header.memory", titleKey: "help.header.memory.title", bodyKey: "help.header.memory.body" },
+	// Remote-only and conditional, like the memory pill: registered so help mode can
+	// explain it, deliberately not in REQUIRED_HELP_SURFACES, which covers surfaces
+	// that are always there.
+	{
+		id: "header.connectionQuality",
+		titleKey: "help.header.connectionQuality.title",
+		bodyKey: "help.header.connectionQuality.body",
+	},
 	{ id: "header.tmux-sessions", titleKey: "help.header.tmuxSessions.title", bodyKey: "help.header.tmuxSessions.body" },
 	{ id: "sidebar.active-tasks", titleKey: "help.sidebar.activeTasks.title", bodyKey: "help.sidebar.activeTasks.body" },
 ];

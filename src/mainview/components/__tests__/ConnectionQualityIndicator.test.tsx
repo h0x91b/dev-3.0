@@ -70,6 +70,36 @@ describe("ConnectionQualityIndicator", () => {
 		await waitFor(() => expect(screen.queryByTestId("connection-quality-indicator")).toBeNull());
 	});
 
+	// The window that matters most: the socket is open, every ping missed its
+	// deadline, so there is no median at all. Hiding here would take the readout
+	// away on the worst link there is.
+	it("shows a dash rather than vanishing when nothing answers", async () => {
+		mount();
+		publish(stats({ count: 0, lost: 5, p50: 0, jitter: 0, serverP50: null, networkP50: null, verdict: "bad", recent: [] }));
+		const pill = await screen.findByTestId("connection-quality-indicator");
+		expect(pill).toHaveTextContent("—");
+		expect(pill).not.toHaveTextContent("0 ms");
+		expect(pill.className).toContain("text-danger");
+		expect(pill.getAttribute("aria-label")).toBe("No request is coming back — open the breakdown");
+	});
+
+	it("keeps quiet while nothing has been attempted yet", async () => {
+		mount();
+		publish(stats({ count: 0, lost: 0, p50: 0, verdict: "good", recent: [] }));
+		await waitFor(() => expect(screen.queryByTestId("connection-quality-indicator")).toBeNull());
+	});
+
+	it("says nothing answered instead of printing zeros in the breakdown", async () => {
+		const user = userEvent.setup();
+		mount();
+		publish(stats({ count: 0, lost: 5, p50: 0, jitter: 0, serverP50: null, networkP50: null, verdict: "bad", recent: [] }));
+		await user.hover(await screen.findByTestId("connection-quality-indicator"));
+		const pop = await screen.findByTestId("connection-quality-popover");
+		expect(pop).toHaveTextContent("every request timed out");
+		expect(pop).not.toHaveTextContent("Typical round trip");
+		expect(pop).toHaveTextContent("0 (5 lost)");
+	});
+
 	it("climbs into the header the moment the link stops being fine", async () => {
 		mount();
 		publish(stats({ verdict: "degraded", p50: 220 }));

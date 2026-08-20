@@ -37,6 +37,7 @@ export interface SamplerOptions {
 	setIntervalFn?: typeof setInterval;
 	clearIntervalFn?: typeof clearInterval;
 	setTimeoutFn?: typeof setTimeout;
+	clearTimeoutFn?: typeof clearTimeout;
 	/** Omit to sample unconditionally (tests); the app passes document visibility. */
 	isVisible?: () => boolean;
 	onStats?: (stats: QualityStats) => void;
@@ -56,6 +57,7 @@ export function createConnectionQualitySampler(opts: SamplerOptions = {}): Conne
 	const setIntervalFn = opts.setIntervalFn ?? setInterval;
 	const clearIntervalFn = opts.clearIntervalFn ?? clearInterval;
 	const setTimeoutFn = opts.setTimeoutFn ?? setTimeout;
+	const clearTimeoutFn = opts.clearTimeoutFn ?? clearTimeout;
 	const isVisible = opts.isVisible ?? (() => true);
 
 	const window_ = createQualityWindow();
@@ -69,13 +71,19 @@ export function createConnectionQualitySampler(opts: SamplerOptions = {}): Conne
 	async function sampleNow(): Promise<void> {
 		if (stopped || probe === null || inFlight || !isVisible()) return;
 		inFlight = true;
+		// Cleared once the race settles: an answered sample would otherwise leave its
+		// deadline timer pending for the whole timeout, which is harmless in a browser
+		// and enough to hang a fake-timer test.
+		let deadline: ReturnType<typeof setTimeout> | null = null;
 		try {
 			// A stalled request is a loss, not a large sample: averaging it in would
 			// move the median toward a value no round trip ever had.
 			const timedOut = Symbol("timeout");
 			const result = await Promise.race([
 				probe(),
-				new Promise<typeof timedOut>((resolve) => setTimeoutFn(() => resolve(timedOut), timeoutMs)),
+				new Promise<typeof timedOut>((resolve) => {
+					deadline = setTimeoutFn(() => resolve(timedOut), timeoutMs);
+				}),
 			]);
 			if (stopped) return;
 			if (result === timedOut) window_.addLoss();
@@ -86,6 +94,7 @@ export function createConnectionQualitySampler(opts: SamplerOptions = {}): Conne
 			window_.addLoss();
 			publish();
 		} finally {
+			if (deadline !== null) clearTimeoutFn(deadline);
 			inFlight = false;
 		}
 	}
@@ -110,6 +119,8 @@ export function createConnectionQualitySampler(opts: SamplerOptions = {}): Conne
 
 let singleton: ConnectionQualitySampler | null = null;
 let lastStats: QualityStats = emptyQualityStats();
+/** Kept so the reset below can take the listener with it. */
+let onVisibility: (() => void) | null = null;
 
 declare global {
 	interface Window {
@@ -171,9 +182,10 @@ export function startConnectionQualitySampling(): ConnectionQualitySampler | nul
 	// A tab coming back from the background has a window full of stale samples and
 	// no fresh one for up to the whole interval; ask immediately instead.
 	if (typeof document !== "undefined") {
-		document.addEventListener("visibilitychange", () => {
+		onVisibility = () => {
 			if (document.visibilityState === "visible") void singleton?.sampleNow();
-		});
+		};
+		document.addEventListener("visibilitychange", onVisibility);
 	}
 	void singleton.sampleNow();
 	return singleton;
@@ -183,5 +195,9 @@ export function startConnectionQualitySampling(): ConnectionQualitySampler | nul
 export function __resetConnectionQualityForTests(): void {
 	singleton?.stop();
 	singleton = null;
+	if (onVisibility !== null && typeof document !== "undefined") {
+		document.removeEventListener("visibilitychange", onVisibility);
+	}
+	onVisibility = null;
 	lastStats = emptyQualityStats();
 }

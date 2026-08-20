@@ -125,7 +125,10 @@ export function resolveTunnelEdgeBind(): string | null {
 	// accepts (scoped IPv6, for one).
 	if (/^[0-9.]+$/.test(raw) || raw.includes(":")) return raw;
 
-	const iface = os.networkInterfaces()[raw];
+	// Own-property lookup only: indexing with the raw env string would let
+	// `__proto__` reach `Object.prototype`, where `.find` is not a function.
+	const interfaces = os.networkInterfaces();
+	const iface = Object.prototype.hasOwnProperty.call(interfaces, raw) ? interfaces[raw] : undefined;
 	const usable = iface?.find((addr) => addr.family === "IPv4" && !addr.internal);
 	if (usable) return usable.address;
 	log.warn("DEV3_CLOUDFLARED_EDGE_BIND names no usable interface — starting the tunnel without it", {

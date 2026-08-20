@@ -14,13 +14,19 @@ import type { TranslationKey } from "../i18n";
  * same moment.
  */
 export interface AccessPath {
-	kind: "tunnel" | "lan" | "local";
+	kind: "tunnel" | "lan" | "local" | "other";
 	labelKey: TranslationKey;
 	/** The hostname itself, for display. Identity-bearing — mask it. */
 	host: string;
 }
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"]);
+/**
+ * `location.hostname` keeps the brackets on an IPv6 literal — a browser on
+ * `http://[::1]:3000/` reports `[::1]`, never `::1` — so both spellings are
+ * listed. Without the bracketed one an IPv6 loopback session was labelled as a
+ * Cloudflare tunnel.
+ */
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"]);
 
 export function describeAccessPath(hostname: string): AccessPath {
 	const host = hostname || "unknown";
@@ -30,11 +36,12 @@ export function describeAccessPath(hostname: string): AccessPath {
 	if (/(^|\.)trycloudflare\.com$/i.test(host) || /(^|\.)cfargotunnel\.com$/i.test(host)) {
 		return { kind: "tunnel", labelKey: "connQuality.pathTunnel", host };
 	}
-	// A bare IPv4 or a `.local` name is the interface picker's direct URL. Anything
-	// else is a custom domain, which we cannot tell from a tunnel — call it what we
-	// can defend: not local.
+	// A bare IPv4 or a `.local` name is the interface picker's direct URL.
 	if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || /\.local$/i.test(host)) {
 		return { kind: "lan", labelKey: "connQuality.pathLan", host };
 	}
-	return { kind: "tunnel", labelKey: "connQuality.pathTunnel", host };
+	// Anything else — a custom domain, a bare LAN name, a Tailscale host — is
+	// genuinely unknown to us, and naming Cloudflare here would put a specific
+	// accusation on a route Cloudflare may never have carried.
+	return { kind: "other", labelKey: "connQuality.pathOther", host };
 }

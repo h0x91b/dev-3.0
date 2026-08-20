@@ -20,6 +20,12 @@ describe("describeAccessPath", () => {
 		expect(describeAccessPath("127.0.0.1").kind).toBe("local");
 	});
 
+	// `location.hostname` keeps the brackets, so the bare `::1` form never arrives
+	// from a browser — without the bracketed spelling this was labelled a tunnel.
+	it("names IPv6 loopback in the spelling a browser actually reports", () => {
+		expect(describeAccessPath(new URL("http://[::1]:3000/").hostname).kind).toBe("local");
+	});
+
 	it("carries the host through for display", () => {
 		expect(describeAccessPath("192.168.1.42").host).toBe("192.168.1.42");
 	});
@@ -28,10 +34,13 @@ describe("describeAccessPath", () => {
 		expect(describeAccessPath("").host).toBe("unknown");
 	});
 
-	// A custom domain in front of a named tunnel is indistinguishable from a plain
-	// reverse proxy from the renderer. Claiming "direct" would be the wrong error:
-	// it would tell the reader the tunnel is out of the picture when it may not be.
-	it("treats an unknown domain as routed, not as direct", () => {
-		expect(describeAccessPath("dev3.example.com").kind).toBe("tunnel");
+	// A custom domain, a bare LAN name, a Tailscale host: routed, but we cannot say
+	// by what. Claiming "direct" would say the tunnel is out of the picture when it
+	// may not be; claiming "Cloudflare" accuses a carrier that may not be involved.
+	it("admits it does not know the route instead of naming Cloudflare", () => {
+		expect(describeAccessPath("dev3.example.com").kind).toBe("other");
+		expect(describeAccessPath("mac-studio").kind).toBe("other");
+		expect(describeAccessPath("mac-studio.tail1234.ts.net").kind).toBe("other");
+		expect(describeAccessPath("dev3.example.com").labelKey).toBe("connQuality.pathOther");
 	});
 });

@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState } from "react";
 import { useT } from "../i18n";
 import { isRemote } from "../utils/platform";
-import { computeAnchoredPosition } from "../utils/popoverPosition";
-import { computeMenuFlyoutPosition, MENU_FLYOUT_CLOSE_MS, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
+import { useHeaderFlyout } from "../hooks/useHeaderFlyout";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
+import HeaderFlyoutPanel from "./HeaderFlyoutPanel";
 import {
 	CONNECTION_QUALITY_EVENT,
 	getConnectionQuality,
@@ -35,10 +34,12 @@ import { describeAccessPath } from "../utils/accessPath";
  *
  * Colour is the verdict, and never success-green — green means Completed in this
  * app. A quiet link is neutral `text-fg-3`, exactly like memory with headroom.
+ *
+ * The open/pin/position behaviour is `useHeaderFlyout`, shared with the memory
+ * readout — the two are deliberately identical and there is no reason for that
+ * sameness to live twice.
  */
 
-/** Hover-out grace so the pointer can travel from pill to popover. */
-const CLOSE_DELAY_MS = 120;
 const POPOVER_WIDTH = 22 * 16;
 const SPARK_WIDTH = 34;
 const SPARK_HEIGHT = 8;
@@ -91,13 +92,21 @@ function Sparkline({ values, verdict }: { values: number[]; verdict: ConnectionV
 function QualityBreakdown({ stats }: { stats: QualityStats }) {
 	const t = useT();
 	const path = describeAccessPath(typeof window === "undefined" ? "" : window.location.hostname);
-	const rows: { label: string; value: string; hint?: string }[] = [
-		{ label: t("connQuality.median"), value: `${stats.p50} ms` },
-		{ label: t("connQuality.p95"), value: `${stats.p95} ms` },
-		{ label: t("connQuality.jitter"), value: `${stats.jitter} ms` },
-	];
-	if (stats.serverP50 !== null) rows.push({ label: t("connQuality.ours"), value: `${stats.serverP50} ms` });
-	if (stats.networkP50 !== null) rows.push({ label: t("connQuality.network"), value: `${stats.networkP50} ms` });
+	// Nothing answered: every number here would be a zero standing in for a
+	// measurement that never happened, so the panel says that instead.
+	const rows: { label: string; value: string; hint?: string }[] = stats.count === 0
+		? []
+		: [
+			{ label: t("connQuality.median"), value: `${stats.p50} ms` },
+			{ label: t("connQuality.p95"), value: `${stats.p95} ms` },
+			{ label: t("connQuality.jitter"), value: `${stats.jitter} ms` },
+		];
+	if (stats.count > 0 && stats.serverP50 !== null) {
+		rows.push({ label: t("connQuality.ours"), value: `${stats.serverP50} ms` });
+	}
+	if (stats.count > 0 && stats.networkP50 !== null) {
+		rows.push({ label: t("connQuality.network"), value: `${stats.networkP50} ms` });
+	}
 
 	return (
 		<div className="p-3 flex flex-col gap-3">
@@ -105,6 +114,10 @@ function QualityBreakdown({ stats }: { stats: QualityStats }) {
 				<div className="text-fg text-sm font-semibold">{t("connQuality.title")}</div>
 				<div className="text-fg-3 text-micro mt-0.5">{t("connQuality.definition")}</div>
 			</div>
+
+			{stats.count === 0 && (
+				<div className="text-danger text-xs leading-snug">{t("connQuality.unreachable")}</div>
+			)}
 
 			<div className="flex flex-col gap-1">
 				{rows.map((row) => (
@@ -158,14 +171,7 @@ export default function ConnectionQualityIndicator({ variant = "bar" }: Connecti
 	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [stats, setStats] = useState<QualityStats>(() => getConnectionQuality());
-	const [open, setOpen] = useState(false);
-	/** Hover opens; a click PINS, so the panel can be clicked into on a pointer device. */
-	const [pinned, setPinned] = useState(false);
-	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-	const anchorRef = useRef<HTMLButtonElement | null>(null);
-	const popRef = useRef<HTMLDivElement | null>(null);
-	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const flyout = useHeaderFlyout({ variant, isNarrow, repositionKey: stats });
 
 	useEffect(() => {
 		startConnectionQualitySampling();
@@ -176,94 +182,14 @@ export default function ConnectionQualityIndicator({ variant = "bar" }: Connecti
 		return () => window.removeEventListener(CONNECTION_QUALITY_EVENT, onStats);
 	}, []);
 
-	const cancelClose = useCallback(() => {
-		if (closeTimer.current !== null) {
-			clearTimeout(closeTimer.current);
-			closeTimer.current = null;
-		}
-	}, []);
-
-	const cancelOpen = useCallback(() => {
-		if (openTimer.current !== null) {
-			clearTimeout(openTimer.current);
-			openTimer.current = null;
-		}
-	}, []);
-
-	const close = useCallback(() => {
-		cancelClose();
-		cancelOpen();
-		setOpen(false);
-		setPinned(false);
-		setPos(null);
-	}, [cancelClose, cancelOpen]);
-
-	const scheduleClose = useCallback(() => {
-		cancelClose();
-		cancelOpen();
-		closeTimer.current = setTimeout(() => {
-			closeTimer.current = null;
-			setOpen((wasOpen) => (pinned ? wasOpen : false));
-			if (!pinned) setPos(null);
-		}, variant === "menu" ? MENU_FLYOUT_CLOSE_MS : CLOSE_DELAY_MS);
-	}, [cancelClose, cancelOpen, pinned, variant]);
-
-	/** Hover intent for the menu row: a pointer merely passing by must not open it. */
-	const scheduleOpen = useCallback(() => {
-		cancelClose();
-		cancelOpen();
-		openTimer.current = setTimeout(() => {
-			openTimer.current = null;
-			setOpen(true);
-		}, MENU_FLYOUT_HOVER_MS);
-	}, [cancelClose, cancelOpen]);
-
-	useEffect(() => () => { cancelClose(); cancelOpen(); }, [cancelClose, cancelOpen]);
-
-	// The menu row hangs its flyout off the menu's outboard edge; the header pill
-	// drops it below itself.
-	useLayoutEffect(() => {
-		if (isNarrow || !open || !anchorRef.current || !popRef.current) return;
-		const rect = popRef.current.getBoundingClientRect();
-		const size = { width: rect.width, height: rect.height };
-		if (variant === "menu") {
-			setPos(computeMenuFlyoutPosition(anchorRef.current, size));
-			return;
-		}
-		const { top, left } = computeAnchoredPosition(anchorRef.current.getBoundingClientRect(), size, {
-			placement: "bottom",
-			align: "end",
-		});
-		setPos({ top, left });
-	}, [open, isNarrow, stats, variant]);
-
-	useEffect(() => {
-		if (!open || isNarrow) return;
-		function onKey(e: KeyboardEvent) {
-			if (e.key !== "Escape") return;
-			close();
-			anchorRef.current?.focus();
-		}
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
-	}, [open, isNarrow, close]);
-
-	useEffect(() => {
-		if (!pinned || isNarrow) return;
-		function onMouseDown(e: MouseEvent) {
-			const target = e.target as Node;
-			if (anchorRef.current?.contains(target) || popRef.current?.contains(target)) return;
-			close();
-		}
-		document.addEventListener("mousedown", onMouseDown);
-		return () => document.removeEventListener("mousedown", onMouseDown);
-	}, [pinned, isNarrow, close]);
 
 	// Desktop keeps its QR icon; this widget does not exist there.
 	if (!isRemote()) return null;
-	// Render nothing until the first sample answers: a placeholder would cause the
-	// header layout shift the UX manifest warns about, and "0 ms" would be a lie.
-	if (stats.count === 0) return null;
+	// Nothing has been ATTEMPTED yet: a placeholder would cause the header layout
+	// shift the UX manifest warns about, and "0 ms" would be a lie. A window where
+	// everything timed out is a different thing entirely — that one is the worst
+	// news this widget has, so it renders.
+	if (stats.count === 0 && stats.lost === 0) return null;
 
 	// A link that behaves is not news. The header bar earns the readout only once
 	// the verdict stops being good — median past 150 ms, or jitter/loss bad enough
@@ -273,16 +199,16 @@ export default function ConnectionQualityIndicator({ variant = "bar" }: Connecti
 	if (variant === "bar" && !isNarrow && stats.verdict === "good") return null;
 
 	const verdictClass = VERDICT_TEXT_CLASS[stats.verdict];
+	// Socket open, nothing answering: there is no median to print, so the headline
+	// is a dash. The verdict is already `bad` in that window, so it arrives in red.
+	const answered = stats.count > 0;
+	const headline = answered ? `${stats.p50} ms` : "—";
+	const ariaLabel = answered
+		? t("connQuality.ariaLabel", { ms: String(stats.p50) })
+		: t("connQuality.ariaLabelUnreachable");
 
-	const togglePinned = () => {
-		if (pinned) {
-			close();
-			return;
-		}
-		cancelClose();
-		setOpen(true);
-		setPinned(true);
-	};
+	const breakdown = <QualityBreakdown stats={stats} />;
+	const spark = <Sparkline values={stats.recent} verdict={stats.verdict} />;
 
 	// Menu row: hover opens the flyout after a dwell, a click pins it — same
 	// affordance as the memory row it sits next to.
@@ -290,51 +216,27 @@ export default function ConnectionQualityIndicator({ variant = "bar" }: Connecti
 		return (
 			<>
 				<button
-					ref={anchorRef}
+					ref={flyout.anchorRef}
 					type="button"
 					role="menuitem"
-					onClick={togglePinned}
-					onMouseEnter={isNarrow ? undefined : scheduleOpen}
-					onMouseLeave={isNarrow ? undefined : scheduleClose}
-					onFocus={(e) => {
-						if (!isNarrow && e.target.matches(":focus-visible")) setOpen(true);
-					}}
-					aria-label={t("connQuality.ariaLabel", { ms: String(stats.p50) })}
-					aria-expanded={open}
-					aria-haspopup="dialog"
+					aria-label={ariaLabel}
 					data-testid="connection-quality-indicator"
 					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+					{...flyout.triggerProps}
 				>
-					<span className="flex w-[1.125rem] items-center justify-center">
-						<Sparkline values={stats.recent} verdict={stats.verdict} />
-					</span>
+					<span className="flex w-[1.125rem] items-center justify-center">{spark}</span>
 					<span className="text-sm flex-1 text-left">{t("connQuality.label")}</span>
-					<span className={`text-micro font-medium tabular-nums ${verdictClass}`}>{stats.p50} ms</span>
+					<span className={`text-micro font-medium tabular-nums ${verdictClass}`}>{headline}</span>
 				</button>
-				{open && !isNarrow && createPortal(
-					<div
-						ref={popRef}
-						role="dialog"
-						aria-label={t("connQuality.title")}
-						onMouseEnter={cancelClose}
-						onMouseLeave={scheduleClose}
-						data-testid="connection-quality-popover"
-						// Portaled outside the kebab, so the menu's outside-click handler
-						// needs this marker to keep itself open while the flyout is used.
-						data-header-flyout="true"
-						className="fixed z-[1200] overflow-y-auto overflow-x-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
-						style={{
-							top: pos?.top ?? 0,
-							left: pos?.left ?? 0,
-							width: POPOVER_WIDTH,
-							maxWidth: "calc(100vw - 2rem)",
-							maxHeight: "28rem",
-							visibility: pos ? "visible" : "hidden",
-						}}
+				{flyout.open && !isNarrow && (
+					<HeaderFlyoutPanel
+						flyout={flyout}
+						width={POPOVER_WIDTH}
+						ariaLabel={t("connQuality.title")}
+						testId="connection-quality-popover"
 					>
-						<QualityBreakdown stats={stats} />
-					</div>,
-					document.body,
+						{breakdown}
+					</HeaderFlyoutPanel>
 				)}
 			</>
 		);
@@ -343,55 +245,39 @@ export default function ConnectionQualityIndicator({ variant = "bar" }: Connecti
 	return (
 		<>
 			<button
-				ref={anchorRef}
+				ref={flyout.anchorRef}
 				type="button"
-				onClick={togglePinned}
-				onMouseEnter={isNarrow ? undefined : () => { cancelClose(); setOpen(true); }}
-				onMouseLeave={isNarrow ? undefined : scheduleClose}
-				onFocus={(e) => {
-					if (!isNarrow && e.target.matches(":focus-visible")) setOpen(true);
-				}}
-				aria-label={t("connQuality.ariaLabel", { ms: String(stats.p50) })}
-				aria-expanded={open}
-				aria-haspopup="dialog"
+				aria-label={ariaLabel}
 				data-help-id="header.connectionQuality"
 				data-testid="connection-quality-indicator"
 				className={`header-anim flex shrink-0 flex-col justify-center gap-[0.1875rem] rounded-lg transition-colors hover:bg-elevated ${
 					isNarrow ? "h-11 px-2" : "px-1.5 py-1"
 				} ${verdictClass}`}
+				{...flyout.triggerProps}
 			>
-				<span className="text-micro font-medium leading-none tabular-nums">{stats.p50} ms</span>
-				<Sparkline values={stats.recent} verdict={stats.verdict} />
+				<span className="text-micro font-medium leading-none tabular-nums">{headline}</span>
+				{spark}
 			</button>
 
 			{isNarrow ? (
-				<BottomSheet open={open} onClose={close} title={t("connQuality.title")} testId="connection-quality-sheet">
-					<QualityBreakdown stats={stats} />
+				<BottomSheet
+					open={flyout.open}
+					onClose={flyout.close}
+					title={t("connQuality.title")}
+					testId="connection-quality-sheet"
+				>
+					{breakdown}
 				</BottomSheet>
 			) : (
-				open &&
-				createPortal(
-					<div
-						ref={popRef}
-						role="dialog"
-						aria-label={t("connQuality.title")}
-						onMouseEnter={cancelClose}
-						onMouseLeave={scheduleClose}
-						data-testid="connection-quality-popover"
-						data-header-flyout="true"
-						className="fixed z-[1200] overflow-y-auto overflow-x-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
-						style={{
-							top: pos?.top ?? 0,
-							left: pos?.left ?? 0,
-							width: POPOVER_WIDTH,
-							maxWidth: "calc(100vw - 2rem)",
-							maxHeight: "28rem",
-							visibility: pos ? "visible" : "hidden",
-						}}
+				flyout.open && (
+					<HeaderFlyoutPanel
+						flyout={flyout}
+						width={POPOVER_WIDTH}
+						ariaLabel={t("connQuality.title")}
+						testId="connection-quality-popover"
 					>
-						<QualityBreakdown stats={stats} />
-					</div>,
-					document.body,
+						{breakdown}
+					</HeaderFlyoutPanel>
 				)
 			)}
 		</>

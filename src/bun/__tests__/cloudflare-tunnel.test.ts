@@ -95,6 +95,15 @@ describe("resolveTunnelEdgeBind", () => {
 		expect(resolveTunnelEdgeBind()).toBeNull();
 	});
 
+	// Indexed with the raw env string, `__proto__` reaches Object.prototype, where
+	// `.find` is not a function — a TypeError instead of the warn-and-drop path.
+	it("does not fall through the prototype chain on an absurd value", () => {
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "__proto__";
+		expect(resolveTunnelEdgeBind()).toBeNull();
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "constructor";
+		expect(resolveTunnelEdgeBind()).toBeNull();
+	});
+
 	it("never resolves to a loopback address, which cannot reach the edge", () => {
 		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "lo0";
 		expect(resolveTunnelEdgeBind()).toBeNull();
