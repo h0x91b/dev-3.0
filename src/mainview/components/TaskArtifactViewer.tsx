@@ -8,6 +8,7 @@ import { composeArtifactDocument } from "../utils/artifactDocument";
 import { isMac, isRemote } from "../utils/platform";
 import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearchBar";
 import { registerOverlayLayer } from "../utils/overlay-layers";
+import { downloadBase64, parseDataUrl } from "../utils/downloadBytes";
 
 interface TaskArtifactViewerProps {
 	artifacts: SharedArtifact[];
@@ -32,18 +33,6 @@ function currentTheme(): "dark" | "light" {
 	return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
-function downloadBase64(base64: string, mime: string, fileName: string): void {
-	const binary = atob(base64);
-	const bytes = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-	const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
-	const anchor = document.createElement("a");
-	anchor.href = url;
-	anchor.download = fileName;
-	anchor.click();
-	setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
 interface ArtifactAsset {
 	name: string;
 	mime: string;
@@ -59,17 +48,6 @@ const EXT_BY_MIME: Record<string, string> = {
 	"image/svg+xml": "svg",
 };
 
-function parseDataUrl(src: string): { mime: string; base64: string } | null {
-	const match = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(src);
-	if (!match) return null;
-	const mime = match[1] || "application/octet-stream";
-	if (match[2]) return { mime, base64: match[3] };
-	try {
-		return { mime, base64: btoa(decodeURIComponent(match[3])) };
-	} catch {
-		return null;
-	}
-}
 
 /** Prefer the copied asset's original file name; otherwise derive one from alt + mime. */
 function imageFileName(src: string, alt: string, mime: string, assets: ArtifactAsset[]): string {

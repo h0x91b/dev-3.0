@@ -192,7 +192,7 @@ const help = {
 	// ── Viewers & workspace ──
 	"help.viewer.images.title": "Shared images",
 	"help.viewer.images.body":
-		"Screenshots and renders an agent surfaced with `dev3 show-image`, newest first. Step through the history, copy an image, or reveal the original file on disk.",
+		"Screenshots and renders an agent surfaced with `dev3 show-image`, newest first. Step through the history, download an image (also on right-click), copy its path, or reveal the original file on disk.",
 	"help.viewer.artifact.title": "Artifact",
 	"help.viewer.artifact.body":
 		"An interactive HTML report an agent built with `dev3 show-artifact`, sandboxed beside the terminal. Resize it, go fullscreen, step through past artifacts, or download it as HTML (or a ZIP when it bundles images).",

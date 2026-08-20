@@ -186,7 +186,7 @@ const help = {
 	// ── Viewers & workspace ──
 	"help.viewer.images.title": "Imágenes compartidas",
 	"help.viewer.images.body":
-		"Capturas y renders que un agente compartió con `dev3 show-image`, las más nuevas primero. Recorre el historial, copia una imagen o revela el archivo original en disco.",
+		"Capturas y renders que un agente compartió con `dev3 show-image`, las más nuevas primero. Recorre el historial, descarga una imagen (también con clic derecho), copia su ruta o revela el archivo original en disco.",
 	"help.viewer.artifact.title": "Artefacto",
 	"help.viewer.artifact.body":
 		"Un informe HTML interactivo que un agente construyó con `dev3 show-artifact`, aislado junto a la terminal. Cambia su tamaño, ponlo a pantalla completa, recorre artefactos pasados o descárgalo como HTML (o un ZIP cuando incluye imágenes).",

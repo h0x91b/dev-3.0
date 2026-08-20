@@ -480,7 +480,7 @@ ux_architecture:
       purpose: "Task-bound lightbox overlay showing images an agent surfaced via `dev3 show-image`, with a clickable history (thumbnail rail; newest activated first). One large image + prev/next + Esc; opened for a taskId regardless of route (closing restores position). Read/view only — no git/lifecycle/mutation (same rule as the diff viewer)."
       feature_class: ["overlay_viewer", "object_action", "notification"]
       reached_from: ["arrival_push (rpc:cliShowImage — auto-open only when already focused on that task + window foreground; else toast + attention badge)", "inspector:image_count_badge (Context bar, conditional count>0, next to diff_summary_badge)", "archived_task_modal:shared-outputs row (completed/cancelled task, enumerated per image)", "command_palette ⇧⌘P (Show shared images, scope task)", "application_menu.Task"]
-      allowed: ["image_display", "history_nav (thumbnail rail + prev/next + arrows)", "copy_image", "reveal_original_path", "clear_images (destructive, confirm)"]
+      allowed: ["image_display", "history_nav (thumbnail rail + prev/next + arrows)", "copy_image", "download_image (header icon + own right-click menu — native WKWebView Save Image As is dead)", "reveal_original_path", "clear_images (destructive, confirm)"]
       forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "persistent_inspector_button (badge is conditional on count>0)", "native_os_dialog", "svg_render (v1 — webview XSS)"]
       transport: "Reuses the notify/attention socket+pushMessage machinery: CLI `ui.show-image` -> bun copies files -> getPushMessage()('cliShowImage', …) -> rpc:cliShowImage CustomEvent -> App.tsx listener (badge + toast + auto-open rule)."
       persistence:

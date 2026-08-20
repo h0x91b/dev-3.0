@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SharedImage } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -7,6 +7,7 @@ import { toast } from "../toast";
 import { usePinchZoom } from "../hooks/usePinchZoom";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { registerOverlayLayer } from "../utils/overlay-layers";
+import { downloadDataUrl } from "../utils/downloadBytes";
 
 interface TaskImageViewerProps {
 	images: SharedImage[];
@@ -44,6 +45,9 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 	const [urls, setUrls] = useState<Record<string, string>>({});
 	const [copied, setCopied] = useState(false);
 	const [fullscreen, setFullscreen] = useState(false);
+	// Our own right-click menu over the image: WKWebView's native "Save Image As…"
+	// does nothing useful here (same reason the artifact viewer injects its own).
+	const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 	// Natural size of the active image (from onLoad) → drives the tall-image default.
 	const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 	// null = auto (decide from aspect ratio); otherwise a manual override.
@@ -51,6 +55,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 	const containerRef = useFocusTrap<HTMLDivElement>();
 	const thumbStripRef = useRef<HTMLDivElement>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
+	const menuRef = useRef<HTMLDivElement>(null);
 	// Ids whose fetch has already been kicked off — dedupes the priority effect
 	// against the background loader so each image is read at most once.
 	const startedRef = useRef<Set<string>>(new Set());
@@ -132,7 +137,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 	// listener here would never run and the modal underneath would close instead.
 	// Registering as a layer puts us at the top of that unwind order.
 	const dismissRef = useRef<() => void>(() => {});
-	dismissRef.current = () => { if (fullscreen) setFullscreen(false); else onClose(); };
+	dismissRef.current = () => {
+		if (menu) setMenu(null);
+		else if (fullscreen) setFullscreen(false);
+		else onClose();
+	};
 	useEffect(() => {
 		const el = containerRef.current;
 		if (!el) return;
@@ -158,12 +167,39 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 		return () => window.removeEventListener("keydown", onKey, { capture: true });
 	}, [go, onClose, images.length, fullscreen]);
 
+	// Keep the right-click menu inside the viewport, and close it on any outside
+	// pointer / layout change (a menu pinned to stale coordinates is worse than none).
+	useLayoutEffect(() => {
+		const el = menuRef.current;
+		if (!menu || !el) return;
+		const rect = el.getBoundingClientRect();
+		el.style.left = `${Math.max(8, Math.min(menu.x, window.innerWidth - rect.width - 8))}px`;
+		el.style.top = `${Math.max(8, Math.min(menu.y, window.innerHeight - rect.height - 8))}px`;
+	}, [menu]);
+
+	useEffect(() => {
+		if (!menu) return;
+		const close = (e?: Event) => {
+			if (e && e.type === "pointerdown" && menuRef.current?.contains(e.target as Node)) return;
+			setMenu(null);
+		};
+		window.addEventListener("pointerdown", close, true);
+		window.addEventListener("resize", close);
+		window.addEventListener("blur", close);
+		return () => {
+			window.removeEventListener("pointerdown", close, true);
+			window.removeEventListener("resize", close);
+			window.removeEventListener("blur", close);
+		};
+	}, [menu]);
+
 	// Reset per-image derived state and scroll the active thumbnail into view.
 	useEffect(() => {
 		const strip = thumbStripRef.current;
 		const active = strip?.querySelector<HTMLElement>(`[data-thumb-index="${index}"]`);
 		active?.scrollIntoView({ inline: "center", block: "nearest" });
 		setCopied(false);
+		setMenu(null);
 		setNatural(null);
 		setFitOverride(null);
 		zoom.reset();
@@ -182,6 +218,26 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 		} catch {
 			toast.error(t("imageViewer.copyFailed"), { taskId });
 		}
+	};
+
+	// Renderer-side anchor download (Electrobun → ~/Downloads, browser → its own
+	// download dir). The bytes are already here as a data URL, so this needs no RPC
+	// and behaves identically on both transports.
+	const saveImage = () => {
+		setMenu(null);
+		if (!currentUrl || isError) return;
+		try {
+			downloadDataUrl(currentUrl, current.name);
+			toast.success(t("imageViewer.saved"), { taskId });
+		} catch {
+			toast.error(t("imageViewer.saveFailed"), { taskId });
+		}
+	};
+
+	const openMenu = (e: React.MouseEvent) => {
+		if (!currentUrl || isError) return;
+		e.preventDefault();
+		setMenu({ x: e.clientX, y: e.clientY });
 	};
 
 	const iconBtn = "flex-shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-fg-3 hover:bg-elevated-hover hover:text-fg transition-colors";
@@ -245,6 +301,17 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 					</button>
 					<button
 						type="button"
+						onClick={saveImage}
+						disabled={!currentUrl || isError}
+						title={t("imageViewer.download")}
+						aria-label={t("imageViewer.download")}
+						data-testid="image-viewer-download"
+						className={`${iconBtn} disabled:opacity-40 disabled:cursor-default`}
+					>
+						<span className="text-base leading-none" style={{ fontFamily: ICON }}>{""}</span>
+					</button>
+					<button
+						type="button"
 						onClick={() => api.request.openImageFile({ path: current.storedPath }).catch(() => toast.error(t("imageViewer.openFailed"), { taskId }))}
 						title={t("imageViewer.open")}
 						aria-label={t("imageViewer.open")}
@@ -268,6 +335,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 				<div className="relative flex-1 min-h-0 bg-base">
 					<div
 						ref={setStage}
+						onContextMenu={openMenu}
 						style={{ touchAction: fit === "width" ? "pan-y" : "none" }}
 						className={`absolute inset-0 ${fit === "width" ? "overflow-y-auto overflow-x-hidden p-3" : "overflow-hidden p-4 flex items-center justify-center"}`}
 					>
@@ -358,6 +426,37 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 								</button>
 							);
 						})}
+					</div>
+				)}
+
+				{/* Right-click menu over the image (replaces the dead native one) */}
+				{menu && (
+					<div
+						ref={menuRef}
+						role="menu"
+						data-testid="image-viewer-context-menu"
+						className="fixed z-[10000] min-w-[11.25rem] rounded-xl border border-edge-active bg-overlay py-1.5 shadow-2xl shadow-black/40"
+						style={{ left: menu.x, top: menu.y }}
+					>
+						<button
+							type="button"
+							role="menuitem"
+							data-testid="image-viewer-menu-download"
+							onClick={saveImage}
+							className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+						>
+							<span className="w-4 text-center text-sm leading-none flex-shrink-0" style={{ fontFamily: ICON }}>{"\uf019"}</span>
+							{t("imageViewer.download")}
+						</button>
+						<button
+							type="button"
+							role="menuitem"
+							onClick={() => { setMenu(null); void copyPath(); }}
+							className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+						>
+							<span className="w-4 text-center text-sm leading-none flex-shrink-0" style={{ fontFamily: ICON }}>{"\uf0c5"}</span>
+							{t("imageViewer.copyPath")}
+						</button>
 					</div>
 				)}
 			</div>

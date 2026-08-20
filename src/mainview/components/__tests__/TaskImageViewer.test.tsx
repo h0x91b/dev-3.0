@@ -165,6 +165,57 @@ describe("TaskImageViewer", () => {
 		unmount();
 		expect(document.documentElement.getAttribute("data-image-viewer")).toBeNull();
 	});
+	describe("download", () => {
+		function spyDownload() {
+			const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:img");
+			const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+			const names: string[] = [];
+			const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+				names.push(this.download);
+			});
+			return { names, click, restore: () => { createObjectURL.mockRestore(); revokeObjectURL.mockRestore(); click.mockRestore(); } };
+		}
+
+		it("saves the active image under its own name from the header button", async () => {
+			const spy = spyDownload();
+			renderViewer();
+			await screen.findByTestId("viewer-main-image");
+			await userEvent.click(screen.getByTestId("image-viewer-download"));
+			expect(spy.names).toEqual(["three.png"]);
+			spy.restore();
+		});
+
+		// The native WKWebView "Save Image As…" is dead here, so right-click must open
+		// our own menu — otherwise there is no way to save from a pointer.
+		it("offers Save/Copy from a right-click menu over the image", async () => {
+			const spy = spyDownload();
+			renderViewer();
+			const image = await screen.findByTestId("viewer-main-image");
+			expect(screen.queryByTestId("image-viewer-context-menu")).toBeNull();
+			fireEvent.contextMenu(image);
+			expect(screen.getByTestId("image-viewer-context-menu")).toBeInTheDocument();
+			await userEvent.click(screen.getByTestId("image-viewer-menu-download"));
+			expect(spy.names).toEqual(["three.png"]);
+			expect(screen.queryByTestId("image-viewer-context-menu")).toBeNull();
+			spy.restore();
+		});
+
+		it("closes the right-click menu on Escape without closing the viewer", async () => {
+			const onClose = renderViewer();
+			const image = await screen.findByTestId("viewer-main-image");
+			fireEvent.contextMenu(image);
+			fireEvent.keyDown(window, { key: "Escape" });
+			expect(screen.queryByTestId("image-viewer-context-menu")).toBeNull();
+			expect(onClose).not.toHaveBeenCalled();
+		});
+
+		it("disables the header download while the bytes are unavailable", async () => {
+			(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("nope"));
+			renderViewer();
+			await waitFor(() => expect(screen.getByTestId("image-viewer-download")).toBeDisabled());
+		});
+	});
+
 	it("wins Escape against the modal that opened it", async () => {
 		const onCloseModal = vi.fn();
 		const onCloseViewer = vi.fn();
