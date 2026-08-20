@@ -48,6 +48,7 @@ const STATUS: DevServerStatus = {
 	assignedPorts: [50001, 55930, 55937],
 	ports: [{ port: 5173, pid: 81298, processName: "bun" }],
 	devPorts: [{ port: 5173, pid: 81298, processName: "bun" }],
+	publishedPorts: [],
 	portConflicts: [],
 	resourceUsage: { cpu: 3.1, rss: 104857600 },
 };
@@ -247,6 +248,30 @@ describe("dev-server port conflicts", () => {
 		expect(stdoutOutput).toContain("WARNING: port 55930 is already in use by python3 (pid 1001)");
 	});
 
+	// A container runtime publishes the port, so the listener is never in the
+	// pane's process tree. That is the healthy state, not a conflict (#1427).
+	it("prints published ports on their own line instead of a warning", async () => {
+		mockSend.mockResolvedValue(okResp({
+			...STATUS,
+			devPorts: [],
+			publishedPorts: [{ port: 10569, pid: 1380, processName: "com.docker.backend" }],
+		}));
+
+		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Published Ports:");
+		expect(stdoutOutput).toContain("10569 (com.docker.backend pid 1380)");
+		expect(stdoutOutput).not.toContain("WARNING: port");
+	});
+
+	it("omits the Published Ports line when nothing was published", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+
+		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
+
+		expect(stdoutOutput).not.toContain("Published Ports:");
+	});
+
 	it("prints no warnings when there are no conflicts", async () => {
 		mockSend.mockResolvedValue(okResp(STATUS));
 
@@ -276,6 +301,50 @@ describe("dev-server start --wait", () => {
 
 		expect(statusCalls).toBe(2);
 		expect(stdoutOutput).toContain("Ready: listening on 5173");
+	});
+
+	// The whole point of #1427: for a containerised devScript the dev server's
+	// own tree never owns the socket, so devPorts stays empty forever.
+	it("becomes ready on a port published for the dev server by another process", async () => {
+		vi.useFakeTimers();
+		let statusCalls = 0;
+		const published = { port: 10569, pid: 1380, processName: "com.docker.backend" };
+		mockSend.mockImplementation(async (_socket: string, method: string) => {
+			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [], publishedPorts: [] });
+			statusCalls++;
+			return okResp(
+				statusCalls >= 2
+					? { ...STATUS, devPorts: [], publishedPorts: [published] }
+					: { ...STATUS, devPorts: [], publishedPorts: [] },
+			);
+		});
+
+		const promise = handleDevServer("start", { positional: [], flags: { wait: "true" } }, SOCKET, CTX);
+		await vi.advanceTimersByTimeAsync(1000);
+		await promise;
+
+		expect(statusCalls).toBe(2);
+		expect(stdoutOutput).toContain("Ready: listening on 10569");
+	});
+
+	it("names the squatting process when the timeout elapses on a conflicted port", async () => {
+		vi.useFakeTimers();
+		mockSend.mockResolvedValue(okResp({
+			...STATUS,
+			devPorts: [],
+			portConflicts: [{ port: 50001, pid: 999, processName: "node" }],
+		}));
+
+		const promise = handleDevServer(
+			"start",
+			{ positional: [], flags: { wait: "true", timeout: "1" } },
+			SOCKET,
+			CTX,
+		).catch((err: Error) => err);
+		await vi.advanceTimersByTimeAsync(5000);
+		await promise;
+
+		expect(stderrOutput).toContain("50001 held by node (pid 999)");
 	});
 
 	it("exits with an error when the timeout elapses before a port appears", async () => {

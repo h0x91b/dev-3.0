@@ -37,6 +37,7 @@ import {
 	waitForPortsFree,
 } from "../port-scanner";
 import { spawn } from "../spawn";
+import { clearDevServerStart, recordDevServerStart } from "../dev-server-ports";
 
 const mockSpawn = spawn as unknown as ReturnType<typeof vi.fn>;
 
@@ -825,6 +826,76 @@ describe("poller", () => {
 		// Second poll — should still fire (poller survived)
 		await vi.advanceTimersByTimeAsync(10_000);
 		expect(getActiveSessions).toHaveBeenCalledTimes(2);
+	});
+
+	// A containerised devScript never owns its published socket (the container
+	// runtime's daemon does), so ownership alone reported no ports at all for
+	// such a task — the UI badge stayed empty (issue #1427).
+	it("includes an assigned port published for the task's dev server", async () => {
+		const taskId = "task-published-1";
+		recordDevServerStart(taskId, [10569], []);
+		const push = vi.fn();
+		const getActiveSessions = vi.fn().mockReturnValue([{ taskId, tmuxSocket: "dev3" }]);
+
+		routeSpawnByArgv({
+			ps: "  100     1   50000   0.0\n",
+			lsof: "p100\ncnode\nn*:3000\np1380\nccom.docker.backend\nn*:10569\n",
+			allPanes: "100\tdev3-task-pub\n",
+		});
+
+		startPortScanPoller(push, getActiveSessions);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(push).toHaveBeenCalledWith("portsUpdated", {
+			taskId,
+			ports: [
+				{ port: 3000, pid: 100, processName: "node" },
+				{ port: 10569, pid: 1380, processName: "com.docker.backend" },
+			],
+		});
+		clearDevServerStart(taskId);
+	});
+
+	it("ignores a foreign holder that was already listening before the dev server started", async () => {
+		const taskId = "task-squatted-1";
+		recordDevServerStart(taskId, [10569], [{ port: 10569, pid: 1380, processName: "com.docker.backend" }]);
+		const push = vi.fn();
+		const getActiveSessions = vi.fn().mockReturnValue([{ taskId, tmuxSocket: "dev3" }]);
+
+		routeSpawnByArgv({
+			ps: "  100     1   50000   0.0\n",
+			lsof: "p100\ncnode\nn*:3000\np1380\nccom.docker.backend\nn*:10569\n",
+			allPanes: "100\tdev3-task-squ\n",
+		});
+
+		startPortScanPoller(push, getActiveSessions);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(push).toHaveBeenCalledWith("portsUpdated", {
+			taskId,
+			ports: [{ port: 3000, pid: 100, processName: "node" }],
+		});
+		clearDevServerStart(taskId);
+	});
+
+	it("ignores assigned-port holders for a task with no running dev server", async () => {
+		const taskId = "task-nodev-1";
+		const push = vi.fn();
+		const getActiveSessions = vi.fn().mockReturnValue([{ taskId, tmuxSocket: "dev3" }]);
+
+		routeSpawnByArgv({
+			ps: "  100     1   50000   0.0\n",
+			lsof: "p100\ncnode\nn*:3000\np1380\nccom.docker.backend\nn*:10569\n",
+			allPanes: "100\tdev3-task-nod\n",
+		});
+
+		startPortScanPoller(push, getActiveSessions);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		expect(push).toHaveBeenCalledWith("portsUpdated", {
+			taskId,
+			ports: [{ port: 3000, pid: 100, processName: "node" }],
+		});
 	});
 
 	it("stopPortScanPoller prevents further polls", async () => {

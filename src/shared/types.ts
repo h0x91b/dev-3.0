@@ -2880,9 +2880,17 @@ export interface DevServerStatus {
 	 */
 	devPorts: PortInfo[];
 	/**
-	 * Assigned pool ports currently bound by a process OUTSIDE the dev-server
-	 * tree — a conflicting owner that will make the devScript crash-loop on
-	 * bind. Surfaced so a squatted port is visible at start/status instead of
+	 * Assigned pool ports that started LISTENing after this dev server launched,
+	 * bound by a process outside its tree — i.e. published on its behalf. Every
+	 * containerised devScript lands here: the container runtime's daemon owns
+	 * the published socket, never the pane. Counts as ready for `--wait`.
+	 */
+	publishedPorts: PortInfo[];
+	/**
+	 * Assigned pool ports bound by a process OUTSIDE the dev-server tree that
+	 * was ALREADY listening before this dev server started (or is listening
+	 * while it is stopped) — a real squatter that will make the devScript
+	 * crash-loop on bind. Surfaced so it is visible at start/status instead of
 	 * only as a downstream 502.
 	 */
 	portConflicts: PortInfo[];

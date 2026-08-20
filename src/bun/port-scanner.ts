@@ -3,6 +3,7 @@ import { spawn } from "./spawn";
 import { tmux, TASK_SESSION_PREFIX, DEV_SERVER_SESSION_PREFIX, devServerSessionForTaskSession, taskSessionName, PANE_PID_FORMAT, ALL_PANE_PIDS_FORMAT } from "./tmux";
 import { createLogger } from "./logger";
 import { cleanupTaskTunnels } from "./port-tunnels";
+import { classifyAssignedPortOwners, getDevServerStartSnapshot, mergePortInfos } from "./dev-server-ports";
 
 const log = createLogger("port-scanner");
 
@@ -354,6 +355,21 @@ export async function scanTaskPorts(
 	return parseLsofOutput(output, allPids);
 }
 
+/**
+ * The task's assigned pool ports that are LISTENing under a foreign PID and
+ * appeared only after its dev server started — published on its behalf (a
+ * container runtime daemon owns every published port). Empty unless this
+ * process currently holds a dev-server start snapshot for the task, so a
+ * squatter on an idle task's port is never reported as one of its ports.
+ */
+function publishedAssignedPorts(taskId: string, lsofOutput: string): PortInfo[] {
+	if (!lsofOutput) return [];
+	const snapshot = getDevServerStartSnapshot(taskId);
+	if (!snapshot || snapshot.assignedPorts.length === 0) return [];
+	const holders = parsePortHolders(lsofOutput, new Set(snapshot.assignedPorts));
+	return classifyAssignedPortOwners(holders, snapshot.preStartHolders, true).published;
+}
+
 // ── Background poller ──────────────────────────────────────────────
 
 const POLL_INTERVAL_MS = 10_000;
@@ -404,7 +420,11 @@ async function poll() {
 		for (const { taskId, tmuxSocket } of sessions) {
 			const sessionName = taskSessionName(taskId);
 			try {
-				const ports = await scanTaskPorts(tmuxSocket, sessionName, lsofOutput, processTree, paneMaps.get(tmuxSocket));
+				const owned = await scanTaskPorts(tmuxSocket, sessionName, lsofOutput, processTree, paneMaps.get(tmuxSocket));
+				// A containerised devScript never owns its published socket — the
+				// container runtime's daemon does — so ownership alone leaves the UI
+				// showing no ports at all for such a task (issue #1427).
+				const ports = mergePortInfos(owned, publishedAssignedPorts(taskId, lsofOutput));
 				const serialized = JSON.stringify(ports);
 				if (portCache.get(taskId) !== serialized) {
 					portCache.set(taskId, serialized);

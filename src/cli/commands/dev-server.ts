@@ -56,6 +56,7 @@ function asStatus(data: unknown): DevServerStatus {
 		assignedPorts: raw.assignedPorts ?? [],
 		ports: raw.ports ?? [],
 		devPorts: raw.devPorts ?? [],
+		publishedPorts: raw.publishedPorts ?? [],
 		portConflicts: raw.portConflicts ?? [],
 	};
 }
@@ -118,6 +119,11 @@ function printStatusDetails(status: DevServerStatus): void {
 		["Assigned Ports:", formatAssignedPorts(status)],
 		["Detected Ports:", formatPortInfos(status.ports)],
 		["Dev Ports:", formatPortInfos(status.devPorts)],
+		// Only worth a line when something actually published for this server —
+		// otherwise it is noise on every ordinary dev server.
+		...(status.publishedPorts.length > 0
+			? [["Published Ports:", formatPortInfos(status.publishedPorts)] as [string, string]]
+			: []),
 	];
 
 	if (status.resourceUsage) {
@@ -141,10 +147,25 @@ function printPortConflicts(status: DevServerStatus): void {
 }
 
 /**
+ * Ports that count as "the dev server is up": bound by its own process tree, or
+ * published for it by another process after it started (a containerised
+ * devScript has its ports published by the container runtime's daemon, which is
+ * never a descendant of the pane — see issue #1427).
+ */
+function readyPorts(status: DevServerStatus): DevServerStatus["ports"] {
+	const byPort = new Map<number, DevServerStatus["ports"][number]>();
+	for (const info of [...status.devPorts, ...status.publishedPorts]) {
+		if (!byPort.has(info.port)) byPort.set(info.port, info);
+	}
+	return [...byPort.values()].sort((a, b) => a.port - b.port);
+}
+
+/**
  * Poll `devServer.status` until the dev server's own process tree is
- * LISTENing on at least one port. With verified teardown on stop/restart the
- * old server is confirmed dead first, so a bound port here really is the NEW
- * server — not a stale process still serving the previous build.
+ * LISTENing on at least one port, or a port is listening on its behalf. With
+ * verified teardown on stop/restart the old server is confirmed dead first, so
+ * a bound port here really is the NEW server — not a stale process still
+ * serving the previous build.
  */
 async function waitForDevServerReady(
 	socketRef: { current: string },
@@ -165,12 +186,21 @@ async function waitForDevServerReady(
 		if (!status.running) {
 			exitError("Dev server exited before opening a port — check the dev server pane for errors");
 		}
-		if (status.devPorts.length > 0) {
-			process.stdout.write(`Ready: listening on ${status.devPorts.map((p) => p.port).join(", ")}\n`);
+		const ready = readyPorts(status);
+		if (ready.length > 0) {
+			process.stdout.write(`Ready: listening on ${ready.map((p) => p.port).join(", ")}\n`);
 			return;
 		}
 		if (waited >= timeoutMs) {
-			exitError(`Dev server did not open a port within ${timeoutSec}s (build still in progress?)`);
+			// A squatted assigned port is the likeliest reason the devScript never
+			// got to listen — say so instead of only "build still in progress?".
+			const squatted = status.portConflicts
+				.map((c) => `${c.port} held by ${c.processName} (pid ${c.pid})`)
+				.join("; ");
+			exitError(
+				`Dev server did not open a port within ${timeoutSec}s (build still in progress?)`
+				+ (squatted ? ` — assigned port(s) taken by another process: ${squatted}` : ""),
+			);
 		}
 		await new Promise((resolve) => setTimeout(resolve, WAIT_POLL_MS));
 	}

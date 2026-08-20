@@ -8,6 +8,7 @@ import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { buildProcessTree, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, waitForPortsFree } from "../port-scanner";
+import { classifyAssignedPortOwners, clearDevServerStart, getDevServerStartSnapshot, mergePortInfos, recordDevServerStart } from "../dev-server-ports";
 import { getPidCwd, terminatePidsVerified } from "../process-reaper";
 import { getResourceUsage } from "../resource-monitor";
 import { throughputSnapshot } from "../pty-throughput";
@@ -321,6 +322,7 @@ export async function killDevServerSession(
 		log.warn("Assigned ports still held after teardown", { taskId: taskId.slice(0, 8), stuckHolders });
 	}
 	clearPortDataForTask(taskId);
+	clearDevServerStart(taskId);
 	log.info("Killed dev server session", {
 		taskId: taskId.slice(0, 8),
 		...(opId ? { opId } : {}),
@@ -368,6 +370,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 			assignedPorts,
 			ports: [],
 			devPorts: [],
+			publishedPorts: [],
 			portConflicts: [],
 			tmuxError: err.message,
 		};
@@ -394,19 +397,27 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 			: await collectTaskPids(resolvedSocket, devSession)
 		: new Set<number>();
 	const devPorts = running && lsofOutput ? parseLsofOutput(lsofOutput, devTreePids) : [];
-	// An assigned pool port bound by a PID outside the dev-server tree is a
-	// conflict: either a foreign squatter, or (when stopped) a leftover that
-	// will make the next start crash-loop on bind.
-	const portConflicts = lsofOutput
+	// An assigned pool port bound by a PID outside the dev-server tree is either
+	// the dev server's port published on its behalf (a container runtime daemon
+	// owns every published port — it is never a descendant of the pane) or a
+	// foreign squatter that will make the devScript crash-loop on bind. The
+	// pre-start snapshot tells them apart.
+	const foreignHolders = lsofOutput
 		? (await findPortHolders(assignedPorts, lsofOutput)).filter((holder) => !devTreePids.has(holder.pid))
 		: [];
+	const { published: publishedPorts, conflicts: portConflicts } = classifyAssignedPortOwners(
+		foreignHolders,
+		getDevServerStartSnapshot(task.id)?.preStartHolders ?? [],
+		running,
+	);
 	const ports = running
 		? await (async () => {
 			const cached = getPortsForTask(task.id);
-			if (cached.length > 0) return cached;
+			if (cached.length > 0) return mergePortInfos(cached, publishedPorts);
 			// The fallback scan walks a tmux session; a native task has none, so its
 			// dev-port scan above is already the whole answer.
-			return native ? devPorts : scanTaskPorts(resolvedSocket, taskSession, lsofOutput);
+			const scanned = native ? devPorts : await scanTaskPorts(resolvedSocket, taskSession, lsofOutput);
+			return mergePortInfos(scanned, publishedPorts);
 		})()
 		: [];
 	const resourceUsage = running ? getResourceUsage(task.id) : undefined;
@@ -426,6 +437,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 		assignedPorts,
 		ports,
 		devPorts,
+		publishedPorts,
 		portConflicts,
 		resourceUsage,
 	};
@@ -1079,6 +1091,9 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 		// The start still proceeds (the script may not use the squatted port) —
 		// the conflict is logged here and returned in the status' portConflicts.
 		const preStartConflicts = await findPortHolders(devPorts);
+		// The snapshot is what later lets status tell "published for this dev
+		// server by a container runtime" from "squatted by something else".
+		recordDevServerStart(task.id, devPorts, preStartConflicts);
 		if (preStartConflicts.length > 0) {
 			log.warn("Assigned ports already in use before dev-server start", {
 				taskId: task.id.slice(0, 8),
@@ -1259,7 +1274,7 @@ export async function stopDevServer(params: { taskId: string; projectId: string;
 					.then(clearPaneBorder)
 					.catch((err) => log.error("Deferred self-hosted dev-server teardown failed", { error: String(err) }));
 			}, SELF_HOSTED_STOP_ACK_MS);
-			return { ...status, running: false, viewerPaneId: null, panePids: [], devPorts: [], resourceUsage: undefined };
+			return { ...status, running: false, viewerPaneId: null, panePids: [], devPorts: [], publishedPorts: [], resourceUsage: undefined };
 		}
 
 		await killDevServerSession(task, socket, task.worktreePath, opId);

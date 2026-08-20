@@ -188,6 +188,7 @@ const defaultDevServerStatus: DevServerStatus = {
 	assignedPorts: [],
 	ports: [],
 	devPorts: [],
+	publishedPorts: [],
 	portConflicts: [],
 };
 
