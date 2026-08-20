@@ -279,6 +279,7 @@ async function taskPaneState(params: { taskId: string }): Promise<TaskPaneState>
 				layout: null,
 				layoutPreset: null,
 				capabilities: ["split"],
+				sessionAbsent: true,
 			};
 		}
 		const tree = nativeState.layout ? restoreSplitTree(nativeState.layout) : null;

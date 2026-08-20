@@ -283,6 +283,28 @@ describe("taskPaneState", () => {
 		expect(state.capabilities).toContain("focus");
 	});
 
+	it("marks a vanished native session absent, so empty panes cannot read as loading", async () => {
+		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
+		mocks.getTask.mockResolvedValue(nativeTask);
+		mocks.nativeTaskPanesState.mockResolvedValue(null);
+
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+
+		expect(state.backend).toBe("native");
+		expect(state.panes).toHaveLength(0);
+		expect(state.sessionAbsent).toBe(true);
+	});
+
+	it("does not mark a live native session absent", async () => {
+		mocks.taskTerminalBackendIdentity.mockReturnValue("native");
+		mocks.getTask.mockResolvedValue(nativeTask);
+		mocks.nativeTaskPanesState.mockResolvedValue(makeTwoPaneNativeState());
+
+		const state = await taskPanesHandlers.taskPaneState({ taskId: TASK_ID });
+
+		expect(state.sessionAbsent).toBeFalsy();
+	});
+
 	it("throws for an unusable persisted backend identity", async () => {
 		mocks.taskTerminalBackendIdentity.mockImplementation(() => {
 			throw new Error("unusable backend: gibberish");

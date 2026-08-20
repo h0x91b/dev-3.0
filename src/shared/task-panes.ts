@@ -84,6 +84,14 @@ export interface TaskPaneState {
 	/** Native only: the preset the shared layout currently matches, if any. */
 	layoutPreset: TaskPaneLayoutPreset | null;
 	capabilities: TaskPaneCapability[];
+	/**
+	 * Native only: the backend looked for this task's session and found none — the
+	 * host is gone, or was never started. Without it an empty `panes` array means
+	 * both "nothing is there" and "not loaded yet", and a reader picking the
+	 * optimistic one spins on "Connecting…" forever. tmux reports session loss by
+	 * throwing, so it never sets this.
+	 */
+	sessionAbsent?: boolean;
 }
 
 export type TaskPaneAction =

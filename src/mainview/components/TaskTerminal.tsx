@@ -44,6 +44,8 @@ interface TaskTerminalProps {
 
 const PTY_CONNECT_TIMEOUT_MS = 10_000;
 const NATIVE_PANE_POLL_MS = 2500;
+/** How many consecutive session-absent reads turn the spinner into the restart offer. */
+const NATIVE_ABSENT_READS = 2;
 /** How long a "give the terminal the keyboard" wish waits for a pane to attach. */
 const FOCUS_REQUEST_TTL_MS = 15_000;
 
@@ -98,6 +100,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 
 	// ── Native multi-pane state ─────────────────────────────────────────────────
 	const [nativePaneState, setNativePaneState] = useState<TaskPaneState | null>(null);
+	/** Consecutive pane reads that found no native session. @see NATIVE_ABSENT_READS */
+	const [absentReads, setAbsentReads] = useState(0);
 	const [paneUrls, setPaneUrls] = useState<Map<string, string>>(() => new Map());
 	// Panes whose host this viewer could not attach to. Kept next to `alive` so a
 	// lost socket and a dead pane render the SAME recovery block in every viewer,
@@ -197,8 +201,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// as soon as the server answers instead of on the next poll tick.
 	useEffect(() => {
 		if (!isNative || isPreparing) return;
+		setAbsentReads(0);
 		return subscribePaneState(taskId, (state) => {
 			setNativePaneState(state);
+			// Two reads, not one: a task whose panes are still being created answers
+			// absent for ~1s, and flashing "the terminal is gone" at someone whose
+			// terminal is opening would be its own lie. Any live read resets it.
+			setAbsentReads((n) => (state.sessionAbsent ? n + 1 : 0));
 			// Forget panes the coordinator has since reconciled away.
 			setGonePaneIds((prev) => {
 				if (prev.size === 0) return prev;
@@ -372,13 +381,38 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
+	/**
+	 * The native counterpart of {@link handleRestart}: same server call, but the
+	 * native canvas is driven by pane state, not by a single `ptyUrl`, so a
+	 * relaunched session is picked up by re-reading the panes.
+	 */
+	async function handleNativeRestart() {
+		setRestarting(true);
+		try {
+			const result = await api.request.getPtyUrl({ taskId, resume: true });
+			if ("recoverable" in result) {
+				setRecoverable(result.sessionState);
+				setHibernated(result.hibernated === true);
+			} else {
+				await fetchPaneState(taskId);
+			}
+			trackEvent("session_recovered", { action: "native_restart" });
+		} catch (err) {
+			console.error("[TaskTerminal] Native restart failed:", err);
+			await classifyAndSetError();
+		} finally {
+			setRestarting(false);
+		}
+	}
+
 	async function handleResumeSession() {
 		setRestarting(true);
 		setRecoverable(null);
 		setHibernated(false);
 		try {
 			const url = await api.request.resumeTask({ taskId });
-			setPtyUrl(url);
+			if (isNative) await fetchPaneState(taskId);
+			else setPtyUrl(url);
 			trackEvent("session_recovered", { action: "resume" });
 		} catch (err) {
 			console.error("[TaskTerminal] Resume session failed:", err);
@@ -394,7 +428,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		setHibernated(false);
 		try {
 			const url = await api.request.restartTask({ taskId });
-			setPtyUrl(url);
+			if (isNative) await fetchPaneState(taskId);
+			else setPtyUrl(url);
 			trackEvent("session_recovered", { action: "fresh" });
 		} catch (err) {
 			console.error("[TaskTerminal] Start fresh failed:", err);
@@ -526,6 +561,33 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		const escaped = paths.map((p) => p.replace(/ /g, "\\ "));
 		if (!rawMode && composerApiRef.current) composerApiRef.current.appendPaths(escaped);
 		else termHandle?.paste(`${escaped.join(" ")} `);
+	}
+
+	// The backend looked and found no session — the host was killed, died, or was
+	// never started. A dead terminal has to LOOK dead: the spinner it replaces
+	// could never resolve, because nothing is coming.
+	if (isNative && absentReads >= NATIVE_ABSENT_READS) {
+		return (
+			<div className="flex items-center justify-center h-full">
+				<div
+					data-testid="terminal-host-gone-screen"
+					className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4"
+				>
+					<div className="flex items-center gap-2 font-medium text-danger">
+						<span className="text-lg">⚠</span>
+						<span>{t("terminal.hostGoneTitle")}</span>
+					</div>
+					<p className="text-fg-3 text-sm">{t("terminal.hostGoneDesc")}</p>
+					<button
+						onClick={handleNativeRestart}
+						disabled={restarting}
+						className="w-full px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
+					>
+						{restarting ? t("terminal.connecting") : t("terminal.hostGoneRestart")}
+					</button>
+				</div>
+			</div>
+		);
 	}
 
 	// ── Native multi-pane rendering ─────────────────────────────────────────────

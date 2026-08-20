@@ -309,3 +309,77 @@ describe("TaskTerminal (native multi-pane)", () => {
 		expect(screen.queryByTestId("native-pane-dividers")).toBeNull();
 	});
 });
+
+// A native session that is GONE (host killed, crashed, or never started) answers
+// with zero panes. Before seq 1465 the canvas read that as "not loaded yet" and
+// span on "Connecting..." with no timeout — see decision
+// native-empty-pane-set-is-not-loading.
+describe("TaskTerminal (native session gone)", () => {
+	const ABSENT: TaskPaneState = {
+		backend: "native",
+		panes: [],
+		activePaneId: null,
+		zoomedPaneId: null,
+		layout: null,
+		layoutPreset: null,
+		capabilities: ["split"],
+		sessionAbsent: true,
+	};
+
+	it("offers a restart instead of a spinner that can never resolve", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(ABSENT);
+		renderTaskTerminal(NATIVE_TASK);
+
+		await waitFor(
+			() => expect(screen.getByTestId("terminal-host-gone-screen")).toBeInTheDocument(),
+			{ timeout: 6000 },
+		);
+		expect(screen.queryByText("Connecting...")).toBeNull();
+		expect(screen.getByRole("button", { name: "Restart terminal" })).toBeEnabled();
+	});
+
+	it("keeps waiting on a single absent read, so a session still being created never flashes as dead", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(ABSENT);
+		renderTaskTerminal(NATIVE_TASK);
+
+		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalledTimes(1));
+		expect(screen.queryByTestId("terminal-host-gone-screen")).toBeNull();
+		expect(screen.getByText("Connecting...")).toBeInTheDocument();
+	});
+
+	it("restart relaunches the session and repaints the panes", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(ABSENT);
+		vi.mocked(api.request.getPtyUrl).mockResolvedValue({ url: `ws://localhost:9999?session=${TASK_ID}` });
+		renderTaskTerminal(NATIVE_TASK);
+
+		await waitFor(
+			() => expect(screen.getByTestId("terminal-host-gone-screen")).toBeInTheDocument(),
+			{ timeout: 6000 },
+		);
+
+		// The relaunched session is what the next pane read finds.
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeNativePaneState(["pane-1"]));
+		fireEvent.click(screen.getByRole("button", { name: "Restart terminal" }));
+
+		await waitFor(() => expect(api.request.getPtyUrl).toHaveBeenCalledWith({ taskId: TASK_ID, resume: true }));
+		await waitFor(() => expect(screen.queryAllByTestId("terminal-view")).toHaveLength(1));
+		expect(screen.queryByTestId("terminal-host-gone-screen")).toBeNull();
+	});
+
+	it("hands over to the recovery screen when the server offers a stored session", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(ABSENT);
+		vi.mocked(api.request.getPtyUrl).mockResolvedValue({
+			recoverable: true,
+			sessionState: { panes: [{ sessionId: "s1" }] },
+		} as unknown as { url: string });
+		renderTaskTerminal(NATIVE_TASK);
+
+		await waitFor(
+			() => expect(screen.getByTestId("terminal-host-gone-screen")).toBeInTheDocument(),
+			{ timeout: 6000 },
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Restart terminal" }));
+
+		await waitFor(() => expect(screen.getByTestId("terminal-recovery-screen")).toBeInTheDocument());
+	});
+});
