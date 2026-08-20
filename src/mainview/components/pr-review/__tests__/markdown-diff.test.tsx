@@ -30,6 +30,39 @@ beforeEach(() => {
 	});
 });
 
+describe("buildMarkdownDiffBlocks source lines", () => {
+	it("gives every block the line it starts on in its own side of the diff", () => {
+		const oldSource = "# Title\n\nintro\n\ngone paragraph\n\ntail\n";
+		const newSource = "# Title\n\nintro\n\nfresh paragraph\n\ntail\n";
+		const blocks = buildMarkdownDiffBlocks(oldSource, newSource)!;
+
+		const removed = blocks.find((block) => block.kind === "removed")!;
+		const added = blocks.find((block) => block.kind === "added")!;
+		expect(removed).toMatchObject({ startLine: 5, source: "gone paragraph" });
+		expect(added).toMatchObject({ startLine: 5, source: "fresh paragraph" });
+		// The leading context group starts at line 1 and covers both blocks.
+		expect(blocks[0]).toMatchObject({ kind: "context", startLine: 1 });
+	});
+
+	it("rejoins a grouped run with the blank lines it actually had", () => {
+		const oldSource = "one\n\n\n\ntwo\n\nremoved\n";
+		const newSource = "one\n\n\n\ntwo\n";
+		const blocks = buildMarkdownDiffBlocks(oldSource, newSource)!;
+		const context = blocks.find((block) => block.kind === "context")!;
+
+		// Three blank lines separated the paragraphs, so "two" must still land on
+		// line 5 — a fixed "\n\n" join would have dragged it up to line 3.
+		expect(context.startLine).toBe(1);
+		expect(context.source).toBe("one\n\n\n\ntwo");
+	});
+
+	it("keeps consecutive list items in one block", () => {
+		const blocks = buildMarkdownDiffBlocks("- a\n- b\n", "- a\n- b\n- c\n")!;
+		const added = blocks.find((block) => block.kind === "added")!;
+		expect(added).toMatchObject({ startLine: 3, source: "- c" });
+	});
+});
+
 describe("buildMarkdownDiffBlocks", () => {
 	it("returns null when both sides render the same document", () => {
 		expect(buildMarkdownDiffBlocks("# Same\n\ntext\n", "# Same\n\ntext\n")).toBeNull();

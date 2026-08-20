@@ -30,7 +30,17 @@ import { PrConversationBlock } from "./pr-review/PrConversationBlock";
 import { GithubThreadView, OutdatedThreadsGroup, type ThreadSendState } from "./pr-review/GithubThreadView";
 import { buildThreadFixPrompt, groupGithubThreadsByFile, isLineRenderedInDiff, locateThread, partitionThreadsForDiff } from "./pr-review/mapping";
 import { MarkdownDocument } from "./pr-review/markdown";
-import { MarkdownRichDiff, useMarkdownDiffBlocks } from "./pr-review/markdown-diff";
+import {
+	MarkdownRichDiff,
+	useMarkdownDiffBlocks,
+	type MarkdownCommentedLines,
+	type MarkdownDiffBlock,
+} from "./pr-review/markdown-diff";
+import {
+	resolveMarkdownSelection,
+	revealMarkdownLine,
+	type MarkdownSelectionAnchor,
+} from "./pr-review/markdown-source-lines";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
@@ -882,6 +892,277 @@ function InlineCommentComposer({
 				</button>
 			</div>
 		</form>
+	);
+}
+
+interface MarkdownPreviewThreadEntry {
+	side: InlineCommentSideKey;
+	lineNumber: number;
+	thread: InlineDiffCommentThread;
+}
+
+/** Every local thread on the file, ordered the way the document reads. */
+function collectMarkdownPreviewThreads(comments: InlineDiffCommentFileData): MarkdownPreviewThreadEntry[] {
+	const entries: MarkdownPreviewThreadEntry[] = [];
+	for (const side of ["newFile", "oldFile"] as const) {
+		for (const [line, slot] of Object.entries(comments[side])) {
+			if (slot.data.comments.length > 0) {
+				entries.push({ side, lineNumber: Number(line), thread: slot.data });
+			}
+		}
+	}
+	return entries.sort((left, right) => left.lineNumber - right.lineNumber
+		|| left.side.localeCompare(right.side));
+}
+
+function commentedLinesBySide(comments: InlineDiffCommentFileData): MarkdownCommentedLines {
+	const build = (slots: Record<string, { data: InlineDiffCommentThread }>): Set<number> => {
+		const lines = new Set<number>();
+		for (const slot of Object.values(slots)) {
+			for (const comment of slot.data.comments) {
+				for (let line = comment.startLine; line <= comment.endLine; line++) {
+					lines.add(line);
+				}
+			}
+		}
+		return lines;
+	};
+	return { oldFile: build(comments.oldFile), newFile: build(comments.newFile) };
+}
+
+/** A plain-document preview shows the only side that exists for that change. */
+function getMarkdownPreviewSide(file: TaskDiffFile): InlineCommentSideKey {
+	return file.status === "deleted" ? "oldFile" : "newFile";
+}
+
+interface MarkdownPreviewSelection extends MarkdownSelectionAnchor {
+	/** Selection end, in coordinates of the preview container. */
+	top: number;
+	left: number;
+}
+
+/**
+ * The markdown rendered preview as a review surface: selecting prose raises an
+ * `Add comment` button (a rendered document has no gutter to hover), and the
+ * file's existing comments render underneath so a new one is never invisible.
+ */
+function MarkdownPreviewReview({
+	file,
+	blocks,
+	previewSource,
+	imageBaseDir,
+	imageRootDir,
+	comments,
+	githubThreadCount,
+	onShowSourceDiff,
+	onAddComment,
+	onAddAndSendComment,
+	editingCommentId,
+	onStartEditComment,
+	onCancelEditComment,
+	onSaveEditComment,
+	onDeleteComment,
+	onSendComment,
+	sendingCommentIds,
+	registerCommentRef,
+}: {
+	file: TaskDiffFile;
+	blocks: MarkdownDiffBlock[] | null;
+	previewSource: string;
+	imageBaseDir: string | null;
+	imageRootDir: string | null | undefined;
+	comments: InlineDiffCommentFileData;
+	githubThreadCount: number;
+	onShowSourceDiff: () => void;
+	onAddComment: TaskDiffFileSectionProps["onAddComment"];
+	onAddAndSendComment: TaskDiffFileSectionProps["onAddAndSendComment"];
+	editingCommentId: string | null;
+	onStartEditComment: (commentId: string) => void;
+	onCancelEditComment: () => void;
+	onSaveEditComment: (commentId: string, body: string) => void;
+	onDeleteComment: (commentId: string) => void;
+	onSendComment: (commentId: string) => void;
+	sendingCommentIds: Record<string, boolean>;
+	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
+}) {
+	const t = useT();
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const [selection, setSelection] = useState<MarkdownPreviewSelection | null>(null);
+	const [composerAnchor, setComposerAnchor] = useState<MarkdownPreviewSelection | null>(null);
+	const commentedLines = useMemo(() => commentedLinesBySide(comments), [comments]);
+	const threads = useMemo(() => collectMarkdownPreviewThreads(comments), [comments]);
+	const documentSide = getMarkdownPreviewSide(file);
+
+	// The button follows the live selection; the composer, once open, keeps the
+	// range it was opened with even after the browser drops the highlight.
+	useEffect(() => {
+		function readSelection() {
+			const container = containerRef.current;
+			if (!container) return;
+			const active = window.getSelection();
+			const anchor = resolveMarkdownSelection(container, active);
+			if (!anchor || !active) {
+				setSelection(null);
+				return;
+			}
+			const rects = active.getRangeAt(0).getClientRects();
+			const last = rects[rects.length - 1] ?? active.getRangeAt(0).getBoundingClientRect();
+			const host = container.getBoundingClientRect();
+			setSelection({ ...anchor, top: last.bottom - host.top, left: Math.max(0, last.left - host.left) });
+		}
+		document.addEventListener("selectionchange", readSelection);
+		return () => document.removeEventListener("selectionchange", readSelection);
+	}, []);
+
+	// A file whose preview is toggled off and on again must not resurrect a stale
+	// composer for a range the user can no longer see.
+	useEffect(() => {
+		setComposerAnchor(null);
+		setSelection(null);
+	}, [file.id]);
+
+	const active = composerAnchor;
+	const closeComposer = () => {
+		setComposerAnchor(null);
+		setSelection(null);
+		window.getSelection()?.removeAllRanges();
+	};
+
+	function revealLine(line: number) {
+		const container = containerRef.current;
+		if (container) revealMarkdownLine(container, line);
+	}
+
+	return (
+		<div className="px-4 py-4" data-testid="diff-md-preview">
+			<div ref={containerRef} className="relative">
+				{previewSource.trim()
+					? blocks
+						? (
+							<MarkdownRichDiff
+								blocks={blocks}
+								imageBaseDir={imageBaseDir}
+								imageRootDir={imageRootDir}
+								commentedLines={commentedLines}
+							/>
+						)
+						: (
+							<MarkdownDocument
+								body={previewSource}
+								imageBaseDir={imageBaseDir}
+								imageRootDir={imageRootDir}
+								sourceLines={{ lineOffset: 1, commentedLines: commentedLines[documentSide] }}
+							/>
+						)
+					: <div className="text-sm text-fg-muted">{t("infoPanel.diffMdPreviewEmpty")}</div>}
+
+				{selection && !active && (
+					<button
+						type="button"
+						data-testid="md-preview-add-comment"
+						// Held on mousedown: the click itself would clear the selection first.
+						onMouseDown={(event) => {
+							event.preventDefault();
+							setComposerAnchor(selection);
+						}}
+						onClick={() => setComposerAnchor(selection)}
+						style={{ top: `${selection.top + 6}px`, left: `${selection.left}px` }}
+						className="absolute z-10 inline-flex h-8 items-center gap-1.5 rounded-md border border-edge bg-overlay px-2.5 text-xs font-semibold text-fg shadow-lg transition-colors hover:border-edge-active hover:bg-elevated-hover"
+					>
+						<span
+							aria-hidden="true"
+							className="text-sm-plus leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\uf075"}
+						</span>
+						<span>{t("infoPanel.diffCommentSubmit")}</span>
+					</button>
+				)}
+
+				{active && (
+					<div
+						style={{ top: `${active.top + 6}px` }}
+						className="absolute left-0 z-10 w-[min(34rem,100%)] overflow-hidden rounded-lg border border-edge bg-overlay shadow-2xl"
+					>
+						<InlineCommentComposer
+							filePath={file.displayPath}
+							side={active.side}
+							startLine={active.startLine}
+							endLine={active.endLine}
+							onCancel={closeComposer}
+							onSubmit={(body) => {
+								onAddComment({
+									fileId: file.id,
+									side: active.side,
+									startLine: active.startLine,
+									endLine: active.endLine,
+									body,
+								});
+								closeComposer();
+							}}
+							onSubmitAndSend={(body) => {
+								onAddAndSendComment({
+									fileId: file.id,
+									side: active.side,
+									startLine: active.startLine,
+									endLine: active.endLine,
+									body,
+								});
+								closeComposer();
+							}}
+						/>
+					</div>
+				)}
+			</div>
+
+			{threads.length > 0 && (
+				<section className="mt-6 space-y-2 border-t border-edge pt-4" data-testid="md-preview-comments">
+					<h4 className="text-xs font-semibold text-fg-2">
+						{t.plural("infoPanel.diffMdPreviewCommentCount", threads.length)}
+					</h4>
+					{threads.map((entry) => (
+						<div key={`${entry.side}:${entry.lineNumber}`} className="rounded-lg border border-edge bg-base/60">
+							<button
+								type="button"
+								onClick={() => revealLine(entry.lineNumber)}
+								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-micro text-fg-3 transition-colors hover:text-accent"
+							>
+								{formatInlineCommentLineLabel(
+									t,
+									entry.side,
+									entry.thread.comments[0]?.startLine ?? entry.lineNumber,
+									entry.lineNumber,
+								)}
+							</button>
+							<InlineCommentThreadView
+								thread={entry.thread}
+								side={entry.side}
+								lineNumber={entry.lineNumber}
+								registerCommentRef={registerCommentRef}
+								editingCommentId={editingCommentId}
+								onStartEdit={onStartEditComment}
+								onCancelEdit={onCancelEditComment}
+								onSaveEdit={onSaveEditComment}
+								onDeleteComment={onDeleteComment}
+								onSendComment={onSendComment}
+								sendingCommentIds={sendingCommentIds}
+							/>
+						</div>
+					))}
+				</section>
+			)}
+
+			{githubThreadCount > 0 && (
+				<button
+					type="button"
+					onClick={onShowSourceDiff}
+					className="mt-4 text-xs text-accent underline decoration-accent/40 underline-offset-2 transition-colors hover:decoration-accent"
+				>
+					{t.plural("infoPanel.diffMdPreviewGithubThreads", githubThreadCount)}
+				</button>
+			)}
+		</div>
 	);
 }
 
@@ -1755,13 +2036,26 @@ function TaskDiffFileSection({
 
 			{expanded && (
 				showMdPreview ? (
-					<div className="px-4 py-4" data-testid="diff-md-preview">
-						{mdPreviewSource.trim()
-							? mdDiffBlocks
-								? <MarkdownRichDiff blocks={mdDiffBlocks} imageBaseDir={mdImageBaseDir} imageRootDir={worktreePath} />
-								: <MarkdownDocument body={mdPreviewSource} imageBaseDir={mdImageBaseDir} imageRootDir={worktreePath} />
-							: <div className="text-sm text-fg-muted">{t("infoPanel.diffMdPreviewEmpty")}</div>}
-					</div>
+					<MarkdownPreviewReview
+						file={file}
+						blocks={mdDiffBlocks}
+						previewSource={mdPreviewSource}
+						imageBaseDir={mdImageBaseDir}
+						imageRootDir={worktreePath}
+						comments={comments}
+						githubThreadCount={githubThreads?.length ?? 0}
+						onShowSourceDiff={onToggleMdPreview}
+						onAddComment={onAddComment}
+						onAddAndSendComment={onAddAndSendComment}
+						editingCommentId={editingCommentId}
+						onStartEditComment={onStartEditComment}
+						onCancelEditComment={onCancelEditComment}
+						onSaveEditComment={onSaveEditComment}
+						onDeleteComment={onDeleteComment}
+						onSendComment={onSendComment}
+						sendingCommentIds={sendingCommentIds}
+						registerCommentRef={registerCommentRef}
+					/>
 				) : buildError ? (
 					<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
 				) : diffFile ? (

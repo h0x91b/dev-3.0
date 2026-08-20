@@ -52,7 +52,7 @@ const tips = {
 	"tip.diffExcludeTests.title": "Верните тесты в diff",
 	"tip.diffExcludeTests.body": "Тестовые файлы по умолчанию не входят в +/− суммы — нажмите на колбу внутри diff-бейджа (или «Include tests» в toolbar diff’а), чтобы снова их считать.",
 	"tip.inlineDiffComments.title": "Комментируйте прямо в diff",
-	"tip.inlineDiffComments.body": "В Show Diff нажмите + рядом со строкой — или протяните по номерам строк — чтобы прокомментировать строку или целый диапазон.",
+	"tip.inlineDiffComments.body": "В Show Diff нажмите + рядом со строкой или протяните по номерам строк; в превью Markdown просто выделите текст, к которому нужен комментарий.",
 	"tip.inlineDiffReviewExport.title": "Копируйте review как XML",
 	"tip.inlineDiffReviewExport.body": "Сайдбар собирает XML-блок из ваших inline comments, чтобы его можно было сразу вставить обратно агенту.",
 	"tip.unpushedDiff.title": "Проверяйте незапушенные коммиты",

@@ -10,6 +10,7 @@ import {
 } from "streamdown";
 import { useResolvedTheme } from "../../hooks/useResolvedTheme";
 import { MarkdownImage, MarkdownImageProvider } from "./markdown-images";
+import { createSourceLineComponents } from "./markdown-source-lines";
 import { remarkProtectRelativeUrls, safeLinkHref, unprotect } from "./markdown-urls";
 
 const mermaidPlugin = createMermaidPlugin();
@@ -105,12 +106,21 @@ function ExternalMarkdownLink({ children, ...props }: ComponentProps<"a">) {
 	);
 }
 
+export interface MarkdownSourceLines {
+	/** 1-based file line the rendered source starts on (whole documents pass 1). */
+	lineOffset: number;
+	/** File lines carrying a review comment, so their block is marked in place. */
+	commentedLines?: ReadonlySet<number> | null;
+}
+
 interface MarkdownContentProps {
 	body: string;
 	document?: boolean;
 	imageBaseDir?: string | null;
 	imageRootDir?: string | null;
 	rendererConfig: MarkdownRendererConfig;
+	/** Stamps every prose block with its source line range, for selection comments. */
+	sourceLines?: MarkdownSourceLines | null;
 }
 
 export function MarkdownContent({
@@ -119,8 +129,12 @@ export function MarkdownContent({
 	imageBaseDir,
 	imageRootDir,
 	rendererConfig,
+	sourceLines,
 }: MarkdownContentProps) {
+	const lineOffset = sourceLines?.lineOffset ?? null;
+	const commentedLines = sourceLines?.commentedLines ?? null;
 	const components = useMemo<Components>(() => ({
+		...(lineOffset === null ? {} : createSourceLineComponents(lineOffset, commentedLines)),
 		a: ({ node: _node, href, ...props }) => (
 			<ExternalMarkdownLink {...props} href={safeLinkHref(unprotect(href))} />
 		),
@@ -134,11 +148,17 @@ export function MarkdownContent({
 		),
 		input: ({ node: _node, ...props }) => <input {...props} disabled />,
 		strong: ({ node: _node, ...props }) => <strong {...props} />,
-	}), [imageBaseDir, imageRootDir]);
+	}), [imageBaseDir, imageRootDir, lineOffset, commentedLines]);
+
+	// Streamdown's memo comparator ignores `components`, so a changed set of
+	// commented lines only repaints through the key.
+	const commentedSignature = commentedLines?.size
+		? [...commentedLines].sort((a, b) => a - b).join(",")
+		: "";
 
 	return (
 		<Streamdown
-			key={`${rendererConfig.theme}:${isDocument}:${imageBaseDir ?? ""}:${imageRootDir ?? ""}`}
+			key={`${rendererConfig.theme}:${isDocument}:${imageBaseDir ?? ""}:${imageRootDir ?? ""}:${lineOffset ?? ""}:${commentedSignature}`}
 			mode="static"
 			dir="auto"
 			className={`space-y-0${isDocument ? " dev3-md-doc" : ""}`}
@@ -159,13 +179,15 @@ export function MarkdownContent({
 	);
 }
 
-export function MarkdownDocument({ body, className, imageBaseDir, imageRootDir }: {
+export function MarkdownDocument({ body, className, imageBaseDir, imageRootDir, sourceLines }: {
 	body: string;
 	className?: string;
 	/** Directory of the document, so repo-relative images can be read off disk. */
 	imageBaseDir?: string | null;
 	/** Checkout root, for root-relative image paths (`/docs/shot.png`). */
 	imageRootDir?: string | null;
+	/** Set to make prose blocks addressable by source line (selection comments). */
+	sourceLines?: MarkdownSourceLines | null;
 }) {
 	const rendererConfig = useMarkdownRendererConfig();
 	return (
@@ -180,6 +202,7 @@ export function MarkdownDocument({ body, className, imageBaseDir, imageRootDir }
 					imageBaseDir={imageBaseDir}
 					imageRootDir={imageRootDir}
 					rendererConfig={rendererConfig}
+					sourceLines={sourceLines}
 				/>
 			</MarkdownImageProvider>
 		</div>

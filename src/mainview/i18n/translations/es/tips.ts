@@ -52,7 +52,7 @@ const tips = {
 	"tip.diffExcludeTests.title": "Devuelve los tests al diff",
 	"tip.diffExcludeTests.body": "Los archivos de tests quedan fuera de los totales +/− por defecto: pulsa el matraz dentro del badge del diff (o \"Include tests\" en la toolbar) para volver a contarlos.",
 	"tip.inlineDiffComments.title": "Comenta directo en el diff",
-	"tip.inlineDiffComments.body": "En Show Diff, pulsa + junto a una línea — o arrastra por los números de línea — para comentar una línea o un rango entero.",
+	"tip.inlineDiffComments.body": "En Show Diff, pulsa + junto a una línea o arrastra por los números de línea; en una previsualización de Markdown, basta con seleccionar el texto.",
 	"tip.inlineDiffReviewExport.title": "Copia tu review como XML",
 	"tip.inlineDiffReviewExport.body": "La barra lateral arma un bloque XML desde tus comentarios inline para pegarlo directo en el chat del agente.",
 	"tip.unpushedDiff.title": "Revisa commits no enviados",

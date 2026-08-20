@@ -315,7 +315,7 @@ ux_architecture:
     diff_review_viewer:
       purpose: "Full-screen read + inline-review of a task's diff; export comments as an XML review prompt for the agent."
       reached_from: ["inspector:show_diff", "inspector:diff_summary_badge"]
-      allowed: ["view_mode_toggle", "diff_mode_toggle", "file_tree_nav", "in_diff_search", "mark_read", "copy_file_path", "inline_comment", "review_export", "review_copy", "review_reset", "send_comment_to_agent", "github_review_layer_readonly", "pr_conversation_block", "send_thread_to_agent", "open_on_github_link"]
+      allowed: ["view_mode_toggle", "diff_mode_toggle", "file_tree_nav", "in_diff_search", "mark_read", "copy_file_path", "inline_comment", "inline_comment_from_md_selection", "md_preview_toggle", "review_export", "review_copy", "review_reset", "send_comment_to_agent", "github_review_layer_readonly", "pr_conversation_block", "send_thread_to_agent", "open_on_github_link"]
       forbidden: ["task_lifecycle_action", "git_mutation", "global_destination", "github_write_action"]
       layout: "left Files aside (collapsible, 22rem: Review-export card + Files card) + right diff stream"
       github_review_layer:
@@ -327,6 +327,12 @@ ux_architecture:
           send_to_agent:    { role: "secondary", note: "pushes the thread into the task terminal as a fix prompt; the surface primary stays review_copy" }
           open_on_github:   { role: "link",      note: "external deep link to the exact comment" }
           include_in_export: { role: "toggle",   note: "opt-in selection into the existing XML export; exported entries carry an origin marker (github vs local)" }
+      md_preview_review:
+        note: "The per-file markdown rendered preview is a full review surface, not a read-only detour: it both creates and shows local comments, on the SAME per-file/per-side/per-line threads as the source diff."
+        trigger: "Text selection inside the preview -> floating 'Add comment' button over the selection rect -> shared InlineCommentComposer in a card anchored under the selection. Zero toolbar slots (same exemption class as the split-resize grip)."
+        anchoring: "Rendered blocks carry data-md-line-start/end from mdast node positions; the selection's line range = min(start)..max(end) of the blocks it touches. Side follows the rich-diff block: data-diff-kind=removed -> oldFile, added/context -> newFile."
+        forbidden: ["gutter in the preview", "per-block hover + widget", "toolbar comment-mode toggle", "a disabled button for an unmappable selection (show nothing)"]
+        existing_threads: "Two halves, both required: the commented block is marked in place (accent left border, via the line-stamping component override - never by mutating the DOM under React), and the threads render in full under the preview, ordered by line, each row scrolling to and flashing its block. Bubbles are NOT interleaved between blocks - the document is parsed as one unit, and splitting it would break reference links and footnote definitions. GitHub threads get one slim 'N review threads -> Source diff' link. Never silently dropped."
       inline_comment_actions:
         note: "Actions on ONE local review comment, inside its bubble in the diff. Budget: 3 controls, no growth."
         controls:

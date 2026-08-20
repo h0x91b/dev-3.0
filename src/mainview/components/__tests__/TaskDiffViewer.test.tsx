@@ -3675,6 +3675,91 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			expect(within(preview).queryByTestId("markdown-document")).toBeNull();
 		});
 
+		/** Selects the whole text of a rendered block and tells the document about it. */
+		function selectBlock(element: Element) {
+			const range = document.createRange();
+			range.selectNodeContents(element);
+			const selection = window.getSelection()!;
+			selection.removeAllRanges();
+			selection.addRange(range);
+			act(() => {
+				document.dispatchEvent(new Event("selectionchange"));
+			});
+		}
+
+		function blockByText(preview: HTMLElement, text: string): Element {
+			const blocks = [...preview.querySelectorAll("[data-md-line-start]")];
+			const found = blocks.find((block) => block.textContent?.includes(text));
+			if (!found) throw new Error(`no line-stamped block containing ${text}`);
+			return found;
+		}
+
+		it("offers no comment button until prose is selected", async () => {
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
+			renderViewer();
+
+			const preview = await screen.findByTestId("diff-md-preview");
+			expect(within(preview).queryByTestId("md-preview-add-comment")).toBeNull();
+
+			selectBlock(blockByText(preview, "bold"));
+
+			expect(within(preview).getByTestId("md-preview-add-comment")).toBeInTheDocument();
+		});
+
+		it("anchors a comment made from the preview onto the selected source lines", async () => {
+			const user = userEvent.setup();
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
+			renderViewer();
+
+			const preview = await screen.findByTestId("diff-md-preview");
+			selectBlock(blockByText(preview, "bold"));
+			await user.click(within(preview).getByTestId("md-preview-add-comment"));
+
+			// The composer names the range it will comment on: line 3 of the new file.
+			expect(screen.getByText(/New line 3/)).toBeInTheDocument();
+			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "tighten this");
+			await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+			const list = await screen.findByTestId("md-preview-comments");
+			expect(list.textContent).toContain("tighten this");
+			expect(list.textContent).toContain("1 comment on this file");
+			// And the block itself is marked, so the comment is visible in place.
+			expect(blockByText(preview, "bold").className).toContain("dev3-md-commented");
+		});
+
+		it("comments the old side when the selection sits in a removed block", async () => {
+			const user = userEvent.setup();
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
+			renderViewer();
+
+			const preview = await screen.findByTestId("diff-md-preview");
+			selectBlock(blockByText(preview, "Old"));
+			await user.click(within(preview).getByTestId("md-preview-add-comment"));
+
+			expect(screen.getByText(/Old line 1/)).toBeInTheDocument();
+		});
+
+		it("keeps a preview comment in the review export", async () => {
+			const user = userEvent.setup();
+			const writeText = vi.fn().mockResolvedValue(undefined);
+			vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
+			renderViewer();
+
+			const preview = await screen.findByTestId("diff-md-preview");
+			selectBlock(blockByText(preview, "bold"));
+			await user.click(within(preview).getByTestId("md-preview-add-comment"));
+			await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "from the preview");
+			await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+			await user.click(await screen.findByRole("button", { name: /^Copy$/i }));
+			await waitFor(() => {
+				expect(writeText).toHaveBeenCalled();
+			});
+			const copied = writeText.mock.calls[writeText.mock.calls.length - 1]?.[0];
+			expect(copied).toContain("from the preview");
+		});
+
 		it("flips a previewed markdown file back to source when a search hit lands in it", async () => {
 			const user = userEvent.setup();
 			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({

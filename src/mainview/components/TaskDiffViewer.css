@@ -338,3 +338,34 @@
 .dev3-md-diff-removed > * {
 	opacity: 0.85;
 }
+
+/* ---- Markdown preview review layer ----
+   A commented block is marked in place, so a comment added from the preview is
+   visible without switching to the source diff. */
+.dev3-md-commented {
+	position: relative;
+	background: rgb(var(--accent) / 0.08);
+	box-shadow: inset 3px 0 0 rgb(var(--accent));
+	border-radius: 0.25rem;
+	padding-left: 0.5rem;
+}
+
+/* Flash used when a comment row in the list reveals its block. */
+@keyframes dev3-md-flash {
+	from {
+		background: rgb(var(--accent) / 0.3);
+	}
+	to {
+		background: transparent;
+	}
+}
+.dev3-md-flash {
+	animation: dev3-md-flash 1.2s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+	.dev3-md-flash {
+		animation: none;
+		outline: 2px solid rgb(var(--accent));
+		outline-offset: 2px;
+	}
+}

@@ -10,6 +10,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Why:** "Which task is serving, on which port" was answerable only by opening each task, and a forgotten dev server is a machine-wide cost; stop earns the card because reversal is one click, while start does not. Rejected: a read-only signals badge (cannot stop anything) and hiding the control when stopped (the row reflows exactly when a server dies).
 - **Status:** Planned (task #1602). Evidence: `TaskCard.tsx`, `task-info-panel/TaskDevServer.tsx`, `types.ts (DevServerStatus)`.
 
+## 2026-08-20 — A rendered document is commented by selecting its text, and must show what it collects
+
+- **Rule:** In the diff viewer's markdown preview, a text selection raises a floating `Add comment` button that opens the shared composer and writes to the same per-file/per-side/per-line thread as a gutter comment (blocks carry `data-md-line-start/end` from mdast positions); the preview must also render that file's existing local threads.
+- **Why:** A rendered document has no gutter, so the only trigger the medium offers is the selection itself — a toolbar "comment mode" toggle was rejected as a mode switch plus a toolbar slot for one action, and a per-block hover `+` was rejected as chrome on every paragraph. Creating comments without rendering them was rejected outright: the preview replaces the diff, so the click would look like a no-op.
+- **Status:** Proposed. Evidence: `src/mainview/components/TaskDiffViewer.tsx`, `src/mainview/components/pr-review/markdown-diff.tsx`, bible §5.3.
+
 ## 2026-08-19 — A data-bearing menu row opens on hover, and its flyout sits beside the menu
 
 - **Rule:** Header-kebab rows that own a detail panel (memory breakdown, tmux sessions) open on ~180 ms hover intent with a click-to-pin, and the panel is anchored on the *menu's* outboard edge level with the row, never over the list; the portaled panel is exempted from the menu's outside-click dismissal via `data-header-flyout`.

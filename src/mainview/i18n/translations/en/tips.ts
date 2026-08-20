@@ -52,7 +52,7 @@ const tips = {
 	"tip.diffExcludeTests.title": "Bring tests back into the diff",
 	"tip.diffExcludeTests.body": "Test files are left out of the +/− totals by default — click the flask inside the diff badge (or \"Include tests\" in the diff toolbar) to count them again.",
 	"tip.inlineDiffComments.title": "Comment right on the diff",
-	"tip.inlineDiffComments.body": "In Show Diff, click + next to a line — or drag across line numbers — to comment on a line or a whole range.",
+	"tip.inlineDiffComments.body": "In Show Diff, click + next to a line or drag across line numbers; in a Markdown preview, just select the text you want to comment on.",
 	"tip.inlineDiffReviewExport.title": "Copy your review as XML",
 	"tip.inlineDiffReviewExport.body": "The sidebar builds an XML review block from your inline comments so you can paste it straight back into the agent chat.",
 	"tip.unpushedDiff.title": "Inspect unpushed commits",
