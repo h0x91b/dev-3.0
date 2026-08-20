@@ -868,10 +868,10 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		const checkbox = await screen.findByRole("checkbox", { name: /include tests/i });
-		expect(checkbox).toBeChecked();
-		await user.click(checkbox);
-		expect(checkbox).not.toBeChecked();
+		const toggle = await screen.findByTestId("diff-toolbar-include-tests-segment");
+		expect(toggle).toHaveAttribute("aria-pressed", "true");
+		await user.click(toggle);
+		expect(toggle).toHaveAttribute("aria-pressed", "false");
 
 		// Badge must read "Showing 2 of 3" — 1 code file + 1 skipped binary visible, 1 test file hidden.
 		// Regression: previously rendered "Showing 2 of 1" because the total excluded skipped files.
@@ -1482,7 +1482,7 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByText("2/2 Read")).toBeInTheDocument();
 
 		// Step 2: toggle "Include tests" OFF — only the production file is visible.
-		await user.click(screen.getByTestId("diff-toolbar-include-tests").querySelector("input")!);
+		await user.click(screen.getByTestId("diff-toolbar-include-tests-segment"));
 		expect(screen.getByText("1/1 Read")).toBeInTheDocument();
 
 		// Step 3: with the test file hidden, click "Mark all unread".
@@ -1491,7 +1491,7 @@ describe("TaskDiffViewer", () => {
 
 		// Step 4: toggle "Include tests" back ON — the previously hidden test
 		// file must also be unread now (this was the bug: it stayed "1/2 Read").
-		await user.click(screen.getByTestId("diff-toolbar-include-tests").querySelector("input")!);
+		await user.click(screen.getByTestId("diff-toolbar-include-tests-segment"));
 		expect(screen.getByText("0/2 Read")).toBeInTheDocument();
 	});
 

@@ -284,6 +284,11 @@ const kanban = {
 	// Watch
 	"task.watch": "Watch",
 	"task.watching": "Watching",
+	"taskHover.seq": "Number",
+	"taskHover.branch": "Branch",
+	"taskHover.labels": "Labels",
+	"taskHover.age": "Around for",
+	"taskHover.none": "\u2014",
 	"task.watchTooltip": "Watch — notify on status changes",
 	"task.manualCompletion": "I’ll complete it myself",
 	"task.manualCompletionEnabled": "I’ll complete it myself",

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatc
 import { toast } from "../toast";
 import { confirm } from "../confirm";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label, TaskPRBadgeInfo } from "../../shared/types";
+import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, TaskPRBadgeInfo } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
@@ -88,21 +88,12 @@ const DEFAULT_HEIGHT = 200;
 const MIN_HEIGHT = 80;
 const MAX_RATIO = 0.33;
 
-// Context bar budget: keep the label strip from pushing status/diff off the bar.
-// Extra labels collapse into a "+k" chip; the full list still shows in the
-// expanded metadata grid below.
-const MAX_INLINE_LABELS = 4;
 
 // The 2×2 bar grid is sized by the panel's own width, not the viewport: in split
 // view the board eats most of a 1100px window, so the bars go tight while
-// `useCompact` (1600) still reports "roomy". Below this the label strip folds to
-// its "+k" chip and the branch name clamps harder, keeping both rows on one line.
+// `useCompact` (1600) still reports "roomy". Below this the branch name clamps
+// harder, keeping both rows on one line.
 const TIGHT_PANEL_WIDTH = 1280;
-
-// Below this the Context bar can only keep its identity and primary actions: the
-// label strip and the include-tests toggle drop out (both still readable in the
-// expanded metadata grid / diff viewer) rather than eat the status label.
-const VERY_TIGHT_PANEL_WIDTH = 1000;
 
 // Uniform full-width row used by the narrow-viewport (mobile) actions sheet.
 // The mobile sheet is a curated read/trigger surface — a clean list of rows, not
@@ -183,7 +174,6 @@ function TaskInfoPanel({
 	const panelRef = useRef<HTMLDivElement>(null);
 	const panelWidth = useContainerWidth(panelRef);
 	const tight = panelWidth > 0 && panelWidth < TIGHT_PANEL_WIDTH;
-	const veryTight = panelWidth > 0 && panelWidth < VERY_TIGHT_PANEL_WIDTH;
 	const dragging = useRef(false);
 	const statusTriggerRef = useRef<HTMLButtonElement>(null);
 	const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -529,10 +519,6 @@ function TaskInfoPanel({
 	const activeCustomColumn = task.customColumnId
 		? (project.customColumns ?? []).find((column) => column.id === task.customColumnId)
 		: null;
-	const assignedLabels = (task.labelIds ?? [])
-		.map((id) => (project.labels ?? []).find((item) => item.id === id))
-		.filter(Boolean) as Label[];
-
 	function showDiffFilesPopover() {
 		// Hover pattern — dead on touch, and a tap fires mouseenter with no
 		// mouseleave, so on narrow the popover would stick over the freshly
@@ -739,31 +725,6 @@ function TaskInfoPanel({
 			taskId={task.id}
 			onClose={() => setFileOpenInMenu(null)}
 		/>
-	) : null;
-
-	// On a tight panel every inline chip is width the bar does not have — fold the
-	// whole strip into the "+k" chip instead of letting it overrun the next bar.
-	const maxInlineLabels = tight ? 0 : MAX_INLINE_LABELS;
-	const inlineLabels = assignedLabels.slice(0, maxInlineLabels);
-	const overflowLabels = assignedLabels.slice(maxInlineLabels);
-	const labelStrip = assignedLabels.length > 0 && !veryTight ? (
-		<div className="flex items-center gap-1 min-w-0 flex-shrink overflow-hidden">
-			{inlineLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
-			{overflowLabels.length > 0 && (
-				<span
-					className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-elevated text-fg-3 text-dense font-medium flex-shrink-0"
-					title={overflowLabels.map((label) => label.name).join(", ")}
-					data-testid="label-strip-overflow"
-				>
-					{/* With no chip beside it a bare "+2" is meaningless — the tag glyph
-					    says what is being counted. */}
-					{inlineLabels.length === 0 && (
-						<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04F9}"}</span>
-					)}
-					{inlineLabels.length === 0 ? overflowLabels.length : `+${overflowLabels.length}`}
-				</span>
-			)}
-		</div>
 	) : null;
 
 	const watchToggleButton = (
@@ -1526,7 +1487,6 @@ function TaskInfoPanel({
 							{statusDropdownButton}
 							{manualCompletionToggleButton}
 							{diffSummaryBadge}
-							{labelStrip}
 						</div>
 						{statusDropdownPortal}
 						<div className="flex-1" />
@@ -1596,7 +1556,6 @@ function TaskInfoPanel({
 								{statusDropdownPortal}
 								{manualCompletionToggleButton}
 								{diffSummaryBadge}
-								{labelStrip}
 							</div>
 							<div className="flex-1" />
 							<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">

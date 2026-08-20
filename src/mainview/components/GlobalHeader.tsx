@@ -13,6 +13,7 @@ import { toast } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import NativeBackendMark from "./NativeBackendMark";
+import TaskTitleHoverCard from "./TaskTitleHoverCard";
 import GitPullButton from "./GitPullButton";
 import UpdateReadyPopover, { UpdateWhatsNew } from "./UpdateReadyPopover";
 import CanaryBadge from "./CanaryBadge";
@@ -522,28 +523,34 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 							>
 								{seg.label}
 							</button>
+						) : seg.task ? (
+							// Hovering the title is how the facts that no longer fit the
+							// summary bar (labels, branch, seq, age) are reached.
+							<TaskTitleHoverCard
+								task={seg.task}
+								project={projects.find((p) => p.id === seg.task?.projectId) ?? null}
+							>
+								{seg.badge && (
+									<span className="font-mono text-micro text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
+								)}
+								<NativeBackendMark
+									task={seg.task}
+									className="w-3.5 h-3.5"
+									testId="breadcrumb-native-backend"
+								/>
+								<InlineRename
+									taskId={seg.task.id}
+									projectId={seg.task.projectId}
+									currentTitle={seg.label}
+									hasCustomTitle={!!seg.task.customTitle}
+								/>
+							</TaskTitleHoverCard>
 						) : (
 							<span className="flex items-baseline gap-1.5 min-w-0 overflow-hidden">
 								{seg.badge && (
 									<span className="font-mono text-micro text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
 								)}
-								{seg.task && (
-									<NativeBackendMark
-										task={seg.task}
-										className="w-3.5 h-3.5"
-										testId="breadcrumb-native-backend"
-									/>
-								)}
-								{seg.task ? (
-									<InlineRename
-										taskId={seg.task.id}
-										projectId={seg.task.projectId}
-										currentTitle={seg.label}
-										hasCustomTitle={!!seg.task.customTitle}
-									/>
-								) : (
-									<span className="text-fg font-semibold truncate">{seg.label}</span>
-								)}
+								<span className="text-fg font-semibold truncate">{seg.label}</span>
 							</span>
 						)}
 					</Fragment>

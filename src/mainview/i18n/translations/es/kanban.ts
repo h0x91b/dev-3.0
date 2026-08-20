@@ -284,6 +284,11 @@ const kanban = {
 	// Watch
 	"task.watch": "Vigilar",
 	"task.watching": "Vigilando",
+	"taskHover.seq": "Número",
+	"taskHover.branch": "Rama",
+	"taskHover.labels": "Etiquetas",
+	"taskHover.age": "Lleva",
+	"taskHover.none": "\u2014",
 	"task.watchTooltip": "Vigilar — notificar al cambiar estado",
 	"task.manualCompletion": "La completaré por mi cuenta",
 	"task.manualCompletionEnabled": "La completaré por mi cuenta",

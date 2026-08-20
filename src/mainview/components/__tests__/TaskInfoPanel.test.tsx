@@ -322,12 +322,14 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
-		it("renders labels when present", async () => {
+		it("keeps labels off the collapsed bar", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ labelIds: ["lbl1", "lbl2"] }));
 			});
-			expect(screen.getByText("Bug")).toBeInTheDocument();
-			expect(screen.getByText("Feature")).toBeInTheDocument();
+			// Labels live in the expanded metadata grid and the breadcrumb hover
+			// card; on the bar they only stole width from status and the diff.
+			expect(screen.queryByText("Bug")).not.toBeInTheDocument();
+			expect(screen.queryByText("Feature")).not.toBeInTheDocument();
 		});
 
 		it("renders diff summary badge in the top row when branch diff stats exist", async () => {
@@ -620,6 +622,14 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask({ seq: 42 }));
 			});
 			expect(screen.getByText("#42")).toBeInTheDocument();
+		});
+
+		it("renders labels in the metadata grid", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ labelIds: ["lbl1", "lbl2"] }));
+			});
+			expect(screen.getByText("Bug")).toBeInTheDocument();
+			expect(screen.getByText("Feature")).toBeInTheDocument();
 		});
 
 		it("renders branch name in metadata", async () => {
@@ -3718,24 +3728,14 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 
 		afterEach(() => vi.unstubAllGlobals());
 
-		it("keeps label chips inline on a roomy panel", async () => {
+		it("never puts label chips on the summary bar — they live in the title hover card", async () => {
 			mockPanelWidth(1600);
 			await act(async () => {
 				renderPanel(makeTask({ labelIds: [label1.id, label2.id] }));
 			});
 
-			expect(screen.getByText("Bug")).toBeInTheDocument();
-			expect(screen.queryByTestId("label-strip-overflow")).not.toBeInTheDocument();
-		});
-
-		it("folds the label strip into a single count chip on a tight panel", async () => {
-			mockPanelWidth(1000);
-			await act(async () => {
-				renderPanel(makeTask({ labelIds: [label1.id, label2.id] }));
-			});
-
 			expect(screen.queryByText("Bug")).not.toBeInTheDocument();
-			expect(screen.getByTestId("label-strip-overflow")).toHaveAttribute("title", "Bug, Feature");
+			expect(screen.queryByTestId("label-strip-overflow")).not.toBeInTheDocument();
 		});
 
 		it("drops the completion-ownership label on a tight panel", async () => {
@@ -3751,14 +3751,6 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			).toBeGreaterThan(0);
 		});
 
-		it("drops the label strip entirely just above the mobile breakpoint", async () => {
-			mockPanelWidth(820);
-			await act(async () => {
-				renderPanel(makeTask({ labelIds: [label1.id, label2.id] }));
-			});
-
-			expect(screen.queryByTestId("label-strip-overflow")).not.toBeInTheDocument();
-		});
 	});
 });
 

@@ -1,4 +1,4 @@
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalHeader from "../GlobalHeader";
 import { I18nProvider } from "../../i18n";
@@ -529,6 +529,24 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		expect(screen.getByTitle("Edit title")).toBeInTheDocument();
 	});
 
+	it("shows branch, seq and labels on the title hover card", async () => {
+		const user = userEvent.setup();
+		renderHeader(
+			{ screen: "task", projectId: "p1", taskId: "t1" },
+			[{ ...project1, labels: [{ id: "lbl1", name: "Bug", color: "#ef4444" }] }],
+			vi.fn(),
+			[makeBreadcrumbTask({ labelIds: ["lbl1"] })],
+		);
+		expect(screen.queryByTestId("task-title-hover-card")).not.toBeInTheDocument();
+
+		await user.hover(screen.getByText("My Task Title"));
+
+		const card = screen.getByTestId("task-title-hover-card");
+		expect(within(card).getByText("feat/test")).toBeInTheDocument();
+		expect(within(card).getByText("#42")).toBeInTheDocument();
+		expect(within(card).getByText("Bug")).toBeInTheDocument();
+	});
+
 	it("shows pencil icon for task segment in split view", () => {
 		renderHeader(
 			{ screen: "project", projectId: "p1", activeTaskId: "t1" },
@@ -588,7 +606,9 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 
 		await user.click(screen.getByTestId("rename-cancel"));
 		expect(screen.queryByDisplayValue("My Task Title")).not.toBeInTheDocument();
-		expect(screen.getByText("My Task Title")).toBeInTheDocument();
+		// Scoped to the breadcrumb: pointing at the title also opens the hover
+		// card, which repeats the title in full.
+		expect(within(screen.getByRole("navigation")).getByText("My Task Title")).toBeInTheDocument();
 	});
 
 	it("does not save when title is unchanged", async () => {

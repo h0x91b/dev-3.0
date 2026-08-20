@@ -33,6 +33,7 @@ import { MarkdownDocument } from "./pr-review/markdown";
 import { MarkdownRichDiff, useMarkdownDiffBlocks } from "./pr-review/markdown-diff";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
+import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 import "./TaskDiffViewer.css";
 
@@ -3431,6 +3432,30 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		);
 	}
 
+	/** Icon-only form of the same toggle, nested inside the summary chip. */
+	function renderTestsSegment() {
+		return (
+			<>
+				<span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+				<button
+					type="button"
+					data-testid="diff-toolbar-include-tests-segment"
+					onClick={() => setIncludeTests(!includeTests)}
+					aria-label={t("infoPanel.diffIncludeTestsAria")}
+					aria-pressed={includeTests}
+					title={hiddenTestCount > 0 || includeTests
+						? t("infoPanel.diffIncludeTestsTooltip")
+						: t("infoPanel.diffIncludeTestsTooltipNoTests")}
+					className={`flex shrink-0 items-center justify-center self-stretch rounded-r-md px-1.5 transition-colors ${
+						includeTests ? "text-fg-3 hover:bg-elevated-hover hover:text-fg-2" : "bg-accent/10 text-accent hover:bg-accent/20"
+					}`}
+				>
+					<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" off={!includeTests} />
+				</button>
+			</>
+		);
+	}
+
 	function renderInfoChips() {
 		if (!payload) return null;
 		const binaryCount = visibleSkippedFiles.filter((f) => f.reason === "binary").length;
@@ -3704,25 +3729,18 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</div>
 					{payload && (
 						<>
+							{/* The tests filter is a segment of this readout, not a chip beside
+							    it: it only ever changes these numbers. */}
 							<span
-								className="hidden shrink-0 [@container(min-width:1000px)]:inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-raised text-fg-2 border border-edge text-micro font-mono"
+								className="hidden shrink-0 [@container(min-width:820px)]:inline-flex items-stretch rounded-md bg-raised border border-edge hover:border-edge-active transition-colors"
 								data-testid="diff-toolbar-summary"
 							>
-								<span>{t.plural("infoPanel.diffFileCount", visibleSummary.files)}</span>
-								<span className="text-success">+{visibleSummary.insertions}</span>
-								<span className="text-danger">−{visibleSummary.deletions}</span>
-								{!includeTests && hiddenTestCount > 0 && (
-									<span
-										className="text-fg-muted text-sm-plus leading-none"
-										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-										title={t.plural("infoPanel.diffTestsHidden", hiddenTestCount)}
-									>
-										{"\u{F0912}"}
-									</span>
-								)}
-							</span>
-							<span className="hidden [@container(min-width:820px)]:contents">
-								{renderTestsToggle()}
+								<span className="inline-flex items-center gap-1.5 px-2 py-1 text-micro font-mono text-fg-2">
+									<span>{t.plural("infoPanel.diffFileCount", visibleSummary.files)}</span>
+									<span className="text-success">+{visibleSummary.insertions}</span>
+									<span className="text-danger">−{visibleSummary.deletions}</span>
+								</span>
+								{renderTestsSegment()}
 							</span>
 							<span className="hidden [@container(min-width:1120px)]:contents">
 								{renderInfoChips()}

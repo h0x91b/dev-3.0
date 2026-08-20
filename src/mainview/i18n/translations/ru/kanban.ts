@@ -294,6 +294,11 @@ const kanban = {
 	// Watch
 	"task.watch": "Следить",
 	"task.watching": "Слежу",
+	"taskHover.seq": "Номер",
+	"taskHover.branch": "Бранч",
+	"taskHover.labels": "Лейблы",
+	"taskHover.age": "Живёт",
+	"taskHover.none": "\u2014",
 	"task.watchTooltip": "Следить — уведомлять при смене статуса",
 	"task.manualCompletion": "Завершу самостоятельно",
 	"task.manualCompletionEnabled": "Завершу самостоятельно",

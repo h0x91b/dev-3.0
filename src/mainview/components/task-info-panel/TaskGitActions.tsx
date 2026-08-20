@@ -257,18 +257,21 @@ export default function TaskGitActions({
 
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
 		<span className="flex items-center gap-1.5 text-micro flex-shrink-0">
+			{/* Ahead/behind is a readout, not a verdict — colour here competed with
+			    the uncommitted diff, which is the one thing on this row that is
+			    genuinely urgent. */}
 			{branchStatus.behind > 0 && branchStatus.ahead > 0 ? (
-				<span className="font-medium">
-					<span className="text-success">{branchStatus.ahead} ahead</span>
+				<span className="font-medium text-fg-3">
+					<span>{branchStatus.ahead} ahead</span>
 					<span className="text-fg-muted"> · </span>
-					<span className="text-warning">{branchStatus.behind} behind</span>
+					<span>{branchStatus.behind} behind</span>
 				</span>
 			) : branchStatus.behind > 0 ? (
-				<span className="text-warning font-medium">
+				<span className="text-fg-3 font-medium">
 					{t("infoPanel.commitsBehind", { count: String(branchStatus.behind) })}
 				</span>
 			) : (
-				<span className="text-success font-medium">
+				<span className="text-fg-3 font-medium">
 					{t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })}
 				</span>
 			)}
@@ -309,10 +312,10 @@ export default function TaskGitActions({
 	) : null;
 
 	const uncommittedBadge = branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0) ? (
-		<span className="flex items-center gap-1 text-micro font-medium text-danger flex-shrink-0">
-			<span>+{branchStatus.insertions}</span>
-			<span>/</span>
-			<span>−{branchStatus.deletions}</span>
+		<span className="flex items-center gap-1 text-micro font-medium flex-shrink-0">
+			<span className="text-success">+{branchStatus.insertions}</span>
+			<span className="text-fg-muted">/</span>
+			<span className="text-danger">−{branchStatus.deletions}</span>
 		</span>
 	) : null;
 	const hasUncommittedChanges = !!branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0);
