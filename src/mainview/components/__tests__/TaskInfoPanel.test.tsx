@@ -517,6 +517,30 @@ describe("TaskInfoPanel", () => {
 			expect(within(menu).getByRole("menuitem", { name: "Copy branch name" })).toBeInTheDocument();
 			expect(within(menu).getByRole("menuitem", { name: "Copy worktree path" })).toBeInTheDocument();
 			expect(within(menu).getByRole("menuitem", { name: "Copy checkout command" })).toBeInTheDocument();
+			// A task without a PR must not offer to copy one.
+			expect(within(menu).queryByRole("menuitem", { name: "Copy PR link" })).not.toBeInTheDocument();
+		});
+
+		it("copies the PR link once the task has a PR", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const writeText = vi.fn().mockResolvedValue(undefined);
+			Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+			await act(async () => {
+				renderPanel(makeTask({
+					branchName: "dev3/my-branch",
+					prNumber: 20916,
+					prUrl: "https://github.com/h0x91b/dev-3.0/pull/20916",
+				}));
+			});
+
+			await user.click(screen.getByTestId("branch-chip"));
+			await user.click(screen.getByRole("menuitem", { name: "Copy PR link" }));
+
+			expect(writeText).toHaveBeenCalledWith("https://github.com/h0x91b/dev-3.0/pull/20916");
+			await waitFor(() => {
+				expect(vi.mocked(toast.success)).toHaveBeenCalledWith("PR link copied", { taskId: "t1" });
+			});
 		});
 
 		it("copies the checkout command and says so out loud", async () => {

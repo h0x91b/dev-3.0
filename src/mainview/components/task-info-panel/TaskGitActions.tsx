@@ -593,6 +593,11 @@ export default function TaskGitActions({
 				value: `git checkout ${task.branchName}`,
 				done: t("infoPanel.checkoutCopied"),
 			},
+			// The PR badge opens the PR; pasting its URL somewhere else needed a
+			// round trip through the browser address bar until now.
+			...(prInfo?.url
+				? [{ key: "pr", label: t("infoPanel.copyPrLinkItem"), value: prInfo.url, done: t("infoPanel.prLinkCopied") }]
+				: []),
 		]
 		: [];
 

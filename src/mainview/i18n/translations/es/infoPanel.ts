@@ -99,6 +99,8 @@ const infoPanel = {
 	"infoPanel.copyBranchItem": "Copiar el nombre de la rama",
 	"infoPanel.copyPathItem": "Copiar la ruta del worktree",
 	"infoPanel.copyCheckoutItem": "Copiar el comando checkout",
+	"infoPanel.copyPrLinkItem": "Copiar el enlace del PR",
+	"infoPanel.prLinkCopied": "Enlace del PR copiado",
 	"infoPanel.checkoutCopied": "Comando checkout copiado",
 	"infoPanel.worktreePathCopied": "Ruta del worktree copiada",
 	"infoPanel.branchCopied": "Nombre de la rama copiado",

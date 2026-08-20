@@ -99,6 +99,8 @@ const infoPanel = {
 	"infoPanel.copyBranchItem": "Скопировать имя ветки",
 	"infoPanel.copyPathItem": "Скопировать путь к worktree",
 	"infoPanel.copyCheckoutItem": "Скопировать команду checkout",
+	"infoPanel.copyPrLinkItem": "Скопировать ссылку на PR",
+	"infoPanel.prLinkCopied": "Ссылка на PR скопирована",
 	"infoPanel.checkoutCopied": "Команда checkout скопирована",
 	"infoPanel.worktreePathCopied": "Путь к worktree скопирован",
 	"infoPanel.branchCopied": "Имя ветки скопировано",
