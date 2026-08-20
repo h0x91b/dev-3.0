@@ -21,7 +21,7 @@ import {
 	CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING,
 	CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND,
 } from "../../shared/cli-exit-codes";
-import { ARTIFACT_TEMPLATE_FILES } from "../artifact-template";
+import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
 import { skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
 

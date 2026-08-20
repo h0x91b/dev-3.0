@@ -172,6 +172,10 @@ import { saveSharedImage } from "../shared-images";
 import { saveSharedArtifact } from "../shared-artifacts";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
 
+vi.mock("../artifact-template", () => ({
+	ensureArtifactTemplate: vi.fn(() => "/wt-container/artifact-template-v1"),
+}));
+
 vi.mock("../task-pane-runs", () => ({
 	PaneRunError: class PaneRunError extends Error {},
 	startPaneRun: vi.fn(async () => ({ runId: "run-0123456789ab", paneId: "pane-2", backend: "native", logPath: "/tmp/x.log", command: "bun run build" })),
@@ -1418,6 +1422,42 @@ describe("ui.show-artifact", () => {
 		expect(response.data).toMatchObject({ delivered: true, queued: true, stored: 1 });
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
 		expect(pushCliShowArtifact).toHaveBeenCalledWith(expect.objectContaining({ taskId: task.id, newCount: 1 }));
+	});
+});
+
+describe("artifact.template-dir", () => {
+	it("provisions the starter on demand and answers with its path", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		const { ensureArtifactTemplate } = await import("../artifact-template");
+
+		const resp = await handleRequest(makeRequest("artifact.template-dir", {
+			taskId: task.id,
+			projectId: project.id,
+			worktreePath: "/wt-container/worktree",
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ dir: "/wt-container/artifact-template-v1", taskId: task.id });
+		expect(ensureArtifactTemplate).toHaveBeenCalledWith(project, task, { worktreePath: "/wt-container/worktree" });
+	});
+
+	it("reports the provisioning failure instead of inventing a path", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		const { ensureArtifactTemplate } = await import("../artifact-template");
+		vi.mocked(ensureArtifactTemplate).mockImplementationOnce(() => {
+			throw new Error("Bundled dev3 artifact template not found");
+		});
+
+		const resp = await handleRequest(makeRequest("artifact.template-dir", { taskId: task.id, projectId: project.id }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("artifact template not found");
 	});
 });
 

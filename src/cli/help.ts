@@ -422,6 +422,19 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "artifact-template",
+		summary: "Copy this task's dev3 artifact starter into ./dev3-artifact-report.",
+		subcommands: [],
+		usage: "dev3 artifact-template [--task <id|seq:N>]",
+		details: [
+			"Provisions the pristine starter, copies it into ./dev3-artifact-report, and prints that path.",
+			"Re-running it restores the managed files over an existing copy.",
+			"Use it when $DEV3_ARTIFACT_TEMPLATE_DIR is unset: that variable is baked into the session",
+			"environment at launch, so an older session or a shell that never inherited it has no other way",
+			"to reach the starter.",
+		],
+	},
+	{
 		name: "inline-html",
 		summary: "Fold a multi-file HTML report into one self-contained file.",
 		subcommands: [],

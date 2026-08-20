@@ -1503,6 +1503,21 @@ const handlers: Record<string, Handler> = {
 		return { delivered: true, stored: 1, taskId: task.id };
 	},
 
+	/**
+	 * `dev3 artifact-template` — provision the task's pristine starter on demand
+	 * and answer with its absolute path, which the CLI then copies into the
+	 * worktree. The recovery path for a session whose `DEV3_ARTIFACT_TEMPLATE_DIR`
+	 * was baked at launch time and is therefore missing: an older app version, or
+	 * a shell that never inherited the launch env (issue #1437).
+	 */
+	"artifact.template-dir": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const worktreePath = typeof params.worktreePath === "string" && params.worktreePath ? params.worktreePath : undefined;
+		// Imported here, not at module scope: only this rarely-used route needs it.
+		const { ensureArtifactTemplate } = await import("./artifact-template");
+		return { dir: ensureArtifactTemplate(project, task, { worktreePath }), taskId: task.id, projectId: project.id };
+	},
+
 	// UI control: report what the app is currently showing, so the agent can decide
 	// whether a ping is even needed (e.g. skip if the user is already on this task).
 	"ui.state": async (params) => {

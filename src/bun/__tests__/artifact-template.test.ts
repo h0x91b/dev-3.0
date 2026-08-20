@@ -12,9 +12,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { MAX_SHARED_ARTIFACT_HTML_BYTES, type Project, type Task } from "../../shared/types";
+import { ARTIFACT_TEMPLATE_FILES, ARTIFACT_TEMPLATE_VERSION } from "../../shared/artifact-template";
 import {
-	ARTIFACT_TEMPLATE_FILES,
-	ARTIFACT_TEMPLATE_VERSION,
 	artifactTemplateDir,
 	ensureArtifactTemplate,
 	ensureArtifactTemplateEnv,

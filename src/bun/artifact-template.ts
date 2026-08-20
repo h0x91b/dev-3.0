@@ -6,21 +6,11 @@ import {
 	rmSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { ARTIFACT_TEMPLATE_FILES, artifactTemplateDirName } from "../shared/artifact-template";
 import type { Project, Task } from "../shared/types";
 import { createLogger } from "./logger";
 
 const log = createLogger("artifact-template");
-
-export const ARTIFACT_TEMPLATE_VERSION = 1;
-
-export const ARTIFACT_TEMPLATE_FILES = [
-	"AUTHORING.md",
-	"index.html",
-	"report.js",
-	"app.css",
-	"app.js",
-	"dev3-icon.png",
-] as const;
 
 interface EnsureArtifactTemplateOptions {
 	sourceDir?: string;
@@ -56,7 +46,7 @@ function taskContainerDir(project: Project, task: Task, worktreePath?: string): 
 }
 
 export function artifactTemplateDir(project: Project, task: Task, worktreePath?: string): string {
-	return join(taskContainerDir(project, task, worktreePath), `artifact-template-v${ARTIFACT_TEMPLATE_VERSION}`);
+	return join(taskContainerDir(project, task, worktreePath), artifactTemplateDirName());
 }
 
 /**
@@ -71,7 +61,7 @@ export function ensureArtifactTemplate(
 ): string {
 	const sourceDir = options.sourceDir ?? bundledArtifactTemplateDir();
 	const containerDir = options.taskContainerDir ?? taskContainerDir(project, task, options.worktreePath);
-	const targetDir = join(containerDir, `artifact-template-v${ARTIFACT_TEMPLATE_VERSION}`);
+	const targetDir = join(containerDir, artifactTemplateDirName());
 	mkdirSync(targetDir, { recursive: true });
 
 	for (const name of ARTIFACT_TEMPLATE_FILES) {

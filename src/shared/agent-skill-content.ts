@@ -191,7 +191,7 @@ The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORIN
 3. Keep the report's content and data local. External chart/UI libraries and live \`fetch\`/WebSocket integrations are allowed as documented in \`AUTHORING.md\`.
 4. Present the starter with \`dev3 show-artifact ./dev3-artifact-report/index.html --assets ./dev3-artifact-report/app.css ./dev3-artifact-report/report.js ./dev3-artifact-report/app.js ./dev3-artifact-report/dev3-icon.png --title "Report title"\`. Insert any report-specific local assets in the \`--assets\` list before \`--title\`.
 
-If the environment variable is unexpectedly missing, report that dev3 could not provision the starter instead of inventing a different template.
+If that variable is missing, run \`dev3 artifact-template\` — it copies the starter in for you. Never invent a different template.
 
 Asked to share the report **outside** the app — a link, a phone, a GitHub comment, someone else's inbox? That is a different job: load \`/dev3-share-artifact\`, which folds the multi-file report into one self-contained HTML with \`dev3 inline-html\` and publishes it as a gist with a verified preview URL.
 `;

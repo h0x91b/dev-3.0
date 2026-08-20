@@ -25,6 +25,7 @@ import { handlePaneExec } from "./commands/pane-exec";
 import { PANE_RUN_VERB } from "../bun/pane-run-store";
 import { handleShowImage } from "./commands/show-image";
 import { handleShowArtifact } from "./commands/show-artifact";
+import { handleArtifactTemplate } from "./commands/artifact-template";
 import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
@@ -79,6 +80,7 @@ Commands:
   dev3 message "text" [--in <dur> | --at <hh:mm>] [--task <id>]  Send text to the task's live agent now, or schedule it (Send later)
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
   dev3 show-artifact <file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; local CSS, JS, and images are exported as ZIP
+  dev3 artifact-template [--task <id>]   Copy this task's dev3 artifact starter into ./dev3-artifact-report — recovery when $DEV3_ARTIFACT_TEMPLATE_DIR is missing
   dev3 inline-html <index.html|dir> -o <out.html> [--json]  Fold a multi-file HTML report into one self-contained file (for a gist / preview URL); refuses on missing assets or embedded credentials
   dev3 peek [--task <id>] [--pane <N|paneId>] [--lines <N>] [--json]  Read-only glance at a task's terminal: pane summary with output freshness + the tail of one pane
   dev3 pane list [--json]                Which terminal backend you are on, which panes exist, which one is yours
@@ -281,6 +283,8 @@ async function main(): Promise<void> {
 				return await handleShowImage(rawArgs.slice(1), socketPath, context);
 			case "show-artifact":
 				return await handleShowArtifact(rawArgs.slice(1), socketPath, context);
+			case "artifact-template":
+				return await handleArtifactTemplate(args, socketPath, context);
 			case "peek":
 				return await handlePeek(args, socketPath, context);
 			case "pane":
