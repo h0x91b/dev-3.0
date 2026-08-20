@@ -79,10 +79,11 @@ alongside the existing `resolveTunnelProtocol()`:
 - **Default it on when a far VPN is detected.** Rejected: it would silently move
   a user's traffic out of a policy boundary that may be mandatory, to buy
   milliseconds.
-- **Skip the tunnel entirely when the client shares the LAN.** Strictly better
-  where it applies — all four crossings vanish, ~2 ms — and it touches no VPN
-  policy at all. Not implemented here; it changes Remote Access modal behaviour
-  and is its own decision.
+- **Skip the tunnel entirely when the client shares the LAN.** Rejected on a
+  constraint the latency argument never touches: the LAN URL is plain HTTP, and
+  the browser features remote mode depends on are gated behind a secure context,
+  so connectivity works while a good half of the app stops. The tunnel is not
+  only a route, it is where the certificate comes from. Fastest is not usable.
 - **A named tunnel with more HA connections, or `--region`.** Neither moves the
   meeting point: the extra connections land near the same egress, and `--region`
   only offers `us` and the default.

@@ -50,6 +50,7 @@ const diagnostics = {
 	"conn.pill.restored": "Conexión restablecida",
 	// ── Remote connection quality (header readout) ──
 	"connQuality.title": "Calidad de la conexión",
+	"connQuality.label": "Conexión",
 	"connQuality.definition": "Ida y vuelta de una petición por la misma conexión que usa la aplicación.",
 	"connQuality.ariaLabel": "Ida y vuelta de {ms} ms — abrir el detalle",
 	"connQuality.median": "Ida y vuelta habitual",

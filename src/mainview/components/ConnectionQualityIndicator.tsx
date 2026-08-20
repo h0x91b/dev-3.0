@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { isRemote } from "../utils/platform";
 import { computeAnchoredPosition } from "../utils/popoverPosition";
+import { computeMenuFlyoutPosition, MENU_FLYOUT_CLOSE_MS, MENU_FLYOUT_HOVER_MS } from "../utils/menuFlyout";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
@@ -18,7 +19,10 @@ import { describeAccessPath } from "../utils/accessPath";
  * Remote connection-quality readout — the answer to "is the tunnel slow, or are
  * we?" as a number instead of an impression.
  *
- * It takes over the header slot the QR icon occupies, and only in remote mode:
+ * A healthy link is not news, so the header bar carries nothing while the verdict
+ * is good — the readout lives in the overflow menu, always one hover away, and
+ * only climbs into the QR icon's slot once the connection stops being fine
+ * (median past 150 ms, or jitter/loss bad enough to feel it). Remote mode only:
  * seen from the far end that icon offers to show you a code for the connection
  * you are already using, which is the one place in the app where it has nothing
  * to say. The desktop window keeps it untouched. Net header controls: unchanged.
@@ -140,7 +144,17 @@ function QualityBreakdown({ stats }: { stats: QualityStats }) {
 	);
 }
 
-export default function ConnectionQualityIndicator() {
+interface ConnectionQualityIndicatorProps {
+	/**
+	 * `bar` is the header pill — it renders ONLY while the verdict says the link is
+	 * not fine, so a healthy connection carries no readout at all. `menu` is the
+	 * labelled row in the header's overflow menu, where the number is always
+	 * available on demand.
+	 */
+	variant?: "bar" | "menu";
+}
+
+export default function ConnectionQualityIndicator({ variant = "bar" }: ConnectionQualityIndicatorProps) {
 	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [stats, setStats] = useState<QualityStats>(() => getConnectionQuality());
@@ -151,6 +165,7 @@ export default function ConnectionQualityIndicator() {
 	const anchorRef = useRef<HTMLButtonElement | null>(null);
 	const popRef = useRef<HTMLDivElement | null>(null);
 	const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		startConnectionQualitySampling();
@@ -168,34 +183,59 @@ export default function ConnectionQualityIndicator() {
 		}
 	}, []);
 
+	const cancelOpen = useCallback(() => {
+		if (openTimer.current !== null) {
+			clearTimeout(openTimer.current);
+			openTimer.current = null;
+		}
+	}, []);
+
 	const close = useCallback(() => {
 		cancelClose();
+		cancelOpen();
 		setOpen(false);
 		setPinned(false);
 		setPos(null);
-	}, [cancelClose]);
+	}, [cancelClose, cancelOpen]);
 
 	const scheduleClose = useCallback(() => {
 		cancelClose();
+		cancelOpen();
 		closeTimer.current = setTimeout(() => {
 			closeTimer.current = null;
 			setOpen((wasOpen) => (pinned ? wasOpen : false));
 			if (!pinned) setPos(null);
-		}, CLOSE_DELAY_MS);
-	}, [cancelClose, pinned]);
+		}, variant === "menu" ? MENU_FLYOUT_CLOSE_MS : CLOSE_DELAY_MS);
+	}, [cancelClose, cancelOpen, pinned, variant]);
 
-	useEffect(() => () => cancelClose(), [cancelClose]);
+	/** Hover intent for the menu row: a pointer merely passing by must not open it. */
+	const scheduleOpen = useCallback(() => {
+		cancelClose();
+		cancelOpen();
+		openTimer.current = setTimeout(() => {
+			openTimer.current = null;
+			setOpen(true);
+		}, MENU_FLYOUT_HOVER_MS);
+	}, [cancelClose, cancelOpen]);
 
+	useEffect(() => () => { cancelClose(); cancelOpen(); }, [cancelClose, cancelOpen]);
+
+	// The menu row hangs its flyout off the menu's outboard edge; the header pill
+	// drops it below itself.
 	useLayoutEffect(() => {
 		if (isNarrow || !open || !anchorRef.current || !popRef.current) return;
 		const rect = popRef.current.getBoundingClientRect();
-		const { top, left } = computeAnchoredPosition(
-			anchorRef.current.getBoundingClientRect(),
-			{ width: rect.width, height: rect.height },
-			{ placement: "bottom", align: "end" },
-		);
+		const size = { width: rect.width, height: rect.height };
+		if (variant === "menu") {
+			setPos(computeMenuFlyoutPosition(anchorRef.current, size));
+			return;
+		}
+		const { top, left } = computeAnchoredPosition(anchorRef.current.getBoundingClientRect(), size, {
+			placement: "bottom",
+			align: "end",
+		});
 		setPos({ top, left });
-	}, [open, isNarrow, stats]);
+	}, [open, isNarrow, stats, variant]);
 
 	useEffect(() => {
 		if (!open || isNarrow) return;
@@ -225,6 +265,13 @@ export default function ConnectionQualityIndicator() {
 	// header layout shift the UX manifest warns about, and "0 ms" would be a lie.
 	if (stats.count === 0) return null;
 
+	// A link that behaves is not news. The header bar earns the readout only once
+	// the verdict stops being good — median past 150 ms, or jitter/loss bad enough
+	// to feel; until then it lives in the overflow menu. Narrow is exempt: there
+	// the same `bar` markup IS the sheet row, and a sheet the user opened should
+	// not be empty (same rule as the memory readout).
+	if (variant === "bar" && !isNarrow && stats.verdict === "good") return null;
+
 	const verdictClass = VERDICT_TEXT_CLASS[stats.verdict];
 
 	const togglePinned = () => {
@@ -236,6 +283,62 @@ export default function ConnectionQualityIndicator() {
 		setOpen(true);
 		setPinned(true);
 	};
+
+	// Menu row: hover opens the flyout after a dwell, a click pins it — same
+	// affordance as the memory row it sits next to.
+	if (variant === "menu") {
+		return (
+			<>
+				<button
+					ref={anchorRef}
+					type="button"
+					role="menuitem"
+					onClick={togglePinned}
+					onMouseEnter={isNarrow ? undefined : scheduleOpen}
+					onMouseLeave={isNarrow ? undefined : scheduleClose}
+					onFocus={(e) => {
+						if (!isNarrow && e.target.matches(":focus-visible")) setOpen(true);
+					}}
+					aria-label={t("connQuality.ariaLabel", { ms: String(stats.p50) })}
+					aria-expanded={open}
+					aria-haspopup="dialog"
+					data-testid="connection-quality-indicator"
+					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+				>
+					<span className="flex w-[1.125rem] items-center justify-center">
+						<Sparkline values={stats.recent} verdict={stats.verdict} />
+					</span>
+					<span className="text-sm flex-1 text-left">{t("connQuality.label")}</span>
+					<span className={`text-micro font-medium tabular-nums ${verdictClass}`}>{stats.p50} ms</span>
+				</button>
+				{open && !isNarrow && createPortal(
+					<div
+						ref={popRef}
+						role="dialog"
+						aria-label={t("connQuality.title")}
+						onMouseEnter={cancelClose}
+						onMouseLeave={scheduleClose}
+						data-testid="connection-quality-popover"
+						// Portaled outside the kebab, so the menu's outside-click handler
+						// needs this marker to keep itself open while the flyout is used.
+						data-header-flyout="true"
+						className="fixed z-[1200] overflow-y-auto overflow-x-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
+						style={{
+							top: pos?.top ?? 0,
+							left: pos?.left ?? 0,
+							width: POPOVER_WIDTH,
+							maxWidth: "calc(100vw - 2rem)",
+							maxHeight: "28rem",
+							visibility: pos ? "visible" : "hidden",
+						}}
+					>
+						<QualityBreakdown stats={stats} />
+					</div>,
+					document.body,
+				)}
+			</>
+		);
+	}
 
 	return (
 		<>

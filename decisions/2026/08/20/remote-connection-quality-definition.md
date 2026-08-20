@@ -62,16 +62,27 @@ prose, because the widget is only as honest as its definition:
 - **Sampling is every 5 s while visible, paused when hidden.** ~135 bytes per
   sample, under a thousandth of the terminal stream on the same link. A hidden
   tab's throttled timers would measure the browser, not the link.
-- **Placement: the header slot the QR icon occupies, and only in remote mode.**
-  Seen from the far end that icon offers a code for the connection already in
-  use. A swap, never a second control — see the UX note in the risks below.
+- **Placement: the header's overflow menu by default; the QR icon's slot only
+  while the link misbehaves.** Remote mode only — seen from the far end that icon
+  offers a code for the connection already in use, so the swap costs no control.
+  A healthy connection is not news and buys no permanent header pixels: the bar
+  renders only once the verdict stops being `good` (median past
+  `RTT_DEGRADED_MS` = 150 ms, or jitter/loss bad enough to feel), exactly the
+  earned-visibility rule `MemoryHeadroomIndicator` uses for OS memory pressure.
+  The number is still always readable as the `Connection` row in the kebab, whose
+  hover flyout is the same breakdown panel. On narrow both fold into the header
+  sheet, where the row is unconditional — an opened sheet must not be empty.
 
 ## Risks
 
-- In remote mode the header now carries two ambient readouts (memory headroom and
-  this), against the manifest's `ambient_resource_readout: budget 1`. Accepted as
-  a remote-only exception because the total number of header controls is
-  unchanged; if the budget is enforced, this is the one to fold into the kebab.
+- Two ambient readouts can share the header at once (memory under pressure plus a
+  degraded link), against the manifest's `ambient_resource_readout: budget 1`.
+  Both are now conditional on their own bad news, so the common case is zero and
+  the collision needs two simultaneous problems — accepted without a manifest
+  exception. It does mean the header can gain a control exactly when the machine
+  is already struggling.
+- A link that is bad only in bursts shows a pill that comes and goes. The 30-sample
+  window smooths this, but nothing debounces the appearance itself.
 - `serverMs` on the response envelope is additive and unversioned. Safe here
   because the remote server serves the bundle that reads it — both ends always
   ship together. It is not a promise to any other consumer.
@@ -92,10 +103,15 @@ prose, because the widget is only as honest as its definition:
 - **Piggybacking on the 2-second renderer heartbeat.** Would have cost zero extra
   traffic, but its handler does real work, so its round trip mixes link cost with
   watchdog bookkeeping — the opposite of what this measures.
-- **Extending `ConnectionStatusPill` instead of adding a header readout.** The
-  manifest's diagnostics surface is "earned, not permanent", so a good link would
-  show nothing — which fails the whole point of being able to look and see a
-  number.
+- **Extending `ConnectionStatusPill` instead of adding a header readout.** Its
+  unhealthy-only visibility is the right instinct and is what the header bar now
+  does, but that pill has no home for the number when the link is fine, and
+  "look and see a number" was the point. The kebab row is that home; the pill
+  would have needed one invented for it.
+- **A permanent pill on every remote session.** Shipped first and rejected on
+  sight: it spends a header slot to say "fine" on a connection nobody is
+  wondering about, which is precisely the toolbar creep the UX bible names as this
+  project's top anti-pattern.
 - **A permanent segment-by-segment breakdown (browser→edge→cloudflared→us).**
   Out of reach: Cloudflare exposes the edge colo on `cf-ray` for HTTP responses
   but nothing per-WebSocket-message, and `cloudflared`'s metrics report no

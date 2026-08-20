@@ -52,6 +52,7 @@ const diagnostics = {
 	"conn.pill.restored": "Связь восстановлена",
 	// ── Remote connection quality (header readout) ──
 	"connQuality.title": "Качество соединения",
+	"connQuality.label": "Соединение",
 	"connQuality.definition": "Полный оборот одного запроса через то же соединение, которым живёт приложение.",
 	"connQuality.ariaLabel": "Оборот соединения {ms} мс — открыть разбор",
 	"connQuality.median": "Обычный оборот",

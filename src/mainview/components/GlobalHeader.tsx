@@ -640,6 +640,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 								    itself (icon state, session count, memory number) is the answer. */}
 								<PreventSleepToggle variant="row" />
 								<MemoryHeadroomIndicator navigate={navigate} variant="menu" />
+								{viewedOverRemote && <ConnectionQualityIndicator variant="menu" />}
 								<TmuxSessionManager navigate={navigate} variant="menu" />
 								<button
 									role="menuitem"
@@ -774,6 +775,8 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						</button>
 				</Tooltip>
 				)}
+				{/* …and it takes that slot only while the connection misbehaves. A healthy
+				    remote session shows nothing here; the number stays in the kebab. */}
 				{!isNarrow && viewedOverRemote && <ConnectionQualityIndicator />}
 
 				{/* Help mode ("Explain this screen") — bright accent "?", always inline on
@@ -859,6 +862,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					<div className="flex flex-wrap items-center gap-1.5 pb-3 mb-1 border-b border-edge/60">
 						<PreventSleepToggle />
 						<MemoryHeadroomIndicator navigate={navigate} />
+						{viewedOverRemote && <ConnectionQualityIndicator />}
 						<RateLimitIndicator compact={false} />
 						{currentProjectId && !isVirtualProject && (
 							<GitPullButton projectId={currentProjectId} compact={false} />

@@ -40,10 +40,10 @@ function stats(over: Partial<QualityStats> = {}): QualityStats {
 	};
 }
 
-function mount() {
+function mount(variant: "bar" | "menu" = "bar") {
 	return render(
 		<I18nProvider>
-			<ConnectionQualityIndicator />
+			<ConnectionQualityIndicator variant={variant} />
 		</I18nProvider>,
 	);
 }
@@ -64,18 +64,33 @@ describe("ConnectionQualityIndicator", () => {
 		expect(screen.queryByTestId("connection-quality-indicator")).toBeNull();
 	});
 
-	it("shows the median round trip once a sample lands", async () => {
+	it("keeps the header clear while the link behaves", async () => {
 		mount();
 		publish(stats());
-		expect(await screen.findByTestId("connection-quality-indicator")).toHaveTextContent("42 ms");
+		await waitFor(() => expect(screen.queryByTestId("connection-quality-indicator")).toBeNull());
+	});
+
+	it("climbs into the header the moment the link stops being fine", async () => {
+		mount();
+		publish(stats({ verdict: "degraded", p50: 220 }));
+		expect(await screen.findByTestId("connection-quality-indicator")).toHaveTextContent("220 ms");
+	});
+
+	it("shows the median in the overflow menu even on a quiet link", async () => {
+		mount("menu");
+		publish(stats());
+		const row = await screen.findByTestId("connection-quality-indicator");
+		expect(row).toHaveTextContent("42 ms");
+		expect(row).toHaveTextContent("Connection");
+		expect(row.getAttribute("role")).toBe("menuitem");
 	});
 
 	it("stays neutral on a quiet link — green means Completed in this app", async () => {
-		mount();
+		mount("menu");
 		publish(stats());
-		const pill = await screen.findByTestId("connection-quality-indicator");
-		expect(pill.className).toContain("text-fg-3");
-		expect(pill.className).not.toContain("success");
+		const row = await screen.findByTestId("connection-quality-indicator");
+		expect(row.innerHTML).toContain("text-fg-3");
+		expect(row.innerHTML).not.toContain("success");
 	});
 
 	it("warns on a degraded link and escalates to danger on a bad one", async () => {
@@ -93,7 +108,7 @@ describe("ConnectionQualityIndicator", () => {
 	it("opens the breakdown on hover and shows the us-versus-network split", async () => {
 		const user = userEvent.setup();
 		mount();
-		publish(stats());
+		publish(stats({ verdict: "degraded", p50: 220 }));
 		await user.hover(await screen.findByTestId("connection-quality-indicator"));
 		const pop = await screen.findByTestId("connection-quality-popover");
 		expect(pop).toHaveTextContent("Spent on this computer");
@@ -105,7 +120,7 @@ describe("ConnectionQualityIndicator", () => {
 	it("omits the split rather than inventing it when no server span arrived", async () => {
 		const user = userEvent.setup();
 		mount();
-		publish(stats({ serverP50: null, networkP50: null }));
+		publish(stats({ verdict: "degraded", p50: 220, serverP50: null, networkP50: null }));
 		await user.hover(await screen.findByTestId("connection-quality-indicator"));
 		const pop = await screen.findByTestId("connection-quality-popover");
 		expect(pop).not.toHaveTextContent("Spent on the network");
@@ -122,9 +137,20 @@ describe("ConnectionQualityIndicator", () => {
 	it("masks the address it shows, which names the tunnel", async () => {
 		const user = userEvent.setup();
 		mount();
-		publish(stats());
+		publish(stats({ verdict: "bad", p50: 900 }));
 		await user.hover(await screen.findByTestId("connection-quality-indicator"));
 		const pop = await screen.findByTestId("connection-quality-popover");
 		expect(pop.querySelector(".streamer-private")).not.toBeNull();
+	});
+
+	it("opens the same breakdown from the menu row, after a hover dwell", async () => {
+		const user = userEvent.setup();
+		mount("menu");
+		publish(stats());
+		await user.hover(await screen.findByTestId("connection-quality-indicator"));
+		const pop = await screen.findByTestId("connection-quality-popover");
+		expect(pop).toHaveTextContent("Spent on the network");
+		// Portaled out of the kebab, so the menu must be told to stay open.
+		expect(pop.getAttribute("data-header-flyout")).toBe("true");
 	});
 });

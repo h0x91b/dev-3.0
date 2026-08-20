@@ -50,6 +50,7 @@ const diagnostics = {
 	"conn.pill.restored": "Back online",
 	// ── Remote connection quality (header readout) ──
 	"connQuality.title": "Connection quality",
+	"connQuality.label": "Connection",
 	"connQuality.definition": "Round trip of one request through the same connection the app uses.",
 	"connQuality.ariaLabel": "Connection round trip {ms} ms — open the breakdown",
 	"connQuality.median": "Typical round trip",
