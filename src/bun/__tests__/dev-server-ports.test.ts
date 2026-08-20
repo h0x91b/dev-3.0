@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+	classifyAgainstStartSnapshot,
 	classifyAssignedPortOwners,
+	clearCarriedPublished,
 	clearDevServerStart,
 	getDevServerStartSnapshot,
 	mergePortInfos,
@@ -68,6 +70,76 @@ describe("dev server start snapshot", () => {
 		recordDevServerStart("task-1", [10570], [SQUATTER]);
 		clearDevServerStart("task-1");
 		expect(getDevServerStartSnapshot("task-1")).toBeNull();
+	});
+});
+
+describe("classifyAgainstStartSnapshot", () => {
+	beforeEach(() => {
+		clearDevServerStart("task-2");
+		clearCarriedPublished("task-2");
+	});
+
+	// Without this, an app restart under a surviving dev session turns every
+	// squatter into a "published" port: the WARNING disappears and the squatted
+	// port is reported as one of the task's own.
+	it("calls every holder a conflict when this process never started that dev server", () => {
+		const { published, conflicts } = classifyAgainstStartSnapshot("task-2", [SQUATTER], true);
+		expect(published).toEqual([]);
+		expect(conflicts).toEqual([SQUATTER]);
+	});
+
+	it("classifies against the recorded snapshot once a start was seen", () => {
+		recordDevServerStart("task-2", [10569], []);
+		const { published, conflicts } = classifyAgainstStartSnapshot("task-2", [DOCKER], true);
+		expect(published).toEqual([DOCKER]);
+		expect(conflicts).toEqual([]);
+	});
+
+	// `docker compose up` is HUPed by kill-session and SIGKILLed 1.5s later, so
+	// the container — and the daemon holding its published port — outlives the
+	// stop. Reading that daemon back as a squatter made every `restart --wait`
+	// fail on the containerised project this whole mechanism is for.
+	it("forgives a published holder that survived the stop, on the next start", () => {
+		recordDevServerStart("task-2", [10569], []);
+		classifyAgainstStartSnapshot("task-2", [DOCKER], true);
+		clearDevServerStart("task-2");
+
+		recordDevServerStart("task-2", [10569], [DOCKER]);
+		expect(getDevServerStartSnapshot("task-2")?.preStartHolders).toEqual([]);
+		expect(classifyAgainstStartSnapshot("task-2", [DOCKER], true)).toEqual({
+			published: [DOCKER],
+			conflicts: [],
+		});
+	});
+
+	it("keeps a squatter that was never published a conflict across a restart", () => {
+		recordDevServerStart("task-2", [10570], [SQUATTER]);
+		expect(classifyAgainstStartSnapshot("task-2", [SQUATTER], true).conflicts).toEqual([SQUATTER]);
+		clearDevServerStart("task-2");
+
+		recordDevServerStart("task-2", [10570], [SQUATTER]);
+		expect(getDevServerStartSnapshot("task-2")?.preStartHolders).toEqual([SQUATTER]);
+		expect(classifyAgainstStartSnapshot("task-2", [SQUATTER], true).conflicts).toEqual([SQUATTER]);
+	});
+
+	it("forgives only the exact port and pid that was published", () => {
+		recordDevServerStart("task-2", [10569], []);
+		classifyAgainstStartSnapshot("task-2", [DOCKER], true);
+		clearDevServerStart("task-2");
+
+		const otherPid = { ...DOCKER, pid: 4242, processName: "node" };
+		recordDevServerStart("task-2", [10569], [otherPid]);
+		expect(getDevServerStartSnapshot("task-2")?.preStartHolders).toEqual([otherPid]);
+		expect(classifyAgainstStartSnapshot("task-2", [otherPid], true).conflicts).toEqual([otherPid]);
+	});
+
+	it("remembers nothing while the dev server is stopped", () => {
+		recordDevServerStart("task-2", [10569], []);
+		expect(classifyAgainstStartSnapshot("task-2", [DOCKER], false).conflicts).toEqual([DOCKER]);
+		clearDevServerStart("task-2");
+
+		recordDevServerStart("task-2", [10569], [DOCKER]);
+		expect(getDevServerStartSnapshot("task-2")?.preStartHolders).toEqual([DOCKER]);
 	});
 });
 

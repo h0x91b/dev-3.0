@@ -3,7 +3,7 @@ import { spawn } from "./spawn";
 import { tmux, TASK_SESSION_PREFIX, DEV_SERVER_SESSION_PREFIX, devServerSessionForTaskSession, taskSessionName, PANE_PID_FORMAT, ALL_PANE_PIDS_FORMAT } from "./tmux";
 import { createLogger } from "./logger";
 import { cleanupTaskTunnels } from "./port-tunnels";
-import { classifyAssignedPortOwners, getDevServerStartSnapshot, mergePortInfos } from "./dev-server-ports";
+import { classifyAgainstStartSnapshot, getDevServerStartSnapshot, mergePortInfos } from "./dev-server-ports";
 
 const log = createLogger("port-scanner");
 
@@ -367,7 +367,7 @@ function publishedAssignedPorts(taskId: string, lsofOutput: string): PortInfo[] 
 	const snapshot = getDevServerStartSnapshot(taskId);
 	if (!snapshot || snapshot.assignedPorts.length === 0) return [];
 	const holders = parsePortHolders(lsofOutput, new Set(snapshot.assignedPorts));
-	return classifyAssignedPortOwners(holders, snapshot.preStartHolders, true).published;
+	return classifyAgainstStartSnapshot(taskId, holders, true).published;
 }
 
 // ── Background poller ──────────────────────────────────────────────

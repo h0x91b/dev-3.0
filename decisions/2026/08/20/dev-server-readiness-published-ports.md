@@ -33,15 +33,39 @@ prints a `Published Ports:` line, the port poller merges published ports into th
 task's port list so the UI badge sees them, and a wait that does time out names
 the squatting process instead of only guessing "build still in progress?".
 
+Two rules keep that classification honest, both in `classifyAgainstStartSnapshot`
+— the single entry point both the status handler and the port poller use:
+
+- **No snapshot means nothing was published.** Only a start recorded by *this*
+  process can have published anything, so a task with no snapshot (the app
+  restarted under a surviving dev session) reports every foreign holder as a
+  conflict. Treating a missing snapshot as an empty pre-start list would relabel
+  any squatter "published" after every app restart and silently drop its WARNING.
+- **A published holder is forgiven once, across the stop.** The container the
+  devScript published to outlives its own stop — `tmux kill-session` HUPs
+  `docker compose up` and the reaper SIGKILLs it 1.5s later, so the runtime keeps
+  the container and its daemon keeps the port. Whatever was classified published
+  is remembered per task (`carriedPublished`, survives `clearDevServerStart`) and
+  filtered out of the next start's pre-start holders by exact `(port, pid)`.
+  Without it the *first* start of a containerised project succeeds and every
+  `restart --wait` afterwards fails on the port its own previous run published.
+
 ## Risks
 
 A foreign process that starts squatting an assigned port *after* the dev server
 launched is now read as "published for it", so `--wait` can report ready on a
 port the devScript never bound. That is indistinguishable from the container
 case without a project-declared probe, and a false ready is far cheaper than a
-readiness check that can never pass. The snapshot is in-memory: after an app
-restart a surviving dev session has none, so its published port drops out of the
-UI badge until the next start — never the reverse.
+readiness check that can never pass. Carrying the verdict across a stop extends
+that same false-ready one run further: a container left over from the previous
+run makes `restart --wait` return ready while it is still serving the old build
+until the devScript re-creates it — a port is never a build-freshness signal,
+which is what the rejected `readyUrl` alternative would add. Both maps are
+in-memory: after an app restart a surviving dev session has no snapshot, so its
+published port drops out of the UI badge and back into the WARNING list until the
+next start — never the reverse. A container started outside dev3 *before* the
+first start of that dev server is still a pre-start holder with nothing carried,
+so it reads as a conflict; that case genuinely cannot be told from a squatter.
 
 ## Alternatives considered
 

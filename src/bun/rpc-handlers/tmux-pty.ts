@@ -8,7 +8,7 @@ import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { buildProcessTree, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, waitForPortsFree } from "../port-scanner";
-import { classifyAssignedPortOwners, clearDevServerStart, getDevServerStartSnapshot, mergePortInfos, recordDevServerStart } from "../dev-server-ports";
+import { classifyAgainstStartSnapshot, clearDevServerStart, mergePortInfos, recordDevServerStart } from "../dev-server-ports";
 import { getPidCwd, terminatePidsVerified } from "../process-reaper";
 import { getResourceUsage } from "../resource-monitor";
 import { throughputSnapshot } from "../pty-throughput";
@@ -300,6 +300,10 @@ export async function killDevServerSession(
 	}
 	if (foreignHolders.length > 0) {
 		log.warn("Assigned ports held by foreign processes — not killing", { taskId: taskId.slice(0, 8), foreignHolders });
+		// Classify while the snapshot is still here: a holder published for THIS
+		// dev server (a container runtime daemon) usually survives the stop, and
+		// the next start must not read it back as a squatter.
+		classifyAgainstStartSnapshot(taskId, foreignHolders, true);
 	}
 
 	if (native) {
@@ -405,9 +409,9 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	const foreignHolders = lsofOutput
 		? (await findPortHolders(assignedPorts, lsofOutput)).filter((holder) => !devTreePids.has(holder.pid))
 		: [];
-	const { published: publishedPorts, conflicts: portConflicts } = classifyAssignedPortOwners(
+	const { published: publishedPorts, conflicts: portConflicts } = classifyAgainstStartSnapshot(
+		task.id,
 		foreignHolders,
-		getDevServerStartSnapshot(task.id)?.preStartHolders ?? [],
 		running,
 	);
 	const ports = running
