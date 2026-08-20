@@ -99,6 +99,49 @@ describe("ProjectView task-view layout", () => {
 
 		await Promise.resolve();
 		expect(dispatch).not.toHaveBeenCalledWith({ type: "setTasks", projectId: "p1", tasks: [] });
+		await waitFor(() =>
+			expect(dispatch).toHaveBeenCalledWith({
+				type: "setTasks",
+				projectId: "p1",
+				tasks: [{ id: "scheduled-task", projectId: "p1" }],
+			}),
+		);
+	});
+
+	// A push landing mid-fetch used to discard the entire snapshot, leaving the
+	// board with only the pushed card until the view remounted (dashboard round trip).
+	it("keeps the full snapshot when a task update lands mid-fetch", async () => {
+		let resolveTasks: (tasks: Task[]) => void;
+		const pendingTasks = new Promise<Task[]>((resolve) => {
+			resolveTasks = resolve;
+		});
+		const { api } = await import("../../rpc");
+		vi.mocked(api.request.getTasks).mockReturnValueOnce(pendingTasks);
+		const dispatch = vi.fn();
+
+		renderView({ dispatch });
+		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: "p1" }));
+
+		window.dispatchEvent(new CustomEvent("rpc:taskUpdated", {
+			detail: { task: { id: "b", projectId: "p1", status: "in-progress" } },
+		}));
+		resolveTasks!([
+			{ id: "a", projectId: "p1" } as Task,
+			{ id: "b", projectId: "p1", status: "todo" } as Task,
+			{ id: "c", projectId: "p1" } as Task,
+		]);
+
+		await waitFor(() =>
+			expect(dispatch).toHaveBeenCalledWith({
+				type: "setTasks",
+				projectId: "p1",
+				tasks: [
+					{ id: "a", projectId: "p1" },
+					{ id: "b", projectId: "p1", status: "in-progress" },
+					{ id: "c", projectId: "p1" },
+				],
+			}),
+		);
 	});
 
 	it("shows the empty-terminal placeholder when taskView is set but no task is selected", async () => {

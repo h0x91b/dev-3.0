@@ -65,7 +65,8 @@ function ProjectView({
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const inlineDiff = useTaskInlineDiffState(activeTaskId);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	const taskUpdateEpochRef = useRef(0);
+	const inFlightTaskUpdatesRef = useRef(new Map<string, Task>());
+	const tasksFetchInFlightRef = useRef(false);
 	const unresolvedRouteKeyRef = useRef<string | null>(null);
 	// Board fetch state — drives the skeleton / retry panel instead of letting a
 	// failed or slow load render as an empty board (remote/mobile).
@@ -82,36 +83,56 @@ function ProjectView({
 		}
 	}, [navigate, projectId]);
 
-	// A scheduled launch can push its new task while this view's initial fetch is
-	// in flight. Keep the live update instead of letting the older disk snapshot
-	// overwrite it when the request returns.
+	// A scheduled launch can push a new or changed task while this view's fetch is
+	// in flight. Collect those pushes and overlay them onto the snapshot instead of
+	// letting the older disk state overwrite them — dropping the whole snapshot
+	// would leave the board showing only the pushed cards until the next remount.
+	// Recording is limited to the in-flight window; outside it the normal
+	// `updateTask` path owns the card and the map would only retain dead objects.
 	useEffect(() => {
 		function onTaskUpdated(e: Event) {
+			if (!tasksFetchInFlightRef.current) return;
 			const { task } = (e as CustomEvent<{ task: Task }>).detail;
-			if (task?.projectId === projectId) taskUpdateEpochRef.current += 1;
+			if (task?.projectId === projectId) inFlightTaskUpdatesRef.current.set(task.id, task);
 		}
 		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [projectId]);
 
 	useEffect(() => {
-		const taskUpdateEpoch = taskUpdateEpochRef.current;
+		const pushed = inFlightTaskUpdatesRef.current;
+		pushed.clear();
+		tasksFetchInFlightRef.current = true;
 		let cancelled = false;
 		setTasksStatus("loading");
 		(async () => {
 			try {
 				const tasks = await api.request.getTasks({ projectId });
+				// A superseded fetch must not touch the flag — a newer one owns it now.
 				if (cancelled) return;
-				if (taskUpdateEpoch === taskUpdateEpochRef.current) {
-					dispatch({ type: "setTasks", projectId, tasks });
+				tasksFetchInFlightRef.current = false;
+				// Fast path: nothing raced the fetch, so the snapshot ships untouched.
+				let merged = tasks;
+				if (pushed.size > 0) {
+					merged = tasks.map((task) => pushed.get(task.id) ?? task);
+					const known = new Set(tasks.map((task) => task.id));
+					for (const [id, task] of pushed) if (!known.has(id)) merged.push(task);
 				}
+				pushed.clear();
+				dispatch({ type: "setTasks", projectId, tasks: merged });
 				setTasksStatus("ready");
 			} catch (err) {
 				console.error("Failed to load tasks:", err);
-				if (!cancelled) setTasksStatus("error");
+				if (cancelled) return;
+				tasksFetchInFlightRef.current = false;
+				setTasksStatus("error");
 			}
 		})();
-		return () => { cancelled = true; };
+		return () => {
+			cancelled = true;
+			tasksFetchInFlightRef.current = false;
+			pushed.clear();
+		};
 	}, [projectId, dispatch, tasksReloadNonce]);
 
 	// A remote socket that dropped mid-session leaves the board frozen on a stale
