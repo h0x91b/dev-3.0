@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import os from "node:os";
 import { spawn, spawnSync } from "./spawn";
 import { createLogger } from "./logger";
 
@@ -91,6 +92,66 @@ export function resolveTunnelProtocol(): string {
 	const raw = process.env.DEV3_CLOUDFLARED_PROTOCOL?.trim().toLowerCase();
 	if (raw === "quic" || raw === "http2" || raw === "auto") return raw;
 	return "http2";
+}
+
+/**
+ * Which local address cloudflared leaves from when it dials Cloudflare's edge.
+ *
+ * Unset by default, and that default is deliberate. The flag exists for one
+ * situation: a VPN whose exit is far from the machine. A VPN adds a default
+ * route with a higher priority than the physical interface's, so cloudflared —
+ * like every program that does not ask for anything specific — leaves through
+ * the VPN, Cloudflare assigns the edge nearest to the VPN's exit, and every
+ * frame then crosses the VPN twice per direction. Measured on one such machine
+ * (Seq 1495): 347 ms through a Dublin edge, 27 ms through a Tel Aviv one after
+ * binding to the physical interface.
+ *
+ * It cannot be a default, for two independent reasons. The win is entirely local
+ * — with no VPN, or a nearby one, there is nothing to gain — and leaving through
+ * the physical interface takes that traffic out of whatever the VPN was
+ * installed to do, which is the operator's decision and never ours.
+ *
+ * Accepts an interface name (`en0`) or a literal address (`172.16.32.163`). The
+ * name is preferred: an address handed out by DHCP stops being true after a
+ * reconnect, and a stale bind address makes cloudflared unable to dial at all.
+ * Anything unresolvable is logged and dropped — a tunnel that starts slowly beats
+ * one that does not start.
+ */
+export function resolveTunnelEdgeBind(): string | null {
+	const raw = process.env.DEV3_CLOUDFLARED_EDGE_BIND?.trim();
+	if (!raw) return null;
+	// A literal address is passed straight through: the user named exactly what
+	// they meant, and validating it further would only reject forms cloudflared
+	// accepts (scoped IPv6, for one).
+	if (/^[0-9.]+$/.test(raw) || raw.includes(":")) return raw;
+
+	const iface = os.networkInterfaces()[raw];
+	const usable = iface?.find((addr) => addr.family === "IPv4" && !addr.internal);
+	if (usable) return usable.address;
+	log.warn("DEV3_CLOUDFLARED_EDGE_BIND names no usable interface — starting the tunnel without it", {
+		value: raw,
+		known: Object.keys(os.networkInterfaces()).join(","),
+	});
+	return null;
+}
+
+/**
+ * The exact command line for a quick tunnel.
+ *
+ * Argument ORDER is load-bearing, not style. `--edge-bind-address` placed before
+ * `--url` makes cloudflared print its help text and exit its argument parser
+ * without ever registering; the URL never appears, so the failure reads as "the
+ * tunnel is just slow" rather than "the flag is misplaced". Keep the bind flag
+ * last.
+ */
+export function buildTunnelArgv(targetPort: number): string[] {
+	const argv = ["cloudflared", "tunnel", "--protocol", resolveTunnelProtocol(), "--url", `http://localhost:${targetPort}`];
+	const bind = resolveTunnelEdgeBind();
+	if (bind) {
+		argv.push("--edge-bind-address", bind);
+		log.info("Tunnel will dial the edge from a specific local address", { bind });
+	}
+	return argv;
 }
 
 /**
@@ -267,10 +328,7 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 	tunnels.set(opts.id, entry);
 
 	try {
-		const proc = spawn(
-			["cloudflared", "tunnel", "--protocol", resolveTunnelProtocol(), "--url", `http://localhost:${opts.targetPort}`],
-			{ stdout: "ignore", stderr: "pipe" },
-		);
+		const proc = spawn(buildTunnelArgv(opts.targetPort), { stdout: "ignore", stderr: "pipe" });
 		entry.process = proc;
 
 		// Reset state when the cloudflared process exits unexpectedly.

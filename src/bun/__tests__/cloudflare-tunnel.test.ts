@@ -1,3 +1,4 @@
+import os from "node:os";
 import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from "vitest";
 
 vi.mock("../spawn", () => ({
@@ -26,6 +27,8 @@ import {
 	parseTunnelMetricsUrl,
 	parseTunnelUrl,
 	resolveTunnelProtocol,
+	resolveTunnelEdgeBind,
+	buildTunnelArgv,
 	tunnelManager,
 	TUNNEL_EDGE_READY,
 	_resetState,
@@ -43,6 +46,92 @@ afterEach(() => {
 	TUNNEL_EDGE_READY.timeoutMs = REAL_EDGE_READY.timeoutMs;
 	TUNNEL_EDGE_READY.pollMs = REAL_EDGE_READY.pollMs;
 	vi.unstubAllGlobals();
+});
+
+// ================================================================
+// resolveTunnelEdgeBind / buildTunnelArgv — leaving through a chosen interface
+// ================================================================
+
+describe("resolveTunnelEdgeBind", () => {
+	const orig = process.env.DEV3_CLOUDFLARED_EDGE_BIND;
+	afterEach(() => {
+		if (orig === undefined) delete process.env.DEV3_CLOUDFLARED_EDGE_BIND;
+		else process.env.DEV3_CLOUDFLARED_EDGE_BIND = orig;
+	});
+
+	it("is unset by default — the win is local and the choice is the operator's", () => {
+		delete process.env.DEV3_CLOUDFLARED_EDGE_BIND;
+		expect(resolveTunnelEdgeBind()).toBeNull();
+	});
+
+	it("treats an empty or blank value as unset", () => {
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "   ";
+		expect(resolveTunnelEdgeBind()).toBeNull();
+	});
+
+	it("passes a literal IPv4 address straight through", () => {
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "172.16.32.163";
+		expect(resolveTunnelEdgeBind()).toBe("172.16.32.163");
+	});
+
+	it("passes an IPv6 literal through rather than rejecting a form cloudflared accepts", () => {
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "fe80::1%en0";
+		expect(resolveTunnelEdgeBind()).toBe("fe80::1%en0");
+	});
+
+	it("resolves an interface name to its address, which survives a DHCP renewal", () => {
+		const named = Object.entries(os.networkInterfaces()).find(([, addrs]) =>
+			addrs?.some((a) => a.family === "IPv4" && !a.internal),
+		);
+		if (!named) return; // CI container with no external IPv4 — nothing to assert.
+		const [name, addrs] = named;
+		const expected = addrs!.find((a) => a.family === "IPv4" && !a.internal)!.address;
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = name;
+		expect(resolveTunnelEdgeBind()).toBe(expected);
+	});
+
+	it("drops an unknown interface instead of breaking the tunnel", () => {
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "definitely-not-an-interface";
+		expect(resolveTunnelEdgeBind()).toBeNull();
+	});
+
+	it("never resolves to a loopback address, which cannot reach the edge", () => {
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "lo0";
+		expect(resolveTunnelEdgeBind()).toBeNull();
+	});
+});
+
+describe("buildTunnelArgv", () => {
+	const orig = process.env.DEV3_CLOUDFLARED_EDGE_BIND;
+	afterEach(() => {
+		if (orig === undefined) delete process.env.DEV3_CLOUDFLARED_EDGE_BIND;
+		else process.env.DEV3_CLOUDFLARED_EDGE_BIND = orig;
+	});
+
+	it("adds nothing when the variable is unset", () => {
+		delete process.env.DEV3_CLOUDFLARED_EDGE_BIND;
+		expect(buildTunnelArgv(1234)).toEqual([
+			"cloudflared", "tunnel", "--protocol", "http2", "--url", "http://localhost:1234",
+		]);
+	});
+
+	// Order is the whole point: before --url, cloudflared prints help and never
+	// registers, which looks exactly like a slow tunnel.
+	it("puts the bind flag after --url, never before it", () => {
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "10.0.0.5";
+		const argv = buildTunnelArgv(1234);
+		expect(argv).toEqual([
+			"cloudflared", "tunnel", "--protocol", "http2", "--url", "http://localhost:1234",
+			"--edge-bind-address", "10.0.0.5",
+		]);
+		expect(argv.indexOf("--edge-bind-address")).toBeGreaterThan(argv.indexOf("--url"));
+	});
+
+	it("passes the bind address as its own argv entry, not glued to the flag", () => {
+		process.env.DEV3_CLOUDFLARED_EDGE_BIND = "10.0.0.5";
+		expect(buildTunnelArgv(1234)).toContain("10.0.0.5");
+		expect(buildTunnelArgv(1234).some((a) => a.includes(" "))).toBe(false);
+	});
 });
 
 // ================================================================
