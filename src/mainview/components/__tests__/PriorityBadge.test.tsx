@@ -29,6 +29,20 @@ describe("PriorityBadge", () => {
 		expect(screen.getByText("P1")).toBeInTheDocument();
 	});
 
+	// The narrow summary bar puts the chip beside the status control; a dense chip
+	// there read as a stray label, so `touch` has to keep the taller box.
+	it("sizes the touch variant to the narrow status control and drops the dense floor opt-out", () => {
+		renderBadge({ priority: "P2", onChange: vi.fn(), size: "touch" });
+		const btn = screen.getByRole("button", { name: /Priority P2/ });
+		expect(btn.className).toContain("min-h-[calc(2.75rem+2px)]");
+		expect(btn.className).not.toContain("touch-inline");
+	});
+
+	it("keeps the dense sizes opted out of the 44px touch floor", () => {
+		renderBadge({ priority: "P2", onChange: vi.fn(), size: "sm" });
+		expect(screen.getByRole("button", { name: /Priority P2/ }).className).toContain("touch-inline");
+	});
+
 	it("opens the picker and fires onChange with the chosen level", async () => {
 		const onChange = vi.fn();
 		const user = userEvent.setup();

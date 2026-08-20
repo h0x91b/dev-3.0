@@ -1283,10 +1283,10 @@ function TaskInfoPanel({
 				<div className="flex flex-nowrap items-center gap-x-2 px-3 py-2 min-h-[3.25rem] min-w-0 [container-type:inline-size]" data-testid="task-summary-bar">
 					{variantSwitcher}
 					{statusDropdownButton}
-					{/* Priority sits with status (Context domain, §5.1); `sm` gives it a
-					    legible chip and a comfortable touch target on a phone (§12.6),
-					    versus the dense `xs` desktop badge. */}
-					<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="sm" className="shrink-0" />
+					{/* Priority sits with status (Context domain, §5.1); `touch` matches the
+					    status control's height so the pair reads as one band and clears the
+					    44px target on a phone (§12.6), versus the dense `xs` desktop badge. */}
+					<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="touch" className="shrink-0" />
 					{/* Agent outputs (images / artifacts) ride the summary bar next to
 					    priority, not only the sheet: they are conditional, and an unread
 					    one has to be seen without opening a menu. Same class as the diff
