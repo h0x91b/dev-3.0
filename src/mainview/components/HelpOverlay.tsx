@@ -50,6 +50,24 @@ function scanZones(): HelpZone[] {
 	return Array.from(byId.values());
 }
 
+/**
+ * Resolve a zone's element afresh instead of trusting the node captured at scan
+ * time.
+ *
+ * A conditional readout (the memory pill, the remote connection readout) can
+ * unmount and remount while help mode is open — it renders only while it has bad
+ * news. React then puts a NEW node in the DOM and the captured one is detached,
+ * whose `getBoundingClientRect()` is all zeros, so the outline, the badge and the
+ * card all collapse into the top-left corner of the screen instead of sitting
+ * beside the thing they explain.
+ */
+export function liveHelpZoneElement(zone: HelpZone): HTMLElement | null {
+	const fresh = document.querySelector<HTMLElement>(`[data-help-id="${CSS.escape(zone.topic.id)}"]`);
+	if (fresh) return fresh;
+	// Gone from the screen entirely (the readout went quiet): nothing to point at.
+	return zone.element.isConnected ? zone.element : null;
+}
+
 interface HelpOverlayProps {
 	onExit: () => void;
 }
@@ -73,6 +91,9 @@ export default function HelpOverlay({ onExit }: HelpOverlayProps) {
 	zonesRef.current = zones;
 
 	const activeZone = activeId ? zones.find((z) => z.topic.id === activeId) : undefined;
+	// Resolved at render, not at scan: the node the card anchors to may have been
+	// replaced since the mode was entered.
+	const activeAnchor = activeZone ? liveHelpZoneElement(activeZone) : null;
 
 	// Nothing to explain on this screen — leave immediately instead of trapping.
 	useEffect(() => {
@@ -87,7 +108,9 @@ export default function HelpOverlay({ onExit }: HelpOverlayProps) {
 
 	const reposition = useCallback(() => {
 		for (const zone of zonesRef.current) {
-			const r = zone.element.getBoundingClientRect();
+			const el = liveHelpZoneElement(zone);
+			if (!el) continue;
+			const r = el.getBoundingClientRect();
 			const outline = outlineRefs.current.get(zone.topic.id);
 			if (outline) {
 				outline.style.top = `${r.top - 3}px`;
@@ -136,7 +159,12 @@ export default function HelpOverlay({ onExit }: HelpOverlayProps) {
 				data-testid="help-overlay-backdrop"
 				onClick={() => (activeId ? setActiveId(null) : onExitRef.current())}
 			/>
-			{zones.map(({ topic, element }) => {
+			{zones.map((zone) => {
+				const { topic } = zone;
+				const element = liveHelpZoneElement(zone);
+				// The readout this zone points at has left the screen — no outline and
+				// no badge, rather than a marker pinned to nothing.
+				if (!element) return null;
 				const r = element.getBoundingClientRect();
 				const active = topic.id === activeId;
 				return (
@@ -178,10 +206,10 @@ export default function HelpOverlay({ onExit }: HelpOverlayProps) {
 				);
 			})}
 
-			{activeZone ? (
+			{activeZone && activeAnchor ? (
 				<HelpCard
 					topic={activeZone.topic}
-					anchorEl={activeZone.element}
+					anchorEl={activeAnchor}
 					pinned
 					closeOnOutsideClick={false}
 					onClose={() => setActiveId(null)}
