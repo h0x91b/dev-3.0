@@ -41,6 +41,22 @@ type GitActionButton = ReactElement<{
 	tabIndex?: number;
 }>;
 
+/** Placeholder passed into the translated string so the behind half can be split
+    off without matching digits that belong to the ahead count. */
+const BEHIND_SLOT = "\u0000";
+
+/** Colours the number AND its wording — a lone red digit is easy to miss, the
+    whole "N behind" phrase reads as the warning it is. */
+function BehindCount({ text, behind }: { text: string; behind: number }) {
+	const [before, after = ""] = text.split(BEHIND_SLOT);
+	return (
+		<>
+			{before}
+			<span className="text-danger" data-testid="behind-count">{behind}{after}</span>
+		</>
+	);
+}
+
 interface GitActionTooltipProps {
 	content: ReactNode;
 	detail?: ReactNode;
@@ -260,18 +276,21 @@ export default function TaskGitActions({
 
 	const branchStatusBadge = branchStatus && (branchStatus.ahead > 0 || branchStatus.behind > 0) ? (
 		<span className="flex items-center gap-1.5 text-micro flex-shrink-0">
-			{/* Ahead/behind is a readout, not a verdict — colour here competed with
-			    the uncommitted diff, which is the one thing on this row that is
-			    genuinely urgent. */}
+			{/* Only the behind count is a verdict — it means "rebase needed", so the
+			    number is red while the wording around it stays a muted readout. */}
 			{branchStatus.behind > 0 && branchStatus.ahead > 0 ? (
-				<span className="font-medium text-fg-3">
-					<span>{branchStatus.ahead} ahead</span>
-					<span className="text-fg-muted"> · </span>
-					<span>{branchStatus.behind} behind</span>
+				<span className="text-fg-3 font-medium">
+					<BehindCount
+						text={t("infoPanel.commitsAheadBehind", { ahead: String(branchStatus.ahead), behind: BEHIND_SLOT })}
+						behind={branchStatus.behind}
+					/>
 				</span>
 			) : branchStatus.behind > 0 ? (
 				<span className="text-fg-3 font-medium">
-					{t("infoPanel.commitsBehind", { count: String(branchStatus.behind) })}
+					<BehindCount
+						text={t("infoPanel.commitsBehind", { count: BEHIND_SLOT })}
+						behind={branchStatus.behind}
+					/>
 				</span>
 			) : (
 				<span className="text-fg-3 font-medium">

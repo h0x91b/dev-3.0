@@ -1527,7 +1527,9 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			expect(screen.getAllByText(/2 commits behind/).length).toBeGreaterThanOrEqual(1);
+			const count = screen.getAllByTestId("behind-count")[0];
+			expect(count).toHaveClass("text-danger");
+			expect(count).toHaveTextContent("2 commits behind");
 		});
 
 		it("shows both ahead and behind when both > 0", async () => {
@@ -1541,8 +1543,11 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			expect(screen.getAllByText(/3 ahead/).length).toBeGreaterThanOrEqual(1);
-			expect(screen.getAllByText(/1 behind/).length).toBeGreaterThanOrEqual(1);
+			const count = screen.getAllByTestId("behind-count")[0];
+			expect(count).toHaveClass("text-danger");
+			// The wording is red together with the number; only the ahead half stays muted.
+			expect(count).toHaveTextContent("1 behind");
+			expect(count.parentElement).toHaveTextContent("3 ahead · 1 behind");
 		});
 
 		it("shows uncommitted changes badge", async () => {
@@ -1608,7 +1613,7 @@ describe("TaskInfoPanel", () => {
 
 			// One control carries both halves, so clicking either number opens the diff.
 			const summary = screen.getByText("+46").closest("button")!;
-			expect(summary).toContainElement(screen.getByText("1 ahead"));
+			expect(summary).toContainElement(screen.getAllByTestId("behind-count")[0]);
 			await user.click(summary);
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
