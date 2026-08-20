@@ -45,8 +45,6 @@ export interface RowReorderCtx {
 
 interface SpaceGroupedProjectsProps {
 	groups: DashboardGroup[];
-	/** The order of spaces as rendered (for header drag persistence). */
-	spaceOrder: string[];
 	sensitiveProjectIds: ReadonlySet<string>;
 	/** Split header counts: tasks waiting on the user vs. tasks in flight. */
 	needsYouCountOf: (projectId: string) => number;
@@ -62,12 +60,12 @@ interface SpaceGroupedProjectsProps {
 
 /**
  * Space headers around the dashboard's existing project rows. Owns collapse
- * state, header drag (space order), and within-space project drag (that
- * space's projectIds). Drag never crosses groups and never changes membership.
+ * state and within-space project drag (that space's projectIds). Drag never
+ * crosses groups and never changes membership. Space ORDER is not editable
+ * here — the rail is the one surface that reorders spaces.
  */
 function SpaceGroupedProjects({
 	groups,
-	spaceOrder,
 	sensitiveProjectIds,
 	needsYouCountOf,
 	workingCountOf,
@@ -78,13 +76,9 @@ function SpaceGroupedProjects({
 	onDeleteSpace,
 }: SpaceGroupedProjectsProps) {
 	const t = useT();
-	// One space alone has no order to change, so its header carries no grip.
-	const spaceCount = groups.filter((g) => g.space !== null).length;
 	const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
 	const [dragged, setDragged] = useState<{ spaceId: string; projectId: string } | null>(null);
 	const [dropTarget, setDropTarget] = useState<{ spaceId: string; projectId: string; side: "before" | "after" } | null>(null);
-	const [draggedHeader, setDraggedHeader] = useState<string | null>(null);
-	const [headerDropTarget, setHeaderDropTarget] = useState<{ spaceId: string; side: "before" | "after" } | null>(null);
 
 	function toggleCollapsed(spaceId: string) {
 		setCollapsed((prev) => {
@@ -105,20 +99,6 @@ function SpaceGroupedProjects({
 		ids.splice(side === "after" ? targetIdx + 1 : targetIdx, 0, sourceId);
 		try {
 			await api.request.reorderSpaceProjects({ spaceId, projectIds: ids });
-		} catch (err) {
-			toast.error(t("spaces.failedUpdate", { error: String(err) }));
-		}
-	}
-
-	async function reorderHeaders(sourceId: string, targetId: string, side: "before" | "after") {
-		if (sourceId === targetId) return;
-		const ids = [...spaceOrder];
-		ids.splice(ids.indexOf(sourceId), 1);
-		const targetIdx = ids.indexOf(targetId);
-		if (targetIdx === -1) return;
-		ids.splice(side === "after" ? targetIdx + 1 : targetIdx, 0, sourceId);
-		try {
-			await api.request.reorderSpaces({ order: ids });
 		} catch (err) {
 			toast.error(t("spaces.failedUpdate", { error: String(err) }));
 		}
@@ -199,58 +179,10 @@ function SpaceGroupedProjects({
 				const masked = isSpaceSensitive(space, sensitiveProjectIds);
 				const needsYou = group.projects.reduce((sum, p) => sum + needsYouCountOf(p.id), 0);
 				const working = group.projects.reduce((sum, p) => sum + workingCountOf(p.id), 0);
-				const isHeaderTarget = headerDropTarget?.spaceId === space.id;
 
 				return (
 					<div key={space.id} className="space-y-4 relative" data-testid={`space-group-${space.id}`}>
-						{isHeaderTarget && headerDropTarget.side === "before" && (
-							<div className="absolute -top-2 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />
-						)}
-						{isHeaderTarget && headerDropTarget.side === "after" && (
-							<div className="absolute -bottom-2 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />
-						)}
-						<div
-							className={`flex items-center gap-2 pt-2 ${draggedHeader === space.id ? "opacity-60" : ""}`}
-							onDragOver={(event) => {
-								if (!draggedHeader || draggedHeader === space.id) return;
-								event.preventDefault();
-								event.dataTransfer.dropEffect = "move";
-								const rect = event.currentTarget.getBoundingClientRect();
-								const side = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-								setHeaderDropTarget({ spaceId: space.id, side });
-							}}
-							onDragLeave={() => setHeaderDropTarget((cur) => (cur?.spaceId === space.id ? null : cur))}
-							onDrop={(event) => {
-								event.preventDefault();
-								if (!draggedHeader) return;
-								const side = isHeaderTarget ? headerDropTarget.side : "before";
-								const source = draggedHeader;
-								setDraggedHeader(null);
-								setHeaderDropTarget(null);
-								void reorderHeaders(source, space.id, side);
-							}}
-						>
-							{spaceCount > 1 && (
-							<span
-								role="presentation"
-								draggable
-								onDragStart={(event) => {
-									setDraggedHeader(space.id);
-									event.dataTransfer.setData("text/plain", `space:${space.id}`);
-									event.dataTransfer.effectAllowed = "move";
-								}}
-								onDragEnd={() => {
-									setDraggedHeader(null);
-									setHeaderDropTarget(null);
-								}}
-								className="hidden md:inline-flex p-1 rounded text-fg-muted hover:text-fg cursor-grab active:cursor-grabbing"
-								title={t("spaces.reorderSpace")}
-							>
-								<span aria-hidden="true" className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-									{"\u{F01DB}"}
-								</span>
-							</span>
-						)}
+						<div className="flex items-center gap-2 pt-2">
 							<button
 								type="button"
 								onClick={() => toggleCollapsed(space.id)}

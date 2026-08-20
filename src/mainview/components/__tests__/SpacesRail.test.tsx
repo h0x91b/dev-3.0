@@ -175,3 +175,72 @@ describe("SpacesRail — a single space", () => {
 		expect(screen.getByTestId("rail-space-sp_a")).toHaveAttribute("draggable", "true");
 	});
 });
+
+describe("SpacesRail — reorder mode", () => {
+	it("advertises the drag with a resting grip, not just the cursor", () => {
+		renderRail();
+		// The glyph is aria-hidden, so it is found by its title, which is the only
+		// thing a pointer user can discover before committing to a drag.
+		const row = screen.getByTestId("rail-space-sp_a");
+		expect(row.querySelector('[title="Drag to reorder spaces"]')).not.toBeNull();
+	});
+
+	it("offers no reorder mode when there is nothing to reorder", () => {
+		renderRail({ spaces: [spaces[0]] });
+		expect(screen.queryByTestId("rail-reorder-toggle")).not.toBeInTheDocument();
+		renderRail({ onReorder: undefined });
+		expect(screen.queryByTestId("rail-reorder-toggle")).not.toBeInTheDocument();
+	});
+
+	it("moves a space down by one and persists the whole order", async () => {
+		const user = userEvent.setup();
+		const props = renderRail();
+		await user.click(screen.getByTestId("rail-reorder-toggle"));
+		await user.click(screen.getByTestId("rail-space-down-sp_a"));
+		expect(props.onReorder).toHaveBeenCalledWith(["sp_b", "sp_a"]);
+	});
+
+	it("moves a space up by one", async () => {
+		const user = userEvent.setup();
+		const props = renderRail();
+		await user.click(screen.getByTestId("rail-reorder-toggle"));
+		await user.click(screen.getByTestId("rail-space-up-sp_b"));
+		expect(props.onReorder).toHaveBeenCalledWith(["sp_b", "sp_a"]);
+	});
+
+	it("disables the step that would fall off either end", async () => {
+		const user = userEvent.setup();
+		renderRail();
+		await user.click(screen.getByTestId("rail-reorder-toggle"));
+		expect(screen.getByTestId("rail-space-up-sp_a")).toBeDisabled();
+		expect(screen.getByTestId("rail-space-down-sp_b")).toBeDisabled();
+		expect(screen.getByTestId("rail-space-down-sp_a")).toBeEnabled();
+	});
+
+	it("stops filtering while reordering — a row is a thing being moved, not a filter", async () => {
+		const user = userEvent.setup();
+		const props = renderRail();
+		await user.click(screen.getByTestId("rail-reorder-toggle"));
+		await user.click(screen.getByTestId("rail-space-sp_a"));
+		expect(props.onSelect).not.toHaveBeenCalled();
+		// Home is not an ordered space, so it has no place in the mode.
+		expect(screen.queryByTestId("rail-home")).not.toBeInTheDocument();
+	});
+
+	it("drops drag while in the mode, so one gesture owns the order at a time", async () => {
+		const user = userEvent.setup();
+		renderRail();
+		await user.click(screen.getByTestId("rail-reorder-toggle"));
+		expect(screen.getByTestId("rail-space-sp_a")).not.toHaveAttribute("draggable", "true");
+	});
+
+	it("leaves the mode and restores filtering", async () => {
+		const user = userEvent.setup();
+		const props = renderRail();
+		await user.click(screen.getByTestId("rail-reorder-toggle"));
+		await user.click(screen.getByTestId("rail-reorder-toggle"));
+		await user.click(screen.getByTestId("rail-space-sp_a"));
+		expect(props.onSelect).toHaveBeenCalledWith("sp_a");
+		expect(screen.getByTestId("rail-home")).toBeInTheDocument();
+	});
+});

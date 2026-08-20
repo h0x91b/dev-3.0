@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
+import { api } from "../../rpc";
 import SpaceGroupedProjects, { type RowReorderCtx } from "../SpaceGroupedProjects";
 import type { DashboardGroup } from "../../utils/spaceGroups";
 import type { Project, Space } from "../../../shared/types";
@@ -46,7 +47,6 @@ function renderGroups(sensitive: ReadonlySet<string> = new Set()) {
 		<I18nProvider>
 			<SpaceGroupedProjects
 				groups={groups}
-				spaceOrder={["sp_a", "sp_b"]}
 				sensitiveProjectIds={sensitive}
 				needsYouCountOf={() => 0}
 				workingCountOf={() => 0}
@@ -96,7 +96,6 @@ describe("SpaceGroupedProjects", () => {
 			<I18nProvider>
 				<SpaceGroupedProjects
 					groups={groups}
-					spaceOrder={["sp_a", "sp_b"]}
 					sensitiveProjectIds={new Set(["p2"])}
 					needsYouCountOf={() => 1}
 					workingCountOf={() => 2}
@@ -119,7 +118,6 @@ describe("SpaceGroupedProjects — header details from the mock", () => {
 			<I18nProvider>
 				<SpaceGroupedProjects
 					groups={groups}
-					spaceOrder={["sp_a", "sp_b"]}
 					sensitiveProjectIds={new Set()}
 					needsYouCountOf={(id) => (id === "p1" ? 1 : 0)}
 					workingCountOf={(id) => (id === "p2" ? 2 : 0)}
@@ -146,7 +144,6 @@ describe("SpaceGroupedProjects — header details from the mock", () => {
 			<I18nProvider>
 				<SpaceGroupedProjects
 					groups={groups}
-					spaceOrder={["sp_a", "sp_b"]}
 					sensitiveProjectIds={new Set()}
 					needsYouCountOf={() => 0}
 					workingCountOf={() => 0}
@@ -166,7 +163,6 @@ describe("SpaceGroupedProjects — header details from the mock", () => {
 			<I18nProvider>
 				<SpaceGroupedProjects
 					groups={groups}
-					spaceOrder={["sp_a", "sp_b"]}
 					sensitiveProjectIds={new Set()}
 					needsYouCountOf={() => 0}
 					workingCountOf={() => 0}
@@ -198,7 +194,6 @@ describe("SpaceGroupedProjects — nothing to reorder", () => {
 			<I18nProvider>
 				<SpaceGroupedProjects
 					groups={groupsArg}
-					spaceOrder={groupsArg.filter((g) => g.space).map((g) => g.space!.id)}
 					sensitiveProjectIds={new Set()}
 					needsYouCountOf={() => 0}
 					workingCountOf={() => 0}
@@ -229,15 +224,22 @@ describe("SpaceGroupedProjects — nothing to reorder", () => {
 		expect(seen[2]).toBe(false);
 	});
 
-	it("hides the header grip when only one space is rendered", () => {
-		renderWith(soloGroups);
-		const header = screen.getByTestId("space-header-sp_solo").parentElement!;
-		expect(header.querySelector('[role="presentation"][draggable="true"]')).toBeNull();
+	// Space ORDER belongs to the rail, which is the collapsed name-only list.
+	// A second grip here meant dragging a header across a page hundreds of
+	// pixels tall, and it never existed on touch at all.
+	it("carries no space-order grip on a header, whatever the space count", () => {
+		renderWith(groups);
+		for (const id of ["sp_a", "sp_b"]) {
+			const header = screen.getByTestId(`space-header-${id}`).parentElement!;
+			expect(header.querySelector('[draggable="true"]')).toBeNull();
+		}
 	});
 
-	it("keeps the header grip when several spaces are rendered", () => {
+	it("does not reorder spaces when a header is dragged", () => {
 		renderWith(groups);
 		const header = screen.getByTestId("space-header-sp_a").parentElement!;
-		expect(header.querySelector('[role="presentation"][draggable="true"]')).not.toBeNull();
+		fireEvent.dragOver(header);
+		fireEvent.drop(header);
+		expect(vi.mocked(api.request.reorderSpaces)).not.toHaveBeenCalled();
 	});
 });

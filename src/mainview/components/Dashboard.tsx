@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { CodingAgent, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
+import type { Project, Task, TaskStatus } from "../../shared/types";
 import { isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -9,9 +9,7 @@ import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import { useSpaces } from "../useSpaces";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
-import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import ActivityOverview from "./ActivityOverview";
-import ActiveTasksSidebar from "./ActiveTasksSidebar";
 import SpacesRail, { SPACES_RAIL_MIN_WIDTH, type SpaceActivitySplit } from "./SpacesRail";
 import NewSpaceModal from "./NewSpaceModal";
 
@@ -24,9 +22,6 @@ interface DashboardProps {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
-	bellReasons?: Map<string, string[]>;
-	taskPorts: Map<string, PortInfo[]>;
-	agents: CodingAgent[];
 	onOpenAddProject: (spaceIds?: string[]) => void;
 }
 
@@ -35,14 +30,10 @@ function Dashboard({
 	dispatch,
 	navigate,
 	bellCounts,
-	bellReasons,
-	taskPorts,
-	agents,
 	onOpenAddProject,
 }: DashboardProps) {
 	const t = useT();
 	const { spaces } = useSpaces();
-	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
 	const [showNewSpace, setShowNewSpace] = useState(false);
 
@@ -53,9 +44,13 @@ function Dashboard({
 		if (railHidden) setSelectedSpaceId(null);
 	}, [railHidden]);
 
-	// The rail and the cross-space task panel only exist once a space does:
-	// with zero spaces the dashboard stays exactly the screen it was.
+	// The rail only exists once a space does: with zero spaces the dashboard
+	// stays exactly the screen it was.
 	const hasSpaces = spaces.length > 0;
+	// Where `New space` has to live: the rail owns it, so the overview header
+	// only carries a fallback while the rail is not on screen. One expression
+	// for both, so the two can never disagree about which is showing.
+	const railOnScreen = hasSpaces && projects.length > 0 && !railHidden;
 
 	// The rail's per-row activity split needs the cross-project task pool; the
 	// overview and the task panel each own theirs, so the rail fetches its own —
@@ -205,7 +200,7 @@ function Dashboard({
 						onOpenAddProject={onOpenAddProject}
 						onReorderProjects={handleReorderProjects}
 						selectedSpaceId={selectedSpaceId}
-						onNewSpace={() => setShowNewSpace(true)}
+						onNewSpace={railOnScreen ? undefined : () => setShowNewSpace(true)}
 					/>
 				) : (
 					<div className="h-full overflow-y-auto p-3 md:p-7">
@@ -243,21 +238,10 @@ function Dashboard({
 					</div>
 				)}
 				</div>
-				{/* The same sidebar component the project view uses, with no current
-				    project: locked to global scope — active work across all spaces. */}
-				{hasSpaces && projects.length > 0 && !narrow && (
-					<div className="w-[21rem] flex-shrink-0 border-l border-edge overflow-hidden">
-						<ActiveTasksSidebar
-							allProjects={projects}
-							dispatch={dispatch}
-							navigate={navigate}
-							agents={agents}
-							bellCounts={bellCounts}
-							bellReasons={bellReasons}
-							taskPorts={taskPorts}
-						/>
-					</div>
-				)}
+				{/* No cross-project task panel here: the project rows below already
+				    list every task waiting on the user, so a panel beside them
+				    rendered the same rows twice. The panel stays in the project
+				    view, where the centre is a board and not a task list. */}
 			</div>
 			{showNewSpace && (
 				<NewSpaceModal projects={projects} onClose={() => setShowNewSpace(false)} />

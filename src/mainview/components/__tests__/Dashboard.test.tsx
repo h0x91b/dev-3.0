@@ -48,8 +48,6 @@ function renderDashboard(
 				dispatch={dispatch ?? vi.fn()}
 				navigate={navigate ?? vi.fn()}
 				bellCounts={new Map()}
-			taskPorts={new Map()}
-			agents={[]}
 				onOpenAddProject={onOpenAddProject ?? vi.fn()}
 			/>
 		</I18nProvider>,
@@ -284,6 +282,48 @@ describe("Dashboard", () => {
 				screen: "project",
 				projectId: "p1",
 			});
+		});
+	});
+
+	// The project rows already list every task waiting on the user, so a panel
+	// beside them rendered the same rows twice. It stays in the project view,
+	// where the centre is a board rather than a task list.
+	describe("no cross-project task panel", () => {
+		it("renders no Active tasks panel, even with spaces in play", async () => {
+			mockedApi.request.getSpaces.mockResolvedValue({
+				version: 1,
+				spaces: [{ id: "sp_a", name: "Client X", parentId: null, projectIds: ["p1"], createdAt: 1 }],
+				order: ["sp_a"],
+			});
+			renderDashboard([mockProject], vi.fn(), vi.fn(), vi.fn());
+			await screen.findByText("My Project");
+			expect(screen.queryByRole("navigation", { name: /active tasks/i })).not.toBeInTheDocument();
+		});
+	});
+
+	// The rail owns `New space`; the header only carries a fallback while the
+	// rail is off screen — which is where a first-time user with zero spaces is.
+	describe("New space entry point", () => {
+		it("keeps the header fallback when there is no rail yet", async () => {
+			// Pinned explicitly: `clearAllMocks` keeps implementations, so a
+			// sibling test's spaces would leak in and hide the rail-less case.
+			mockedApi.request.getSpaces.mockResolvedValue({ version: 1, spaces: [], order: [] });
+			renderDashboard([mockProject], vi.fn(), vi.fn(), vi.fn());
+			await screen.findByText("My Project");
+			expect(screen.getByTestId("dashboard-new-space")).toBeInTheDocument();
+			expect(screen.queryByTestId("spaces-rail")).not.toBeInTheDocument();
+		});
+
+		it("drops the header fallback once the rail is on screen", async () => {
+			mockedApi.request.getSpaces.mockResolvedValue({
+				version: 1,
+				spaces: [{ id: "sp_a", name: "Client X", parentId: null, projectIds: ["p1"], createdAt: 1 }],
+				order: ["sp_a"],
+			});
+			renderDashboard([mockProject], vi.fn(), vi.fn(), vi.fn());
+			await screen.findByTestId("spaces-rail");
+			expect(screen.queryByTestId("dashboard-new-space")).not.toBeInTheDocument();
+			expect(screen.getByTestId("rail-new-space")).toBeInTheDocument();
 		});
 	});
 });

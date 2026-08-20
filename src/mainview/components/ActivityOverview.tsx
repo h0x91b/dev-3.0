@@ -117,6 +117,9 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
+	// Work parked on each board that this screen never lists — the number that
+	// makes "Open board" worth clicking instead of a decorative arrow.
+	const [todoByProject, setTodoByProject] = useState<Map<string, number>>(new Map());
 	const [loading, setLoading] = useState(true);
 	const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
 	const [dropTarget, setDropTarget] = useState<{ projectId: string; side: DropSide } | null>(null);
@@ -243,10 +246,13 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		try {
 			const results = await api.request.getAllProjectTasks();
 			const map = new Map<string, Task[]>();
-			for (const { projectId, tasks } of results) {
+			const todo = new Map<string, number>();
+			for (const { projectId, tasks, todoCount } of results) {
 				map.set(projectId, tasks);
+				todo.set(projectId, todoCount);
 			}
 			setTasksByProject(map);
+			setTodoByProject(todo);
 		} catch (err) {
 			console.error("Failed to load all project tasks:", err);
 		}
@@ -369,6 +375,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	function renderProjectRow(project: Project, index: number, reorder?: RowReorderCtx, groupSpaceId?: string | null) {
 		const tasks = tasksByProject.get(project.id) ?? [];
 		const hasActiveTasks = tasks.length > 0;
+		const todoCount = todoByProject.get(project.id) ?? 0;
 		const isDragged = reorder ? reorder.isDragged : draggedProjectId === project.id;
 		const isBuiltinOps = isBuiltinOpsProject(project);
 		const locked = privacy.isLocked(project);
@@ -552,7 +559,10 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 								{"\u{F033E}"}
 							</span>
 						)}
-						<span className={`truncate select-text ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{isBuiltinOps ? t("ops.boardName") : project.name}</span>
+						{/* The row's one navigation is into the board, so the name carries
+						    link emphasis on row hover. Without it the only cue was the
+						    background lifting one step, which reads as "row", not "link". */}
+						<span className={`truncate select-text ${locked ? "" : "group-hover:text-accent group-hover:underline decoration-accent/50 underline-offset-2"} ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{isBuiltinOps ? t("ops.boardName") : project.name}</span>
 									{!isBuiltinOps && (
 										<ProjectSpaceChips
 											spaces={spacesFile.spaces}
@@ -596,7 +606,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						)}
 						{/* Chevron is redundant on narrow — the name + count already
 						    navigate, so it only crowds the row end where the kebab sits. */}
-						<svg aria-hidden="true" focusable="false" className="hidden md:block w-4 h-4 text-fg-muted group-hover:text-fg-3 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg aria-hidden="true" focusable="false" className="hidden md:block w-4 h-4 text-fg-muted group-hover:text-accent group-hover:translate-x-0.5 transition-[color,transform] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
 						</svg>
 					</span>
@@ -763,25 +773,45 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							</button>
 						)}
 
-						{/* Background tasks — collapsed summary line */}
-						{summarySegments.length > 0 && (
-							<div className="flex items-center gap-2 px-3 md:px-5 py-2 border-b border-edge last:border-b-0">
-								<div className="flex-1 flex items-center gap-3">
-									{summarySegments.map(({ status, count }) => (
-										<span key={status} className="flex items-center gap-1.5 text-xs text-fg-3">
-											<span
-												aria-hidden="true"
-												className="w-2 h-2 rounded-full"
-												style={{ backgroundColor: statusColors[status] }}
-											/>
-											<span className="tabular-nums">{summaryLabel(status, count, project)}</span>
-										</span>
-									))}
-								</div>
-							</div>
-						)}
 					</div>
 				)}
+
+				{/* Board footer. Always present, including on a project with nothing
+				    active: this is the row's honest statement of what it is NOT
+				    showing, and the only place the word "board" appears on desktop.
+				    It replaces the old background-summary line, which carried the
+				    same counts but led nowhere. */}
+				<button
+					type="button"
+					onClick={() => openProject(project.id)}
+					aria-disabled={locked || undefined}
+					className={`group/board w-full flex items-center gap-3 px-3 md:px-5 py-2.5 min-h-[44px] md:min-h-0 border-t border-edge text-left transition-colors ${locked ? "cursor-not-allowed" : "hover:bg-raised-hover"}`}
+					data-testid={`project-open-board-${project.id}`}
+				>
+					<span className="flex items-center gap-1.5 flex-shrink-0 text-xs font-medium text-fg-3 group-hover/board:text-accent transition-colors">
+						<svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M7 17L17 7m0 0H9m8 0v8" />
+						</svg>
+						{t("activity.openBoard")}
+					</span>
+					<span className={`flex-1 min-w-0 flex items-center justify-end gap-3 ${privacy.maskClass(project)}`}>
+						{summarySegments.map(({ status, count }) => (
+							<span key={status} className="flex items-center gap-1.5 text-xs text-fg-3 flex-shrink-0">
+								<span
+									aria-hidden="true"
+									className="w-2 h-2 rounded-full"
+									style={{ backgroundColor: statusColors[status] }}
+								/>
+								<span className="tabular-nums">{summaryLabel(status, count, project)}</span>
+							</span>
+						))}
+						{todoCount > 0 && (
+							<span className="text-xs text-fg-3 tabular-nums flex-shrink-0" data-testid={`project-todo-count-${project.id}`}>
+								{t.plural("activity.todoOnBoard", todoCount)}
+							</span>
+						)}
+					</span>
+				</button>
 			</div>
 		);
 	}
@@ -805,7 +835,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
 					</svg>
 				</button>
-				<div className="flex items-start justify-between gap-4">
+				<div className="flex items-center justify-between gap-4">
 					<div>
 						<h2 className="flex items-center gap-1.5 text-fg-2 text-sm font-medium">
 							{t.plural("dashboard.projectCount", visibleProjects.length)}
@@ -816,13 +846,20 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						)}
 					</div>
 					<div className="flex items-center gap-2 flex-shrink-0">
+						{/* Fallback only — the rail owns `New space` and passes no handler
+						    while it is on screen. When it does render there is no rail at
+						    all (commonly a first run with zero spaces), so it stays a full
+						    secondary rather than a whisper: it is the only way in. */}
 						{onNewSpace && (
 							<button
 								type="button"
 								onClick={onNewSpace}
-								className="px-3 py-1.5 min-h-[44px] md:min-h-0 border border-edge rounded-xl text-fg-2 text-sm hover:text-fg hover:border-edge-active transition-colors"
+								className="flex items-center gap-1.5 flex-shrink-0 px-4 py-1.5 min-h-[44px] md:min-h-0 border border-edge rounded-xl text-fg-2 text-sm hover:text-fg hover:border-edge-active transition-[color,border-color,transform] active:scale-[0.96]"
 								data-testid="dashboard-new-space"
 							>
+								<svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+								</svg>
 								{t("spaces.newSpace")}
 							</button>
 						)}
@@ -866,7 +903,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						{visibleProjects.filter(isBuiltinOpsProject).map((p) => renderProjectRow(p, 0))}
 						<SpaceGroupedProjects
 							groups={spaceGroups}
-							spaceOrder={spaceGroups.filter((g) => g.space !== null).map((g) => g.space!.id)}
 							sensitiveProjectIds={sensitiveProjectIds}
 							needsYouCountOf={(projectId) =>
 								(tasksByProject.get(projectId) ?? []).filter((task) => NEEDS_ME_STATUSES.includes(task.status)).length

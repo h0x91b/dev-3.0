@@ -101,7 +101,7 @@ describe("useTaskSwitcher", () => {
 
 	it("opens in global scope across projects when Shift is held", async () => {
 		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([
-			{ projectId: "p1", tasks: [task("a", 1), task("x", 5)] },
+			{ projectId: "p1", tasks: [task("a", 1), task("x", 5)], todoCount: 0 },
 		]);
 		const { result } = mount();
 		// let the mount-time global fetch resolve and populate the snapshot
@@ -115,8 +115,8 @@ describe("useTaskSwitcher", () => {
 
 	it("toggles scope with each Shift tap and stays put on release (sticky)", async () => {
 		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([
-			{ projectId: "p1", tasks: [task("a", 1)] },
-			{ projectId: "p2", tasks: [{ ...task("x", 5), projectId: "p2" }] },
+			{ projectId: "p1", tasks: [task("a", 1)], todoCount: 0 },
+			{ projectId: "p2", tasks: [{ ...task("x", 5), projectId: "p2" }], todoCount: 0 },
 		]);
 		const { result } = mount();
 		await act(async () => {
@@ -140,8 +140,8 @@ describe("useTaskSwitcher", () => {
 
 	it("ignores Shift auto-repeat so a held Shift toggles only once", async () => {
 		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([
-			{ projectId: "p1", tasks: [task("a", 1)] },
-			{ projectId: "p2", tasks: [{ ...task("x", 5), projectId: "p2" }] },
+			{ projectId: "p1", tasks: [task("a", 1)], todoCount: 0 },
+			{ projectId: "p2", tasks: [{ ...task("x", 5), projectId: "p2" }], todoCount: 0 },
 		]);
 		const { result } = mount();
 		await act(async () => {

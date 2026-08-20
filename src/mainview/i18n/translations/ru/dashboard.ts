@@ -25,6 +25,10 @@ const dashboard = {
 	"activity.taskCount_few": "{count} активные задачи",
 	"activity.taskCount_many": "{count} активных задач",
 	"activity.taskCount_other": "{count} активных задач",
+	"activity.todoOnBoard_one": "{count} в To Do",
+	"activity.todoOnBoard_few": "{count} в To Do",
+	"activity.todoOnBoard_many": "{count} в To Do",
+	"activity.todoOnBoard_other": "{count} в To Do",
 	// Narrow viewport: the noun phrase would push the project name into
 	// truncation, so the count keeps its short form there.
 	"activity.taskCountShort_one": "{count} активна",

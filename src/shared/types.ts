@@ -3560,7 +3560,10 @@ export type AppRPCSchema = {
 			};
 			getAllProjectTasks: {
 				params: void;
-				response: { projectId: string; tasks: Task[] }[];
+				/** `tasks` is the ACTIVE set only. `todoCount` is the work sitting on
+				 *  the board that this list therefore never shows, so a caller can say
+				 *  what it is hiding instead of implying the project holds nothing else. */
+				response: { projectId: string; tasks: Task[]; todoCount: number }[];
 			};
 			getProductivityStats: {
 				params: void;

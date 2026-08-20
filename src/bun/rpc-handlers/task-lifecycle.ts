@@ -84,7 +84,7 @@ async function getTasks(params: { projectId: string }): Promise<Task[]> {
 	return tasks;
 }
 
-async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] }[]> {
+async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[]; todoCount: number }[]> {
 	log.info("→ getAllProjectTasks");
 	// Include virtual ("Operations") boards — otherwise the dashboard shows no
 	// active operations and the working-folder conflict check (which compares
@@ -94,7 +94,10 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 		projects.map(async (project) => {
 			const tasks = await data.loadTasks(project);
 			const active = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
-			return { projectId: project.id, tasks: active };
+			// Free: the full list is already in hand. Only `todo` counts — completed
+			// and cancelled are archive, not work the caller is failing to show.
+			const todoCount = tasks.filter((task) => task.status === "todo").length;
+			return { projectId: project.id, tasks: active, todoCount };
 		}),
 	);
 	const totalActive = results.reduce((sum, result) => sum + result.tasks.length, 0);

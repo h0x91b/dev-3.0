@@ -21,6 +21,8 @@ const dashboard = {
 	"activity.noActiveTasks": "Sin tareas activas en ningún proyecto",
 	"activity.taskCount_one": "{count} tarea activa",
 	"activity.taskCount_other": "{count} tareas activas",
+	"activity.todoOnBoard_one": "{count} en To Do",
+	"activity.todoOnBoard_other": "{count} en To Do",
 	// Narrow viewport: the noun phrase would push the project name into
 	// truncation, so the count keeps its short form there.
 	"activity.taskCountShort_one": "{count} activa",
