@@ -1,0 +1,3 @@
+Short: dev-server --wait waits for DEV3_PORT
+
+`dev3 dev-server start --wait` / `restart --wait` now waits for a port the task was actually assigned (`DEV3_PORT*`) instead of the first port anything in the dev-server process tree opens, so a curl right after the wait no longer races a dev server whose bundler socket or sidecar came up first. If only an auxiliary port is listening it keeps polling for an assigned one for 10 more seconds, then reports ready on what it has and says the assigned port never came up — a devScript that binds a fixed port and ignores the pool still returns instead of hanging.

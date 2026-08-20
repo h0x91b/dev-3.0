@@ -6,6 +6,8 @@ import { discoverSocketExcluding, expandShortId, resolveProjectId, type CliConte
 
 const WAIT_POLL_MS = 500;
 const WAIT_DEFAULT_TIMEOUT_S = 120;
+/** How long `--wait` keeps polling for an assigned port once some other port is up. */
+const WAIT_ASSIGNED_GRACE_MS = 10_000;
 
 /**
  * devServer.* transport with instance failover. The instance serving a
@@ -161,11 +163,19 @@ function readyPorts(status: DevServerStatus): DevServerStatus["ports"] {
 }
 
 /**
- * Poll `devServer.status` until the dev server's own process tree is
- * LISTENing on at least one port, or a port is listening on its behalf. With
- * verified teardown on stop/restart the old server is confirmed dead first, so
- * a bound port here really is the NEW server — not a stale process still
- * serving the previous build.
+ * Poll `devServer.status` until the dev server is LISTENing on one of the ports
+ * assigned to the task (`DEV3_PORT*`) — the port the caller is about to curl.
+ * With verified teardown on stop/restart the old server is confirmed dead
+ * first, so a bound port here really is the NEW server — not a stale process
+ * still serving the previous build.
+ *
+ * A dev server that opens auxiliary ports before its assigned one (a bundler's
+ * HMR socket, a sidecar) used to satisfy the wait immediately, so the caller's
+ * curl against `$DEV3_PORT0` raced the real listener. Once any port is up we
+ * therefore keep polling for an assigned one for `WAIT_ASSIGNED_GRACE_MS`, then
+ * accept what is listening: a devScript is free to bind a fixed port and ignore
+ * the pool, and hanging on that project until the timeout would be worse than a
+ * slightly early ready.
  */
 async function waitForDevServerReady(
 	socketRef: { current: string },
@@ -174,6 +184,7 @@ async function waitForDevServerReady(
 ): Promise<void> {
 	process.stdout.write(`Waiting for the dev server to open a port (timeout ${timeoutSec}s)...\n`);
 	const timeoutMs = timeoutSec * 1000;
+	let anyReadyAt: number | null = null;
 	for (let waited = 0; ; waited += WAIT_POLL_MS) {
 		// A status read is idempotent, and the poll can straddle the tail of the
 		// socket handoff — retry an empty response instead of aborting the wait.
@@ -187,8 +198,30 @@ async function waitForDevServerReady(
 			exitError("Dev server exited before opening a port — check the dev server pane for errors");
 		}
 		const ready = readyPorts(status);
-		if (ready.length > 0) {
-			process.stdout.write(`Ready: listening on ${ready.map((p) => p.port).join(", ")}\n`);
+		const assigned = new Set(status.assignedPorts);
+		const assignedReady = ready.filter((p) => assigned.has(p.port));
+		if (assignedReady.length > 0) {
+			process.stdout.write(`Ready: listening on ${assignedReady.map((p) => p.port).join(", ")}\n`);
+			return;
+		}
+		if (ready.length > 0 && anyReadyAt === null) {
+			anyReadyAt = waited;
+			if (assigned.size > 0) {
+				process.stdout.write(
+					`Listening on ${ready.map((p) => p.port).join(", ")}, but not yet on the assigned`
+					+ ` ${[...assigned].join(", ")} — waiting up to ${WAIT_ASSIGNED_GRACE_MS / 1000}s more...\n`,
+				);
+			}
+		}
+		const graceExpired = anyReadyAt !== null && waited - anyReadyAt >= WAIT_ASSIGNED_GRACE_MS;
+		if (ready.length > 0 && (assigned.size === 0 || graceExpired || waited >= timeoutMs)) {
+			process.stdout.write(
+				`Ready: listening on ${ready.map((p) => p.port).join(", ")}`
+				+ (assigned.size > 0
+					? ` — the assigned ${[...assigned].join(", ")} never came up, so $DEV3_PORT* is probably not what this devScript binds`
+					: "")
+				+ "\n",
+			);
 			return;
 		}
 		if (waited >= timeoutMs) {

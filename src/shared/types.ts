@@ -2875,8 +2875,10 @@ export interface DevServerStatus {
 	/**
 	 * Listening ports bound by processes inside the dev-server tmux session's
 	 * own process tree (empty when stopped). Unlike `ports` (whole task session,
-	 * cached), this is a live scan scoped to the dev server — a non-empty list
-	 * is the readiness signal `dev3 dev-server start --wait` polls for.
+	 * cached), this is a live scan scoped to the dev server — the readiness
+	 * signal `dev3 dev-server start --wait` polls for, which prefers an entry on
+	 * an `assignedPorts` port and only falls back to the others after a grace
+	 * window.
 	 */
 	devPorts: PortInfo[];
 	/**

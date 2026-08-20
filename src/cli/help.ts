@@ -282,7 +282,7 @@ const COMMANDS: CommandHelp[] = [
 			{
 				name: "start",
 				usage: "dev3 dev-server start [task-id] [--wait] [--timeout <sec>]",
-				summary: "Start a task's dev server. --wait blocks until it is listening on a port (default timeout 120s).",
+				summary: "Start a task's dev server. --wait blocks until it is listening on an assigned DEV3_PORT* (default timeout 120s).",
 			},
 			{
 				name: "stop",
@@ -292,7 +292,7 @@ const COMMANDS: CommandHelp[] = [
 			{
 				name: "restart",
 				usage: "dev3 dev-server restart [task-id] [--wait] [--timeout <sec>]",
-				summary: "Restart a task's dev server. --wait blocks until the NEW server is listening on a port.",
+				summary: "Restart a task's dev server. --wait blocks until the NEW server is listening on an assigned DEV3_PORT*.",
 			},
 			{
 				name: "status",
