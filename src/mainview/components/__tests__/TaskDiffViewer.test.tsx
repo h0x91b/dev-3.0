@@ -453,6 +453,9 @@ describe("TaskDiffViewer", () => {
 			updateChannel: "stable",
 		});
 		localStorage.clear();
+		// Most cases here assert against every fixture file, so they opt into
+		// tests being included — the shipped default excludes them.
+		localStorage.setItem("dev3-diff-include-tests-v1", "1");
 		document.documentElement.dataset.theme = "dark";
 		// Lock the screen width to a wide external-monitor size so the "auto"
 		// default deterministically resolves to "split". Individual tests can
@@ -2930,6 +2933,8 @@ describe("TaskDiffViewer narrow viewport", () => {
 			updateChannel: "stable",
 		});
 		localStorage.clear();
+		// Narrow cases assert the full fixture totals, so tests stay included.
+		localStorage.setItem("dev3-diff-include-tests-v1", "1");
 		document.documentElement.dataset.theme = "dark";
 		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
 		Object.defineProperty(window.screen, "availWidth", { configurable: true, value: 390 });

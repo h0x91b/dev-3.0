@@ -624,27 +624,36 @@ function TaskInfoPanel({
 				}
 				: null);
 	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
+	// Per-file stats are what the filter subtracts from. Without them there is
+	// nothing to subtract, so the raw totals stand instead of collapsing to zero.
+	const showRawDiffTotals = includeTests || allDiffFileStats.length === 0;
 	const visibleDiffFileStats = includeTests
 		? allDiffFileStats
 		: allDiffFileStats.filter((entry) => !isTestFile(entry.path));
 	const excludedTestCount = allDiffFileStats.length - visibleDiffFileStats.length;
-	const visibleDiffFiles = includeTests
+	const visibleDiffFiles = showRawDiffTotals
 		? (metadataBranchStatus?.diffFiles ?? 0)
 		: visibleDiffFileStats.length;
-	const visibleDiffInsertions = includeTests
+	const visibleDiffInsertions = showRawDiffTotals
 		? (metadataBranchStatus?.diffInsertions ?? 0)
 		: visibleDiffFileStats.reduce((sum, e) => sum + e.insertions, 0);
-	const visibleDiffDeletions = includeTests
+	const visibleDiffDeletions = showRawDiffTotals
 		? (metadataBranchStatus?.diffDeletions ?? 0)
 		: visibleDiffFileStats.reduce((sum, e) => sum + e.deletions, 0);
 	const diffBadgeTitle = !includeTests && excludedTestCount > 0
 		? t.plural("infoPanel.diffTestsHidden", excludedTestCount)
 		: t("infoPanel.showDiff");
+	// The tests filter is a segment of the diff badge, not a chip of its own: it
+	// only ever modifies these very numbers, and as a neighbour it read as a
+	// second, unrelated action. Same segmented idiom as the status control —
+	// the border owns the group, a hairline splits the two click targets.
+	const showTestsSegment = project.kind !== "virtual" && !narrow && metadataBranchStatus != null && metadataBranchStatus.diffFiles > 0;
 	const diffSummaryBadge = project.kind !== "virtual" && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+		<div className="inline-flex items-center rounded-lg bg-elevated border border-edge hover:border-edge-active transition-colors flex-shrink-0">
 		<button
 			type="button"
 			ref={diffFilesTriggerRef}
-			className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-elevated border border-edge text-micro font-mono text-fg-2 flex-shrink-0 cursor-pointer transition-colors hover:bg-elevated-hover"
+			className={`inline-flex items-center gap-1.5 px-2 py-1 text-micro font-mono text-fg-2 cursor-pointer transition-colors hover:bg-elevated-hover ${showTestsSegment ? "rounded-l-lg" : "rounded-lg"}`}
 			onClick={() => openBranchDiff()}
 			onMouseEnter={showDiffFilesPopover}
 			onMouseLeave={hideDiffFilesPopover}
@@ -655,35 +664,28 @@ function TaskInfoPanel({
 			<span>{visibleDiffFiles} {visibleDiffFiles === 1 ? "file" : "files"}</span>
 			<span className="text-success">+{visibleDiffInsertions}</span>
 			<span className="text-danger">−{visibleDiffDeletions}</span>
-			{!includeTests && excludedTestCount > 0 && (
-				<span
-					className="text-fg-muted text-sm-plus leading-none"
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-					title={t.plural("infoPanel.diffTestsHidden", excludedTestCount)}
-				>
-					{"\u{F0912}"}
-				</span>
-			)}
 		</button>
-	) : null;
-	const diffIncludeTestsToggle = project.kind !== "virtual" && !veryTight && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
-		<Tooltip content={t("infoPanel.diffIncludeTestsTooltip")} detail={t("ttip.infoPanel.includeTests")}>
-		<button
-			type="button"
-			data-testid="diff-include-tests-toggle"
-			onClick={() => setIncludeTests(!includeTests)}
-			className={`git-anim inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-micro font-mono flex-shrink-0 transition-colors ${
-				includeTests
-					? "bg-elevated border-edge text-fg-2 hover:bg-elevated-hover"
-					: "bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
-			}`}
-			aria-label={t("infoPanel.diffIncludeTestsAria")}
-			aria-pressed={includeTests}
-		>
-			{!compact && <span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>}
-			<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" />
-		</button>
-		</Tooltip>
+		{showTestsSegment && (
+			<>
+				<span className="h-4 w-px flex-shrink-0 bg-edge" aria-hidden="true" />
+				<Tooltip content={t("infoPanel.diffIncludeTestsTooltip")} detail={t("ttip.infoPanel.includeTests")}>
+					<button
+						type="button"
+						data-testid="diff-include-tests-toggle"
+						onClick={() => setIncludeTests(!includeTests)}
+						title={!includeTests && excludedTestCount > 0 ? t.plural("infoPanel.diffTestsHidden", excludedTestCount) : undefined}
+						className={`git-anim flex flex-shrink-0 items-center justify-center self-stretch rounded-r-lg px-1.5 transition-colors ${
+							includeTests ? "text-fg-3 hover:bg-elevated-hover hover:text-fg-2" : "bg-accent/10 text-accent hover:bg-accent/20"
+						}`}
+						aria-label={t("infoPanel.diffIncludeTestsAria")}
+						aria-pressed={includeTests}
+					>
+						<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" off={!includeTests} />
+					</button>
+				</Tooltip>
+			</>
+		)}
+		</div>
 	) : null;
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(
 		<div
@@ -1524,7 +1526,6 @@ function TaskInfoPanel({
 							{statusDropdownButton}
 							{manualCompletionToggleButton}
 							{diffSummaryBadge}
-							{diffIncludeTestsToggle}
 							{labelStrip}
 						</div>
 						{statusDropdownPortal}
@@ -1595,7 +1596,6 @@ function TaskInfoPanel({
 								{statusDropdownPortal}
 								{manualCompletionToggleButton}
 								{diffSummaryBadge}
-								{diffIncludeTestsToggle}
 								{labelStrip}
 							</div>
 							<div className="flex-1" />

@@ -347,6 +347,39 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getByText("−4")).toBeInTheDocument();
 		});
 
+		it("hides tests by default and flips them back from the badge's own segment", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 2,
+				diffInsertions: 12,
+				diffDeletions: 4,
+				diffFileStats: [
+					{ path: "src/app.ts", insertions: 10, deletions: 3 },
+					{ path: "src/__tests__/app.test.ts", insertions: 2, deletions: 1 },
+				],
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const toggle = await screen.findByTestId("diff-include-tests-toggle");
+			// The segment lives inside the badge, not beside it.
+			expect(toggle.closest("div")).toContainElement(screen.getByTestId("diff-summary-badge"));
+			expect(toggle).toHaveAttribute("aria-pressed", "false");
+			expect(screen.getByText("1 file")).toBeInTheDocument();
+			expect(screen.getByText("+10")).toBeInTheDocument();
+
+			await act(async () => {
+				await user.click(toggle);
+			});
+
+			expect(toggle).toHaveAttribute("aria-pressed", "true");
+			expect(screen.getByText("2 files")).toBeInTheDocument();
+			expect(screen.getByText("+12")).toBeInTheDocument();
+		});
+
 		it("shows changed files popup from the top diff summary badge", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({

@@ -3,13 +3,13 @@ import { useCallback, useEffect, useState } from "react";
 const LS_KEY = "dev3-diff-include-tests-v1";
 const EVENT_NAME = "dev3:include-tests-changed";
 
+// Reviewing starts on production code: tests are excluded until asked for.
+// An explicit "1" from a user who turned them on earlier still wins.
 function readPref(): boolean {
 	try {
-		const raw = localStorage.getItem(LS_KEY);
-		if (raw === "0") return false;
-		return true;
+		return localStorage.getItem(LS_KEY) === "1";
 	} catch {
-		return true;
+		return false;
 	}
 }
 

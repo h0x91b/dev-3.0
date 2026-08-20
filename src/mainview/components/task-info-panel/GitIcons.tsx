@@ -146,17 +146,24 @@ export function MergeIcon({ className }: GitIconProps) {
 }
 
 // 7A — Include tests toggle (boiling flask): liquid sloshes, bubbles rise.
-export function IncludeTestsIcon({ className }: GitIconProps) {
+// `off` strikes the flask out and empties it — tests are excluded from the diff.
+export function IncludeTestsIcon({ className, off }: GitIconProps & { off?: boolean }) {
 	return (
 		<svg {...svgBase(className)}>
 			<path d="M8.8 3.2 H15.2" />
 			<path d="M10 3.2 V9 L5.6 17.6 A1.8 1.8 0 0 0 7.2 20.3 H16.8 A1.8 1.8 0 0 0 18.4 17.6 L14 9 V3.2" />
-			<g className="gtx gtx-tf-liquid">
-				<path d="M7.7 14.3 L6.1 17.7 A1.1 1.1 0 0 0 7.1 19.3 H16.9 A1.1 1.1 0 0 0 17.9 17.7 L16.3 14.3 Z" fill="currentColor" stroke="none" className="text-success" opacity="0.3" />
-				<path d="M7.7 14.3 H16.3" className="text-success" />
-			</g>
-			<circle cx="10.6" cy="17" r="0.9" fill="currentColor" stroke="none" className="text-success gtx gtx-tf-b1" />
-			<circle cx="13.6" cy="17.8" r="0.7" fill="currentColor" stroke="none" className="text-success gtx gtx-tf-b2" />
+			{off ? (
+				<path d="M4.4 20.4 L19.6 3.6" />
+			) : (
+				<>
+					<g className="gtx gtx-tf-liquid">
+						<path d="M7.7 14.3 L6.1 17.7 A1.1 1.1 0 0 0 7.1 19.3 H16.9 A1.1 1.1 0 0 0 17.9 17.7 L16.3 14.3 Z" fill="currentColor" stroke="none" className="text-success" opacity="0.3" />
+						<path d="M7.7 14.3 H16.3" className="text-success" />
+					</g>
+					<circle cx="10.6" cy="17" r="0.9" fill="currentColor" stroke="none" className="text-success gtx gtx-tf-b1" />
+					<circle cx="13.6" cy="17.8" r="0.7" fill="currentColor" stroke="none" className="text-success gtx gtx-tf-b2" />
+				</>
+			)}
 		</svg>
 	);
 }
