@@ -9,6 +9,7 @@ import {
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../../state";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
+import { branchStatusCacheKey, readCachedBranchStatus, writeCachedBranchStatus } from "./branchStatusCache";
 import { mergeCompletionBlocker } from "./mergeCompletionBlocker";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
 import { offerMergeCompletion } from "../../utils/offerMergeCompletion";
@@ -54,7 +55,10 @@ export function useTaskBranchStatus({
 	enabled = true,
 }: UseTaskBranchStatusParams) {
 	const t = useT();
-	const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
+	const [statusEntry, setStatusEntry] = useState<{ key: string; status: BranchStatus | null }>({
+		key: "",
+		status: null,
+	});
 	const [rebasing, setRebasing] = useState(false);
 	const [committing, setCommitting] = useState(false);
 	const [merging, setMerging] = useState(false);
@@ -65,19 +69,34 @@ export function useTaskBranchStatus({
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const defaultCompareRef = getDefaultTaskCompareRef(baseBranch, project);
-	const [compareRef, setCompareRef] = useState(defaultCompareRef);
-
-	useEffect(() => {
-		setCompareRef(defaultCompareRef);
-	}, [defaultCompareRef, task.id]);
+	// Derived, not synced by an effect: a one-render lag would read the cache
+	// under the previous task's compare ref and flash an empty git line.
+	const [compareRefChoice, setCompareRefChoice] = useState<{
+		taskId: string;
+		defaultRef: string;
+		ref: string;
+	} | null>(null);
+	const compareRef =
+		compareRefChoice && compareRefChoice.taskId === task.id && compareRefChoice.defaultRef === defaultCompareRef
+			? compareRefChoice.ref
+			: defaultCompareRef;
 
 	// Switching tasks reuses this component instance (no `key={task.id}`), so the
-	// previous task's branch status would otherwise linger on screen until the
-	// new fetch resolves. Clear it eagerly so the git line shows the loading
-	// state instead of stale data from the task we just left.
-	useEffect(() => {
-		setBranchStatus(null);
-	}, [task.id]);
+	// state alone would show the previous task's numbers. Key the state by
+	// task+compare ref and fall back to this task's last known status, which the
+	// pending refetch then replaces in place.
+	const cacheKey = branchStatusCacheKey(task.id, compareRef);
+	const canShowStatus = enabled && isTaskActive && !!task.worktreePath;
+	const branchStatus = !canShowStatus
+		? null
+		: statusEntry.key === cacheKey
+			? statusEntry.status
+			: readCachedBranchStatus(cacheKey);
+
+	const applyStatus = useCallback((key: string, status: BranchStatus) => {
+		writeCachedBranchStatus(key, status);
+		setStatusEntry({ key, status });
+	}, []);
 
 	const completeTask = useCallback(() => {
 		void moveTaskToStatus({
@@ -157,9 +176,16 @@ export function useTaskBranchStatus({
 		],
 	);
 
+	// Read through a ref inside the poll: the callback's identity changes with the
+	// `task`/`project` objects, which a task-list push replaces on every render —
+	// as an effect dep it would restart the poll (and refetch) each time.
+	const offerMergeCompletionIfMergedRef = useRef(offerMergeCompletionIfMerged);
 	useEffect(() => {
-		if (!enabled || !isTaskActive || !task.worktreePath) {
-			setBranchStatus(null);
+		offerMergeCompletionIfMergedRef.current = offerMergeCompletionIfMerged;
+	}, [offerMergeCompletionIfMerged]);
+
+	useEffect(() => {
+		if (!canShowStatus) {
 			return;
 		}
 
@@ -175,8 +201,8 @@ export function useTaskBranchStatus({
 				});
 
 				if (!cancelled) {
-					setBranchStatus(status);
-					await offerMergeCompletionIfMerged(status, { force: false });
+					applyStatus(cacheKey, status);
+					await offerMergeCompletionIfMergedRef.current(status, { force: false });
 				}
 			} catch {
 				// Polling retries on the next tick.
@@ -190,13 +216,12 @@ export function useTaskBranchStatus({
 			stop();
 		};
 	}, [
+		applyStatus,
+		cacheKey,
+		canShowStatus,
 		compareRef,
-		enabled,
-		isTaskActive,
-		offerMergeCompletionIfMerged,
 		project.id,
 		task.id,
-		task.worktreePath,
 	]);
 
 	const handleCreatePR = useCallback(async (autoMerge = false) => {
@@ -250,7 +275,7 @@ export function useTaskBranchStatus({
 					compareRef: compareRef || undefined,
 				});
 				refreshedStatus = status;
-				setBranchStatus(status);
+				applyStatus(cacheKey, status);
 			} catch {
 				// Keep existing state when refresh fails.
 			}
@@ -277,7 +302,7 @@ export function useTaskBranchStatus({
 
 		window.addEventListener("rpc:gitOpCompleted", onGitOpCompleted);
 		return () => window.removeEventListener("rpc:gitOpCompleted", onGitOpCompleted);
-	}, [compareRef, completeTask, enabled, handleCreatePR, openTask, project.id, task.customTitle, task.id, task.manualCompletion, task.status, task.title, t]);
+	}, [applyStatus, cacheKey, compareRef, completeTask, enabled, handleCreatePR, openTask, project.id, task.customTitle, task.id, task.manualCompletion, task.status, task.title, t]);
 
 	const handleRefreshStatus = useCallback(async () => {
 		if (refreshingStatus || !isTaskActive || !task.worktreePath) {
@@ -291,7 +316,7 @@ export function useTaskBranchStatus({
 				projectId: project.id,
 				compareRef: compareRef || undefined,
 			});
-			setBranchStatus(status);
+			applyStatus(cacheKey, status);
 			// A manual click is a force re-check: re-offer completion even if the
 			// user dismissed the popup earlier for this same merged head.
 			await offerMergeCompletionIfMerged(status, { force: true });
@@ -299,7 +324,7 @@ export function useTaskBranchStatus({
 			toast.error(t("infoPanel.refreshStatusFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setRefreshingStatus(false);
-	}, [compareRef, isTaskActive, offerMergeCompletionIfMerged, project.id, refreshingStatus, task.id, task.worktreePath, t]);
+	}, [applyStatus, cacheKey, compareRef, isTaskActive, offerMergeCompletionIfMerged, project.id, refreshingStatus, task.id, task.worktreePath, t]);
 
 	const handleRebase = useCallback(async () => {
 		if (rebasing) {
@@ -415,12 +440,12 @@ export function useTaskBranchStatus({
 	}, [branchStatus?.prUrl]);
 
 	/**
-	 * Switching the compare ref invalidates the status that was measured against the
-	 * old one, so drop it and let the effect refetch instead of showing stale numbers.
+	 * The status was measured against the old compare ref, so it does not carry
+	 * over: the cache is keyed by ref too, and the new key shows this ref's last
+	 * known numbers (or the loading state) until the refetch lands.
 	 */
 	function selectCompareRef(nextCompareRef: string) {
-		setCompareRef(nextCompareRef);
-		setBranchStatus(null);
+		setCompareRefChoice({ taskId: task.id, defaultRef: defaultCompareRef, ref: nextCompareRef });
 	}
 
 	return {
@@ -442,7 +467,7 @@ export function useTaskBranchStatus({
 		rebasing,
 		refreshingStatus,
 		selectCompareRef,
-		statusLoading: enabled && isTaskActive && !!task.worktreePath && !branchStatus,
+		statusLoading: canShowStatus && !branchStatus,
 	};
 }
 

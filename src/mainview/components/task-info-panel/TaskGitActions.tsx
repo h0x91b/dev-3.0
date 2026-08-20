@@ -14,6 +14,8 @@ import { AutoMergeIcon, BranchIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIco
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
 
 export interface TaskBranchStatusMeta {
+	/** Which task this status describes — the panel drops it once they diverge. */
+	taskId: string;
 	branchStatus: BranchStatus | null;
 	compareRef?: string;
 	compareLabel: string;
@@ -192,12 +194,13 @@ export default function TaskGitActions({
 
 	useEffect(() => {
 		onBranchStatusChange?.({
+			taskId: task.id,
 			branchStatus,
 			compareRef: compareRef || undefined,
 			compareLabel: displayRef,
 			prStatus: prInfo,
 		});
-	}, [branchStatus, compareRef, displayRef, onBranchStatusChange, prInfo]);
+	}, [branchStatus, compareRef, displayRef, onBranchStatusChange, prInfo, task.id]);
 
 	// A task can be opened after the background poller's last push. Once the
 	// branch check (or sticky task fields) identifies a PR, hydrate the inspector

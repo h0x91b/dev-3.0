@@ -267,10 +267,6 @@ function TaskInfoPanel({
 		/>
 	);
 
-	useEffect(() => {
-		setMetadataBranchState(null);
-	}, [task.id]);
-
 	// Crossing the narrow breakpoint must not strand an open sheet/menu — the
 	// status menu renders as a sheet on narrow and an anchored popover on desktop.
 	useEffect(() => {
@@ -588,14 +584,19 @@ function TaskInfoPanel({
 	}
 
 	// On narrow the panel-level hook is the status source; on desktop it is the
-	// TaskGitActions render callback (`metadataBranchState`).
+	// TaskGitActions render callback (`metadataBranchState`). The lifted state
+	// outlives a task switch, so it counts only while it still describes the task
+	// on screen — the child re-reports the new one (from cache, or once fetched).
 	const branchMeta: TaskBranchStatusMeta | null = narrow
 		? {
+			taskId: task.id,
 			branchStatus: narrowGit.branchStatus,
 			compareRef: narrowGit.compareRef || undefined,
 			compareLabel: narrowGit.displayRef,
 		}
-		: metadataBranchState;
+		: metadataBranchState?.taskId === task.id
+			? metadataBranchState
+			: null;
 	const metadataBranchStatus = branchMeta?.branchStatus ?? null;
 	const metadataPrInfo: TaskPRBadgeInfo | null = branchMeta?.prStatus
 		?? (metadataBranchStatus?.prNumber != null
