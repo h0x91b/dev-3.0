@@ -176,6 +176,8 @@ const infoPanel = {
 	"infoPanel.diffMdPreview": "Preview",
 	"infoPanel.diffMdPreviewFile": "Toggle Markdown preview for {file}",
 	"infoPanel.diffMdPreviewEmpty": "Nothing to preview — the file is empty.",
+	"infoPanel.diffMdPreviewReveal": "Show in preview",
+	"infoPanel.diffMdPreviewRevealAt": "Show {location} in the preview",
 	"infoPanel.diffMdPreviewCommentCount_one": "{count} comment on this file",
 	"infoPanel.diffMdPreviewCommentCount_other": "{count} comments on this file",
 	"infoPanel.diffMdPreviewGithubThreads_one": "{count} GitHub review thread \u2192 Source diff",

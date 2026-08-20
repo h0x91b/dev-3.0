@@ -176,6 +176,8 @@ const infoPanel = {
 	"infoPanel.diffMdPreview": "Vista previa",
 	"infoPanel.diffMdPreviewFile": "Alternar vista previa de Markdown para {file}",
 	"infoPanel.diffMdPreviewEmpty": "Nada que previsualizar — el archivo está vacío.",
+	"infoPanel.diffMdPreviewReveal": "Mostrar en la previsualización",
+	"infoPanel.diffMdPreviewRevealAt": "Mostrar {location} en la previsualización",
 	"infoPanel.diffMdPreviewCommentCount_one": "{count} comentario en este archivo",
 	"infoPanel.diffMdPreviewCommentCount_other": "{count} comentarios en este archivo",
 	"infoPanel.diffMdPreviewGithubThreads_one": "{count} hilo de revisión de GitHub → Diff de origen",

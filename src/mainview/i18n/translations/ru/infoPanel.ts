@@ -186,6 +186,8 @@ const infoPanel = {
 	"infoPanel.diffMdPreview": "Превью",
 	"infoPanel.diffMdPreviewFile": "Переключить Markdown-превью для {file}",
 	"infoPanel.diffMdPreviewEmpty": "Нечего показывать — файл пуст.",
+	"infoPanel.diffMdPreviewReveal": "Показать в превью",
+	"infoPanel.diffMdPreviewRevealAt": "Показать {location} в превью",
 	"infoPanel.diffMdPreviewCommentCount_one": "{count} комментарий к файлу",
 	"infoPanel.diffMdPreviewCommentCount_few": "{count} комментария к файлу",
 	"infoPanel.diffMdPreviewCommentCount_many": "{count} комментариев к файлу",

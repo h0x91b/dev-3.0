@@ -1035,7 +1035,10 @@ function MarkdownPreviewReview({
 
 	return (
 		<div className="px-4 py-4" data-testid="diff-md-preview">
-			<div ref={containerRef} className="relative">
+			{/* The open composer overhangs this file's section, and a later sibling
+			    section would paint over it: the raised z-index makes the preview its
+			    own stacking context so the card stays on top and clickable. */}
+			<div ref={containerRef} className={active ? "relative z-20" : "relative"}>
 				{previewSource.trim()
 					? blocks
 						? (
@@ -1123,17 +1126,29 @@ function MarkdownPreviewReview({
 					</h4>
 					{threads.map((entry) => (
 						<div key={`${entry.side}:${entry.lineNumber}`} className="rounded-lg border border-edge bg-base/60">
+							{/* The thread already prints its own line label, so this row is
+							    the action, not a second copy of it. */}
 							<button
 								type="button"
 								onClick={() => revealLine(entry.lineNumber)}
-								className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-micro text-fg-3 transition-colors hover:text-accent"
+								aria-label={t("infoPanel.diffMdPreviewRevealAt", {
+									location: formatInlineCommentLineLabel(
+										t,
+										entry.side,
+										entry.thread.comments[0]?.startLine ?? entry.lineNumber,
+										entry.lineNumber,
+									),
+								})}
+								className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-micro text-fg-3 transition-colors hover:text-accent"
 							>
-								{formatInlineCommentLineLabel(
-									t,
-									entry.side,
-									entry.thread.comments[0]?.startLine ?? entry.lineNumber,
-									entry.lineNumber,
-								)}
+								<span
+									aria-hidden="true"
+									className="leading-none"
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								>
+									{""}
+								</span>
+								<span>{t("infoPanel.diffMdPreviewReveal")}</span>
 							</button>
 							<InlineCommentThreadView
 								thread={entry.thread}
