@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createFilePathLinkProvider,
 	findPathCandidates,
-	getLogicalLine,
+	getLogicalLines,
 	lineToText,
 	mapRangeToBuffer,
 	type CellLine,
@@ -101,10 +101,10 @@ describe("lineToText", () => {
 	});
 });
 
-describe("getLogicalLine", () => {
+describe("getLogicalLines", () => {
 	it("returns cell-exact text for a single row", () => {
 		const getLine = fakeBuffer([{ spec: "hello world", cols: 16 }]);
-		const logical = getLogicalLine(getLine, 0);
+		const [logical] = getLogicalLines(getLine, 0);
 		expect(logical?.text).toBe("hello world     ");
 		expect(logical?.rows).toHaveLength(1);
 	});
@@ -115,26 +115,72 @@ describe("getLogicalLine", () => {
 			{ spec: "saved kb-playbook-dr", cols: 20 },
 			{ spec: "afts/waf.md ok", cols: 20, isWrapped: true },
 		]);
-		const logical = getLogicalLine(getLine, 1);
+		const [logical] = getLogicalLines(getLine, 1);
 		expect(logical?.text.startsWith("saved kb-playbook-drafts/waf.md ok")).toBe(true);
 		expect(logical?.rows.map((r) => r.offset)).toEqual([0, 20]);
 
 		const candidates = findPathCandidates(logical!.text);
 		expect(candidates[0].cleanPath).toBe("kb-playbook-drafts/waf.md");
-		const range = mapRangeToBuffer(logical!.rows, candidates[0].start, candidates[0].end);
-		expect(range).toEqual({ start: { x: 6, y: 0 }, end: { x: 10, y: 1 } });
+		// One segment per row, so hit-testing and underlines stay column-exact.
+		expect(mapRangeToBuffer(logical!.rows, candidates[0].start, candidates[0].end)).toEqual([
+			{ start: { x: 6, y: 0 }, end: { x: 19, y: 0 } },
+			{ start: { x: 0, y: 1 }, end: { x: 10, y: 1 } },
+		]);
+	});
+
+	it("stitches a full row into the next one when the wrap flag is missing", () => {
+		// tmux redraws a split pane row by row: no wrap flag ever arrives.
+		const getLine = fakeBuffer([
+			{ spec: "log /Users/me/deep/di", cols: 21 },
+			{ spec: "rs/notes.md written", cols: 21 },
+		]);
+		const [logical] = getLogicalLines(getLine, 0);
+		const [candidate] = findPathCandidates(logical!.text);
+		expect(candidate.cleanPath).toBe("/Users/me/deep/dirs/notes.md");
+		expect(mapRangeToBuffer(logical!.rows, candidate.start, candidate.end)).toEqual([
+			{ start: { x: 4, y: 0 }, end: { x: 20, y: 0 } },
+			{ start: { x: 0, y: 1 }, end: { x: 10, y: 1 } },
+		]);
+	});
+
+	it("does not stitch when the row stops short of the band's last column", () => {
+		const getLine = fakeBuffer([
+			{ spec: "prose that ends here", cols: 21 },
+			{ spec: "next line starts here", cols: 21 },
+		]);
+		const [logical] = getLogicalLines(getLine, 0);
+		expect(logical?.rows).toHaveLength(1);
+	});
+
+	it("keeps each tmux pane in its own band and stitches inside it", () => {
+		// 41 cols: left pane 0-19, border at 20, right pane 21-40.
+		const gap = (n: number) => "␀".repeat(n);
+		const getLine = fakeBuffer([
+			{ spec: `left a/one.ts here${gap(2)}│right /tmp/deep/dirs`, cols: 41 },
+			{ spec: `left tail${gap(11)}│/notes.md done`, cols: 41 },
+		]);
+		const lines = getLogicalLines(getLine, 0);
+		expect(lines).toHaveLength(2);
+		expect(lines[0].rows).toHaveLength(1); // left pane row does not fill its band
+		expect(lines[1].text).toBe("right /tmp/deep/dirs/notes.md done      ");
+		const [candidate] = findPathCandidates(lines[1].text);
+		expect(candidate.cleanPath).toBe("/tmp/deep/dirs/notes.md");
+		expect(mapRangeToBuffer(lines[1].rows, candidate.start, candidate.end)).toEqual([
+			{ start: { x: 27, y: 0 }, end: { x: 40, y: 0 } },
+			{ start: { x: 21, y: 1 }, end: { x: 29, y: 1 } },
+		]);
 	});
 
 	it("maps columns exactly on a row with a codepoint-0 gap before the path", () => {
 		// Cursor-positioned output: cells 0-3 written, gap of unwritten cells,
 		// then the path at a known column.
 		const getLine = fakeBuffer([{ spec: "err:␀␀␀␀src/a.ts", cols: 24 }]);
-		const logical = getLogicalLine(getLine, 0)!;
+		const [logical] = getLogicalLines(getLine, 0);
 		const [candidate] = findPathCandidates(logical.text);
 		expect(candidate.cleanPath).toBe("src/a.ts");
-		const range = mapRangeToBuffer(logical.rows, candidate.start, candidate.end)!;
-		expect(range.start).toEqual({ x: 8, y: 0 }); // true screen column
-		expect(range.end).toEqual({ x: 15, y: 0 });
+		const [segment] = mapRangeToBuffer(logical.rows, candidate.start, candidate.end);
+		expect(segment.start).toEqual({ x: 8, y: 0 }); // true screen column
+		expect(segment.end).toEqual({ x: 15, y: 0 });
 	});
 
 	it("starts from the requested row when it is not wrapped", () => {
@@ -142,7 +188,7 @@ describe("getLogicalLine", () => {
 			{ spec: "first line", cols: 20 },
 			{ spec: "second /tmp/x.txt", cols: 20 },
 		]);
-		const logical = getLogicalLine(getLine, 1);
+		const [logical] = getLogicalLines(getLine, 1);
 		expect(logical?.rows[0].y).toBe(1);
 	});
 });
@@ -240,10 +286,13 @@ describe("createFilePathLinkProvider", () => {
 		expect(resolvePaths.mock.calls[0][0].sort()).toEqual(["a/very-long-name.md", "b/other.ts"]);
 
 		const ranges = provider.linksForRows([0, 1, 2]);
-		expect(ranges).toHaveLength(2);
-		// The wrapped link spans rows 0→1 and is reported once, not per row.
-		expect(ranges[0].start.y).toBe(0);
-		expect(ranges[0].end.y).toBe(1);
+		// The wrapped link contributes one segment per row, each reported once.
+		expect(ranges).toHaveLength(3);
+		expect(ranges.map((r) => [r.start.y, r.end.y])).toEqual([
+			[0, 0],
+			[1, 1],
+			[2, 2],
+		]);
 		provider.dispose();
 	});
 
