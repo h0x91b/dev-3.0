@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ImageLightbox, cacheSet, cacheGet, dataUrlCache, DATA_URL_CACHE_MAX } from "../ImageLightbox";
 import { I18nProvider } from "../../i18n";
+import { api } from "../../rpc";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -68,6 +69,52 @@ describe("ImageLightbox keyboard shortcuts", () => {
 		await userEvent.keyboard("{ArrowRight}");
 		await userEvent.keyboard("{ArrowRight}");
 		expect(screen.getByText("3 / 3")).toBeInTheDocument();
+	});
+});
+
+describe("ImageLightbox download", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		dataUrlCache.clear();
+		vi.mocked(api.request.readImageBase64).mockResolvedValue({ dataUrl: "data:image/png;base64,AAAA" });
+	});
+
+	function spyDownload() {
+		vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:img");
+		vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+		const names: string[] = [];
+		vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+			names.push(this.download);
+		});
+		return names;
+	}
+
+	it("saves the shown image under its file name", async () => {
+		const names = spyDownload();
+		renderLightbox(1);
+		await screen.findByRole("img");
+		await userEvent.click(screen.getByTestId("lightbox-download"));
+		expect(names).toEqual(["img2.png"]);
+	});
+
+	// The native "Save Image As…" is dead in this shell — right-click must offer ours.
+	it("saves from the right-click menu over the image", async () => {
+		const names = spyDownload();
+		renderLightbox(0);
+		const image = await screen.findByRole("img");
+		fireEvent.contextMenu(image);
+		await userEvent.click(screen.getByTestId("image-save-menu-download"));
+		expect(names).toEqual(["img1.png"]);
+		expect(screen.queryByTestId("image-save-menu")).toBeNull();
+	});
+
+	it("closes the right-click menu on Escape without closing the lightbox", async () => {
+		const onClose = vi.fn();
+		renderLightbox(0, onClose);
+		fireEvent.contextMenu(await screen.findByRole("img"));
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(screen.queryByTestId("image-save-menu")).toBeNull();
+		expect(onClose).not.toHaveBeenCalled();
 	});
 });
 

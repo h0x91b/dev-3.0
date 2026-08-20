@@ -3,6 +3,9 @@ import { createPortal } from "react-dom";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
+import { toast } from "../toast";
+import { downloadDataUrl } from "../utils/downloadBytes";
+import ImageSaveMenu from "./ImageSaveMenu";
 
 export const DATA_URL_CACHE_MAX = 30;
 export const dataUrlCache = new Map<string, string>();
@@ -42,8 +45,11 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 	const [index, setIndex] = useState(currentIndex);
 	const [dataUrl, setDataUrl] = useState<string | null>(null);
 	const [loading, setLoading] = useState(true);
+	// Our own right-click menu — WKWebView's native "Save Image As…" is dead here.
+	const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
 	const path = paths[index];
+	const fileName = path?.split("/").pop() ?? "image";
 
 	useEffect(() => {
 		setIndex(currentIndex);
@@ -82,7 +88,8 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 		if (index > 0) setIndex(index - 1);
 	}, [index]);
 
-	useEscapeKey(onClose);
+	// Escape closes the menu first when it is open, then the lightbox.
+	useEscapeKey(() => { if (menu) setMenu(null); else onClose(); });
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
 			if (e.key === "ArrowRight") goNext();
@@ -94,6 +101,17 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 
 	function handleOpenExternal() {
 		api.request.openImageFile({ path }).catch(() => {});
+	}
+
+	function handleDownload() {
+		setMenu(null);
+		if (!dataUrl) return;
+		try {
+			downloadDataUrl(dataUrl, fileName);
+			toast.success(t("imageViewer.saved"));
+		} catch {
+			toast.error(t("imageViewer.saveFailed"));
+		}
 	}
 
 	return createPortal(
@@ -124,7 +142,8 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 				) : dataUrl ? (
 					<img
 						src={dataUrl}
-						alt={path.split("/").pop() ?? ""}
+						alt={fileName}
+						onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}
 						className="max-w-[90vw] max-h-[80vh] rounded-xl object-contain"
 					/>
 				) : (
@@ -160,6 +179,20 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 						</>
 					)}
 
+					{/* Download */}
+					<button
+						onClick={handleDownload}
+						disabled={!dataUrl}
+						title={t("imageViewer.download")}
+						aria-label={t("imageViewer.download")}
+						data-testid="lightbox-download"
+						className="px-2 py-1 rounded-lg bg-overlay border border-edge text-fg-2 hover:text-fg disabled:opacity-30 transition-colors"
+					>
+						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+						</svg>
+					</button>
+
 					{/* Open in Preview */}
 					<button
 						onClick={handleOpenExternal}
@@ -168,6 +201,10 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 						{t("images.openInPreview")}
 					</button>
 				</div>
+
+				{menu && (
+					<ImageSaveMenu at={menu} onDownload={handleDownload} onClose={() => setMenu(null)} />
+				)}
 			</div>
 		</div>,
 		document.body,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SharedImage } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -8,6 +8,7 @@ import { usePinchZoom } from "../hooks/usePinchZoom";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import { registerOverlayLayer } from "../utils/overlay-layers";
 import { downloadDataUrl } from "../utils/downloadBytes";
+import ImageSaveMenu from "./ImageSaveMenu";
 
 interface TaskImageViewerProps {
 	images: SharedImage[];
@@ -55,7 +56,6 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 	const containerRef = useFocusTrap<HTMLDivElement>();
 	const thumbStripRef = useRef<HTMLDivElement>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
-	const menuRef = useRef<HTMLDivElement>(null);
 	// Ids whose fetch has already been kicked off — dedupes the priority effect
 	// against the background loader so each image is read at most once.
 	const startedRef = useRef<Set<string>>(new Set());
@@ -166,32 +166,6 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 		window.addEventListener("keydown", onKey, { capture: true });
 		return () => window.removeEventListener("keydown", onKey, { capture: true });
 	}, [go, onClose, images.length, fullscreen]);
-
-	// Keep the right-click menu inside the viewport, and close it on any outside
-	// pointer / layout change (a menu pinned to stale coordinates is worse than none).
-	useLayoutEffect(() => {
-		const el = menuRef.current;
-		if (!menu || !el) return;
-		const rect = el.getBoundingClientRect();
-		el.style.left = `${Math.max(8, Math.min(menu.x, window.innerWidth - rect.width - 8))}px`;
-		el.style.top = `${Math.max(8, Math.min(menu.y, window.innerHeight - rect.height - 8))}px`;
-	}, [menu]);
-
-	useEffect(() => {
-		if (!menu) return;
-		const close = (e?: Event) => {
-			if (e && e.type === "pointerdown" && menuRef.current?.contains(e.target as Node)) return;
-			setMenu(null);
-		};
-		window.addEventListener("pointerdown", close, true);
-		window.addEventListener("resize", close);
-		window.addEventListener("blur", close);
-		return () => {
-			window.removeEventListener("pointerdown", close, true);
-			window.removeEventListener("resize", close);
-			window.removeEventListener("blur", close);
-		};
-	}, [menu]);
 
 	// Reset per-image derived state and scroll the active thumbnail into view.
 	useEffect(() => {
@@ -429,35 +403,13 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 					</div>
 				)}
 
-				{/* Right-click menu over the image (replaces the dead native one) */}
 				{menu && (
-					<div
-						ref={menuRef}
-						role="menu"
-						data-testid="image-viewer-context-menu"
-						className="fixed z-[10000] min-w-[11.25rem] rounded-xl border border-edge-active bg-overlay py-1.5 shadow-2xl shadow-black/40"
-						style={{ left: menu.x, top: menu.y }}
-					>
-						<button
-							type="button"
-							role="menuitem"
-							data-testid="image-viewer-menu-download"
-							onClick={saveImage}
-							className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
-						>
-							<span className="w-4 text-center text-sm leading-none flex-shrink-0" style={{ fontFamily: ICON }}>{"\uf019"}</span>
-							{t("imageViewer.download")}
-						</button>
-						<button
-							type="button"
-							role="menuitem"
-							onClick={() => { setMenu(null); void copyPath(); }}
-							className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
-						>
-							<span className="w-4 text-center text-sm leading-none flex-shrink-0" style={{ fontFamily: ICON }}>{"\uf0c5"}</span>
-							{t("imageViewer.copyPath")}
-						</button>
-					</div>
+					<ImageSaveMenu
+						at={menu}
+						onDownload={saveImage}
+						onCopyPath={() => { setMenu(null); void copyPath(); }}
+						onClose={() => setMenu(null)}
+					/>
 				)}
 			</div>
 		</div>

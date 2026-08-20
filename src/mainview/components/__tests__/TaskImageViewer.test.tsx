@@ -191,12 +191,12 @@ describe("TaskImageViewer", () => {
 			const spy = spyDownload();
 			renderViewer();
 			const image = await screen.findByTestId("viewer-main-image");
-			expect(screen.queryByTestId("image-viewer-context-menu")).toBeNull();
+			expect(screen.queryByTestId("image-save-menu")).toBeNull();
 			fireEvent.contextMenu(image);
-			expect(screen.getByTestId("image-viewer-context-menu")).toBeInTheDocument();
-			await userEvent.click(screen.getByTestId("image-viewer-menu-download"));
+			expect(screen.getByTestId("image-save-menu")).toBeInTheDocument();
+			await userEvent.click(screen.getByTestId("image-save-menu-download"));
 			expect(spy.names).toEqual(["three.png"]);
-			expect(screen.queryByTestId("image-viewer-context-menu")).toBeNull();
+			expect(screen.queryByTestId("image-save-menu")).toBeNull();
 			spy.restore();
 		});
 
@@ -205,7 +205,7 @@ describe("TaskImageViewer", () => {
 			const image = await screen.findByTestId("viewer-main-image");
 			fireEvent.contextMenu(image);
 			fireEvent.keyDown(window, { key: "Escape" });
-			expect(screen.queryByTestId("image-viewer-context-menu")).toBeNull();
+			expect(screen.queryByTestId("image-save-menu")).toBeNull();
 			expect(onClose).not.toHaveBeenCalled();
 		});
 
