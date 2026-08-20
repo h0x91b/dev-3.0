@@ -34,6 +34,17 @@ Do not read or edit `app.css` or `app.js` unless the artifact format itself must
 
 The container grows with the viewport up to 1840px, so dense tables and dashboards use a wide monitor instead of leaving it empty. Because the panels are wide, put running prose in `<p class="prose">` (or any `.prose` block) to hold a readable line length; short `.muted` and `.section-copy` lines are capped for you. `.kpis` fits as many cards per row as the width allows, so a report may ship three or six KPI cards without a layout override.
 
+## Text size
+
+The topbar carries an `A− / 100% / A+` group beside the theme button. It steps the whole report between 80% and 150% in ten-point stops, the percentage doubles as the reset button, and the choice is remembered per browser (silently skipped in the sandboxed viewer, whose opaque origin has no storage). Keep the control in `.actions`.
+
+Everything in `app.css` is sized in `rem`, or in `em` for a glyph that belongs to its own label, so one root scale carries text, chart heights, checkboxes, switches, sliders, and the Choices dropdowns with it. Print follows the same scale — an enlarged report prints enlarged.
+
+Two rules for report code:
+
+- Never write a px font size in `index.html` or `report.js`. Use the shell's classes, or `rem` if a one-off is unavoidable.
+- Chart options are exempt: the shell rescales every `fontSize` number in an option tree before ECharts sees it, so `fontSize: 12` in `report.js` stays correct at every scale. Use `dev3Artifact.scaleFont(px)` for a px number ECharts does not read from `fontSize` (an `itemHeight`, a `grid.left` sized for labels), and `dev3Artifact.fontScale()` for the raw multiplier.
+
 ## Preview and share
 
 Pass every local dependency explicitly after `--assets`:
@@ -60,7 +71,7 @@ The starter already pins ECharts 6.1.0, Choices.js 11.2.3, and noUiSlider 15.8.1
 
 `index.html` loads Apache ECharts 6.1.0 through a versioned cdnjs tag. Keep that tag intact when the report has charts. Offline, chart hosts show a notice while the rest of the report remains usable.
 
-The stable bridge lives in `app.js` and exposes `window.dev3Artifact.chart()`, `.color()`, `.enhance()`, `.popover()`, `.setControl()`, and `.toast()`. Keep chart options, values, labels, filters, and interactions in `report.js`; use the exposed helpers there without editing the shell. The chart helper applies dev3 tokens, uses the SVG renderer for crisp print/PDF output, adds aria descriptions, re-renders on theme changes, and resizes with its container.
+The stable bridge lives in `app.js` and exposes `window.dev3Artifact.chart()`, `.color()`, `.enhance()`, `.fontScale()`, `.popover()`, `.scaleFont()`, `.setControl()`, and `.toast()`. Keep chart options, values, labels, filters, and interactions in `report.js`; use the exposed helpers there without editing the shell. The chart helper applies dev3 tokens, uses the SVG renderer for crisp print/PDF output, adds aria descriptions, re-renders on theme changes, and resizes with its container.
 
 The shell declares the card surface as each chart's `backgroundColor`, because ECharts derives value-label contrast from it — without that, every label renders dark grey inside a white halo, which is illegible on the dark theme. Keep report code out of that decision: do not set `backgroundColor` or hand-color value labels unless the chart sits on a surface other than `--dev3-surface-raised`.
 
@@ -138,7 +149,7 @@ Choose Auto, Light, or Dark in the report, then print with Cmd/Ctrl+P. The style
 - Keep `data-dev3-artifact-template="v1"` on `<html>`.
 - Keep the dev3 icon and a `DEV3 ARTIFACT · <CATEGORY>` eyebrow.
 - Keep `Built with dev3 Artifacts` in the footer.
-- Keep the Auto → Light → Dark theme control.
+- Keep the Auto → Light → Dark theme control and the `A− / 100% / A+` text-size control.
 - Keep local navigation functional: a click must scroll, focus the section heading, and expose `aria-current`.
 - Use only the bundled `--dev3-*` semantic tokens for color, and the `--dev3-z-*` tokens for stacking.
 - Route every panel that opens over the report through `.popover` / `dev3Artifact.popover()`; never hand-roll an absolutely positioned menu.

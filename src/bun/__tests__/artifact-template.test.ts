@@ -235,6 +235,29 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain(".evidence-table tr.regime td");
 	});
 
+	it("scales the whole report from one root text size, including chart labels", () => {
+		const html = readFileSync(htmlPath, "utf8");
+		const css = readFileSync(cssPath, "utf8");
+		const app = readFileSync(appPath, "utf8");
+		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+
+		expect(html).toContain('class="segmented text-size"');
+		expect(html).toContain('data-font-step="-1"');
+		expect(html).toContain('id="fontScaleValue"');
+		expect(html).toContain('data-font-step="1"');
+		expect(css).toContain("--dev3-font-scale: var(--dev3-font-scale-user, 1)");
+		expect(css).toContain("font-size: calc(100% * var(--dev3-font-scale))");
+		// Choices sizes its own chips and search field from these variables.
+		expect(css).toContain("--choices-font-size-md: .875rem");
+		// A px font size anywhere in the shell would be a block that refuses to scale.
+		expect(css.match(/font(-size)?: *[0-9.]+px/g)).toBeNull();
+		expect(app).toContain("FONT_SCALE_STEPS");
+		expect(app).toContain("function scaleOptionFonts");
+		expect(app).toContain("dev3-artifact-font-scale");
+		expect(guide).toContain("## Text size");
+		expect(guide).toContain("dev3Artifact.scaleFont(px)");
+	});
+
 	it("loads versioned cdnjs primitives without brittle integrity hashes", () => {
 		const html = readFileSync(htmlPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
@@ -265,7 +288,7 @@ describe("bundled artifact starter contract", () => {
 
 		expect(css).toContain("width: min(100%, clamp(1180px, 88vw, 1840px))");
 		expect(css).toContain(".prose { max-width: 72ch; }");
-		expect(css).toContain(".kpis { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }");
+		expect(css).toContain(".kpis { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }");
 		expect(css).toContain("@media (min-width: 1500px)");
 		expect(guide).toContain("`.prose`");
 	});
@@ -377,7 +400,7 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain("break-inside: avoid");
 		expect(css).toContain("thead { display: table-header-group; }");
 		expect(css).toContain(".dashboard-grid > * { min-width: 0; }");
-		expect(css).toContain("var(--dev3-print-chart-height, 155px)");
+		expect(css).toContain("var(--dev3-print-chart-height, 9.6875rem)");
 		expect(app).toContain('document.querySelectorAll("details:not([open])")');
 		expect(app).toContain("element.getBoundingClientRect()");
 	});
@@ -420,7 +443,7 @@ describe("bundled artifact starter contract", () => {
 		expect(statSync(htmlPath).size).toBeLessThan(MAX_SHARED_ARTIFACT_HTML_BYTES);
 		// The shell stylesheet is not part of the authoring surface, so its budget
 		// only has to stay far below an inlined library.
-		expect(statSync(cssPath).size).toBeLessThan(34_000);
+		expect(statSync(cssPath).size).toBeLessThan(36_000);
 		expect(statSync(appPath).size).toBeLessThan(30_000);
 		expect(statSync(reportPath).size).toBeLessThan(15_000);
 	});

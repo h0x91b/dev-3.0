@@ -5,9 +5,16 @@ import { afterEach, describe, expect, it } from "vitest";
 const templateDir = resolve(import.meta.dirname, "../../../assets/artifact-template");
 const reportSource = readFileSync(resolve(templateDir, "report.js"), "utf8");
 const appSource = readFileSync(resolve(templateDir, "app.js"), "utf8");
+const cssSource = readFileSync(resolve(templateDir, "app.css"), "utf8");
+const htmlSource = readFileSync(resolve(templateDir, "index.html"), "utf8");
+
+const textSizeControl =
+	'<div class="segmented text-size"><button data-font-step="-1">A−</button><button id="fontScaleValue" data-font-step="0">100%</button><button data-font-step="1">A+</button></div>';
 
 describe("artifact starter runtime", () => {
 	afterEach(() => {
+		localStorage.clear();
+		document.documentElement.removeAttribute("style");
 		document.documentElement.removeAttribute("data-theme");
 		document.body.replaceChildren();
 		delete (window as typeof window & { dev3Artifact?: unknown }).dev3Artifact;
@@ -29,5 +36,45 @@ describe("artifact starter runtime", () => {
 		window.dispatchEvent(new Event("afterprint"));
 		expect(details.open).toBe(false);
 		expect(document.documentElement.classList.contains("printing")).toBe(false);
+	});
+
+	it("steps the root text scale between its bounds and resets from the readout", () => {
+		document.body.innerHTML = `<div id="toast"></div>${textSizeControl}`;
+		window.eval(appSource);
+
+		const readout = document.getElementById("fontScaleValue") as HTMLButtonElement;
+		const smaller = document.querySelector<HTMLButtonElement>('[data-font-step="-1"]')!;
+		const larger = document.querySelector<HTMLButtonElement>('[data-font-step="1"]')!;
+		const scale = () => document.documentElement.style.getPropertyValue("--dev3-font-scale-user");
+
+		expect(scale()).toBe("1");
+		expect(readout.disabled).toBe(true);
+
+		larger.click();
+		expect(scale()).toBe("1.1");
+		expect(readout.textContent).toBe("110%");
+		expect(readout.disabled).toBe(false);
+
+		for (let step = 0; step < 8; step += 1) larger.click();
+		expect(scale()).toBe("1.5");
+		expect(larger.disabled).toBe(true);
+
+		readout.click();
+		expect(scale()).toBe("1");
+		expect(readout.textContent).toBe("100%");
+
+		for (let step = 0; step < 8; step += 1) smaller.click();
+		expect(scale()).toBe("0.8");
+		expect(smaller.disabled).toBe(true);
+	});
+
+	it("keeps the text-size control in the markup and every shell font size relative", () => {
+		expect(htmlSource).toContain('data-font-step="-1"');
+		expect(htmlSource).toContain('id="fontScaleValue"');
+		expect(htmlSource).toContain('data-font-step="1"');
+		expect(cssSource).toContain("font-size: calc(100% * var(--dev3-font-scale))");
+		// A px font size anywhere in the shell is a block of the report that would
+		// refuse to scale with the control.
+		expect(cssSource.match(/font(-size)?: *[0-9.]+px/g)).toBeNull();
 	});
 });

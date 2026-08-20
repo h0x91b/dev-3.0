@@ -12,6 +12,34 @@
 
   const prefersReducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+  // ---- text size ------------------------------------------------------------
+  // Every font size in app.css is a rem, so one root scale resizes the whole
+  // report. The bounds are the range the layout survives: below 80% the dense
+  // evidence tables stop being legible, above 150% the 12-column dashboard and
+  // the topbar run out of room on a laptop.
+  const FONT_SCALE_STEPS = [.8, .9, 1, 1.1, 1.2, 1.3, 1.4, 1.5];
+  const FONT_SCALE_KEY = "dev3-artifact-font-scale";
+  const DEFAULT_FONT_SCALE_INDEX = FONT_SCALE_STEPS.indexOf(1);
+
+  // A sandboxed artifact has an opaque origin, where touching localStorage
+  // throws instead of returning null, so the preference is best-effort.
+  function storedFontScaleIndex() {
+    try {
+      const stored = Number(localStorage.getItem(FONT_SCALE_KEY));
+      const index = FONT_SCALE_STEPS.indexOf(stored);
+      return index === -1 ? DEFAULT_FONT_SCALE_INDEX : index;
+    } catch { return DEFAULT_FONT_SCALE_INDEX; }
+  }
+
+  let fontScaleIndex = storedFontScaleIndex();
+  const fontScale = () => FONT_SCALE_STEPS[fontScaleIndex];
+  // Ahead of the control wiring below, so a remembered scale is in place before
+  // report code lays anything out.
+  document.documentElement.style.setProperty("--dev3-font-scale-user", String(fontScale()));
+  // ECharts sizes are raw px numbers, so chart text needs the multiplier applied
+  // by hand where CSS cannot reach.
+  const scaledFont = (px) => Math.round(px * fontScale() * 10) / 10;
+
   // ---- dev3 chart bridge ----------------------------------------------------
   // The pinned cdnjs script exposes window.echarts. Charts use the SVG renderer
   // so print/PDF output stays crisp. Offline charts degrade to a notice.
@@ -81,14 +109,15 @@
 
   // A sticky table header must land below the sticky section nav, and sit at the
   // very top when a report has no nav at all.
-  function trackStickyOffset() {
+  function applyStickyOffset() {
     const nav = document.querySelector(".section-nav");
-    const apply = () => {
-      const offset = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
-      document.documentElement.style.setProperty("--dev3-table-head-top", `${offset}px`);
-    };
-    apply();
-    window.addEventListener("resize", apply);
+    const offset = nav ? Math.round(nav.getBoundingClientRect().height) : 0;
+    document.documentElement.style.setProperty("--dev3-table-head-top", `${offset}px`);
+  }
+
+  function trackStickyOffset() {
+    applyStickyOffset();
+    window.addEventListener("resize", applyStickyOffset);
   }
 
   // Report code owns sorting; the shell owns only the visible sort state, so
@@ -373,16 +402,16 @@
   function registerDev3ChartTheme() {
     if (!chartsAvailable) return;
     appliedChartTheme = document.documentElement.dataset.theme;
-    const axisLabel = { color: tokenColor("--dev3-text-muted") };
+    const axisLabel = { color: tokenColor("--dev3-text-muted"), fontSize: scaledFont(12) };
     const softSplit = { lineStyle: { color: tokenColor("--dev3-border", .6) } };
     window.echarts.registerTheme("dev3", {
       color: [tokenColor("--dev3-accent"), tokenColor("--dev3-success"), tokenColor("--dev3-warning"), tokenColor("--dev3-danger"), tokenColor("--dev3-text-secondary")],
       backgroundColor: "transparent",
-      textStyle: { fontFamily: CHART_FONT, color: tokenColor("--dev3-text-secondary") },
+      textStyle: { fontFamily: CHART_FONT, color: tokenColor("--dev3-text-secondary"), fontSize: scaledFont(12) },
       categoryAxis: { axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, axisTick: { show: false }, axisLabel, splitLine: { show: false } },
       valueAxis: { axisLine: { show: false }, axisTick: { show: false }, axisLabel, splitLine: softSplit },
-      legend: { textStyle: { color: tokenColor("--dev3-text-secondary"), fontSize: 11 }, itemWidth: 14, itemHeight: 9 },
-      radar: { axisName: { color: tokenColor("--dev3-text-muted"), fontSize: 10 }, axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, splitLine: softSplit, splitArea: { show: false } },
+      legend: { textStyle: { color: tokenColor("--dev3-text-secondary"), fontSize: scaledFont(11) }, itemWidth: 14, itemHeight: 9 },
+      radar: { axisName: { color: tokenColor("--dev3-text-muted"), fontSize: scaledFont(10) }, axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, splitLine: softSplit, splitArea: { show: false } },
     });
   }
 
@@ -391,8 +420,30 @@
     if (svg) svg.setAttribute("viewBox", `0 0 ${svg.getAttribute("width")} ${svg.getAttribute("height")}`);
   }
 
+  // A chart option is the one place a size is written as a raw number, so report
+  // code would otherwise keep its own labels at 100% while the page grew. The
+  // shell rescales every `fontSize` it finds instead, without touching the
+  // author's object: plain branches are copied, everything else (functions,
+  // primitive data arrays) is carried over by reference.
+  function isOptionBranch(value) {
+    if (Array.isArray(value)) return true;
+    if (!value || typeof value !== "object") return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  }
+
+  function scaleOptionFonts(value) {
+    if (Array.isArray(value)) return value.some(isOptionBranch) ? value.map(scaleOptionFonts) : value;
+    if (!isOptionBranch(value)) return value;
+    const scaled = {};
+    Object.entries(value).forEach(([key, item]) => {
+      scaled[key] = key === "fontSize" && typeof item === "number" ? scaledFont(item) : scaleOptionFonts(item);
+    });
+    return scaled;
+  }
+
   function chartShellOption(option) {
-    return {
+    return scaleOptionFonts({
       // ECharts derives label contrast from the canvas background. Left
       // transparent it assumes white paper and paints every value label dark
       // grey inside a 2px white halo — illegible on the dark theme. Naming the
@@ -407,7 +458,7 @@
         textStyle: { color: tokenColor("--dev3-text-primary"), fontSize: 12 },
         ...(option.tooltip || {}),
       },
-    };
+    });
   }
 
   function dev3Chart(element, optionFactory) {
@@ -514,6 +565,42 @@
     applyArtifactTheme();
   });
 
+  function applyFontScale(options = {}) {
+    const scale = fontScale();
+    const percent = `${Math.round(scale * 100)}%`;
+    document.documentElement.style.setProperty("--dev3-font-scale-user", String(scale));
+    document.querySelectorAll("[data-font-step]").forEach((button) => {
+      const step = Number(button.dataset.fontStep);
+      if (step === 0) {
+        button.textContent = percent;
+        button.disabled = fontScaleIndex === DEFAULT_FONT_SCALE_INDEX;
+        return;
+      }
+      button.disabled = FONT_SCALE_STEPS[fontScaleIndex + step] === undefined;
+    });
+    if (options.announce) showToast(`Text size ${percent}`);
+    if (options.persist) {
+      try { localStorage.setItem(FONT_SCALE_KEY, String(scale)); } catch {}
+    }
+    // Chart labels are px numbers rather than rem, sticky offsets are measured in
+    // px, and an open menu was placed against a trigger that just changed size.
+    rethemeDev3Charts();
+    applyStickyOffset();
+    scheduleReposition();
+  }
+
+  function stepFontScale(step) {
+    const next = step === 0 ? DEFAULT_FONT_SCALE_INDEX : fontScaleIndex + step;
+    if (FONT_SCALE_STEPS[next] === undefined || next === fontScaleIndex) return;
+    fontScaleIndex = next;
+    applyFontScale({ announce: true, persist: true });
+  }
+
+  document.querySelectorAll("[data-font-step]").forEach((button) => {
+    button.addEventListener("click", () => stepFontScale(Number(button.dataset.fontStep)));
+  });
+  applyFontScale();
+
   // Report code that builds a panel after load registers it the same way the
   // markup does, so a dynamic menu gets the same top layer and dismissal.
   function popoverApi(panelOrId, anchor) {
@@ -543,7 +630,9 @@
     chart: dev3Chart,
     color: tokenColor,
     enhance: enhanceControls,
+    fontScale,
     popover: popoverApi,
+    scaleFont: scaledFont,
     setControl: setControlValue,
     toast: showToast,
   });

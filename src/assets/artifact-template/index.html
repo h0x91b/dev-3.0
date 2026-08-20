@@ -21,6 +21,11 @@
       </div>
       <div class="actions">
         <span class="status"><span class="dot"></span>Live data</span>
+        <div class="segmented text-size" role="group" aria-label="Text size">
+          <button type="button" data-font-step="-1" title="Smaller text" aria-label="Smaller text">A−</button>
+          <button class="text-size-value" id="fontScaleValue" type="button" data-font-step="0" title="Reset text size to 100%" aria-label="Reset text size">100%</button>
+          <button type="button" data-font-step="1" title="Larger text" aria-label="Larger text">A+</button>
+        </div>
         <button class="ghost" id="artifactTheme" type="button" title="Theme: Follow host">◐ Auto</button>
         <button class="ghost" id="refresh" type="button">↻ Refresh</button>
         <button class="primary" id="runTop" type="button">Run scenario</button>
