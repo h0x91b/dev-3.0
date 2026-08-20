@@ -445,6 +445,13 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleRemoteSilentUpdateToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ remoteSilentUpdate: enabled });
+		},
+		[persistSettingChange],
+	);
+
 	const handlePreventSleepToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ preventSleepWhileRunning: enabled });
@@ -758,6 +765,7 @@ function GlobalSettings({
 							caffeinateAvailable={caffeinateAvailable}
 							canaryAvailable={canaryAvailable}
 							onUpdateChannelChange={handleUpdateChannelChange}
+							onRemoteSilentUpdateToggle={handleRemoteSilentUpdateToggle}
 							onPreventSleepToggle={handlePreventSleepToggle}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
 						/>

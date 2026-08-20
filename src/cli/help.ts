@@ -3,8 +3,9 @@
 // here so every command-with-subcommands prints its own focused usage instead
 // of falling back to the generic top-level help.
 //
-// `remote` and `gui` intentionally render their own richer, hand-written help
-// inside their handlers and are NOT listed here (see `ownsHelp` in main.ts).
+// `remote`, `gui` and `update` intentionally render their own richer,
+// hand-written help inside their handlers and are NOT listed here (see
+// `OWNS_HELP` below).
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH } from "../shared/types";
 
@@ -669,7 +670,7 @@ export function renderHelp(command: string, subcommand?: string): string | null 
 }
 
 /** Commands that render their own (richer) --help inside their handlers. */
-const OWNS_HELP = new Set(["remote", "gui"]);
+const OWNS_HELP = new Set(["remote", "gui", "update"]);
 
 /**
  * What `main()` should do about `--help` for a given argv (minus the leading

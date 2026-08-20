@@ -65,3 +65,46 @@ describe("UpdateReadyPopover", () => {
 		expect((postpone as HTMLButtonElement).disabled).toBe(true);
 	});
 });
+
+describe("UpdateReadyPopover — restart context", () => {
+	function renderWith(props: { tasksInProgress?: number; keepsRemoteLink?: boolean }) {
+		return render(
+			<I18nProvider>
+				<UpdateReadyPopover
+					version="1.45.2"
+					changelog={CHANGELOG}
+					restarting={false}
+					onRestart={() => {}}
+					onSeeAllChanges={() => {}}
+					{...props}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	it("says nothing extra when nothing is running and this is not a remote box", () => {
+		renderWith({});
+		expect(screen.queryByText(/in progress/)).toBeNull();
+		expect(screen.queryByText(/public link/)).toBeNull();
+	});
+
+	it("names how many tasks are in progress but LEAVES THE BUTTON ENABLED — it is a warning, not a gate", () => {
+		renderWith({ tasksInProgress: 3 });
+		expect(screen.getByText(/3 tasks are in progress/)).toBeInTheDocument();
+		const restart = screen.getByRole("button", { name: "Restart to Update" });
+		expect(
+			(restart as HTMLButtonElement).disabled,
+			"a restart does not kill an agent (tmux sessions are detached and lifecycles rehydrate on boot), so blocking the button would refuse a safe action",
+		).toBe(false);
+	});
+
+	it("uses the singular for one task", () => {
+		renderWith({ tasksInProgress: 1 });
+		expect(screen.getByText(/1 task is in progress/)).toBeInTheDocument();
+	});
+
+	it("promises the public link survives on a headless box — 'restart' on a phone otherwise reads as losing the link", () => {
+		renderWith({ keepsRemoteLink: true });
+		expect(screen.getByText(/public link and this session are kept/)).toBeInTheDocument();
+	});
+});

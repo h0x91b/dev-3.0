@@ -1,0 +1,254 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { handleUpdate } from "../commands/update";
+import type { ParsedArgs } from "../args";
+import { CLI_EXIT_CODE_UPDATE_REFUSED } from "../../shared/cli-exit-codes";
+import type { RemoteServerState } from "../../shared/types";
+
+/**
+ * `dev3 update`'s own job is a routing decision — check / dry-run / delegate to a
+ * running server / do it here — so the engine and the lifecycle state file are the
+ * two boundaries to mock. Everything the planner decides is tested for real in
+ * `src/bun/__tests__/self-update.test.ts`.
+ */
+vi.mock("../../bun/self-update", () => ({
+	buildPlan: vi.fn(),
+	runSelfUpdate: vi.fn(),
+	readSuperviseJob: vi.fn(),
+	runSupervisor: vi.fn(),
+}));
+vi.mock("../../bun/settings", () => ({
+	loadSettings: vi.fn(async () => ({ updateChannel: "stable" })),
+}));
+vi.mock("../../bun/remote-state", () => ({
+	readRemoteState: vi.fn(),
+	isProcessAlive: vi.fn(),
+}));
+vi.mock("../socket-client", () => ({
+	sendRequest: vi.fn(),
+}));
+
+import { buildPlan, runSelfUpdate } from "../../bun/self-update";
+import { readRemoteState, isProcessAlive } from "../../bun/remote-state";
+import { sendRequest } from "../socket-client";
+
+const mockBuildPlan = vi.mocked(buildPlan);
+const mockRunSelfUpdate = vi.mocked(runSelfUpdate);
+const mockReadState = vi.mocked(readRemoteState);
+const mockIsAlive = vi.mocked(isProcessAlive);
+const mockSendRequest = vi.mocked(sendRequest);
+
+function args(flags: Record<string, string> = {}, positional: string[] = []): ParsedArgs {
+	return { positional, flags };
+}
+
+function liveState(): RemoteServerState {
+	return {
+		pid: 4242,
+		port: 41234,
+		socketPath: "/tmp/dev3-test.sock",
+		tunnelRequested: true,
+		staticCode: null,
+		logFile: null,
+		startedAt: new Date().toISOString(),
+		version: "1.45.0",
+	};
+}
+
+let exitSpy: ReturnType<typeof vi.spyOn>;
+let stdoutSpy: ReturnType<typeof vi.spyOn>;
+let stderrSpy: ReturnType<typeof vi.spyOn>;
+const exitCodes: number[] = [];
+
+function stdout(): string {
+	return stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+}
+function stderr(): string {
+	return stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+}
+
+beforeEach(() => {
+	exitCodes.length = 0;
+	exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+		exitCodes.push(code ?? 0);
+		throw new Error("__exit__");
+	}) as never);
+	stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+	stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+	mockBuildPlan.mockReset();
+	mockRunSelfUpdate.mockReset();
+	mockReadState.mockReset();
+	mockIsAlive.mockReset();
+	mockSendRequest.mockReset();
+});
+
+afterEach(() => {
+	exitSpy.mockRestore();
+	stdoutSpy.mockRestore();
+	stderrSpy.mockRestore();
+	vi.clearAllMocks();
+});
+
+describe("dev3 update --help / flag validation", () => {
+	it("prints its own help without touching the engine", async () => {
+		await handleUpdate(args({ help: "true" }));
+		expect(stdout()).toContain("dev3 update — install a newer dev3");
+		expect(mockBuildPlan).not.toHaveBeenCalled();
+	});
+
+	it("rejects an unknown flag", async () => {
+		await expect(handleUpdate(args({ force: "true" }))).rejects.toThrow("__exit__");
+		expect(stderr()).toContain("force");
+	});
+
+	it("rejects a positional argument", async () => {
+		await expect(handleUpdate(args({}, ["now"]))).rejects.toThrow("__exit__");
+		expect(stderr()).toContain("Unknown positional");
+	});
+
+	it("rejects --check together with --dry-run", async () => {
+		await expect(handleUpdate(args({ check: "true", "dry-run": "true" }))).rejects.toThrow("__exit__");
+		expect(stderr()).toContain("one or the other");
+	});
+});
+
+describe("dev3 update --dry-run", () => {
+	it("prints the detected install method and what it would run, and changes nothing", async () => {
+		mockBuildPlan.mockResolvedValue({
+			install: "brew-formula",
+			runningVersion: "1.45.0",
+			plan: { kind: "brew", version: "1.45.2", cask: false, command: ["brew", "upgrade", "dev3"] },
+			summary: "Detected brew-formula; would run `brew upgrade dev3` to install 1.45.2.",
+		});
+
+		await expect(handleUpdate(args({ "dry-run": "true" }))).rejects.toThrow("__exit__");
+
+		const out = stdout();
+		expect(out).toContain("Install method: brew-formula");
+		expect(out).toContain("brew upgrade dev3");
+		expect(exitCodes).toEqual([0]);
+		expect(mockRunSelfUpdate).not.toHaveBeenCalled();
+	});
+
+	it("exits with the refusal code and prints the reason, so a wrong detection is one command away", async () => {
+		mockBuildPlan.mockResolvedValue({
+			install: "app-bundle",
+			runningVersion: "1.45.1",
+			plan: { kind: "refused", reason: "Homebrew recorded 1.44.0 for the cask but this server is running 1.45.1" },
+			summary: "Detected app-bundle; refusing: Homebrew recorded 1.44.0 for the cask but this server is running 1.45.1",
+		});
+
+		await expect(handleUpdate(args({ "dry-run": "true" }))).rejects.toThrow("__exit__");
+
+		expect(stdout()).toContain("Homebrew recorded 1.44.0");
+		expect(exitCodes).toEqual([CLI_EXIT_CODE_UPDATE_REFUSED]);
+	});
+});
+
+describe("dev3 update --check", () => {
+	it("names the available version without installing it", async () => {
+		mockBuildPlan.mockResolvedValue({
+			install: "tarball",
+			runningVersion: "1.45.0",
+			plan: { kind: "tarball", version: "1.45.2", url: "https://example.test/dev3-cli-linux-x64.tar.gz" },
+			summary: "Detected tarball; would download and extract …",
+		});
+
+		await expect(handleUpdate(args({ check: "true" }))).rejects.toThrow("__exit__");
+
+		expect(stdout()).toContain("Available:      1.45.2");
+		expect(exitCodes).toEqual([0]);
+		expect(mockRunSelfUpdate).not.toHaveBeenCalled();
+	});
+
+	it("says none when there is nothing newer", async () => {
+		mockBuildPlan.mockResolvedValue({
+			install: "tarball",
+			runningVersion: "1.45.2",
+			plan: { kind: "up-to-date", version: "1.45.2" },
+			summary: "Already on the current build (1.45.2); nothing to do.",
+		});
+
+		await expect(handleUpdate(args({ check: "true" }))).rejects.toThrow("__exit__");
+
+		expect(stdout()).toContain("Available:      none");
+		expect(exitCodes).toEqual([0]);
+	});
+});
+
+describe("dev3 update with a running headless server", () => {
+	it("DELEGATES to the server instead of swapping files behind its back", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(true);
+		mockSendRequest.mockResolvedValue({
+			id: "1",
+			ok: true,
+			data: { ok: true, restarting: true, message: "Installed 1.45.2; restarting now." },
+		});
+
+		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
+
+		expect(mockSendRequest).toHaveBeenCalledWith("/tmp/dev3-test.sock", "remote.selfUpdate", {});
+		// Only the server can hand its port and live tunnel to the successor, so the
+		// CLI must never run the update itself while one is alive.
+		expect(mockRunSelfUpdate).not.toHaveBeenCalled();
+		expect(stdout()).toContain("restarting now");
+		expect(stdout()).toContain("public tunnel URL");
+		expect(exitCodes).toEqual([0]);
+	});
+
+	it("reports the server's refusal with the refusal exit code", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(true);
+		mockSendRequest.mockResolvedValue({
+			id: "1",
+			ok: true,
+			data: { ok: false, restarting: false, message: "This dev3 is running from source" },
+		});
+
+		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
+
+		expect(stderr()).toContain("running from source");
+		expect(exitCodes).toEqual([CLI_EXIT_CODE_UPDATE_REFUSED]);
+	});
+
+	it("does not delegate to a stale record whose process is gone", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(false);
+		mockRunSelfUpdate.mockResolvedValue({ ok: true, restarting: false, message: "Installed 1.45.2." });
+
+		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
+
+		expect(mockSendRequest).not.toHaveBeenCalled();
+		expect(mockRunSelfUpdate).toHaveBeenCalledWith(expect.objectContaining({ restart: false }));
+	});
+});
+
+describe("dev3 update with nothing running", () => {
+	it("installs in place and restarts nothing", async () => {
+		mockReadState.mockReturnValue(null);
+		mockRunSelfUpdate.mockResolvedValue({
+			ok: true,
+			restarting: false,
+			message: "Installed 1.45.2. Nothing was running, so nothing had to restart.",
+		});
+
+		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
+
+		expect(mockRunSelfUpdate).toHaveBeenCalledWith(expect.objectContaining({ channel: "stable", restart: false }));
+		expect(stdout()).toContain("Nothing was running");
+		expect(exitCodes).toEqual([0]);
+	});
+
+	it("exits with the refusal code when the engine refuses", async () => {
+		mockReadState.mockReturnValue(null);
+		mockRunSelfUpdate.mockResolvedValue({
+			ok: false,
+			restarting: false,
+			message: "Self-update is not available on Windows yet",
+		});
+
+		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
+
+		expect(exitCodes).toEqual([CLI_EXIT_CODE_UPDATE_REFUSED]);
+	});
+});

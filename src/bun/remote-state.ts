@@ -13,13 +13,15 @@
  */
 
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import type { RemoteServerState } from "../shared/types";
+import type { RemoteHandoff, RemoteServerState, RemoteUpdateRecord } from "../shared/types";
 import { DEV3_HOME } from "./paths";
 
 export const REMOTE_DIR = `${DEV3_HOME}/remote`;
 export const REMOTE_STATE_FILE = `${REMOTE_DIR}/state.json`;
 export const REMOTE_LOG_FILE = `${REMOTE_DIR}/remote.log`;
 export const REMOTE_START_LOCK_FILE = `${REMOTE_DIR}/start.lock`;
+/** Where a self-update parks the binary it is replacing, so a rollback has one. */
+export const REMOTE_ROLLBACK_DIR = `${REMOTE_DIR}/rollback`;
 
 /** A start lock older than this is treated as abandoned (launcher crashed). */
 const START_LOCK_STALE_MS = 30_000;
@@ -69,11 +71,70 @@ export function readRemoteState(): RemoteServerState | null {
 			logFile: typeof parsed.logFile === "string" ? parsed.logFile : null,
 			startedAt: typeof parsed.startedAt === "string" ? parsed.startedAt : "",
 			version: typeof parsed.version === "string" ? parsed.version : "",
+			// Present only when the file actually carries them, so an ordinary record
+			// keeps exactly the shape every previous version wrote and read.
+			...maybe("handoff", sanitizeHandoff(parsed.handoff)),
+			...maybe("lastUpdate", sanitizeUpdateRecord(parsed.lastUpdate)),
 		};
 	} catch {
 		// File missing, unreadable, or invalid JSON — no live server recorded.
 		return null;
 	}
+}
+
+/** `{ key: value }` when value is set, `{}` otherwise. Keeps absent keys absent. */
+function maybe<K extends string, V>(key: K, value: V | null): Record<K, V> | Record<string, never> {
+	return value === null ? {} : ({ [key]: value } as Record<K, V>);
+}
+
+/**
+ * Validate a handoff block field by field, and REJECT a tunnel whose recorded
+ * process is gone.
+ *
+ * A stale handoff is not a harmless leftover: adopting a dead cloudflared pid
+ * would publish a hostname that resolves nowhere, and the browser caches that
+ * miss. A record whose `fromPid` is still alive is equally wrong — the previous
+ * server never exited, so this is not our handoff to take.
+ */
+function sanitizeHandoff(raw: unknown): RemoteHandoff | null {
+	if (!raw || typeof raw !== "object") return null;
+	const h = raw as Partial<RemoteHandoff>;
+	if (typeof h.port !== "number" || h.port <= 0 || h.port > 65535) return null;
+	if (typeof h.fromPid !== "number" || h.fromPid <= 0) return null;
+	if (isProcessAlive(h.fromPid)) return null;
+	let tunnel: RemoteHandoff["tunnel"] = null;
+	const t = h.tunnel;
+	if (t && typeof t === "object" && typeof t.pid === "number" && typeof t.url === "string" && t.url) {
+		if (isProcessAlive(t.pid)) {
+			tunnel = {
+				pid: t.pid,
+				url: t.url,
+				metricsReadyUrl: typeof t.metricsReadyUrl === "string" ? t.metricsReadyUrl : null,
+			};
+		}
+	}
+	return { port: h.port, fromPid: h.fromPid, tunnel };
+}
+
+function sanitizeUpdateRecord(raw: unknown): RemoteUpdateRecord | null {
+	if (!raw || typeof raw !== "object") return null;
+	const r = raw as Partial<RemoteUpdateRecord>;
+	if (typeof r.fromVersion !== "string" || typeof r.toVersion !== "string") return null;
+	return {
+		fromVersion: r.fromVersion,
+		toVersion: r.toVersion,
+		startedAt: typeof r.startedAt === "string" ? r.startedAt : "",
+	};
+}
+
+/**
+ * Read a handoff left by a server that has already exited, or null.
+ *
+ * The freshness checks live in {@link sanitizeHandoff}, so a caller cannot
+ * accidentally trust a record whose writer is still running or whose tunnel died.
+ */
+export function readRemoteHandoff(): RemoteHandoff | null {
+	return readRemoteState()?.handoff ?? null;
 }
 
 /** Remove the state file unconditionally. Safe to call when none exists. */

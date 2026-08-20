@@ -184,3 +184,66 @@ describe("isProcessAlive", () => {
 		expect(isProcessAlive(1.5)).toBe(false);
 	});
 });
+
+describe("handoff records", () => {
+	// A dead pid that is not going to be recycled inside a test run. `fromPid` MUST
+	// look dead for a handoff to be ours to take, and `tunnel.pid` MUST look alive
+	// for the inherited process to be worth adopting — so these tests use
+	// process.pid for "alive" and this for "dead".
+	const DEAD_PID = 2_000_000_000;
+
+	it("round-trips a handoff whose writer has exited and whose tunnel is alive", () => {
+		writeRemoteState(sampleState({
+			handoff: { port: 41234, fromPid: DEAD_PID, tunnel: { pid: process.pid, url: "https://x.trycloudflare.com", metricsReadyUrl: "http://127.0.0.1:20241/ready" } },
+			lastUpdate: { fromVersion: "1.45.0", toVersion: "1.45.2", startedAt: "2026-08-20T01:00:00.000Z" },
+		}));
+		const read = readRemoteState();
+		expect(read?.handoff).toEqual({
+			port: 41234,
+			fromPid: DEAD_PID,
+			tunnel: { pid: process.pid, url: "https://x.trycloudflare.com", metricsReadyUrl: "http://127.0.0.1:20241/ready" },
+		});
+		expect(read?.lastUpdate?.toVersion).toBe("1.45.2");
+	});
+
+	it("discards a handoff whose writer is still running — it is not ours to take", () => {
+		writeRemoteState(sampleState({
+			handoff: { port: 41234, fromPid: process.pid, tunnel: null },
+		}));
+		expect(readRemoteState()?.handoff).toBeUndefined();
+	});
+
+	it("drops a DEAD tunnel but keeps the port — adopting it would publish an NXDOMAIN link", () => {
+		writeRemoteState(sampleState({
+			handoff: { port: 41234, fromPid: DEAD_PID, tunnel: { pid: DEAD_PID, url: "https://x.trycloudflare.com", metricsReadyUrl: null } },
+		}));
+		const handoff = readRemoteState()?.handoff;
+		expect(handoff?.port).toBe(41234);
+		expect(handoff?.tunnel).toBeNull();
+	});
+
+	it("rejects a handoff with an out-of-range port instead of trying to bind it", () => {
+		writeRemoteState(sampleState({
+			handoff: { port: 999_999, fromPid: DEAD_PID, tunnel: null },
+		}));
+		expect(readRemoteState()?.handoff).toBeUndefined();
+	});
+
+	it("leaves the keys absent for a record written before handoffs existed", () => {
+		writeRemoteState(sampleState());
+		expect(readRemoteState()?.handoff).toBeUndefined();
+		expect(readRemoteState()?.lastUpdate).toBeUndefined();
+	});
+
+	it("ignores a malformed handoff block rather than throwing", () => {
+		mkdirSync(REMOTE_DIR, { recursive: true });
+		writeFileSync(REMOTE_STATE_FILE, JSON.stringify({
+			...sampleState(),
+			handoff: "not an object",
+			lastUpdate: { fromVersion: 7 },
+		}));
+		const read = readRemoteState();
+		expect(read?.handoff).toBeUndefined();
+		expect(read?.lastUpdate).toBeUndefined();
+	});
+});

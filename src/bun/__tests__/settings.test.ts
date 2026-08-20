@@ -190,6 +190,7 @@ describe("saveSettings", () => {
 			reviewModePrompt: "Review the diff and report only blockers.",
 			taskOpenMode: "fullscreen",
 			defaultDiffViewMode: "unified",
+			remoteSilentUpdate: false,
 			preventSleepWhileRunning: true,
 			skipQuitDialog: true,
 			importShellEnv: false,

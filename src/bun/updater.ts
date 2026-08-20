@@ -73,6 +73,13 @@ type UpdateJson = UpdateManifest & { changelog?: UpdateChangelog | null };
 interface UpdateCheckResult {
 	updateAvailable: boolean;
 	version: string;
+	/**
+	 * The offered build's commit sha, straight from the manifest. The desktop
+	 * updater never needs it, but a headless self-update does: canary publishes its
+	 * CLI tarballs under the COMMIT directory (there is no tag), so this is the only
+	 * thing that can locate the artifact to install.
+	 */
+	sha?: string;
 	changelog?: UpdateChangelog;
 	error?: string;
 	/** True when running a from-source "dev" build, where updates are disabled. */
@@ -159,18 +166,21 @@ export async function checkForUpdateWithChannel(channel: UpdateChannel): Promise
 			return { updateAvailable: false, version: local.version, error: decision.reason };
 		}
 		const changelog = remote.changelog ? { changelog: remote.changelog } : {};
+		const sha = remote.sha ? { sha: remote.sha } : {};
 		if (decision.kind === "switch") {
 			return {
 				updateAvailable: true,
 				version: decision.version || "unknown",
 				switchTo: decision.to,
 				installsOlderBuild: decision.installsOlderBuild,
+				...sha,
 				...changelog,
 			};
 		}
 		return {
 			updateAvailable: decision.kind === "update",
 			version: remote.version || "unknown",
+			...sha,
 			...changelog,
 		};
 	} catch (err) {

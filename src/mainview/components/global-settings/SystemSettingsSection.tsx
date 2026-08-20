@@ -12,6 +12,7 @@ export default function SystemSettingsSection({
 	caffeinateAvailable,
 	canaryAvailable,
 	onUpdateChannelChange,
+	onRemoteSilentUpdateToggle,
 	onPreventSleepToggle,
 	onConfirmBeforeQuitToggle,
 }: {
@@ -21,6 +22,7 @@ export default function SystemSettingsSection({
 	/** The canary feed carries a build for this host. False on platforms it does not publish. */
 	canaryAvailable: boolean;
 	onUpdateChannelChange: (channel: UpdateChannel) => void;
+	onRemoteSilentUpdateToggle: (enabled: boolean) => void;
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
 }) {
@@ -50,6 +52,24 @@ export default function SystemSettingsSection({
 						// channel publishes per platform, and this machine is not one of them yet.
 						<p className="text-fg-muted text-xs mt-2">{t("settings.updateChannelUnavailableHere")}</p>
 					) : null}
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="remote-silent-update">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.remoteSilentUpdate")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("settings.remoteSilentUpdateDesc")}
+					</p>
+					<SettingsToggle
+						checked={globalSettings.remoteSilentUpdate !== false}
+						ariaLabel={t("settings.remoteSilentUpdate")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onRemoteSilentUpdateToggle(globalSettings.remoteSilentUpdate === false)}
+					/>
 				</div>
 			</SettingsEntry>
 

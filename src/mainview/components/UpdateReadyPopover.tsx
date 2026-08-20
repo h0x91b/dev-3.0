@@ -63,6 +63,20 @@ interface UpdateReadyPopoverProps {
 	version: string;
 	changelog?: UpdateChangelog | null;
 	restarting: boolean;
+	/**
+	 * Tasks in the `in-progress` column right now. A WARNING, never a gate: the
+	 * restart does not kill an agent (tmux sessions are detached and lifecycles are
+	 * rehydrated on boot), so the button stays live — this only lets someone decide
+	 * to wait a minute. 0 renders nothing.
+	 */
+	tasksInProgress?: number;
+	/**
+	 * True on a headless `dev3 remote` box, where the restart hands the live
+	 * Cloudflare tunnel and the port to the new build — so the public URL and this
+	 * browser session survive it. Worth saying, because "restart" on a phone
+	 * otherwise reads as "lose the link I am holding".
+	 */
+	keepsRemoteLink?: boolean;
 	onRestart: () => void;
 	onSeeAllChanges: () => void;
 	/** Preview (simulator) mode: disable the restart button so it never quits the app. */
@@ -79,6 +93,8 @@ export default function UpdateReadyPopover({
 	version,
 	changelog,
 	restarting,
+	tasksInProgress = 0,
+	keepsRemoteLink = false,
 	onRestart,
 	onSeeAllChanges,
 	preview = false,
@@ -107,6 +123,15 @@ export default function UpdateReadyPopover({
 				</div>
 			</div>
 			<UpdateWhatsNew version={version} changelog={changelog} onSeeAllChanges={onSeeAllChanges} />
+			{keepsRemoteLink && (
+				<p className="text-fg-3 text-xs">{t("update.remoteLinkSurvives")}</p>
+			)}
+			{tasksInProgress > 0 && (
+				<p className="text-fg-2 text-xs flex items-start gap-1.5">
+					<span aria-hidden="true">⚠️</span>
+					<span>{t.plural("update.tasksInProgressWarning", tasksInProgress)}</span>
+				</p>
+			)}
 			{preview ? (
 				// Preview mimics the auto-shown toast layout (restart-with-countdown +
 				// Postpone) so the simulator looks like the real update prompt. The

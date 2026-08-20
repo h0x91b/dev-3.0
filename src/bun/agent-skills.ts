@@ -722,6 +722,7 @@ A starting situation that generates work, then merges onto the main flow.
 
 - **Work from your phone / remotely → dev3 remote.** The full app is served to a browser through a secure tunnel; open it anywhere. Mobile has its own pane pager and message composer, and browser notifications keep the agent's pings reaching you.
 - **Expose task ports** — share a task's running dev server through a public tunnel URL and click through it from any device. Agents keep working while you are away, and dev3 can keep the machine awake while tasks run.
+- **A remote box keeps itself up to date — you never SSH in to upgrade it.** It checks every 30 minutes and installs the update by itself once nothing is in progress, no terminal is printing and nobody is connected; the restart hands the port and the live tunnel to the new build, so the public link and your open browser session survive it and running agents are untouched. \`dev3 update\` does the same on demand from any shell (\`--check\` / \`--dry-run\` report without changing anything, and detect whether this install came from brew or a CLI tarball). Turn the automatic half off in **Settings → System** to hold a box on one build while you chase a bug. Under systemd the update still happens but the tunnel URL changes — re-run \`dev3 remote url\`.
 
 ## Verifying work
 

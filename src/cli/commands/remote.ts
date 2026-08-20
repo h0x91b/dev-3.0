@@ -578,6 +578,15 @@ async function statusRemote(args: ParsedArgs): Promise<void> {
 		["Version:", state.version || "unknown"],
 	];
 	if (state.logFile) fields.push(["Log:", state.logFile]);
+	// A self-update restarts the server with no visible "updating…" state anywhere,
+	// so without this line an overnight restart is indistinguishable from a crash.
+	if (state.lastUpdate) {
+		fields.push([
+			"Last update:",
+			`${state.lastUpdate.fromVersion} → ${state.lastUpdate.toVersion}` +
+			(state.lastUpdate.startedAt ? ` (started ${state.lastUpdate.startedAt})` : ""),
+		]);
+	}
 	printDetail(fields);
 
 	// Best-effort: append a fresh access URL if the server's socket answers.

@@ -231,6 +231,8 @@ const tips = {
 	"tip.modelCatalogRoles.body": "Registra tus propios proveedores y luego da a cada rol del agente su propio modelo en el editor de preajustes.",
 	"tip.spaceSearch.title": "Salta por espacio, no proyecto",
 	"tip.spaceSearch.body": "⌘K también busca nombres de espacios — escribe un espacio para ver sus proyectos, y filtra tareas con `space:\"Client X\"`.",
+	"tip.remoteSelfUpdate.title": "Las máquinas remotas se autoactualizan",
+	"tip.remoteSelfUpdate.body": "Un servidor `dev3 remote` instala actualizaciones solo cuando la máquina está tranquila y conserva su enlace público — o ejecuta `dev3 update` tú mismo.",
 };
 
 export default tips;

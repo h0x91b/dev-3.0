@@ -19,6 +19,7 @@ Public `dev3` CLI exit codes are defined in `src/shared/cli-exit-codes.ts`.
 | `12` | `CLI_EXIT_CODE_PRUNE_INCOMPLETE` | `dev3 doctor --worktrees` was asked to prune and at least one selected directory was **not** reclaimed: skipped because its `dev3/task-*` branch is not merged into the base branch and `--force-unmerged` was absent, or the deletion itself failed. Everything else in the run was still deleted. A report-only run always exits `0`. |
 | `13` | `CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING` | `dev3 inline-html` found a local file the HTML references but that does not exist on disk, so the folded page would render broken. Nothing was written; the JSON report lists every missing reference. |
 | `14` | `CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND` | `dev3 inline-html` found a credential-shaped string (GitHub token, `sk-` key, AWS key id, private-key block) inside the folded page. Nothing was written and the file must not be published until the secret is removed. |
+| `15` | `CLI_EXIT_CODE_UPDATE_REFUSED` | `dev3 update` refused to touch this install and nothing was changed: it is running from source, it is a macOS app bundle the CLI cannot swap, it is Windows (no CLI tarball), or it is a Homebrew cask whose recorded version has drifted from the running one. Distinct from code `1`, which means an update was attempted and failed. |
 
 `--tolerate-app-offline` turns code `2` into code `0` for a single invocation: the
 "app not running" notice is still written to stderr, but the process exits

@@ -16,6 +16,9 @@ vi.mock("../../rpc", () => ({
 			getSystemMemory: vi.fn().mockResolvedValue(null),
 			getTasks: vi.fn(),
 			applyUpdate: vi.fn(),
+			// The update plaque asks what a restart would interrupt (and whether it keeps
+			// the remote link) as soon as an update is offered.
+			getUpdateRestartContext: vi.fn().mockResolvedValue({ headless: false, tasksInProgress: 0 }),
 			saveLastRoute: vi.fn(),
 			renameTask: vi.fn(),
 			// `behindOrigin` > 0 keeps the pull button rendered — it hides when there is nothing to pull.

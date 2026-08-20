@@ -29,9 +29,10 @@ import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
 import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from "./cloudflare-tunnel";
 import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
-import { writeRemoteState, clearRemoteStateIfOwnedBy } from "./remote-state";
+import { writeRemoteState, clearRemoteStateIfOwnedBy, readRemoteHandoff, readRemoteState } from "./remote-state";
 import { BUILD_TIME, BUILD_VERSION } from "../shared/build-info.generated";
 import { rehydrateTaskLifecycles } from "./lifecycle/rehydrate";
+import { startSelfUpdateWatch, stopSelfUpdateWatch } from "./self-update-watch";
 
 const log = createLogger("headless");
 
@@ -64,6 +65,53 @@ log.info("Log files", { dir: getLogPath() });
 // (set by `dev3 remote --no-tunnel`). `cloudflared` is a brew dependency so
 // it should always be available on a Homebrew install.
 const wantTunnel = process.env.DEV3_REMOTE_NO_TUNNEL !== "1";
+
+// ── Inherit the port and the tunnel from a server we are replacing ──
+//
+// A self-update restart must be invisible from the browser, and the quick tunnel
+// is what makes that hard: its `*.trycloudflare.com` hostname is random per
+// cloudflared process and the session cookie is bound to that host. So the dying
+// server leaves its still-running cloudflared alive, records it, and we re-bind
+// the SAME port and adopt the SAME process — the URL and the session both survive
+// and the browser's own reconnect backoff restores the session with no user action.
+//
+// The port comes from the record rather than a flag on purpose: a box started
+// without --port picked a random one, and cloudflared is pointed at exactly that.
+// If we cannot have it back, the tunnel is worthless and gets killed (below).
+// Read BEFORE the state file is rewritten below, or the explanation is lost.
+const priorUpdateRecord = readRemoteState()?.lastUpdate ?? null;
+let handoff = readRemoteHandoff();
+if (handoff) {
+	log.info("Found a handoff from the server we are replacing", {
+		fromPid: handoff.fromPid,
+		port: handoff.port,
+		tunnelPid: handoff.tunnel?.pid ?? null,
+	});
+	if (await isPortFree(handoff.port)) {
+		process.env.DEV3_REMOTE_PORT = String(handoff.port);
+	} else {
+		// Someone else took the port while we were starting. The inherited tunnel
+		// points at THAT port, so it would now proxy a stranger — kill it and start
+		// clean on a random port. The public URL is lost; the box is not.
+		log.warn("Handoff port is occupied — discarding the handoff and starting fresh", { port: handoff.port });
+		if (handoff.tunnel) {
+			try { process.kill(handoff.tunnel.pid, "SIGTERM"); } catch { /* already gone */ }
+		}
+		handoff = null;
+	}
+}
+
+/** Can we bind `port` right now? Answered by actually binding it, then letting go. */
+async function isPortFree(port: number): Promise<boolean> {
+	const net = await import("node:net");
+	return new Promise((resolve) => {
+		const probe = net.createServer();
+		probe.once("error", () => resolve(false));
+		probe.listen({ port, host: "0.0.0.0" }, () => {
+			probe.close(() => resolve(true));
+		});
+	});
+}
 
 // ── Resolve DEV3_VIEWS_DIR if not already set ──
 // remote-access-server uses PATHS.VIEWS_FOLDER (backed by DEV3_VIEWS_DIR env in
@@ -242,6 +290,12 @@ try {
 		logFile: process.env.DEV3_REMOTE_LOG_FILE || null,
 		startedAt: new Date().toISOString(),
 		version: BUILD_VERSION,
+		// The handoff is consumed — clear it so a later restart cannot re-adopt a
+		// tunnel that is long dead by then. `lastUpdate` is deliberately CARRIED
+		// FORWARD: the renderer shows no "updating…" state, so this record is the only
+		// thing that explains the restart to `dev3 remote status` after the fact.
+		handoff: null,
+		lastUpdate: priorUpdateRecord,
 	});
 	log.info("Remote lifecycle state written", { port: getServerPort(), pid: process.pid });
 } catch (err) {
@@ -249,7 +303,21 @@ try {
 }
 
 // ── Cloudflare tunnel (default-on; opt out with --no-tunnel → DEV3_REMOTE_NO_TUNNEL=1) ──
-if (wantTunnel) {
+// An inherited cloudflared with nobody to own it must not be left running: this
+// process was started with --no-tunnel, so nothing here would ever stop it.
+if (handoff?.tunnel && !wantTunnel) {
+	log.info("Inherited a tunnel but this server runs with --no-tunnel — stopping it", {
+		pid: handoff.tunnel.pid,
+	});
+	try { process.kill(handoff.tunnel.pid, "SIGTERM"); } catch { /* already gone */ }
+}
+
+if (wantTunnel && handoff?.tunnel) {
+	// Inherited tunnel: same hostname, same session cookie, no new cloudflared.
+	const { adoptMainTunnel } = await import("./cloudflare-tunnel");
+	adoptMainTunnel({ ...handoff.tunnel, targetPort: getServerPort() });
+	console.log(`[dev3 remote] Kept the tunnel from the previous build: ${handoff.tunnel.url}`);
+} else if (wantTunnel) {
 	if (!isCloudflaredAvailable()) {
 		console.error("\n[dev3 remote] `cloudflared` is not installed — skipping public tunnel.");
 		console.error("              On Homebrew: `brew install cloudflared`.");
@@ -349,6 +417,14 @@ startResourceMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
+// ── Self-update watch ──
+// A headless box is the one place where "there is an update, press restart" never
+// gets pressed — nobody opens a terminal on it. This checks on the same 30-minute
+// cadence as the GUI and installs the update itself once the box is quiet.
+startSelfUpdateWatch((name, payload) => {
+	pushToBrowserClients(name, payload);
+});
+
 // ── Agent rate-limit monitor (Claude dump / Codex rollouts + monthly credits) ──
 startRateLimitMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
@@ -421,6 +497,7 @@ function shutdown(signal: string): void {
 	stopPortScanPoller();
 	stopResourceMonitor();
 	stopRateLimitMonitor();
+	stopSelfUpdateWatch();
 	stopSocketServer();
 	clearRemoteStateIfOwnedBy(process.pid);
 	cleanupAllTunnels();

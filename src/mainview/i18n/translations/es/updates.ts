@@ -99,6 +99,9 @@ const updates = {
 	"changelog.clearSearch": "Borrar búsqueda",
 	"changelog.noResults": "Nada coincide con tu búsqueda o filtros.",
 	"changelog.resetFilters": "Restablecer filtros",
+	"update.remoteLinkSurvives": "El enlace público y esta sesión se conservan: la página se reconecta por sí sola.",
+	"update.tasksInProgressWarning_one": "{count} tarea está en curso. Su agente sobrevive al reinicio, pero puedes esperar si prefieres.",
+	"update.tasksInProgressWarning_other": "{count} tareas están en curso. Sus agentes sobreviven al reinicio, pero puedes esperar si prefieres.",
 	"changelog.showMore": "Mostrar más",
 };
 

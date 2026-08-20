@@ -46,6 +46,51 @@ dev3 remote stop            # SIGTERM, then SIGKILL fallback
 Add `--no-detach` to keep it in the foreground instead — required when a supervisor owns the
 process (systemd `Type=simple`, a Docker `CMD`, …).
 
+## Keeping the box up to date
+
+A remote box is the one place where "there is an update, press restart" never gets pressed —
+nobody opens a terminal on it. So it updates itself.
+
+**By hand, from anywhere:**
+
+```sh
+dev3 update --check     # is there anything newer?
+dev3 update --dry-run   # which install method was detected, and what would it run
+dev3 update             # do it
+```
+
+`dev3 update` works out how this dev3 was installed — Homebrew formula, Homebrew cask, or a
+plain CLI tarball — and does the right thing for it. On the **canary** channel it always uses
+the tarball, because the brew tap only ever carries stable. It refuses, with the reason
+printed, when it cannot safely touch the install: running from source, Windows (no CLI
+tarball yet), a macOS `.app` Homebrew does not manage, or a cask whose recorded version has
+drifted behind the running app. Refusals exit `15`.
+
+**By itself, once the box is quiet.** The server checks every 30 minutes and installs the
+update on its own when all three of these have held together for 10 minutes:
+
+- no task in the **In Progress** column,
+- no terminal producing output,
+- no browser connected.
+
+Past **72 hours** of waiting, only the first condition still applies — otherwise one browser
+tab left open on a phone could pin the box on an old build forever. Turn the whole thing off
+in **Settings → System → "Update a remote box on its own"** to hold a box on one build while
+you investigate something.
+
+**The restart keeps your link.** The dying server hands its port and its *live* `cloudflared`
+process to the replacement, so the `*.trycloudflare.com` URL does not change, the host-bound
+session cookie still matches, and the browser reconnects on its own. Running agents survive
+too — their tmux sessions are detached and task lifecycles are rehydrated at boot.
+
+Two caveats worth knowing:
+
+- **Under systemd** the unit's cgroup is torn down when the unit stops, which takes
+  `cloudflared` with it. The update still happens (systemd relaunches the unit), but the
+  public URL **changes** — re-run `dev3 remote url`.
+- **There is no "updating…" screen.** A silent overnight restart looks exactly like the box
+  falling over. `dev3 remote status` prints a `Last update:` line that explains it.
+
 ## Run it as a service (Linux)
 
 ```sh

@@ -1088,6 +1088,14 @@ export interface GlobalSettings {
 	 */
 	terminalPathOpenMode?: TerminalPathOpenMode;
 	defaultDiffViewMode?: "split" | "unified" | "auto"; // default inline diff layout; "auto" picks based on screen size
+	/**
+	 * Let a headless `dev3 remote` box install updates on its own once it is quiet
+	 * (no task in progress, no terminal output, no browser connected). Default ON —
+	 * the whole point is that nobody ever goes back to a terminal to type
+	 * `brew upgrade`. Turn it off to hold a box on one build while investigating.
+	 * Has no effect on the desktop app, which has its own updater.
+	 */
+	remoteSilentUpdate?: boolean;
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
 	skipQuitDialog?: boolean; // suppress the "tmux keeps running" quit confirmation
 	/**
@@ -3303,6 +3311,46 @@ export interface RemoteServerState {
 	startedAt: string;
 	/** dev3 build version that wrote this record. */
 	version: string;
+	/**
+	 * Written by a server that is exiting to be replaced by a newer build, read
+	 * once by its successor. Absent on an ordinary start.
+	 *
+	 * THIS IS WHAT KEEPS THE PUBLIC LINK ALIVE ACROSS A SELF-UPDATE. The quick
+	 * tunnel's hostname is random per `cloudflared` process and the session cookie
+	 * is host-bound, so a stop-then-start hands the user a dead URL and a re-auth
+	 * on the very device they are holding. The successor binds the same port and
+	 * adopts the same still-running cloudflared instead.
+	 */
+	handoff?: RemoteHandoff | null;
+	/**
+	 * What the last self-update did, kept AFTER the restart. The renderer shows no
+	 * "updating…" state, so this record is the only thing that explains an
+	 * otherwise unexplained restart in `dev3 remote status`.
+	 */
+	lastUpdate?: RemoteUpdateRecord | null;
+}
+
+/** The port + live tunnel one server hands to its replacement. */
+export interface RemoteHandoff {
+	/** Port to re-bind. Survives a restart nobody passed `--port` to. */
+	port: number;
+	/** PID of the dying server, so the successor can tell a stale record apart. */
+	fromPid: number;
+	/**
+	 * The `cloudflared` process left running on purpose. Null when the box had no
+	 * tunnel. The successor has no exit promise for an adopted process, so its
+	 * liveness comes from `metricsReadyUrl` — the same endpoint the tunnel health
+	 * monitor already polls.
+	 */
+	tunnel: { pid: number; url: string; metricsReadyUrl: string | null } | null;
+}
+
+/** From-version, to-version and when, for `dev3 remote status` after the fact. */
+export interface RemoteUpdateRecord {
+	fromVersion: string;
+	toVersion: string;
+	/** ISO timestamp of when the update started (before the restart). */
+	startedAt: string;
 }
 
 /**
@@ -4186,6 +4234,10 @@ export type AppRPCSchema = {
 			applyUpdate: {
 				params: void;
 				response: void;
+			};
+			getUpdateRestartContext: {
+				params: void;
+				response: { headless: boolean; tasksInProgress: number };
 			};
 			saveLastRoute: {
 				params: { route: string };

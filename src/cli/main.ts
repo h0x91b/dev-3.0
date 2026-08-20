@@ -31,6 +31,7 @@ import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
 import { handleDoctor } from "./commands/doctor";
+import { handleUpdate } from "./commands/update";
 import { TOLERATE_APP_OFFLINE_FLAG } from "../shared/agent-hooks";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
@@ -101,6 +102,9 @@ Commands:
                                          (backgrounds by default; manage it with
                                           status / url / restart / logs / stop.
                                           See "dev3 remote --help" for full usage)
+  dev3 update [--check|--dry-run]         Install a newer dev3 (brew or CLI tarball, auto-detected).
+                                         On a box running \`dev3 remote\`, the server does the restart
+                                         itself and keeps its public tunnel URL and your session.
   dev3 gui                               Launch the dev-3.0 desktop app
                                          (Linux: lazily downloads bundle on first run.
                                           See "dev3 gui --help" for full usage)
@@ -221,6 +225,12 @@ async function main(): Promise<void> {
 		// `dev3 remote` IS the app in headless mode — it must not require a
 		// running instance socket. It starts its own CLI socket once up.
 		return await handleRemote(subcommand, args);
+	}
+	if (command === "update") {
+		// Install a newer dev3. Needs no socket of its own: it either hands the job
+		// to a running headless server (found via the remote lifecycle state file,
+		// not socket discovery) or replaces the files itself.
+		return await handleUpdate(args);
 	}
 	if (command === "gui") {
 		// `dev3 gui` launches the desktop app (mac) or the bundled launcher

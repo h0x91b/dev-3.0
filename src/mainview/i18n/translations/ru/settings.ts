@@ -233,6 +233,8 @@ const settings = {
 	"settings.browserNotificationsEnable": "Включить уведомления браузера",
 	"settings.browserNotificationsBlocked": "Уведомления заблокированы для этого сайта — включите их в настройках сайта в браузере.",
 	"settings.browserNotificationsInsecure": "Уведомлениям нужен защищённый контекст (HTTPS или localhost). По обычному http:// в локальной сети они заменяются всплывающими тостами — открой через Cloudflare-туннель для настоящих уведомлений.",
+	"settings.remoteSilentUpdate": "Обновлять удалённую машину самостоятельно",
+	"settings.remoteSilentUpdateDesc": "Разрешить headless-серверу dev3 remote ставить обновления сам, когда машина затихла: нет задач в работе, нет вывода в терминалах, никто не подключён. Публичная ссылка и открытые сессии переживут перезапуск. Выключите, чтобы держать машину на одной сборке при разборе бага. На это приложение не влияет.",
 	"settings.preventSleep": "Не давать уснуть",
 	"settings.preventSleepDesc": "Не даёт системе уснуть, пока открыт dev-3.0 (форсится при активном удалённом доступе). Также переключается из шапки.",
 	"settings.preventSleepNotAvailable": "Инструмент для блокировки сна не найден (caffeinate на macOS, systemd-inhibit на Linux).",

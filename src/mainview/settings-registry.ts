@@ -353,6 +353,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "remote-silent-update",
+		category: "system",
+		titleKey: "settings.remoteSilentUpdate",
+		descriptionKey: "settings.remoteSilentUpdateDesc",
+		anchor: "remote-silent-update",
+		globalField: "remoteSilentUpdate",
+		storage: "global",
+	},
+	{
 		id: "prevent-sleep",
 		category: "system",
 		titleKey: "settings.preventSleep",
@@ -447,6 +456,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"taskOpenMode",
 	"terminalPathOpenMode",
 	"defaultDiffViewMode",
+	"remoteSilentUpdate",
 	"preventSleepWhileRunning",
 	"skipQuitDialog",
 	"importShellEnv",

@@ -34,6 +34,13 @@ export interface TunnelEntry {
 	state: TunnelState;
 	url: string | null;
 	process: ReturnType<typeof spawn> | null;
+	/**
+	 * PID of a cloudflared this process did NOT spawn — inherited from the server
+	 * it replaced during a self-update. There is no exit promise for it, so its
+	 * liveness comes from `metricsReadyUrl` alone; `stopEntry` still has to signal
+	 * it or the restart would leak a process.
+	 */
+	adoptedPid: number | null;
 	startedAt: number;
 	subToken: string;
 	metricsReadyUrl: string | null;
@@ -321,6 +328,7 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 		state: "starting",
 		url: null,
 		process: null,
+		adoptedPid: null,
 		startedAt: Date.now(),
 		subToken: randomBytes(24).toString("base64url"),
 		metricsReadyUrl: null,
@@ -389,7 +397,74 @@ function stopEntry(id: string): void {
 			// process may already be dead
 		}
 	}
+	if (entry.adoptedPid !== null) {
+		try {
+			process.kill(entry.adoptedPid, "SIGTERM");
+		} catch {
+			// already gone, or owned by someone else — nothing we can do about it
+		}
+	}
 	tunnels.delete(id);
+}
+
+/**
+ * Forget the main tunnel WITHOUT killing cloudflared, and report what a successor
+ * needs to adopt it. Returns null when there is nothing live to hand over.
+ *
+ * This is the one place that deliberately leaks a child process, and it is what
+ * makes a self-update invisible from the browser: the quick tunnel's hostname is
+ * random per cloudflared process, so killing it would change the public URL and
+ * invalidate the host-bound session cookie. The successor re-binds the same local
+ * port and re-registers this same process; if it cannot, it kills the pid.
+ */
+export function releaseMainTunnelForHandoff(): { pid: number; url: string; metricsReadyUrl: string | null } | null {
+	const entry = tunnels.get(MAIN_ID);
+	if (!entry || entry.state !== "connected" || !entry.url) return null;
+	const pid = entry.process?.pid ?? entry.adoptedPid;
+	if (!pid) return null;
+	if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
+	entry.healthCheckTimer = null;
+	// Drop the map entry rather than stopEntry() — that would signal the child.
+	tunnels.delete(MAIN_ID);
+	log.info("Released main tunnel for handoff", { pid, url: entry.url });
+	return { pid, url: entry.url, metricsReadyUrl: entry.metricsReadyUrl };
+}
+
+/**
+ * Register a cloudflared this process did not spawn as the main tunnel.
+ *
+ * The URL is taken on trust from the handoff record (its writer had it from
+ * cloudflared's own stderr, which we can no longer read), and liveness is
+ * re-established from `/ready` by the ordinary health monitor — which will
+ * restart the tunnel for real if the inherited process turns out to be wedged.
+ */
+export function adoptMainTunnel(opts: {
+	pid: number;
+	url: string;
+	metricsReadyUrl: string | null;
+	targetPort: number;
+}): void {
+	stopEntry(MAIN_ID);
+	const entry: TunnelEntry = {
+		id: MAIN_ID,
+		kind: "main",
+		targetPort: opts.targetPort,
+		ports: [],
+		taskId: undefined,
+		state: "connected",
+		url: opts.url,
+		process: null,
+		adoptedPid: opts.pid,
+		startedAt: Date.now(),
+		subToken: randomBytes(24).toString("base64url"),
+		metricsReadyUrl: opts.metricsReadyUrl,
+		consecutiveHealthFailures: 0,
+		healthCheckInFlight: false,
+		healthCheckTimer: null,
+	};
+	tunnels.set(MAIN_ID, entry);
+	log.info("Adopted inherited tunnel", { pid: opts.pid, url: opts.url, port: opts.targetPort });
+	startHealthMonitor(entry);
 }
 
 async function restartEntry(entry: TunnelEntry): Promise<void> {

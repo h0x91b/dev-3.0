@@ -92,6 +92,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const overflowMenuRef = useRef<HTMLDivElement>(null);
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
 	const [restarting, setRestarting] = useState(false);
+	const [restartContext, setRestartContext] = useState<{ headless: boolean; tasksInProgress: number } | null>(null);
 	const [showToast, setShowToast] = useState(false);
 	const [countdown, setCountdown] = useState(0);
 	const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -139,13 +140,30 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 		}
 	}, [updateVersion, updateAnnouncement]);
 
-	// Auto-restart when countdown reaches 0
+	// Auto-restart when countdown reaches 0.
+	//
+	// NEVER ON A HEADLESS BOX. On the desktop, whoever ignored the toast for five
+	// minutes is sitting at the machine and a relaunch costs them a window. On a
+	// `dev3 remote` server the same countdown would restart the box from a tab left
+	// open on a phone — which is the exact moment the quiet-window policy says not to,
+	// because a connected browser means someone is looking at it. There, updating is
+	// either a deliberate tap or the server's own decision once the box goes quiet.
 	useEffect(() => {
-		if (countdown === 0 && showToast) {
+		if (countdown === 0 && showToast && restartContext?.headless !== true) {
 			if (countdownRef.current) clearInterval(countdownRef.current);
 			handleRestart();
 		}
-	}, [countdown, showToast]);
+	}, [countdown, showToast, restartContext]);
+
+	// What a restart would interrupt, and whether it keeps the remote link. Fetched
+	// once per offered update rather than polled: it feeds a warning on a deliberate
+	// action, not a live indicator.
+	useEffect(() => {
+		if (!updateVersion) return;
+		api.request.getUpdateRestartContext()
+			.then(setRestartContext)
+			.catch(() => setRestartContext(null));
+	}, [updateVersion]);
 
 	// Close whichever header dropdown is open on Escape.
 	useEscapeKey(
@@ -595,6 +613,8 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 									version={updateVersion}
 									changelog={updateChangelog}
 									restarting={restarting}
+									tasksInProgress={restartContext?.tasksInProgress ?? 0}
+									keepsRemoteLink={restartContext?.headless ?? false}
 									onRestart={handleRestart}
 									onSeeAllChanges={() => {
 										setShowUpdateDropdown(false);

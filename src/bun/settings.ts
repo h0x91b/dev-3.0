@@ -128,6 +128,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 					: d.defaultDiffViewMode === "auto"
 						? "auto"
 						: undefined,
+		// Default-on toggle — only an explicit false is a stored opt-out.
+		remoteSilentUpdate: d.remoteSilentUpdate === false ? false : undefined,
 		preventSleepWhileRunning: d.preventSleepWhileRunning ?? undefined,
 		skipQuitDialog: d.skipQuitDialog === true ? true : undefined,
 		importShellEnv: d.importShellEnv === false ? false : undefined,

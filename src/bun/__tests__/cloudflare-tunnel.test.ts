@@ -30,6 +30,8 @@ import {
 	resolveTunnelEdgeBind,
 	buildTunnelArgv,
 	tunnelManager,
+	adoptMainTunnel,
+	releaseMainTunnelForHandoff,
 	TUNNEL_EDGE_READY,
 	_resetState,
 } from "../cloudflare-tunnel";
@@ -624,5 +626,82 @@ describe("edge readiness watchdog", () => {
 			id: "main",
 			consecutiveFailures: 3,
 		}));
+	});
+});
+
+// ================================================================
+// Handoff — the one place a cloudflared child is deliberately leaked
+// ================================================================
+
+describe("releaseMainTunnelForHandoff / adoptMainTunnel", () => {
+	beforeEach(() => {
+		_resetState();
+		vi.clearAllMocks();
+	});
+
+	function startWithUrl(url: string, pid = 4242) {
+		const killFn = vi.fn();
+		const encoder = new TextEncoder();
+		(mockSpawn as Mock).mockReturnValue({
+			pid,
+			kill: killFn,
+			exited: new Promise<void>(() => {}),
+			stderr: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode("INF Starting metrics server on 127.0.0.1:20241/metrics\n"));
+					controller.enqueue(encoder.encode(`INF |  ${url}\n`));
+					controller.close();
+				},
+			}),
+		});
+		return { killFn };
+	}
+
+	it("hands back the pid and URL WITHOUT killing cloudflared — that is the whole point", async () => {
+		const { killFn } = startWithUrl("https://keepme.trycloudflare.com");
+		await startTunnel(8080);
+
+		const released = releaseMainTunnelForHandoff();
+
+		expect(released).toEqual({
+			pid: 4242,
+			url: "https://keepme.trycloudflare.com",
+			metricsReadyUrl: "http://127.0.0.1:20241/ready",
+		});
+		// Killing it would change the public hostname, which is exactly what the
+		// handoff exists to prevent.
+		expect(killFn).not.toHaveBeenCalled();
+		// The manager has forgotten it, so nothing here will try to manage it again.
+		expect(getTunnelState()).toBe("idle");
+	});
+
+	it("returns null when there is no connected tunnel to hand over", () => {
+		expect(releaseMainTunnelForHandoff()).toBeNull();
+	});
+
+	it("registers an inherited process as the live main tunnel", () => {
+		adoptMainTunnel({
+			pid: 5150,
+			url: "https://inherited.trycloudflare.com",
+			metricsReadyUrl: "http://127.0.0.1:20241/ready",
+			targetPort: 8080,
+		});
+
+		expect(getTunnelUrl()).toBe("https://inherited.trycloudflare.com");
+		expect(getTunnelState()).toBe("connected");
+		// Nothing was spawned: the process already exists.
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+
+	it("signals an adopted process on stop, so a restart cannot orphan it", () => {
+		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+		try {
+			adoptMainTunnel({ pid: 5151, url: "https://x.trycloudflare.com", metricsReadyUrl: null, targetPort: 8080 });
+			stopTunnel();
+			expect(killSpy).toHaveBeenCalledWith(5151, "SIGTERM");
+			expect(getTunnelState()).toBe("idle");
+		} finally {
+			killSpy.mockRestore();
+		}
 	});
 });

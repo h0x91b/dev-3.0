@@ -231,6 +231,8 @@ const settings = {
 	"settings.browserNotificationsEnable": "Activar notificaciones del navegador",
 	"settings.browserNotificationsBlocked": "Las notificaciones están bloqueadas para este sitio: vuelve a activarlas en la configuración del sitio de tu navegador.",
 	"settings.browserNotificationsInsecure": "Las notificaciones necesitan un contexto seguro (HTTPS o localhost). En una dirección http:// de red local se sustituyen por toasts en la app: ábrelo mediante el túnel de Cloudflare para notificaciones reales.",
+	"settings.remoteSilentUpdate": "Actualizar una máquina remota por su cuenta",
+	"settings.remoteSilentUpdateDesc": "Permite que un servidor headless dev3 remote instale actualizaciones solo cuando la máquina está tranquila: ninguna tarea en curso, ninguna salida de terminal, nadie conectado. El enlace público y las sesiones abiertas sobreviven al reinicio. Desactívalo para mantener una máquina en una sola compilación mientras investigas. No afecta a esta aplicación de escritorio.",
 	"settings.preventSleep": "Evitar suspensión",
 	"settings.preventSleepDesc": "Mantiene el sistema despierto mientras dev-3.0 está abierto (forzado cuando el acceso remoto está activo). También se alterna desde la cabecera.",
 	"settings.preventSleepNotAvailable": "No se encontró herramienta para inhibir suspensión (caffeinate en macOS, systemd-inhibit en Linux).",

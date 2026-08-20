@@ -231,6 +231,8 @@ const tips = {
 	"tip.modelCatalogRoles.body": "Register your own providers, then give each of an agent's roles its own model in the preset editor.",
 	"tip.spaceSearch.title": "Jump by space, not project",
 	"tip.spaceSearch.body": "⌘K matches space names too — type a space to list its projects, and filter tasks anywhere with `space:\"Client X\"`.",
+	"tip.remoteSelfUpdate.title": "Remote boxes self-update",
+	"tip.remoteSelfUpdate.body": "A `dev3 remote` server installs updates itself once the box goes quiet, keeping its public link — or run `dev3 update` yourself.",
 } as const;
 
 export default tips;

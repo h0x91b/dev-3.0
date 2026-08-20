@@ -962,6 +962,15 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board", "terminal"],
 	},
+	{
+		id: "remote-self-update",
+		titleKey: "tip.remoteSelfUpdate.title",
+		bodyKey: "tip.remoteSelfUpdate.body",
+		icon: "\u{F06B0}", // nf-md-cloud_sync
+		score: 3,
+		contexts: ["board", "settings"],
+		settingsSection: "system",
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -231,6 +231,8 @@ const settings = {
 	"settings.browserNotificationsEnable": "Enable browser notifications",
 	"settings.browserNotificationsBlocked": "Notifications are blocked for this site — re-enable them in your browser's site settings.",
 	"settings.browserNotificationsInsecure": "Notifications need a secure context (HTTPS or localhost). Over a plain http:// LAN address they fall back to in-app toasts — open via the Cloudflare tunnel for real notifications.",
+	"settings.remoteSilentUpdate": "Update a remote box on its own",
+	"settings.remoteSilentUpdateDesc": "Let a headless dev3 remote server install updates itself once the box is quiet — no task in progress, no terminal output, nobody connected. The public link and open sessions survive the restart. Turn it off to hold a box on one build while investigating. No effect on this desktop app.",
 	"settings.preventSleep": "Prevent sleep",
 	"settings.preventSleepDesc": "Keep your system awake while dev-3.0 is open (forced on while remote access is active). Also toggleable from the header.",
 	"settings.preventSleepNotAvailable": "No sleep inhibitor found (caffeinate on macOS, systemd-inhibit on Linux).",
