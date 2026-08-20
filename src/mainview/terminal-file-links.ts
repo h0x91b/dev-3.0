@@ -116,6 +116,8 @@ export interface LogicalLineRow {
 export interface LogicalLine {
 	text: string;
 	rows: LogicalLineRow[];
+	/** At least one row seam was a geometric guess, not a terminal wrap flag. */
+	guessed: boolean;
 }
 
 // Bound reassembly work for pathological single logical lines (minified JSON
@@ -143,6 +145,18 @@ const VERTICAL_SEPARATORS = new Set(["│", "┃", "║", "╎", "╏", "┆", "
 const SEAM_CHAR = /[\w.@%+,=/\\~-]/;
 
 const MIN_BAND_WIDTH = 3;
+
+// How far the upper row's last character may sit from the band's right edge and
+// still count as "cut off by the width". TUIs that reflow themselves (Claude
+// Code, most agent CLIs) break a couple of columns short of the real edge.
+const MAX_WRAP_SLACK = 4;
+
+// A self-reflowing TUI indents its continuation rows to line up under the
+// content; anything deeper than this is a new block, not a continuation.
+const MAX_CONTINUATION_INDENT = 12;
+
+// What tells a wrapped path fragment apart from a wrapped sentence.
+const PATH_SEPARATOR = /[/\\.]/;
 
 function bandsOf(text: string): Band[] {
 	const bands: Band[] = [];
@@ -184,21 +198,69 @@ function hasBand(row: RowInfo, band: Band): boolean {
 	return row.bands.some((b) => b.left === band.left && b.right === band.right);
 }
 
+/** The seam between two stitched rows: last used column above, first below. */
+interface Seam {
+	upperEnd: number;
+	lowerStart: number;
+	/** True when the terminal's own wrap flag proved it — not a geometric guess. */
+	flagged: boolean;
+}
+
+function lastNonSpace(text: string, band: Band): number {
+	for (let x = band.right; x >= band.left; x--) if (text[x] !== " ") return x;
+	return -1;
+}
+
+function firstNonSpace(text: string, band: Band): number {
+	for (let x = band.left; x <= band.right; x++) if (text[x] !== " ") return x;
+	return -1;
+}
+
+/** The run of path characters ending at (or starting at) a seam column. */
+function tokenEndingAt(text: string, left: number, end: number): string {
+	let x = end;
+	while (x >= left && SEAM_CHAR.test(text[x]!)) x--;
+	return text.slice(x + 1, end + 1);
+}
+
+function tokenStartingAt(text: string, start: number, right: number): string {
+	let x = start;
+	while (x <= right && SEAM_CHAR.test(text[x]!)) x++;
+	return text.slice(start, x);
+}
+
 /**
  * Does `upper` continue into `lower` inside `band`?
  *
- * The wrap flag is authoritative when it is there, but it is missing for two
+ * The wrap flag is authoritative when it is there, but it is missing for three
  * cases that matter: rows already in ghostty-web's scrollback (its buffer
- * hardcodes `isWrapped: false` for them) and any tmux window with a vertical
- * split, where tmux redraws each pane row by row and the terminal never sees a
- * wrap at all. Those fall back to geometry: the upper row fills the band to its
- * last column and both sides of the seam read as path text.
+ * hardcodes `isWrapped: false` for them), any tmux window with a vertical
+ * split (tmux redraws each pane row by row, so the terminal never sees a wrap),
+ * and TUIs that reflow their own output — Claude Code emits a real newline plus
+ * an indent, so there is no wrap to see at all. Those fall back to geometry:
+ * the upper row runs out at the band's right edge, the lower row starts with a
+ * modest indent, and both sides of the seam read as path text.
+ *
+ * Returns the columns the seam joins, so the trailing padding and the leading
+ * indent are dropped when the rows are concatenated.
  */
-function continues(upper: RowInfo, lower: RowInfo, band: Band): boolean {
+function seamBetween(upper: RowInfo, lower: RowInfo, band: Band): Seam | null {
+	if (!hasBand(upper, band) || !hasBand(lower, band)) return null;
 	const fullWidth = band.left === 0 && band.right === upper.text.length - 1;
-	if (fullWidth && lower.isWrapped) return true;
-	if (!hasBand(upper, band) || !hasBand(lower, band)) return false;
-	return SEAM_CHAR.test(upper.text[band.right] ?? "") && SEAM_CHAR.test(lower.text[band.left] ?? "");
+	if (fullWidth && lower.isWrapped) return { upperEnd: band.right, lowerStart: band.left, flagged: true };
+	const upperEnd = lastNonSpace(upper.text, band);
+	const lowerStart = firstNonSpace(lower.text, band);
+	if (upperEnd < 0 || lowerStart < 0) return null;
+	if (band.right - upperEnd > MAX_WRAP_SLACK) return null;
+	if (lowerStart - band.left > MAX_CONTINUATION_INDENT) return null;
+	const upperToken = tokenEndingAt(upper.text, band.left, upperEnd);
+	const lowerToken = tokenStartingAt(lower.text, lowerStart, band.right);
+	if (!upperToken || !lowerToken) return null;
+	// Prose wraps too; only a seam where one side already looks like a path is
+	// worth guessing at, and a path fragment that wide always carries a
+	// separator or a dot.
+	if (!PATH_SEPARATOR.test(upperToken) && !PATH_SEPARATOR.test(lowerToken)) return null;
+	return { upperEnd, lowerStart, flagged: false };
 }
 
 function buildLogicalLine(getLine: BufferLineReader, row: RowInfo, band: Band, cache: RowCache): LogicalLine {
@@ -206,21 +268,27 @@ function buildLogicalLine(getLine: BufferLineReader, row: RowInfo, band: Band, c
 	while (startY > 0 && row.y - startY < MAX_LOGICAL_ROWS) {
 		const above = readRow(getLine, startY - 1, cache);
 		const current = readRow(getLine, startY, cache);
-		if (!above || !current || !continues(above, current, band)) break;
+		if (!above || !current || !seamBetween(above, current, band)) break;
 		startY--;
 	}
 	const rows: LogicalLineRow[] = [];
 	let text = "";
+	let from = band.left;
+	let guessed = false;
 	for (let rowY = startY; rowY - startY < MAX_LOGICAL_ROWS; rowY++) {
 		const current = readRow(getLine, rowY, cache);
 		if (!current) break;
-		const slice = current.text.slice(band.left, band.right + 1);
-		rows.push({ y: rowY, text: slice, offset: text.length, x0: band.left });
-		text += slice;
 		const next = readRow(getLine, rowY + 1, cache);
-		if (!next || !continues(current, next, band)) break;
+		const seam = next ? seamBetween(current, next, band) : null;
+		const to = seam ? seam.upperEnd : band.right;
+		const slice = current.text.slice(from, to + 1);
+		rows.push({ y: rowY, text: slice, offset: text.length, x0: from });
+		text += slice;
+		if (!seam) break;
+		if (!seam.flagged) guessed = true;
+		from = seam.lowerStart;
 	}
-	return { text, rows };
+	return { text, rows, guessed };
 }
 
 /**
@@ -348,16 +416,50 @@ export function createFilePathLinkProvider(options: FilePathLinkProviderOptions)
 		segments: BufferRange[];
 	}
 
+	/**
+	 * Stitching rows is a guess, so it must never cost a link: a wrongly merged
+	 * token ("a.ts" + "b.ts") resolves to nothing and would swallow both real
+	 * paths. Every row of a multi-row logical line is therefore scanned on its
+	 * own as well, and its candidates are kept wherever the stitched read
+	 * produced no link over those cells.
+	 */
 	function computeLinks(y: number, cache?: RowCache): RowLink[] {
 		const logicalLines = getLogicalLines((row) => options.term.buffer.active.getLine(row), y, cache);
 		const links: RowLink[] = [];
+		const claimed = new Map<number, [number, number][]>();
+		const claim = (segments: BufferRange[]) => {
+			for (const segment of segments) {
+				const spans = claimed.get(segment.start.y) ?? [];
+				spans.push([segment.start.x, segment.end.x]);
+				claimed.set(segment.start.y, spans);
+			}
+		};
+		const isFree = (range: BufferRange) =>
+			!(claimed.get(range.start.y) ?? []).some(([from, to]) => range.start.x <= to && range.end.x >= from);
 		for (const logical of logicalLines) {
 			for (const candidate of findPathCandidates(logical.text)) {
 				const target = cachedTarget(candidate.cleanPath);
 				if (!target) continue;
 				const segments = mapRangeToBuffer(logical.rows, candidate.start, candidate.end);
 				if (segments.length === 0) continue;
+				claim(segments);
 				links.push({ target, candidate, segments });
+			}
+		}
+		for (const logical of logicalLines) {
+			if (!logical.guessed || logical.rows.length < 2) continue;
+			for (const row of logical.rows) {
+				for (const candidate of findPathCandidates(row.text)) {
+					const range = {
+						start: { x: row.x0 + candidate.start, y: row.y },
+						end: { x: row.x0 + candidate.end, y: row.y },
+					};
+					if (!isFree(range)) continue;
+					const target = cachedTarget(candidate.cleanPath);
+					if (!target) continue;
+					claim([range]);
+					links.push({ target, candidate, segments: [range] });
+				}
 			}
 		}
 		return links;

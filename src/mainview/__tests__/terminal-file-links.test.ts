@@ -143,10 +143,35 @@ describe("getLogicalLines", () => {
 		]);
 	});
 
-	it("does not stitch when the row stops short of the band's last column", () => {
+	it("does not stitch when the row stops well short of the band's last column", () => {
 		const getLine = fakeBuffer([
-			{ spec: "prose that ends here", cols: 21 },
-			{ spec: "next line starts here", cols: 21 },
+			{ spec: "prose that ends here", cols: 30 },
+			{ spec: "next line starts here", cols: 30 },
+		]);
+		const [logical] = getLogicalLines(getLine, 0);
+		expect(logical?.rows).toHaveLength(1);
+	});
+
+	it("stitches an indented continuation row, dropping padding and indent", () => {
+		// Claude Code reflows its own output: a real newline plus an indent, and
+		// the break lands a couple of columns short of the true right edge.
+		const getLine = fakeBuffer([
+			{ spec: "  156 /Users/me/deep/di", cols: 25 },
+			{ spec: "      rs/notes.md done", cols: 25 },
+		]);
+		const [logical] = getLogicalLines(getLine, 0);
+		const [candidate] = findPathCandidates(logical!.text);
+		expect(candidate.cleanPath).toBe("/Users/me/deep/dirs/notes.md");
+		expect(mapRangeToBuffer(logical!.rows, candidate.start, candidate.end)).toEqual([
+			{ start: { x: 6, y: 0 }, end: { x: 22, y: 0 } },
+			{ start: { x: 6, y: 1 }, end: { x: 16, y: 1 } },
+		]);
+	});
+
+	it("does not stitch a deeply indented row onto the one above", () => {
+		const getLine = fakeBuffer([
+			{ spec: "note /Users/me/deep/di", cols: 22 },
+			{ spec: "              rs/notes.md", cols: 22 },
 		]);
 		const [logical] = getLogicalLines(getLine, 0);
 		expect(logical?.rows).toHaveLength(1);
@@ -293,6 +318,31 @@ describe("createFilePathLinkProvider", () => {
 			[1, 1],
 			[2, 2],
 		]);
+		provider.dispose();
+	});
+
+	it("keeps each row's own link when a wrong stitch would swallow both", async () => {
+		// Two full-width rows that are NOT one wrapped path: the merged token
+		// resolves to nothing, so both real paths must still surface per row.
+		const resolvePaths = vi.fn(async (paths: string[]) => {
+			const out: Record<string, ResolvedTerminalPath | null> = {};
+			for (const p of paths) {
+				out[p] = p === "src/alpha.ts" || p === "src/omega.ts" ? { path: `/wt/${p}`, kind: "file" } : null;
+			}
+			return out;
+		});
+		const provider = createFilePathLinkProvider({
+			term: makeTerm([
+				{ spec: "run src/alpha.ts", cols: 16 },
+				{ spec: "run src/omega.ts", cols: 16 },
+			]),
+			resolvePaths,
+			onActivate: vi.fn(),
+		});
+		provider.linksForRows([0, 1]);
+		await settle();
+		const ranges = provider.linksForRows([0, 1]);
+		expect(ranges.map((r) => `${r.start.y}:${r.start.x}-${r.end.x}`).sort()).toEqual(["0:4-15", "1:4-15"]);
 		provider.dispose();
 	});
 
