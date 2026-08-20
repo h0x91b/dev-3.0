@@ -338,7 +338,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 							{/* Amber, matching Hibernate: the pane goes away, the work in the
 							    worktree does not. Red is reserved for the irreversible. */}
 							<button
-								className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? "text-warning hover:text-warning hover:bg-warning/15 border-warning/30" : ""}`}
+								className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? "text-warning-strong hover:text-warning-strong hover:bg-warning/15 border-warning/30" : ""}`}
 								disabled={!canClose}
 								onClick={canClose ? handleClosePane : undefined}
 								aria-label={t("tmux.closePaneDesc")}

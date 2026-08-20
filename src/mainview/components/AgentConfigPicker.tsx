@@ -447,7 +447,7 @@ function AgentConfigPicker({
 						onClick={() => setUpdateOpen(true)}
 						className="col-span-full min-w-0 flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-warning/5 border border-warning/20 text-left hover:border-warning/40 transition-colors"
 					>
-						<span className="text-warning text-xs shrink-0">&#9888;</span>
+						<span className="text-warning-strong text-xs shrink-0">&#9888;</span>
 						<span className="text-fg-2 text-xs truncate">{t("recommendedUpdate.notice")}</span>
 						<span className="text-accent text-xs font-medium shrink-0 ml-auto">
 							{t("recommendedUpdate.review")}

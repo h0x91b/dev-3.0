@@ -124,7 +124,7 @@ export default function FeatureFlagsModal({ onClose }: FeatureFlagsModalProps) {
 				</div>
 
 				<div className="space-y-1">
-					{noClient && <p className="text-warning text-micro">{t("featureFlags.noClient")}</p>}
+					{noClient && <p className="text-warning-strong text-micro">{t("featureFlags.noClient")}</p>}
 					<p className="text-fg-3 text-xs">{t("featureFlags.distinctIdLabel")}</p>
 					<div className="flex items-center gap-2">
 						<code className="streamer-private flex-1 min-w-0 truncate px-3 py-2 rounded-lg bg-elevated border border-edge text-fg-2 text-xs font-mono">
@@ -146,7 +146,7 @@ export default function FeatureFlagsModal({ onClose }: FeatureFlagsModalProps) {
 						</button>
 					</div>
 					{idMismatch && (
-						<p className="text-warning text-micro">
+						<p className="text-warning-strong text-micro">
 							{t("featureFlags.idMismatch", { stored: storedId })}
 						</p>
 					)}

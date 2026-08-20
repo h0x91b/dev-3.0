@@ -88,7 +88,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const colorClasses = danger
 		? "text-danger bg-danger/15 border-danger/30"
 		: warn
-			? "text-warning bg-warning/15 border-warning/30"
+			? "text-warning-strong bg-warning/15 border-warning/30"
 			: "text-fg-3 border-transparent";
 
 	const openAccountsSettings = () => {

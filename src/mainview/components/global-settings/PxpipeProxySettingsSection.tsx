@@ -96,7 +96,7 @@ export default function PxpipeProxySettingsSection({
 			>
 				{/* Honesty callout — always visible, even when off. */}
 				<div className="rounded-xl border border-warning/30 bg-warning/10 p-3">
-					<p className="text-warning text-sm font-semibold mb-1">
+					<p className="text-warning-strong text-sm font-semibold mb-1">
 						{t("pxpipe.warningTitle")}
 					</p>
 					<p className="text-fg-2 text-xs leading-relaxed">{t("pxpipe.warningBody")}</p>

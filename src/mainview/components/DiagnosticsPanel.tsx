@@ -16,7 +16,7 @@ const KIND_LABEL: Record<DiagnosticKind, TranslationKey> = {
 
 function levelColor(level: DiagnosticEntry["level"]): string {
 	if (level === "error") return "text-danger";
-	if (level === "warn") return "text-warning";
+	if (level === "warn") return "text-warning-strong";
 	return "text-fg-3";
 }
 

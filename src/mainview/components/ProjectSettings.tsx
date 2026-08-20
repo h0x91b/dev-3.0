@@ -70,7 +70,7 @@ function AddRowButton({ onClick, disabled, children }: { onClick: () => void; di
 function WarningNote({ children }: { children: ReactNode }) {
 	return (
 		<div className="flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5">
-			<span className="mt-0.5 flex-shrink-0 text-warning text-base">&#9888;</span>
+			<span className="mt-0.5 flex-shrink-0 text-warning-strong text-base">&#9888;</span>
 			<p className="text-fg-2 text-xs leading-relaxed">{children}</p>
 		</div>
 	);

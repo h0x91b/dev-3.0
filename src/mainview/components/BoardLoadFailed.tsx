@@ -15,7 +15,7 @@ export default function BoardLoadFailed({ onRetry }: { onRetry: () => void }) {
 		<div className="flex-1 min-h-0 flex items-center justify-center p-6" data-testid="board-load-failed">
 			<div className="w-full max-w-sm bg-raised border border-edge rounded-2xl p-6 space-y-3 text-center">
 				<span
-					className="text-warning text-2xl leading-none block"
+					className="text-warning-strong text-2xl leading-none block"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 				>
 					{"\uf071"}

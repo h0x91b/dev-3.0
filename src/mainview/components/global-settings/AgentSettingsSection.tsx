@@ -453,12 +453,12 @@ export default function AgentSettingsSection({
 															: "border-transparent text-fg-2 hover:bg-elevated-hover hover:text-fg"
 													}`}
 												>
-													<span className={isFavorite ? "text-warning" : "text-transparent"}>
+													<span className={isFavorite ? "text-warning-strong" : "text-transparent"}>
 														<StarIcon filled={isFavorite} />
 													</span>
 													<span className="flex-1 min-w-0 truncate">{getModeLeafLabel(config)}</span>
 													{config.requiresPxpipeProxy ? (
-														<span className="text-warning text-micro shrink-0">{t("settings.presetNeedsProxy")}</span>
+														<span className="text-warning-strong text-micro shrink-0">{t("settings.presetNeedsProxy")}</span>
 													) : null}
 													{activeAgent.defaultConfigId === config.id ? (
 														<span className="text-accent text-micro shrink-0">{t("settings.defaultBadge")}</span>
@@ -796,7 +796,7 @@ function PresetEditor({
 						title={isFavorite ? t("settings.favoriteRemoveHint") : t("settings.favoriteAddHint")}
 						className={`px-2.5 py-1 rounded-lg border text-xs flex items-center gap-1.5 transition-colors ${
 							isFavorite
-								? "bg-warning/10 border-warning/30 text-warning hover:bg-warning/15"
+								? "bg-warning/10 border-warning/30 text-warning-strong hover:bg-warning/15"
 								: "bg-elevated border-edge text-fg-2 hover:text-fg hover:border-edge-active"
 						}`}
 					>
@@ -1001,7 +1001,7 @@ function AgentFamilyField({
 			</Field>
 			{unrecognized ? (
 				<div className="p-3 rounded-lg bg-warning/5 border border-warning/20 space-y-1" role="status">
-					<p className="text-warning text-xs font-medium">{t("settings.familyMissingTitle")}</p>
+					<p className="text-warning-strong text-xs font-medium">{t("settings.familyMissingTitle")}</p>
 					<p className="text-fg-3 text-xs">
 						{t("settings.familyMissingBody", { command: agent.baseCommand || "—" })}
 					</p>
@@ -1071,7 +1071,7 @@ function AgentPane({
 								<div>
 									<p className="text-fg-3 text-xs mb-1">{t("settings.agentInstallHint")}</p>
 									<div className="flex items-center gap-1.5">
-										<code className="text-warning bg-warning/10 px-2 py-1 rounded text-xs font-mono">
+										<code className="text-warning-strong bg-warning/10 px-2 py-1 rounded text-xs font-mono">
 											{availability.installCommand}
 										</code>
 										<button

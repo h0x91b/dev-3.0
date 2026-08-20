@@ -131,7 +131,7 @@ export default function TaskTerminalBackendRow({
 			</p>
 			{!live &&
 				reasons.map((reason) => (
-					<p key={reason} className="text-warning text-xs">
+					<p key={reason} className="text-warning-strong text-xs">
 						{reason}
 					</p>
 				))}

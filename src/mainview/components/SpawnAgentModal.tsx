@@ -185,7 +185,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 						{/* Warning for uninstalled agents */}
 						{agentNotInstalled && selectedAgent && (
 							<div id={NOT_INSTALLED_ID} className="p-3 rounded-lg bg-warning/10 border border-warning/20">
-								<p className="text-warning text-xs font-medium mb-1">
+								<p className="text-warning-strong text-xs font-medium mb-1">
 									{t("spawnAgent.notInstalled", { name: selectedAgent.name })}
 								</p>
 								{selectedAvailability?.installCommand && (

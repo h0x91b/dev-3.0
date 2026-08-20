@@ -67,7 +67,7 @@ export default function BootstrapScreen({
 			<div className="w-full max-w-md bg-raised border border-edge rounded-2xl shadow-2xl p-6 space-y-4">
 				<div className="flex items-center gap-3">
 					<span
-						className="text-warning text-2xl leading-none flex-shrink-0"
+						className="text-warning-strong text-2xl leading-none flex-shrink-0"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
 						{"\uf071"}

@@ -192,7 +192,7 @@ export default function BehaviorSettingsSection({
 				</p>
 				{prOriginTaskLinkSupported ? null : (
 					<p
-						className="text-warning text-xs mb-3 break-words"
+						className="text-warning-strong text-xs mb-3 break-words"
 						data-testid="pr-origin-task-link-unsupported"
 					>
 						{t("settings.prOriginTaskLinkUnsupported")}

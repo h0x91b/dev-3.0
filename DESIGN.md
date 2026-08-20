@@ -79,7 +79,8 @@ when you point at it. Never swap the two.
 | Danger | `--danger` | `#ff8987` | `#d61133` |
 | Success | `--success` | `#3fdf7e` | `#0e8a47` |
 | Success hover (fills) | `--success-hover` | `#04be58` | `#0a7239` |
-| Warning | `--warning` | `#f0d24e` | `#91760d` |
+| Warning (paper/border) | `--warning` | `#f0d24e` | `#e3b914` |
+| Warning ink (`text-warning-strong`) | `--warning-strong` | `#f0d24e` | `#46390f` |
 | Favorite (saved star) | `--favorite` | `#f9b63d` | `#a2710f` |
 | Awake | `--awake` | `#f49456` | `#bd5e0f` |
 | Achievement gold | `--stat-gold` | `#e5aa41` | `#9d6e0c` |
@@ -87,6 +88,15 @@ when you point at it. Never swap the two.
 
 The four warm roles are separated by **hue**, not just lightness, so they never
 read as one colour: warning 96° → gold 78° → awake 52° → fire 42°.
+
+**Warning is the one role whose light-theme value is split in two.** sRGB cannot
+make a colour that is both dark enough to carry text on white and still yellow —
+at the ~0.575 lightness every other light token sits at, yellow's chroma ceiling
+is 0.114 against danger's 0.218, so a "yellow ink" renders as brown mud. So in
+the light theme `--warning` is the **paper** (fills, tints, borders, bar fills)
+and `--warning-strong` is the **ink** that goes on it. Always write text as
+`text-warning-strong`, never `text-warning`. In the dark theme the two are the
+same yellow, so the rule costs nothing there.
 
 ### Background Gradient
 

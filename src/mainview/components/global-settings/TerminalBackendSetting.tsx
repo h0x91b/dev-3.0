@@ -103,7 +103,7 @@ export default function TerminalBackendSetting({
 								<div className="text-fg text-sm font-semibold">{option.title}</div>
 								<div className="text-fg-3 text-xs mt-0.5">{option.description}</div>
 								{option.reasons.map((reason) => (
-									<div key={reason} className="text-warning text-xs mt-1 break-words">
+									<div key={reason} className="text-warning-strong text-xs mt-1 break-words">
 										{reason}
 									</div>
 								))}

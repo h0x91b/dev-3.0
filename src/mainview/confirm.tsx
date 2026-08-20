@@ -278,7 +278,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 					<p
 						data-testid="confirm-deferred"
 						className={`flex items-start gap-2 text-sm leading-relaxed whitespace-pre-line ${
-							deferredState.muted ? "text-fg-3" : "text-warning"
+							deferredState.muted ? "text-fg-3" : "text-warning-strong"
 						}`}
 					>
 						{!deferredState.settled && (

@@ -87,7 +87,7 @@ export function GithubThreadView({
 					</span>
 				)}
 				{thread.isOutdated && (
-					<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-dense font-semibold text-warning">
+					<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-dense font-semibold text-warning-strong">
 						{t("infoPanel.prOutdatedBadge")}
 					</span>
 				)}

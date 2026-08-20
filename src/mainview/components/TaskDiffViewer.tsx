@@ -1624,7 +1624,7 @@ function TaskDiffFileSection({
 							<span
 								data-testid="diff-exec-config-badge"
 								data-help-id="diff.exec-config"
-								className="inline-flex flex-shrink-0 items-center gap-1 px-1.5 py-0.5 rounded-md border text-micro font-bold bg-warning/10 text-warning border-warning/25"
+								className="inline-flex flex-shrink-0 items-center gap-1 px-1.5 py-0.5 rounded-md border text-micro font-bold bg-warning/10 text-warning-strong border-warning/25"
 							>
 								<span aria-hidden>⚠</span>
 								{/* The word costs the file name ~39px. Under ~28rem of pane it
@@ -3471,7 +3471,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</span>
 				)}
 				{payload.fallbackReason === "no-upstream" && (
-					<span className="px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/25 text-micro">
+					<span className="px-2 py-1 rounded-md bg-warning/10 text-warning-strong border border-warning/25 text-micro">
 						{t("infoPanel.diffFallbackNoUpstream", { ref: payload.compareLabel })}
 					</span>
 				)}
@@ -3585,7 +3585,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						className={`inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-micro font-mono ${
 							searchMatches.length > 0
 								? "border-edge bg-base text-fg-2"
-								: "border-warning/25 bg-warning/10 text-warning"
+								: "border-warning/25 bg-warning/10 text-warning-strong"
 						}`}
 					>
 						{searchStatusLabel}
@@ -4229,7 +4229,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 											<span className={`shrink-0 px-1.5 py-0.5 rounded-md border text-dense ${
 												skipped.reason === "binary"
 													? "bg-accent/10 text-accent border-accent/25"
-													: "bg-warning/10 text-warning border-warning/25"
+													: "bg-warning/10 text-warning-strong border-warning/25"
 											}`}>
 												{skipped.reason === "binary"
 													? t("infoPanel.diffSkippedReasonBinary")

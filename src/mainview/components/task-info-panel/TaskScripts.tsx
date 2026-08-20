@@ -343,7 +343,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 					)}
 				</div>
 				{data?.package.multipleLockfiles && !pickerFor && (
-					<div className="flex-shrink-0 px-3 py-1.5 text-xs text-warning bg-warning/10 border-b border-warning/20">
+					<div className="flex-shrink-0 px-3 py-1.5 text-xs text-warning-strong bg-warning/10 border-b border-warning/20">
 						⚠ {t("scripts.warning.multipleLockfiles")}: {data.package.lockfiles.join(", ")}
 					</div>
 				)}

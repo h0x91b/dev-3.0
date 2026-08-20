@@ -305,7 +305,7 @@ export default function TaskGitActions({
 				<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
 				{t("task.prBadge", { number: String(prInfo.number) })}
 				{(prInfo.unresolvedCount ?? 0) > 0 && (
-					<span className="inline-flex items-center gap-0.5 text-warning" aria-label={t.plural("task.prUnresolvedComments", prInfo.unresolvedCount ?? 0)}>
+					<span className="inline-flex items-center gap-0.5 text-warning-strong" aria-label={t.plural("task.prUnresolvedComments", prInfo.unresolvedCount ?? 0)}>
 						<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>
 						<span>{prInfo.unresolvedCount}</span>
 					</span>

@@ -175,7 +175,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 									</span>
 									<span className="flex items-center gap-1.5 flex-shrink-0">
 										{custom && (
-											<span className="px-1 py-0.5 rounded-[5px] bg-warning/15 text-warning text-nano font-bold uppercase tracking-wide leading-none">
+											<span className="px-1 py-0.5 rounded-[5px] bg-warning/15 text-warning-strong text-nano font-bold uppercase tracking-wide leading-none">
 												{t("openIn.customBadge")}
 											</span>
 										)}

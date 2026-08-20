@@ -8,7 +8,7 @@ import { isRemote } from "../../utils/platform";
 export default function RemoteBetaWarning({ text }: { text: string }) {
 	if (!isRemote()) return null;
 	return (
-		<span className="mt-1.5 flex items-start gap-1.5 text-warning">
+		<span className="mt-1.5 flex items-start gap-1.5 text-warning-strong">
 			<span
 				aria-hidden
 				className="flex-shrink-0 leading-none"

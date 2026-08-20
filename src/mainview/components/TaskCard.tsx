@@ -481,7 +481,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const REVIEW_BADGE: Record<NonNullable<TaskPRBadgeInfo["reviewState"]>, { glyph: string | null; square?: boolean; cls: string; key: TranslationKey }> = {
 		approved: { glyph: null, square: true, cls: "text-success bg-success/10 hover:bg-success/20", key: "task.review.approved" },
 		changes_requested: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.review.changesRequested" },
-		commented: { glyph: "", cls: "text-warning bg-warning/10 hover:bg-warning/20", key: "task.review.commented" },
+		commented: { glyph: "", cls: "text-warning-strong bg-warning/10 hover:bg-warning/20", key: "task.review.commented" },
 	};
 	const reviewMeta = prInfo?.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
 	const reviewBadge = reviewMeta ? (
@@ -525,7 +525,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					e.stopPropagation();
 					window.open(prInfo.url, "_blank");
 				}}
-				className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded bg-warning/10 px-1.5 py-0.5 font-mono text-dense font-semibold leading-none text-warning transition-colors hover:bg-warning/20"
+				className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded bg-warning/10 px-1.5 py-0.5 font-mono text-dense font-semibold leading-none text-warning-strong transition-colors hover:bg-warning/20"
 				aria-label={t.plural("task.prUnresolvedComments", unresolvedCount)}
 			>
 				<span className="text-micro leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>

@@ -106,7 +106,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 								<p className="text-fg-3 text-xs mb-3">{t("fileBrowser.notInstalledDesc")}</p>
 								{yaziLinuxHint && <p className="text-fg-3 text-xs mb-2">{t("fileBrowser.linuxBrewHint")}</p>}
 								<div className="flex items-center gap-2 mb-3">
-									<code className="flex-1 text-warning bg-warning/10 px-3 py-2 rounded text-xs font-mono break-all">
+									<code className="flex-1 text-warning-strong bg-warning/10 px-3 py-2 rounded text-xs font-mono break-all">
 										{yaziInstallCmd}
 									</code>
 									<Tooltip content={t("openIn.copyPath")} detail={t("ttip.infoPanel.copyPath")}>

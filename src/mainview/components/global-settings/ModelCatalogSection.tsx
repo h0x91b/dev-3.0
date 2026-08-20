@@ -449,11 +449,11 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 							</button>
 						</Gated>
 						{listError ? (
-							<span className="text-xs text-warning">{t("catalog.listUnavailable")}</span>
+							<span className="text-xs text-warning-strong">{t("catalog.listUnavailable")}</span>
 						) : available === null ? null : available.length > 0 ? (
 							<span className="text-xs text-fg-3">{t("catalog.listLoaded", { count: String(available.length) })}</span>
 						) : (
-							<span className="text-xs text-warning">{t("catalog.listEmpty")}</span>
+							<span className="text-xs text-warning-strong">{t("catalog.listEmpty")}</span>
 						)}
 			</div>
 		</div>

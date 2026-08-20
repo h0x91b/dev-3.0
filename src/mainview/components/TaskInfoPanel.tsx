@@ -975,7 +975,7 @@ function TaskInfoPanel({
 				data-testid="task-hibernate-button"
 				onClick={handleHibernate}
 				disabled={hibernating}
-				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning hover:text-warning hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
+				className="task-anim warning-paper flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-warning-strong hover:text-warning-strong hover:bg-warning/15 border border-warning/30 disabled:opacity-50"
 				aria-label={t("task.hibernate")}
 			>
 				{hibernating ? (
@@ -1083,7 +1083,7 @@ function TaskInfoPanel({
 										>
 											<span>{t("task.prBadge", { number: String(metadataPrInfo.number) })}</span>
 											{(metadataPrInfo.unresolvedCount ?? 0) > 0 && (
-												<span className="inline-flex items-center gap-0.5 text-warning no-underline" aria-label={t.plural("task.prUnresolvedComments", metadataPrInfo.unresolvedCount ?? 0)}>
+												<span className="inline-flex items-center gap-0.5 text-warning-strong no-underline" aria-label={t.plural("task.prUnresolvedComments", metadataPrInfo.unresolvedCount ?? 0)}>
 													<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>
 													<span>{metadataPrInfo.unresolvedCount}</span>
 												</span>

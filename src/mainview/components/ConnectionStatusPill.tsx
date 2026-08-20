@@ -73,13 +73,13 @@ export default function ConnectionStatusPill() {
 			onClick={() => reconnectRpc()}
 			aria-label={t("conn.pill.retryAria")}
 			data-testid="connection-status-pill"
-			className="flex items-center gap-2 pl-2.5 pr-3 py-2 rounded-full bg-warning/15 border border-warning/40 text-warning shadow-lg backdrop-blur-sm hover:bg-warning/25 transition-colors"
+			className="flex items-center gap-2 pl-2.5 pr-3 py-2 rounded-full bg-warning/15 border border-warning/40 text-warning-strong shadow-lg backdrop-blur-sm hover:bg-warning/25 transition-colors"
 		>
 			<span className="w-2 h-2 rounded-full bg-warning animate-pulse" />
 			<span className="text-xs font-semibold whitespace-nowrap">
 				{t(STATE_LABEL[state as Exclude<RpcConnectionState, "connected">])}
 			</span>
-			<span className="text-warning/70 text-xs whitespace-nowrap">{t("conn.pill.retry")}</span>
+			<span className="text-warning-strong/70 text-xs whitespace-nowrap">{t("conn.pill.retry")}</span>
 		</button>
 	);
 }

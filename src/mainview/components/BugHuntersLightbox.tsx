@@ -210,11 +210,11 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 						{/* Warning for uninstalled agents */}
 						{agentNotInstalled && selectedAgent && (
 							<div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
-								<p className="text-warning text-xs font-medium mb-1">
+								<p className="text-warning-strong text-xs font-medium mb-1">
 									{t("spawnAgent.notInstalled", { name: selectedAgent.name })}
 								</p>
 								{selectedAvailability?.installCommand && (
-									<code className="text-warning/80 bg-warning/5 px-2 py-0.5 rounded text-xs font-mono">
+									<code className="text-warning-strong/80 bg-warning/5 px-2 py-0.5 rounded text-xs font-mono">
 										{selectedAvailability.installCommand}
 									</code>
 								)}

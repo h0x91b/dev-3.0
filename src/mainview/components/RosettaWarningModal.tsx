@@ -47,7 +47,7 @@ export default function RosettaWarningModal({ command, kind, onClose }: RosettaW
 			>
 				<div className="flex items-center gap-3">
 					<span
-						className="text-warning text-2xl leading-none"
+						className="text-warning-strong text-2xl leading-none"
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 					>
 						{"\uf071"}
@@ -62,7 +62,7 @@ export default function RosettaWarningModal({ command, kind, onClose }: RosettaW
 					{kind === "brew" ? t("rosetta.instructionBrew") : t("rosetta.instructionDmg")}
 				</p>
 
-				<code className="block bg-base border border-edge rounded-lg px-3 py-2 text-xs font-mono text-warning break-all select-all">
+				<code className="block bg-base border border-edge rounded-lg px-3 py-2 text-xs font-mono text-warning-strong break-all select-all">
 					{command}
 				</code>
 

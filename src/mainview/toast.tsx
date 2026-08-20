@@ -188,7 +188,7 @@ const VARIANT: Record<ToastVariant, { icon: string; border: string; text: string
 	error: { icon: "\uf06a", border: "border-danger/40", text: "text-danger", bar: "bg-danger" },
 	success: { icon: "\uf058", border: "border-success/40", text: "text-success", bar: "bg-success" },
 	info: { icon: "\uf05a", border: "border-accent/40", text: "text-accent", bar: "bg-accent" },
-	warning: { icon: "\uf071", border: "border-warning/40", text: "text-warning", bar: "bg-warning" },
+	warning: { icon: "\uf071", border: "border-warning/40", text: "text-warning-strong", bar: "bg-warning" },
 	// Envelope, not a severity glyph: this toast reports mail between agents.
 	agent: { icon: "\uf0e0", border: "border-agent/40", text: "text-agent", bar: "bg-agent" },
 };

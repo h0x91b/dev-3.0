@@ -21,7 +21,7 @@ function formatNextRun(iso: string | null, locale: string): string | null {
 function runStatusChip(run: AutomationRun, t: ReturnType<typeof useT>): { label: string; className: string } {
 	if (run.status === "created") return { label: t("automations.runCreated"), className: "text-success bg-success/10" };
 	if (run.status === "failed") return { label: t("automations.runFailed"), className: "text-danger bg-danger/10" };
-	return { label: t("automations.runMissed"), className: "text-warning bg-warning/10" };
+	return { label: t("automations.runMissed"), className: "text-warning-strong bg-warning/10" };
 }
 
 function AutomationsPanel({ project }: AutomationsPanelProps) {

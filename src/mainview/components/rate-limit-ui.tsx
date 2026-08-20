@@ -90,7 +90,7 @@ export function severityFill(percent: number): string {
 
 export function severityText(percent: number): string {
 	if (percent >= RATE_LIMIT_DANGER_PERCENT) return "text-danger";
-	if (percent >= RATE_LIMIT_WARN_PERCENT) return "text-warning";
+	if (percent >= RATE_LIMIT_WARN_PERCENT) return "text-warning-strong";
 	return "text-fg-2";
 }
 
@@ -225,7 +225,7 @@ export function CapturedNote({ capturedAt, now }: { capturedAt: number; now: num
 	const stale = age > STALE_AFTER_MS;
 	const label = age < 60_000 ? t("rateLimits.capturedNow") : t("rateLimits.captured", { time: formatAge(age) });
 	return (
-		<span className={`flex items-center gap-1 text-xs tabular-nums ${stale ? "text-warning" : "text-fg-3"}`}>
+		<span className={`flex items-center gap-1 text-xs tabular-nums ${stale ? "text-warning-strong" : "text-fg-3"}`}>
 			{label}
 		</span>
 	);
@@ -243,7 +243,7 @@ export function CapturedAgeSuffix({ capturedAt, now }: { capturedAt: number; now
 	const short = age < 60_000 ? t("rateLimits.capturedAgeNow") : formatAge(age);
 	const full = age < 60_000 ? t("rateLimits.capturedNow") : t("rateLimits.captured", { time: formatAge(age) });
 	return (
-		<span title={full} className={stale ? "text-warning" : "text-fg-3"}>
+		<span title={full} className={stale ? "text-warning-strong" : "text-fg-3"}>
 			{" · "}
 			{short}
 		</span>

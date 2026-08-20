@@ -72,7 +72,7 @@ function checkGlyph(state: CheckState): string {
 function checkClass(state: CheckState): string {
 	switch (state) {
 		case "failure": return "text-danger";
-		case "pending": return "text-warning";
+		case "pending": return "text-warning-strong";
 		case "success": return "text-success";
 		default: return "text-fg-3";
 	}
@@ -319,13 +319,13 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 						<div className="font-semibold text-fg">{t("task.prStatusPopover", { number: String(prInfo.number) })}</div>
 						{prInfo.prTitle && <div className="mt-0.5 truncate text-fg-3" title={prInfo.prTitle}>{prInfo.prTitle}</div>}
 					</div>
-					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning">{t("task.prDraft")}</span>}
+					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning-strong">{t("task.prDraft")}</span>}
 				</div>
 			)}
 			{sheet && (prInfo.prTitle || prInfo.isDraft) && (
 				<div className="flex items-start justify-between gap-3">
 					{prInfo.prTitle && <div className="min-w-0 break-words text-fg-3">{prInfo.prTitle}</div>}
-					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning">{t("task.prDraft")}</span>}
+					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning-strong">{t("task.prDraft")}</span>}
 				</div>
 			)}
 
@@ -341,13 +341,13 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowU
 						}}
 						title={t("task.prShowUnresolvedInDiff")}
 						aria-label={t("task.prShowUnresolvedInDiff")}
-						className="mt-2 flex items-center gap-1.5 rounded text-warning transition-colors hover:underline focus:ring-1 focus:ring-accent"
+						className="mt-2 flex items-center gap-1.5 rounded text-warning-strong transition-colors hover:underline focus:ring-1 focus:ring-accent"
 					>
 						<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 						<span>{t.plural("task.prUnresolvedComments", prInfo.unresolvedCount)}</span>
 					</button>
 				) : (
-					<div className="mt-2 flex items-center gap-1.5 text-warning">
+					<div className="mt-2 flex items-center gap-1.5 text-warning-strong">
 						<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 						<span>{t.plural("task.prUnresolvedComments", prInfo.unresolvedCount)}</span>
 					</div>

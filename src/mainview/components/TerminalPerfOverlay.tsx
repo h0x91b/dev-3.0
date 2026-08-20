@@ -41,7 +41,7 @@ type Tone = "ok" | "warn" | "bad";
 
 function toneClass(tone: Tone): string {
 	if (tone === "bad") return "text-danger";
-	if (tone === "warn") return "text-warning";
+	if (tone === "warn") return "text-warning-strong";
 	return "text-fg-2";
 }
 

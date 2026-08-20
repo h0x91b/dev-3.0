@@ -110,7 +110,7 @@ function ApiProfileBadges({ api }: { api: AgentApiProfileInfo }) {
 	const host = apiBadgeHost(api.baseUrl);
 	return (
 		<>
-			<span className="text-warning text-xs px-1.5 py-0.5 bg-warning/10 rounded shrink-0">API</span>
+			<span className="text-warning-strong text-xs px-1.5 py-0.5 bg-warning/10 rounded shrink-0">API</span>
 			{host ? <span className="text-fg-3 text-xs font-mono truncate streamer-private">{host}</span> : null}
 		</>
 	);

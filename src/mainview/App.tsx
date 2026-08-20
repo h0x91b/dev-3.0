@@ -2683,7 +2683,7 @@ function App() {
 									<p className="text-danger text-xs font-medium">{t("remote.cloudflaredNotFound")}</p>
 									<p className="text-fg-2 text-xs">{t("remote.cloudflaredInstallHint")}</p>
 									<div className="flex items-center gap-2">
-										<code className="flex-1 text-warning bg-warning/10 px-3 py-2 rounded text-xs font-mono break-all select-all">
+										<code className="flex-1 text-warning-strong bg-warning/10 px-3 py-2 rounded text-xs font-mono break-all select-all">
 											{CLOUDFLARED_INSTALL_CMD}
 										</code>
 										<button
@@ -2740,12 +2740,12 @@ function App() {
 								<div className="flex items-start gap-2 rounded-lg bg-warning/10 border border-warning/20 px-2.5 py-2 text-left">
 									<span
 										aria-hidden="true"
-										className="text-warning text-sm leading-none mt-px shrink-0"
+										className="text-warning-strong text-sm leading-none mt-px shrink-0"
 										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 									>
 										{"\uF071"}
 									</span>
-									<p className="text-warning/90 text-xs leading-snug">{t("remote.tunnelPropagationHint")}</p>
+									<p className="text-warning-strong/90 text-xs leading-snug">{t("remote.tunnelPropagationHint")}</p>
 								</div>
 							)}
 

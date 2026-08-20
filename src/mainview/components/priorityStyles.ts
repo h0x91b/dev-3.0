@@ -43,10 +43,12 @@ export const PRIORITY_STYLES: Record<TaskPriority, PriorityStyle> = {
 		chipIdle: "text-awake border border-awake/30 opacity-60 hover:opacity-100",
 		chipActive: "text-awake bg-awake/15 border border-awake/30 ring-1 ring-awake",
 	},
+	// `warning-paper` is the light-theme-only fill that gives P2 its yellow back:
+	// yellow ink does not exist on white paper (see --warning in index.css).
 	P2: {
-		badge: "text-warning bg-warning/15 border border-warning/30",
-		chipIdle: "text-warning border border-warning/30 opacity-60 hover:opacity-100",
-		chipActive: "text-warning bg-warning/15 border border-warning/30 ring-1 ring-warning",
+		badge: "warning-paper text-warning-strong bg-warning/15 border border-warning/30",
+		chipIdle: "warning-paper text-warning-strong border border-warning/30 opacity-60 hover:opacity-100",
+		chipActive: "warning-paper text-warning-strong bg-warning/15 border border-warning/30 ring-1 ring-warning",
 	},
 	P3: {
 		badge: "text-success bg-success/15 border border-success/30",

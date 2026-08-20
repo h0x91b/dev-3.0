@@ -21,7 +21,7 @@ export const PRESSURE_TEXT_CLASS: Record<MemoryPressure, string> = {
 	// Normal is deliberately neutral, not success-green: green means "Completed"
 	// in this app, and a permanently green header pill reads as a claim.
 	normal: "text-fg-3",
-	warn: "text-warning",
+	warn: "text-warning-strong",
 	critical: "text-danger",
 };
 
@@ -253,7 +253,7 @@ export default function MemoryBreakdownPanel({ snapshot, onSelectTask, onCloseOv
 							})}
 						</span>
 					)}
-					<span className={`ml-1.5 ${snapshot.swapping ? "text-warning" : "text-fg-muted"}`}>
+					<span className={`ml-1.5 ${snapshot.swapping ? "text-warning-strong" : "text-fg-muted"}`}>
 						{snapshot.swapping ? t("memory.swappingNow") : t("memory.swappingNot")}
 					</span>
 				</div>

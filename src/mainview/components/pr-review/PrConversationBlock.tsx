@@ -81,7 +81,7 @@ export function PrConversationBlock({
 					<span className="rounded bg-base px-1.5 py-px font-mono text-micro text-fg-3">{conversation.length}</span>
 					<span aria-hidden="true" className="text-sm-plus text-fg-3">{expanded ? "▾" : "▸"}</span>
 					{unresolvedCount > 0 && (
-						<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-micro font-semibold text-warning">
+						<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-micro font-semibold text-warning-strong">
 							{t.plural("infoPanel.prUnresolvedCount", unresolvedCount)}
 						</span>
 					)}
