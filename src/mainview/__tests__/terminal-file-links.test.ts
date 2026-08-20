@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
 	createFilePathLinkProvider,
+	createRowCache,
 	findPathCandidates,
 	getLogicalLines,
 	lineToText,
@@ -206,6 +207,19 @@ describe("getLogicalLines", () => {
 		const [segment] = mapRangeToBuffer(logical.rows, candidate.start, candidate.end);
 		expect(segment.start).toEqual({ x: 8, y: 0 }); // true screen column
 		expect(segment.end).toEqual({ x: 15, y: 0 });
+	});
+
+	it("builds a logical line once and hands the same object to every row it covers", () => {
+		// A viewport-sized stitch must not be rebuilt (and rescanned) per row.
+		const getLine = fakeBuffer([
+			{ spec: "note /Users/me/deep/di", cols: 22 },
+			{ spec: "      rs/notes.md here", cols: 22 },
+		]);
+		const cache = createRowCache();
+		const [first] = getLogicalLines(getLine, 0, cache);
+		const [second] = getLogicalLines(getLine, 1, cache);
+		expect(first.rows).toHaveLength(2);
+		expect(second).toBe(first);
 	});
 
 	it("starts from the requested row when it is not wrapped", () => {

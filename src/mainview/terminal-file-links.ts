@@ -178,19 +178,23 @@ interface RowInfo {
 }
 
 /** Per-pass memo so one viewport repaint reads each buffer row exactly once. */
-export type RowCache = Map<number, RowInfo | undefined>;
+export interface RowCache {
+	rows: Map<number, RowInfo | undefined>;
+	/** Finished logical lines, keyed by every row they cover (`y:left:right`). */
+	lines: Map<string, LogicalLine>;
+}
 
 export function createRowCache(): RowCache {
-	return new Map();
+	return { rows: new Map(), lines: new Map() };
 }
 
 function readRow(getLine: BufferLineReader, y: number, cache: RowCache): RowInfo | undefined {
-	const hit = cache.get(y);
-	if (hit !== undefined || cache.has(y)) return hit;
+	const hit = cache.rows.get(y);
+	if (hit !== undefined || cache.rows.has(y)) return hit;
 	const line = y >= 0 ? getLine(y) : undefined;
 	const text = line ? lineToText(line) : "";
 	const info = line ? { y, text, isWrapped: line.isWrapped, bands: bandsOf(text) } : undefined;
-	cache.set(y, info);
+	cache.rows.set(y, info);
 	return info;
 }
 
@@ -300,7 +304,22 @@ function buildLogicalLine(getLine: BufferLineReader, row: RowInfo, band: Band, c
 export function getLogicalLines(getLine: BufferLineReader, y: number, cache: RowCache = createRowCache()): LogicalLine[] {
 	const row = readRow(getLine, y, cache);
 	if (!row) return [];
-	return row.bands.map((band) => buildLogicalLine(getLine, row, band, cache)).filter((line) => line.rows.length > 0);
+	const lines: LogicalLine[] = [];
+	for (const band of row.bands) {
+		// One logical line can cover the whole viewport (an unbroken wall of
+		// paths in a split pane). Building it once per row it covers would make
+		// a repaint quadratic in the row count, so it is memoised for every row
+		// it owns as soon as it is built.
+		const key = `${y}:${band.left}:${band.right}`;
+		const hit = cache.lines.get(key);
+		const line = hit ?? buildLogicalLine(getLine, row, band, cache);
+		if (line.rows.length === 0) continue;
+		if (!hit) {
+			for (const covered of line.rows) cache.lines.set(`${covered.y}:${band.left}:${band.right}`, line);
+		}
+		lines.push(line);
+	}
+	return lines;
 }
 
 export interface BufferRange {
@@ -423,8 +442,11 @@ export function createFilePathLinkProvider(options: FilePathLinkProviderOptions)
 	 * own as well, and its candidates are kept wherever the stitched read
 	 * produced no link over those cells.
 	 */
-	function computeLinks(y: number, cache?: RowCache): RowLink[] {
-		const logicalLines = getLogicalLines((row) => options.term.buffer.active.getLine(row), y, cache);
+	function computeLinks(y: number, cache?: RowCache, done?: Set<LogicalLine>): RowLink[] {
+		const logicalLines = getLogicalLines((row) => options.term.buffer.active.getLine(row), y, cache).filter(
+			(line) => !done?.has(line),
+		);
+		for (const line of logicalLines) done?.add(line);
 		const links: RowLink[] = [];
 		const claimed = new Map<number, [number, number][]>();
 		const claim = (segments: BufferRange[]) => {
@@ -488,12 +510,15 @@ export function createFilePathLinkProvider(options: FilePathLinkProviderOptions)
 			const ranges: BufferRange[] = [];
 			// A logical line spans several rows, so a link surfaces once per row it
 			// covers; dedupe by range instead of skipping rows, whose other column
-			// bands may still hold links of their own.
+			// bands may still hold links of their own. `done` keeps the scan itself
+			// off a line already handled — a viewport-sized logical line would
+			// otherwise be re-scanned once per row it covers.
 			const seen = new Set<string>();
 			const cache = createRowCache();
+			const done = new Set<LogicalLine>();
 			for (const y of ys) {
 				try {
-					for (const { segments } of computeLinks(y, cache)) {
+					for (const { segments } of computeLinks(y, cache, done)) {
 						for (const range of segments) {
 							const key = `${range.start.y}:${range.start.x}:${range.end.x}`;
 							if (seen.has(key)) continue;

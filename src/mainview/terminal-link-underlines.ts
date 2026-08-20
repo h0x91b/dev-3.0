@@ -17,8 +17,9 @@ import type { BufferRange } from "./terminal-file-links";
  * same pass, so the overlay is never left blank waiting for a recompute. A
  * debounce here would starve: under a stream of writes it never fires, which
  * blanked the underlines for the whole output burst and blinked them at the
- * refresh rate of an agent's spinner. One frame costs ~0.2 ms for a 160×48
- * viewport, so per-frame recompute is cheaper than the bookkeeping to avoid it.
+ * refresh rate of an agent's spinner. One frame costs ~0.25 ms for a typical
+ * 160×48 viewport and ~0.9 ms for a screen that is nothing but full-width
+ * paths, so per-frame recompute is cheaper than the bookkeeping to avoid it.
  */
 
 // Same blue ghostty-web hardcodes for its hover underline (#4A90E2), slightly
