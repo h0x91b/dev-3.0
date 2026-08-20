@@ -107,8 +107,9 @@ function MobileWindowCarousel({
 	const active = Math.max(0, Math.min(info.activeIndex, info.count - 1));
 	const windowLabel = (i: number) => info.labels[i]?.trim() || t("windowPager.window", { index: String(i + 1) });
 
+	// Touch-sized, in lockstep with the pane bar right below it.
 	const chevronBtn =
-		"flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 hover:text-accent hover:bg-raised-hover transition-colors";
+		"flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 hover:text-accent hover:bg-raised-hover transition-colors";
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col">
@@ -116,7 +117,7 @@ function MobileWindowCarousel({
 			    bar. A leading window glyph distinguishes it from the pane switcher. */}
 			{multi && (
 				<div
-					className="relative z-20 flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-edge/60 glass-header"
+					className="relative z-20 flex-shrink-0 flex items-center gap-1 px-3 py-2 min-h-[3.25rem] border-b border-edge/60 glass-header"
 					role="group"
 					aria-roledescription={t("windowPager.role")}
 					tabIndex={0}
@@ -129,7 +130,7 @@ function MobileWindowCarousel({
 						title={t("windowPager.prev")}
 						className={chevronBtn}
 					>
-						<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F053}"}</span>
+						<span className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F053}"}</span>
 					</button>
 
 					<div ref={menuRef} className="relative flex-1 min-w-0">
@@ -139,13 +140,13 @@ function MobileWindowCarousel({
 							aria-haspopup="listbox"
 							aria-expanded={menuOpen}
 							aria-label={t("windowPager.switchWindow")}
-							className="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg px-2 text-fg-2 hover:bg-raised-hover transition-colors min-w-0"
+							className="w-full h-11 flex items-center justify-center gap-1.5 rounded-lg px-2 text-fg-2 hover:bg-raised-hover transition-colors min-w-0"
 						>
-							<span className="text-sm-plus leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F05C2}"}</span>
-							<span className="truncate text-xs font-medium">
+							<span className="text-base-lg leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F05C2}"}</span>
+							<span className="truncate text-sm font-medium">
 								{active + 1}. {windowLabel(active)}
 							</span>
-							<span className="text-nano leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
+							<span className="text-micro leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
 						</button>
 
 						{menuOpen && (
@@ -163,7 +164,7 @@ function MobileWindowCarousel({
 											setMenuOpen(false);
 											void navigate({ index: i });
 										}}
-										className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
+										className={`w-full flex items-center gap-2 px-2.5 min-h-[2.75rem] rounded-lg text-left text-sm transition-colors ${
 											i === active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated"
 										}`}
 									>
@@ -185,7 +186,7 @@ function MobileWindowCarousel({
 						title={t("windowPager.next")}
 						className={chevronBtn}
 					>
-						<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F054}"}</span>
+						<span className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F054}"}</span>
 					</button>
 				</div>
 			)}

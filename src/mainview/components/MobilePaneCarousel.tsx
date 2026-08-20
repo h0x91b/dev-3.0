@@ -294,8 +294,9 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 	const active = Math.max(0, Math.min(info.activeIndex, info.count - 1));
 	const paneLabel = (i: number) => info.labels[i]?.trim() || t("panePager.pane", { index: String(i + 1) });
 
+	// Touch-sized to match the task summary bar right above it (44px controls).
 	const chevronBtn =
-		"flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 hover:text-accent hover:bg-raised-hover transition-colors";
+		"flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 hover:text-accent hover:bg-raised-hover transition-colors";
 
 	// Show the top bar whenever the session has at least one pane — the manage
 	// button (which opens the create/close sheet) must be reachable even on a
@@ -334,7 +335,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 			    windows" button that opens the create/close sheet. Never overlaps the
 			    terminal and sits at the top, off the on-screen keyboard. */}
 			{showBar && (
-				<div className="relative z-10 flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-edge/60 glass-header">
+				<div className="relative z-10 flex-shrink-0 flex items-center gap-1 px-3 py-2 min-h-[3.25rem] border-b border-edge/60 glass-header">
 					{multi ? (
 					<>
 					<button
@@ -344,7 +345,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 						title={t("paneMap.open")}
 						className={chevronBtn}
 					>
-						<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0570}"}</span>
+						<span className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0570}"}</span>
 					</button>
 					<button
 						type="button"
@@ -353,7 +354,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 						title={t("panePager.prev")}
 						className={chevronBtn}
 					>
-						<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F053}"}</span>
+						<span className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F053}"}</span>
 					</button>
 
 					<div ref={menuRef} className="relative flex-1 min-w-0">
@@ -363,12 +364,12 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 							aria-haspopup="listbox"
 							aria-expanded={menuOpen}
 							aria-label={t("panePager.switchPane")}
-							className="w-full h-8 flex items-center justify-center gap-1.5 rounded-lg px-2 text-fg-2 hover:bg-raised-hover transition-colors min-w-0"
+							className="w-full h-11 flex items-center justify-center gap-1.5 rounded-lg px-2 text-fg-2 hover:bg-raised-hover transition-colors min-w-0"
 						>
-							<span className="truncate text-xs font-medium">
+							<span className="truncate text-sm font-medium">
 								{active + 1}. {paneLabel(active)}
 							</span>
-							<span className="text-nano leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
+							<span className="text-micro leading-none flex-shrink-0 text-fg-muted" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F078}"}</span>
 						</button>
 
 						{menuOpen && (
@@ -386,7 +387,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 											setMenuOpen(false);
 											void navigate({ index: i, zoom: true });
 										}}
-										className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left text-xs transition-colors ${
+										className={`w-full flex items-center gap-2 px-2.5 min-h-[2.75rem] rounded-lg text-left text-sm transition-colors ${
 											i === active ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated"
 										}`}
 									>
@@ -408,11 +409,11 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 						title={t("panePager.next")}
 						className={chevronBtn}
 					>
-						<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F054}"}</span>
+						<span className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F054}"}</span>
 					</button>
 					</>
 					) : (
-						<span className="flex-1 min-w-0 truncate px-1 text-xs font-medium text-fg-muted">
+						<span className="flex-1 min-w-0 truncate px-1 text-sm font-medium text-fg-muted">
 							{paneLabel(0)}
 						</span>
 					)}
@@ -424,7 +425,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 						title={t("panePager.manage")}
 						className={`tmux-anim ${chevronBtn}`}
 					>
-						<ManagePanesIcon className="w-[1.125rem] h-[1.125rem]" />
+						<ManagePanesIcon className="w-[1.375rem] h-[1.375rem]" />
 					</button>
 				</div>
 			)}
