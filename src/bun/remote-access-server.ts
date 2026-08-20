@@ -455,8 +455,13 @@ async function handleRpcMessage(ws: any, raw: string | ArrayBuffer): Promise<voi
 			return;
 		}
 		try {
+			// Both stamps are on this machine's clock, so the span survives any skew
+			// between the browser and the host. It is what lets the connection-quality
+			// readout say whether a slow round trip was the link or us.
+			const startedAt = performance.now();
 			const result = await requestHandler(packet.method, packet.params);
-			ws.send(JSON.stringify({ type: "response", id: packet.id, success: true, payload: result }));
+			const serverMs = Math.round((performance.now() - startedAt) * 10) / 10;
+			ws.send(JSON.stringify({ type: "response", id: packet.id, success: true, payload: result, serverMs }));
 		} catch (err) {
 			ws.send(JSON.stringify({
 				type: "response", id: packet.id, success: false,

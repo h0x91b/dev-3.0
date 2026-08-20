@@ -8,6 +8,7 @@ import { useProjectPrivacy } from "../sensitive-projects";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api, isElectrobun } from "../rpc";
+import { isRemote } from "../utils/platform";
 import { subscribeFullscreen, isFullscreenActive, isFullscreenSupported, toggleFullscreen } from "../fullscreen";
 import { toast } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
@@ -20,6 +21,7 @@ import CanaryBadge from "./CanaryBadge";
 import PreventSleepToggle from "./PreventSleepToggle";
 import RateLimitIndicator from "./RateLimitIndicator";
 import MemoryHeadroomIndicator from "./MemoryHeadroomIndicator";
+import ConnectionQualityIndicator from "./ConnectionQualityIndicator";
 import BottomSheet from "./BottomSheet";
 import Tooltip from "./Tooltip";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -80,6 +82,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const privacy = useProjectPrivacy();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	// This page is the far end of a remote session, not the desktop window. Read
+	// once: it cannot change without a reload.
+	const viewedOverRemote = isRemote();
 	// Live fullscreen state for the action-sheet toggle label (browser only).
 	const fullscreenActive = useSyncExternalStore(subscribeFullscreen, isFullscreenActive);
 	const [showActionSheet, setShowActionSheet] = useState(false);
@@ -754,8 +759,11 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					<GitPullButton projectId={route.projectId} compact={compact} />
 				)}
 
-				{/* Remote Access QR Code (folded into the kebab on narrow) */}
-				{!isNarrow && (
+				{/* Remote Access QR Code (folded into the kebab on narrow). Seen from the
+				    far end of a remote session the QR offers a code for the connection you
+				    are already using, so that slot carries the connection-quality readout
+				    instead — a swap, never a second control. */}
+				{!isNarrow && !viewedOverRemote && (
 					<Tooltip content={t("header.remoteAccessTooltip")} detail={t("ttip.header.remoteAccess")}>
 						<button
 							onClick={() => { void openRemoteAccess(); }}
@@ -766,6 +774,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						</button>
 				</Tooltip>
 				)}
+				{!isNarrow && viewedOverRemote && <ConnectionQualityIndicator />}
 
 				{/* Help mode ("Explain this screen") — bright accent "?", always inline on
 				    every screen (never folds into the kebab); narrow gets it via the sheet. */}

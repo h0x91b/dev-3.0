@@ -8,6 +8,9 @@ import type { Route } from "../../state";
 vi.mock("../../rpc", () => ({
 	// Browser mode: the fullscreen toggle row is visible in the action sheet.
 	isElectrobun: false,
+	// No round-trip probe: the connection-quality readout starts and stays silent,
+	// which is what this suite wants — it is not the widget's test.
+	getRoundTripProbe: () => null,
 	api: {
 		request: {
 			getSystemMemory: vi.fn().mockResolvedValue(null),
@@ -851,6 +854,22 @@ describe("GlobalHeader — remote access indicator", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.getTasks.mockResolvedValue([]);
+		// The QR icon lives in the DESKTOP window. Seen from the far end of a remote
+		// session it would offer a code for the connection already in use, so that
+		// slot carries the connection-quality readout there instead.
+		(window as any).__electrobunWebviewId = 1;
+	});
+	afterEach(() => {
+		delete (window as any).__electrobunWebviewId;
+	});
+
+	it("hands the slot to the connection-quality readout in a remote tab", () => {
+		delete (window as any).__electrobunWebviewId;
+		renderHeader({ screen: "dashboard" });
+
+		expect(
+			screen.queryByLabelText("Open on your phone — scan QR code for remote access"),
+		).not.toBeInTheDocument();
 	});
 
 	it("keeps the QR icon neutral until the tunnel is active", () => {
@@ -1230,6 +1249,8 @@ describe("GlobalHeader — remote access button", () => {
 	});
 
 	it("opens instantly on the first click via a non-blocking local QR fetch", async () => {
+		// Desktop: the QR button only exists there (see the remote-access suite).
+		(window as any).__electrobunWebviewId = 1;
 		const events: CustomEvent[] = [];
 		const listener = (e: Event) => events.push(e as CustomEvent);
 		window.addEventListener("rpc:showRemoteAccessQR", listener);
@@ -1246,6 +1267,7 @@ describe("GlobalHeader — remote access button", () => {
 			expect(events[0].detail.autoStartTunnel).toBe(true);
 		} finally {
 			window.removeEventListener("rpc:showRemoteAccessQR", listener);
+			delete (window as any).__electrobunWebviewId;
 		}
 	});
 });

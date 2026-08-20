@@ -48,6 +48,23 @@ const diagnostics = {
 	"conn.pill.retry": "Toca para reintentar",
 	"conn.pill.retryAria": "Conexión perdida — reintentar ahora",
 	"conn.pill.restored": "Conexión restablecida",
+	// ── Remote connection quality (header readout) ──
+	"connQuality.title": "Calidad de la conexión",
+	"connQuality.definition": "Ida y vuelta de una petición por la misma conexión que usa la aplicación.",
+	"connQuality.ariaLabel": "Ida y vuelta de {ms} ms — abrir el detalle",
+	"connQuality.median": "Ida y vuelta habitual",
+	"connQuality.p95": "La más lenta de 20",
+	"connQuality.jitter": "Variación",
+	"connQuality.ours": "Gastado en este ordenador",
+	"connQuality.network": "Gastado en la red",
+	"connQuality.path": "Ruta",
+	"connQuality.pathTunnel": "Túnel de Cloudflare",
+	"connQuality.pathLan": "Directo, red local",
+	"connQuality.pathLocal": "La misma máquina",
+	"connQuality.samples": "Muestras",
+	"connQuality.samplesWithLoss": "{count} ({lost} perdidas)",
+	"connQuality.host": "Dirección",
+	"connQuality.compareHint": "Esto es el recorrido completo. Para culpar al túnel, abre la URL directa de la red local y compara el mismo número.",
 } as const;
 
 export default diagnostics;

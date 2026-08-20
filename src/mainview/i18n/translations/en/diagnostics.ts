@@ -48,6 +48,23 @@ const diagnostics = {
 	"conn.pill.retry": "Tap to retry",
 	"conn.pill.retryAria": "Connection lost — retry now",
 	"conn.pill.restored": "Back online",
+	// ── Remote connection quality (header readout) ──
+	"connQuality.title": "Connection quality",
+	"connQuality.definition": "Round trip of one request through the same connection the app uses.",
+	"connQuality.ariaLabel": "Connection round trip {ms} ms — open the breakdown",
+	"connQuality.median": "Typical round trip",
+	"connQuality.p95": "Slowest 1 in 20",
+	"connQuality.jitter": "Jitter",
+	"connQuality.ours": "Spent on this computer",
+	"connQuality.network": "Spent on the network",
+	"connQuality.path": "Route",
+	"connQuality.pathTunnel": "Cloudflare tunnel",
+	"connQuality.pathLan": "Direct, local network",
+	"connQuality.pathLocal": "Same machine",
+	"connQuality.samples": "Samples",
+	"connQuality.samplesWithLoss": "{count} ({lost} lost)",
+	"connQuality.host": "Address",
+	"connQuality.compareHint": "This is the whole loop. To blame the tunnel, open the direct local-network URL and compare the same number.",
 } as const;
 
 export default diagnostics;
