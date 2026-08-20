@@ -106,15 +106,67 @@ describe("LabelFilterBar — inline label chips as a view of the string", () => 
 		expect(onSearchChange).toHaveBeenCalledWith("");
 	});
 
-	it("shows only the top-N labels inline with a '+N more' opening the funnel", async () => {
-		const user = userEvent.setup();
-		// 12 labels → 10 inline + "+2 more".
+	it("shows every label when the row cannot be measured (no layout engine)", () => {
 		const many: Label[] = Array.from({ length: 12 }, (_, i) => ({ id: `l${i}`, name: `Label${i}`, color: "#888888" }));
 		renderBar({ labels: many, filterGroups: GROUPS });
-		expect(screen.getByText("Label0")).toBeInTheDocument();
-		expect(screen.queryByText("Label11")).not.toBeInTheDocument();
-		await user.click(screen.getByText("+2 more"));
+		expect(screen.getByText("Label11")).toBeInTheDocument();
+		expect(screen.queryByText(/more$/)).not.toBeInTheDocument();
+	});
+});
+
+describe("LabelFilterBar — chips fill the measured width", () => {
+	const CHIP_W = 60;
+	const MORE_W = 70;
+	const ROW_W = 300;
+	let restore: (() => void)[] = [];
+
+	beforeEach(() => {
+		const rect = HTMLElement.prototype.getBoundingClientRect;
+		const offset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+		Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+			configurable: true,
+			get(this: HTMLElement) {
+				if (this.hasAttribute("data-label-chip")) return CHIP_W;
+				if (this.hasAttribute("data-label-more")) return MORE_W;
+				return 0;
+			},
+		});
+		HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+			const width = this.querySelector("[data-label-chip]") ? ROW_W : 0;
+			return { width, height: 0, top: 0, left: 0, right: width, bottom: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+		};
+		restore = [
+			() => {
+				HTMLElement.prototype.getBoundingClientRect = rect;
+			},
+			() => {
+				if (offset) Object.defineProperty(HTMLElement.prototype, "offsetWidth", offset);
+				else delete (HTMLElement.prototype as unknown as Record<string, unknown>).offsetWidth;
+			},
+		];
+	});
+
+	afterEach(() => {
+		for (const fn of restore) fn();
+	});
+
+	it("keeps as many chips as fit and moves the rest behind '+N more'", async () => {
+		const user = userEvent.setup();
+		// 300px row, 60px chips + 6px gaps, 70px (+8 slack) reserved for "+N more"
+		// ⇒ 3 chips fit, 9 go to the funnel.
+		const many: Label[] = Array.from({ length: 12 }, (_, i) => ({ id: `l${i}`, name: `Label${i}`, color: "#888888" }));
+		renderBar({ labels: many, filterGroups: GROUPS });
+		expect(screen.getByText("Label2")).toBeInTheDocument();
+		expect(screen.queryByText("Label3")).not.toBeInTheDocument();
+		await user.click(screen.getByText("+9 more"));
 		expect(screen.getByTestId("filter-funnel-dropdown")).toBeInTheDocument();
+	});
+
+	it("shows no '+N more' when every chip fits", () => {
+		const few: Label[] = Array.from({ length: 3 }, (_, i) => ({ id: `l${i}`, name: `Label${i}`, color: "#888888" }));
+		renderBar({ labels: few, filterGroups: GROUPS });
+		expect(screen.getByText("Label2")).toBeInTheDocument();
+		expect(screen.queryByText(/more$/)).not.toBeInTheDocument();
 	});
 });
 

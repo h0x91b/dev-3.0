@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState, type RefObject } from "react";
 import { ALL_PRIORITIES, type Label } from "../../shared/types";
 import { useT } from "../i18n";
 import LabelChip from "./LabelChip";
@@ -7,11 +7,14 @@ import HelpSpot from "./HelpSpot";
 import type { FilterFunnelGroup } from "../utils/taskFacets";
 import { isFacetTokenActive, toggleFacetToken } from "../utils/taskSearch";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useContainerWidth } from "../hooks/useContainerWidth";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { PRIORITY_NAME_KEYS, PRIORITY_STYLES } from "./priorityStyles";
 
-/** How many label chips to show inline before the "+N more". */
-const MAX_INLINE_LABELS = 10;
+/** `gap-1.5` between the inline chips, in px — needed to predict the fit. */
+const CHIP_GAP = 6;
+/** Slack on the reserved "+N more" width so a digit change can't oscillate the fit. */
+const MORE_SLACK = 8;
 
 interface LabelFilterBarProps {
 	/** Project labels in the order configured in Project Settings. */
@@ -61,6 +64,62 @@ function PriorityFilterChips({
 	);
 }
 
+/** Rough "+N more" width used before the button has ever been laid out. */
+const MORE_FALLBACK = 60;
+
+/** How many chips of `widths` fit in `avail`, reserving room for "+N more". */
+function fitCount(widths: number[], avail: number, moreWidth: number): number {
+	const total = widths.reduce((sum, w, i) => sum + w + (i ? CHIP_GAP : 0), 0);
+	if (total <= avail) return widths.length;
+
+	const budget = avail - moreWidth - CHIP_GAP;
+	let used = 0;
+	let n = 0;
+	for (const w of widths) {
+		const next = used + w + (n ? CHIP_GAP : 0);
+		if (next > budget) break;
+		used = next;
+		n++;
+	}
+	return n;
+}
+
+/**
+ * How many label chips the row can show, or `null` while nothing is measurable
+ * (first paint, no layout engine) — then every chip renders, which is also the
+ * pass that measures them. Widths are cached per label id so a resize can
+ * re-fit without rendering the trimmed-away chips again.
+ */
+function useFittedChipCount(labels: Label[], rowRef: RefObject<HTMLDivElement | null>): number | null {
+	const rowWidth = useContainerWidth(rowRef);
+	const chipWidths = useRef(new Map<string, number>());
+	const moreWidth = useRef(0);
+	const [fit, setFit] = useState<number | null>(null);
+
+	useLayoutEffect(() => {
+		const row = rowRef.current;
+		if (!row) return;
+
+		for (const el of row.querySelectorAll<HTMLElement>("[data-label-chip]")) {
+			const id = el.dataset.labelChip;
+			if (id && el.offsetWidth > 0) chipWidths.current.set(id, el.offsetWidth);
+		}
+		const moreEl = row.querySelector<HTMLElement>("[data-label-more]");
+		if (moreWidth.current === 0 && moreEl && moreEl.offsetWidth > 0) {
+			moreWidth.current = moreEl.offsetWidth + MORE_SLACK;
+		}
+
+		const widths = labels.map((label) => chipWidths.current.get(label.id) ?? 0);
+		if (rowWidth <= 0 || widths.some((w) => w <= 0)) {
+			setFit(null);
+			return;
+		}
+		setFit(fitCount(widths, rowWidth, moreWidth.current || MORE_FALLBACK));
+	}, [labels, rowWidth, fit, rowRef]);
+
+	return fit;
+}
+
 function LabelFilterBar({
 	labels,
 	searchQuery,
@@ -91,9 +150,11 @@ function LabelFilterBar({
 	}, [disableGlobalFindShortcut]);
 
 	const hasLabels = labels.length > 0;
-	// Only the first labels in the project settings order show inline; the rest
-	// live in the funnel, reachable via the "+N more" chip.
-	const shownLabels = labels.slice(0, MAX_INLINE_LABELS);
+	// Chips fill the row in the project settings order; whatever does not fit the
+	// measured width lives in the funnel, reachable via the "+N more" chip.
+	const chipRowRef = useRef<HTMLDivElement>(null);
+	const fit = useFittedChipCount(labels, chipRowRef);
+	const shownLabels = fit === null ? labels : labels.slice(0, fit);
 	const hiddenLabelCount = labels.length - shownLabels.length;
 
 	// Inline chips are a VIEW of the search string: active when the token is
@@ -215,32 +276,36 @@ function LabelFilterBar({
 				<PriorityFilterChips query={searchQuery} onChange={onSearchChange} />
 			</div>
 
-			{/* Labels — the project-configured order inline (wrapping to ~1.5 rows),
+			{/* Labels — the project-configured order fills the free width on one row,
 			    the rest behind "+N more" which opens the funnel's full label list. */}
 			{hasLabels && (
-				<div className="flex items-center gap-1.5 flex-wrap min-w-0">
+				<div className="flex items-center gap-1.5 flex-1 min-w-0">
 					<span className="flex items-center gap-1 text-xs text-fg-3 font-medium flex-shrink-0">
 						{t("labels.filterTitle")}:
 						<HelpSpot topicId="board.filter-bar" />
 					</span>
-					{shownLabels.map((label) => (
-						<LabelChip
-							key={label.id}
-							label={label}
-							size="sm"
-							active={isLabelActive(label)}
-							onClick={() => toggleLabel(label)}
-						/>
-					))}
-					{hiddenLabelCount > 0 && (
-						<button
-							type="button"
-							onClick={() => setFunnelOpen(true)}
-							className="text-dense font-medium text-fg-3 hover:text-fg px-1.5 py-0.5 rounded-full border border-edge hover:border-edge-active transition-colors flex-shrink-0"
-						>
-							{t("labels.moreLabels", { count: String(hiddenLabelCount) })}
-						</button>
-					)}
+					<div ref={chipRowRef} className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden">
+						{shownLabels.map((label) => (
+							<span key={label.id} data-label-chip={label.id} className="flex-shrink-0">
+								<LabelChip
+									label={label}
+									size="sm"
+									active={isLabelActive(label)}
+									onClick={() => toggleLabel(label)}
+								/>
+							</span>
+						))}
+						{hiddenLabelCount > 0 && (
+							<button
+								type="button"
+								data-label-more
+								onClick={() => setFunnelOpen(true)}
+								className="text-dense font-medium text-fg-3 hover:text-fg px-1.5 py-0.5 rounded-full border border-edge hover:border-edge-active transition-colors flex-shrink-0"
+							>
+								{t("labels.moreLabels", { count: String(hiddenLabelCount) })}
+							</button>
+						)}
+					</div>
 				</div>
 			)}
 		</div>
