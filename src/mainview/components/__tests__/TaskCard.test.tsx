@@ -62,6 +62,14 @@ vi.mock("../TaskDetailModal", () => ({
 	),
 }));
 
+const { mobileMock } = vi.hoisted(() => ({ mobileMock: vi.fn(() => false) }));
+
+vi.mock("../../hooks/useMobile", () => ({
+	useMobile: mobileMock,
+	detectMobile: mobileMock,
+	MobileProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 vi.mock("../LabelPicker", () => ({
 	default: ({ onClose }: { onClose: () => void }) => (
 		<div data-testid="label-picker">
@@ -1317,6 +1325,27 @@ describe("TaskCard", () => {
 			await user.click(screen.getByText("Add label"));
 
 			expect(screen.getByTestId("label-picker")).toBeInTheDocument();
+		});
+
+		describe("on mobile", () => {
+			beforeEach(() => mobileMock.mockReturnValue(true));
+			afterEach(() => mobileMock.mockReturnValue(false));
+
+			it("drops the hover-only add label button", () => {
+				renderCard(makeTask({ labelIds: ["lbl-1"] }), { projectOverride: projectWithLabels });
+
+				expect(screen.getByText("Bug")).toBeInTheDocument();
+				expect(screen.queryByText("Add label")).not.toBeInTheDocument();
+			});
+
+			it("still opens the picker by tapping a chip", async () => {
+				const user = userEvent.setup();
+				renderCard(makeTask({ labelIds: ["lbl-1"] }), { projectOverride: projectWithLabels });
+
+				await user.click(screen.getByText("Bug"));
+
+				expect(screen.getByTestId("label-picker")).toBeInTheDocument();
+			});
 		});
 
 		it("removes label via API and dispatches update", async () => {

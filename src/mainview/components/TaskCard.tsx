@@ -29,6 +29,7 @@ import TaskCardRail from "./TaskCardRail";
 import StatusMenuPortal from "./StatusMenuPortal";
 import { useStatusMenu } from "../hooks/useStatusMenu";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useMobile } from "../hooks/useMobile";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import ScheduleMessageModal from "./ScheduleMessageModal";
 import ScheduledMessagesChip from "./ScheduledMessagesChip";
@@ -78,6 +79,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const isMobile = useMobile();
 	const [moving, setMoving] = useState(false);
 	const [quickCompleting, setQuickCompleting] = useState(false);
 	const [cancellingPreparation, setCancellingPreparation] = useState(false);
@@ -86,6 +88,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [detailOpen, setDetailOpen] = useState(false);
 	const [pickerOpen, setPickerOpen] = useState(false);
 	const pickerAnchorRef = useRef<HTMLButtonElement>(null);
+	/** Mobile has no "+ Add label" button, so the picker anchors to the chip row. */
+	const labelRowRef = useRef<HTMLDivElement>(null);
 
 	const groupMembers = task.groupId && siblingMap
 		? (siblingMap.get(task.groupId) ?? [])
@@ -970,13 +974,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							</div>
 						)}
 
-						{/* Label chips — always rendered so "+" stays discoverable on hover */}
+						{/* Label chips — on desktop the row is always rendered so the hover-only
+						    "+" stays discoverable; on mobile there is no hover, so the invisible
+						    button is dropped and an empty row claims no height. */}
 						{(() => {
 							const projectLabels = project.labels ?? [];
 							const taskLabelIds = task.labelIds ?? [];
 							const assignedLabels = taskLabelIds
 								.map((id) => projectLabels.find((l) => l.id === id))
 								.filter(Boolean) as typeof projectLabels;
+							const showDescriptionAffordance = hasLongDescription && !isTodo;
+
+							if (isMobile && assignedLabels.length === 0 && !showDescriptionAffordance) return null;
 
 							async function removeLabel(labelId: string) {
 								try {
@@ -1009,7 +1018,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 							return (
 								<div className="mt-2 flex min-h-[1.125rem] items-start gap-2">
-								<div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+								<div ref={labelRowRef} className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
 									{assignedLabels.map((label) => (
 										<LabelChip
 											key={label.id}
@@ -1025,27 +1034,29 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 											}}
 										/>
 									))}
-									<button
-										ref={pickerAnchorRef}
-										type="button"
-										onClick={(e) => {
-											e.stopPropagation();
-											setPickerOpen(true);
-										}}
-										className="flex flex-shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-fg-3 opacity-0 transition-[opacity,color,background-color,transform] duration-150 ease-out group-hover:opacity-70 hover:!opacity-100 hover:bg-fg/8 hover:text-fg motion-safe:active:scale-[0.96]"
-									>
-										<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-											<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-										</svg>
-										<span className="text-dense font-medium leading-none">Add label</span>
-									</button>
-									{pickerOpen && pickerAnchorRef.current && (
+									{!isMobile && (
+										<button
+											ref={pickerAnchorRef}
+											type="button"
+											onClick={(e) => {
+												e.stopPropagation();
+												setPickerOpen(true);
+											}}
+											className="flex flex-shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-fg-3 opacity-0 transition-[opacity,color,background-color,transform] duration-150 ease-out group-hover:opacity-70 hover:!opacity-100 hover:bg-fg/8 hover:text-fg motion-safe:active:scale-[0.96]"
+										>
+											<svg className="w-2.5 h-2.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+												<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+											</svg>
+											<span className="text-dense font-medium leading-none">Add label</span>
+										</button>
+									)}
+									{pickerOpen && (pickerAnchorRef.current ?? labelRowRef.current) && (
 										<LabelPicker
 											project={project}
 											dispatch={dispatch}
 											taskId={task.id}
 											onClose={() => setPickerOpen(false)}
-											anchorEl={pickerAnchorRef.current}
+											anchorEl={(pickerAnchorRef.current ?? labelRowRef.current)!}
 											selectedIds={taskLabelIds}
 											onToggle={toggleLabel}
 										/>
@@ -1053,7 +1064,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								</div>
 								{/* The description affordance rides the label row instead of
 								    claiming a row of its own — it was ~20px on most cards. */}
-								{hasLongDescription && !isTodo && (
+								{showDescriptionAffordance && (
 									<Tooltip content={t("task.showDescription")} detail={t("ttip.task.showDescription")}>
 										<button
 											onClick={handleShowDescription}
