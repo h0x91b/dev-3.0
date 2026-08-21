@@ -99,7 +99,7 @@ export default function InlineRename({
 				<button
 					onClick={() => save(value)}
 					disabled={saving}
-					className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-green-400 hover:text-green-300"
+					className="flex-shrink-0 p-0.5 rounded hover:bg-elevated transition-colors text-success hover:text-success-hover"
 					title={t("task.rename")}
 					data-testid="rename-save"
 				>

@@ -1983,6 +1983,26 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByText("Connected")).toBeInTheDocument();
 		});
 
+		it("is a real dialog: labelled, focus pulled in, Escape closes it", async () => {
+			await renderApp();
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,test",
+					accessUrl: "http://192.168.0.1:1234/?token=test",
+					tunnelState: "idle",
+					cloudflaredInstalled: false,
+				},
+			}));
+
+			const dialog = await screen.findByRole("dialog");
+			expect(dialog).toHaveAttribute("aria-modal", "true");
+			expect(dialog).toHaveAccessibleName("Remote Access");
+			await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+			await userEvent.keyboard("{Escape}");
+			await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+		});
+
 		it("stops the tunnel and clears the toggle from the Stop button", async () => {
 			await renderApp();
 			vi.mocked(api.request.getRemoteAccessQR).mockResolvedValue({

@@ -151,7 +151,7 @@ const dashboard = {
 	"remote.recheckCloudflared": "Verificar de nuevo",
 	"remote.tunnelStarting": "Iniciando túnel...",
 	"remote.tunnelConnected": "Túnel público activo",
-	"remote.stopTunnel": "Detener",
+	"remote.stopTunnel": "Detener túnel",
 	"remote.stopTunnelHint": "Detener el túnel público y volver al acceso por red local",
 	"remote.tunnelPropagationHint": "Dale a Cloudflare unos segundos para publicar el dominio. Si el enlace da el error «dominio no resuelto», espera un momento —o desactiva y vuelve a activar esta casilla— y ábrelo de nuevo.",
 	"remote.tunnelFailed": "No se pudo iniciar el túnel",

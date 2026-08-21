@@ -67,7 +67,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 							>
 							<span className="mt-0.5 text-lg leading-none">
 								{req.installed ? (
-									<span className="text-green-400">&#10003;</span>
+									<span className="text-success">&#10003;</span>
 								) : (
 									<span className="text-danger">&#10007;</span>
 								)}
@@ -83,7 +83,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 									<span
 										className={`text-xs px-1.5 py-0.5 rounded ${
 											req.installed
-												? "bg-green-400/15 text-green-400"
+												? "bg-success/15 text-success"
 												: req.optional
 													? "bg-yellow-400/15 text-yellow-400"
 													: "bg-danger/15 text-danger"
@@ -127,7 +127,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 												)}
 											</button>
 											{copiedId === req.id && (
-												<span className="text-green-400 text-xs">
+												<span className="text-success text-xs">
 													{t("requirements.copied")}
 												</span>
 											)}
