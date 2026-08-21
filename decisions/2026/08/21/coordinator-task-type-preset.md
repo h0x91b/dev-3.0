@@ -106,8 +106,17 @@ Verified case by case against the real function rather than reasoned about:
 
 The fourth row was a real defect found by this review: the function returned an
 empty string whenever the separator was absent, so a user who deleted the `---`
-line and kept writing lost every word of it. Fixed to return the remainder, and
-pinned by tests in `src/mainview/__tests__/types.test.ts`.
+line and kept writing lost every word of it. Reachable by hand in one gesture —
+delete the rule, keep typing — and invisible to the suite that existed, because
+that suite only exercised text the builder itself had produced.
+
+**Do not make the strip greedier.** The stale duplicate the second row leaves
+behind looks like a bug and is not: a duplicated paragraph is recoverable in one
+edit, a deleted one is not recoverable at all. Every way of removing that
+duplicate — matching the last `---`, searching for the separator anywhere,
+fuzzy-matching an edited preamble — reintroduces the fourth row on someone's real
+description. The five rows above are pinned by tests in
+`src/mainview/__tests__/types.test.ts`; a change here must keep all five.
 
 Placement: a `Task type` radiogroup (`TaskTypePicker` in `CreateTaskModal.tsx`)
 directly under the description. The PR-review toggle was removed from
