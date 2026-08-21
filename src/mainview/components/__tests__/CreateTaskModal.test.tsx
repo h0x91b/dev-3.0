@@ -1908,4 +1908,30 @@ describe("CreateTaskModal — task type presets", () => {
 		expect(await screen.findByTestId("task-type-coordinator")).toBeInTheDocument();
 		expect(screen.queryByTestId("task-type-review")).not.toBeInTheDocument();
 	});
+
+	it("names the task after the user's own text, not the preamble", async () => {
+		renderModal();
+		await userEvent.type(description(), "Ship the Windows track.");
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+
+		await waitFor(() =>
+			expect(screen.getByTestId("create-task-title")).toHaveTextContent("Ship the Windows track."),
+		);
+		expect(screen.getByTestId("create-task-title").textContent).not.toContain("COORDINATOR");
+	});
+
+	it("sends that title to createTask, so the board card is not titled from the preamble", async () => {
+		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, id: "t9" });
+		renderModal();
+		await userEvent.type(description(), "Ship the Windows track.");
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
+
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
+		const sent = mockedApi.request.createTask.mock.calls[0][0];
+		expect(sent.title).toBe("Ship the Windows track.");
+		expect(sent.description).toContain("You are the COORDINATOR of this board.");
+	});
 });

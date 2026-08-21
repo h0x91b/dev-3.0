@@ -105,7 +105,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[];
 	return results;
 }
 
-async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority }): Promise<Task> {
+async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",
@@ -146,6 +146,10 @@ async function createTask(params: { projectId: string; description: string; stat
 		...(isScratch ? { scratch: true } : {}),
 		...(isDraft ? { draft: true } : {}),
 		...(isDraft && !params.description.trim() ? { title: draftPlaceholderTitle() } : {}),
+		// A preset preamble leads the description, so the caller supplies the title
+		// derived from the user's own text. Never for a scratch task, whose
+		// description is a placeholder.
+		...(!isScratch && params.title?.trim() ? { title: params.title.trim() } : {}),
 		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
 		...(params.priority ? { priority: params.priority } : {}),
 	};

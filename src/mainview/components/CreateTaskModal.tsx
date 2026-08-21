@@ -298,8 +298,17 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		}
 	}
 
-	const generatedTitle = description.trim()
-		? titleFromDescription(description)
+	/**
+	 * A preset preamble leads the description, so the board title must come from
+	 * the user's own text below it — otherwise every coordinator task is called
+	 * "You are the COORDINATOR of this board. You manage other tasks...".
+	 */
+	const activePresetPrompt = taskType !== "standard" && presetSettings
+		? presetPrompt(taskType, presetSettings)
+		: null;
+	const titleSource = activePresetPrompt ? stripPresetPrompt(description, activePresetPrompt) : description;
+	const generatedTitle = titleSource.trim()
+		? titleFromDescription(titleSource)
 		: "";
 
 	useEffect(() => {
@@ -426,6 +435,10 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				// For scratch tasks the backend generates its own placeholder description —
 				// we still send an empty string here to match the RPC shape.
 				description: mode === "scratch" ? "" : trimmed,
+				// Only when it differs from what the backend would derive itself.
+				...(generatedTitle && generatedTitle !== titleFromDescription(trimmed)
+					? { title: generatedTitle }
+					: {}),
 				...(mode === "scratch" ? { scratch: true } : {}),
 				...(mode === "draft" ? { draft: true } : {}),
 				...(branch ? { existingBranch: branch } : {}),
@@ -778,7 +791,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 									}}
 								>
 									<span className="text-fg-3">{t("createTask.generatedTitle")}</span>
-									<span className={`font-medium group-hover/title:underline ${customTitle ? "text-accent" : "text-fg-2"}`}>
+									<span data-testid="create-task-title" className={`font-medium group-hover/title:underline ${customTitle ? "text-accent" : "text-fg-2"}`}>
 										{customTitle ?? generatedTitle}
 									</span>
 									<svg className="w-3 h-3 text-fg-muted opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">

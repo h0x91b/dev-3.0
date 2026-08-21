@@ -3751,7 +3751,14 @@ export type AppRPCSchema = {
 				response: ConversationMatch[];
 			};
 			createTask: {
-				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority };
+				/**
+				 * Optional board title. Set when the description leads with a built-in
+				 * prompt preamble, so the card is named after the user's own text
+				 * instead of the first 80 characters of the preamble. Distinct from
+				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
+				 * so an agent may still rename it.
+				 */
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority };
 				response: Task;
 			};
 			hibernateTask: {
