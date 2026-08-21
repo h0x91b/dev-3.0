@@ -691,6 +691,12 @@ ux_architecture:
       status: "observed"
       rationale: "Task actions belong to the task surface, not the app chrome."
       exception: "dashboard-task-row-single-complete"
+    - id: "prompt-presets-in-one-picker-under-description"
+      when: { feature_class: "configuration", scope: "flow_step", surface: "modal.create_task" }
+      place_in: ["CreateTaskModal: one `Task type` radiogroup directly under the description textarea"]
+      reject: ["a second toggle elsewhere in the modal", "the branch block (unreachable on virtual projects, and a coordinator needs no branch)", "the footer (it holds submit actions, so a mode control there reads as create-now)"]
+      status: "observed"
+      rationale: "A built-in prompt preamble rewrites exactly one field, so every preset that does it shares one control next to that field. Types are mutually exclusive, so a radiogroup with a visible Standard beats N switches whose all-off state is unstated. A preset needing context it cannot have is disabled with the reason (PR review before a branch) or absent when it is structurally impossible (PR review on a virtual project). See decisions/2026/08/21/coordinator-task-type-preset.md."
     - id: "dashboard-task-row-single-complete"
       when: { feature_class: "object_action", scope: "single_task", surface: "dashboard.task_row" }
       place_in: ["dashboard.task_row (row end): exactly one Complete check, hover/focus-revealed on desktop (md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100), always visible >=44x44 on narrow, always alwaysConfirm, hidden while hibernated"]

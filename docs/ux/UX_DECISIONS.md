@@ -11,6 +11,10 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-08-21 — Prompt presets share one picker under the description
+
+Task-type presets that inject a built-in preamble (Coordinator, PR review) live in one `Task type` radiogroup directly under the description, never as separate toggles scattered through the create-task modal. Rejected keeping PR review in the branch block: it is unreachable on virtual projects, which is exactly where a coordinator belongs. Observed — see `decisions/2026/08/21/coordinator-task-type-preset.md`, `src/mainview/components/CreateTaskModal.tsx`.
+
 ## 2026-08-21 — The manifest owns placement; the `better-*` skills own craft
 - **Rule:** `ux-principal` is mandatory only for a change that adds a destination, surface or action (or pushes a budget); craft on an existing control goes to the owning `better-*` skill. §9a keeps only dev3's deltas — bible §1/§9a.
 - **Why:** `decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`.
