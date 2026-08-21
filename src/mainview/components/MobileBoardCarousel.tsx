@@ -92,7 +92,7 @@ function MobileBoardCarousel({ columns, initialColumnId }: { columns: CarouselCo
 
 	return (
 		<div
-			className="flex-1 min-h-0 flex flex-col"
+			className="flex-1 min-h-0 flex flex-col select-none"
 			role="group"
 			aria-roledescription={t("kanban.carouselRole")}
 			onKeyDown={handleKeyDown}

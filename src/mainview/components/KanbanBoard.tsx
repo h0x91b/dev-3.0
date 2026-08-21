@@ -712,7 +712,7 @@ function KanbanBoard({
 			{isCarousel ? (
 				<MobileBoardCarousel columns={carouselColumns} initialColumnId={initialColumnId} />
 			) : (
-				<div className="flex-1 min-h-0 flex gap-5 px-6 pb-6 pt-2 overflow-x-auto overflow-y-hidden kanban-scroll">
+				<div className="flex-1 min-h-0 flex gap-5 px-6 pb-6 pt-2 overflow-x-auto overflow-y-hidden kanban-scroll select-none">
 					{(() => {
 						// Add-column affordance (issue #222): a slim dashed ghost strip that
 						// reuses the board's "+" idiom — no toolbar button. It sits right
