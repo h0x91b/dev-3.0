@@ -226,7 +226,10 @@ jobs:
       # other and the last flush decides what a reader sees — a mutant that survived on
       # windows-latest while dying on macOS, which says nothing about the check. Appending
       # makes both sessions' frames present, which is the property under test. `perl -pi`
-      # because BSD and GNU `sed -i` disagree on the backup argument.
+      # because BSD and GNU `sed -i` disagree on the backup argument, `\s*` between the
+      # statements because a Windows checkout hands them over with CRLF endings, and the
+      # applied-or-not guard because a mutation that silently did not apply reads exactly
+      # like a mutant that survived.
       - name: Mutation check — a foreign session's bytes must fail the E2E (dispatch only)
         if: always() && github.event_name == 'workflow_dispatch'
         shell: bash
@@ -236,8 +239,8 @@ jobs:
           journal=src/bun/native-terminal-registry/journal.ts
           restore() { git checkout -- "$paths" "$journal"; }
           perl -pi -e 's{return join\(sessionDir\(id\), "journal\.ndjson"\);}{return join(sessionsRootDir(), "journal.ndjson");}' "$paths"
-          perl -pi -e 's{^import \{ renameSync, writeFileSync \} from "node:fs";$}{import { appendFileSync, renameSync, writeFileSync } from "node:fs";}' "$journal"
-          perl -0pi -e 's{const tmp = `\$\{this\.path\}\.\$\{process\.pid\}\.tmp`;\n\t\t\twriteFileSync\(tmp, this\.frames\.join\(""\), \{ mode: 0o600 \}\);\n\t\t\trenameSync\(tmp, this\.path\);}{appendFileSync(this.path, this.frames.join(""), { mode: 0o600 });}' "$journal"
+          perl -pi -e 's{import \{ renameSync, writeFileSync \} from "node:fs";}{import { appendFileSync, renameSync, writeFileSync } from "node:fs";}' "$journal"
+          perl -0pi -e 's{const tmp = `\$\{this\.path\}\.\$\{process\.pid\}\.tmp`;\s*writeFileSync\(tmp, this\.frames\.join\(""\), \{ mode: 0o600 \}\);\s*renameSync\(tmp, this\.path\);}{appendFileSync(this.path, this.frames.join(""), { mode: 0o600 });}' "$journal"
           git diff --stat "$paths" "$journal"
           if ! git diff --quiet --exit-code -- "$paths" && ! git diff --quiet --exit-code -- "$journal"; then
             echo "mutation applied to both files"
