@@ -30,6 +30,11 @@ shells on two Bun terminals in one process, no registry, no host, no journal, no
 | A1 | shared profile, shell two started AFTER shell one's line was accepted | 11 / 12 |
 | A2 | shared profile, both shells started up front (what the E2E does) | 1 / 12 |
 | B | private `APPDATA`/`LOCALAPPDATA`, A1 conditions | 10 / 12 |
+| C | A1 conditions plus the fix below | 0 / 12 |
+
+Arm C is the evidence for the fix, and it is evidence because it ran in the SAME job as A1's
+9 / 12 — a same-run control, not a later clean run. The fixture's eight repeats went 0 / 8 both
+before and after the fix, so that number demonstrates nothing on its own.
 
 Start order is the intermittency: PSReadLine loads history when the editor starts, so only a
 session that started after the other's line was appended can predict it. The real fixture
@@ -48,8 +53,17 @@ SaveNothing`, `PredictionSource None`) before any marker exists. The isolation a
 is untouched, and `observeJournal` now prints the bytes around a foreign marker so the two
 possible channels are told apart at the byte level instead of asserted about.
 
-Verified by mutation: with `paths.journalFile` made session-blind, the check fails and the new
-context shows the marker sitting inside alpha's own frames — channel (1), a real product leak.
+Verified by mutation, in CI on both platforms, by a dispatch-only step whose GREEN means the
+mutant applied and the E2E caught it. Two attempts were needed and both failures are the point:
+
+- A shared journal PATH alone is a racy mutant. The writer replaces its whole file atomically, so
+  two sessions on one path overwrite each other and the last flush decides what a reader sees — it
+  survived on windows-latest and died on macOS. Shared path PLUS append makes both sessions' frames
+  certainly present, and that mutant dies every time.
+- The perl patterns were line-anchored, so they applied on POSIX and silently missed on a Windows
+  checkout, where git hands the file over with CRLF. A mutation that never applied reads exactly
+  like a mutant that survived, which is why the step first asserts the patch landed in both files
+  and fails loudly when it did not.
 
 Separately, every independent proof step in `.github/workflows/windows-conpty-package.yml` now
 carries `if: always()`, so one failure can no longer hide the verdicts after it. Build and

@@ -230,11 +230,12 @@ jobs:
       # statements because a Windows checkout hands them over with CRLF endings, and the
       # applied-or-not guard because a mutation that silently did not apply reads exactly
       # like a mutant that survived.
-      - name: Mutation check — a foreign session's bytes must fail the E2E (dispatch only)
+      - name: Mutation check (dispatch only) — GREEN means the mutant applied AND the E2E caught it
         if: always() && github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -e
+          echo "polarity: this step passes ONLY when the mutated E2E FAILS; red means the mutant survived or never applied"
           paths=src/bun/native-terminal-registry/paths.ts
           journal=src/bun/native-terminal-registry/journal.ts
           restore() { git checkout -- "$paths" "$journal"; }
