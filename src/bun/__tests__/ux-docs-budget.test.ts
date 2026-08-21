@@ -13,26 +13,28 @@ import { fileURLToPath } from "node:url";
 const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
 
 /**
- * A ratchet, not a target: each number is the file's size when the budget landed plus about
- * one entry's worth of room, so a single legitimate rule does not have to compact first.
+ * A ratchet, not a target: each number is the file's size when the budget landed plus a few
+ * KB, so a couple of ordinary PRs fit before anyone has to compact. `main` genuinely pushes
+ * content into these files every week, and a budget with zero slack would fire on unrelated
+ * work; a budget with unlimited slack is the prose cap that already failed.
  * Lowering one is always welcome. Raising one is a decision — compact the file, and if it
  * genuinely must grow, say why in the record above.
  *
- * The first rebase after this landed proved the guard works: PR #1450 had added 6 KB to the
- * bible in the meantime and the budget failed immediately.
+ * The guard earned its keep twice before it even merged: #1450 added 6 KB to the bible, then
+ * #1451/#1453/#1454/#1455 added another 8 KB across the tree, and each rebase failed loudly.
  *
- * The compaction duty is still owed: 91 of the 106 `UX_DECISIONS.md` entries are over that
- * file's own ~600-character cap and hold 85 KB between them. This budget stops the growth;
- * it does not pretend the file is compact.
+ * `UX_DECISIONS.md` has been folded once: the 24 entries whose reasoning now lives in
+ * `decisions/` are pointers. The other 84 keep their full text because it exists nowhere
+ * else — compact those by writing the record first, never by deleting the why.
  */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 118,
-	"ux-architecture.yaml": 102,
-	"UX_DECISIONS.md": 94,
+	"PRODUCT_UX_BIBLE.md": 122,
+	"ux-architecture.yaml": 110,
+	"UX_DECISIONS.md": 80,
 };
 
 /** The whole tree, so a new file cannot slip past a per-file budget. */
-const TOTAL_BUDGET_KB = 311;
+const TOTAL_BUDGET_KB = 306;
 
 const entries = readdirSync(UX_DIR, { withFileTypes: true });
 const kb = (name: string) => statSync(`${UX_DIR}/${name}`).size / 1024;

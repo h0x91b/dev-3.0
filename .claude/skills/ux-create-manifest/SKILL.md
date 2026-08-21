@@ -29,6 +29,11 @@ The manifest records **placement, architecture, and the project's own deltas** â
 
 If the project has a test budget on doc size (dev3: `src/bun/__tests__/ux-docs-budget.test.ts`), respect it â€” compact rather than raise it.
 
+**Never stamp a generated-looking header on a hand-authored file.** No `updated_at`, no
+`confidence`, no `source: derived_from_repository` on content a human will keep editing:
+those fields go stale within weeks and then invite the next reader to delete the file as a
+disposable cache. Say what the file is and let git carry the dates.
+
 Do NOT create `UX_MANIFEST_CHANGELOG.md` (git history is the changelog), `UX_AUDIT_REPORT.md`
 (the audit is your final chat response, not a repo file), or `UX_GLOSSARY.md` (a bible
 section). Three files is the complete on-disk footprint of this skill.

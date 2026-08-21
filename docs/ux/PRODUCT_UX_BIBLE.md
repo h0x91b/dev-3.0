@@ -1,11 +1,13 @@
 # Product UX Bible — dev-3.0
 
-Status: Draft (initial)
-Source: Derived from repository audit
-Last updated: 2026-07-19
+Status: Live — hand-authored, edited alongside the code it governs
+Source: Hand-authored decisions, originally seeded from a repository audit
 Owner: Product UX Architecture
+Last updated: see `git log -- docs/ux/PRODUCT_UX_BIBLE.md` — a date written by hand here went stale within weeks
 
-Evidence notation: `Observed` (backed by code/docs), `Inferred` (likely rule from repeated patterns), `Proposed` (recommended, not yet consistent), `Unknown` (insufficient evidence).
+**Evidence notation says where a claim came from, never whether it matters.** `Observed` (backed by code/docs), `Inferred` (likely rule from repeated patterns), `Proposed` (recommended, not yet consistent), `Unknown` (insufficient evidence).
+
+`Observed` does **not** mean "restates the code, safe to delete". A section can be marked `Observed` because its rule is visible in the code *and still be a decision that exists only here* — §5's surface admission rules and §10's rejected placements are the clearest cases. Judge a section by whether the code could be rewritten from it, not by its marker. This is the exact misreading that a 2026-08-21 audit made, and it nearly deleted `ux-architecture.yaml`; see `decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`.
 
 ## 1. Purpose
 

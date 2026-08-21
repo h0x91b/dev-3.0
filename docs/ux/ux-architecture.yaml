@@ -1,8 +1,20 @@
 ux_architecture:
   version: 1
-  updated_at: "2026-07-13"
-  source: "derived_from_repository"
-  confidence: "medium"
+  # A HAND-AUTHORED decision store, not a generated cache of the code.
+  #
+  # The `allowed` / `forbidden` lists on each surface are this file's reason to exist: the
+  # machine-readable answer to "may this control live here". Most of that content exists
+  # nowhere else — not in PRODUCT_UX_BIBLE.md and not derivable from the code.
+  #
+  # PRODUCT_UX_BIBLE.md is the prose companion, NOT the original. The two carry different
+  # content and neither can be regenerated from the other, so do not "deduplicate" them:
+  # a 2026-08-21 audit sampled 38 long lines here and found 36 with no counterpart in the
+  # bible. See decisions/2026/08/21/split-ux-principal-from-the-better-skills.md.
+  #
+  # There is deliberately no `updated_at` or `confidence` field. Both said 2026-07-13 and
+  # "medium" while the file was edited weekly, and the stale header is exactly what made
+  # that audit mistake this for a disposable cache in the first place. Use git for dates.
+  source: "hand_authored_decisions"
 
   product:
     name: "dev-3.0"

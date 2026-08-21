@@ -88,9 +88,13 @@ If missing or obviously stale:
 ## Mandatory feature-planning workflow
 
 1. **Load product UX context**
-   - Read `docs/ux/PRODUCT_UX_BIBLE.md`.
-   - Read `docs/ux/ux-architecture.yaml`.
-   - Read `docs/ux/UX_DECISIONS.md`.
+   - Read `docs/ux/PRODUCT_UX_BIBLE.md` — the prose rules and rejected placements.
+   - Read `docs/ux/ux-architecture.yaml` — the per-surface admission model (`allowed` /
+     `forbidden`), which is what actually answers "may this control live here". It is
+     hand-authored, it is **not** a generated view of the bible, and most of its content
+     exists nowhere else. Never "deduplicate" the two against each other.
+   - Read `docs/ux/UX_DECISIONS.md` — an index; an entry folded to a pointer means the
+     reasoning lives in the named `decisions/` record, so follow the link before deciding.
    - Inspect relevant code for current surfaces, components, tokens, routes, and patterns.
    - If needed, run or adapt `scripts/manifest_status.py` and `scripts/ux_inventory.py`.
 

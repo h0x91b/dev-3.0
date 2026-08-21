@@ -4,11 +4,16 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
-## 2026-08-21 — The manifest owns placement; the `better-*` skills own craft
+**Once a decision has a record under `decisions/`, this entry folds to a pointer:** the
+rule in one clause plus where it lives, and the record for the why. Two files were
+carrying the same reasoning — 48 of this file's 50 dates also had a record — so the
+record wins and this file stays an index. Write the entry in full only while no record
+exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
+else, so do not compact them by deleting it.
 
-- **Rule:** `ux-principal` is mandatory only for a change that adds a destination, surface or action (or pushes a budget); craft on an existing control goes to the owning `better-*` skill. §9a keeps only dev3's deltas. Three conflicts settled: a border may not fake depth and `better-ui`'s motion primitives win, while the looping `tmx-`/`gtx-`/`hdr-`/`th-` hover animations stay by design.
-- **Why:** Six craft domains were duplicated and the `better-*` version was deeper in every one, while a badge tweak paid a 307 KB manifest read. Rejected: deprecating `ux-principal` outright — nothing in `better-*` covers placement, action taxonomy, budgets, or the object model, and `better-interface` reviews after the code exists.
-- **Status:** Implemented — `AGENTS.md`, bible §1/§9a, `DESIGN.md` Borders, `src/bun/__tests__/ux-docs-budget.test.ts`, `decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`.
+## 2026-08-21 — The manifest owns placement; the `better-*` skills own craft
+- **Rule:** `ux-principal` is mandatory only for a change that adds a destination, surface or action (or pushes a budget); craft on an existing control goes to the owning `better-*` skill. §9a keeps only dev3's deltas — bible §1/§9a.
+- **Why:** `decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`.
 
 ## 2026-08-20 — The board card carries the dev server: one split control, open | stop
 
@@ -22,16 +27,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Why:** Click-only made both readouts unfindable once they left the header bar — a row that reacts to nothing reads as a label. Opening below/over the row was rejected because it covers the menu the pointer is still using; keeping click-only plus a chevron was rejected as chrome that still costs a click to learn.
 - **Status:** Implemented — `src/mainview/utils/menuFlyout.ts`, `MemoryHeadroomIndicator.tsx`, `TmuxSessionManager.tsx`, `GlobalHeader.tsx`; PRODUCT_UX_BIBLE §12.6.
 ## 2026-08-17 — A Space filters the dashboard; it never becomes a place
-
-- **Rule:** Spaces group projects on the dashboard only — a rail that FILTERS the overview, collapsible group headers, row membership chips + a `Spaces…` action, and **every space action behind one `…`**; no space route, no merged board, no colour, no stored `Home` (it is computed from zero-membership projects), and drag reorders only. The dashboard carries **no cross-space task panel** (superseded 2026-08-21, below: the project rows already list every waiting task); that sidebar lives in the task workspace.
-- **Why:** Giving a space a route invites "where is this place's board" — the uncanny-valley merged board issue #257 rejected; and many-to-many membership makes a drag unable to show which edge it removed. Rejected alternatives: a stored `Home` (writes to every user's state on upgrade, then needs permanent exceptions) and a dashboard-specific task panel (duplicate row/tier logic).
-- **Status:** Implemented. Evidence: `PRODUCT_UX_BIBLE.md` §10, `src/mainview/components/SpacesRail.tsx`, `decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md`.
+- **Rule:** Spaces group projects on the dashboard only — a rail that FILTERS the overview, collapsible group headers, row membership chips + a `Spaces…` action, and **every space action behind one `…`**; no space route, no merged board, no colour, no stored `Home` (it is computed from zero-membership projects).
+- **Why:** `decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md`.
 
 ## 2026-08-21 — The dashboard's spaces surface is calm, container-gated, and stream-safe
-
-- **Rule:** One `…` per space on both surfaces (rail row + group header) holding `Edit projects…` (two-way membership), move, rename, delete, hide-on-camera; no add-only `+`. The rail is gated on its **container's** width (≥1024px, `useContainerWidth`), below which the filter moves into a BottomSheet and the selection **survives** — never silently cleared. No activity dots on a rail row; a space's rows are indented under its header with a rule; the overview row is `Everything`; on touch the space `…` is a 44px control at the row's right edge; `Space.sensitive` is a new stored field, so a space is masked by its own flag as well as by a sensitive member.
-- **Why:** A filter whose control vanishes is worse than no filter, an add-only control cannot answer "take this project out", and a dot whose legend lives in another column is decoration. Rejected: a chip strip below 1024px (permanent chrome, wraps for the users with most spaces), a box around each group (a second border around bordered cards), and clearing-plus-toast on resize.
-- **Status:** Implemented — `SpacesRail.tsx`, `SpaceGroupedProjects.tsx`, `SpaceFilterSheet.tsx`, `SpaceProjectsModal.tsx`, `SpaceHeaderMenu.tsx`, Bible §10; records `one-menu-per-space-on-every-surface`, `rail-gated-on-container-width`, `space-filter-survives-the-rail`.
+- **Rule:** One `…` per space on both surfaces (rail row + group header) holding `Edit projects…` (two-way membership), move, rename, delete, hide-on-camera; no add-only `+` — bible §10.
+- **Why:** `decisions/2026/08/21/one-menu-per-space-on-every-surface.md`, `decisions/2026/08/21/rail-gated-on-container-width.md`, `decisions/2026/08/21/space-filter-survives-the-rail.md`.
 
 ## 2026-08-17 — A stored secret is read-only until the user reveals it
 
@@ -40,10 +41,8 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Implemented. Evidence: `docs/ux/ux-architecture.yaml` `stored-secret-revealed-before-edit`, `src/mainview/components/global-settings/ModelCatalogSection.tsx` (`ProviderKeyField`), `src/bun/rpc-handlers/model-catalog.ts` (`modelCatalogRevealKey`).
 
 ## 2026-08-14 — An agent-to-agent message toast names two tasks and owns its own hue
-
 - **Rule:** The toast for `dev3 message` between two agents renders `#fromSeq title → #toSeq title` as its source line, uses the non-severity `agent` variant (violet `--agent`), and clicks through to the RECEIVER; every other toast keeps one origin and a severity variant.
-- **Why:** The event's whole content is who wrote to whom, and the click target is the receiver's terminal — a sender-only source line would make the accessible name announce the wrong destination; reusing `info` was rejected because blue already means `dev3 notify` / watched-status.
-- **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §5.7, `src/mainview/toast.tsx`, `decisions/2026/08/14/agent-message-toast-two-identities.md`.
+- **Why:** `decisions/2026/08/14/agent-message-toast-two-identities.md`.
 
 ## 2026-08-14 — An agent-written log gets a capped preview, not a whole screen
 
@@ -64,17 +63,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Implemented. Evidence: `docs/ux/PRODUCT_UX_BIBLE.md` §7, `src/mainview/components/Select.tsx`, `src/mainview/components/__tests__/Select.test.tsx`.
 
 ## 2026-08-10 — Whose-code identity is accent on the board, warning only on the diff
-
 - **Rule:** `Task.foreignCode` renders as an accent eye glyph (§5.6, second identity marker) on the card and inspector, while the `warning`-toned RUNS badge sits on changed executable-config files in the diff viewer.
-- **Why:** the glyph reports an identity, not a fault, and `danger` already means "deleted" in that same diff row — a rejected amber-card variant would have spent the warning token on the happy path and trained click-through. A branch-level marker on the card was also rejected: the card shows no branch to qualify.
-- **Narrow panes:** a badge added to a file-header row must never buy its space from the file name. The diff file header is its own query container (the pane squeezes it, not the window): under ~28rem the badge's word goes `sr-only` and the sign plus tooltip carry it, under ~22rem the path/copy/stats group drops to a full-width row. Measured cost after that: zero — hiding the badge changes neither header height nor basename width.
-- **Status:** Observed. Evidence: `ForeignCodeMark.tsx`, `TaskDiffViewer.tsx`, `shared/executable-config-files.ts`, `decisions/2026/08/10/trust-the-branch-not-the-project.md`.
+- **Why:** `decisions/2026/08/10/trust-the-branch-not-the-project.md`.
 
 ## 2026-08-10 — A send marks the review, it never deletes it
-
 - **Rule:** No send path (per-comment, composer `Send now`, or batch) may clear inline review comments; they are stamped `Sent`, and only the confirmed `Reset review` destroys anything.
-- **Why:** A resolved send proves the keystrokes left dev3, not that the agent read them — a reviewer lost a whole review to a send that never landed; the rejected alternative, clearing only on a proven `delivered`, still deletes on the common tmux case where the agent's TUI swallows the paste.
-- **Status:** Implemented. Evidence: `src/mainview/components/TaskDiffViewer.tsx` (`markInlineCommentsSent`), `decisions/2026/08/10/never-destroy-a-review-on-send.md`.
+- **Why:** `decisions/2026/08/10/never-destroy-a-review-on-send.md`.
 
 ## 2026-08-10 — Review export card is a title line; the composer owns the one-shot send
 
@@ -83,16 +77,12 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Implemented. Evidence: `src/mainview/components/TaskDiffViewer.tsx` (`addAndSendInlineComment`, `InlineCommentComposer`), bible §5.3.
 
 ## 2026-08-08 — The memory breakdown may kill leftover worktree processes, and nothing else
-
-- **Rule:** one conditional section at the bottom of the dev3 group in the memory popover/BottomSheet lists processes still running inside task worktrees; three ghost-danger controls — `Kill all` behind `confirm({ danger: true })`, a hover-revealed per-row kill with no dialog, and a rescan icon. Gated on `count > 0`, no empty state, scanned on open + once at startup, never in the poller. Bible §12.6, yaml `global_header.ambient_resource_readout.reclaim_action`.
-- **Why:** the readout's charter is answering "who took my memory" without flattering our own share — refusing to let the user reclaim *our* leak would be that flattery, and a dialog per row would tax the safe, precise choice to protect the sweeping one. Rejected: a Settings → Maintenance screen (a destination for a rare fault nobody would open); a startup toast (this row explicitly forbids pressure toasts); silently auto-killing everything (a worktree still claimed by a live task can legitimately hold a running browser).
-- **Status:** proposed. Evidence: `MemoryBreakdownPanel.tsx`, `src/bun/worktree-reaper.ts`, `decisions/2026/08/08/reap-worktree-cwd-holders-on-teardown.md`.
+- **Rule:** one conditional section at the bottom of the dev3 group in the memory popover/BottomSheet lists processes still running inside task worktrees; three ghost-danger controls — `Kill all` behind `confirm({ danger: true })`, a hover-revealed per-row kill with no dialog, and a rescan icon — bible §12.6 + yaml; yaml `global_header.ambient_resource_readout.reclaim_action`.
+- **Why:** `decisions/2026/08/08/reap-worktree-cwd-holders-on-teardown.md`.
 
 ## 2026-08-08 — An archived task reaches its images and artifacts as enumerated rows
-
-- **Rule:** the archived (completed/cancelled) task modal lists every `dev3 show-image` image and `dev3 show-artifact` artifact as its own clickable row above Notes (`SharedOutputsList.tsx`); rows open the App-hosted viewers at their own index, the artifact viewer as a standalone overlay. Bible §3, yaml `task_image_viewer.reached_from` / `task_artifact_workspace.standalone_overlay`.
-- **Why:** the live task's Runtime-bar count badges are a *status* affordance and need a Runtime bar; an archived task has neither, and re-running a finished task to see its own screenshots is absurd. Rejected: reusing the count badges (one click, no enumeration); a thumbnail grid (up to 30 `readImageBase64` round-trips on modal open — the viewer's own thumbnail rail already covers visual browsing).
-- **Status:** Implemented. Evidence: `SharedOutputsList.tsx`, `TaskDetailModal.tsx (ArchivedView)`, `decisions/2026/08/08/archived-task-shared-outputs.md`, seq 1469.
+- **Rule:** the archived (completed/cancelled) task modal lists every `dev3 show-image` image and `dev3 show-artifact` artifact as its own clickable row above Notes (`SharedOutputsList.tsx`); rows open the App-hosted viewers at their own index, the artifact viewer as a standalone overlay — bible §3 + yaml; yaml `task_image_viewer.reached_from`.
+- **Why:** `decisions/2026/08/08/archived-task-shared-outputs.md`.
 
 ## 2026-08-08 — On a phone the memory readout folds into the kebab like everything else
 
@@ -101,10 +91,8 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Implemented. Evidence: `GlobalHeader.tsx`, `MemoryHeadroomIndicator.tsx`, seq 1463.
 
 ## 2026-08-08 — A phone scales per screen: dense to work in, roomy to browse
-
-- **Rule:** the phone's root font-size factor is chosen by route, not fixed. Working surfaces — a task's terminal, diff and inspector, and the project terminal — keep `MOBILE_DENSE_FACTOR` 0.67, where the point is to fit as much as a ~400px viewport holds. Everything the user only browses and taps — Kanban board, dashboard, settings, stats, changelog — gets `MOBILE_ROOMY_FACTOR` 0.84 (+25%). Mapping in `mobileDensityForRoute()`. A `BottomSheet` is a browse-and-tap surface wherever it opens, so it scales itself up to roomy with a local CSS `zoom` (`overlayScaleUp()`) instead of moving the root — the root would reflow the terminal underneath it.
-- **Why:** 0.67 was tuned against a task and then applied everywhere; on the board it put a card title at 9.4px and turned a column into a thumbnail of a desktop board. Rejected: raising the global factor (costs the task view a third of its content); a user-facing density setting (a preference for something the route already answers); per-component overrides on the board (the whole screen is undersized, not a handful of labels).
-- **Status:** Decided. Evidence: `zoom.ts`, `decisions/2026/08/08/phone-density-is-per-screen-not-global.md`, seq 1459.
+- **Rule:** the phone's root font-size factor is chosen by route, not fixed.
+- **Why:** `decisions/2026/08/08/phone-density-is-per-screen-not-global.md`.
 
 ## 2026-08-07 — A narrow control row sheds; it never stacks
 
@@ -113,10 +101,8 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Decided. Evidence: `TaskInfoPanel.tsx` (`task-summary-bar`, `diff-summary-badge`), `TaskDiffViewer.tsx` (narrow mode row), seq 1459.
 
 ## 2026-08-07 — The Active Tasks sidebar row carries the Kanban card's lifecycle rail
-
-- **Rule:** the sidebar row mounts `TaskCardRail` with `autoLabel` — ring, bell and the glued ✓ → Completed always, and the upright status word only when the rail measures tall enough to hold it whole — then title → signals → a muted identity line; the agent config no longer opens the row. Menu state is one shared `useStatusMenu` + `StatusMenuPortal` across both surfaces. Bible §5 sidebar row, §5.6, §9 budget.
-- **Why:** an upright letter is ~14.4px and the rail is `self-stretch`, so on a short row the word sets the height instead of describing it (144-159px against a 96px baseline) — but a row carrying an overview is 273px and has room to spare, so the answer is per-row, not per-surface. Rejected: always-on full labels, three-letter forms (101px and a second status vocabulary in three locales), and dropping the word outright (71-88px, but it loses the word on the tall rows that had room). Evidence: `ActiveTaskRow.tsx`, `decisions/2026/08/07/sidebar-rail-short-labels.md`.
-- **Status:** Implemented. Evidence: `ActiveTaskRow.tsx`, `useStatusMenu.ts`, `StatusMenuPortal.tsx`, seq 1415.
+- **Rule:** the sidebar row mounts `TaskCardRail` with `autoLabel` — ring, bell and the glued ✓ → Completed always, and the upright status word only when the rail measures tall enough to hold it whole — then title → signals → a muted identity line; the agent config no longer opens the row — bible §5.
+- **Why:** `decisions/2026/08/07/sidebar-rail-short-labels.md`.
 
 ## 2026-08-07 — Every toast has one anatomy, and its origin is resolved centrally
 
@@ -131,10 +117,8 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Implemented. Evidence: `src/mainview/components/TaskArtifactViewer.tsx`, `src/bun/rpc-handlers/app-handlers.ts`.
 
 ## 2026-08-05 — A sensitive project is masked, locked and silent — but only while streamer mode is on
-
-- **Rule:** `Project.sensitive` (toggle in Project Settings → Board) is inert until `data-streamer="on"`; then the project name and its task text carry `streamer-private` everywhere outside the project, its dashboard row / picker option stays visible but `aria-disabled` with a lock glyph and an info toast on click, the `navigate()` choke point in `App.tsx` refuses routes into it (and redirects out when the mode turns on), and every notification path drops its events. `document.title` gets a neutral placeholder — CSS cannot blur a tab title. Bible §3 + §10, yaml `sensitive-project-masked-locked-and-silent`.
-- **Why:** the flag guards one moment (camera on) against one accident (a click into the wrong project), so one routing guard beats ~10 per-entry-point guards. Rejected: hiding the project entirely (reads as data loss, and hides that the guard works), a header indicator (chrome creep — the row's lock is the indicator), an unlock-for-this-session hatch (the hatch is turning streamer mode off).
-- **Status:** Decided. Evidence: `decisions/2026/07/23/streamer-mode-css-blur-masking.md`, `src/mainview/streamer-mode.tsx`, `src/mainview/App.tsx` (`navigate`), `src/bun/rpc-handlers/shared.ts` (`deliverTaskNotification`).
+- **Rule:** `Project.sensitive` (toggle in Project Settings → Board) is inert until `data-streamer="on"`; then the project name and its task text carry `streamer-private` everywhere outside the project, its dashboard row / picker option stays visible but `aria-disabled` with a lock glyph and an info toast on cl — bible §3 + §10 + yaml; yaml `sensitive-project-masked-locked-and-silent`.
+- **Why:** `decisions/2026/07/23/streamer-mode-css-blur-masking.md`.
 
 ## 2026-08-05 — The dashboard task row carries exactly one object action: ✓ Complete
 
@@ -162,10 +146,8 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Decided. Evidence: `src/mainview/components/TaskDiffViewer.tsx`, `src/mainview/components/pr-review/GithubThreadView.tsx`.
 
 ## 2026-08-03 — A shortcut has a primary slot and an alias slot; presets are not a way to turn shortcuts off
-
-- **Rule:** every shortcut carries two independently-editable slots (primary + optional alias) rather than a flat binding list, and a per-shortcut editor replaces any "compatibility preset" toggle — the iTerm2 preset and its three checkboxes (Settings, ⓘ popover, native Terminal ▸ Keyboard Mode) are deleted, its four ⌘ combos are now plain `terminal`-group registry rows. The ⓘ button opens the ⌘/ overlay's Terminal tab instead of a partial popover. Yaml `surfaces.keyboard_shortcuts_editor`.
-- **Why:** a preset that only exists to disable four shortcuts is redundant once each row can be unbound, and duplicating that switch in three surfaces is how the same setting drifts; slots make "the second way to press it" a thing the user sets rather than an artifact of list order. Rejected: keeping the checkbox alongside the editor (two mechanisms, one outcome), and teaching the matcher that terminal shortcuts outrank app ones (the ⌘[ collision it would fix disappears once the redundant bindings go — tmux already owns ⌥+arrows).
-- **Status:** Implemented. Evidence: `decisions/2026/08/03/shortcut-slots-and-no-iterm2-preset.md`, `keymap.ts`, `ShortcutRow.tsx`, `TerminalView.tsx`, `shared/application-menu.ts`.
+- **Rule:** every shortcut carries two independently-editable slots (primary + optional alias) rather than a flat binding list, and a per-shortcut editor replaces any "compatibility preset" toggle — the iTerm2 preset and its three checkboxes (Settings, ⓘ popover, native Terminal ▸ Keyboard Mode) are deleted, it.
+- **Why:** `decisions/2026/08/03/shortcut-slots-and-no-iterm2-preset.md`.
 
 ## 2026-08-02 — The keymap registry now dispatches, and rebinding lives in Settings, not the ⌘/ overlay
 
@@ -192,19 +174,7 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Proposed. Evidence: `GlobalHeader.tsx`, `PreventSleepToggle.tsx` (`--awake` precedent), `BottomSheet.tsx`, `SiblingPopover.tsx` (popover row → navigate precedent).
 
 ## 2026-07-30 — Hibernated is a card state, not a column or a card action
-
-A hibernated task keeps its column and renders inert everywhere it is listed (greyed +
-dashed `text-fg-muted` label, drag off, status trigger disabled, quick-complete still
-live); the Hibernate control itself sits in the inspector's Session/Agent bar (4th
-action, at budget) and never on the board card, so waking stays an explicit act inside
-the task. It wears `warning` (amber) and a filled skull: `danger` is reserved for
-irreversible loss and the same bar already spends it on Bug Hunters, while the one
-illustrative glyph in a 2px-stroke set is what makes a rare, costly action visible at
-17px. It is confirmed: nothing on disk is touched, but the session dies for good, so the
-dialog leads with what survives and counts the agents when the task runs more than one.
-Rejected: a dedicated column (the board must keep
-telling the truth about where the work is), and a red skull (two reds in a four-button
-bar make red decorative). Evidence: `decisions/2026/07/31/task-hibernation-property-not-runtime-phase.md`, `TaskCard.tsx`, `TaskInfoPanel.tsx`.
+- **Why:** `decisions/2026/07/31/task-hibernation-property-not-runtime-phase.md`.
 
 ## 2026-07-30 — A global default's rare per-object override lives in that object's detail modal
 
@@ -236,22 +206,16 @@ bar make red decorative). Evidence: `decisions/2026/07/31/task-hibernation-prope
 - **Status:** Observed. Evidence: `StatusDock.tsx`, `ConnectionStatusPill.tsx`, `ProjectView.tsx`, `KanbanBoardSkeleton.tsx`, `BoardLoadFailed.tsx`.
 
 ## 2026-07-25 — A read-only terminal viewer says so, in an earned strip above the canvas
-
-- **Rule:** A native task terminal shared by several viewers (desktop window + remote tabs) gives exactly one of them the write lease; an observer gets a slim NON-overlapping strip directly above the canvas naming the read-only state plus a `Take control` button (secondary, bordered), and that strip flashes `danger` for ~1.6s when the server refuses a keystroke. Writers — and every tmux terminal — get zero chrome.
-- **Why:** A silently read-only terminal is indistinguishable from a hung one. An absolute overlay badge (PaneZoomBadge's pattern) was rejected because it collides with the narrow pane-dots strip; a toast per refused keystroke was rejected as spam for an expected, persisting condition. Follows the existing slim-strip pattern (window switcher/pane dots), so wide and narrow are identical. Bible §5 terminal surfaces.
-- **Status:** Observed. Evidence: `NativeViewerBar.tsx`, `TaskTerminal.tsx`, `decisions/2026/07/26/native-terminal-remote-viewer-bridge.md`.
+- **Rule:** A native task terminal shared by several viewers (desktop window + remote tabs) gives exactly one of them the write lease; an observer gets a slim NON-overlapping strip directly above the canvas naming the read-only state plus a `Take control` button (secondary, bordered), and that strip flashes `da — bible §5.
+- **Why:** `decisions/2026/07/26/native-terminal-remote-viewer-bridge.md`.
 
 ## 2026-07-24 — Inspector bars adapt to the PANEL's width, not the viewport's
-
-- **Rule:** A toolbar that shares the viewport with another surface gates its label/fold behaviour on its own container width (`useContainerWidth`, ResizeObserver), not on `useCompact`/`useNarrowViewport`; and every bar is boxed (`min-w-0 overflow-hidden`) so it can never paint over a neighbour or the pinned chrome. Inspector tiers: `tight` <1280 (label strip → `+k`, branch clamp, tmux/Runtime icon-only), `veryTight` <900 (drop label strip + include-tests).
-- **Why:** In split view the panel is 400-600px narrower than the window, so viewport gates never fired and both rows overflowed — chrome and Runtime controls landed outside the panel's `overflow-hidden` box, unclickable. Wrapping was rejected (fixed collapsed height clips the second line); lowering `COMPACT_MAX_WIDTH` was rejected (wrong axis). Bible §5.1/§12.1; `decisions/2026/07/25/inspector-bars-adapt-to-panel-width.md`.
-- **Status:** Observed. Evidence: `useContainerWidth.ts`, `TaskInfoPanel.tsx`.
+- **Rule:** A toolbar that shares the viewport with another surface gates its label/fold behaviour on its own container width (`useContainerWidth`, ResizeObserver), not on `useCompact`/`useNarrowViewport`; and every bar is boxed (`min-w-0 overflow-hidden`) so it can never paint over a neighbour or the pinned ch — bible §5.1/§12.1.
+- **Why:** `decisions/2026/07/25/inspector-bars-adapt-to-panel-width.md`.
 
 ## 2026-07-23 — Streamer mode: privacy masking is a CSS class contract
-
-- **Rule:** Identity-bearing display values (emails, account labels, orgs, home-dir paths, tunnel URLs, QR) must carry `streamer-private`/`streamer-private-media`; `data-streamer="on"` on `<html>` blurs them. Toggle = Settings → Appearance (`local` storage) + `⇧⌘P` palette command; no header button, no hover-to-reveal.
-- **Why:** CSS-only masking makes coverage one class per value with zero re-render; text replacement was rejected (per-surface logic, silent misses). Bible §10 row; `decisions/2026/07/23/streamer-mode-css-blur-masking.md`.
-- **Status:** Observed. Evidence: `src/mainview/streamer-mode.tsx`, `index.css`.
+- **Rule:** Identity-bearing display values (emails, account labels, orgs, home-dir paths, tunnel URLs, QR) must carry `streamer-private`/`streamer-private-media` — bible §10.
+- **Why:** `decisions/2026/07/23/streamer-mode-css-blur-masking.md`.
 
 ## 2026-07-21 — Inline-help coverage floor is a positive manifest (REQUIRED_HELP_SURFACES)
 
@@ -284,10 +248,8 @@ bar make red decorative). Evidence: `decisions/2026/07/31/task-hibernation-prope
 - **Status:** Implemented. Evidence: bible §5.4 (coverage law + correlation invariant), yaml `surfaces.inline_help.doctrine`, `HelpSpot.tsx`, `__tests__/help.test.ts`.
 
 ## 2026-07-16 — Global Settings category navigation and registry
-
-- **Rule:** Global Settings uses seven left-nav **Settings categories** with one detail pane, localized title/description search, and a narrow list→detail drill-down with an in-app back affordance. The `settings-registry.ts` registry documents **Settings entries** (metadata, category, translations, anchors, storage disposition) and integrity tests; bespoke controls remain bespoke.
-- **Why:** One category at a time keeps the large Agents and Accounts surfaces from burying smaller settings while preserving the existing route, RPC persistence, and editor behavior. Legacy section ids map through one vocabulary boundary so existing launch-picker deep-links continue to land on the correct current category.
-- **Status:** Implemented. Evidence: `GlobalSettings.tsx`, `settings-registry.ts`, `docs/ux/ux-architecture.yaml`, `decisions/2026/07/16/global-settings-registry.md`.
+- **Rule:** Global Settings uses seven left-nav **Settings categories** with one detail pane, localized title/description search, and a narrow list→detail drill-down with an in-app back affordance.
+- **Why:** `decisions/2026/07/16/global-settings-registry.md`.
 
 ## 2026-07-15 — Mobile devices are portrait-only
 
@@ -302,10 +264,8 @@ bar make red decorative). Evidence: `decisions/2026/07/31/task-hibernation-prope
 - **Status:** Implemented. Evidence: `App.tsx`, `TaskInfoPanel.tsx`, `keymap.ts`, `webNotification.ts`.
 
 ## 2026-07-13 — "Recent commits" diff mode is a split-button, N not persisted
-
-- **Rule:** A 4th diff mode `recent` joins the diff-viewer segmented control (peer to branch/uncommitted/unpushed): a split-button whose body activates `HEAD~N..HEAD` (committed-only, clamped to the branch's own commits via the local `origin/base` merge-base — no origin fetch) and whose `▾` caret opens a fixed preset popover (1/2/3/5/10). Mode follows the existing localStorage preference; N does **not** — it resets to 1 each open. Header sub-label shows the backend's effective (clamped) count, localized.
-- **Why:** the primary job is "what did the agent just commit?", so the default must always be the last commit (N reset), while mode-stickiness matches the other three. A split-button keeps the frequent 1-click case zero-config yet bounds toolbar width for narrow/mobile vs inline chips. Rejected: persisting N (defeats the default), a commit-subject dropdown (needs a new `listCommits` RPC), and free numeric input (scope creep).
-- **Status:** Implemented. Evidence: bible §5.3; `decisions/2026/07/13/recent-commits-diff-mode.md`; `git.ts` getTaskDiff, `TaskDiffViewer.tsx`, `rpc-handlers/git-operations.ts`.
+- **Rule:** A 4th diff mode `recent` joins the diff-viewer segmented control (peer to branch/uncommitted/unpushed): a split-button whose body activates `HEAD~N..HEAD` (committed-only, clamped to the branch's own commits via the local `origin/base` merge-base — no origin fetch) and whose `▾` caret opens a fixed — bible §5.3.
+- **Why:** `decisions/2026/07/13/recent-commits-diff-mode.md`.
 
 ## 2026-07-12 — Variant switching: capped clickable dots, inspector switcher, ⇧⌘[/] cycle
 
@@ -314,28 +274,20 @@ bar make red decorative). Evidence: `decisions/2026/07/31/task-hibernation-prope
 - **Status:** Agreed, implementation pending. Rules: bible §5.1 + surface table + glossary; yaml `variant-switching-affordances` + `surfaces.task_card.variant_dots`.
 
 ## 2026-07-12 — PR Review always belongs in NEEDS YOU
-
-- **Rule:** Every `review-by-colleague` task stays in the sidebar's top NEEDS YOU tier and the `is:attention` filter, regardless of its live bell count; WAITING contains only `in-progress` and `review-by-ai` tasks.
-- **Why:** A pending PR is a human decision queue, not background agent churn; a bell marks new activity but must not decide whether a review is visible. Rejected: signal-gated promotion, which stranded quiet PRs below working tasks.
-- **Status:** Implemented. Evidence: `sidebarTiers.ts`, `taskFacets.ts`, `ActiveTasksSidebar.tsx`; `decisions/2026/07/12/pr-review-needs-you-tier.md`.
+- **Rule:** Every `review-by-colleague` task stays in the sidebar's top NEEDS YOU tier and the `is:attention` filter, regardless of its live bell count.
+- **Why:** `decisions/2026/07/12/pr-review-needs-you-tier.md`.
 
 ## 2026-07-11 — Scheduled agent message ("Send later")
-
-- **Rule:** A one-shot text queued to a task's **live agent** (deliver at a wall-clock time / after a delay; type + Enter) is a **session action**. Create it from the **Session/Agent inspector bar**, the card **context menu**, and a **clock button in the browser/touch `TerminalComposer`**; plus CLI `dev3 message [--in|--at] "…"` (bare = send now). Pending items render as a **card timer-chip** (popover: cancel / send-now) that **shares the single deferred-timer slot with deferred launch** — the two never coexist (`todo` vs live-agent). Reuses the `LaunchVariantsModal` in/at picker via an extracted shared `SchedulePicker`. Offered only when a live agent session exists.
-- **Why:** it pokes a *running* agent, so it belongs to the session domain, not Runtime; reusing the launch picker + the one deferred-timer chip adds no new badge class and no budget exception. Excluded from the ⇧⌘P palette (modal/inline-flow policy, same as spawn) and it is not a destination. Rejected: extending Automations (they create *new tasks*, not message a live agent) and a bespoke "Reminders" panel.
-- **Status:** Implemented. Evidence: `decisions/2026/07/11/scheduled-agent-message.md`; bible §5.1 (session_agent bar); `ScheduleMessageModal.tsx`, `SchedulePicker.tsx` (extracted from `LaunchVariantsModal.tsx`), `TaskCard.tsx` chip, `TaskInfoPanel.tsx` session bar, `TerminalComposer.tsx`; `src/bun/scheduled-message-scheduler.ts`, `src/bun/agent-prompt.ts`; CLI `src/cli/commands/message.ts`.
+- **Rule:** A one-shot text queued to a task's **live agent** (deliver at a wall-clock time / after a delay; type + Enter) is a **session action** — bible §5.1.
+- **Why:** `decisions/2026/07/11/scheduled-agent-message.md`.
 
 ## 2026-07-11 — Favorites: leading "Favorites" column on the launch picker (NOT a chip row / split)
-
-- **Rule:** The Provider→Model→Mode picker (`AgentConfigPicker`) carries ONE compact favorites control as a **leading labeled column** (peer to Provider/Model/Mode) on the 3 **launch** surfaces (Launch/Retry, Spawn Agent, Bug Hunters) via `showFavorites`: a narrow fixed-width trigger with a Nerd Font **star that fills gold** (`--favorite`) when the current `(agentId,configId)` is saved, opening a left-aligned portal **popover** (`FavoritesMenu`, mirrors `PriorityPicker`) — top row toggles **Save ↔ Remove** the current combo (gold when saved), below it the list (click = apply to THIS picker, `×` per row removes, accent+check on the active one). Column **always present** (save reachable at 0 favorites). **No chip row, no 1-click row star.** Favorites are thin pointers stored globally (`GlobalSettings.favorites`, `{agentId,configId,uses,lastUsedAt}`), cap 10 LFU-then-LRU (just-added never evicted), ordered uses↓/lastUsedAt↓ frozen per open; usage increments per spawned agent on any matching launch. Settings pickers stay plain cascade.
-- **Why:** the launch picker is instantiated **once per variant** in `LaunchVariantsModal`, so a chip row inside it (v1) rendered the global list N× and pushed cascades down; a right-side `[★│▾]` split (v2) dangled below the Selects (misaligned) with a weak thin `☆`. A leading labeled column aligns in-row, adds zero height, stays one earned icon (button-creep budget §11), and each trigger unambiguously targets its own picker; Save moved into the popover because pick is frequent and save rare. Rejected: top-of-modal row (ambiguous which variant), quick-add-variant chips (surface-inconsistent), a wide 4th text dropdown (width ×N), a favorites pseudo-provider, display-only cap without eviction. Sibling to decision 112.
-- **Status:** Implemented. Evidence: bible §10 (launch favorite row); `AgentConfigPicker.tsx`, `FavoritesMenu.tsx`, `src/shared/favorites.ts`, `rpc-handlers/settings-config.ts`; `docs/ux/feature-plans/agent-favorites.md`, `decisions/2026/07/11/agent-favorites.md`.
+- **Rule:** The Provider→Model→Mode picker (`AgentConfigPicker`) carries ONE compact favorites control as a **leading labeled column** (peer to Provider/Model/Mode) on the 3 **launch** surfaces (Launch/Retry, Spawn Agent, Bug Hunters) via `showFavorites`: a narrow fixed-width trigger with a Nerd Font **star tha — bible §10.
+- **Why:** `decisions/2026/07/11/agent-favorites.md`.
 
 ## 2026-07-10 — Token-DSL task filters: search string is the single source of truth
-
-- **Rule:** Structured filtering on the board and sidebar is a token DSL (`priority:` `label:` `agent:` `status:` `is:attention` `has:port`) living inside the *one* search string; a shared `FilterFunnel` dropdown (grouped PRIORITY/STATUS/LABELS/AGENTS/FLAGS, PRIORITY first, values-in-pool only, empty groups hidden), the P0–P4 priority quick-chips, and the kanban label chips are all *views* of that string — checking/clicking edits a token, none holds separate filter state. Funnel is a `ghost` icon button snug against the search box with an accent count badge; one `HelpSpot` teaches the operators. Filter/checked use different comparisons: substring match filters, exact (case-insensitive) token presence drives checked/active. Board shows the most-popular labels inline (`+N more` opens the funnel). Ephemeral (resets on unmount), renderer-only, extensible registry.
-- **Why:** a growing task list needs AND-across / OR-within filtering both surfaces share; one parsed string keeps typed and clicked filters from ever disagreeing and adds one control, not a facet toolbar. This **supersedes the priority feature's separate `priorityFilters`/`activeFilters` board state** (PR #893) — folding priority into the same single-source string is the whole point. Rejected: a separate structured-filter state beside search (two sources drift), and dropping the chips (loses at-a-glance board filtering).
-- **Status:** Implemented. Evidence: bible §5 (board/sidebar rows), §12.6 board-filters row; `utils/taskSearch.ts`, `taskFacets.ts`, `FilterFunnel.tsx`, `LabelFilterBar.tsx`, `ActiveTasksSidebar.tsx`; `decisions/2026/07/10/token-dsl-task-filters.md`.
+- **Rule:** Structured filtering on the board and sidebar is a token DSL (`priority:` `label:` `agent:` `status:` `is:attention` `has:port`) living inside the *one* search string; a shared `FilterFunnel` dropdown (grouped PRIORITY/STATUS/LABELS/AGENTS/FLAGS, PRIORITY first, values-in-pool only, empty groups hid — bible §5.
+- **Why:** `decisions/2026/07/10/token-dsl-task-filters.md`.
 
 ## 2026-07-10 — Diagnostics: in-UI crash/error surface for remote/mobile
 
@@ -348,10 +300,8 @@ bar make red decorative). Evidence: `decisions/2026/07/31/task-hibernation-prope
 - Placement and Runtime-control rules remain in bible §5; the security/export contract is superseded by the 2026-07-29 artifact-bundle decision.
 
 ## 2026-07-06 — Feature-gated preset: shown-but-disabled + deep-link to enable
-
-- **Rule:** a preset that depends on an off-by-default capability (e.g. `requiresPxpipeProxy`) stays **visible** in the Provider→Model→Mode picker but renders **disabled** (`Select` disabled option, muted + lock glyph) until enabled; clicking it does not select — it fires a clickable `info` toast that deep-links (window `OPEN_SETTINGS_SECTION_EVENT` → `Route.section`) to the Global Settings section that turns it on. Its manager is a normal settings section (configuration lives in settings).
-- **Why:** the user must be able to *discover* the capability without it silently launching a heavy/experimental dependency. Rejected: hiding the preset until enabled (undiscoverable) and auto-starting the dependency on selection (hidden side effect).
-- **Status:** Implemented. Evidence: bible §10 (feature-gated preset row), `AgentConfigPicker.tsx`, `Select.tsx`, `PxpipeProxySettingsSection.tsx`, `decisions/2026/07/06/pxpipe-cost-trick-preset.md`.
+- **Rule:** a preset that depends on an off-by-default capability (e.g — bible §10.
+- **Why:** `decisions/2026/07/06/pxpipe-cost-trick-preset.md`.
 
 ## 2026-07-05 — Automations: project-settings tab; runs are ordinary tasks
 
@@ -503,10 +453,8 @@ bar make red decorative). Evidence: `decisions/2026/07/31/task-hibernation-prope
 - **Status:** Observed. Evidence: `tips.ts` (`TipContext`), `hooks/useTipRotation.ts`.
 
 ## 2026-07-11 — Active Tasks sidebar: readiness tiers + visible priority (supersedes 2026-06-22)
-
-- **Rule:** The sidebar groups by **readiness tier** — `NEEDS YOU` (review-by-user ∪ user-questions ∪ *signalled* review-by-colleague) → custom columns (project order) → `WAITING` (in-progress ∪ review-by-ai ∪ unsignalled review-by-colleague) — not by status; within every tier it sorts by priority band P0→P4, then oldest `movedAt`, then `seq`. Each card shows the kanban's `PriorityBadge` (picker → `setTaskPriority`) + a compact status label; the attention/bell scope is the `NEEDS YOU` tier at global breadth with the same sort. Grouping+sort is a pure function (`groupTasksIntoTiers`).
-- **Why:** A work queue must first answer "does this need me?" then "how important?"; a live PR signal is the only status whose tier is runtime-driven, and manual custom-column parking must outrank a merely-busy agent. Rejected: keep per-status groups (priority already sorts within them, but the user can't see priority and can't tell actionable from churning). Supersedes the 2026-06-22 oldest-first-uniform rule (priority now leads; oldest-`movedAt` is the in-band tiebreak).
-- **Status:** Implemented. Evidence: `sidebarTiers.ts` (+`__tests__`), `ActiveTasksSidebar.tsx`; `decisions/2026/07/11/sidebar-readiness-tiers.md`.
+- **Rule:** The sidebar groups by **readiness tier** — `NEEDS YOU` (review-by-user ∪ user-questions ∪ *signalled* review-by-colleague) → custom columns (project order) → `WAITING` (in-progress ∪ review-by-ai ∪ unsignalled review-by-colleague) — not by status; within every tier it sorts by priority band P0→P4, t.
+- **Why:** `decisions/2026/07/11/sidebar-readiness-tiers.md`.
 
 ## 2026-06-21 — Hint navigation is a cross-surface primitive; keyboard-first expert layer
 
