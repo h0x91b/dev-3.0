@@ -89,7 +89,11 @@ function Sparkline({ values, verdict }: { values: number[]; verdict: ConnectionV
 	);
 }
 
-function QualityBreakdown({ stats }: { stats: QualityStats }) {
+/**
+ * `titled` is off inside the BottomSheet, which already carries the same title in
+ * its own header — the desktop popover has no chrome, so there it stays on.
+ */
+function QualityBreakdown({ stats, titled = true }: { stats: QualityStats; titled?: boolean }) {
 	const t = useT();
 	const path = describeAccessPath(typeof window === "undefined" ? "" : window.location.hostname);
 	// Nothing answered: every number here would be a zero standing in for a
@@ -111,8 +115,8 @@ function QualityBreakdown({ stats }: { stats: QualityStats }) {
 	return (
 		<div className="p-3 flex flex-col gap-3">
 			<div>
-				<div className="text-fg text-sm font-semibold">{t("connQuality.title")}</div>
-				<div className="text-fg-3 text-micro mt-0.5">{t("connQuality.definition")}</div>
+				{titled && <div className="text-fg text-sm font-semibold">{t("connQuality.title")}</div>}
+				<div className={`text-fg-3 text-micro ${titled ? "mt-0.5" : ""}`}>{t("connQuality.definition")}</div>
 			</div>
 
 			{stats.count === 0 && (
@@ -266,7 +270,7 @@ export default function ConnectionQualityIndicator({ variant = "bar" }: Connecti
 					title={t("connQuality.title")}
 					testId="connection-quality-sheet"
 				>
-					{breakdown}
+					<QualityBreakdown stats={stats} titled={false} />
 				</BottomSheet>
 			) : (
 				flyout.open && (
