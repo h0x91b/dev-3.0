@@ -18,13 +18,29 @@ Key idea: each project is a git repo; each task gets its own **git worktree** + 
 - Design system (colors, typography, components, glass morphism, themes): [`DESIGN.md`](DESIGN.md) — follow it for any UI code
 - UX architecture manifest (object model, navigation, surfaces, action taxonomy, placement rules, complexity budgets): [`docs/ux/PRODUCT_UX_BIBLE.md`](docs/ux/PRODUCT_UX_BIBLE.md) + machine-readable [`docs/ux/ux-architecture.yaml`](docs/ux/ux-architecture.yaml) — the canonical UX reference for where features live and which surface owns which action
 
-## UI/UX work — always plan with `/ux-principal` (MANDATORY)
+## UI/UX work — which skill, and when (MANDATORY)
 
-Before designing or implementing **anything** UI/UX-related — a new screen, surface, button, modal, toolbar action, navigation change, any visible control — you MUST first invoke the `/ux-principal` skill. It reads the UX manifest, classifies the feature, decides placement, navigation, action hierarchy, token roles, and complexity budget, and produces an implementation brief. Never add UI controls ad hoc — that is exactly how toolbar/inspector button creep (the project's top UX anti-pattern) happens.
+Two different jobs, two different skills, and they are not interchangeable. `/ux-principal` decides **where a thing goes, before it exists**. The `better-*` family judges **how it is built**. Pick by what the change does, not by how big it is:
 
-If the manifest is stale or missing, regenerate it with `/ux-create-manifest`. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change.
+| Your change | Skill | Why |
+|---|---|---|
+| Adds a **destination, surface, or action** — new screen, new panel/drawer/inspector, new button or menu item, a nav change, a modal, or anything that pushes a complexity budget | `/ux-principal` first, **MANDATORY** | It owns placement, action classification, navigation rules, and the budgets. Never add UI controls ad hoc — that is exactly how toolbar/inspector button creep (the project's top UX anti-pattern) happens |
+| Changes **how an existing control looks or feels** — radius, shadow, spacing, motion, icon, copy, colour, type, focus ring, ARIA | the owning `better-*` skill (`/better-ui`, `/better-layout`, `/better-writing`, `/better-typography`, `/better-colors`, `/better-accessibility`) | They are the craft authority and go deeper than the manifest ever did. Reading 300 KB of manifest to restyle a badge buys nothing |
+| A whole screen or flow, before a PR | `/better-interface` | Cross-discipline review pass over all six craft domains |
+
+`/ux-principal` no longer owns craft rules. Colour, contrast, typography, copy, motion, layout grammar, and accessibility belong to the `better-*` skills; the bible's §9a keeps only the **project deltas and documented overrides** those skills cannot know (see [Where dev3 overrides the `better-*` skills](#where-dev3-overrides-the-better-skills)). If the manifest is stale or missing, regenerate it with `/ux-create-manifest`. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change — and note it is under a size budget enforced by `src/bun/__tests__/ux-docs-budget.test.ts`.
 
 **Screenshot the zone before you plan it.** Driving the current UI beats reasoning from memory about what is on screen — same tooling as the mandatory QA pass afterwards, see [Manual UI QA in a browser](#manual-ui-qa-in-a-browser-mandatory).
+
+## Where dev3 overrides the `better-*` skills
+
+Three points where this repo has already decided and a `better-*` pass must not re-open them. Full reasoning: `decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`.
+
+| Subject | Ruling |
+|---|---|
+| Borders vs shadows | **`better-ui` wins.** A border that exists only to fake depth becomes a layered transparent `box-shadow`. Borders that carry structure or state stay: dividers, layout separators, selection, focus, and the status-colour identity borders |
+| Looping hover animation on the `tmx-` / `gtx-` / `hdr-` / `th-` icon families | **dev3 wins, deliberately.** `better-ui`'s motion-restraint rule does not apply to them — the loop is the personality of those surfaces and runs only while the cursor rests on one icon. Do not file it as a finding |
+| Motion primitives (press feedback, icon transitions, entrance animations) | **`better-ui` wins.** Use its exact values — `scale(0.96)` on press, icon cross-fade `scale 0.25→1` / `opacity 0→1` / `blur 4px→0`, `cubic-bezier(0.2, 0, 0, 1)`. There is no motion library here, so use `better-ui`'s no-library CSS path; do not add `framer-motion` to satisfy the rule |
 
 ## No native dialogs — ever (remote/browser mode) (MANDATORY)
 

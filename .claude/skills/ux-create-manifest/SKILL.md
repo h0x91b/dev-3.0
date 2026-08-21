@@ -25,6 +25,10 @@ You may create or update only UX documentation unless the user explicitly reques
 - `docs/ux/ux-architecture.yaml`
 - `docs/ux/UX_DECISIONS.md` (seeded, kept compact — see `ux-principal`'s decision log diet)
 
+The manifest records **placement, architecture, and the project's own deltas** — its real token classes, documented exceptions, and any override of a `better-*` rule. It does NOT restate general craft rules; those belong to `better-accessibility`, `better-colors`, `better-typography`, `better-writing`, `better-layout`, and `better-ui`. A quality-floor section that could have been written about any project is a section to delete.
+
+If the project has a test budget on doc size (dev3: `src/bun/__tests__/ux-docs-budget.test.ts`), respect it — compact rather than raise it.
+
 Do NOT create `UX_MANIFEST_CHANGELOG.md` (git history is the changelog), `UX_AUDIT_REPORT.md`
 (the audit is your final chat response, not a repo file), or `UX_GLOSSARY.md` (a bible
 section). Three files is the complete on-disk footprint of this skill.
@@ -61,7 +65,7 @@ You may **also** add a short pointer to the manifest in the project's agent-inst
 
 5. **Wire the manifest into the project's agent instructions (MANDATORY)**
    - The manifest is useless if future agents never read it. Add a short pointer to the project's agent-instruction file — `AGENTS.md` and/or `CLAUDE.md` (often `CLAUDE.md` is a symlink to `AGENTS.md`; edit the real file once, do not duplicate).
-   - The pointer must state two things: (a) the UX bible lives at `docs/ux/PRODUCT_UX_BIBLE.md` (+ `docs/ux/ux-architecture.yaml`) and is the canonical UX reference; (b) agents MUST invoke the `ux-principal` skill before designing or implementing anything UI/UX-related (new screen, surface, button, modal, toolbar action, navigation change, or any visible control), and use this `ux-create-manifest` skill to regenerate the manifest when it is stale.
+   - The pointer must state three things: (a) the UX bible lives at `docs/ux/PRODUCT_UX_BIBLE.md` (+ `docs/ux/ux-architecture.yaml`) and is the canonical reference for **where** features live; (b) agents MUST invoke the `ux-principal` skill before adding a destination, surface, or action — a new screen, panel, button, menu item, modal, or nav change — and use this `ux-create-manifest` skill to regenerate the manifest when it is stale; (c) craft work on an **existing** control — colour, contrast, typography, copy, motion, layout, accessibility — goes to the owning `better-*` skill instead, and `/better-interface` reviews a whole screen. Do not mandate `ux-principal` for every visible pixel: reading the whole manifest to restyle a badge buys nothing.
    - Keep it concise (a few lines + links). Place it near existing design-system / UI guidance if present. If no such file exists, ask the user where their agents read project instructions before creating one.
    - Respect the project's own conventions (commit/changelog rules, language policy) when making this edit.
 

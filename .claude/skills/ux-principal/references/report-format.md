@@ -16,8 +16,8 @@ Manifest: compliant, no updates. Complies with: <bible §, yaml rule ids>
 - Surface / entry point / visibility rule: ...
 - Rejected: <one line, only if a wrong placement is tempting>
 
-## Tokens
-| Element | Label | Semantic role | Concrete variant | Visibility |
+## Action hierarchy
+| Element | Label | Semantic role | Existing token class | Visibility |
 |---|---|---|---|---|
 
 ## Interaction contract
@@ -79,9 +79,9 @@ Evidence:
 - Remove:
 - No change:
 
-## 4. Action hierarchy and token decisions
+## 4. Action hierarchy
 
-| Element | Label | Semantic role | Concrete variant/token | Visibility | Notes |
+| Element | Label | Semantic role | Existing token class | Visibility | Notes |
 |---|---|---|---|---|---|
 | Primary CTA | ... | primary | ... | persistent | ... |
 | Secondary action | ... | secondary | ... | persistent/overflow | ... |
@@ -110,14 +110,14 @@ Evidence:
 - Keyboard and focus:
 - Responsive behavior:
 
-## 7. Accessibility requirements
+## 7. Handed to the craft skills
 
-- Accessible names:
-- Focus management:
-- Keyboard support:
-- ARIA or semantic HTML:
-- Contrast and token notes:
-- Motion notes:
+One line each, naming the skill that owns the follow-up. Do not write their rules out here.
+
+- Accessibility (`better-accessibility`):
+- Copy and labels (`better-writing`):
+- Colour or token gap (`better-colors`):
+- Motion or polish (`better-ui`):
 
 ## 8. Manifest updates
 

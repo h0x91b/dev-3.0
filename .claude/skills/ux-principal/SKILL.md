@@ -1,6 +1,6 @@
 ---
 name: ux-principal
-description: Principal UX architect skill for planning UI features before implementation. Reads and maintains docs/ux manifests, classifies the feature, decides placement, navigation, action hierarchy, design-token roles, accessibility, states, responsive behavior, and produces a precise implementation brief without coding unless explicitly asked.
+description: Principal UX architect skill for deciding WHERE a UI feature belongs, before it is implemented. Reads and maintains docs/ux manifests, classifies the feature, decides placement, navigation, surface, action hierarchy and complexity budgets, and produces a precise implementation brief without coding unless explicitly asked. Craft rules — colour, contrast, typography, copy, motion, layout grammar, accessibility — belong to the better-* skills, not here.
 ---
 
 # UX Principal
@@ -13,16 +13,32 @@ Use this skill before implementing any UI feature in a website, web app, admin c
 
 Given a feature request, produce a rigorous UX implementation plan before code changes. Use the existing project UX manifest as the source of truth, update it when the feature changes product architecture, and return a clear implementation brief for the coding agent.
 
-This skill is not a visual inspiration skill. It is the authority for:
+This skill is not a visual inspiration skill and not a craft skill. It is the authority for:
 
 - Information architecture.
 - Navigation and menu placement.
 - Surface placement.
 - Action taxonomy.
-- Button hierarchy and token role selection.
+- Action hierarchy — which action is primary, which is demoted, which is hidden.
 - Progressive disclosure.
 - Complexity budgets.
 - UX manifest maintenance.
+
+## What this skill does NOT own
+
+Craft rules belong to the `better-*` skills, which go deeper than this skill ever did. Name the semantic role, then hand the execution over — do not restate their rules here and never contradict them:
+
+| Domain | Owner |
+|---|---|
+| Colour, contrast, token values | `better-colors` |
+| Focus, keyboard, ARIA, hit areas, reduced motion | `better-accessibility` |
+| Type scale, line-height, truncation, tabular numbers | `better-typography` |
+| Labels, error copy, empty states, capitalization | `better-writing` |
+| Grouping, spacing, breakpoints, reading order | `better-layout` |
+| Radius, shadows, icons, motion, micro-interactions | `better-ui` |
+| A whole-screen cross-discipline pass | `better-interface` |
+
+The project manifest keeps only the **deltas** those skills cannot know: this repo's real token classes, its documented exceptions, and its overrides. In dev3 those live in `docs/ux/PRODUCT_UX_BIBLE.md` §7 and §9a. Cite them; do not re-derive them.
 
 ## Default write scope
 
@@ -97,6 +113,7 @@ If missing or obviously stale:
 3. **Use sub-agents for complex features**
    - If the environment supports sub-agents, spawn the relevant sub-agents from `references/subagent-briefs.md`.
    - Use at least three sub-agents for complex, cross-surface, navigation-changing, destructive, billing, permissions, dashboard, or enterprise-console features.
+   - There is no accessibility or token sub-agent here — those are `better-accessibility` and `better-colors`.
    - If unavailable, simulate the same roles sequentially.
 
 4. **Decide placement**
@@ -105,23 +122,17 @@ If missing or obviously stale:
    - Reject incorrect placements explicitly.
    - Check complexity budgets. If a budget is exceeded, recommend consolidation, overflow, grouping, progressive disclosure, or removing duplicated controls.
 
-5. **Decide action hierarchy and tokens**
-   - Use existing component variants and design tokens.
-   - Recommend semantic role first, exact component variant second.
-   - Decide primary, secondary, tertiary, ghost, outline, link, icon, destructive, neutral, accent, or alternative.
-   - If the design system has different names, map to those names.
-   - Do not invent colors. If tokens are missing, propose semantic token additions separately.
+5. **Decide action hierarchy**
+   - Decide which action is primary, secondary, tertiary/ghost, destructive, or hidden in overflow — that is a placement call, and it is yours.
+   - Name the **semantic role** and the project's existing token class for it (dev3: bible §7). Stop there.
+   - Do not restate colour rules, invent hex values, or design new variants. A missing semantic token is a proposed design-system change; hand it to `better-colors`.
 
-6. **Define interaction details**
-   - Trigger location.
-   - Click/tap behavior.
-   - Keyboard behavior.
-   - Focus management.
-   - Empty/loading/error/success/permission-denied states.
+6. **Define the interaction contract**
+   - Trigger location, click/tap behavior, preconditions.
+   - Empty/loading/error/success/permission-denied states — which states must exist at all.
    - Confirmation and undo behavior.
-   - Responsive behavior.
-   - Accessibility requirements.
-   - Copy and labels.
+   - Which surface adapts at narrow width, and what collapses.
+   - For keyboard, focus management, ARIA and hit areas, state the requirement in one line and hand it to `better-accessibility`; for labels and error copy, hand it to `better-writing`. Do not write their rules out.
 
 7. **Update manifest docs — only if the Architecture-change gate passed**
    - The durable rule itself goes into `docs/ux/PRODUCT_UX_BIBLE.md` and/or
@@ -169,29 +180,15 @@ If missing or obviously stale:
 - Search, filters, sort, and view modes belong to toolbars or filter panels, not global nav.
 - Dashboard controls must support dashboard decisions. Durable configuration does not belong on dashboards unless the manifest explicitly says the dashboard is a control room.
 
-## Color and button role policy
+## Action hierarchy policy
 
-Always output both semantic role and concrete component variant.
-
-Example:
+Output the semantic role plus the project's existing token class for it. One line per element:
 
 ```md
-- Button: semantic role `primary`, component variant `default`, label `Create project`.
+- Button: semantic role `primary`, token class `bg-accent-fill hover:bg-accent-fill-hover`, label `Create project`.
 ```
 
-Role rules:
-
-- `primary`: one main safe action for the current screen or flow.
-- `secondary`: visible supporting action that is useful but not the main task.
-- `tertiary` or `ghost`: low-emphasis visible action.
-- `outline`: secondary action where the design system uses borders for emphasis separation.
-- `link`: navigation or inline action.
-- `icon`: compact repeated action, must have accessible label and tooltip when icon-only.
-- `destructive`: delete, revoke, reset, disable, irreversible, data-loss, security-sensitive, or dangerous action.
-- `neutral`: utility action with no semantic state.
-- `accent` or `alternative`: only if the product design system already uses it for a specific semantic purpose.
-
-Never use destructive behavior with primary styling. Never use color merely to make a cluttered UI look varied.
+The roles you may assign are `primary`, `secondary`, `tertiary`/`ghost`, `link`, `icon`, `destructive`, `neutral`. Exactly one `primary` per screen or flow. Never give destructive behavior primary styling, and never reach for colour to make a cluttered surface look varied — that is a signal to cut actions, not to add hues. Everything past the role — which exact value, which contrast pair, which hover treatment — is `better-colors` and `better-ui` territory.
 
 ## Output must be specific
 
@@ -213,7 +210,6 @@ Add `Export selected` to the selection toolbar overflow for the Users table. It 
 - `references/placement-rubric.md`
 - `references/action-taxonomy.md`
 - `references/navigation-and-menu-rules.md`
-- `references/visual-token-decision.md`
 - `references/subagent-briefs.md`
 - `references/anti-patterns.md`
 - `references/report-format.md`

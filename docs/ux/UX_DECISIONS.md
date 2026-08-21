@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-21 — The manifest owns placement; the `better-*` skills own craft
+
+- **Rule:** `ux-principal` is mandatory only for a change that adds a destination, surface or action (or pushes a budget); craft on an existing control goes to the owning `better-*` skill. §9a keeps only dev3's deltas. Three conflicts settled: a border may not fake depth and `better-ui`'s motion primitives win, while the looping `tmx-`/`gtx-`/`hdr-`/`th-` hover animations stay by design.
+- **Why:** Six craft domains were duplicated and the `better-*` version was deeper in every one, while a badge tweak paid a 307 KB manifest read. Rejected: deprecating `ux-principal` outright — nothing in `better-*` covers placement, action taxonomy, budgets, or the object model, and `better-interface` reviews after the code exists.
+- **Status:** Implemented — `AGENTS.md`, bible §1/§9a, `DESIGN.md` Borders, `src/bun/__tests__/ux-docs-budget.test.ts`, `decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`.
+
 ## 2026-08-20 — The board card carries the dev server: one split control, open | stop
 
 - **Rule:** `dev_server_action` gains one placement on `task_card.actions` — a single split control (open the lowest dev port | stop), conditional on active + worktree + resolved `devScript` + not hibernated; start/restart/logs stay in the inspector. The card's inline-action budget is reconciled 2 → 4 (shipped code already ran 3) and is now full. Bible §5, §9; yaml `dev-server-control-on-task-card`.

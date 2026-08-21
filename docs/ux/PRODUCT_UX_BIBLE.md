@@ -9,7 +9,9 @@ Evidence notation: `Observed` (backed by code/docs), `Inferred` (likely rule fro
 
 ## 1. Purpose
 
-Canonical UX architecture reference for dev-3.0. It defines how the app organizes navigation, screens, surfaces, actions, and design-token roles, and where new features should live. Agents must consult this (via the `ux-principal` skill) before adding UI.
+Canonical UX architecture reference for dev-3.0. It defines how the app organizes navigation, screens, surfaces, actions, and design-token roles, and **where** new features should live. Agents must consult this (via the `ux-principal` skill) before adding a destination, surface, or action.
+
+It is deliberately **not** the craft rulebook. Colour, contrast, typography, copy, motion, layout grammar and accessibility belong to the `better-*` skills; §9a keeps only this project's deltas and its documented overrides of them. Changing how an existing control looks or feels does not need this file at all — see the skill table in `AGENTS.md`.
 
 ### 1.0 North-star principle — the user is the star; optimize for the lazy human — `Observed`
 
@@ -396,84 +398,106 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 
 **Split lifecycle controls count as one.** The status control may carry a second half that commits the pipeline's own terminal move (the ✓ → Completed) without spending a second card slot, provided it is glued to the status trigger, shares its hover surface, is desktop-only (narrow keeps the BottomSheet's promoted Completed row at ≥ 44px), and disappears when `getAllowedTransitions` forbids the target. Any action that is not the control's own lifecycle move costs its own slot — this is not a general licence for a second button.
 
-## 9a. Quality floors — what every surface must clear
+## 9a. Quality floors — dev3's deltas from the `better-*` skills
 
-A gate, not a goal. Every surface passes these before shipping; a floor is not earned by meeting it once — a regression resets the clock. All six subsections are `Proposed` unless noted.
+**This section is not the craft rulebook.** The general rules for accessibility, colour, typography, copy, motion and layout live in the `better-*` skills, which are deeper and better maintained than any copy of them here would be. Load the owning skill and follow it.
+
+| Domain | Owner | This section adds |
+|---|---|---|
+| Accessibility | `better-accessibility` | §9a.1 |
+| Colour & contrast | `better-colors` | §9a.2 |
+| Typography | `better-typography` | §9a.3 |
+| Copy | `better-writing` | §9a.4 |
+| Motion | `better-ui` | §9a.5 |
+| Layout grammar | `better-layout` | §9a.6 |
+
+What follows is only what those skills **cannot** know: this repo's specific traps, its named constants, and its three documented overrides. Still a gate, not a goal — a floor is not earned by meeting it once, and a regression resets the clock. All six subsections are `Proposed` unless noted.
+
+### 9a.0 Overrides — where dev3 wins and where `better-ui` wins
+
+Settled on 2026-08-21; a `better-*` pass must not re-open them (`decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`).
+
+| Subject | Ruling |
+|---|---|
+| Borders that exist only to fake depth | **`better-ui` wins.** Replace them with layered transparent `box-shadow`. Borders that carry structure or state stay: dividers, layout separators, selection, focus, and the `STATUS_COLORS` identity borders. Glass morphism keeps its blur and its translucency — this is about the border, not the surface |
+| Looping hover animation on the `tmx-` / `gtx-` / `hdr-` / `th-` icon families | **dev3 wins, deliberately.** `better-ui`'s motion-restraint rule does not reach them: the loop is the personality of those surfaces, it runs only while the cursor rests on one icon, and it never delays the interaction it decorates. Do not file it as a finding |
+| Motion primitives — press feedback, icon transitions, entrance animations | **`better-ui` wins.** Use its exact values, not locally invented ones. There is no motion library in `package.json`, so take its no-library CSS path; do not add `framer-motion` to satisfy the rule |
 
 ### 9a.1 Accessibility — `Proposed`
 
-**Focus ring.** Every interactive element shows the global `:focus-visible` ring from `index.css`. Two specificity traps:
-- **`focus:outline-none` is banned** — Tailwind compiles it to `.focus\:outline-none:focus` at specificity (0,2,0), beating the global `:focus-visible` rule at (0,1,0) regardless of source order and killing the keyboard ring.
-- Bare `outline-none` (0,1,0) is fine — it loses to the global rule by source order because the ring is authored after `@tailwind utilities`.
+Owner: `better-accessibility`. dev3-specific:
 
-| Constraint | Floor |
+**The focus-ring specificity trap.** Every interactive element shows the global `:focus-visible` ring from `index.css`, and there is exactly one way to lose it:
+- **`focus:outline-none` is banned** — Tailwind compiles it to `.focus\:outline-none:focus` at specificity (0,2,0), beating the global `:focus-visible` rule at (0,1,0) regardless of source order, and the keyboard ring dies.
+- Bare `outline-none` (0,1,0) is fine — it loses to the global rule by source order, because the ring is authored after `@tailwind utilities`.
+
+| Constraint | dev3 delta |
 |---|---|
-| Hit area | 24×24 CSS px (WCAG 2.5.8); 44×44 px on touch via `.touch-actions` in `index.css` — the sheet default, not opt-in |
-| Keyboard path | Every pointer interaction has a keyboard equivalent; Escape closes overlays; Arrow keys move inside composite widgets |
-| Icon controls | Every icon-only control has an accessible name; a tooltip is **not** an accessible name |
-| `role="tab"` | Is a promise of roving tabindex — if you will not implement it, ship plain buttons with `aria-pressed` |
-| `aria-modal` surface | Accessible name (`aria-labelledby` at its title), focus trap, focus restore; `useFocusTrap` is the one implementation |
-| Landmarks | One `sr-only` `<h1>` per route; `document.title` follows the route (the tab title is the only orientation cue in remote mode) |
-| Zoom | Must render and reflow at 200% browser zoom and at a 320px viewport. **Pinch-zoom is capped on purpose** on browser remote (`user-scalable=no, maximum-scale=1`) — the surface underneath is a live terminal that owns touch, so pinch fights the pane geometry instead of magnifying. Do not "fix" it; reflow is the accessibility path here |
-| Live regions | `polite` for routine updates; `assertive` / `role="alert"` reserved for urgent errors only |
+| Touch targets | `.touch-actions` in `index.css` is the **sheet default, not opt-in** — 44×44 px comes for free inside it |
+| `role="tab"` | Is a promise of roving tabindex. If you will not implement it, ship plain buttons with `aria-pressed` |
+| Focus trap | `useFocusTrap` is the one implementation; every `aria-modal` surface uses it, plus an accessible name and focus restore |
+| Landmarks | One `sr-only` `<h1>` per route, and `document.title` follows the route — the tab title is the only orientation cue in remote mode |
+| Live regions | `assertive` / `role="alert"` is reserved for urgent errors; routine updates are `polite` |
 
-**Documented exception — no skip link.** The keyboard jump layer (command palette ⇧⌘P, hint overlay `f`/⌘G, task switcher Option+Tab) replaces a skip link. Future audits must not re-flag this as missing.
+**Documented exception — no skip link.** The keyboard jump layer (command palette ⇧⌘P, hint overlay `f`/⌘G, task switcher Option+Tab) replaces it. `better-accessibility` triggers on "skip link"; this is not a finding here, and future audits must not re-flag it.
 
-### 9a.2 Contrast — `Proposed`
+**Documented exception — pinch-zoom is capped on purpose** on browser remote (`user-scalable=no, maximum-scale=1`): the surface underneath is a live terminal that owns touch, so pinch fights the pane geometry instead of magnifying. Do not "fix" it. Reflow is the accessibility path here — every surface must still render at 200% zoom and at a 320px viewport.
 
-APCA |Lc| ≥ 75 for body text, ≥ 60 for non-body text, ≥ 15 for non-text elements that must be discernible (borders, resize grips). WCAG 4.5:1 / 3:1 are acceptable fallback vocabulary.
+### 9a.2 Colour & contrast — `Proposed`
 
-**Measure the rendered pair in both themes** — not the token against its opaque fallback. Alpha-modified tokens (`bg-raised/65`, `border-danger/30`, `bg-fg-muted/40`) must be composited through the real layer stack before the pair is checked.
+Owner: `better-colors`, including the APCA thresholds (|Lc| ≥ 75 body, ≥ 60 non-body). dev3-specific:
 
-A token whose role is "text" is not a fill, and vice versa.
-
-The repo carries an automated contrast check over the design-token pairs; any new pair must be added to that fixture before shipping.
+- **Non-text floor:** |Lc| ≥ 15 for elements that must merely be discernible — borders, resize grips.
+- **Measure the rendered pair, in both themes** — never a token against its opaque fallback. Alpha-modified tokens (`bg-raised/65`, `border-danger/30`, `bg-fg-muted/40`) must be composited through the real layer stack before the pair is checked. This is the mistake that keeps recurring here, because almost every dev3 surface is translucent.
+- The repo carries an automated contrast check over the design-token pairs; **any new pair must be added to that fixture before shipping**.
+- Notation stays `rgb(var(--token) / alpha)`. Do not introduce OKLCH values into components; §7 owns the token list.
 
 ### 9a.3 Typography — `Proposed`
 
+Owner: `better-typography`. dev3-specific:
+
 | Rule | Detail |
 |---|---|
-| Closed type scale | Named rungs only; `text-[…]` arbitrary sizes banned (they silently inherit ancestor line-height) |
-| Dense chrome minimum | After `MOBILE_DENSE_FACTOR` (~0.67×) in `zoom.ts`, meaning-bearing text needs a px-pinned floor; one bounded dense tier (weight ≥ 500, non-essential or duplicated copy only) is legitimate rather than pretending a uniform 12px floor applies everywhere |
-| `tabular-nums` | Required on every value that changes in place: counters, diff stats, gauges, timers, LOC totals, percentages, chart axes — make it a property of the badge/stat primitive, not per callsite |
-| Truncation | An identifier (branch, path, URL, PR ref) or error message may only be clamped when the full value is reachable on the same surface (tooltip, expand, or copy) |
-| Heading levels | Map to scale rungs once, centrally |
+| Closed type scale | Named rungs only; `text-[…]` arbitrary sizes are **banned** — they silently inherit ancestor line-height |
+| Dense chrome minimum | After `MOBILE_DENSE_FACTOR` (~0.67×) in `zoom.ts`, meaning-bearing text needs a px-pinned floor. One bounded dense tier is legitimate (weight ≥ 500, non-essential or duplicated copy only) rather than pretending a uniform 12px floor applies everywhere |
+| `tabular-nums` | Make it a property of the badge/stat primitive, not a per-callsite decision — counters, diff stats, gauges, timers, LOC totals, percentages, chart axes |
+| Truncation | An identifier (branch, path, URL, PR ref) or an error message may only be clamped when the full value is reachable **on the same surface** — tooltip, expand, or copy |
 | `line-height` | `leading-none` for single-line non-wrapping chrome only; anything that can wrap is `leading-snug` minimum; `≥1.4` at three or more lines |
-| Long-form columns | Changelog and help prose: cap the text column at ~65ch, not just the page |
 | 16px inputs | Applies to **every** text-entry control in browser mode, not an allowlist of three types |
+| Long-form columns | Changelog and help prose cap the text column at ~65ch, not just the page |
 
-Litmus test: does the text stay readable on a 390px screen with the dense-factor applied?
+Litmus test: does the text stay readable on a 390px screen with the dense factor applied?
 
 ### 9a.4 Copy — `Proposed`
 
+Owner: `better-writing`, including sentence case as the default. dev3-specific:
+
 | Rule | Detail |
 |---|---|
-| Confirmation buttons | Repeat the consequence; `confirmLabel` is **required** — the confirm service must reject a generic default so "OK" cannot come back |
-| Error messages | Every error ends with an imperative next step; `{error}` is a parenthetical detail, never the whole message — see `en/kanban.ts` for the reference shape |
-| Button voice | Verb-first, speaks to the reader ("you"), never as the reader ("I") |
-| Capitalization | **Sentence case** for settings rows, buttons, tabs, menu items; Title Case only for frozen proper nouns (`To Do`, `AI Review`, `Your Review`, `PR Review`) |
-| Empty states | Three parts: what this is → why useful → one action. "No X" alone is incomplete. Search empty states name the query and offer an exit |
-| Toggle labels | Name what happens when the toggle is ON |
-| Placeholders | Format examples; every field keeps a visible label |
-| Settings paths in tips/help | Never spell a path in prose — declare the destination as data and let the carrier render the link. In tips: set `Tip.settingsSection` (`SettingsRouteSectionId`, `tips.ts`) and `TipCard` renders an "Open the setting" link via `OPEN_SETTINGS_SECTION_EVENT`. The same principle applies to help strings. |
-| `(s)` | Defect — use `t.plural`. `...` is a defect — use `…` |
+| Frozen Title Case nouns | Sentence case everywhere, except these proper nouns which stay as-is: `To Do`, `AI Review`, `Your Review`, `PR Review` |
+| Confirmation buttons | `confirmLabel` is **required** and repeats the consequence — the confirm service rejects a generic default so "OK" cannot come back |
+| Error messages | Every error ends with an imperative next step; `{error}` is a parenthetical detail, never the whole message. Reference shape: `en/kanban.ts` |
+| Empty states | Three parts: what this is → why useful → one action. "No X" alone is incomplete; search empty states name the query and offer an exit |
+| Settings paths in tips/help | Never spell a path in prose — declare the destination as data and let the carrier render the link. Tips set `Tip.settingsSection` (`SettingsRouteSectionId`, `tips.ts`) and `TipCard` renders "Open the setting" via `OPEN_SETTINGS_SECTION_EVENT` |
+| i18n defects | `(s)` is a defect — use `t.plural`. `...` is a defect — use `…` |
 
 ### 9a.5 Motion — `Proposed`
 
-- **No `transition: all`** — name the properties explicitly.
-- CSS transitions for interactive state changes (interruptible); keyframes for one-shot sequences only.
-- **Motion budget:** a hover animation on a repeated control stays under ~3s per cycle and never blocks or delays the interaction it decorates. Looping while hovered is **allowed and deliberate** for the icon families (`tmx-`, `gtx-`, `hdr-`, `th-`): the loop is the personality of the surface, and it runs only while the cursor rests on that one icon.
+Owner: `better-ui`, and per §9a.0 its exact values win: `scale(0.96)` on press, icon cross-fade `scale 0.25→1` / `opacity 0→1` / `blur 4px→0` on `cubic-bezier(0.2, 0, 0, 1)`, keyframes reserved for one-shot sequences. dev3-specific:
+
+- **No motion library.** `package.json` has neither `motion` nor `framer-motion`, so use `better-ui`'s CSS path: keep both icons in the DOM, one absolutely positioned, and cross-fade. Adding the dependency to satisfy a motion rule needs its own decision record.
+- **The looping icon families are exempt** (§9a.0). Budget for them: under ~3s per cycle, never blocking or delaying the interaction it decorates, and only while the cursor rests on that one icon.
 - Prefer compositable properties (`transform`, `opacity`); paint properties like `stroke-dashoffset` are for genuinely one-shot moments.
 - Motion is **never** the only feedback channel — every animated state change also has a static cue.
-- `prefers-reduced-motion` is honoured everywhere.
 
 ### 9a.6 Layout grammar — `Proposed`
 
-- Group with space, not lines; gap between groups ≥ 2× gap within a group.
-- A control must look interactive next to static text.
+Owner: `better-layout`. dev3-specific:
+
 - Every fixed-width overlay clamps: `max-w-[calc(100vw-2rem)]`. Absolutely-positioned portals clamp and flip against `innerWidth`.
-- Breakpoints come from content; a surface that shares the viewport with another uses `useContainerWidth` per §12.1's rule.
-- Plan for string growth: p90 expansion en → ru/es is ~1.9× on short labels (`Retry` → `Попробовать ещё раз` is 3.8×). No fixed heights on label-bearing controls — use `min-h` instead.
+- A surface that shares the viewport with another sizes itself with `useContainerWidth`, per §12.1 — not with viewport breakpoints.
+- **Plan for string growth:** p90 expansion en → ru/es is ~1.9× on short labels (`Retry` → `Попробовать ещё раз` is 3.8×). No fixed heights on label-bearing controls — use `min-h`.
+- A control must look interactive next to static text.
 
 ## 10. Placement rules — `Observed`/`Inferred`
 

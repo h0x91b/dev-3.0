@@ -64,6 +64,8 @@ decoration and disabled state only, never for text that has to be read.
 | Default | `--border-default` | `rgb(75, 84, 108)` | `rgb(183, 191, 207)` |
 | Active | `--border-active` | `rgb(95, 107, 135)` | `rgb(150, 163, 185)` |
 
+**A border must earn its place — depth is not a reason.** Borders carry *structure or state*: dividers, layout separators, input affordance, selection, focus, and the `STATUS_COLORS` identity edge. A border added only so a surface reads as raised is a defect — use a layered transparent `box-shadow` instead (`/better-ui` principle 3, adopted 2026-08-21; see `decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`). Glass morphism is unaffected: the blur and the translucent fill stay, this is about the 1px edge on top of them. New surfaces follow the rule immediately; the 410 existing `border border-edge` call sites are migrated surface family by surface family, each one verified in both themes — never as a blanket find-and-replace.
+
 ### Semantic / Interactive
 
 `--accent-hover` is for accent **fills** — it deepens in both themes so white ink
@@ -264,7 +266,7 @@ that shows **only** for keyboard / assistive-tech focus — never on a mouse cli
 
 ## 6. Depth & Elevation
 
-Four-level surface hierarchy, reinforced by glass morphism rather than heavy shadows.
+Four-level surface hierarchy: glass blur plus a **soft layered transparent shadow**, never a hard shadow and never a border standing in for one (see [Borders](#borders)).
 
 | Level | Surface | Shadow (Dark) | Shadow (Light) |
 |-------|---------|---------------|----------------|
@@ -300,7 +302,8 @@ Four-level surface hierarchy, reinforced by glass morphism rather than heavy sha
 
 **Don't:**
 - Don't use `opacity` for dimming surfaces — use the alpha channel in `rgb()` instead
-- Don't add heavy box-shadows on dark theme — glass blur provides depth
+- Don't add a border whose only job is to fake depth — that is a layered transparent `box-shadow` (see [Borders](#borders))
+- Don't add heavy box-shadows on dark theme — depth comes from glass blur plus a soft layered shadow, not from a hard one
 - Don't use colored backgrounds for buttons except the primary accent
 - Don't mix label colors with status colors — they are separate palettes
 - Don't use font weights above 700 — the system font doesn't need it

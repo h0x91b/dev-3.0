@@ -37,19 +37,19 @@ Return:
 - Evidence:
 ```
 
-## Design system and token sub-agent
+## Component reuse sub-agent
 
-Mission: Map semantic roles to existing components, variants, tokens, icons, badges, and copy patterns.
+Mission: Decide which existing components and surfaces this feature reuses, and whether a new pattern is justified at all. Roles only — the concrete variant, colour and motion values belong to `better-colors` and `better-ui`.
 
 Return:
 
 ```md
-### Token recommendation
+### Reuse recommendation
 - Components to reuse:
-- Button variants:
-- Badge/status variants:
-- Icons:
-- Token gaps:
+- Existing surface that already does this:
+- New pattern justified? (why the manifest must record it)
+- Semantic roles needed:
+- Missing role to hand to `better-colors`:
 - Evidence:
 ```
 
@@ -69,22 +69,7 @@ Return:
 - Evidence:
 ```
 
-## Accessibility and quality sub-agent
-
-Mission: Check WCAG-adjacent concerns, keyboard support, focus management, labels, semantic structure, target size, contrast token risks, reduced motion, and screen-reader behavior.
-
-Return:
-
-```md
-### Accessibility recommendation
-- Labels and names:
-- Keyboard:
-- Focus:
-- ARIA or semantics:
-- Contrast/token risks:
-- Responsive concerns:
-- Evidence:
-```
+There is deliberately no accessibility sub-agent and no colour sub-agent. Those are `better-accessibility` and `better-colors`; run them as their own skills instead of paraphrasing them here.
 
 ## Manifest patch sub-agent
 
@@ -98,6 +83,5 @@ Return:
 - New rules:
 - New objects/routes/surfaces:
 - New token mappings:
-- UX decision entry:
-- Changelog entry:
+- UX decision entry (≤5 lines):
 ```
