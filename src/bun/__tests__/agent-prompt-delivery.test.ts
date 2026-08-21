@@ -58,7 +58,7 @@ afterEach(() => vi.clearAllMocks());
 describe("deliverAgentPrompt — tmux tasks (regression)", () => {
 	it("routes an unmarked legacy task through the tmux path", async () => {
 		await expect(deliverAgentPrompt(task(), "check CI")).resolves.toEqual({ status: "delivered" });
-		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI", PANES);
+		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI", PANES, {});
 		expect(sendPromptToNativeAgentPane).not.toHaveBeenCalled();
 	});
 
@@ -74,12 +74,13 @@ describe("deliverAgentPrompt — tmux tasks (regression)", () => {
 			expect.objectContaining({ id: TASK_ID, tmuxSocket: "custom" }),
 			"check CI",
 			PANES,
+			{},
 		);
 	});
 
 	it("routes a concrete tmux pane target to the pane path", async () => {
 		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" });
-		expect(sendPromptToPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%4", "check CI");
+		expect(sendPromptToPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%4", "check CI", {});
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});
 
@@ -120,7 +121,7 @@ describe("deliverAgentPrompt — native tasks", () => {
 
 	it("routes an agent target to the native agent pane", async () => {
 		await expect(deliverAgentPrompt(nativeTask(), "check CI")).resolves.toMatchObject({ status: "unconfirmed" });
-		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI");
+		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI", {});
 	});
 
 	it("routes a concrete pane target to the native pane path", async () => {
@@ -129,6 +130,7 @@ describe("deliverAgentPrompt — native tasks", () => {
 			expect.objectContaining({ id: TASK_ID }),
 			"pane-2",
 			"ls",
+			{},
 		);
 	});
 

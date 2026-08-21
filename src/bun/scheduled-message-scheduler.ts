@@ -66,7 +66,10 @@ async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<A
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
 	const text = message.source ? wrapAgentMessage(message.text, message.source) : message.text;
-	const delivery = await deliverAgentPrompt(task, text, message.target);
+	// Held submit: messages arrive in bursts (one agent writing three in a row, or
+	// several peers reporting at once), and one Enter each used to split the burst
+	// into that many agent turns. See agent-prompt-submit-coalescer.ts.
+	const delivery = await deliverAgentPrompt(task, text, message.target, { coalesceSubmit: true });
 	if (message.source) announceAgentMessage(task, message, delivery);
 	return delivery;
 }

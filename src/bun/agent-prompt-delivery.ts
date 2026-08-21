@@ -14,6 +14,9 @@
  *  - A native task NEVER falls back to tmux. If its agent pane cannot be resolved
  *    or written to, the answer is the caller's honest "no live agent session" —
  *    not a tmux send that would type into nothing.
+ *  - `coalesceSubmit` types the text now and holds its Enter until the traffic into
+ *    that pane goes quiet, so a burst of `dev3 message` sends becomes one agent turn.
+ *    Only the message paths ask for it; button hand-offs submit at once.
  *  - Three answers reach the caller, never two. `unconfirmed` is the native arm's
  *    everyday answer (its host cannot acknowledge input) and tmux's answer when a
  *    send stopped mid-program, so nothing may report it as either success or
@@ -35,6 +38,7 @@ export async function deliverAgentPrompt(
 	task: Task,
 	prompt: string,
 	target: ScheduledMessageTarget = { kind: "agent" },
+	opts: { coalesceSubmit?: boolean } = {},
 ): Promise<AgentPromptDelivery> {
 	// The prompt about to land will fire UserPromptSubmit, so the hooks have to be
 	// in place before it is typed, not after. A no-op unless something rewrote the
@@ -43,12 +47,12 @@ export async function deliverAgentPrompt(
 
 	if (taskTerminalBackendIdentity(task) === "native") {
 		return target.kind === "pane"
-			? sendPromptToNativePane(task, target.paneId, prompt)
-			: sendPromptToNativeAgentPane(task, prompt);
+			? sendPromptToNativePane(task, target.paneId, prompt, opts)
+			: sendPromptToNativeAgentPane(task, prompt, opts);
 	}
 	const outcome =
 		target.kind === "pane"
-			? await sendPromptToPane(task, target.paneId, prompt)
-			: await sendPromptToAgentPane(task, prompt, task.sessionState?.panes);
+			? await sendPromptToPane(task, target.paneId, prompt, opts)
+			: await sendPromptToAgentPane(task, prompt, task.sessionState?.panes, opts);
 	return agentPromptDeliveryFromPaneInput(outcome);
 }

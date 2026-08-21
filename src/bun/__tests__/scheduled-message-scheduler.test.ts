@@ -124,7 +124,7 @@ describe("scheduled-message scheduler — tick", () => {
 		startScheduledMessageScheduler();
 		await flush();
 		expect(sendPromptToAgentPane).toHaveBeenCalledTimes(1);
-		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "check CI and continue", task.sessionState.panes);
+		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "check CI and continue", task.sessionState.panes, { coalesceSubmit: true });
 		// removed via updateTaskWith
 		expect(data.updateTaskWith).toHaveBeenCalledWith(project, task.id, expect.any(Function));
 	});
@@ -153,7 +153,7 @@ describe("scheduled-message scheduler — tick", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
 		startScheduledMessageScheduler();
 		await flush();
-		expect(sendPromptToPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue");
+		expect(sendPromptToPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue", { coalesceSubmit: true });
 	});
 
 	it("start is idempotent (double start = one tick)", async () => {
@@ -307,7 +307,7 @@ describe("cancel / send-now / immediate", () => {
 	it("sendMessageImmediately delivers to the agent", async () => {
 		const task = makeTask();
 		await sendMessageImmediately(task as never, "hello now");
-		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "hello now", task.sessionState.panes);
+		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "hello now", task.sessionState.panes, { coalesceSubmit: true });
 	});
 
 	it("sendMessageImmediately wraps a cross-task message in the envelope", async () => {
@@ -393,6 +393,7 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(
 			expect.objectContaining({ id: task.id }),
 			"hello now",
+			{ coalesceSubmit: true },
 		);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});

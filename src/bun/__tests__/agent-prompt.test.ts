@@ -35,6 +35,8 @@ import {
 	sendPromptToAgentPane,
 	sendPromptToPane,
 } from "../agent-prompt";
+import { resetAgentPromptSubmits } from "../agent-prompt-submit-coalescer";
+import { AGENT_MESSAGE_SUBMIT_IDLE_MS } from "../../shared/agent-message-coalescing";
 import type { PaneSessionEntry, Task } from "../../shared/types";
 
 const TASK_ID = "1234abcd-0000-4000-8000-000000000001";
@@ -240,5 +242,61 @@ describe("sendPromptToPane — concrete pane target", () => {
 			reason: "pane-absent",
 		});
 		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
+	});
+});
+
+describe("coalesceSubmit — the held Enter behind dev3 message", () => {
+	afterEach(() => resetAgentPromptSubmits());
+
+	it("types the text now and sends Enter only after the quiet window", async () => {
+		const delivery = await sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")], { coalesceSubmit: true });
+
+		expect(delivery).toMatchObject({ status: "delivered" });
+		// One operation so far: the text. The 800ms inter-stage gap must not submit it.
+		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
+		expect(sentChunks(0)).toEqual([{ literal: "check CI" }]);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
+		expect(sentPane(1)).toBe("%1");
+	});
+
+	it("stacks three messages into one Enter", async () => {
+		for (const text of ["one", "two", "three"]) {
+			await sendPromptToAgentPane(TASK, text, [agentPane("%1")], { coalesceSubmit: true });
+			await vi.advanceTimersByTimeAsync(4_000);
+		}
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(3); // three texts, no Enter yet
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(4);
+		expect(sentChunks(3)).toEqual([{ keys: ["Enter"] }]);
+	});
+
+	it("re-pins the pane for the held Enter, so a dead pane fails it instead of typing into a successor", async () => {
+		await sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")], { coalesceSubmit: true });
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "absent" } as never);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		// The text went in; nothing else did, because the pin refused the submit.
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
+	});
+
+	it("holds nothing when the text itself did not land", async () => {
+		// A refused text stage leaves an unknown input box, so an Enter into it would
+		// submit whatever is sitting there.
+		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false } as never);
+		await sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")], { coalesceSubmit: true });
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS * 2);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves a hand-off's instant submit alone", async () => {
+		await runPrompt(sendPromptToAgentPane(TASK, "open a PR", [agentPane("%1")]));
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
 	});
 });

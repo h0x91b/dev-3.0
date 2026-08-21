@@ -36,6 +36,8 @@ import { forwardToOwner, resolvePaneOwner } from "../native-pane-owner";
 import type { NativeTaskTerminal } from "../native-task-terminal";
 import { tmux } from "../tmux";
 import { AGENT_PROMPT_ENTER_DELAY_MS } from "../agent-prompt";
+import { resetAgentPromptSubmits } from "../agent-prompt-submit-coalescer";
+import { AGENT_MESSAGE_SUBMIT_IDLE_MS } from "../../shared/agent-message-coalescing";
 import {
 	NATIVE_AGENT_PANE_ID,
 	NATIVE_PROMPT_DELIVERY_METHOD,
@@ -145,6 +147,23 @@ describe("sendPromptToNativeAgentPane — this process owns the lease", () => {
 		expect(forwardToOwner).not.toHaveBeenCalled();
 	});
 
+	it("holds the carriage return for the quiet window when the submit is coalesced", async () => {
+		const { terminal, writes } = fakeTerminal("writer");
+		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+
+		await sendPromptToNativeAgentPane(task(), "one", { coalesceSubmit: true });
+		await vi.advanceTimersByTimeAsync(4_000);
+		await sendPromptToNativeAgentPane(task(), "two", { coalesceSubmit: true });
+		// Both texts are in the input box and the 800ms hand-off gap has long passed,
+		// yet nothing has been submitted.
+		expect(writes).toEqual(["one", "two"]);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		expect(writes).toEqual(["one", "two", "\r"]);
+
+		resetAgentPromptSubmits();
+	});
+
 	it("never writes and never schedules a submit when no agent pane is live", async () => {
 		vi.mocked(nativeTaskPanesState).mockResolvedValue(panesState([pane("pane-2")]));
 		const { terminal, writes } = fakeTerminal("writer");
@@ -182,7 +201,7 @@ describe("sendPromptToNativeAgentPane — another app process owns the lease", (
 		expect(forwardToOwner).toHaveBeenCalledWith(
 			{ kind: "peer", pid: 4242, endpoint: "/sock/4242.sock" },
 			NATIVE_PROMPT_DELIVERY_METHOD,
-			{ taskId: TASK_ID, paneId: NATIVE_AGENT_PANE_ID, text: "check CI" },
+			{ taskId: TASK_ID, paneId: NATIVE_AGENT_PANE_ID, text: "check CI", coalesceSubmit: false },
 		);
 
 		// Exactly once: no local paste, and no local Enter after the delay either.

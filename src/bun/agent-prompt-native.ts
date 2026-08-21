@@ -33,6 +33,7 @@
 import type { Task } from "../shared/types";
 import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import { scheduleAgentPromptSubmit } from "./agent-prompt";
+import { agentPromptSubmitKey, coalesceAgentPromptSubmit } from "./agent-prompt-submit-coalescer";
 import { createLogger } from "./logger";
 import { forwardToOwner, resolvePaneOwner } from "./native-pane-owner";
 import type { NativeTaskTerminal } from "./native-task-terminal";
@@ -61,6 +62,12 @@ export interface NativePromptDeliveryParams {
 	paneId: string;
 	/** Final text, envelope-wrapping already applied by the sender. */
 	text: string;
+	/**
+	 * Whether the submit is held until the traffic into this pane goes quiet. Travels
+	 * on the wire because the holding has to happen in the process that owns the
+	 * pane's writer lease — the only one that can type the Enter.
+	 */
+	coalesceSubmit?: boolean;
 }
 
 /**
@@ -76,9 +83,29 @@ export async function resolveNativeAgentPane(taskId: string): Promise<string | n
 	return agentPane?.alive ? agentPane.paneId : null;
 }
 
-/** Type the prompt, then submit it after the shared delay. One paste, one CR. */
-function typeThenSubmit(terminal: NativeTaskTerminal, paneId: string, prompt: string): void {
+/**
+ * Type the prompt, then submit it. One paste, one CR.
+ *
+ * `coalesceSubmit` swaps the fixed 800 ms gap for the held submit `dev3 message`
+ * uses, so a burst of messages into this pane ends in a single CR. The CR is
+ * written through the same bound terminal either way — a native write is never
+ * provable, so there is nothing extra to report.
+ */
+function typeThenSubmit(
+	terminal: NativeTaskTerminal,
+	taskId: string,
+	paneId: string,
+	prompt: string,
+	coalesceSubmit: boolean,
+): void {
 	terminal.write(prompt);
+	if (coalesceSubmit) {
+		coalesceAgentPromptSubmit(agentPromptSubmitKey("native", taskId, paneId), () => terminal.write(SUBMIT_KEY), {
+			taskId: taskId.slice(0, 8),
+			paneId,
+		});
+		return;
+	}
 	scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId });
 }
 
@@ -135,7 +162,7 @@ export async function deliverNativePromptAsOwner(params: NativePromptDeliveryPar
 			return false;
 		}
 	}
-	typeThenSubmit(terminal, params.paneId, params.text);
+	typeThenSubmit(terminal, params.taskId, params.paneId, params.text, params.coalesceSubmit === true);
 	return true;
 }
 
@@ -160,7 +187,13 @@ function wroteUnconfirmed(): AgentPromptDelivery {
  * Every other answer is `not-delivered` and proven — no owner, no binding, or a lease
  * that moved — so a caller can tell "nothing happened" from "cannot say".
  */
-export async function sendPromptToNativePane(task: Task, paneId: string, prompt: string): Promise<AgentPromptDelivery> {
+export async function sendPromptToNativePane(
+	task: Task,
+	paneId: string,
+	prompt: string,
+	opts: { coalesceSubmit?: boolean } = {},
+): Promise<AgentPromptDelivery> {
+	const coalesceSubmit = opts.coalesceSubmit === true;
 	const terminal = await bindPane(task, paneId);
 	if (!terminal) return notDelivered("pane-absent", `no live native pane ${paneId} to bind`);
 
@@ -169,13 +202,13 @@ export async function sendPromptToNativePane(task: Task, paneId: string, prompt:
 
 	switch (owner.kind) {
 		case "local":
-			typeThenSubmit(terminal, paneId, prompt);
+			typeThenSubmit(terminal, task.id, paneId, prompt, coalesceSubmit);
 			return wroteUnconfirmed();
 
 		case "vacant": {
 			// Nobody is typing — take the lease and deliver here.
 			if ((await terminal.claimHostWriter()) === "writer") {
-				typeThenSubmit(terminal, paneId, prompt);
+				typeThenSubmit(terminal, task.id, paneId, prompt, coalesceSubmit);
 				return wroteUnconfirmed();
 			}
 			log.info("Writer lease was taken while claiming it; not delivering", context);
@@ -185,7 +218,7 @@ export async function sendPromptToNativePane(task: Task, paneId: string, prompt:
 		case "peer": {
 			// Forward the WHOLE delivery, never the bytes, and never write locally
 			// as well — that is what keeps it exactly once.
-			const params: NativePromptDeliveryParams = { taskId: task.id, paneId, text: prompt };
+			const params: NativePromptDeliveryParams = { taskId: task.id, paneId, text: prompt, coalesceSubmit };
 			try {
 				const delivered = await forwardToOwner<{ delivered: boolean }>(
 					owner,
@@ -225,11 +258,15 @@ export async function sendPromptToNativePane(task: Task, paneId: string, prompt:
 }
 
 /** Deliver `prompt` to the task's live native agent pane. */
-export async function sendPromptToNativeAgentPane(task: Task, prompt: string): Promise<AgentPromptDelivery> {
+export async function sendPromptToNativeAgentPane(
+	task: Task,
+	prompt: string,
+	opts: { coalesceSubmit?: boolean } = {},
+): Promise<AgentPromptDelivery> {
 	const paneId = await resolveNativeAgentPane(task.id);
 	if (!paneId) {
 		log.info("No live native agent pane for this task", { taskId: task.id.slice(0, 8) });
 		return notDelivered("pane-absent", "the task has no live native agent pane");
 	}
-	return sendPromptToNativePane(task, paneId, prompt);
+	return sendPromptToNativePane(task, paneId, prompt, opts);
 }
