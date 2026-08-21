@@ -103,7 +103,14 @@ function ScopeGlyph({ outline, filled, active }: { outline: string; filled: stri
 
 /** Shared chrome for the three scope toggles — press feedback included. */
 const SCOPE_BUTTON_CLASS =
-	"inline-flex items-center justify-center h-5 w-5 leading-none transition-[color,scale] duration-150 ease-out active:scale-[0.96]";
+	"inline-flex items-center justify-center h-5 w-5 rounded-md leading-none transition-[color,background-color,scale] duration-150 ease-out active:scale-[0.96]";
+
+/**
+ * The glyph swap alone reads as noise at 20px — the selected scope carries an
+ * accent-tinted pill, the same "this control is on" language as the rest of the app.
+ */
+const SCOPE_STATE_CLASS = (active: boolean) =>
+	active ? "bg-accent/20 text-accent" : "text-fg-muted hover:text-fg-2 hover:bg-fg/5";
 
 function ActiveTasksSidebar({
 	project,
@@ -456,7 +463,7 @@ function ActiveTasksSidebar({
 										}}
 										aria-pressed={attentionOn === wantsAttention}
 										className={`px-2 py-0.5 rounded-md text-nano font-medium transition-colors ${
-											attentionOn === wantsAttention ? "bg-elevated text-fg" : "text-fg-3 hover:text-fg-2"
+											attentionOn === wantsAttention ? "bg-accent/20 text-accent" : "text-fg-3 hover:text-fg-2"
 										}`}
 										data-testid={`sidebar-preset-${key}`}
 									>
@@ -467,7 +474,11 @@ function ActiveTasksSidebar({
 						</div>
 					)}
 					{project && (
-					<div role="group" className="inline-flex items-center gap-px" aria-label={t("sidebar.scopeToggleTitle")}>
+					<div
+							role="group"
+							className="inline-flex items-center gap-px rounded-lg bg-raised p-0.5"
+							aria-label={t("sidebar.scopeToggleTitle")}
+						>
 						{/* Folder \u2014 this project only */}
 						<Tooltip content={t("sidebar.scopeProject")} detail={t("ttip.sidebar.scopeProject")} placement="bottom">
 							<button
@@ -475,9 +486,7 @@ function ActiveTasksSidebar({
 								onClick={() => setScope("project")}
 								aria-pressed={scope === "project"}
 								aria-label={t("sidebar.scopeProject")}
-								className={`${SCOPE_BUTTON_CLASS} ${
-									scope === "project" ? "text-fg" : "text-fg-muted hover:text-fg-2"
-								}`}
+								className={`${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(scope === "project")}`}
 								data-testid="sidebar-scope-project"
 							>
 								{/* Nerd Font: nf-fa-folder_open_o (U+F115) \u2192 nf-fa-folder_open (U+F07C) */}
@@ -503,9 +512,7 @@ function ActiveTasksSidebar({
 								className={`${SCOPE_BUTTON_CLASS} ${
 									siblingIds === null
 										? "text-fg-muted/40 cursor-not-allowed"
-										: scope === "space"
-											? "text-fg"
-											: "text-fg-muted hover:text-fg-2"
+										: SCOPE_STATE_CLASS(scope === "space")
 								}`}
 								data-testid="sidebar-scope-space"
 							>
@@ -521,9 +528,7 @@ function ActiveTasksSidebar({
 								onClick={() => setScope("global")}
 								aria-pressed={scope === "global"}
 								aria-label={t("sidebar.scopeGlobal")}
-								className={`${SCOPE_BUTTON_CLASS} ${
-									scope === "global" ? "text-fg" : "text-fg-muted hover:text-fg-2"
-								}`}
+								className={`${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(scope === "global")}`}
 								data-testid="sidebar-scope-global"
 							>
 								{/* Nerd Font: nf-cod-globe (U+EB01) \u2014 no filled counterpart, so the

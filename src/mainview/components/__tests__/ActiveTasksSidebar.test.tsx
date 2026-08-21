@@ -1233,6 +1233,21 @@ describe("ActiveTasksSidebar — space scope", () => {
 		expect(screen.queryByTestId("sidebar-scope-space")).not.toBeInTheDocument();
 	});
 
+	it("tints only the selected scope with the accent pill", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue(mockSpaces([["p1", "p2"]]));
+		renderSidebarWith([project, otherProject]);
+
+		const projectBtn = await screen.findByTestId("sidebar-scope-project");
+		expect(projectBtn.className).toContain("bg-accent/20");
+		expect(screen.getByTestId("sidebar-scope-global").className).not.toContain("bg-accent/20");
+
+		await user.click(screen.getByTestId("sidebar-scope-global"));
+		await waitFor(() => expect(screen.getByTestId("sidebar-scope-global").className).toContain("bg-accent/20"));
+		expect(screen.getByTestId("sidebar-scope-project").className).not.toContain("bg-accent/20");
+	});
+
 	it("disables the space button when spaces exist but the current project is in none", async () => {
 		const { api } = await import("../../rpc");
 		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue(mockSpaces([["p2"]]));
