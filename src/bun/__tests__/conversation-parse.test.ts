@@ -81,6 +81,43 @@ describe("parseWorktreeConversations", () => {
 		expect(conversationEvents(parsed[0].conversation)[0].text).toBe("hello there");
 	});
 
+	/** A Codex rollout: the cwd lives in the `session_meta` header, not the path. */
+	function seedCodexRollout(root: string, worktreePath: string, sessionId: string): void {
+		const dir = join(root, "2026", "08", "21");
+		mkdirSync(dir, { recursive: true });
+		const header = JSON.stringify({
+			timestamp: "2026-08-21T12:16:55.000Z",
+			type: "session_meta",
+			payload: { id: sessionId, cwd: worktreePath },
+		});
+		const message = JSON.stringify({
+			timestamp: "2026-08-21T12:17:00.000Z",
+			type: "response_item",
+			payload: { type: "message", role: "user", content: [{ type: "input_text", text: "приветик" }] },
+		});
+		writeFileSync(join(dir, `rollout-2026-08-21T12-16-55-${sessionId}.jsonl`), `${header}\n${message}\n`);
+	}
+
+	it("finds a Codex session launched under a dev3 agent account", () => {
+		// dev3 points CODEX_HOME at the account directory, so the rollout never lands
+		// in ~/.codex/sessions and a scan of the home store alone misses it entirely.
+		const worktree = `${taskContainerDir(`${home}/.dev3.0`, SLUG, SHORT_ID)}/worktree`;
+		seedCodexRollout(`${home}/.dev3.0/agent-accounts/codex/acct-1/sessions`, worktree, "roll-7");
+
+		const parsed = parseWorktreeConversations(worktree, { home });
+		expect(parsed.map((p) => p.conversation.source)).toEqual(["codex"]);
+		expect(parsed[0].conversation.sessionId).toBe("roll-7");
+	});
+
+	it("finds Codex sessions in the home store and in an account side by side", () => {
+		const worktree = `${taskContainerDir(`${home}/.dev3.0`, SLUG, SHORT_ID)}/worktree`;
+		seedCodexRollout(`${home}/.codex/sessions`, worktree, "roll-home");
+		seedCodexRollout(`${home}/.dev3.0/agent-accounts/codex/acct-1/sessions`, worktree, "roll-acct");
+
+		const found = parseWorktreeConversations(worktree, { home }).map((p) => p.conversation.sessionId);
+		expect(found.sort()).toEqual(["roll-acct", "roll-home"]);
+	});
+
 	it("returns nothing for a worktree with no transcripts", () => {
 		expect(parseWorktreeConversations(`${home}/.dev3.0/worktrees/${SLUG}/other/worktree`, { home })).toEqual([]);
 	});
