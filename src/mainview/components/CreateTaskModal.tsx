@@ -1156,6 +1156,9 @@ function TaskTypePicker({ value, onChange, reviewAvailable, reviewEnabled }: Tas
 
 	return (
 		<div className="space-y-1.5">
+			{/* One flex row, like the Priority row above: the group is inline-flex, so
+			    without it the label and the chips share a line with nothing between them. */}
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 			<span className="text-fg-2 text-sm font-medium">{t("createTask.taskType")}</span>
 			<div
 				role="radiogroup"
@@ -1185,6 +1188,7 @@ function TaskTypePicker({ value, onChange, reviewAvailable, reviewEnabled }: Tas
 						</button>
 					);
 				})}
+			</div>
 			</div>
 			<p className="text-xs text-fg-3">
 				{value === "review" && !reviewEnabled ? t("createTask.taskTypeReviewNeedsBranch") : t(hintKey[value])}
