@@ -132,6 +132,17 @@ completion rate, active-day streak and average task lifetime — each against la
   <img src="docs/screenshots/productivity-stats.jpg" width="900" alt="Productivity screen — six gauges plus tasks-completed and lines-changed charts">
 </p>
 
+### Spaces, when one flat list of projects stops working
+
+Group projects into **Spaces** — *Client work*, *Products*, *Infra* — and the dashboard groups
+itself, with a rail that filters it down to one space. A project can sit in several spaces at
+once; nothing moves on disk and every project keeps its own board. Define no spaces and the
+dashboard is exactly the screen it was.
+
+<p align="center">
+  <img src="docs/screenshots/spaces-dashboard.jpg" width="900" alt="The dashboard grouped into Client work, Products and Infra spaces, with a rail on the left that filters it to one space">
+</p>
+
 ### The board is yours to shape
 
 Add your own columns — *AI Review*, *PR Review*, *On Hold*, whatever your pipeline actually is —
