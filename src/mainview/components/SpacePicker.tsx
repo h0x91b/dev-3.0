@@ -137,7 +137,7 @@ function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onC
 							    like a one-shot menu item. */}
 							<span
 								aria-hidden="true"
-								className={`w-4 h-4 rounded-md border flex items-center justify-center flex-shrink-0 transition-colors ${
+								className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
 									isOn ? "bg-accent border-accent text-white" : "border-edge-active text-transparent"
 								}`}
 							>
