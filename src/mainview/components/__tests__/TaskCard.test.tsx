@@ -2256,11 +2256,9 @@ describe("TaskCard dev-server control", () => {
 		expect(screen.getByTestId("task-card-dev-control")).toHaveAttribute("data-dev-state", "starting");
 	});
 
-	it("stays visible but inert when the server is stopped", () => {
+	it("disappears entirely when the server is stopped", () => {
 		renderCard(active(), { devServer: summary({ running: false, ports: [] }) });
-		const control = screen.getByTestId("task-card-dev-control");
-		expect(control).toHaveAttribute("data-dev-state", "stopped");
-		for (const button of within(control).getAllByRole("button")) expect(button).toBeDisabled();
+		expect(screen.queryByTestId("task-card-dev-control")).toBeNull();
 	});
 
 	it("flags a squatted assigned port", () => {

@@ -46,8 +46,6 @@ export const tooltips = {
 		"The task's dev server is up on {ports}. Opens the lowest one in your browser.",
 	"ttip.task.devStarting":
 		"The dev server launched but nothing is listening yet.",
-	"ttip.task.devStopped":
-		"This branch has a dev script, but no server is running. Start it from the task's Dev Server panel.",
 	"ttip.task.devConflict":
 		"Another process already holds {ports}. The dev script will fail to bind until it is freed.",
 	"ttip.task.devStop":

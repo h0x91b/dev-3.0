@@ -288,7 +288,6 @@ const kanban = {
 
 	// Watch
 	"task.devStarting": "starting",
-	"task.devStopped": "dev off",
 	"task.devPortBusy": "port busy",
 	"task.devStop": "Stop the dev server",
 	"task.devOpenAria": "Open the dev server on port {port}",

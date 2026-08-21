@@ -710,10 +710,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 
 	// ---- The dev-server split control ---------------------------------------
-	// Left half opens the lowest port, right half stops. Rendered in every state
-	// once the branch has a dev script: hiding it while stopped would reflow the
-	// action row at the exact moment a server dies, which is when the user is
-	// looking at the card.
+	// Left half opens the lowest port, right half stops. A stopped server has
+	// nothing to open and nothing to stop, so the control disappears instead of
+	// sitting there inert and pulling the eye across the whole board.
 	const devPort = devServer?.ports[0] ?? null;
 	const devConflict = (devServer?.conflictPorts.length ?? 0) > 0;
 	// Running with nothing listening yet is a server still booting — the only
@@ -723,24 +722,20 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		? devStarting
 			? "border-warning/40 bg-warning/10 text-warning"
 			: "border-success/30 bg-success/10 text-success"
-		: devConflict
-			? "border-danger/40 bg-danger/10 text-danger"
-			: "border-dashed border-edge text-fg-3";
+		: "border-danger/40 bg-danger/10 text-danger";
 	const devLabel = devServer?.running
 		? devStarting ? t("task.devStarting") : `:${devPort}`
-		: devConflict ? t("task.devPortBusy") : t("task.devStopped");
+		: t("task.devPortBusy");
 	const devDetail = devServer?.running
 		? devStarting
 			? t("ttip.task.devStarting")
 			: t("ttip.task.devOpen", { ports: devServer.ports.map((p) => `:${p}`).join(" ") })
-		: devConflict
-			? t("ttip.task.devConflict", { ports: devServer!.conflictPorts.map((p) => `:${p}`).join(" ") })
-			: t("ttip.task.devStopped");
+		: t("ttip.task.devConflict", { ports: devServer?.conflictPorts.map((p) => `:${p}`).join(" ") ?? "" });
 
-	const devServerControl = isActive && devServer ? (
+	const devServerControl = isActive && devServer && (devServer.running || devConflict) ? (
 		<span
 			data-testid="task-card-dev-control"
-			data-dev-state={devServer.running ? (devStarting ? "starting" : "running") : devConflict ? "conflict" : "stopped"}
+			data-dev-state={devServer.running ? (devStarting ? "starting" : "running") : "conflict"}
 			className={`flex h-6 flex-shrink-0 items-center overflow-hidden rounded-lg border ${devTone}`}
 		>
 			<Tooltip content={devLabel} detail={devDetail}>

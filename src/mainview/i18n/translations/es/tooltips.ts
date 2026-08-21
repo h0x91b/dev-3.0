@@ -44,8 +44,6 @@ export const tooltips = {
 		"El servidor de desarrollo está activo en {ports}. Abre el puerto más bajo en el navegador.",
 	"ttip.task.devStarting":
 		"El servidor de desarrollo arrancó, pero todavía no escucha en ningún puerto.",
-	"ttip.task.devStopped":
-		"Esta rama tiene un script de desarrollo, pero no hay servidor en marcha. Arráncalo desde el panel Dev Server de la tarea.",
 	"ttip.task.devConflict":
 		"Otro proceso ya ocupa {ports}. El script fallará al enlazar hasta que se libere.",
 	"ttip.task.devStop":
