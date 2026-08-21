@@ -172,6 +172,13 @@ import { saveSharedImage } from "../shared-images";
 import { saveSharedArtifact } from "../shared-artifacts";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
 
+// `task.open` imports the window layer lazily; mocking it keeps electrobun out.
+vi.mock("../window-manager", () => ({
+	getWindowCount: vi.fn(() => 1),
+	focusFocusedWindow: vi.fn(() => true),
+	openNewWindow: vi.fn(),
+}));
+
 vi.mock("../artifact-template", () => ({
 	ensureArtifactTemplate: vi.fn(() => "/wt-container/artifact-template-v1"),
 }));
@@ -3449,5 +3456,53 @@ describe("vent.add", () => {
 		const resp = await handleRequest(makeRequest("vent.add", { name: "n", content: "" }));
 		expect(resp.ok).toBe(false);
 		expect(addVent).not.toHaveBeenCalled();
+	});
+});
+
+describe("task.open", () => {
+	it("focuses the live window and pushes the same nav an inbound deep link uses", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const push = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(push as never);
+		const wm = await import("../window-manager");
+		vi.mocked(wm.getWindowCount).mockReturnValue(1);
+
+		const resp = await handleRequest(makeRequest("task.open", { taskId: task.id, projectId: project.id }));
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ taskId: task.id, projectId: project.id, delivered: true });
+		expect(wm.focusFocusedWindow).toHaveBeenCalled();
+		expect(push).toHaveBeenCalledWith("openDeepLink", { kind: "task", taskId: task.id, projectId: project.id });
+	});
+
+	it("stashes the target and reopens a window when the app sits window-less", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const push = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(push as never);
+		const wm = await import("../window-manager");
+		vi.mocked(wm.getWindowCount).mockReturnValue(0);
+
+		const resp = await handleRequest(makeRequest("task.open", { taskId: task.id, projectId: project.id }));
+
+		expect(resp.data).toMatchObject({ delivered: true, reopened: true });
+		expect(wm.openNewWindow).toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalled();
+		const { consumePendingDeepLinkNav } = await import("../deep-link-nav");
+		expect(consumePendingDeepLinkNav()).toEqual({ kind: "task", taskId: task.id, projectId: project.id });
+	});
+
+	it("fails on an unknown task", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+
+		const resp = await handleRequest(makeRequest("task.open", { taskId: "nope-1234", projectId: "proj-1" }));
+
+		expect(resp.ok).toBe(false);
 	});
 });

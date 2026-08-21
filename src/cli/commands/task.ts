@@ -477,6 +477,37 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	process.stdout.write(`Moved task ${task.id.slice(0, 8)} → ${displayStatus}\n`);
 }
 
+/**
+ * `dev3 task open [<id>]` — bring the running app to the front on a task, the
+ * CLI twin of clicking a `dev3://task/<id>` link (and it works on every OS,
+ * because nothing here needs a registered URL scheme).
+ */
+async function openTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project"]);
+	const taskId = resolveTaskId(args, context);
+	if (!taskId) {
+		exitUsage("Usage: dev3 task open <id|--task id|--task-id id|--id id> (or run inside a worktree)");
+	}
+
+	const params: Record<string, unknown> = { taskId };
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+
+	const resp = await sendRequest(socketPath, "task.open", params);
+	if (!resp.ok) exitError(resp.error || "Failed to open the task");
+
+	const data = resp.data as { taskId: string; delivered: boolean; reopened?: boolean };
+	if (!data.delivered) {
+		process.stdout.write("App is running but has no window to navigate — nothing was opened.\n");
+		return;
+	}
+	process.stdout.write(
+		data.reopened
+			? `Opening a window on task ${data.taskId.slice(0, 8)}.\n`
+			: `Opened task ${data.taskId.slice(0, 8)} in the app.\n`,
+	);
+}
+
 interface TerminalBackendReport {
 	taskId: string;
 	backend: "tmux" | "native";
@@ -544,6 +575,8 @@ export async function handleTask(
 			return updateTask(args, socketPath, context);
 		case "move":
 			return moveTask(args, socketPath, context);
+		case "open":
+			return openTask(args, socketPath, context);
 		case "terminal-backend":
 			return taskTerminalBackend(args, socketPath, context);
 		case "list":
@@ -553,7 +586,7 @@ export async function handleTask(
 		default:
 			exitUsage(
 				`Unknown subcommand: task ${subcommand || "(none)"}` +
-				"\nAvailable: task show, task create, task update, task move, task terminal-backend",
+				"\nAvailable: task show, task create, task update, task move, task open, task terminal-backend",
 			);
 	}
 }

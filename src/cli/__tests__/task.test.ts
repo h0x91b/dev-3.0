@@ -1498,3 +1498,46 @@ describe("task create --scratch --run", () => {
 		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
 	});
 });
+
+describe("task open", () => {
+	it("sends task.open with the explicit id", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, projectId: "proj-001", delivered: true }));
+
+		await handleTask("open", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.open", { taskId: "aaaaaaaa" });
+		expect(stdoutOutput).toContain("Opened task aaaaaaaa in the app.");
+	});
+
+	it("auto-detects the task and project from the worktree context", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, projectId: "proj-001", delivered: true }));
+
+		await handleTask("open", args([]), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.open", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+		});
+	});
+
+	it("reports a reopened window separately from a focused one", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, delivered: true, reopened: true }));
+
+		await handleTask("open", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).toContain("Opening a window on task aaaaaaaa.");
+	});
+
+	it("says nothing was opened when the app has no renderer to navigate", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: FAKE_TASK.id, delivered: false }));
+
+		await handleTask("open", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).toContain("nothing was opened");
+	});
+
+	it("exits with a usage error when no task can be resolved", async () => {
+		await expect(handleTask("open", args([]), SOCKET, null)).rejects.toThrow(/EXIT_/);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});

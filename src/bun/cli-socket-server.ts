@@ -7,6 +7,8 @@ import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
+import type { DeepLinkNav } from "../shared/deep-link";
+import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { SharedImageError, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
@@ -1034,6 +1036,33 @@ const handlers: Record<string, Handler> = {
 		const { task: updated, state } = await switchTaskTerminalBackend(project, task, String(params.to));
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return { taskId: updated.id, projectId: project.id, ...state, liveBackend: null };
+	},
+
+	/**
+	 * `dev3 task open` — navigate the running UI to a task from outside the app.
+	 * Deliberately the same two paths as an inbound `dev3://task/<id>` link
+	 * (decisions/2026/08/04/dev3-url-scheme-deep-links.md), so the open-mode
+	 * preference and the cold-start pull-on-mount come for free.
+	 *
+	 * The window layer is imported lazily and never in headless remote mode,
+	 * which has no windows and must not drag in electrobun.
+	 */
+	"task.open": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const nav: DeepLinkNav = { kind: "task", taskId: task.id, projectId: project.id };
+		if (process.env.DEV3_HEADLESS !== "1") {
+			const { focusFocusedWindow, getWindowCount, openNewWindow } = await import("./window-manager");
+			if (getWindowCount() === 0) {
+				markPendingDeepLinkNav(nav);
+				openNewWindow();
+				return { taskId: task.id, projectId: project.id, delivered: true, reopened: true };
+			}
+			focusFocusedWindow();
+		}
+		const push = getPushMessage();
+		if (!push) return { taskId: task.id, projectId: project.id, delivered: false };
+		push("openDeepLink", nav);
+		return { taskId: task.id, projectId: project.id, delivered: true };
 	},
 
 	"task.setLabels": async (params) => {

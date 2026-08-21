@@ -110,6 +110,16 @@ const COMMANDS: CommandHelp[] = [
 					"the user, who picks the agent; exit 10 if they decline.",
 				],
 			},
+			{
+				name: "open",
+				usage: "dev3 task open [<id>] [--task <id>]",
+				summary: "Focus the app on a task (same navigation as a dev3://task/<id> link).",
+				details: [
+					"Without an id, targets the current worktree's task.",
+					"Honors the split-vs-fullscreen task open-mode preference.",
+					"Reopens a window when the app sits window-less in the dock.",
+				],
+			},
 		],
 	},
 	{
