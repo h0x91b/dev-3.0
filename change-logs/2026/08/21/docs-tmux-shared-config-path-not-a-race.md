@@ -1,0 +1,1 @@
+Recorded that the shared tmux config path is not a race: tmux 3.6a treats config errors as non-fatal, so a torn read of the generated conf can never produce "server exited unexpectedly". The decision record carries the falsification, the negative reproductions, and the two unchased leads for whoever meets that error next.
