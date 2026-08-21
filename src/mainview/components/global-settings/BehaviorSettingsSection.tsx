@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { GlobalSettings } from "../../../shared/types";
+import { COORDINATOR_PROMPT, type GlobalSettings } from "../../../shared/types";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
@@ -26,6 +26,8 @@ interface BehaviorSettingsSectionProps {
 	onTipsReset: () => void;
 	/** Blank string = follow the localized built-in prompt. */
 	onReviewModePromptChange: (prompt: string) => void;
+	/** Blank string = follow the built-in COORDINATOR_PROMPT. */
+	onCoordinatorPromptChange: (prompt: string) => void;
 }
 
 export default function BehaviorSettingsSection({
@@ -44,6 +46,7 @@ export default function BehaviorSettingsSection({
 	onTipsDisabledToggle,
 	onTipsReset,
 	onReviewModePromptChange,
+	onCoordinatorPromptChange,
 }: BehaviorSettingsSectionProps) {
 	const builtinReviewPrompt = t("createTask.reviewPrompt");
 	// Edited locally and persisted on blur — a save per keystroke would rewrite
@@ -56,6 +59,16 @@ export default function BehaviorSettingsSection({
 		// Storing the built-in text verbatim would freeze the prompt to today's
 		// locale, so an untouched field stays "not set".
 		onReviewModePromptChange(value.trim() === builtinReviewPrompt.trim() ? "" : value);
+	};
+	// Same shape for the coordinator preamble. Its built-in is a plain constant, not
+	// an i18n string: the rules were written in English and a translation that
+	// softens one clause changes how the agent behaves.
+	const [coordinatorPrompt, setCoordinatorPrompt] = useState(
+		globalSettings.coordinatorPrompt ?? COORDINATOR_PROMPT,
+	);
+	const coordinatorPromptIsCustom = coordinatorPrompt.trim() !== COORDINATOR_PROMPT.trim();
+	const commitCoordinatorPrompt = (value: string) => {
+		onCoordinatorPromptChange(value.trim() === COORDINATOR_PROMPT.trim() ? "" : value);
 	};
 	// Auto-open the shared-image viewer when an agent pushes an image while you're
 	// already looking at the task. Local UI preference (like theme/task-open-mode).
@@ -320,6 +333,44 @@ export default function BehaviorSettingsSection({
 					</button>
 					{reviewPromptIsCustom && (
 						<span className="text-fg-muted text-xs">{t("settings.reviewModePromptCustom")}</span>
+					)}
+				</div>
+			</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="coordinator-prompt">
+			<div>
+				<label htmlFor="coordinator-prompt" className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.coordinatorPrompt")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.coordinatorPromptDesc")}
+				</p>
+				<textarea
+					id="coordinator-prompt"
+					value={coordinatorPrompt}
+					onChange={(e) => setCoordinatorPrompt(e.target.value)}
+					onBlur={(e) => commitCoordinatorPrompt(e.target.value)}
+					rows={8}
+					autoCapitalize="off"
+					autoCorrect="off"
+					spellCheck={false}
+					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+				/>
+				<div className="mt-3 flex items-center gap-3">
+					<button
+						type="button"
+						disabled={!coordinatorPromptIsCustom}
+						onClick={() => {
+							setCoordinatorPrompt(COORDINATOR_PROMPT);
+							onCoordinatorPromptChange("");
+						}}
+						className="text-sm text-fg-3 hover:text-accent transition-colors px-3 py-1.5 rounded-lg border border-edge hover:border-accent/30 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-fg-3 disabled:hover:border-edge"
+					>
+						{t("settings.coordinatorPromptReset")}
+					</button>
+					{coordinatorPromptIsCustom && (
+						<span className="text-fg-muted text-xs">{t("settings.coordinatorPromptCustom")}</span>
 					)}
 				</div>
 			</div>

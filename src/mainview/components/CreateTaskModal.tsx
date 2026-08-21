@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, resolveReviewModePrompt, titleFromDescription, type GlobalSettings, type Project, type Task, type TaskPriority } from "../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, resolvePresetPrompt, titleFromDescription, type GlobalSettings, type Project, type Task, type TaskPriority } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
@@ -17,6 +17,7 @@ import { useAttachUpload } from "../hooks/useAttachUpload";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { useSkillAutocomplete } from "../hooks/useSkillAutocomplete";
 import { removeImagePath } from "../utils/imageAttachments";
+import { handleRadioGroupKeys } from "../utils/radioGroupKeys";
 import BranchSelector, { parsePrUrl } from "./BranchSelector";
 import SkillAutocompleteDropdown from "./SkillAutocompleteDropdown";
 import { openFolderPicker } from "../folder-picker";
@@ -27,6 +28,15 @@ import MemoryPressureBanner from "./MemoryPressureBanner";
 
 /** "draft" parks the task as an unfinished draft; the rest are the launch exits. */
 type SubmitMode = "save" | "run" | "scratch" | "draft";
+
+/**
+ * Task types that carry a built-in prompt preamble. Nothing is persisted: the
+ * preamble is injected into the description, so the choice lives only for the
+ * lifetime of this form and the created task keeps the text it was given.
+ */
+type PresetTaskType = "coordinator" | "review";
+type TaskTypeChoice = "standard" | PresetTaskType;
+const PRESET_TASK_TYPES: readonly TaskTypeChoice[] = ["standard", "coordinator", "review"];
 
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
@@ -90,7 +100,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	const [checkedProjectCurrentBranch, setCheckedProjectCurrentBranch] = useState(false);
 	const [pendingBranchChoice, setPendingBranchChoice] = useState<string | null>(null);
 	const [pendingSubmitMode, setPendingSubmitMode] = useState<SubmitMode | null>(null);
-	const [reviewMode, setReviewMode] = useState(false);
+	const [taskType, setTaskType] = useState<TaskTypeChoice>("standard");
 	const [dismissedPrUrl, setDismissedPrUrl] = useState<string | null>(null);
 	const [prApplying, setPrApplying] = useState(false);
 	const isVirtual = project.kind === "virtual";
@@ -143,7 +153,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		setDismissedPrUrl(null);
 		setOpsFolder(null);
 		setOpsFolderConflict(false);
-		if (reviewMode) handleReviewModeChange(false);
+		// Preset prompts can be overridden per project, so the injected text belongs
+		// to the project we are leaving — strip it while that override still resolves.
+		if (taskType !== "standard") void handleTaskTypeChange("standard");
 	}
 
 	const insertPathAtCursor = useCallback((path: string) => {
@@ -192,58 +204,76 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		setDescription((prev) => removeImagePath(prev, path));
 	}, []);
 
-	const REVIEW_SEPARATOR = "\n\n---\n\n";
-	// The prompt the Review toggle injects is editable per project and app-wide, so
-	// it comes from settings; `null` = the fetch is still in flight.
-	const [reviewPromptSettings, setReviewPromptSettings] = useState<GlobalSettings | null>(null);
-	const reviewPromptSettingsPromise = useRef<Promise<GlobalSettings | null> | null>(null);
+	const PRESET_SEPARATOR = "\n\n---\n\n";
+	// Preset prompts are editable per project and app-wide, so they come from
+	// settings; `null` = the fetch is still in flight.
+	const [presetSettings, setPresetSettings] = useState<GlobalSettings | null>(null);
+	const presetSettingsPromise = useRef<Promise<GlobalSettings | null> | null>(null);
 	useEffect(() => {
 		const pending = api.request.getGlobalSettings().catch(() => null);
-		reviewPromptSettingsPromise.current = pending;
-		void pending.then((loaded) => setReviewPromptSettings(loaded));
+		presetSettingsPromise.current = pending;
+		void pending.then((loaded) => setPresetSettings(loaded));
 	}, []);
-	const reviewPrompt = resolveReviewModePrompt(project, reviewPromptSettings, t("createTask.reviewPrompt"));
+
+	function presetPrompt(type: PresetTaskType, settings: GlobalSettings | null): string {
+		return type === "coordinator"
+			? resolvePresetPrompt(project.coordinatorPrompt, settings?.coordinatorPrompt, COORDINATOR_PROMPT)
+			: resolvePresetPrompt(project.reviewModePrompt, settings?.reviewModePrompt, t("createTask.reviewPrompt"));
+	}
 
 	/** Same value, but safe to call before the settings fetch has landed. */
-	async function ensureReviewPrompt(): Promise<string> {
-		if (reviewPromptSettings) return reviewPrompt;
-		const loaded = await reviewPromptSettingsPromise.current;
-		return resolveReviewModePrompt(project, loaded, t("createTask.reviewPrompt"));
+	async function ensurePresetPrompt(type: PresetTaskType): Promise<string> {
+		if (presetSettings) return presetPrompt(type, presetSettings);
+		return presetPrompt(type, await presetSettingsPromise.current ?? null);
 	}
 
 	// Prompt + (optional) user text. Pure so the PR-apply path can compute the
 	// final description synchronously without racing setState against a stale read.
-	function buildReviewDescription(baseText: string, prompt: string): string {
+	function buildPresetDescription(baseText: string, prompt: string): string {
 		const userText = baseText.trim();
-		return userText ? prompt + REVIEW_SEPARATOR + userText : prompt;
+		return userText ? prompt + PRESET_SEPARATOR + userText : prompt;
 	}
 
-	async function handleReviewModeChange(enabled: boolean) {
-		setReviewMode(enabled);
-		const prompt = await ensureReviewPrompt();
-		if (enabled) {
-			// Inject review prompt: if user has text, prepend prompt + separator + user text
-			setDescription((current) => buildReviewDescription(current, prompt));
-		} else {
-			// Remove review prompt: restore user's original text (if any)
-			setDescription((current) => {
-				const sepIdx = current.indexOf(REVIEW_SEPARATOR);
-				if (current.startsWith(prompt) && sepIdx !== -1) {
-					// Had user text after separator
-					return current.slice(sepIdx + REVIEW_SEPARATOR.length);
-				}
-				// No user text — just the prompt; a manually edited prompt is left alone
-				return current.startsWith(prompt) ? "" : current;
+	/**
+	 * Inverse of buildPresetDescription. The separator is matched at exactly
+	 * prompt.length rather than by first occurrence, so a user's own `---` line
+	 * cannot be mistaken for the boundary.
+	 */
+	function stripPresetPrompt(current: string, prompt: string): string {
+		if (!current.startsWith(prompt)) return current;
+		const rest = current.slice(prompt.length);
+		return rest.startsWith(PRESET_SEPARATOR) ? rest.slice(PRESET_SEPARATOR.length) : "";
+	}
+
+	async function handleTaskTypeChange(next: TaskTypeChoice) {
+		if (next === taskType) return;
+		const previous = taskType;
+		setTaskType(next);
+		const oldPrompt = previous === "standard" ? null : await ensurePresetPrompt(previous);
+		const newPrompt = next === "standard" ? null : await ensurePresetPrompt(next);
+		setDescription((current) => {
+			const userText = oldPrompt ? stripPresetPrompt(current, oldPrompt) : current;
+			const nextText = newPrompt ? buildPresetDescription(userText, newPrompt) : userText;
+			// A 40-line preamble would otherwise leave the caret above the user's own
+			// text, so typing lands inside the prompt instead of after it.
+			requestAnimationFrame(() => {
+				const el = textareaRef.current;
+				if (!el) return;
+				el.selectionStart = nextText.length;
+				el.selectionEnd = nextText.length;
+				el.scrollTop = el.scrollHeight;
+				el.focus();
 			});
-		}
+			return nextText;
+		});
 	}
 
 	// Opt-4 smart-paste: if a GitHub PR URL lands in the description, offer a
 	// non-blocking affordance to turn it into a review task (resolve → select
-	// branch → enable review mode). Hidden once a branch is chosen, review mode
-	// is already on, this project has no git, or the user dismissed this URL.
+	// branch → enable review mode). Hidden once a branch is chosen, a preset is
+	// already chosen, this project has no git, or the user dismissed this URL.
 	const detectedPr = parsePrUrl(description);
-	const showPrBanner = !!detectedPr && detectedPr.url !== dismissedPrUrl && !selectedBranch && !reviewMode && !isVirtual;
+	const showPrBanner = !!detectedPr && detectedPr.url !== dismissedPrUrl && !selectedBranch && taskType === "standard" && !isVirtual;
 
 	async function applyPrFromBanner() {
 		if (!detectedPr || prApplying) return;
@@ -254,8 +284,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				// Strip the URL out of the description, then fold the remaining text
 				// into the review prompt — the URL was the paste, not the task text.
 				const cleaned = description.replace(detectedPr.url, "").replace(/\n{3,}/g, "\n\n").trim();
-				setDescription(buildReviewDescription(cleaned, await ensureReviewPrompt()));
-				setReviewMode(true);
+				setDescription(buildPresetDescription(cleaned, await ensurePresetPrompt("review")));
+				setTaskType("review");
 				setSelectedBranch(result.branch);
 				setDismissedPrUrl(null);
 			} else {
@@ -760,6 +790,16 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 					)}
 				</div>
 
+				{/* Task type — the one place a built-in prompt preamble is chosen. It sits
+				    directly under the description because that is the field it rewrites;
+				    PR review used to live in the branch block, far from its own effect. */}
+				<TaskTypePicker
+					value={taskType}
+					onChange={handleTaskTypeChange}
+					reviewAvailable={!isVirtual}
+					reviewEnabled={!isVirtual && !!selectedBranch}
+				/>
+
 				{/* Memory notice at the moment the launch decision is made. Informs
 				    only — it never gates or disables Create. */}
 				<MemoryPressureBanner launchCount={1} />
@@ -887,13 +927,13 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						onSelectBranch={(branch) => {
 							setSelectedBranch(branch);
 							setBranchTouched(true);
-							// Turn off review mode when branch is deselected
-							if (!branch && reviewMode) {
-								handleReviewModeChange(false);
+							// PR review has nothing to review without a branch.
+							if (!branch && taskType === "review") {
+								void handleTaskTypeChange("standard");
 							}
 						}}
-						reviewMode={reviewMode}
-						onReviewModeChange={handleReviewModeChange}
+						isPrReview={taskType === "review"}
+						onPrResolved={() => void handleTaskTypeChange("review")}
 					/>
 				)}
 
@@ -1068,6 +1108,74 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 					</div>
 				)}
 			</div>
+		</div>
+	);
+}
+
+interface TaskTypePickerProps {
+	value: TaskTypeChoice;
+	onChange: (next: TaskTypeChoice) => void;
+	/** False on virtual projects: there is no branch to review, ever. */
+	reviewAvailable: boolean;
+	/** False until a branch is picked: reviewable in principle, not yet. */
+	reviewEnabled: boolean;
+}
+
+/**
+ * Mutually exclusive task types. A radiogroup rather than two toggles, because a
+ * task cannot be both a coordinator and a PR review — and "Standard" makes the
+ * default state visible instead of implied by two switches being off.
+ */
+function TaskTypePicker({ value, onChange, reviewAvailable, reviewEnabled }: TaskTypePickerProps) {
+	const t = useT();
+	const options = PRESET_TASK_TYPES.filter((type) => type !== "review" || reviewAvailable);
+	const isEnabled = (type: TaskTypeChoice) => type !== "review" || reviewEnabled;
+	const labelKey = {
+		standard: "createTask.taskTypeStandard",
+		coordinator: "createTask.taskTypeCoordinator",
+		review: "createTask.taskTypeReview",
+	} as const;
+	const hintKey = {
+		standard: "createTask.taskTypeStandardHint",
+		coordinator: "createTask.taskTypeCoordinatorHint",
+		review: "createTask.reviewModeHint",
+	} as const;
+
+	return (
+		<div className="space-y-1.5">
+			<span className="text-fg-2 text-sm font-medium">{t("createTask.taskType")}</span>
+			<div
+				role="radiogroup"
+				aria-label={t("createTask.taskType")}
+				className="inline-flex items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5"
+				onKeyDown={(event) => handleRadioGroupKeys(event, options.filter(isEnabled), value, onChange)}
+			>
+				{options.map((type) => {
+					const active = type === value;
+					const enabled = isEnabled(type);
+					return (
+						<button
+							key={type}
+							type="button"
+							role="radio"
+							aria-checked={active}
+							aria-disabled={!enabled || undefined}
+							disabled={!enabled}
+							data-testid={`task-type-${type}`}
+							onClick={() => onChange(type)}
+							title={enabled ? t(hintKey[type]) : t("createTask.taskTypeReviewNeedsBranch")}
+							className={`px-3 py-1 text-xs font-semibold rounded-md transition-[background-color,color,transform] active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40 ${
+								active ? "bg-accent-fill text-white" : "text-fg-3 hover:text-fg enabled:hover:bg-elevated"
+							}`}
+						>
+							{t(labelKey[type])}
+						</button>
+					);
+				})}
+			</div>
+			<p className="text-xs text-fg-3">
+				{value === "review" && !reviewEnabled ? t("createTask.taskTypeReviewNeedsBranch") : t(hintKey[value])}
+			</p>
 		</div>
 	);
 }

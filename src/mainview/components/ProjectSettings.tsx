@@ -4,7 +4,7 @@ import { confirm } from "../confirm";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
-import { CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolveReviewModePrompt } from "../../shared/types";
+import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolvePresetPrompt } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -1264,13 +1264,20 @@ function ProjectSettings({
 	// to the localized built-in text).
 	const [reviewModePrompt, setReviewModePrompt] = useState(project?.reviewModePrompt ?? "");
 	const initialReviewModePromptRef = useRef(project?.reviewModePrompt ?? "");
+	const [coordinatorPrompt, setCoordinatorPrompt] = useState(project?.coordinatorPrompt ?? "");
+	const initialCoordinatorPromptRef = useRef(project?.coordinatorPrompt ?? "");
+	const [globalCoordinatorPrompt, setGlobalCoordinatorPrompt] = useState<string | undefined>(undefined);
 	const [globalReviewModePrompt, setGlobalReviewModePrompt] = useState<string | undefined>(undefined);
-	const inheritedReviewModePrompt = resolveReviewModePrompt(null, { reviewModePrompt: globalReviewModePrompt }, t("createTask.reviewPrompt"));
+	const inheritedReviewModePrompt = resolvePresetPrompt(undefined, globalReviewModePrompt, t("createTask.reviewPrompt"));
+	const inheritedCoordinatorPrompt = resolvePresetPrompt(undefined, globalCoordinatorPrompt, COORDINATOR_PROMPT);
 
 	// Load available agents
 	useEffect(() => {
 		api.request.getAgents().then(setAvailableAgents).catch(() => {});
-		api.request.getGlobalSettings().then((s) => setGlobalReviewModePrompt(s.reviewModePrompt)).catch(() => {});
+		api.request.getGlobalSettings().then((s) => {
+			setGlobalReviewModePrompt(s.reviewModePrompt);
+			setGlobalCoordinatorPrompt(s.coordinatorPrompt);
+		}).catch(() => {});
 	}, []);
 
 	// Tasks with active worktrees
@@ -1365,8 +1372,9 @@ function ProjectSettings({
 	}, [configsEqual]);
 
 	const isReviewModePromptDirty = useCallback(
-		() => reviewModePrompt.trim() !== initialReviewModePromptRef.current.trim(),
-		[reviewModePrompt],
+		() => reviewModePrompt.trim() !== initialReviewModePromptRef.current.trim()
+			|| coordinatorPrompt.trim() !== initialCoordinatorPromptRef.current.trim(),
+		[reviewModePrompt, coordinatorPrompt],
 	);
 
 	const isAiReviewDirty = useCallback(() => {
@@ -1626,12 +1634,14 @@ function ProjectSettings({
 				projectId,
 				...toSave,
 				reviewModePrompt: reviewModePrompt.trim() ? reviewModePrompt : "",
+				coordinatorPrompt: coordinatorPrompt.trim() ? coordinatorPrompt : "",
 			});
 			dispatch({ type: "updateProject", project: updated });
 			loadedProjectConfig.current = toSave;
 			setProjectConfig(toSave);
 			initialAiReviewRef.current = { agentId: aiReviewAgentId, configId: aiReviewConfigId, prompt: aiReviewPrompt };
 			initialReviewModePromptRef.current = reviewModePrompt;
+			initialCoordinatorPromptRef.current = coordinatorPrompt;
 		} catch (err) {
 			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
 		}
@@ -2084,6 +2094,47 @@ function ProjectSettings({
 											{reviewModePrompt.trim()
 												? t("projectSettings.reviewModePromptOverride")
 												: t("projectSettings.reviewModePromptInherited")}
+										</span>
+									</div>
+								</div>
+							</div>
+							{/* Coordinator task-type prompt (create-task popup) */}
+							<div className="space-y-4">
+								<div>
+									<span className="block text-fg text-sm font-semibold mb-1">
+										{t("projectSettings.coordinatorPrompt")}
+									</span>
+									<p className="text-fg-3 text-sm">
+										{t("projectSettings.coordinatorPromptDesc")}
+									</p>
+								</div>
+								<div className="space-y-3 pl-1">
+									<textarea
+										id="project-coordinator-prompt"
+										aria-label={t("projectSettings.coordinatorPrompt")}
+										value={coordinatorPrompt}
+										onChange={(e) => setCoordinatorPrompt(e.target.value)}
+										rows={8}
+										placeholder={inheritedCoordinatorPrompt}
+										autoCapitalize="off"
+										autoCorrect="off"
+										spellCheck={false}
+										className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono placeholder-fg-muted outline-none focus:border-accent/40 transition-colors resize-y"
+									/>
+									<div className="flex items-center gap-3">
+										<button
+											type="button"
+											onClick={() => setCoordinatorPrompt(coordinatorPrompt.trim() ? "" : inheritedCoordinatorPrompt)}
+											className="text-sm text-fg-3 hover:text-accent transition-colors px-3 py-1.5 rounded-lg border border-edge hover:border-accent/30"
+										>
+											{coordinatorPrompt.trim()
+												? t("projectSettings.coordinatorPromptReset")
+												: t("projectSettings.coordinatorPromptCopyInherited")}
+										</button>
+										<span className="text-fg-muted text-xs">
+											{coordinatorPrompt.trim()
+												? t("projectSettings.coordinatorPromptOverride")
+												: t("projectSettings.coordinatorPromptInherited")}
 										</span>
 									</div>
 								</div>

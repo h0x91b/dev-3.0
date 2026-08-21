@@ -35,6 +35,7 @@ function renderSection(
 				onTipsDisabledToggle={vi.fn()}
 				onTipsReset={vi.fn()}
 				onReviewModePromptChange={onReviewModePromptChange}
+				onCoordinatorPromptChange={vi.fn()}
 			/>
 		</I18nProvider>,
 	);

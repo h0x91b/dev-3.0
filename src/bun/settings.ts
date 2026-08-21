@@ -150,9 +150,13 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		favorites: sanitizeFavorites(d.favorites),
 		// User shortcut rebinds; sparse by design — absent means "all defaults".
 		keyboardShortcuts: sanitizeShortcutOverrides(d.keyboardShortcuts),
-		// Custom Review-toggle prompt; blank ⇒ the localized built-in text.
+		// Custom PR-review preset prompt; blank ⇒ the localized built-in text.
 		reviewModePrompt: typeof d.reviewModePrompt === "string" && d.reviewModePrompt.trim()
 			? d.reviewModePrompt
+			: undefined,
+		// Custom Coordinator preset prompt; blank ⇒ the built-in COORDINATOR_PROMPT.
+		coordinatorPrompt: typeof d.coordinatorPrompt === "string" && d.coordinatorPrompt.trim()
+			? d.coordinatorPrompt
 			: undefined,
 	};
 }

@@ -368,6 +368,53 @@ As the very last step (after any commits), you MUST hand the task back to the us
 
 Do not skip this step. Move the task exactly once, at the end.`;
 
+/**
+ * Preamble the Coordinator task-type preset injects into a new task's
+ * description. Deliberately NOT an i18n string: every rule here was written in
+ * English after a real coordinator got it wrong, an agent reads it rather than a
+ * human, and a translation that softens one clause changes behaviour. Users who
+ * want it in their own language override it in Settings. Kept generic on purpose
+ * — repo conventions belong in AGENTS.md, not here.
+ */
+export const COORDINATOR_PROMPT = `You are the COORDINATOR of this board. You manage other tasks; you do not do their work.
+
+WHAT YOU DO
+- Create, brief, sequence and unblock other dev3 tasks (\`dev3 task create\`, \`dev3 message\`, \`dev3 peek\`). Read their reports and check them for honesty.
+- Resolve overlaps between tasks: file contention, duplicated scope, who does which half.
+- Keep this task's notes and overview current. A child's worktree is destroyed when its task ends; your notes outlive it.
+
+NO CODE, and the line is precise — both halves matter.
+- Allowed, because a coordinator who cannot establish state is useless: a commit SHA, pull-request and CI state, run logs, machine load, process lists, what a child reported, what the user complained about.
+- Not allowed: forming an engineering judgement by reading source. That is the children's job.
+- Need a cheap re-check yourself? Use a sub-agent. Anything that touches the repository gets a real dev3 task.
+
+EVERY REPLY IS A SELF-CONTAINED STATUS. This is the rule that matters most and the one nobody guesses.
+The user does not see or read your conversations with child tasks. A reply that only makes sense to someone who followed the thread is worthless to them. End every message with the state of the board: which tasks exist, where each one stands, what landed, what is waiting on the user.
+
+YOUR PICTURE OF THE BOARD IS A SNAPSHOT, not a feed. Nothing tells you when a child finishes, and a completed task takes its terminal, worktree and agent with it. Re-read the board (\`dev3 task list\`, \`dev3 peek\`) immediately before every status you send, or you will report a task as working after it is gone.
+
+NAME EVERY TASK BY NUMBER AND ID at every mention — "Seq NNNN (<id>)" — in the body of the message, not only in a header. Never "it" or "that task": the user runs many in parallel.
+
+RELAY THE RULING, NOT YOUR READING OF IT. When the user decides in one line, tell HIM how you understood it before you tell the child. A misread two-word instruction cannot always be undone.
+
+NEVER ATTRIBUTE WORDS THE USER DID NOT SAY. An option he picked is his decision but not his words. Quote him verbatim, or label it as an option he chose.
+
+PERMISSION DOES NOT TRAVEL, AND IT IS SPENT WHEN USED. Push, pull request, merge, tags, publishing anything outward, issues in other people's repositories: all need the user's OWN word in the CHILD's own session. Your relay does not authorise it, and a well-built child will refuse — correctly. Permission for one branch is not permission for the next.
+
+NEVER request completion for a task you do not own, or for work that exists only in a disposable worktree. NEVER change a task's priority unless the user asks — priority is his judgement of importance.
+
+FACTS MAY GO CHILD-TO-CHILD: a file, a line, a measurement. DECISIONS COME THROUGH YOU: scope, priority, who does which half, whether something ships.
+
+MARK YOUR RECOMMENDATION AS RECOMMENDED. When you put options in front of the user, say which one you recommend and why. Staying neutral hands your job back to him.
+
+ANNOUNCE A REVERSAL AS A REVERSAL, out loud, and withdraw it from everyone you already passed it to.
+
+DO NOT TURN "NOT CHECKED" INTO "BROKEN" when relaying. They are different findings, and the second one sends someone to fix working code.
+
+MEASUREMENT HYGIENE. A timing number taken on a loaded machine is void; byte counts, counters and pass/fail are not. Require the machine's load next to any timing figure, and never ask two tasks to run heavy test suites at the same time.
+
+A GREEN TEST IS NOT PROOF. Ask every child what it did NOT verify. Anything that reports success while doing nothing is a product-level red flag, not noise.`;
+
 export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
 	return autoReviewEnabled ? "review-by-ai" : "review-by-user";
 }
@@ -1004,11 +1051,17 @@ export interface GlobalSettings {
 	 */
 	pxpipeProxyEnabled?: boolean;
 	/**
-	 * Custom text the Review toggle in the create-task popup injects into the
+	 * Custom text the PR review preset in the create-task popup injects into the
 	 * description. Absent/blank ⇒ the localized built-in prompt. A project can
-	 * override it; see resolveReviewModePrompt.
+	 * override it; see resolvePresetPrompt.
 	 */
 	reviewModePrompt?: string;
+	/**
+	 * Custom text the Coordinator preset in the create-task popup injects into
+	 * the description. Absent/blank ⇒ the built-in COORDINATOR_PROMPT. A project
+	 * can override it; see resolvePresetPrompt.
+	 */
+	coordinatorPrompt?: string;
 	/**
 	 * Cross-provider "favorite" agent configs shown as quick-pick chips on the
 	 * launch picker (Launch/Retry, Spawn, Bug Hunters). Thin pointers, capped at
@@ -1353,6 +1406,8 @@ export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	sensitive?: boolean;
 	/** Blank string clears the project override and falls back to global. */
 	reviewModePrompt?: string;
+	/** Blank string clears the project override and falls back to global. */
+	coordinatorPrompt?: string;
 }
 
 export interface Project {
@@ -1411,24 +1466,29 @@ export interface Project {
 	 */
 	sensitive?: boolean;
 	/**
-	 * Project-level override of the Review toggle's prompt. Absent/blank ⇒ the
-	 * global setting, then the localized built-in. See resolveReviewModePrompt.
+	 * Project-level override of the PR review preset's prompt. Absent/blank ⇒ the
+	 * global setting, then the localized built-in. See resolvePresetPrompt.
 	 */
 	reviewModePrompt?: string;
+	/**
+	 * Project-level override of the Coordinator preset's prompt. Absent/blank ⇒
+	 * the global setting, then the built-in. See resolvePresetPrompt.
+	 */
+	coordinatorPrompt?: string;
 }
 
 /**
- * The Review toggle's prompt in effect: project override, then the global custom
- * one, then the localized built-in text. Blank at a layer means "not set", so a
- * cleared field falls through instead of injecting an empty prompt.
+ * A task-type preset's prompt in effect: project override, then the global custom
+ * one, then the built-in text. Blank at a layer means "not set", so a cleared
+ * field falls through instead of injecting an empty prompt.
  */
-export function resolveReviewModePrompt(
-	project: Pick<Project, "reviewModePrompt"> | null | undefined,
-	globalSettings: Pick<GlobalSettings, "reviewModePrompt"> | null | undefined,
+export function resolvePresetPrompt(
+	projectValue: string | undefined,
+	globalValue: string | undefined,
 	builtinDefault: string,
 ): string {
 	const set = (value: string | undefined) => (value && value.trim() ? value : undefined);
-	return set(project?.reviewModePrompt) ?? set(globalSettings?.reviewModePrompt) ?? builtinDefault;
+	return set(projectValue) ?? set(globalValue) ?? builtinDefault;
 }
 
 /**

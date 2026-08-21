@@ -375,6 +375,13 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleCoordinatorPromptChange = useCallback(
+		(prompt: string) => {
+			persistSettingChange({ coordinatorPrompt: prompt.trim() ? prompt : undefined });
+		},
+		[persistSettingChange],
+	);
+
 	const handleTipsReset = useCallback(() => {
 		api.request.resetTipState().then(() => {
 			setTipsResetDone(true);
@@ -684,6 +691,7 @@ function GlobalSettings({
 						onTipsDisabledToggle={handleTipsDisabledToggle}
 						onTipsReset={handleTipsReset}
 						onReviewModePromptChange={handleReviewModePromptChange}
+						onCoordinatorPromptChange={handleCoordinatorPromptChange}
 					/>
 				);
 			case "keyboard":

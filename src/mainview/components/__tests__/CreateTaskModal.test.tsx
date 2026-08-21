@@ -1819,3 +1819,93 @@ describe("CreateTaskModal — memory notice", () => {
 		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
 	});
 });
+
+describe("CreateTaskModal — task type presets", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getSystemMemory.mockResolvedValue(null);
+		mockedApi.request.getGlobalSettings.mockResolvedValue({} as GlobalSettings);
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: null, isBaseBranch: true, isDirty: false, behindOrigin: 0 });
+		mockedApi.request.listBranches.mockResolvedValue([]);
+		mockedApi.request.listAgentSkills.mockResolvedValue([]);
+	});
+
+	function description() {
+		return screen.getByPlaceholderText(/describe/i) as HTMLTextAreaElement;
+	}
+
+	it("defaults to Standard, so no preamble is injected until asked", async () => {
+		renderModal();
+		expect(await screen.findByTestId("task-type-standard")).toHaveAttribute("aria-checked", "true");
+		expect(description().value).toBe("");
+	});
+
+	it("injects the coordinator preamble and keeps the user's own text below a separator", async () => {
+		renderModal();
+		await userEvent.type(description(), "Ship the Windows track.");
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+
+		await waitFor(() => expect(description().value).toContain("You are the COORDINATOR of this board."));
+		expect(description().value).toMatch(/\n\n---\n\nShip the Windows track\.$/);
+	});
+
+	it("puts the caret after the preamble, so typing lands in the user's own text", async () => {
+		renderModal();
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+
+		await waitFor(() => expect(description().selectionStart).toBe(description().value.length));
+	});
+
+	it("returning to Standard restores exactly the user's own text", async () => {
+		renderModal();
+		await userEvent.type(description(), "Ship the Windows track.");
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
+
+		await userEvent.click(screen.getByTestId("task-type-standard"));
+		await waitFor(() => expect(description().value).toBe("Ship the Windows track."));
+	});
+
+	it("does not mistake the user's own --- line for the preamble boundary", async () => {
+		renderModal();
+		await userEvent.type(description(), "before{Enter}{Enter}---{Enter}{Enter}after");
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
+
+		await userEvent.click(screen.getByTestId("task-type-standard"));
+		await waitFor(() => expect(description().value).toBe("before\n\n---\n\nafter"));
+	});
+
+	it("swaps one preamble for the other without leaving the first behind", async () => {
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "feature", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
+		renderModal();
+		await userEvent.type(description(), "mine");
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
+
+		await waitFor(() => expect(screen.getByTestId("task-type-review")).toBeEnabled());
+		await userEvent.click(screen.getByTestId("task-type-review"));
+		await waitFor(() => expect(description().value).toContain("thorough code review"));
+		expect(description().value).not.toContain("COORDINATOR");
+		expect(description().value).toMatch(/\n\n---\n\nmine$/);
+	});
+
+	it("prefers the project's coordinator prompt over the global one", async () => {
+		mockedApi.request.getGlobalSettings.mockResolvedValue({ coordinatorPrompt: "Global coordinator." } as GlobalSettings);
+		renderModal({ project: { ...mockProject, coordinatorPrompt: "Project coordinator." } });
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+
+		await waitFor(() => expect(description().value).toBe("Project coordinator."));
+	});
+
+	it("offers PR review only once a branch exists — a review needs something to review", async () => {
+		renderModal();
+		expect(await screen.findByTestId("task-type-review")).toBeDisabled();
+	});
+
+	it("hides PR review entirely on a virtual project, where no branch can ever exist", async () => {
+		renderModal({ project: { ...mockProject, kind: "virtual" } });
+		expect(await screen.findByTestId("task-type-coordinator")).toBeInTheDocument();
+		expect(screen.queryByTestId("task-type-review")).not.toBeInTheDocument();
+	});
+});

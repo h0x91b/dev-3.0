@@ -215,6 +215,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "coordinator-prompt",
+		category: "tasks",
+		titleKey: "settings.coordinatorPrompt",
+		descriptionKey: "settings.coordinatorPromptDesc",
+		anchor: "coordinator-prompt",
+		globalField: "coordinatorPrompt",
+		storage: "global",
+	},
+	{
 		id: "tips",
 		category: "tasks",
 		titleKey: "settings.tipsSection",
@@ -451,6 +460,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"favorites",
 	"keyboardShortcuts",
 	"reviewModePrompt",
+	"coordinatorPrompt",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 type RegisteredGlobalSettingsField = (typeof SETTINGS_ENTRIES)[number] extends infer Entry

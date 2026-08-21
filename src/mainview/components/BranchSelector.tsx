@@ -93,11 +93,13 @@ interface BranchSelectorProps {
 	projectId: string;
 	selectedBranch: string | null;
 	onSelectBranch: (branch: string | null) => void;
-	reviewMode: boolean;
-	onReviewModeChange: (enabled: boolean) => void;
+	/** True when the form's task type is PR review — remote branches rank first. */
+	isPrReview: boolean;
+	/** A PR URL pasted into the branch box resolved: the form makes it a review. */
+	onPrResolved: () => void;
 }
 
-function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode, onReviewModeChange }: BranchSelectorProps) {
+function BranchSelector({ projectId, selectedBranch, onSelectBranch, isPrReview, onPrResolved }: BranchSelectorProps) {
 	const t = useT();
 	const [branchQuery, setBranchQuery] = useState("");
 	const [branches, setBranches] = useState<BranchInfo[]>([]);
@@ -158,7 +160,7 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 			const result = await api.request.resolvePrUrl({ projectId, url: pr.url });
 			if (result.ok && result.branch) {
 				onSelectBranch(result.branch);
-				onReviewModeChange(true);
+				onPrResolved();
 				setBranchQuery("");
 				setBranchDropdownOpen(false);
 			} else {
@@ -169,9 +171,9 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 		} finally {
 			setResolvingPr(false);
 		}
-	}, [branchQuery, projectId, onSelectBranch, onReviewModeChange, t]);
+	}, [branchQuery, projectId, onSelectBranch, onPrResolved, t]);
 
-	const preferRemoteBranches = reviewMode || prioritizedBranchNames.length > 0 || parseForkRef(branchQuery) !== null;
+	const preferRemoteBranches = isPrReview || prioritizedBranchNames.length > 0 || parseForkRef(branchQuery) !== null;
 	const filteredBranches = sortBranchesForDisplay(
 		branches.filter((b) =>
 		matchesBranchQuery(b.name, branchQuery),
@@ -362,32 +364,6 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 				<p className="text-xs text-danger">{prError}</p>
 			)}
 
-			{/* Review mode toggle — shown when a branch is selected */}
-			{selectedBranch && (
-				<label
-					className="flex items-center gap-2 cursor-pointer group/review"
-					title={t("createTask.reviewModeHint")}
-				>
-					<button
-						type="button"
-						role="switch"
-						aria-checked={reviewMode}
-						onClick={() => onReviewModeChange(!reviewMode)}
-						className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
-							reviewMode ? "bg-accent" : "bg-fg/20"
-						}`}
-					>
-						<span
-							className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${
-								reviewMode ? "translate-x-3.5" : "translate-x-0.5"
-							}`}
-						/>
-					</button>
-					<span className={`text-xs transition-colors ${reviewMode ? "text-accent font-medium" : "text-fg-3 group-hover/review:text-fg-2"}`}>
-						{t("createTask.reviewMode")}
-					</span>
-				</label>
-			)}
 		</div>
 	);
 }
