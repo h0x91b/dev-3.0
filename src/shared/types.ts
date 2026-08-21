@@ -1468,6 +1468,12 @@ export interface Space {
 	projectIds: string[];
 	createdAt: number;
 	deleted?: boolean;
+	/**
+	 * Marks a space the user must not show on camera — the client's own name is
+	 * the secret, whether or not any member project is marked. Inert unless
+	 * streamer mode is on, exactly like `Project.sensitive`.
+	 */
+	sensitive?: boolean;
 }
 
 /** The full on-disk shape of spaces.json. A missing file means the empty shape. */
@@ -1504,9 +1510,12 @@ export function spacesOfProject(spaces: Space[], projectId: string): Space[] {
 	return spaces.filter((s) => !s.deleted && s.projectIds.includes(projectId));
 }
 
-/** Streamer masking is conservative: one sensitive member mutes the whole space. */
+/**
+ * Streamer masking is conservative: the space's own flag, or one sensitive
+ * member, mutes the whole space.
+ */
 export function isSpaceSensitive(space: Space, sensitiveProjectIds: ReadonlySet<string>): boolean {
-	return space.projectIds.some((id) => sensitiveProjectIds.has(id));
+	return space.sensitive === true || space.projectIds.some((id) => sensitiveProjectIds.has(id));
 }
 
 // ---- Board columns (single source of truth for column ordering + visibility) ----
@@ -3350,6 +3359,10 @@ export type AppRPCSchema = {
 			setProjectSpaces: {
 				params: { projectId: string; spaceIds: string[] };
 				response: { file: SpacesFile; autoDeleted: Space[] };
+			};
+			setSpaceSensitive: {
+				params: { spaceId: string; sensitive: boolean };
+				response: Space;
 			};
 			reorderSpaces: {
 				params: { order: string[] };

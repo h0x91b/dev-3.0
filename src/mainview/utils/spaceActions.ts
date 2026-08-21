@@ -37,6 +37,18 @@ export async function deleteSpaceWithConfirm(space: Space, t: T) {
 	}
 }
 
+/**
+ * Marks the space itself hidden-on-camera. Independent of its members: the
+ * client's name is the secret even when no single project of theirs is marked.
+ */
+export async function toggleSpaceSensitive(space: Space, sensitive: boolean, t: T) {
+	try {
+		await api.request.setSpaceSensitive({ spaceId: space.id, sensitive });
+	} catch (err) {
+		toast.error(t("spaces.failedUpdate", { error: String(err) }));
+	}
+}
+
 /** Step one space by one position. The rail drags; this is the path for a
  *  pointer that cannot drag and for the keyboard. */
 export async function moveSpace(space: Space, delta: -1 | 1, spaces: Space[], t: T) {

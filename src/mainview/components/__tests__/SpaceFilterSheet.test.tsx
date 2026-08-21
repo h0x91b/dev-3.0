@@ -31,16 +31,16 @@ function renderSheet(over?: Partial<React.ComponentProps<typeof SpaceFilterSheet
 }
 
 describe("SpaceFilterSheet", () => {
-	it("offers the same choice the rail does, All projects first", () => {
+	it("offers the same choice the rail does, Everything first", () => {
 		renderSheet();
-		expect(screen.getByTestId("space-filter-all")).toHaveTextContent("All projects");
+		expect(screen.getByTestId("space-filter-all")).toHaveTextContent("Everything");
 		expect(screen.getByTestId("space-filter-all")).toHaveTextContent("5");
 		expect(screen.getByTestId("space-filter-sp_a")).toHaveTextContent("Client X");
 		expect(screen.getByTestId("space-filter-sp_a")).toHaveTextContent("2");
 		expect(screen.getByTestId(`space-filter-${HOME_GROUP_ID}`)).toHaveTextContent("Home");
 	});
 
-	it("defaults to All projects, not to a space", () => {
+	it("defaults to Everything, not to a space", () => {
 		renderSheet();
 		expect(screen.getByTestId("space-filter-all")).toHaveAttribute("aria-pressed", "true");
 		expect(screen.getByTestId("space-filter-sp_a")).toHaveAttribute("aria-pressed", "false");

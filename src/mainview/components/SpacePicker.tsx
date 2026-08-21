@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Space } from "../../shared/types";
 import { useT } from "../i18n";
+import { MASK_CLASS } from "../sensitive-projects";
 
 interface SpacePickerProps {
 	/** Active spaces in display order (from useSpaces — the parent owns state). */
@@ -145,7 +146,7 @@ function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onC
 									<path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
 								</svg>
 							</span>
-							<span className="text-xs text-fg flex-1 truncate">{space.name}</span>
+							<span className={`text-xs text-fg flex-1 truncate ${space.sensitive ? MASK_CLASS : ""}`}>{space.name}</span>
 						</button>
 					);
 				})}

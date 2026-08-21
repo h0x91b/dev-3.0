@@ -4,7 +4,7 @@ import type { Project, Space, Task, TaskStatus } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isTaskDisconnected, orderProjectsForDisplay } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
-import { deleteSpaceWithConfirm, moveSpace, renameSpace } from "../utils/spaceActions";
+import { deleteSpaceWithConfirm, moveSpace, renameSpace, toggleSpaceSensitive } from "../utils/spaceActions";
 import { useT } from "../i18n";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
@@ -560,6 +560,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 											spaces={spacesFile.spaces}
 											projectId={project.id}
 											omitSpaceId={groupSpaceId ?? undefined}
+											sensitiveProjectIds={sensitiveProjectIds}
 										/>
 									)}
 								{project.kind === "virtual" && (
@@ -926,6 +927,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							onRenameSpace={(space, name) => void renameSpace(space, name, t)}
 							onDeleteSpace={(space) => void deleteSpaceWithConfirm(space, t)}
 							onMoveSpace={(space, delta) => void moveSpace(space, delta, spaces, t)}
+							onToggleSensitive={(space, next) => void toggleSpaceSensitive(space, next, t)}
 							spaceOrder={spaces.map((s) => s.id)}
 							renderProject={(p, ctx, spaceId) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), ctx, spaceId)}
 							renderBottomBlockProject={(p) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id))}

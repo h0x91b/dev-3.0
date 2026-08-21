@@ -27,6 +27,53 @@ describe("SpaceHeaderMenu", () => {
 		expect(screen.getByTestId("space-delete-sp_a")).toBeInTheDocument();
 	});
 
+	it("marks the space hide-on-camera and offers the reverse once it is set", async () => {
+		const user = userEvent.setup();
+		const props = renderMenu({ onToggleSensitive: vi.fn() });
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		const item = screen.getByTestId("space-sensitive-sp_a");
+		expect(item).toHaveTextContent("Hide on camera");
+		await user.click(item);
+		expect(props.onToggleSensitive).toHaveBeenCalledWith(space, true);
+	});
+
+	it("offers Show on camera for a space already marked", async () => {
+		const user = userEvent.setup();
+		const marked = { ...space, sensitive: true };
+		const props = renderMenu({ space: marked, onToggleSensitive: vi.fn() });
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		await user.click(screen.getByTestId("space-sensitive-sp_a"));
+		expect(screen.queryByText("Hide on camera")).not.toBeInTheDocument();
+		expect(props.onToggleSensitive).toHaveBeenCalledWith(marked, false);
+	});
+
+	it("omits the sensitive toggle where the surface cannot write it", async () => {
+		const user = userEvent.setup();
+		renderMenu();
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		expect(screen.queryByTestId("space-sensitive-sp_a")).not.toBeInTheDocument();
+	});
+
+	// A 24px glyph mid-row is unhittable with a thumb and reads as punctuation.
+	it("becomes a bordered 44px box at the row's right edge on touch, glyph on a pointer", () => {
+		renderMenu({ touchTarget: true });
+		const cls = screen.getByTestId("space-menu-sp_a").className;
+		expect(cls).toContain("min-h-[44px]");
+		expect(cls).toContain("min-w-[44px]");
+		expect(cls).toContain("border");
+		expect(cls).toContain("ml-auto");
+		// …and folds back above md, where the menu sits beside the name.
+		expect(cls).toContain("md:border-0");
+		expect(cls).toContain("md:ml-0");
+	});
+
+	it("keeps the inline glyph where the surface is pointer-only", () => {
+		renderMenu();
+		const cls = screen.getByTestId("space-menu-sp_a").className;
+		expect(cls).not.toContain("min-h-[44px]");
+		expect(cls).not.toContain("ml-auto");
+	});
+
 	it("renames through an inline field, seeded with the current name", async () => {
 		const user = userEvent.setup();
 		const props = renderMenu();

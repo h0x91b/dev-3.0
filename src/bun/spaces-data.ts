@@ -104,6 +104,16 @@ export async function renameSpace(spaceId: string, name: string): Promise<Space>
 	});
 }
 
+/** Streamer flag on the space itself — see `isSpaceSensitive`. */
+export async function setSpaceSensitive(spaceId: string, sensitive: boolean): Promise<Space> {
+	return mutate((file) => {
+		const space = activeSpace(file, spaceId);
+		if (sensitive) space.sensitive = true;
+		else delete space.sensitive;
+		return structuredClone(space);
+	});
+}
+
 export async function deleteSpace(spaceId: string): Promise<void> {
 	await mutate((file) => {
 		const space = file.spaces.find((s) => s.id === spaceId);

@@ -79,6 +79,8 @@ interface SpaceGroupedProjectsProps {
 	onDeleteSpace?: (space: Space) => void;
 	/** Step this space one position in the app-wide space order. */
 	onMoveSpace?: (space: Space, delta: -1 | 1) => void;
+	/** Toggles the space's own hide-on-camera flag. */
+	onToggleSensitive?: (space: Space, sensitive: boolean) => void;
 	/** Every space id in order — the visible groups are a filtered subset, so the
 	 *  edges of `Move up` / `Move down` cannot be read off `groups`. */
 	spaceOrder?: string[];
@@ -102,6 +104,7 @@ function SpaceGroupedProjects({
 	onRenameSpace,
 	onDeleteSpace,
 	onMoveSpace,
+	onToggleSensitive,
 	spaceOrder,
 }: SpaceGroupedProjectsProps) {
 	const t = useT();
@@ -262,6 +265,8 @@ function SpaceGroupedProjects({
 									onRename={onRenameSpace}
 									onDelete={onDeleteSpace}
 									onEditProjects={onEditProjects}
+									onToggleSensitive={onToggleSensitive}
+									touchTarget
 									onMove={onMoveSpace && (spaceOrder?.length ?? 0) > 1 ? onMoveSpace : undefined}
 									canMoveUp={(spaceOrder?.indexOf(space.id) ?? 0) > 0}
 									canMoveDown={

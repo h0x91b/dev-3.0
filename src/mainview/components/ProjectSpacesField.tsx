@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { spacesOfProject } from "../../shared/types";
+import { MASK_CLASS } from "../sensitive-projects";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
@@ -78,7 +79,7 @@ function ProjectSpacesField(props: ProjectSpacesFieldProps) {
 						data-testid={`space-chip-${space.id}`}
 					>
 						<span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent/70 flex-shrink-0" />
-						<span className="font-medium leading-none truncate max-w-[10rem]">{space.name}</span>
+						<span className={`font-medium leading-none truncate max-w-[10rem] ${space.sensitive ? MASK_CLASS : ""}`}>{space.name}</span>
 						<button
 							type="button"
 							onClick={() => handleToggle(space.id)}

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 	loadSpacesFile: vi.fn(),
 	createSpace: vi.fn(),
 	renameSpace: vi.fn(),
+	setSpaceSensitive: vi.fn(),
 	deleteSpace: vi.fn(),
 	setProjectSpaces: vi.fn(),
 	reorderSpaces: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("../../spaces-data", () => ({
 	loadSpacesFile: mocks.loadSpacesFile,
 	createSpace: mocks.createSpace,
 	renameSpace: mocks.renameSpace,
+	setSpaceSensitive: mocks.setSpaceSensitive,
 	deleteSpace: mocks.deleteSpace,
 	setProjectSpaces: mocks.setProjectSpaces,
 	reorderSpaces: mocks.reorderSpaces,
@@ -40,6 +42,14 @@ describe("spacesHandlers", () => {
 	it("getSpaces delegates to loadSpacesFile and does not push", async () => {
 		expect(await spacesHandlers.getSpaces({})).toEqual(file);
 		expect(mocks.pushMessage).not.toHaveBeenCalled();
+	});
+
+	it("setSpaceSensitive delegates and pushes, so every window remasks at once", async () => {
+		const marked = { ...space, sensitive: true };
+		mocks.setSpaceSensitive.mockResolvedValue(marked);
+		expect(await spacesHandlers.setSpaceSensitive({ spaceId: "sp_1", sensitive: true })).toEqual(marked);
+		expect(mocks.setSpaceSensitive).toHaveBeenCalledWith("sp_1", true);
+		expect(mocks.pushMessage).toHaveBeenCalledWith("spacesUpdated", { file });
 	});
 
 	it("createSpace delegates and pushes spacesUpdated with the fresh file", async () => {

@@ -10,7 +10,7 @@ import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import { useSpaces } from "../useSpaces";
 import { useContainerWidth } from "../hooks/useContainerWidth";
-import { deleteSpaceWithConfirm, moveSpace, renameSpace } from "../utils/spaceActions";
+import { deleteSpaceWithConfirm, moveSpace, renameSpace, toggleSpaceSensitive } from "../utils/spaceActions";
 import ActivityOverview from "./ActivityOverview";
 import SpacesRail, { SPACES_RAIL_MIN_WIDTH } from "./SpacesRail";
 import NewSpaceModal from "./NewSpaceModal";
@@ -153,6 +153,7 @@ function Dashboard({
 						onDeleteSpace={(space) => void deleteSpaceWithConfirm(space, t)}
 						onMoveSpace={(space, delta) => void moveSpace(space, delta, spaces, t)}
 						onEditProjects={setEditSpace}
+						onToggleSensitive={(space, next) => void toggleSpaceSensitive(space, next, t)}
 					/>
 				)}
 				<div className="flex-1 min-w-0 overflow-hidden">

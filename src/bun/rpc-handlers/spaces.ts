@@ -24,6 +24,12 @@ async function renameSpace(params: { spaceId: string; name: string }): Promise<S
 	return space;
 }
 
+async function setSpaceSensitive(params: { spaceId: string; sensitive: boolean }): Promise<Space> {
+	const space = await spacesData.setSpaceSensitive(params.spaceId, params.sensitive);
+	await pushSpacesUpdated();
+	return space;
+}
+
 async function deleteSpace(params: { spaceId: string }): Promise<void> {
 	await spacesData.deleteSpace(params.spaceId);
 	await pushSpacesUpdated();
@@ -53,6 +59,7 @@ export const spacesHandlers = {
 	getSpaces,
 	createSpace,
 	renameSpace,
+	setSpaceSensitive,
 	deleteSpace,
 	setProjectSpaces,
 	reorderSpaces,

@@ -32,9 +32,9 @@ function renderRail(over?: Partial<React.ComponentProps<typeof SpacesRail>>) {
 }
 
 describe("SpacesRail", () => {
-	it("lists All projects, every space with its count, and the computed Home group", () => {
+	it("lists Everything, every space with its count, and the computed Home group", () => {
 		renderRail();
-		expect(screen.getByTestId("rail-all-projects")).toHaveTextContent("All projects");
+		expect(screen.getByTestId("rail-all-projects")).toHaveTextContent("Everything");
 		expect(screen.getByTestId("rail-all-projects")).toHaveTextContent("5");
 		expect(screen.getByTestId("rail-space-sp_a")).toHaveTextContent("Client X");
 		expect(screen.getByTestId("rail-space-sp_a")).toHaveTextContent("2");

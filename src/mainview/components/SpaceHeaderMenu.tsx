@@ -19,8 +19,16 @@ interface SpaceHeaderMenuProps {
 	/** Opens the membership editor. Omitted where the surface shows its own
 	 *  `Edit` control beside the name, so the menu does not repeat it. */
 	onEditProjects?: (space: Space) => void;
+	/** Streamer flag on the space itself. Omitted where the surface cannot write. */
+	onToggleSensitive?: (space: Space, sensitive: boolean) => void;
 	/** Prefixes every test id — two surfaces render this menu at once. */
 	scope?: string;
+	/**
+	 * Draw the trigger as a bordered 44px box pushed to the row's right edge
+	 * below `md`, collapsing to the inline glyph above it. For surfaces that
+	 * exist on touch; the rail (desktop-only, 38px rows) keeps the glyph.
+	 */
+	touchTarget?: boolean;
 }
 
 /**
@@ -40,7 +48,9 @@ function SpaceHeaderMenu({
 	canMoveUp,
 	canMoveDown,
 	onEditProjects,
+	onToggleSensitive,
 	scope = "space",
+	touchTarget,
 }: SpaceHeaderMenuProps) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
@@ -109,7 +119,15 @@ function SpaceHeaderMenu({
 				onClick={() => setOpen((v) => !v)}
 				aria-haspopup="menu"
 				aria-expanded={open}
-				className="p-1 rounded text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+				className={
+					touchTarget
+						? // Below md the glyph alone was a 24px tap target mid-row that read
+							// as punctuation. It becomes a bordered 44px box at the row's right
+							// edge — one predictable column per header — and folds back to the
+							// inline glyph beside the name on a pointer.
+							"ml-auto md:ml-0 flex-shrink-0 flex items-center justify-center min-h-[44px] min-w-[44px] border border-edge rounded-xl text-fg-2 hover:text-fg hover:border-edge-active hover:bg-elevated md:min-h-0 md:min-w-0 md:border-0 md:rounded md:p-1 md:text-fg-3 transition-[color,border-color,background-color]"
+						: "p-1 rounded text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+				}
 				title={t("spaces.menuLabel")}
 				aria-label={t("spaces.menuLabel")}
 				data-testid={`${scope}-menu-${space.id}`}
@@ -197,6 +215,20 @@ function SpaceHeaderMenu({
 											{t("spaces.moveDown")}
 										</button>
 									</>
+								)}
+								{onToggleSensitive && (
+									<button
+										type="button"
+										role="menuitem"
+										onClick={() => {
+											close();
+											onToggleSensitive(space, !space.sensitive);
+										}}
+										className={`${itemClass} text-fg-2 hover:text-fg`}
+										data-testid={`${scope}-sensitive-${space.id}`}
+									>
+										{space.sensitive ? t("spaces.unmarkSensitive") : t("spaces.markSensitive")}
+									</button>
 								)}
 								<button
 									type="button"

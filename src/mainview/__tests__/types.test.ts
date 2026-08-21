@@ -777,4 +777,10 @@ describe("isSpaceSensitive", () => {
 		expect(isSpaceSensitive(sp("sp_a", ["p1", "p2"]), new Set(["p2"]))).toBe(true);
 		expect(isSpaceSensitive(sp("sp_a", ["p1"]), new Set(["p9"]))).toBe(false);
 	});
+
+	// The client's own name is the secret even when no single project of theirs
+	// is marked, so the space carries its own flag.
+	it("is true from the space's own flag, with no sensitive member at all", () => {
+		expect(isSpaceSensitive({ ...sp("sp_a", ["p1"]), sensitive: true }, new Set())).toBe(true);
+	});
 });

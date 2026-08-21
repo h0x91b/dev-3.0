@@ -35,6 +35,7 @@ interface SpacesRailProps {
 	onDeleteSpace?: (space: Space) => void;
 	onMoveSpace?: (space: Space, delta: -1 | 1) => void;
 	onEditProjects?: (space: Space) => void;
+	onToggleSensitive?: (space: Space, sensitive: boolean) => void;
 }
 
 /*
@@ -70,6 +71,7 @@ function SpacesRail({
 	onDeleteSpace,
 	onMoveSpace,
 	onEditProjects,
+	onToggleSensitive,
 }: SpacesRailProps) {
 	const t = useT();
 	// The id lives in a ref as well as state: `drop` must not depend on a render
@@ -247,6 +249,7 @@ function SpacesRail({
 										onRename={onRenameSpace}
 										onDelete={onDeleteSpace}
 										onEditProjects={onEditProjects}
+										onToggleSensitive={onToggleSensitive}
 										onMove={onMoveSpace && spaces.length > 1 ? onMoveSpace : undefined}
 										canMoveUp={index > 0}
 										canMoveDown={index < spaces.length - 1}

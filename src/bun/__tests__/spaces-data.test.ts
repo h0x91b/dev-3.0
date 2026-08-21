@@ -43,6 +43,7 @@ import {
 	reorderSpaceProjects,
 	reorderSpaces,
 	setProjectSpaces,
+	setSpaceSensitive,
 } from "../spaces-data";
 import type { SpacesFile } from "../../shared/types";
 
@@ -139,6 +140,18 @@ describe("reordering", () => {
 	it("reorderSpaceProjects reorders members and never adds new ones", async () => {
 		const a = await createSpace("A", ["p1", "p2", "p3"]);
 		expect((await reorderSpaceProjects(a.id, ["p2", "p9", "p1"])).projectIds).toEqual(["p2", "p1", "p3"]);
+	});
+});
+
+describe("setSpaceSensitive", () => {
+	it("sets the flag and removes it again, rather than writing false", async () => {
+		const created = await createSpace("A", ["p1"]);
+		expect((await setSpaceSensitive(created.id, true)).sensitive).toBe(true);
+		// Absent, not `false`: an older app version reading this file treats a
+		// missing key exactly the same, and the file stays minimal.
+		const off = await setSpaceSensitive(created.id, false);
+		expect("sensitive" in off).toBe(false);
+		expect((await loadSpacesFile()).spaces[0].sensitive).toBeUndefined();
 	});
 });
 

@@ -276,7 +276,7 @@ describe("Dashboard", () => {
 			await user.click(filter);
 			await user.click(screen.getByTestId("space-filter-all"));
 			expect(await screen.findByText("Second")).toBeInTheDocument();
-			expect(screen.getByTestId("dashboard-space-filter")).toHaveTextContent("All projects");
+			expect(screen.getByTestId("dashboard-space-filter")).toHaveTextContent("Everything");
 		});
 
 		it("clears a selection whose space stopped existing", async () => {
