@@ -25,7 +25,9 @@ Verified against the code and the previous record:
 - **`ActivityOverview.tsx`** already renders its rows through one `renderProjectRow` function
   (lifted for `SpaceGroupedProjects`), so chips and actions attach at one place.
 - **`ActiveTasksSidebar.tsx`** takes a required `project` prop; 11 sites read it. A dashboard
-  mount has no current project, so the prop becomes optional and the scope switcher hides.
+  mount would have no current project — the reason the prop was made optional. The dashboard
+  mount was later removed (see `calm-the-spaces-dashboard`); the sidebar stays in the task
+  workspace, where the centre is a board and not a task list.
 - **`ProjectActionButtons.tsx`** is the resting-visible row cluster the previous record named as
   the home of a `Spaces…` action.
 - **`is:attention`** survives #1347 as a search token and funnel flag; only the sidebar *scope*
@@ -50,26 +52,31 @@ The mock is the dashboard's shape. Each element maps onto the existing rules:
 - **The dashboard gains one search field** over projects, matching space names through the same
   haystack the ⌘K palette uses. One matcher, one search language.
 - **A space header carries** its name, its project count, split
-  "N need you · N working" counts, a drag grip (reorders spaces), and a `+` that adds existing
-  projects to that space. The mock's letter badges were dropped during review as visual noise —
-  spaces have no badge and no colour vocabulary.
+  "N need you · N working" counts (words, no colour dot), and one `…` menu. The drag grip and the
+  add-only `+` were removed after review: space order is dragged in the rail (plus `Move up` /
+  `Move down` in that menu), and membership is the menu's two-way `Edit projects…`. The mock's
+  letter badges were dropped during review as visual noise — spaces have no badge and no colour
+  vocabulary.
 - **The row's `Spaces…` action** is the mock's `S` button, in the existing action cluster and in
-  the narrow bottom sheet. Still no per-row kebab (PRODUCT_UX_BIBLE §10).
-- **The cross-space task list is the existing `ActiveTasksSidebar` component**, mounted on the
-  dashboard with `project` absent: scope is locked to global ("across all Spaces") and the
-  switcher hides. It is the same component, not a second panel — the previous record's "no new
-  panel" rule is about duplicating the sidebar, not about where it may appear.
+  the narrow bottom sheet. No kebab is added to a *project* row (PRODUCT_UX_BIBLE §10); the `…`
+  that spaces carry on their rail row and group header is the space object's own chrome, which
+  §10 requires to sit against the space name.
+- **The dashboard carries no cross-space task list.** The mock's panel shipped as the existing
+  `ActiveTasksSidebar` mounted with `project` absent, and was removed on 2026-08-20: the project
+  rows beneath it already list every task waiting on the user, so the panel rendered the same
+  rows twice. Cross-project task search lives in that sidebar's global scope, inside a project.
 - **The mock's `All / Needs you` toggle sets the `is:attention` funnel token.** No scope is
   resurrected; the toggle is a preset over the search field that already exists.
-- **Drag still only ever reorders** (spaces via the header grip, projects within a space, global
-  order in `Home`). Membership changes go through the multi-select, the `Spaces…` action, or a
-  header `+`.
+- **Drag still only ever reorders** (spaces by dragging a rail row, projects within a space,
+  global order in `Home`). Membership changes go through the multi-select, the row's `Spaces…`
+  action, or `Edit projects…` in the space menu.
 
 ## Risks
 
-- **The dashboard grows a rail, a search field and a task panel at once.** That is a large
-  increase in chrome on the app's calmest screen; it is justified only because the mock is the
-  agreed design and every added control maps to an existing concept.
+- **The dashboard grew a rail, a search field and a task panel at once.** That was a large
+  increase in chrome on the app's calmest screen. The risk landed: review removed the task panel
+  and the header `+`, and gated the rail on its container's width
+  (`calm-the-spaces-dashboard`, `rail-gated-on-container-width`).
 - **A project in several spaces still duplicates its triage rows.** Unchanged from the previous
   record, and still the first thing to watch in real use.
 - **`Home` reads like a space but is not one.** The mitigation is behavioural: no chip, no

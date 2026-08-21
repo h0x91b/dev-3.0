@@ -16,6 +16,8 @@ const file = {
 	],
 };
 
+vi.mock("../../toast", () => ({ toast: { info: vi.fn(), error: vi.fn() } }));
+
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
@@ -111,6 +113,24 @@ describe("SpaceProjectsModal", () => {
 		await user.click(screen.getByTestId("space-projects-save"));
 		await waitFor(() => expect(props.onClose).toHaveBeenCalled());
 		expect(api.request.setProjectSpaces).toHaveBeenCalledWith({ projectId: "p9", spaceIds: ["sp_b"] });
+	});
+
+	it("says the space itself is gone when its last member is unticked", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		const { toast } = await import("../../toast");
+		(api.request.setProjectSpaces as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			file,
+			autoDeleted: [space],
+		});
+		const props = renderModal();
+		await user.click(screen.getByTestId("space-projects-p9"));
+		await user.click(screen.getByTestId("space-projects-save"));
+		// Wait on the dialog closing, not on the toast: closing is the last step of
+		// the same save, so the toast is already in by then and the assertion does
+		// not race a second timeout under a loaded machine.
+		await waitFor(() => expect(props.onClose).toHaveBeenCalled());
+		expect((toast.info as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain("Labs");
 	});
 
 	it("hands off to the Add Project flow for this space", async () => {

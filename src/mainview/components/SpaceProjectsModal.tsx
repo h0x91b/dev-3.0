@@ -69,7 +69,13 @@ function SpaceProjectsModal({ space, projects, onClose, onCreateProject }: Space
 				const next = added.includes(projectId)
 					? [...new Set([...own, space.id])]
 					: own.filter((id) => id !== space.id);
-				await api.request.setProjectSpaces({ projectId, spaceIds: next });
+				const { autoDeleted } = await api.request.setProjectSpaces({ projectId, spaceIds: next });
+				// Unticking the last member does not just empty the space — a space is
+				// never empty, so the backend soft-deletes it. Say so, or the grouping
+				// vanishes from the dashboard with nothing to explain it.
+				for (const gone of autoDeleted) {
+					toast.info(t("spaces.autoDeleted", { name: gone.name }));
+				}
 			}
 			onClose();
 		} catch (err) {
