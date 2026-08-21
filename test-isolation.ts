@@ -76,10 +76,14 @@ export function configureTestIsolation(suite: string, worktreeRoot = process.cwd
 		if (key.startsWith(INHERITED_NATIVE_SESSION_ENV_PREFIX)) delete process.env[key];
 	}
 
+	// Deliberately NOT setting DEV3_HOME: the data root is derived from HOME by
+	// `resolveDev3Home`, so the sandbox HOME above already lands it at `dev3Home`.
+	// Setting it explicitly would make it OUTRANK a suite's own `process.env.HOME =
+	// fixtureHome`, which is how dozens of suites relocate the board — they would
+	// silently read this run's shared root instead of their fixture.
 	Object.assign(process.env, {
 		DEV3_TEST_ROOT: root,
 		DEV3_TEST_WORKTREE_ID: testWorktreeId(worktreeRoot),
-		DEV3_HOME: dev3Home,
 		DEV3_LOG_DIR: join(root, "logs"),
 		HOME: home,
 		TMPDIR: temp,

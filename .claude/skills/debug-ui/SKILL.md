@@ -57,6 +57,28 @@ That's it. `DEV3_REMOTE_PORT=${DEV3_PORT0:-0}` is wired into the repo's `dev` sc
 `portCount: 1` is committed in `.dev3/config.json`, so the dev app binds the exact port shown
 above (see [decision 093](../../../decisions/2026/06/30/dev-remote-port-from-pool.md)).
 
+## Scoped QA: a throwaway board instead of the real one
+
+`dev3 dev-server start` boots a full dev3 instance on **your real board** — another task's
+"Branch Merged — mark completed?" dialog is live and clickable in your browser, and another task's
+terminal is reachable by navigation. For anything that does not specifically need real data, run the
+scoped instance instead:
+
+```bash
+dev3 pane run "cd $PWD && bun run dev --qa"     # throwaway board: one fixture project, zero tasks
+dev3 pane run "cd $PWD && bun run dev --qa=virgin"   # completely empty home — first-run state
+dev3 pane logs <run-id>                          # it prints the scoped DEV3_HOME and a reset line
+```
+
+It binds the same `DEV3_PORT0` and prints the port, so steps 3–4 of the flow above are unchanged.
+The scoped root is stable per worktree, so a restart reuses the same board; `rm -rf` the printed
+root to start over.
+
+**What it does NOT isolate** — name these rather than assuming a clean room: the tmux socket
+directory (only `TMUX_TMPDIR` moves it, and dev3 sets it nowhere), the PowerShell history file on
+Windows, the user's own `~/.codex` / `~/.claude` agent configs, and `dev3` CLI commands run from
+inside a REAL worktree (cwd-based task detection outranks `$DEV3_HOME` by design).
+
 ## Gotchas
 
 - **The browser is a machine-global singleton — isolate per task or agents stomp each other.**

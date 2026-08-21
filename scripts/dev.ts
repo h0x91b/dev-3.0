@@ -11,6 +11,7 @@
  */
 
 import { resolve } from "node:path";
+import { type QaScopeMode, qaScopeRoot, seedQaScope } from "./qa-scope";
 
 /** Lazy: `import.meta.dir` is a Bun-runtime value, absent when tests import this. */
 function repoRoot(): string {
@@ -53,14 +54,37 @@ export function devPlan(mode: DevMode, execPath: string): DevStep[] {
  */
 export function devRunEnv(
 	mode: DevMode,
-	source: { staticCode: string | null; port0: string | undefined },
+	source: { staticCode: string | null; port0: string | undefined; qaScope?: Record<string, string> },
 ): Record<string, string> {
 	const env: Record<string, string> = { DEV3_FRESH_START: "1" };
+	// QA scoping applies to both entry points: `--start` reuses the last build and
+	// is just as capable of clicking another task's completion dialog.
+	Object.assign(env, source.qaScope ?? {});
 	if (mode !== "dev") return env;
 	if (source.staticCode) env.DEV3_REMOTE_STATIC_CODE = source.staticCode;
 	// `${DEV3_PORT0:-0}`: 0 means "pick a free port".
 	env.DEV3_REMOTE_PORT = source.port0?.trim() || "0";
 	return env;
+}
+
+/**
+ * Opt-in, never inferred. The plain `bun run dev` is the main local dev flow and
+ * must keep showing the real board; only a run that explicitly asks gets a
+ * throwaway one.
+ *
+ * `seeded` gets one throwaway project (the QA default); `virgin` gets nothing, so
+ * an instance can be brought up in the state a brand-new user is actually in.
+ */
+export function qaScopeMode(
+	argv: readonly string[],
+	env: Record<string, string | undefined>,
+): QaScopeMode | null {
+	const flag = argv.find((arg) => arg === "--qa" || arg.startsWith("--qa="));
+	const requested = flag?.includes("=") ? flag.slice("--qa=".length).trim() : flag ? "seeded" : env.DEV3_QA_SCOPE?.trim();
+	if (!requested || requested === "0") return null;
+	if (requested === "virgin") return "virgin";
+	if (requested === "1" || requested === "seeded") return "seeded";
+	throw new Error(`[dev] unknown QA scope mode ${JSON.stringify(requested)} — use "seeded" or "virgin"`);
 }
 
 function runOrExit(step: DevStep): void {
@@ -181,9 +205,19 @@ function main(): void {
 	const mode: DevMode = process.argv.includes("--start") ? "start" : "dev";
 	for (const step of devPlan(mode, process.execPath)) runOrExit(step);
 
+	let qaScope: Record<string, string> | undefined;
+	const scopeMode = qaScopeMode(process.argv, process.env);
+	if (scopeMode) {
+		const root = qaScopeRoot(repoRoot(), scopeMode);
+		qaScope = seedQaScope(root, scopeMode);
+		console.log(`[dev] QA scope (${scopeMode}): DEV3_HOME=${qaScope.DEV3_HOME} — real ~/.dev3.0 untouched`);
+		console.log(`[dev] reset this scope with: rm -rf ${root}`);
+	}
+
 	const env = devRunEnv(mode, {
 		staticCode: mode === "dev" ? readDevWebCode() : null,
 		port0: process.env.DEV3_PORT0,
+		qaScope,
 	});
 
 	const child = Bun.spawn([process.execPath, ELECTROBUN_BIN, "dev"], {

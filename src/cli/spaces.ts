@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
-import { resolveUserHome } from "../shared/user-home";
+import { resolveDev3Home } from "../shared/dev3-home";
 import type { SpacesFile } from "../shared/types";
 import { spacesOfProject } from "../shared/types";
 import type { ProjectDirect } from "./context";
 
 // Additive sibling file next to projects.json — absent until the user makes a
 // space, and an unreadable file contributes nothing rather than throwing.
-const DEV3_HOME = `${resolveUserHome()}/.dev3.0`;
+const DEV3_HOME = resolveDev3Home();
 const SPACES_FILE = `${DEV3_HOME}/spaces.json`;
 
 function readProjectsForSiblings(): ProjectDirect[] {

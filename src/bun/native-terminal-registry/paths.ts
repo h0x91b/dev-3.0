@@ -15,6 +15,7 @@
  */
 
 import { dirname, join } from "node:path";
+import { resolveDev3Home } from "../paths";
 import type { CaptureProducerDigest } from "./capture-digest";
 
 export const NATIVE_SESSIONS_DIR_ENV = "DEV3_NATIVE_SESSIONS_DIR";
@@ -23,8 +24,13 @@ export const NATIVE_HOST_IMAGES_DIR_ENV = "DEV3_NATIVE_HOST_IMAGES_DIR";
 
 export const NATIVE_SESSION_LOCKS_DIR_ENV = "DEV3_NATIVE_SESSION_LOCKS_DIR";
 
+/**
+ * Read per call, not once at import: these helpers are used by tests that repoint
+ * `$DEV3_HOME` between cases. The resolution itself is shared with the app's
+ * `DEV3_HOME` so a scoped instance cannot end up half-redirected.
+ */
 function dev3HomeDir(): string {
-	return process.env.DEV3_HOME || `${process.env.HOME || process.env.USERPROFILE || "/tmp"}/.dev3.0`;
+	return resolveDev3Home();
 }
 
 /** Root of the registry namespace: env override, else additive `~/.dev3.0/native-sessions/`. */

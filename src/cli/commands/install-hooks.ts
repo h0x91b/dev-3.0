@@ -1,8 +1,9 @@
 import { dirname, join } from "node:path";
 import { exitError } from "../output";
 import { writeClaudeHooks, writeCodexHooks } from "../../shared/agent-hooks";
+import { resolveDev3Home } from "../../shared/dev3-home";
 
-const WORKTREES_DIR = `${process.env.HOME || "/tmp"}/.dev3.0/worktrees`;
+const WORKTREES_DIR = `${resolveDev3Home()}/worktrees`;
 
 /**
  * Walk up from cwd to find the worktree root

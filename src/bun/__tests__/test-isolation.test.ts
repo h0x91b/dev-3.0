@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
 import { INHERITED_TASK_CONTEXT_ENV, deriveTestRunRoot, testWorktreeId } from "../../../test-isolation";
+import { resolveDev3Home } from "../paths";
 
 describe("test process isolation", () => {
 	it("derives different roots for different worktrees", () => {
@@ -25,7 +26,10 @@ describe("test process isolation", () => {
 		expect(root).toBeTruthy();
 		expect(process.env.HOME).toContain(root);
 		expect(tmpdir()).toContain(root);
-		expect(process.env.DEV3_HOME).toContain(root);
+		// Derived from the sandbox HOME rather than pinned, so a suite that moves HOME
+		// to its own fixture still moves the data root with it.
+		expect(process.env.DEV3_HOME).toBeUndefined();
+		expect(resolveDev3Home()).toContain(root);
 		expect(process.env.DEV3_LOG_DIR).toContain(root);
 		expect(process.env.XDG_CONFIG_HOME).toContain(root);
 		expect(process.env.XDG_RUNTIME_DIR).toContain(root);

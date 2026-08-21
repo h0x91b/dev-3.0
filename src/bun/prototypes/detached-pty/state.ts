@@ -16,6 +16,7 @@
 
 import { existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveDev3Home } from "../../paths";
 
 export interface PtyProtoState {
 	/** PID of the detached host process that owns the shell. */
@@ -37,8 +38,7 @@ export interface PtyProtoState {
 export function stateDir(): string {
 	const explicit = process.env.DEV3_PTY_PROTO_DIR;
 	if (explicit) return explicit;
-	const dev3Home = process.env.DEV3_HOME || `${process.env.HOME || "/tmp"}/.dev3.0`;
-	return join(dev3Home, "pty-proto");
+	return join(resolveDev3Home(), "pty-proto");
 }
 
 export function stateFile(): string {

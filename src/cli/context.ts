@@ -5,6 +5,7 @@ import type { Project } from "../shared/types";
 import { parseSocketMeta, socketMetaFileName } from "../shared/socket-meta";
 import { projectStorageKey, toPosixSeparators } from "../shared/project-storage-key";
 import { resolveUserHome } from "../shared/user-home";
+import { resolveDev3Home } from "../shared/dev3-home";
 import {
 	isCliEndpointHandle,
 	parseCliEndpointRecord,
@@ -13,7 +14,10 @@ import {
 } from "../shared/cli-endpoint";
 
 const HOME = resolveUserHome();
-const DEV3_HOME = `${HOME}/.dev3.0`;
+// Same source as the app's own root, so a CLI command run inside a scoped
+// instance resolves that instance's board instead of the user's real one. The
+// project slug below is untouched and stays in lockstep (AGENTS.md invariant 4).
+const DEV3_HOME = resolveDev3Home();
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
 const WORKTREES_DIR = `${DEV3_HOME}/worktrees`;
 const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
