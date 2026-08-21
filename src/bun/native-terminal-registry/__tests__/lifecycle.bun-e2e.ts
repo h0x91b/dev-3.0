@@ -48,6 +48,7 @@ import {
 	powerShellRootStateProbe,
 	sendUntilObserved,
 	SHELL_WARMUP_PROBE,
+	WINDOWS_LINE_EDITOR_QUIET,
 } from "./command-roundtrip";
 
 /**
@@ -445,6 +446,9 @@ async function run(): Promise<void> {
 				...SHELL_WARMUP_PROBE,
 			});
 			rootPidMatches = rootObserved !== null;
+			// Before any marker exists: this session's line editor must not carry commands
+			// between sessions through the user-wide PSReadLine history (see the constant).
+			for (const line of WINDOWS_LINE_EDITOR_QUIET) send(c1, line);
 			send(c1, `Write-Output "ALPHAMARK:${nonce}"`);
 		} else {
 			send(c1, "set +H");
@@ -467,6 +471,7 @@ async function run(): Promise<void> {
 		const cB = new NativeSessionClient();
 		await cB.connect(recBravo!, readFileSync(tokenFile("bravo"), "utf8").trim());
 		const sB = makeSink(cB);
+		if (isWindows) for (const line of WINDOWS_LINE_EDITOR_QUIET) send(cB, line);
 		send(cB, isWindows ? `Write-Output "BRAVOMARK:${nonce}"` : `echo "BRAVOMARK:${nonce}"`);
 		// Asserted, never discarded: the host records a chunk into the journal BEFORE it fans the
 		// same bytes out to clients, so a marker the client saw is already in the writer. Without

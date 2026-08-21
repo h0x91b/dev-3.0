@@ -52,6 +52,25 @@ export const SHELL_WARMUP_PROBE = { attempts: 15, attemptTimeoutMs: 2000, pollIn
  */
 export const SINGLE_SHOT_WAIT = { attempts: 1, attemptTimeoutMs: 20_000, pollIntervalMs: 30 } as const;
 
+/**
+ * Lines that take one Windows session's line editor out of the conversation
+ * between sessions, typed before any marker.
+ *
+ * PSReadLine keeps ONE history file per Windows user — resolved through the shell
+ * API, so no environment variable can split it — and predicts from it as soon as a
+ * line is typed. A second session that loaded after the first accepted a line
+ * therefore renders the FIRST session's whole command as dim ghost text into its own
+ * PTY, which lands in its own journal and looks exactly like cross-session leakage
+ * (proved on windows-latest: 11 of 12 with no dev3 in the picture; see
+ * cross-session-echo-probe.ts). Two separate commands on purpose: PredictionSource
+ * exists only in PSReadLine 2.1+, and an unknown parameter must not take the other
+ * setting down with it.
+ */
+export const WINDOWS_LINE_EDITOR_QUIET = [
+	"Set-PSReadLineOption -HistorySaveStyle SaveNothing",
+	"Set-PSReadLineOption -PredictionSource None",
+] as const;
+
 /** Retry an idempotent probe while a new interactive shell prompt starts. */
 export async function sendUntilObserved<T>(options: SendUntilObservedOptions<T>): Promise<T | null> {
 	for (let attempt = 0; attempt < options.attempts; attempt++) {
