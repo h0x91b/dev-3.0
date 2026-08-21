@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
-import { getAllowedTransitions, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact, type SharedImage } from "../../shared/types";
+import { COORDINATOR_PROMPT, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact, type SharedImage } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -125,6 +125,10 @@ vi.mock("../settings", () => ({
 	recordFavoriteUsages: vi.fn(),
 }));
 
+vi.mock("../agent-prompt-delivery", () => ({
+	deliverAgentPrompt: vi.fn(async () => ({ status: "delivered" })),
+}));
+
 vi.mock("../vents", () => ({
 	addVent: vi.fn(() => ({ fileName: "2026-06-15_14-30_x.md", path: "/tmp/v/2026-06-15_14-30_x.md", name: "x" })),
 }));
@@ -163,6 +167,7 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
 import { loadSettings } from "../settings";
+import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
@@ -1737,6 +1742,106 @@ describe("task.update", () => {
 		expect(resp.data).toEqual({ task, titlePreserved: false });
 		expect(data.updateTask).not.toHaveBeenCalled();
 		expect(pushFn).not.toHaveBeenCalled();
+	});
+
+	// The hole the coordinator flagged: flipping the field alone would leave a card
+	// wearing a badge its agent was never told about.
+	describe("task.update --type", () => {
+		it("promotes a task, prepends the role preamble, and tells the running agent", async () => {
+			const project = makeProject();
+			const task = makeTask({ description: "coordinate my board" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "coordinator",
+			}));
+
+			expect(resp.ok).toBe(true);
+			const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
+			expect(updates.taskType).toBe("coordinator");
+			expect(updates.description!.startsWith(COORDINATOR_PROMPT)).toBe(true);
+			expect(updates.description!.endsWith("coordinate my board")).toBe(true);
+			expect(vi.mocked(deliverAgentPrompt).mock.calls[0]![1]).toContain(COORDINATOR_PROMPT);
+			expect((resp.data as { roleDelivery?: string }).roleDelivery).toBe("delivered");
+		});
+
+		it("demotes a task and strips the preamble back off", async () => {
+			const project = makeProject();
+			const task = makeTask({
+				taskType: "coordinator",
+				description: withPresetPrompt("coordinate my board", COORDINATOR_PROMPT),
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "standard",
+			}));
+
+			expect(resp.ok).toBe(true);
+			const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
+			expect(updates.taskType).toBeNull();
+			expect(updates.description).toBe("coordinate my board");
+			expect(vi.mocked(deliverAgentPrompt).mock.calls[0]![1]).toContain("no longer the coordinator");
+		});
+
+		it("says plainly when there is no session to tell", async () => {
+			const project = makeProject();
+			const task = makeTask({ worktreePath: null });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "coordinator",
+			}));
+
+			expect(resp.ok).toBe(true);
+			expect((resp.data as { roleDelivery?: string }).roleDelivery).toBe("no-session");
+			expect(deliverAgentPrompt).not.toHaveBeenCalled();
+		});
+
+		it("rejects an unknown type without writing anything", async () => {
+			const project = makeProject();
+			const task = makeTask();
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "overlord",
+			}));
+
+			expect(resp.ok).toBe(false);
+			expect(data.updateTask).not.toHaveBeenCalled();
+		});
+
+		it("writes nothing when the task already has that type", async () => {
+			const project = makeProject();
+			const task = makeTask({ taskType: "coordinator" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "coordinator",
+			}));
+
+			expect(resp.ok).toBe(true);
+			expect(data.updateTask).not.toHaveBeenCalled();
+			expect(deliverAgentPrompt).not.toHaveBeenCalled();
+		});
 	});
 
 	it("auto-generates title from description", async () => {

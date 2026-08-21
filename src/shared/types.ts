@@ -256,6 +256,43 @@ export function comparePriority(
 	return priorityRank(a) - priorityRank(b);
 }
 
+// ---- Task type ----
+
+/**
+ * Every task type that carries persisted behaviour. Only one exists: the
+ * coordinator. The PR-review preset deliberately stays prompt-only — it changes
+ * what the agent is told and nothing about the task, so storing it would add a
+ * value no code branches on. A second entry belongs here the day it does.
+ */
+export const TASK_TYPES = ["coordinator"] as const;
+
+export type TaskType = (typeof TASK_TYPES)[number];
+
+/** Narrows free-form input (CLI, older data file) to a known task type. */
+export function normalizeTaskType(input: string): TaskType | null {
+	const value = input.trim().toLowerCase();
+	return (TASK_TYPES as readonly string[]).includes(value) ? (value as TaskType) : null;
+}
+
+export function isCoordinatorTask(task: { taskType?: TaskType | null }): boolean {
+	return task.taskType === "coordinator";
+}
+
+/**
+ * Does the human own this task's completion? True for the explicit "I decide"
+ * flag and unconditionally for a coordinator, whose whole job outlives any
+ * single branch it happens to have merged.
+ *
+ * Derived rather than stored, so no writer — CLI, agent hook, or a future UI
+ * toggle — can leave a coordinator auto-completing. Every merge-detection path
+ * must ask this, never `task.manualCompletion` directly.
+ */
+export function taskCompletesManually(
+	task: { manualCompletion?: boolean; taskType?: TaskType | null },
+): boolean {
+	return task.manualCompletion === true || isCoordinatorTask(task);
+}
+
 /**
  * Rank offset added to a hibernated task so it sinks below every live P4 while
  * hibernated tasks stay internally ordered by their own priority. Any value
@@ -272,6 +309,18 @@ export const HIBERNATED_SORT_OFFSET = 10;
 export const DISCONNECTED_SORT_OFFSET = 5;
 
 /**
+ * Rank offset lifting a live coordinator above every live priority band: it is
+ * the task the user talks to in order to reach all the others, so it must never
+ * be scrolled to. Negative and wider than the P0–P4 spread, so the coordinator
+ * band (−10…−6) cannot collide with the live band (0…4).
+ *
+ * Deliberately applied ONLY while the coordinator is live — a hibernated or
+ * disconnected coordinator sinks like any other task, because a lift would
+ * advertise an agent that is not there.
+ */
+export const COORDINATOR_SORT_OFFSET = -10;
+
+/**
  * The subset of a task the shared sort comparator reads. Every field is
  * optional: a caller ranking a stub (a test, a CLI row) only has to supply what
  * it actually knows, and a missing field simply keeps the task in the live band.
@@ -279,7 +328,15 @@ export const DISCONNECTED_SORT_OFFSET = 5;
 export type TaskSortFields = Partial<
 	Pick<
 		Task,
-		"priority" | "hibernated" | "status" | "worktreePath" | "runtimeState" | "draft" | "preparing" | "shuttingDown"
+		| "priority"
+		| "hibernated"
+		| "status"
+		| "worktreePath"
+		| "runtimeState"
+		| "draft"
+		| "preparing"
+		| "shuttingDown"
+		| "taskType"
 	>
 >;
 
@@ -299,15 +356,20 @@ export function isTaskDisconnected(task: TaskSortFields): boolean {
 
 /**
  * Sort rank of a task: its {@link priorityRank}, plus {@link HIBERNATED_SORT_OFFSET}
- * when hibernated or {@link DISCONNECTED_SORT_OFFSET} when its session died.
- * Neither state writes `priority`, so a woken or resumed task returns to its
+ * when hibernated, {@link DISCONNECTED_SORT_OFFSET} when its session died, or
+ * {@link COORDINATOR_SORT_OFFSET} when it is a live coordinator. None of the
+ * three writes `priority`, so a woken, resumed or demoted task returns to its
  * rightful place in the queue.
+ *
+ * The sink bands are tested first on purpose: a parked coordinator is not the
+ * thing to look at, so it loses the lift for as long as it is parked.
  */
 export function taskSortRank(task: TaskSortFields): number {
-	const offset = task.hibernated
-		? HIBERNATED_SORT_OFFSET
-		: isTaskDisconnected(task) ? DISCONNECTED_SORT_OFFSET : 0;
-	return priorityRank(task.priority) + offset;
+	const rank = priorityRank(task.priority);
+	if (task.hibernated) return rank + HIBERNATED_SORT_OFFSET;
+	if (isTaskDisconnected(task)) return rank + DISCONNECTED_SORT_OFFSET;
+	if (isCoordinatorTask(task)) return rank + COORDINATOR_SORT_OFFSET;
+	return rank;
 }
 
 /**
@@ -1491,6 +1553,27 @@ export function resolvePresetPrompt(
 	return set(projectValue) ?? set(globalValue) ?? builtinDefault;
 }
 
+/** Divider between a preset preamble and the user's own text in a description. */
+export const PRESET_PROMPT_SEPARATOR = "\n\n---\n\n";
+
+/** A description made of `prompt`, then the user's own text when there is any. */
+export function withPresetPrompt(userText: string, prompt: string): string {
+	const own = userText.trim();
+	return own ? prompt + PRESET_PROMPT_SEPARATOR + own : prompt;
+}
+
+/**
+ * Inverse of {@link withPresetPrompt}, and a no-op when the preamble is not
+ * there. The separator is matched at exactly `prompt.length` rather than by
+ * first occurrence, so a user's own `---` line cannot be mistaken for the
+ * boundary.
+ */
+export function withoutPresetPrompt(description: string, prompt: string): string {
+	if (!description.startsWith(prompt)) return description;
+	const rest = description.slice(prompt.length);
+	return rest.startsWith(PRESET_PROMPT_SEPARATOR) ? rest.slice(PRESET_PROMPT_SEPARATOR.length) : "";
+}
+
 /**
  * True for the single hardcoded "Operations" board â the special, pinned virtual
  * project. Distinct from user-created virtual boards (which have `kind: "virtual"`
@@ -1903,6 +1986,22 @@ export interface Task {
 	 * every pre-existing task, so older app versions see an ordinary task.
 	 */
 	foreignCode?: boolean;
+	/**
+	 * What kind of task this is, when the kind carries behaviour. A property of
+	 * the task, not a column and not a runtime phase. Only `"coordinator"` exists:
+	 * a task whose job is to run other tasks. It forbids nothing at the data
+	 * layer, and gates exactly three things — the card is marked, a live one sorts
+	 * above every priority band ({@link COORDINATOR_SORT_OFFSET}), and its
+	 * completion always belongs to the human ({@link taskCompletesManually}),
+	 * because a coordinator outlives any branch it merged.
+	 *
+	 * Set at creation from the task-type picker, and flipped either way afterwards
+	 * with `dev3 task update --type`. The CLI keeps the preamble in the
+	 * description in step with the field, so the badge never claims a role the
+	 * agent behind it was never told about. Absent on every pre-existing task, so
+	 * older app versions see an ordinary task.
+	 */
+	taskType?: TaskType | null;
 	/**
 	 * For tasks in a virtual ("Operations") project only: the user-chosen fixed
 	 * working folder picked at creation (e.g. `~/Downloads`). When absent, the
@@ -3758,7 +3857,7 @@ export type AppRPCSchema = {
 				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
 				 * so an agent may still rename it.
 				 */
-				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority };
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType };
 				response: Task;
 			};
 			hibernateTask: {

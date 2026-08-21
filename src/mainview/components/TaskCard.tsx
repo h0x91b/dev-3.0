@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "rea
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isTaskDisconnected } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -125,6 +125,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// Its session died with the app (force quit, reboot). Nothing was lost, but
 	// nothing is running either — the card must not pass for live work.
 	const isDisconnected = isTaskDisconnected(task);
+	const isCoordinator = isCoordinatorTask(task);
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
 	const isCompleting = (moving || isMovingProp) && (task.status === "completed" || task.status === "cancelled");
@@ -817,7 +818,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : "border-transparent"} ${
+			className={`group relative flex flex-col overflow-hidden glass-card rounded-xl transition-[transform,box-shadow,background-color,border-color,opacity,filter] duration-150 ease-out border ${isDraft ? "border-dashed border-edge-active" : isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isCoordinator ? "border-dashed task-card-coordinator" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-card-hover"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-card-hover"
@@ -952,6 +953,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
 				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
+				{isCoordinator && (
+					<Tooltip content={t("task.coordinatorBadge")} detail={t("task.coordinatorHint")}>
+						<span
+							data-testid="task-card-coordinator-badge"
+							className="flex-shrink-0 rounded border border-dashed border-success/60 px-1.5 py-0.5 text-dense font-semibold uppercase tracking-[0.06em] text-success-strong"
+						>
+							{t("task.coordinatorBadge")}
+						</span>
+					</Tooltip>
+				)}
 				{isDraft && (
 					<Tooltip content={t("task.draftBadge")} detail={t("task.draftHint")}>
 						<span

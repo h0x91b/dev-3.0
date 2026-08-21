@@ -1934,4 +1934,30 @@ describe("CreateTaskModal — task type presets", () => {
 		expect(sent.title).toBe("Ship the Windows track.");
 		expect(sent.description).toContain("You are the COORDINATOR of this board.");
 	});
+
+	// The type has to reach disk, not just the prompt: the board marks the card and
+	// the sort lift off the stored field.
+	it("persists the coordinator task type", async () => {
+		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, id: "t9" });
+		renderModal();
+		await userEvent.type(description(), "Run the board.");
+		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
+		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
+
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
+		expect(mockedApi.request.createTask.mock.calls[0][0].taskType).toBe("coordinator");
+	});
+
+	// PR review changes the prompt and nothing about the task.
+	it("stores no task type for the PR review preset", async () => {
+		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, id: "t9" });
+		renderModal();
+		await userEvent.type(description(), "Look at this branch.");
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
+		expect(mockedApi.request.createTask.mock.calls[0][0].taskType).toBeUndefined();
+	});
 });

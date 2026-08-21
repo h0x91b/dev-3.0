@@ -1,6 +1,6 @@
 import { useState, type Dispatch } from "react";
 import type { CodingAgent, Label, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { getAllowedTransitions, getTaskTitle, isTaskDisconnected } from "../../shared/types";
+import { getAllowedTransitions, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT, useLocale } from "../i18n";
@@ -317,6 +317,15 @@ export default function ActiveTaskRow({
 					<div className="mt-1 flex items-center gap-1.5 min-w-0" data-testid={`sidebar-identity-${task.id}`}>
 						<NativeBackendMark task={task} className="w-3 h-3" testId={`sidebar-native-backend-${task.id}`} />
 						{agent && <AgentLauncherBadge agent={agent} size={12} />}
+						{isCoordinatorTask(task) && (
+							<span
+								data-testid="sidebar-coordinator-badge"
+								title={t("task.coordinatorHint")}
+								className="inline-flex flex-shrink-0 items-center rounded border border-dashed border-success/60 px-1 py-px text-nano font-semibold uppercase tracking-[0.06em] text-success-strong"
+							>
+								{t("task.coordinatorBadge")}
+							</span>
+						)}
 						{task.hibernated && (
 							<span
 								data-testid="sidebar-hibernated-badge"

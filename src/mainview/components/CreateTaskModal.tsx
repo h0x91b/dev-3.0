@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { COORDINATOR_PROMPT, DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, resolvePresetPrompt, titleFromDescription, type GlobalSettings, type Project, type Task, type TaskPriority } from "../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, resolvePresetPrompt, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
@@ -204,7 +204,6 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		setDescription((prev) => removeImagePath(prev, path));
 	}, []);
 
-	const PRESET_SEPARATOR = "\n\n---\n\n";
 	// Preset prompts are editable per project and app-wide, so they come from
 	// settings; `null` = the fetch is still in flight.
 	const [presetSettings, setPresetSettings] = useState<GlobalSettings | null>(null);
@@ -227,24 +226,6 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		return presetPrompt(type, await presetSettingsPromise.current ?? null);
 	}
 
-	// Prompt + (optional) user text. Pure so the PR-apply path can compute the
-	// final description synchronously without racing setState against a stale read.
-	function buildPresetDescription(baseText: string, prompt: string): string {
-		const userText = baseText.trim();
-		return userText ? prompt + PRESET_SEPARATOR + userText : prompt;
-	}
-
-	/**
-	 * Inverse of buildPresetDescription. The separator is matched at exactly
-	 * prompt.length rather than by first occurrence, so a user's own `---` line
-	 * cannot be mistaken for the boundary.
-	 */
-	function stripPresetPrompt(current: string, prompt: string): string {
-		if (!current.startsWith(prompt)) return current;
-		const rest = current.slice(prompt.length);
-		return rest.startsWith(PRESET_SEPARATOR) ? rest.slice(PRESET_SEPARATOR.length) : "";
-	}
-
 	async function handleTaskTypeChange(next: TaskTypeChoice) {
 		if (next === taskType) return;
 		const previous = taskType;
@@ -252,8 +233,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		const oldPrompt = previous === "standard" ? null : await ensurePresetPrompt(previous);
 		const newPrompt = next === "standard" ? null : await ensurePresetPrompt(next);
 		setDescription((current) => {
-			const userText = oldPrompt ? stripPresetPrompt(current, oldPrompt) : current;
-			const nextText = newPrompt ? buildPresetDescription(userText, newPrompt) : userText;
+			const userText = oldPrompt ? withoutPresetPrompt(current, oldPrompt) : current;
+			const nextText = newPrompt ? withPresetPrompt(userText, newPrompt) : userText;
 			// A 40-line preamble would otherwise leave the caret above the user's own
 			// text, so typing lands inside the prompt instead of after it.
 			requestAnimationFrame(() => {
@@ -284,7 +265,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				// Strip the URL out of the description, then fold the remaining text
 				// into the review prompt — the URL was the paste, not the task text.
 				const cleaned = description.replace(detectedPr.url, "").replace(/\n{3,}/g, "\n\n").trim();
-				setDescription(buildPresetDescription(cleaned, await ensurePresetPrompt("review")));
+				setDescription(withPresetPrompt(cleaned, await ensurePresetPrompt("review")));
 				setTaskType("review");
 				setSelectedBranch(result.branch);
 				setDismissedPrUrl(null);
@@ -306,7 +287,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	const activePresetPrompt = taskType !== "standard" && presetSettings
 		? presetPrompt(taskType, presetSettings)
 		: null;
-	const titleSource = activePresetPrompt ? stripPresetPrompt(description, activePresetPrompt) : description;
+	const titleSource = activePresetPrompt ? withoutPresetPrompt(description, activePresetPrompt) : description;
 	const generatedTitle = titleSource.trim()
 		? titleFromDescription(titleSource)
 		: "";
@@ -444,6 +425,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				...(branch ? { existingBranch: branch } : {}),
 				...(isVirtual && opsFolder ? { opsWorkDir: opsFolder } : {}),
 				...(priority !== DEFAULT_PRIORITY ? { priority } : {}),
+				// Only the coordinator preset is a persisted task type — PR review changes
+				// the prompt and nothing about the task (see TASK_TYPES).
+				...(taskType === "coordinator" ? { taskType: "coordinator" as const } : {}),
 			});
 			// The task is now persisted on disk. Make it visible on the board
 			// IMMEDIATELY — a task created into "todo" pushes no taskUpdated, so

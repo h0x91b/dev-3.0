@@ -2109,6 +2109,32 @@ describe("TaskCard — drafts", () => {
 	});
 });
 
+describe("coordinator card", () => {
+	const coordinator = (overrides?: Partial<Task>) =>
+		makeTask({ taskType: "coordinator", ...overrides });
+
+	it("names the role on the card, so colour alone need not carry it", () => {
+		renderCard(coordinator());
+
+		expect(screen.getByTestId("task-card-coordinator-badge")).toHaveTextContent(/coordinator/i);
+	});
+
+	it("outlines the card with a dashed positive border", () => {
+		const { container } = renderCard(coordinator());
+		const card = container.querySelector("[data-task-id='t1']");
+
+		expect(card?.className).toContain("border-dashed");
+		expect(card?.className).toContain("task-card-coordinator");
+	});
+
+	it("leaves an ordinary card unmarked", () => {
+		const { container } = renderCard(makeTask());
+
+		expect(screen.queryByTestId("task-card-coordinator-badge")).toBeNull();
+		expect(container.querySelector("[data-task-id='t1']")?.className).not.toContain("task-card-coordinator");
+	});
+});
+
 describe("hibernated card", () => {
 	function hibernated(overrides?: Partial<Task>): Task {
 		return makeTask({

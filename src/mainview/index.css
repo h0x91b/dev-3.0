@@ -320,6 +320,12 @@ body, #root {
 	background: rgb(var(--glass-card-rgb) / var(--glass-card-hover-alpha));
 	border-color: rgb(var(--glass-border-rgb) / var(--glass-border-card-hover-alpha));
 }
+/* A coordinator's identity border, hover included. Needed as a class rule because
+   .glass-card sets border-color and outranks a Tailwind border utility. */
+.task-card-coordinator,
+.task-card-coordinator:hover {
+	border-color: rgb(var(--success) / 0.6);
+}
 
 .glass-header {
 	background: rgb(var(--glass-header-rgb) / var(--glass-header-alpha));

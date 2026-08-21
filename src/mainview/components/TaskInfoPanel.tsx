@@ -7,7 +7,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, resolveTaskCompareBaseBranch } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getTaskTitle, isCoordinatorTask, resolveTaskCompareBaseBranch, taskCompletesManually } from "../../shared/types";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -436,6 +436,7 @@ function TaskInfoPanel({
 
 	async function handleToggleManualCompletion(event: ReactMouseEvent<HTMLButtonElement>) {
 		event.stopPropagation();
+		if (isCoordinatorTask(task)) return;
 		try {
 			const updated = await api.request.setTaskManualCompletion({
 				taskId: task.id,
@@ -749,25 +750,35 @@ function TaskInfoPanel({
 		</Tooltip>
 	);
 
+	// A coordinator owns its completion unconditionally (`taskCompletesManually`),
+	// so the control shows it on and refuses the click instead of offering a toggle
+	// that the lifecycle would ignore.
+	const completionIsForced = isCoordinatorTask(task);
+	const completionIsManual = taskCompletesManually(task);
 	const manualCompletionToggleButton = (
 		<Tooltip
-			content={task.manualCompletion ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip")}
+			content={completionIsForced
+				? t("task.manualCompletionCoordinatorTooltip")
+				: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip")}
 			detail={t("ttip.task.manualCompletion")}
 		>
 			<button
 				onClick={handleToggleManualCompletion}
-				aria-label={task.manualCompletion ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip")}
-				aria-pressed={task.manualCompletion === true}
+				disabled={completionIsForced}
+				aria-label={completionIsForced
+					? t("task.manualCompletionCoordinatorTooltip")
+					: completionIsManual ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip")}
+				aria-pressed={completionIsManual}
 				className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-					task.manualCompletion
+					completionIsManual
 						? "text-accent bg-accent/10 border border-accent/25"
 						: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
-				}`}
+				} ${completionIsForced ? "cursor-not-allowed" : ""}`}
 			>
 				{/* Icon only. Even the short "I decide" label cost bar width for a state
 				    the accent icon already carries; the full sentence lives in the
 				    tooltip and in the mobile sheet row. */}
-				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={task.manualCompletion} />
+				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={completionIsManual} />
 			</button>
 		</Tooltip>
 	);
@@ -1348,11 +1359,14 @@ function TaskInfoPanel({
 							<button
 								type="button"
 								onClick={handleToggleManualCompletion}
-								aria-pressed={task.manualCompletion === true}
-								className={`${SHEET_ROW_CLASS} ${task.manualCompletion ? "border-accent/30 bg-accent/10" : ""}`}
+								disabled={completionIsForced}
+								aria-pressed={completionIsManual}
+								className={`${SHEET_ROW_CLASS} ${completionIsManual ? "border-accent/30 bg-accent/10" : ""} ${completionIsForced ? "cursor-not-allowed opacity-60" : ""}`}
 							>
-								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${task.manualCompletion ? "text-accent" : "text-fg-3"}`} active={task.manualCompletion} />
-								<span className="flex-1 text-sm font-medium">{task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}</span>
+								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${completionIsManual ? "text-accent" : "text-fg-3"}`} active={completionIsManual} />
+								<span className="flex-1 text-sm font-medium">{completionIsForced
+									? t("task.manualCompletionCoordinatorTooltip")
+									: completionIsManual ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}</span>
 							</button>
 
 							{/* The bar may shed the diff badge on a narrow screen, so the diff

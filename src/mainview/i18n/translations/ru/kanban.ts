@@ -78,6 +78,9 @@ const kanban = {
 
 	// TaskCard
 	"task.moveTo": "Переместить в",
+	"task.coordinatorBadge": "Координатор",
+	"task.coordinatorHint": "Управляет другими задачами вместо написания кода. Всегда сверху, а завершение — за вами.",
+	"task.manualCompletionCoordinatorTooltip": "Координатор всегда завершается вручную",
 	"task.draftBadge": "Черновик",
 	"task.draftHint": "Незаконченный черновик — нажмите, чтобы продолжить писать. Запустить его пока нельзя.",
 	"task.hibernatedBadge": "Заморожена",

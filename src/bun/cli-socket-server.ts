@@ -1,10 +1,10 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskType, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { agentReplyRef } from "../shared/agent-message-envelope";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, COORDINATOR_PROMPT, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, resolvePresetPrompt, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import type { DeepLinkNav } from "../shared/deep-link";
@@ -21,6 +21,8 @@ import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } fro
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
+import { deliverAgentPrompt } from "./agent-prompt-delivery";
+import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery";
 import { NATIVE_PANE_INPUT_METHOD, runNativePaneInputAsOwner } from "./pane-input-native";
 import type { PaneInputProgram } from "../shared/pane-input";
 import { getUserIdleSeconds } from "./user-activity";
@@ -681,6 +683,38 @@ const handlers: Record<string, Handler> = {
 				updates.title = titleFromDescription(description);
 			}
 		}
+		// Task type and the preamble in the description move together, always. The
+		// preset prompt is frozen into the description at creation, so flipping the
+		// field alone would produce a task the data calls a coordinator while its
+		// agent was never told it is one — a badge nobody behind it honours.
+		let taskTypeChange: { next: TaskType | null; agentPrompt: string } | undefined;
+		if (params.taskType !== undefined) {
+			const raw = params.taskType;
+			const next = raw === null || raw === "standard" ? null : normalizeTaskType(String(raw));
+			if (raw !== null && raw !== "standard" && !next) {
+				throw new Error(`Invalid task type "${raw}". Use ${TASK_TYPES.join(", ")} or standard.`);
+			}
+			if ((task.taskType ?? null) !== next) {
+				const settings = await loadSettings();
+				const preamble = resolvePresetPrompt(
+					project.coordinatorPrompt,
+					settings.coordinatorPrompt,
+					COORDINATOR_PROMPT,
+				);
+				const base = (updates.description as string | undefined) ?? task.description;
+				// Strip first in both directions, so a repeated conversion cannot stack
+				// two copies of a 40-line preamble onto one description.
+				const ownText = withoutPresetPrompt(base, preamble);
+				updates.taskType = next;
+				updates.description = next === "coordinator" ? withPresetPrompt(ownText, preamble) : ownText;
+				taskTypeChange = {
+					next,
+					agentPrompt: next === "coordinator"
+						? `Your role just changed: you are now the COORDINATOR of this board. Everything below is your standing instruction from here on, and it replaces any earlier instruction to do the work yourself.\n\n${preamble}`
+						: "Your role just changed: you are no longer the coordinator of this board. The coordinator instructions you were given no longer apply — you are an ordinary task agent again and may do the work yourself.",
+				};
+			}
+		}
 		let manualCompletion: boolean | undefined;
 		if (params.manualCompletion !== undefined) {
 			if (typeof params.manualCompletion !== "boolean") {
@@ -698,8 +732,9 @@ const handlers: Record<string, Handler> = {
 			&& priority === undefined
 			&& !titlePreserved
 			&& params.manualCompletion === undefined
+			&& params.taskType === undefined
 		) {
-			throw new Error("Nothing to update. Provide --title, --description, --priority, or --manual-completion.");
+			throw new Error("Nothing to update. Provide --title, --description, --priority, --manual-completion, or --type.");
 		}
 
 		let updated = task;
@@ -725,7 +760,22 @@ const handlers: Record<string, Handler> = {
 			for (const t of changed) getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
 			updated = { ...updated, priority };
 		}
-		return { task: updated, titlePreserved };
+		// Tell the agent that has to honour the new role. A task with no worktree has
+		// no session to tell — it reads the rewritten description at launch instead,
+		// which is why the description is rewritten above rather than only here.
+		let roleDelivery: AgentPromptDeliveryStatus | "no-session" | undefined;
+		if (taskTypeChange) {
+			if (!updated.worktreePath) {
+				roleDelivery = "no-session";
+			} else {
+				try {
+					roleDelivery = (await deliverAgentPrompt(updated, taskTypeChange.agentPrompt)).status;
+				} catch {
+					roleDelivery = "not-delivered";
+				}
+			}
+		}
+		return { task: updated, titlePreserved, ...(roleDelivery ? { roleDelivery } : {}) };
 	},
 
 	"overview.set": async (params) => {

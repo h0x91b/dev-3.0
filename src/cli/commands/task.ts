@@ -1,5 +1,5 @@
 import type { CliResponse, Task, TaskStatus, TaskHistoryEntry, TaskNote } from "../../shared/types";
-import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, getTaskTitle, getTaskOverview, normalizePriority } from "../../shared/types";
+import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskCompletesManually } from "../../shared/types";
 import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
@@ -105,7 +105,16 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 	fields.push(["Updated:", formatDate(task.updatedAt)]);
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
 	if (task.notes && task.notes.length > 0) fields.push(["Notes:", String(task.notes.length)]);
-	if (task.manualCompletion === true) fields.push(["Manual completion:", "on"]);
+	if (task.taskType) {
+		fields.push([
+			"Type:",
+			task.taskType === "coordinator"
+				? "coordinator — manages other tasks, never auto-completes, sorts above every priority"
+				: task.taskType,
+		]);
+	}
+	// A coordinator owns its completion whether or not the flag is set.
+	if (taskCompletesManually(task)) fields.push(["Manual completion:", "on"]);
 
 	printDetail(fields);
 
@@ -201,10 +210,10 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "force"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off]");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|standard]");
 	}
 
 	const params: Record<string, unknown> = { taskId };
@@ -241,20 +250,47 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		}
 		params.manualCompletion = normalized === "on";
 	}
+	const rawType = args.flags.type;
+	if (rawType !== undefined) {
+		const value = rawType.trim().toLowerCase();
+		if (value === "standard" || value === "none" || value === "") params.taskType = null;
+		else if (normalizeTaskType(value)) params.taskType = normalizeTaskType(value);
+		else exitUsage(`--type must be one of ${TASK_TYPES.join(", ")} or standard (got "${rawType}")`);
+	}
 	if (args.flags.force === "true") {
 		params.force = true;
 	}
 
-	if (params.title === undefined && params.description === undefined && params.priority === undefined && rawManualCompletion === undefined) {
-		exitUsage("Provide --title, --description, --priority, or --manual-completion to update");
+	if (
+		params.title === undefined
+		&& params.description === undefined
+		&& params.priority === undefined
+		&& rawManualCompletion === undefined
+		&& rawType === undefined
+	) {
+		exitUsage("Provide --title, --description, --priority, --manual-completion, or --type to update");
 	}
 
 	const resp = await sendRequest(socketPath, "task.update", params);
 	if (!resp.ok) exitError(resp.error || "Failed to update task");
 
-	const result = resp.data as Task | { task: Task; titlePreserved?: boolean };
+	const result = resp.data as Task | { task: Task; titlePreserved?: boolean; roleDelivery?: string };
 	const task = "task" in result ? result.task : result;
 	const titlePreserved = "task" in result ? Boolean(result.titlePreserved) : false;
+	// A role change is only real once the agent behind the badge has been told, so
+	// say plainly which of the three answers the backend could give.
+	const roleDelivery = "task" in result ? result.roleDelivery : undefined;
+	if (roleDelivery) {
+		const role = task.taskType ?? "standard";
+		const note = roleDelivery === "delivered"
+			? `told the running agent it is now ${role}`
+			: roleDelivery === "unconfirmed"
+				? `sent the role change to the running agent, but the backend cannot confirm it landed — check the pane before relying on it`
+				: roleDelivery === "no-session"
+					? `no running agent to tell; it reads the new role from the description when it starts`
+					: `could NOT tell the running agent — it will keep behaving as before until you paste the new role in yourself`;
+		process.stderr.write(`Role: ${role} — ${note}.\n`);
+	}
 	if (titlePreserved) {
 		process.stderr.write(
 			`Note: title preserved — task ${task.id.slice(0, 8)} has a user-edited title that the CLI will not overwrite. Pass --force to override.\n`,

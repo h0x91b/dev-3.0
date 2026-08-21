@@ -498,6 +498,51 @@ describe("task update", () => {
 		});
 	});
 
+	it("sends --type coordinator as a standalone update", async () => {
+		mockSend.mockResolvedValue(okResp({
+			task: { ...FAKE_TASK, taskType: "coordinator" },
+			titlePreserved: false,
+			roleDelivery: "delivered",
+		}));
+
+		await handleTask("update", args(["aaaaaaaa"], { type: "coordinator" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
+			taskId: "aaaaaaaa",
+			taskType: "coordinator",
+		});
+		expect(stderrOutput).toContain("told the running agent");
+	});
+
+	it("maps --type standard onto a cleared type", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false, roleDelivery: "no-session" }));
+
+		await handleTask("update", args(["aaaaaaaa"], { type: "standard" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", taskType: null });
+	});
+
+	// A role change nobody could deliver must never read like a success.
+	it("warns loudly when the running agent could not be told", async () => {
+		mockSend.mockResolvedValue(okResp({
+			task: { ...FAKE_TASK, taskType: "coordinator" },
+			titlePreserved: false,
+			roleDelivery: "not-delivered",
+		}));
+
+		await handleTask("update", args(["aaaaaaaa"], { type: "coordinator" }), SOCKET, null);
+
+		expect(stderrOutput).toContain("could NOT tell the running agent");
+	});
+
+	it("rejects an unknown --type before sending", async () => {
+		await expect(
+			handleTask("update", args(["aaaaaaaa"], { type: "overlord" }), SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--type");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("rejects an invalid --manual-completion value before sending", async () => {
 		await expect(
 			handleTask("update", args(["aaaaaaaa"], { "manual-completion": "sometimes" }), SOCKET, null),

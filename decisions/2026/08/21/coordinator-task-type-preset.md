@@ -1,4 +1,4 @@
-# Coordinator is a description preset, not a persisted task kind
+# Coordinator is a persisted task type on top of a description preset
 
 ## Context
 
@@ -33,12 +33,56 @@ Also measured, since a different model default was an open question: the
 prototype runs on `builtin-claude` / `claude-auto-opus5-medium`, which is the app
 default (`src/bun/settings.ts`). No preset-specific agent or model is implied.
 
+The choice not to persist anything did not survive contact with the user: after
+seeing the picker he asked for a stored type, so the board can mark a coordinator,
+sort it first, and keep it out of the auto-completion path. That is the shape
+below.
+
 ## Decision
 
-`COORDINATOR_PROMPT` in `src/shared/types.ts`, resolved through
+Two layers, and they are deliberately separate.
+
+**The prompt.** `COORDINATOR_PROMPT` in `src/shared/types.ts`, resolved through
 `resolvePresetPrompt` against `Project.coordinatorPrompt` and
-`GlobalSettings.coordinatorPrompt`. Nothing about the choice is persisted on the
-task: the created task is an ordinary task holding the text it was given.
+`GlobalSettings.coordinatorPrompt`, injected into the description above the
+user's own text (`withPresetPrompt` / `withoutPresetPrompt`, same file).
+
+**The type.** `Task.taskType`, whose only value is `"coordinator"`. It gates
+exactly three things:
+
+- `taskSortRank` lifts a live coordinator by `COORDINATOR_SORT_OFFSET` (−10), so
+  it sits above every live priority band on every surface that sorts through the
+  one shared comparator. The lift is skipped while the task is hibernated or its
+  session is dead — a lift would advertise an agent that is not there.
+- `taskCompletesManually(task)` is true for any coordinator, so merge detection
+  never offers to close it. **Derived, never stored twice**: the lifecycle facts
+  (`lifecycle/state.ts`) and both merge-watch paths (`lifecycle/activities.ts`)
+  ask the helper, so no writer — CLI, hook, or UI — can leave a coordinator
+  auto-completing. The completion-owner control in `TaskInfoPanel` shows it on
+  and refuses the click rather than offering a toggle the lifecycle would ignore.
+- The card and the sidebar row carry a dashed `--success` border **and** a
+  `Coordinator` chip. Both, because colour alone is not an accessible signal, and
+  because the dashed border loses to the selection ring when a task is open in a
+  split.
+
+`"review"` is deliberately NOT a task type. The PR-review preset changes what the
+agent is told and nothing about the task, so storing it would add an enum value
+no code branches on — and a `--type review` the CLI accepts and ignores.
+
+**Conversion, and why it is not just a field write.** `dev3 task update --type
+coordinator|standard` (CLI socket `task.update`) does three things in one step:
+writes the field, rewrites the description's role preamble (strip-then-build, so
+a repeat cannot stack two copies), and delivers the role change to the running
+agent through `deliverAgentPrompt`. The field alone would produce a task the data
+calls a coordinator while its agent was never told — a badge every human and peer
+agent reads and the agent behind it does not honour. The CLI reports which of the
+four outcomes happened (`delivered`, `unconfirmed`, `not-delivered`,
+`no-session`) on stderr, because a role change nobody could deliver must not read
+like a success.
+
+Promotion is the user's call: the shipped agent skill puts it in the same
+protected class as priority — an agent must never promote or demote a task on its
+own initiative, least of all itself.
 
 Placement: a `Task type` radiogroup (`TaskTypePicker` in `CreateTaskModal.tsx`)
 directly under the description. The PR-review toggle was removed from
@@ -60,6 +104,22 @@ contract.
 
 ## Risks
 
+- **A coordinator outranks a P0.** Asked for explicitly, and worth writing down
+  rather than rediscovering during an incident: a live coordinator sits above a
+  P0 fire in the active-tasks view. Several coordinators stay ordered among
+  themselves by their own priority, then by the activity clock, then `seq` — the
+  ordinary in-band rules, unchanged.
+- **`taskType` is a new key in `tasks.json`, which every installed version on
+  the machine reads.** Checked rather than assumed: `rawLoadTasks` parses with
+  `JSON.parse(...) as Task[]` and mutates the parsed objects in place, never
+  enumerating fields, and `rawSaveTasks` writes those same objects back. So an
+  unknown key survives a rewrite — an older build that opens the board does not
+  demote coordinators. This holds for every version sharing that loader shape,
+  which is all that can be verified from here.
+- **Conversion cannot reach an agent that is not live.** A task with no worktree
+  gets `no-session`; it reads the rewritten description when it starts, which is
+  why the description is rewritten and not only the session told.
+
 - The preamble is long, so it dominates the textarea. Mitigated by moving the
   caret to the end and scrolling the textarea down on injection, so typing lands
   in the user's own text rather than inside the prompt.
@@ -72,10 +132,18 @@ contract.
 
 ## Alternatives considered
 
-- **Persisted `Task.coordinator` flag** (like `draft` / `hibernated` /
-  `foreignCode`), for a board badge and filtering. Rejected for now: the task
-  card's inline-action budget is full at 4/4, and a flag with no behaviour behind
-  it is decoration. Nothing here blocks adding it later.
+- **A boolean `Task.coordinator`** (like `draft` / `hibernated` / `foreignCode`)
+  instead of a typed field. Rejected: the create-flow already offers three
+  mutually exclusive kinds, and a boolean per kind is how "off, off" ends up
+  meaning something unstated. A named type also reads correctly in `dev3 task
+  show` and in `--type`.
+- **Refusing conversion while the agent is running**, leaving the promotion to
+  task creation only. Rejected: it makes the honest case (a task that turned out
+  to need coordinating) impossible, and telling the live agent is cheap and
+  already built.
+- **Forcing `manualCompletion: true` at conversion instead of deriving it.**
+  Rejected: a second source of truth that any later writer can flip back, for a
+  guarantee that must not be flippable.
 - **A full task kind** with no worktree and tool restrictions. Rejected: the
   no-worktree half fights the lifecycle machine, and refusing tools is the
   agent's choice, not something dev3 can enforce.

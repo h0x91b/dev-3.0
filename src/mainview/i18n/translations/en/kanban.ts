@@ -78,6 +78,9 @@ const kanban = {
 
 	// TaskCard
 	"task.moveTo": "Move to",
+	"task.coordinatorBadge": "Coordinator",
+	"task.coordinatorHint": "Runs the other tasks instead of writing code. Always on top, and you decide when it is done.",
+	"task.manualCompletionCoordinatorTooltip": "A coordinator always completes by hand",
 	"task.draftBadge": "Draft",
 	"task.draftHint": "Unfinished draft — click to keep writing. Nothing can start it yet.",
 	"task.hibernatedBadge": "Hibernated",

@@ -97,6 +97,12 @@ In the same session-start pass, also assign task labels:
 Each task has a priority \`P0\` (highest) … \`P4\` (lowest), default \`P3\`; the board and sidebar sort by it. \`dev3 task show\` prints it, and \`dev3 task update --priority P0..P4\` sets it (applies to the whole variant group).
 
 **Do NOT set or change a task's priority on your own initiative** — only when the user explicitly asks you to (re)prioritize. Priority is the user's judgment of importance, in the same protected class as user-edited titles. Never re-prioritize during triage, cleanup, or "helpfully."
+
+## Task type
+
+A task may be the board's **coordinator**: it manages other tasks instead of doing their work. \`dev3 task show\` prints it as \`Type:\`, its card is dashed green, it sorts above every priority band, and it never auto-completes. \`dev3 task update --type coordinator\` promotes a task and \`--type standard\` demotes it; either way dev3 rewrites the role preamble in the description and tells the running agent, so the badge and the agent behind it always agree.
+
+**Never promote or demote a task on your own initiative — least of all yourself.** Who coordinates is the user's call, in the same protected class as priority.
 `;
 
 const SKILL_CUSTOM_COLUMNS = `
