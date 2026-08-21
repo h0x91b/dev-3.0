@@ -28,11 +28,11 @@ Two different jobs, two different skills, and they are not interchangeable. `/ux
 | Changes **how an existing control looks or feels** — radius, shadow, spacing, motion, icon, copy, colour, type, focus ring, ARIA | the owning `better-*` skill (`/better-ui`, `/better-layout`, `/better-writing`, `/better-typography`, `/better-colors`, `/better-accessibility`) | They are the craft authority and go deeper than the manifest ever did. Reading 300 KB of manifest to restyle a badge buys nothing |
 | A whole screen or flow, before a PR | `/better-interface` | Cross-discipline review pass over all six craft domains |
 
-`/ux-principal` no longer owns craft rules. Colour, contrast, typography, copy, motion, layout grammar, and accessibility belong to the `better-*` skills; the bible's §9a keeps only the **project deltas and documented overrides** those skills cannot know (see [Where dev3 overrides the `better-*` skills](#where-dev3-overrides-the-better-skills)). If the manifest is stale or missing, regenerate it with `/ux-create-manifest`. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change — and note it is under a size budget enforced by `src/bun/__tests__/ux-docs-budget.test.ts`.
+`/ux-principal` no longer owns craft rules. Colour, contrast, typography, copy, motion, layout grammar, and accessibility belong to the `better-*` skills; the bible's §9a keeps only the **project deltas and documented overrides** those skills cannot know (see [Where dev3 overrides the better-family skills](#where-dev3-overrides-the-better-family-skills)). If the manifest is stale or missing, regenerate it with `/ux-create-manifest`. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change — and note it is under a size budget enforced by `src/bun/__tests__/ux-docs-budget.test.ts`.
 
 **Screenshot the zone before you plan it.** Driving the current UI beats reasoning from memory about what is on screen — same tooling as the mandatory QA pass afterwards, see [Manual UI QA in a browser](#manual-ui-qa-in-a-browser-mandatory).
 
-## Where dev3 overrides the `better-*` skills
+## Where dev3 overrides the better-family skills
 
 Three points where this repo has already decided and a `better-*` pass must not re-open them. Full reasoning: `decisions/2026/08/21/split-ux-principal-from-the-better-skills.md`.
 
