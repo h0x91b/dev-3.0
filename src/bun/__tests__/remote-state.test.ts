@@ -21,6 +21,7 @@ import {
 	clearRemoteStateIfOwnedBy,
 	isProcessAlive,
 	readRemoteState,
+	recordUpdateFailure,
 	releaseStartLock,
 	writeRemoteState,
 } from "../remote-state";
@@ -245,5 +246,61 @@ describe("handoff records", () => {
 		const read = readRemoteState();
 		expect(read?.handoff).toBeUndefined();
 		expect(read?.lastUpdate).toBeUndefined();
+	});
+});
+
+// The failure that matters most — an update that applies and then does not boot —
+// destroys the process holding the in-memory attempt counter. The supervisor runs
+// in a DIFFERENT process, so the count only survives if it is on disk.
+describe("recordUpdateFailure", () => {
+	it("counts up across calls for the same version", () => {
+		writeRemoteState(sampleState());
+		recordUpdateFailure("1.46.0", "did not boot", 1000);
+		recordUpdateFailure("1.46.0", "did not boot again", 2000);
+
+		expect(readRemoteState()?.updateAttempts).toEqual({
+			version: "1.46.0",
+			failures: 2,
+			lastFailureMs: 2000,
+			lastError: "did not boot again",
+		});
+	});
+
+	it("resets the count when a NEW version starts failing", () => {
+		writeRemoteState(sampleState());
+		recordUpdateFailure("1.46.0", "boom", 1000);
+		recordUpdateFailure("1.47.0", "boom", 2000);
+
+		expect(readRemoteState()?.updateAttempts?.failures).toBe(1);
+		expect(readRemoteState()?.updateAttempts?.version).toBe("1.47.0");
+	});
+
+	it("keeps every other field of the record intact", () => {
+		writeRemoteState(sampleState({ port: 5555 }));
+		recordUpdateFailure("1.46.0", "boom", 1000);
+
+		const after = readRemoteState();
+		expect(after?.port).toBe(5555);
+		expect(after?.pid).toBe(process.pid);
+	});
+
+	it("does nothing when there is no server record to annotate", () => {
+		clearRemoteState();
+		expect(() => recordUpdateFailure("1.46.0", "boom", 1000)).not.toThrow();
+		expect(readRemoteState()).toBeNull();
+	});
+
+	it("stays absent on an ordinary record, so nothing drifts for older readers", () => {
+		writeRemoteState(sampleState());
+		expect(readRemoteState()?.updateAttempts).toBeUndefined();
+	});
+
+	it("rejects a malformed attempts block instead of trusting it", () => {
+		writeRemoteState(sampleState());
+		const raw = JSON.parse(require("node:fs").readFileSync(REMOTE_STATE_FILE, "utf-8"));
+		raw.updateAttempts = { version: "", failures: -3 };
+		writeFileSync(REMOTE_STATE_FILE, JSON.stringify(raw));
+
+		expect(readRemoteState()?.updateAttempts).toBeUndefined();
 	});
 });

@@ -13,8 +13,10 @@
  */
 
 import { createLogger } from "./logger";
-import { evaluateQuietWindow, MAX_UPDATE_ATTEMPTS, PTY_QUIET_MS, retryBackoffMs } from "../shared/self-update";
+import { evaluateQuietWindow, MAX_UPDATE_ATTEMPTS, PTY_QUIET_MS, retryBackoffMs, type UpdatePlan } from "../shared/self-update";
 import type { UpdateChannel } from "../shared/update-channel";
+import type { RemoteUpdateAttempts } from "../shared/types";
+import { readRemoteState, recordUpdateFailure } from "./remote-state";
 import { buildPlan, runSelfUpdate } from "./self-update";
 
 const log = createLogger("self-update-watch");
@@ -33,6 +35,8 @@ interface WatchState {
 	lastFailureMs: number | null;
 	/** True once the give-up has been logged, so it is said loudly exactly once. */
 	gaveUpLogged: boolean;
+	/** Version already fetched and extracted, so a press of Restart is fast. */
+	preStaged: string | null;
 	/** Versions already announced to connected browsers, so the plaque appears once. */
 	announced: Set<string>;
 	/** Refusal reasons already logged, so a box that can never update says why once. */
@@ -46,6 +50,7 @@ const state: WatchState = {
 	failedAttempts: 0,
 	lastFailureMs: null,
 	gaveUpLogged: false,
+	preStaged: null,
 	announced: new Set(),
 	loggedRefusals: new Set(),
 };
@@ -123,9 +128,19 @@ async function selectedChannel(): Promise<UpdateChannel> {
 	return (await loadSettings()).updateChannel;
 }
 
-async function checkOnce(push: (name: string, payload: unknown) => void): Promise<void> {
+/** One tick. Exported so the state machine around it is testable without timers. */
+export async function checkOnce(push: (name: string, payload: unknown) => void): Promise<void> {
 	const channel = await selectedChannel();
-	const { plan, install, summary } = await buildPlan(channel);
+	const { plan, install, summary, checkError } = await buildPlan(channel);
+
+	// A FEED THAT DID NOT ANSWER IS NOT A VERDICT. `buildPlan` turns a network or
+	// manifest error into a refusal, which would otherwise clear the pending clock
+	// and the failure counters — so one blip on a flaky uplink erases the backoff,
+	// the give-up, and the 72-hour ceiling that box may never otherwise reach.
+	if (checkError) {
+		log.debug("Update check failed — keeping the pending state as it is", { error: checkError });
+		return;
+	}
 
 	if (plan.kind !== "brew" && plan.kind !== "tarball") {
 		// Up to date, or this install can never self-update. Either way there is
@@ -150,53 +165,74 @@ async function checkOnce(push: (name: string, payload: unknown) => void): Promis
 		state.failedAttempts = 0;
 		state.lastFailureMs = null;
 		state.gaveUpLogged = false;
+		state.preStaged = null;
 		log.info("Update pending", { version: plan.version, summary });
 	}
 
-	// Let any connected browser show the ordinary header plaque, once per version.
-	if (!state.announced.has(plan.version)) {
+	// Let any connected browser show the ordinary header plaque, once per version —
+	// but ONLY count it as announced if somebody was actually listening. The usual
+	// state of a headless box is zero clients (the operator's phone tab is closed),
+	// and a push with no audience is simply dropped; marking it announced anyway
+	// meant the plaque never appeared again for the life of the process, which is
+	// precisely the case the "silent updates off" toggle exists for.
+	const clients = await browserClientCount();
+	if (!state.announced.has(plan.version) && clients > 0) {
 		state.announced.add(plan.version);
 		push("updateAvailable", { version: plan.version });
 	}
 
-	if (!(await silentUpdatesEnabled())) {
+	const silent = await silentUpdatesEnabled();
+
+	// STAGE BEFORE ANYBODY PRESSES ANYTHING. The Restart button runs the whole
+	// update inside one RPC call, and the renderer gives up on that call after 120 s
+	// — less than a ~76 MB download or a `brew fetch` needs — so it toasts a failure
+	// for an update that then succeeds and restarts the box underneath the user.
+	// With the release already staged, the apply is renames only.
+	await preStage(plan);
+
+	if (!silent) {
 		log.info("Silent updates are off in settings — waiting for someone to press Update", {
 			version: plan.version,
 		});
 		return;
 	}
 
-	const [tasksInProgress, ptyIdleMs, browserClients] = await Promise.all([
-		countTasksInProgress(),
-		probePtyIdleMs(),
-		browserClientCount(),
-	]);
+	const [tasksInProgress, ptyIdleMs] = await Promise.all([countTasksInProgress(), probePtyIdleMs()]);
+	// The persisted count wins when it is higher: the failure it records — an update
+	// that applied and then would not boot — happened in a process whose in-memory
+	// counter died with it.
+	const persisted = persistedAttempts(plan.version);
+	const failedAttempts = Math.max(state.failedAttempts, persisted?.failures ?? 0);
+	const lastFailureMs = persisted && persisted.failures >= state.failedAttempts
+		? persisted.lastFailureMs
+		: state.lastFailureMs;
 	const verdict = evaluateQuietWindow({
 		tasksInProgress,
 		ptyIdleMs,
-		browserClients,
+		browserClients: clients,
 		quietSinceMs: state.quietSinceMs,
 		pendingSinceMs: state.pendingSinceMs,
-		failedAttempts: state.failedAttempts,
-		lastFailureMs: state.lastFailureMs,
+		failedAttempts,
+		lastFailureMs,
 		now: Date.now(),
 	});
 	state.quietSinceMs = verdict.quietSinceMs;
 
 	if (verdict.decision === "wait") {
-		const givingUp = state.failedAttempts >= MAX_UPDATE_ATTEMPTS;
+		const givingUp = failedAttempts >= MAX_UPDATE_ATTEMPTS;
 		if (givingUp && !state.gaveUpLogged) {
 			state.gaveUpLogged = true;
 			log.error("Giving up on this version — it has to be installed by hand", {
 				version: plan.version,
-				attempts: state.failedAttempts,
+				attempts: failedAttempts,
+				lastError: persisted?.lastError,
 			});
 		} else if (!givingUp) {
 			log.info("Holding off the silent update", {
 				version: plan.version,
 				reason: verdict.reason,
 				tasksInProgress,
-				browserClients,
+				browserClients: clients,
 				ptyQuietThresholdMs: PTY_QUIET_MS,
 			});
 		}
@@ -204,17 +240,54 @@ async function checkOnce(push: (name: string, payload: unknown) => void): Promis
 	}
 
 	log.info("Applying update silently", { version: plan.version, reason: verdict.reason });
-	const outcome = await runSelfUpdate({ channel, restart: true });
-	if (!outcome.ok) {
-		state.failedAttempts += 1;
-		state.lastFailureMs = Date.now();
-		state.quietSinceMs = null;
-		log.error("Silent update failed — the server is still running the old build", {
-			error: outcome.message,
-			attempt: state.failedAttempts,
-			nextTryInMs: retryBackoffMs(state.failedAttempts),
-		});
+	const outcome = await runSelfUpdate({ channel, restart: true, silent: true });
+	if (outcome.ok) return;
+
+	// A REFUSAL IS NOT AN ATTEMPT. `runSelfUpdate` re-checks the feed, so a network
+	// blip comes back as a refusal — and counting those would spend the version's
+	// whole budget on nothing, then refuse the build forever. Only a real stage or
+	// apply failure counts.
+	if (outcome.refused) {
+		log.info("Silent update declined without attempting anything", { reason: outcome.message });
+		return;
 	}
+	state.failedAttempts = failedAttempts + 1;
+	state.lastFailureMs = Date.now();
+	state.quietSinceMs = null;
+	recordUpdateFailure(plan.version, outcome.message);
+	log.error("Silent update failed — the server is still running the old build", {
+		error: outcome.message,
+		attempt: state.failedAttempts,
+		nextTryInMs: retryBackoffMs(state.failedAttempts),
+	});
+}
+
+/** Attempts recorded on disk for `version`, ignoring counts left by an older one. */
+function persistedAttempts(version: string): RemoteUpdateAttempts | null {
+	const recorded = readRemoteState()?.updateAttempts;
+	return recorded && recorded.version === version ? recorded : null;
+}
+
+/**
+ * Fetch and extract the pending release now, so an apply is renames only.
+ *
+ * Failures are logged and swallowed: this is opportunistic. The real attempt runs
+ * `stageUpdate` again and reports properly, and a second call reuses this tree
+ * rather than downloading it twice.
+ */
+async function preStage(plan: Extract<UpdatePlan, { kind: "brew" | "tarball" }>): Promise<void> {
+	if (state.preStaged === plan.version) return;
+	const { stageUpdate } = await import("./self-update");
+	const staged = await stageUpdate(plan);
+	if (staged.ok) {
+		state.preStaged = plan.version;
+		log.info("Pre-staged the pending update so a restart is fast", { version: plan.version });
+		return;
+	}
+	log.warn("Could not pre-stage the pending update; it will be fetched when applied", {
+		version: plan.version,
+		error: staged.error,
+	});
 }
 
 /**
@@ -246,6 +319,7 @@ export function _resetWatchState(): void {
 	state.failedAttempts = 0;
 	state.lastFailureMs = null;
 	state.gaveUpLogged = false;
+	state.preStaged = null;
 	state.announced.clear();
 	state.loggedRefusals.clear();
 }

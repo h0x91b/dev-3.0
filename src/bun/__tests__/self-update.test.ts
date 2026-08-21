@@ -376,7 +376,18 @@ describe("chooseRestartStrategy", () => {
 		expect(chooseRestartStrategy({ DEV3_REMOTE_LOG_FILE: "/tmp/x.log" })).toBe("helper");
 	});
 
-	it("defers to whoever owns a foreground / container run", () => {
-		expect(chooseRestartStrategy({})).toBe("supervisor-exit");
+	// A human watching a terminal is NOT a supervisor. Exiting there leaves the box
+	// dark until somebody notices — the exact failure this feature exists to prevent.
+	it("refuses to exit an interactive foreground run, because nothing would relaunch it", () => {
+		expect(chooseRestartStrategy({}, true)).toBe("none");
+	});
+
+	it("still exits for a container CMD, which has no TTY but does have a restart policy", () => {
+		expect(chooseRestartStrategy({}, false)).toBe("supervisor-exit");
+	});
+
+	it("lets the markers win over the TTY either way", () => {
+		expect(chooseRestartStrategy({ INVOCATION_ID: "abc" }, true)).toBe("supervisor-exit");
+		expect(chooseRestartStrategy({ DEV3_REMOTE_LOG_FILE: "/tmp/x.log" }, true)).toBe("helper");
 	});
 });

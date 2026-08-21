@@ -137,14 +137,15 @@ export interface StagedUpdate {
 }
 
 /**
- * What the last successful {@link stageUpdate} produced, so pressing Download and
- * then Restart does not fetch the same release twice.
+ * What the last successful {@link stageUpdate} produced, so the release is fetched
+ * once per offer rather than once per attempt.
  *
- * The headless Download button stages, and the Restart button then runs the whole
- * sequence — which used to stage again from scratch (the tarball path deletes the
- * staged tree at its top), doubling the bandwidth and the wait on exactly the
- * metered box this feature exists for. Keyed by the plan so a newer offer never
- * reuses an older tree, and re-validated against the disk before reuse.
+ * THE WATCH PRE-STAGES; THE BUTTON MUST NOT DOWNLOAD. The renderer abandons an
+ * RPC call after 120 s, which a ~76 MB download or a `brew fetch` routinely
+ * exceeds — so without a warm tree the Restart button toasts a failure for an
+ * update that then succeeds and restarts the box underneath the user. Keyed by the
+ * plan so a newer offer never reuses an older tree, and re-validated against the
+ * disk before reuse.
  */
 let lastStaged: { key: string; staged: StagedUpdate } | null = null;
 
@@ -241,7 +242,11 @@ export async function stageUpdate(plan: UpdatePlan): Promise<{ ok: true; staged:
 export interface AppliedUpdate {
 	/** A binary that still runs the OLD build, for the supervisor and for rollback. */
 	fallbackBin: string | null;
-	/** Views dir that matches `fallbackBin`, when the old tree is still intact. */
+	/**
+	 * Views dir that PROVABLY matches `fallbackBin`. Only the tarball path has one
+	 * (its old `dist/` was moved aside, not overwritten); a brew apply leaves null
+	 * rather than a path brew has since replaced with the new bundle.
+	 */
 	fallbackViews: string | null;
 	/** Set for a tarball apply: the directory holding the replaced files. */
 	prevDir: string | null;
@@ -262,7 +267,12 @@ export async function applyUpdate(staged: StagedUpdate): Promise<{ ok: true; app
 
 	if (staged.plan.kind === "brew") {
 		const fallbackBin = copyBinaryAside();
-		const fallbackViews = existsSync(join(dir, "dist")) ? join(dir, "dist") : null;
+		// NO VIEWS DIR FOR A BREW ROLLBACK. `<installDir>/dist` is a PATH, not a
+		// snapshot: brew replaces the whole keg (or the whole `.app`), so by the time a
+		// rollback reads it, it holds the NEW renderer bundle. Starting the old binary
+		// against it is an old server serving a new bundle — on the one code path whose
+		// entire job is to be trustworthy. Null lets it fall back to its own resolution.
+		const fallbackViews = null;
 		const r = await run(staged.plan.command);
 		if (!r.ok) return { ok: false, error: `${staged.plan.command.join(" ")} failed: ${r.error}` };
 		lastStaged = null; // the staged bottle is spent
@@ -338,13 +348,18 @@ function copyBinaryAside(): string | null {
  *    `DEV3_REMOTE_LOG_FILE`). Nothing supervises it, so it spawns a detached
  *    helper that waits for us to die, starts the new build, and rolls back if the
  *    new build never reports in.
+ *  - `none`: an INTERACTIVE `dev3 remote --no-detach` — a human watching a
+ *    terminal is not a supervisor. Exiting there leaves the box dark until
+ *    somebody notices, which is exactly what this feature exists to prevent, so
+ *    the update is installed and the restart is left to the operator. A container
+ *    CMD has no TTY and a restart policy, so it keeps `supervisor-exit`.
  */
-export type RestartStrategy = "helper" | "supervisor-exit";
+export type RestartStrategy = "helper" | "supervisor-exit" | "none";
 
-export function chooseRestartStrategy(env: NodeJS.ProcessEnv): RestartStrategy {
+export function chooseRestartStrategy(env: NodeJS.ProcessEnv, isTTY: boolean = Boolean(process.stdout.isTTY)): RestartStrategy {
 	if (env.INVOCATION_ID) return "supervisor-exit";
 	if (env.DEV3_REMOTE_LOG_FILE) return "helper";
-	return "supervisor-exit";
+	return isTTY ? "none" : "supervisor-exit";
 }
 
 /** Exit code a self-updated server leaves behind so its supervisor restarts it. */
@@ -402,6 +417,12 @@ export async function runSelfUpdate(opts: {
 	channel: UpdateChannel;
 	/** False for `dev3 update` on a box with no server running: install, don't restart. */
 	restart: boolean;
+	/**
+	 * True for the background watch. Nobody asked, so anything that cannot finish
+	 * cleanly is declined rather than half-done — a human pressing the button gets
+	 * told instead.
+	 */
+	silent?: boolean;
 	onProgress?: (message: string) => void;
 }): Promise<SelfUpdateOutcome> {
 	const progress = opts.onProgress ?? ((m: string) => log.info(m));
@@ -410,6 +431,22 @@ export async function runSelfUpdate(opts: {
 
 	if (plan.kind === "up-to-date") return { ok: true, restarting: false, message: summary, version: runningVersion };
 	if (plan.kind === "refused") return { ok: false, refused: true, restarting: false, message: plan.reason };
+
+	// NOTHING IS DOWNLOADED WHEN THE RESTART CANNOT HAPPEN. An interactive
+	// `--no-detach` run has no supervisor, so a silent update would install a build
+	// this process cannot become — and, because the running version never changes,
+	// re-download it every quiet window forever.
+	const strategy = opts.restart ? chooseRestartStrategy(process.env) : "none";
+	if (opts.silent && strategy === "none") {
+		return {
+			ok: false,
+			refused: true,
+			restarting: false,
+			message:
+				`${plan.version} is available, but this server runs in the foreground with nothing to relaunch it, ` +
+				"so it will not update itself. Press Update, or run `dev3 update` and restart it.",
+		};
+	}
 
 	progress(`Staging ${plan.version}…`);
 	const stagedResult = await stageUpdate(plan);
@@ -430,6 +467,21 @@ export async function runSelfUpdate(opts: {
 		};
 	}
 
+	if (strategy === "none") {
+		// Installed, but exiting would take the box down for good: nothing out here
+		// relaunches an interactive foreground run. Keep serving the old build in
+		// memory and hand the restart back to the person watching the terminal.
+		log.warn("Update installed but this run has no supervisor — leaving the restart to the operator", {
+			toVersion: plan.version,
+		});
+		return {
+			ok: true,
+			restarting: false,
+			message: `Installed ${plan.version}. This server runs in the foreground, so restart it yourself to pick it up.`,
+			version: plan.version,
+		};
+	}
+
 	// Only the MAIN tunnel is handed over. Per-port tunnels (`--expose-ports`, the
 	// GUI Expose button) each own a cloudflared pointed at a dev-server port, and
 	// their URLs are already ephemeral — carrying them across would mean tracking
@@ -438,12 +490,11 @@ export async function runSelfUpdate(opts: {
 	const { cleanupAllTunnels } = await import("./port-tunnels");
 	cleanupAllTunnels();
 
-	const strategy = chooseRestartStrategy(process.env);
 	const handoff = await prepareHandoff(strategy);
 	persistHandoff(handoff, record);
 
 	if (strategy === "helper") {
-		spawnSupervisor({
+		const spawned = spawnSupervisor({
 			waitPid: process.pid,
 			startBin: newBuildBin(plan),
 			startEnv: collectServerEnv(),
@@ -455,6 +506,18 @@ export async function runSelfUpdate(opts: {
 			fromVersion: runningVersion,
 			toVersion: plan.version,
 		});
+		if (!spawned) {
+			// Exiting now would leave no server at all. The files are already swapped,
+			// so staying up on the old build in memory is the least-bad state — and the
+			// operator has something to read instead of a dark box.
+			log.error("No relaunch helper could be started — staying up on the old build", { toVersion: plan.version });
+			await clearHandoff();
+			return {
+				ok: false,
+				restarting: false,
+				message: `Installed ${plan.version} but could not start the relaunch helper, so nothing restarted. Restart the server by hand.`,
+			};
+		}
 	}
 
 	log.info("Self-update applied; exiting to be replaced", { strategy, ...record });
@@ -519,6 +582,39 @@ async function prepareHandoff(strategy: RestartStrategy): Promise<RemoteHandoff>
 	return { port, fromPid: process.pid, tunnel };
 }
 
+/**
+ * Undo a handoff we are not going to use, because no successor is coming.
+ *
+ * Two things have to be taken back, or the still-running box is quietly broken:
+ * the record on disk (a later start would try to adopt a tunnel long dead by
+ * then), and the tunnel itself — `releaseMainTunnelForHandoff` dropped it from
+ * the map without signalling it, so re-adopting is what puts it back under the
+ * health monitor and under `stopTunnel` at shutdown.
+ */
+async function clearHandoff(): Promise<void> {
+	const current = readRemoteState();
+	if (current?.handoff) {
+		const tunnel = current.handoff.tunnel;
+		try {
+			writeRemoteState({ ...current, handoff: null });
+		} catch (err) {
+			log.warn("Could not clear the unused handoff record", { error: String(err) });
+		}
+		if (tunnel) {
+			try {
+				const { adoptMainTunnel } = await import("./cloudflare-tunnel");
+				const { getServerPort } = await import("./remote-access-server");
+				adoptMainTunnel({ ...tunnel, targetPort: getServerPort() });
+				log.info("Took our own tunnel back after the restart was abandoned", { pid: tunnel.pid });
+			} catch (err) {
+				log.warn("Could not re-adopt the released tunnel — it is still running but unmanaged", {
+					error: String(err),
+				});
+			}
+		}
+	}
+}
+
 function persistHandoff(handoff: RemoteHandoff, record: { fromVersion: string; toVersion: string; startedAt: string }): void {
 	const current = readRemoteState();
 	if (!current) {
@@ -544,30 +640,44 @@ function collectServerEnv(): Record<string, string> {
 	return out;
 }
 
-function spawnSupervisor(job: SuperviseJob): void {
-	// The supervisor runs the OLD binary on purpose: it is the thing that has to
-	// still work when the NEW binary does not. On a tarball apply that is the copy
-	// sitting in `.dev3-prev/`; on a brew apply it is the copy taken aside before
-	// the upgrade. With neither, there is nothing trustworthy to supervise from.
-	const bin = job.fallbackBin;
-	if (!bin || !existsSync(bin)) {
-		log.warn("No old binary to supervise from — restarting without rollback cover");
-		spawnDetached(job.startBin, ["remote", "start", "--no-detach"], job.startEnv, job.logFile);
-		return;
+/**
+ * Start the relaunch helper, and return whether one is actually coming.
+ *
+ * NOTHING HERE MAY START A SERVER DIRECTLY. This process still holds the port for
+ * another ~750 ms, so a direct `spawnDetached` races its own predecessor: the
+ * successor's `EADDRINUSE` kills it, the handoff is rejected because our pid is
+ * still alive (leaving the deliberately-leaked cloudflared orphaned *and*
+ * unadopted), and both servers briefly write the same state file. Every helper
+ * therefore goes through `dev3 update --supervise`, which waits for our pid first.
+ *
+ * Preferring the OLD binary is the point: it is the thing that has to still work
+ * when the new one does not. With no old binary the NEW one supervises itself —
+ * worse cover, but it still waits — and if even that cannot be spawned we say so
+ * and stay alive rather than exit into an empty box.
+ */
+function spawnSupervisor(job: SuperviseJob): boolean {
+	const candidates = [job.fallbackBin, job.startBin].filter(
+		(bin): bin is string => Boolean(bin) && existsSync(bin as string),
+	);
+	if (!job.fallbackBin || !existsSync(job.fallbackBin)) {
+		log.warn("No old binary to supervise from — the new build will supervise itself, with no rollback cover");
 	}
-	try {
-		const proc = spawn([bin, "update", "--supervise"], {
-			env: { ...process.env, [SUPERVISE_ENV]: JSON.stringify(job) },
-			stdout: "ignore",
-			stderr: "ignore",
-			stdin: "ignore",
-		});
-		proc.unref?.();
-		log.info("Spawned update supervisor", { bin, pid: proc.pid });
-	} catch (err) {
-		log.error("Could not spawn the update supervisor — restarting unsupervised", { error: String(err) });
-		spawnDetached(job.startBin, ["remote", "start", "--no-detach"], job.startEnv, job.logFile);
+	for (const bin of candidates) {
+		try {
+			const proc = spawn([bin, "update", "--supervise"], {
+				env: { ...process.env, [SUPERVISE_ENV]: JSON.stringify(job) },
+				stdout: "ignore",
+				stderr: "ignore",
+				stdin: "ignore",
+			});
+			proc.unref?.();
+			log.info("Spawned update supervisor", { bin, pid: proc.pid });
+			return true;
+		} catch (err) {
+			log.error("Could not spawn the update supervisor from this binary", { bin, error: String(err) });
+		}
 	}
+	return false;
 }
 
 /** Start a headless server detached, with its output appended to `logFile`. */
@@ -627,7 +737,16 @@ export async function runSupervisor(job: SuperviseJob): Promise<{ ok: boolean; m
 		toVersion: job.toVersion,
 		fromVersion: job.fromVersion,
 	});
-	return rollback(job, started);
+	const result = await rollback(job, started);
+	// THE ROLLBACK IS THE FAILURE NOBODY WAS COUNTING. `runSelfUpdate` already
+	// returned "ok, restarting" and that process is gone, so the only place this can
+	// be recorded is on disk — and it has to be recorded, or the restored build's
+	// watch starts from zero and re-downloads the same broken release every quiet
+	// window. Written AFTER the restore, so the restored server's state file is the
+	// one that carries it.
+	const { recordUpdateFailure } = await import("./remote-state");
+	recordUpdateFailure(job.toVersion, `${job.toVersion} did not boot; rolled back (${result.message})`);
+	return result;
 }
 
 async function rollback(job: SuperviseJob, deadPid: number | undefined): Promise<{ ok: boolean; message: string }> {

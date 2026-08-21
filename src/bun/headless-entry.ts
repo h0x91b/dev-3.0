@@ -81,6 +81,22 @@ const wantTunnel = process.env.DEV3_REMOTE_NO_TUNNEL !== "1";
 // Read BEFORE the state file is rewritten below, or the explanation is lost.
 const priorUpdateRecord = readRemoteState()?.lastUpdate ?? null;
 let handoff = readRemoteHandoff();
+// AN EXPLICIT PORT OUTRANKS A LEFTOVER RECORD. A handoff survives whenever a
+// successor died before writing its own state, and taking its port unconditionally
+// meant the next ordinary start — a systemd unit or a Docker CMD carrying
+// `--port 8080` that the host maps — silently bound something else, breaking the
+// mapping with nothing but an info log to explain it.
+const requestedPort = Number(process.env.DEV3_REMOTE_PORT || 0);
+if (handoff && requestedPort > 0 && requestedPort !== handoff.port) {
+	log.warn("Discarding a handoff that disagrees with the port this start was given", {
+		handoffPort: handoff.port,
+		requestedPort,
+	});
+	if (handoff.tunnel) {
+		try { process.kill(handoff.tunnel.pid, "SIGTERM"); } catch { /* already gone */ }
+	}
+	handoff = null;
+}
 if (handoff) {
 	log.info("Found a handoff from the server we are replacing", {
 		fromPid: handoff.fromPid,
@@ -259,19 +275,42 @@ setPortTunnelsPushHook((name, payload) => {
 });
 
 // ── Remote-access HTTP + WebSocket server ──
-await startRemoteAccessServer({
-	rpcHandler: async (method: string, params: unknown) => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const handler = (handlers as any)[method];
-		if (!handler) throw new Error(`Unknown RPC method: ${method}`);
-		return await handler(params);
-	},
-	getPtyPort,
-	registerBackpressureProbe,
-	onQrTokenConsumed: () => {
-		getPushMessage()?.("qrTokenConsumed", {});
-	},
-});
+try {
+	await startRemoteAccessServer({
+		rpcHandler: async (method: string, params: unknown) => {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const handler = (handlers as any)[method];
+			if (!handler) throw new Error(`Unknown RPC method: ${method}`);
+			return await handler(params);
+		},
+		getPtyPort,
+		registerBackpressureProbe,
+		onQrTokenConsumed: () => {
+			getPushMessage()?.("qrTokenConsumed", {});
+		},
+	});
+} catch (err) {
+	// The free-port probe above is several awaits old by now, so somebody can still
+	// have taken it. We are about to die; the inherited cloudflared must not outlive
+	// us as an orphan pointing at a port nobody is serving.
+	if (handoff?.tunnel) {
+		log.warn("Bind failed after adopting a handoff — killing the inherited tunnel", { pid: handoff.tunnel.pid });
+		try { process.kill(handoff.tunnel.pid, "SIGTERM"); } catch { /* already gone */ }
+	}
+	throw err;
+}
+
+// The port we actually got must be the one the inherited cloudflared points at.
+// Anything else and the tunnel would proxy a stranger's port, so it is killed
+// rather than adopted.
+if (handoff?.tunnel && getServerPort() !== handoff.port) {
+	log.warn("Bound a different port than the handoff recorded — killing the inherited tunnel", {
+		handoffPort: handoff.port,
+		boundPort: getServerPort(),
+	});
+	try { process.kill(handoff.tunnel.pid, "SIGTERM"); } catch { /* already gone */ }
+	handoff = null;
+}
 
 // ── Persist lifecycle state so `dev3 remote status/stop/url` (a separate
 // process, e.g. a fresh SSH session) can find and control this server. This

@@ -3328,6 +3328,17 @@ export interface RemoteServerState {
 	 * otherwise unexplained restart in `dev3 remote status`.
 	 */
 	lastUpdate?: RemoteUpdateRecord | null;
+	/**
+	 * Failed attempts at one offered version, DELIBERATELY ON DISK rather than in
+	 * the watch's memory.
+	 *
+	 * The failure that matters most destroys the memory holding the counter: an
+	 * update that applies and then does not boot leaves the old build restarted by
+	 * the supervisor, with a fresh in-process counter at zero. Without this the box
+	 * re-downloads and re-applies the same broken release every quiet window,
+	 * forever, each round costing a full download and about a minute unreachable.
+	 */
+	updateAttempts?: RemoteUpdateAttempts | null;
 }
 
 /** The port + live tunnel one server hands to its replacement. */
@@ -3351,6 +3362,17 @@ export interface RemoteUpdateRecord {
 	toVersion: string;
 	/** ISO timestamp of when the update started (before the restart). */
 	startedAt: string;
+}
+
+/** Failed attempts at one version, surviving the restart that lost the counter. */
+export interface RemoteUpdateAttempts {
+	/** The offered version these failures belong to. A new version resets them. */
+	version: string;
+	failures: number;
+	/** Epoch ms of the most recent failure, driving the backoff. */
+	lastFailureMs: number;
+	/** Why the last one failed, so the journal is not the only record. */
+	lastError?: string;
 }
 
 /**

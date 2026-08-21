@@ -103,6 +103,36 @@ conditions no longer apply, so without this a permanently broken update — a 40
 full disk, brew behind a proxy — would re-attempt on every 30-minute tick, 48 times a day, on
 a box nobody is watching. Only a NEW version clears the give-up.
 
+**The attempt counter lives on disk, not in the watch's memory**
+(`RemoteServerState.updateAttempts`, written by `recordUpdateFailure`). The failure it exists
+for destroys the process holding it: an update that applies and then does not boot leaves the
+supervisor restarting the *old* build, whose watch starts from zero. The supervisor therefore
+records the rollback itself, from its own process, after the restore. Only a *refusal* is
+exempt from counting — `runSelfUpdate` re-checks the feed, so a network blip comes back as a
+refusal, and counting those would spend a version's whole budget on nothing and then refuse
+that build forever.
+
+**Nothing is downloaded when the restart cannot happen.** An interactive `--no-detach` run has
+no supervisor, so `chooseRestartStrategy` returns `none` (TTY, no `INVOCATION_ID`, no
+`DEV3_REMOTE_LOG_FILE`) and the silent path declines outright — installing there would exit
+into a dark box, or, if it did not exit, re-download the same build every quiet window because
+the running version never changes. A container CMD has no TTY and does have a restart policy,
+so it keeps `supervisor-exit`.
+
+**The watch pre-stages; the button never downloads.** The renderer abandons an RPC call after
+120 s (`RPC_TIMEOUT_MS`), which a ~76 MB download or a `brew fetch` routinely exceeds — so the
+Restart button used to toast a failure for an update that then succeeded and restarted the box
+underneath the user. Staging happens on the announcing tick, including when silent updates are
+switched off, which is exactly when the button is the only path.
+
+**Every relaunch goes through `dev3 update --supervise`, never a direct spawn.** The dying
+server still holds the port for ~750 ms, so a direct start races its predecessor: the
+successor's `EADDRINUSE` kills it, the handoff is rejected because our pid is still alive
+(orphaning the deliberately-leaked cloudflared *and* leaving it unadopted), and both servers
+briefly write the same state file. With no old binary the new one supervises itself; with
+nothing spawnable at all, the server stays up on the old build and says so rather than exiting
+into an empty box.
+
 **Two "unknowns" deliberately fail closed.** An unreadable terminal-activity probe counts as
 busy, never as quiet; and the renderer's 5-minute auto-restart requires a *known*
 non-headless context (`headless === false`, not `!== true`), so a failed or still-pending RPC
@@ -125,6 +155,15 @@ cannot let a phone tab restart a remote server unattended.
 - **A restart landing during worktree creation** leaves a task mid-`preparing`. Accepted: the
   existing stale-worktree recovery picks it up at boot, and "no task in progress" is the one
   condition the 72-hour ceiling never overrides.
+- **A brew rollback starts the old binary with no matching renderer bundle.** `<installDir>/dist`
+  is a path, not a snapshot — brew replaces the whole keg or `.app`, so by rollback time it
+  holds the NEW bundle. `fallbackViews` is therefore null for brew and the old build falls back
+  to its own resolution, which may find the new `dist` anyway. Copying the bundle aside would
+  fix it properly; it was judged not worth tens of megabytes on every brew update.
+- **Neither the `fallbackViews: null` choice nor the supervise-only spawn path has a unit test.**
+  Both are one-line properties of code that does real `fs` and `spawn` work; verifying them
+  needs a mocked filesystem *and* a mocked spawn, and the payoff over reading the function is
+  small. Stated rather than quietly skipped.
 - **The staging memo is in-process only.** Pressing Download and then Restart on the same
   server reuses the fetched tree, but a `dev3 update` typed in a shell afterwards does not see
   it and fetches again. Persisting it would mean trusting a tree on disk that nothing

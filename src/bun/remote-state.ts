@@ -13,7 +13,7 @@
  */
 
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import type { RemoteHandoff, RemoteServerState, RemoteUpdateRecord } from "../shared/types";
+import type { RemoteHandoff, RemoteServerState, RemoteUpdateAttempts, RemoteUpdateRecord } from "../shared/types";
 import { DEV3_HOME } from "./paths";
 
 export const REMOTE_DIR = `${DEV3_HOME}/remote`;
@@ -75,6 +75,7 @@ export function readRemoteState(): RemoteServerState | null {
 			// keeps exactly the shape every previous version wrote and read.
 			...maybe("handoff", sanitizeHandoff(parsed.handoff)),
 			...maybe("lastUpdate", sanitizeUpdateRecord(parsed.lastUpdate)),
+			...maybe("updateAttempts", sanitizeUpdateAttempts(parsed.updateAttempts)),
 		};
 	} catch {
 		// File missing, unreadable, or invalid JSON — no live server recorded.
@@ -125,6 +126,42 @@ function sanitizeUpdateRecord(raw: unknown): RemoteUpdateRecord | null {
 		toVersion: r.toVersion,
 		startedAt: typeof r.startedAt === "string" ? r.startedAt : "",
 	};
+}
+
+function sanitizeUpdateAttempts(raw: unknown): RemoteUpdateAttempts | null {
+	if (!raw || typeof raw !== "object") return null;
+	const a = raw as Partial<RemoteUpdateAttempts>;
+	if (typeof a.version !== "string" || !a.version) return null;
+	if (typeof a.failures !== "number" || !Number.isFinite(a.failures) || a.failures < 0) return null;
+	return {
+		version: a.version,
+		failures: Math.floor(a.failures),
+		lastFailureMs: typeof a.lastFailureMs === "number" && Number.isFinite(a.lastFailureMs) ? a.lastFailureMs : 0,
+		...(typeof a.lastError === "string" ? { lastError: a.lastError } : {}),
+	};
+}
+
+/**
+ * Record one more failed attempt at `version`, surviving into the next process.
+ *
+ * READ-MODIFY-WRITE OF THE WHOLE RECORD, on purpose: the supervisor calls this
+ * from a different process than the one that started the update, so it cannot
+ * hold the state in memory. A different version resets the count — whatever broke
+ * may well be fixed in the next build.
+ */
+export function recordUpdateFailure(version: string, error: string, now: number = Date.now()): void {
+	const current = readRemoteState();
+	if (!current) return; // no server record to annotate; the in-memory counter still applies
+	const prior = current.updateAttempts;
+	const failures = prior && prior.version === version ? prior.failures + 1 : 1;
+	try {
+		writeRemoteState({
+			...current,
+			updateAttempts: { version, failures, lastFailureMs: now, lastError: error.slice(0, 500) },
+		});
+	} catch {
+		// Best-effort: losing the counter degrades to the old in-memory behaviour.
+	}
 }
 
 /**
