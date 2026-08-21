@@ -95,6 +95,16 @@ describe("SpaceGroupedProjects", () => {
 		expect(rows.className).toContain("space-y-4");
 	});
 
+	// Proximity alone did not read as containment: the rows are bordered cards, so
+	// a gap between them still looked like a flat list with headings dropped in.
+	it("hangs the rows off the header with an indent and a rule", () => {
+		renderGroups();
+		const rows = screen.getByTestId("row-p2").parentElement!.parentElement!;
+		expect(rows.className).toContain("ml-2");
+		expect(rows.className).toContain("pl-4");
+		expect(rows.className).toContain("border-l");
+	});
+
 	it("masks the header name when a member project is sensitive", () => {
 		renderGroups(new Set(["p2"]));
 		const alpha = screen.getByTestId("space-header-sp_a");
@@ -142,6 +152,9 @@ describe("SpaceGroupedProjects — header details from the mock", () => {
 		expect(header).toHaveTextContent("2 projects");
 		expect(header).toHaveTextContent("1 need you");
 		expect(header).toHaveTextContent("2 working");
+		// No amber/blue dot: its only legend was this very line saying it in words.
+		expect(header.querySelector(".bg-awake")).toBeNull();
+		expect(header.querySelector(".bg-accent")).toBeNull();
 		// The name carries the identity; a first-letter badge would only repeat it.
 		const singleLetterNodes = [...header.querySelectorAll("*")].filter(
 			(el) => el.children.length === 0 && /^[A-Z]$/.test((el.textContent ?? "").trim()),

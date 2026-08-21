@@ -663,6 +663,7 @@ const settings = {
 	"spaces.railLabel": "Пространства",
 	"spaces.railOverview": "Обзор",
 	"spaces.railAllProjects": "Все проекты",
+	"spaces.filterTitle": "Фильтр по space",
 	"spaces.railSpaces": "Пространства",
 	"spaces.homeGroup": "Home",
 	"spaces.addProjectsSearch": "Поиск проектов…",

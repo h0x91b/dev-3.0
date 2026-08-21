@@ -237,7 +237,7 @@ describe("Dashboard", () => {
 			Element.prototype.getBoundingClientRect = originalRect;
 		});
 
-		it("clears the selected space when the container drops below the rail's minimum", async () => {
+		it("keeps the selected space when the rail goes, and hands the filter to the sheet", async () => {
 			const user = userEvent.setup();
 			const projects = [
 				mockProject,
@@ -258,8 +258,6 @@ describe("Dashboard", () => {
 			expect(screen.getByText("My Project")).toBeInTheDocument();
 			expect(screen.queryByText("Second")).not.toBeInTheDocument();
 
-			// The container shrinks under the rail's minimum; the filter must not
-			// survive the control that set it.
 			containerWidth = 900;
 			act(() => {
 				for (const cb of observedCallbacks) {
@@ -267,10 +265,47 @@ describe("Dashboard", () => {
 				}
 			});
 
+			// The rail is gone but the filter is NOT: narrowing a window must not
+			// silently change what the list shows.
 			expect(screen.queryByTestId("spaces-rail")).not.toBeInTheDocument();
+			expect(screen.queryByText("Second")).not.toBeInTheDocument();
+			const filter = screen.getByTestId("dashboard-space-filter");
+			expect(filter).toHaveTextContent("Client X");
+
+			// And it is still changeable — through the sheet that replaces the rail.
+			await user.click(filter);
+			await user.click(screen.getByTestId("space-filter-all"));
+			expect(await screen.findByText("Second")).toBeInTheDocument();
+			expect(screen.getByTestId("dashboard-space-filter")).toHaveTextContent("All projects");
+		});
+
+		it("clears a selection whose space stopped existing", async () => {
+			const user = userEvent.setup();
+			const projects = [
+				mockProject,
+				{ ...mockProject, id: "p2", name: "Second", path: "/home/user/second" },
+			];
+			mockedApi.request.getSpaces.mockResolvedValue({
+				version: 1,
+				spaces: [
+					{ id: "s1", name: "Client X", projectIds: ["p1"], createdAt: "2026-08-01T00:00:00Z" },
+				],
+				order: ["s1"],
+			} as any);
+
+			renderDashboard(projects, vi.fn(), vi.fn(), vi.fn());
+			await user.click(await screen.findByTestId("rail-space-s1"));
+			expect(screen.queryByText("Second")).not.toBeInTheDocument();
+
+			// The space is deleted elsewhere: filtering by an id nothing can select
+			// again would leave the list stuck.
+			act(() => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:spacesUpdated", { detail: { file: { version: 1, spaces: [], order: [] } } }),
+				);
+			});
 
 			expect(await screen.findByText("Second")).toBeInTheDocument();
-			expect(screen.getByText("My Project")).toBeInTheDocument();
 		});
 	});
 

@@ -17,7 +17,15 @@ const LS_COLLAPSED_SPACES = "dev3-collapsed-spaces";
  * between groups must be at least twice the gap inside one).
  */
 const GROUP_CLASS = "pt-6 space-y-2";
-const ROWS_CLASS = "space-y-4";
+/**
+ * The rows hang off their header: indented, with a hairline running down from
+ * it. Spacing alone did not say "these belong to that" — the rows are full-width
+ * cards with their own borders, so a gap between them read as a flat list with
+ * headings dropped in. A box around the group would have put a second border
+ * around cards that already have one; a rule and an indent are the same
+ * statement without the frame (§9a.6).
+ */
+const ROWS_CLASS = "space-y-4 ml-2 pl-4 border-l border-edge";
 
 function readCollapsed(): Set<string> {
 	try {
@@ -230,15 +238,15 @@ function SpaceGroupedProjects({
 								<span className={`text-fg-muted text-xs tabular-nums flex-shrink-0 ${masked ? MASK_CLASS : ""}`}>
 									{t.plural("spaces.projectCount", group.projects.length)}
 								</span>
+								{/* Words, no colour marker: a dot needs a legend, and the
+								    only legend was this same line saying it out loud. */}
 								{needsYou > 0 && (
-									<span className={`flex items-center gap-1 flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
-										<span aria-hidden="true" className="w-2 h-2 rounded-full bg-awake" />
+									<span className={`flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
 										{t("spaces.needYou", { count: String(needsYou) })}
 									</span>
 								)}
 								{working > 0 && (
-									<span className={`flex items-center gap-1 flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
-										<span aria-hidden="true" className="w-2 h-2 rounded-full bg-accent" />
+									<span className={`flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
 										{t("spaces.working", { count: String(working) })}
 									</span>
 								)}

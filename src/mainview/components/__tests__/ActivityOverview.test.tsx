@@ -270,6 +270,45 @@ describe("ActivityOverview", () => {
 		expect(screen.queryByText("/home/user/.dev3.0/ops/operations")).not.toBeInTheDocument();
 	});
 
+	it("hides the reorder cluster on a board that cannot be reordered, without losing its column", async () => {
+		const gitProj: Project = { ...mockProject, id: "g1", name: "Alpha Repo", path: "/home/user/alpha" };
+		const builtin: Project = {
+			...mockProject,
+			id: "vp1",
+			name: "Operations",
+			kind: "virtual",
+			builtin: true,
+			path: "/home/user/.dev3.0/ops/operations",
+		};
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview
+					projects={[gitProj, builtin]}
+					navigate={vi.fn()}
+					dispatch={vi.fn()}
+					bellCounts={new Map()}
+					onReorderProjects={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// A virtual board can never be reordered, so a grip and two disabled arrows
+		// on its row were three controls promising something they cannot do.
+		const opsRow = (await screen.findByText("[ Operations ]")).closest("[data-help-id='dashboard.project-row']")!;
+		const opsCluster = opsRow.querySelector("[aria-hidden='true'].md\\:flex");
+		expect(opsCluster).not.toBeNull();
+		// `invisible`, not removed: the row is pinned above the rest and their
+		// names have to start at the same x. It also drops out of the tab order.
+		expect(opsCluster!.className).toContain("invisible");
+		expect(opsRow.querySelector("[title='Move project up']")).not.toBeNull();
+
+		const repoRow = screen.getByText("Alpha Repo").closest("[data-help-id='dashboard.project-row']")!;
+		const repoCluster = repoRow.querySelector("[title='Move project up']")!.parentElement!;
+		expect(repoCluster.className).not.toContain("invisible");
+	});
+
 	it("pins the built-in Operations board first, above ordinary projects", async () => {
 		const gitProj: Project = { ...mockProject, id: "g1", name: "Alpha Repo", path: "/home/user/alpha" };
 		const builtin: Project = {

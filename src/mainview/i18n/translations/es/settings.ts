@@ -660,6 +660,7 @@ const settings = {
 	"spaces.railLabel": "Espacios",
 	"spaces.railOverview": "Resumen",
 	"spaces.railAllProjects": "Todos los proyectos",
+	"spaces.filterTitle": "Filtrar por space",
 	"spaces.railSpaces": "Espacios",
 	"spaces.homeGroup": "Home",
 	"spaces.addProjectsSearch": "Buscar proyectos…",

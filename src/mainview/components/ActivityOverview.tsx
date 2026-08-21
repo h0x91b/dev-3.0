@@ -6,7 +6,7 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { deleteSpaceWithConfirm, moveSpace, renameSpace } from "../utils/spaceActions";
 import { useT } from "../i18n";
-import { useProjectPrivacy } from "../sensitive-projects";
+import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { filterDashboardGroups, groupProjectsForDashboard } from "../utils/spaceGroups";
 import ProjectSpaceChips from "./ProjectSpaceChips";
@@ -40,6 +40,9 @@ interface ActivityOverviewProps {
 	/** Opens the space's membership editor — the dialog is hosted one level up,
 	 *  because the rail's own menu opens the same one. */
 	onEditSpaceProjects?: (space: Space) => void;
+	/** Present only while the rail is off screen: the filter's stand-in control,
+	 *  showing what is currently filtered and opening the picker sheet. */
+	spaceFilter?: { label: string; masked?: boolean; onOpen: () => void };
 }
 
 /** Statuses worth their own row — they're waiting on a human (questions, your
@@ -113,7 +116,7 @@ function ActionSheetButton({
 	);
 }
 
-function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects, selectedSpaceId = null, onNewSpace, onEditSpaceProjects }: ActivityOverviewProps) {
+function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects, selectedSpaceId = null, onNewSpace, onEditSpaceProjects, spaceFilter }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -441,7 +444,16 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					    step buttons are unusable; reorder lives in the action sheet. */}
 					{/* A grouped row alone in its space has nothing to reorder. */}
 					{(!reorder || reorder.showReorder) && (
-					<div className="hidden md:flex -ml-1.5 items-center gap-0.5">
+					/* A virtual board cannot be reordered at all, so its cluster carried
+					   a dead grip and two permanently disabled buttons. Hidden with
+					   `invisible`, not removed: the row is pinned above the grouped rows
+					   and their names have to start at the same x. `visibility: hidden`
+					   also takes the two buttons out of the tab order, which
+					   `opacity-0` would not. */
+					<div
+						aria-hidden={cannotReorder || undefined}
+						className={`hidden md:flex -ml-1.5 items-center gap-0.5 ${cannotReorder ? "invisible" : ""}`}
+					>
 						{/* Pointer-only drag affordance. Deliberately NOT a button: it has
 						    no click or key handler, and the step buttons beside it are the
 						    keyboard path, so a focusable control here would be a dead tab
@@ -859,7 +871,24 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 				{/* Search over projects AND their space names — the same rule as the
 				    ⌘K palette. Only meaningful once spaces group the list. */}
 				{allSpaceGroups !== null && (
-					<div className="relative">
+					<div className="flex items-center gap-2">
+					{/* The filter sits with the search field, not in the header beside
+					    `Add project`: both narrow what the list shows, and a filter is
+					    not an action (§10). Only rendered while the rail is away. */}
+					{spaceFilter && (
+						<button
+							type="button"
+							onClick={spaceFilter.onOpen}
+							className="flex items-center gap-1.5 flex-shrink-0 max-w-[45%] px-3 py-2 min-h-[44px] md:min-h-0 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:text-fg hover:border-edge-active transition-colors"
+							data-testid="dashboard-space-filter"
+						>
+							<span aria-hidden="true" className="text-fg-muted text-sm leading-none flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{"\u{F0233}"}
+							</span>
+							<span className={`truncate ${spaceFilter.masked ? MASK_CLASS : ""}`}>{spaceFilter.label}</span>
+						</button>
+					)}
+					<div className="relative flex-1 min-w-0">
 						<input
 							type="text"
 							value={projectQuery}
@@ -877,6 +906,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							{""}
 						</span>
 					</div>
+				</div>
 				)}
 				{spaceGroups === null ? (
 					visibleProjects.map((project, index) => renderProjectRow(project, index))

@@ -14,19 +14,10 @@ import { useT } from "../i18n";
  */
 export const SPACES_RAIL_MIN_WIDTH = 1024;
 
-export interface SpaceActivitySplit {
-	needsYou: number;
-	working: number;
-}
-
 interface SpacesRailProps {
 	spaces: Space[];
 	/** Resolvable member count per space id (dangling ids already skipped). */
 	projectCountOf: (spaceId: string) => number;
-	/** Needs-you / working task split per space id (same split as the group headers). */
-	activityOf: (spaceId: string) => SpaceActivitySplit;
-	/** The computed Home group's split (projects in no space). */
-	homeActivity: SpaceActivitySplit;
 	/** Spaces whose name must be masked (a member project is sensitive). */
 	maskedSpaceIds: ReadonlySet<string>;
 	totalProjects: number;
@@ -46,37 +37,11 @@ interface SpacesRailProps {
 	onEditProjects?: (space: Space) => void;
 }
 
-/**
- * A row's needs-you / working indicator: an amber dot for tasks calling the
- * user, a blue dot for agents working — each rendered only when non-zero.
- * Masked rows blur the numbers along with the name (they leak how much work a
- * private client has in flight).
+/*
+ * No activity dots here. A row carried an amber and a blue number whose only
+ * legend lived in the centre column's group headers, and four numbers on a
+ * 180px row read as one clump — the name is what the row exists to show.
  */
-function ActivityDots({ split, masked }: { split: SpaceActivitySplit; masked: boolean }) {
-	const t = useT();
-	return (
-		<>
-			{split.needsYou > 0 && (
-				<span
-					aria-label={t("spaces.needYou", { count: String(split.needsYou) })}
-					className={`flex items-center gap-1 flex-shrink-0 text-xs tabular-nums text-fg-3 ${masked ? MASK_CLASS : ""}`}
-				>
-					<span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-awake" />
-					{split.needsYou}
-				</span>
-			)}
-			{split.working > 0 && (
-				<span
-					aria-label={t("spaces.working", { count: String(split.working) })}
-					className={`flex items-center gap-1 flex-shrink-0 text-xs tabular-nums text-fg-3 ${masked ? MASK_CLASS : ""}`}
-				>
-					<span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent" />
-					{split.working}
-				</span>
-			)}
-		</>
-	);
-}
 
 /** Nerd Font nf-md-drag_horizontal_variant — the app's grip glyph. */
 const GRIP_GLYPH = "\u{F01DB}";
@@ -94,8 +59,6 @@ const GRIP_GLYPH = "\u{F01DB}";
 function SpacesRail({
 	spaces,
 	projectCountOf,
-	activityOf,
-	homeActivity,
 	maskedSpaceIds,
 	totalProjects,
 	homeCount,
@@ -213,8 +176,7 @@ function SpacesRail({
 			</div>
 
 			{/* The whole section is the help zone, not just the icon: what needs
-			    explaining is what a space IS, plus what the two dots count — and
-			    nowhere else on this screen said either. */}
+			    explaining is what a space IS, and nothing on this screen said it. */}
 			<div className="flex flex-col gap-1" data-help-id="dashboard.spaces">
 				<span className="px-2.5 flex items-center gap-1.5 text-fg-muted text-nano font-semibold uppercase tracking-[0.08em]">
 					{t("spaces.railSpaces")}
@@ -264,7 +226,6 @@ function SpacesRail({
 								<span className={`flex-1 text-sm truncate ${masked ? MASK_CLASS : ""}`}>
 									{space.name}
 								</span>
-								<ActivityDots split={activityOf(space.id)} masked={masked} />
 								{/* The count leaks how much work a private client has in flight, so
 								    it is masked with the name, not left readable beside it. */}
 								<span className={`text-fg-muted text-xs tabular-nums ${masked ? MASK_CLASS : ""}`}>
@@ -313,7 +274,6 @@ function SpacesRail({
 							</span>
 						)}
 						<span className="flex-1 text-sm truncate">{t("spaces.homeGroup")}</span>
-						<ActivityDots split={homeActivity} masked={false} />
 						<span className="text-fg-muted text-xs tabular-nums">{homeCount}</span>
 						{/* No menu on a computed row, but the counts above it must stay
 						    in one column: an invisible copy of the menu's own glyph is
