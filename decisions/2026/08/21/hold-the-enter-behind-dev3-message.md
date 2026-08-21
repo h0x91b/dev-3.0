@@ -27,11 +27,24 @@ CR travels through the same bound terminal, and `coalesceSubmit` rides on
 `NativePromptDeliveryParams` because the holding must happen in the process that
 owns the pane's writer lease.
 
+A human typing into the task's terminal pushes the submit back the same way a
+message does: `pty-server`'s WebSocket `message` handler calls
+`deferAgentPromptSubmitsForTask` for every keystroke it forwards to the shell. That
+handler is the only route human input takes into a pane — our own text goes in via
+`tmux send-keys` or the native writer — so the two never get confused. The push-back
+is task-wide rather than per-pane on purpose: a tmux client types into whichever
+pane is active, so keystrokes carry no pane identity of their own.
+
 ## Risks
 
 - **The user types into the pane during the window.** Their keystrokes mix with the
   pending text and our Enter submits the mix. That race existed at 800 ms; it is now
-  ten seconds wide.
+  ten seconds wide. Keystrokes push the Enter back, so it does not land mid-word —
+  but if the user submits their own line, the pending Enter still fires later into
+  an empty box.
+- **Terminal auto-replies count as typing.** Device-status answers the terminal
+  emits on its own travel the same WebSocket path, so they can push a submit back
+  without a human present. The 30 s ceiling is what bounds this.
 - **App death inside the window** leaves the text unsubmitted in the input box —
   the same place a partial delivery has always left it, and visible on screen. The
   pending submit is deliberately in-memory, not persisted.

@@ -28,6 +28,7 @@ interface PendingSubmit {
 	/** When the first still-unsubmitted text landed — the ceiling is measured from it. */
 	firstAt: number;
 	submit: () => void | Promise<void>;
+	context: Record<string, string>;
 }
 
 const pending = new Map<string, PendingSubmit>();
@@ -57,11 +58,44 @@ export function coalesceAgentPromptSubmit(
 	const entry: PendingSubmit = {
 		firstAt,
 		submit,
+		context,
 		timer: setTimeout(() => fire(key, entry, context), delay),
 	};
 	pending.set(key, entry);
 	log.info("agent prompt submit held", { ...context, delayMs: String(delay), heldForMs: String(now - firstAt) });
 	return delay;
+}
+
+/**
+ * A human typed into one of this task's terminals — push every submit held for that
+ * task back by a full idle window, so the Enter never lands mid-word.
+ *
+ * Task-wide, not per-pane, on purpose: a tmux client types into whichever pane is
+ * active, so the keystrokes carry no pane of their own. The ceiling is untouched —
+ * someone typing without pause still cannot hold a message hostage past it.
+ *
+ * Returns how many held submits were pushed back.
+ */
+export function deferAgentPromptSubmitsForTask(taskId: string): number {
+	if (pending.size === 0) return 0;
+	const now = Date.now();
+	let deferred = 0;
+	for (const [key, entry] of pending) {
+		if (key.split(":")[1] !== taskId) continue;
+		clearTimeout(entry.timer);
+		const delay = Math.max(
+			0,
+			Math.min(AGENT_MESSAGE_SUBMIT_IDLE_MS, entry.firstAt + AGENT_MESSAGE_SUBMIT_CEILING_MS - now),
+		);
+		entry.timer = setTimeout(() => fire(key, entry, entry.context), delay);
+		deferred += 1;
+		log.info("agent prompt submit deferred by human typing", {
+			...entry.context,
+			delayMs: String(delay),
+			heldForMs: String(now - entry.firstAt),
+		});
+	}
+	return deferred;
 }
 
 function fire(key: string, entry: PendingSubmit, context: Record<string, string>): void {

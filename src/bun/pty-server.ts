@@ -27,6 +27,7 @@ import {
 	stopNativeTaskPanes,
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
+import { deferAgentPromptSubmitsForTask } from "./agent-prompt-submit-coalescer";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
 import { forgetSession, noteBytesIn, noteFlush, noteQueued, noteWindow } from "./pty-throughput";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
@@ -2192,6 +2193,7 @@ const ptyServer = Bun.serve({
 						sendToClient(ws, roleMessage("observer", true));
 						return;
 					}
+					deferAgentPromptSubmitsForTask(session.taskId);
 					shell.write(data);
 					return;
 				}
@@ -2209,6 +2211,9 @@ const ptyServer = Bun.serve({
 					return;
 				}
 
+				// Keystrokes from a viewer are the only human input that reaches a pane;
+				// our own `dev3 message` text goes in through tmux/the native writer.
+				deferAgentPromptSubmitsForTask(session.taskId);
 				shell.write(data);
 			} catch (err) {
 				log.error("WS message handler error", {

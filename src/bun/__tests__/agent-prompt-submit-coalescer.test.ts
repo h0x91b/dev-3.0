@@ -11,6 +11,7 @@ import {
 import {
 	agentPromptSubmitKey,
 	coalesceAgentPromptSubmit,
+	deferAgentPromptSubmitsForTask,
 	pendingAgentPromptSubmitCount,
 	resetAgentPromptSubmits,
 } from "../agent-prompt-submit-coalescer";
@@ -110,6 +111,63 @@ describe("coalesceAgentPromptSubmit — the ceiling", () => {
 		await vi.advanceTimersByTimeAsync(1_000);
 		// 4s of headroom left, so the promised delay is 4s and not the full window.
 		expect(coalesceAgentPromptSubmit(KEY, vi.fn(), {})).toBe(4_000);
+	});
+});
+
+describe("deferAgentPromptSubmitsForTask — the user is typing", () => {
+	it("pushes the submit back a full window on every keystroke", async () => {
+		const submit = vi.fn();
+		coalesceAgentPromptSubmit(KEY, submit, {});
+
+		// Typing every 5s: the Enter must never land while the user is mid-word.
+		for (let i = 0; i < 3; i += 1) {
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(submit).not.toHaveBeenCalled();
+			expect(deferAgentPromptSubmitsForTask("task-1")).toBe(1);
+		}
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		expect(submit).toHaveBeenCalledTimes(1);
+	});
+
+	it("pushes back every pane of that task, and no other task's", async () => {
+		const mine = vi.fn();
+		const sibling = vi.fn();
+		const stranger = vi.fn();
+		coalesceAgentPromptSubmit(KEY, mine, {});
+		coalesceAgentPromptSubmit(OTHER, sibling, {});
+		coalesceAgentPromptSubmit(agentPromptSubmitKey("tmux", "task-2", "%1"), stranger, {});
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS - 1_000);
+		expect(deferAgentPromptSubmitsForTask("task-1")).toBe(2);
+
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(stranger).toHaveBeenCalledTimes(1);
+		expect(mine).not.toHaveBeenCalled();
+		expect(sibling).not.toHaveBeenCalled();
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		expect(mine).toHaveBeenCalledTimes(1);
+		expect(sibling).toHaveBeenCalledTimes(1);
+	});
+
+	it("cannot push a submit past the ceiling", async () => {
+		const submit = vi.fn();
+		coalesceAgentPromptSubmit(KEY, submit, {});
+
+		// Someone typing without pause for the whole ceiling still gets the text read.
+		let elapsed = 0;
+		while (elapsed < AGENT_MESSAGE_SUBMIT_CEILING_MS) {
+			await vi.advanceTimersByTimeAsync(1_000);
+			elapsed += 1_000;
+			deferAgentPromptSubmitsForTask("task-1");
+		}
+		expect(submit).toHaveBeenCalledTimes(1);
+	});
+
+	it("is a no-op when that task holds nothing", async () => {
+		expect(deferAgentPromptSubmitsForTask("task-1")).toBe(0);
+		coalesceAgentPromptSubmit(KEY, vi.fn(), {});
+		expect(deferAgentPromptSubmitsForTask("task-2")).toBe(0);
 	});
 });
 
