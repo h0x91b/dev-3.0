@@ -2,8 +2,11 @@ import type { ParsedArgs } from "../args";
 import { exitError, exitUsage } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 import { sendRequest } from "../socket-client";
-import { CLI_EXIT_CODE_UPDATE_REFUSED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_COMMAND_FAILED, CLI_EXIT_CODE_UPDATE_REFUSED } from "../../shared/cli-exit-codes";
 import { isProcessAlive, readRemoteState } from "../../bun/remote-state";
+
+/** A full stage+apply, not a question — the default socket timeout is 30 s. */
+const SELF_UPDATE_TIMEOUT_MS = 15 * 60 * 1000;
 
 const UPDATE_HELP = `dev3 update — install a newer dev3 on this machine.
 
@@ -33,10 +36,11 @@ Flags:
 
 Exit codes:
   0   Up to date, or the update was installed / started.
-  ${CLI_EXIT_CODE_UPDATE_REFUSED}   Refused: this install cannot be updated from the CLI (running from
-      source, a macOS app bundle the CLI does not own, Windows, or a cask whose
-      version has drifted from brew's record). The reason is printed.
-  1   The update was attempted and failed.
+  ${CLI_EXIT_CODE_UPDATE_REFUSED}   Refused, nothing was touched: this install cannot be updated from the CLI
+      (running from source, the PATH copy the app maintains, a macOS app bundle
+      the CLI does not own, Windows, or a cask whose version has drifted from
+      brew's record). The reason is printed.
+  1   The update was attempted and failed (download, brew, or the file swap).
 
 Examples:
   dev3 update --check      # is there anything new?
@@ -53,6 +57,15 @@ export async function handleUpdate(args: ParsedArgs): Promise<void> {
 		exitUsage(`Unknown positional argument: "${args.positional[0]}"\nRun "dev3 update --help" for usage.`);
 	}
 	rejectUnknownFlags(args, ["check", "dry-run", "supervise", "help", "h"]);
+
+	// THIS MUST BE SET BEFORE ANY `bun/` IMPORT BELOW. `buildPlan` reaches
+	// `./updater`, which statically imports the Electrobun platform shim — and
+	// outside headless mode that shim does `import("electrobun/bun")`, whose FFI init
+	// starts an HTTP server, prints a version.json stack trace, and calls
+	// `process.exit()` when `libNativeWrapper` is not beside the CWD. A plain
+	// `dev3 update` is a CLI process with no GUI shell, which is exactly the
+	// condition the flag describes.
+	process.env.DEV3_HEADLESS = "1";
 
 	// Internal: the relaunch supervisor a self-updating server leaves behind. It runs
 	// the OLD binary (that is the point — it has to still work when the new one does
@@ -92,7 +105,11 @@ export async function handleUpdate(args: ParsedArgs): Promise<void> {
 		process.stdout.write(`Handing the update to the running server (pid ${state.pid})…\n`);
 		let resp: Awaited<ReturnType<typeof sendRequest>>;
 		try {
-			resp = await sendRequest(state.socketPath, "remote.selfUpdate", {});
+			// The server does the WHOLE update inside this one request — brew fetch, or a
+			// release download and extract. The default 30 s would time out on any real
+			// network and report a stack trace for an update that then succeeds and
+			// restarts the box behind our back.
+			resp = await sendRequest(state.socketPath, "remote.selfUpdate", {}, { timeoutMs: SELF_UPDATE_TIMEOUT_MS });
 		} catch (err) {
 			if (err instanceof Error && err.message === "APP_NOT_RUNNING") {
 				exitError(
@@ -103,9 +120,11 @@ export async function handleUpdate(args: ParsedArgs): Promise<void> {
 			}
 			throw err;
 		}
-		if (!resp.ok) exitError(resp.error || "The server refused the update.", undefined, CLI_EXIT_CODE_UPDATE_REFUSED);
-		const outcome = resp.data as { ok: boolean; restarting: boolean; message: string };
-		if (!outcome.ok) exitError(outcome.message, undefined, CLI_EXIT_CODE_UPDATE_REFUSED);
+		if (!resp.ok) exitError(resp.error || "The server refused the update.", undefined, CLI_EXIT_CODE_COMMAND_FAILED);
+		const outcome = resp.data as { ok: boolean; refused?: boolean; restarting: boolean; message: string };
+		if (!outcome.ok) {
+			exitError(outcome.message, undefined, outcome.refused ? CLI_EXIT_CODE_UPDATE_REFUSED : CLI_EXIT_CODE_COMMAND_FAILED);
+		}
 		process.stdout.write(`${outcome.message}\n`);
 		if (outcome.restarting) {
 			process.stdout.write(
@@ -124,7 +143,11 @@ export async function handleUpdate(args: ParsedArgs): Promise<void> {
 		onProgress: (message) => process.stdout.write(`${message}\n`),
 	});
 	process.stdout.write(`${outcome.message}\n`);
-	process.exit(outcome.ok ? 0 : CLI_EXIT_CODE_UPDATE_REFUSED);
+	// 15 means "this install may not be updated from here, nothing was touched"; a
+	// download or swap that FAILED is an ordinary failure and must stay 1, or
+	// automation branching on 15 to skip unsupported installs swallows real breakage.
+	if (outcome.ok) process.exit(0);
+	process.exit(outcome.refused ? CLI_EXIT_CODE_UPDATE_REFUSED : CLI_EXIT_CODE_COMMAND_FAILED);
 }
 
 async function runSuperviseMode(): Promise<void> {

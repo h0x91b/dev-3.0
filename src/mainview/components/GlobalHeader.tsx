@@ -148,8 +148,13 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	// open on a phone — which is the exact moment the quiet-window policy says not to,
 	// because a connected browser means someone is looking at it. There, updating is
 	// either a deliberate tap or the server's own decision once the box goes quiet.
+	// `=== false`, NOT `!== true`: the "we do not know yet" state must not auto-restart.
+	// `restartContext` starts null and the fetch below sets it back to null on any
+	// failure, so `!== true` treated an RPC error — or the race before it resolves —
+	// as "this is a desktop", which is exactly how a phone tab could restart a remote
+	// server unattended. Not knowing means not restarting; the button still works.
 	useEffect(() => {
-		if (countdown === 0 && showToast && restartContext?.headless !== true) {
+		if (countdown === 0 && showToast && restartContext?.headless === false) {
 			if (countdownRef.current) clearInterval(countdownRef.current);
 			handleRestart();
 		}

@@ -13,7 +13,7 @@
  */
 
 import { createLogger } from "./logger";
-import { evaluateQuietWindow, PTY_QUIET_MS } from "../shared/self-update";
+import { evaluateQuietWindow, MAX_UPDATE_ATTEMPTS, PTY_QUIET_MS, retryBackoffMs } from "../shared/self-update";
 import type { UpdateChannel } from "../shared/update-channel";
 import { buildPlan, runSelfUpdate } from "./self-update";
 
@@ -28,6 +28,11 @@ interface WatchState {
 	pendingSinceMs: number;
 	/** When the three quiet conditions last STARTED holding. Owned by the evaluator. */
 	quietSinceMs: number | null;
+	/** Failed attempts at `pendingVersion`. Reset only by a NEW version appearing. */
+	failedAttempts: number;
+	lastFailureMs: number | null;
+	/** True once the give-up has been logged, so it is said loudly exactly once. */
+	gaveUpLogged: boolean;
 	/** Versions already announced to connected browsers, so the plaque appears once. */
 	announced: Set<string>;
 	/** Refusal reasons already logged, so a box that can never update says why once. */
@@ -38,6 +43,9 @@ const state: WatchState = {
 	pendingVersion: null,
 	pendingSinceMs: 0,
 	quietSinceMs: null,
+	failedAttempts: 0,
+	lastFailureMs: null,
+	gaveUpLogged: false,
 	announced: new Set(),
 	loggedRefusals: new Set(),
 };
@@ -136,6 +144,12 @@ async function checkOnce(push: (name: string, payload: unknown) => void): Promis
 		state.pendingVersion = plan.version;
 		state.pendingSinceMs = Date.now();
 		state.quietSinceMs = null;
+		// A NEW BUILD IS THE ONLY THING THAT CLEARS A GIVE-UP. Whatever broke on the
+		// last version may well be fixed in this one, and the operator should not have
+		// to restart the server to get another attempt.
+		state.failedAttempts = 0;
+		state.lastFailureMs = null;
+		state.gaveUpLogged = false;
 		log.info("Update pending", { version: plan.version, summary });
 	}
 
@@ -163,28 +177,43 @@ async function checkOnce(push: (name: string, payload: unknown) => void): Promis
 		browserClients,
 		quietSinceMs: state.quietSinceMs,
 		pendingSinceMs: state.pendingSinceMs,
+		failedAttempts: state.failedAttempts,
+		lastFailureMs: state.lastFailureMs,
 		now: Date.now(),
 	});
 	state.quietSinceMs = verdict.quietSinceMs;
 
 	if (verdict.decision === "wait") {
-		log.info("Holding off the silent update", {
-			version: plan.version,
-			reason: verdict.reason,
-			tasksInProgress,
-			browserClients,
-			ptyQuietThresholdMs: PTY_QUIET_MS,
-		});
+		const givingUp = state.failedAttempts >= MAX_UPDATE_ATTEMPTS;
+		if (givingUp && !state.gaveUpLogged) {
+			state.gaveUpLogged = true;
+			log.error("Giving up on this version — it has to be installed by hand", {
+				version: plan.version,
+				attempts: state.failedAttempts,
+			});
+		} else if (!givingUp) {
+			log.info("Holding off the silent update", {
+				version: plan.version,
+				reason: verdict.reason,
+				tasksInProgress,
+				browserClients,
+				ptyQuietThresholdMs: PTY_QUIET_MS,
+			});
+		}
 		return;
 	}
 
 	log.info("Applying update silently", { version: plan.version, reason: verdict.reason });
 	const outcome = await runSelfUpdate({ channel, restart: true });
 	if (!outcome.ok) {
-		log.error("Silent update failed — the server is still running the old build", { error: outcome.message });
-		// Reset the hold clock so a transient failure is retried on the next tick
-		// rather than immediately re-attempted in a tight loop.
+		state.failedAttempts += 1;
+		state.lastFailureMs = Date.now();
 		state.quietSinceMs = null;
+		log.error("Silent update failed — the server is still running the old build", {
+			error: outcome.message,
+			attempt: state.failedAttempts,
+			nextTryInMs: retryBackoffMs(state.failedAttempts),
+		});
 	}
 }
 
@@ -214,6 +243,9 @@ export function _resetWatchState(): void {
 	state.pendingVersion = null;
 	state.pendingSinceMs = 0;
 	state.quietSinceMs = null;
+	state.failedAttempts = 0;
+	state.lastFailureMs = null;
+	state.gaveUpLogged = false;
 	state.announced.clear();
 	state.loggedRefusals.clear();
 }

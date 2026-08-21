@@ -19,7 +19,7 @@ user a dead link and a re-auth on the very device they are holding.
 
 ## Investigation
 
-Three facts shaped the design, and two of them contradict the obvious approach:
+Five facts shaped the design, and four of them contradict the obvious approach:
 
 1. **Homebrew Cask does not keep the app under `Caskroom`.** The `app` stanza *moves*
    `dev-3.0.app` into `/Applications`, so a cask install and a DMG install have identical
@@ -33,6 +33,19 @@ Three facts shaped the design, and two of them contradict the obvious approach:
 3. **systemd kills the whole cgroup when a unit stops.** With the default
    `KillMode=control-group`, a relaunch helper we spawn from a unit dies at exactly the moment
    it is needed — and `KillMode=process` is documented as "not recommended".
+4. **`which dev3` is almost never the install.** The GUI copies the CLI to
+   `<dev3Home>/bin/dev3` as a real 76 MB file (tmp + atomic rename, `src/bun/index.ts`) on
+   *every* launch, and puts that directory on PATH. `realpathSync` resolves it to itself, so it
+   looks exactly like a tarball install — while extracting a release into it would violate the
+   frozen `~/.dev3.0/` layout, leave the actual install on the old version, and be silently
+   reverted by the next app start. It is therefore its own install method, `path-copy`, and a
+   refusal.
+5. **A brew *formula* upgrade abandons the path the server is running from.** The formula does
+   `bin.install_symlink libexec/"dev3"`, so `installDir()` is the version-pinned keg
+   (`…/Cellar/dev3/1.45.2/libexec`) and `brew upgrade` puts the new build in a *new* keg,
+   moving only `<prefix>/bin/dev3`. Restarting the keg path either finds nothing (brew pruned
+   it) or comes back on the OLD build, reports in as a success, and re-offers the same update
+   every 30 minutes forever. Casks and tarballs are replaced in place and need no substitution.
 
 ## Decision
 
@@ -76,6 +89,25 @@ Brew cannot do that (brew owns the Cellar and may prune the old keg), so it copi
 aside to `~/.dev3.0/remote/rollback/dev3` and, if it ever has to use it, logs loudly that the
 *installed* `dev3` is broken and needs a human.
 
+**Every child process runs asynchronously, and that is load-bearing, not hygiene.** `brew
+update`, `brew fetch`, `brew upgrade` and the `tar -xzf` of a ~76 MB binary take seconds to
+minutes; `spawnSync` would freeze the server's single event loop for all of it — no HTTP, no
+websocket, no CLI socket, no tmux forwarding — killing the very browser session the handoff
+exists to preserve. `dev3 update` also sets `DEV3_HEADLESS=1` before its first `bun/` import,
+because the plan reaches `./updater` → the Electrobun shim, whose FFI init starts an HTTP
+server and can `process.exit()` in a plain CLI process.
+
+**A failing update backs off and eventually gives up** (`retryBackoffMs`, `MAX_UPDATE_ATTEMPTS`,
+checked *before* the ceiling in `evaluateQuietWindow`). Past the 72-hour ceiling the quiet
+conditions no longer apply, so without this a permanently broken update — a 404 artifact, a
+full disk, brew behind a proxy — would re-attempt on every 30-minute tick, 48 times a day, on
+a box nobody is watching. Only a NEW version clears the give-up.
+
+**Two "unknowns" deliberately fail closed.** An unreadable terminal-activity probe counts as
+busy, never as quiet; and the renderer's 5-minute auto-restart requires a *known*
+non-headless context (`headless === false`, not `!== true`), so a failed or still-pending RPC
+cannot let a phone tab restart a remote server unattended.
+
 ## Risks
 
 - **No tarball checksum.** The manifest carries no artifact hash and the user chose HTTPS-only
@@ -93,6 +125,10 @@ aside to `~/.dev3.0/remote/rollback/dev3` and, if it ever has to use it, logs lo
 - **A restart landing during worktree creation** leaves a task mid-`preparing`. Accepted: the
   existing stale-worktree recovery picks it up at boot, and "no task in progress" is the one
   condition the 72-hour ceiling never overrides.
+- **The staging memo is in-process only.** Pressing Download and then Restart on the same
+  server reuses the fetched tree, but a `dev3 update` typed in a shell afterwards does not see
+  it and fetches again. Persisting it would mean trusting a tree on disk that nothing
+  checksums — worse than a repeated download.
 - **No "updating…" state anywhere in the renderer.** A silent restart is visually identical to
   the box falling over; the `lastUpdate` record in the state file, surfaced by
   `dev3 remote status`, is the only explanation and it is read after the fact.

@@ -14,10 +14,11 @@
 
 import { chmodSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, realpathSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { spawn, spawnSync } from "./spawn";
+import { spawn } from "./spawn";
 import { createLogger } from "./logger";
 import {
 	BREW_PACKAGE,
+	brewLinkedBin,
 	detectInstallMethod,
 	describePlan,
 	planUpdate,
@@ -25,6 +26,7 @@ import {
 	type UpdatePlan,
 } from "../shared/self-update";
 import type { UpdateChannel } from "../shared/update-channel";
+import { DEV3_HOME } from "./paths";
 import { REMOTE_LOG_FILE, REMOTE_ROLLBACK_DIR, readRemoteState, writeRemoteState } from "./remote-state";
 import type { RemoteHandoff } from "../shared/types";
 
@@ -50,7 +52,7 @@ function resolvedExecPath(): string {
 
 /** How this binary was installed, from the resolved path. */
 export function resolveInstallMethod(): InstallMethod {
-	return detectInstallMethod(resolvedExecPath(), process.platform);
+	return detectInstallMethod(resolvedExecPath(), process.platform, join(DEV3_HOME, "bin"));
 }
 
 /**
@@ -59,13 +61,12 @@ export function resolveInstallMethod(): InstallMethod {
  * .app was not installed by brew" — the planner refuses either way, so they do
  * not need telling apart.
  */
-export function readBrewCaskVersion(): string | null {
+export async function readBrewCaskVersion(): Promise<string | null> {
 	try {
-		const r = spawnSync(["brew", "list", "--cask", "--versions", BREW_PACKAGE]);
-		if (r.exitCode !== 0) return null;
-		const out = r.stdout ? new TextDecoder().decode(r.stdout).trim() : "";
+		const r = await runCapture(["brew", "list", "--cask", "--versions", BREW_PACKAGE]);
+		if (!r.ok) return null;
 		// `dev3 1.45.2` — the version is everything after the name.
-		const parts = out.split(/\s+/);
+		const parts = r.stdout.trim().split(/\s+/);
 		return parts.length >= 2 ? parts[parts.length - 1] : null;
 	} catch {
 		return null;
@@ -88,9 +89,14 @@ export interface PlanResult {
  */
 export async function buildPlan(channel: UpdateChannel): Promise<PlanResult> {
 	const install = resolveInstallMethod();
-	const { checkForUpdateWithChannel } = await import("./updater");
+	const { checkForUpdateWithChannel, getLocalVersion } = await import("./updater");
 	const check = await checkForUpdateWithChannel(channel);
-	const runningVersion = check.version;
+	// THE RUNNING VERSION IS READ LOCALLY, NOT TAKEN OFF THE CHECK. `check.version`
+	// is the OFFERED build whenever the fetch succeeded, and only falls back to the
+	// local one on an error path. Feeding that in made the cask drift comparison
+	// always mismatch (so every cask box was permanently refused), and made
+	// `lastUpdate` record "X to X".
+	const runningVersion = (await getLocalVersion()).version;
 
 	if (check.error) {
 		const plan: UpdatePlan = { kind: "refused", reason: `Update check failed: ${check.error}` };
@@ -116,7 +122,7 @@ export async function buildPlan(channel: UpdateChannel): Promise<PlanResult> {
 		platform: process.platform,
 		arch: process.arch,
 		runningVersion,
-		brewCaskVersion: install === "app-bundle" ? readBrewCaskVersion() : null,
+		brewCaskVersion: install === "app-bundle" ? await readBrewCaskVersion() : null,
 		offered: check.updateAvailable ? { version: check.version, sha: check.sha } : null,
 	});
 	return { install, plan, runningVersion, summary: describePlan(plan, install) };
@@ -131,20 +137,71 @@ export interface StagedUpdate {
 }
 
 /**
+ * What the last successful {@link stageUpdate} produced, so pressing Download and
+ * then Restart does not fetch the same release twice.
+ *
+ * The headless Download button stages, and the Restart button then runs the whole
+ * sequence — which used to stage again from scratch (the tarball path deletes the
+ * staged tree at its top), doubling the bandwidth and the wait on exactly the
+ * metered box this feature exists for. Keyed by the plan so a newer offer never
+ * reuses an older tree, and re-validated against the disk before reuse.
+ */
+let lastStaged: { key: string; staged: StagedUpdate } | null = null;
+
+function planKey(plan: UpdatePlan): string {
+	return plan.kind === "tarball"
+		? `tarball:${plan.url}`
+		: plan.kind === "brew"
+			? `brew:${plan.cask ? "cask" : "formula"}:${plan.version}`
+			: plan.kind;
+}
+
+function reusableStaged(plan: UpdatePlan): StagedUpdate | null {
+	if (!lastStaged || lastStaged.key !== planKey(plan)) return null;
+	const staged = lastStaged.staged;
+	if (plan.kind === "tarball") {
+		// The tree has to still be there, binary included — an apply that half-ran, or
+		// a manual cleanup, must fall through to a fresh download rather than "succeed".
+		if (!staged.stagedDir || !existsSync(join(staged.stagedDir, "dev3"))) return null;
+	}
+	return staged;
+}
+
+/** Drop the staging memo — only for tests. */
+export function _resetStagingMemo(): void {
+	lastStaged = null;
+}
+
+/**
  * Do the slow part while the server is still serving. Brew paths pre-fetch the
  * bottle; the tarball path downloads and extracts into the install dir so the
  * apply step is renames only.
+ *
+ * EVERY CHILD PROCESS HERE IS ASYNC ON PURPOSE. `brew update` is routinely tens of
+ * seconds and `brew fetch` of a bottle can be minutes; a synchronous spawn blocks
+ * the event loop for its full duration (`src/bun/spawn.ts` says so and logs
+ * anything over 250 ms), which would take the HTTP server, the RPC websocket, the
+ * CLI socket and all tmux forwarding down for that whole span — killing the very
+ * browser session the handoff exists to preserve.
  */
 export async function stageUpdate(plan: UpdatePlan): Promise<{ ok: true; staged: StagedUpdate } | { ok: false; error: string }> {
+	const reused = reusableStaged(plan);
+	if (reused) {
+		log.info("Reusing the already-staged update", { kind: plan.kind });
+		return { ok: true, staged: reused };
+	}
+
 	if (plan.kind === "brew") {
 		// `brew update` refreshes the tap (without it the new formula is invisible);
 		// `brew fetch` downloads the bottle so `brew upgrade` is a local operation.
-		const updated = run(["brew", "update"]);
+		const updated = await run(["brew", "update"]);
 		if (!updated.ok) log.warn("brew update failed; continuing with the tap as-is", { error: updated.error });
 		const fetchArgs = plan.cask ? ["brew", "fetch", "--cask", BREW_PACKAGE] : ["brew", "fetch", BREW_PACKAGE];
-		const fetched = run(fetchArgs);
+		const fetched = await run(fetchArgs);
 		if (!fetched.ok) return { ok: false, error: `brew fetch failed: ${fetched.error}` };
-		return { ok: true, staged: { plan } };
+		const staged: StagedUpdate = { plan };
+		lastStaged = { key: planKey(plan), staged };
+		return { ok: true, staged };
 	}
 	if (plan.kind === "tarball") {
 		const dir = installDir();
@@ -160,14 +217,16 @@ export async function stageUpdate(plan: UpdatePlan): Promise<{ ok: true; staged:
 			if (!resp.ok) return { ok: false, error: `HTTP ${resp.status} downloading ${plan.url}` };
 			await Bun.write(tarPath, resp);
 			mkdirSync(stagedDir, { recursive: true });
-			const extracted = run(["tar", "-xzf", tarPath, "-C", stagedDir]);
+			const extracted = await run(["tar", "-xzf", tarPath, "-C", stagedDir]);
 			if (!extracted.ok) return { ok: false, error: `tar extract failed: ${extracted.error}` };
 			if (!existsSync(join(stagedDir, "dev3"))) {
 				return { ok: false, error: "The extracted tarball has no `dev3` binary — refusing to install it" };
 			}
 			chmodSync(join(stagedDir, "dev3"), 0o755);
 			log.info("Staged tarball update", { url: plan.url, stagedDir });
-			return { ok: true, staged: { plan, stagedDir } };
+			const staged: StagedUpdate = { plan, stagedDir };
+			lastStaged = { key: planKey(plan), staged };
+			return { ok: true, staged };
 		} catch (err) {
 			return { ok: false, error: `Download failed: ${err instanceof Error ? err.message : String(err)}` };
 		} finally {
@@ -198,14 +257,15 @@ export interface AppliedUpdate {
  * Cellar and may prune the old keg), so it copies just the binary aside first and
  * says so if a rollback ever has to use it.
  */
-export function applyUpdate(staged: StagedUpdate): { ok: true; applied: AppliedUpdate } | { ok: false; error: string } {
+export async function applyUpdate(staged: StagedUpdate): Promise<{ ok: true; applied: AppliedUpdate } | { ok: false; error: string }> {
 	const dir = installDir();
 
 	if (staged.plan.kind === "brew") {
 		const fallbackBin = copyBinaryAside();
 		const fallbackViews = existsSync(join(dir, "dist")) ? join(dir, "dist") : null;
-		const r = run(staged.plan.command);
+		const r = await run(staged.plan.command);
 		if (!r.ok) return { ok: false, error: `${staged.plan.command.join(" ")} failed: ${r.error}` };
+		lastStaged = null; // the staged bottle is spent
 		return { ok: true, applied: { fallbackBin, fallbackViews, prevDir: null } };
 	}
 
@@ -234,6 +294,7 @@ export function applyUpdate(staged: StagedUpdate): { ok: true; applied: AppliedU
 			return { ok: false, error: `Swapping files failed: ${err instanceof Error ? err.message : String(err)}` };
 		}
 		rmSync(stagedDir, { recursive: true, force: true });
+		lastStaged = null; // the staged tree has been moved into place
 		const fallbackBin = existsSync(join(prevDir, "dev3")) ? join(prevDir, "dev3") : null;
 		const fallbackViews = existsSync(join(prevDir, "dist")) ? join(prevDir, "dist") : null;
 		log.info("Applied tarball update", { dir, replaced: entries });
@@ -314,6 +375,14 @@ export interface SuperviseJob {
 
 export interface SelfUpdateOutcome {
 	ok: boolean;
+	/**
+	 * True when NOTHING WAS TOUCHED because this install may not be updated from
+	 * here. Distinct from a plain `ok: false`, which means an update was attempted
+	 * and failed — the CLI's documented exit codes turn on exactly this difference,
+	 * and automation that treats "unsupported install" as "skip" must not swallow a
+	 * failed download.
+	 */
+	refused?: boolean;
 	/** True when the process is about to exit and be replaced. */
 	restarting: boolean;
 	message: string;
@@ -340,14 +409,14 @@ export async function runSelfUpdate(opts: {
 	log.info("Self-update plan", { install, kind: plan.kind, summary });
 
 	if (plan.kind === "up-to-date") return { ok: true, restarting: false, message: summary, version: runningVersion };
-	if (plan.kind === "refused") return { ok: false, restarting: false, message: plan.reason };
+	if (plan.kind === "refused") return { ok: false, refused: true, restarting: false, message: plan.reason };
 
 	progress(`Staging ${plan.version}…`);
 	const stagedResult = await stageUpdate(plan);
 	if (!stagedResult.ok) return { ok: false, restarting: false, message: stagedResult.error };
 
 	progress(`Installing ${plan.version}…`);
-	const appliedResult = applyUpdate(stagedResult.staged);
+	const appliedResult = await applyUpdate(stagedResult.staged);
 	if (!appliedResult.ok) return { ok: false, restarting: false, message: appliedResult.error };
 
 	const record = { fromVersion: runningVersion, toVersion: plan.version, startedAt: new Date().toISOString() };
@@ -376,7 +445,7 @@ export async function runSelfUpdate(opts: {
 	if (strategy === "helper") {
 		spawnSupervisor({
 			waitPid: process.pid,
-			startBin: join(installDir(), "dev3"),
+			startBin: newBuildBin(plan),
 			startEnv: collectServerEnv(),
 			fallbackBin: appliedResult.applied.fallbackBin,
 			fallbackViews: appliedResult.applied.fallbackViews,
@@ -401,6 +470,32 @@ export async function runSelfUpdate(opts: {
 		message: `Installed ${plan.version}; restarting now.`,
 		version: plan.version,
 	};
+}
+
+/**
+ * Which binary IS the new build, once the plan has been applied.
+ *
+ * A tarball apply replaces the files in place, so the path this process was
+ * started from is already the new build. A brew FORMULA upgrade does not: the new
+ * build lands in a new version-pinned keg and only `<prefix>/bin/dev3` moves, so
+ * restarting `installDir()/dev3` would relaunch the OLD keg — coming back on the
+ * old version, reporting in as a success, and offering the same update every 30
+ * minutes forever (or finding nothing at all, if brew pruned the keg).
+ *
+ * A cask replaces `/Applications/dev-3.0.app` in place, so it needs no
+ * substitution either — only the formula does.
+ */
+function newBuildBin(plan: UpdatePlan): string {
+	const inPlace = join(installDir(), "dev3");
+	if (plan.kind !== "brew" || plan.cask) return inPlace;
+	const linked = brewLinkedBin(resolvedExecPath());
+	if (!linked) {
+		log.warn("Brew formula upgrade but the keg prefix could not be derived — restarting the path we were started from", {
+			execPath: resolvedExecPath(),
+		});
+		return inPlace;
+	}
+	return linked;
 }
 
 /**
@@ -627,14 +722,32 @@ export function readSuperviseJob(env: NodeJS.ProcessEnv): SuperviseJob | null {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-function run(cmd: string[]): { ok: boolean; error: string } {
+/**
+ * Run a child to completion WITHOUT blocking the event loop.
+ *
+ * Deliberately not `spawnSync`: every command here (`brew update`, `brew fetch`,
+ * `brew upgrade`, `tar -xzf` of a ~76 MB binary) takes seconds to minutes, and a
+ * synchronous spawn would freeze the server's single event loop for all of it —
+ * no HTTP, no websocket, no CLI socket, no tmux output — which is the opposite of
+ * "the slow work happens while the old server is still serving".
+ */
+async function run(cmd: string[]): Promise<{ ok: boolean; error: string }> {
+	const r = await runCapture(cmd);
+	return { ok: r.ok, error: r.ok ? "" : r.error };
+}
+
+async function runCapture(cmd: string[]): Promise<{ ok: boolean; stdout: string; error: string }> {
 	try {
-		const r = spawnSync(cmd);
-		if (r.exitCode === 0) return { ok: true, error: "" };
-		const stderr = r.stderr ? new TextDecoder().decode(r.stderr).trim() : "";
-		return { ok: false, error: stderr || `exit code ${r.exitCode}` };
+		const proc = spawn(cmd, { stdout: "pipe", stderr: "pipe", stdin: "ignore" });
+		const [stdout, stderr, exitCode] = await Promise.all([
+			new Response(proc.stdout as unknown as ReadableStream).text(),
+			new Response(proc.stderr as unknown as ReadableStream).text(),
+			proc.exited,
+		]);
+		if (exitCode === 0) return { ok: true, stdout, error: "" };
+		return { ok: false, stdout, error: stderr.trim() || `exit code ${exitCode}` };
 	} catch (err) {
-		return { ok: false, error: err instanceof Error ? err.message : String(err) };
+		return { ok: false, stdout: "", error: err instanceof Error ? err.message : String(err) };
 	}
 }
 

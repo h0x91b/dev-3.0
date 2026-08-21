@@ -23,6 +23,8 @@ export type InstallMethod =
 	| "app-bundle"
 	/** The CLI tarball extracted anywhere (`~/.dev3`, a container image, …). */
 	| "tarball"
+	/** `<dev3Home>/bin/dev3` — the PATH copy the app maintains, NOT an install. */
+	| "path-copy"
 	/** `bun run …` from a checkout — no installed artifact to replace. */
 	| "source";
 
@@ -40,15 +42,51 @@ export const BREW_PACKAGE = "dev3";
  * `bun` is checked FIRST and by executable name, because a source checkout can
  * sit anywhere — including inside a directory that would otherwise look like a
  * tarball install.
+ *
+ * `dev3BinDir` MATTERS AND IS NOT OPTIONAL IN PRACTICE. `<dev3Home>/bin/dev3` is
+ * a real 76 MB copy the GUI rewrites on every launch (not a symlink — see the
+ * tmp+rename block in `src/bun/index.ts`), and it is what `which dev3` resolves
+ * to on any machine the app has ever started. `realpathSync` therefore resolves
+ * it to itself, and without this it falls through to "tarball" — which would
+ * extract a release tree into the frozen `~/.dev3.0/` layout, leave the real
+ * install untouched, and get silently reverted by the next GUI launch.
  */
-export function detectInstallMethod(resolvedExecPath: string, platform: NodeJS.Platform): InstallMethod {
+export function detectInstallMethod(
+	resolvedExecPath: string,
+	platform: NodeJS.Platform,
+	dev3BinDir?: string | null,
+): InstallMethod {
 	const path = resolvedExecPath.replaceAll("\\", "/");
 	if (/\/bun(\.exe)?$/i.test(path)) return "source";
+	if (dev3BinDir) {
+		const dir = dev3BinDir.replaceAll("\\", "/").replace(/\/+$/, "");
+		if (dir && path.startsWith(`${dir}/`)) return "path-copy";
+	}
 	// Homebrew's own prefix varies (/usr/local, /opt/homebrew, /home/linuxbrew/…),
 	// so the keg directory is the stable marker, not the prefix.
 	if (path.includes(`/Cellar/${BREW_PACKAGE}/`)) return "brew-formula";
 	if (platform === "darwin" && /\.app\//.test(path)) return "app-bundle";
 	return "tarball";
+}
+
+/**
+ * The brew-linked `dev3` for a formula install, derived from the keg path.
+ *
+ * A FORMULA UPDATE MUST NOT RESTART THE BINARY IT IS RUNNING. `installDir()` is
+ * the VERSION-PINNED keg (`…/Cellar/dev3/1.45.2/libexec`); `brew upgrade` puts the
+ * new build in a NEW keg and only moves the `<prefix>/bin/dev3` symlink
+ * (`bin.install_symlink libexec/"dev3"` in the formula). Starting the old keg path
+ * afterwards either finds nothing (brew pruned it) or comes back on the OLD
+ * version and offers the same update 30 minutes later, forever.
+ *
+ * Returns null for any path that is not a keg — the caller then has nothing to
+ * substitute and must not guess.
+ */
+export function brewLinkedBin(resolvedExecPath: string): string | null {
+	const path = resolvedExecPath.replaceAll("\\", "/");
+	const at = path.indexOf(`/Cellar/${BREW_PACKAGE}/`);
+	if (at <= 0) return null;
+	return `${path.slice(0, at)}/bin/${BREW_PACKAGE}`;
 }
 
 /** What an update would actually do. Every refusal carries the sentence the UI shows. */
@@ -100,6 +138,16 @@ export function planUpdate(input: UpdatePlanInput): UpdatePlan {
 			reason:
 				"This dev3 is running from source (`bun run …`), which has no installed artifact to replace. " +
 				"Pull and rebuild the checkout instead.",
+		};
+	}
+	if (input.install === "path-copy") {
+		return {
+			kind: "refused",
+			reason:
+				"This `dev3` is the copy the desktop app keeps on your PATH, not an install — the app rewrites it on " +
+				"every launch. Updating it would leave the real install untouched and be overwritten on the next start. " +
+				"Update the app itself (or run `dev3 update` from the installed binary's own path), and this copy " +
+				"follows automatically.",
 		};
 	}
 	if (input.platform === "win32") {
@@ -219,6 +267,25 @@ export const QUIET_HOLD_MS = 10 * 60 * 1000;
 export const QUIET_CEILING_MS = 72 * 60 * 60 * 1000;
 /** A terminal quieter than this counts as "not producing output". */
 export const PTY_QUIET_MS = 60 * 1000;
+/** Consecutive failures on ONE version before dev3 stops trying it altogether. */
+export const MAX_UPDATE_ATTEMPTS = 5;
+/** First retry waits this long after a failure; each further failure doubles it. */
+export const RETRY_BASE_MS = 30 * 60 * 1000;
+export const RETRY_MAX_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * How long to leave a failed update alone before trying again.
+ *
+ * WITHOUT THIS, A REPEATING FAILURE RETRIES EVERY TICK FOREVER. Past the 72-hour
+ * ceiling the quiet hold no longer applies, so an update that always fails (no
+ * disk space, a 404 on the artifact, brew blocked by a proxy, an unwritable
+ * install dir) re-attempts 48 times a day on a box nobody is watching — each
+ * attempt a full download or brew run.
+ */
+export function retryBackoffMs(failedAttempts: number): number {
+	if (failedAttempts <= 0) return 0;
+	return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** (failedAttempts - 1));
+}
 
 export interface QuietWindowInput {
 	/** Tasks currently in the `in-progress` column, across every project. */
@@ -236,6 +303,10 @@ export interface QuietWindowInput {
 	quietSinceMs: number | null;
 	/** When this update was first seen. Drives the 72-hour ceiling. */
 	pendingSinceMs: number;
+	/** Attempts on THIS version that failed. Drives the backoff and the give-up. */
+	failedAttempts: number;
+	/** When the last attempt failed, or null if none has. */
+	lastFailureMs: number | null;
 	now: number;
 }
 
@@ -258,6 +329,27 @@ export interface QuietWindowVerdict {
  */
 export function evaluateQuietWindow(input: QuietWindowInput): QuietWindowVerdict {
 	const overdue = input.now - input.pendingSinceMs >= QUIET_CEILING_MS;
+
+	// A FAILING UPDATE IS CHECKED BEFORE EVERYTHING ELSE, including the ceiling —
+	// past the ceiling the quiet conditions stop applying, so without this a
+	// permanently broken update would re-attempt on every single tick.
+	if (input.failedAttempts >= MAX_UPDATE_ATTEMPTS) {
+		return {
+			decision: "wait",
+			reason: `${input.failedAttempts} attempts at this version all failed — not trying it again until a new build appears`,
+			quietSinceMs: null,
+		};
+	}
+	if (input.lastFailureMs !== null) {
+		const readyAt = input.lastFailureMs + retryBackoffMs(input.failedAttempts);
+		if (input.now < readyAt) {
+			return {
+				decision: "wait",
+				reason: `backing off after ${input.failedAttempts} failed attempt(s); next try in ${Math.ceil((readyAt - input.now) / 60_000)}m`,
+				quietSinceMs: null,
+			};
+		}
+	}
 
 	if (input.tasksInProgress > 0) {
 		return {

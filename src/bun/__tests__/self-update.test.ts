@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+	brewLinkedBin,
 	detectInstallMethod,
 	evaluateQuietWindow,
+	MAX_UPDATE_ATTEMPTS,
 	planUpdate,
 	QUIET_CEILING_MS,
 	QUIET_HOLD_MS,
+	RETRY_MAX_MS,
+	retryBackoffMs,
 	tarballUrl,
 	type InstallMethod,
 	type UpdatePlanInput,
@@ -44,6 +48,33 @@ describe("detectInstallMethod", () => {
 
 	it("normalises Windows separators before matching", () => {
 		expect(detectInstallMethod("C:\\Users\\x\\.bun\\bin\\bun.exe", "win32")).toBe("source");
+	});
+
+	// `<dev3Home>/bin/dev3` is a real 76 MB copy the GUI rewrites on every launch, and
+	// it is what `which dev3` resolves to on any machine the app has ever started.
+	// Classified as a tarball, an update would extract a release tree into the frozen
+	// `~/.dev3.0/` layout, leave the real install on the old version, and get reverted
+	// by the next GUI launch.
+	describe("the PATH copy the app maintains", () => {
+		const binDir = "/Users/x/.dev3.0/bin";
+
+		it("is not an install", () => {
+			expect(detectInstallMethod(`${binDir}/dev3`, "darwin", binDir)).toBe("path-copy");
+		});
+
+		it("is recognised with a trailing slash on the bin dir too", () => {
+			expect(detectInstallMethod(`${binDir}/dev3`, "darwin", `${binDir}/`)).toBe("path-copy");
+		});
+
+		it("does not swallow a real install that merely starts with a similar name", () => {
+			expect(detectInstallMethod("/Users/x/.dev3.0/binaries/dev3", "darwin", binDir)).toBe("tarball");
+		});
+
+		it("still classifies everything else normally when the bin dir is known", () => {
+			expect(detectInstallMethod("/opt/homebrew/Cellar/dev3/1.45.2/libexec/dev3", "darwin", binDir))
+				.toBe("brew-formula");
+			expect(detectInstallMethod("/opt/homebrew/bin/bun", "darwin", binDir)).toBe("source");
+		});
 	});
 });
 
@@ -93,6 +124,15 @@ describe("planUpdate", () => {
 		const plan = planUpdate({ ...base, install: "source", offered: null });
 		expect(plan.kind).toBe("refused");
 		if (plan.kind === "refused") expect(plan.reason).toContain("from source");
+	});
+
+	it("refuses the app's PATH copy, naming why updating it would be pointless", () => {
+		const plan = planUpdate({ ...base, install: "path-copy" });
+		expect(plan.kind).toBe("refused");
+		if (plan.kind === "refused") {
+			expect(plan.reason).toContain("PATH");
+			expect(plan.reason).toContain("overwritten");
+		}
 	});
 
 	it("refuses Windows: there is no Windows CLI tarball to install", () => {
@@ -197,6 +237,8 @@ describe("evaluateQuietWindow", () => {
 		browserClients: 0,
 		quietSinceMs: now - QUIET_HOLD_MS,
 		pendingSinceMs: now - 60_000,
+		failedAttempts: 0,
+		lastFailureMs: null,
 		now,
 	};
 
@@ -261,6 +303,66 @@ describe("evaluateQuietWindow", () => {
 			tasksInProgress: 1,
 		});
 		expect(verdict.decision).toBe("wait");
+	});
+
+	// Past the ceiling the quiet conditions stop applying, so WITHOUT a backoff a
+	// permanently broken update re-attempts on every 30-minute tick, 48 times a day.
+	it("backs off after a failure instead of retrying on the very next tick", () => {
+		const verdict = evaluateQuietWindow({ ...base, failedAttempts: 1, lastFailureMs: now - 60_000 });
+		expect(verdict.decision).toBe("wait");
+		expect(verdict.reason).toContain("backing off");
+	});
+
+	it("tries again once the backoff has elapsed", () => {
+		const verdict = evaluateQuietWindow({
+			...base,
+			failedAttempts: 1,
+			lastFailureMs: now - retryBackoffMs(1) - 1,
+		});
+		expect(verdict.decision).toBe("apply");
+	});
+
+	it("keeps backing off past the ceiling too — the ceiling is not an override", () => {
+		const verdict = evaluateQuietWindow({
+			...base,
+			pendingSinceMs: now - QUIET_CEILING_MS - 1,
+			failedAttempts: 2,
+			lastFailureMs: now - 1_000,
+		});
+		expect(verdict.decision).toBe("wait");
+		expect(verdict.reason).toContain("backing off");
+	});
+
+	it("gives up on a version after MAX_UPDATE_ATTEMPTS, however quiet the box is", () => {
+		const verdict = evaluateQuietWindow({
+			...base,
+			failedAttempts: MAX_UPDATE_ATTEMPTS,
+			lastFailureMs: now - RETRY_MAX_MS * 10,
+		});
+		expect(verdict.decision).toBe("wait");
+		expect(verdict.reason).toContain("all failed");
+	});
+
+	it("doubles the wait per failure and then caps it", () => {
+		expect(retryBackoffMs(0)).toBe(0);
+		expect(retryBackoffMs(2)).toBe(retryBackoffMs(1) * 2);
+		expect(retryBackoffMs(99)).toBe(RETRY_MAX_MS);
+	});
+});
+
+describe("brewLinkedBin", () => {
+	// A formula upgrade puts the new build in a NEW keg and only moves
+	// `<prefix>/bin/dev3`; restarting the keg path we were started from comes back on
+	// the OLD version and offers the same update forever.
+	it("points at the brew symlink, not the version-pinned keg", () => {
+		expect(brewLinkedBin("/opt/homebrew/Cellar/dev3/1.45.2/libexec/dev3")).toBe("/opt/homebrew/bin/dev3");
+		expect(brewLinkedBin("/home/linuxbrew/.linuxbrew/Cellar/dev3/1.45.2/libexec/dev3"))
+			.toBe("/home/linuxbrew/.linuxbrew/bin/dev3");
+	});
+
+	it("returns null for anything that is not a keg, rather than guessing a prefix", () => {
+		expect(brewLinkedBin("/Users/x/.dev3/dev3")).toBeNull();
+		expect(brewLinkedBin("/Applications/dev-3.0.app/Contents/MacOS/dev3")).toBeNull();
 	});
 });
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleUpdate } from "../commands/update";
 import type { ParsedArgs } from "../args";
-import { CLI_EXIT_CODE_UPDATE_REFUSED } from "../../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_COMMAND_FAILED, CLI_EXIT_CODE_UPDATE_REFUSED } from "../../shared/cli-exit-codes";
 import type { RemoteServerState } from "../../shared/types";
 
 /**
@@ -187,7 +187,17 @@ describe("dev3 update with a running headless server", () => {
 
 		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
 
-		expect(mockSendRequest).toHaveBeenCalledWith("/tmp/dev3-test.sock", "remote.selfUpdate", {});
+		// A generous timeout is part of the contract, not a detail: the server does the
+		// whole stage+apply inside this one request, and the 30 s default reported a
+		// successful update as a crash.
+		expect(mockSendRequest).toHaveBeenCalledWith(
+			"/tmp/dev3-test.sock",
+			"remote.selfUpdate",
+			{},
+			expect.objectContaining({ timeoutMs: expect.any(Number) }),
+		);
+		const timeoutMs = (mockSendRequest.mock.calls[0]?.[3] as { timeoutMs: number }).timeoutMs;
+		expect(timeoutMs).toBeGreaterThan(60_000);
 		// Only the server can hand its port and live tunnel to the successor, so the
 		// CLI must never run the update itself while one is alive.
 		expect(mockRunSelfUpdate).not.toHaveBeenCalled();
@@ -202,7 +212,7 @@ describe("dev3 update with a running headless server", () => {
 		mockSendRequest.mockResolvedValue({
 			id: "1",
 			ok: true,
-			data: { ok: false, restarting: false, message: "This dev3 is running from source" },
+			data: { ok: false, refused: true, restarting: false, message: "This dev3 is running from source" },
 		});
 
 		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
@@ -243,6 +253,7 @@ describe("dev3 update with nothing running", () => {
 		mockReadState.mockReturnValue(null);
 		mockRunSelfUpdate.mockResolvedValue({
 			ok: false,
+			refused: true,
 			restarting: false,
 			message: "Self-update is not available on Windows yet",
 		});
@@ -250,5 +261,21 @@ describe("dev3 update with nothing running", () => {
 		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
 
 		expect(exitCodes).toEqual([CLI_EXIT_CODE_UPDATE_REFUSED]);
+	});
+
+	// 15 promises "nothing was changed". A download that 404s, an unwritable install
+	// dir or a half-done file swap is an ordinary failure — reporting it as a refusal
+	// makes any automation that skips unsupported installs swallow real breakage.
+	it("exits 1 — not the refusal code — when the update was attempted and FAILED", async () => {
+		mockReadState.mockReturnValue(null);
+		mockRunSelfUpdate.mockResolvedValue({
+			ok: false,
+			restarting: false,
+			message: "HTTP 404 downloading https://example.invalid/dev3-cli-linux-x64.tar.gz",
+		});
+
+		await expect(handleUpdate(args())).rejects.toThrow("__exit__");
+
+		expect(exitCodes).toEqual([CLI_EXIT_CODE_COMMAND_FAILED]);
 	});
 });

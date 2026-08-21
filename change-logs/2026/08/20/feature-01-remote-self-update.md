@@ -1,3 +1,0 @@
-Short: Remote boxes now update themselves
-
-A headless `dev3 remote` box keeps itself current: it checks every 30 minutes and installs the update on its own once nothing is in progress, no terminal is printing and no browser is connected — and the restart hands its port and live Cloudflare tunnel to the new build, so the public link and your open session survive it. The new `dev3 update` command does the same thing on demand from any shell, detecting whether this install came from a Homebrew formula, a cask, or a plain CLI tarball (`--check` and `--dry-run` report without touching anything). Turn the automatic half off in Settings → System.
