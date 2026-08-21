@@ -2181,6 +2181,20 @@ function App() {
 		});
 	}, [applyRemoteQR]);
 
+	// Tear the public tunnel down and fall back to the local-network QR. Shared by
+	// the toggle and the explicit Stop button so both paths behave identically.
+	const stopRemoteTunnel = useCallback(() => {
+		setTunnelWanted(false);
+		setTunnelStarting(false);
+		setRemoteAccessActive(false);
+		api.request.stopTunnel().then(() => {
+			api.request.getRemoteAccessQR({ tunnel: false }).then((res) => {
+				applyRemoteQR(res);
+				setQrCountdown(25);
+			}).catch(() => {});
+		}).catch(() => {});
+	}, [applyRemoteQR]);
+
 	// Listen for the Remote Access open request (header button, kebab, native menu)
 	useEffect(() => {
 		function onShowRemoteQR(e: Event) {
@@ -2701,13 +2715,7 @@ function App() {
 										if (want && remoteQR.cloudflaredInstalled && remoteQR.tunnelState === "idle") {
 											startRemoteTunnel();
 										} else if (!want && remoteQR.tunnelState === "connected") {
-											setRemoteAccessActive(false);
-											api.request.stopTunnel().then(() => {
-												api.request.getRemoteAccessQR({ tunnel: false }).then((res) => {
-													applyRemoteQR(res);
-													setQrCountdown(25);
-												}).catch(() => {});
-											}).catch(() => {});
+											stopRemoteTunnel();
 										}
 									}}
 									className="accent-accent w-4 h-4"
@@ -2770,6 +2778,15 @@ function App() {
 								<div className="flex items-center gap-2">
 									<div className="w-2 h-2 rounded-full bg-green-400" />
 									<span className="text-green-400 text-xs">{t("remote.tunnelConnected")}</span>
+									<button
+										type="button"
+										data-testid="remote-stop-tunnel"
+										onClick={stopRemoteTunnel}
+										title={t("remote.stopTunnelHint")}
+										className="ml-auto px-2 py-1 rounded-md border border-danger/30 text-danger text-xs hover:bg-danger/10 transition-colors"
+									>
+										{t("remote.stopTunnel")}
+									</button>
 								</div>
 							)}
 

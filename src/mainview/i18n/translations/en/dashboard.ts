@@ -151,6 +151,8 @@ const dashboard = {
 	"remote.recheckCloudflared": "Recheck",
 	"remote.tunnelStarting": "Starting tunnel...",
 	"remote.tunnelConnected": "Public tunnel active",
+	"remote.stopTunnel": "Stop",
+	"remote.stopTunnelHint": "Stop the public tunnel and go back to local-network access",
 	"remote.tunnelPropagationHint": "Give Cloudflare a few seconds to publish the domain. If the link errors with “domain not resolved”, wait a moment — or toggle this off and back on — then reopen it.",
 	"remote.tunnelFailed": "Tunnel failed to start",
 	"remote.copyUrl": "Copy URL",

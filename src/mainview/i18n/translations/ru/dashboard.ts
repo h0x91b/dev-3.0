@@ -169,6 +169,8 @@ const dashboard = {
 	"remote.recheckCloudflared": "Проверить снова",
 	"remote.tunnelStarting": "Запуск туннеля...",
 	"remote.tunnelConnected": "Публичный туннель активен",
+	"remote.stopTunnel": "Остановить",
+	"remote.stopTunnelHint": "Остановить публичный туннель и вернуться к доступу по локальной сети",
 	"remote.tunnelPropagationHint": "Дайте Cloudflare пару секунд, чтобы опубликовать домен. Если по ссылке ошибка «домен не резолвится» — подождите немного или выключите и снова включите эту галочку, затем откройте заново.",
 	"remote.tunnelFailed": "Не удалось запустить туннель",
 	"remote.copyUrl": "Скопировать URL",

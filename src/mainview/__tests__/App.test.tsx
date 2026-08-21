@@ -1983,6 +1983,39 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByText("Connected")).toBeInTheDocument();
 		});
 
+		it("stops the tunnel and clears the toggle from the Stop button", async () => {
+			await renderApp();
+			vi.mocked(api.request.getRemoteAccessQR).mockResolvedValue({
+				qrDataUrl: "data:image/png;base64,local",
+				accessUrl: "http://192.168.0.1:1234/?token=local",
+				tunnelState: "idle",
+				cloudflaredInstalled: true,
+				interfaces: [],
+				selectedHost: "192.168.0.1",
+			});
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,tunnel",
+					accessUrl: "https://foo.trycloudflare.com/?token=t",
+					tunnelState: "connected",
+					cloudflaredInstalled: true,
+				},
+			}));
+
+			const stop = await screen.findByTestId("remote-stop-tunnel");
+			expect(screen.getByText("Public tunnel active")).toBeInTheDocument();
+
+			await userEvent.click(stop);
+
+			await waitFor(() => expect(api.request.stopTunnel).toHaveBeenCalled());
+			await waitFor(() => {
+				expect(screen.queryByTestId("remote-stop-tunnel")).not.toBeInTheDocument();
+			});
+			expect(screen.getByLabelText("Accessible from anywhere (Cloudflare Tunnel)", { selector: "input" })).not.toBeChecked();
+			expect(api.request.getRemoteAccessQR).toHaveBeenCalledWith({ tunnel: false });
+		});
+
 		it("resets consumed state when modal is reopened", async () => {
 			await renderApp();
 
