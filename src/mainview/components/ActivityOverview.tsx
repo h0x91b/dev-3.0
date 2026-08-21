@@ -154,6 +154,21 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		}
 	}
 
+	/** Step one space by one position. The rail drags; this is the path for a
+	 *  pointer that cannot drag and for the keyboard. */
+	async function handleMoveSpace(space: Space, delta: -1 | 1) {
+		const order = spaces.map((s) => s.id);
+		const from = order.indexOf(space.id);
+		const to = from + delta;
+		if (from === -1 || to < 0 || to >= order.length) return;
+		[order[from], order[to]] = [order[to], order[from]];
+		try {
+			await api.request.reorderSpaces({ order });
+		} catch (err) {
+			toast.error(t("spaces.failedUpdate", { error: String(err) }));
+		}
+	}
+
 	// Deleting a space unlinks its projects and nothing else — never removes a
 	// project from dev3 (see the Spaces decision record).
 	async function handleDeleteSpace(space: Space) {
@@ -377,6 +392,11 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		const hasActiveTasks = tasks.length > 0;
 		const todoCount = todoByProject.get(project.id) ?? 0;
 		const isDragged = reorder ? reorder.isDragged : draggedProjectId === project.id;
+		// A drag is in flight in this row's reorder scope: every row that can take
+		// the drop shrinks to one line for the duration. A row with five tasks is
+		// ~300px tall, so a list of them never fits on one screen — the drop target
+		// was somewhere the user had to scroll to while holding the pointer down.
+		const compact = reorder ? reorder.groupDragActive : draggedProjectId !== null;
 		const isBuiltinOps = isBuiltinOpsProject(project);
 		const locked = privacy.isLocked(project);
 		// Virtual boards (builtin and user-created) cannot be reordered:
@@ -448,7 +468,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 			<div
 				key={project.id}
 				data-help-id="dashboard.project-row"
-				className={`relative bg-raised rounded-2xl border border-edge overflow-hidden transition-opacity ${isDragged ? "opacity-60" : ""}`}
+				className={`relative bg-raised border border-edge overflow-hidden transition-opacity ${compact ? "rounded-xl" : "rounded-2xl"} ${isDragged ? "opacity-60" : ""}`}
+				data-compact={compact || undefined}
 				onDragOver={reorder ? reorder.onDragOver : (event) => handleDragOver(event, project.id)}
 				onDragLeave={reorder ? reorder.onDragLeave : () => setDropTarget((current) => current?.projectId === project.id ? null : current)}
 				onDrop={reorder ? reorder.onDrop : (event) => handleDrop(event, project.id)}
@@ -456,7 +477,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 				{showDropBefore && <div className="absolute top-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 				{showDropAfter && <div className="absolute bottom-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 				{/* Project header */}
-				<div className={`group flex items-center gap-2 px-3 md:px-5 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
+				<div className={`group flex items-center gap-2 px-3 md:px-5 ${compact ? "py-1.5" : hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
 					{/* Reorder cluster — desktop only. On touch, drag and the
 					    step buttons are unusable; reorder lives in the action sheet. */}
 					{/* A grouped row alone in its space has nothing to reorder. */}
@@ -540,7 +561,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						title={locked ? t("streamer.projectLocked") : undefined}
 						className={`min-w-0 flex-1 flex items-center gap-3 text-left ${locked ? "cursor-not-allowed" : ""}`}
 					>
-						<div className={`${hasActiveTasks ? "w-8 h-8" : "w-6 h-6"} rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0`}>
+						<div className={`${compact ? "hidden" : hasActiveTasks ? "w-8 h-8" : "w-6 h-6"} rounded-lg bg-accent/15 flex items-center justify-center flex-shrink-0`}>
 							<svg aria-hidden="true" focusable="false" className={`${hasActiveTasks ? "w-4 h-4" : "w-3 h-3"} text-accent`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
 							</svg>
@@ -563,7 +584,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						    link emphasis on row hover. Without it the only cue was the
 						    background lifting one step, which reads as "row", not "link". */}
 						<span className={`truncate select-text ${locked ? "" : "group-hover:text-accent group-hover:underline decoration-accent/50 underline-offset-2"} ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{isBuiltinOps ? t("ops.boardName") : project.name}</span>
-									{!isBuiltinOps && (
+									{!isBuiltinOps && !compact && (
 										<ProjectSpaceChips
 											spaces={spacesFile.spaces}
 											projectId={project.id}
@@ -576,13 +597,13 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 										{isBuiltinOps ? t("ops.badgeSystem") : t("ops.badge")}
 									</span>
 								)}
-								{isBuiltinOps && (
+								{isBuiltinOps && !compact && (
 									<span className="hidden md:inline-flex text-fg-3 text-nano font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
 								)}
 							</div>
 							{/* Subtitle (path / virtual hint) is dead weight on a phone —
 							    name + badge already identify the board. Desktop only. */}
-							{project.kind === "virtual" ? (
+							{compact ? null : project.kind === "virtual" ? (
 								<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
 							) : (
 								<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate font-mono select-text streamer-private" title={project.path}>{project.path}</div>
@@ -590,7 +611,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						</div>
 					</button>
 					{/* Desktop: resting-visible inline icon cluster, hover-emphasised. */}
-					<div className="hidden md:flex">
+					<div className={compact ? "hidden" : "hidden md:flex"}>
 						<ProjectActionButtons
 							project={project}
 							navigate={navigate}
@@ -598,7 +619,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							onOpenSpaces={allSpaceGroups !== null ? openSpacesPicker : undefined}
 						/>
 					</div>
-					<span className="flex items-center gap-3">
+					<span className={`items-center gap-3 ${compact ? "hidden" : "flex"}`}>
 						{hasActiveTasks ? (
 							<span className="text-fg-3 text-xs tabular-nums whitespace-nowrap">{t.plural(narrow ? "activity.taskCountShort" : "activity.taskCount", tasks.length)}</span>
 						) : (
@@ -612,7 +633,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					</span>
 					{/* Narrow: a single kebab folds every per-project action + reorder
 					    into a bottom sheet. Rendered last so it sits at the true row end. */}
-					{narrow && (
+					{narrow && !compact && (
 						<button
 							type="button"
 							onClick={(event) => {
@@ -629,7 +650,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					)}
 				</div>
 
-				{hasActiveTasks && (
+				{hasActiveTasks && !compact && (
 					<div className="border-t border-edge">
 						{/* Attention + custom-column tasks — shown individually. On narrow
 						    each row stacks (title on its own line, meta below) so the title
@@ -781,6 +802,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 				    showing, and the only place the word "board" appears on desktop.
 				    It replaces the old background-summary line, which carried the
 				    same counts but led nowhere. */}
+				{!compact && (
 				<button
 					type="button"
 					onClick={() => openProject(project.id)}
@@ -812,6 +834,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						)}
 					</span>
 				</button>
+				)}
 			</div>
 		);
 	}
@@ -913,6 +936,8 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							onAddProjects={(space) => setAddProjectsSpace(space)}
 							onRenameSpace={handleRenameSpace}
 							onDeleteSpace={handleDeleteSpace}
+							onMoveSpace={(space, delta) => void handleMoveSpace(space, delta)}
+							spaceOrder={spaces.map((s) => s.id)}
 							renderProject={(p, ctx, spaceId) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), ctx, spaceId)}
 							renderBottomBlockProject={(p) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id))}
 						/>

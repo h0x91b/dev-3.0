@@ -29,6 +29,9 @@ export interface RowReorderCtx {
 	 *  grip + up/down cluster is hidden rather than shown inert. */
 	showReorder: boolean;
 	isDragged: boolean;
+	/** A row in THIS group is being dragged, so every row here collapses to one
+	 *  line. Scoped to the group because only this group accepts the drop. */
+	groupDragActive: boolean;
 	dragEnabled: boolean;
 	onDragStart: (event: DragEvent<HTMLElement>) => void;
 	onDragEnd: () => void;
@@ -56,13 +59,19 @@ interface SpaceGroupedProjectsProps {
 	onAddProjects?: (space: Space) => void;
 	onRenameSpace?: (space: Space, name: string) => void;
 	onDeleteSpace?: (space: Space) => void;
+	/** Step this space one position in the app-wide space order. */
+	onMoveSpace?: (space: Space, delta: -1 | 1) => void;
+	/** Every space id in order — the visible groups are a filtered subset, so the
+	 *  edges of `Move up` / `Move down` cannot be read off `groups`. */
+	spaceOrder?: string[];
 }
 
 /**
  * Space headers around the dashboard's existing project rows. Owns collapse
  * state and within-space project drag (that space's projectIds). Drag never
- * crosses groups and never changes membership. Space ORDER is not editable
- * here — the rail is the one surface that reorders spaces.
+ * crosses groups and never changes membership. Space order is dragged in the
+ * rail; this header only carries the stepwise `Move up` / `Move down` for
+ * pointers that cannot drag.
  */
 function SpaceGroupedProjects({
 	groups,
@@ -74,6 +83,8 @@ function SpaceGroupedProjects({
 	onAddProjects,
 	onRenameSpace,
 	onDeleteSpace,
+	onMoveSpace,
+	spaceOrder,
 }: SpaceGroupedProjectsProps) {
 	const t = useT();
 	const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
@@ -110,6 +121,7 @@ function SpaceGroupedProjects({
 		return {
 			showReorder: canReorder,
 			isDragged: dragged?.spaceId === spaceId && dragged.projectId === project.id,
+			groupDragActive: dragged?.spaceId === spaceId,
 			dragEnabled: canReorder,
 			onDragStart: (event) => {
 				setDragged({ spaceId, projectId: project.id });
@@ -219,11 +231,10 @@ function SpaceGroupedProjects({
 									</span>
 								)}
 							</button>
-							{onRenameSpace && onDeleteSpace && (
-								<div className={onAddProjects ? "ml-auto" : "ml-auto"}>
-									<SpaceHeaderMenu space={space} onRename={onRenameSpace} onDelete={onDeleteSpace} />
-								</div>
-							)}
+							{/* The space's own actions sit against its name, not pushed to
+							    the far right of a 1024px column: `Delete space` at the end
+							    of an otherwise empty row does not read as belonging to the
+							    space at all (§9a.6 — group with proximity). */}
 							{onAddProjects && (
 								<button
 									type="button"
@@ -237,6 +248,18 @@ function SpaceGroupedProjects({
 										<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 									</svg>
 								</button>
+							)}
+							{onRenameSpace && onDeleteSpace && (
+								<SpaceHeaderMenu
+									space={space}
+									onRename={onRenameSpace}
+									onDelete={onDeleteSpace}
+									onMove={onMoveSpace && (spaceOrder?.length ?? 0) > 1 ? onMoveSpace : undefined}
+									canMoveUp={(spaceOrder?.indexOf(space.id) ?? 0) > 0}
+									canMoveDown={
+										spaceOrder ? spaceOrder.indexOf(space.id) < spaceOrder.length - 1 : false
+									}
+								/>
 							)}
 						</div>
 						{!isCollapsed && group.projects.map((project, index) => (

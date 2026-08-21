@@ -8,15 +8,22 @@ interface SpaceHeaderMenuProps {
 	space: Space;
 	onRename: (space: Space, name: string) => void;
 	onDelete: (space: Space) => void;
+	/** Omitted when there is only one space — nothing to move it past. */
+	onMove?: (space: Space, delta: -1 | 1) => void;
+	canMoveUp?: boolean;
+	canMoveDown?: boolean;
 }
 
 /**
- * The space's own lifecycle actions — rename and delete. A space has exactly
- * two properties (name, membership), so an overflow with two entries is the
- * whole surface; membership stays on the header's `+` and the row's Spaces…
- * action. This is the space object's chrome, not a task row's (§10).
+ * The space's own actions — order, rename, delete. Membership stays on the
+ * header's `+` and the row's Spaces… action. This is the space object's chrome,
+ * not a task row's (§10).
+ *
+ * Move up / down live here because the rail reorders by drag, which touch and
+ * the keyboard cannot perform. An overflow entry costs no resting pixels; a
+ * second visible control in a 224px rail did.
  */
-function SpaceHeaderMenu({ space, onRename, onDelete }: SpaceHeaderMenuProps) {
+function SpaceHeaderMenu({ space, onRename, onDelete, onMove, canMoveUp, canMoveDown }: SpaceHeaderMenuProps) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
 	const [renaming, setRenaming] = useState(false);
@@ -129,6 +136,36 @@ function SpaceHeaderMenu({ space, onRename, onDelete }: SpaceHeaderMenuProps) {
 							</div>
 						) : (
 							<>
+								{onMove && (
+									<>
+										<button
+											type="button"
+											role="menuitem"
+											onClick={() => {
+												close();
+												onMove(space, -1);
+											}}
+											disabled={!canMoveUp}
+											className={`${itemClass} text-fg-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent`}
+											data-testid={`space-move-up-${space.id}`}
+										>
+											{t("spaces.moveUp")}
+										</button>
+										<button
+											type="button"
+											role="menuitem"
+											onClick={() => {
+												close();
+												onMove(space, 1);
+											}}
+											disabled={!canMoveDown}
+											className={`${itemClass} text-fg-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent`}
+											data-testid={`space-move-down-${space.id}`}
+										>
+											{t("spaces.moveDown")}
+										</button>
+									</>
+								)}
 								<button
 									type="button"
 									role="menuitem"

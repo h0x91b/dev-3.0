@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ActivityOverview from "../ActivityOverview";
 import { I18nProvider } from "../../i18n";
@@ -822,6 +822,62 @@ describe("ActivityOverview — spaces grouping", () => {
 		await waitFor(() => expect(screen.getByTestId("space-header-sp_a")).toHaveTextContent("Client X"));
 		expect(within(screen.getByTestId("space-group-sp_a")).getByText("My Project")).toBeInTheDocument();
 		expect(within(screen.getByTestId("space-group-rest")).getByText("Loose Project")).toBeInTheDocument();
+	});
+});
+
+// A row carrying tasks and a footer is ~300px tall, so a handful of them never
+// fit on one screen: the user had to scroll to the drop target with the pointer
+// held down. While a drag is in flight every row that can take it is one line.
+describe("ActivityOverview — dragging a project collapses the list", () => {
+	const second: Project = { ...mockProject, id: "p2", name: "Second Project", path: "/tmp/second" };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{ projectId: "p1", tasks: [mockTask], todoCount: 4 },
+			{ projectId: "p2", tasks: [], todoCount: 0 },
+		]);
+		(mockedApi.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue({
+			version: 1,
+			spaces: [{ id: "sp_a", name: "Client X", parentId: null, projectIds: ["p1", "p2"], createdAt: 1 }],
+			order: ["sp_a"],
+		});
+	});
+
+	function startDragging(projectName: string) {
+		const row = screen.getByText(projectName).closest('[data-help-id="dashboard.project-row"]')!;
+		const grip = row.querySelector('[title="Drag to reorder project"]')!;
+		fireEvent.dragStart(grip, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
+	}
+
+	it("drops the task rows and the board footer for the duration of the drag", async () => {
+		renderWithProjects([mockProject, second]);
+		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
+		startDragging("My Project");
+		expect(screen.queryByText(getTaskTitle(mockTask))).not.toBeInTheDocument();
+		expect(screen.queryByTestId("project-open-board-p1")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("project-open-board-p2")).not.toBeInTheDocument();
+		// The one thing a row being reordered is for: which project it is.
+		expect(screen.getByText("My Project")).toBeInTheDocument();
+		expect(screen.getByText("Second Project")).toBeInTheDocument();
+	});
+
+	it("hides the path so the row is a single line", async () => {
+		renderWithProjects([mockProject, second]);
+		expect(await screen.findByTitle("/home/user/my-project")).toBeInTheDocument();
+		startDragging("My Project");
+		expect(screen.queryByTitle("/home/user/my-project")).not.toBeInTheDocument();
+	});
+
+	it("restores the full rows when the drag ends", async () => {
+		renderWithProjects([mockProject, second]);
+		expect(await screen.findByText(getTaskTitle(mockTask))).toBeInTheDocument();
+		const row = screen.getByText("My Project").closest('[data-help-id="dashboard.project-row"]')!;
+		const grip = row.querySelector('[title="Drag to reorder project"]')!;
+		fireEvent.dragStart(grip, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
+		fireEvent.dragEnd(grip);
+		expect(screen.getByText(getTaskTitle(mockTask))).toBeInTheDocument();
+		expect(screen.getByTestId("project-open-board-p1")).toBeInTheDocument();
 	});
 });
 

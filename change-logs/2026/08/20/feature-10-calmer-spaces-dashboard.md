@@ -1,3 +1,0 @@
-Short: Calmer dashboard, board one click away
-
-The dashboard drops its cross-project task panel, which was listing the same waiting tasks the project rows already show, and every project row gains an "Open board" footer stating the work it is not showing (including how many tasks sit in To Do). Space order is now edited only in the left rail — rows carry a visible grip and a Reorder mode with up/down controls, so reordering finally works by touch and keyboard instead of desktop drag alone. "New space" no longer appears twice: the rail owns it, and the header keeps it only while the rail is off screen.

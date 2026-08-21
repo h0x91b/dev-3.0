@@ -6,8 +6,8 @@ import type { Space } from "../../../shared/types";
 
 const space: Space = { id: "sp_a", name: "Labs", parentId: null, projectIds: ["p1"], createdAt: 1 };
 
-function renderMenu() {
-	const props = { space, onRename: vi.fn(), onDelete: vi.fn() };
+function renderMenu(overrides: Partial<Parameters<typeof SpaceHeaderMenu>[0]> = {}) {
+	const props = { space, onRename: vi.fn(), onDelete: vi.fn(), ...overrides };
 	render(
 		<I18nProvider>
 			<SpaceHeaderMenu {...props} />
@@ -74,6 +74,34 @@ describe("SpaceHeaderMenu", () => {
 		await user.click(screen.getByTestId("space-delete-sp_a"));
 		expect(props.onDelete).toHaveBeenCalledWith(space);
 		expect(screen.queryByTestId("space-delete-sp_a")).not.toBeInTheDocument();
+	});
+
+	it("carries the space's order for pointers that cannot drag", async () => {
+		const user = userEvent.setup();
+		const props = renderMenu({ onMove: vi.fn(), canMoveUp: true, canMoveDown: true });
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		await user.click(screen.getByTestId("space-move-down-sp_a"));
+		expect(props.onMove).toHaveBeenCalledWith(space, 1);
+
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		await user.click(screen.getByTestId("space-move-up-sp_a"));
+		expect(props.onMove).toHaveBeenCalledWith(space, -1);
+	});
+
+	it("disables the step that would fall off the end of the order", async () => {
+		const user = userEvent.setup();
+		renderMenu({ onMove: vi.fn(), canMoveUp: false, canMoveDown: true });
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		expect(screen.getByTestId("space-move-up-sp_a")).toBeDisabled();
+		expect(screen.getByTestId("space-move-down-sp_a")).toBeEnabled();
+	});
+
+	it("omits the order entries entirely when there is nothing to move past", async () => {
+		const user = userEvent.setup();
+		renderMenu();
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		expect(screen.queryByTestId("space-move-up-sp_a")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("space-move-down-sp_a")).not.toBeInTheDocument();
 	});
 
 	it("styles delete as destructive", async () => {

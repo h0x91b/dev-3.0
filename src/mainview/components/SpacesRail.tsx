@@ -73,11 +73,10 @@ const GRIP_GLYPH = "\u{F01DB}";
  * group. Selecting an entry FILTERS the dashboard — it never navigates, so a
  * space stays a grouping and never becomes a place with a board of its own.
  *
- * The rail is also the ONE surface that reorders spaces. Pointer users drag a
- * row; everyone else uses reorder mode, because HTML5 drag does not exist on
- * touch and has no keyboard equivalent. Per-row step buttons were measured and
- * rejected: 224px minus padding leaves 180px, and a grip plus two arrows eats
- * ~74px of it, which starves the name a row exists to show.
+ * Reordering here is drag only, by the resting grip. The keyboard and touch
+ * path is `Move up` / `Move down` in the space header's own menu — a rail-local
+ * reorder mode duplicated one gesture into a second visible control, and the
+ * rail is 224px wide, which is the wrong place to spend width twice.
  */
 function SpacesRail({
 	spaces,
@@ -98,13 +97,9 @@ function SpacesRail({
 	const draggedRef = useRef<string | null>(null);
 	const [dragged, setDragged] = useState<string | null>(null);
 	const [dropTarget, setDropTarget] = useState<{ spaceId: string; side: "before" | "after" } | null>(null);
-	const [reordering, setReordering] = useState(false);
 
-	// Nothing to reorder with one space — the affordances hide rather than sit inert.
+	// Nothing to reorder with one space — the grip hides rather than sits inert.
 	const canReorder = !!onReorder && spaces.length > 1;
-	// Leaving reorder mode is not something the user has to remember to do: the
-	// mode is meaningless once the rows it reorders are gone.
-	if (reordering && !canReorder) setReordering(false);
 
 	function rowClass(active: boolean): string {
 		return `w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
@@ -122,21 +117,9 @@ function SpacesRail({
 		onReorder(order);
 	}
 
-	/** Move one space by one position. The keyboard and touch path. */
-	function step(spaceId: string, delta: -1 | 1) {
-		if (!onReorder) return;
-		const order = spaces.map((s) => s.id);
-		const from = order.indexOf(spaceId);
-		const to = from + delta;
-		if (from === -1 || to < 0 || to >= order.length) return;
-		[order[from], order[to]] = [order[to], order[from]];
-		onReorder(order);
-	}
-
 	function dragHandlers(spaceId: string) {
-		// A single space has no order to change; in reorder mode the step buttons
-		// own the interaction, so dragging is off to keep one story per mode.
-		if (!canReorder || reordering) return {};
+		// A single space has no order to change.
+		if (!canReorder) return {};
 		return {
 			draggable: true,
 			onDragStart: (event: DragEvent<HTMLButtonElement>) => {
@@ -199,77 +182,13 @@ function SpacesRail({
 			</div>
 
 			<div className="flex flex-col gap-1">
-				<div className="flex items-center gap-1 px-2.5">
-					<span className="flex-1 text-fg-muted text-nano font-semibold uppercase tracking-[0.08em]">
-						{t("spaces.railSpaces")}
-					</span>
-					{/* Deliberately NOT the section label's uppercase nano: beside
-					    `SPACES` that made two words read as a pair of column headings
-					    instead of a label and a control (§9a.6 — a control must look
-					    interactive next to static text). */}
-					{canReorder && (
-						<button
-							type="button"
-							onClick={() => setReordering((on) => !on)}
-							aria-pressed={reordering}
-							className={`text-xs rounded px-1.5 py-0.5 transition-colors ${
-								reordering
-									? "text-accent bg-accent/15"
-									: "text-fg-3 hover:text-fg hover:bg-elevated-hover"
-							}`}
-							data-testid="rail-reorder-toggle"
-						>
-							{reordering ? t("spaces.reorderDone") : t("spaces.reorderStart")}
-						</button>
-					)}
-				</div>
-				{spaces.map((space, index) => {
+				<span className="px-2.5 text-fg-muted text-nano font-semibold uppercase tracking-[0.08em]">
+					{t("spaces.railSpaces")}
+				</span>
+				{spaces.map((space) => {
 					const active = selectedSpaceId === space.id;
 					const isTarget = dropTarget?.spaceId === space.id;
 					const masked = maskedSpaceIds.has(space.id);
-
-					// Reorder mode: the row stops being a filter and becomes a thing
-					// being moved. The activity dots and the project count go away —
-					// they say nothing about position, and their width is what the step
-					// buttons need.
-					if (reordering) {
-						return (
-							<div
-								key={space.id}
-								className="w-full flex items-center gap-1 px-2.5 py-1 rounded-lg text-fg-2"
-								data-testid={`rail-space-${space.id}`}
-							>
-								<span aria-hidden="true" className="text-fg-muted text-sm leading-none flex-shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-									{GRIP_GLYPH}
-								</span>
-								<span className={`flex-1 min-w-0 text-sm truncate ${masked ? MASK_CLASS : ""}`}>
-									{space.name}
-								</span>
-								<button
-									type="button"
-									onClick={() => step(space.id, -1)}
-									disabled={index === 0}
-									aria-label={t("spaces.moveUp", { name: space.name })}
-									title={t("dashboard.moveProjectUp")}
-									className="flex h-8 w-8 items-center justify-center rounded text-fg-3 hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40 disabled:hover:text-fg-3 disabled:hover:bg-transparent"
-									data-testid={`rail-space-up-${space.id}`}
-								>
-									<span aria-hidden="true" className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
-								</button>
-								<button
-									type="button"
-									onClick={() => step(space.id, 1)}
-									disabled={index === spaces.length - 1}
-									aria-label={t("spaces.moveDown", { name: space.name })}
-									title={t("dashboard.moveProjectDown")}
-									className="flex h-8 w-8 items-center justify-center rounded text-fg-3 hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40 disabled:hover:text-fg-3 disabled:hover:bg-transparent"
-									data-testid={`rail-space-down-${space.id}`}
-								>
-									<span aria-hidden="true" className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
-								</button>
-							</div>
-						);
-					}
 
 					return (
 						<button
@@ -315,7 +234,7 @@ function SpacesRail({
 						</button>
 					);
 				})}
-				{!reordering && homeCount > 0 && (
+				{homeCount > 0 && (
 					<button
 						type="button"
 						onClick={() => onSelect(HOME_GROUP_ID)}
@@ -324,26 +243,40 @@ function SpacesRail({
 						data-testid="rail-home"
 					>
 						{/* Home is computed, so it has no grip — but it still needs the
-						    grip's width, or its name hangs left of every space above it. */}
-						{canReorder && <span aria-hidden="true" className="w-[0.875rem] flex-shrink-0 -ml-1" />}
+						    grip's width, or its name hangs left of every space above it.
+						    An invisible copy of the glyph is that width by construction;
+						    a hand-written 14px was 5.6px too wide against the real font. */}
+						{canReorder && (
+							<span aria-hidden="true" className="invisible text-sm leading-none flex-shrink-0 -ml-1" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{GRIP_GLYPH}
+							</span>
+						)}
 						<span className="flex-1 text-sm truncate">{t("spaces.homeGroup")}</span>
 						<ActivityDots split={homeActivity} masked={false} />
 						<span className="text-fg-muted text-xs tabular-nums">{homeCount}</span>
 					</button>
 				)}
+				{/* Ends the section it appends to, one row-gap below the last row.
+				    Pinned to the bottom of the rail (`mt-auto`) it read as unrelated
+				    chrome, and past ~8 spaces it scrolled out of reach entirely. */}
+				<button
+					type="button"
+					onClick={onNewSpace}
+					className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated-hover transition-colors"
+					data-testid="rail-new-space"
+				>
+					{/* The plus sits in the grip's column — an invisible glyph donates
+					    exactly its width, so the label starts where the space names do
+					    and the icon is free to be a little wider than its slot. */}
+					<span aria-hidden="true" className="relative flex-shrink-0 -ml-1 text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+						<span className="invisible">{GRIP_GLYPH}</span>
+						<svg focusable="false" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+						</svg>
+					</span>
+					<span className="text-sm">{t("spaces.newSpace")}</span>
+				</button>
 			</div>
-
-			<button
-				type="button"
-				onClick={onNewSpace}
-				className="mt-auto flex items-center gap-2 px-2.5 py-2 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated-hover transition-colors"
-				data-testid="rail-new-space"
-			>
-				<svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-				</svg>
-				<span className="text-sm">{t("spaces.newSpace")}</span>
-			</button>
 		</aside>
 	);
 }

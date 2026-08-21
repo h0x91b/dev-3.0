@@ -235,6 +235,32 @@ describe("SpaceGroupedProjects — nothing to reorder", () => {
 		}
 	});
 
+	// Dragging is only worth doing if the list you are dropping into fits on the
+	// screen, so every row that can take THIS drop collapses — and no other, since
+	// a drop across groups would change membership and is refused.
+	it("collapses only the group whose row is being dragged", () => {
+		const flags = new Map<string, boolean>();
+		renderWith(groups, (p, ctx, spaceId) => {
+			flags.set(`${spaceId}:${p.id}`, ctx.groupDragActive);
+			return (
+				<div
+					key={`${spaceId}:${p.id}`}
+					data-testid={`row-${spaceId}-${p.id}`}
+					draggable
+					onDragStart={ctx.onDragStart}
+				>
+					{p.name}
+				</div>
+			);
+		});
+		fireEvent.dragStart(screen.getByTestId("row-sp_a-p1"), {
+			dataTransfer: { setData: vi.fn(), effectAllowed: "" },
+		});
+		expect(flags.get("sp_a:p1")).toBe(true);
+		expect(flags.get("sp_a:p2")).toBe(true);
+		expect(flags.get("sp_b:p1")).toBe(false);
+	});
+
 	it("does not reorder spaces when a header is dragged", () => {
 		renderWith(groups);
 		const header = screen.getByTestId("space-header-sp_a").parentElement!;
