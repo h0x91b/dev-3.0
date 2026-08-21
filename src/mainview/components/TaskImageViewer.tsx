@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SharedImage } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -15,6 +15,12 @@ interface TaskImageViewerProps {
 	initialIndex: number;
 	onClose: () => void;
 	taskId?: string;
+	/**
+	 * Ids of the images that were still unread when the viewer opened. Opening
+	 * marks them read server-side, so the caller freezes the set and keeps it for
+	 * the viewer's lifetime — that is what "highlighted until you close it" means.
+	 */
+	newIds?: string[];
 }
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
@@ -28,8 +34,10 @@ const TALL_RATIO = 2.2;
  * centred modal card that fills ~90% of the viewport (≈5% margin each side) —
  * deliberately NOT a full-bleed takeover — so it reads as part of the current
  * task; a fullscreen toggle expands it edge-to-edge for detailed viewing. Shows
- * one large image with a thumbnail
- * history rail (newest activated first via initialIndex). Bytes are fetched
+ * one large image with a thumbnail history rail; images that were unread when
+ * the viewer opened stay ringed in green for as long as it is open, and the
+ * caller opens on the FIRST of them so a batch of three is read in order.
+ * Bytes are fetched
  * lazily through the existing `readImageBase64` RPC, so it works identically in
  * the desktop shell and the remote browser. Pure React overlay — no native
  * dialog (project rule).
@@ -39,8 +47,10 @@ const TALL_RATIO = 2.2;
  * promoted to a hardware overlay plane that paints ABOVE any DOM scrim, so
  * without this the live terminal would shine through around the card.
  */
-export default function TaskImageViewer({ images, initialIndex, onClose, taskId }: TaskImageViewerProps) {
+export default function TaskImageViewer({ images, initialIndex, onClose, taskId, newIds }: TaskImageViewerProps) {
 	const t = useT();
+	const newSet = useMemo(() => new Set(newIds ?? []), [newIds]);
+	const newCount = newSet.size;
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(images.length - 1, initialIndex)));
 	// Cache of image id → data URL ("__error__" marks a failed load).
 	const [urls, setUrls] = useState<Record<string, string>>({});
@@ -239,6 +249,14 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 					<div className="min-w-0 flex-1">
 						<div className="truncate text-fg font-medium" title={current.originalPath}>{current.name}</div>
 					</div>
+					{newCount > 0 && (
+						<span
+							data-testid="image-viewer-new-count"
+							className="flex-shrink-0 rounded-full border border-success/40 bg-success/15 px-2 py-0.5 text-micro font-semibold text-success tabular-nums"
+						>
+							{t.plural("imageViewer.newCount", newCount)}
+						</span>
+					)}
 					<span className="flex-shrink-0 font-mono text-xs text-fg-3 tabular-nums">
 						{index + 1} / {images.length}
 					</span>
@@ -380,17 +398,19 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 					>
 						{images.map((img, i) => {
 							const thumbUrl = urls[img.id];
+							const isNew = newSet.has(img.id);
 							return (
 								<button
 									key={img.id}
 									type="button"
 									data-thumb-index={i}
+									data-thumb-new={isNew ? "true" : undefined}
 									onClick={() => setIndex(i)}
-									aria-label={img.name}
+									aria-label={isNew ? `${img.name} — ${t("imageViewer.newImage")}` : img.name}
 									aria-current={i === index}
 									className={`flex-shrink-0 h-16 w-16 rounded-lg overflow-hidden border-2 transition-colors ${
-										i === index ? "border-accent" : "border-edge/50 hover:border-edge-active"
-									}`}
+										i === index ? "border-accent" : isNew ? "border-success" : "border-edge/50 hover:border-edge-active"
+									} ${isNew ? "ring-2 ring-success/60 ring-offset-1 ring-offset-raised" : ""}`}
 								>
 									{thumbUrl && thumbUrl !== "__error__" ? (
 										<img src={thumbUrl} alt={img.name} className="h-full w-full object-cover" draggable={false} />

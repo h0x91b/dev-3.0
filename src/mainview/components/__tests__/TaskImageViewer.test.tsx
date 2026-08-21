@@ -216,6 +216,45 @@ describe("TaskImageViewer", () => {
 		});
 	});
 
+	// A batch of new images must be countable at a glance: the strip rings each
+	// one and the header states how many there are. Opening the viewer already
+	// marked them read server-side, so the ids are frozen by the caller.
+	describe("new-image highlight", () => {
+		function renderWithNew(newIds: string[], initialIndex = 0) {
+			render(
+				<I18nProvider>
+					<TaskImageViewer images={IMAGES} initialIndex={initialIndex} onClose={vi.fn()} newIds={newIds} />
+				</I18nProvider>,
+			);
+		}
+
+		it("rings every new thumbnail and leaves the older ones alone", () => {
+			renderWithNew(["b", "c"]);
+			expect(screen.getByRole("button", { name: "one.png" })).not.toHaveAttribute("data-thumb-new");
+			expect(screen.getByRole("button", { name: /two\.png/ })).toHaveAttribute("data-thumb-new", "true");
+			expect(screen.getByRole("button", { name: /three\.png/ })).toHaveAttribute("data-thumb-new", "true");
+		});
+
+		it("keeps the ring on the active image too, so the count stays readable", () => {
+			renderWithNew(["b", "c"], 2);
+			const active = screen.getByRole("button", { name: /three\.png/ });
+			expect(active).toHaveAttribute("aria-current", "true");
+			expect(active).toHaveAttribute("data-thumb-new", "true");
+			expect(active.className).toContain("ring-success");
+		});
+
+		it("states how many images are new, and says nothing when none are", () => {
+			renderWithNew(["b", "c"]);
+			expect(screen.getByTestId("image-viewer-new-count")).toHaveTextContent("2 new");
+		});
+
+		it("hides the new-count badge when nothing is new", () => {
+			renderWithNew([]);
+			expect(screen.queryByTestId("image-viewer-new-count")).toBeNull();
+			expect(screen.getByRole("button", { name: "one.png" })).not.toHaveAttribute("data-thumb-new");
+		});
+	});
+
 	it("wins Escape against the modal that opened it", async () => {
 		const onCloseModal = vi.fn();
 		const onCloseViewer = vi.fn();

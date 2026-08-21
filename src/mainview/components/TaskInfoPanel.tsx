@@ -1400,7 +1400,7 @@ function TaskInfoPanel({
 									onClick={() => {
 										setActionsSheetOpen(false);
 										window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-											detail: { taskId: task.id, projectId: project.id, images: task.sharedImages, index: (task.sharedImages?.length ?? 1) - 1 },
+											detail: { taskId: task.id, projectId: project.id, images: task.sharedImages },
 										}));
 									}}
 									className={SHEET_ROW_CLASS}

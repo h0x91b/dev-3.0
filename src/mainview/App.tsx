@@ -360,7 +360,10 @@ function App() {
 	const [createTaskInitialText, setCreateTaskInitialText] = useState<string>("");
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
 	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
-	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number } | null>(null);
+	// `newIds` freezes which images were unread at open time: opening marks them
+	// read, so without the snapshot the "these three are new" highlight would
+	// vanish on the same tick. It only ever grows while the viewer stays open.
+	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number; newIds: string[] } | null>(null);
 	const [filePreview, setFilePreview] = useState<OpenFilePreviewDetail | null>(null);
 	// `standalone` requests come from surfaces with no workspace pane to dock into
 	// (the archived task modal) and are hosted as an overlay here instead.
@@ -377,6 +380,34 @@ function App() {
 			.then((task) => dispatch({ type: "updateTask", task }))
 			.catch((error) => console.error("Failed to mark shared items read:", error));
 	}, [dispatch]);
+	/**
+	 * Single entry point for the shared-images lightbox. Marks the batch read,
+	 * remembers which ids were new, and — unless the caller picked a specific
+	 * image — opens on the FIRST unread one so a batch of three is read in the
+	 * order the agent published it. Re-opening while the viewer is already up for
+	 * that task keeps the user's position and only widens the highlight.
+	 */
+	const openImageViewer = useCallback((
+		projectId: string,
+		taskId: string,
+		images: SharedImage[],
+		index?: number,
+	) => {
+		const unreadIds = images.filter((image) => image.isUnread).map((image) => image.id);
+		const firstUnread = images.findIndex((image) => image.isUnread);
+		markSharedItemsRead(projectId, taskId, "images", images);
+		setImageViewer((prev) => {
+			if (prev?.taskId === taskId) {
+				return { ...prev, images, newIds: [...new Set([...prev.newIds, ...unreadIds])] };
+			}
+			return {
+				taskId,
+				images,
+				index: index ?? (firstUnread >= 0 ? firstUnread : images.length - 1),
+				newIds: unreadIds,
+			};
+		});
+	}, [markSharedItemsRead]);
 	const closeArtifactViewer = useCallback(() => {
 		setArtifactViewer(null);
 		requestAnimationFrame(() => {
@@ -1454,8 +1485,7 @@ function App() {
 			const alreadyOpenForTask = imageViewerRef.current?.taskId === taskId;
 
 			if (alreadyOpenForTask || (viewingThisTask && autoOpen && foreground)) {
-				markSharedItemsRead(projectId, taskId, "images", images);
-				setImageViewer({ taskId, images, index: images.length - 1 });
+				openImageViewer(projectId, taskId, images);
 				return;
 			}
 
@@ -1466,14 +1496,13 @@ function App() {
 				context,
 				onClick: () => {
 					openTaskFromNotification(taskId, projectId);
-					markSharedItemsRead(projectId, taskId, "images", images);
-					setImageViewer({ taskId, images, index: images.length - 1 });
+					openImageViewer(projectId, taskId, images);
 				},
 			});
 		}
 		window.addEventListener("rpc:cliShowImage", onCliShowImage);
 		return () => window.removeEventListener("rpc:cliShowImage", onCliShowImage);
-	}, [dispatch, markSharedItemsRead, openTaskFromNotification, t, state.route]);
+	}, [dispatch, openImageViewer, openTaskFromNotification, t, state.route]);
 
 	// Reopen the image viewer from a task-scoped trigger (the inspector image badge).
 	useEffect(() => {
@@ -1485,12 +1514,11 @@ function App() {
 				index?: number;
 			};
 			if (!taskId || !projectId || !images?.length) return;
-			markSharedItemsRead(projectId, taskId, "images", images);
-			setImageViewer({ taskId, images, index: index ?? images.length - 1 });
+			openImageViewer(projectId, taskId, images, index);
 		}
 		window.addEventListener("dev3:openImageViewer", onOpenViewer);
 		return () => window.removeEventListener("dev3:openImageViewer", onOpenViewer);
-	}, [markSharedItemsRead]);
+	}, [openImageViewer]);
 
 	useEffect(() => {
 		function onCliShowArtifact(e: Event) {
@@ -2842,6 +2870,7 @@ function App() {
 					taskId={imageViewer.taskId}
 					images={imageViewer.images}
 					initialIndex={imageViewer.index}
+					newIds={imageViewer.newIds}
 					onClose={() => setImageViewer(null)}
 				/>
 			)}

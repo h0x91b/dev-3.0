@@ -54,7 +54,9 @@ describe("TaskSharedImages", () => {
 		expect(button.querySelector(".task-shared-unread-icon")).toBeNull();
 	});
 
-	it("dispatches dev3:openImageViewer at the newest image when clicked", async () => {
+	// No index in the detail on purpose: the App-level opener lands on the first
+	// unread image (or the newest when nothing is unread).
+	it("dispatches dev3:openImageViewer without pinning an index", async () => {
 		const task = makeTask([sharedImage("a"), sharedImage("b")]);
 		const spy = vi.fn();
 		window.addEventListener("dev3:openImageViewer", spy);
@@ -63,7 +65,8 @@ describe("TaskSharedImages", () => {
 		window.removeEventListener("dev3:openImageViewer", spy);
 		expect(spy).toHaveBeenCalledTimes(1);
 		const detail = (spy.mock.calls[0][0] as CustomEvent).detail;
-		expect(detail).toMatchObject({ taskId: "task-1", projectId: "project-1", index: 1 });
+		expect(detail).toMatchObject({ taskId: "task-1", projectId: "project-1" });
+		expect(detail.index).toBeUndefined();
 		expect(detail.images).toHaveLength(2);
 	});
 });

@@ -155,7 +155,9 @@ vi.mock("../components/ProjectTerminal", () => ({
 	default: () => <div data-testid="project-terminal-screen" />,
 }));
 vi.mock("../components/TaskImageViewer", () => ({
-	default: () => <div data-testid="image-viewer" />,
+	default: ({ initialIndex, newIds }: { initialIndex: number; newIds?: string[] }) => (
+		<div data-testid="image-viewer" data-initial-index={initialIndex} data-new-ids={(newIds ?? []).join(",")} />
+	),
 }));
 
 import { api } from "../rpc";
@@ -1022,6 +1024,55 @@ describe("App keyboard shortcuts", () => {
 				kind: "images",
 				itemIds: ["img1"],
 			});
+		});
+
+		// A batch of three lands the user on the FIRST new image, not the last, and
+		// hands the viewer the frozen unread ids — opening marks them read, so
+		// nothing downstream can still see which ones were new.
+		it("opens on the first unread image of a batch and passes the frozen new ids", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-img" }),
+			});
+
+			await renderApp();
+			const images = [
+				{ ...sharedImage, id: "old", isUnread: false },
+				{ ...sharedImage, id: "n1" },
+				{ ...sharedImage, id: "n2" },
+				{ ...sharedImage, id: "n3" },
+			];
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
+					detail: { taskId: "t-img", projectId: "p1", images },
+				}));
+			});
+
+			const viewer = await screen.findByTestId("image-viewer");
+			expect(viewer).toHaveAttribute("data-initial-index", "1");
+			expect(viewer).toHaveAttribute("data-new-ids", "n1,n2,n3");
+		});
+
+		it("falls back to the newest image when nothing is unread", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-img" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
+					detail: {
+						taskId: "t-img",
+						projectId: "p1",
+						images: [{ ...sharedImage, id: "a", isUnread: false }, { ...sharedImage, id: "b", isUnread: false }],
+					},
+				}));
+			});
+
+			const viewer = await screen.findByTestId("image-viewer");
+			expect(viewer).toHaveAttribute("data-initial-index", "1");
+			expect(viewer).toHaveAttribute("data-new-ids", "");
 		});
 
 		it("fullscreen open-mode: clicking the toast opens the full-page task view", async () => {

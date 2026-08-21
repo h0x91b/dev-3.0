@@ -33,7 +33,7 @@ export default function TaskSharedImages({ task, projectId, compact = false, tou
 			<button
 				type="button"
 				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-					detail: { taskId: task.id, projectId, images: task.sharedImages, index: count - 1 },
+					detail: { taskId: task.id, projectId, images: task.sharedImages },
 				}))}
 				className={`task-anim flex items-center gap-1 rounded-lg transition-colors flex-shrink-0 border ${touch ? "min-h-11 px-3" : "px-2 py-1"} ${isUnread
 					? "text-success bg-success/15 border-success/40 hover:bg-success/25"
