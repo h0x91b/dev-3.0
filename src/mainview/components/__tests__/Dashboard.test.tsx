@@ -206,39 +206,38 @@ describe("Dashboard", () => {
 	});
 
 	describe("space selection vs the hidden rail", () => {
-		const RAIL_QUERY = "(max-width: 1023px)";
-		let originalMatchMedia: typeof window.matchMedia;
-		let railQueryMatches: boolean;
-		let railQueryListeners: Array<(e: { matches: boolean }) => void>;
+		// The rail is gated on the CONTAINER's width, so the test drives layout,
+		// not a media query: a fake ResizeObserver plus a pinned rect is the only
+		// way to have a width at all under happy-dom.
+		let originalRO: typeof globalThis.ResizeObserver;
+		let originalRect: () => DOMRect;
+		let observedCallbacks: ResizeObserverCallback[];
+		let containerWidth: number;
 
 		beforeEach(() => {
-			originalMatchMedia = window.matchMedia;
-			railQueryMatches = false;
-			railQueryListeners = [];
-			Object.defineProperty(window, "matchMedia", {
-				configurable: true,
-				value: (query: string) => ({
-					get matches() {
-						return query === RAIL_QUERY ? railQueryMatches : false;
-					},
-					media: query,
-					onchange: null,
-					addEventListener: (_: string, handler: (e: { matches: boolean }) => void) => {
-						if (query === RAIL_QUERY) railQueryListeners.push(handler);
-					},
-					removeEventListener: vi.fn(),
-					addListener: vi.fn(),
-					removeListener: vi.fn(),
-					dispatchEvent: vi.fn(),
-				}),
-			});
+			originalRO = globalThis.ResizeObserver;
+			originalRect = Element.prototype.getBoundingClientRect;
+			observedCallbacks = [];
+			containerWidth = 1440;
+			Element.prototype.getBoundingClientRect = function () {
+				return { width: containerWidth, height: 800, top: 0, left: 0, right: containerWidth, bottom: 800, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+			};
+			globalThis.ResizeObserver = class {
+				constructor(cb: ResizeObserverCallback) {
+					observedCallbacks.push(cb);
+				}
+				observe() {}
+				unobserve() {}
+				disconnect() {}
+			} as unknown as typeof globalThis.ResizeObserver;
 		});
 
 		afterEach(() => {
-			Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+			globalThis.ResizeObserver = originalRO;
+			Element.prototype.getBoundingClientRect = originalRect;
 		});
 
-		it("clears the selected space when the viewport drops below the rail breakpoint", async () => {
+		it("clears the selected space when the container drops below the rail's minimum", async () => {
 			const user = userEvent.setup();
 			const projects = [
 				mockProject,
@@ -259,11 +258,16 @@ describe("Dashboard", () => {
 			expect(screen.getByText("My Project")).toBeInTheDocument();
 			expect(screen.queryByText("Second")).not.toBeInTheDocument();
 
-			// The rail hides below `lg` via CSS; the filter must not survive it.
-			railQueryMatches = true;
+			// The container shrinks under the rail's minimum; the filter must not
+			// survive the control that set it.
+			containerWidth = 900;
 			act(() => {
-				for (const notify of railQueryListeners) notify({ matches: true });
+				for (const cb of observedCallbacks) {
+					cb([{ contentRect: { width: containerWidth } } as ResizeObserverEntry], {} as ResizeObserver);
+				}
 			});
+
+			expect(screen.queryByTestId("spaces-rail")).not.toBeInTheDocument();
 
 			expect(await screen.findByText("Second")).toBeInTheDocument();
 			expect(screen.getByText("My Project")).toBeInTheDocument();

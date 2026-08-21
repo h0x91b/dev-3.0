@@ -57,6 +57,21 @@ describe("ProjectSpacesField — connected mode", () => {
 		expect(api.request.setProjectSpaces).toHaveBeenCalledWith({ projectId: "p1", spaceIds: ["sp_a", "sp_b"] });
 	});
 
+	// The chip is the thing being removed, so removal lives on it — not only in
+	// the picker, where "untick the one that is on" is a second mental step.
+	it("removes a membership from the chip itself", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		render(
+			<I18nProvider>
+				<ProjectSpacesField projectId="p1" />
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(screen.getByTestId("space-chip-sp_a")).toBeInTheDocument());
+		await user.click(screen.getByTestId("space-chip-remove-sp_a"));
+		expect(api.request.setProjectSpaces).toHaveBeenCalledWith({ projectId: "p1", spaceIds: [] });
+	});
+
 	it("toasts when a space auto-deletes after losing its last member", async () => {
 		const user = userEvent.setup();
 		const { api } = await import("../../rpc");

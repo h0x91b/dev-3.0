@@ -83,6 +83,18 @@ describe("SpaceGroupedProjects", () => {
 		expect(JSON.parse(localStorage.getItem("dev3-collapsed-spaces")!)).toEqual(["sp_a"]);
 	});
 
+	// §9a.6: what says "these rows belong to this space" is proximity, so the gap
+	// between groups has to be at least twice the gap inside one. Asserted as
+	// classes because happy-dom has no layout to measure.
+	it("keeps its own rows closer to the header than the next group is", () => {
+		renderGroups();
+		const group = screen.getByTestId("space-group-sp_a");
+		expect(group.className).toContain("pt-6");
+		expect(group.className).toContain("space-y-2");
+		const rows = screen.getByTestId("row-p2").parentElement!.parentElement!;
+		expect(rows.className).toContain("space-y-4");
+	});
+
 	it("masks the header name when a member project is sensitive", () => {
 		renderGroups(new Set(["p2"]));
 		const alpha = screen.getByTestId("space-header-sp_a");

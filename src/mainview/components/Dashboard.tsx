@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch } from "react";
 import { toast } from "../toast";
 import type { Project, Space, Task, TaskStatus } from "../../shared/types";
 import { isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
@@ -8,7 +8,7 @@ import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import { useSpaces } from "../useSpaces";
-import { useContainerNarrower } from "../hooks/useContainerNarrower";
+import { useContainerWidth } from "../hooks/useContainerWidth";
 import { deleteSpaceWithConfirm, moveSpace, renameSpace } from "../utils/spaceActions";
 import ActivityOverview from "./ActivityOverview";
 import SpacesRail, { SPACES_RAIL_MIN_WIDTH, type SpaceActivitySplit } from "./SpacesRail";
@@ -44,8 +44,12 @@ function Dashboard({
 	// could disagree with it. The ref goes on the row holding BOTH panels, whose
 	// width does not change when the rail appears; measuring the rail's own
 	// sibling would make showing it shrink the number that decides it.
-	// A selection made while the rail was up must not keep filtering after it goes.
-	const [containerRef, railHidden] = useContainerNarrower<HTMLDivElement>(SPACES_RAIL_MIN_WIDTH);
+	// Width 0 means "not measured yet", never "narrow" — the window stands in for
+	// the one frame before the observer reports. A selection made while the rail
+	// was up must not keep filtering after it goes.
+	const containerRef = useRef<HTMLDivElement>(null);
+	const containerWidth = useContainerWidth(containerRef);
+	const railHidden = (containerWidth || window.innerWidth) < SPACES_RAIL_MIN_WIDTH;
 	useEffect(() => {
 		if (railHidden) setSelectedSpaceId(null);
 	}, [railHidden]);
