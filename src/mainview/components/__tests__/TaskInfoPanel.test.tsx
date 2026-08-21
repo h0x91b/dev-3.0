@@ -131,6 +131,10 @@ const project: Project = {
 	devScript: "",
 	cleanupScript: "",
 	defaultBaseBranch: "main",
+	// A remote-backed project always reaches the renderer with this resolved (see
+	// resolveProjectConfig). Unset means "no remote", and the panel then names the
+	// local base branch instead of inventing `origin/<base>`.
+	defaultCompareRef: "origin/main",
 	createdAt: "2025-01-01T00:00:00Z",
 	labels: [label1, label2],
 };
@@ -171,6 +175,7 @@ const defaultBranchStatus: BranchStatus = {
 	prNumber: null,
 	prUrl: null,
 	mergeCompletionFingerprint: null,
+	hasRemote: true,
 };
 
 const defaultDevServerStatus: DevServerStatus = {
@@ -423,7 +428,7 @@ describe("TaskInfoPanel", () => {
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
-				compareRef: undefined,
+				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});
 		});
@@ -449,7 +454,7 @@ describe("TaskInfoPanel", () => {
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
-				compareRef: undefined,
+				compareRef: "origin/main",
 				compareLabel: "origin/main",
 				focusFile: "bun.lock",
 			});
@@ -1618,6 +1623,7 @@ describe("TaskInfoPanel", () => {
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
+				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});
 		});
@@ -1775,6 +1781,46 @@ describe("TaskInfoPanel", () => {
 			expect(await screen.findByRole("tooltip")).toHaveTextContent("Nothing to push — no local commits ahead");
 		});
 
+		// A project added from a local folder has no `origin`: push and PR have no
+		// destination, so they must read as unavailable instead of failing on click.
+		it("disables push and PR when the project has no git remote", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				hasRemote: false,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			for (const label of ["Push", "PR", "Auto PR"]) {
+				const button = screen.getAllByText(label)[0].closest("button")!;
+				expect(button).toBeDisabled();
+				await user.hover(button.parentElement!);
+				expect(await screen.findByRole("tooltip")).toHaveTextContent(
+					"This project has no git remote — nothing to push to",
+				);
+				await user.unhover(button.parentElement!);
+			}
+		});
+
+		it("keeps push and PR live when the project has a remote", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				hasRemote: true,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			expect(screen.getAllByText("Push")[0].closest("button")!).not.toBeDisabled();
+			expect(screen.getAllByText("PR")[0].closest("button")!).not.toBeDisabled();
+		});
+
 		it("merge is disabled when behind > 0", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -1830,6 +1876,7 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.rebaseTask).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				compareRef: "origin/main",
 			});
 		});
 
@@ -1895,6 +1942,7 @@ describe("TaskInfoPanel", () => {
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
+				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});
 		});
@@ -1920,6 +1968,7 @@ describe("TaskInfoPanel", () => {
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
+				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});
 		});
@@ -1941,6 +1990,7 @@ describe("TaskInfoPanel", () => {
 
 			expect(onOpenInlineDiff).toHaveBeenCalledWith({
 				mode: "branch",
+				compareRef: "origin/main",
 				compareLabel: "origin/main",
 			});
 		});
@@ -2124,6 +2174,7 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.rebaseTaskViaAgent).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				compareRef: "origin/main",
 			});
 			// The auto-rebase path must NOT run for a conflicting rebase.
 			expect(mockedApi.request.rebaseTask).not.toHaveBeenCalled();
@@ -2707,6 +2758,7 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.getBranchStatus).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				compareRef: "origin/main",
 			});
 		});
 

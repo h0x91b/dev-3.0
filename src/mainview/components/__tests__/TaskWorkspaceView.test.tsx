@@ -78,6 +78,8 @@ const project: Project = {
 	devScript: "",
 	cleanupScript: "",
 	defaultBaseBranch: "main",
+	// Resolved for every remote-backed project before it reaches the renderer.
+	defaultCompareRef: "origin/main",
 	createdAt: "2025-01-01T00:00:00Z",
 };
 

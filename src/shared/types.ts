@@ -2612,6 +2612,10 @@ export interface BranchStatus {
 	prNumber: number | null; // associated PR number for this branch, null if none was detected
 	prUrl: string | null; // full GitHub PR URL, null if no associated PR was detected
 	mergeCompletionFingerprint: string | null; // stable key for deduping the merged-branch completion prompt
+	// Whether the project repo has an `origin` remote at all. A repo added from a
+	// local folder has none, and then Push / Create PR / PR + auto-merge cannot
+	// work — they must read as unavailable instead of failing on click.
+	hasRemote: boolean;
 }
 
 /**
@@ -2641,7 +2645,14 @@ export type TaskDiffFileStatus =
 	| "untracked"
 	| "unknown";
 
-export type TaskDiffFallbackReason = "no-upstream";
+/**
+ * Why a diff answers a different question than the one asked.
+ * `no-upstream` — the branch was never pushed, so "unpushed" fell back to the base.
+ * `missing-compare-ref` — the compare ref does not exist in this repo (typically
+ * `origin/<base>` in a repo with no remote); the diff is empty because nothing
+ * could be compared, which must never read as "no changes".
+ */
+export type TaskDiffFallbackReason = "no-upstream" | "missing-compare-ref";
 
 export interface TaskDiffFile {
 	id: string;

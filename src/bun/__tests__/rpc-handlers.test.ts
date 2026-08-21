@@ -82,6 +82,8 @@ vi.mock("../git", () => ({
 	fetchCompareRef: vi.fn().mockResolvedValue(true),
 	fetchFork: vi.fn().mockResolvedValue(true),
 	listRemotes: vi.fn().mockResolvedValue(["origin"]),
+	hasOriginRemote: vi.fn().mockResolvedValue(true),
+	detectDefaultCompareRef: vi.fn(async (_path: string, baseBranch: string) => `origin/${baseBranch}`),
 	isForeignBranchRef: vi.fn().mockResolvedValue(false),
 	refExists: vi.fn().mockResolvedValue(true),
 	isRefMergedInto: vi.fn().mockResolvedValue(false),
@@ -1423,6 +1425,38 @@ describe("handlers.addProject", () => {
 
 		const result = await handlers.addProject({ path: "/tmp/test", name: "Test" });
 		expect(result).toEqual({ ok: false, error: "Error: disk full" });
+	});
+
+	// The renderer keeps this exact object until the next getProjects, and
+	// getProjects is not polled. A raw record left `defaultCompareRef` unresolved,
+	// which the UI then rendered as `origin/<base>` in a repo with no remote.
+	it("returns the new project with its config already resolved", async () => {
+		const project = makeProject({ defaultBaseBranch: "main", defaultCompareRef: undefined });
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(data.addProject).mockResolvedValue(project);
+		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(repoConfig.resolveProjectConfig).mockImplementationOnce(
+			async (p: any) => ({ ...p, defaultCompareRef: "main" }),
+		);
+
+		const result = await handlers.addProject({ path: "/tmp/local-only", name: "Local Only" });
+
+		expect(result.ok).toBe(true);
+		expect((result as { ok: true; project: Project }).project.defaultCompareRef).toBe("main");
+	});
+
+	it("still returns the project when config resolution fails", async () => {
+		const project = makeProject();
+		vi.mocked(git.isGitRepo).mockResolvedValue(true);
+		vi.mocked(data.addProject).mockResolvedValue(project);
+		vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+		vi.mocked(data.updateProject).mockResolvedValue(project);
+		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("bad config"));
+
+		const result = await handlers.addProject({ path: "/tmp/test-project", name: "Test Project" });
+
+		expect(result).toEqual({ ok: true, project });
 	});
 
 	it("rejects a git project inside the dev-3.0 data directory", async () => {
@@ -5151,7 +5185,50 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null });
+		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false });
+	});
+
+	// A project added from a local folder has no `origin`. Comparing against
+	// `origin/<base>` there fails every 15s and reported "0 files changed".
+	it("compares against the local base branch when the repo has no remote", async () => {
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.hasOriginRemote).mockResolvedValueOnce(false);
+		vi.mocked(git.detectDefaultCompareRef).mockResolvedValueOnce("main");
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 1, insertions: 5, deletions: 0, fileStats: [] });
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
+
+		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+		expect(result.hasRemote).toBe(false);
+		expect(git.getBranchStatus).toHaveBeenCalledWith("/tmp/wt", "main");
+		expect(git.getBranchDiffStats).toHaveBeenCalledWith("/tmp/wt", "main");
+	});
+
+	it("reports hasRemote and keeps origin/<base> when the repo has a remote", async () => {
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.hasOriginRemote).mockResolvedValueOnce(true);
+		vi.mocked(git.detectDefaultCompareRef).mockResolvedValueOnce("origin/main");
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(1);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 1, insertions: 1, deletions: 0, fileStats: [] });
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
+
+		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+		expect(result.hasRemote).toBe(true);
+		expect(git.getBranchStatus).toHaveBeenCalledWith("/tmp/wt", "origin/main");
 	});
 
 	it("returns branch status with canRebase=true when behind", async () => {

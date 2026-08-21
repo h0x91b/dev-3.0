@@ -454,7 +454,11 @@ export function useTaskBranchStatus({
 		compareRef,
 		committing,
 		creatingPR,
-		displayRef: compareRef || `origin/${baseBranch}`,
+		// `compareRef` is "" when the server owns the choice. Name the project's
+		// resolved ref, and the local base branch when even that is unknown —
+		// never `origin/<base>`, which is a guess that a remoteless repo turns
+		// into a label for a ref that does not exist.
+		displayRef: compareRef || project.defaultCompareRef || baseBranch,
 		handleCommit,
 		handleCreatePR,
 		handleMerge,

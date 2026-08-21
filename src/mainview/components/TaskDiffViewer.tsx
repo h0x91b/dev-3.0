@@ -4404,9 +4404,19 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</div>
 				)}
 
-				{!error && !isBusy && payload && visibleFiles.length === 0 && visibleSkippedFiles.length === 0 && hiddenTestCount === 0 && renderState(
-					t("infoPanel.diffNoChanges"),
-					t("infoPanel.diffNoChangesBody"),
+				{/* An empty diff means "nothing changed" only when the comparison ran.
+				    A compare ref that is not in this repo produces the same emptiness
+				    and must say so instead. */}
+				{!error && !isBusy && payload && visibleFiles.length === 0 && visibleSkippedFiles.length === 0 && hiddenTestCount === 0 && (
+					payload.fallbackReason === "missing-compare-ref"
+						? renderState(
+							t("infoPanel.diffMissingCompareRef"),
+							t("infoPanel.diffMissingCompareRefBody", { ref: payload.compareLabel }),
+						)
+						: renderState(
+							t("infoPanel.diffNoChanges"),
+							t("infoPanel.diffNoChangesBody"),
+						)
 				)}
 
 				{!error && !isBusy && payload && (

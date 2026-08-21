@@ -1046,7 +1046,7 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath, envSt
 					projectId={projectId}
 					value={config.defaultCompareRef ?? ""}
 					onChange={(value) => update("defaultCompareRef", value)}
-					placeholder={inheritedHint("defaultCompareRef") || `origin/${config.defaultBaseBranch ?? inherited?.defaultBaseBranch ?? "main"}`}
+					placeholder={inheritedHint("defaultCompareRef") || config.defaultBaseBranch || inherited?.defaultBaseBranch || "main"}
 					label={t("projectSettings.compareRef")}
 					includeRemote={true}
 				/>
@@ -1190,7 +1190,7 @@ function ProjectSettings({
 		defaultCompareRef: getEffectiveCompareRef(
 			p,
 			p.defaultBaseBranch,
-			p.defaultCompareRef ?? `origin/${p.defaultBaseBranch}`,
+			p.defaultCompareRef ?? p.defaultBaseBranch,
 		),
 		githubAuthHost: p.githubAuthHost ?? null,
 		githubAuthLogin: p.githubAuthLogin ?? null,

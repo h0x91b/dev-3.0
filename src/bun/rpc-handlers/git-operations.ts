@@ -147,6 +147,26 @@ function monitorGitPane(paneId: string | null, task: Task, projectId: string, op
 }
 
 /**
+ * The ref a task's numbers are measured against. An explicit choice (the user's
+ * `vs … ▾` override, or the project's configured compare ref) always wins;
+ * otherwise ask git, which knows whether `origin/<base>` exists at all. Never
+ * assume `origin/` — a project added from a local folder has no remote, and
+ * comparing against a ref that is not there produced "0 files changed" for
+ * every task in the repo.
+ */
+async function resolveCompareRef(project: Project, baseBranch: string, explicit?: string): Promise<string> {
+	if (explicit) return explicit;
+	try {
+		return await git.detectDefaultCompareRef(project.path, baseBranch);
+	} catch (err) {
+		log.warn("Compare-ref detection failed, comparing against the local base branch", {
+			projectId: project.id, baseBranch, error: String(err),
+		});
+		return baseBranch;
+	}
+}
+
+/**
  * Retire a comparison base that has stopped being a base. A review-branch or
  * variant-source base is a moment in time: once that branch is merged into the
  * project base — or deleted outright — every number computed against it answers
@@ -161,7 +181,7 @@ async function healDeadCompareBase(project: Project, task: Task, baseBranch: str
 
 	const reason = !await git.refExists(project.path, baseBranch)
 		? "gone"
-		: await git.isRefMergedInto(project.path, baseBranch, `origin/${projectBase}`)
+		: await git.isRefMergedInto(project.path, baseBranch, await resolveCompareRef(project, projectBase))
 			? "merged"
 			: null;
 	if (!reason) return baseBranch;
@@ -184,7 +204,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// polls this every 15s for any active task with a worktreePath, so return an
 	// inert status instead of spawning a doomed `git` in a non-repo directory.
 	if (project.kind === "virtual" || !task.worktreePath) {
-		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null };
+		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false };
 	}
 
 	const resolvedBase = resolveTaskCompareBaseBranch(task, project);
@@ -198,7 +218,8 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	log.debug("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch: resolvedBase, branchName: branchForPush });
 	await git.fetchCompareRef(project.path, resolvedBase);
 	const baseBranch = await healDeadCompareBase(project, task, resolvedBase);
-	const ref = params.compareRef || `origin/${baseBranch}`;
+	const hasRemote = await git.hasOriginRemote(project.path);
+	const ref = await resolveCompareRef(project, baseBranch, params.compareRef);
 	const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
 	if (compareRefBranch && compareRefBranch !== baseBranch) {
 		await git.fetchCompareRef(project.path, compareRefBranch);
@@ -275,6 +296,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileStats: branchDiff.fileStats,
 		prNumber, prUrl,
 		mergeCompletionFingerprint,
+		hasRemote,
 	};
 	log.debug("← getBranchStatus", result);
 
@@ -300,7 +322,7 @@ async function getUnsavedWork(params: { taskId: string; projectId: string }): Pr
 
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
 	const branchForPush = liveBranch ?? task.branchName ?? "";
-	const ref = `origin/${resolveTaskCompareBaseBranch(task, project)}`;
+	const ref = await resolveCompareRef(project, resolveTaskCompareBaseBranch(task, project));
 	const [uncommitted, unpushed, counts] = await Promise.all([
 		git.getUncommittedChanges(task.worktreePath),
 		git.getUnpushedCount(task.worktreePath, branchForPush),
@@ -358,9 +380,15 @@ async function getTaskDiff(params: {
 		}
 	}
 
+	// `uncommitted` never touches the compare ref and `recent` only clamps against
+	// it, so neither pays for resolving one.
+	const compareRef = params.mode === "uncommitted" || params.mode === "recent"
+		? params.compareRef
+		: await resolveCompareRef(project, baseBranch, params.compareRef);
+
 	const result = await git.getTaskDiff(task.worktreePath, params.mode, {
 		baseBranch,
-		compareRef: params.compareRef,
+		compareRef,
 		compareLabel: params.compareLabel,
 		count: params.count,
 	});

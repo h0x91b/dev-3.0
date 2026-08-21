@@ -123,12 +123,17 @@ export default function TaskGitActionsSheet({
 		run: withDismiss(() => void handleRebase()),
 	});
 
+	// No `origin` means push and PR have no destination — same rule as the desktop bar.
+	const noRemote = branchStatus?.hasRemote === false;
+	const pushRowDisabled = noRemote || !branchStatus || ahead === 0;
 	rows.push({
 		key: "push",
-		icon: <PushIcon className={`h-5 w-5 shrink-0 ${!branchStatus || ahead === 0 ? "text-fg-muted" : "text-accent"}`} />,
+		icon: <PushIcon className={`h-5 w-5 shrink-0 ${pushRowDisabled ? "text-fg-muted" : "text-accent"}`} />,
 		label: t("infoPanel.push"),
-		disabled: !branchStatus || ahead === 0,
-		reason: !branchStatus ? t("infoPanel.statusLoading") : ahead === 0 ? t("infoPanel.pushDisabled") : undefined,
+		disabled: pushRowDisabled,
+		reason: !branchStatus
+			? t("infoPanel.statusLoading")
+			: noRemote ? t("infoPanel.noRemoteDisabled") : ahead === 0 ? t("infoPanel.pushDisabled") : undefined,
 		run: withDismiss(() => void handlePush()),
 	});
 
@@ -143,12 +148,14 @@ export default function TaskGitActionsSheet({
 			run: withDismiss(() => handleOpenPR()),
 		});
 	} else {
-		const prDisabled = !branchStatus || ahead === 0;
+		const prDisabled = noRemote || !branchStatus || ahead === 0;
 		const prReason = !branchStatus
 			? t("infoPanel.statusLoading")
-			: ahead === 0
-				? t("infoPanel.createPRDisabledNoCommits")
-				: undefined;
+			: noRemote
+				? t("infoPanel.noRemoteDisabled")
+				: ahead === 0
+					? t("infoPanel.createPRDisabledNoCommits")
+					: undefined;
 		rows.push({
 			key: "create-pr",
 			icon: <CreatePRIcon className={`h-5 w-5 shrink-0 ${prDisabled ? "text-fg-muted" : "text-success"}`} />,

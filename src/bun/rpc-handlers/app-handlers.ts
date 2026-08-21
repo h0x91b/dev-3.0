@@ -318,8 +318,15 @@ async function addProjectImpl(params: { path: string; name?: string }): Promise<
 		} catch (err) {
 			log.warn("Could not detect default branch, keeping 'main'", { error: String(err) });
 		}
-		log.info("← addProject OK", { projectId: project.id, name: project.name });
-		return { ok: true, project };
+		// The renderer keeps whatever this returns until the next getProjects, and
+		// getProjects is not polled — so a raw record left `defaultCompareRef`
+		// unresolved for the whole session and the UI invented `origin/<base>`.
+		const resolved = await repoConfig.resolveProjectConfig(project).catch((err) => {
+			log.warn("Failed to resolve config for the new project", { id: project.id, error: String(err) });
+			return project;
+		});
+		log.info("← addProject OK", { projectId: resolved.id, name: resolved.name });
+		return { ok: true, project: resolved };
 	} catch (err) {
 		log.error("addProject failed", { error: String(err), params });
 		return { ok: false, error: String(err) };

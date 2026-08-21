@@ -562,7 +562,7 @@ function TaskInfoPanel({
 		onOpenInlineDiff({
 			mode: "branch",
 			compareRef: branchMeta?.compareRef,
-			compareLabel: branchMeta?.compareLabel ?? `origin/${resolveTaskCompareBaseBranch(task, project)}`,
+			compareLabel: branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project),
 			focusFile,
 		});
 	}
@@ -571,7 +571,7 @@ function TaskInfoPanel({
 		? () => onOpenInlineDiff({
 			mode: "branch",
 			compareRef: branchMeta?.compareRef,
-			compareLabel: branchMeta?.compareLabel ?? `origin/${resolveTaskCompareBaseBranch(task, project)}`,
+			compareLabel: branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project),
 			focusFirstUnresolvedThread: true,
 		})
 		: undefined;

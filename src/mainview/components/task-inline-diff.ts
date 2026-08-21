@@ -25,7 +25,7 @@ export function createUnresolvedCommentsDiffRequest(
 	return {
 		mode: "branch",
 		compareRef,
-		compareLabel: compareRef || `origin/${baseBranch}`,
+		compareLabel: compareRef || project.defaultCompareRef || baseBranch,
 		focusFirstUnresolvedThread: true,
 	};
 }

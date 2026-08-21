@@ -1252,13 +1252,23 @@ export async function detectDefaultCompareRef(
 	return promise;
 }
 
+/**
+ * Does this repo have an `origin` remote at all? A project added from a local
+ * folder has none, and then every `origin/...` ref, `git push`, and `gh` call is
+ * a dead end. Callers use it to make the absence explicit instead of letting a
+ * missing ref look like "no changes".
+ */
+export async function hasOriginRemote(projectPath: string): Promise<boolean> {
+	return (await listRemotes(projectPath)).includes("origin");
+}
+
 async function detectDefaultCompareRefUncached(
 	projectPath: string,
 	baseBranch: string,
 ): Promise<string> {
-	const hasOriginRemote = (await listRemotes(projectPath)).includes("origin");
+	const originPresent = await hasOriginRemote(projectPath);
 	const remoteBaseRef = `origin/${baseBranch}`;
-	const remoteBaseExists = hasOriginRemote && await refExists(projectPath, remoteBaseRef);
+	const remoteBaseExists = originPresent && await refExists(projectPath, remoteBaseRef);
 	const localBaseExists = await refExists(projectPath, baseBranch);
 	if (baseBranch === "main" || baseBranch === "master") {
 		if (remoteBaseExists) {
@@ -1274,7 +1284,7 @@ async function detectDefaultCompareRefUncached(
 	// main clone's local base branch, so the local one goes stale and diffs lie.
 	if (remoteBaseExists) return remoteBaseRef;
 
-	if (hasOriginRemote) {
+	if (originPresent) {
 		for (const branchName of ["main", "master"]) {
 			const remoteRef = `origin/${branchName}`;
 			if (await refExists(projectPath, remoteRef)) return remoteRef;
@@ -2090,6 +2100,18 @@ export async function getTaskDiff(
 		};
 	}
 
+	/**
+	 * A compare ref that is not in the repo makes `git diff` fail, and a failed
+	 * diff arrives here as an empty one — "no changes to show" for a comparison
+	 * that never happened. Checked only when the diff came back empty, so the
+	 * normal path pays nothing.
+	 */
+	const withMissingRefCheck = async (result: TaskDiffResponse): Promise<TaskDiffResponse> => {
+		if (result.files.length > 0 || result.skippedFiles.length > 0 || result.summary.files > 0) return result;
+		if (await refExists(worktreePath, defaultCompareRef)) return result;
+		return { ...result, fallbackReason: "missing-compare-ref", summary: { files: 0, insertions: 0, deletions: 0 } };
+	};
+
 	if (mode === "unpushed") {
 		const upstreamRef = await getUpstreamRef(worktreePath);
 		if (upstreamRef) {
@@ -2145,7 +2167,7 @@ export async function getTaskDiff(
 			{ kind: "ref", ref: "HEAD" },
 			numstat,
 		);
-		return {
+		return withMissingRefCheck({
 			mode,
 			compareRef: defaultCompareRef,
 			compareLabel: defaultCompareLabel,
@@ -2157,7 +2179,7 @@ export async function getTaskDiff(
 				deletions: summary.deletions,
 			},
 			...filesResult,
-		};
+		});
 	}
 
 	const branchEntries = await listDiffEntries(worktreePath, [`${defaultCompareRef}...HEAD`]);
@@ -2172,7 +2194,7 @@ export async function getTaskDiff(
 		{ kind: "ref", ref: "HEAD" },
 		numstat,
 	);
-	return {
+	return withMissingRefCheck({
 		mode,
 		compareRef: defaultCompareRef,
 		compareLabel: defaultCompareLabel,
@@ -2184,7 +2206,7 @@ export async function getTaskDiff(
 			deletions: summary.deletions,
 		},
 		...filesResult,
-	};
+	});
 }
 
 /** How many output lines a clone progress update carries to the UI. */

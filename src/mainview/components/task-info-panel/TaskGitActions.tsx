@@ -362,15 +362,22 @@ export default function TaskGitActions({
 				? t("infoPanel.rebaseViaAgent")
 				: t("infoPanel.rebase");
 
-	const pushDisabled = !branchStatus || branchStatus.ahead === 0 || pushing;
+	// A repo with no `origin` cannot be pushed and has nowhere to open a PR. The
+	// buttons used to stay live and fail on click, which reads as a broken app
+	// rather than as a project that was never connected to a remote.
+	const noRemote = branchStatus?.hasRemote === false;
+
+	const pushDisabled = noRemote || !branchStatus || branchStatus.ahead === 0 || pushing;
 	const pushTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
-		: branchStatus.ahead === 0
-			? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
-			: t("infoPanel.push");
+		: noRemote
+			? t("infoPanel.noRemoteDisabled")
+			: branchStatus.ahead === 0
+				? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
+				: t("infoPanel.push");
 
 	const hasPR = prInfo !== null;
-	const createPRDisabled = hasPR ? !branchStatus?.prUrl : (!branchStatus || branchStatus.ahead === 0 || creatingPR);
+	const createPRDisabled = hasPR ? !branchStatus?.prUrl : (noRemote || !branchStatus || branchStatus.ahead === 0 || creatingPR);
 
 	function getPRButtonLabel(): string {
 		if (creatingPR) return t("infoPanel.creatingPR");
@@ -380,6 +387,7 @@ export default function TaskGitActions({
 
 	function getPRTooltip(): string {
 		if (!branchStatus) return t("infoPanel.statusLoading");
+		if (noRemote) return t("infoPanel.noRemoteDisabled");
 		if (branchStatus.ahead === 0) {
 			return t(hasUncommittedChanges ? "infoPanel.createPRDisabledUncommitted" : "infoPanel.createPRDisabledNoCommits");
 		}
@@ -388,6 +396,7 @@ export default function TaskGitActions({
 
 	function getPRAutoMergeTooltip(): string {
 		if (!branchStatus) return t("infoPanel.statusLoading");
+		if (noRemote) return t("infoPanel.noRemoteDisabled");
 		if (branchStatus.ahead === 0) {
 			return t(hasUncommittedChanges ? "infoPanel.createPRDisabledUncommitted" : "infoPanel.createPRDisabledNoCommits");
 		}
@@ -628,10 +637,14 @@ export default function TaskGitActions({
 	 * "vs origin/main ▾" in the bar, spending permanent width to state a setting the
 	 * project already owns; here it costs nothing until the menu is open.
 	 */
-	const compareOptions = [
-		{ value: "", ref: `origin/${baseBranch}`, label: `origin/${baseBranch}` },
-		{ value: baseBranch, ref: baseBranch, label: t("infoPanel.compareRefLocal", { branch: baseBranch }) },
-	];
+	// With no remote there is no `origin/<base>` to offer: the row would tick a ref
+	// that does not exist, and picking it would compare against nothing.
+	const compareOptions = noRemote
+		? [{ value: "", ref: baseBranch, label: baseBranch }]
+		: [
+			{ value: "", ref: `origin/${baseBranch}`, label: `origin/${baseBranch}` },
+			{ value: baseBranch, ref: baseBranch, label: t("infoPanel.compareRefLocal", { branch: baseBranch }) },
+		];
 	// Match on the RESOLVED ref, never on the raw value: a project whose default is
 	// spelled "origin/main" holds that string in `compareRef`, while the remote option
 	// carries "" (meaning "the default"), so a raw comparison ticks neither row.
