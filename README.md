@@ -96,6 +96,15 @@ back into the agent's terminal as a prompt.
   <img src="docs/screenshots/code-review.jpg" width="900" alt="Built-in diff viewer with an inline comment being written on a line range">
 </p>
 
+Markdown, Mermaid and images render as a preview instead of raw diff lines, and the preview
+reviews like the rest of the diff: **select any text and comment on it.** The comment lands on
+the same source lines a gutter comment would, marks the block it belongs to, lists under the
+file, and joins the same review export.
+
+<p align="center">
+  <img src="docs/screenshots/md-preview-comment-review.jpg" width="900" alt="A comment made by selecting text in a rendered Markdown preview — the block is marked, the comment is listed under the file and queued in the review export">
+</p>
+
 Not sure the diff is safe? Launch a pack of **read-only bug hunters** — several agents that
 comb the same branch diff in parallel, each seeded to look somewhere different, and report only
 what they can prove.
