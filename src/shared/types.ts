@@ -1564,14 +1564,20 @@ export function withPresetPrompt(userText: string, prompt: string): string {
 
 /**
  * Inverse of {@link withPresetPrompt}, and a no-op when the preamble is not
- * there. The separator is matched at exactly `prompt.length` rather than by
- * first occurrence, so a user's own `---` line cannot be mistaken for the
- * boundary.
+ * there. It runs over a description a human has been editing freely, so it is
+ * written to never cost a character of their text:
+ *
+ * - The separator is matched at exactly `prompt.length`, never by first
+ *   occurrence, so a user's own `---` line cannot be taken for the boundary.
+ * - A preamble edited by hand no longer matches, so nothing is removed at all —
+ *   a stale copy left in place is recoverable, deleted words are not.
+ * - A missing separator returns everything after the preamble rather than
+ *   nothing, so deleting the `---` line and typing on does not erase the text.
  */
 export function withoutPresetPrompt(description: string, prompt: string): string {
 	if (!description.startsWith(prompt)) return description;
 	const rest = description.slice(prompt.length);
-	return rest.startsWith(PRESET_PROMPT_SEPARATOR) ? rest.slice(PRESET_PROMPT_SEPARATOR.length) : "";
+	return rest.startsWith(PRESET_PROMPT_SEPARATOR) ? rest.slice(PRESET_PROMPT_SEPARATOR.length) : rest;
 }
 
 /**

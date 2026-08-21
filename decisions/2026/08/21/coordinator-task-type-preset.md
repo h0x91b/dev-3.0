@@ -84,6 +84,31 @@ Promotion is the user's call: the shipped agent skill puts it in the same
 protected class as priority — an agent must never promote or demote a task on its
 own initiative, least of all itself.
 
+**Freezing and rewriting are not in conflict.** The preamble is frozen into the
+description at creation so that editing the *template* (Settings, or the project
+override) never changes a coordinator that is already running. Conversion
+rewrites that description because it is an explicit act on one named task, asked
+for by the user. A template edit still reaches nobody retroactively. Read as one
+rule: only an explicit act on a task may change that task's text.
+
+**The strip is written to lose nothing.** `withoutPresetPrompt` runs over a
+description a human has been editing for hours, and the failure it must not have
+is eating their words — a badge that lies is recoverable, deleted text is not.
+Verified case by case against the real function rather than reasoned about:
+
+| Description the user left behind | Result |
+|---|---|
+| Their own `---` rule inside their text | Boundary matched at exactly `prompt.length`, so their rule survives |
+| Preamble hand-edited, no longer matching | Nothing removed; the stale copy stays and the fresh preamble goes above it |
+| Plain task, no preamble and no rule | Nothing removed |
+| Separator deleted, typing continued | Everything after the preamble is returned |
+| Description is exactly the preamble | Empty, because nothing followed it |
+
+The fourth row was a real defect found by this review: the function returned an
+empty string whenever the separator was absent, so a user who deleted the `---`
+line and kept writing lost every word of it. Fixed to return the remainder, and
+pinned by tests in `src/mainview/__tests__/types.test.ts`.
+
 Placement: a `Task type` radiogroup (`TaskTypePicker` in `CreateTaskModal.tsx`)
 directly under the description. The PR-review toggle was removed from
 `BranchSelector` and folded into it — two controls doing the same thing (writing
@@ -124,8 +149,10 @@ contract.
   caret to the end and scrolling the textarea down on injection, so typing lands
   in the user's own text rather than inside the prompt.
 - A user who hand-edits the injected preamble and then switches type keeps their
-  edited text: the strip step requires an exact prefix match. Deliberate — losing
-  hand-written text would be worse than leaving it.
+  edited text: the strip step requires an exact prefix match, so the promoted
+  description carries a fresh preamble above their edited copy. Deliberate and
+  chosen in that direction — a duplicated paragraph is visible and deletable,
+  hand-written text is not recoverable.
 - Removing the PR-review toggle changes a shipped surface. Its behaviour is
   preserved, including the branch-box PR-URL paste, which now reports through
   `onPrResolved` instead of driving review mode directly.

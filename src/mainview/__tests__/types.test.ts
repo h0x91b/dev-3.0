@@ -765,6 +765,21 @@ describe("preset prompt preambles", () => {
 		expect(withoutPresetPrompt("just my text", prompt)).toBe("just my text");
 	});
 
+	// The strip runs over text a human owns, so every one of these guards a
+	// character of THEIR words, not the shape of our own output.
+	it("returns everything after the preamble when the user deleted the divider", () => {
+		expect(withoutPresetPrompt(`${prompt}\n\nmy words survive`, prompt)).toBe("\n\nmy words survive");
+	});
+
+	it("removes nothing at all when the preamble itself was hand-edited", () => {
+		const edited = "You are the BOSS.\n\n---\n\nmy words";
+		expect(withoutPresetPrompt(edited, prompt)).toBe(edited);
+	});
+
+	it("returns an empty string only when nothing followed the preamble", () => {
+		expect(withoutPresetPrompt(prompt, prompt)).toBe("");
+	});
+
 	// Guards the repeated-conversion path in `dev3 task update --type`.
 	it("stacks nothing when strip-then-build runs twice", () => {
 		const once = withPresetPrompt(withoutPresetPrompt("mine", prompt), prompt);
