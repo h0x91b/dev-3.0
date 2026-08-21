@@ -116,7 +116,7 @@ function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onC
 				/>
 			</div>
 
-			<div className="max-h-48 overflow-y-auto py-1">
+			<div className="max-h-48 overflow-y-auto p-1">
 				{filtered.length === 0 && !showCreate && (
 					<div className="px-3 py-4 text-xs text-fg-muted text-center">{t("spaces.noSpaces")}</div>
 				)}
@@ -127,21 +127,25 @@ function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onC
 							key={space.id}
 							type="button"
 							onClick={() => onToggle(space.id)}
-							className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-elevated-hover transition-colors"
+							className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2.5 hover:bg-elevated-hover transition-colors"
 							data-testid={`space-picker-row-${space.id}`}
+							aria-pressed={isOn}
 						>
-							<span className="text-xs text-fg flex-1 truncate">{space.name}</span>
-							{isOn && (
-								<svg
-									className="w-3.5 h-3.5 flex-shrink-0 text-accent"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth={2.5}
-								>
+							{/* A box on the left, filled or empty, says "several of these
+							    can be on" before anything is clicked. A checkmark that
+							    only exists when selected leaves an unselected row looking
+							    like a one-shot menu item. */}
+							<span
+								aria-hidden="true"
+								className={`w-4 h-4 rounded-md border flex items-center justify-center flex-shrink-0 transition-colors ${
+									isOn ? "bg-accent border-accent text-white" : "border-edge-active text-transparent"
+								}`}
+							>
+								<svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
 									<path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
 								</svg>
-							)}
+							</span>
+							<span className="text-xs text-fg flex-1 truncate">{space.name}</span>
 						</button>
 					);
 				})}
@@ -150,7 +154,7 @@ function SpacePicker({ spaces, selectedIds, onToggle, onCreateNew, anchorEl, onC
 					<button
 						type="button"
 						onClick={createFromQuery}
-						className="w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-elevated-hover transition-colors border-t border-edge/40"
+						className="w-full text-left px-2 py-1.5 mt-1 rounded-lg flex items-center gap-2.5 hover:bg-elevated-hover transition-colors border-t border-edge/40"
 						data-testid="space-picker-create"
 					>
 						<svg

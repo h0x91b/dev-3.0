@@ -57,6 +57,9 @@ const help = {
 	"help.dashboard.projectRow.title": "Fila de proyecto",
 	"help.dashboard.projectRow.body":
 		"El número a la derecha son los agentes activos ahora. Las filas de colores debajo son tareas que te esperan — preguntas y revisiones. Haz clic en una para saltar directo a esa tarea.",
+	"help.dashboard.spaces.title": "Espacios",
+	"help.dashboard.spaces.body":
+		"Un espacio agrupa proyectos en este panel y nada más: nunca mueve archivos, nunca toca un tablero y un proyecto puede estar en varios. Haz clic en un espacio para filtrar la lista. El punto ámbar cuenta tareas que te esperan; el azul, agentes trabajando ahora. Arrastra una fila para reordenar; su menú ⋯ edita qué proyectos la componen, la renombra o borra la agrupación — los proyectos siguen intactos.",
 
 	// ── Task inspector ──
 	"help.inspector.panel.title": "Inspector de tarea",

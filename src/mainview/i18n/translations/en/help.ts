@@ -63,6 +63,9 @@ const help = {
 	"help.dashboard.projectRow.title": "Project row",
 	"help.dashboard.projectRow.body":
 		"The count on the right is agents running now. Colored rows underneath are tasks waiting for you — questions and reviews. Click one to jump straight to that task.",
+	"help.dashboard.spaces.title": "Spaces",
+	"help.dashboard.spaces.body":
+		"A space groups projects on this dashboard and nothing more: it never moves files, never touches a board, and one project can sit in several. Click a space to filter the list. The amber dot counts tasks waiting on you, the blue one agents working right now. Drag a row to reorder; its ⋯ menu edits which projects belong, renames it, or deletes the grouping — the projects themselves stay.",
 
 	// ── Task inspector ──
 	"help.inspector.panel.title": "Task inspector",

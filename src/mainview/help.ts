@@ -72,6 +72,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 	{ id: "dashboard.projects", titleKey: "help.dashboard.projects.title", bodyKey: "help.dashboard.projects.body" },
 	{ id: "dashboard.stats-entry", titleKey: "help.dashboard.statsEntry.title", bodyKey: "help.dashboard.statsEntry.body" },
 	{ id: "dashboard.project-row", titleKey: "help.dashboard.projectRow.title", bodyKey: "help.dashboard.projectRow.body" },
+	{ id: "dashboard.spaces", titleKey: "help.dashboard.spaces.title", bodyKey: "help.dashboard.spaces.body" },
 
 	// ── Task inspector ──
 	{
@@ -183,6 +184,7 @@ export const REQUIRED_HELP_SURFACES: string[] = [
 	"dashboard.projects",
 	"dashboard.stats-entry",
 	"dashboard.project-row",
+	"dashboard.spaces",
 	// Task inspector
 	"inspector.panel",
 	"inspector.context-bar",

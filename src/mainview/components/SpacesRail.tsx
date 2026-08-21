@@ -1,10 +1,17 @@
 import { useRef, useState, type DragEvent } from "react";
 import type { Space } from "../../shared/types";
+import HelpSpot from "./HelpSpot";
+import SpaceHeaderMenu, { SPACE_MENU_GLYPH } from "./SpaceHeaderMenu";
 import { HOME_GROUP_ID } from "../utils/spaceGroups";
 import { MASK_CLASS } from "../sensitive-projects";
 import { useT } from "../i18n";
 
-/** Tailwind `lg` — must match the rail's `hidden lg:flex` classes below. */
+/**
+ * Below this the rail is not rendered at all. Measured on the dashboard's own
+ * container, not the viewport: the panel does not own the window (app chrome in
+ * the desktop shell, a browser tab in remote mode), so the window's width is
+ * not the width the rail has to fit into.
+ */
 export const SPACES_RAIL_MIN_WIDTH = 1024;
 
 export interface SpaceActivitySplit {
@@ -31,6 +38,12 @@ interface SpacesRailProps {
 	/** Persist a new space order (drag within the rail). Same write as the
 	 *  dashboard header grip — drag only ever reorders, never membership. */
 	onReorder?: (order: string[]) => void;
+	/** The space's own actions, so the rail is the complete spaces surface and
+	 *  not a filter that sends you to the centre column to rename anything. */
+	onRenameSpace?: (space: Space, name: string) => void;
+	onDeleteSpace?: (space: Space) => void;
+	onMoveSpace?: (space: Space, delta: -1 | 1) => void;
+	onEditProjects?: (space: Space) => void;
 }
 
 /**
@@ -90,6 +103,10 @@ function SpacesRail({
 	onSelect,
 	onNewSpace,
 	onReorder,
+	onRenameSpace,
+	onDeleteSpace,
+	onMoveSpace,
+	onEditProjects,
 }: SpacesRailProps) {
 	const t = useT();
 	// The id lives in a ref as well as state: `drop` must not depend on a render
@@ -100,6 +117,8 @@ function SpacesRail({
 
 	// Nothing to reorder with one space — the grip hides rather than sits inert.
 	const canReorder = !!onReorder && spaces.length > 1;
+	// Rename and delete come as a pair: half a menu is not a menu.
+	const hasSpaceMenu = !!onRenameSpace && !!onDeleteSpace;
 
 	function rowClass(active: boolean): string {
 		return `w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${
@@ -122,7 +141,7 @@ function SpacesRail({
 		if (!canReorder) return {};
 		return {
 			draggable: true,
-			onDragStart: (event: DragEvent<HTMLButtonElement>) => {
+			onDragStart: (event: DragEvent<HTMLDivElement>) => {
 				draggedRef.current = spaceId;
 				setDragged(spaceId);
 				event.dataTransfer.setData("text/plain", `space:${spaceId}`);
@@ -133,7 +152,7 @@ function SpacesRail({
 				setDragged(null);
 				setDropTarget(null);
 			},
-			onDragOver: (event: DragEvent<HTMLButtonElement>) => {
+			onDragOver: (event: DragEvent<HTMLDivElement>) => {
 				if (!draggedRef.current || draggedRef.current === spaceId) return;
 				event.preventDefault();
 				event.dataTransfer.dropEffect = "move";
@@ -146,7 +165,7 @@ function SpacesRail({
 			onDragLeave: () => {
 				setDropTarget((cur) => (cur?.spaceId === spaceId ? null : cur));
 			},
-			onDrop: (event: DragEvent<HTMLButtonElement>) => {
+			onDrop: (event: DragEvent<HTMLDivElement>) => {
 				event.preventDefault();
 				// Read the side off the drop itself: the dragover state may not have
 				// flushed yet, and the pointer is the only source of truth anyway.
@@ -161,7 +180,7 @@ function SpacesRail({
 
 	return (
 		<aside
-			className="hidden lg:flex w-56 flex-shrink-0 flex-col border-r border-edge overflow-y-auto py-4 px-3 gap-4"
+			className="flex w-56 flex-shrink-0 flex-col border-r border-edge overflow-y-auto py-4 px-3 gap-4"
 			aria-label={t("spaces.railLabel")}
 			data-testid="spaces-rail"
 		>
@@ -178,28 +197,41 @@ function SpacesRail({
 				>
 					<span className="flex-1 text-sm truncate">{t("spaces.railAllProjects")}</span>
 					<span className="text-fg-muted text-xs tabular-nums">{totalProjects}</span>
+					{/* No menu on a computed row, but the counts above it must stay in
+					    one column: an invisible copy of the menu's own glyph is that
+					    width by construction. */}
+					{hasSpaceMenu && (
+						<span
+							aria-hidden="true"
+							className="flex-shrink-0 -mr-1 p-1 invisible text-base leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{SPACE_MENU_GLYPH}
+						</span>
+					)}
 				</button>
 			</div>
 
-			<div className="flex flex-col gap-1">
-				<span className="px-2.5 text-fg-muted text-nano font-semibold uppercase tracking-[0.08em]">
+			{/* The whole section is the help zone, not just the icon: what needs
+			    explaining is what a space IS, plus what the two dots count — and
+			    nowhere else on this screen said either. */}
+			<div className="flex flex-col gap-1" data-help-id="dashboard.spaces">
+				<span className="px-2.5 flex items-center gap-1.5 text-fg-muted text-nano font-semibold uppercase tracking-[0.08em]">
 					{t("spaces.railSpaces")}
+					<HelpSpot topicId="dashboard.spaces" />
 				</span>
-				{spaces.map((space) => {
+				{spaces.map((space, index) => {
 					const active = selectedSpaceId === space.id;
 					const isTarget = dropTarget?.spaceId === space.id;
 					const masked = maskedSpaceIds.has(space.id);
 
 					return (
-						<button
+						<div
 							key={space.id}
-							type="button"
-							onClick={() => onSelect(space.id)}
-							aria-pressed={active}
-							className={`relative ${rowClass(active)} ${dragged === space.id ? "opacity-50" : ""} ${
+							className={`group relative ${rowClass(active)} ${dragged === space.id ? "opacity-50" : ""} ${
 								canReorder ? "cursor-grab active:cursor-grabbing" : ""
 							}`}
-							data-testid={`rail-space-${space.id}`}
+							data-testid={`rail-space-row-${space.id}`}
 							{...dragHandlers(space.id)}
 						>
 							{isTarget && (
@@ -222,16 +254,45 @@ function SpacesRail({
 									{GRIP_GLYPH}
 								</span>
 							)}
-							<span className={`flex-1 text-sm truncate ${masked ? MASK_CLASS : ""}`}>
-								{space.name}
-							</span>
-							<ActivityDots split={activityOf(space.id)} masked={masked} />
-							{/* The count leaks how much work a private client has in flight, so
-							    it is masked with the name, not left readable beside it. */}
-							<span className={`text-fg-muted text-xs tabular-nums ${masked ? MASK_CLASS : ""}`}>
-								{projectCountOf(space.id)}
-							</span>
-						</button>
+							<button
+								type="button"
+								onClick={() => onSelect(space.id)}
+								aria-pressed={active}
+								className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
+								data-testid={`rail-space-${space.id}`}
+							>
+								<span className={`flex-1 text-sm truncate ${masked ? MASK_CLASS : ""}`}>
+									{space.name}
+								</span>
+								<ActivityDots split={activityOf(space.id)} masked={masked} />
+								{/* The count leaks how much work a private client has in flight, so
+								    it is masked with the name, not left readable beside it. */}
+								<span className={`text-fg-muted text-xs tabular-nums ${masked ? MASK_CLASS : ""}`}>
+									{projectCountOf(space.id)}
+								</span>
+							</button>
+							{/* The menu keeps its width at rest — revealing it on hover would
+							    shift every number in the rail the moment the pointer lands.
+							    Only its ink waits for hover, focus, or selection. */}
+							{onRenameSpace && onDeleteSpace && (
+								<span
+									className={`flex-shrink-0 -mr-1 transition-opacity focus-within:opacity-100 group-hover:opacity-100 ${
+										active ? "opacity-100" : "opacity-0"
+									}`}
+								>
+									<SpaceHeaderMenu
+										space={space}
+										scope="rail-space"
+										onRename={onRenameSpace}
+										onDelete={onDeleteSpace}
+										onEditProjects={onEditProjects}
+										onMove={onMoveSpace && spaces.length > 1 ? onMoveSpace : undefined}
+										canMoveUp={index > 0}
+										canMoveDown={index < spaces.length - 1}
+									/>
+								</span>
+							)}
+						</div>
 					);
 				})}
 				{homeCount > 0 && (
@@ -254,6 +315,18 @@ function SpacesRail({
 						<span className="flex-1 text-sm truncate">{t("spaces.homeGroup")}</span>
 						<ActivityDots split={homeActivity} masked={false} />
 						<span className="text-fg-muted text-xs tabular-nums">{homeCount}</span>
+						{/* No menu on a computed row, but the counts above it must stay
+						    in one column: an invisible copy of the menu's own glyph is
+						    that width by construction. */}
+						{hasSpaceMenu && (
+							<span
+								aria-hidden="true"
+								className="flex-shrink-0 -mr-1 p-1 invisible text-base leading-none"
+								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+							>
+								{SPACE_MENU_GLYPH}
+							</span>
+						)}
 					</button>
 				)}
 				{/* Ends the section it appends to, one row-gap below the last row.

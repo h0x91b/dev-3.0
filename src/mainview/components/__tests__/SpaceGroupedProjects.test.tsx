@@ -137,9 +137,9 @@ describe("SpaceGroupedProjects — header details from the mock", () => {
 		expect(singleLetterNodes).toHaveLength(0);
 	});
 
-	it("offers the add-projects control only when the handler is provided", async () => {
+	it("opens the membership editor from the space's own menu, with no bare + beside it", async () => {
 		const user = userEvent.setup();
-		const onAddProjects = vi.fn();
+		const onEditProjects = vi.fn();
 		render(
 			<I18nProvider>
 				<SpaceGroupedProjects
@@ -149,12 +149,17 @@ describe("SpaceGroupedProjects — header details from the mock", () => {
 					workingCountOf={() => 0}
 					renderProject={(p) => <div data-testid={`row-${p.id}`}>{p.name}</div>}
 					renderBottomBlockProject={(p) => <div data-testid={`rest-row-${p.id}`}>{p.name}</div>}
-					onAddProjects={onAddProjects}
+					onEditProjects={onEditProjects}
+					onRenameSpace={vi.fn()}
+					onDeleteSpace={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
-		await user.click(screen.getByTestId("space-add-projects-sp_a"));
-		expect(onAddProjects).toHaveBeenCalledWith(expect.objectContaining({ id: "sp_a" }));
+		// A `+` could only ever add; removal has to live in the same place.
+		expect(screen.queryByTestId("space-add-projects-sp_a")).not.toBeInTheDocument();
+		await user.click(screen.getByTestId("space-menu-sp_a"));
+		await user.click(screen.getByTestId("space-edit-projects-sp_a"));
+		expect(onEditProjects).toHaveBeenCalledWith(expect.objectContaining({ id: "sp_a" }));
 	});
 
 	it("passes the owning space id to the row renderer so chips can omit it", () => {

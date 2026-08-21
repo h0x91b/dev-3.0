@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { Project, Task, TaskStatus } from "../../shared/types";
+import type { Project, Space, Task, TaskStatus } from "../../shared/types";
 import { isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
@@ -8,10 +8,12 @@ import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import { useSpaces } from "../useSpaces";
-import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useContainerNarrower } from "../hooks/useContainerNarrower";
+import { deleteSpaceWithConfirm, moveSpace, renameSpace } from "../utils/spaceActions";
 import ActivityOverview from "./ActivityOverview";
 import SpacesRail, { SPACES_RAIL_MIN_WIDTH, type SpaceActivitySplit } from "./SpacesRail";
 import NewSpaceModal from "./NewSpaceModal";
+import SpaceProjectsModal from "./SpaceProjectsModal";
 
 // Same needs-you / working split the space group headers use.
 const NEEDS_ME_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
@@ -36,10 +38,14 @@ function Dashboard({
 	const { spaces } = useSpaces();
 	const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null);
 	const [showNewSpace, setShowNewSpace] = useState(false);
+	const [editSpace, setEditSpace] = useState<Space | null>(null);
 
-	// The rail hides below Tailwind's `lg` (1024px) with plain CSS. A selection
-	// made on a wide window must not keep filtering once its control is gone.
-	const railHidden = useNarrowViewport(SPACES_RAIL_MIN_WIDTH);
+	// The rail exists or it does not — one measurement, no CSS breakpoint that
+	// could disagree with it. The ref goes on the row holding BOTH panels, whose
+	// width does not change when the rail appears; measuring the rail's own
+	// sibling would make showing it shrink the number that decides it.
+	// A selection made while the rail was up must not keep filtering after it goes.
+	const [containerRef, railHidden] = useContainerNarrower<HTMLDivElement>(SPACES_RAIL_MIN_WIDTH);
 	useEffect(() => {
 		if (railHidden) setSelectedSpaceId(null);
 	}, [railHidden]);
@@ -173,8 +179,8 @@ function Dashboard({
 
 	return (
 		<div className="h-full w-full flex flex-col">
-			<div className="flex-1 overflow-hidden flex">
-				{hasSpaces && projects.length > 0 && (
+			<div ref={containerRef} className="flex-1 overflow-hidden flex">
+				{railOnScreen && (
 					<SpacesRail
 						spaces={spaces}
 						projectCountOf={(id) => railCounts.perSpace.get(id) ?? 0}
@@ -187,6 +193,10 @@ function Dashboard({
 						onSelect={setSelectedSpaceId}
 						onNewSpace={() => setShowNewSpace(true)}
 						onReorder={handleReorderSpaces}
+						onRenameSpace={(space, name) => void renameSpace(space, name, t)}
+						onDeleteSpace={(space) => void deleteSpaceWithConfirm(space, t)}
+						onMoveSpace={(space, delta) => void moveSpace(space, delta, spaces, t)}
+						onEditProjects={setEditSpace}
 					/>
 				)}
 				<div className="flex-1 min-w-0 overflow-hidden">
@@ -201,6 +211,7 @@ function Dashboard({
 						onReorderProjects={handleReorderProjects}
 						selectedSpaceId={selectedSpaceId}
 						onNewSpace={railOnScreen ? undefined : () => setShowNewSpace(true)}
+						onEditSpaceProjects={setEditSpace}
 					/>
 				) : (
 					<div className="h-full overflow-y-auto p-3 md:p-7">
@@ -245,6 +256,17 @@ function Dashboard({
 			</div>
 			{showNewSpace && (
 				<NewSpaceModal projects={projects} onClose={() => setShowNewSpace(false)} />
+			)}
+			{editSpace && (
+				<SpaceProjectsModal
+					space={editSpace}
+					projects={projects}
+					onClose={() => setEditSpace(null)}
+					onCreateProject={(space) => {
+						setEditSpace(null);
+						onOpenAddProject([space.id]);
+					}}
+				/>
 			)}
 		</div>
 	);

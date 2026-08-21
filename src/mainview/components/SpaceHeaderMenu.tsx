@@ -4,6 +4,10 @@ import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Space } from "../../shared/types";
 import { useT } from "../i18n";
 
+/** Nerd Font nf-md-dots_horizontal — the menu anchor's glyph. Exported so a row
+ *  without a menu can donate exactly its width and keep the numbers in column. */
+export const SPACE_MENU_GLYPH = "\u{F01D9}";
+
 interface SpaceHeaderMenuProps {
 	space: Space;
 	onRename: (space: Space, name: string) => void;
@@ -12,6 +16,11 @@ interface SpaceHeaderMenuProps {
 	onMove?: (space: Space, delta: -1 | 1) => void;
 	canMoveUp?: boolean;
 	canMoveDown?: boolean;
+	/** Opens the membership editor. Omitted where the surface shows its own
+	 *  `Edit` control beside the name, so the menu does not repeat it. */
+	onEditProjects?: (space: Space) => void;
+	/** Prefixes every test id — two surfaces render this menu at once. */
+	scope?: string;
 }
 
 /**
@@ -23,7 +32,16 @@ interface SpaceHeaderMenuProps {
  * the keyboard cannot perform. An overflow entry costs no resting pixels; a
  * second visible control in a 224px rail did.
  */
-function SpaceHeaderMenu({ space, onRename, onDelete, onMove, canMoveUp, canMoveDown }: SpaceHeaderMenuProps) {
+function SpaceHeaderMenu({
+	space,
+	onRename,
+	onDelete,
+	onMove,
+	canMoveUp,
+	canMoveDown,
+	onEditProjects,
+	scope = "space",
+}: SpaceHeaderMenuProps) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
 	const [renaming, setRenaming] = useState(false);
@@ -94,10 +112,10 @@ function SpaceHeaderMenu({ space, onRename, onDelete, onMove, canMoveUp, canMove
 				className="p-1 rounded text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
 				title={t("spaces.menuLabel")}
 				aria-label={t("spaces.menuLabel")}
-				data-testid={`space-menu-${space.id}`}
+				data-testid={`${scope}-menu-${space.id}`}
 			>
 				<span aria-hidden="true" className="text-base leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-					{"\u{F01D9}"}
+					{SPACE_MENU_GLYPH}
 				</span>
 			</button>
 			{open &&
@@ -122,20 +140,34 @@ function SpaceHeaderMenu({ space, onRename, onDelete, onMove, canMoveUp, canMove
 										}
 									}}
 									className="w-full bg-elevated border border-edge rounded-lg px-2.5 py-1.5 text-xs text-fg outline-none focus:border-accent/50 transition-colors"
-									data-testid={`space-rename-input-${space.id}`}
+									data-testid={`${scope}-rename-input-${space.id}`}
 								/>
 								<button
 									type="button"
 									onClick={commitRename}
 									disabled={!draft.trim()}
 									className="mt-2 w-full px-2.5 py-1.5 rounded-lg bg-accent text-white text-xs hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-									data-testid={`space-rename-save-${space.id}`}
+									data-testid={`${scope}-rename-save-${space.id}`}
 								>
 									{t("spaces.renameSave")}
 								</button>
 							</div>
 						) : (
 							<>
+								{onEditProjects && (
+									<button
+										type="button"
+										role="menuitem"
+										onClick={() => {
+											close();
+											onEditProjects(space);
+										}}
+										className={`${itemClass} text-fg-2 hover:text-fg`}
+										data-testid={`${scope}-edit-projects-${space.id}`}
+									>
+										{t("spaces.editProjectsMenu")}
+									</button>
+								)}
 								{onMove && (
 									<>
 										<button
@@ -147,7 +179,7 @@ function SpaceHeaderMenu({ space, onRename, onDelete, onMove, canMoveUp, canMove
 											}}
 											disabled={!canMoveUp}
 											className={`${itemClass} text-fg-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent`}
-											data-testid={`space-move-up-${space.id}`}
+											data-testid={`${scope}-move-up-${space.id}`}
 										>
 											{t("spaces.moveUp")}
 										</button>
@@ -160,7 +192,7 @@ function SpaceHeaderMenu({ space, onRename, onDelete, onMove, canMoveUp, canMove
 											}}
 											disabled={!canMoveDown}
 											className={`${itemClass} text-fg-2 hover:text-fg disabled:opacity-40 disabled:hover:bg-transparent`}
-											data-testid={`space-move-down-${space.id}`}
+											data-testid={`${scope}-move-down-${space.id}`}
 										>
 											{t("spaces.moveDown")}
 										</button>
@@ -171,7 +203,7 @@ function SpaceHeaderMenu({ space, onRename, onDelete, onMove, canMoveUp, canMove
 									role="menuitem"
 									onClick={() => setRenaming(true)}
 									className={`${itemClass} text-fg-2 hover:text-fg`}
-									data-testid={`space-rename-${space.id}`}
+									data-testid={`${scope}-rename-${space.id}`}
 								>
 									{t("spaces.rename")}
 								</button>
@@ -183,7 +215,7 @@ function SpaceHeaderMenu({ space, onRename, onDelete, onMove, canMoveUp, canMove
 										onDelete(space);
 									}}
 									className={`${itemClass} text-danger`}
-									data-testid={`space-delete-${space.id}`}
+									data-testid={`${scope}-delete-${space.id}`}
 								>
 									{t("spaces.delete")}
 								</button>

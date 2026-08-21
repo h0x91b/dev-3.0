@@ -9,6 +9,16 @@ import SpaceHeaderMenu from "./SpaceHeaderMenu";
 
 const LS_COLLAPSED_SPACES = "dev3-collapsed-spaces";
 
+/**
+ * A group's own rows are 8px from its header and 16px from each other; the next
+ * group starts 40px away (24px here plus the list's own 16px). Proximity is the
+ * only thing that says which rows belong to which space — with one 16px gap
+ * everywhere, a header read as another row in a flat list (§9a.6: the gap
+ * between groups must be at least twice the gap inside one).
+ */
+const GROUP_CLASS = "pt-6 space-y-2";
+const ROWS_CLASS = "space-y-4";
+
 function readCollapsed(): Set<string> {
 	try {
 		const raw = localStorage.getItem(LS_COLLAPSED_SPACES);
@@ -55,8 +65,8 @@ interface SpaceGroupedProjectsProps {
 	renderProject: (project: Project, reorder: RowReorderCtx, groupSpaceId: string | null) => ReactNode;
 	/** The bottom block still owns global order — same callback as the flat path. */
 	renderBottomBlockProject: (project: Project, blockProjects: Project[]) => ReactNode;
-	/** Opens the "add existing projects to this space" flow. */
-	onAddProjects?: (space: Space) => void;
+	/** Opens the membership editor for this space (the menu's `Edit projects…`). */
+	onEditProjects?: (space: Space) => void;
 	onRenameSpace?: (space: Space, name: string) => void;
 	onDeleteSpace?: (space: Space) => void;
 	/** Step this space one position in the app-wide space order. */
@@ -80,7 +90,7 @@ function SpaceGroupedProjects({
 	workingCountOf,
 	renderProject,
 	renderBottomBlockProject,
-	onAddProjects,
+	onEditProjects,
 	onRenameSpace,
 	onDeleteSpace,
 	onMoveSpace,
@@ -174,14 +184,16 @@ function SpaceGroupedProjects({
 				if (group.space === null) {
 					if (group.projects.length === 0) return null;
 					return (
-						<div key="no-space" className="space-y-4" data-testid="space-group-rest">
-							<div className="flex items-center gap-2 pt-2">
+						<div key="no-space" className={GROUP_CLASS} data-testid="space-group-rest">
+							<div className="flex items-center gap-2">
 								<span className="text-fg-3 text-xs font-semibold uppercase tracking-wider">
 									{t("spaces.homeGroup")}
 								</span>
 								<span className="text-fg-muted text-xs tabular-nums">{group.projects.length}</span>
 							</div>
-							{group.projects.map((project) => renderBottomBlockProject(project, group.projects))}
+							<div className={ROWS_CLASS}>
+								{group.projects.map((project) => renderBottomBlockProject(project, group.projects))}
+							</div>
 						</div>
 					);
 				}
@@ -193,8 +205,8 @@ function SpaceGroupedProjects({
 				const working = group.projects.reduce((sum, p) => sum + workingCountOf(p.id), 0);
 
 				return (
-					<div key={space.id} className="space-y-4 relative" data-testid={`space-group-${space.id}`}>
-						<div className="flex items-center gap-2 pt-2">
+					<div key={space.id} className={`relative ${GROUP_CLASS}`} data-testid={`space-group-${space.id}`}>
+						<div className="flex items-center gap-2">
 							<button
 								type="button"
 								onClick={() => toggleCollapsed(space.id)}
@@ -231,29 +243,17 @@ function SpaceGroupedProjects({
 									</span>
 								)}
 							</button>
-							{/* The space's own actions sit against its name, not pushed to
-							    the far right of a 1024px column: `Delete space` at the end
-							    of an otherwise empty row does not read as belonging to the
-							    space at all (§9a.6 — group with proximity). */}
-							{onAddProjects && (
-								<button
-									type="button"
-									onClick={() => onAddProjects(space)}
-									className="p-1 rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors"
-									title={t("spaces.addProjects")}
-									aria-label={t("spaces.addProjects")}
-									data-testid={`space-add-projects-${space.id}`}
-								>
-									<svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-									</svg>
-								</button>
-							)}
+							{/* One control for the whole space, sitting against its name and
+							    not pushed to the far right of a 1024px column (§9a.6 — group
+							    with proximity). Membership lives inside it: a bare `+` could
+							    only add, so removing a project was reachable nowhere near
+							    the space it belonged to. */}
 							{onRenameSpace && onDeleteSpace && (
 								<SpaceHeaderMenu
 									space={space}
 									onRename={onRenameSpace}
 									onDelete={onDeleteSpace}
+									onEditProjects={onEditProjects}
 									onMove={onMoveSpace && (spaceOrder?.length ?? 0) > 1 ? onMoveSpace : undefined}
 									canMoveUp={(spaceOrder?.indexOf(space.id) ?? 0) > 0}
 									canMoveDown={
@@ -262,11 +262,15 @@ function SpaceGroupedProjects({
 								/>
 							)}
 						</div>
-						{!isCollapsed && group.projects.map((project, index) => (
-							<div key={`${space.id}:${project.id}`}>
-								{renderProject(project, rowCtx(space.id, group.projects, project, index), space.id)}
+						{!isCollapsed && (
+							<div className={ROWS_CLASS}>
+								{group.projects.map((project, index) => (
+									<div key={`${space.id}:${project.id}`}>
+										{renderProject(project, rowCtx(space.id, group.projects, project, index), space.id)}
+									</div>
+								))}
 							</div>
-						))}
+						)}
 					</div>
 				);
 			})}

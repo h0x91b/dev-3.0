@@ -4,15 +4,13 @@ import type { Project, Space, Task, TaskStatus } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isTaskDisconnected, orderProjectsForDisplay } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
+import { deleteSpaceWithConfirm, moveSpace, renameSpace } from "../utils/spaceActions";
 import { useT } from "../i18n";
-import { toast } from "../toast";
-import { confirm } from "../confirm";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { filterDashboardGroups, groupProjectsForDashboard } from "../utils/spaceGroups";
 import ProjectSpaceChips from "./ProjectSpaceChips";
 import SpacePicker from "./SpacePicker";
-import AddProjectsToSpaceModal from "./AddProjectsToSpaceModal";
 import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
 import SpaceGroupedProjects, { type RowReorderCtx } from "./SpaceGroupedProjects";
 import { getStatusLabel } from "../utils/statusLabel";
@@ -39,6 +37,9 @@ interface ActivityOverviewProps {
 	/** Rail filter: null = all, `HOME_GROUP_ID` = the computed Home group. */
 	selectedSpaceId?: string | null;
 	onNewSpace?: () => void;
+	/** Opens the space's membership editor — the dialog is hosted one level up,
+	 *  because the rail's own menu opens the same one. */
+	onEditSpaceProjects?: (space: Space) => void;
 }
 
 /** Statuses worth their own row — they're waiting on a human (questions, your
@@ -112,7 +113,7 @@ function ActionSheetButton({
 	);
 }
 
-function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects, selectedSpaceId = null, onNewSpace }: ActivityOverviewProps) {
+function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects, selectedSpaceId = null, onNewSpace, onEditSpaceProjects }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -139,53 +140,11 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 	const [projectQuery, setProjectQuery] = useState("");
 	// The row whose Spaces… picker is open, with the button it is anchored to.
 	const [spacesPicker, setSpacesPicker] = useState<{ projectId: string; anchor: HTMLElement } | null>(null);
-	const [addProjectsSpace, setAddProjectsSpace] = useState<Space | null>(null);
 	const membership = useProjectSpaceMembership(spacesFile);
 
 	const openSpacesPicker = useCallback((project: Project, anchor: HTMLElement) => {
 		setSpacesPicker({ projectId: project.id, anchor });
 	}, []);
-
-	async function handleRenameSpace(space: Space, name: string) {
-		try {
-			await api.request.renameSpace({ spaceId: space.id, name });
-		} catch (err) {
-			toast.error(t("spaces.failedRename", { error: String(err) }));
-		}
-	}
-
-	/** Step one space by one position. The rail drags; this is the path for a
-	 *  pointer that cannot drag and for the keyboard. */
-	async function handleMoveSpace(space: Space, delta: -1 | 1) {
-		const order = spaces.map((s) => s.id);
-		const from = order.indexOf(space.id);
-		const to = from + delta;
-		if (from === -1 || to < 0 || to >= order.length) return;
-		[order[from], order[to]] = [order[to], order[from]];
-		try {
-			await api.request.reorderSpaces({ order });
-		} catch (err) {
-			toast.error(t("spaces.failedUpdate", { error: String(err) }));
-		}
-	}
-
-	// Deleting a space unlinks its projects and nothing else — never removes a
-	// project from dev3 (see the Spaces decision record).
-	async function handleDeleteSpace(space: Space) {
-		const confirmed = await confirm({
-			title: t("spaces.deleteConfirmTitle"),
-			message: t("spaces.deleteConfirmBody", { name: space.name }),
-			confirmLabel: t("spaces.deleteConfirmAction"),
-			danger: true,
-		});
-		if (!confirmed) return;
-		try {
-			await api.request.deleteSpace({ spaceId: space.id });
-			toast.info(t("spaces.deleted", { name: space.name }));
-		} catch (err) {
-			toast.error(t("spaces.failedDelete", { error: String(err) }));
-		}
-	}
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
@@ -933,10 +892,10 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							workingCountOf={(projectId) =>
 								(tasksByProject.get(projectId) ?? []).filter((task) => BACKGROUND_STATUSES.includes(task.status)).length
 							}
-							onAddProjects={(space) => setAddProjectsSpace(space)}
-							onRenameSpace={handleRenameSpace}
-							onDeleteSpace={handleDeleteSpace}
-							onMoveSpace={(space, delta) => void handleMoveSpace(space, delta)}
+							onEditProjects={onEditSpaceProjects}
+							onRenameSpace={(space, name) => void renameSpace(space, name, t)}
+							onDeleteSpace={(space) => void deleteSpaceWithConfirm(space, t)}
+							onMoveSpace={(space, delta) => void moveSpace(space, delta, spaces, t)}
 							spaceOrder={spaces.map((s) => s.id)}
 							renderProject={(p, ctx, spaceId) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id), ctx, spaceId)}
 							renderBottomBlockProject={(p) => renderProjectRow(p, visibleProjects.findIndex((v) => v.id === p.id))}
@@ -944,17 +903,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					</>
 				)}
 
-				{addProjectsSpace && (
-					<AddProjectsToSpaceModal
-						space={addProjectsSpace}
-						projects={visibleProjects}
-						onClose={() => setAddProjectsSpace(null)}
-						onCreateProject={onOpenAddProject ? (space) => {
-							setAddProjectsSpace(null);
-							onOpenAddProject([space.id]);
-						} : undefined}
-					/>
-				)}
 				{spacesPicker && (
 					<SpacePicker
 						spaces={spaces}
