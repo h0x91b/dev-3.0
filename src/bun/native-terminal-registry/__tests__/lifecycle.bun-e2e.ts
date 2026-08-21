@@ -223,6 +223,8 @@ interface JournalObservation {
 	fileBytes: number;
 	readError: string;
 	tail: string;
+	/** Bytes surrounding a foreign marker — the only thing that names HOW it arrived. */
+	foreignContext: string;
 }
 
 /** Printable, single-line excerpt — a journal holds raw PTY bytes, escapes included. */
@@ -233,6 +235,19 @@ function excerpt(text: string, max = 240): string {
 		out += code < 0x20 || code === 0x7f ? `\\x${code.toString(16).padStart(2, "0")}` : ch;
 	}
 	return out;
+}
+
+/**
+ * The stretch of stream a foreign marker sits in. A journal is raw PTY bytes, so
+ * the neighbours decide the verdict: an interactive shell's own re-render around it
+ * means the marker entered through this session's shell, while a bare marker between
+ * two of this session's frames means it was written into the journal from outside.
+ */
+function markerContext(text: string, needle: string, radius = 260): string {
+	const at = text.indexOf(needle);
+	if (at < 0) return "";
+	const slice = text.slice(Math.max(0, at - radius), at + needle.length + radius);
+	return excerpt(slice, slice.length);
 }
 
 function observeJournal(sessionId: string, ownMark: string, foreignMark: string): JournalObservation {
@@ -254,6 +269,7 @@ function observeJournal(sessionId: string, ownMark: string, foreignMark: string)
 		fileBytes,
 		readError,
 		tail: excerpt(text),
+		foreignContext: markerContext(text, foreignMark),
 	};
 }
 
@@ -268,9 +284,14 @@ function explainJournal(
 	const evidence = `evidence: chunks=${obs.chunks} fileBytes=${obs.fileBytes}${obs.readError ? ` readError=${obs.readError}` : ""} tail="${obs.tail}"`;
 	if (obs.foreign) {
 		return [
-			`CAUSE: ${sessionId}'s journal contains ${other}'s marker — cross-session leakage in the registry,`,
-			"       not a timing problem (a journal is per-session state; waiting cannot remove a foreign byte).",
-			`FIX: the registry's journal path or output fan-out (paths.journalFile / host.ts data callback). Never this assertion.`,
+			`CAUSE: ${sessionId}'s journal contains ${other}'s marker, and no wait can remove a foreign byte.`,
+			"       Two channels can put it there, and only the context below tells them apart:",
+			`       (1) the registry fanned ${other}'s output into this journal — the marker sits bare between this`,
+			`           session's own frames. FIX: paths.journalFile / the host.ts data callback.`,
+			`       (2) this session's own SHELL printed it — the marker is wrapped in this shell's prompt or`,
+			"           line-editor redraw escapes. On Windows that is PSReadLine rendering a suggestion out of the",
+			"           user-wide history file both shells share; the registry never saw the other session at all.",
+			`       context around ${other}'s marker: "${obs.foreignContext}"`,
 			evidence,
 		].join("\n");
 	}

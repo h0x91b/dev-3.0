@@ -21,6 +21,7 @@
 		"perf:task-store": "bun src/bun/__tests__/task-store-burst.bun-perf.ts",
 		"test:pane-e2e": "bun --preload ./src/bun/__tests__/pane-exit-e2e-preload.ts src/bun/__tests__/pane-exit-e2e.ts",
 		"test:proto-e2e": "bun src/bun/prototypes/detached-pty/__tests__/lifecycle.bun-e2e.ts",
+		"test:native-cross-session-echo": "bun src/bun/native-terminal-registry/__tests__/cross-session-echo-probe.ts",
 		"test:native-registry-e2e": "bun src/bun/native-terminal-registry/__tests__/lifecycle.bun-e2e.ts",
 		"test:native-teardown-e2e": "bun src/bun/native-terminal-registry/__tests__/graceful-teardown.bun-e2e.ts",
 		"test:native-crash-e2e": "bun src/bun/native-terminal-registry/__tests__/crash-recovery.bun-e2e.ts",

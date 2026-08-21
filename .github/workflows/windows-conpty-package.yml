@@ -151,19 +151,27 @@ jobs:
       # per-platform assertions ARE the contract in decision 192, so they have to
       # run on all three runners — negative ones included (macOS Activity Monitor
       # and the Windows image-name column stay basename-only).
+      # From here on every independent proof carries `if: always()`, for the reason the
+      # pane-run step below already documents: these steps share nothing but the runner,
+      # so the first failure used to hide up to fourteen later verdicts and one flake read
+      # as a broad Windows outage. Build and upload steps deliberately keep the default —
+      # a failed proof must still publish nothing.
       - name: Process naming visibility (${{ matrix.os }})
+        if: always()
         run: bun run test:process-naming
 
       # Real loopback proof for the Windows CLI control transport: round-trip,
       # two instances, stale record, token rejection, and the loopback-only
       # network boundary against this runner's real interfaces.
       - name: CLI loopback transport E2E
+        if: always()
         run: bun run test:cli-loopback-e2e
 
       # The same transport driven through the COMPILED CLI (`dev3.exe` on this
       # runner): representative commands, instance selection, stale/corrupt
       # records, and the documented app-not-running exit code.
       - name: Packaged CLI over loopback E2E
+        if: always()
         timeout-minutes: 5
         run: bun run test:cli-packaged-e2e
 
@@ -183,21 +191,48 @@ jobs:
       # Merged host-image manifest: generator, validator, deterministic assembly,
       # additive staging outside the install root, and rollback selection.
       - name: Packaged host image + manifest tests
+        if: always()
         run: bun run test:native-host-image
+
+      # Seq 1550 investigation lever, dispatch-only because it costs minutes and gates
+      # nothing: the lifecycle E2E's journal-isolation check fails on windows-latest
+      # roughly one run in four, which no single run can settle. Two shells in ONE
+      # process with no registry, no journal and no fan-out — arm A shares the user
+      # profile as the E2E does, arm B gives each shell a private one — then the real
+      # fixture repeated, so a one-in-four flake shows up inside a single dispatch.
+      - name: Two-shell cross-session echo probe (dispatch only)
+        if: always() && github.event_name == 'workflow_dispatch'
+        env:
+          DEV3_ECHO_PROBE_ROUNDS: "12"
+        run: bun run test:native-cross-session-echo
+
+      - name: Repeat the lifecycle E2E (dispatch only)
+        if: always() && github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          fails=0
+          for i in $(seq 1 8); do
+            echo "=== lifecycle repeat $i ==="
+            if ! bun run test:native-registry-e2e; then fails=$((fails + 1)); fi
+          done
+          echo "lifecycle repeats failed: $fails / 8"
 
       # Real-runtime lifecycle regression for the persistent native-session
       # registry — runs on native Windows + POSIX with the pinned Bun 1.3.14.
       - name: Native-session registry lifecycle E2E
+        if: always()
         run: bun run test:native-registry-e2e
 
       # Seq 1236 force-kills only the recorded host while journal/parser writes
       # are active, then proves owned-tree death and token-matched recovery.
       - name: Native-session host crash recovery E2E
+        if: always()
         run: bun run test:native-crash-e2e
 
       # Seq 1237 writer/observer proof. The same real-runtime lifecycle runs on
       # native Windows and POSIX: concurrent attach, claim races, reconnect, and resize.
       - name: Native-session two-client lifecycle E2E
+        if: always()
         run: bun run test:native-multi-client-e2e
 
       # Seq 1247 app-restart proof. Two separate short-lived controller processes:
@@ -205,6 +240,7 @@ jobs:
       # rediscovers and reattaches to the same host/shell/session/pane + state,
       # with a deterministic single writer and honest lost-session results.
       - name: Native-session app-restart reattach E2E
+        if: always()
         run: bun run test:native-app-restart-e2e
 
       # Seq 1381 cross-instance owner-routing proof for #1218. THREE separate
@@ -213,6 +249,7 @@ jobs:
       # delivery to A, C reopens and counts what reached the PTY. Windows exercises
       # the loopback `<pid>.endpoint.json` transport, POSIX the `<pid>.sock` one.
       - name: Native-pane cross-instance owner-routing E2E
+        if: always()
         timeout-minutes: 5
         run: bun run test:native-owner-routing-e2e
 
@@ -223,7 +260,7 @@ jobs:
       # which has no PowerShell equivalent, so the Windows leg of owner routing is
       # covered by the E2E above instead.
       - name: Native message owner-routing E2E
-        if: runner.os != 'Windows'
+        if: always() && runner.os != 'Windows'
         timeout-minutes: 6
         run: bun run test:native-message-e2e
 
@@ -233,6 +270,7 @@ jobs:
       # live tmux sentinel, an honest null after cleanup, and the renderer
       # transport (pty-server WebSocket bridge with two real WS clients).
       - name: Product native task-terminal E2E
+        if: always()
         timeout-minutes: 5
         run: bun run test:native-task-terminal-e2e
 
@@ -243,6 +281,7 @@ jobs:
       # Completes in ~20s; the step timeout turns a future non-exiting run into a
       # fast, obvious failure instead of eating the job's whole 20-minute budget.
       - name: Native single-view adapter parity E2E
+        if: always()
         timeout-minutes: 5
         run: bun run test:native-parity-e2e
 
@@ -252,11 +291,12 @@ jobs:
       # writer-vs-observer resize, fresh-process reconnect to the same pids,
       # single-pane close, and full owned-tree cleanup.
       - name: Native multi-pane coordinator E2E
+        if: always()
         timeout-minutes: 6
         run: bun run test:native-multipane-e2e
 
       - name: Explicit Windows shell launch matrix
-        if: runner.os == 'Windows'
+        if: always() && runner.os == 'Windows'
         shell: powershell
         run: |
           & .\src\bun\native-terminal-registry\__tests__\run-windows-shell-matrix.ps1 `
@@ -273,9 +313,11 @@ jobs:
       # mode is printed as evidence and is EXPECTED to fail on Windows
       # Bun 1.3.14 (the preserved seq 1185 reproduction, decision 146).
       - name: Live-parser regression probe (callback vs deferred)
+        if: always()
         run: bun src/bun/native-terminal-registry/regression-probe.ts both
 
       - name: Live-parser lifecycle E2E
+        if: always()
         run: bun run test:native-live-parser-e2e
 
       - name: Bundle terminal host entrypoint
