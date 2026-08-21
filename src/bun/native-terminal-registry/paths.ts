@@ -15,7 +15,10 @@
  */
 
 import { dirname, join } from "node:path";
-import { resolveDev3Home } from "../paths";
+// Straight from `shared/`, NOT re-exported through `../paths`: 45 suites mock that
+// module with a factory that lists its exports by name, and any of them reaching
+// this file would get `undefined` for a function stripped from the mock.
+import { resolveDev3Home } from "../../shared/dev3-home";
 import type { CaptureProducerDigest } from "./capture-digest";
 
 export const NATIVE_SESSIONS_DIR_ENV = "DEV3_NATIVE_SESSIONS_DIR";

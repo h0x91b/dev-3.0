@@ -1,7 +1,9 @@
 import { resolveDev3Home } from "../shared/dev3-home";
 
-/** Re-exported so app modules have one import for both forms of the root. */
-export { resolveDev3Home };
+// Deliberately NOT re-exported. 45 suites mock this module with a factory that
+// lists its exports by name, so a module importing the resolver through here
+// would get `undefined` whenever one of those suites reaches it. Import it from
+// `shared/dev3-home` directly.
 
 /**
  * Root directory for all dev-3.0 data: projects, tasks, worktrees, logs.

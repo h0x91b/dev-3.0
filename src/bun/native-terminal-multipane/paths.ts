@@ -13,7 +13,8 @@
 
 import { join } from "node:path";
 import { isValidSessionId } from "../native-terminal-registry/paths";
-import { resolveDev3Home } from "../paths";
+// From `shared/` rather than through `../paths`, which 45 suites mock by name.
+import { resolveDev3Home } from "../../shared/dev3-home";
 
 export const NATIVE_MULTIPANE_DIR_ENV = "DEV3_NATIVE_MULTIPANE_DIR";
 

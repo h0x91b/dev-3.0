@@ -71,6 +71,21 @@ describe("the dev3 data root has one source", () => {
 		}
 	});
 
+	it("nobody reaches the resolver through a paths module that suites mock by name", () => {
+		// 45 suites do `vi.mock("../paths", () => ({ DEV3_HOME: "..." }))` — a factory
+		// listing exports by name. A module importing the resolver through `paths.ts`
+		// gets `undefined` the moment one of those suites reaches it, and the symptom
+		// is a stack-trace error in someone else's file.
+		const offenders: string[] = [];
+		for (const entry of readdirSync(APP_ROOT, { recursive: true, encoding: "utf-8" })) {
+			const rel = entry.replaceAll("\\", "/");
+			if (!rel.endsWith(".ts") || rel.includes("__tests__/")) continue;
+			const source = readFileSync(join(APP_ROOT, rel), "utf-8");
+			if (/import\s*\{[^}]*resolveDev3Home[^}]*\}\s*from\s*"[./]*paths"/.test(source)) offenders.push(rel);
+		}
+		expect(offenders, "import resolveDev3Home from shared/dev3-home, not through a paths module").toEqual([]);
+	});
+
 	it("the CLI resolves the same root, because it is a separate process", () => {
 		// Without this the isolation is half: a scoped app instance plus a dev3 CLI
 		// still pointed at the user's real board.

@@ -16,7 +16,8 @@
 
 import { existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { resolveDev3Home } from "../../paths";
+// From `shared/` rather than through `../../paths`, which 45 suites mock by name.
+import { resolveDev3Home } from "../../../shared/dev3-home";
 
 export interface PtyProtoState {
 	/** PID of the detached host process that owns the shell. */

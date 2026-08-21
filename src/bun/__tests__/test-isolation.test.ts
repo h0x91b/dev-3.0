@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
 import { INHERITED_TASK_CONTEXT_ENV, deriveTestRunRoot, testWorktreeId } from "../../../test-isolation";
-import { resolveDev3Home } from "../paths";
+import { resolveDev3Home } from "../../shared/dev3-home";
 
 describe("test process isolation", () => {
 	it("derives different roots for different worktrees", () => {

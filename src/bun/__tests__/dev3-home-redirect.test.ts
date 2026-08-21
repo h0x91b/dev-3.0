@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDev3Home } from "../paths";
+import { resolveDev3Home } from "../../shared/dev3-home";
 
 describe("resolveDev3Home", () => {
 	it("honours DEV3_HOME over the user home", () => {
