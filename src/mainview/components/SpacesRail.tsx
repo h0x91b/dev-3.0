@@ -291,23 +291,22 @@ function SpacesRail({
 				)}
 				{/* Ends the section it appends to, one row-gap below the last row.
 				    Pinned to the bottom of the rail (`mt-auto`) it read as unrelated
-				    chrome, and past ~8 spaces it scrolled out of reach entirely. */}
+				    chrome, and past ~8 spaces it scrolled out of reach entirely.
+				    Drawn as the app's bordered secondary — the same shape the
+				    dashboard header uses for this very action — because a row of
+				    tinted text among rows of tinted text is a list item, not a
+				    control. The border is what separates it from the filters above
+				    it, so it does not take the rows' `rounded-lg`. */}
 				<button
 					type="button"
 					onClick={onNewSpace}
-					className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated-hover transition-colors"
+					className="mt-1 w-full flex items-center justify-center gap-1.5 px-2.5 py-2 border border-edge rounded-xl text-fg-2 text-sm hover:text-fg hover:border-edge-active hover:bg-elevated-hover transition-[color,border-color,background-color,transform] active:scale-[0.96]"
 					data-testid="rail-new-space"
 				>
-					{/* The plus sits in the grip's column — an invisible glyph donates
-					    exactly its width, so the label starts where the space names do
-					    and the icon is free to be a little wider than its slot. */}
-					<span aria-hidden="true" className="relative flex-shrink-0 -ml-1 text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-						<span className="invisible">{GRIP_GLYPH}</span>
-						<svg focusable="false" className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-						</svg>
-					</span>
-					<span className="text-sm">{t("spaces.newSpace")}</span>
+					<svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+					</svg>
+					{t("spaces.newSpace")}
 				</button>
 			</div>
 		</aside>
