@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus, TipState } from "../../shared/types";
+import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus, TipState } from "../../shared/types";
 import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
@@ -44,6 +44,7 @@ interface KanbanColumnProps {
 	bellCounts: Map<string, number>;
 	bellReasons?: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
+	taskDevServers: Map<string, DevServerSummary>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
 	movingTaskIds: Set<string>;
@@ -102,6 +103,7 @@ function KanbanColumn({
 	bellCounts,
 	bellReasons,
 	taskPorts,
+	taskDevServers,
 	taskResourceUsage,
 	activeTaskId,
 	movingTaskIds,
@@ -588,6 +590,7 @@ function KanbanColumn({
 							bellReasons={bellReasons?.get(task.id)}
 							resourceUsage={taskResourceUsage?.get(task.id.slice(0, 8))}
 							ports={taskPorts.get(task.id)}
+							devServer={taskDevServers.get(task.id)}
 							isActiveInSplit={task.id === activeTaskId}
 							isMoving={movingTaskIds.has(task.id)}
 							onSetMoving={onSetMoving}

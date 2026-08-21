@@ -76,6 +76,8 @@ vi.mock("../agents", () => ({}));
 vi.mock("../repo-config", () => ({ resolveProjectEnv: vi.fn(async () => ({})) }));
 vi.mock("../port-pool", () => ({}));
 vi.mock("../port-scanner", () => ({
+	clearDevServerSummaryForTask: vi.fn(),
+	schedulePortScanSoon: vi.fn(),
 	clearPortDataForTask: vi.fn(),
 	getPortsForTask: vi.fn(() => []),
 }));

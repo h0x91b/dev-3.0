@@ -7,7 +7,7 @@ import * as agents from "../agents";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
-import { buildProcessTree, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, waitForPortsFree } from "../port-scanner";
+import { buildProcessTree, clearDevServerSummaryForTask, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, schedulePortScanSoon, waitForPortsFree } from "../port-scanner";
 import { classifyAgainstStartSnapshot, clearDevServerStart, mergePortInfos, recordDevServerStart } from "../dev-server-ports";
 import { getPidCwd, terminatePidsVerified } from "../process-reaper";
 import { getResourceUsage } from "../resource-monitor";
@@ -327,6 +327,7 @@ export async function killDevServerSession(
 	}
 	clearPortDataForTask(taskId);
 	clearDevServerStart(taskId);
+	refreshBoardDevServer(taskId);
 	log.info("Killed dev server session", {
 		taskId: taskId.slice(0, 8),
 		...(opId ? { opId } : {}),
@@ -335,6 +336,16 @@ export async function killDevServerSession(
 		leftovers: leftovers.length,
 		stuckPorts: stuckHolders.map((h) => h.port),
 	});
+}
+
+/**
+ * Re-read this task's dev server for the Kanban board on the next tick. The
+ * board is fed by the 10-second port poller, which is far too slow to answer a
+ * click the user just made.
+ */
+function refreshBoardDevServer(taskId: string): void {
+	clearDevServerSummaryForTask(taskId);
+	schedulePortScanSoon();
 }
 
 async function buildDevServerStatus(task: Task, projectId: string, hasDevScript: boolean, socket?: string): Promise<DevServerStatus> {
@@ -1147,6 +1158,7 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 				...(params.opId ? { opId: params.opId } : {}),
 				paneId: handle.paneId,
 			});
+			refreshBoardDevServer(params.taskId);
 			return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 		}
 
@@ -1220,6 +1232,7 @@ export async function runDevServer(params: { taskId: string; projectId: string; 
 			devSession,
 			viewerPaneId,
 		});
+		refreshBoardDevServer(params.taskId);
 		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 	} catch (err) {
 		log.error("runDevServer FAILED", {

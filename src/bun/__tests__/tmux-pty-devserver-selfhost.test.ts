@@ -111,6 +111,8 @@ vi.mock("../port-pool", () => ({
 
 vi.mock("../port-scanner", () => ({
 	buildProcessTree: vi.fn(async () => new Map<number, number[]>()),
+	clearDevServerSummaryForTask: vi.fn(),
+	schedulePortScanSoon: vi.fn(),
 	clearPortDataForTask: vi.fn(),
 	collectDescendants: vi.fn(() => []),
 	collectTaskPids: vi.fn(async () => new Set<number>()),

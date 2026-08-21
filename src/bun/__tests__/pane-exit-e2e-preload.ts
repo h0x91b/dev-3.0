@@ -70,6 +70,8 @@ mock.module("../port-pool", () => ({
 
 mock.module("../port-scanner", () => ({
 	buildProcessTree: async () => new Map(),
+	clearDevServerSummaryForTask: () => {},
+	schedulePortScanSoon: () => {},
 	clearPortDataForTask: () => {},
 	collectDescendants: () => [],
 	collectTaskPids: async () => new Set(),

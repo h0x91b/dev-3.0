@@ -69,6 +69,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	agentRequestResolved: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentRequestResolved", { detail: payload })),
 	updateAvailable: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateAvailable", { detail: payload })),
 	portsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:portsUpdated", { detail: payload })),
+	devServerUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:devServerUpdated", { detail: payload })),
 	exposedPortsChanged: (payload) => window.dispatchEvent(new CustomEvent("rpc:exposedPortsChanged", { detail: payload })),
 	resourceUsageUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:resourceUsageUpdated", { detail: payload })),
 	systemMemoryUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:systemMemoryUpdated", { detail: payload })),

@@ -40,6 +40,16 @@ export const tooltips = {
 		"Mantiene la tarea abierta y deja la decisión en tus manos. Desactívala cuando la fusión final deba mostrar la sugerencia habitual.",
 	"ttip.task.siblings":
 		"Abre el resumen de variantes para comparar títulos y estados, y cambia a cualquier variante activa.",
+	"ttip.task.devOpen":
+		"El servidor de desarrollo está activo en {ports}. Abre el puerto más bajo en el navegador.",
+	"ttip.task.devStarting":
+		"El servidor de desarrollo arrancó, pero todavía no escucha en ningún puerto.",
+	"ttip.task.devStopped":
+		"Esta rama tiene un script de desarrollo, pero no hay servidor en marcha. Arráncalo desde el panel Dev Server de la tarea.",
+	"ttip.task.devConflict":
+		"Otro proceso ya ocupa {ports}. El script fallará al enlazar hasta que se libere.",
+	"ttip.task.devStop":
+		"Detiene el servidor de desarrollo de esta tarea. No se pierde nada: se reinicia con un clic.",
 	"ttip.task.ports":
 		"Puertos de red asignados a esta tarea. Cada tarea tiene los suyos, así los dev servers paralelos nunca chocan.",
 	"ttip.task.run": "Crea el git worktree, abre la terminal y lanza el agente en esta tarea.",

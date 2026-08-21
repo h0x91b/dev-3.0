@@ -83,6 +83,8 @@ vi.mock("../../port-scanner", () => ({
 	scanTaskPorts: vi.fn(async () => []),
 	getPortsForTask: () => [],
 	getResourceUsage: () => undefined,
+	clearDevServerSummaryForTask: vi.fn(),
+	schedulePortScanSoon: vi.fn(),
 	clearPortDataForTask: vi.fn(),
 	getPidCwd: vi.fn(async () => null),
 	terminatePidsVerified: vi.fn(async () => []),

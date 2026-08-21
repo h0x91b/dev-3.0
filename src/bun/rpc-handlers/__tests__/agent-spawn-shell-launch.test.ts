@@ -64,6 +64,8 @@ vi.mock("../../process-reaper", () => ({ getPidCwd: vi.fn(), terminatePidsVerifi
 vi.mock("../../resource-monitor", () => ({ getResourceUsage: vi.fn(() => undefined) }));
 vi.mock("../../port-scanner", () => ({
 	buildProcessTree: vi.fn(async () => new Map()),
+	clearDevServerSummaryForTask: vi.fn(),
+	schedulePortScanSoon: vi.fn(),
 	clearPortDataForTask: vi.fn(),
 	collectDescendants: vi.fn(() => []),
 	collectTaskPids: vi.fn(async () => new Set()),

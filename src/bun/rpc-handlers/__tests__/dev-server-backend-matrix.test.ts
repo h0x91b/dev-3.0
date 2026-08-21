@@ -37,6 +37,8 @@ const mocks = vi.hoisted(() => ({
 	scanTaskPorts: vi.fn(async () => []),
 	waitForPortsFree: vi.fn(async () => []),
 	clearPortDataForTask: vi.fn(),
+	clearDevServerSummaryForTask: vi.fn(),
+	schedulePortScanSoon: vi.fn(),
 	getPidCwd: vi.fn(async () => null),
 	terminatePidsVerified: vi.fn(async () => [] as number[]),
 	getResourceUsage: vi.fn(() => undefined),
@@ -75,6 +77,8 @@ vi.mock("../../port-pool", () => ({
 vi.mock("../../port-scanner", () => ({
 	buildProcessTree: mocks.buildProcessTree,
 	clearPortDataForTask: mocks.clearPortDataForTask,
+	clearDevServerSummaryForTask: mocks.clearDevServerSummaryForTask,
+	schedulePortScanSoon: mocks.schedulePortScanSoon,
 	collectDescendants: mocks.collectDescendants,
 	collectTaskPids: mocks.collectTaskPids,
 	findPortHolders: mocks.findPortHolders,

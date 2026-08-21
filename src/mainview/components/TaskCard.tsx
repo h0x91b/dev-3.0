@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
-import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isTaskDisconnected } from "../../shared/types";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -64,6 +64,7 @@ interface TaskCardProps {
 	/** Accumulated attention reasons (from `dev3 attention`), shown in the hover preview. */
 	bellReasons?: string[];
 	ports?: PortInfo[];
+	devServer?: DevServerSummary;
 	isActiveInSplit?: boolean;
 	isMoving?: boolean;
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
@@ -75,7 +76,7 @@ interface TaskCardProps {
 	onEditDraft?: (task: Task) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -708,6 +709,78 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		);
 	}
 
+	// ---- The dev-server split control ---------------------------------------
+	// Left half opens the lowest port, right half stops. Rendered in every state
+	// once the branch has a dev script: hiding it while stopped would reflow the
+	// action row at the exact moment a server dies, which is when the user is
+	// looking at the card.
+	const devPort = devServer?.ports[0] ?? null;
+	const devConflict = (devServer?.conflictPorts.length ?? 0) > 0;
+	// Running with nothing listening yet is a server still booting — the only
+	// honest reading, and it needs no extra state from the backend.
+	const devStarting = devServer?.running === true && devPort === null;
+	const devTone = devServer?.running
+		? devStarting
+			? "border-warning/40 bg-warning/10 text-warning"
+			: "border-success/30 bg-success/10 text-success"
+		: devConflict
+			? "border-danger/40 bg-danger/10 text-danger"
+			: "border-dashed border-edge text-fg-3";
+	const devLabel = devServer?.running
+		? devStarting ? t("task.devStarting") : `:${devPort}`
+		: devConflict ? t("task.devPortBusy") : t("task.devStopped");
+	const devDetail = devServer?.running
+		? devStarting
+			? t("ttip.task.devStarting")
+			: t("ttip.task.devOpen", { ports: devServer.ports.map((p) => `:${p}`).join(" ") })
+		: devConflict
+			? t("ttip.task.devConflict", { ports: devServer!.conflictPorts.map((p) => `:${p}`).join(" ") })
+			: t("ttip.task.devStopped");
+
+	const devServerControl = isActive && devServer ? (
+		<span
+			data-testid="task-card-dev-control"
+			data-dev-state={devServer.running ? (devStarting ? "starting" : "running") : devConflict ? "conflict" : "stopped"}
+			className={`flex h-6 flex-shrink-0 items-center overflow-hidden rounded-lg border ${devTone}`}
+		>
+			<Tooltip content={devLabel} detail={devDetail}>
+				<button
+					onClick={(e) => {
+						e.stopPropagation();
+						if (devPort !== null) window.open(`http://localhost:${devPort}`, "_blank");
+					}}
+					className="flex h-full items-center gap-1 px-1 font-mono text-dense transition-colors hover:bg-fg/5 disabled:cursor-default"
+					aria-label={devPort !== null ? t("task.devOpenAria", { port: String(devPort) }) : devLabel}
+					disabled={devPort === null}
+				>
+					{devStarting
+						? <span className="h-1.5 w-1.5 flex-shrink-0 animate-spin rounded-[1px] border border-current border-t-transparent" />
+						: <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full bg-current ${devServer.running ? "motion-safe:animate-pulse" : ""}`} />}
+					{devLabel}
+				</button>
+			</Tooltip>
+			{/* Danger INK on a hover tint, never a fill: stopping a dev server loses
+			    nothing, so it must not read as an error from across the room. */}
+			<Tooltip content={t("task.devStop")} detail={t("ttip.task.devStop")}>
+				<button
+					onClick={async (e) => {
+						e.stopPropagation();
+						try {
+							await api.request.stopDevServer({ taskId: task.id, projectId: project.id });
+						} catch (err) {
+							toast.error(t("task.devStopFailed", { error: String(err) }));
+						}
+					}}
+					className="flex h-full items-center border-l border-current/20 px-1 text-danger transition-colors hover:bg-danger/15 disabled:opacity-40"
+					aria-label={t("task.devStop")}
+					disabled={isDisabled || !devServer.running}
+				>
+					<span className="h-1.5 w-1.5 bg-current" />
+				</button>
+			</Tooltip>
+		</span>
+	) : null;
+
 	const watchButton = (
 		<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")} detail={t("ttip.task.watch")}>
 			<button
@@ -733,7 +806,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 					{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
 				</span>
-				<span className="text-micro">{task.watched ? t("task.watching") : t("task.watch")}</span>
+				{!devServerControl && <span className="text-micro">{task.watched ? t("task.watching") : t("task.watch")}</span>}
 			</button>
 		</Tooltip>
 	);
@@ -1115,6 +1188,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 									</button>
 								</Tooltip>
 							)}
+							{devServerControl}
 							{watchButton}
 							<div className="flex-1" />
 							{isActive && (

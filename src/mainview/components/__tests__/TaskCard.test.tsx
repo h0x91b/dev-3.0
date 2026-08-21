@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent, act, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
-import type { CodingAgent, Label, Project, Task, TaskPRBadgeInfo, TaskStatus } from "../../../shared/types";
+import type { CodingAgent, DevServerSummary, Label, Project, Task, TaskPRBadgeInfo, TaskStatus } from "../../../shared/types";
 import { getPreparingStageProgress } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 
@@ -32,6 +32,7 @@ vi.mock("../../rpc", () => ({
 			openInApp: vi.fn().mockResolvedValue(undefined),
 			cancelScheduledMessage: vi.fn().mockResolvedValue({ id: "t1", scheduledMessages: [] }),
 			sendScheduledMessageNow: vi.fn().mockResolvedValue({ id: "t1", scheduledMessages: [] }),
+			stopDevServer: vi.fn().mockResolvedValue({}),
 			cancelScheduledLaunch: vi.fn(),
 			startScheduledLaunchNow: vi.fn(),
 			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
@@ -179,6 +180,7 @@ function renderCard(
 		onOpenUnresolvedComments?: (task: Task) => void;
 		siblingMap?: Map<string, Task[]>;
 		onEditDraft?: (task: Task) => void;
+		devServer?: DevServerSummary;
 	},
 ) {
 	return render(
@@ -199,6 +201,7 @@ function renderCard(
 				onOpenUnresolvedComments={opts?.onOpenUnresolvedComments}
 				siblingMap={opts?.siblingMap}
 				onEditDraft={opts?.onEditDraft}
+				devServer={opts?.devServer}
 			/>
 		</I18nProvider>,
 	);
@@ -2216,5 +2219,60 @@ describe("TaskCard — native terminal backend mark", () => {
 
 		renderCard(makeTask());
 		expect(screen.queryByTestId("task-card-native-backend")).toBeNull();
+	});
+});
+
+describe("TaskCard dev-server control", () => {
+	const active = () => makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+	const summary = (over?: Partial<DevServerSummary>): DevServerSummary => ({
+		taskId: "t1",
+		hasDevScript: true,
+		running: true,
+		ports: [5173, 9229],
+		conflictPorts: [],
+		...over,
+	});
+
+	it("shows nothing when the task has no dev-server data", () => {
+		renderCard(active());
+		expect(screen.queryByTestId("task-card-dev-control")).toBeNull();
+	});
+
+	it("labels a running server with its lowest port and opens that port", async () => {
+		const open = vi.spyOn(window, "open").mockImplementation(() => null);
+		renderCard(active(), { devServer: summary() });
+
+		const control = screen.getByTestId("task-card-dev-control");
+		expect(control).toHaveAttribute("data-dev-state", "running");
+		expect(control).toHaveTextContent(":5173");
+
+		await userEvent.click(within(control).getByRole("button", { name: /port 5173/i }));
+		expect(open).toHaveBeenCalledWith("http://localhost:5173", "_blank");
+		open.mockRestore();
+	});
+
+	it("reads a running server with no listener yet as starting", () => {
+		renderCard(active(), { devServer: summary({ ports: [] }) });
+		expect(screen.getByTestId("task-card-dev-control")).toHaveAttribute("data-dev-state", "starting");
+	});
+
+	it("stays visible but inert when the server is stopped", () => {
+		renderCard(active(), { devServer: summary({ running: false, ports: [] }) });
+		const control = screen.getByTestId("task-card-dev-control");
+		expect(control).toHaveAttribute("data-dev-state", "stopped");
+		for (const button of within(control).getAllByRole("button")) expect(button).toBeDisabled();
+	});
+
+	it("flags a squatted assigned port", () => {
+		renderCard(active(), { devServer: summary({ running: false, ports: [], conflictPorts: [5173] }) });
+		expect(screen.getByTestId("task-card-dev-control")).toHaveAttribute("data-dev-state", "conflict");
+	});
+
+	it("stops the server without asking for confirmation", async () => {
+		const { api } = await import("../../rpc");
+		renderCard(active(), { devServer: summary() });
+
+		await userEvent.click(within(screen.getByTestId("task-card-dev-control")).getByRole("button", { name: /stop the dev server/i }));
+		expect(api.request.stopDevServer).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
 	});
 });

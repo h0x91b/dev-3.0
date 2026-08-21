@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject } from "react";
-import type { PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
+import type { DevServerSummary, PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
@@ -29,6 +29,7 @@ interface ProjectViewProps {
 	bellCounts: Map<string, number>;
 	bellReasons?: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
+	taskDevServers: Map<string, DevServerSummary>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
 	taskView?: boolean;
@@ -50,6 +51,7 @@ function ProjectView({
 	bellCounts,
 	bellReasons,
 	taskPorts,
+	taskDevServers,
 	taskResourceUsage,
 	activeTaskId,
 	taskView,
@@ -314,6 +316,7 @@ function ProjectView({
 				bellCounts={bellCounts}
 				bellReasons={bellReasons}
 				taskPorts={taskPorts}
+				taskDevServers={taskDevServers}
 				taskResourceUsage={taskResourceUsage}
 				onOpenUnresolvedComments={openUnresolvedFromBoard}
 			/>

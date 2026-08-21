@@ -3044,6 +3044,26 @@ export interface DevServerStatus {
 	tmuxError?: string;
 }
 
+/**
+ * The board's view of a dev server — the few facts a Kanban card can act on,
+ * broadcast for every active task. Deliberately NOT {@link DevServerStatus}:
+ * that one is a per-task on-demand read (tmux + lsof + process tree) sized for
+ * the inspector, far too heavy to push for a whole board every poll cycle.
+ */
+export interface DevServerSummary {
+	taskId: string;
+	/** No dev script resolved for this task's branch → the card shows no control. */
+	hasDevScript: boolean;
+	running: boolean;
+	/** Ports the dev server itself is serving on, ascending. Empty while it boots. */
+	ports: number[];
+	/**
+	 * Assigned pool ports held by a foreign process while the dev server is down
+	 * — the devScript will crash-loop on bind if started. Ascending.
+	 */
+	conflictPorts: number[];
+}
+
 // ---- Remote (headless `dev3 remote`) lifecycle ----
 
 /**
@@ -4624,6 +4644,12 @@ export type AppRPCSchema = {
 			 */
 			agentRequestResolved: { requestId: string; kind: "complete" | "launch"; taskId: string; projectId: string };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
+			/**
+			 * Dev-server state for one task, pushed only when it changes. Feeds the
+			 * dev control on the Kanban card, which is why it is a broadcast and not
+			 * the per-task `getDevServerStatus` read the inspector uses.
+			 */
+			devServerUpdated: DevServerSummary;
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
 			/**

@@ -1601,6 +1601,15 @@ function App() {
 		return () => window.removeEventListener("rpc:portsUpdated", onPortsUpdated);
 	}, [dispatch]);
 
+	// Listen for dev-server state, which the board's dev control renders
+	useEffect(() => {
+		function onDevServerUpdated(e: Event) {
+			dispatch({ type: "setDevServer", summary: (e as CustomEvent).detail });
+		}
+		window.addEventListener("rpc:devServerUpdated", onDevServerUpdated);
+		return () => window.removeEventListener("rpc:devServerUpdated", onDevServerUpdated);
+	}, [dispatch]);
+
 	// Listen for resource usage updates
 	useEffect(() => {
 		function onResourceUsageUpdated(e: Event) {
@@ -2969,6 +2978,7 @@ function App() {
 						bellCounts={state.bellCounts}
 						bellReasons={state.bellReasons}
 						taskPorts={state.taskPorts}
+						taskDevServers={state.taskDevServers}
 						taskResourceUsage={state.taskResourceUsage}
 						activeTaskId={route.activeTaskId}
 						taskView={route.taskView}

@@ -116,6 +116,7 @@ async function renderBoardWith(props: Partial<React.ComponentProps<typeof Kanban
 					navigate={props.navigate ?? vi.fn()}
 					bellCounts={props.bellCounts ?? new Map()}
 					taskPorts={props.taskPorts ?? new Map()}
+					taskDevServers={props.taskDevServers ?? new Map()}
 					onOpenUnresolvedComments={props.onOpenUnresolvedComments}
 				/>
 			</I18nProvider>,
@@ -446,6 +447,7 @@ describe("tip rotation", () => {
 						navigate={vi.fn()}
 						bellCounts={new Map()}
 						taskPorts={new Map()}
+						taskDevServers={new Map()}
 					/>
 				</I18nProvider>,
 			);

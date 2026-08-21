@@ -42,6 +42,16 @@ export const tooltips = {
 		"Keeps the task open and makes completion your decision. Turn it off when the final merge should trigger the usual suggestion.",
 	"ttip.task.siblings":
 		"Open the sibling overview to compare variant titles and statuses, then jump to any live variant.",
+	"ttip.task.devOpen":
+		"The task's dev server is up on {ports}. Opens the lowest one in your browser.",
+	"ttip.task.devStarting":
+		"The dev server launched but nothing is listening yet.",
+	"ttip.task.devStopped":
+		"This branch has a dev script, but no server is running. Start it from the task's Dev Server panel.",
+	"ttip.task.devConflict":
+		"Another process already holds {ports}. The dev script will fail to bind until it is freed.",
+	"ttip.task.devStop":
+		"Kills the dev server for this task. Nothing is lost — it restarts in one click.",
 	"ttip.task.ports":
 		"Network ports allocated to this task. Every task gets its own ports, so parallel dev servers never collide.",
 	"ttip.task.run": "Creates the git worktree, opens the terminal and launches the agent on this task.",

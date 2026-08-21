@@ -297,6 +297,12 @@ const kanban = {
 	"spawnAgent.notInstalled": "{name} не установлен. Сначала установите.",
 
 	// Watch
+	"task.devStarting": "запуск",
+	"task.devStopped": "dev выкл",
+	"task.devPortBusy": "порт занят",
+	"task.devStop": "Остановить дев-сервер",
+	"task.devOpenAria": "Открыть дев-сервер на порту {port}",
+	"task.devStopFailed": "Не удалось остановить дев-сервер: {error}",
 	"task.watch": "Следить",
 	"task.watching": "Слежу",
 	"taskHover.seq": "Номер",

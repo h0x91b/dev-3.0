@@ -1,5 +1,5 @@
 import { useReducer } from "react";
-import type { PortInfo, Project, Task, ResourceUsage } from "../shared/types";
+import type { DevServerSummary, PortInfo, Project, Task, ResourceUsage } from "../shared/types";
 import type { SettingsRouteSectionId } from "./settings-registry";
 
 // ---- Routes ----
@@ -68,6 +68,8 @@ export interface AppState {
 	 */
 	bellReasons: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
+	/** Live dev-server state per task, feeding the dev control on the Kanban card. */
+	taskDevServers: Map<string, DevServerSummary>;
 	taskResourceUsage: Map<string, ResourceUsage>;
 	/**
 	 * Most-recently-used task ids, newest first. Bumped whenever navigation
@@ -88,6 +90,7 @@ export const initialState: AppState = {
 	bellCounts: new Map(),
 	bellReasons: new Map(),
 	taskPorts: new Map(),
+	taskDevServers: new Map(),
 	taskResourceUsage: new Map(),
 	taskMru: [],
 };
@@ -192,6 +195,7 @@ export type AppAction =
 	| { type: "clearBell"; taskId: string }
 	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
 	| { type: "clearPorts"; taskId: string }
+	| { type: "setDevServer"; summary: DevServerSummary }
 	| { type: "setResourceUsage"; taskId: string; usage: ResourceUsage }
 	| { type: "clearResourceUsage"; taskId: string };
 
@@ -452,6 +456,15 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				taskPorts.set(action.taskId, action.ports);
 			}
 			return { ...state, taskPorts };
+		}
+		case "setDevServer": {
+			const { summary } = action;
+			const taskDevServers = new Map(state.taskDevServers);
+			// A task with no dev script has nothing to show and nothing to act on —
+			// keeping an entry would only make the card ask about it every render.
+			if (!summary.hasDevScript) taskDevServers.delete(summary.taskId);
+			else taskDevServers.set(summary.taskId, summary);
+			return { ...state, taskDevServers };
 		}
 		case "clearPorts": {
 			if (!state.taskPorts.has(action.taskId)) return state;

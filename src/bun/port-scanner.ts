@@ -1,6 +1,8 @@
-import type { PortInfo } from "../shared/types";
+import type { DevServerSummary, PortInfo, Project, Task } from "../shared/types";
 import { spawn } from "./spawn";
-import { tmux, TASK_SESSION_PREFIX, DEV_SERVER_SESSION_PREFIX, devServerSessionForTaskSession, taskSessionName, PANE_PID_FORMAT, ALL_PANE_PIDS_FORMAT } from "./tmux";
+import { tmux, TASK_SESSION_PREFIX, DEV_SERVER_SESSION_PREFIX, devServerSessionForTaskSession, devServerSessionName, taskSessionName, PANE_PID_FORMAT, ALL_PANE_PIDS_FORMAT } from "./tmux";
+import { getPortAssignments } from "./port-pool";
+import { resolveOperationalProjectConfig } from "./repo-config";
 import { createLogger } from "./logger";
 import { cleanupTaskTunnels } from "./port-tunnels";
 import { classifyAgainstStartSnapshot, getDevServerStartSnapshot, mergePortInfos } from "./dev-server-ports";
@@ -370,6 +372,166 @@ function publishedAssignedPorts(taskId: string, lsofOutput: string): PortInfo[] 
 	return classifyAgainstStartSnapshot(taskId, holders, true).published;
 }
 
+// ── Dev-server board summaries ─────────────────────────────────────
+
+/**
+ * Native dev-server state for one task, or null when the task is not native.
+ * Injected rather than imported: the aux-pane and backend modules reach
+ * `bun:ffi` through the Windows job API, and this file is reachable from the
+ * renderer's module graph, where that import cannot be bundled.
+ */
+export type NativeDevServerProbe = (task: Task, socket: string) => Promise<{ alive: boolean; rootPid: number | null } | null>;
+
+let nativeDevServerProbe: NativeDevServerProbe | null = null;
+
+export function setNativeDevServerProbe(probe: NativeDevServerProbe): void {
+	nativeDevServerProbe = probe;
+}
+
+/** taskId → serialized summary, so an unchanged board pushes nothing. */
+const devServerCache = new Map<string, string>();
+const devServerData = new Map<string, DevServerSummary>();
+/** taskId → the branch-config read behind `hasDevScript`, which touches disk. */
+const devScriptCache = new Map<string, { at: number; hasDevScript: boolean }>();
+const DEV_SCRIPT_TTL_MS = 60_000;
+
+function ascendingPorts(infos: PortInfo[]): number[] {
+	return [...new Set(infos.map((info) => info.port))].sort((a, b) => a - b);
+}
+
+async function hasDevScriptFor(project: Project, task: Task): Promise<boolean> {
+	const cached = devScriptCache.get(task.id);
+	if (cached && Date.now() - cached.at < DEV_SCRIPT_TTL_MS) return cached.hasDevScript;
+	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined, {
+		foreignCode: task.foreignCode,
+	});
+	const hasDevScript = !!resolved.devScript?.trim();
+	devScriptCache.set(task.id, { at: Date.now(), hasDevScript });
+	return hasDevScript;
+}
+
+/** Exported for tests: the whole board control is a function of this. */
+export async function buildDevServerSummary(
+	project: Project,
+	task: Task,
+	socket: string,
+	lsofOutput: string,
+	tree: Map<number, number[]>,
+	paneMap?: Map<string, number[]>,
+): Promise<DevServerSummary> {
+	const empty = { taskId: task.id, running: false, ports: [], conflictPorts: [] };
+	const hasDevScript = await hasDevScriptFor(project, task);
+	if (!hasDevScript) return { ...empty, hasDevScript: false };
+
+	const devSession = devServerSessionName(task.id);
+	const nativeState = nativeDevServerProbe ? await nativeDevServerProbe(task, socket) : null;
+	const running = nativeState ? nativeState.alive : paneMap?.has(devSession) === true;
+
+	if (!running) {
+		// An assigned port already taken while the server is down is the bind
+		// crash-loop waiting to happen — worth colouring red before the user
+		// presses start, not after the devScript dies.
+		const assigned = getPortAssignments(task.id);
+		const holders = lsofOutput && assigned.length > 0 ? parsePortHolders(lsofOutput, new Set(assigned)) : [];
+		return { ...empty, hasDevScript, conflictPorts: ascendingPorts(holders) };
+	}
+
+	const rootPid = nativeState?.rootPid ?? null;
+	const pids = nativeState
+		? new Set(rootPid ? [rootPid, ...collectDescendants(rootPid, tree)] : [])
+		: await collectTaskPids(socket, devSession, tree, paneMap);
+	const owned = pids.size > 0 && lsofOutput ? parseLsofOutput(lsofOutput, pids) : [];
+	// A containerised devScript never owns its published socket — the container
+	// runtime's daemon does — so ownership alone leaves a running server looking
+	// like it serves nothing (same fix as the task-level scan, issue #1427).
+	const ports = mergePortInfos(owned, publishedAssignedPorts(task.id, lsofOutput));
+	return { ...empty, hasDevScript, running: true, ports: ascendingPorts(ports) };
+}
+
+let devPollInFlight = false;
+
+async function pollDevServers(
+	sessions: Array<{ taskId: string; tmuxSocket: string }>,
+	lsofOutput: string,
+	tree: Map<number, number[]>,
+	paneMaps: Map<string, Map<string, number[]>>,
+): Promise<void> {
+	if (devPollInFlight) return;
+	devPollInFlight = true;
+	try {
+		await collectDevServers(sessions, lsofOutput, tree, paneMaps);
+	} catch (err) {
+		log.error("Dev-server poll cycle failed", { error: String(err) });
+	} finally {
+		devPollInFlight = false;
+	}
+}
+
+async function collectDevServers(
+	sessions: Array<{ taskId: string; tmuxSocket: string }>,
+	lsofOutput: string,
+	tree: Map<number, number[]>,
+	paneMaps: Map<string, Map<string, number[]>>,
+): Promise<void> {
+	const active = new Set(sessions.map((s) => s.taskId));
+	for (const taskId of [...devServerCache.keys()]) {
+		if (active.has(taskId)) continue;
+		devServerCache.delete(taskId);
+		devServerData.delete(taskId);
+		devScriptCache.delete(taskId);
+		// The card has to lose its control when the whole session goes away —
+		// silence would leave the last known state frozen on the board.
+		pushMessageFn?.("devServerUpdated", { taskId, hasDevScript: false, running: false, ports: [], conflictPorts: [] });
+	}
+	if (sessions.length === 0) return;
+
+	const { loadProjects, loadVirtualProjects, loadTasks } = await import("./data");
+	const known = new Map<string, { project: Project; task: Task }>();
+	for (const project of [...(await loadProjects()), ...(await loadVirtualProjects())]) {
+		for (const task of await loadTasks(project)) {
+			if (active.has(task.id)) known.set(task.id, { project, task });
+		}
+	}
+
+	for (const { taskId, tmuxSocket } of sessions) {
+		const entry = known.get(taskId);
+		if (!entry) continue;
+		try {
+			const summary = await buildDevServerSummary(
+				entry.project,
+				entry.task,
+				tmuxSocket,
+				lsofOutput,
+				tree,
+				paneMaps.get(tmuxSocket),
+			);
+			const serialized = JSON.stringify(summary);
+			if (devServerCache.get(taskId) === serialized) continue;
+			devServerCache.set(taskId, serialized);
+			devServerData.set(taskId, summary);
+			pushMessageFn?.("devServerUpdated", summary);
+		} catch (err) {
+			log.warn("Dev-server scan failed for task", { taskId: taskId.slice(0, 8), error: String(err) });
+		}
+	}
+}
+
+/** Cached board summaries, for a renderer that connects mid-flight. */
+export function getDevServerSummaries(): DevServerSummary[] {
+	return [...devServerData.values()];
+}
+
+/**
+ * Drop the cached dev-server read for a task so the next cycle re-pushes it.
+ * Called right after a start/stop, where the poll interval would otherwise
+ * leave the card lying for up to ten seconds.
+ */
+export function clearDevServerSummaryForTask(taskId: string): void {
+	devServerCache.delete(taskId);
+	devServerData.delete(taskId);
+	devScriptCache.delete(taskId);
+}
+
 // ── Background poller ──────────────────────────────────────────────
 
 const POLL_INTERVAL_MS = 10_000;
@@ -440,6 +602,11 @@ async function poll() {
 				log.warn("Port scan failed for task", { taskId: taskId.slice(0, 8), error: String(err) });
 			}
 		}
+
+		// Deliberately NOT awaited: the dev-server read reaches for project config
+		// on disk, and the port cycle's own schedule must not drift behind it.
+		// It rides this cycle's lsof/process snapshot either way.
+		void pollDevServers(sessions, lsofOutput, processTree, paneMaps);
 	} catch (err) {
 		log.error("Port scan poll cycle failed", { error: String(err) });
 	} finally {
@@ -455,6 +622,17 @@ export function startPortScanPoller(
 	getActiveSessionsFn = getActiveSessions;
 	log.info("Port scan poller started", { intervalMs: POLL_INTERVAL_MS });
 	pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+}
+
+/**
+ * Run the next poll cycle almost immediately. A dev server that just started or
+ * stopped would otherwise leave the board's control stale for a whole interval,
+ * which reads as a dead button.
+ */
+export function schedulePortScanSoon(delayMs = 400): void {
+	if (!pollTimer) return;
+	clearTimeout(pollTimer);
+	pollTimer = setTimeout(poll, delayMs);
 }
 
 export function stopPortScanPoller(): void {

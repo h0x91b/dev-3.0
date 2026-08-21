@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 
@@ -35,6 +35,7 @@ interface KanbanBoardProps {
 	bellCounts: Map<string, number>;
 	bellReasons?: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
+	taskDevServers: Map<string, DevServerSummary>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
 	disableGlobalFindShortcut?: boolean;
@@ -104,6 +105,7 @@ function KanbanBoard({
 	bellCounts,
 	bellReasons,
 	taskPorts,
+	taskDevServers,
 	taskResourceUsage,
 	activeTaskId,
 	disableGlobalFindShortcut = false,
@@ -611,6 +613,7 @@ function KanbanBoard({
 		bellCounts,
 		bellReasons,
 		taskPorts,
+		taskDevServers,
 		taskResourceUsage,
 		activeTaskId,
 		movingTaskIds,

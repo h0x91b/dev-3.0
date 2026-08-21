@@ -43,6 +43,7 @@ describe("initialState", () => {
 			bellCounts: new Map(),
 			bellReasons: new Map(),
 			taskPorts: new Map(),
+			taskDevServers: new Map(),
 			taskResourceUsage: new Map(),
 			taskMru: [],
 		});

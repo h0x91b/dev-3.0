@@ -67,6 +67,7 @@ function renderView(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 				navigate={vi.fn()}
 				bellCounts={new Map()}
 				taskPorts={new Map()}
+				taskDevServers={new Map()}
 				{...props}
 			/>
 		</I18nProvider>,
