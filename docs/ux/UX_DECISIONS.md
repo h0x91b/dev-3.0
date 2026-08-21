@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and the records in `decisions/`. Newest first.
 
+## 2026-08-20 — The board card carries the dev server: one split control, open | stop
+
+- **Rule:** `dev_server_action` gains one placement on `task_card.actions` — a single split control (open the lowest dev port | stop), conditional on active + worktree + resolved `devScript` + not hibernated; start/restart/logs stay in the inspector. The card's inline-action budget is reconciled 2 → 4 (shipped code already ran 3) and is now full. Bible §5, §9; yaml `dev-server-control-on-task-card`.
+- **Why:** "Which task is serving, on which port" was answerable only by opening each task, and a forgotten dev server is a machine-wide cost; stop earns the card because reversal is one click, while start does not. Rejected: a read-only signals badge (cannot stop anything) and hiding the control when stopped (the row reflows exactly when a server dies).
+- **Status:** Planned (task #1602). Evidence: `TaskCard.tsx`, `task-info-panel/TaskDevServer.tsx`, `types.ts (DevServerStatus)`.
+
 ## 2026-08-19 — A data-bearing menu row opens on hover, and its flyout sits beside the menu
 
 - **Rule:** Header-kebab rows that own a detail panel (memory breakdown, tmux sessions) open on ~180 ms hover intent with a click-to-pin, and the panel is anchored on the *menu's* outboard edge level with the row, never over the list; the portaled panel is exempted from the menu's outside-click dismissal via `data-header-flyout`.

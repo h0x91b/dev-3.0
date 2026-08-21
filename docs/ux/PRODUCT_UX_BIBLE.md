@@ -111,7 +111,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
 | Application menu (native) | Canonical home for the full action taxonomy | every action type | — | `application-menu.ts`, `menu-actions.ts` |
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, task filter (token-DSL search + funnel; label chips are a view of it) | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx`, `LabelFilterBar.tsx`, `FilterFunnel.tsx` |
-| Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge, native-backend marker (§5.6) | full settings, global destination, unbounded dot rows | `TaskCard.tsx` (large — watch density) |
+| Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge, native-backend marker (§5.6), **one dev-server split control (open \| stop, §9)** | full settings, global destination, unbounded dot rows, dev-server start/restart/logs | `TaskCard.tsx` (large — watch density) |
 | Task info panel (inspector) | Active-task control: git, dev server, scripts, notes, tmux, open-in | object/git/dev-server actions, metadata, **capped** notes preview (§5.8) | global destination, cross-project action, an uncapped note list | `TaskInfoPanel.tsx` (densest surface) |
 | Task notes log | The whole agent-written note log of one task | read every note, add, edit, delete | task lifecycle action, git mutation, global destination | `TaskNotesOverlay.tsx` (sheet on narrow, dialog on wide — see 5.8) |
 | Terminal immersive fullscreen | Ephemeral task-bound terminal workspace for focused tmux work | tmux terminal, existing tmux window/pane controls, `dev3` brand, one wide Exit full screen action | global/app header, task switching UI, inspector controls, route persistence, any tmux pane/layout mutation | `App.tsx`, `TaskInfoPanel.tsx` |
@@ -386,7 +386,7 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 | Global nav destinations | 7 | group / demote to menu |
 | Page header primary | 1 | demote to secondary |
 | Page header secondary | 2 | overflow |
-| Task card inline actions | 2 | push to context menu |
+| Task card inline actions | 4 (strip is **full**: Open-in, dev-server split, Watch, +Variant) | push to context menu; ≤1 split control on the card |
 | Toolbar visible actions | 4 | overflow after 4 |
 | Tabs | 6 | more-menu / subpage |
 | Task info panel | 4 bars (2×2), ≤ 4 visible per bar | assign new control to one domain bar; overflow after 4 ⇒ promote that domain to its own row (see §5.1) |

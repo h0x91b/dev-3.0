@@ -225,7 +225,7 @@ ux_architecture:
       evidence: ["src/mainview/components/KanbanBoard.tsx", "src/mainview/components/KanbanColumn.tsx", "src/mainview/components/LabelFilterBar.tsx"]
     task_card:
       purpose: "Compact object summary on the board with the most relevant per-task affordances."
-      allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge", "deferred_timer_chip", "native_backend_mark"]
+      allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge", "deferred_timer_chip", "native_backend_mark", "dev_server_control"]
       forbidden: ["full_settings", "global_destination"]
       zone_model:
         rationale: "The card had no zoning: identity, content, state, signals and actions stacked at one visual weight across up to three badge rows, and every feature added a row. Five zones, each with one admission rule, give a new feature a home instead of a new row."
@@ -238,10 +238,12 @@ ux_architecture:
       rail_label: "Short uppercase status form, max 8 upright letters (status.rail.* keys per locale; custom columns clipped to 8 chars). Upright means writing-mode: vertical-rl + text-orientation: upright — never rotated 90deg. The full column label lives in the rail's accessible name and tooltip."
       deferred_timer_chip: "One shared countdown-chip slot (popover with cancel / run-now, 30s re-render) for deferred agent interactions. Content depends on state and the two NEVER coexist: scheduledLaunch on a `todo` card, scheduledMessages on a live-agent card. Do not add a second timer badge class."
       variant_dots: "Max 3 status dots (self — ring-highlighted — + lowest-variantIndex siblings; NO +N counter), always a clickable button opening SiblingPopover — the group overview: per-variant title, agent/config, status, current-variant marker; dead variants greyed, non-navigable. Same pattern on sidebar cards; do not fork the mechanic per surface."
+      dev_server_control: "The card's ONE split control (open | stop), in the actions strip, leading. Renders only when the task is active, has a worktree, has a resolved devScript and is not hibernated. Left half opens the lowest dev port; right half stops the server (risk INK, never a danger fill, no confirmation — a dev server loses no data and restart is one click). Port is the label; extra ports, uptime and any port conflict live in the hover popover. State colours follow the 2026-06-29 dev-server token decision: green = running only, spinner = transient start, neutral dashed = stopped, danger ink = port conflict. On narrow it sheds to the icon-only open target and Stop moves to the context menu. No second split control may be added to the card."
       visible_budget:
-        max_inline_actions: 2
+        max_inline_actions: 4   # reconciled with zone_model.actions (was 2, which shipped code already exceeded)
         overflow_to: "context_menu"
-      status: "inferred" # card is dense; treat budget as a guardrail
+        split_controls: 1       # only dev_server_control; one budget slot, two focus stops
+      status: "observed"
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
     task_notes_log:
       purpose: "The whole agent-written note log of one task, on its own surface."
@@ -538,8 +540,9 @@ ux_architecture:
       note: "Git ops run in a visible terminal (decision 008). Keep frequent ones inline, rare ones in menu."
     dev_server_action:
       definition: "Start/stop/restart/status of a project's dev server."
-      placement: ["task_info_panel (TaskDevServer)", "application_menu.Project.DevServer"]
+      placement: ["task_info_panel (TaskDevServer)", "application_menu.Project.DevServer", "task_card.actions (open|stop split only — see surfaces.task_card.dev_server_control)"]
       token_role: "neutral; restart/stop carry risk styling where data loss possible"
+      note: "The card carries open + stop only. Start, restart, log viewing and port sharing stay in the inspector — the card answers 'is it up, on which port' and lets you kill it, nothing more."
     lifecycle_action:
       definition: "Move task across statuses (mostly hook-driven), complete, cancel."
       placement: ["kanban drag", "status dropdown", "application_menu.Task.MoveToStatus"]
@@ -637,8 +640,9 @@ ux_architecture:
       max_primary_actions: 1
       max_secondary_actions: 2
     task_card:
-      max_inline_actions: 2
-      overflow_after: 2     # push extra affordances into the context menu
+      max_inline_actions: 4   # matches surfaces.task_card.zone_model.actions; the strip is now FULL
+      overflow_after: 4     # push extra affordances into the context menu
+      note: "Open-in, dev-server split, Watch and +Variant fill it on an active card. The next control replaces one or goes to the context menu — there is no slot 5."
     task_info_panel:
       layout: "2x2 bar model (see surfaces.task_info_panel.bar_model)"
       per_bar_visible_budget: 4
@@ -673,6 +677,13 @@ ux_architecture:
       reject: ["a second dashboard row action", "dashboard row kebab or context menu", "the action repeated in dashboard chrome or the project header"]
       status: "observed"
       rationale: "The dashboard is the attention triage list; the row is the task's own surface, and clearing a finished row is that screen's job. Capped at one action so the row never needs a menu (issue #1252)."
+    - id: "dev-server-control-on-task-card"
+      when: { feature_class: "dev_server_action", scope: "single_task", surface: "task_card" }
+      place_in: ["task_card.actions (leading): exactly one split control — open the lowest dev port | stop the server; conditional on active + worktree + resolved devScript + not hibernated"]
+      reject: ["a second split or dev-server control on the card", "start/restart/logs/share on the card (inspector owns those)", "a danger FILL on the stop half", "a confirmation dialog before stop", "hiding the control when the server is stopped (the row would reflow the moment a server dies)"]
+      token_role: "success ink = running, warning + spinner = starting, danger ink = port conflict, neutral dashed = stopped; stop half is danger INK on a hover tint"
+      status: "observed"
+      rationale: "The board is where the user decides what to look at, and 'which task is serving, on which port' was answerable only by opening each task. Stop is on the card because a forgotten dev server is a machine-wide cost and reversal is one click; start is NOT, because starting is a deliberate act that belongs where the script is configured. This is an explicit, capped exception to the button-creep anti-pattern (§11) and it consumes the card's last action slot."
     - id: "git-frequent-inline-rare-in-menu"
       when: { feature_class: "git_action" }
       place_in: ["task_info_panel.TaskGitActions (frequent)", "application_menu.Project (rare)"]
