@@ -11,9 +11,15 @@ git history, PRs, and the records in `decisions/`. Newest first.
 - **Status:** Implemented — `src/mainview/utils/menuFlyout.ts`, `MemoryHeadroomIndicator.tsx`, `TmuxSessionManager.tsx`, `GlobalHeader.tsx`; PRODUCT_UX_BIBLE §12.6.
 ## 2026-08-17 — A Space filters the dashboard; it never becomes a place
 
-- **Rule:** Spaces group projects on the dashboard only — a rail that FILTERS the overview, collapsible group headers, row membership chips + a `Spaces…` action, rename/delete behind one `…`; no space route, no merged board, no colour, no stored `Home` (it is computed from zero-membership projects), and drag reorders only. The cross-space task list is the existing `ActiveTasksSidebar` component mounted without a current project, not a second panel.
+- **Rule:** Spaces group projects on the dashboard only — a rail that FILTERS the overview, collapsible group headers, row membership chips + a `Spaces…` action, and **every space action behind one `…`**; no space route, no merged board, no colour, no stored `Home` (it is computed from zero-membership projects), and drag reorders only. The dashboard carries **no cross-space task panel** (superseded 2026-08-21, below: the project rows already list every waiting task); that sidebar lives in the task workspace.
 - **Why:** Giving a space a route invites "where is this place's board" — the uncanny-valley merged board issue #257 rejected; and many-to-many membership makes a drag unable to show which edge it removed. Rejected alternatives: a stored `Home` (writes to every user's state on upgrade, then needs permanent exceptions) and a dashboard-specific task panel (duplicate row/tier logic).
 - **Status:** Implemented. Evidence: `PRODUCT_UX_BIBLE.md` §10, `src/mainview/components/SpacesRail.tsx`, `decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md`.
+
+## 2026-08-21 — The dashboard's spaces surface is calm, container-gated, and stream-safe
+
+- **Rule:** One `…` per space on both surfaces (rail row + group header) holding `Edit projects…` (two-way membership), move, rename, delete, hide-on-camera; no add-only `+`. The rail is gated on its **container's** width (≥1024px, `useContainerWidth`), below which the filter moves into a BottomSheet and the selection **survives** — never silently cleared. No activity dots on a rail row; a space's rows are indented under its header with a rule; the overview row is `Everything`; on touch the space `…` is a 44px control at the row's right edge; `Space.sensitive` is a new stored field, so a space is masked by its own flag as well as by a sensitive member.
+- **Why:** A filter whose control vanishes is worse than no filter, an add-only control cannot answer "take this project out", and a dot whose legend lives in another column is decoration. Rejected: a chip strip below 1024px (permanent chrome, wraps for the users with most spaces), a box around each group (a second border around bordered cards), and clearing-plus-toast on resize.
+- **Status:** Implemented — `SpacesRail.tsx`, `SpaceGroupedProjects.tsx`, `SpaceFilterSheet.tsx`, `SpaceProjectsModal.tsx`, `SpaceHeaderMenu.tsx`, Bible §10; records `one-menu-per-space-on-every-surface`, `rail-gated-on-container-width`, `space-filter-survives-the-rail`.
 
 ## 2026-08-17 — A stored secret is read-only until the user reveals it
 

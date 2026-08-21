@@ -72,10 +72,12 @@ ux_architecture:
       detail_route: null                     # a space is a grouping, not a place: no board, no breadcrumb
       owner: "workspace"
       owns: []                               # references projects; owns nothing (git never moves)
-      common_actions: ["create", "rename", "delete", "reorder", "add_projects", "filter_dashboard"]
+      common_actions: ["create", "rename", "delete", "reorder", "edit_projects", "filter_dashboard", "hide_on_camera"]
       membership: "Many-to-many by project.id, ordered per space. A project in several spaces renders under each. Dangling ids are normal and skipped silently."
       computed_home: "Projects with no membership group under a computed `Home` heading — never stored, not renameable/deletable, absent from every membership picker."
-      never: "A merged space board, a space route, per-space columns/labels, a space colour, drag-changed membership, a stored Home."
+      never: "A merged space board, a space route, per-space columns/labels, a space colour or letter badge, drag-changed membership, a stored Home, an add-only + beside the space name, activity dots on a rail row, a filter cleared because its control went off screen."
+      fields: "id, name, parentId (always null in v1), projectIds (membership AND per-space order), createdAt, deleted?, sensitive? — the last one is the space's own hide-on-camera flag, additive and deleted rather than written false so an older app version reads spaces.json unchanged."
+      narrow_filter: "Below the rail's 1024px CONTAINER width the rail is absent and the same choice (Everything, each space, Home) opens as a BottomSheet from a control beside the dashboard search field. The selection survives the resize."
       evidence: ["src/shared/types.ts (Space)", "src/bun/spaces-data.ts", "src/mainview/components/SpacesRail.tsx", "src/mainview/components/SpaceGroupedProjects.tsx", "decisions/2026/08/14/spaces-group-projects-without-replacing-boards.md", "decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md"]
     task:
       label: "Task"
