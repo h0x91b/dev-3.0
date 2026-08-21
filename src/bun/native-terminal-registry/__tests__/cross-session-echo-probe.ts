@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "../../spawn";
 import { defaultNativeShellLaunchSpec, type ShellLaunchSpec } from "../shell-launch";
+import { WINDOWS_LINE_EDITOR_QUIET } from "./command-roundtrip";
 
 const isWindows = process.platform === "win32";
 const lineEnd = isWindows ? "\r" : "\n";
@@ -105,7 +106,12 @@ interface RoundResult {
  * One round: shell ONE emits its marker, then shell TWO emits its own. A round is
  * a hit when shell TWO's stream carries shell ONE's marker.
  */
-async function round(index: number, isolateProfiles: boolean, startTwoLate: boolean): Promise<RoundResult> {
+async function round(
+	index: number,
+	isolateProfiles: boolean,
+	startTwoLate: boolean,
+	quietLineEditor = false,
+): Promise<RoundResult> {
 	const root = mkdtempSync(join(tmpdir(), "dev3-echo-probe-"));
 	const launch = isWindows
 		? defaultNativeShellLaunchSpec({ platform: process.platform, cwd: root, env: process.env })
@@ -136,6 +142,9 @@ async function round(index: number, isolateProfiles: boolean, startTwoLate: bool
 		}
 		const oneSeen = one.text().includes(oneMark);
 		if (!two) two = startShell(launch, profileEnv("profile-two"));
+		// The fix the lifecycle E2E applies, under the conditions that reproduce the
+		// crossing 7-to-11 times in 12: if it works, this arm reads zero.
+		if (quietLineEditor && isWindows) for (const line of WINDOWS_LINE_EDITOR_QUIET) two.write(`${line}${lineEnd}`);
 		for (let attempt = 0; attempt < 8; attempt++) {
 			emit(two, twoMark);
 			if (await waitFor(two, twoMark, 2000)) break;
@@ -183,11 +192,16 @@ function reportEnvironment(): void {
 	console.log(`historyFileExists=${existsSync(historyFile)} bytes=${existsSync(historyFile) ? statSync(historyFile).size : -1}`);
 }
 
-async function arm(label: string, isolateProfiles: boolean, startTwoLate: boolean): Promise<number> {
+async function arm(
+	label: string,
+	isolateProfiles: boolean,
+	startTwoLate: boolean,
+	quietLineEditor = false,
+): Promise<number> {
 	let hits = 0;
 	let usable = 0;
 	for (let i = 0; i < rounds; i++) {
-		const result = await round(i, isolateProfiles, startTwoLate);
+		const result = await round(i, isolateProfiles, startTwoLate, quietLineEditor);
 		if (result.ownSeen) usable++;
 		if (result.crossed) {
 			hits++;
@@ -219,10 +233,14 @@ async function reportInteractivePrediction(): Promise<void> {
 			);
 			if (await waitFor(shell, "interactive predictionSource=", 2000)) break;
 		}
-		const line = shell
+		// The last match, and no filtering on the query text: the echoed command and its
+		// answer can share a line once the line editor re-renders, and dropping those left
+		// this measurement blank in the first two dispatches.
+		const lines = shell
 			.text()
 			.split(/\r?\n/)
-			.find((l) => l.includes("interactive predictionSource=") && !l.includes("Get-PSReadLineOption"));
+			.filter((l) => /interactive predictionSource=\S/.test(l));
+		const line = lines[lines.length - 1];
 		console.log(line?.trim() ?? "interactive PSReadLine query produced no answer");
 	} finally {
 		shell.stop();
@@ -238,6 +256,8 @@ async function main(): Promise<void> {
 	const shared = await arm("A2", false, false);
 	console.log("ARM B — private profile each, shell two started late (the A1 conditions, one variable off)");
 	const isolated = await arm("B", true, true);
+	console.log("ARM C — the A1 conditions plus the fix the lifecycle E2E applies; expected zero");
+	const quieted = await arm("C", false, true, true);
 	const historyFile = isWindows
 		? join(process.env.APPDATA ?? "", "Microsoft", "Windows", "PowerShell", "PSReadLine", "ConsoleHost_history.txt")
 		: "";
@@ -247,7 +267,7 @@ async function main(): Promise<void> {
 		console.log(`shared history file recorded ${marks.length} probe command(s); last: ${marks[marks.length - 1] ?? "none"}`);
 	}
 	console.log(
-		`VERDICT sharedLateStartHits=${sharedLate} sharedEarlyStartHits=${shared} privateProfileHits=${isolated} (of ${rounds} rounds each)`,
+		`VERDICT sharedLateStartHits=${sharedLate} sharedEarlyStartHits=${shared} privateProfileHits=${isolated} quietedLineEditorHits=${quieted} (of ${rounds} rounds each)`,
 	);
 }
 
