@@ -1,7 +1,10 @@
 # The shared tmux config path is not a race — tmux never dies from a bad config
 
 Closed as not-a-bug. Read this before you reach for `/tmp/dev3-tmux-dark.conf` to explain
-`TmuxError: tmux -f failed (exit 1): server exited unexpectedly`.
+`TmuxError: tmux -f failed (exit 1): server exited unexpectedly`. If you are mid-incident,
+three answers up front: the shared config path is **not** the cause; the real cause of that
+error is **still unfound**; and the two places to start instead are the stale pid-keyed tmux
+socket files and resource pressure under `scripts/run-terminal-e2e.ts` — both in §3.
 
 ## 1. Context
 
