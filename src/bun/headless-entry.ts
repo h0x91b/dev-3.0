@@ -29,10 +29,11 @@ import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
 import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from "./cloudflare-tunnel";
 import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
-import { writeRemoteState, clearRemoteStateIfOwnedBy, readRemoteHandoff, readRemoteState } from "./remote-state";
+import { writeRemoteState, clearRemoteStateIfOwnedBy, readRemoteHandoff, readRemoteState, carriedOverState } from "./remote-state";
 import { BUILD_TIME, BUILD_VERSION } from "../shared/build-info.generated";
 import { rehydrateTaskLifecycles } from "./lifecycle/rehydrate";
 import { startSelfUpdateWatch, stopSelfUpdateWatch } from "./self-update-watch";
+import { VIEWS_DIR_AUTO_ENV } from "./self-update";
 
 const log = createLogger("headless");
 
@@ -79,7 +80,7 @@ const wantTunnel = process.env.DEV3_REMOTE_NO_TUNNEL !== "1";
 // without --port picked a random one, and cloudflared is pointed at exactly that.
 // If we cannot have it back, the tunnel is worthless and gets killed (below).
 // Read BEFORE the state file is rewritten below, or the explanation is lost.
-const priorUpdateRecord = readRemoteState()?.lastUpdate ?? null;
+const carriedOver = carriedOverState(readRemoteState());
 let handoff = readRemoteHandoff();
 // AN EXPLICIT PORT OUTRANKS A LEFTOVER RECORD. A handoff survives whenever a
 // successor died before writing its own state, and taking its port unconditionally
@@ -156,6 +157,10 @@ if (!process.env.DEV3_VIEWS_DIR) {
 	for (const candidate of candidates) {
 		if (existsSync(resolve(candidate, "index.html"))) {
 			process.env.DEV3_VIEWS_DIR = candidate;
+			// Mark it as OUR guess, not an operator's choice: a self-update restart must
+			// not pass this path to the successor (a brew upgrade puts the new build in a
+			// new keg), so `spawnDetached` blanks it when this marker is present.
+			process.env[VIEWS_DIR_AUTO_ENV] = "1";
 			log.info("DEV3_VIEWS_DIR resolved", { dir: candidate });
 			break;
 		}
@@ -331,10 +336,9 @@ try {
 		version: BUILD_VERSION,
 		// The handoff is consumed — clear it so a later restart cannot re-adopt a
 		// tunnel that is long dead by then. `lastUpdate` is deliberately CARRIED
-		// FORWARD: the renderer shows no "updating…" state, so this record is the only
-		// thing that explains the restart to `dev3 remote status` after the fact.
+		// FORWARD, together with the self-update attempt counter — see `carriedOverState`.
 		handoff: null,
-		lastUpdate: priorUpdateRecord,
+		...carriedOver,
 	});
 	log.info("Remote lifecycle state written", { port: getServerPort(), pid: process.pid });
 } catch (err) {

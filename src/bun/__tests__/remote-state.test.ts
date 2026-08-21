@@ -20,6 +20,7 @@ import {
 	clearRemoteState,
 	clearRemoteStateIfOwnedBy,
 	isProcessAlive,
+	carriedOverState,
 	readRemoteState,
 	recordUpdateFailure,
 	releaseStartLock,
@@ -302,5 +303,45 @@ describe("recordUpdateFailure", () => {
 		writeFileSync(REMOTE_STATE_FILE, JSON.stringify(raw));
 
 		expect(readRemoteState()?.updateAttempts).toBeUndefined();
+	});
+});
+
+describe("carriedOverState", () => {
+	// The failure this exists for happens in ANOTHER process: the new build applies,
+	// does not boot, the supervisor rolls back, and the restored server writes its
+	// own state file BEFORE the failure is recorded. Dropping the counter on that
+	// write pinned it at 1 forever — the give-up after five attempts was unreachable
+	// and the box re-downloaded the same non-booting release every quiet window.
+	it("carries the update record AND the attempt counter across a restart", () => {
+		const prior: RemoteServerState = {
+			...sampleState(),
+			lastUpdate: { fromVersion: "1.45.0", toVersion: "1.46.0", startedAt: "2026-08-21T12:00:00Z" },
+			updateAttempts: { version: "1.46.0", failures: 3, lastFailureMs: 1000, lastError: "did not boot" },
+		};
+		writeRemoteState(prior);
+
+		const carried = carriedOverState(readRemoteState());
+
+		expect(carried.lastUpdate?.toVersion).toBe("1.46.0");
+		expect(carried.updateAttempts?.failures).toBe(3);
+	});
+
+	it("carries nulls when there was no predecessor at all", () => {
+		expect(carriedOverState(null)).toEqual({ lastUpdate: null, updateAttempts: null });
+	});
+
+	// Written back through a full round-trip, because the point is that the NEXT
+	// process reads it — and `recordUpdateFailure` then increments rather than resets.
+	it("survives being written into the successor's own record", () => {
+		writeRemoteState({
+			...sampleState(),
+			updateAttempts: { version: "1.46.0", failures: 4, lastFailureMs: 1000 },
+		});
+		const carried = carriedOverState(readRemoteState());
+
+		writeRemoteState({ ...sampleState(), pid: process.pid, ...carried });
+		recordUpdateFailure("1.46.0", "did not boot again", 2000);
+
+		expect(readRemoteState()?.updateAttempts?.failures).toBe(5);
 	});
 });

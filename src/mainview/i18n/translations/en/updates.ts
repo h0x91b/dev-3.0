@@ -21,6 +21,7 @@ const updates = {
 	"update.checkFailedDetail": "Update check failed: {error}",
 	"update.devBuildNotice": "This is a dev build — updates are disabled. Rebuild from source to update.",
 	"update.applyFailed": "Couldn't apply the update: {error}",
+	"update.installedNoRestart": "The update is installed, but this server has to be restarted by hand.",
 	"update.whatsNewVersion": "What's new in v{version}",
 	// "SINCE", not "in": on canary the same changelog window is everything that landed on
 	// main AFTER that release, so naming it as the release's contents is simply false.

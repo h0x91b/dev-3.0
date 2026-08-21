@@ -783,6 +783,27 @@ describe("GlobalHeader — update countdown", () => {
 		expect(screen.queryByText("Restarting...")).not.toBeInTheDocument();
 	});
 
+	// An interactive `dev3 remote --no-detach` has no supervisor, so the server
+	// installs the update and stays alive. The handler resolved without a value, so
+	// the button spun "Restarting..." forever and the sentence explaining the manual
+	// restart went nowhere.
+	it("stops spinning and says so when the update installed but nothing restarts", async () => {
+		mockedApi.request.applyUpdate.mockResolvedValue({
+			restarting: false,
+			message: "Installed 1.46.0. This server runs in the foreground, so restart it yourself.",
+		} as never);
+		renderHeader({ screen: "dashboard" }, [project1], vi.fn(), [], { updateVersion: "1.2.3" });
+
+		act(() => { fireEvent.click(screen.getByText(/Restart to Update \(\d+s\)/)); });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+		expect(toast.info).toHaveBeenCalledWith(
+			expect.stringContaining("restart it yourself"),
+			{ source: "update" },
+		);
+		expect(screen.queryByText("Restarting...")).not.toBeInTheDocument();
+	});
+
 	it("saves current route via RPC before applying update", async () => {
 		renderHeader(
 			{ screen: "project", projectId: "p1" },

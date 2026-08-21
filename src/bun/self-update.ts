@@ -37,6 +37,13 @@ const STAGED_DIR_NAME = ".dev3-staged";
 const STAGED_TARBALL_NAME = ".dev3-staged.tar.gz";
 const PREV_DIR_NAME = ".dev3-prev";
 
+/**
+ * Set alongside `DEV3_VIEWS_DIR` when `headless-entry` resolved that path ITSELF
+ * (rather than being handed one), so a restart can tell an inherited guess from an
+ * operator's deliberate override. See {@link spawnDetached}.
+ */
+export const VIEWS_DIR_AUTO_ENV = "DEV3_VIEWS_DIR_AUTO";
+
 /** The install dir (holds `dev3`, `dist/`, `artifact-template/`, maybe `tmux/`). */
 export function installDir(): string {
 	return dirname(resolvedExecPath());
@@ -168,10 +175,16 @@ function reusableStaged(plan: UpdatePlan): StagedUpdate | null {
 	return staged;
 }
 
+/** The stage currently running, so a second caller waits instead of racing it. */
+let staging: { key: string; promise: Promise<StageResult> } | null = null;
+
 /** Drop the staging memo — only for tests. */
 export function _resetStagingMemo(): void {
 	lastStaged = null;
+	staging = null;
 }
+
+type StageResult = { ok: true; staged: StagedUpdate } | { ok: false; error: string };
 
 /**
  * Do the slow part while the server is still serving. Brew paths pre-fetch the
@@ -185,13 +198,36 @@ export function _resetStagingMemo(): void {
  * CLI socket and all tmux forwarding down for that whole span — killing the very
  * browser session the handoff exists to preserve.
  */
-export async function stageUpdate(plan: UpdatePlan): Promise<{ ok: true; staged: StagedUpdate } | { ok: false; error: string }> {
+export async function stageUpdate(plan: UpdatePlan): Promise<StageResult> {
 	const reused = reusableStaged(plan);
 	if (reused) {
 		log.info("Reusing the already-staged update", { kind: plan.kind });
 		return { ok: true, staged: reused };
 	}
 
+	// ONE STAGE AT A TIME, because the paths are FIXED. `.dev3-staged.tar.gz` and
+	// `.dev3-staged/` are the same two paths for every plan, and the memo is only set
+	// after success — so the watch's pre-stage and a Restart press (or a shell
+	// `dev3 update`) both miss the reuse check and run concurrently. One caller's
+	// `rmSync` then truncates the other's extract, and the only guard before the
+	// apply is "is there a `dev3` in there" — which a half-extracted tree passes.
+	if (staging) {
+		const inFlight = staging;
+		const result = await inFlight.promise.catch((err) => ({ ok: false as const, error: String(err) }));
+		if (inFlight.key === planKey(plan)) return result;
+		return await stageUpdate(plan); // a different offer: retry now the paths are free
+	}
+	const started: { key: string; promise: Promise<StageResult> } = { key: planKey(plan), promise: undefined as never };
+	// The memo is cleared INSIDE the chain, so anyone awaiting `started.promise`
+	// already sees a free slot and cannot spin waiting on a settled promise.
+	started.promise = stageOnce(plan).finally(() => {
+		if (staging === started) staging = null;
+	});
+	staging = started;
+	return await started.promise;
+}
+
+async function stageOnce(plan: UpdatePlan): Promise<StageResult> {
 	if (plan.kind === "brew") {
 		// `brew update` refreshes the tap (without it the new formula is invisible);
 		// `brew fetch` downloads the bottle so `brew upgrade` is a local operation.
@@ -336,30 +372,46 @@ function copyBinaryAside(): string | null {
 /**
  * Who brings the server back after it exits, and it is NOT one answer.
  *
- *  - `supervisor-exit`: something already owns this process — a systemd unit
- *    (`INVOCATION_ID`), a container, or a human watching a foreground run. Apply,
- *    then exit NON-ZERO so `Restart=on-failure` (or the orchestrator) relaunches
- *    us. No helper: under systemd's default `KillMode=control-group`, every
- *    process left in the unit's cgroup is killed when the unit stops, so a helper
- *    we spawned would die exactly when it is needed. Letting systemd do the
- *    relaunch also keeps `dev3 remote stop` authoritative — a clean stop still
- *    exits 0 and stays stopped.
+ *  - `supervisor-exit`: something already owns this process and is PROVEN to —
+ *    a systemd unit (`INVOCATION_ID`) or a container runtime. Apply, then exit
+ *    NON-ZERO so `Restart=on-failure` (or the orchestrator) relaunches us. No
+ *    helper: under systemd's default `KillMode=control-group`, every process left
+ *    in the unit's cgroup is killed when the unit stops, so a helper we spawned
+ *    would die exactly when it is needed — and a container's helper dies with the
+ *    container. Letting the supervisor do the relaunch also keeps `dev3 remote
+ *    stop` authoritative: a clean stop still exits 0 and stays stopped.
  *  - `helper`: the background server started by `dev3 remote` (marked by
- *    `DEV3_REMOTE_LOG_FILE`). Nothing supervises it, so it spawns a detached
- *    helper that waits for us to die, starts the new build, and rolls back if the
- *    new build never reports in.
+ *    `DEV3_REMOTE_LOG_FILE`), and every OTHER non-interactive run. Nothing
+ *    supervises those, so a detached helper waits for us to die, starts the new
+ *    build, and rolls back if the new build never reports in.
  *  - `none`: an INTERACTIVE `dev3 remote --no-detach` — a human watching a
  *    terminal is not a supervisor. Exiting there leaves the box dark until
  *    somebody notices, which is exactly what this feature exists to prevent, so
- *    the update is installed and the restart is left to the operator. A container
- *    CMD has no TTY and a restart policy, so it keeps `supervisor-exit`.
+ *    the update is installed and the restart is left to the operator.
+ *
+ * SUPERVISOR-EXIT NEEDS POSITIVE EVIDENCE, and "no TTY" is not evidence.
+ * `nohup dev3 remote start --no-detach >log 2>&1 &`, a CI runner, and any launcher
+ * that redirects stdout all have no TTY, no `INVOCATION_ID` and nothing that
+ * restarts them — exiting 75 there leaves the box permanently unreachable. An
+ * unnecessary helper, by contrast, costs one short-lived process.
  */
 export type RestartStrategy = "helper" | "supervisor-exit" | "none";
 
-export function chooseRestartStrategy(env: NodeJS.ProcessEnv, isTTY: boolean = Boolean(process.stdout.isTTY)): RestartStrategy {
+/** Is this process inside a container runtime, by the markers runtimes leave on disk? */
+export function inContainer(): boolean {
+	return existsSync("/.dockerenv") || existsSync("/run/.containerenv");
+}
+
+export function chooseRestartStrategy(
+	env: NodeJS.ProcessEnv,
+	isTTY: boolean = Boolean(process.stdout.isTTY),
+	containerized: boolean = inContainer(),
+): RestartStrategy {
 	if (env.INVOCATION_ID) return "supervisor-exit";
+	if (env.container) return "supervisor-exit"; // podman / systemd-nspawn set this
+	if (containerized) return "supervisor-exit";
 	if (env.DEV3_REMOTE_LOG_FILE) return "helper";
-	return isTTY ? "none" : "supervisor-exit";
+	return isTTY ? "none" : "helper";
 }
 
 /** Exit code a self-updated server leaves behind so its supervisor restarts it. */
@@ -511,7 +563,7 @@ export async function runSelfUpdate(opts: {
 			// so staying up on the old build in memory is the least-bad state — and the
 			// operator has something to read instead of a dark box.
 			log.error("No relaunch helper could be started — staying up on the old build", { toVersion: plan.version });
-			await clearHandoff();
+			await clearHandoff(handoff);
 			return {
 				ok: false,
 				restarting: false,
@@ -590,28 +642,32 @@ async function prepareHandoff(strategy: RestartStrategy): Promise<RemoteHandoff>
  * then), and the tunnel itself — `releaseMainTunnelForHandoff` dropped it from
  * the map without signalling it, so re-adopting is what puts it back under the
  * health monitor and under `stopTunnel` at shutdown.
+ *
+ * THE HANDOFF IS PASSED IN, NEVER RE-READ. `readRemoteState()` sanitizes a handoff
+ * away whenever its `fromPid` is still alive (that check is what stops a successor
+ * from stealing a live server's tunnel) — and here `fromPid` is our own pid, so a
+ * re-read always returns null and this whole function would silently do nothing.
  */
-async function clearHandoff(): Promise<void> {
+async function clearHandoff(handoff: RemoteHandoff): Promise<void> {
 	const current = readRemoteState();
-	if (current?.handoff) {
-		const tunnel = current.handoff.tunnel;
+	if (current) {
 		try {
 			writeRemoteState({ ...current, handoff: null });
 		} catch (err) {
 			log.warn("Could not clear the unused handoff record", { error: String(err) });
 		}
-		if (tunnel) {
-			try {
-				const { adoptMainTunnel } = await import("./cloudflare-tunnel");
-				const { getServerPort } = await import("./remote-access-server");
-				adoptMainTunnel({ ...tunnel, targetPort: getServerPort() });
-				log.info("Took our own tunnel back after the restart was abandoned", { pid: tunnel.pid });
-			} catch (err) {
-				log.warn("Could not re-adopt the released tunnel — it is still running but unmanaged", {
-					error: String(err),
-				});
-			}
-		}
+	}
+	const tunnel = handoff.tunnel;
+	if (!tunnel) return;
+	try {
+		const { adoptMainTunnel } = await import("./cloudflare-tunnel");
+		const { getServerPort } = await import("./remote-access-server");
+		adoptMainTunnel({ ...tunnel, targetPort: getServerPort() });
+		log.info("Took our own tunnel back after the restart was abandoned", { pid: tunnel.pid });
+	} catch (err) {
+		log.warn("Could not re-adopt the released tunnel — it is still running but unmanaged", {
+			error: String(err),
+		});
 	}
 }
 
@@ -680,7 +736,22 @@ function spawnSupervisor(job: SuperviseJob): boolean {
 	return false;
 }
 
-/** Start a headless server detached, with its output appended to `logFile`. */
+/**
+ * Start a headless server detached, with its output appended to `logFile`.
+ *
+ * A VIEWS DIR WE RESOLVED FOR OURSELVES MUST NOT TRAVEL TO THE SUCCESSOR.
+ * `headless-entry` probes `dist/` at startup and writes the answer into
+ * `DEV3_VIEWS_DIR` (marking it with {@link VIEWS_DIR_AUTO_ENV}), and every child
+ * inherits the whole environment twice over — so the new build would serve the
+ * PREDECESSOR's bundle. Harmless for a tarball apply (same path, replaced in
+ * place), wrong for a brew formula upgrade whose new build lives in a new keg, and
+ * it also silently undoes `applyUpdate`'s deliberate `fallbackViews: null`: the
+ * rolled-back OLD binary would inherit a path that now holds the NEW bundle.
+ *
+ * Blanked rather than deleted, because `src/bun/spawn.ts` re-merges `process.env`
+ * over whatever we pass; an empty value is what both readers treat as unset. An
+ * explicit `DEV3_VIEWS_DIR` in `env` (the rollback path) still wins.
+ */
 export function spawnDetached(bin: string, args: string[], env: Record<string, string>, logFile: string): number | undefined {
 	let logFd: number | "ignore" = "ignore";
 	try {
@@ -690,8 +761,10 @@ export function spawnDetached(bin: string, args: string[], env: Record<string, s
 		// Unwritable log path — start the server anyway, blind. A running box beats
 		// a refusal because its log file could not be opened.
 	}
+	const inherited: Record<string, string> = {};
+	if (process.env[VIEWS_DIR_AUTO_ENV] && !env.DEV3_VIEWS_DIR) inherited.DEV3_VIEWS_DIR = "";
 	const proc = spawn([bin, ...args], {
-		env: { ...process.env, ...env, DEV3_REMOTE_LOG_FILE: logFile },
+		env: { ...process.env, ...inherited, ...env, [VIEWS_DIR_AUTO_ENV]: "", DEV3_REMOTE_LOG_FILE: logFile },
 		stdout: logFd as never,
 		stderr: logFd as never,
 		stdin: "ignore",

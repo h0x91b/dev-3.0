@@ -257,7 +257,7 @@ async function downloadUpdate(): Promise<{ ok: boolean; error?: string }> {
 	return result;
 }
 
-async function applyUpdate(): Promise<void> {
+async function applyUpdate(): Promise<{ restarting: boolean; message?: string }> {
 	log.info("-> applyUpdate");
 	if (isHeadless()) {
 		const settings = await loadSettings();
@@ -266,9 +266,14 @@ async function applyUpdate(): Promise<void> {
 		// Throwing is how the renderer's Restart button reports a failure (it toasts
 		// the message), and a refusal IS a failure from the button's point of view.
 		if (!outcome.ok) throw new Error(outcome.message);
-		return;
+		// A SUCCESS THAT IS NOT A RESTART STILL HAS TO BE REPORTED. An interactive
+		// `dev3 remote --no-detach` has no supervisor, so the update is installed and the
+		// process stays alive — resolving silently left the button spinning "Restarting…"
+		// with the sentence explaining the manual restart going nowhere.
+		return { restarting: outcome.restarting, message: outcome.message };
 	}
 	await updater.applyUpdate();
+	return { restarting: true };
 }
 
 /**

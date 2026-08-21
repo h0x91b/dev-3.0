@@ -277,7 +277,14 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			// here so an update triggered right after a navigation still restores
 			// to the correct surface.
 			await api.request.saveLastRoute({ route: JSON.stringify(route) });
-			await api.request.applyUpdate();
+			const outcome = await api.request.applyUpdate();
+			// Installed, but this process is not being replaced (a foreground headless
+			// server has nothing to relaunch it). Stop pretending a restart is coming.
+			if (outcome && !outcome.restarting) {
+				setRestarting(false);
+				dismissToast();
+				toast.info(outcome.message ?? t("update.installedNoRestart"), { source: "update" });
+			}
 		} catch (err) {
 			setRestarting(false);
 			toast.error(t("update.applyFailed", { error: String(err) }), { source: "update" });

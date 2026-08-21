@@ -26,8 +26,16 @@ vi.mock("../data", () => ({
 }));
 vi.mock("../pty-server", () => ({ getActiveSessionIds: vi.fn(() => []) }));
 vi.mock("../remote-access-server", () => ({ getConnectedClientCount: vi.fn(() => 0) }));
+// The probe asks the tmux SERVER, not this process's session map, so every tick
+// reaches the client — real spawns here would hang the suite under fake timers.
+vi.mock("../tmux", () => ({
+	tmux: { listPanes: vi.fn(async () => [] as Array<{ windowActivity: number }>) },
+	DEFAULT_TMUX_SOCKET: "dev3",
+	isTmuxError: (err: unknown) => err instanceof Error && err.name === "TmuxError",
+}));
 
 import { buildPlan, runSelfUpdate, stageUpdate } from "../self-update";
+import { tmux } from "../tmux";
 import { readRemoteState, recordUpdateFailure } from "../remote-state";
 import { getConnectedClientCount } from "../remote-access-server";
 import { loadSettings } from "../settings";
@@ -41,6 +49,7 @@ const mockReadState = vi.mocked(readRemoteState);
 const mockRecordFailure = vi.mocked(recordUpdateFailure);
 const mockClients = vi.mocked(getConnectedClientCount);
 const mockSettings = vi.mocked(loadSettings);
+const mockListPanes = vi.mocked(tmux.listPanes);
 
 const TARBALL: UpdatePlan = { kind: "tarball", version: "1.46.0", url: "https://example.invalid/x.tar.gz" };
 
@@ -74,6 +83,7 @@ beforeEach(() => {
 	mockClients.mockReturnValue(0);
 	mockStage.mockResolvedValue({ ok: true, staged: { plan: TARBALL } });
 	mockRun.mockResolvedValue({ ok: true, restarting: true, message: "restarting" });
+	mockListPanes.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -234,6 +244,80 @@ describe("pre-staging", () => {
 	it("carries on when pre-staging fails — the real attempt reports it", async () => {
 		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
 		mockStage.mockResolvedValue({ ok: false, error: "HTTP 404" });
+
+		await tickPastTheHold();
+
+		expect(mockRun).toHaveBeenCalled();
+	});
+
+	// A pre-stage that always fails memoises nothing, so an ungated one re-downloaded
+	// the whole release every 30 minutes forever — the exact runaway the backoff exists
+	// to prevent, on the one path that skipped it.
+	it("backs off after a failed pre-stage instead of re-fetching every tick", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockSettings.mockResolvedValue({ updateChannel: "stable", remoteSilentUpdate: false } as never);
+		mockStage.mockResolvedValue({ ok: false, error: "HTTP 404" });
+
+		await checkOnce(vi.fn());
+		expect(mockStage).toHaveBeenCalledTimes(1);
+
+		vi.setSystemTime(Date.now() + 29 * 60_000);
+		await checkOnce(vi.fn());
+		expect(mockStage).toHaveBeenCalledTimes(1);
+
+		// Past the first backoff window it tries once more, and only once more.
+		vi.setSystemTime(Date.now() + 2 * 60_000);
+		await checkOnce(vi.fn());
+		expect(mockStage).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not pre-stage a version it has already given up on", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockReadState.mockReturnValue({
+			pid: 1,
+			port: 1,
+			socketPath: "/tmp/s",
+			tunnelRequested: false,
+			staticCode: null,
+			logFile: null,
+			startedAt: "",
+			version: "",
+			updateAttempts: { version: "1.46.0", failures: 5, lastFailureMs: Date.now() },
+		});
+
+		await checkOnce(vi.fn());
+
+		expect(mockStage).not.toHaveBeenCalled();
+	});
+});
+
+describe("the terminal-quiet probe", () => {
+	// `getActiveSessionIds` lists only sessions THIS process attached, and a restart
+	// attaches none — so "no sessions" was read as "nothing running" while detached
+	// agents printed away.
+	it("sees output from a tmux window this process never attached", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockListPanes.mockResolvedValue([{ windowActivity: Math.floor(Date.now() / 1000) }]);
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+	});
+
+	it("treats an unreadable tmux as busy, not as quiet", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		mockListPanes.mockRejectedValue(new Error("tmux binary not found"));
+
+		await tickPastTheHold();
+
+		expect(mockRun).not.toHaveBeenCalled();
+	});
+
+	it("still applies when tmux answers that no server is running", async () => {
+		mockBuildPlan.mockResolvedValue(planResult(TARBALL));
+		const noServer = new Error("no server running on /tmp/dev3");
+		noServer.name = "TmuxError";
+		mockListPanes.mockRejectedValue(noServer);
 
 		await tickPastTheHold();
 

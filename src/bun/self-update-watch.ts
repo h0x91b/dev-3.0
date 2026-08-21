@@ -37,6 +37,9 @@ interface WatchState {
 	gaveUpLogged: boolean;
 	/** Version already fetched and extracted, so a press of Restart is fast. */
 	preStaged: string | null;
+	/** Failed pre-stages of `pendingVersion`, so a broken artifact is not re-fetched hourly. */
+	preStageFailures: number;
+	lastPreStageFailureMs: number | null;
 	/** Versions already announced to connected browsers, so the plaque appears once. */
 	announced: Set<string>;
 	/** Refusal reasons already logged, so a box that can never update says why once. */
@@ -51,6 +54,8 @@ const state: WatchState = {
 	lastFailureMs: null,
 	gaveUpLogged: false,
 	preStaged: null,
+	preStageFailures: 0,
+	lastPreStageFailureMs: null,
 	announced: new Set(),
 	loggedRefusals: new Set(),
 };
@@ -86,25 +91,46 @@ async function countTasksInProgress(): Promise<number> {
  * labels as window-level. NULL, NOT INFINITY, is the answer when a session has no
  * tmux socket (the native terminal backend publishes no equivalent) or tmux
  * refuses: a probe that cannot see is not evidence of quiet.
+ *
+ * THE TMUX SERVER IS ASKED, NOT THIS PROCESS'S SESSION MAP. `getActiveSessionIds`
+ * lists only sessions THIS process attached, and a restart attaches none —
+ * `rehydrateTaskLifecycles` does not create pty sessions. Reading "no sessions" as
+ * "nothing running at all" therefore declared a freshly restarted box silent while
+ * detached agents were printing into it, which (with the usual zero browser
+ * clients) left the in-progress task count as the only real gate.
  */
 export async function probePtyIdleMs(now: number = Date.now()): Promise<number | null> {
 	try {
 		const { getActiveSessionIds } = await import("./pty-server");
-		const sessions = getActiveSessionIds();
-		if (sessions.length === 0) return Number.MAX_SAFE_INTEGER; // nothing running at all
-		// A session with no tmux socket is on the native backend, which publishes no
-		// activity time at all — so the box as a whole becomes unreadable, not partly readable.
-		if (sessions.some((session) => !session.tmuxSocket)) return null;
-		const sockets = new Set(sessions.map((session) => session.tmuxSocket));
-		const { tmux } = await import("./tmux");
+		const { tmux, DEFAULT_TMUX_SOCKET, isTmuxError } = await import("./tmux");
 		const { PEEK_PANE_FORMAT } = await import("./tmux/formats");
+		const sockets = new Set<string>([DEFAULT_TMUX_SOCKET]);
+		for (const session of getActiveSessionIds()) {
+			// A session with no tmux socket is on the native backend, which publishes no
+			// activity time at all — so the box as a whole becomes unreadable, not partly readable.
+			if (!session.tmuxSocket) return null;
+			sockets.add(session.tmuxSocket);
+		}
 		let newest = 0;
+		let panes = 0;
 		for (const socket of sockets) {
-			const rows = await tmux.listPanes(PEEK_PANE_FORMAT, { scope: "server", socket });
+			let rows: Array<{ windowActivity: number }>;
+			try {
+				rows = await tmux.listPanes(PEEK_PANE_FORMAT, { scope: "server", socket });
+			} catch (err) {
+				// tmux ANSWERED and said no: on `list-panes -a` that is "no server running on
+				// this socket", i.e. genuinely nothing there. A spawn failure or a timeout is
+				// a probe that could not see, and that is not evidence of quiet.
+				if (isTmuxError(err)) continue;
+				log.debug("Terminal activity probe could not read a tmux socket", { socket, error: String(err) });
+				return null;
+			}
+			panes += rows.length;
 			for (const row of rows) {
 				if (row.windowActivity > newest) newest = row.windowActivity;
 			}
 		}
+		if (panes === 0) return Number.MAX_SAFE_INTEGER; // nothing running at all
 		if (newest === 0) return null;
 		return Math.max(0, now - newest * 1000);
 	} catch (err) {
@@ -166,6 +192,8 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 		state.lastFailureMs = null;
 		state.gaveUpLogged = false;
 		state.preStaged = null;
+		state.preStageFailures = 0;
+		state.lastPreStageFailureMs = null;
 		log.info("Update pending", { version: plan.version, summary });
 	}
 
@@ -181,6 +209,16 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 		push("updateAvailable", { version: plan.version });
 	}
 
+	// The persisted count wins when it is higher: the failure it records — an update
+	// that applied and then would not boot — happened in a process whose in-memory
+	// counter died with it. READ BEFORE THE PRE-STAGE, because the give-up gates that
+	// too: nothing should keep downloading a version dev3 has stopped trying.
+	const persisted = persistedAttempts(plan.version);
+	const failedAttempts = Math.max(state.failedAttempts, persisted?.failures ?? 0);
+	const lastFailureMs = persisted && persisted.failures >= state.failedAttempts
+		? persisted.lastFailureMs
+		: state.lastFailureMs;
+
 	const silent = await silentUpdatesEnabled();
 
 	// STAGE BEFORE ANYBODY PRESSES ANYTHING. The Restart button runs the whole
@@ -188,7 +226,7 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 	// — less than a ~76 MB download or a `brew fetch` needs — so it toasts a failure
 	// for an update that then succeeds and restarts the box underneath the user.
 	// With the release already staged, the apply is renames only.
-	await preStage(plan);
+	await preStage(plan, failedAttempts);
 
 	if (!silent) {
 		log.info("Silent updates are off in settings — waiting for someone to press Update", {
@@ -198,14 +236,6 @@ export async function checkOnce(push: (name: string, payload: unknown) => void):
 	}
 
 	const [tasksInProgress, ptyIdleMs] = await Promise.all([countTasksInProgress(), probePtyIdleMs()]);
-	// The persisted count wins when it is higher: the failure it records — an update
-	// that applied and then would not boot — happened in a process whose in-memory
-	// counter died with it.
-	const persisted = persistedAttempts(plan.version);
-	const failedAttempts = Math.max(state.failedAttempts, persisted?.failures ?? 0);
-	const lastFailureMs = persisted && persisted.failures >= state.failedAttempts
-		? persisted.lastFailureMs
-		: state.lastFailureMs;
 	const verdict = evaluateQuietWindow({
 		tasksInProgress,
 		ptyIdleMs,
@@ -274,19 +304,41 @@ function persistedAttempts(version: string): RemoteUpdateAttempts | null {
  * Failures are logged and swallowed: this is opportunistic. The real attempt runs
  * `stageUpdate` again and reports properly, and a second call reuses this tree
  * rather than downloading it twice.
+ *
+ * A PRE-STAGE IS AN ATTEMPT AT THE NETWORK, so it needs the same brakes the real
+ * attempt has. When staging itself is what fails — a 404 on the artifact, a full
+ * disk, an unwritable install dir — nothing is memoised, so an ungated pre-stage
+ * re-downloaded ~76 MB every 30 minutes forever, including after the watch had
+ * officially given up on that version. It carries its OWN failure count rather than
+ * spending the update's budget: a pre-stage that fails has installed nothing.
  */
-async function preStage(plan: Extract<UpdatePlan, { kind: "brew" | "tarball" }>): Promise<void> {
+async function preStage(
+	plan: Extract<UpdatePlan, { kind: "brew" | "tarball" }>,
+	failedAttempts: number,
+	now: number = Date.now(),
+): Promise<void> {
 	if (state.preStaged === plan.version) return;
+	if (failedAttempts >= MAX_UPDATE_ATTEMPTS) return; // given up on this version
+	if (state.lastPreStageFailureMs !== null) {
+		const readyAt = state.lastPreStageFailureMs + retryBackoffMs(state.preStageFailures);
+		if (now < readyAt) return;
+	}
 	const { stageUpdate } = await import("./self-update");
 	const staged = await stageUpdate(plan);
 	if (staged.ok) {
 		state.preStaged = plan.version;
+		state.preStageFailures = 0;
+		state.lastPreStageFailureMs = null;
 		log.info("Pre-staged the pending update so a restart is fast", { version: plan.version });
 		return;
 	}
+	state.preStageFailures += 1;
+	state.lastPreStageFailureMs = now;
 	log.warn("Could not pre-stage the pending update; it will be fetched when applied", {
 		version: plan.version,
 		error: staged.error,
+		attempt: state.preStageFailures,
+		nextTryInMs: retryBackoffMs(state.preStageFailures),
 	});
 }
 
@@ -320,6 +372,8 @@ export function _resetWatchState(): void {
 	state.lastFailureMs = null;
 	state.gaveUpLogged = false;
 	state.preStaged = null;
+	state.preStageFailures = 0;
+	state.lastPreStageFailureMs = null;
 	state.announced.clear();
 	state.loggedRefusals.clear();
 }

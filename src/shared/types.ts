@@ -4255,7 +4255,13 @@ export type AppRPCSchema = {
 			};
 			applyUpdate: {
 				params: void;
-				response: void;
+				/**
+				 * `restarting: false` means the update is INSTALLED but this process is not
+				 * going to be replaced — a headless server with nothing out there to relaunch
+				 * it. The button has to stop spinning and say so, or it reads "Restarting…"
+				 * forever for an update that already succeeded.
+				 */
+				response: { restarting: boolean; message?: string };
 			};
 			getUpdateRestartContext: {
 				params: void;

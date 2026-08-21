@@ -1709,7 +1709,18 @@ const handlers: Record<string, Handler> = {
 		if (dryRun) {
 			const { buildPlan } = await import("./self-update");
 			const { install, plan, runningVersion, summary } = await buildPlan(channel);
-			return { ok: plan.kind !== "refused", restarting: false, message: summary, install, kind: plan.kind, runningVersion };
+			return {
+				ok: plan.kind !== "refused",
+				restarting: false,
+				message: summary,
+				install,
+				kind: plan.kind,
+				runningVersion,
+				// The OFFERED build, so `dev3 update --check` can print it without planning
+				// a second time in a process whose install method is a different one.
+				version: plan.kind === "brew" || plan.kind === "tarball" ? plan.version : null,
+				channel,
+			};
 		}
 		return await runSelfUpdate({ channel, restart: true });
 	},

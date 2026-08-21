@@ -21,6 +21,7 @@ const updates = {
 	"update.checkFailedDetail": "Не удалось проверить обновления: {error}",
 	"update.devBuildNotice": "Это dev-сборка — обновления отключены. Чтобы обновиться, пересоберите из исходников.",
 	"update.applyFailed": "Не удалось применить обновление: {error}",
+	"update.installedNoRestart": "Обновление установлено, но этот сервер нужно перезапустить вручную.",
 	"update.whatsNewVersion": "Что нового в v{version}",
 	"update.whatsNewSinceVersion": "Что нового после v{version}",
 	"update.canaryBadge": "Canary",

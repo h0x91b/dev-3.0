@@ -34,6 +34,9 @@ Flags:
               then stop. Use this when an update did something surprising —
               a wrong detection shows up here instead of in a post-mortem.
 
+  Both flags ask the running server when there is one, so what they print is the
+  plan that would actually be carried out — not this CLI's view of its own path.
+
 Exit codes:
   0   Up to date, or the update was installed / started.
   ${CLI_EXIT_CODE_UPDATE_REFUSED}   Refused, nothing was touched: this install cannot be updated from the CLI
@@ -86,6 +89,21 @@ export async function handleUpdate(args: ParsedArgs): Promise<void> {
 	const channel = (await loadSettings()).updateChannel;
 
 	if (check || dryRun) {
+		// THE PLAN BELONGS TO WHOEVER WOULD DO THE UPDATE, and with a server running that
+		// is the server, not us. Planning locally classified the CLI's OWN path — on any
+		// machine the desktop app has ever started, `which dev3` is the app-maintained
+		// PATH copy, which the planner refuses. So `--dry-run` reported "nothing was
+		// touched, exit 15" on a box where a plain `dev3 update` updates fine, and
+		// automation branching on 15 marked it unsupported.
+		const delegated = await remoteDryRun();
+		if (delegated) {
+			process.stdout.write(`Running:        ${delegated.runningVersion}\n`);
+			process.stdout.write(`Install method: ${delegated.install}\n`);
+			process.stdout.write(`Channel:        ${delegated.channel}\n`);
+			if (check) process.stdout.write(`Available:      ${delegated.version ?? "none"}\n`);
+			process.stdout.write(`\n${delegated.message}\n`);
+			process.exit(delegated.kind === "refused" ? CLI_EXIT_CODE_UPDATE_REFUSED : 0);
+		}
 		const { install, plan, runningVersion, summary } = await buildPlan(channel);
 		process.stdout.write(`Running:        ${runningVersion}\n`);
 		process.stdout.write(`Install method: ${install}\n`);
@@ -148,6 +166,42 @@ export async function handleUpdate(args: ParsedArgs): Promise<void> {
 	// automation branching on 15 to skip unsupported installs swallows real breakage.
 	if (outcome.ok) process.exit(0);
 	process.exit(outcome.refused ? CLI_EXIT_CODE_UPDATE_REFUSED : CLI_EXIT_CODE_COMMAND_FAILED);
+}
+
+interface RemotePlan {
+	install: string;
+	kind: string;
+	runningVersion: string;
+	channel: string;
+	version: string | null;
+	message: string;
+}
+
+/**
+ * Ask a running headless server for its own plan, or null when there is none to ask.
+ *
+ * Null is also the answer when the server is there but does not respond — the local
+ * plan is a worse answer than none, but a stack trace is worse than both.
+ */
+async function remoteDryRun(): Promise<RemotePlan | null> {
+	const state = readRemoteState();
+	if (!state || !isProcessAlive(state.pid)) return null;
+	try {
+		const resp = await sendRequest(state.socketPath, "remote.selfUpdate", { dryRun: true });
+		if (!resp.ok || !resp.data) return null;
+		const data = resp.data as Partial<RemotePlan>;
+		if (typeof data.install !== "string" || typeof data.kind !== "string") return null;
+		return {
+			install: data.install,
+			kind: data.kind,
+			runningVersion: data.runningVersion ?? "unknown",
+			channel: data.channel ?? "unknown",
+			version: data.version ?? null,
+			message: data.message ?? "",
+		};
+	} catch {
+		return null;
+	}
 }
 
 async function runSuperviseMode(): Promise<void> {

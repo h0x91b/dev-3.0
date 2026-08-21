@@ -175,6 +175,82 @@ describe("dev3 update --check", () => {
 	});
 });
 
+describe("--check / --dry-run with a running headless server", () => {
+	// Both flags used to plan LOCALLY, so they classified the CLI's own path. On any
+	// machine the desktop app has ever started, `which dev3` is the app-maintained
+	// PATH copy — which the planner refuses — so `--dry-run` reported "nothing was
+	// touched, exit 15" on a box where a plain `dev3 update` updates fine.
+	it("asks the server for the plan instead of classifying its own binary", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(true);
+		mockSendRequest.mockResolvedValue({
+			id: "1",
+			ok: true,
+			data: {
+				install: "brew-formula",
+				kind: "brew",
+				runningVersion: "1.45.0",
+				channel: "stable",
+				version: "1.46.0",
+				message: "Detected brew-formula; would run `brew upgrade dev3` to install 1.46.0.",
+			},
+		});
+
+		await expect(handleUpdate(args({ check: "true" }))).rejects.toThrow("__exit__");
+
+		expect(mockSendRequest).toHaveBeenCalledWith(
+			"/tmp/dev3-test.sock",
+			"remote.selfUpdate",
+			{ dryRun: true },
+		);
+		expect(mockBuildPlan).not.toHaveBeenCalled();
+		const out = stdout();
+		expect(out).toContain("Install method: brew-formula");
+		expect(out).toContain("Available:      1.46.0");
+		expect(exitCodes).toEqual([0]);
+	});
+
+	it("passes the server's refusal through with the refusal code", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(true);
+		mockSendRequest.mockResolvedValue({
+			id: "1",
+			ok: true,
+			data: {
+				install: "source",
+				kind: "refused",
+				runningVersion: "1.45.0",
+				channel: "stable",
+				version: null,
+				message: "Detected source; refusing: running from a checkout",
+			},
+		});
+
+		await expect(handleUpdate(args({ "dry-run": "true" }))).rejects.toThrow("__exit__");
+
+		expect(stdout()).toContain("running from a checkout");
+		expect(exitCodes).toEqual([CLI_EXIT_CODE_UPDATE_REFUSED]);
+	});
+
+	// A local plan is a worse answer than none, but a stack trace is worse than both.
+	it("falls back to planning locally when the server does not answer", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(true);
+		mockSendRequest.mockRejectedValue(new Error("APP_NOT_RUNNING"));
+		mockBuildPlan.mockResolvedValue({
+			install: "tarball",
+			runningVersion: "1.45.0",
+			plan: { kind: "tarball", version: "1.46.0", url: "https://example.test/x.tar.gz" },
+			summary: "Detected tarball; would download …",
+		});
+
+		await expect(handleUpdate(args({ check: "true" }))).rejects.toThrow("__exit__");
+
+		expect(stdout()).toContain("Install method: tarball");
+		expect(exitCodes).toEqual([0]);
+	});
+});
+
 describe("dev3 update with a running headless server", () => {
 	it("DELEGATES to the server instead of swapping files behind its back", async () => {
 		mockReadState.mockReturnValue(liveState());

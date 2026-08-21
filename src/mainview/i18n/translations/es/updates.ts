@@ -21,6 +21,7 @@ const updates = {
 	"update.checkFailedDetail": "Error al buscar actualizaciones: {error}",
 	"update.devBuildNotice": "Esta es una compilación dev — las actualizaciones están deshabilitadas. Vuelve a compilar desde el código fuente para actualizar.",
 	"update.applyFailed": "No se pudo aplicar la actualización: {error}",
+	"update.installedNoRestart": "La actualización está instalada, pero este servidor debe reiniciarse a mano.",
 	"update.whatsNewVersion": "Novedades en v{version}",
 	"update.whatsNewSinceVersion": "Novedades desde v{version}",
 	"update.canaryBadge": "Canary",

@@ -165,6 +165,26 @@ export function recordUpdateFailure(version: string, error: string, now: number 
 }
 
 /**
+ * The fields a server must copy out of its PREDECESSOR's record when it writes its
+ * own — everything else describes this process and is rewritten.
+ *
+ * `lastUpdate` is the only thing that explains an unexplained restart to
+ * `dev3 remote status` after the fact. `updateAttempts` matters more: the failure it
+ * counts is "the new build applied and then would not boot", which the supervisor
+ * records only AFTER this boot has written its state. Dropping it here pinned the
+ * count at 1 forever, so the give-up after five attempts was unreachable and the
+ * box re-downloaded the same non-booting release every quiet window.
+ */
+export function carriedOverState(
+	prior: RemoteServerState | null,
+): Pick<RemoteServerState, "lastUpdate" | "updateAttempts"> {
+	return {
+		lastUpdate: prior?.lastUpdate ?? null,
+		updateAttempts: prior?.updateAttempts ?? null,
+	};
+}
+
+/**
  * Read a handoff left by a server that has already exited, or null.
  *
  * The freshness checks live in {@link sanitizeHandoff}, so a caller cannot

@@ -382,12 +382,22 @@ describe("chooseRestartStrategy", () => {
 		expect(chooseRestartStrategy({}, true)).toBe("none");
 	});
 
-	it("still exits for a container CMD, which has no TTY but does have a restart policy", () => {
-		expect(chooseRestartStrategy({}, false)).toBe("supervisor-exit");
+	it("exits for a container CMD, which has a restart policy", () => {
+		expect(chooseRestartStrategy({}, false, true)).toBe("supervisor-exit");
+		expect(chooseRestartStrategy({ container: "podman" }, false, false)).toBe("supervisor-exit");
+	});
+
+	// "No TTY" is not evidence of a supervisor. `nohup dev3 remote start --no-detach
+	// >log 2>&1 &`, a CI runner and any launcher that redirects stdout all look like
+	// this — and exiting 75 there leaves the box permanently unreachable. An
+	// unnecessary helper costs one short-lived process; a wrong exit costs the box.
+	it("spawns a helper for a non-interactive run with nothing proven to own it", () => {
+		expect(chooseRestartStrategy({}, false, false)).toBe("helper");
 	});
 
 	it("lets the markers win over the TTY either way", () => {
-		expect(chooseRestartStrategy({ INVOCATION_ID: "abc" }, true)).toBe("supervisor-exit");
-		expect(chooseRestartStrategy({ DEV3_REMOTE_LOG_FILE: "/tmp/x.log" }, true)).toBe("helper");
+		expect(chooseRestartStrategy({ INVOCATION_ID: "abc" }, true, false)).toBe("supervisor-exit");
+		expect(chooseRestartStrategy({ DEV3_REMOTE_LOG_FILE: "/tmp/x.log" }, true, false)).toBe("helper");
+		expect(chooseRestartStrategy({}, true, true)).toBe("supervisor-exit");
 	});
 });

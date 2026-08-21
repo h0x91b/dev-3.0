@@ -138,6 +138,51 @@ busy, never as quiet; and the renderer's 5-minute auto-restart requires a *known
 non-headless context (`headless === false`, not `!== true`), so a failed or still-pending RPC
 cannot let a phone tab restart a remote server unattended.
 
+**Every safeguard is checked against the process that has to enforce it.** A second review pass
+found that most of the guards above could not fire where it mattered, each for the same reason —
+the state or the decision lived in the wrong process:
+
+- The attempt counter was dropped on every boot, so the one failure it exists for (a build that
+  applies and then will not start) counted 1 forever: the supervisor records the rollback only
+  *after* the restored server has written its own state file. `carriedOverState` in
+  `src/bun/remote-state.ts` is now the single place that says what a restarting server copies
+  from its predecessor, and `headless-entry` spreads it.
+- `clearHandoff` re-read the handoff through `readRemoteState()`, which strips any handoff whose
+  `fromPid` is still alive — and that pid is our own, so the function was a no-op and a failed
+  relaunch left both a lying record and an unadopted `cloudflared`. The handoff is now passed in.
+- The pre-stage sat before the give-up and the backoff, so a version dev3 had stopped trying was
+  still re-downloaded every 30 minutes. It now honours the give-up and carries its own failure
+  count, kept separate because a failed pre-stage installs nothing.
+- The terminal-quiet probe asked `getActiveSessionIds()`, which lists only sessions *this*
+  process attached — none, right after a restart. It now asks the tmux server itself; a
+  `TmuxError` from `list-panes -a` means "no server on this socket" and contributes nothing,
+  while a spawn failure or timeout still counts as unreadable.
+
+**`supervisor-exit` requires positive evidence, and "no TTY" is not evidence.** `INVOCATION_ID`
+or a container marker means something will restart us; a backgrounded `nohup … --no-detach >log`,
+a CI runner and any launcher that redirects stdout look identical to a container CMD and have
+nothing that relaunches them. Those now get a helper — one short-lived process if it turns out to
+be unnecessary, against a permanently dark box if the exit is wrong.
+
+**`stageUpdate` serialises on its own paths.** `.dev3-staged{,.tar.gz}` are fixed and the reuse
+memo is only set after success, so the watch's pre-stage and a Restart press both missed it and
+ran concurrently — one caller's `rmSync` truncating the other's extract, with only "is there a
+`dev3` in there" between a half-extracted tree and the apply.
+
+**`DEV3_VIEWS_DIR` is blanked for a successor when we resolved it ourselves.** `headless-entry`
+probes `dist/` and writes the answer into the environment, which every child inherits twice over
+(`src/bun/spawn.ts` re-merges `process.env`); a brew formula upgrade puts the new build in a new
+keg, so the successor would serve the predecessor's bundle — and the same leak quietly undid the
+deliberate `fallbackViews: null` below. Marked with `DEV3_VIEWS_DIR_AUTO` so an operator's own
+override still travels.
+
+**Both diagnostics and the button report what actually happens.** `dev3 update --check/--dry-run`
+ask a running server for the plan instead of classifying the CLI's own path (which, on any
+machine the desktop app has started, is the refused PATH copy — so the diagnostic said
+"unsupported" about a box that updates fine). And `applyUpdate` returns `restarting`, so a
+foreground server that installed the update without replacing itself stops the button spinning
+and says so.
+
 ## Risks
 
 - **No tarball checksum.** The manifest carries no artifact hash and the user chose HTTPS-only
@@ -168,6 +213,19 @@ cannot let a phone tab restart a remote server unattended.
   server reuses the fetched tree, but a `dev3 update` typed in a shell afterwards does not see
   it and fetches again. Persisting it would mean trusting a tree on disk that nothing
   checksums — worse than a repeated download.
+- **The pre-stage keeps a failure count separate from the update's.** A repeatedly failing
+  pre-stage therefore never spends the update's five attempts, so an artifact that 404s forever
+  is retried on the pre-stage's own doubling backoff (capped at 12 h) rather than being given up
+  on. Deliberate — a pre-stage that fails has installed nothing — but it does mean two counters
+  describe one broken release.
+- **`inContainer()` reads `/.dockerenv` and `/run/.containerenv`.** A container runtime that
+  leaves neither, and sets no `container` env var, falls back to the helper path. That is the
+  safe direction (a helper inside a container simply dies with it, and the runtime's own restart
+  policy still applies), but it is a heuristic, not a guarantee.
+- **`clearHandoff` is not unit-tested**, only its premise is: `remote-state.test.ts` proves that
+  a handoff whose `fromPid` is the live pid is rejected on read, which is the whole reason the
+  handoff is now passed in. Exercising the function itself means mocking `cloudflare-tunnel`,
+  `remote-access-server` and a failing `spawn` inside `runSelfUpdate`.
 - **No "updating…" state anywhere in the renderer.** A silent restart is visually identical to
   the box falling over; the `lastUpdate` record in the state file, surfaced by
   `dev3 remote status`, is the only explanation and it is read after the fact.
