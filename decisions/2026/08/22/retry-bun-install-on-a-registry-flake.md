@@ -45,6 +45,15 @@ sneaking back into `build.yml`.
   or an unreachable registry fails all three attempts and still fails the job — roughly 35s later
   (two extra installs plus 20s of sleep). Nothing in the output distinguishes the two cases up front;
   the attempt count in the log is the only signal, which is why it is announced.
+- **The loud announcement is load-bearing, not a nicety.** The attempt count in the log is the ONLY
+  thing that separates a registry blip from a real breakage after the fact. Quietening those warnings
+  to reduce noise would destroy the only diagnostic this change leaves behind — do not remove them
+  without replacing the signal.
+- **The retry deliberately does not classify the error.** It retries any non-zero `bun install`
+  instead of pattern-matching the message. The failure modes (a truncated tarball, a 500, DNS) share
+  no text, and a pattern that misses one turns a flake into a flake that is no longer retried.
+  Retry-anything with a hard cap plus a loud log beats a classifier that silently stops covering a
+  case nobody re-tested.
 - **Three attempts may not beat a longer registry outage.** Deliberate: more attempts buy little and
   make a genuine failure slower to report.
 - Only `build.yml` is covered. Every other workflow still installs directly and can still hit this.
