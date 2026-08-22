@@ -207,6 +207,7 @@ function renderHeader(route: Route, helpDiscovered?: boolean) {
 				route={route}
 				projects={[gitProject]}
 				tasks={[]}
+				agents={[]}
 				navigate={vi.fn()}
 				goBack={vi.fn()}
 				goForward={vi.fn()}
