@@ -219,7 +219,7 @@ const settings = {
 	"settings.agentLaunchAutoApproveMinutes_other": "Через {count} минут",
 	"settings.prOriginTaskLink": "Ссылка из pull request на задачу",
 	"settings.prOriginTaskLinkDesc": "Если включено, pull request'ы, которые открывает dev3, заканчиваются ссылкой на исходную задачу. Выключите, чтобы не упоминать dev3 в публичных описаниях PR.",
-	"settings.prOriginTaskLinkUnsupported": "This system registers no handler for dev3:// links, so the link would go nowhere in a public PR. Your saved preference is kept and still applies on a machine that has one.",
+	"settings.prOriginTaskLinkUnsupported": "В этой системе нет обработчика ссылок dev3://, поэтому в публичном PR такая ссылка никуда не приведёт. Ваша настройка сохранена и продолжит действовать на машине, где обработчик есть.",
 	"settings.taskOpenMode": "Режим открытия задачи",
 	"settings.taskOpenModeDesc": "Как открываются активные задачи при нажатии на них. Также влияет на Cmd+1..9: «Разделённый вид» сохраняет вид задачи, «Полный экран» переключает на доску.",
 	"settings.taskOpenModeSplit": "Разделённый вид (боковая панель + терминал)",
