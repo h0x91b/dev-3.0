@@ -1,10 +1,12 @@
 import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import type { Project, Task, UpdateChangelog } from "../../shared/types";
-import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
+import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { parseDisplayVersion } from "../../shared/update-channel";
-import { useProjectPrivacy } from "../sensitive-projects";
+import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
+import { useSpaces } from "../useSpaces";
+import { groupProjectsForSwitcher } from "../utils/spaceGroups";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api, isElectrobun } from "../rpc";
@@ -80,6 +82,7 @@ const COUNTS_CACHE_TTL = 30_000;
 function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
 	const t = useT();
 	const privacy = useProjectPrivacy();
+	const { file: spacesFile } = useSpaces();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	// This page is the far end of a remote session, not the desktop window. Read
@@ -366,6 +369,69 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	// Built-in Operations board pinned first; ⌘0 jumps to it, ⌘1-9 to the rest.
 	const availableProjects = orderProjectsForDisplay(projects.filter((p) => !p.deleted));
 	const switcherHasPinnedBuiltin = availableProjects.length > 0 && isBuiltinOpsProject(availableProjects[0]);
+	// ⌘N stays keyed to BOARD order, so the badge keeps matching the shortcut once
+	// spaces regroup the rows (same split as the ⌘K palette's shortcutIndexById).
+	const switcherShortcutById: Record<string, string> = {};
+	availableProjects.forEach((p, idx) => {
+		if (isBuiltinOpsProject(p)) {
+			switcherShortcutById[p.id] = "0";
+			return;
+		}
+		const nonBuiltinIdx = switcherHasPinnedBuiltin ? idx - 1 : idx;
+		if (nonBuiltinIdx < 9) switcherShortcutById[p.id] = String(nonBuiltinIdx + 1);
+	});
+	// Spaces group the switcher exactly as they group the dashboard, except the
+	// current project's own space is hoisted first. null = no space holds a
+	// visible project, and the flat list below stays byte-identical to today's.
+	const switcherGroups = groupProjectsForSwitcher(availableProjects, spacesFile, currentProjectId);
+	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
+
+	// One switcher row. `keyPrefix` disambiguates a project that belongs to
+	// several spaces and therefore renders under each of them.
+	function renderSwitcherRow(p: Project, keyPrefix: string) {
+		const isCurrent = currentProjectId === p.id;
+		const count = projectTaskCounts[p.id];
+		const isBuiltin = isBuiltinOpsProject(p);
+		const locked = privacy.isLocked(p);
+		const shortcutLabel = switcherShortcutById[p.id];
+		return (
+			<button
+				key={`${keyPrefix}:${p.id}`}
+				aria-disabled={locked || undefined}
+				title={locked ? t("streamer.projectLocked") : undefined}
+				onClick={() => {
+					setShowProjectDropdown(false);
+					navigate({ screen: "project", projectId: p.id });
+				}}
+				className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
+					isCurrent ? "bg-accent/10 text-accent" : "text-fg-2 hover:bg-elevated hover:text-fg"
+				}`}
+			>
+				{isBuiltin && (
+					<span className="text-accent flex-shrink-0 text-sm-plus" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0E7}"}</span>
+				)}
+				{locked && (
+					<span aria-hidden="true" className="text-fg-muted flex-shrink-0 text-sm-plus" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F033E}"}</span>
+				)}
+				<span className={`truncate text-sm flex-1 ${privacy.maskClass(p)}`}>{isBuiltin ? t("ops.boardName") : p.name}</span>
+				{isBuiltin && (
+					<span className="flex-shrink-0 px-1 py-0.5 rounded bg-raised text-fg-3 text-nano font-medium uppercase tracking-wide">{t("ops.badgeSystem")}</span>
+				)}
+				<span className="text-micro text-fg-muted flex-shrink-0">
+					{count != null
+						? count > 0
+							? t.plural("header.activeTaskCount", count)
+							: t("header.noActiveTasks")
+						: ""}
+				</span>
+				{shortcutLabel && (
+					<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-dense text-fg-muted/60 font-mono">
+						<span className="text-micro">{"⌘"}</span>{shortcutLabel}
+					</kbd>
+				)}
+			</button>
+		);
+	}
 
 	// Narrow viewport: the simple, dispatch-style right-cluster actions fold into
 	// a single kebab → BottomSheet. The Command Palette gets a touch entry here
@@ -476,78 +542,70 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 								</span>
 							)
 						) : seg.isProjectDropdown ? (
-							<div className="relative flex items-center gap-0.5" ref={projectDropdownRef}>
-								{seg.onClick ? (
-									<button
-										onClick={seg.onClick}
-										className="text-accent hover:text-accent-emphasis transition-colors truncate"
-									>
-										{seg.label}
-									</button>
-								) : (
-									<span className="text-fg font-semibold truncate">{seg.label}</span>
-								)}
-								<Tooltip content={t("header.switchProject")} detail={t("ttip.header.switchProject")}>
-									<button
-										onClick={() => setShowProjectDropdown((v) => !v)}
-										className="header-anim text-fg-muted hover:text-fg transition-colors flex-shrink-0 p-0.5 rounded hover:bg-elevated"
-										aria-label={t("header.switchProject")}
-									>
-										<span className={`inline-block transition-transform ${showProjectDropdown ? "rotate-180" : ""}`}>
-											<DropdownIcon className="w-3 h-3 block" />
-										</span>
-									</button>
-							</Tooltip>
+							<div className="relative flex-shrink-0 min-w-0" ref={projectDropdownRef}>
+								{/* Segmented control, same grammar as the back/forward pair on the
+								    left: name half opens the board, chevron half opens the switcher. */}
+								<div className="flex items-stretch min-w-0 rounded-md border border-edge bg-raised overflow-hidden">
+									{seg.onClick ? (
+										<button
+											onClick={seg.onClick}
+											className="header-anim px-2 py-[3px] min-w-0 text-accent hover:text-accent-emphasis hover:bg-elevated transition-colors truncate"
+										>
+											{seg.label}
+										</button>
+									) : (
+										<span className="px-2 py-[3px] min-w-0 text-fg font-semibold truncate">{seg.label}</span>
+									)}
+									<span className="w-px self-stretch bg-edge flex-shrink-0" aria-hidden="true" />
+									<Tooltip content={t("header.switchProject")} detail={t("ttip.header.switchProject")}>
+										<button
+											onClick={() => setShowProjectDropdown((v) => !v)}
+											aria-haspopup="menu"
+											aria-expanded={showProjectDropdown}
+											className={`header-anim px-1.5 py-[3px] flex items-center transition-colors ${
+												showProjectDropdown ? "text-fg bg-elevated" : "text-fg-3 hover:text-fg hover:bg-elevated"
+											}`}
+											aria-label={t("header.switchProject")}
+											data-testid="project-switcher-toggle"
+										>
+											<span className={`inline-block transition-transform ${showProjectDropdown ? "rotate-180" : ""}`}>
+												<DropdownIcon className="w-3.5 h-3.5 block" />
+											</span>
+										</button>
+									</Tooltip>
+								</div>
 								{showProjectDropdown && (
-									<div className="absolute left-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
-										{availableProjects.map((p, idx) => {
-											const isCurrent = currentProjectId === p.id;
-											const count = projectTaskCounts[p.id];
-											const isBuiltin = isBuiltinOpsProject(p);
-											const locked = privacy.isLocked(p);
-											// \u23180 for the pinned built-in board; \u23181-9 for the rest.
-											const nonBuiltinIdx = switcherHasPinnedBuiltin ? idx - 1 : idx;
-											const shortcutLabel = isBuiltin ? "0" : (nonBuiltinIdx < 9 ? String(nonBuiltinIdx + 1) : null);
-											return (
-												<button
-													key={p.id}
-													aria-disabled={locked || undefined}
-													title={locked ? t("streamer.projectLocked") : undefined}
-													onClick={() => {
-														setShowProjectDropdown(false);
-														navigate({ screen: "project", projectId: p.id });
-													}}
-													className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
-														isCurrent
-															? "bg-accent/10 text-accent"
-															: "text-fg-2 hover:bg-elevated hover:text-fg"
-													}`}
-												>
-													{isBuiltin && (
-														<span className="text-accent flex-shrink-0 text-sm-plus" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
-													)}
-													{locked && (
-														<span aria-hidden="true" className="text-fg-muted flex-shrink-0 text-sm-plus" style={{ fontFamily: "\'JetBrainsMono Nerd Font Mono\'" }}>{"\u{F033E}"}</span>
-													)}
-													<span className={`truncate text-sm flex-1 ${privacy.maskClass(p)}`}>{isBuiltin ? t("ops.boardName") : p.name}</span>
-													{isBuiltin && (
-														<span className="flex-shrink-0 px-1 py-0.5 rounded bg-raised text-fg-3 text-nano font-medium uppercase tracking-wide">{t("ops.badgeSystem")}</span>
-													)}
-													<span className="text-micro text-fg-muted flex-shrink-0">
-														{count != null
-															? count > 0
-																? t.plural("header.activeTaskCount", count)
-																: t("header.noActiveTasks")
-															: ""}
-													</span>
-													{shortcutLabel && (
-														<kbd className="flex-shrink-0 inline-flex items-center gap-0.5 text-dense text-fg-muted/60 font-mono">
-															<span className="text-micro">{"\u2318"}</span>{shortcutLabel}
-														</kbd>
-													)}
-												</button>
-											);
-										})}
+									<div role="menu" className="absolute left-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
+										{switcherGroups === null ? (
+											availableProjects.map((p) => renderSwitcherRow(p, "flat"))
+										) : (
+											<>
+												{/* The builtin Operations board never joins a space; it stays
+												    pinned above every group, exactly as on the dashboard. */}
+												{availableProjects.filter(isBuiltinOpsProject).map((p) => renderSwitcherRow(p, "builtin"))}
+												{switcherGroups.map((group) => {
+													const masked = group.space ? isSpaceSensitive(group.space, sensitiveProjectIds) : false;
+													return (
+														<div key={group.space?.id ?? "home"} className="pt-2 first:pt-0">
+															{/* Label, then a hairline running to the edge — the same
+															    grammar the Keyboard settings use for their sections. */}
+															<div className="px-3 pb-1 flex items-center gap-2">
+																<span className={`text-nano font-semibold uppercase tracking-wider truncate ${group.space ? "text-accent/90" : "text-fg-3"} ${masked ? MASK_CLASS : ""}`}>
+																	{group.space ? group.space.name : t("spaces.homeGroup")}
+																</span>
+																<span className="text-nano text-fg-muted tabular-nums flex-shrink-0">{group.projects.length}</span>
+																<span aria-hidden="true" className={`h-px flex-1 ${group.space ? "bg-accent/25" : "bg-edge/60"}`} />
+															</div>
+															{/* The trunk: rows sit indented off a vertical rule, so a
+															    project reads as filed under its space. */}
+															<div className={`ml-3 border-l ${group.space ? "border-accent/30" : "border-edge/60"}`}>
+																{group.projects.map((p) => renderSwitcherRow(p, group.space?.id ?? "home"))}
+															</div>
+														</div>
+													);
+												})}
+											</>
+										)}
 									</div>
 								)}
 							</div>

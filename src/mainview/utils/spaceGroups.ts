@@ -50,6 +50,34 @@ export function groupProjectsForDashboard(
 	return groups;
 }
 
+/**
+ * Group the header project switcher the same way the dashboard groups, with one
+ * difference: every space the CURRENT project belongs to is hoisted to the top,
+ * so its neighbours are the first rows under the cursor. Returns null when no
+ * space holds a visible project — the caller keeps its flat list.
+ *
+ * The builtin Operations board is excluded here; the caller keeps it pinned.
+ */
+export function groupProjectsForSwitcher(
+	visibleProjects: Project[],
+	file: SpacesFile,
+	currentProjectId: string | null,
+): DashboardGroup[] | null {
+	const groups = groupProjectsForDashboard(visibleProjects, file);
+	if (groups === null) return null;
+	if (!currentProjectId) return groups;
+
+	const current: DashboardGroup[] = [];
+	const rest: DashboardGroup[] = [];
+	for (const group of groups) {
+		// The Home group is never hoisted: "no space" is not the current space,
+		// even when the current project happens to sit there.
+		const isCurrentSpace = group.space !== null && group.space.projectIds.includes(currentProjectId);
+		(isCurrentSpace ? current : rest).push(group);
+	}
+	return [...current, ...rest];
+}
+
 interface GroupFilter {
 	/** null = all, `HOME_GROUP_ID` = the computed Home group, else a space id. */
 	selectedSpaceId: string | null;

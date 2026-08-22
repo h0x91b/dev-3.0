@@ -35,6 +35,7 @@ vi.mock("../../rpc", () => ({
 				interfaces: [],
 				selectedHost: "192.168.0.1",
 			}),
+			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
 			listAgentAccounts: vi.fn().mockResolvedValue({
 				claude: { accounts: [], activeId: null, systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
@@ -207,6 +208,7 @@ describe("GlobalHeader — project switcher dropdown", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.getTasks.mockResolvedValue([]);
+		mockedApi.request.getSpaces.mockResolvedValue({ version: 1, spaces: [], order: [] });
 	});
 
 	it("shows chevron button next to project name when inside a project", () => {
@@ -215,6 +217,26 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		expect(chevron).toBeInTheDocument();
 		// Project name text is rendered separately from the chevron
 		expect(screen.getByText("Project Alpha")).toBeInTheDocument();
+	});
+
+	it("declares the chevron as a menu trigger and reflects the open state", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "project", projectId: "p1" });
+		const chevron = getChevronButton();
+		expect(chevron).toHaveAttribute("aria-haspopup", "menu");
+		expect(chevron).toHaveAttribute("aria-expanded", "false");
+		await user.click(chevron);
+		expect(chevron).toHaveAttribute("aria-expanded", "true");
+	});
+
+	it("keeps the name and the chevron inside one bordered segmented control", () => {
+		renderHeader({ screen: "project", projectId: "p1", activeTaskId: "t1" }, [project1, project2], vi.fn(), [
+			{ id: "t1", seq: 1, title: "Task 1", status: "in-progress" } as Task,
+		]);
+		const shell = getChevronButton().parentElement!;
+		expect(shell).toHaveClass("border-edge");
+		// Both halves live in that shell — the chevron is no longer a loose glyph.
+		expect(within(shell).getByRole("button", { name: "Project Alpha" })).toBeInTheDocument();
 	});
 
 	it("does not show project dropdown on dashboard", () => {
@@ -385,6 +407,68 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		await user.click(getChevronButton());
 
 		expect(await screen.findAllByText("No active tasks")).toHaveLength(2);
+	});
+
+	describe("space grouping", () => {
+		const project4: Project = { ...project2, id: "p4", name: "Project Delta" };
+
+		function withSpaces() {
+			// Board order puts sp_other first; the current project (p1) is in sp_dev,
+			// so sp_dev must still be rendered first.
+			mockedApi.request.getSpaces.mockResolvedValue({
+				version: 1,
+				spaces: [
+					{ id: "sp_dev", name: "Dev Space", parentId: null, projectIds: ["p1", "p2"], createdAt: 1 },
+					{ id: "sp_other", name: "Other Space", parentId: null, projectIds: ["p2"], createdAt: 2 },
+				],
+				order: ["sp_other", "sp_dev"],
+			});
+		}
+
+		async function openSwitcher() {
+			const user = userEvent.setup();
+			renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4]);
+			await user.click(getChevronButton());
+			return await screen.findByRole("menu");
+		}
+
+		it("hoists the current project's space above the other groups, Home last", async () => {
+			withSpaces();
+			const menu = await openSwitcher();
+			await within(menu).findByText("Dev Space");
+			const headers = within(menu)
+				.getAllByText(/Dev Space|Other Space|Home/)
+				.map((el) => el.textContent);
+			expect(headers).toEqual(["Dev Space", "Other Space", "Home"]);
+		});
+
+		it("lists a project under every space it belongs to, plus once under Home", async () => {
+			withSpaces();
+			const menu = await openSwitcher();
+			await within(menu).findByText("Dev Space");
+			// Beta is in both spaces → two rows; Delta has no space → the Home group.
+			expect(within(menu).getAllByText("Project Beta")).toHaveLength(2);
+			expect(within(menu).getAllByText("Project Delta")).toHaveLength(1);
+		});
+
+		it("keeps the ⌘N badge on board order, not on the regrouped row order", async () => {
+			withSpaces();
+			const menu = await openSwitcher();
+			await within(menu).findByText("Dev Space");
+			const rows = within(menu).getAllByRole("button");
+			const badgeOf = (name: string) =>
+				rows.find((r) => r.textContent?.includes(name))?.querySelector("kbd")?.textContent;
+			// p1 is board index 0 → ⌘1, even though it now sits under a hoisted space.
+			expect(badgeOf("Project Alpha")).toBe("⌘1");
+			expect(badgeOf("Project Beta")).toBe("⌘2");
+			expect(badgeOf("Project Delta")).toBe("⌘3");
+		});
+
+		it("stays flat when no space holds a visible project", async () => {
+			const menu = await openSwitcher();
+			expect(within(menu).queryByText("Home")).not.toBeInTheDocument();
+			expect(within(menu).getAllByRole("button")).toHaveLength(3);
+		});
 	});
 
 	it("shows downloading indicator when updateDownloadStatus is downloading", () => {

@@ -1,4 +1,4 @@
-import { HOME_GROUP_ID, filterDashboardGroups, groupProjectsForDashboard } from "../spaceGroups";
+import { HOME_GROUP_ID, filterDashboardGroups, groupProjectsForDashboard, groupProjectsForSwitcher } from "../spaceGroups";
 import type { Project, Space, SpacesFile } from "../../../shared/types";
 
 const proj = (id: string, over?: Partial<Project>): Project => ({
@@ -127,5 +127,37 @@ describe("filterDashboardGroups", () => {
 		expect(out.map((g) => g.space?.id ?? "home")).toEqual(["sp_1", "sp_2"]);
 		expect(out[0].projects.map((p) => p.id)).toEqual(["a"]);
 		expect(out[1].projects.map((p) => p.id)).toEqual(["a", "b"]);
+	});
+});
+
+describe("groupProjectsForSwitcher", () => {
+	const projects = [proj("a"), proj("b"), proj("c"), proj("loose")];
+
+	it("returns null when there are no active spaces", () => {
+		expect(groupProjectsForSwitcher(projects, fileOf([]), "a")).toBeNull();
+	});
+
+	it("hoists every space holding the current project, keeping their relative order", () => {
+		const file = fileOf([sp("sp_1", ["a"]), sp("sp_2", ["b", "c"]), sp("sp_3", ["c", "b"])]);
+		const out = groupProjectsForSwitcher(projects, file, "b")!;
+		expect(out.map((g) => g.space?.id ?? "home")).toEqual(["sp_2", "sp_3", "sp_1", "home"]);
+	});
+
+	it("leaves the order untouched when the current project has no space", () => {
+		const file = fileOf([sp("sp_1", ["a"]), sp("sp_2", ["b"])]);
+		const out = groupProjectsForSwitcher(projects, file, "loose")!;
+		expect(out.map((g) => g.space?.id ?? "home")).toEqual(["sp_1", "sp_2", "home"]);
+	});
+
+	it("never hoists the Home group above real spaces", () => {
+		const file = fileOf([sp("sp_1", ["a"])]);
+		const out = groupProjectsForSwitcher(projects, file, "loose")!;
+		expect(out[out.length - 1].space).toBeNull();
+	});
+
+	it("keeps dashboard order when there is no current project", () => {
+		const file = fileOf([sp("sp_1", ["a"]), sp("sp_2", ["b"])]);
+		const out = groupProjectsForSwitcher(projects, file, null)!;
+		expect(out.map((g) => g.space?.id ?? "home")).toEqual(["sp_1", "sp_2", "home"]);
 	});
 });
