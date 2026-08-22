@@ -1495,7 +1495,11 @@ function TaskInfoPanel({
 						{/* Same bar boxing as the expanded rows: the Context bar is the only
 						    shrinkable region, so the Session bar and the pinned chrome to
 						    its right can never be pushed out of the panel. */}
-						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+						{/* The four help ids and the HelpSpot mirror the expanded rows below.
+						    They were missing here for as long as this branch existed, and this
+						    is the branch a task screen opens in — so help mode explained the
+						    header and the sidebar and nothing else on it. */}
+						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.context-bar">
 							{variantSwitcher}
 							{watchToggleButton}
 							{priorityBadge}
@@ -1505,7 +1509,7 @@ function TaskInfoPanel({
 						</div>
 						{statusDropdownPortal}
 						<div className="flex-1" />
-						<div className="flex items-center gap-1.5 flex-shrink-0">
+						<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
 							{bugHuntersButton}
 							{spawnAgentButton}
 							{sendLaterButton}
@@ -1515,12 +1519,13 @@ function TaskInfoPanel({
 							<TaskPaneControls taskId={task.id} compact={tight} />
 						</div>
 						{worktreeSettingsButton}
+						<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 						<TerminalShortcutsButton taskId={task.id} />
 						{showPanelButton}
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
-						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar">
 							{project.kind === "virtual" ? (
 								<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
 							) : (
@@ -1538,7 +1543,7 @@ function TaskInfoPanel({
 							)}
 						</div>
 						<div className="flex-1" />
-						<div className="flex items-center gap-2 flex-shrink-0">
+						<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
 							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser compact={tight} />
 							{project.kind !== "virtual" && (
 								<>

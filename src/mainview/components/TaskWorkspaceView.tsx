@@ -112,6 +112,7 @@ function TaskWorkspaceView({
 			)}
 			<div className="flex-1 min-h-0 overflow-hidden">
 				<TaskWorkspacePane
+					immersive={immersive}
 					projectId={projectId}
 					taskId={taskId}
 					tasks={tasks}

@@ -296,7 +296,9 @@ describe("ActivityOverview", () => {
 
 		// A virtual board can never be reordered, so a grip and two disabled arrows
 		// on its row were three controls promising something they cannot do.
-		const opsRow = (await screen.findByText("[ Operations ]")).closest("[data-help-id='dashboard.project-row']")!;
+		// The builtin board carries its own help topic — the git project-row copy
+		// does not describe a board without git.
+		const opsRow = (await screen.findByText("[ Operations ]")).closest("[data-help-id='dashboard.ops-board']")!;
 		const opsCluster = opsRow.querySelector("[aria-hidden='true'].md\\:flex");
 		expect(opsCluster).not.toBeNull();
 		// `invisible`, not removed: the row is pinned above the rest and their

@@ -49,6 +49,9 @@ interface TaskWorkspacePaneProps {
 	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
 	onCloseArtifactViewer?: () => void;
 	skipCopyModeReset?: boolean;
+	/** Immersive fullscreen: §5 keeps that surface chrome-free, so it takes no
+	 *  help zone. Every other mount site is an ordinary task screen. */
+	immersive?: boolean;
 }
 
 function TaskWorkspacePane({
@@ -64,6 +67,7 @@ function TaskWorkspacePane({
 	artifactViewer,
 	onCloseArtifactViewer = () => {},
 	skipCopyModeReset = false,
+	immersive = false,
 }: TaskWorkspacePaneProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
@@ -218,7 +222,7 @@ function TaskWorkspacePane({
 	}, [inlineDiffRequest]);
 
 	return (
-		<div ref={workspaceRef} className="h-full w-full relative overflow-hidden">
+		<div ref={workspaceRef} className="h-full w-full relative overflow-hidden" data-help-id={immersive ? undefined : "terminal.task"}>
 			{artifactResizing && (
 				<div data-testid="artifact-resize-shield" aria-hidden="true" className="absolute inset-0 z-[60] cursor-col-resize">
 					<div

@@ -380,6 +380,9 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		// ~300px tall, so a list of them never fits on one screen — the drop target
 		// was somewhere the user had to scroll to while holding the pointer down.
 		const compact = reorder ? reorder.groupDragActive : draggedProjectId !== null;
+		// Also picks this row's help topic: the git project-row copy does not
+		// describe a board that has no git, and "Code-driven tasks · no git" was
+		// the whole explanation a first-run user got for it.
 		const isBuiltinOps = isBuiltinOpsProject(project);
 		const locked = privacy.isLocked(project);
 		// Virtual boards (builtin and user-created) cannot be reordered:
@@ -450,7 +453,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		return (
 			<div
 				key={project.id}
-				data-help-id="dashboard.project-row"
+				data-help-id={isBuiltinOps ? "dashboard.ops-board" : "dashboard.project-row"}
 				className={`relative bg-raised border border-edge overflow-hidden transition-opacity ${compact ? "rounded-xl" : "rounded-2xl"} ${isDragged ? "opacity-60" : ""}`}
 				data-compact={compact || undefined}
 				onDragOver={reorder ? reorder.onDragOver : (event) => handleDragOver(event, project.id)}

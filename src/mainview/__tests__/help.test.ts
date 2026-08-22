@@ -76,6 +76,14 @@ describe("help coverage correlation (bible §5.4)", () => {
 			for (const m of src.matchAll(/(?:data-help-id|topicId|helpTopicId)="([^"]+)"/g)) {
 				if (/^[a-z0-9.-]+$/i.test(m[1])) referenced.add(m[1]);
 			}
+			// A zone whose id depends on what it is showing —
+			// `data-help-id={isOps ? "a" : "b"}` — is still two literal ids, and
+			// treating it as zero was how a whole branch of the task screen shipped
+			// with no help at all. Every quoted string inside the braces counts;
+			// `undefined` for a gated-off zone contributes nothing, as it should.
+			for (const m of src.matchAll(/data-help-id=\{([^}]*)\}/g)) {
+				for (const lit of m[1].matchAll(/"([a-z0-9.-]+)"/gi)) referenced.add(lit[1]);
+			}
 		}
 	})(SRC_ROOT);
 

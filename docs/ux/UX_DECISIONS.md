@@ -11,6 +11,9 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-08-22 — The ordinary task terminal is owed help coverage
+- **Rule:** the immersive-fullscreen exemption in the §5.4 coverage floor does not cover the task screen's terminal (`terminal.task`), and a twice-rendered surface needs its own guard because reachability cannot tell which branch mounted a zone. **Why:** `decisions/2026/08/22/help-mode-was-blind-on-the-task-screen.md`.
+
 ## 2026-08-22 — A first-run-only action lives in the first-run strip
 - **Rule:** the sandbox button sits inside the dashboard's first-run strip, never beside `Add project` — bible §5.4a. **Why:** `decisions/2026/08/22/the-sandbox-is-a-real-repo-dev3-owns.md`.
 

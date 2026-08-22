@@ -247,7 +247,7 @@ Rules specific to this surface:
 **Coverage law (hard rule):**
 - Every §5 surface/section, and every form field or control whose behavior is not fully evident from its label (smart default, contextual prefill, hidden fallback, side effect), MUST have a registry topic reachable in help mode. Inside a modal, help mode lights each registered field individually — that, not a permanent (i) per field, is how per-field intent reaches the user.
 - New user-facing UI ships its topic + zone **in the same commit** — the same lockstep discipline `keymap.ts` imposes on shortcuts.
-- **Coverage floor (positive manifest).** The dangling/orphan checks only police ids that are *already* referenced — a surface with **no** help id at all is invisible to them, so pre-doctrine surfaces silently read as "covered". `help.ts` exports `REQUIRED_HELP_SURFACES`, the curated list of canonical §5 surfaces/sections; `help.test.ts` asserts every entry resolves to a topic **and** mounts a reachable zone. Adding a §5 surface means adding it to that list in the same commit — you cannot then ship it uncovered. The list is surfaces/sections only (not every sub-zone); dynamic `board.column.*` ids stay guarded by the per-status test; transient nav/help overlays, confirm/error/search modals, native menus, the chrome-free immersive terminal, and the earned/remote-only Diagnostics surface (§5.5) are deliberately excluded (documented in the manifest, not oversight).
+- **Coverage floor (positive manifest).** The dangling/orphan checks only police ids that are *already* referenced — a surface with **no** help id at all is invisible to them, so pre-doctrine surfaces silently read as "covered". `help.ts` exports `REQUIRED_HELP_SURFACES`, the curated list of canonical §5 surfaces/sections; `help.test.ts` asserts every entry resolves to a topic **and** mounts a reachable zone. Adding a §5 surface means adding it to that list in the same commit — you cannot then ship it uncovered. The list is surfaces/sections only (not every sub-zone); dynamic `board.column.*` ids stay guarded by the per-status test; transient nav/help overlays, confirm/error/search modals, native menus, the chrome-free immersive **fullscreen** terminal, and the earned/remote-only Diagnostics surface (§5.5) are deliberately excluded (documented in the manifest, not oversight). The ordinary task terminal is NOT exempt, and a reachability check cannot tell which branch of a twice-rendered component mounted a zone: `decisions/2026/08/22/help-mode-was-blind-on-the-task-screen.md`.
 
 **Correlation invariant (hard rule):**
 - Help mode shows a **superset** of all inline help. A HelpSpot only renders registry topics (automatic via layer 2; the one exception is ad-hoc `content` for user-authored objects, e.g. custom-column descriptions). Prefer *also* tagging the section container with the same id — the help-mode scan keeps the first visible DOM match, so a container outline naturally wins over the tiny icon.
@@ -273,10 +273,8 @@ Evidence: [first-run-advertises-help-mode](../../decisions/2026/08/22/first-run-
   below") belongs to To Do alone.
 - **No tips at zero tasks.** Tips are earned; one about hovering a task card spends the newcomer's
   only screen on nothing.
-- A **first-run-only action** (the sandbox button) belongs **inside the first-run strip**, never
-  beside the screen's own primary action: the action row must not grow a control that disappears
-  the moment a repository exists. See
-  [the-sandbox-is-a-real-repo-dev3-owns](../../decisions/2026/08/22/the-sandbox-is-a-real-repo-dev3-owns.md).
+- A **first-run-only action** (the sandbox button) belongs **inside the first-run strip**, never beside the
+  screen's own primary action: `decisions/2026/08/22/the-sandbox-is-a-real-repo-dev3-owns.md`.
 - Multi-step tours are no longer banned as a class.
 
 ### 5.5 Diagnostics — crash & error surface (remote/mobile) — `Observed`

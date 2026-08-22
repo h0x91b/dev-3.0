@@ -69,6 +69,9 @@ const help = {
 	"help.dashboard.addProject.title": "Add project",
 	"help.dashboard.addProject.body":
 		"Points dev-3.0 at a git repository on this machine — pick a folder you already have, clone a URL, or create an empty repo. Nothing in it is modified by adding it. Every task on the resulting board gets its own branch, folder and terminal. The Operations option makes a board with no git at all, for work that is not code.",
+	"help.dashboard.opsBoard.title": "The Operations board",
+	"help.dashboard.opsBoard.body":
+		"A board for work that is not about a repository: research, one-off scripts, notes to an agent, anything you would otherwise not know where to file. Its tasks get a managed folder instead of a git worktree, so there is no branch, no diff and no pull request — everything else, including the agent and the terminal, works exactly as on a git board. Every install starts with this one, and you can add more.",
 	"help.dashboard.firstRun.title": "Getting started",
 	"help.dashboard.firstRun.body":
 		"Shown until you add your first repository, then it is replaced by the Productivity Stats card. The shortest path is: add a project, open its board, write one task in plain words, and press Save & Start — that launches an agent on it straight away.",
@@ -210,6 +213,9 @@ const help = {
 	"help.terminal.quickShell.title": "Project shell",
 	"help.terminal.quickShell.body":
 		"A project-level terminal with no git worktree — for quick commands that aren't a task. Nothing here is tracked on the board or tied to a branch, unlike a task terminal.",
+	"help.terminal.task.title": "The agent's terminal",
+	"help.terminal.task.body":
+		"This is a real shell inside a tmux session, running in this task's own worktree — so what the agent types here cannot reach your other branches. The bar along the bottom is tmux: each numbered entry is a window, and the one on the right is this task's session name. The agent keeps running when you leave this screen or close the app; it is the session that owns it, not the window you are looking at. Select text to copy it — no ⌘C needed.",
 
 	// ── Header / sidebar ──
 	"help.header.utilities.title": "App utilities",

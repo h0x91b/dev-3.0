@@ -63,6 +63,9 @@ const help = {
 	"help.dashboard.addProject.title": "Agregar proyecto",
 	"help.dashboard.addProject.body":
 		"Apunta dev-3.0 a un repositorio git de esta máquina: elige una carpeta que ya tengas, clona una URL o crea un repositorio vacío. Agregarlo no modifica nada dentro. Cada tarea del tablero resultante recibe su propia rama, carpeta y terminal. La opción Operations crea un tablero sin git, para trabajo que no es código.",
+	"help.dashboard.opsBoard.title": "El tablero Operations",
+	"help.dashboard.opsBoard.body":
+		"Un tablero para el trabajo que no trata de un repositorio: investigación, scripts de una sola vez, notas para un agente, cualquier cosa que de otro modo no sabrías dónde archivar. Sus tareas reciben una carpeta gestionada en lugar de un worktree de git, así que no hay rama, ni diff, ni pull request — todo lo demás, incluido el agente y la terminal, funciona igual que en un tablero git. Toda instalación empieza con este, y puedes añadir más.",
 	"help.dashboard.firstRun.title": "Cómo empezar",
 	"help.dashboard.firstRun.body":
 		"Se muestra hasta que agregas tu primer repositorio; después ocupa su lugar la tarjeta de estadísticas. El camino más corto: agrega un proyecto, abre su tablero, describe una tarea con palabras normales y pulsa Save & Start — eso lanza un agente de inmediato.",
@@ -204,6 +207,9 @@ const help = {
 	"help.terminal.quickShell.title": "Terminal del proyecto",
 	"help.terminal.quickShell.body":
 		"Una terminal a nivel de proyecto sin git worktree — para comandos rápidos que no son una tarea. Aquí nada se rastrea en el tablero ni se ata a una rama, a diferencia de una terminal de tarea.",
+	"help.terminal.task.title": "La terminal del agente",
+	"help.terminal.task.body":
+		"Es una shell real dentro de una sesión de tmux, ejecutándose en el worktree propio de esta tarea — así que lo que el agente escriba aquí no puede alcanzar tus otras ramas. La barra de abajo es tmux: cada entrada numerada es una ventana y la de la derecha es el nombre de la sesión de esta tarea. El agente sigue trabajando cuando sales de esta pantalla o cierras la app: la sesión es su dueña, no la ventana que estás mirando. Selecciona texto y se copia solo, sin ⌘C.",
 
 	// ── Header / sidebar ──
 	"help.header.utilities.title": "Utilidades de la aplicación",

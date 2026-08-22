@@ -162,6 +162,16 @@ describe("Dashboard on a brand-new install", () => {
 		expect(screen.queryByTestId("dashboard-first-run-sandbox")).toBeNull();
 	});
 
+	it("explains the Operations board with its own topic, not the git one", async () => {
+		// It is the only project a new install has, and its whole explanation was
+		// the four-word subtitle "Code-driven tasks · no git".
+		renderOverview([operations, gitProject]);
+		await screen.findByTestId("dashboard-new-space");
+		const zones = [...document.querySelectorAll("[data-help-id]")].map((el) => el.getAttribute("data-help-id"));
+		expect(zones).toContain("dashboard.ops-board");
+		expect(zones).toContain("dashboard.project-row");
+	});
+
 	it("puts Add project in help mode — the first screen's own primary action", async () => {
 		renderOverview([operations, gitProject]);
 		const add = (await screen.findByText("Add project")).closest("button");

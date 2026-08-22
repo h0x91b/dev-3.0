@@ -208,6 +208,26 @@ describe("TaskWorkspaceView", () => {
 		);
 	});
 
+	// Help mode said nothing about the terminal, which is most of this screen and
+	// the least familiar part of it. Immersive fullscreen stays chrome-free (§5),
+	// so the zone is gated rather than unconditional.
+	it("lets help mode explain the terminal, except in immersive fullscreen", () => {
+		const props = {
+			projectId: "p1",
+			taskId: "t1",
+			tasks: [task],
+			projects: [project],
+			route: TASK_ROUTE,
+			navigate: vi.fn(),
+			dispatch: vi.fn(),
+		};
+		const { rerender } = renderWorkspace(<TaskWorkspaceView {...props} />);
+		expect(document.querySelector('[data-help-id="terminal.task"]')).not.toBeNull();
+
+		rerender(<TaskWorkspaceView {...props} immersive />);
+		expect(document.querySelector('[data-help-id="terminal.task"]')).toBeNull();
+	});
+
 	it("does not reset tmux copy mode when entering immersive fullscreen", () => {
 		renderWorkspace(
 			<TaskWorkspaceView

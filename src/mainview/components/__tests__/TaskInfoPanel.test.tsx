@@ -261,6 +261,22 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("collapsed view (default)", () => {
+		// The bug this closes: the collapsed branch duplicated all four bars WITHOUT
+		// their `data-help-id`, so on the screen a task actually opens in, help mode
+		// highlighted the header and the sidebar and nothing else. `help.test.ts`
+		// stayed green because the expanded branch references the same ids — a
+		// reachability check cannot tell which branch mounted them.
+		it("carries every help zone help mode needs, on the branch a task opens in", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ id: "t1" }));
+			});
+
+			const zones = [...document.querySelectorAll("[data-help-id]")].map((el) => el.getAttribute("data-help-id"));
+			for (const id of ["inspector.context-bar", "inspector.session-bar", "inspector.git-bar", "inspector.runtime-bar", "inspector.panel"]) {
+				expect(zones, `collapsed panel is missing the ${id} zone`).toContain(id);
+			}
+		});
+
 		it("shows numbered status chips without agent glyphs and navigates to another chip", async () => {
 			const current = makeTask({ id: "t1", title: "First attempt", groupId: "group-1", variantIndex: 1, agentId: "builtin-claude", configId: "claude-default" });
 			const sibling = makeTask({ id: "t2", title: "Renamed attempt", groupId: "group-1", variantIndex: 2, seq: 43, agentId: "builtin-claude", configId: "claude-default" });
