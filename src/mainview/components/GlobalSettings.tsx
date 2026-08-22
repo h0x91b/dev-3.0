@@ -99,6 +99,7 @@ function GlobalSettings({
 	const [zoomLevel, setZoomLevel] = useState(() => getZoom());
 	const [scrollSpeed, setScrollSpeed] = useState(() => getScrollSpeed());
 	const [cliInstallStatus, setCliInstallStatus] = useState<string | null>(null);
+	const [cliArmedInstance, setCliArmedInstance] = useState<string | null>(null);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>(
 		DEFAULT_GLOBAL_SETTINGS,
@@ -660,12 +661,14 @@ function GlobalSettings({
 	const handleInstallDev3Cli = useCallback(async () => {
 		try {
 			setCliInstallStatus(null);
-			const { installedFrom } = await api.request.installDev3Cli();
+			setCliArmedInstance(null);
+			const { installedFrom, selfShimPath, selfInstance } = await api.request.installDev3Cli();
 			setCliInstallStatus(installedFrom);
+			setCliArmedInstance(t("settings.installDev3CliArmed", { shim: selfShimPath, instance: selfInstance }));
 		} catch (error) {
 			setCliInstallStatus(`Error: ${error}`);
 		}
-	}, []);
+	}, [t]);
 
 	function renderCategoryPage(category: SettingsCategoryId): ReactNode {
 		switch (category) {
@@ -782,6 +785,7 @@ function GlobalSettings({
 						<DeveloperToolsSection
 							t={t}
 							cliInstallStatus={cliInstallStatus}
+							cliArmedInstance={cliArmedInstance}
 							onInstallDev3Cli={handleInstallDev3Cli}
 						/>
 					</>

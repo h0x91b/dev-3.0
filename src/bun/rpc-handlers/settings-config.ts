@@ -14,6 +14,7 @@ import { tmux } from "../tmux";
 import { loadSettings, saveSettings } from "../settings";
 import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
+import { writeDev3SelfShim } from "../cli-self-install";
 import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
@@ -187,7 +188,19 @@ async function toggleFavoriteAgent(params: { agentId: string; configId: string }
 	return next;
 }
 
-async function installDev3Cli(): Promise<{ installedFrom: string }> {
+/**
+ * Link this build's CLI to the frozen `~/.dev3.0/bin/dev3`, and arm a sibling
+ * `dev3-self` aimed at THIS instance.
+ *
+ * The two halves answer different questions. `bin/dev3` decides which BINARY
+ * every shell and every agent hook runs — unchanged behavior, and it must stay
+ * instance-neutral. `dev3-self` decides which INSTANCE a human's shell reaches:
+ * a dev build booted by this task's devScript owns its own dev-server, and a
+ * freshly built CLI talking to the installed app is why new flags look broken.
+ * See `writeDev3SelfShim` for why arming the second name — never `bin/dev3` —
+ * is what keeps agent hooks out of a guest instance.
+ */
+async function installDev3Cli(): Promise<{ installedFrom: string; selfShimPath: string; selfInstance: string }> {
 	log.info("→ installDev3Cli");
 	const cliBinDir = `${DEV3_HOME}/bin`;
 	const cliDest = `${cliBinDir}/dev3`;
@@ -199,8 +212,13 @@ async function installDev3Cli(): Promise<{ installedFrom: string }> {
 	try { unlinkSync(cliDest); } catch {}
 	symlinkSync(source, cliDest);
 	chmodSync(cliDest, 0o755);
-	log.info("← installDev3Cli", { from: source, to: cliDest });
-	return { installedFrom: source };
+	// DEV3_TASK_ID is set only when this app instance was itself launched from a
+	// task (a devScript dev build, or `dev3 remote` from an agent pane) — exactly
+	// the "guest" case worth aiming at. The primary app arms `primary`, which is
+	// honest and idempotent rather than a file that quietly means something else.
+	const shim = writeDev3SelfShim(DEV3_HOME, source, process.env.DEV3_TASK_ID || null);
+	log.info("← installDev3Cli", { from: source, to: cliDest, shim: shim.path, selector: shim.selector });
+	return { installedFrom: source, selfShimPath: shim.path, selfInstance: shim.selector };
 }
 
 async function getAgents(): Promise<CodingAgent[]> {

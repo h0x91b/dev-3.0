@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, symlinkSync, realpathSync, lstatSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ensureDev3CliSymlink } from "../cli-self-install";
+import { ensureDev3CliSymlink, writeDev3SelfShim } from "../cli-self-install";
 
 describe("ensureDev3CliSymlink", () => {
 	let root: string;
@@ -108,5 +108,83 @@ describe("ensureDev3CliSymlink", () => {
 		rmSync(join(home, "bin"), { recursive: true, force: true });
 		expect(ensureDev3CliSymlink(home, binExec)).toBe("linked");
 		expect(realpathSync(dest())).toBe(realpathSync(binExec));
+	});
+});
+
+describe("writeDev3SelfShim", () => {
+	let root: string;
+	let home: string;
+	let binExec: string;
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-self-shim-"));
+		home = join(root, "dev3home");
+		mkdirSync(home, { recursive: true });
+		binExec = join(root, "cellar", "dev3");
+		mkdirSync(join(root, "cellar"), { recursive: true });
+		writeFileSync(binExec, "#!/bin/sh\necho dev3\n", { mode: 0o755 });
+	});
+
+	afterEach(() => {
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("pins the task hosting this instance, by task id rather than pid", () => {
+		const task = "6955b1dc-1111-2222-3333-444444444444";
+		const { path, selector } = writeDev3SelfShim(home, binExec, task);
+
+		expect(selector).toBe(`task:${task}`);
+		expect(path).toBe(join(home, "bin", "dev3-self"));
+		const body = readFileSync(path, "utf-8");
+		expect(body).toContain(`--instance task:${task}`);
+		expect(body).toContain(realpathSync(binExec));
+		expect(body).toContain('"$@"');
+	});
+
+	it("arms `primary` when the installing app is not itself hosted by a task", () => {
+		expect(writeDev3SelfShim(home, binExec, null).selector).toBe("primary");
+		expect(readFileSync(join(home, "bin", "dev3-self"), "utf-8")).toContain("--instance primary");
+	});
+
+	it("execs the concrete binary, never the bin/dev3 entry that hooks invoke", () => {
+		// The app hands us the bundled CLI reached through a symlink chain.
+		const indirect = join(root, "brewbin", "dev3");
+		mkdirSync(join(root, "brewbin"), { recursive: true });
+		symlinkSync(binExec, indirect);
+
+		const body = readFileSync(writeDev3SelfShim(home, indirect, null).path, "utf-8");
+		expect(body).toContain(realpathSync(binExec));
+		expect(body).not.toContain(join(home, "bin", "dev3\""));
+	});
+
+	it("dereferences bin/dev3 to the real binary instead of chaining through it", () => {
+		// Handed the very entry agent hooks invoke: follow it, never exec it.
+		ensureDev3CliSymlink(home, binExec);
+		const body = readFileSync(writeDev3SelfShim(home, join(home, "bin", "dev3"), null).path, "utf-8");
+		expect(body).toContain(realpathSync(binExec));
+		expect(body).not.toContain(`"${join(home, "bin", "dev3")}"`);
+	});
+
+	it("refuses a target that really lives in <dev3Home>/bin — that dir is first on PATH (ELOOP, decision 105)", () => {
+		// The Windows/copy layout: bin/dev3 is a concrete file, not a symlink out.
+		mkdirSync(join(home, "bin"), { recursive: true });
+		const copied = join(home, "bin", "dev3");
+		writeFileSync(copied, "#!/bin/sh\necho dev3\n", { mode: 0o755 });
+		expect(() => writeDev3SelfShim(home, copied, null)).toThrow(/would exec itself/);
+	});
+
+	it("is a .cmd on Windows, where a shell shim would not run", () => {
+		const { path } = writeDev3SelfShim(home, binExec, null, "win32");
+		expect(path).toBe(join(home, "bin", "dev3-self.cmd"));
+		expect(readFileSync(path, "utf-8").startsWith("@echo off")).toBe(true);
+	});
+
+	it("leaves the CLI every agent hook invokes untouched", () => {
+		expect(ensureDev3CliSymlink(home, binExec)).toBe("linked");
+		writeDev3SelfShim(home, binExec, "6955b1dc-1111-2222-3333-444444444444");
+
+		// bin/dev3 still resolves to the plain binary — no wrapper, no selector.
+		expect(lstatSync(join(home, "bin", "dev3")).isSymbolicLink()).toBe(true);
+		expect(realpathSync(join(home, "bin", "dev3"))).toBe(realpathSync(binExec));
 	});
 });

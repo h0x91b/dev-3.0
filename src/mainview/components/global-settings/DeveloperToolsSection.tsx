@@ -5,12 +5,15 @@ import SettingsSection from "./SettingsSection";
 interface DeveloperToolsSectionProps {
 	t: TFunction;
 	cliInstallStatus: string | null;
+	/** Localized "dev3-self now points at …" line, shown after a successful install. */
+	cliArmedInstance: string | null;
 	onInstallDev3Cli: () => void;
 }
 
 export default function DeveloperToolsSection({
 	t,
 	cliInstallStatus,
+	cliArmedInstance,
 	onInstallDev3Cli,
 }: DeveloperToolsSectionProps) {
 	return (
@@ -39,6 +42,9 @@ export default function DeveloperToolsSection({
 			<p className="text-fg-muted text-xs mt-1">
 				{t("settings.installDev3CliDesc")}
 			</p>
+			{cliArmedInstance ? (
+				<p className="text-fg-2 text-xs mt-1">{cliArmedInstance}</p>
+			) : null}
 		</SettingsSection>
 		</SettingsEntry>
 	);

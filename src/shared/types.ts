@@ -3856,10 +3856,13 @@ export type AppRPCSchema = {
 				params: { providerKey?: string };
 				response: { models: string[] };
 			};
-			/** Symlink the bundled dev3 CLI to ~/.dev3.0/bin/dev3 (for dev/debug). */
+			/** Symlink the bundled dev3 CLI to ~/.dev3.0/bin/dev3 (for dev/debug), and
+			 *  arm a sibling `dev3-self` aimed at THIS instance (`selfInstance` is the
+			 *  baked-in `--instance` value). `bin/dev3` stays instance-neutral so agent
+			 *  hooks keep resolving as they do today. */
 			installDev3Cli: {
 				params: void;
-				response: { installedFrom: string };
+				response: { installedFrom: string; selfShimPath: string; selfInstance: string };
 			};
 			getAgents: {
 				params: void;

@@ -40,6 +40,11 @@ const GLOBAL_OPTIONS = [
 	"--task <id> / --task-id   Override the target task (else auto-detected from the worktree);",
 	"                          accepts a full id, an id prefix (≥8 chars), or seq:<N> (the stable",
 	"                          per-project number printed by `task create` and shown on cards)",
+	"--instance <sel>          Which running dev3 instance to talk to: self | primary | task:<id> |",
+	"                          seq:<N>. Several instances share ~/.dev3.0 (the installed app plus a",
+	"                          dev build a task's devScript booted); discovery prefers the installed",
+	"                          one, so name the other explicitly. DEV3_CLI_SOCKET=<path> pins the",
+	"                          same thing for a whole shell; --instance wins over it.",
 	"-h, --help                Show help",
 	"-v, --version             Show CLI version",
 ];

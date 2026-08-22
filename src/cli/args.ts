@@ -1,9 +1,43 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { INSTANCE_FLAG } from "../shared/cli-instance";
 
 export interface ParsedArgs {
 	flags: Record<string, string>;
 	positional: string[];
+}
+
+/**
+ * Pull the global `--instance` selector out of the raw argv before any command
+ * parsing happens. It targets a whole invocation rather than one command, so it
+ * must not reach per-command `rejectUnknownFlags` — and help routing must not
+ * see it either. `value` is null when the flag is absent, "" when it was passed
+ * without one (a usage error the caller reports).
+ */
+export function extractInstanceFlag(args: string[]): { rest: string[]; value: string | null } {
+	const rest: string[] = [];
+	let value: string | null = null;
+
+	for (let i = 0; i < args.length; i++) {
+		const arg = args[i];
+		if (arg === INSTANCE_FLAG) {
+			const next = args[i + 1];
+			if (next !== undefined && !next.startsWith("--")) {
+				value = next;
+				i++;
+			} else {
+				value = "";
+			}
+			continue;
+		}
+		if (arg.startsWith(`${INSTANCE_FLAG}=`)) {
+			value = arg.slice(INSTANCE_FLAG.length + 1);
+			continue;
+		}
+		rest.push(arg);
+	}
+
+	return { rest, value };
 }
 
 export function parseArgs(args: string[]): ParsedArgs {

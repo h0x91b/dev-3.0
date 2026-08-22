@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
 import type { Project } from "../shared/types";
 import { parseSocketMeta, socketMetaFileName } from "../shared/socket-meta";
+import type { InstanceSelector } from "../shared/cli-instance";
 import { projectStorageKey, toPosixSeparators } from "../shared/project-storage-key";
 import { resolveUserHome } from "../shared/user-home";
 import { resolveDev3Home } from "../shared/dev3-home";
@@ -289,21 +290,23 @@ export function detectContextDiagnostics(cwd: string = process.cwd()): string {
 }
 
 /**
- * True when the socket's meta sidecar marks a "guest" instance — a dev3 app
- * launched from inside a task context (`hostTaskId` set): the dev-channel build
- * a devScript boots inside the dev-server tmux session, or a headless
- * `dev3 remote` started from an agent pane. Guests share the data dir with the
- * primary app but must not win discovery: routing a stop/restart into a guest
- * hosted by the very dev session being stopped kills it mid-request (the
- * chronic "Empty response from server" / refused-socket failures, #910/#920).
- * No/corrupt sidecar (incl. sockets from older builds) means "primary".
+ * The task hosting this Unix-socket instance, or null for a primary.
+ *
+ * A non-null `hostTaskId` marks a "guest" — a dev3 app launched from inside a
+ * task context: the dev-channel build a devScript boots inside the dev-server
+ * tmux session, or a headless `dev3 remote` started from an agent pane. Guests
+ * share the data dir with the primary app but must not win discovery: routing a
+ * stop/restart into a guest hosted by the very dev session being stopped kills
+ * it mid-request (the chronic "Empty response from server" / refused-socket
+ * failures, #910/#920). No/corrupt sidecar (incl. sockets from older builds)
+ * means "primary".
  */
-function isGuestSocket(socketsDir: string, pid: number): boolean {
+function hostTaskIdOfSocket(socketsDir: string, pid: number): string | null {
 	try {
 		const meta = parseSocketMeta(readFileSync(`${socketsDir}/${socketMetaFileName(pid)}`, "utf-8"));
-		return meta?.hostTaskId != null;
+		return meta?.hostTaskId ?? null;
 	} catch {
-		return false;
+		return null;
 	}
 }
 
@@ -319,6 +322,8 @@ interface EndpointEntry {
 	mtimeMs: number;
 	guest: boolean;
 	unix: boolean;
+	/** Task hosting this instance, or null for a primary. */
+	hostTaskId: string | null;
 }
 
 function readCliEndpointRecord(recordPath: string): CliEndpointRecord | null {
@@ -346,23 +351,23 @@ function describeEndpointEntry(socketsDir: string, file: string, exclude?: Reado
 		mtimeMs = 0;
 	}
 
-	let guest: boolean;
+	let hostTaskId: string | null;
 	if (unix) {
-		guest = isGuestSocket(socketsDir, pid);
+		hostTaskId = hostTaskIdOfSocket(socketsDir, pid);
 	} else {
 		const record = readCliEndpointRecord(socketPath);
 		// A record we cannot parse cannot be dialed — drop it so a corrupt leftover
 		// never wins discovery and blocks a healthy instance behind it.
 		if (!record) return null;
-		guest = record.hostTaskId != null;
+		hostTaskId = record.hostTaskId ?? null;
 	}
 
-	return { pid, socketPath, mtimeMs, guest, unix };
+	return { pid, socketPath, mtimeMs, guest: hostTaskId != null, unix, hostTaskId };
 }
 
 /**
  * Find any live endpoint in a given sockets directory. Primary instances are
- * preferred over guests (see isGuestSocket); within each group a Unix socket
+ * preferred over guests (see hostTaskIdOfSocket); within each group a Unix socket
  * wins over a loopback record (a platform only ever publishes one kind, so this
  * only matters for a leftover from the other), then newest mtime, then highest
  * pid. `exclude` skips endpoints that already failed this invocation (e.g. died
@@ -421,9 +426,130 @@ export function discoverSocketExcluding(excludePaths: string[]): string | null {
 }
 
 /**
- * Get socket path: from context (preferred) or by discovery.
+ * Every endpoint in the sockets dir that is (or may be) alive, newest first —
+ * the raw material for explicit instance targeting. Unlike discovery this does
+ * NOT deprioritize guests: the caller asked for a specific instance by name.
+ */
+function liveEndpoints(): EndpointEntry[] {
+	if (!existsSync(SOCKETS_DIR)) return [];
+	let files: string[] = [];
+	try {
+		files = readdirSync(SOCKETS_DIR);
+	} catch {
+		return [];
+	}
+	return files
+		.map((file) => describeEndpointEntry(SOCKETS_DIR, file))
+		.filter((entry): entry is EndpointEntry => entry !== null && isProbablyAlive(entry.pid))
+		.sort((a, b) => (b.mtimeMs !== a.mtimeMs ? b.mtimeMs - a.mtimeMs : b.pid - a.pid));
+}
+
+/** Alive, or unprobeable (EPERM in a sandbox — may well be alive). */
+function isProbablyAlive(pid: number): boolean {
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (err) {
+		return (err as NodeJS.ErrnoException).code === "EPERM";
+	}
+}
+
+/** Full task ids carrying the given per-project `seq`, across every project. */
+function taskIdsWithSeq(seq: number): string[] {
+	const ids: string[] = [];
+	for (const project of readAllProjectsRaw()) {
+		const tasksFile = `${DEV3_HOME}/data/${projectStorageKey(project.path)}/tasks.json`;
+		if (!existsSync(tasksFile)) continue;
+		try {
+			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string; seq?: number }>;
+			for (const task of tasks) if (task.seq === seq) ids.push(task.id);
+		} catch {
+			// Unreadable data file contributes nothing.
+		}
+	}
+	return ids;
+}
+
+function describeRunningInstances(entries: EndpointEntry[]): string {
+	if (entries.length === 0) return "no dev3 instance is running";
+	return entries
+		.map((e) => `pid ${e.pid} → ${e.hostTaskId ? `task ${e.hostTaskId.slice(0, 8)}` : "primary"}`)
+		.join(", ");
+}
+
+export interface InstanceResolution {
+	socketPath?: string;
+	/** Why the selector matched nothing (or too much) — printed verbatim. */
+	error?: string;
+}
+
+/**
+ * Resolve an explicit {@link InstanceSelector} to one socket path.
+ *
+ * Never falls back to discovery: a human who named an instance and silently got
+ * a different one is exactly the confusion this exists to end. Ambiguity is an
+ * error too — `seq:<N>` is per-project and a variant shares its sibling's seq,
+ * so two live guests can legitimately answer to one number.
+ */
+export function resolveInstanceSocket(selector: InstanceSelector, cwd?: string): InstanceResolution {
+	const entries = liveEndpoints();
+
+	let matches: EndpointEntry[];
+	let label: string;
+	switch (selector.kind) {
+		case "primary":
+			label = "primary";
+			matches = entries.filter((e) => e.hostTaskId === null);
+			break;
+		case "self": {
+			const taskId = detectContext(cwd)?.taskId;
+			if (!taskId) {
+				return {
+					error: "--instance self needs a task context, but this shell is not in a dev3 task "
+						+ "(no worktree/ops path and no DEV3_TASK_ID). Use --instance task:<id> or seq:<N>.",
+				};
+			}
+			label = `self (task ${taskId.slice(0, 8)})`;
+			matches = entries.filter((e) => e.hostTaskId === taskId);
+			break;
+		}
+		case "task":
+			label = `task:${selector.ref}`;
+			matches = entries.filter((e) => e.hostTaskId != null && e.hostTaskId.startsWith(selector.ref));
+			break;
+		case "seq": {
+			label = `seq:${selector.seq}`;
+			const ids = new Set(taskIdsWithSeq(selector.seq));
+			matches = entries.filter((e) => e.hostTaskId != null && ids.has(e.hostTaskId));
+			break;
+		}
+	}
+
+	if (matches.length === 1) return { socketPath: matches[0].socketPath };
+	if (matches.length === 0) {
+		return { error: `No running dev3 instance matches --instance ${label}. Running: ${describeRunningInstances(entries)}.` };
+	}
+	return {
+		error: `--instance ${label} matches ${matches.length} running instances (${describeRunningInstances(matches)}). `
+			+ "Name one with --instance task:<id>.",
+	};
+}
+
+/**
+ * Get socket path: from the DEV3_CLI_SOCKET override, then context (preferred),
+ * then discovery.
+ *
+ * `DEV3_CLI_SOCKET` is the primitive behind `--instance`: an absolute endpoint
+ * path that wins over discovery, so one shell can be aimed at one instance for
+ * a whole session. Nothing in dev3 ever sets it — not the app, not a tmux pane,
+ * not a hook — so agent hooks and onExit commands keep resolving exactly as they
+ * do today. A value that does not exist on disk is ignored rather than fatal,
+ * so a stale export in a long-lived shell degrades to normal discovery.
  */
 export function resolveSocketPath(cwd?: string): string | null {
+	const override = process.env.DEV3_CLI_SOCKET;
+	if (override && existsSync(override)) return override;
+
 	const ctx = detectContext(cwd);
 	if (ctx?.socketPath && existsSync(ctx.socketPath)) {
 		return ctx.socketPath;
@@ -460,11 +586,22 @@ export async function resolveSocketPathWithRetry(
  * can distinguish a real-offline app from a wrong HOME / sandboxed-signal /
  * stale-socket situation instead of guessing. Never throws.
  */
+/**
+ * Name the task behind a deprioritized guest. Without the id the tag said only
+ * that SOMETHING was skipped, leaving a pid as the one thing a human could aim
+ * at — and a pid changes on every dev-server restart.
+ */
+function guestTag(hostTaskId: string | null): string {
+	if (!hostTaskId) return "";
+	return ` [guest instance — deprioritized; hosted by task ${hostTaskId.slice(0, 8)}, reach it with --instance task:${hostTaskId.slice(0, 8)}]`;
+}
+
 export function socketDiagnostics(cwd: string = process.cwd()): string {
 	const lines: string[] = [];
 	lines.push(`  HOME: ${HOME}`);
 	lines.push(`  cwd: ${cwd}`);
 	lines.push(`  sockets dir: ${SOCKETS_DIR}`);
+	if (process.env.DEV3_CLI_SOCKET) lines.push(`  DEV3_CLI_SOCKET: ${process.env.DEV3_CLI_SOCKET}`);
 
 	if (!existsSync(SOCKETS_DIR)) {
 		lines.push(`  sockets dir status: NOT FOUND (app never started, or HOME differs from the app's)`);
@@ -490,14 +627,13 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
 				state = code === "EPERM" ? "EPERM (sandboxed — cannot probe, may be alive)" : "process dead (stale socket)";
 			}
 			if (unix) {
-				const guestTag = !isNaN(pid) && isGuestSocket(SOCKETS_DIR, pid) ? " [guest instance — deprioritized]" : "";
-				lines.push(`  socket ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}${guestTag}`);
+				const host = isNaN(pid) ? null : hostTaskIdOfSocket(SOCKETS_DIR, pid);
+				lines.push(`  socket ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}${guestTag(host)}`);
 			} else {
 				// Never print the token — these diagnostics land in bug reports.
 				const record = readCliEndpointRecord(`${SOCKETS_DIR}/${f}`);
 				const target = record ? `${record.host}:${record.port}` : "UNREADABLE RECORD";
-				const guestTag = record?.hostTaskId ? " [guest instance — deprioritized]" : "";
-				lines.push(`  endpoint ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}, loopback ${target}${guestTag}`);
+				lines.push(`  endpoint ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}, loopback ${target}${guestTag(record?.hostTaskId ?? null)}`);
 			}
 		}
 	}

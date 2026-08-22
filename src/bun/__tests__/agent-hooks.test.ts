@@ -1257,3 +1257,35 @@ describe("writeClaudeHooks write suppression", () => {
 		expect(shared.permissions.allow).toEqual([DEV3_BASH_PERMISSION]);
 	});
 });
+
+describe("generated hook commands stay instance-neutral", () => {
+	function everyCommand(): string[] {
+		const out: string[] = [CODEX_DEV3_HOOK_COMMAND];
+		for (const map of [buildClaudeHooks(), buildCodexHooks()]) {
+			for (const groups of Object.values(map)) {
+				for (const group of groups as MatcherGroup[]) {
+					for (const hook of group.hooks) out.push(hook.command);
+				}
+			}
+		}
+		return out;
+	}
+
+	// Instance targeting is for a HUMAN shell. If it ever leaked into these
+	// strings, every task's status hooks would route into one guest dev-server —
+	// #910/#920 reproduced by construction. The strings also sit in worktrees that
+	// older builds read, where an unknown flag is not even parseable.
+	it("never carries --instance or the armed dev3-self shim", () => {
+		for (const command of everyCommand()) {
+			expect(command).not.toContain("--instance");
+			expect(command).not.toContain("dev3-self");
+		}
+	});
+
+	it("still invokes the CLI through the frozen bin/dev3 path", () => {
+		for (const command of everyCommand()) {
+			expect(command).toContain("dev3");
+		}
+		expect(CODEX_DEV3_HOOK_COMMAND).toContain("~/.dev3.0/bin/dev3");
+	});
+});

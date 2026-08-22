@@ -1,5 +1,5 @@
-import { parseArgs, resolveFileArgs } from "./args";
-import { detectContext, resolveSocketPath, resolveSocketPathWithRetry, socketDiagnostics } from "./context";
+import { extractInstanceFlag, parseArgs, resolveFileArgs } from "./args";
+import { detectContext, resolveInstanceSocket, resolveSocketPath, resolveSocketPathWithRetry, socketDiagnostics } from "./context";
 import { exitAppNotRunning, exitInternalError, exitUsage } from "./output";
 import { handleProjects } from "./commands/projects";
 import { handleTasks } from "./commands/tasks";
@@ -34,7 +34,8 @@ import { handleDoctor } from "./commands/doctor";
 import { handleUpdate } from "./commands/update";
 import { TOLERATE_APP_OFFLINE_FLAG } from "../shared/agent-hooks";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
-import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_INSTANCE_NOT_FOUND, CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
+import { INSTANCE_FLAG, INSTANCE_SELECTOR_SYNTAX, parseInstanceSelector } from "../shared/cli-instance";
 import { installEpipeGuard, isEpipeError } from "./epipe";
 import { resolveHelp } from "./help";
 
@@ -123,8 +124,26 @@ or "dev3 <command> <subcommand> --help" (e.g. "dev3 task create --help") for a s
 `;
 
 
+/**
+ * Turn an `--instance` value into a socket path, or leave. A bad spelling is a
+ * usage error; a well-formed selector nothing answers to is its own exit code,
+ * so a script can tell "I asked for the wrong instance" from "no app running".
+ */
+function resolveRequestedInstance(value: string): string {
+	const selector = parseInstanceSelector(value);
+	if (!selector) {
+		exitUsage(`Invalid ${INSTANCE_FLAG} value "${value}". Expected: ${INSTANCE_SELECTOR_SYNTAX}`);
+	}
+	const { socketPath, error } = resolveInstanceSocket(selector);
+	if (socketPath) return socketPath;
+	process.stderr.write(`${error}\n`);
+	process.exit(CLI_EXIT_CODE_INSTANCE_NOT_FOUND);
+}
+
 async function main(): Promise<void> {
-	const rawArgs = process.argv.slice(2);
+	// `--instance` targets the whole invocation, not one command, so it leaves
+	// argv before help routing and per-command flag validation ever see it.
+	const { rest: rawArgs, value: instanceValue } = extractInstanceFlag(process.argv.slice(2));
 
 	// Every short print-and-exit command may have its stdout closed early by a
 	// downstream consumer (`dev3 … | head`, `| grep -m1`, quitting a pager).
@@ -165,7 +184,10 @@ async function main(): Promise<void> {
 	const tolerateAppOffline = args.flags[TOLERATE_APP_OFFLINE_FLAG.slice(2)] === "true";
 
 	const context = detectContext();
-	let socketPath = resolveSocketPath();
+	// An explicit selector wins over DEV3_CLI_SOCKET, which wins over discovery.
+	// It never falls back: silently reaching a different instance than the one
+	// the human named is the whole confusion this flag exists to end.
+	let socketPath = instanceValue === null ? resolveSocketPath() : resolveRequestedInstance(instanceValue);
 
 	// Commands that work without the app running
 	if (command === "current") {

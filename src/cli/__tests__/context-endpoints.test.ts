@@ -222,12 +222,16 @@ describe("socketDiagnostics with endpoint records", () => {
 		expect(socketDiagnostics("/tmp/somewhere")).toContain("UNREADABLE RECORD");
 	});
 
-	it("marks a guest record as deprioritized", async () => {
+	it("marks a guest record as deprioritized and names the task hosting it", async () => {
 		mockReaddirSync.mockReturnValue(["1600.endpoint.json"]);
 		mockReadFileSync.mockImplementation(() => endpointRecord(1600, { hostTaskId: "task-9" }));
 
 		const { socketDiagnostics } = await import("../context");
 
-		expect(socketDiagnostics("/tmp/somewhere")).toContain("[guest instance — deprioritized]");
+		const out = socketDiagnostics("/tmp/somewhere");
+		expect(out).toContain("guest instance — deprioritized");
+		// A pid changes on every dev-server restart; the task id is what a human can aim at.
+		expect(out).toContain("hosted by task task-9");
+		expect(out).toContain("--instance task:task-9");
 	});
 });
