@@ -298,6 +298,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 				    Only the two claims true of all three tabs live here; "your folder is
 				    untouched" is false on Clone and New, so it sits in the Local tab. */}
 				<div className="bg-raised border border-edge rounded-xl px-3 py-2.5 space-y-1.5 text-fg-3 text-xs leading-5">
+					<p>{t("addProject.safetyBase")}</p>
 					<p>{t("addProject.safetyBranch")}</p>
 					<p>{t("addProject.safetyPush")}</p>
 				</div>

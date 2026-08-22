@@ -265,6 +265,7 @@ const settings = {
 	"addProject.tabInit": "Nuevo",
 	"addProject.browseBtn": "Explorar...",
 	"addProject.safetyWorktree": "dev-3.0 no toca los archivos de la carpeta que eliges. Cada tarea recibe su propio git worktree — una carpeta aparte dentro de ~/.dev3.0 — y todo el trabajo ocurre ahí.",
+	"addProject.safetyBase": "dev-3.0 crea cada tarea a partir de la rama base del proyecto — normalmente main o master, detectada al añadirlo. No necesitas hacer checkout de nada; si tu repositorio está en otra rama, el diálogo de nueva tarea pregunta desde cuál de las dos empezar.",
 	"addProject.safetyBranch": "Cada tarea añade una rama nueva a tu repositorio y solo hace commit en ella. Tu rama activa y tu copia de trabajo quedan como están.",
 	"addProject.safetyPush": "Nada llega al remoto por sí solo. El push ocurre cuando lo pulsas tú o cuando lo ejecuta un agente que hayas iniciado.",
 	"addProject.browseHint": "Selecciona uno o más repositorios git existentes en tu computadora",

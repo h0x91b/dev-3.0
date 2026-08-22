@@ -454,6 +454,7 @@ describe("AddProjectModal", () => {
 	// promise about someone's work monorepo, and it is false on Clone and New, where dev3
 	// clones into or initialises the folder the user picked.
 	describe("blast-radius copy", () => {
+		const baseClaim = /branches every task off this project's base branch/;
 		const branchClaim = /adds a new branch to your repository/;
 		const pushClaim = /Nothing reaches the remote by itself/;
 		const untouchedClaim = /does not touch the files in the folder you pick/;
@@ -462,10 +463,12 @@ describe("AddProjectModal", () => {
 			const user = userEvent.setup();
 			renderModal();
 
+			expect(screen.getByText(baseClaim)).toBeInTheDocument();
 			expect(screen.getByText(branchClaim)).toBeInTheDocument();
 			expect(screen.getByText(pushClaim)).toBeInTheDocument();
 
 			await user.click(screen.getByText("Clone from URL"));
+			expect(screen.getByText(baseClaim)).toBeInTheDocument();
 			expect(screen.getByText(branchClaim)).toBeInTheDocument();
 			expect(screen.getByText(pushClaim)).toBeInTheDocument();
 		});
@@ -488,6 +491,7 @@ describe("AddProjectModal", () => {
 			renderModal();
 			await user.click(screen.getByText("Operations"));
 
+			expect(screen.queryByText(baseClaim)).not.toBeInTheDocument();
 			expect(screen.queryByText(branchClaim)).not.toBeInTheDocument();
 			expect(screen.queryByText(pushClaim)).not.toBeInTheDocument();
 			expect(screen.queryByText(untouchedClaim)).not.toBeInTheDocument();
