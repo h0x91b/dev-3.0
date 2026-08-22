@@ -1993,6 +1993,33 @@ export async function getBehindOriginCount(
 	return parseInt(result.stdout, 10) || 0;
 }
 
+/**
+ * Full messages of the commits this branch adds on top of `baseRef`, oldest
+ * first. Feeds the squash-merge commit message, so it reads `%B` (subject AND
+ * body) and separates records with NUL — a commit body contains blank lines and
+ * anything printable, so no textual delimiter is safe.
+ *
+ * An unresolvable `baseRef` yields `[]` rather than the whole history: the caller
+ * then falls back to the task title, which is far better than pasting every
+ * commit message in the repo into one subject.
+ *
+ * `--no-merges` drops "Merge branch 'main' into feature" — it describes an
+ * integration step, never the work being landed.
+ */
+export async function listBranchCommitMessages(
+	worktreePath: string,
+	baseRef: string,
+): Promise<string[]> {
+	const mergeBase = await run(["git", "merge-base", baseRef, "HEAD"], worktreePath);
+	if (!mergeBase.ok || !mergeBase.stdout) return [];
+	const log = await run(
+		["git", "log", "--reverse", "--no-merges", "--format=%B%x00", `${mergeBase.stdout}..HEAD`],
+		worktreePath,
+	);
+	if (!log.ok) return [];
+	return log.stdout.split("\0").map((m) => m.trim()).filter((m) => m.length > 0);
+}
+
 export async function getUpstreamRef(
 	worktreePath: string,
 ): Promise<string | null> {

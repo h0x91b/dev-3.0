@@ -267,6 +267,70 @@ export function mergeGitOpSpec(opts: {
  * would prepend one on Windows and it would become the first bytes of the
  * commit subject.
  */
-export async function writeMergeCommitMessage(messagePath: string, title: string): Promise<void> {
-	await Bun.write(messagePath, `${title}\n`);
+export async function writeMergeCommitMessage(messagePath: string, message: string): Promise<void> {
+	await Bun.write(messagePath, `${message.replace(/\s+$/, "")}\n`);
+}
+
+/** Longest subject git's own tooling formats without wrapping. */
+const SUBJECT_SOFT_LIMIT = 72;
+
+/** A scratch task's placeholder title (`Scratch — 14:32`) says nothing about the work. */
+const SCRATCH_TITLE = /^Scratch\s+—\s+\d{1,2}:\d{2}$/;
+
+/**
+ * A task title is only a subject when it reads like one. Rejected: empty, the
+ * scratch placeholder, and anything ending in the ellipsis `titleFromDescription`
+ * appends — that mark means the title IS a chopped-off description, which is the
+ * defect this whole module exists to stop. A newline can never reach a subject,
+ * so only the first line is ever considered.
+ */
+function titleAsSubject(taskTitle: string): { subject: string; overLong: boolean } | null {
+	const subject = (taskTitle.split("\n")[0] ?? "").trim();
+	if (!subject) return null;
+	if (SCRATCH_TITLE.test(subject)) return null;
+	if (/[…]$|\.\.\.$/.test(subject)) return null;
+	return { subject, overLong: subject.length > SUBJECT_SOFT_LIMIT };
+}
+
+function subjectOf(commitMessage: string): string {
+	return (commitMessage.split("\n")[0] ?? "").trim();
+}
+
+/**
+ * The squash-merge commit message, built from what git and the task already know.
+ *
+ * NO GENERATION, by requirement: every branch of this either copies a commit
+ * message the author wrote or copies the task title, and the previous behaviour —
+ * `task.title`, which is the first 80 characters of the task DESCRIPTION whenever
+ * no one renamed the task — is what put 86 truncated prose fragments with a
+ * trailing ellipsis into this repo's own main.
+ *
+ * `commits` are the branch's commits, oldest first, full `%B` bodies.
+ *  - exactly one → reuse it verbatim, subject and body. The author already wrote
+ *    the message for this change; re-deriving it can only lose information.
+ *  - several → the task title is the subject, the commit subjects are the body.
+ *  - a title that is not subject-shaped (see `titleAsSubject`) falls back to the
+ *    first commit's subject, and an over-long title yields to one too — but is
+ *    used in full when there is no commit to borrow from. Never truncated.
+ *  - nothing usable at all (no commits, no title) → `Merge <branch>`.
+ */
+export function buildMergeCommitMessage(opts: {
+	commits: string[];
+	taskTitle: string;
+	branchName: string;
+}): string {
+	const commits = opts.commits.map((c) => c.replace(/\s+$/, "")).filter((c) => c.trim().length > 0);
+	if (commits.length === 1) return `${commits[0]!.trim()}\n`;
+
+	const commitSubjects = commits.map(subjectOf).filter(Boolean);
+	const title = titleAsSubject(opts.taskTitle);
+	const fallback = commitSubjects[0] ?? `Merge ${opts.branchName}`;
+	const subject = !title
+		? fallback
+		: title.overLong && commitSubjects.length > 0
+			? commitSubjects[0]!
+			: title.subject;
+
+	const body = commitSubjects.length > 1 ? commitSubjects.map((s) => `- ${s}`).join("\n") : "";
+	return body ? `${subject}\n\n${body}\n` : `${subject}\n`;
 }
