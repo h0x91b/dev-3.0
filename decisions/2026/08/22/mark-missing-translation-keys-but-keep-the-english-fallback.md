@@ -62,6 +62,15 @@ reason about, and no shipped build behaves differently from the one you develop 
 - **Mark the English fallback too** (`"Add task ⟨en⟩"`). The literal reading of the
   request, and it closes the last hole — rejected for the blast radius on every
   non-English screen in production.
+
+  This one was put twice. It was offered up front as an option and not taken; then, during
+  review, the question was re-put with both screen outcomes named explicitly — that taking
+  the current route means a key present in English but missing from `ru` renders an
+  **unmarked** English string, which the literal request arguably does not permit. It was
+  confirmed by endorsing the coordinator's recommendation to keep the current route, not by
+  restating the choice, so read the strength of that confirmation accordingly. The reason
+  on record is the coordinator's and this author's, not the requester's: brackets around
+  live English text in production are noise in front of a real user.
 - **Loud in dev, plain key in production.** Rejected: a shipped hole would then be
   invisible to users *and* to us in a release build, and the divergence is untestable
   because vitest always reports `DEV`.
