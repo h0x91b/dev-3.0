@@ -963,6 +963,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</span>
 					</Tooltip>
 				)}
+				{/* A PR review is an ordinary task with a job, so it is named and not
+				    boxed — no border, nothing that competes with the coordinator's. */}
+				{task.taskType === "pr-review" && (
+					<Tooltip content={t("task.prReviewBadge")} detail={t("task.prReviewHint")}>
+						<span
+							data-testid="task-card-pr-review-badge"
+							className="flex-shrink-0 text-dense font-semibold uppercase tracking-[0.06em] text-fg-3"
+						>
+							{t("task.prReviewBadge")}
+						</span>
+					</Tooltip>
+				)}
 				{isDraft && (
 					<Tooltip content={t("task.draftBadge")} detail={t("task.draftHint")}>
 						<span

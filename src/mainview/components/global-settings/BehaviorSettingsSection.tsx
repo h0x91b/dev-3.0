@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { COORDINATOR_PROMPT, type GlobalSettings } from "../../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, type GlobalSettings } from "../../../shared/types";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
@@ -48,7 +48,7 @@ export default function BehaviorSettingsSection({
 	onReviewModePromptChange,
 	onCoordinatorPromptChange,
 }: BehaviorSettingsSectionProps) {
-	const builtinReviewPrompt = t("createTask.reviewPrompt");
+	const builtinReviewPrompt = DEFAULT_PR_REVIEW_PROMPT;
 	// Edited locally and persisted on blur — a save per keystroke would rewrite
 	// settings.json on every character.
 	const [reviewPrompt, setReviewPrompt] = useState(

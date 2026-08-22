@@ -2,14 +2,15 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { GlobalSettings } from "../../../../shared/types";
+import { DEFAULT_PR_REVIEW_PROMPT } from "../../../../shared/types";
 import { I18nProvider, type TFunction } from "../../../i18n";
 import BehaviorSettingsSection from "../BehaviorSettingsSection";
 
-// Stub translator: keys through, except the built-in prompt whose real text is
-// what "reset to default" has to restore.
-const BUILTIN_PROMPT = "Review the code changes on this branch.";
-const t = ((key: string) =>
-	key === "createTask.reviewPrompt" ? BUILTIN_PROMPT : key) as unknown as TFunction;
+// Stub translator: keys straight through. The built-in review prompt is no longer
+// a translation — one English constant serves both the create flow and the CLI —
+// so "reset to default" has to restore exactly that constant.
+const BUILTIN_PROMPT = DEFAULT_PR_REVIEW_PROMPT;
+const t = ((key: string) => key) as unknown as TFunction;
 
 function renderSection(
 	settings: Partial<GlobalSettings> = {},

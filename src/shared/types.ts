@@ -259,12 +259,13 @@ export function comparePriority(
 // ---- Task type ----
 
 /**
- * Every task type that carries persisted behaviour. Only one exists: the
- * coordinator. The PR-review preset deliberately stays prompt-only — it changes
- * what the agent is told and nothing about the task, so storing it would add a
- * value no code branches on. A second entry belongs here the day it does.
+ * Every task type dev3 stores. `coordinator` runs the other tasks; `pr-review`
+ * looks at someone's changes. They are not equally loud on purpose: a coordinator
+ * is marked with a border and lifted above every priority, while a PR review is
+ * only named on the card — it is an ordinary task with a job, not a task that
+ * outranks the board.
  */
-export const TASK_TYPES = ["coordinator"] as const;
+export const TASK_TYPES = ["coordinator", "pr-review"] as const;
 
 export type TaskType = (typeof TASK_TYPES)[number];
 
@@ -429,6 +430,26 @@ As the very last step (after any commits), you MUST hand the task back to the us
     dev3 task move --status review-by-user
 
 Do not skip this step. Move the task exactly once, at the end.`;
+
+/**
+ * Preamble the PR-review task-type preset injects into a new task's description.
+ * English-only for the same reason as {@link COORDINATOR_PROMPT}: an agent reads
+ * it, one copy has to serve both the create flow and `dev3 task update --type`,
+ * and the bun side cannot reach the renderer's translations. Overridable in
+ * Settings and per project for anyone who wants it in their own language.
+ */
+export const DEFAULT_PR_REVIEW_PROMPT = `Review the code changes on this branch.
+
+Your task is to perform a thorough code review — do NOT modify any code.
+
+Start by analyzing what was changed, then evaluate:
+- Correctness and potential bugs
+- Adherence to the repository's conventions and best practices
+- Code clarity, naming, and structure
+- Edge cases and error handling
+- Security considerations
+
+Provide a structured review with actionable feedback.`;
 
 /**
  * Preamble the Coordinator task-type preset injects into a new task's
@@ -1551,6 +1572,21 @@ export function resolvePresetPrompt(
 ): string {
 	const set = (value: string | undefined) => (value && value.trim() ? value : undefined);
 	return set(projectValue) ?? set(globalValue) ?? builtinDefault;
+}
+
+/**
+ * The preamble a task type puts above the user's own text: project override,
+ * then app-wide setting, then the built-in default. One function so the create
+ * flow and `dev3 task update --type` can never disagree about what a type means.
+ */
+export function presetPromptForTaskType(
+	type: TaskType,
+	project: Pick<Project, "coordinatorPrompt" | "reviewModePrompt">,
+	settings: Pick<GlobalSettings, "coordinatorPrompt" | "reviewModePrompt"> | null | undefined,
+): string {
+	return type === "coordinator"
+		? resolvePresetPrompt(project.coordinatorPrompt, settings?.coordinatorPrompt, COORDINATOR_PROMPT)
+		: resolvePresetPrompt(project.reviewModePrompt, settings?.reviewModePrompt, DEFAULT_PR_REVIEW_PROMPT);
 }
 
 /** Divider between a preset preamble and the user's own text in a description. */

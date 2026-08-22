@@ -535,6 +535,21 @@ describe("task update", () => {
 		expect(stderrOutput).toContain("could NOT tell the running agent");
 	});
 
+	it("sends --type pr-review", async () => {
+		mockSend.mockResolvedValue(okResp({
+			task: { ...FAKE_TASK, taskType: "pr-review" },
+			titlePreserved: false,
+			roleDelivery: "no-session",
+		}));
+
+		await handleTask("update", args(["aaaaaaaa"], { type: "pr-review" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
+			taskId: "aaaaaaaa",
+			taskType: "pr-review",
+		});
+	});
+
 	it("rejects an unknown --type before sending", async () => {
 		await expect(
 			handleTask("update", args(["aaaaaaaa"], { type: "overlord" }), SOCKET, null),

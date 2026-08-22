@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { COORDINATOR_PROMPT, DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, resolvePresetPrompt, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority } from "../../shared/types";
+import { DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority, type TaskType } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
@@ -34,9 +34,9 @@ type SubmitMode = "save" | "run" | "scratch" | "draft";
  * preamble is injected into the description, so the choice lives only for the
  * lifetime of this form and the created task keeps the text it was given.
  */
-type PresetTaskType = "coordinator" | "review";
+type PresetTaskType = TaskType;
 type TaskTypeChoice = "standard" | PresetTaskType;
-const PRESET_TASK_TYPES: readonly TaskTypeChoice[] = ["standard", "coordinator", "review"];
+const PRESET_TASK_TYPES: readonly TaskTypeChoice[] = ["standard", "coordinator", "pr-review"];
 
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
@@ -215,9 +215,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	}, []);
 
 	function presetPrompt(type: PresetTaskType, settings: GlobalSettings | null): string {
-		return type === "coordinator"
-			? resolvePresetPrompt(project.coordinatorPrompt, settings?.coordinatorPrompt, COORDINATOR_PROMPT)
-			: resolvePresetPrompt(project.reviewModePrompt, settings?.reviewModePrompt, t("createTask.reviewPrompt"));
+		return presetPromptForTaskType(type, project, settings);
 	}
 
 	/** Same value, but safe to call before the settings fetch has landed. */
@@ -265,8 +263,8 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				// Strip the URL out of the description, then fold the remaining text
 				// into the review prompt — the URL was the paste, not the task text.
 				const cleaned = description.replace(detectedPr.url, "").replace(/\n{3,}/g, "\n\n").trim();
-				setDescription(withPresetPrompt(cleaned, await ensurePresetPrompt("review")));
-				setTaskType("review");
+				setDescription(withPresetPrompt(cleaned, await ensurePresetPrompt("pr-review")));
+				setTaskType("pr-review");
 				setSelectedBranch(result.branch);
 				setDismissedPrUrl(null);
 			} else {
@@ -427,7 +425,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				...(priority !== DEFAULT_PRIORITY ? { priority } : {}),
 				// Only the coordinator preset is a persisted task type — PR review changes
 				// the prompt and nothing about the task (see TASK_TYPES).
-				...(taskType === "coordinator" ? { taskType: "coordinator" as const } : {}),
+				...(taskType !== "standard" ? { taskType } : {}),
 			});
 			// The task is now persisted on disk. Make it visible on the board
 			// IMMEDIATELY — a task created into "todo" pushes no taskUpdated, so
@@ -925,12 +923,12 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 							setSelectedBranch(branch);
 							setBranchTouched(true);
 							// PR review has nothing to review without a branch.
-							if (!branch && taskType === "review") {
+							if (!branch && taskType === "pr-review") {
 								void handleTaskTypeChange("standard");
 							}
 						}}
-						isPrReview={taskType === "review"}
-						onPrResolved={() => void handleTaskTypeChange("review")}
+						isPrReview={taskType === "pr-review"}
+						onPrResolved={() => void handleTaskTypeChange("pr-review")}
 					/>
 				)}
 
@@ -1125,17 +1123,17 @@ interface TaskTypePickerProps {
  */
 function TaskTypePicker({ value, onChange, reviewAvailable, reviewEnabled }: TaskTypePickerProps) {
 	const t = useT();
-	const options = PRESET_TASK_TYPES.filter((type) => type !== "review" || reviewAvailable);
-	const isEnabled = (type: TaskTypeChoice) => type !== "review" || reviewEnabled;
+	const options = PRESET_TASK_TYPES.filter((type) => type !== "pr-review" || reviewAvailable);
+	const isEnabled = (type: TaskTypeChoice) => type !== "pr-review" || reviewEnabled;
 	const labelKey = {
 		standard: "createTask.taskTypeStandard",
 		coordinator: "createTask.taskTypeCoordinator",
-		review: "createTask.taskTypeReview",
+		"pr-review": "createTask.taskTypeReview",
 	} as const;
 	const hintKey = {
 		standard: "createTask.taskTypeStandardHint",
 		coordinator: "createTask.taskTypeCoordinatorHint",
-		review: "createTask.reviewModeHint",
+		"pr-review": "createTask.reviewModeHint",
 	} as const;
 
 	return (
@@ -1175,7 +1173,7 @@ function TaskTypePicker({ value, onChange, reviewAvailable, reviewEnabled }: Tas
 			</div>
 			</div>
 			<p className="text-xs text-fg-3">
-				{value === "review" && !reviewEnabled ? t("createTask.taskTypeReviewNeedsBranch") : t(hintKey[value])}
+				{value === "pr-review" && !reviewEnabled ? t("createTask.taskTypeReviewNeedsBranch") : t(hintKey[value])}
 			</p>
 		</div>
 	);

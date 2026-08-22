@@ -1883,8 +1883,8 @@ describe("CreateTaskModal — task type presets", () => {
 		await userEvent.click(await screen.findByTestId("task-type-coordinator"));
 		await waitFor(() => expect(description().value).toContain("COORDINATOR"));
 
-		await waitFor(() => expect(screen.getByTestId("task-type-review")).toBeEnabled());
-		await userEvent.click(screen.getByTestId("task-type-review"));
+		await waitFor(() => expect(screen.getByTestId("task-type-pr-review")).toBeEnabled());
+		await userEvent.click(screen.getByTestId("task-type-pr-review"));
 		await waitFor(() => expect(description().value).toContain("thorough code review"));
 		expect(description().value).not.toContain("COORDINATOR");
 		expect(description().value).toMatch(/\n\n---\n\nmine$/);
@@ -1900,13 +1900,13 @@ describe("CreateTaskModal — task type presets", () => {
 
 	it("offers PR review only once a branch exists — a review needs something to review", async () => {
 		renderModal();
-		expect(await screen.findByTestId("task-type-review")).toBeDisabled();
+		expect(await screen.findByTestId("task-type-pr-review")).toBeDisabled();
 	});
 
 	it("hides PR review entirely on a virtual project, where no branch can ever exist", async () => {
 		renderModal({ project: { ...mockProject, kind: "virtual" } });
 		expect(await screen.findByTestId("task-type-coordinator")).toBeInTheDocument();
-		expect(screen.queryByTestId("task-type-review")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("task-type-pr-review")).not.toBeInTheDocument();
 	});
 
 	it("names the task after the user's own text, not the preamble", async () => {

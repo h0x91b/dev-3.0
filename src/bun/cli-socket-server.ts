@@ -4,7 +4,7 @@ import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATI
 import { agentReplyRef } from "../shared/agent-message-envelope";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, COORDINATOR_PROMPT, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, resolvePresetPrompt, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import type { DeepLinkNav } from "../shared/deep-link";
@@ -696,22 +696,22 @@ const handlers: Record<string, Handler> = {
 			}
 			if ((task.taskType ?? null) !== next) {
 				const settings = await loadSettings();
-				const preamble = resolvePresetPrompt(
-					project.coordinatorPrompt,
-					settings.coordinatorPrompt,
-					COORDINATOR_PROMPT,
-				);
 				const base = (updates.description as string | undefined) ?? task.description;
-				// Strip first in both directions, so a repeated conversion cannot stack
-				// two copies of a 40-line preamble onto one description.
-				const ownText = withoutPresetPrompt(base, preamble);
+				// Strip EVERY type's preamble before building, so switching between two
+				// roles cannot leave the old brief behind, and a repeat cannot stack two
+				// copies of a 40-line preamble onto one description.
+				let ownText = base;
+				for (const type of TASK_TYPES) {
+					ownText = withoutPresetPrompt(ownText, presetPromptForTaskType(type, project, settings));
+				}
 				updates.taskType = next;
-				updates.description = next === "coordinator" ? withPresetPrompt(ownText, preamble) : ownText;
+				const preamble = next ? presetPromptForTaskType(next, project, settings) : null;
+				updates.description = preamble ? withPresetPrompt(ownText, preamble) : ownText;
 				taskTypeChange = {
 					next,
-					agentPrompt: next === "coordinator"
-						? `Your role just changed: you are now the COORDINATOR of this board. Everything below is your standing instruction from here on, and it replaces any earlier instruction to do the work yourself.\n\n${preamble}`
-						: "Your role just changed: you are no longer the coordinator of this board. The coordinator instructions you were given no longer apply — you are an ordinary task agent again and may do the work yourself.",
+					agentPrompt: preamble
+						? `Your role just changed: this task is now ${next === "coordinator" ? "the COORDINATOR of this board" : "a PR REVIEW"}. Everything below is your standing instruction from here on, and it replaces any earlier instruction about what this task is.\n\n${preamble}`
+						: "Your role just changed: this task no longer carries a special role. The role brief you were given no longer applies — you are an ordinary task agent again and may do the work yourself.",
 				};
 			}
 		}

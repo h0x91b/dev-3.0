@@ -4,7 +4,7 @@ import { confirm } from "../confirm";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
-import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolvePresetPrompt } from "../../shared/types";
+import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolvePresetPrompt } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -1268,7 +1268,7 @@ function ProjectSettings({
 	const initialCoordinatorPromptRef = useRef(project?.coordinatorPrompt ?? "");
 	const [globalCoordinatorPrompt, setGlobalCoordinatorPrompt] = useState<string | undefined>(undefined);
 	const [globalReviewModePrompt, setGlobalReviewModePrompt] = useState<string | undefined>(undefined);
-	const inheritedReviewModePrompt = resolvePresetPrompt(undefined, globalReviewModePrompt, t("createTask.reviewPrompt"));
+	const inheritedReviewModePrompt = resolvePresetPrompt(undefined, globalReviewModePrompt, DEFAULT_PR_REVIEW_PROMPT);
 	const inheritedCoordinatorPrompt = resolvePresetPrompt(undefined, globalCoordinatorPrompt, COORDINATOR_PROMPT);
 
 	// Load available agents

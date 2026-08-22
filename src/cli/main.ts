@@ -47,7 +47,7 @@ Commands:
                                          (always shows current overview; --notes inlines note bodies, --history shows title/overview change log)
   dev3 task move [--task <id>] --status <status>  Change task status
   dev3 task terminal-backend [--task <id>] [--to tmux|native]  Inspect/switch this task's terminal backend
-  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|standard]  Update task fields
+  dev3 task update [--task <id>] --title "..." [--description "..." | --description -] [--manual-completion on|off] [--type coordinator|pr-review|standard]  Update task fields
   dev3 task create --title "..." [--description "..." | --description -]  Create a new task (To Do)
   dev3 note add "..." [--content "..."] [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes

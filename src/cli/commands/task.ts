@@ -110,7 +110,9 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 			"Type:",
 			task.taskType === "coordinator"
 				? "coordinator — manages other tasks, never auto-completes, sorts above every priority"
-				: task.taskType,
+				: task.taskType === "pr-review"
+					? "pr-review — reviews someone else's changes on this branch"
+					: task.taskType,
 		]);
 	}
 	// A coordinator owns its completion whether or not the flag is set.
@@ -213,7 +215,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "type", "force"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|standard]");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|standard]");
 	}
 
 	const params: Record<string, unknown> = { taskId };

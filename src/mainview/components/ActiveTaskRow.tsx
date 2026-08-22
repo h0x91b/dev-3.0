@@ -326,6 +326,15 @@ export default function ActiveTaskRow({
 								{t("task.coordinatorBadge")}
 							</span>
 						)}
+						{task.taskType === "pr-review" && (
+							<span
+								data-testid="sidebar-pr-review-badge"
+								title={t("task.prReviewHint")}
+								className="inline-flex flex-shrink-0 items-center text-nano font-semibold uppercase tracking-[0.06em] text-fg-3"
+							>
+								{t("task.prReviewBadge")}
+							</span>
+						)}
 						{task.hibernated && (
 							<span
 								data-testid="sidebar-hibernated-badge"

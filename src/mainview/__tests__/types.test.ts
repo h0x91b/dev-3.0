@@ -732,8 +732,16 @@ describe("task type", () => {
 	it("recognises only known types, case-insensitively", () => {
 		expect(normalizeTaskType("coordinator")).toBe("coordinator");
 		expect(normalizeTaskType("  Coordinator ")).toBe("coordinator");
+		expect(normalizeTaskType("pr-review")).toBe("pr-review");
 		expect(normalizeTaskType("standard")).toBeNull();
 		expect(normalizeTaskType("review")).toBeNull();
+	});
+
+	// The two stored types are deliberately not equally loud.
+	it("gives a PR review none of the coordinator's powers", () => {
+		expect(taskCompletesManually({ taskType: "pr-review" })).toBe(false);
+		expect(compareTaskSortRank({ priority: "P3", taskType: "pr-review" }, { priority: "P0" }))
+			.toBeGreaterThan(0);
 	});
 
 	it("says a coordinator completes by hand even with the flag unset", () => {

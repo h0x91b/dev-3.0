@@ -83,7 +83,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|standard]',
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off] [--type coordinator|pr-review|standard]',
 				summary: "Update a task's title, description, priority, completion policy, or type.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
@@ -91,7 +91,7 @@ const COMMANDS: CommandHelp[] = [
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest); applies to the whole variant group.",
 					"                      Only set priority when the user asks — never on your own initiative.",
 					"--manual-completion on|off  Control whether merge detection suggests completing this task.",
-					"--type coordinator|standard  Promote the task to board coordinator, or demote it back.",
+					"--type coordinator|pr-review|standard  Set the task's type, or clear it with standard.",
 					"                      Rewrites the description's role preamble and tells a running agent,",
 					"                      so the badge never claims a role the agent was not given.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",

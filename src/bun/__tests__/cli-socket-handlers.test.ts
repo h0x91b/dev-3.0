@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
-import { COORDINATOR_PROMPT, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact, type SharedImage } from "../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact, type SharedImage } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -1789,7 +1789,31 @@ describe("task.update", () => {
 			const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
 			expect(updates.taskType).toBeNull();
 			expect(updates.description).toBe("coordinate my board");
-			expect(vi.mocked(deliverAgentPrompt).mock.calls[0]![1]).toContain("no longer the coordinator");
+			expect(vi.mocked(deliverAgentPrompt).mock.calls[0]![1]).toContain("no longer carries a special role");
+		});
+
+		it("swaps one role's preamble for the other without leaving the old brief", async () => {
+			const project = makeProject();
+			const task = makeTask({
+				taskType: "coordinator",
+				description: withPresetPrompt("look at this branch", COORDINATOR_PROMPT),
+			});
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.loadTasks).mockResolvedValue([task]);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+
+			const resp = await handleRequest(makeRequest("task.update", {
+				taskId: task.id,
+				projectId: project.id,
+				taskType: "pr-review",
+			}));
+
+			expect(resp.ok).toBe(true);
+			const updates = vi.mocked(data.updateTask).mock.calls[0]![2] as Partial<Task>;
+			expect(updates.taskType).toBe("pr-review");
+			expect(updates.description!.startsWith(DEFAULT_PR_REVIEW_PROMPT)).toBe(true);
+			expect(updates.description).not.toContain(COORDINATOR_PROMPT);
+			expect(updates.description!.endsWith("look at this branch")).toBe(true);
 		});
 
 		it("says plainly when there is no session to tell", async () => {

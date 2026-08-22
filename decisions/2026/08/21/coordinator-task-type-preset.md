@@ -65,9 +65,21 @@ exactly three things:
   because the dashed border loses to the selection ring when a task is open in a
   split.
 
-`"review"` is deliberately NOT a task type. The PR-review preset changes what the
-agent is told and nothing about the task, so storing it would add an enum value
-no code branches on — and a `--type review` the CLI accepts and ignores.
+`pr-review` is the second stored type, added on the user's request once the first
+one existed. The two are deliberately not equally loud: a coordinator gets the
+border, the chip and the sort lift; a PR review is only named on the card, with no
+border and no rank change, because it is an ordinary task with a job rather than a
+task that outranks the board. Nothing keys behaviour off it — it exists so the
+board can say what a task is, and so `--type` can move a task between the two.
+
+Adding it forced one merge: the built-in review preamble used to be a translated
+string (`createTask.reviewPrompt`), which the bun side cannot read. It is now
+`DEFAULT_PR_REVIEW_PROMPT`, an English constant beside `COORDINATOR_PROMPT`, and
+the three locale copies are gone. Same reasoning as the coordinator prompt — an
+agent reads it, and one copy has to serve both the create flow and the CLI — plus
+the new one that two paths resolving "the built-in review prompt" differently
+would be a silent divergence. Users who want it in their language override it in
+Settings.
 
 **Conversion, and why it is not just a field write.** `dev3 task update --type
 coordinator|standard` (CLI socket `task.update`) does three things in one step:

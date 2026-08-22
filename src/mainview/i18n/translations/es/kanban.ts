@@ -74,10 +74,11 @@ const kanban = {
 	"createTask.taskTypeCoordinatorHint": "Pone un brief de coordinador sobre tu texto: gestionas otras tareas y nunca tocas el código.",
 	"createTask.taskTypeReviewNeedsBranch": "Elige una rama primero — una revisión de PR necesita algo que revisar.",
 	"createTask.reviewModeHint": "Rellena la descripción con un prompt de revisión de código",
-	"createTask.reviewPrompt": "Revisa los cambios de código en esta rama.\n\nTu tarea es realizar una revisión exhaustiva del código — NO modifiques ningún código.\n\nComienza analizando qué se cambió, luego evalúa:\n- Corrección y posibles errores\n- Cumplimiento de las convenciones y mejores prácticas del repositorio\n- Claridad del código, nombres y estructura\n- Casos límite y manejo de errores\n- Consideraciones de seguridad\n\nProporciona una revisión estructurada con comentarios accionables.",
 
 	// TaskCard
 	"task.moveTo": "Mover a",
+	"task.prReviewBadge": "Revisión de PR",
+	"task.prReviewHint": "Revisa los cambios de otra persona en esta rama.",
 	"task.coordinatorBadge": "Coordinador",
 	"task.coordinatorHint": "Dirige las demás tareas en vez de escribir código. Siempre arriba, y tú decides cuándo termina.",
 	"task.manualCompletionCoordinatorTooltip": "Un coordinador siempre se completa a mano",
