@@ -11,6 +11,7 @@ import en from "./translations/en";
 import ru from "./translations/ru";
 import es from "./translations/es";
 import { interpolate, getPluralForm } from "./interpolate";
+import { markMissingKey, warnMissingKey } from "./missing-key";
 
 const STORAGE_KEY = "dev3-locale";
 
@@ -45,7 +46,11 @@ export function translate(
 	vars?: Record<string, string | number>,
 ): string {
 	if (activeT) return activeT(key, vars);
-	const template = en[key] ?? key;
+	const template = (en as Record<string, string>)[key];
+	if (template === undefined) {
+		warnMissingKey(key, "en", "missing");
+		return markMissingKey(key);
+	}
 	return vars ? interpolate(template, vars) : template;
 }
 
@@ -66,9 +71,17 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 	const t = useCallback(
 		(key: TranslationKey, vars?: Record<string, string | number>) => {
-			const dict = translationSets[locale];
-			const template = dict[key] ?? en[key] ?? key;
-			return vars ? interpolate(template, vars) : template;
+			const own = translationSets[locale][key];
+			if (own !== undefined) return vars ? interpolate(own, vars) : own;
+
+			const fallback = (en as Record<string, string>)[key];
+			if (fallback !== undefined) {
+				warnMissingKey(key, locale, "fallback-to-en");
+				return vars ? interpolate(fallback, vars) : fallback;
+			}
+
+			warnMissingKey(key, locale, "missing");
+			return markMissingKey(key);
 		},
 		[locale],
 	) as TFunction;
@@ -79,16 +92,29 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 		vars?: Record<string, string | number>,
 	) => {
 		const dict = translationSets[locale];
+		const enDict = en as Record<string, string>;
 		const form = getPluralForm(count, locale);
 		const suffixedKey = `${baseKey}_${form}`;
-		const template =
-			dict[suffixedKey] ??
-			dict[`${baseKey}_other`] ??
-			(en as Record<string, string>)[suffixedKey] ??
-			(en as Record<string, string>)[`${baseKey}_other`] ??
-			baseKey;
-		const mergedVars = { count, ...vars };
-		return interpolate(template, mergedVars);
+
+		const exact = dict[suffixedKey];
+		if (exact !== undefined) return interpolate(exact, { count, ...vars });
+
+		// The exact plural form is absent — every remaining branch renders a
+		// grammatically wrong or wrong-language string, so say so in dev.
+		const sameLocaleOther = dict[`${baseKey}_other`];
+		if (sameLocaleOther !== undefined) {
+			warnMissingKey(suffixedKey, locale, "wrong-plural-form");
+			return interpolate(sameLocaleOther, { count, ...vars });
+		}
+
+		const english = enDict[suffixedKey] ?? enDict[`${baseKey}_other`];
+		if (english !== undefined) {
+			warnMissingKey(suffixedKey, locale, "fallback-to-en");
+			return interpolate(english, { count, ...vars });
+		}
+
+		warnMissingKey(suffixedKey, locale, "missing");
+		return markMissingKey(suffixedKey);
 	};
 
 	activeT = t;
