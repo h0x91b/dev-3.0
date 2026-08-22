@@ -77,7 +77,7 @@ export const tooltips = {
 	"ttip.sidebar.scopeProject": "Show active tasks from this project only.",
 	"ttip.sidebar.scopeGlobal": "Show active tasks from every project — cards get a project badge.",
 	"ttip.sidebar.scopeSpace": "Tasks from every project sharing a space with this one.",
-	"ttip.sidebar.scopeSpaceDisabled": "This project is in no space — add it to one in Project Settings.",
+	"ttip.sidebar.scopeSpaceDisabled": "This project is in no space, so there is nothing wider to show. Add it to one in Project Settings, or with the Spaces… button on its Dashboard row.",
 	"ttip.sidebar.hide": "The terminal takes the full width. Bring the panel back with the same icon at the top right of the task toolbar.",
 	"ttip.filter.funnel": "Filter the list by priority, status, labels or agent. Checked values become tokens in the search field.",
 

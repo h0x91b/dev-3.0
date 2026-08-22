@@ -35,12 +35,13 @@ function statusTint(hex: string, alpha: number): string {
 	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function readScope(): SidebarScope {
+/** null = the user never picked a scope, so the default is derived per project. */
+function readScope(): SidebarScope | null {
 	try {
 		const v = localStorage.getItem(LS_SIDEBAR_SCOPE);
 		if (v === "global" || v === "project" || v === "space") return v;
 	} catch { /* ignore */ }
-	return "project";
+	return null;
 }
 
 function writeScope(scope: SidebarScope) {
@@ -82,15 +83,18 @@ const STATUS_ORDER: TaskStatus[] = [
  * Nerd Font scope glyph: outline variant by default, filled variant when the
  * scope is active. Both glyphs stay mounted and cross-fade, so the swap
  * animates in both directions without a motion dependency.
+ *
+ * `struck` strikes the glyph through — the button's own `line-through` cannot
+ * reach here, an inline-flex box stops text-decoration propagation.
  */
-function ScopeGlyph({ outline, filled, active }: { outline: string; filled: string; active: boolean }) {
+function ScopeGlyph({ outline, filled, active, struck }: { outline: string; filled: string; active: boolean; struck?: boolean }) {
 	const motion = "transition-[opacity,filter,scale] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none";
 	const shown = "scale-100 opacity-100 blur-0";
 	const hidden = "scale-[0.25] opacity-0 blur-[4px]";
 	return (
 		<span
 			aria-hidden
-			className="relative inline-flex items-center justify-center text-sm leading-none"
+			className={`relative inline-flex items-center justify-center text-sm leading-none ${struck ? "line-through" : ""}`}
 			style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 		>
 			<span className={`${motion} ${active ? hidden : shown}`}>{outline}</span>
@@ -137,7 +141,7 @@ function ActiveTasksSidebar({
 		const id = setInterval(() => setNow(Date.now()), 1000);
 		return () => clearInterval(id);
 	}, []);
-	const [scope, setScopeState] = useState<SidebarScope>(readScope);
+	const [scope, setScopeState] = useState<SidebarScope | null>(readScope);
 	const [globalTasks, setGlobalTasks] = useState<Task[]>([]);
 	const [globalLoading, setGlobalLoading] = useState(false);
 	const searchRef = useRef<HTMLInputElement>(null);
@@ -156,11 +160,15 @@ function ActiveTasksSidebar({
 	}, []);
 
 	// No current project → the dashboard mount: global is the only meaningful scope.
+	// Never picked a scope → a project that lives in a space opens on its space,
+	// a standalone (Home) project on itself.
 	const effectiveScope: SidebarScope = !project
 		? "global"
-		: scope === "space" && siblingIds === null && !spacesLoading
-			? "project"
-			: scope;
+		: scope === null
+			? (siblingIds !== null ? "space" : "project")
+			: scope === "space" && siblingIds === null && !spacesLoading
+				? "project"
+				: scope;
 
 	// Ctrl/Cmd+F focuses the search input when sidebar is visible
 	useEffect(() => {
@@ -361,7 +369,7 @@ function ActiveTasksSidebar({
 			for (const col of p.customColumns ?? []) cols.push({ projectId: p.id, columnId: col.id });
 		}
 		return cols;
-	}, [scope, projectById, project]);
+	}, [effectiveScope, siblingIds, projectById, project]);
 
 	// Readiness tiers: NEEDS YOU → custom columns → WAITING. Grouping +
 	// within-tier ordering is a pure function so it is unit-tested without
@@ -484,19 +492,20 @@ function ActiveTasksSidebar({
 							<button
 								type="button"
 								onClick={() => setScope("project")}
-								aria-pressed={scope === "project"}
+								aria-pressed={effectiveScope === "project"}
 								aria-label={t("sidebar.scopeProject")}
-								className={`${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(scope === "project")}`}
+								className={`${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(effectiveScope === "project")}`}
 								data-testid="sidebar-scope-project"
 							>
 								{/* Nerd Font: nf-fa-folder_open_o (U+F115) \u2192 nf-fa-folder_open (U+F07C) */}
-								<ScopeGlyph outline={"\uF115"} filled={"\uF07C"} active={scope === "project"} />
+								<ScopeGlyph outline={"\uF115"} filled={"\uF07C"} active={effectiveScope === "project"} />
 							</button>
 						</Tooltip>
 						{/* Ring \u2014 the current project's spaces (union of sibling projects).
 						    Absent until a space exists at all: someone who never opted in
 						    must see yesterday's switcher. Disabled (not hidden) when spaces
-						    exist but this project is in none \u2014 there the tooltip teaches. */}
+						    exist but this project is in none \u2014 the struck-through ring says
+						    "off" outright and the tooltip teaches where to fix it. */}
 						{spaces.length > 0 && (
 						<Tooltip
 							content={t("sidebar.scopeSpace")}
@@ -506,18 +515,18 @@ function ActiveTasksSidebar({
 							<button
 								type="button"
 								onClick={() => siblingIds !== null && setScope("space")}
-								aria-pressed={scope === "space"}
+								aria-pressed={effectiveScope === "space"}
 								aria-disabled={siblingIds === null || undefined}
 								aria-label={t("sidebar.scopeSpace")}
 								className={`${SCOPE_BUTTON_CLASS} ${
 									siblingIds === null
-										? "text-fg-muted/40 cursor-not-allowed"
-										: SCOPE_STATE_CLASS(scope === "space")
+										? "text-fg-muted/50 cursor-not-allowed"
+										: SCOPE_STATE_CLASS(effectiveScope === "space")
 								}`}
 								data-testid="sidebar-scope-space"
 							>
 								{/* Nerd Font: nf-cod-circle_large_outline (U+EABC) \u2192 nf-cod-circle_large_filled (U+EBB5) */}
-								<ScopeGlyph outline={"\uEABC"} filled={"\uEBB5"} active={scope === "space"} />
+								<ScopeGlyph outline={"\uEABC"} filled={"\uEBB5"} active={effectiveScope === "space"} struck={siblingIds === null} />
 							</button>
 						</Tooltip>
 						)}
@@ -526,14 +535,14 @@ function ActiveTasksSidebar({
 							<button
 								type="button"
 								onClick={() => setScope("global")}
-								aria-pressed={scope === "global"}
+								aria-pressed={effectiveScope === "global"}
 								aria-label={t("sidebar.scopeGlobal")}
-								className={`${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(scope === "global")}`}
+								className={`${SCOPE_BUTTON_CLASS} ${SCOPE_STATE_CLASS(effectiveScope === "global")}`}
 								data-testid="sidebar-scope-global"
 							>
 								{/* Nerd Font: nf-cod-globe (U+EB01) \u2014 no filled counterpart, so the
 								    active state rests on color alone. */}
-								<ScopeGlyph outline={"\uEB01"} filled={"\uEB01"} active={scope === "global"} />
+								<ScopeGlyph outline={"\uEB01"} filled={"\uEB01"} active={effectiveScope === "global"} />
 							</button>
 						</Tooltip>
 					</div>
