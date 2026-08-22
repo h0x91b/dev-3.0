@@ -8,6 +8,12 @@ comment gave two reasons: there is no git diff to compare parallel attempts agai
 "a shared fixed folder would have multiple agents clobbering each other". A user hit the
 empty footer slot and read it as a regression.
 
+**The question flipped mid-investigation, and that is the point of this record.** The task
+was opened as "explain why the button is hidden" — the planned change was a muted line in
+the empty slot, mirroring `ops.gitUnavailable` in the inspector git bar. Checking the
+guard's own premise is what turned it into "the hiding was wrong". Nobody changed their
+mind; the evidence arrived and the ask stopped making sense.
+
 ## Investigation
 
 The clobbering claim is over-broad, and the disproof was already on disk. The Operations
