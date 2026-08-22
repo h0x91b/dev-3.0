@@ -11,7 +11,9 @@
  *   conflict git's own CONFLICT message reaches the pane, verdict NON-zero, and
  *            the script terminates rather than hanging on its own keypress prompt
  *   merge    a squash commit lands with a subject carrying a double quote — the
- *            case `-m '<title>'` mangles under PowerShell 5.1 argument quoting
+ *            case `-m '<title>'` mangles under PowerShell 5.1 argument quoting —
+ *            and that subject is the branch commit's own message, not the task's
+ *            truncated description (Seq 1640)
  *
  * WHY IT MUST RUN ON WINDOWS: the whole defect class here is invisible from
  * macOS. Two examples this file exists to catch, both of which look like success
@@ -34,11 +36,13 @@ import { join } from "node:path";
 import { spawn } from "../spawn";
 import {
 	buildGitOpScript,
+	buildMergeCommitMessage,
 	mergeGitOpSpec,
 	pushGitOpSpec,
 	rebaseGitOpSpec,
 	writeMergeCommitMessage,
 } from "../git-op-script";
+import { listBranchCommitMessages } from "../git";
 import { generatedScriptLaunch, generatedScriptName, writeLaunchScript } from "../rpc-handlers/shared-pure";
 
 let failures = 0;
@@ -328,14 +332,26 @@ async function testMerge(root: string): Promise<void> {
 	await git(work, "checkout", "-b", "feature");
 	await Bun.write(join(work, "feature.txt"), "feature\n");
 	await git(work, "add", "-A");
-	await git(work, "commit", "-m", "feature work");
+	// The exact shape `-m '<title>'` could not carry: a double quote, a single
+	// quote and a `$`, all in one subject. It is the COMMIT's message here, because
+	// a single-commit branch's message is what the subject is built from (Seq 1640).
+	const title = `Fix the "quoted" thing — it's $HOME, not %HOME%`;
+	await git(work, "commit", "-m", title);
+
+	// The composition the merge handler runs: read the branch's commits, choose the
+	// subject, write the file. The task title is deliberately the defect's shape — a
+	// chopped-off description — and must lose to the commit's own message.
+	const commits = await listBranchCommitMessages(work, "main");
+	check(commits.length === 1, `the branch's single commit was read back (got ${commits.length})`);
+	const message = buildMergeCommitMessage({
+		commits,
+		taskTitle: "The game draws its own cursor (`drawCursor()` in `src/render/draw-world.ts`,…",
+		branchName: "feature",
+	});
 	await git(work, "checkout", "main");
 
-	// The exact shape `-m '<title>'` could not carry: a double quote, a single
-	// quote and a `$`, all in one subject.
-	const title = `Fix the "quoted" thing — it's $HOME, not %HOME%`;
 	const messagePath = join(scripts, "merge-message.txt").replaceAll("\\", "/");
-	await writeMergeCommitMessage(messagePath, title);
+	await writeMergeCommitMessage(messagePath, message);
 	const exitFilePath = join(scripts, "merge.exit").replaceAll("\\", "/");
 
 	const { code, output } = await runPaneScript(
@@ -356,6 +372,7 @@ async function testMerge(root: string): Promise<void> {
 	await checkVerdictBytes(exitFilePath);
 	const subject = await git(work, "log", "-1", "--format=%s");
 	check(subject === title, `the commit subject round-tripped byte for byte (got: ${subject})`);
+	check(!subject.includes("…"), "no truncated task description reached the subject");
 	const files = await git(work, "show", "--name-only", "--format=", "HEAD");
 	check(files.includes("feature.txt"), "the squashed content is in the commit");
 	check(output.includes("Merge complete"), "the pane shows the success line");

@@ -92,6 +92,7 @@ vi.mock("../git", () => ({
 	refExists: vi.fn().mockResolvedValue(true),
 	isRefMergedInto: vi.fn().mockResolvedValue(false),
 	getBranchStatus: vi.fn(),
+	listBranchCommitMessages: vi.fn().mockResolvedValue([]),
 	getTaskDiff: vi.fn(),
 	getUncommittedChanges: vi.fn(),
 	getUnpushedCount: vi.fn(),

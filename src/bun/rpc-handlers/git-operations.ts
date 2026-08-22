@@ -8,6 +8,7 @@ import {
 	type TaskDiffResponse,
 	type ScheduledMessageTarget,
 	type UnsavedWork,
+	getTaskTitle,
 	resolveTaskCompareBaseBranch,
 } from "../../shared/types";
 import * as data from "../data";
@@ -31,6 +32,7 @@ import { getPushMessage, log } from "./shared";
 import { generatedScriptLaunch, generatedScriptName, writeLaunchScript } from "./shared-pure";
 import {
 	buildGitOpScript,
+	buildMergeCommitMessage,
 	mergeGitOpSpec,
 	pushGitOpSpec,
 	rebaseGitOpSpec,
@@ -586,8 +588,16 @@ async function mergeTask(params: { taskId: string; projectId: string; expectRout
 		if (!checkoutCommand) throw new Error(`Base branch ${baseBranch} does not exist locally or on origin`);
 	}
 
+	// The subject comes from the branch's own commits or the task title — never
+	// from `task.title` alone, which is the first 80 characters of the DESCRIPTION
+	// whenever nobody renamed the task, ellipsis included.
 	const messagePath = dev3TaskTempPath(task.id, "git-merge-message.txt");
-	await writeMergeCommitMessage(messagePath, task.title);
+	const commits = await git.listBranchCommitMessages(task.worktreePath, rebaseCheckRef);
+	await writeMergeCommitMessage(messagePath, buildMergeCommitMessage({
+		commits,
+		taskTitle: getTaskTitle(task),
+		branchName: branchForMerge,
+	}));
 
 	// With a remote, "merge" that stops at the local base branch is a half-landing:
 	// the squash commit sits in the main clone, origin/<base> never hears about it,
