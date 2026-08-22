@@ -286,6 +286,8 @@ const infoPanel = {
 	"infoPanel.imagesLabel": "Imágenes",
 	"infoPanel.artifactsBadge_one": "Ver {count} artefacto compartido",
 	"infoPanel.artifactsBadge_other": "Ver {count} artefactos compartidos",
+	"infoPanel.artifactAssets_one": "{count} recurso",
+	"infoPanel.artifactAssets_other": "{count} recursos",
 	"infoPanel.artifactsLabel": "Artefactos",
 	"infoPanel.sharedItemsUnread": "Hay elementos nuevos sin ver",
 	"infoPanel.openSharedImage": "Abrir la imagen {name}",

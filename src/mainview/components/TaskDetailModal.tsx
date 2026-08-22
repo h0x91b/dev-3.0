@@ -11,6 +11,8 @@ import PriorityBadge from "./PriorityBadge";
 import { NoteItem, formatDate } from "./NoteItem";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import SharedOutputsList from "./SharedOutputsList";
+import TaskArtifacts from "./task-info-panel/TaskArtifacts";
+import TaskSharedImages from "./task-info-panel/TaskSharedImages";
 import TaskTerminalBackendRow from "./TaskTerminalBackendRow";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -802,6 +804,11 @@ function ArchivedView({
 						{labels.map((label) => (
 							<LabelChip key={label.id} label={label} size="xs" />
 						))}
+
+						{/* What the agent shared — the usual reason to reopen a finished
+						    task, so it gets a signal above the fold like a live task has. */}
+						<TaskArtifacts task={task} projectId={project.id} standalone />
+						<TaskSharedImages task={task} projectId={project.id} />
 					</div>
 
 					<button
@@ -824,6 +831,11 @@ function ArchivedView({
 								{getTaskTitle(task)}
 							</div>
 
+							{/* Everything the agent shared — the archived task's only way back
+							    to its images and artifacts (no Runtime bar without a worktree),
+							    and the reason the task gets reopened at all, so it leads. */}
+							<SharedOutputsList task={task} projectId={project.id} />
+
 							{task.description && task.description !== getTaskTitle(task) && (
 								<div className="mb-6">
 									<span className="text-fg-3 text-xs font-medium uppercase tracking-wider mb-2 block">
@@ -834,10 +846,6 @@ function ArchivedView({
 									</div>
 								</div>
 							)}
-
-							{/* Everything the agent shared — the archived task's only way back
-							    to its images and artifacts (no Runtime bar without a worktree). */}
-							<SharedOutputsList task={task} projectId={project.id} />
 
 							{/* Notes */}
 							<div className="border-t border-edge pt-4">

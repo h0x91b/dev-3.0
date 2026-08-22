@@ -77,4 +77,23 @@ describe("SharedOutputsList", () => {
 		window.removeEventListener("dev3:openArtifactViewer", spy);
 		expect((spy.mock.calls[0][0] as CustomEvent).detail).toMatchObject({ index: 1, standalone: true });
 	});
+
+	it("leads with artifacts — the deliverable outranks the screenshots", () => {
+		renderList({ sharedImages: [image("shot")], sharedArtifacts: [artifact("a")] });
+		const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+		expect(headings).toEqual([expect.stringContaining("Artifacts"), expect.stringContaining("Images")]);
+	});
+
+	it("names each section so the block is reachable by heading, not only by eye", () => {
+		renderList({ sharedImages: [image("shot")], sharedArtifacts: [artifact("a")] });
+		expect(screen.getByRole("region", { name: /Artifacts/ })).toBeTruthy();
+		expect(screen.getByRole("region", { name: /Images/ })).toBeTruthy();
+	});
+
+	it("describes an artifact by size and assets, never by its always-identical filename", () => {
+		renderList({ sharedArtifacts: [{ ...artifact("a"), bytes: 2048, assets: [{ name: "app.css", storedPath: "/s", originalPath: "/o", mime: "text/css", bytes: 1 }] }] });
+		const row = screen.getByTestId("shared-artifact-link");
+		expect(row).toHaveTextContent("2 KB · 1 asset");
+		expect(row).not.toHaveTextContent("a.html");
+	});
 });

@@ -495,6 +495,18 @@ button {
 	outline: none;
 }
 
+/* ---- Image edge ------------------------------------------------------------
+   A screenshot rendered flush on a panel has no edge of its own where its own
+   pixels happen to match the surface. Pure black/white at 10% rather than a
+   tinted neutral: a tinted line picks up the surface under it and reads as
+   dirt on the image edge. */
+.img-edge {
+	box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.1);
+}
+[data-theme="light"] .img-edge {
+	box-shadow: inset 0 0 0 1px oklch(0 0 0 / 0.1);
+}
+
 /* ---- Toast auto-dismiss progress bar ---- */
 
 @keyframes toast-shrink {

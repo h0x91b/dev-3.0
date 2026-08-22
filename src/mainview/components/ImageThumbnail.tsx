@@ -1,9 +1,5 @@
-import { useState, useEffect } from "react";
-import { api } from "../rpc";
 import { useT } from "../i18n";
-
-// Module-level cache for base64 data URLs
-const dataUrlCache = new Map<string, string>();
+import { useImageDataUrl } from "../utils/useImageDataUrl";
 
 interface ImageThumbnailProps {
 	path: string;
@@ -13,39 +9,7 @@ interface ImageThumbnailProps {
 
 export function ImageThumbnail({ path, onClick, onRemove }: ImageThumbnailProps) {
 	const t = useT();
-	const [dataUrl, setDataUrl] = useState<string | null>(dataUrlCache.get(path) ?? null);
-	const [error, setError] = useState(false);
-	const [loading, setLoading] = useState(!dataUrlCache.has(path));
-
-	useEffect(() => {
-		if (dataUrlCache.has(path)) {
-			setDataUrl(dataUrlCache.get(path)!);
-			setLoading(false);
-			return;
-		}
-
-		let cancelled = false;
-		setLoading(true);
-		setError(false);
-
-		api.request.readImageBase64({ path }).then((result) => {
-			if (cancelled) return;
-			if (result) {
-				dataUrlCache.set(path, result.dataUrl);
-				setDataUrl(result.dataUrl);
-			} else {
-				setError(true);
-			}
-			setLoading(false);
-		}).catch(() => {
-			if (!cancelled) {
-				setError(true);
-				setLoading(false);
-			}
-		});
-
-		return () => { cancelled = true; };
-	}, [path]);
+	const { dataUrl, loading, error } = useImageDataUrl(path);
 
 	const filename = path.split("/").pop() ?? path;
 
