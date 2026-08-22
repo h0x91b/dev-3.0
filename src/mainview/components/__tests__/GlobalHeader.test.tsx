@@ -185,6 +185,7 @@ function headerElement(
 				route={route}
 				projects={projects}
 				tasks={tasks}
+				agents={[]}
 				navigate={navigate ?? vi.fn()}
 				goBack={extra?.goBack ?? vi.fn()}
 				goForward={extra?.goForward ?? vi.fn()}
@@ -712,6 +713,89 @@ describe("GlobalHeader — breadcrumb inline rename", () => {
 		await user.click(screen.getByTitle("Edit title"));
 		await user.keyboard("{Enter}");
 		expect(mockedApi.request.renameTask).not.toHaveBeenCalled();
+	});
+});
+
+describe("GlobalHeader — variant switcher on the task badge", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+		mockedApi.request.getSpaces.mockResolvedValue({ version: 1, spaces: [], order: [] });
+	});
+
+	/** Two live attempts of one task — the case that earns a chevron. */
+	function variantPair(): Task[] {
+		return [
+			makeBreadcrumbTask({ id: "t1", groupId: "g1", variantIndex: 1 }),
+			makeBreadcrumbTask({ id: "t2", groupId: "g1", variantIndex: 2, title: "Second Attempt" }),
+		];
+	}
+
+	it("renders the plain badge without a chevron for a single-variant task", () => {
+		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], vi.fn(), [makeBreadcrumbTask()]);
+		expect(within(screen.getByRole("navigation")).getByText("#42")).toBeInTheDocument();
+		expect(screen.queryByTestId("variant-breadcrumb-toggle")).not.toBeInTheDocument();
+	});
+
+	it("keeps the badge plain when the only sibling is no longer live", () => {
+		const [first, second] = variantPair();
+		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], vi.fn(), [
+			first,
+			{ ...second, status: "completed" },
+		]);
+		expect(screen.queryByTestId("variant-breadcrumb-toggle")).not.toBeInTheDocument();
+	});
+
+	it("shows the variant badge and lists the group on click", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], vi.fn(), variantPair());
+		expect(within(screen.getByRole("navigation")).getByText("#42-1")).toBeInTheDocument();
+
+		await user.click(screen.getByTestId("variant-breadcrumb-toggle"));
+
+		const menu = screen.getByRole("dialog", { name: "Siblings" });
+		expect(within(menu).getByText("Second Attempt")).toBeInTheDocument();
+	});
+
+	it("stays on the fullscreen task screen when switching from there", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], navigate, variantPair());
+
+		await user.click(screen.getByTestId("variant-breadcrumb-toggle"));
+		await user.click(screen.getByLabelText(/Switch to Variant 2/));
+
+		expect(navigate).toHaveBeenCalledWith({ screen: "task", projectId: "p1", taskId: "t2" });
+	});
+
+	it("switches the active task in split view", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p1", activeTaskId: "t1" }, [project1], navigate, variantPair());
+
+		await user.click(screen.getByTestId("variant-breadcrumb-toggle"));
+		await user.click(screen.getByLabelText(/Switch to Variant 2/));
+
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", activeTaskId: "t2" });
+	});
+
+	it("sheds the chevron on a phone-width header, where the context bar owns switching", () => {
+		mockViewport(390);
+		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], vi.fn(), variantPair());
+		expect(within(screen.getByRole("navigation")).getByText("#42-1")).toBeInTheDocument();
+		expect(screen.queryByTestId("variant-breadcrumb-toggle")).not.toBeInTheDocument();
+	});
+
+	it("closes the project switcher when the variant menu opens", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "task", projectId: "p1", taskId: "t1" }, [project1], vi.fn(), variantPair());
+
+		await user.click(getChevronButton());
+		expect(screen.getByRole("menu")).toBeInTheDocument();
+
+		await user.click(screen.getByTestId("variant-breadcrumb-toggle"));
+		expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+		expect(screen.getByRole("dialog", { name: "Siblings" })).toBeInTheDocument();
 	});
 });
 

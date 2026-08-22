@@ -2433,6 +2433,7 @@ function App() {
 						route={route}
 						projects={state.projects}
 						tasks={state.currentProjectTasks}
+						agents={agents}
 						navigate={navigate}
 						goBack={() => dispatch({ type: "goBack" })}
 						goForward={() => dispatch({ type: "goForward" })}

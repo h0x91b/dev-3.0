@@ -108,6 +108,7 @@ const dashboard = {
 	"header.reportLabel": "Report",
 	"header.gitPullLabel": "Pull",
 	"header.switchProject": "Cambiar proyecto",
+	"header.switchVariant": "Cambiar variante",
 	"header.navBack": "Atrás (⌘[)",
 	"header.navForward": "Adelante (⌘])",
 	"header.activeTaskCount_one": "{count} en curso",

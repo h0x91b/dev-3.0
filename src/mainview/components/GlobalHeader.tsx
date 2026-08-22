@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
-import type { Project, Task, UpdateChangelog } from "../../shared/types";
+import type { CodingAgent, Project, Task, UpdateChangelog } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
@@ -17,6 +17,7 @@ import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import NativeBackendMark from "./NativeBackendMark";
 import TaskTitleHoverCard from "./TaskTitleHoverCard";
+import TaskBreadcrumbBadge from "./TaskBreadcrumbBadge";
 import GitPullButton from "./GitPullButton";
 import UpdateReadyPopover, { UpdateWhatsNew } from "./UpdateReadyPopover";
 import CanaryBadge from "./CanaryBadge";
@@ -55,6 +56,7 @@ interface GlobalHeaderProps {
 	route: Route;
 	projects: Project[];
 	tasks: Task[];
+	agents: CodingAgent[];
 	navigate: (route: Route) => void;
 	goBack: () => void;
 	goForward: () => void;
@@ -79,7 +81,7 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
 	const t = useT();
 	const privacy = useProjectPrivacy();
 	const { file: spacesFile } = useSpaces();
@@ -299,6 +301,12 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 		// Navigate to project board (clears activeTaskId / returns from settings/task)
 		navigate({ screen: "project", projectId: route.projectId });
 	}, [route, navigate]);
+
+	// Every task of one variant group, same source the ⇧⌘[ / ⇧⌘] cycling reads.
+	const variantGroupFor = useCallback(
+		(task: Task) => (task.groupId ? tasks.filter((candidate) => candidate.groupId === task.groupId) : [task]),
+		[tasks],
+	);
 
 	const segments: BreadcrumbSegment[] = [];
 
@@ -619,27 +627,36 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 								{seg.label}
 							</button>
 						) : seg.task ? (
-							// Hovering the title is how the facts that no longer fit the
-							// summary bar (labels, branch, seq, age) are reached.
-							<TaskTitleHoverCard
-								task={seg.task}
-								project={projects.find((p) => p.id === seg.task?.projectId) ?? null}
-							>
-								{seg.badge && (
-									<span className="font-mono text-micro text-accent/70 flex-shrink-0 tracking-wide">{seg.badge}</span>
-								)}
-								<NativeBackendMark
+							// The badge owns variant switching, so it sits outside the hover
+							// card: a control cannot share its trigger with a hover popover.
+							<span className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+								<TaskBreadcrumbBadge
 									task={seg.task}
-									className="w-3.5 h-3.5"
-									testId="breadcrumb-native-backend"
+									groupMembers={variantGroupFor(seg.task)}
+									agents={agents}
+									isFullPage={route.screen === "task"}
+									navigate={navigate}
+									onOpen={() => setShowProjectDropdown(false)}
 								/>
-								<InlineRename
-									taskId={seg.task.id}
-									projectId={seg.task.projectId}
-									currentTitle={seg.label}
-									hasCustomTitle={!!seg.task.customTitle}
-								/>
-							</TaskTitleHoverCard>
+								{/* Hovering the title is how the facts that no longer fit the
+								    summary bar (labels, branch, seq, age) are reached. */}
+								<TaskTitleHoverCard
+									task={seg.task}
+									project={projects.find((p) => p.id === seg.task?.projectId) ?? null}
+								>
+									<NativeBackendMark
+										task={seg.task}
+										className="w-3.5 h-3.5"
+										testId="breadcrumb-native-backend"
+									/>
+									<InlineRename
+										taskId={seg.task.id}
+										projectId={seg.task.projectId}
+										currentTitle={seg.label}
+										hasCustomTitle={!!seg.task.customTitle}
+									/>
+								</TaskTitleHoverCard>
+							</span>
 						) : (
 							<span className="flex items-baseline gap-1.5 min-w-0 overflow-hidden">
 								{seg.badge && (

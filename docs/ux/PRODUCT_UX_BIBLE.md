@@ -96,7 +96,7 @@ Mechanism: `GlobalHeader` breadcrumbs (`Dashboard > Project > Task`) + back/forw
 
 ### Breadcrumbs — `Observed`
 
-Show location only. Text click navigates; the project chevron opens a **project-switcher dropdown**. No commands in breadcrumbs. The task segment also carries the passive **native-backend marker** (§5.6) — identity, not an action.
+Show location only. Text click navigates; a segment's chevron opens a **switcher over that segment's own object** — project name → project switcher, task `#seq-N` badge → variant menu (`SiblingPopover`, chevron only with ≥2 live variants, so it is never a dead control). Switching is not a command; no commands in breadcrumbs. The task segment also carries the passive **native-backend marker** (§5.6) — identity, not an action.
 
 Evidence: `GlobalHeader.tsx`.
 

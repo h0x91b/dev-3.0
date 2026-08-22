@@ -31,11 +31,11 @@ Task-type presets that inject a built-in preamble (Coordinator, PR review) live 
 - **Why:** A rendered document has no gutter, so the only trigger the medium offers is the selection itself — a toolbar "comment mode" toggle was rejected as a mode switch plus a toolbar slot for one action, and a per-block hover `+` was rejected as chrome on every paragraph. Creating comments without rendering them was rejected outright: the preview replaces the diff, so the click would look like a no-op.
 - **Status:** Proposed. Evidence: `src/mainview/components/TaskDiffViewer.tsx`, `src/mainview/components/pr-review/markdown-diff.tsx`, bible §5.3.
 
-## 2026-08-19 — A data-bearing menu row opens on hover, and its flyout sits beside the menu
+## 2026-08-22 — A breadcrumb chevron switches that segment's own object
 
-- **Rule:** Header-kebab rows that own a detail panel (memory breakdown, tmux sessions) open on ~180 ms hover intent with a click-to-pin, and the panel is anchored on the *menu's* outboard edge level with the row, never over the list; the portaled panel is exempted from the menu's outside-click dismissal via `data-header-flyout`.
-- **Why:** Click-only made both readouts unfindable once they left the header bar — a row that reacts to nothing reads as a label. Opening below/over the row was rejected because it covers the menu the pointer is still using; keeping click-only plus a chevron was rejected as chrome that still costs a click to learn.
-- **Status:** Implemented — `src/mainview/utils/menuFlyout.ts`, `MemoryHeadroomIndicator.tsx`, `TmuxSessionManager.tsx`, `GlobalHeader.tsx`; PRODUCT_UX_BIBLE §12.6.
+- **Rule:** The task `#seq-N` badge is a segmented control whose chevron opens the shared variant menu, mirroring the project segment; it appears only with ≥2 live variants. Bible §4 Breadcrumbs, yaml `breadcrumbs.rules`. Why: `decisions/2026/08/22/breadcrumb-variant-switcher.md`.
+
+## 2026-08-19 — A data-bearing menu row opens on hover, its flyout beside the menu — rule now lives in bible §12.6.
 ## 2026-08-17 — A Space filters the dashboard; it never becomes a place
 - **Rule:** Spaces group projects on the dashboard only — a rail that FILTERS the overview, collapsible group headers, row membership chips + a `Spaces…` action, and **every space action behind one `…`**; no space route, no merged board, no colour, no stored `Home` (it is computed from zero-membership projects).
 - **Why:** `decisions/2026/08/17/spaces-dashboard-follows-the-proposal-mock.md`.

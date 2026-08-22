@@ -172,7 +172,7 @@ ux_architecture:
     breadcrumbs:
       purpose: "Show location: Dashboard > Project > Task. Project chevron opens a project switcher dropdown."
       rules:
-        - "Text click navigates; chevron toggles the project-switcher dropdown."
+        - "Text click navigates; a segment chevron toggles a switcher over that segment's object: project name -> project switcher, task #seq-N badge -> variant menu (SiblingPopover; chevron only when the group has >=2 live variants)."
         - "Breadcrumbs show place, not bulk actions."
         - "The task segment also carries the passive native_backend_mark (see identity_markers.native_backend_mark) — identity, not an action."
       status: "observed"
@@ -202,7 +202,7 @@ ux_architecture:
       evidence: ["src/mainview/diagnostics.ts", "src/mainview/components/RootErrorBoundary.tsx", "src/mainview/components/BootstrapScreen.tsx", "src/mainview/components/DiagnosticsPanel.tsx", "src/mainview/components/StatusDock.tsx", "src/mainview/components/ConnectionStatusPill.tsx", "src/mainview/components/DiagnosticsIndicator.tsx", "src/mainview/components/KanbanBoardSkeleton.tsx", "src/mainview/components/BoardLoadFailed.tsx", "src/mainview/index.html (pre-React loader)"]
     global_header:
       purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
-      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout"]
+      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "variant_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout"]
       ambient_resource_readout:
         budget: 1   # currently memory headroom; a second one folds into the narrow sheet instead
         spec: "Permanent on roomy widths. Shows headroom LEFT (free GB), never a bare quantity labelled 'memory'; colour = OS pressure verdict (normal -> text-fg-3 neutral, warn -> text-warning, critical -> text-danger); never success-green (green means Completed here). Hover/tap opens a breakdown: system, swap, top-5 consumers outside the app, then the app's own share split from the agent share. NOT a link."
