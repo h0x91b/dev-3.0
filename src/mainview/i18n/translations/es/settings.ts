@@ -210,7 +210,7 @@ const settings = {
 	"settings.suggestCompletingTasksAfterMergeDesc": "Desactivado, una rama fusionada muestra un aviso informativo en lugar de preguntar si se completa la tarea.",
 	"settings.prOriginTaskLink": "Enlazar los pull requests con la tarea",
 	"settings.prOriginTaskLinkDesc": "Activado, los pull requests que abre dev3 terminan con un enlace directo a la tarea de origen. Desactívalo para no mencionar dev3 en descripciones públicas de PR.",
-	"settings.prOriginTaskLinkUnsupported": "This system registers no handler for dev3:// links, so the link would go nowhere in a public PR. Your saved preference is kept and still applies on a machine that has one.",
+	"settings.prOriginTaskLinkUnsupported": "Este sistema no registra ningún gestor para los enlaces dev3://, así que en un PR público el enlace no llevaría a ninguna parte. Tu preferencia guardada se conserva y sigue aplicándose en una máquina que sí lo tenga.",
 	"settings.taskOpenMode": "Modo de apertura de tarea",
 	"settings.taskOpenModeDesc": "Cómo se abren las tareas activas al hacer clic en ellas. También afecta a Cmd+1..9: Vista dividida mantiene la vista de tarea, Pantalla completa cambia al tablero.",
 	"settings.taskOpenModeSplit": "Vista dividida (barra lateral + terminal)",

@@ -331,6 +331,8 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 		}
 	}
 
+	// Copied for an agent to run, so it stays English in every locale — the same
+	// reason `bugHunters.nextPrompt` does. Not an untranslated string.
 	const devServerHintPrompt = t("header.devServerHintPrompt");
 
 	// Active + has-script states drive the glanceable running indicator. Green

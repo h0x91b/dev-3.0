@@ -5,7 +5,7 @@ import {
 	useCallback,
 	type ReactNode,
 } from "react";
-import type { Locale } from "./types";
+import { ALL_LOCALES, type Locale } from "./types";
 import type { TranslationKey } from "./translations/en";
 import en from "./translations/en";
 import ru from "./translations/ru";
@@ -54,14 +54,41 @@ export function translate(
 	return vars ? interpolate(template, vars) : template;
 }
 
-function readLocale(): Locale {
+/**
+ * The language the environment asks for, if we speak it.
+ *
+ * Matches on the primary subtag only, so `ru-RU`, `ru`, and `es-419` all land on
+ * the right set; region variants we do not distinguish. `navigator.languages` is
+ * ordered by the user's own preference, so the first hit wins — a machine set to
+ * Spanish-then-English gets Spanish, and the reverse gets English.
+ */
+function detectLocale(): Locale | null {
+	const nav = typeof navigator === "undefined" ? undefined : navigator;
+	const requested = nav?.languages?.length ? nav.languages : nav?.language ? [nav.language] : [];
+	for (const tag of requested) {
+		const primary = String(tag).toLowerCase().split("-")[0];
+		const match = ALL_LOCALES.find((locale) => locale === primary);
+		if (match) return match;
+	}
+	return null;
+}
+
+/**
+ * An explicit choice always wins; otherwise follow the OS/browser. Detection is
+ * deliberately NOT written back to storage: the app is fully translated, so a
+ * Russian- or Spanish-speaking newcomer used to land on English and had to know
+ * that Settings → Appearance → Language existed before they could find out
+ * otherwise. Persisting the guess would then pin them to it after they changed
+ * the system language.
+ */
+export function resolveInitialLocale(): Locale {
 	const saved = localStorage.getItem(STORAGE_KEY);
 	if (saved === "en" || saved === "ru" || saved === "es") return saved;
-	return "en";
+	return detectLocale() ?? "en";
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-	const [locale, setLocaleState] = useState<Locale>(readLocale);
+	const [locale, setLocaleState] = useState<Locale>(resolveInitialLocale);
 
 	const setLocale = useCallback((next: Locale) => {
 		setLocaleState(next);
