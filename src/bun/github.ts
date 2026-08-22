@@ -417,6 +417,94 @@ export async function runGitHub(
 	return runGh(args, { cwd, env, timeoutMs: options?.timeoutMs });
 }
 
+/** What one `gh pr list --head` answer tells a caller. */
+export interface OpenPullRequestProbe {
+	/** The open PR whose head is this branch, or null when there is none. */
+	pr: { number: number; url: string } | null;
+	/** False ONLY when gh definitively said this is not a GitHub repo. */
+	isGitHub: boolean;
+}
+
+/**
+ * The open PR for one branch. Two callers, one implementation: the branch-status
+ * poll (which also uses it as the "can gh work here" probe) and Merge, which has
+ * to know whether it is merging a pull request or squashing locally.
+ */
+export async function findOpenPullRequest(
+	project: ProjectGitHubSelection,
+	cwd: string,
+	headBranch: string,
+	options?: { timeoutMs?: number },
+): Promise<OpenPullRequestProbe> {
+	if (!headBranch) return { pr: null, isGitHub: true };
+	const result = await runGitHub(
+		project,
+		cwd,
+		["pr", "list", "--head", headBranch, "--state", "open", "--json", "number,url", "--limit", "1"],
+		{ timeoutMs: options?.timeoutMs },
+	);
+	const isGitHub = result.ok || !isNotAGitHubRepoError(result);
+	if (result.ok && result.stdout) {
+		try {
+			const prs = JSON.parse(result.stdout);
+			if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
+				return {
+					pr: { number: prs[0].number, url: typeof prs[0].url === "string" ? prs[0].url : "" },
+					isGitHub,
+				};
+			}
+		} catch (err) {
+			log.warn("Failed to parse gh pr list output", { error: String(err) });
+		}
+	}
+	return { pr: null, isGitHub };
+}
+
+export type PullRequestMergeMethod = "squash" | "merge" | "rebase";
+
+/**
+ * Which merge button the repo actually allows, in dev3's order of preference.
+ * `gh pr merge` with NO method flag opens an interactive prompt when more than
+ * one is allowed — in a pane nobody is watching that is a hang, so the method is
+ * always spelled out.
+ */
+export function pickMergeMethod(allowed: { squash?: boolean; merge?: boolean; rebase?: boolean }): PullRequestMergeMethod {
+	if (allowed.squash) return "squash";
+	if (allowed.merge) return "merge";
+	if (allowed.rebase) return "rebase";
+	// Nothing allowed is not a real GitHub answer — it means we failed to read the
+	// repo. Squash is both the most common setting and this project's own, and gh
+	// gives a precise error if it turns out to be disabled.
+	return "squash";
+}
+
+export async function resolveMergeMethod(
+	project: ProjectGitHubSelection,
+	cwd: string,
+): Promise<PullRequestMergeMethod> {
+	const result = await runGitHub(
+		project,
+		cwd,
+		["repo", "view", "--json", "squashMergeAllowed,mergeCommitAllowed,rebaseMergeAllowed"],
+		{ timeoutMs: 10_000 },
+	);
+	if (!result.ok || !result.stdout) {
+		log.warn("Could not read the repo's allowed merge methods", { code: result.code, stderr: result.stderr });
+		return pickMergeMethod({});
+	}
+	try {
+		const parsed = JSON.parse(result.stdout);
+		return pickMergeMethod({
+			squash: parsed?.squashMergeAllowed === true,
+			merge: parsed?.mergeCommitAllowed === true,
+			rebase: parsed?.rebaseMergeAllowed === true,
+		});
+	} catch (err) {
+		log.warn("Failed to parse gh repo view merge methods", { error: String(err) });
+		return pickMergeMethod({});
+	}
+}
+
 // A merged PR never un-merges, so a terminal answer is cached for the process
 // lifetime; everything else expires so the 15s branch-status poll re-asks
 // without hammering the API.

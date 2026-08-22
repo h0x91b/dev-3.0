@@ -1,5 +1,6 @@
 import {
 	type BranchStatus,
+	type MergeRoute,
 	type PRInfo,
 	type Project,
 	type Task,
@@ -252,24 +253,13 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	 * timeout, no auth, no gh) leaves `isGitHub` true; see
 	 * `github.isNotAGitHubRepoError` for why that polarity is the safe one.
 	 */
-	const prDetection: Promise<{ pr: { number: number; url: string } | null; isGitHub: boolean }> = (async () => {
+	const prDetection: Promise<github.OpenPullRequestProbe> = (async () => {
 		try {
-			const ghResult = await github.runGitHub(
-				project,
-				task.worktreePath!,
-				["pr", "list", "--head", branchForPush, "--state", "open", "--json", "number,url", "--limit", "1"],
-				{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
-			);
-			const isGitHub = ghResult.ok || !github.isNotAGitHubRepoError(ghResult);
-			if (ghResult.ok && ghResult.stdout) {
-				const prs = JSON.parse(ghResult.stdout);
-				if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
-					const pr = { number: prs[0].number, url: typeof prs[0].url === "string" ? prs[0].url : "" };
-					if (pr.url) await persistTaskPrIdentity(project, task, pr.number, pr.url);
-					return { pr, isGitHub };
-				}
-			}
-			return { pr: null, isGitHub };
+			const probe = await github.findOpenPullRequest(project, task.worktreePath!, branchForPush, {
+				timeoutMs: PR_DETECTION_TIMEOUT_MS,
+			});
+			if (probe.pr?.url) await persistTaskPrIdentity(project, task, probe.pr.number, probe.pr.url);
+			return probe;
 		} catch (err) {
 			log.warn("PR detection failed (non-fatal)", { error: String(err) });
 		}
@@ -460,7 +450,64 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 	log.info("← rebaseTask (pane opened)", { paneId });
 }
 
-async function mergeTask(params: { taskId: string; projectId: string }): Promise<void> {
+/** How long `gh pr merge` may take before we stop waiting on it. */
+const PR_MERGE_TIMEOUT_MS = 60_000;
+
+/**
+ * Merge the branch's open PR through GitHub. This is what "Merge" means whenever
+ * a PR exists, and it is deliberately NOT a pane script:
+ *
+ *  - `gh pr merge` is one API call whose entire output is a line or two, so there
+ *    is nothing to watch live — the reason the local git operations get a pane.
+ *  - a pane cannot carry the project's gh credential without the bash-only
+ *    `getGitHubShellExports` prelude, which is exactly what keeps
+ *    `openPullRequest` unavailable on Windows.
+ *
+ * Branch protection, required reviews and CI gates stay GitHub's to enforce —
+ * that is the whole point of merging the PR instead of squashing locally.
+ *
+ * No `--delete-branch`: the head branch is checked out in the task's worktree, so
+ * gh's local delete would fail AFTER the merge already happened and report the
+ * whole operation as failed. dev3 removes worktree and branch on task completion.
+ */
+async function mergeViaPullRequest(
+	project: Project,
+	task: Task & { worktreePath: string },
+	prNumber: number,
+	baseBranch: string,
+): Promise<void> {
+	const method = await github.resolveMergeMethod(project, task.worktreePath);
+	log.info("mergeTask: merging the pull request via gh", { taskId: task.id.slice(0, 8), prNumber, method });
+	const result = await github.runGitHub(
+		project,
+		task.worktreePath,
+		["pr", "merge", String(prNumber), `--${method}`],
+		{ timeoutMs: PR_MERGE_TIMEOUT_MS },
+	);
+	if (!result.ok) {
+		// gh's own message is the useful one — "not mergeable", "review required",
+		// "checks are pending" — so it reaches the user's toast verbatim.
+		throw new Error(result.stderr || result.stdout || `gh pr merge #${prNumber} failed (exit ${result.code})`);
+	}
+	// The local clone still points at the pre-merge base, and both the branch-status
+	// poll and the "task done?" offer read origin/<base>.
+	await git.fetchOrigin(project.path, baseBranch);
+	getPushMessage()?.("gitOpCompleted", { taskId: task.id, projectId: project.id, operation: "merge", ok: true });
+	log.info("← mergeTask (pull request merged)", { prNumber, method });
+}
+
+/**
+ * Merge takes one of two routes, and which one is a property of the repo, not a
+ * setting: an open PR for this branch means merge THAT (the user's expectation,
+ * and the only route that respects review and CI), and no PR means the local
+ * squash into the base branch.
+ *
+ * `expectRoute` is the renderer's belief, sent along like the push lease's sha:
+ * the button already told the user which of the two it would do, so a mismatch is
+ * refused instead of silently running the other one — a local squash-and-push
+ * behind a confirm that said "merge the PR" is the worst outcome available here.
+ */
+async function mergeTask(params: { taskId: string; projectId: string; expectRoute?: MergeRoute }): Promise<void> {
 	log.info("→ mergeTask", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -473,6 +520,28 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	if (!branchForMerge) throw new Error("Task has no branch");
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
+
+	let openPr: { number: number; url: string } | null = null;
+	try {
+		openPr = (await github.findOpenPullRequest(project, task.worktreePath, branchForMerge, {
+			timeoutMs: PR_DETECTION_TIMEOUT_MS,
+		})).pr;
+	} catch (err) {
+		// No gh, no auth, no network: fall through to the local route, which is what
+		// this button did for its whole life.
+		log.warn("mergeTask: PR lookup failed, falling back to the local squash", { error: String(err) });
+	}
+	if (params.expectRoute === "pull-request" && !openPr) {
+		throw new Error("No open pull request for this branch any more — refresh the branch status");
+	}
+	if (params.expectRoute === "local-squash" && openPr) {
+		throw new Error(`Pull request #${openPr.number} is open for this branch — refresh the branch status, Merge will merge the PR`);
+	}
+	if (openPr) {
+		await mergeViaPullRequest(project, task, openPr.number, baseBranch);
+		return;
+	}
+
 	await git.fetchOrigin(project.path, baseBranch);
 	// For task-specific base branches (not the project default), compare against the local branch —
 	// consistent with what the UI displays. For the project default, check against the remote.

@@ -2016,7 +2016,64 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.mergeTask).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				expectRoute: "local-squash",
 			});
+		});
+
+		/**
+		 * The defect: with a PR open, Merge squashed into the local base and pushed it,
+		 * bypassing the PR's own review and CI. An open PR makes the button say what it
+		 * will do — "Merge PR" — and send the route it promised.
+		 */
+		it("merges the pull request when the branch has one open", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 2,
+				// Behind the base does NOT disable this route: mergeability is GitHub's
+				// call, not a reason to demand a local rebase first.
+				behind: 4,
+				prNumber: 1475,
+				prUrl: "https://github.com/h0x91b/dev-3.0/pull/1475",
+			});
+			mockedApi.request.mergeTask.mockResolvedValue(undefined);
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const merge = screen.getAllByText("Merge PR").find((b) => !b.closest("button")!.disabled)!;
+			expect(merge).toBeTruthy();
+			await user.click(merge.closest("button")!);
+
+			await waitFor(() => expect(mockedApi.request.mergeTask).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				expectRoute: "pull-request",
+			}));
+			// Confirmed, but not as a destructive act — GitHub still gates the landing.
+			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.not.objectContaining({ danger: true }));
+		});
+
+		it("does nothing when the PR merge is declined", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 2,
+				prNumber: 1475,
+				prUrl: "https://github.com/h0x91b/dev-3.0/pull/1475",
+			});
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const merge = screen.getAllByText("Merge PR").find((b) => !b.closest("button")!.disabled)!;
+			await user.click(merge.closest("button")!);
+
+			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalled());
+			expect(mockedApi.request.mergeTask).not.toHaveBeenCalled();
 		});
 
 		it("calls showDiff on Show Diff click", async () => {

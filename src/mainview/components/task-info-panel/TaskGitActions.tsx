@@ -131,6 +131,7 @@ export default function TaskGitActions({
 		handlePush,
 		handleRebase,
 		handleRefreshStatus,
+		mergeRoute,
 		merging,
 		pushing,
 		rebasing,
@@ -422,14 +423,21 @@ export default function TaskGitActions({
 		return t("infoPanel.createPRAutoMergeTooltip");
 	}
 
-	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || branchStatus.behind > 0 || merging;
+	// With an open PR, Merge merges THAT (see `mergeRoute`): being behind the base is
+	// GitHub's problem to judge, not a reason to demand a local rebase first. The
+	// local squash route still needs the rebase, because it commits the base itself.
+	const mergeIsPr = mergeRoute === "pull-request";
+	const mergeDisabled = !branchStatus || branchStatus.ahead === 0 || (!mergeIsPr && branchStatus.behind > 0) || merging;
+	const mergeLabel = mergeIsPr ? t("infoPanel.mergePr") : t("infoPanel.merge");
 	const mergeTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: branchStatus.ahead === 0
 			? t(hasUncommittedChanges ? "infoPanel.mergeDisabledUncommitted" : "infoPanel.mergeDisabledNoCommits")
-			: branchStatus.behind > 0
-				? t("infoPanel.mergeDisabledBehind")
-				: t("infoPanel.merge");
+			: mergeIsPr
+				? t("infoPanel.mergePrTooltip", { pr: String(branchStatus.prNumber), branch: baseBranch })
+				: branchStatus.behind > 0
+					? t("infoPanel.mergeDisabledBehind")
+					: t("infoPanel.merge");
 
 	const showDiffDisabled = !onOpenInlineDiff;
 	const showDiffTooltip = t("infoPanel.showDiffTooltip", { branch: displayRef });
@@ -612,9 +620,9 @@ export default function TaskGitActions({
 					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-medium transition-colors ${
 						mergeDisabled ? disabledBtnClass : enabledBtnClass
 					}`}
-					aria-label={t("infoPanel.merge")}
+					aria-label={mergeLabel}
 				>
-					{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : t("infoPanel.merge"), merging)}
+					{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : mergeLabel, merging)}
 				</button>
 			</GitActionTooltip>
 			)}

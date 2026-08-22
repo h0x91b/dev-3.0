@@ -660,5 +660,59 @@ describe("github", () => {
 			const { isGitHubRepo } = await import("../github");
 			await expect(isGitHubRepo(PROJECT, "/tmp/wt")).resolves.toBe(true);
 		});
+
+		describe("findOpenPullRequest", () => {
+			it("returns the PR gh listed for the branch", async () => {
+				mockGhRepoView(JSON.stringify([{ number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475" }]));
+				const { findOpenPullRequest } = await import("../github");
+				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "dev3/t")).resolves.toEqual({
+					pr: { number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475" },
+					isGitHub: true,
+				});
+			});
+
+			// Three different gh answers, one meaning for the caller: no PR. Merge reads
+			// this to choose its route, so "could not tell" must never read as "there is one".
+			it("reports no PR for an empty list, a failure, and unparsable output", async () => {
+				const { findOpenPullRequest } = await import("../github");
+				for (const [stdout, stderr, code] of [["[]", "", 0], ["", "gh: not found", 1], ["not json", "", 0]] as const) {
+					mockGhRepoView(stdout, stderr, code);
+					const probe = await findOpenPullRequest(PROJECT, "/tmp/wt", "dev3/t");
+					expect(probe.pr).toBeNull();
+				}
+			});
+
+			it("carries gh's non-GitHub verdict, and asks nothing without a branch", async () => {
+				mockGhRepoView("", "none of the git remotes configured for this repository point to a known GitHub host.", 1);
+				const { findOpenPullRequest } = await import("../github");
+				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "dev3/t")).resolves.toEqual({ pr: null, isGitHub: false });
+
+				spawnMock.mockClear();
+				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "")).resolves.toEqual({ pr: null, isGitHub: true });
+				expect(spawnMock).not.toHaveBeenCalled();
+			});
+		});
+
+		describe("merge method", () => {
+			// `gh pr merge` with no method flag PROMPTS when several are allowed, which in
+			// a headless call is a hang — so a method is always chosen here.
+			it("prefers squash, then a merge commit, then rebase", async () => {
+				const { pickMergeMethod } = await import("../github");
+				expect(pickMergeMethod({ squash: true, merge: true, rebase: true })).toBe("squash");
+				expect(pickMergeMethod({ merge: true, rebase: true })).toBe("merge");
+				expect(pickMergeMethod({ rebase: true })).toBe("rebase");
+				// Nothing allowed is not a real GitHub answer — it means the read failed.
+				expect(pickMergeMethod({})).toBe("squash");
+			});
+
+			it("reads the repo's allowed methods, and falls back when it cannot", async () => {
+				mockGhRepoView(JSON.stringify({ squashMergeAllowed: false, mergeCommitAllowed: true, rebaseMergeAllowed: true }));
+				const { resolveMergeMethod } = await import("../github");
+				await expect(resolveMergeMethod(PROJECT, "/tmp/wt")).resolves.toBe("merge");
+
+				mockGhRepoView("", "HTTP 502: Bad gateway", 1);
+				await expect(resolveMergeMethod(PROJECT, "/tmp/wt")).resolves.toBe("squash");
+			});
+		});
 	});
 });

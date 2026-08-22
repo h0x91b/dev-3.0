@@ -55,9 +55,11 @@ export default function TaskGitActionsSheet({
 }: TaskGitActionsSheetProps) {
 	const t = useT();
 	const {
+		baseBranch,
 		branchStatus,
 		compareRef,
 		displayRef,
+		mergeRoute,
 		handleCommit,
 		handleCreatePR,
 		handleMerge,
@@ -188,18 +190,24 @@ export default function TaskGitActionsSheet({
 	}
 
 	if (ownBranch) {
+		// Same two routes as the desktop bar: an open PR means gh merges the PR, so
+		// "behind the base" is GitHub's judgement, not a local rebase requirement.
+		const mergeIsPr = mergeRoute === "pull-request";
+		const mergeRowDisabled = !branchStatus || ahead === 0 || (!mergeIsPr && behind > 0);
 		rows.push({
 			key: "merge",
-			icon: <MergeIcon className={`h-5 w-5 shrink-0 ${!branchStatus || ahead === 0 || behind > 0 ? "text-fg-muted" : "text-success"}`} />,
-			label: t("infoPanel.merge"),
-			disabled: !branchStatus || ahead === 0 || behind > 0,
+			icon: <MergeIcon className={`h-5 w-5 shrink-0 ${mergeRowDisabled ? "text-fg-muted" : "text-success"}`} />,
+			label: mergeIsPr ? t("infoPanel.mergePr") : t("infoPanel.merge"),
+			disabled: mergeRowDisabled,
 			reason: !branchStatus
 				? t("infoPanel.statusLoading")
-				: behind > 0
-					? t("infoPanel.mergeDisabledBehind")
-					: ahead === 0
-						? t("infoPanel.mergeDisabledNoCommits")
-						: undefined,
+				: ahead === 0
+					? t("infoPanel.mergeDisabledNoCommits")
+					: mergeIsPr
+						? t("infoPanel.mergePrTooltip", { pr: String(branchStatus.prNumber), branch: baseBranch })
+						: behind > 0
+							? t("infoPanel.mergeDisabledBehind")
+							: undefined,
 			run: withDismiss(() => void handleMerge()),
 		});
 	}

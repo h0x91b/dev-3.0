@@ -117,6 +117,11 @@ vi.mock("../github", () => ({
 	// github.test.ts; here it is a switch so a handler can be tested both ways.
 	isGitHubRepo: vi.fn().mockResolvedValue(true),
 	isNotAGitHubRepoError: vi.fn().mockReturnValue(false),
+	// The one gh query behind both PR detection and Merge's route choice. Its
+	// parsing lives in github.test.ts; here it is the switch that decides whether a
+	// task has an open PR. Default: none, so Merge takes the local squash route.
+	findOpenPullRequest: vi.fn().mockResolvedValue({ pr: null, isGitHub: true }),
+	resolveMergeMethod: vi.fn().mockResolvedValue("squash"),
 	isPullRequestMerged: vi.fn(),
 	getPullRequestSnapshot: vi.fn().mockResolvedValue(null),
 	getGitHubShellExports: vi.fn().mockResolvedValue([]),
@@ -5181,7 +5186,12 @@ describe("handlers.getTaskDiff base branch resolution", () => {
 });
 
 describe("handlers.getBranchStatus", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		// Implementations survive clearAllMocks, so a PR mocked by an earlier test in
+		// this file would otherwise leak into every later one.
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
+	});
 
 	it("returns zeros when task has no worktree", async () => {
 		const project = makeProject();
@@ -5589,7 +5599,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42 }]), stderr: "", code: 0 });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 42, url: "" }, isGitHub: true });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(42);
@@ -5609,7 +5619,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42, url: prUrl }]), stderr: "", code: 0 });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 42, url: prUrl }, isGitHub: true });
 		const push = vi.fn();
 		setPushMessage(push);
 
@@ -5619,7 +5629,10 @@ describe("handlers.getBranchStatus", () => {
 		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: persisted });
 	});
 
-	it("returns prNumber=null when gh pr list returns empty array", async () => {
+	// One handler-level case now: an empty list, a gh failure and unparsable output
+	// all reach here as the same "no open PR" probe. Which gh answers produce it is
+	// findOpenPullRequest's own contract, pinned in github.test.ts.
+	it("returns prNumber=null when there is no open PR", async () => {
 		const project = makeProject();
 		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -5630,7 +5643,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", code: 0 });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBeNull();
@@ -5660,39 +5673,7 @@ describe("handlers.getBranchStatus", () => {
 		expect(result.prUrl).toBe(task.prUrl);
 	});
 
-	it("returns prNumber=null when gh pr list fails", async () => {
-		const project = makeProject();
-		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
-		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
-		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
-		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
-		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.runGitHub).mockResolvedValue({ ok: false, stdout: "", stderr: "gh not found", code: 1 });
 
-		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result.prNumber).toBeNull();
-	});
-
-	it("returns prNumber=null when gh returns invalid JSON", async () => {
-		const project = makeProject();
-		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
-		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
-		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
-		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
-		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "not json", stderr: "", code: 0 });
-
-		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result.prNumber).toBeNull();
-	});
 
 	it("returns prNumber for draft PRs (drafts are included)", async () => {
 		const project = makeProject();
@@ -5705,7 +5686,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 10 }]), stderr: "", code: 0 });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 10, url: "" }, isGitHub: true });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(10);
@@ -7260,7 +7241,12 @@ describe("handlers.killTmuxSession", () => {
 // ================================================================
 
 describe("handlers.mergeTask", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		// Implementations survive clearAllMocks, so a PR mocked by an earlier test in
+		// this file would otherwise leak into every later one.
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
+	});
 
 	it("throws when task has no worktree", async () => {
 		const project = makeProject();
@@ -7316,6 +7302,87 @@ describe("handlers.mergeTask", () => {
 			intervalSpy.mockRestore();
 			timeoutSpy.mockRestore();
 		}
+	});
+
+	/**
+	 * The defect this route fixes: with a PR open, Merge squashed into the LOCAL base
+	 * and pushed it — landing the work behind its own review and CI, and leaving a
+	 * commit on the user's `main` that origin refused. An open PR means `gh pr merge`.
+	 */
+	it("merges the open pull request via gh instead of squashing locally", async () => {
+		const project = makeProject({ path: "/tmp/project-root" });
+		const task = makeTask({ id: "task-1", title: "T", branchName: "dev3/t", worktreePath: "/tmp/wt" });
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 1475, url: "" }, isGitHub: true });
+		vi.mocked(github.resolveMergeMethod).mockResolvedValue("squash");
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "", stderr: "", code: 0 });
+
+		try {
+			await handlers.mergeTask({ taskId: "task-1", projectId: "proj-1", expectRoute: "pull-request" });
+
+			expect(vi.mocked(github.runGitHub).mock.calls[0][2]).toEqual(["pr", "merge", "1475", "--squash"]);
+			// No pane, no squash script, and no `git push origin main` anywhere.
+			expect(writeSpy.mock.calls.find(([p]) => String(p).includes("git-merge"))).toBeUndefined();
+			// The verdict still reaches the renderer the same way a pane's would, so the
+			// status refresh and the "task done?" offer keep working.
+			expect(push).toHaveBeenCalledWith("gitOpCompleted", {
+				taskId: task.id, projectId: project.id, operation: "merge", ok: true,
+			});
+		} finally {
+			writeSpy.mockRestore();
+		}
+	});
+
+	it("surfaces gh's own refusal when the PR is not mergeable", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", branchName: "dev3/t", worktreePath: "/tmp/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 7, url: "" }, isGitHub: true });
+		vi.mocked(github.runGitHub).mockResolvedValue({
+			ok: false, stdout: "", stderr: "Pull request #7 is not mergeable: the base branch policy prohibits the merge", code: 1,
+		});
+
+		await expect(
+			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1", expectRoute: "pull-request" }),
+		).rejects.toThrow(/not mergeable/);
+	});
+
+	// The renderer's button already told the user which of the two routes it would
+	// take. Running the other one silently is the failure mode `expectRoute` exists
+	// to prevent — a local squash-and-push behind a "merge the PR" confirmation.
+	it("refuses a local-squash click once a PR has appeared", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", branchName: "dev3/t", worktreePath: "/tmp/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 9, url: "" }, isGitHub: true });
+
+		await expect(
+			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1", expectRoute: "local-squash" }),
+		).rejects.toThrow(/#9 is open/);
+		expect(github.runGitHub).not.toHaveBeenCalled();
+	});
+
+	it("refuses a PR click once the PR is gone", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", branchName: "dev3/t", worktreePath: "/tmp/wt" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
+
+		await expect(
+			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1", expectRoute: "pull-request" }),
+		).rejects.toThrow(/No open pull request/);
 	});
 
 	it("stays local when the project has no remote", async () => {

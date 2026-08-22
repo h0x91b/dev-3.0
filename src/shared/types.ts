@@ -2806,6 +2806,15 @@ export function titleFromDescription(
 	return truncated + "\u2026";
 }
 
+/**
+ * The two things "Merge" can mean. An open pull request for the branch makes it
+ * `pull-request` (GitHub merges it, so review and CI still gate the landing);
+ * anything else is the local squash into the base branch. The renderer sends the
+ * route it promised the user so the backend can refuse a mismatch instead of
+ * running the other one.
+ */
+export type MergeRoute = "pull-request" | "local-squash";
+
 export interface BranchStatus {
 	ahead: number;
 	behind: number;
@@ -4234,7 +4243,7 @@ export type AppRPCSchema = {
 				response: { delivery: AgentPromptDelivery };
 			};
 			mergeTask: {
-				params: { taskId: string; projectId: string };
+				params: { taskId: string; projectId: string; expectRoute?: MergeRoute };
 				response: void;
 			};
 			pushTask: {

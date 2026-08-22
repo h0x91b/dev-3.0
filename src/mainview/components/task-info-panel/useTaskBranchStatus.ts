@@ -3,6 +3,7 @@ import { toast } from "../../toast";
 import { confirm } from "../../confirm";
 import {
 	type BranchStatus,
+	type MergeRoute,
 	type Project,
 	type Task,
 	resolveTaskCompareBaseBranch,
@@ -411,22 +412,35 @@ export function useTaskBranchStatus({
 		setCommitting(false);
 	}, [committing, project.id, task.id, t]);
 
-	// With a remote, Merge squashes AND pushes the base branch — the work is not
-	// landed until origin has it. That crosses review and CI, so it is confirmed
-	// first. Without a remote the squash is purely local and needs no ceremony.
+	// An open PR for this branch is what the button is about: Merge means "merge
+	// that PR on GitHub", not "squash it into my local base and push". Both UIs read
+	// this one value, so the label, the confirm and the command cannot disagree.
+	const mergeRoute: MergeRoute = branchStatus?.prNumber != null ? "pull-request" : "local-squash";
+
+	/**
+	 * Two routes, two confirmations. Merging the PR is not destructive — GitHub
+	 * still applies branch protection, reviews and CI — so it is confirmed plainly.
+	 * The local squash pushes the base branch straight to origin, which bypasses all
+	 * of that, and keeps the danger styling.
+	 */
 	const handleMerge = useCallback(async () => {
 		if (merging) {
 			return;
 		}
 
 		const baseBranch = resolveTaskCompareBaseBranch(task, project);
-		if (branchStatus?.hasRemote) {
-			const pr = branchStatus.prNumber;
+		if (mergeRoute === "pull-request") {
+			const pr = String(branchStatus?.prNumber ?? "");
+			const ok = await confirm({
+				title: t("infoPanel.mergePrConfirm", { pr }),
+				message: t("infoPanel.mergePrConfirmMessage", { pr, branch: baseBranch }),
+				confirmLabel: t("infoPanel.mergePr"),
+			});
+			if (!ok) return;
+		} else if (branchStatus?.hasRemote) {
 			const ok = await confirm({
 				title: t("infoPanel.mergePushConfirm", { branch: baseBranch }),
-				message: pr != null
-					? t("infoPanel.mergePushConfirmWithPr", { branch: baseBranch, pr: String(pr) })
-					: t("infoPanel.mergePushConfirmMessage", { branch: baseBranch }),
+				message: t("infoPanel.mergePushConfirmMessage", { branch: baseBranch }),
 				confirmLabel: t("infoPanel.merge"),
 				danger: true,
 			});
@@ -438,13 +452,14 @@ export function useTaskBranchStatus({
 			await api.request.mergeTask({
 				taskId: task.id,
 				projectId: project.id,
+				expectRoute: mergeRoute,
 			});
-			posthog.capture("task_merged", { pushed_base: !!branchStatus?.hasRemote });
+			posthog.capture("task_merged", { route: mergeRoute, pushed_base: !!branchStatus?.hasRemote });
 		} catch (err) {
 			toast.error(t("infoPanel.mergeFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setMerging(false);
-	}, [branchStatus, merging, project, task, t]);
+	}, [branchStatus, mergeRoute, merging, project, task, t]);
 
 	// `remoteAhead > 0` means origin/<branch> holds commits HEAD does not, so a
 	// plain push is refused as non-fast-forward — almost always a rebase after a
@@ -514,6 +529,7 @@ export function useTaskBranchStatus({
 		handleRebase,
 		handleRefreshStatus,
 		merging,
+		mergeRoute,
 		pushing,
 		rebasing,
 		refreshingStatus,
