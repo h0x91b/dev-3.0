@@ -16,6 +16,7 @@ import {
 	MAX_SHARED_ARTIFACT_ASSETS,
 	SHARED_ARTIFACT_ASSET_EXTS,
 } from "../shared/types";
+import { artifactGroupKey } from "../shared/artifact-versions";
 import { DEV3_HOME } from "./paths";
 import { createZip } from "./zip";
 import { projectSlug } from "./git";
@@ -86,12 +87,18 @@ export function injectArtifactThemeContract(source: string): string {
 	return `${ARTIFACT_THEME_CONTRACT}${source}`;
 }
 
-/** Copy one HTML artifact plus optional local assets and build its ZIP bundle. */
+/**
+ * Copy one HTML artifact plus optional local assets and build its ZIP bundle.
+ *
+ * One publish = one `shared-artifacts/<uuid>/` dir, unchanged by versioning:
+ * grouping happens in the task record, never by reshaping the directory.
+ */
 export function saveSharedArtifact(
 	projectPath: string,
 	htmlPath: string,
 	assetPaths: string[],
 	title?: string,
+	keyOptions?: { artifactId?: string; forceNew?: boolean },
 ): SharedArtifact {
 	const htmlStat = assertSourceFile(htmlPath);
 	if (extname(htmlPath).toLowerCase() !== ".html") {
@@ -135,11 +142,19 @@ export function saveSharedArtifact(
 			return { name, storedPath: assetPath, originalPath: path, mime: MIME_BY_EXT[ext], bytes: stat.size };
 		});
 		const baseTitle = htmlName.replace(/\.html$/i, "");
+		const resolvedTitle = title?.trim() || baseTitle;
+		// `--new` mints a key nothing can ever match, so the publish stands alone
+		// while later plain publishes of the same title still group with each other.
+		const groupKey = keyOptions?.forceNew
+			? `new:${id}`
+			: artifactGroupKey({ artifactId: keyOptions?.artifactId, title: resolvedTitle });
 		const record: SharedArtifact = {
 			id,
+			groupKey,
+			version: 1,
 			isUnread: true,
 			kind: "html",
-			title: title?.trim() || baseTitle,
+			title: resolvedTitle,
 			name: htmlName,
 			storedPath,
 			originalPath: htmlPath,

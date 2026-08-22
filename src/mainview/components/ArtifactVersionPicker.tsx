@@ -1,0 +1,108 @@
+import { useEffect, useRef, useState } from "react";
+import type { SharedArtifact } from "../../shared/types";
+import { artifactVersions, droppedArtifactVersions, latestArtifactVersion } from "../../shared/artifact-versions";
+import { useT } from "../i18n";
+
+interface ArtifactVersionPickerProps {
+	artifact: SharedArtifact;
+	selected: number;
+	onSelect: (version: number) => void;
+}
+
+function formatStamp(ms: number): string {
+	try {
+		return new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+	} catch {
+		return "";
+	}
+}
+
+/**
+ * One chip that opens the artifact's publish history — never a second pair of
+ * arrows, which would read as the artifact pager sitting next to it. Renders
+ * nothing for a single-version artifact, so an artifact published once looks
+ * exactly like it did before versioning existed.
+ */
+export default function ArtifactVersionPicker({ artifact, selected, onSelect }: ArtifactVersionPickerProps) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	const rootRef = useRef<HTMLDivElement>(null);
+	const versions = artifactVersions(artifact);
+	const latest = latestArtifactVersion(artifact);
+	const dropped = droppedArtifactVersions(artifact);
+
+	useEffect(() => {
+		if (!open) return;
+		function onPointerDown(event: MouseEvent) {
+			if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+		}
+		// Capture phase, and Escape stops here: the viewer's own Escape chain would
+		// otherwise close the whole viewer while a popover is still on screen.
+		function onKey(event: KeyboardEvent) {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			event.stopPropagation();
+			setOpen(false);
+		}
+		window.addEventListener("mousedown", onPointerDown);
+		window.addEventListener("keydown", onKey, { capture: true });
+		return () => {
+			window.removeEventListener("mousedown", onPointerDown);
+			window.removeEventListener("keydown", onKey, { capture: true });
+		};
+	}, [open]);
+
+	if (versions.length < 2) return null;
+
+	const label = t("artifactViewer.versionOf", { version: String(selected), count: String(latest) });
+
+	return (
+		<div className="relative flex-shrink-0" ref={rootRef}>
+			<button
+				type="button"
+				data-testid="artifact-version-picker"
+				className={`flex h-11 items-center gap-1 rounded-lg px-2 font-mono text-xs tabular-nums transition-colors sm:h-8 ${open ? "bg-accent/10 text-accent" : "text-fg-3 hover:bg-elevated-hover hover:text-fg"}`}
+				aria-haspopup="listbox"
+				aria-expanded={open}
+				aria-label={label}
+				title={label}
+				onClick={() => setOpen((value) => !value)}
+			>
+				<span>v{selected}</span>
+				{selected !== latest && <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />}
+				<span aria-hidden="true" className="text-fg-muted">▾</span>
+			</button>
+			{open && (
+				<div
+					role="listbox"
+					data-testid="artifact-version-list"
+					aria-label={t("artifactViewer.versions")}
+					className="absolute right-0 top-full z-10 mt-1 max-h-80 w-64 overflow-y-auto rounded-lg border border-edge bg-overlay py-1 shadow-lg"
+				>
+					{[...versions].reverse().map((entry) => (
+						<button
+							key={entry.version}
+							type="button"
+							role="option"
+							aria-selected={entry.version === selected}
+							data-testid="artifact-version-option"
+							className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-elevated-hover ${entry.version === selected ? "text-accent" : "text-fg-2"}`}
+							onClick={() => { onSelect(entry.version); setOpen(false); }}
+						>
+							<span className="font-mono text-xs tabular-nums">v{entry.version}</span>
+							<span className="min-w-0 flex-1 truncate text-micro text-fg-muted">{formatStamp(entry.createdAt)}</span>
+							{entry.version === latest && (
+								<span className="flex-shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-micro text-accent">{t("artifactViewer.versionLatest")}</span>
+							)}
+						</button>
+					))}
+					{dropped > 0 && (
+						<p data-testid="artifact-versions-dropped" className="border-t border-edge px-3 py-2 text-micro text-fg-muted">
+							{t.plural("artifactViewer.versionsDropped", dropped)}
+						</p>
+					)}
+				</div>
+			)}
+		</div>
+	);
+}

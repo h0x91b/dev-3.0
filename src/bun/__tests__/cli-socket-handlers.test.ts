@@ -39,8 +39,14 @@ vi.mock("../shared-images", () => ({
 
 vi.mock("../shared-artifacts", () => ({
 	SharedArtifactError: class SharedArtifactError extends Error {},
-	saveSharedArtifact: vi.fn((_projectPath: string, htmlPath: string, assetPaths: string[], title?: string) => ({
+	saveSharedArtifact: vi.fn((_projectPath: string, htmlPath: string, assetPaths: string[], title?: string, keyOptions?: { artifactId?: string; forceNew?: boolean }) => ({
 		id: "artifact-1",
+		groupKey: keyOptions?.forceNew
+			? "new:artifact-1"
+			: keyOptions?.artifactId
+				? `id:${keyOptions.artifactId.toLowerCase()}`
+				: `title:${(title || "report").toLowerCase()}`,
+		version: 1,
 		kind: "html",
 		title: title || "report",
 		name: "report.html",
@@ -1392,12 +1398,181 @@ describe("ui.show-artifact", () => {
 			"/tmp/report.html",
 			["/tmp/app.css", "/tmp/app.js", "/tmp/chart.png"],
 			"Metrics",
+			{ artifactId: undefined, forceNew: false },
 		);
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
 		expect(pushFn).toHaveBeenCalledWith(
 			"cliShowArtifact",
 			expect.objectContaining({ taskId: task.id, newCount: 1, taskSeq: task.seq }),
 		);
+	});
+
+	it("re-publishing the same title adds a version to the one row", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			sharedArtifacts: [{
+				id: "existing",
+				groupKey: "title:metrics",
+				version: 1,
+				kind: "html",
+				title: "Metrics",
+				name: "old.html",
+				storedPath: "/wt/shared-artifacts/existing/old.html",
+				originalPath: "/tmp/old.html",
+				bytes: 5,
+				createdAt: 1,
+				assets: [],
+			}],
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		let persisted: Task | undefined;
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => { updates: Partial<Task>; result: unknown })(task);
+			persisted = { ...task, ...updates };
+			return { task: persisted, result } as never;
+		});
+
+		const response = await handleRequest(makeRequest("ui.show-artifact", {
+			taskId: task.id,
+			projectId: project.id,
+			htmlPath: "/tmp/report.html",
+			title: "Metrics",
+		}));
+
+		expect(response.ok).toBe(true);
+		expect(response.data).toMatchObject({ version: 2 });
+		expect(persisted?.sharedArtifacts).toHaveLength(1);
+		const merged = persisted?.sharedArtifacts?.[0];
+		expect(merged?.id).toBe("existing");
+		expect(merged?.version).toBe(2);
+		expect(merged?.name).toBe("report.html");
+		expect(merged?.previousVersions?.map((entry) => entry.storedPath)).toEqual(["/wt/shared-artifacts/existing/old.html"]);
+	});
+
+	it("collapses pre-versioning rows sharing a title on the next publish", async () => {
+		const project = makeProject();
+		const legacy: SharedArtifact[] = [1, 2, 3].map((n) => ({
+			id: `legacy-${n}`,
+			kind: "html",
+			title: "Metrics",
+			name: `legacy-${n}.html`,
+			storedPath: `/wt/shared-artifacts/legacy-${n}/report.html`,
+			originalPath: `/tmp/legacy-${n}.html`,
+			bytes: 5,
+			createdAt: n,
+			assets: [],
+		}));
+		const task = makeTask({ sharedArtifacts: legacy });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		let persisted: Task | undefined;
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => { updates: Partial<Task>; result: unknown })(task);
+			persisted = { ...task, ...updates };
+			return { task: persisted, result } as never;
+		});
+
+		await handleRequest(makeRequest("ui.show-artifact", {
+			taskId: task.id,
+			projectId: project.id,
+			htmlPath: "/tmp/report.html",
+			title: "Metrics",
+		}));
+
+		expect(persisted?.sharedArtifacts).toHaveLength(1);
+		expect(persisted?.sharedArtifacts?.[0].id).toBe("legacy-1");
+		expect(persisted?.sharedArtifacts?.[0].version).toBe(4);
+		// Every stored path survives the collapse — nothing on disk is dropped.
+		expect(persisted?.sharedArtifacts?.[0].previousVersions?.map((entry) => entry.storedPath)).toEqual([
+			"/wt/shared-artifacts/legacy-1/report.html",
+			"/wt/shared-artifacts/legacy-2/report.html",
+			"/wt/shared-artifacts/legacy-3/report.html",
+		]);
+	});
+
+	it("--new keeps the publish as its own artifact", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			sharedArtifacts: [{
+				id: "existing",
+				groupKey: "title:metrics",
+				version: 1,
+				kind: "html",
+				title: "Metrics",
+				name: "old.html",
+				storedPath: "/wt/shared-artifacts/existing/old.html",
+				originalPath: "/tmp/old.html",
+				bytes: 5,
+				createdAt: 1,
+				assets: [],
+			}],
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		let persisted: Task | undefined;
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => { updates: Partial<Task>; result: unknown })(task);
+			persisted = { ...task, ...updates };
+			return { task: persisted, result } as never;
+		});
+
+		await handleRequest(makeRequest("ui.show-artifact", {
+			taskId: task.id,
+			projectId: project.id,
+			htmlPath: "/tmp/report.html",
+			title: "Metrics",
+			forceNew: true,
+		}));
+
+		expect(saveSharedArtifact).toHaveBeenCalledWith(
+			project.path,
+			"/tmp/report.html",
+			[],
+			"Metrics",
+			{ artifactId: undefined, forceNew: true },
+		);
+		expect(persisted?.sharedArtifacts?.map((artifact) => artifact.id)).toEqual(["existing", "artifact-1"]);
+	});
+
+	it("groups on --artifact-id even when the title was reworded", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			sharedArtifacts: [{
+				id: "existing",
+				groupKey: "id:weekly",
+				version: 1,
+				kind: "html",
+				title: "Old wording",
+				name: "old.html",
+				storedPath: "/wt/shared-artifacts/existing/old.html",
+				originalPath: "/tmp/old.html",
+				bytes: 5,
+				createdAt: 1,
+				assets: [],
+			}],
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		let persisted: Task | undefined;
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => { updates: Partial<Task>; result: unknown })(task);
+			persisted = { ...task, ...updates };
+			return { task: persisted, result } as never;
+		});
+
+		await handleRequest(makeRequest("ui.show-artifact", {
+			taskId: task.id,
+			projectId: project.id,
+			htmlPath: "/tmp/report.html",
+			title: "Brand new wording",
+			artifactId: "weekly",
+		}));
+
+		expect(persisted?.sharedArtifacts).toHaveLength(1);
+		expect(persisted?.sharedArtifacts?.[0].version).toBe(2);
+		// The newest title wins on the row the user sees.
+		expect(persisted?.sharedArtifacts?.[0].title).toBe("Brand new wording");
 	});
 
 	it("rejects a missing HTML path", async () => {

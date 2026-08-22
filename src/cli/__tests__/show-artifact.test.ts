@@ -68,6 +68,24 @@ describe("show-artifact", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({ assetPaths: [] }));
 	});
 
+	it("passes --artifact-id and --new through, and names the version it produced", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId, version: 3 }));
+		await handleShowArtifact([HTML, "--title", "Metrics", "--artifact-id", "weekly", "--new"], SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({
+			title: "Metrics",
+			artifactId: "weekly",
+			forceNew: true,
+		}));
+		expect(stdoutSpy).toHaveBeenCalledWith(`Shared artifact (version 3) to task ${CTX.taskId.slice(0, 8)}.\n`);
+	});
+
+	it("says nothing about versions for a first publish", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId, version: 1 }));
+		await handleShowArtifact([HTML], SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.not.objectContaining({ forceNew: true }));
+		expect(stdoutSpy).toHaveBeenCalledWith(`Shared artifact to task ${CTX.taskId.slice(0, 8)}.\n`);
+	});
+
 	it("reports an artifact viewer queued by Focus Mode", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, queued: true, stored: 1, taskId: CTX.taskId }));
 		await handleShowArtifact([HTML], SOCKET, CTX);

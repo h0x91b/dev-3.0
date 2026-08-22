@@ -12,7 +12,8 @@ import { exitError, exitUsage } from "../output";
 import { sendRequest } from "../socket-client";
 
 const ASSET_EXTS = new Set(SHARED_ARTIFACT_ASSET_EXTS);
-const VALUE_FLAGS = new Set(["title", "task", "task-id", "project"]);
+const VALUE_FLAGS = new Set(["title", "task", "task-id", "project", "artifact-id"]);
+const BOOL_FLAGS = new Set(["new"]);
 
 function nextValue(argv: string[], index: number, flag: string): { value: string; index: number } {
 	const next = argv[index + 1];
@@ -43,6 +44,10 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 			collectingAssets = false;
 			const eq = token.indexOf("=");
 			const key = token.slice(2, eq === -1 ? undefined : eq);
+			if (BOOL_FLAGS.has(key) && eq === -1) {
+				flags[key] = "true";
+				continue;
+			}
 			if (!VALUE_FLAGS.has(key)) exitUsage(`Unknown flag: --${key}`);
 			if (eq !== -1) flags[key] = resolveValue(token.slice(eq + 1));
 			else {
@@ -58,7 +63,7 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 		else exitUsage(`Unexpected path: ${token}. Put local assets after --assets.`);
 	}
 
-	if (!html) exitUsage('Usage: dev3 show-artifact <file.html> [--assets <file...>] [--title "..."] [--task <id>]');
+	if (!html) exitUsage('Usage: dev3 show-artifact <file.html> [--assets <file...>] [--title "..."] [--artifact-id <slug>] [--new] [--task <id>]');
 	const htmlPath = resolvePath(process.cwd(), html);
 	if (!existsSync(htmlPath) || !statSync(htmlPath).isFile()) exitUsage(`HTML file not found: ${html}`);
 	if (extname(htmlPath).toLowerCase() !== ".html") exitUsage(`Artifact must be an .html file: ${html}`);
@@ -84,12 +89,19 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 	const projectId = resolveProjectId(flags.project, context);
 	if (projectId) params.projectId = projectId;
 	if (flags.title?.trim()) params.title = flags.title.trim();
+	// Re-publishing groups on --artifact-id, else on the title. --new opts out
+	// entirely, so a genuinely different report never lands as someone's version.
+	if (flags["artifact-id"]?.trim()) params.artifactId = flags["artifact-id"].trim();
+	if (flags.new === "true") params.forceNew = true;
 
 	const response = await sendRequest(socketPath, "ui.show-artifact", params);
 	if (!response.ok) exitError(response.error || "Failed to show artifact");
-	const data = response.data as { delivered: boolean; stored: number; taskId: string; queued?: boolean; suppressed?: boolean };
-	if (data.queued) process.stdout.write("Stored artifact — viewer queued until Focus Mode ends.\n");
-	else if (data.suppressed) process.stdout.write("Stored artifact — focus mode is on, viewer not opened.\n");
-	else if (!data.delivered) process.stdout.write("Stored artifact, but the app has no open window — nothing was shown.\n");
-	else process.stdout.write(`Shared artifact to task ${data.taskId.slice(0, 8)}.\n`);
+	const data = response.data as { delivered: boolean; stored: number; taskId: string; queued?: boolean; suppressed?: boolean; version?: number };
+	// Naming the version is how an agent that just re-ran the same command learns
+	// it updated an artifact instead of adding one.
+	const version = typeof data.version === "number" && data.version > 1 ? ` (version ${data.version})` : "";
+	if (data.queued) process.stdout.write(`Stored artifact${version} — viewer queued until Focus Mode ends.\n`);
+	else if (data.suppressed) process.stdout.write(`Stored artifact${version} — focus mode is on, viewer not opened.\n`);
+	else if (!data.delivered) process.stdout.write(`Stored artifact${version}, but the app has no open window — nothing was shown.\n`);
+	else process.stdout.write(`Shared artifact${version} to task ${data.taskId.slice(0, 8)}.\n`);
 }

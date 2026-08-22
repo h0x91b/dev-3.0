@@ -11,6 +11,7 @@ import type { DeepLinkNav } from "../shared/deep-link";
 import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { SharedImageError, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
+import { appendArtifactVersion, latestArtifactVersion } from "../shared/artifact-versions";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
 import { createAgentRequest, type AgentLaunchChoice } from "./agent-requests";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
@@ -1550,17 +1551,24 @@ const handlers: Record<string, Handler> = {
 			? params.assetPaths.filter((path): path is string => typeof path === "string" && path.length > 0)
 			: [];
 		const title = typeof params.title === "string" && params.title.trim() ? params.title.trim() : undefined;
+		const artifactId = typeof params.artifactId === "string" && params.artifactId.trim() ? params.artifactId.trim() : undefined;
+		const forceNew = params.forceNew === true;
 
 		let incoming: SharedArtifact;
 		try {
-			incoming = saveSharedArtifact(project.path, htmlPath, assetPaths, title);
+			incoming = saveSharedArtifact(project.path, htmlPath, assetPaths, title, { artifactId, forceNew });
 		} catch (error) {
 			if (error instanceof SharedArtifactError) throw error;
 			throw new Error(`Failed to store artifact: ${error instanceof Error ? error.message : String(error)}`);
 		}
 
-		const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
-			return { updates: { sharedArtifacts: [...(current.sharedArtifacts ?? []), incoming] }, result: undefined };
+		// Re-publishing an artifact adds a version to the row the user already has
+		// instead of a new row. Nothing is deleted from disk: a version the cap
+		// trims only leaves the record, its stored dir stays where it was.
+		const { task: updated, result: version } = await data.updateTaskWith<number>(project, task.id, (current) => {
+			const { artifacts } = appendArtifactVersion(current.sharedArtifacts ?? [], incoming);
+			const merged = artifacts.find((artifact) => artifact.groupKey === incoming.groupKey);
+			return { updates: { sharedArtifacts: artifacts }, result: merged ? latestArtifactVersion(merged) : 1 };
 		});
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 
@@ -1575,12 +1583,12 @@ const handlers: Record<string, Handler> = {
 		};
 		if (isNotificationSuppressed()) {
 			pushCliShowArtifact(payload);
-			return { delivered: true, queued: true, stored: 1, taskId: task.id };
+			return { delivered: true, queued: true, stored: 1, taskId: task.id, version };
 		}
 		const push = getPushMessage();
-		if (!push) return { delivered: false, stored: 1, taskId: task.id };
+		if (!push) return { delivered: false, stored: 1, taskId: task.id, version };
 		push("cliShowArtifact", payload);
-		return { delivered: true, stored: 1, taskId: task.id };
+		return { delivered: true, stored: 1, taskId: task.id, version };
 	},
 
 	/**

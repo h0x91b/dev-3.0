@@ -56,6 +56,30 @@ describe("injectArtifactThemeContract", () => {
 describe("saveSharedArtifact", () => {
 	beforeEach(() => rmSync(TEST_HOME, { recursive: true, force: true }));
 
+	it("stamps the grouping key from the resolved title, the slug, or --new", () => {
+		const html = join(SRC_DIR, "keyed.html");
+		writeFileSync(html, "<!doctype html><h1>Keyed</h1>");
+
+		expect(saveSharedArtifact("/my/project", html, [], "  Weekly   Report ").groupKey).toBe("title:weekly report");
+		// No --title: the key falls back to the HTML basename, exactly like the title.
+		expect(saveSharedArtifact("/my/project", html, []).groupKey).toBe("title:keyed");
+		expect(saveSharedArtifact("/my/project", html, [], "Anything", { artifactId: "Weekly" }).groupKey).toBe("id:weekly");
+		const forced = saveSharedArtifact("/my/project", html, [], "Weekly Report", { forceNew: true });
+		expect(forced.groupKey).toBe(`new:${forced.id}`);
+		expect(forced.version).toBe(1);
+	});
+
+	it("keeps one directory per publish, so versioning never reshapes storage", () => {
+		const html = join(SRC_DIR, "twice.html");
+		writeFileSync(html, "<!doctype html><h1>Twice</h1>");
+		const first = saveSharedArtifact("/my/project", html, [], "Same title");
+		const second = saveSharedArtifact("/my/project", html, [], "Same title");
+		expect(first.groupKey).toBe(second.groupKey);
+		expect(dirname(first.storedPath)).not.toBe(dirname(second.storedPath));
+		expect(existsSync(first.storedPath)).toBe(true);
+		expect(existsSync(second.storedPath)).toBe(true);
+	});
+
 	it("copies HTML and local assets into one portable bundle", () => {
 		const html = join(SRC_DIR, "report.html");
 		const image = join(SRC_DIR, "chart.png");

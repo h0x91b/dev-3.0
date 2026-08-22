@@ -2769,14 +2769,50 @@ export interface SharedArtifactAsset {
 }
 
 /**
+ * One published revision of an artifact. Holds every field that a publish
+ * produces; the newest revision is the {@link SharedArtifact} record itself,
+ * so this type only ever describes an older one.
+ */
+export interface SharedArtifactVersion {
+	/** 1-based publish number, contiguous and renumbered when records collapse. */
+	version: number;
+	name: string;
+	storedPath: string;
+	originalPath: string;
+	bytes: number;
+	createdAt: number;
+	assets: SharedArtifactAsset[];
+	bundlePath?: string;
+	bundleBytes?: number;
+}
+
+/**
  * A task-bound HTML artifact surfaced via `dev3 show-artifact`.
  *
  * The stored HTML contains the stable dev3 artifact theme contract. When
  * `assets` is non-empty, `bundlePath` points at a portable ZIP containing the
  * HTML and every copied local asset at its relative path.
+ *
+ * Re-publishing the same artifact adds a VERSION instead of a new record: the
+ * top-level fields above always describe the newest version, while
+ * `previousVersions` keeps the older ones. Records written before versioning
+ * carry none of the three optional fields and read as a single version 1.
+ * See `src/shared/artifact-versions.ts` for the helpers that project a version.
  */
 export interface SharedArtifact {
 	id: string;
+	/**
+	 * Identity a re-publish groups on: `id:<slug>` from `--artifact-id`, else
+	 * `title:<normalized title>`. `--new` mints a unique key so nothing attaches.
+	 */
+	groupKey?: string;
+	/** Version number of THIS record — the newest one. Absent means 1. */
+	version?: number;
+	/**
+	 * Older versions, oldest→newest. Trimmed to `MAX_ARTIFACT_VERSIONS`; what the
+	 * cap dropped is derived from `version` minus the retained count.
+	 */
+	previousVersions?: SharedArtifactVersion[];
 	/** True until the user opens a viewer containing this artifact. Absent means read for legacy records. */
 	isUnread?: boolean;
 	kind: "html";

@@ -1,4 +1,5 @@
 import type { SharedArtifact, SharedImage, Task } from "../../shared/types";
+import { latestArtifactVersion } from "../../shared/artifact-versions";
 import { useT } from "../i18n";
 import { ArtifactsIcon, ImagesIcon } from "./TaskIcons";
 
@@ -83,7 +84,10 @@ export default function SharedOutputsList({ task, projectId }: SharedOutputsList
 							>
 								<span className="min-w-0 flex-1">
 									<span className="block truncate text-xs text-fg-2 group-hover:text-fg">{artifact.title || artifact.name}</span>
-									<span className="mt-0.5 block truncate font-mono text-micro text-fg-muted">{artifact.name}</span>
+									<span className="mt-0.5 block truncate font-mono text-micro text-fg-muted">
+										{artifact.name}
+										{latestArtifactVersion(artifact) > 1 && ` · v${latestArtifactVersion(artifact)}`}
+									</span>
 								</span>
 								<span className="flex-shrink-0 text-micro tabular-nums text-fg-muted">{formatStamp(artifact.createdAt)}</span>
 							</button>

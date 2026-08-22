@@ -1,0 +1,3 @@
+Short: Artifacts get versions
+
+Re-publishing an HTML artifact with `dev3 show-artifact` now adds a version to the artifact you already have instead of a new row, so a report revised twenty times is one row with a version switcher in the viewer rather than twenty near-identical entries. Grouping follows the title, or an explicit `--artifact-id <slug>` that survives re-wording it, and `--new` publishes a separate artifact when two reports genuinely share a title. The viewer opens on the newest version, lists every retained one with its publish time, and states how many the 20-version cap dropped.
