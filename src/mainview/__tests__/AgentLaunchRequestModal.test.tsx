@@ -56,6 +56,7 @@ function makeRequest(overrides?: Partial<AgentLaunchRequest>): AgentLaunchReques
 		scratch: false,
 		requesterSeq: 3,
 		requesterTitle: "Asking task",
+		autoApproveAt: null,
 		subject: {
 			seqLabel: "7",
 			projectName: "dev-3.0",
@@ -128,5 +129,22 @@ describe("AgentLaunchRequestModal", () => {
 
 		expect(await screen.findByText(/Agent wants a scratch task/)).toBeInTheDocument();
 		expect(screen.getByText(/Starts with no prompt/)).toBeInTheDocument();
+	});
+});
+
+describe("AgentLaunchRequestModal — auto-approve countdown", () => {
+	it("says when the launch will happen on its own", async () => {
+		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		const countdown = await screen.findByTestId("agent-launch-countdown");
+		// Rendered from the deadline, so a backgrounded window cannot drift.
+		expect(countdown).toHaveTextContent(/Starts on its own in 5:00|Starts on its own in 4:59/);
+	});
+
+	it("shows nothing when auto-approval is off", async () => {
+		renderModal(makeRequest({ autoApproveAt: null }));
+
+		await screen.findByText(/Asked by task #3/);
+		expect(screen.queryByTestId("agent-launch-countdown")).toBeNull();
 	});
 });

@@ -12,6 +12,17 @@ import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
 
 const NOT_INSTALLED_ID = "agent-launch-not-installed";
 
+/** Whole seconds left until `at`, floored at 0. */
+function secondsUntil(at: number): number {
+	return Math.max(0, Math.ceil((at - Date.now()) / 1000));
+}
+
+function formatCountdown(totalSeconds: number): string {
+	const minutes = Math.floor(totalSeconds / 60);
+	const seconds = totalSeconds % 60;
+	return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 interface AgentLaunchRequestModalProps {
 	request: AgentLaunchRequest;
 	/** Answers the blocked CLI. `launch` is only set when approved. */
@@ -68,6 +79,25 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	// Escape declines: the CLI is blocked waiting, so dismissing without an
 	// answer would leave the requesting agent hanging for the full timeout.
 	useEscapeKey(() => onRespond(false));
+
+	// Countdown only — the timer that actually approves lives in the bun process
+	// and closes this dialog through `agentRequestResolved`. Rendering it from
+	// the deadline (not a local tick budget) keeps a backgrounded tab honest.
+	const autoApproveAt = request.autoApproveAt;
+	const [secondsLeft, setSecondsLeft] = useState(() => (autoApproveAt ? secondsUntil(autoApproveAt) : 0));
+	useEffect(() => {
+		if (!autoApproveAt) return;
+		setSecondsLeft(secondsUntil(autoApproveAt));
+		const id = setInterval(() => setSecondsLeft(secondsUntil(autoApproveAt)), 1000);
+		return () => clearInterval(id);
+	}, [autoApproveAt]);
+
+	// Mirror every pick back to the pending request, so an auto-approval that
+	// fires while the user is away launches with what they last selected.
+	function reportChoice(next: { agentId: string | null; configId: string | null; accountId?: string | null }) {
+		if (!autoApproveAt) return;
+		api.request.updateAgentLaunchChoice({ requestId: request.requestId, launch: next }).catch(() => {});
+	}
 
 	const handleToggleFavorite = useToggleFavorite(setGlobalSettings);
 
@@ -142,9 +172,13 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 							onChange={(next) => {
 								setAgentId(next.agentId);
 								setConfigId(next.configId);
+								reportChoice({ ...next, accountId });
 							}}
 							accountId={accountId}
-							onAccountChange={setAccountId}
+							onAccountChange={(next) => {
+								setAccountId(next);
+								reportChoice({ agentId, configId, accountId: next });
+							}}
 							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 							showFavorites
 							favorites={globalSettings.favorites ?? []}
@@ -169,6 +203,17 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 				</div>
 
 				<div className="px-6 py-4 border-t border-edge flex items-center justify-end gap-3 flex-shrink-0">
+					{autoApproveAt && !launching && (
+						<p
+							data-testid="agent-launch-countdown"
+							className="text-fg-3 text-xs mr-auto"
+							// Polite, not assertive: a per-second tick read out loud would
+							// drown everything else in the dialog.
+							aria-live="off"
+						>
+							{t("agentLaunch.autoApproveIn", { time: formatCountdown(secondsLeft) })}
+						</p>
+					)}
 					<button
 						type="button"
 						autoFocus

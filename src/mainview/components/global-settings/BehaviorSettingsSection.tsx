@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, type GlobalSettings } from "../../../shared/types";
+import { AGENT_LAUNCH_AUTO_APPROVE_CHOICES, COORDINATOR_PROMPT, DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES, DEFAULT_PR_REVIEW_PROMPT, type GlobalSettings } from "../../../shared/types";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
@@ -16,6 +16,8 @@ interface BehaviorSettingsSectionProps {
 	onWatchByDefaultToggle: (enabled: boolean) => void;
 	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
 	onPrOriginTaskLinkToggle: (enabled: boolean) => void;
+	/** Minutes before an unanswered agent-launch dialog approves itself; 0 = never. */
+	onAgentLaunchAutoApproveChange: (minutes: number) => void;
 	/** False on a host with no OS-registered `dev3://` handler (Windows, Linux) — the
 	 *  toggle then reads Off and inert, while the stored preference on disk is untouched. */
 	prOriginTaskLinkSupported: boolean;
@@ -39,6 +41,7 @@ export default function BehaviorSettingsSection({
 	onWatchByDefaultToggle,
 	onSuggestCompletingTasksAfterMergeToggle,
 	onPrOriginTaskLinkToggle,
+	onAgentLaunchAutoApproveChange,
 	prOriginTaskLinkSupported,
 	onFocusModeToggle,
 	onTaskSortOrderChange,
@@ -192,6 +195,31 @@ export default function BehaviorSettingsSection({
 						onSuggestCompletingTasksAfterMergeToggle(globalSettings.suggestCompletingTasksAfterMerge === false)
 					}
 				/>
+			</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="agent-launch-auto-approve">
+			<div>
+				<p className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.agentLaunchAutoApprove")}
+				</p>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.agentLaunchAutoApproveDesc")}
+				</p>
+				<select
+					value={String(globalSettings.agentLaunchAutoApproveMinutes ?? DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES)}
+					aria-label={t("settings.agentLaunchAutoApprove")}
+					onChange={(e) => onAgentLaunchAutoApproveChange(Number(e.target.value))}
+					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none"
+				>
+					{AGENT_LAUNCH_AUTO_APPROVE_CHOICES.map((minutes) => (
+						<option key={minutes} value={String(minutes)}>
+							{minutes === 0
+								? t("settings.agentLaunchAutoApproveOff")
+								: t.plural("settings.agentLaunchAutoApproveMinutes", minutes)}
+						</option>
+					))}
+				</select>
 			</div>
 			</SettingsEntry>
 

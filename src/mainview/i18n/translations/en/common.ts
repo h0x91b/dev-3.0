@@ -33,6 +33,7 @@ const common = {
 	"agentLaunch.launch": "Launch",
 	"agentLaunch.launching": "Launching…",
 	"agentLaunch.decline": "Decline",
+	"agentLaunch.autoApproveIn": "Starts on its own in {time}",
 
 	// Vimium-style hint navigation
 	"hint.legend.jump": "jump",

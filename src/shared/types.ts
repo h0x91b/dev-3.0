@@ -1129,6 +1129,14 @@ export interface GlobalSettings {
 	/** When false, merged branches show a notice instead of a completion prompt. */
 	suggestCompletingTasksAfterMerge?: boolean;
 	/**
+	 * Minutes the agent-launch dialog waits before approving itself, so a
+	 * requesting agent is not blocked on a user who stepped away. `0` disables
+	 * it and restores the answer-or-time-out behaviour. Undefined ⇒
+	 * {@link DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES}. Deliberately not
+	 * applied to the completion dialog: that one destroys a worktree.
+	 */
+	agentLaunchAutoApproveMinutes?: number;
+	/**
 	 * When false, the Create-PR handoff stops asking the agent to append the
 	 * deep link back to the originating task. Default on; the opt-out exists
 	 * because a public PR would otherwise advertise that dev3 produced it.
@@ -2555,6 +2563,24 @@ export interface AgentLaunchRequest {
 	requesterSeq: number;
 	requesterTitle: string;
 	subject: TaskDialogSubject;
+	/**
+	 * Epoch ms at which the request approves itself, or null when auto-approval
+	 * is off. The countdown is only a mirror — the timer that actually fires
+	 * lives in the bun process, so closing the window cannot stall the agent.
+	 */
+	autoApproveAt: number | null;
+}
+
+/** Minutes the launch dialog waits before approving itself when unconfigured. */
+export const DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES = 5;
+
+/** Choices offered for {@link GlobalSettings.agentLaunchAutoApproveMinutes}; `0` = off. */
+export const AGENT_LAUNCH_AUTO_APPROVE_CHOICES = [0, 1, 2, 5, 10, 15] as const;
+
+/** Resolve the configured auto-approve delay in ms; `0` means "never auto-approve". */
+export function agentLaunchAutoApproveMs(settings: Pick<GlobalSettings, "agentLaunchAutoApproveMinutes">): number {
+	const minutes = settings.agentLaunchAutoApproveMinutes ?? DEFAULT_AGENT_LAUNCH_AUTO_APPROVE_MINUTES;
+	return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60_000) : 0;
 }
 
 /**
@@ -4926,6 +4952,18 @@ export type AppRPCSchema = {
 					requestId: string;
 					approved: boolean;
 					launch?: { agentId: string | null; configId: string | null; accountId?: string | null };
+				};
+				response: void;
+			};
+			/**
+			 * Mirror the dialog's current agent/config/account pick into the pending
+			 * request, so an auto-approval that fires while nobody is watching still
+			 * launches with what the user last selected rather than the global default.
+			 */
+			updateAgentLaunchChoice: {
+				params: {
+					requestId: string;
+					launch: { agentId: string | null; configId: string | null; accountId?: string | null };
 				};
 				response: void;
 			};

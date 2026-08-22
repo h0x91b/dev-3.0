@@ -10,7 +10,11 @@ import BehaviorSettingsSection from "../BehaviorSettingsSection";
 // a translation — one English constant serves both the create flow and the CLI —
 // so "reset to default" has to restore exactly that constant.
 const BUILTIN_PROMPT = DEFAULT_PR_REVIEW_PROMPT;
-const t = ((key: string) => key) as unknown as TFunction;
+// Identity stub, plus the `plural` member the auto-approve options call — a bare
+// arrow function has no properties, and the section renders through it.
+const t = Object.assign((key: string) => key, {
+	plural: (key: string, count: number) => `${key}|${count}`,
+}) as unknown as TFunction;
 
 function renderSection(
 	settings: Partial<GlobalSettings> = {},
@@ -29,6 +33,7 @@ function renderSection(
 				onWatchByDefaultToggle={vi.fn()}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
+				onAgentLaunchAutoApproveChange={vi.fn()}
 				prOriginTaskLinkSupported={prOriginTaskLinkSupported}
 				onFocusModeToggle={vi.fn()}
 				onTaskSortOrderChange={vi.fn()}

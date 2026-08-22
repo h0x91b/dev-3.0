@@ -4,7 +4,7 @@ import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATI
 import { agentReplyRef } from "../shared/agent-message-envelope";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import type { DeepLinkNav } from "../shared/deep-link";
@@ -271,7 +271,16 @@ async function requestAgentLaunchApproval(opts: {
 		throw new Error("No app window is connected — cannot ask the user for approval");
 	}
 
-	const { requestId, decision, isNew } = createAgentRequest("launch", task.id, project.id);
+	// A launch is reversible, so an unanswered dialog approves itself rather than
+	// pinning the requesting agent to a dead socket. The completion dialog
+	// deliberately does not do this — it destroys a worktree.
+	const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
+	const { requestId, decision, isNew, autoApproveAt } = createAgentRequest(
+		"launch",
+		task.id,
+		project.id,
+		{ autoApproveAfterMs },
+	);
 	if (isNew) {
 		push("agentLaunchRequested", {
 			requestId,
@@ -285,6 +294,7 @@ async function requestAgentLaunchApproval(opts: {
 			// Same read-only context card as the completion dialog, so the user
 			// recognizes which task an agent wants to set running.
 			subject: buildTaskDialogSubject(task, project),
+			autoApproveAt,
 		});
 	}
 

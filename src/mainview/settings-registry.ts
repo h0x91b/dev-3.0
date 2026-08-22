@@ -179,6 +179,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "agent-launch-auto-approve",
+		category: "tasks",
+		titleKey: "settings.agentLaunchAutoApprove",
+		descriptionKey: "settings.agentLaunchAutoApproveDesc",
+		anchor: "agent-launch-auto-approve",
+		globalField: "agentLaunchAutoApproveMinutes",
+		storage: "global",
+	},
+	{
 		id: "pr-origin-task-link",
 		category: "tasks",
 		titleKey: "settings.prOriginTaskLink",
@@ -469,6 +478,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"watchByDefault",
 	"suggestCompletingTasksAfterMerge",
 	"prOriginTaskLink",
+	"agentLaunchAutoApproveMinutes",
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"favorites",

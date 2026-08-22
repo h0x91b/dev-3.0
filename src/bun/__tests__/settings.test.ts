@@ -166,6 +166,7 @@ describe("saveSettings", () => {
 		});
 		const full: Required<GlobalSettings> = {
 			coordinatorPrompt: "Coordinate, do not code.",
+			agentLaunchAutoApproveMinutes: 2,
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",
 			taskSortOrder: "newest-first",

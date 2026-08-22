@@ -71,7 +71,9 @@ vi.mock("../socket-backpressure", () => ({
 }));
 
 vi.mock("../settings", () => ({
-	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskSortOrder: "oldest-first" })),
+	// Auto-approval off by default here: these cases assert the ask/answer
+	// contract, and a live 5-minute timer would outlive the test process.
+	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskSortOrder: "oldest-first", agentLaunchAutoApproveMinutes: 0 })),
 	saveSettings: vi.fn(),
 	recordFavoriteUsages: vi.fn(),
 }));
@@ -94,6 +96,7 @@ import * as data from "../data";
 import { moveTask, launchTaskWithAgentChoice, createScratchTask, deleteTask, getPushMessage } from "../rpc-handlers";
 import { deliverLaunchHandoff } from "../agent-launch-handoff";
 import { resolveAgentRequest, _resetAgentRequestsForTests } from "../agent-requests";
+import { loadSettings } from "../settings";
 
 const { handleRequest } = await import("../cli-socket-server");
 
@@ -412,5 +415,68 @@ describe("task.createScratchAndRun", () => {
 		// An empty scratch card must not be left littering To Do.
 		expect(deleteTask).toHaveBeenCalledWith({ taskId: scratch.id, projectId: "proj-1" });
 		expect(launchTaskWithAgentChoice).not.toHaveBeenCalled();
+	});
+});
+
+describe("task.move — unanswered launch auto-approves", () => {
+	it("pushes the deadline and launches itself when nobody answers", async () => {
+		vi.mocked(loadSettings).mockReturnValue({
+			updateChannel: "stable", taskSortOrder: "oldest-first", agentLaunchAutoApproveMinutes: 5,
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		} as any);
+		const target = makeTask();
+		setupBoard(target);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+
+		// Installed BEFORE the request: the timer is created inside it, and a clock
+		// swapped in afterwards would never own it.
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		try {
+			const respPromise = handleRequest(moveRequest({
+				taskId: TARGET_ID,
+				newStatus: "in-progress",
+				projectId: "proj-1",
+				sourceTaskId: REQUESTER_ID,
+			}));
+			await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+
+			const payload = pushFn.mock.calls[0][1] as { autoApproveAt: number | null };
+			// The dialog needs the deadline to render a countdown that matches the timer.
+			expect(payload.autoApproveAt).toBeGreaterThan(Date.now());
+
+			await vi.advanceTimersByTimeAsync(5 * 60_000);
+			const resp = await respPromise;
+
+			expect(resp.ok).toBe(true);
+			expect(resp.data).toMatchObject({ approved: true });
+			expect(launchTaskWithAgentChoice).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("carries no deadline when the setting is off", async () => {
+		vi.mocked(loadSettings).mockReturnValue({
+			updateChannel: "stable", taskSortOrder: "oldest-first", agentLaunchAutoApproveMinutes: 0,
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		} as any);
+		setupBoard(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+
+		const payload = pushFn.mock.calls[0][1] as { requestId: string; autoApproveAt: number | null };
+		expect(payload.autoApproveAt).toBeNull();
+		resolveAgentRequest(payload.requestId, { approved: false });
+		await respPromise;
 	});
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({
@@ -17,12 +17,17 @@ vi.mock("../rpc-handlers/shared-pure", () => ({
 import {
 	createAgentRequest,
 	resolveAgentRequest,
+	setAgentRequestLaunchChoice,
 	_resetAgentRequestsForTests,
 } from "../agent-requests";
 
 beforeEach(() => {
 	_resetAgentRequestsForTests();
 	push.mockClear();
+});
+
+afterEach(() => {
+	vi.useRealTimers();
 });
 
 describe("createAgentRequest", () => {
@@ -126,5 +131,76 @@ describe("resolveAgentRequest", () => {
 		resolveAgentRequest(first.requestId, { approved: true });
 		await expect(first.decision).resolves.toEqual({ approved: true });
 		await expect(second.decision).resolves.toEqual({ approved: true });
+	});
+});
+
+describe("auto-approval", () => {
+	it("approves itself once the deadline passes", async () => {
+		vi.useFakeTimers();
+		const { requestId, decision, autoApproveAt } = createAgentRequest("launch", "task-1", "proj-1", {
+			autoApproveAfterMs: 5 * 60_000,
+		});
+
+		expect(autoApproveAt).toBe(Date.now() + 5 * 60_000);
+		vi.advanceTimersByTime(5 * 60_000);
+
+		await expect(decision).resolves.toEqual({ approved: true, launch: undefined });
+		// Every other client's copy of the dialog has to close with it.
+		expect(push).toHaveBeenCalledWith("agentRequestResolved", expect.objectContaining({ requestId }));
+	});
+
+	it("launches with the pick the dialog last reported", async () => {
+		vi.useFakeTimers();
+		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1", {
+			autoApproveAfterMs: 60_000,
+		});
+		const launch = { agentId: "builtin-codex", configId: "codex-default", accountId: null };
+
+		expect(setAgentRequestLaunchChoice(requestId, launch)).toBe(true);
+		vi.advanceTimersByTime(60_000);
+
+		await expect(decision).resolves.toEqual({ approved: true, launch });
+	});
+
+	it("never fires after the user answered", async () => {
+		vi.useFakeTimers();
+		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1", {
+			autoApproveAfterMs: 60_000,
+		});
+
+		resolveAgentRequest(requestId, { approved: false });
+		vi.advanceTimersByTime(10 * 60_000);
+
+		await expect(decision).resolves.toEqual({ approved: false });
+		expect(push).toHaveBeenCalledTimes(1);
+	});
+
+	it("stays open forever when auto-approval is off", async () => {
+		vi.useFakeTimers();
+		const { decision, autoApproveAt } = createAgentRequest("launch", "task-1", "proj-1", {
+			autoApproveAfterMs: 0,
+		});
+		let settled = false;
+		void decision.then(() => { settled = true; });
+
+		expect(autoApproveAt).toBeNull();
+		vi.advanceTimersByTime(60 * 60_000);
+		await Promise.resolve();
+
+		expect(settled).toBe(false);
+	});
+
+	it("does not let a retrying agent postpone its own deadline", () => {
+		vi.useFakeTimers();
+		const first = createAgentRequest("launch", "task-1", "proj-1", { autoApproveAfterMs: 5 * 60_000 });
+		vi.advanceTimersByTime(4 * 60_000);
+		const retry = createAgentRequest("launch", "task-1", "proj-1", { autoApproveAfterMs: 5 * 60_000 });
+
+		expect(retry.isNew).toBe(false);
+		expect(retry.autoApproveAt).toBe(first.autoApproveAt);
+	});
+
+	it("ignores a choice reported for an unknown request", () => {
+		expect(setAgentRequestLaunchChoice("nope", { agentId: null, configId: null })).toBe(false);
 	});
 });

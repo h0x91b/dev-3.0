@@ -362,6 +362,13 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleAgentLaunchAutoApproveChange = useCallback(
+		(minutes: number) => {
+			persistSettingChange({ agentLaunchAutoApproveMinutes: minutes });
+		},
+		[persistSettingChange],
+	);
+
 	const handleTipsDisabledToggle = useCallback(
 		(disabled: boolean) => {
 			persistSettingChange({ tipsDisabled: disabled });
@@ -694,6 +701,7 @@ function GlobalSettings({
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
 						onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
+						onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
 						prOriginTaskLinkSupported={prOriginTaskLinkSupported}
 						onFocusModeToggle={handleFocusModeToggle}
 						onTaskSortOrderChange={handleTaskSortOrderChange}

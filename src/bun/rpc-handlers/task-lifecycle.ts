@@ -3,7 +3,7 @@ import type { TerminalBackendIdentity } from "../../shared/terminal-backend-iden
 import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
-import { resolveAgentRequest, type AgentLaunchChoice } from "../agent-requests";
+import { resolveAgentRequest, setAgentRequestLaunchChoice, type AgentLaunchChoice } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
@@ -851,6 +851,18 @@ async function respondToAgentLaunchRequest(params: {
 }
 
 /**
+ * The dialog reports its current agent pick so a launch that approves itself on
+ * the timeout uses it. Silent no-op on an unknown id: the request may have just
+ * been answered on another client.
+ */
+async function updateAgentLaunchChoice(params: {
+	requestId: string;
+	launch: AgentLaunchChoice;
+}): Promise<void> {
+	setAgentRequestLaunchChoice(params.requestId, params.launch);
+}
+
+/**
  * Quick shell (⇧⌘`): spawns a FRESH scratch operation in the built-in Operations
  * board on every press — exactly like clicking "Scratch Task" there. The task
  * gets the normal `Scratch — HH:mm` title and a managed work dir, and is launched
@@ -1089,6 +1101,7 @@ export const taskLifecycleHandlers = {
 	startScheduledLaunchNow,
 	respondToAgentCompletionRequest,
 	respondToAgentLaunchRequest,
+	updateAgentLaunchChoice,
 	getTaskTerminalBackend,
 	setTaskTerminalBackend,
 	getNativeTerminalAvailability,
