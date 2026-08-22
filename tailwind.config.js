@@ -117,6 +117,8 @@ export default {
 			boxShadow: {
 				// Theme-aware card lift: neutral black in dark, soft blue-grey in light
 				"card-hover": "var(--shadow-card-hover)",
+				// Floating layer: tooltips, hover cards, help cards. See --shadow-popover.
+				popover: "var(--shadow-popover)",
 			},
 			keyframes: {
 				"slide-in-right": {

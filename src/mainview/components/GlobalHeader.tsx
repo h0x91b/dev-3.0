@@ -912,8 +912,11 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					<div className="relative">
 					<Tooltip
 						content={t("header.helpTooltip")}
-						detail={t(highlightHelp ? "ttip.header.helpModeUndiscovered" : "ttip.header.helpMode")}
+						detail={t("ttip.header.helpMode")}
 						kbd={HELP_MODE_SHORTCUT ? shortcutKeysFor(HELP_MODE_SHORTCUT) : undefined}
+						// The callout below says the same thing, in the same place — hovering
+						// would stack two copies of one sentence on top of each other.
+						disabled={highlightHelp}
 					>
 						<button
 							onClick={() => window.dispatchEvent(new CustomEvent("menu:enter-help-mode"))}
@@ -934,7 +937,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						<div
 							role="note"
 							data-testid="help-attractor-callout"
-							className="absolute right-0 top-full mt-2 z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-accent/40 bg-elevated shadow-2xl px-3.5 py-3 text-left"
+							className="absolute right-0 top-full mt-2 z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-accent/40 bg-elevated shadow-popover px-3.5 py-3 text-left"
 						>
 							<button
 								type="button"

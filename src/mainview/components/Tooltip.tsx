@@ -211,7 +211,7 @@ export default function Tooltip({
 							ref={popRef}
 							id={tooltipId}
 							role="tooltip"
-							className={`fixed ${layer === "popover" ? "z-[10100]" : "z-[1200]"} pointer-events-none bg-overlay border border-edge-active ring-1 ring-black/30 rounded-lg shadow-2xl shadow-black/60 text-xs ${
+							className={`fixed ${layer === "popover" ? "z-[10100]" : "z-[1200]"} pointer-events-none bg-overlay border border-edge-active rounded-lg shadow-popover text-xs ${
 								detail
 									? `px-3 py-2 ${wide ? "max-w-[30rem]" : "max-w-[22rem]"}`
 									: "px-2.5 py-1.5 max-w-[18rem]"

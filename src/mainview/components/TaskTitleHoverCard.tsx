@@ -103,7 +103,7 @@ export default function TaskTitleHoverCard({ task, project, children }: TaskTitl
 				<div
 					ref={cardRef}
 					data-testid="task-title-hover-card"
-					className="fixed z-50 w-[22rem] max-w-[90vw] rounded-xl border border-edge-active bg-overlay p-3 shadow-2xl shadow-black/40"
+					className="fixed z-50 w-[22rem] max-w-[90vw] rounded-xl border border-edge-active bg-overlay p-3 shadow-popover"
 					style={{ top: position?.top ?? -9999, left: position?.left ?? -9999, visibility: position ? "visible" : "hidden" }}
 					onMouseEnter={cancelHide}
 					onMouseLeave={scheduleHide}

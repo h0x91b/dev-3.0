@@ -25,10 +25,6 @@ export const tooltips = {
 	"ttip.header.globalSettings": "App-wide preferences: agents, appearance, behavior, language and integrations.",
 	"ttip.header.helpMode":
 		"Turns on help mode: every zone of the current screen gets an (i) badge — click one to learn what that area does and how to use it.",
-	// Shown while help mode has never been opened — the button rests highlighted
-	// on the main screens until then (bible §5.4).
-	"ttip.header.helpModeUndiscovered":
-		"Start here. This works on every screen: it outlines each part of what you are looking at and explains what it does. dev-3.0 has no manual — this is it.",
 
 	// Task card
 	"ttip.task.openPR": "Shows the pull request state at a glance — open, merged or closed. Click to view it on GitHub.",

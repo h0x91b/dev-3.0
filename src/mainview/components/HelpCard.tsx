@@ -99,7 +99,7 @@ export default function HelpCard({
 			ref={cardRef}
 			role={pinned ? "dialog" : "tooltip"}
 			aria-label={title}
-			className="fixed z-[1250] w-[20rem] max-w-[calc(100vw-2rem)] bg-overlay border border-edge-active rounded-xl shadow-2xl shadow-black/40 p-3.5"
+			className="fixed z-[1250] w-[20rem] max-w-[calc(100vw-2rem)] bg-overlay border border-edge-active rounded-xl shadow-popover p-3.5"
 			style={{
 				top: pos?.top ?? 0,
 				left: pos?.left ?? 0,
