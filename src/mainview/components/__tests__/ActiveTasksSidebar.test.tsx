@@ -1236,6 +1236,8 @@ describe("ActiveTasksSidebar — space scope", () => {
 	it("tints only the selected scope with the accent pill", async () => {
 		const user = userEvent.setup();
 		const { api } = await import("../../rpc");
+		// Explicit stored choice, so this asserts tinting and not the derived default.
+		localStorage.setItem("dev3-sidebar-scope", "project");
 		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue(mockSpaces([["p1", "p2"]]));
 		renderSidebarWith([project, otherProject]);
 
@@ -1248,12 +1250,55 @@ describe("ActiveTasksSidebar — space scope", () => {
 		expect(screen.getByTestId("sidebar-scope-project").className).not.toContain("bg-accent/20");
 	});
 
-	it("disables the space button when spaces exist but the current project is in none", async () => {
+	it("opens on the space scope by default when the project is in a space", async () => {
+		const { api } = await import("../../rpc");
+		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue(mockSpaces([["p1", "p2"]]));
+		const siblingTask = makeTask({
+			id: "t-sib", seq: 200, projectId: "p2",
+			title: "Sibling task", description: "Sibling task",
+			groupId: null as unknown as string, variantIndex: null,
+		});
+		(api.request.getAllProjectTasks as ReturnType<typeof vi.fn>).mockResolvedValue([
+			{ projectId: "p1", tasks: [makeTask()] },
+			{ projectId: "p2", tasks: [siblingTask] },
+		]);
+		renderSidebarWith([project, otherProject]);
+
+		// Nothing was clicked, so nothing is stored — the default is derived.
+		await waitFor(() => expect(screen.getByTestId("sidebar-scope-space")).toHaveAttribute("aria-pressed", "true"));
+		expect(screen.getByTestId("sidebar-scope-project")).toHaveAttribute("aria-pressed", "false");
+		expect(localStorage.getItem("dev3-sidebar-scope")).toBeNull();
+		await waitFor(() => expect(screen.getByText("Sibling task")).toBeInTheDocument());
+	});
+
+	it("opens on the project scope by default when the project is in no space", async () => {
+		const { api } = await import("../../rpc");
+		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue(mockSpaces([["p2"]]));
+		renderSidebarWith([project, otherProject]);
+		await waitFor(() => expect(screen.getByTestId("sidebar-scope-project")).toHaveAttribute("aria-pressed", "true"));
+		expect(screen.getByTestId("sidebar-scope-space")).toHaveAttribute("aria-pressed", "false");
+	});
+
+	it("keeps an explicit project choice even when the project is in a space", async () => {
+		const { api } = await import("../../rpc");
+		localStorage.setItem("dev3-sidebar-scope", "project");
+		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue(mockSpaces([["p1", "p2"]]));
+		renderSidebarWith([project, otherProject]);
+		await waitFor(() => expect(screen.getByTestId("sidebar-scope-space")).not.toHaveAttribute("aria-disabled"));
+		expect(screen.getByTestId("sidebar-scope-project")).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByTestId("sidebar-scope-space")).toHaveAttribute("aria-pressed", "false");
+	});
+
+	it("disables the space button and strikes its glyph when the project is in no space", async () => {
 		const { api } = await import("../../rpc");
 		(api.request.getSpaces as ReturnType<typeof vi.fn>).mockResolvedValue(mockSpaces([["p2"]]));
 		renderSidebarWith([project, otherProject]);
 		const spaceBtn = await screen.findByTestId("sidebar-scope-space");
 		await waitFor(() => expect(spaceBtn).toHaveAttribute("aria-disabled", "true"));
+		expect(spaceBtn.className).toContain("cursor-not-allowed");
+		// The strike lives on the glyph wrapper — an inline-flex box stops the
+		// button's own text-decoration from reaching it.
+		expect(spaceBtn.querySelector(".line-through")).not.toBeNull();
 	});
 
 	it("falls back to the project scope when the stored scope is space but the project has no memberships", async () => {
