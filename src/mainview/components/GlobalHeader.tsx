@@ -3,6 +3,7 @@ import type { CodingAgent, Project, Task, UpdateChangelog } from "../../shared/t
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
+import { HELP_ATTRACTOR_DISMISS_EVENT } from "../help";
 import { parseDisplayVersion } from "../../shared/update-channel";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
@@ -68,7 +69,23 @@ interface GlobalHeaderProps {
 	updateChangelog?: UpdateChangelog | null;
 	updateDownloadStatus?: string | null;
 	remoteAccessActive: boolean;
+	/** False until help mode has been opened once — see `HELP_ATTRACTOR_SCREENS`. */
+	helpDiscovered?: boolean;
 }
+
+/**
+ * Screens where the header's `?` rests highlighted until help mode has been
+ * opened once. Help mode is the product's only teaching channel (bible §5.4), so
+ * a user who never notices the button never learns anything — these are the four
+ * screens a new user actually lands on. Transient and debug screens are out: an
+ * attractor there would be noise on a surface nobody is learning from.
+ */
+const HELP_ATTRACTOR_SCREENS: ReadonlySet<Route["screen"]> = new Set([
+	"dashboard",
+	"project",
+	"task",
+	"project-settings",
+]);
 
 interface BreadcrumbSegment {
 	label: string;
@@ -81,8 +98,9 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive, helpDiscovered }: GlobalHeaderProps) {
 	const t = useT();
+	const highlightHelp = !helpDiscovered && HELP_ATTRACTOR_SCREENS.has(route.screen);
 	const privacy = useProjectPrivacy();
 	const { file: spacesFile } = useSpaces();
 	const compact = useCompact();
@@ -891,20 +909,47 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				{/* Help mode ("Explain this screen") — bright accent "?", always inline on
 				    every screen (never folds into the kebab); narrow gets it via the sheet. */}
 				{!isNarrow && (
+					<div className="relative">
 					<Tooltip
 						content={t("header.helpTooltip")}
-						detail={t("ttip.header.helpMode")}
+						detail={t(highlightHelp ? "ttip.header.helpModeUndiscovered" : "ttip.header.helpMode")}
 						kbd={HELP_MODE_SHORTCUT ? shortcutKeysFor(HELP_MODE_SHORTCUT) : undefined}
 					>
 						<button
 							onClick={() => window.dispatchEvent(new CustomEvent("menu:enter-help-mode"))}
-							className="header-anim flex items-center text-accent hover:text-accent-emphasis transition-colors px-1.5 py-1 rounded-lg hover:bg-accent/10"
+							className={`header-anim flex items-center text-accent hover:text-accent-emphasis transition-colors px-1.5 py-1 rounded-lg hover:bg-accent/10${
+								highlightHelp ? " bg-accent/10 ring-1 ring-accent/40 motion-safe:animate-help-attractor" : ""
+							}`}
 							aria-label={t("header.helpTooltip")}
+							data-help-attractor={highlightHelp ? "on" : undefined}
 							data-testid="header-help-mode"
 						>
 							<HelpModeIcon className="w-[1.125rem] h-[1.125rem]" />
 						</button>
 					</Tooltip>
+					{/* The attention lives beside the control, never as a plate in the middle
+					    of a screen (bible §5.4a). Dismissing it counts as discovery, so it
+					    never returns. Anchored, not portalled: it must move with the button. */}
+					{highlightHelp && (
+						<div
+							role="note"
+							data-testid="help-attractor-callout"
+							className="absolute right-0 top-full mt-2 z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-accent/40 bg-elevated shadow-2xl px-3.5 py-3 text-left"
+						>
+							<button
+								type="button"
+								onClick={() => window.dispatchEvent(new CustomEvent(HELP_ATTRACTOR_DISMISS_EVENT))}
+								aria-label={t("header.helpCallout.dismiss")}
+								data-testid="help-attractor-dismiss"
+								className="absolute top-1.5 right-1.5 text-fg-muted hover:text-fg transition-colors px-1.5 py-0.5 rounded-md hover:bg-raised-hover text-sm leading-none"
+							>
+								×
+							</button>
+							<div className="text-fg text-sm font-semibold pr-6">{t("header.helpCallout.title")}</div>
+							<p className="text-fg-3 text-xs leading-relaxed mt-1">{t("header.helpCallout.body")}</p>
+						</div>
+					)}
+					</div>
 				)}
 
 				{/* Project settings — anywhere inside a project (not on project-settings screen itself) */}

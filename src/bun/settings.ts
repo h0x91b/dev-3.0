@@ -113,6 +113,7 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		playSoundOnTaskComplete: d.playSoundOnTaskComplete ?? true,
 		externalApps: Array.isArray(d.externalApps) ? d.externalApps : undefined,
 		tipsDisabled: d.tipsDisabled === true ? true : undefined,
+		helpModeDiscovered: d.helpModeDiscovered === true ? true : undefined,
 		taskOpenMode: d.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 		terminalPathOpenMode:
 			d.terminalPathOpenMode === "preview" ||

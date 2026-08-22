@@ -590,7 +590,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						<h2 id="create-task-modal-title" className="text-fg text-lg font-semibold">
 							{isDraftEdit ? t("createTask.editDraftTitle") : t("createTask.title")}
 						</h2>
-						<HelpSpot topicId="modal.create-task" />
+						<HelpSpot topicId="modal.create-task" className="w-5 h-5 text-base" />
 					</div>
 					<button
 						onClick={handleRequestClose}

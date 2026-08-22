@@ -811,9 +811,29 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		);
 	}
 
+	// A brand-new install is never at zero projects — the builtin Operations board
+	// is created on first boot — so the dashboard's own zero-projects empty state
+	// can never render. This is the state that actually happens: an install with
+	// no repository in it yet.
+	const noRepositoryYet = !projects.some((p) => !p.deleted && !isBuiltinOpsProject(p));
+
 	return (
 		<div className="h-full overflow-y-auto p-3 md:p-7">
 			<div className="max-w-5xl mx-auto space-y-4">
+				{noRepositoryYet ? (
+					/* Takes the stats card's slot rather than adding one: a Velocity Cockpit
+					   with nothing in it is the wrong first thing to read. Kept to one strip —
+					   the centre of the screen belongs to the dashboard, and the `?` earns
+					   attention next to itself (bible §5.4a), not in a plate here. */
+					<div
+						data-help-id="dashboard.first-run"
+						data-testid="dashboard-first-run"
+						className="rounded-2xl border border-edge bg-raised px-4 md:px-5 py-3.5"
+					>
+						<h2 className="text-fg text-sm font-semibold text-pretty">{t("dashboard.firstRun.title")}</h2>
+						<p className="text-fg-3 text-sm leading-relaxed text-pretty max-w-3xl mt-0.5">{t("dashboard.firstRun.body")}</p>
+					</div>
+				) : (
 				<button
 					type="button"
 					data-hint-id="dashboard-stats"
@@ -830,6 +850,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
 					</svg>
 				</button>
+				)}
 				<div className="flex items-center justify-between gap-4">
 					<div>
 						<h2 className="flex items-center gap-1.5 text-fg-2 text-sm font-medium">
@@ -849,6 +870,10 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							<button
 								type="button"
 								onClick={onNewSpace}
+								/* The rail carries this topic today, and the rail does not exist
+								   until a space does — so on a first run Spaces was unexplained
+								   exactly when it is hardest to grasp. */
+								data-help-id="dashboard.spaces"
 								className="flex items-center gap-1.5 flex-shrink-0 px-4 py-1.5 min-h-[44px] md:min-h-0 border border-edge rounded-xl text-fg-2 text-sm hover:text-fg hover:border-edge-active transition-[color,border-color,transform] active:scale-[0.96]"
 								data-testid="dashboard-new-space"
 							>
@@ -862,6 +887,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							<button
 								type="button"
 								onClick={() => onOpenAddProject()}
+								data-help-id="dashboard.add-project"
 								className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent-fill text-white text-sm font-semibold rounded-xl hover:bg-accent-fill-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96] flex-shrink-0"
 							>
 								{t("dashboard.addProject")}

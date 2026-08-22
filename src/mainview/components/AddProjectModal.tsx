@@ -250,7 +250,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 					<h2 id="add-project-dialog-title" className="text-fg text-lg font-semibold">
 						{t("addProject.title")}
 					</h2>
-					<HelpSpot topicId="modal.add-project" />
+					<HelpSpot topicId="modal.add-project" className="w-5 h-5 text-base" />
 				</div>
 
 				{/* Kind toggle: Git repository | Operations */}

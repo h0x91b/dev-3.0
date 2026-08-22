@@ -70,7 +70,7 @@ import TaskImageViewer from "./components/TaskImageViewer";
 import TaskArtifactViewer from "./components/TaskArtifactViewer";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
-import { HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
+import { HELP_ATTRACTOR_DISMISS_EVENT, HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
 import BootstrapScreen, { type BootPhase } from "./components/BootstrapScreen";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import StatusDock from "./components/StatusDock";
@@ -458,6 +458,31 @@ function App() {
 			.catch(() => {});
 		return () => { alive = false; };
 	}, []);
+
+	// The header's `?` wears a dismissible callout on the main screens until help
+	// mode has been opened once. Recorded here rather than at each entry point, so
+	// the shortcut, the menu, the palette, a HelpCard link and the button itself
+	// all count as discovery. One-way — never written back to false.
+	const markHelpDiscovered = useCallback(() => {
+		setGlobalSettings((prev) => {
+			if (prev.helpModeDiscovered) return prev;
+			const next = { ...prev, helpModeDiscovered: true };
+			api.request.saveGlobalSettings(next).catch(() => {});
+			return next;
+		});
+	}, []);
+
+	useEffect(() => {
+		if (helpMode) markHelpDiscovered();
+	}, [helpMode, markHelpDiscovered]);
+
+	// Closing the callout counts too: the user has seen the button named, so
+	// nagging them again would be the point of the flag missed.
+	useEffect(() => {
+		function onDismiss() { markHelpDiscovered(); }
+		window.addEventListener(HELP_ATTRACTOR_DISMISS_EVENT, onDismiss);
+		return () => window.removeEventListener(HELP_ATTRACTOR_DISMISS_EVENT, onDismiss);
+	}, [markHelpDiscovered]);
 
 	// Mirror the completion-sound setting into the task-sounds module so the UI
 	// can gate its instant client-side playback without a round-trip.
@@ -2444,6 +2469,7 @@ function App() {
 						updateChangelog={updateChangelog}
 						updateDownloadStatus={updateDownloadStatus}
 						remoteAccessActive={remoteAccessActive}
+						helpDiscovered={globalSettings.helpModeDiscovered}
 					/>
 					{ghWarning && (
 						<GhWarningBanner

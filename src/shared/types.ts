@@ -1080,6 +1080,13 @@ export interface GlobalSettings {
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
+	/**
+	 * Set the first time the user opens help mode. Until then the header's `?`
+	 * rests highlighted on the main screens — help mode is the product's only
+	 * teaching channel, so a user who never finds the button never learns
+	 * anything (bible §5.4). One-way: it is never set back to false.
+	 */
+	helpModeDiscovered?: boolean;
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
 	/**
 	 * What Cmd/Ctrl+Click on a file path in terminal output does:

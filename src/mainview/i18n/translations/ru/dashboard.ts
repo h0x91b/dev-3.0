@@ -4,6 +4,13 @@ const dashboard = {
 	"dashboard.noProjects": "Пока нет проектов",
 	"dashboard.noProjectsHint": "Добавьте git-репозиторий, чтобы начать",
 	"dashboard.addProject": "Добавить проект",
+	"dashboard.firstRun.title": "Добавьте репозиторий — и dev-3.0 начнёт работать",
+	"dashboard.firstRun.body":
+		"dev-3.0 запускает ИИ-агентов в ваших собственных git-репозиториях. У каждой созданной задачи своя ветка, своя папка и свой терминал, поэтому несколько агентов работают одновременно и не трогают файлы друг друга.",
+	"dashboard.firstRun.helpTitle": "Любой экран умеет объяснить себя сам",
+	"dashboard.firstRun.helpBody":
+		"Инструкции нет. Кнопка ? справа сверху работает на любом экране: она обводит каждую часть того, что вы видите, и рассказывает, зачем она нужна. Начинайте с неё всякий раз, когда непонятно.",
+	"dashboard.firstRun.helpAction": "Объяснить этот экран",
 	"dashboard.openInFinder": "Открыть в Finder",
 	"dashboard.remove": "Удалить",
 	"dashboard.confirmRemoveTitle": "Убрать этот проект?",
@@ -109,6 +116,10 @@ const dashboard = {
 	"header.changelogLabel": "Change Log",
 	"header.changelogTooltip": "Журнал изменений",
 	"header.helpTooltip": "Объяснить этот экран",
+	"header.helpCallout.title": "Начните отсюда",
+	"header.helpCallout.body":
+		"Работает на любом экране: обводит каждую часть того, что вы видите, и объясняет, зачем она нужна. Инструкции у dev-3.0 нет — это она.",
+	"header.helpCallout.dismiss": "Закрыть",
 	"header.githubTooltip": "Сайт проекта",
 	"header.githubLabel": "Сайт",
 	"header.statsTooltip": "Статистика продуктивности",

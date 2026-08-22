@@ -553,6 +553,10 @@ function KanbanBoard({
 	// Exclude collapsed columns from tip placement
 	const tipColumnId: string | null = useMemo(() => {
 		if (!currentTip) return null;
+		// A board with no tasks at all belongs to someone who has not started yet:
+		// the To Do column's own empty state has to explain the first task, and a
+		// tip about hovering a task card is noise to a user who has no cards.
+		if (tasks.length === 0) return null;
 		const orderedCols = getOrderedColumns();
 		for (const slot of orderedCols) {
 			const colId = slot.type === "builtin" ? slot.status : slot.col.id;
@@ -566,7 +570,7 @@ function KanbanBoard({
 			}
 		}
 		return null;
-	}, [currentTip, displayTasks, collapseState]);
+	}, [currentTip, displayTasks, tasks.length, collapseState]);
 
 	// Resolved from the live task list, so the popup closes by itself if the draft
 	// is promoted or deleted from somewhere else.
@@ -595,6 +599,7 @@ function KanbanBoard({
 		</button>
 	);
 	const commonProps = {
+		boardEmpty: tasks.length === 0,
 		project,
 		dispatch,
 		navigate,

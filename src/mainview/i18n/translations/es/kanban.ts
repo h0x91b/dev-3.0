@@ -2,6 +2,9 @@ const kanban = {
 	// KanbanColumn
 	"kanban.noTasks": "Sin tareas",
 	"kanban.noTasksHint": "Arrastra una tarea aquí o usa el botón de abajo para crear una.",
+	"kanban.noTasksHintAgentMoves": "Las tareas llegan aquí por sí solas mientras el agente trabaja. También puedes arrastrar una.",
+	"kanban.firstTaskTitle": "Aquí irá tu primera tarea",
+	"kanban.firstTaskHint": "Describe qué hay que hacer con palabras normales — el agente recibe tu descripción como su primer prompt. \u201cSave & Start\u201d la crea y lanza al agente de una vez.",
 	"kanban.add": "Agregar",
 	"kanban.cancel": "Cancelar",
 	"kanban.newTask": "+ Nueva tarea",

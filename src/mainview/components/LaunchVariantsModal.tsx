@@ -301,7 +301,7 @@ function LaunchVariantsModal({
 						<div className="min-w-0">
 							<div className="flex items-center gap-1.5">
 								<h2 id="launch-variants-title" className="text-fg text-lg font-semibold">{title}</h2>
-								<HelpSpot topicId="modal.launch-variants" />
+								<HelpSpot topicId="modal.launch-variants" className="w-5 h-5 text-base" />
 							</div>
 							<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
 						</div>

@@ -2,6 +2,9 @@ const kanban = {
 	// KanbanColumn
 	"kanban.noTasks": "Нет задач",
 	"kanban.noTasksHint": "Перетащите задачу сюда или используйте кнопку ниже.",
+	"kanban.noTasksHintAgentMoves": "Задачи попадают сюда сами, по ходу работы агента. Можно и перетащить вручную.",
+	"kanban.firstTaskTitle": "Здесь появится ваша первая задача",
+	"kanban.firstTaskHint": "Опишите, что нужно сделать, обычными словами — агент получит это описание как первый промпт. Кнопка \u00abSave & Start\u00bb создаёт задачу и сразу запускает агента.",
 	"kanban.add": "Добавить",
 	"kanban.cancel": "Отмена",
 	"kanban.newTask": "+ Новая задача",

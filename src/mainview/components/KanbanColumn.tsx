@@ -80,6 +80,8 @@ interface KanbanColumnProps {
 	onAutoEditConsumed?: () => void;
 	// Mobile carousel: stretch the column to fill the carousel track (one column per screen)
 	fullWidth?: boolean;
+	/** No task anywhere on this board — the To Do column then explains the first one. */
+	boardEmpty?: boolean;
 }
 
 function KanbanColumn({
@@ -129,9 +131,13 @@ function KanbanColumn({
 	autoStartEditing,
 	onAutoEditConsumed,
 	fullWidth,
+	boardEmpty,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
+	// The New Task button below the list is To Do's alone (see its two render
+	// sites) — the empty-state copy has to agree with that.
+	const ownsAddTask = !isCustomColumn && status === "todo";
 	// ink = text-safe variant of the status colour (lighter themes need a
 	// darker shade to clear APCA |Lc| ≥ 60 on the glass column header).
 	const statusColorsInk = useStatusColorsInk();
@@ -404,7 +410,7 @@ function KanbanColumn({
 				</div>
 
 				{/* New Task button (Todo column only) */}
-				{!isCustomColumn && status === "todo" && (
+				{ownsAddTask && (
 					<div className="flex justify-center pb-3">
 						<button
 							onClick={(e) => { e.stopPropagation(); onAddTask(); }}
@@ -622,9 +628,23 @@ function KanbanColumn({
 				)}
 
 				{tasks.length === 0 && !tip && !isCompactNarrow && (
-					<div className="text-fg-muted text-sm text-center py-8">
-						<p>{t("kanban.noTasks")}</p>
-						<p className="text-xs mt-1">{t("kanban.noTasksHint")}</p>
+					<div className="text-fg-muted text-sm text-center py-8 px-3">
+						{ownsAddTask && boardEmpty ? (
+							<>
+								<p className="text-fg-2">{t("kanban.firstTaskTitle")}</p>
+								<p className="text-xs mt-1 text-pretty">{t("kanban.firstTaskHint")}</p>
+							</>
+						) : (
+							<>
+								<p>{t("kanban.noTasks")}</p>
+								{/* Only the To Do column has a New Task button, so only it may
+								    point at one. The generic hint used to promise a button that
+								    was not there in every other column. */}
+								<p className="text-xs mt-1 text-pretty">
+									{t(ownsAddTask ? "kanban.noTasksHint" : "kanban.noTasksHintAgentMoves")}
+								</p>
+							</>
+						)}
 					</div>
 				)}
 
@@ -638,7 +658,7 @@ function KanbanColumn({
 			)}
 
 			{/* Add task button (only in To Do column, not custom columns) */}
-			{!isCustomColumn && status === "todo" && (
+			{ownsAddTask && (
 				<div className={`px-3 pb-3 flex-shrink-0 ${tip ? "" : footerSeam}`}>
 					<button
 						onClick={onAddTask}

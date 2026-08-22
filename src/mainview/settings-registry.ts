@@ -434,6 +434,9 @@ export const SETTINGS_GLOBAL_FIELD_EXCLUSIONS = [
 	"importShellEnv",
 	"agentsLayoutRevision",
 	"favorites",
+	// One-way discovery flag for the header's `?`, set by opening help mode — not
+	// a preference and deliberately not user-resettable.
+	"helpModeDiscovered",
 ] as const satisfies readonly (keyof GlobalSettings)[];
 
 /** Runtime list used by the registry integrity test; the type check catches schema drift. */
@@ -453,6 +456,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"playSoundOnTaskComplete",
 	"externalApps",
 	"tipsDisabled",
+	"helpModeDiscovered",
 	"taskOpenMode",
 	"terminalPathOpenMode",
 	"defaultDiffViewMode",

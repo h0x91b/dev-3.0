@@ -60,6 +60,12 @@ const help = {
 	"help.dashboard.spaces.title": "Espacios",
 	"help.dashboard.spaces.body":
 		"Un espacio agrupa proyectos en este panel y nada más: nunca mueve archivos, nunca toca un tablero y un proyecto puede estar en varios. Haz clic en un espacio para filtrar la lista. El número junto a un espacio es cuántos proyectos contiene; la cabecera del grupo en la lista añade cuántas de sus tareas te esperan. Arrastra una fila para reordenar; su menú ⋯ edita qué proyectos la componen, la renombra o borra la agrupación — los proyectos siguen intactos.",
+	"help.dashboard.addProject.title": "Agregar proyecto",
+	"help.dashboard.addProject.body":
+		"Apunta dev-3.0 a un repositorio git de esta máquina: elige una carpeta que ya tengas, clona una URL o crea un repositorio vacío. Agregarlo no modifica nada dentro. Cada tarea del tablero resultante recibe su propia rama, carpeta y terminal. La opción Operations crea un tablero sin git, para trabajo que no es código.",
+	"help.dashboard.firstRun.title": "Cómo empezar",
+	"help.dashboard.firstRun.body":
+		"Se muestra hasta que agregas tu primer repositorio; después ocupa su lugar la tarjeta de estadísticas. El camino más corto: agrega un proyecto, abre su tablero, describe una tarea con palabras normales y pulsa Save & Start — eso lanza un agente de inmediato.",
 
 	// ── Task inspector ──
 	"help.inspector.panel.title": "Inspector de tarea",

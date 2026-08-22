@@ -2,6 +2,10 @@ const kanban = {
 	// KanbanColumn
 	"kanban.noTasks": "No tasks",
 	"kanban.noTasksHint": "Drag a task here, or use the button below to create one.",
+	// Columns other than To Do have no New Task button, so they must not point at one.
+	"kanban.noTasksHintAgentMoves": "Tasks arrive here on their own as the agent works. You can also drag one in.",
+	"kanban.firstTaskTitle": "Your first task goes here",
+	"kanban.firstTaskHint": "Describe what needs doing in plain words — the agent gets your description as its first prompt. Press \u201cSave & Start\u201d to create it and launch the agent in one go.",
 	"kanban.add": "Add",
 	"kanban.cancel": "Cancel",
 	"kanban.newTask": "+ New Task",

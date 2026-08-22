@@ -66,6 +66,12 @@ const help = {
 	"help.dashboard.spaces.title": "Spaces",
 	"help.dashboard.spaces.body":
 		"A space groups projects on this dashboard and nothing more: it never moves files, never touches a board, and one project can sit in several. Click a space to filter the list. The count beside a space is how many projects are in it; the group header in the list adds how many of their tasks are waiting on you. Drag a row to reorder; its ⋯ menu edits which projects belong, renames it, or deletes the grouping — the projects themselves stay.",
+	"help.dashboard.addProject.title": "Add project",
+	"help.dashboard.addProject.body":
+		"Points dev-3.0 at a git repository on this machine — pick a folder you already have, clone a URL, or create an empty repo. Nothing in it is modified by adding it. Every task on the resulting board gets its own branch, folder and terminal. The Operations option makes a board with no git at all, for work that is not code.",
+	"help.dashboard.firstRun.title": "Getting started",
+	"help.dashboard.firstRun.body":
+		"Shown until you add your first repository, then it is replaced by the Productivity Stats card. The shortest path is: add a project, open its board, write one task in plain words, and press Save & Start — that launches an agent on it straight away.",
 
 	// ── Task inspector ──
 	"help.inspector.panel.title": "Task inspector",

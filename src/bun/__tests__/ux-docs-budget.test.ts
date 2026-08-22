@@ -33,8 +33,18 @@ const BUDGET_KB: Record<string, number> = {
 	"UX_DECISIONS.md": 80,
 };
 
-/** The whole tree, so a new file cannot slip past a per-file budget. */
-const TOTAL_BUDGET_KB = 306;
+/**
+ * The whole tree, so a new file cannot slip past a per-file budget.
+ *
+ * Re-ratcheted 306 → 309 when first-run doctrine landed (bible §5.4a), and the reason is the
+ * zero-slack failure the comment above predicts: `main` had reached 305.1 KB of 306, so the tree
+ * cap was firing on any addition at all while every per-file cap still had room. Compaction ran
+ * first and hit the floor — `UX_DECISIONS.md` now folds 26 record-backed entries instead of 24
+ * (the 2026-08-21 prompt-preset entry was still carrying prose its record already held), and
+ * §5.4a is five rules with its why in `decisions/2026/08/22/first-run-advertises-help-mode.md`.
+ * The three per-file numbers are deliberately untouched.
+ */
+const TOTAL_BUDGET_KB = 309;
 
 const entries = readdirSync(UX_DIR, { withFileTypes: true });
 const kb = (name: string) => statSync(`${UX_DIR}/${name}`).size / 1024;

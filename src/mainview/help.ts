@@ -37,6 +37,13 @@ export interface HelpTopic {
 	link?: { labelKey: TranslationKey; action: HelpLinkAction };
 }
 
+/**
+ * Dismissing the header's first-run callout. Handled in `App.tsx`, which owns the
+ * settings object — the same one-way flag entering help mode sets, so a user who
+ * closes the callout is never nagged again either.
+ */
+export const HELP_ATTRACTOR_DISMISS_EVENT = "help:dismiss-attractor";
+
 export const HELP_TOPICS: HelpTopic[] = [
 	// ── Board columns ──
 	{ id: "board.column.todo", titleKey: "help.board.column.todo.title", bodyKey: "help.board.column.todo.body" },
@@ -73,6 +80,11 @@ export const HELP_TOPICS: HelpTopic[] = [
 	{ id: "dashboard.stats-entry", titleKey: "help.dashboard.statsEntry.title", bodyKey: "help.dashboard.statsEntry.body" },
 	{ id: "dashboard.project-row", titleKey: "help.dashboard.projectRow.title", bodyKey: "help.dashboard.projectRow.body" },
 	{ id: "dashboard.spaces", titleKey: "help.dashboard.spaces.title", bodyKey: "help.dashboard.spaces.body" },
+	{ id: "dashboard.add-project", titleKey: "help.dashboard.addProject.title", bodyKey: "help.dashboard.addProject.body" },
+	// First-run panel, shown while no git repository has been added yet. Not a
+	// REQUIRED_HELP_SURFACES entry: it is conditional by design, like the memory
+	// pill — but help mode must still be able to explain it while it is there.
+	{ id: "dashboard.first-run", titleKey: "help.dashboard.firstRun.title", bodyKey: "help.dashboard.firstRun.body" },
 
 	// ── Task inspector ──
 	{
@@ -193,6 +205,7 @@ export const REQUIRED_HELP_SURFACES: string[] = [
 	"dashboard.stats-entry",
 	"dashboard.project-row",
 	"dashboard.spaces",
+	"dashboard.add-project",
 	// Task inspector
 	"inspector.panel",
 	"inspector.context-bar",

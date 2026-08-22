@@ -44,6 +44,8 @@ vi.mock("../rpc", () => ({
 				taskSortOrder: "oldest-first",
 				updateChannel: "stable",
 			}),
+			// Entering help mode records the one-way discovery flag.
+			saveGlobalSettings: vi.fn().mockResolvedValue(undefined),
 			moveTask: vi.fn().mockResolvedValue({}),
 			openQuickShell: vi.fn().mockResolvedValue({ id: "op-task-1", projectId: "ops-proj" }),
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
