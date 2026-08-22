@@ -59,7 +59,7 @@ function resolvedExecPath(): string {
 
 /** How this binary was installed, from the resolved path. */
 export function resolveInstallMethod(): InstallMethod {
-	return detectInstallMethod(resolvedExecPath(), process.platform, join(DEV3_HOME, "bin"));
+	return detectInstallMethod(resolvedExecPath(), process.platform, DEV3_HOME);
 }
 
 /**
@@ -298,17 +298,21 @@ export interface AppliedUpdate {
  * Cellar and may prune the old keg), so it copies just the binary aside first and
  * says so if a rollback ever has to use it.
  */
-export async function applyUpdate(staged: StagedUpdate): Promise<{ ok: true; applied: AppliedUpdate } | { ok: false; error: string }> {
-	const dir = installDir();
+export async function applyUpdate(
+	staged: StagedUpdate,
+	/** Where the files live. A parameter so a test can point it at a temp tree. */
+	dir: string = installDir(),
+): Promise<{ ok: true; applied: AppliedUpdate } | { ok: false; error: string }> {
 
 	if (staged.plan.kind === "brew") {
-		const fallbackBin = copyBinaryAside();
-		// NO VIEWS DIR FOR A BREW ROLLBACK. `<installDir>/dist` is a PATH, not a
-		// snapshot: brew replaces the whole keg (or the whole `.app`), so by the time a
-		// rollback reads it, it holds the NEW renderer bundle. Starting the old binary
-		// against it is an old server serving a new bundle — on the one code path whose
-		// entire job is to be trustworthy. Null lets it fall back to its own resolution.
-		const fallbackViews = null;
+		// THE BUNDLE IS COPIED, NOT POINTED AT. `<installDir>/dist` is a path, not a
+		// snapshot: brew replaces the whole keg (or the whole `.app`), so by rollback time
+		// it holds the NEW renderer bundle. Leaving `fallbackViews` null instead was
+		// worse, not safer — the rollback copy sits in `~/.dev3.0/remote/rollback/`, where
+		// none of the successor's probe candidates resolve, so the box came back reachable
+		// and served an EMPTY page. A few megabytes of Vite output, taken aside once per
+		// brew update, buys a rollback that serves the UI its own server was built with.
+		const { bin: fallbackBin, views: fallbackViews } = copyBuildAside();
 		const r = await run(staged.plan.command);
 		if (!r.ok) return { ok: false, error: `${staged.plan.command.join(" ")} failed: ${r.error}` };
 		lastStaged = null; // the staged bottle is spent
@@ -331,6 +335,14 @@ export async function applyUpdate(staged: StagedUpdate): Promise<{ ok: true; app
 		} catch (err) {
 			// A rename failed halfway. Put back whatever we moved so the box keeps a
 			// working install, then report — the supervisor is not spawned on failure.
+			//
+			// THE STAGED TREE IS NOW PARTIAL AND MUST NOT BE REUSED. The entries that made
+			// it across were MOVED out of `.dev3-staged`, and `reusableStaged` only checks
+			// that a `dev3` is still in there — so a failure on an entry ordered after
+			// `dev3` left a tree that passes the check and would install the new binary
+			// against the OLD `dist` on the next attempt.
+			lastStaged = null;
+			rmSync(stagedDir, { recursive: true, force: true });
 			for (const entry of readdirSync(prevDir)) {
 				try {
 					rmSync(join(dir, entry), { recursive: true, force: true });
@@ -350,20 +362,49 @@ export async function applyUpdate(staged: StagedUpdate): Promise<{ ok: true; app
 	return { ok: false, error: `Nothing to apply for a "${staged.plan.kind}" plan` };
 }
 
-/** Copy the running binary to `~/.dev3.0/remote/rollback/dev3`. Returns its path, or null. */
-function copyBinaryAside(): string | null {
+/**
+ * Copy the running build into `~/.dev3.0/remote/rollback/` — the binary, and the
+ * renderer bundle beside it when there is one.
+ *
+ * Only the brew paths need this: brew owns the Cellar (or the whole `.app`) and may
+ * prune what it replaces, so a rollback has nothing to go back to unless a copy was
+ * taken first. The tarball path moves its predecessor into `.dev3-prev/` instead,
+ * which is a rename and needs no copy at all.
+ *
+ * A missing bundle is not fatal and does not cost the binary: the server still comes
+ * back, it just serves nothing until the install is fixed by hand.
+ */
+function copyBuildAside(): { bin: string | null; views: string | null } {
+	let bin: string | null = null;
 	try {
 		mkdirSync(REMOTE_ROLLBACK_DIR, { recursive: true });
 		const dest = join(REMOTE_ROLLBACK_DIR, "dev3");
 		rmSync(dest, { force: true });
 		cpSync(resolvedExecPath(), dest);
 		chmodSync(dest, 0o755);
-		return dest;
+		bin = dest;
 	} catch (err) {
 		log.warn("Could not copy the current binary aside — a rollback will have nothing to start", {
 			error: String(err),
 		});
-		return null;
+		return { bin: null, views: null };
+	}
+	const source = process.env.DEV3_VIEWS_DIR || join(installDir(), "dist");
+	if (!existsSync(join(source, "index.html"))) {
+		log.warn("No renderer bundle found beside the running build — a rollback would serve nothing", { source });
+		return { bin, views: null };
+	}
+	try {
+		const dest = join(REMOTE_ROLLBACK_DIR, "dist");
+		rmSync(dest, { recursive: true, force: true });
+		cpSync(source, dest, { recursive: true });
+		return { bin, views: dest };
+	} catch (err) {
+		log.warn("Could not copy the renderer bundle aside — a rollback would serve nothing", {
+			source,
+			error: String(err),
+		});
+		return { bin, views: null };
 	}
 }
 
@@ -534,14 +575,6 @@ export async function runSelfUpdate(opts: {
 		};
 	}
 
-	// Only the MAIN tunnel is handed over. Per-port tunnels (`--expose-ports`, the
-	// GUI Expose button) each own a cloudflared pointed at a dev-server port, and
-	// their URLs are already ephemeral — carrying them across would mean tracking
-	// several inherited pids for no gain, so they are stopped here rather than left
-	// as orphans for the successor to never claim.
-	const { cleanupAllTunnels } = await import("./port-tunnels");
-	cleanupAllTunnels();
-
 	const handoff = await prepareHandoff(strategy);
 	persistHandoff(handoff, record);
 
@@ -571,6 +604,15 @@ export async function runSelfUpdate(opts: {
 			};
 		}
 	}
+
+	// ONLY NOW ARE THE PER-PORT TUNNELS GIVEN UP. `--expose-ports` and the GUI Expose
+	// button each own a cloudflared pointed at a dev-server port; their URLs are
+	// ephemeral, so they are stopped rather than left as orphans the successor never
+	// claims. Stopping them BEFORE the supervisor was confirmed meant an abandoned
+	// restart left a live server whose every exposed link was dead, with nothing to
+	// restore them — the main tunnel is re-adopted on that path, these were not.
+	const { cleanupAllTunnels } = await import("./port-tunnels");
+	cleanupAllTunnels();
 
 	log.info("Self-update applied; exiting to be replaced", { strategy, ...record });
 	// Give the caller's response a moment to reach the browser / CLI socket before
@@ -629,8 +671,18 @@ async function prepareHandoff(strategy: RestartStrategy): Promise<RemoteHandoff>
 		log.info("Supervised restart: the tunnel dies with the unit, so the public URL will change");
 		return { port, fromPid: process.pid, tunnel: null };
 	}
-	const { releaseMainTunnelForHandoff } = await import("./cloudflare-tunnel");
+	const { releaseMainTunnelForHandoff, stopTunnel } = await import("./cloudflare-tunnel");
 	const tunnel = releaseMainTunnelForHandoff();
+	if (!tunnel) {
+		// NOTHING TO HAND OVER IS NOT NOTHING TO DO. The release only succeeds on a
+		// `connected` entry, so an update landing during the tunnel's start window (the
+		// URL wait alone is up to 30 s, and a health-triggered restart re-enters it) gets
+		// null — while that cloudflared is still OUR child, and `process.exit` does not
+		// kill children. Left alone it outlives us as an orphan nobody tracks, and the
+		// successor starts a second one.
+		log.info("No live main tunnel to hand over — stopping it rather than leaking it");
+		stopTunnel();
+	}
 	return { port, fromPid: process.pid, tunnel };
 }
 

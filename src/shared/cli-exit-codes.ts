@@ -105,6 +105,6 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_UPDATE_REFUSED",
 		code: CLI_EXIT_CODE_UPDATE_REFUSED,
 		description:
-			"`dev3 update` refused to touch this install and nothing was changed: it is running from source, it is the PATH copy the desktop app maintains at `<dev3Home>/bin/dev3` (updating that would leave the real install untouched and be overwritten on the next app launch), it is a macOS app bundle the CLI cannot swap, it is Windows (no CLI tarball), or it is a Homebrew cask whose recorded version has drifted from the running one. Distinct from exit 1, which means an update was attempted and failed.",
+			"`dev3 update` refused to touch this install and nothing was changed: it is running from source, it is one of the copies dev3 keeps inside `~/.dev3.0` rather than an install — the PATH copy at `<dev3Home>/bin/dev3` that the app rewrites on every launch, or the `remote/rollback/dev3` copy a self-update took aside and a rolled-back server runs from (updating either would write a release tree into dev3's own data directory and leave the real install stale), it is a macOS app bundle the CLI cannot swap, it is Windows (no CLI tarball), or it is a Homebrew cask whose recorded version has drifted from the running one. Distinct from exit 1, which means an update was attempted and failed.",
 	},
 ] as const;

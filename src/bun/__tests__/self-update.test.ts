@@ -50,30 +50,39 @@ describe("detectInstallMethod", () => {
 		expect(detectInstallMethod("C:\\Users\\x\\.bun\\bin\\bun.exe", "win32")).toBe("source");
 	});
 
-	// `<dev3Home>/bin/dev3` is a real 76 MB copy the GUI rewrites on every launch, and
-	// it is what `which dev3` resolves to on any machine the app has ever started.
-	// Classified as a tarball, an update would extract a release tree into the frozen
-	// `~/.dev3.0/` layout, leave the real install on the old version, and get reverted
-	// by the next GUI launch.
-	describe("the PATH copy the app maintains", () => {
-		const binDir = "/Users/x/.dev3.0/bin";
+	// Two copies of the binary live under `~/.dev3.0` and neither is an install:
+	// `bin/dev3`, the 76 MB copy the GUI rewrites on every launch (and what `which
+	// dev3` resolves to on any machine the app has started), and
+	// `remote/rollback/dev3`, the copy a brew self-update takes aside — which is the
+	// binary a rolled-back server is actually RUNNING FROM. Classified as tarballs,
+	// their own updates extract a release tree into the frozen `~/.dev3.0/` layout and
+	// leave the real install stale forever.
+	describe("the copies dev3 keeps inside its own data dir", () => {
+		const home = "/Users/x/.dev3.0";
 
-		it("is not an install", () => {
-			expect(detectInstallMethod(`${binDir}/dev3`, "darwin", binDir)).toBe("path-copy");
+		it("does not treat the app's PATH copy as an install", () => {
+			expect(detectInstallMethod(`${home}/bin/dev3`, "darwin", home)).toBe("path-copy");
 		});
 
-		it("is recognised with a trailing slash on the bin dir too", () => {
-			expect(detectInstallMethod(`${binDir}/dev3`, "darwin", `${binDir}/`)).toBe("path-copy");
+		// The one that bites hardest: a rolled-back server IS this process, so its own
+		// watch would keep updating a directory inside the data layout while the real
+		// brew install stays on the build that would not boot.
+		it("does not treat the self-update rollback copy as an install", () => {
+			expect(detectInstallMethod(`${home}/remote/rollback/dev3`, "darwin", home)).toBe("path-copy");
+		});
+
+		it("is recognised with a trailing slash on the home dir too", () => {
+			expect(detectInstallMethod(`${home}/bin/dev3`, "darwin", `${home}/`)).toBe("path-copy");
 		});
 
 		it("does not swallow a real install that merely starts with a similar name", () => {
-			expect(detectInstallMethod("/Users/x/.dev3.0/binaries/dev3", "darwin", binDir)).toBe("tarball");
+			expect(detectInstallMethod("/Users/x/.dev3.0-old/dev3", "darwin", home)).toBe("tarball");
 		});
 
-		it("still classifies everything else normally when the bin dir is known", () => {
-			expect(detectInstallMethod("/opt/homebrew/Cellar/dev3/1.45.2/libexec/dev3", "darwin", binDir))
+		it("still classifies everything else normally when the home dir is known", () => {
+			expect(detectInstallMethod("/opt/homebrew/Cellar/dev3/1.45.2/libexec/dev3", "darwin", home))
 				.toBe("brew-formula");
-			expect(detectInstallMethod("/opt/homebrew/bin/bun", "darwin", binDir)).toBe("source");
+			expect(detectInstallMethod("/opt/homebrew/bin/bun", "darwin", home)).toBe("source");
 		});
 	});
 });
@@ -126,12 +135,13 @@ describe("planUpdate", () => {
 		if (plan.kind === "refused") expect(plan.reason).toContain("from source");
 	});
 
-	it("refuses the app's PATH copy, naming why updating it would be pointless", () => {
+	it("refuses a copy inside ~/.dev3.0, naming both copies and why updating one is pointless", () => {
 		const plan = planUpdate({ ...base, install: "path-copy" });
 		expect(plan.kind).toBe("refused");
 		if (plan.kind === "refused") {
-			expect(plan.reason).toContain("PATH");
-			expect(plan.reason).toContain("overwritten");
+			expect(plan.reason).toContain("~/.dev3.0");
+			expect(plan.reason).toContain("roll back");
+			expect(plan.reason).toContain("stale");
 		}
 	});
 

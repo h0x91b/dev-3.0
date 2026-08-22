@@ -40,9 +40,9 @@ Flags:
 Exit codes:
   0   Up to date, or the update was installed / started.
   ${CLI_EXIT_CODE_UPDATE_REFUSED}   Refused, nothing was touched: this install cannot be updated from the CLI
-      (running from source, the PATH copy the app maintains, a macOS app bundle
-      the CLI does not own, Windows, or a cask whose version has drifted from
-      brew's record). The reason is printed.
+      (running from source, a copy dev3 keeps inside ~/.dev3.0 rather than an
+      install, a macOS app bundle the CLI does not own, Windows, or a cask whose
+      version has drifted from brew's record). The reason is printed.
   1   The update was attempted and failed (download, brew, or the file swap).
 
 Examples:

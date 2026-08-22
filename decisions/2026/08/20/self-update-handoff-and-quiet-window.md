@@ -183,6 +183,42 @@ machine the desktop app has started, is the refused PATH copy — so the diagnos
 foreground server that installed the update without replacing itself stops the button spinning
 and says so.
 
+**A rollback has to come back USABLE, not merely reachable — reversing an earlier call
+here.** `fallbackViews` was deliberately null for a brew apply, on the grounds that
+`<installDir>/dist` is a path rather than a snapshot and would hold the NEW bundle by rollback
+time. That was the wrong half of the trade: the rollback binary runs from
+`~/.dev3.0/remote/rollback/`, and none of `headless-entry`'s probe candidates
+(`execDir/dist`, `execDir/../share/dev-3.0/dist`, `cwd/dist` — and `cwd` is `DEV3_HOME`)
+resolve next to it, so the box came back on the old build serving an EMPTY page. `copyBuildAside`
+now takes the renderer bundle aside together with the binary: a few megabytes of Vite output once
+per brew update, against a rollback that serves the UI its own server was built with. The
+explicit `DEV3_VIEWS_DIR` it passes also beats the inherited one, which closes the mirror case
+(an operator-supplied `--views-dir` was inherited and, post-upgrade, pointed at the new bundle).
+
+**A copy dev3 keeps for itself is never an install, and `bin/` was too narrow a boundary.** The
+`path-copy` refusal matched `<dev3Home>/bin/` only, but the rollback copy at
+`remote/rollback/dev3` is the binary a rolled-back server IS RUNNING FROM — classified as a
+tarball, its own watch planned tarball installs and extracted release trees into the frozen
+`~/.dev3.0/` layout, while the real brew install stayed stale forever and `dev3` on PATH kept
+pointing at the build that would not boot. The whole data directory is the boundary now.
+
+**A tunnel is only given up once the restart is certain, and only if something else owns it.**
+Three separate leaks, one theme: `releaseMainTunnelForHandoff` returns null for anything not
+exactly `connected`, and `process.exit` does not kill children — so an update landing during the
+tunnel's start window orphaned that cloudflared and let the successor spawn a second one;
+`prepareHandoff` now stops it instead. Per-port tunnels were destroyed *before* the supervisor was
+confirmed, so an abandoned restart left a live server whose every exposed link was dead with
+nothing to restore them; they are now given up on the last line before the exit. And an ADOPTED
+tunnel has `process: null`, so with a null `metricsReadyUrl` (which `startEntry` legitimately
+produces) `checkHealth` returned early and a dead cloudflared stayed recorded as `connected`
+forever — it is now watched by its pid.
+
+**A failed apply must not leave something that passes the reuse check.** The apply loop MOVES
+staged entries into place, so a mid-loop failure leaves `.dev3-staged` partial — and
+`reusableStaged` only asks whether a `dev3` is still in there. A failure on an entry ordered after
+`dev3` therefore left a tree the next attempt happily reused, installing the new binary against
+the OLD `dist`. The rollback path now clears both the memo and the tree.
+
 ## Risks
 
 - **No tarball checksum.** The manifest carries no artifact hash and the user chose HTTPS-only
@@ -200,15 +236,15 @@ and says so.
 - **A restart landing during worktree creation** leaves a task mid-`preparing`. Accepted: the
   existing stale-worktree recovery picks it up at boot, and "no task in progress" is the one
   condition the 72-hour ceiling never overrides.
-- **A brew rollback starts the old binary with no matching renderer bundle.** `<installDir>/dist`
-  is a path, not a snapshot — brew replaces the whole keg or `.app`, so by rollback time it
-  holds the NEW bundle. `fallbackViews` is therefore null for brew and the old build falls back
-  to its own resolution, which may find the new `dist` anyway. Copying the bundle aside would
-  fix it properly; it was judged not worth tens of megabytes on every brew update.
-- **Neither the `fallbackViews: null` choice nor the supervise-only spawn path has a unit test.**
-  Both are one-line properties of code that does real `fs` and `spawn` work; verifying them
-  needs a mocked filesystem *and* a mocked spawn, and the payoff over reading the function is
-  small. Stated rather than quietly skipped.
+- **A brew rollback costs a bundle copy on every brew update.** `copyBuildAside` duplicates the
+  renderer output into `~/.dev3.0/remote/rollback/dist` before running `brew upgrade`. That is a
+  few megabytes of Vite output per update, and it is deliberate: the alternative, measured
+  against the actual probe order, was a box that comes back and serves nothing.
+- **Neither the supervise-only spawn path, `prepareHandoff`'s tunnel stop, nor the per-port
+  cleanup ordering has a unit test.** All three are orchestration inside `runSelfUpdate`, which
+  reaches `buildPlan` in its own module — so covering them means faking the update feed, the
+  install detection, both tunnel modules and `spawn` at once. Verified by reading; stated rather
+  than quietly skipped.
 - **The staging memo is in-process only.** Pressing Download and then Restart on the same
   server reuses the fetched tree, but a `dev3 update` typed in a shell afterwards does not see
   it and fetches again. Persisting it would mean trusting a tree on disk that nothing

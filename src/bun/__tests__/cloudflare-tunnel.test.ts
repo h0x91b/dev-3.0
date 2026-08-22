@@ -693,6 +693,45 @@ describe("releaseMainTunnelForHandoff / adoptMainTunnel", () => {
 		expect(mockSpawn).not.toHaveBeenCalled();
 	});
 
+	// An adopted entry has `process: null`, so there is no `exited` hook to notice it
+	// died — and `checkHealth` used to return immediately when `metricsReadyUrl` was
+	// null, which `startEntry` legitimately produces. The entry then advertised a dead
+	// `*.trycloudflare.com` hostname forever, through the banner, `dev3 remote url` and
+	// every connected browser.
+	it("notices an adopted process that died, even with no readiness URL", async () => {
+		const aliveSpy = vi.spyOn(process, "kill").mockImplementation(() => {
+			const err = new Error("no such process") as NodeJS.ErrnoException;
+			err.code = "ESRCH";
+			throw err;
+		});
+		try {
+			adoptMainTunnel({ pid: 5152, url: "https://dead.trycloudflare.com", metricsReadyUrl: null, targetPort: 8080 });
+			expect(getTunnelState()).toBe("connected");
+
+			await tunnelManager.checkHealth("main");
+
+			// The restart re-enters startEntry, which has nothing spawnable mocked here —
+			// what matters is that the dead hostname is no longer advertised as connected.
+			expect(getTunnelUrl()).not.toBe("https://dead.trycloudflare.com");
+		} finally {
+			aliveSpy.mockRestore();
+		}
+	});
+
+	it("leaves a LIVE adopted process alone when it has no readiness URL", async () => {
+		const aliveSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+		try {
+			adoptMainTunnel({ pid: 5153, url: "https://live.trycloudflare.com", metricsReadyUrl: null, targetPort: 8080 });
+
+			await tunnelManager.checkHealth("main");
+
+			expect(getTunnelUrl()).toBe("https://live.trycloudflare.com");
+			expect(getTunnelState()).toBe("connected");
+		} finally {
+			aliveSpy.mockRestore();
+		}
+	});
+
 	it("signals an adopted process on stop, so a restart cannot orphan it", () => {
 		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
 		try {

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { spawn, spawnSync } from "./spawn";
 import { createLogger } from "./logger";
+import { isProcessAlive } from "./remote-state";
 
 const log = createLogger("cf-tunnel");
 
@@ -489,7 +490,31 @@ async function restartEntry(entry: TunnelEntry): Promise<void> {
 
 async function checkHealth(id: string): Promise<void> {
 	const entry = tunnels.get(id);
-	if (!entry || entry.state !== "connected" || !entry.metricsReadyUrl || entry.healthCheckInFlight) return;
+	if (!entry || entry.state !== "connected" || entry.healthCheckInFlight) return;
+
+	// AN ADOPTED TUNNEL WITH NO `/ready` URL IS WATCHED BY ITS PID, or not at all.
+	// An entry we spawned has a `process` whose `exited` hook resets it; an inherited
+	// one has `process: null`, so `metricsReadyUrl` is its only liveness signal — and
+	// `startEntry` legitimately produces null there (the URL is published best-effort
+	// when the edge-ready wait cannot confirm). Returning early on that left a dead
+	// cloudflared recorded as "connected" forever, with the banner, `dev3 remote url`
+	// and every browser advertising a hostname that resolves nowhere.
+	if (!entry.metricsReadyUrl) {
+		if (entry.adoptedPid === null || isProcessAlive(entry.adoptedPid)) return;
+		log.warn("Adopted tunnel process is gone and it has no readiness URL; restarting", {
+			id,
+			pid: entry.adoptedPid,
+			url: entry.url,
+		});
+		entry.healthCheckInFlight = true;
+		try {
+			await restartEntry(entry);
+		} finally {
+			entry.healthCheckInFlight = false;
+		}
+		return;
+	}
+
 	entry.healthCheckInFlight = true;
 	try {
 		let response: Response | null = null;

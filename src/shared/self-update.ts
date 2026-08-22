@@ -23,7 +23,7 @@ export type InstallMethod =
 	| "app-bundle"
 	/** The CLI tarball extracted anywhere (`~/.dev3`, a container image, …). */
 	| "tarball"
-	/** `<dev3Home>/bin/dev3` — the PATH copy the app maintains, NOT an install. */
+	/** A copy dev3 keeps inside `~/.dev3.0` for its own use, NOT an install. */
 	| "path-copy"
 	/** `bun run …` from a checkout — no installed artifact to replace. */
 	| "source";
@@ -43,23 +43,31 @@ export const BREW_PACKAGE = "dev3";
  * sit anywhere — including inside a directory that would otherwise look like a
  * tarball install.
  *
- * `dev3BinDir` MATTERS AND IS NOT OPTIONAL IN PRACTICE. `<dev3Home>/bin/dev3` is
- * a real 76 MB copy the GUI rewrites on every launch (not a symlink — see the
- * tmp+rename block in `src/bun/index.ts`), and it is what `which dev3` resolves
- * to on any machine the app has ever started. `realpathSync` therefore resolves
- * it to itself, and without this it falls through to "tarball" — which would
- * extract a release tree into the frozen `~/.dev3.0/` layout, leave the real
- * install untouched, and get silently reverted by the next GUI launch.
+ * `dev3Home` MATTERS AND IS NOT OPTIONAL IN PRACTICE. Two different copies of the
+ * binary live under `~/.dev3.0`, and NEITHER is an install:
+ *
+ *  - `bin/dev3` — a real 76 MB copy the GUI rewrites on every launch (not a symlink;
+ *    see the tmp+rename block in `src/bun/index.ts`), and what `which dev3` resolves
+ *    to on any machine the app has ever started.
+ *  - `remote/rollback/dev3` — the copy a brew self-update takes aside, and the binary
+ *    a rolled-back server is actually RUNNING FROM.
+ *
+ * `realpathSync` resolves both to themselves, so without this they fall through to
+ * "tarball" — which would extract a release tree into the frozen `~/.dev3.0/` layout,
+ * leave the real install stale forever, and (for the PATH copy) be silently reverted
+ * by the next GUI launch. The whole data directory is therefore the boundary, not the
+ * `bin` subdirectory: the rollback copy is the case that matters most and does not
+ * live in `bin`.
  */
 export function detectInstallMethod(
 	resolvedExecPath: string,
 	platform: NodeJS.Platform,
-	dev3BinDir?: string | null,
+	dev3Home?: string | null,
 ): InstallMethod {
 	const path = resolvedExecPath.replaceAll("\\", "/");
 	if (/\/bun(\.exe)?$/i.test(path)) return "source";
-	if (dev3BinDir) {
-		const dir = dev3BinDir.replaceAll("\\", "/").replace(/\/+$/, "");
+	if (dev3Home) {
+		const dir = dev3Home.replaceAll("\\", "/").replace(/\/+$/, "");
 		if (dir && path.startsWith(`${dir}/`)) return "path-copy";
 	}
 	// Homebrew's own prefix varies (/usr/local, /opt/homebrew, /home/linuxbrew/…),
@@ -144,9 +152,10 @@ export function planUpdate(input: UpdatePlanInput): UpdatePlan {
 		return {
 			kind: "refused",
 			reason:
-				"This `dev3` is the copy the desktop app keeps on your PATH, not an install — the app rewrites it on " +
-				"every launch. Updating it would leave the real install untouched and be overwritten on the next start. " +
-				"Update the app itself (or run `dev3 update` from the installed binary's own path), and this copy " +
+				"This `dev3` is a copy inside `~/.dev3.0` — either the one the desktop app keeps on your PATH and " +
+				"rewrites on every launch, or the one a self-update took aside so it could roll back. Neither is an " +
+				"install: updating it would write a release tree into dev3's own data directory, leave the real " +
+				"install stale, and be overwritten anyway. Update the real install (or the app itself), and this copy " +
 				"follows automatically.",
 		};
 	}
