@@ -5,7 +5,7 @@ import "./posthog";
 import "./index.css";
 import "./rpc";
 import App from "./App";
-import { I18nProvider } from "./i18n";
+import { I18nProvider, resolveInitialLocale } from "./i18n";
 import { MobileProvider, detectMobile } from "./hooks/useMobile";
 import { initAnalytics } from "./analytics";
 import { initFeatureFlags } from "./feature-flags";
@@ -111,9 +111,10 @@ startViewportDiagnostics();
 // backend outlives the freeze and names it (see bun/renderer-watchdog.ts).
 startRendererHeartbeat();
 
-// Apply saved locale before React mounts
-const savedLocale = localStorage.getItem("dev3-locale") || "en";
-document.documentElement.lang = savedLocale;
+// Apply the locale before React mounts, through the same resolver the provider
+// uses — an `<html lang>` that disagrees with the rendered language is what a
+// screen reader believes.
+document.documentElement.lang = resolveInitialLocale();
 
 async function bootstrap() {
 	console.log("[main] bootstrap() starting...");
