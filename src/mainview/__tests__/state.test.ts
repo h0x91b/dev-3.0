@@ -1,4 +1,6 @@
-import { reducer, initialState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
+import { reducer, initialState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward, routeDiffRequest, routeWithDiff, routeWithoutDiff } from "../state";
+import type { Route } from "../state";
+import type { TaskInlineDiffRequest } from "../components/task-inline-diff";
 import type { AppState, AppAction } from "../state";
 import type { Project, Task } from "../../shared/types";
 
@@ -1101,5 +1103,70 @@ describe("taskMru tracking", () => {
 		s = reducer(s, { type: "navigate", route: { screen: "task", projectId: "p1", taskId: "b" } });
 		s = reducer(s, { type: "goBack" }); // back to a
 		expect(s.taskMru[0]).toBe("a");
+	});
+});
+
+describe("inline diff as a history step", () => {
+	const board: Route = { screen: "project", projectId: "p1" };
+	const taskRoute: Route = { screen: "task", projectId: "p1", taskId: "t1" };
+	const request: TaskInlineDiffRequest = { mode: "branch", compareLabel: "origin/main" };
+
+	function onTask(): AppState {
+		let state = reducer(initialState, { type: "navigate", route: board });
+		state = reducer(state, { type: "navigate", route: taskRoute });
+		return state;
+	}
+
+	it("openTaskDiff pushes a step, so Back returns to the task and Forward to the diff", () => {
+		const opened = reducer(onTask(), { type: "openTaskDiff", request });
+		expect(opened.route).toEqual({ ...taskRoute, diff: request });
+		expect(opened.historyIndex).toBe(onTask().historyIndex + 1);
+
+		// The regression this whole change exists for: Back used to leave the task.
+		const back = reducer(opened, { type: "goBack" });
+		expect(back.route).toEqual(taskRoute);
+
+		expect(reducer(back, { type: "goForward" }).route).toEqual({ ...taskRoute, diff: request });
+	});
+
+	it("closeTaskDiff steps back rather than pushing, keeping Forward alive", () => {
+		const closed = reducer(reducer(onTask(), { type: "openTaskDiff", request }), { type: "closeTaskDiff" });
+		expect(closed.route).toEqual(taskRoute);
+		expect(closed.historyIndex).toBe(onTask().historyIndex);
+		expect(reducer(closed, { type: "goForward" }).route).toEqual({ ...taskRoute, diff: request });
+	});
+
+	it("re-opening from inside the diff retargets the same step instead of stacking", () => {
+		const opened = reducer(onTask(), { type: "openTaskDiff", request });
+		const retargeted = reducer(opened, {
+			type: "openTaskDiff",
+			request: { mode: "uncommitted", focusFile: "src/a.ts" },
+		});
+		expect(retargeted.historyIndex).toBe(opened.historyIndex);
+		expect(retargeted.routeHistory).toHaveLength(opened.routeHistory.length);
+		// One Back, not two, still lands on the task.
+		expect(reducer(retargeted, { type: "goBack" }).route).toEqual(taskRoute);
+	});
+
+	it("closing a diff reached without its task underneath drops the diff in place", () => {
+		// Deep link straight into the diff (notification / PR comment link).
+		const deepLinked = reducer(initialState, { type: "navigate", route: { ...taskRoute, diff: request } });
+		const closed = reducer(deepLinked, { type: "closeTaskDiff" });
+		expect(closed.route).toEqual(taskRoute);
+		expect(closed.historyIndex).toBe(deepLinked.historyIndex);
+	});
+
+	it("ignores a diff opened on a route that has no task in view", () => {
+		const onBoard = reducer(initialState, { type: "navigate", route: board });
+		expect(reducer(onBoard, { type: "openTaskDiff", request })).toBe(onBoard);
+	});
+
+	it("routeWithDiff / routeWithoutDiff / routeDiffRequest agree", () => {
+		const withDiff = routeWithDiff(taskRoute, request);
+		expect(withDiff && routeDiffRequest(withDiff)).toEqual(request);
+		expect(withDiff && routeWithoutDiff(withDiff)).toEqual(taskRoute);
+		expect(routeDiffRequest(board)).toBeNull();
+		// A project route with no active task cannot hold a diff.
+		expect(routeWithDiff(board, request)).toBeNull();
 	});
 });

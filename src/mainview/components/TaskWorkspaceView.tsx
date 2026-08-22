@@ -15,6 +15,8 @@ interface TaskWorkspaceViewProps {
 	taskId: string;
 	tasks: Task[];
 	projects: Project[];
+	/** The live route — the inline diff's open/closed state rides on it. */
+	route: Route;
 	navigate: (route: Route) => void;
 	dispatch: Dispatch<AppAction>;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
@@ -32,6 +34,7 @@ function TaskWorkspaceView({
 	taskId,
 	tasks,
 	projects,
+	route,
 	navigate,
 	dispatch,
 	navigationGuardRef,
@@ -45,7 +48,7 @@ function TaskWorkspaceView({
 }: TaskWorkspaceViewProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
-	const inlineDiff = useTaskInlineDiffState(taskId);
+	const inlineDiff = useTaskInlineDiffState(route, dispatch);
 	const unresolvedRouteKeyRef = useRef<string | null>(null);
 
 	// The fullscreen task view can be entered for a task whose project's tasks
@@ -71,8 +74,8 @@ function TaskWorkspaceView({
 		};
 	}, [projectId, dispatch]);
 
-	// The inline diff opens in-place (not a route) — fire its page view once per
-	// open so the diff surface is visible in analytics like any other screen.
+	// The diff is a history step on the task route, not its own screen — fire its
+	// page view once per open so it shows up in analytics like any other screen.
 	// Use the human-readable seq id (e.g. "981-1"), falling back to the raw id.
 	useEffect(() => {
 		if (!inlineDiff.isOpen) return;

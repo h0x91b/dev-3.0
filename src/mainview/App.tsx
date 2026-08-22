@@ -2953,6 +2953,7 @@ function App() {
 				taskId={taskId}
 				tasks={state.currentProjectTasks}
 				projects={state.projects}
+				route={state.route}
 				navigate={navigate}
 				dispatch={dispatch}
 				navigationGuardRef={navigationGuardRef}
@@ -2989,6 +2990,7 @@ function App() {
 						projects={state.projects}
 						tasks={state.currentProjectTasks}
 						dispatch={dispatch}
+						route={state.route}
 						navigate={navigate}
 						bellCounts={state.bellCounts}
 						bellReasons={state.bellReasons}
@@ -3025,6 +3027,7 @@ function App() {
 						taskId={route.taskId}
 						tasks={state.currentProjectTasks}
 						projects={state.projects}
+						route={state.route}
 						navigate={navigate}
 						dispatch={dispatch}
 						navigationGuardRef={navigationGuardRef}

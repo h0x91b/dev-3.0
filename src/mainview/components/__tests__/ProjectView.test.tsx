@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import { RPC_STATUS_EVENT } from "../../diagnostics";
+import type { Route } from "../../state";
+import { RouteHost } from "../../test-utils/route-host";
 import ProjectView from "../ProjectView";
 
 // Mutable so a test can flip to remote/browser mode; a getter proves the layout
@@ -57,18 +59,31 @@ const project: Project = {
 
 function renderView(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 	const tasks: Task[] = props.tasks ?? [];
+	// The inline diff lives on the route, so drive the view with the real reducer.
+	const route: Route = props.route ?? {
+		screen: "project",
+		projectId: "p1",
+		activeTaskId: props.activeTaskId,
+		taskView: props.taskView,
+	};
 	return render(
 		<I18nProvider>
-			<ProjectView
-				projectId="p1"
-				projects={[project]}
-				tasks={tasks}
-				dispatch={vi.fn()}
-				navigate={vi.fn()}
-				bellCounts={new Map()}
-				taskPorts={new Map()}
-				taskDevServers={new Map()}
-				{...props}
+			<RouteHost
+				route={route}
+				element={
+					<ProjectView
+						projectId="p1"
+						projects={[project]}
+						tasks={tasks}
+						dispatch={vi.fn()}
+						route={route}
+						navigate={vi.fn()}
+						bellCounts={new Map()}
+						taskPorts={new Map()}
+						taskDevServers={new Map()}
+						{...props}
+					/>
+				}
 			/>
 		</I18nProvider>,
 	);
