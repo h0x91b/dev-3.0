@@ -1,0 +1,22 @@
+name: bun install (bounded retry)
+description: >-
+  Install dependencies with a bounded, loudly announced retry, so a transient
+  registry tarball failure does not fail an unrelated job.
+inputs:
+  frozen-lockfile:
+    description: Pass --frozen-lockfile to bun install.
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    # Deliberately NOT cached: measured, a cache hit restored in 7s where `bun install`
+    # takes 5s, and the entries ate 4.8 GiB of the 10 GB repo cache the Windows proof needs.
+    - name: Install dependencies
+      shell: bash
+      env:
+        FROZEN: ${{ inputs.frozen-lockfile }}
+      run: |
+        args=()
+        if [ "$FROZEN" = "true" ]; then args+=(--frozen-lockfile); fi
+        bash "$GITHUB_ACTION_PATH/install-with-retry.sh" "${args[@]}"
