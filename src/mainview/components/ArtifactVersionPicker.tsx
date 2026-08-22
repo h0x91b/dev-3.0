@@ -57,7 +57,10 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 	const label = t("artifactViewer.versionOf", { version: String(selected), count: String(latest) });
 
 	return (
-		<div className="relative flex-shrink-0" ref={rootRef}>
+		// Deliberately NOT a positioning context: the popover anchors to the viewer
+		// header instead, because the chip sits close enough to the pane's left edge
+		// that a chip-anchored popover is clipped by the docked pane.
+		<div className="flex-shrink-0" ref={rootRef}>
 			<button
 				type="button"
 				data-testid="artifact-version-picker"
@@ -77,8 +80,9 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 					role="listbox"
 					data-testid="artifact-version-list"
 					aria-label={t("artifactViewer.versions")}
-					className="absolute right-0 top-full z-10 mt-1 max-h-80 w-64 overflow-y-auto rounded-lg border border-edge bg-overlay py-1 shadow-lg"
+					className="absolute right-2 top-full z-20 mt-1 flex w-64 flex-col overflow-hidden rounded-lg border border-edge bg-overlay shadow-lg"
 				>
+					<div className="max-h-72 overflow-y-auto py-1">
 					{[...versions].reverse().map((entry) => (
 						<button
 							key={entry.version}
@@ -96,7 +100,10 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 							)}
 						</button>
 					))}
+					</div>
 					{dropped > 0 && (
+						// Outside the scroll area on purpose: what the cap dropped must be
+						// readable without scrolling a 20-entry list to its end.
 						<p data-testid="artifact-versions-dropped" className="border-t border-edge px-3 py-2 text-micro text-fg-muted">
 							{t.plural("artifactViewer.versionsDropped", dropped)}
 						</p>
