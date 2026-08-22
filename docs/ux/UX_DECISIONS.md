@@ -11,6 +11,9 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-08-22 — Blast-radius copy is not an info icon; the nav budget is 8, spent
+- **Rule:** a dialog acting on the user's own files or remotes states what dev3 writes, where, and what it pushes — bible §10, §4/§9. **Why:** `decisions/2026/08/22/blast-radius-copy-is-not-an-info-icon.md`.
+
 ## 2026-08-22 — First run advertises help mode; the tour ban is lifted
 - **Rule:** the header `?` rests highlighted on `dashboard`/`project`/`task`/`project-settings` until help mode is opened once; the first-run panel takes the stats card's slot rather than adding one; an empty state may not name a control its column lacks; no tips at zero tasks. Multi-step tours stop being forbidden as a class. Bible §5.4a, §5.4, §10.
 - **Why:** `decisions/2026/08/22/first-run-advertises-help-mode.md`.

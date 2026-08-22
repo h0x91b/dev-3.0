@@ -263,6 +263,10 @@ const settings = {
 	"addProject.tabLocal": "Local Folder",
 	"addProject.tabClone": "Clone from URL",
 	"addProject.tabInit": "New",
+	// Blast-radius copy — what dev-3.0 writes and pushes. Keep it factual and unhedged.
+	"addProject.safetyWorktree": "dev-3.0 does not touch the files in the folder you pick. Every task gets its own git worktree — a separate folder under ~/.dev3.0 — and all the work happens there.",
+	"addProject.safetyBranch": "Each task adds a new branch to your repository and commits only to that branch. Your checked-out branch and working copy stay as they are.",
+	"addProject.safetyPush": "Nothing reaches the remote by itself. A push happens when you press push, or when an agent you started runs it.",
 	"addProject.browseBtn": "Browse...",
 	"addProject.browseHint": "Select one or more existing git repositories on your machine",
 	"addProject.initHint": "Pick an empty folder (or create one). dev-3.0 will run git init, add a .dev3/README.md placeholder, and make the first commit for you.",

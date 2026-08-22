@@ -27,8 +27,17 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * `decisions/` are pointers. The other 84 keep their full text because it exists nowhere
  * else — compact those by writing the record first, never by deleting the why.
  */
+/**
+ * `PRODUCT_UX_BIBLE.md` went 122 → 123 for the §10 blast-radius row (a dialog that touches the
+ * user's own repo states what it writes and what it pushes). Compaction ran first and only bought
+ * ~200 bytes: §5.4a's walk-through evidence, which its record already held. The rest of the file's
+ * fat is §10 rows whose why exists nowhere else — deleting those is the failure the note below
+ * warns about, so the file grew by the size of one new rule instead. `TOTAL_BUDGET_KB` is
+ * deliberately untouched: the tree cap is what actually bounds the per-feature token cost, and the
+ * log entry for this rule is a one-line pointer so it still fits.
+ */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 122,
+	"PRODUCT_UX_BIBLE.md": 123,
 	"ux-architecture.yaml": 110,
 	"UX_DECISIONS.md": 80,
 };

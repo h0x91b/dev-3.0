@@ -165,7 +165,7 @@ ux_architecture:
       mechanism: "GlobalHeader breadcrumbs + back/forward history (HISTORY_LIMIT=15) + native application menu 'View'"
       allowed: ["destination", "workspace", "major_product_area"]
       forbidden: ["one_off_action", "filter", "temporary_state", "object_specific_control"]
-      max_top_level_items: 7   # proposed budget; debug screens (gauge-demo, viewport-lab) should stay menu-only
+      max_top_level_items: 8   # fully spent by the list above; debug screens (gauge-demo, viewport-lab) stay menu-only
       max_depth: 2
       status: "observed"
       evidence: ["src/mainview/state.ts (Route)", "src/mainview/components/GlobalHeader.tsx", "src/bun/application-menu.ts"]
@@ -466,7 +466,7 @@ ux_architecture:
       forbidden: ["command_runner", "object_action", "durable_configuration", "primary_navigation", "toolbar_button"]
       source_of_truth: "src/mainview/keymap.ts — every app-level shortcut declared as data (id, machine-readable defaults bindings, descKey, category, remappable). DRIVES dispatch via matchesShortcut(e, id); display strings are derived from bindings, never authored twice. Same data renders the README table + website (docs/index.html). Renders the RESOLVED combo (defaults + user overrides), never the raw default."
       entry_points: ["application_menu.Help (Keyboard Shortcuts — wires the currently-dead help-keyboard-shortcuts action; Tmux Cheat Sheet opens the Terminal tab)", "keyboard: Cmd+/ (Ctrl+/ on Linux), App.tsx capture-phase handler, label shows (⌘/)", "command_palette ⇧⌘P via commands.ts entry"]
-      rationale: "No toolbar/header button (toolbar-button-creep is the #1 anti-pattern); not a nav destination (ephemeral reference ≠ a place; nav budget ≤7). One modal with tabs per the user's 'единый вид'; tab split keeps ~40 tmux bindings from drowning ~25 app shortcuts. Cmd+/ over bare ? because the live terminal must receive a bare ?."
+      rationale: "No toolbar/header button (toolbar-button-creep is the #1 anti-pattern); not a nav destination (ephemeral reference ≠ a place; nav budget spent at 8). One modal with tabs per the user's 'единый вид'; tab split keeps ~40 tmux bindings from drowning ~25 app shortcuts. Cmd+/ over bare ? because the live terminal must receive a bare ?."
       editing: "FORBIDDEN here — rebinding is durable configuration and lives in settings.keyboard_shortcuts_editor. The overlay may carry exactly ONE link ('Customize…') to that editor and no inline edit affordance."
       observed: ["KeyboardShortcutsModal", "keymap.ts", "TmuxCheatSheetModal"]
       evidence: ["UX_DECISIONS 2026-06-19", "UX_DECISIONS 2026-08-02", "src/bun/application-menu.ts (helpKeyboardShortcuts)", "src/mainview/components/TmuxCheatSheetModal.tsx"]
@@ -654,7 +654,7 @@ ux_architecture:
 
   complexity_budgets:
     global_nav:
-      max_top_level_items: 7
+      max_top_level_items: 8   # spent — a ninth destination replaces one
       max_depth: 2
     page_header:
       max_primary_actions: 1
@@ -764,9 +764,12 @@ ux_architecture:
     - id: "inline-help-placement"
       when: { feature_class: "onboarding_help" }
       place_in: ["help.ts registry topic + HelpSpot in a header-bearing section", "help-mode coverage via data-help-id (dense/headerless zones)", "application_menu.Help / ⇧⌘/ / command_palette entry"]
-      reject: ["permanent_info_icon_in_quickbars_cards_or_toolbars", "hardcoded_help_strings_in_components", "multi_step_tour_v1", "new_nav_destination_for_help"]
+      reject: ["permanent_info_icon_in_quickbars_cards_or_toolbars", "hardcoded_help_strings_in_components", "new_nav_destination_for_help"]  # the tour ban was lifted 2026-08-22 (bible 5.4a)
+      carve_outs:
+        - "first_run_callout: anchored to the one control it advertises, dismissible, once-only, killed by the same one-way flag entering help mode sets (bible 5.4a)"
+        - "blast_radius_copy: standing quiet plain-sentence statement at the top of a dialog that acts on the user's own files or remotes — what dev3 writes, where, and what it pushes. Never an (i), never dismissible, never hedged, no unverified OS-behaviour claim"
       status: "observed"
-      rationale: "Help must add ZERO chrome to budget-protected zones (quickbars, task cards, toolbars) — they are covered by the help-mode overlay, not by standing icons. Header-bearing sections may carry at most one ghost (i). Content is data (help.ts + i18n domain), never JSX, so the same topics feed HelpSpot, help mode, and any future docs surface. See PRODUCT_UX_BIBLE §5.4 + UX_DECISIONS 2026-07-03."
+      rationale: "Help must add ZERO chrome to budget-protected zones (quickbars, task cards, toolbars) — they are covered by the help-mode overlay, not by standing icons. Header-bearing sections may carry at most one ghost (i). Content is data (help.ts + i18n domain), never JSX, so the same topics feed HelpSpot, help mode, and any future docs surface. The carve-outs are a different failure: a dialog pointed at someone's work monorepo has no second visit, and a user who cannot answer 'what will this write' closes the app instead of filing an issue. See PRODUCT_UX_BIBLE §5.4 + UX_DECISIONS 2026-07-03."
 
   responsive:
     status: "partial" # board_carousel implemented; full mobile doctrine proposed — see bible §12 (full doctrine plan in git history)

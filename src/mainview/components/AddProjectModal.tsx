@@ -244,7 +244,8 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 				aria-modal="true"
 				aria-labelledby="add-project-dialog-title"
 				tabIndex={-1}
-				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5 outline-none"
+				// The Clone tab is ~690px tall now; a short window has no scroll of its own here.
+				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] max-h-[90vh] overflow-y-auto p-6 space-y-5 outline-none"
 			>
 				<div className="flex items-center gap-1.5">
 					<h2 id="add-project-dialog-title" className="text-fg text-lg font-semibold">
@@ -292,6 +293,15 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 					</div>
 				) : (
 				<>
+				{/* Blast-radius copy (bible §10): standing, not dismissible — over half the
+				    userbase point this at a work monorepo and ask what it writes first.
+				    Only the two claims true of all three tabs live here; "your folder is
+				    untouched" is false on Clone and New, so it sits in the Local tab. */}
+				<div className="bg-raised border border-edge rounded-xl px-3 py-2.5 space-y-1.5 text-fg-3 text-xs leading-5">
+					<p>{t("addProject.safetyBranch")}</p>
+					<p>{t("addProject.safetyPush")}</p>
+				</div>
+
 				{/* Tabs */}
 				<div className="flex gap-1 p-1 bg-raised rounded-xl">
 					<button
@@ -331,6 +341,9 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 					<div className="space-y-3">
 						<p className="text-fg-3 text-sm">
 							{t("addProject.browseHint")}
+						</p>
+						<p className="text-fg-3 text-xs leading-5">
+							{t("addProject.safetyWorktree")}
 						</p>
 						<button
 							onClick={handleBrowseLocal}
