@@ -273,6 +273,10 @@ Evidence: [first-run-advertises-help-mode](../../decisions/2026/08/22/first-run-
   below") belongs to To Do alone.
 - **No tips at zero tasks.** Tips are earned; one about hovering a task card spends the newcomer's
   only screen on nothing.
+- A **first-run-only action** (the sandbox button) belongs **inside the first-run strip**, never
+  beside the screen's own primary action: the action row must not grow a control that disappears
+  the moment a repository exists. See
+  [the-sandbox-is-a-real-repo-dev3-owns](../../decisions/2026/08/22/the-sandbox-is-a-real-repo-dev3-owns.md).
 - Multi-step tours are no longer banned as a class.
 
 ### 5.5 Diagnostics — crash & error surface (remote/mobile) — `Observed`

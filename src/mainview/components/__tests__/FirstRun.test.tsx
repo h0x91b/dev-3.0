@@ -7,7 +7,7 @@
  * (the builtin Operations board is created on first boot), so the dashboard's
  * own zero-projects empty state can never render.
  */
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import ActivityOverview from "../ActivityOverview";
 import GlobalHeader from "../GlobalHeader";
 import KanbanColumn from "../KanbanColumn";
@@ -21,6 +21,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			getAllProjectTasks: vi.fn().mockResolvedValue([]),
+			createSandboxProject: vi.fn().mockResolvedValue({ ok: true, project: { id: "sandbox", name: "Sandbox", path: "/tmp/sandbox" } }),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
 			reorderSpaces: vi.fn(),
 			reorderSpaceProjects: vi.fn(),
@@ -91,13 +92,13 @@ const operations: Project = {
 	builtin: true,
 };
 
-function renderOverview(projects: Project[]) {
+function renderOverview(projects: Project[], spies: { navigate?: (route: Route) => void; dispatch?: (action: any) => void } = {}) {
 	return render(
 		<I18nProvider>
 			<ActivityOverview
 				projects={projects}
-				navigate={vi.fn()}
-				dispatch={vi.fn()}
+				navigate={spies.navigate ?? vi.fn()}
+				dispatch={spies.dispatch ?? vi.fn()}
 				bellCounts={new Map()}
 				onRemoveProject={vi.fn()}
 				onOpenAddProject={vi.fn()}
@@ -136,6 +137,29 @@ describe("Dashboard on a brand-new install", () => {
 		renderOverview([operations, gitProject]);
 		expect(await screen.findByText("Productivity stats")).toBeTruthy();
 		expect(screen.queryByTestId("dashboard-first-run")).toBeNull();
+	});
+
+	it("offers the sandbox to someone with nothing to point dev3 at", async () => {
+		// Lives inside the first-run strip on purpose: the dashboard's action row
+		// must not grow a third permanent button for a first-run-only affordance.
+		renderOverview([operations]);
+		const strip = await screen.findByTestId("dashboard-first-run");
+		expect(strip.contains(screen.getByTestId("dashboard-first-run-sandbox"))).toBe(true);
+	});
+
+	it("lands on the sandbox board once the repo exists", async () => {
+		const navigate = vi.fn();
+		const dispatch = vi.fn();
+		renderOverview([operations], { navigate, dispatch });
+		(await screen.findByTestId("dashboard-first-run-sandbox")).click();
+		await waitFor(() => expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "sandbox" }));
+		// Without this the new board is unreachable until the next full reload.
+		expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "addProject" }));
+	});
+
+	it("keeps the sandbox out of the way once a repository exists", async () => {
+		renderOverview([operations, gitProject]);
+		expect(screen.queryByTestId("dashboard-first-run-sandbox")).toBeNull();
 	});
 
 	it("puts Add project in help mode — the first screen's own primary action", async () => {

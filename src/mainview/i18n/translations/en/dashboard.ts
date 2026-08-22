@@ -9,10 +9,9 @@ const dashboard = {
 	"dashboard.firstRun.title": "Add a repository and dev-3.0 starts working",
 	"dashboard.firstRun.body":
 		"dev-3.0 runs AI coding agents on your own git repositories. Every task you create gets its own branch, its own folder and its own terminal, so several agents can work at the same time without touching each other's files.",
-	"dashboard.firstRun.helpTitle": "Every screen can explain itself",
-	"dashboard.firstRun.helpBody":
-		"There is no manual. The ? button in the top right works on every screen: it outlines each part of what you are looking at and tells you what it does. Start there whenever something is unclear.",
-	"dashboard.firstRun.helpAction": "Explain this screen",
+	"dashboard.firstRun.sandboxAction": "Try a sandbox repo",
+	"dashboard.firstRun.sandboxHint": "dev-3.0 makes a small throwaway repository of its own — none of your work involved.",
+	"dashboard.firstRun.sandboxFailed": "Unable to create the sandbox repository. ({error})",
 	"dashboard.openInFinder": "Open in Finder",
 	"dashboard.remove": "Remove",
 	"dashboard.confirmRemoveTitle": "Remove this project?",

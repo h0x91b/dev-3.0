@@ -52,8 +52,14 @@ const BUDGET_KB: Record<string, number> = {
  * (the 2026-08-21 prompt-preset entry was still carrying prose its record already held), and
  * §5.4a is five rules with its why in `decisions/2026/08/22/first-run-advertises-help-mode.md`.
  * The three per-file numbers are deliberately untouched.
+ *
+ * 309 → 310 for the §5.4a rule that a first-run-only action lives in the first-run strip rather
+ * than beside the screen's primary action. Compaction was attempted first and found nothing: every
+ * record-backed entry in `UX_DECISIONS.md` is already a one-line pointer (the longest remaining
+ * entries carry a why that exists nowhere else, which the note above forbids deleting), so the
+ * tree was genuinely at 309.3 of 309 with no fat left. The new log entry is itself a pointer.
  */
-const TOTAL_BUDGET_KB = 309;
+const TOTAL_BUDGET_KB = 310;
 
 const entries = readdirSync(UX_DIR, { withFileTypes: true });
 const kb = (name: string) => statSync(`${UX_DIR}/${name}`).size / 1024;

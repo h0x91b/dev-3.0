@@ -11,6 +11,9 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-08-22 — A first-run-only action lives in the first-run strip
+- **Rule:** the sandbox button sits inside the dashboard's first-run strip, never beside `Add project` — bible §5.4a. **Why:** `decisions/2026/08/22/the-sandbox-is-a-real-repo-dev3-owns.md`.
+
 ## 2026-08-22 — Blast-radius copy is not an info icon; the nav budget is 8, spent
 - **Rule:** a dialog acting on the user's own files or remotes states what dev3 writes, where, and what it pushes — bible §10, §4/§9. **Why:** `decisions/2026/08/22/blast-radius-copy-is-not-an-info-icon.md`.
 

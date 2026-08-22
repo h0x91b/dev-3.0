@@ -3789,6 +3789,11 @@ export type AppRPCSchema = {
 				params: { path: string; name?: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
+			/** Create (or re-open) the throwaway sandbox repo dev3 owns, under `~/.dev3.0/sandbox`. */
+			createSandboxProject: {
+				params: void;
+				response: { ok: true; project: Project } | { ok: false; error: string };
+			};
 			/** Create a virtual "Operations" board (no git repo). Stored in virtual-projects.json. */
 			addVirtualProject: {
 				params: { name: string };

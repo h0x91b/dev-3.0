@@ -23,3 +23,10 @@ export const DEV3_HOME = resolveDev3Home();
  * older app versions never read it, preserving the on-disk layout invariants.
  */
 export const OPS_DIR = `${DEV3_HOME}/ops`;
+
+/**
+ * Home of the throwaway sandbox repo (`${SANDBOX_DIR}/<name>`) dev3 creates for a
+ * first-run user who has nothing to point it at yet. Additive, like `OPS_DIR`, and
+ * a sibling of it — so it can never collide with an `ops/<slug>` path.
+ */
+export const SANDBOX_DIR = `${DEV3_HOME}/sandbox`;

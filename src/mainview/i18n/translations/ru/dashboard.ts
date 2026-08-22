@@ -7,10 +7,9 @@ const dashboard = {
 	"dashboard.firstRun.title": "Добавьте репозиторий — и dev-3.0 начнёт работать",
 	"dashboard.firstRun.body":
 		"dev-3.0 запускает ИИ-агентов в ваших собственных git-репозиториях. У каждой созданной задачи своя ветка, своя папка и свой терминал, поэтому несколько агентов работают одновременно и не трогают файлы друг друга.",
-	"dashboard.firstRun.helpTitle": "Любой экран умеет объяснить себя сам",
-	"dashboard.firstRun.helpBody":
-		"Инструкции нет. Кнопка ? справа сверху работает на любом экране: она обводит каждую часть того, что вы видите, и рассказывает, зачем она нужна. Начинайте с неё всякий раз, когда непонятно.",
-	"dashboard.firstRun.helpAction": "Объяснить этот экран",
+	"dashboard.firstRun.sandboxAction": "Попробовать на песочнице",
+	"dashboard.firstRun.sandboxHint": "dev-3.0 создаст свой маленький одноразовый репозиторий — ваши проекты не затрагиваются.",
+	"dashboard.firstRun.sandboxFailed": "Не удалось создать репозиторий-песочницу. ({error})",
 	"dashboard.openInFinder": "Открыть в Finder",
 	"dashboard.remove": "Удалить",
 	"dashboard.confirmRemoveTitle": "Убрать этот проект?",

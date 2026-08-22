@@ -293,6 +293,7 @@ vi.mock("../logger", () => ({
 vi.mock("../paths", () => ({
 	DEV3_HOME: "/tmp/test-dev3",
 	OPS_DIR: "/tmp/test-dev3/ops",
+	SANDBOX_DIR: "/tmp/test-dev3/sandbox",
 }));
 
 vi.mock("node:fs/promises", async (importOriginal) => {

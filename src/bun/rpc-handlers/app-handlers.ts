@@ -17,6 +17,7 @@ import type { NotificationClickTarget } from "../native-notifications";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
+import { createSandboxProject } from "../sandbox-project";
 import { pathBasename, projectStorageKey } from "../../shared/project-storage-key";
 import { listFilesystemRoots } from "../../shared/filesystem-roots";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
@@ -1061,6 +1062,7 @@ export const appHandlers = {
 	listDirectory,
 	listAgentSkills,
 	addProject: addProjectImpl,
+	createSandboxProject,
 	addVirtualProject,
 	cloneAndAddProject,
 	createDirectory,

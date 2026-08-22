@@ -7,10 +7,9 @@ const dashboard = {
 	"dashboard.firstRun.title": "Agrega un repositorio y dev-3.0 empieza a trabajar",
 	"dashboard.firstRun.body":
 		"dev-3.0 ejecuta agentes de IA en tus propios repositorios git. Cada tarea que creas recibe su propia rama, su propia carpeta y su propia terminal, así que varios agentes trabajan a la vez sin tocar los archivos de los demás.",
-	"dashboard.firstRun.helpTitle": "Cada pantalla puede explicarse a sí misma",
-	"dashboard.firstRun.helpBody":
-		"No hay manual. El botón ? de la esquina superior derecha funciona en todas las pantallas: delimita cada parte de lo que estás viendo y explica qué hace. Empieza ahí siempre que algo no quede claro.",
-	"dashboard.firstRun.helpAction": "Explicar esta pantalla",
+	"dashboard.firstRun.sandboxAction": "Probar en un repo de pruebas",
+	"dashboard.firstRun.sandboxHint": "dev-3.0 crea su propio repositorio desechable — tu trabajo no se toca.",
+	"dashboard.firstRun.sandboxFailed": "No se pudo crear el repositorio de pruebas. ({error})",
 	"dashboard.openInFinder": "Abrir en Finder",
 	"dashboard.remove": "Eliminar",
 	"dashboard.confirmRemoveTitle": "¿Eliminar este proyecto?",
