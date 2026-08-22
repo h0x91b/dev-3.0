@@ -390,12 +390,13 @@ describe("LaunchVariantsModal", () => {
 			expect(getHarnessButtons()).toHaveLength(1);
 		});
 
-		it("hides the Add Variant button for virtual (Operations) boards", () => {
-			const project = makeProject({ kind: "virtual" });
-			renderModal(project);
+		it("offers the Add Variant button on virtual (Operations) boards too", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject({ kind: "virtual" }));
 
-			expect(screen.queryByText("+ Add variant")).not.toBeInTheDocument();
-			expect(getHarnessButtons()).toHaveLength(1);
+			await user.click(screen.getByText("+ Add variant"));
+
+			expect(getHarnessButtons()).toHaveLength(2);
 		});
 	});
 

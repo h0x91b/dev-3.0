@@ -60,12 +60,6 @@ function LaunchVariantsModal({
 }: LaunchVariantsModalProps) {
 	const t = useT();
 
-	// Virtual ("Operations") boards run a single agent per operation — there is
-	// no git diff to compare parallel attempts against, and a shared fixed
-	// folder would have multiple agents clobbering each other. Hide the
-	// add-variant affordance so an operation is always one agent + one folder.
-	const isVirtual = project.kind === "virtual";
-
 	function makeDefaultVariant(): VariantRow {
 		// Try global default agent, fall back to first available
 		let agentId: string | null = globalSettings.defaultAgentId ?? null;
@@ -452,16 +446,15 @@ function LaunchVariantsModal({
 				{/* Footer — wraps on a phone-width viewport instead of squeezing the
 				    labels into one-word-per-line columns. */}
 				<div className="px-6 py-4 border-t border-edge flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-					{isVirtual ? (
-						<div />
-					) : (
-						<button
-							onClick={addVariant}
-							className={`text-accent hover:text-accent-emphasis text-sm font-medium whitespace-nowrap ${pressClass}`}
-						>
-							{t("launch.addVariant")}
-						</button>
-					)}
+					{/* Available on every board kind, virtual included: a variant is its
+					    own task, and `git.virtualWorkDir` keys the operation folder on
+					    the task id, so parallel operations cannot collide. */}
+					<button
+						onClick={addVariant}
+						className={`text-accent hover:text-accent-emphasis text-sm font-medium whitespace-nowrap ${pressClass}`}
+					>
+						{t("launch.addVariant")}
+					</button>
 
 					<div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
 						<button
