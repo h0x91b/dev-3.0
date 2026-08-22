@@ -5,6 +5,7 @@ export const tooltips = {
 		"El historial de navegación funciona como un navegador: cada tablero, tarea y pantalla de ajustes que visitas se convierte en un paso al que puedes volver.",
 	"ttip.header.navForward": "Vuelve a la pantalla de la que acabas de retroceder. El historial guarda tus pantallas recientes en orden.",
 	"ttip.header.switchProject": "Salta directamente al tablero de otro proyecto sin pasar por el panel principal.",
+	"ttip.header.switchVariant": "Esta tarea tiene varias variantes: salta a otro intento sin salir de la pantalla (también \u21e7\u2318[ / \u21e7\u2318]).",
 	"ttip.header.updateReady": "Hay una versión nueva descargada y lista. Haz clic para reiniciar la app y aplicarla.",
 	"ttip.header.quickShell":
 		"Una terminal desechable para comandos rápidos. Corre como tarea scratch en el tablero Operations, así que no toca los worktrees de tus proyectos.",

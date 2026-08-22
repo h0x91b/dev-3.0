@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project, SharedArtifact, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
+import type { Route } from "../../state";
+import { RouteHost } from "../../test-utils/route-host";
 import TaskWorkspaceView from "../TaskWorkspaceView";
 
 const getTasksMock = vi.fn();
@@ -113,7 +115,17 @@ const artifact: SharedArtifact = {
 	assets: [],
 };
 
-const renderWorkspace = (element: ReactElement) => render(element, { wrapper: I18nProvider });
+const TASK_ROUTE: Route = { screen: "task", projectId: "p1", taskId: "t1" };
+
+// The inline diff lives on the route, so the view is driven by the real reducer
+// here — opening it is a history push and Back/close is a history step.
+const renderWorkspace = (element: ReactElement) => {
+	const result = render(<RouteHost route={TASK_ROUTE} element={element} />, { wrapper: I18nProvider });
+	return {
+		...result,
+		rerender: (next: ReactElement) => result.rerender(<RouteHost route={TASK_ROUTE} element={next} />),
+	};
+};
 
 function mockPointerCapture(separator: HTMLElement) {
 	const setPointerCapture = vi.fn();
@@ -145,6 +157,7 @@ function startArtifactResize() {
 			taskId="t1"
 			tasks={[task]}
 			projects={[project]}
+			route={TASK_ROUTE}
 			navigate={vi.fn()}
 			dispatch={vi.fn()}
 			artifactViewer={{ taskId: "t1", artifacts: [artifact], index: 0 }}
@@ -183,6 +196,7 @@ describe("TaskWorkspaceView", () => {
 				taskId="t1"
 				tasks={[]}
 				projects={[project]}
+				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={dispatch}
 			/>,
@@ -201,6 +215,7 @@ describe("TaskWorkspaceView", () => {
 				taskId="t1"
 				tasks={[task]}
 				projects={[project]}
+				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={vi.fn()}
 				skipCopyModeReset
@@ -219,6 +234,7 @@ describe("TaskWorkspaceView", () => {
 				taskId="t1"
 				tasks={[task]}
 				projects={[project]}
+				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={vi.fn()}
 			/>,
@@ -245,6 +261,7 @@ describe("TaskWorkspaceView", () => {
 				taskId="t1"
 				tasks={[task]}
 				projects={[project]}
+				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={vi.fn()}
 				openUnresolvedComments
@@ -265,6 +282,7 @@ describe("TaskWorkspaceView", () => {
 				taskId="t1"
 				tasks={[task]}
 				projects={[project]}
+				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={vi.fn()}
 			/>,
@@ -287,6 +305,7 @@ describe("TaskWorkspaceView", () => {
 				taskId="t1"
 				tasks={[task]}
 				projects={[project]}
+				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={vi.fn()}
 				artifactViewer={{ taskId: "t1", artifacts: [artifact], index: 0 }}
@@ -369,6 +388,7 @@ describe("TaskWorkspaceView", () => {
 				taskId="t1"
 				tasks={[task, otherTask]}
 				projects={[project]}
+				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={vi.fn()}
 			/>,
@@ -384,6 +404,7 @@ describe("TaskWorkspaceView", () => {
 				taskId="t2"
 				tasks={[task, otherTask]}
 				projects={[project]}
+				route={TASK_ROUTE}
 				navigate={vi.fn()}
 				dispatch={vi.fn()}
 			/>,

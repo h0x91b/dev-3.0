@@ -1,5 +1,6 @@
 import { resolveTaskCompareBaseBranch, type Project, type Task, type TaskDiffMode } from "../../shared/types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, type Dispatch } from "react";
+import { routeDiffRequest, type AppAction, type Route } from "../state";
 
 export interface TaskInlineDiffRequest {
 	mode: TaskDiffMode;
@@ -30,20 +31,22 @@ export function createUnresolvedCommentsDiffRequest(
 	};
 }
 
-export function useTaskInlineDiffState(taskId?: string) {
-	const [request, setRequest] = useState<TaskInlineDiffRequest | null>(null);
-
-	useEffect(() => {
-		setRequest(null);
-	}, [taskId]);
+/**
+ * The diff's open/closed state lives on the route, not in component state, so
+ * opening it is a real navigation step: Back returns to the task and Forward
+ * returns to the diff. Switching tasks drops the diff for free — the new route
+ * simply carries none.
+ */
+export function useTaskInlineDiffState(route: Route, dispatch: Dispatch<AppAction>) {
+	const request = routeDiffRequest(route);
 
 	const open = useCallback((nextRequest: TaskInlineDiffRequest) => {
-		setRequest(nextRequest);
-	}, []);
+		dispatch({ type: "openTaskDiff", request: nextRequest });
+	}, [dispatch]);
 
 	const close = useCallback(() => {
-		setRequest(null);
-	}, []);
+		dispatch({ type: "closeTaskDiff" });
+	}, [dispatch]);
 
 	return {
 		request,

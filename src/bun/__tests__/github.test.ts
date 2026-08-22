@@ -593,4 +593,72 @@ describe("github", () => {
 			expect(spawnMock.mock.calls.length).toBe(callsAfterFirst);
 		});
 	});
+
+	/**
+	 * These two strings are gh's own, copied from a live run. The check exists
+	 * because the OBVIOUS implementation — match github.com in the remote URL —
+	 * is wrong in the field: an SSH config alias hides the host, so
+	 * `git@github.com-personal:owner/repo` (the two-accounts setup this repo
+	 * itself uses) reads as "not GitHub" while gh resolves it fine.
+	 */
+	describe("isNotAGitHubRepoError", () => {
+		const PROJECT = { githubAuthHost: "github.com", githubAuthLogin: "h0x91b" };
+
+		it("recognises gh's refusal on a non-GitHub remote", async () => {
+			const { isNotAGitHubRepoError } = await import("../github");
+			expect(isNotAGitHubRepoError({
+				stderr: "none of the git remotes configured for this repository point to a known GitHub host. To tell gh about a new GitHub host, please use `gh auth login`",
+			})).toBe(true);
+			expect(isNotAGitHubRepoError({ stdout: "no git remotes found" })).toBe(true);
+		});
+
+		it("does NOT claim non-GitHub for any other failure", async () => {
+			const { isNotAGitHubRepoError } = await import("../github");
+			// Every one of these must leave the PR button alone: killing a working
+			// button is worse than one wasted agent turn.
+			for (const stderr of [
+				"",
+				"error connecting to api.github.com",
+				"gh: command timed out",
+				"gh auth login required",
+				"HTTP 502: Bad gateway",
+				"could not resolve host",
+			]) {
+				expect(isNotAGitHubRepoError({ stderr })).toBe(false);
+			}
+		});
+
+		/** `gh repo view` answering whatever the case under test needs, past the auth handshake. */
+		function mockGhRepoView(stdout: string, stderr = "", exitCode = 0) {
+			whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+			spawnMock.mockImplementation((cmd: string[]) => {
+				if (cmd.join(" ") === "gh auth status --json hosts") {
+					return fakeProc(JSON.stringify({
+						hosts: { "github.com": [{ login: "h0x91b", host: "github.com", active: true, state: "success" }] },
+					}));
+				}
+				if (cmd[1] === "auth" && cmd[2] === "token") return fakeProc("secret-token\n");
+				return fakeProc(stdout, stderr, exitCode);
+			});
+		}
+
+		it("treats a successful gh call as GitHub", async () => {
+			mockGhRepoView('{"nameWithOwner":"h0x91b/dev-3.0"}');
+			const { isGitHubRepo } = await import("../github");
+			await expect(isGitHubRepo(PROJECT, "/tmp/wt")).resolves.toBe(true);
+		});
+
+		it("reports not-GitHub when gh says the remotes are not GitHub", async () => {
+			mockGhRepoView("", "none of the git remotes configured for this repository point to a known GitHub host.", 1);
+			const { isGitHubRepo } = await import("../github");
+			await expect(isGitHubRepo(PROJECT, "/tmp/wt")).resolves.toBe(false);
+		});
+
+		/** A blip must not disable the button — the whole point of the polarity. */
+		it("stays GitHub when gh fails for any other reason", async () => {
+			mockGhRepoView("", "HTTP 502: Bad gateway", 1);
+			const { isGitHubRepo } = await import("../github");
+			await expect(isGitHubRepo(PROJECT, "/tmp/wt")).resolves.toBe(true);
+		});
+	});
 });

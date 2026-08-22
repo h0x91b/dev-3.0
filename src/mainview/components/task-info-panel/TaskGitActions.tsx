@@ -366,18 +366,35 @@ export default function TaskGitActions({
 	// buttons used to stay live and fail on click, which reads as a broken app
 	// rather than as a project that was never connected to a remote.
 	const noRemote = branchStatus?.hasRemote === false;
+	// `gh` is the only forge client dev3 speaks, so a GitLab/Gitea origin gets no PR
+	// button rather than one whose agent prompt cannot run.
+	const noGitHubRemote = !!branchStatus && branchStatus.hasRemote && !branchStatus.remoteIsGitHub;
+
+	// A foreign-code task exists to READ commits the local user did not write, so
+	// the three write actions are gone rather than disabled — a greyed-out Push on
+	// a colleague's branch still invites a click and an explanation.
+	const ownBranch = !task.foreignCode;
+
+	// origin/<branch> holds commits HEAD does not: a plain push is refused as
+	// non-fast-forward. The backend escalates to a leased force push off this same
+	// number, so the label and the command cannot disagree.
+	const pushIsForced = !!branchStatus && branchStatus.hasRemote && branchStatus.remoteAhead > 0;
 
 	const pushDisabled = noRemote || !branchStatus || branchStatus.ahead === 0 || pushing;
 	const pushTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: noRemote
 			? t("infoPanel.noRemoteDisabled")
-			: branchStatus.ahead === 0
-				? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
-				: t("infoPanel.push");
+			: pushIsForced
+				? t("infoPanel.forcePushTooltip", { branch: task.branchName ?? "" })
+				: branchStatus.ahead === 0
+					? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
+					: t("infoPanel.push");
 
 	const hasPR = prInfo !== null;
-	const createPRDisabled = hasPR ? !branchStatus?.prUrl : (noRemote || !branchStatus || branchStatus.ahead === 0 || creatingPR);
+	const createPRDisabled = hasPR
+		? !branchStatus?.prUrl
+		: (noRemote || noGitHubRemote || !branchStatus || branchStatus.ahead === 0 || creatingPR);
 
 	function getPRButtonLabel(): string {
 		if (creatingPR) return t("infoPanel.creatingPR");
@@ -388,6 +405,7 @@ export default function TaskGitActions({
 	function getPRTooltip(): string {
 		if (!branchStatus) return t("infoPanel.statusLoading");
 		if (noRemote) return t("infoPanel.noRemoteDisabled");
+		if (noGitHubRemote) return t("infoPanel.noGitHubRemoteDisabled");
 		if (branchStatus.ahead === 0) {
 			return t(hasUncommittedChanges ? "infoPanel.createPRDisabledUncommitted" : "infoPanel.createPRDisabledNoCommits");
 		}
@@ -397,6 +415,7 @@ export default function TaskGitActions({
 	function getPRAutoMergeTooltip(): string {
 		if (!branchStatus) return t("infoPanel.statusLoading");
 		if (noRemote) return t("infoPanel.noRemoteDisabled");
+		if (noGitHubRemote) return t("infoPanel.noGitHubRemoteDisabled");
 		if (branchStatus.ahead === 0) {
 			return t(hasUncommittedChanges ? "infoPanel.createPRDisabledUncommitted" : "infoPanel.createPRDisabledNoCommits");
 		}
@@ -452,6 +471,9 @@ export default function TaskGitActions({
 	// Neutral like the rest of the session bar (see the #1418 pass): the colour in this
 	// row belongs to the status badges (ahead/behind, PR, conflicts), not to the actions.
 	const enabledBtnClass = "text-fg-3 hover:text-fg hover:bg-elevated border border-edge";
+	// The one action in this row that rewrites published history earns the danger
+	// colour, and it is exactly the state in which the label also changes.
+	const dangerBtnClass = "text-danger hover:bg-danger/10 border border-danger/40";
 
 	const gitIcon = (icon: ReactNode, spin = false) => (
 		// Fixed square slot so the idle icon and the in-progress ring share one footprint
@@ -531,20 +553,30 @@ export default function TaskGitActions({
 					)}
 				</button>
 			</GitActionTooltip>
+			{ownBranch && (
 			<GitActionTooltip content={pushTooltip} detail={t("ttip.git.push")} disabled={pushDisabled}>
 				<button
 					onClick={handlePush}
 					disabled={pushDisabled}
 					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-dense font-medium transition-colors ${
-						pushDisabled ? disabledBtnClass : enabledBtnClass
+						pushDisabled ? disabledBtnClass : pushIsForced ? dangerBtnClass : enabledBtnClass
 					}`}
-					aria-label={t("infoPanel.push")}
+					aria-label={pushIsForced ? t("infoPanel.forcePush") : t("infoPanel.push")}
 				>
-					{btnContent(<PushIcon className={iconClass} />, pushing ? t("infoPanel.pushing") : t("infoPanel.push"), pushing)}
+					{btnContent(
+						<PushIcon className={iconClass} />,
+						pushing
+							? t("infoPanel.pushing")
+							: pushIsForced
+								? t("infoPanel.forcePush")
+								: t("infoPanel.push"),
+						pushing,
+					)}
 				</button>
 			</GitActionTooltip>
+			)}
 			{/* When a PR already exists, the "PR #N" badge above already links to it - no Open PR button needed. */}
-			{!hasPR && (
+			{ownBranch && !hasPR && (
 				<>
 					<GitActionTooltip content={getPRTooltip()} detail={t("ttip.git.createPR")} disabled={createPRDisabled}>
 						<button
@@ -572,6 +604,7 @@ export default function TaskGitActions({
 					</GitActionTooltip>
 				</>
 			)}
+			{ownBranch && (
 			<GitActionTooltip content={mergeTooltip} detail={t("ttip.git.merge")} disabled={mergeDisabled}>
 				<button
 					onClick={handleMerge}
@@ -584,6 +617,7 @@ export default function TaskGitActions({
 					{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : t("infoPanel.merge"), merging)}
 				</button>
 			</GitActionTooltip>
+			)}
 			<GitActionTooltip content={t("infoPanel.refreshStatus")} detail={t("ttip.git.refresh")} disabled={refreshingStatus}>
 				<button
 					onClick={handleRefreshStatus}

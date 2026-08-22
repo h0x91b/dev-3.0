@@ -15,9 +15,11 @@ interface SiblingPopoverProps {
 	onClose: () => void;
 	anchorEl: HTMLElement;
 	projectId: string;
+	/** Opened from the fullscreen task screen — switching stays on that screen. */
+	isFullPage?: boolean;
 }
 
-function SiblingPopover({ variants, currentTaskId, agents, navigate, onClose, anchorEl, projectId }: SiblingPopoverProps) {
+function SiblingPopover({ variants, currentTaskId, agents, navigate, onClose, anchorEl, projectId, isFullPage = false }: SiblingPopoverProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const popoverRef = useRef<HTMLDivElement>(null);
@@ -77,11 +79,9 @@ function SiblingPopover({ variants, currentTaskId, agents, navigate, onClose, an
 
 	function handleVariantClick(variant: Task) {
 		if (variant.id !== currentTaskId && ACTIVE_STATUSES.includes(variant.status)) {
-			navigate({
-				screen: "project",
-				projectId,
-				activeTaskId: variant.id,
-			});
+			navigate(isFullPage
+				? { screen: "task", projectId, taskId: variant.id }
+				: { screen: "project", projectId, activeTaskId: variant.id });
 		}
 		onClose();
 	}

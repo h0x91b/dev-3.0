@@ -373,6 +373,40 @@ export async function getGitHubAuthEnv(project: ProjectGitHubSelection): Promise
 	return buildTokenEnv(account.host, token);
 }
 
+/**
+ * Did `gh` refuse because this repo is not a GitHub repo at all?
+ *
+ * WHY THIS IS NOT A URL CHECK. The obvious implementation reads `git remote
+ * get-url origin` and looks for a github.com host. It is wrong in the field: an
+ * SSH config alias hides the real host, and `git@github.com-personal:owner/repo`
+ * — the standard two-accounts setup, and what this very repo uses — reads as "not
+ * GitHub" while `gh` resolves it happily. That misfire disables Create PR on the
+ * user's own main repo, which is worse than the bug the check exists to prevent.
+ * So ask the tool that will actually run the command.
+ *
+ * The polarity is deliberate: only gh's two DEFINITIVE messages count. A timeout,
+ * a network blip, a missing binary, or an auth prompt all leave the answer as
+ * "GitHub, as far as we know", because a false negative kills a working button
+ * while a false positive costs one wasted agent turn.
+ */
+export function isNotAGitHubRepoError(result: { stdout?: string; stderr?: string }): boolean {
+	const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.toLowerCase();
+	return text.includes("point to a known github host") || text.includes("no git remotes found");
+}
+
+/**
+ * Can `gh` operate on this repo? One cheap call, and it answers the only question
+ * that matters before a PR handoff — see {@link isNotAGitHubRepoError} for why
+ * this is not a URL match.
+ */
+export async function isGitHubRepo(
+	project: ProjectGitHubSelection,
+	cwd: string,
+): Promise<boolean> {
+	const result = await runGitHub(project, cwd, ["repo", "view", "--json", "nameWithOwner"], { timeoutMs: 10_000 });
+	return result.ok || !isNotAGitHubRepoError(result);
+}
+
 export async function runGitHub(
 	project: ProjectGitHubSelection,
 	cwd: string,

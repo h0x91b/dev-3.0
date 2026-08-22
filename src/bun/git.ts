@@ -1555,6 +1555,17 @@ export async function getOriginUrl(projectPath: string): Promise<string | null> 
 }
 
 /**
+ * The sha a ref currently points at, or null when the ref is absent. Used to bake
+ * an explicit `--force-with-lease=<branch>:<sha>` value: the bare form leases
+ * against whatever remote-tracking ref is on disk, which may be stale, and a stale
+ * lease silently overwrites a push nobody fetched.
+ */
+export async function resolveRef(repoPath: string, ref: string): Promise<string | null> {
+	const result = await run(["git", "rev-parse", "--verify", `${ref}^{commit}`], repoPath);
+	return result.ok && result.stdout ? result.stdout.trim() : null;
+}
+
+/**
  * Derive a fork URL from the origin URL by replacing the owner.
  * Supports both HTTPS and SSH formats:
  *   https://github.com/h0x91b/dev-3.0.git → https://github.com/yanive/dev-3.0.git

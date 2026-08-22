@@ -25,6 +25,8 @@ interface ProjectViewProps {
 	projects: Project[];
 	tasks: Task[];
 	dispatch: Dispatch<AppAction>;
+	/** The live route — the inline diff's open/closed state rides on it. */
+	route: Route;
 	navigate: (route: Route) => void;
 	bellCounts: Map<string, number>;
 	bellReasons?: Map<string, string[]>;
@@ -47,6 +49,7 @@ function ProjectView({
 	projects,
 	tasks,
 	dispatch,
+	route,
 	navigate,
 	bellCounts,
 	bellReasons,
@@ -66,7 +69,7 @@ function ProjectView({
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
 	const agents = useAgents();
-	const inlineDiff = useTaskInlineDiffState(activeTaskId);
+	const inlineDiff = useTaskInlineDiffState(route, dispatch);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const inFlightTaskUpdatesRef = useRef(new Map<string, Task>());
 	const tasksFetchInFlightRef = useRef(false);
@@ -151,7 +154,7 @@ function ProjectView({
 		setTasksReloadNonce((n) => n + 1);
 	}, [rpcState]);
 
-	// Opening the inline diff is a distinct surface but not a route — fire its
+	// The diff is a history step on the task route, not its own screen — fire its
 	// page view explicitly (once per open) so it shows up alongside navigation.
 	// Use the human-readable seq id (e.g. "981-1"), falling back to the raw id.
 	useEffect(() => {

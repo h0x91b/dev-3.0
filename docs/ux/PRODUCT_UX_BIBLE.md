@@ -96,7 +96,7 @@ Mechanism: `GlobalHeader` breadcrumbs (`Dashboard > Project > Task`) + back/forw
 
 ### Breadcrumbs — `Observed`
 
-Show location only. Text click navigates; the project chevron opens a **project-switcher dropdown**. No commands in breadcrumbs. The task segment also carries the passive **native-backend marker** (§5.6) — identity, not an action.
+Show location only. Text click navigates; a segment's chevron opens a **switcher over that segment's own object** — project name → project switcher, task `#seq-N` badge → variant menu (`SiblingPopover`, chevron only with ≥2 live variants, so it is never a dead control). Switching is not a command; no commands in breadcrumbs. The task segment also carries the passive **native-backend marker** (§5.6) — identity, not an action.
 
 Evidence: `GlobalHeader.tsx`.
 
@@ -200,6 +200,8 @@ See `UX_DECISIONS.md` (2026-06-19, 2026-08-02).
 Full-screen surface (`TaskDiffViewer.tsx`) reached from the inspector `show_diff` action / `diff_summary_badge`. It is a **read + review** surface: it renders a task's diff and lets the user attach inline comments, then export them as an XML review prompt for the agent. It performs **no git mutation and no task-lifecycle action** — those stay in the inspector and native menu.
 
 Layout = left **Files aside** (collapsible, `22rem`) + right **diff stream**.
+
+**A history step, not a destination (`Observed`, 2026-08-22):** because it fills the screen it reads as a page, so Back must return to the task and Forward to the diff. It earns that by riding the task route as a `diff` field (`routeWithDiff`, action `openTaskDiff`) — no new `screen`, no breadcrumb segment, no nav entry. **The bar is full-bleed replacement of the surface underneath**: an inspector, a popover, a bottom sheet or a docked pane must NOT become a history entry, or Back stops meaning anything. See `decisions/2026/08/22/diff-view-is-a-history-step.md`.
 
 - **Top toolbar (right of file tree):** diff-mode segmented control (`uncommitted | branch | unpushed | recent`, mode persisted), view-mode toggle (`split | unified`), include-tests toggle, search (`Cmd+F`, in-diff find with next/prev + highlight), close/back (`Esc`). The `recent` ("Recent commits") segment is a **split-button**: the body activates `HEAD~N..HEAD` (committed-only, clamped to the branch's own commits) at the current N; a `▾` caret opens a preset popover (1/2/3/5/10). N is **not** persisted — it resets to 1 on every diff open — while the mode selection follows the same localStorage preference as the other three. Body label reflects the selected N; the header sub-label reflects the *effective* (clamped) count honestly.
 - **Files aside** contains two cards: the **Review export card** (top) and the **Files card** (read-progress + expand/collapse-all + the file tree).

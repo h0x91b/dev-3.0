@@ -1,6 +1,7 @@
 import { useReducer } from "react";
 import type { DevServerSummary, PortInfo, Project, Task, ResourceUsage } from "../shared/types";
 import type { SettingsRouteSectionId } from "./settings-registry";
+import type { TaskInlineDiffRequest } from "./components/task-inline-diff";
 
 // ---- Routes ----
 
@@ -30,11 +31,17 @@ export type OpenSettingsSectionDetail =
 	| SettingsSectionId
 	| { section: SettingsSectionId; preset?: SettingsPresetTarget };
 
+/**
+ * The diff viewer is a full-bleed surface that replaces the task workspace, so
+ * it reads as a page and Back must return to the task. It is NOT a destination
+ * (no new `screen`, no breadcrumb, no nav entry) — it rides on the task route
+ * as an extra field, which is what puts it on the back/forward stack.
+ */
 export type Route =
 	| { screen: "dashboard" }
-	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean; openUnresolvedComments?: boolean }
+	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
 	| { screen: "project-terminal"; projectId: string }
-	| { screen: "task"; projectId: string; taskId: string; openUnresolvedComments?: boolean }
+	| { screen: "task"; projectId: string; taskId: string; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree" | "automations"; worktreeTaskId?: string }
 	| { screen: "settings"; section?: SettingsSectionId; preset?: SettingsPresetTarget }
 	| { screen: "changelog" }
@@ -100,6 +107,42 @@ export function routeTaskId(route: Route): string | null {
 	if (route.screen === "task") return route.taskId;
 	if (route.screen === "project" && route.activeTaskId) return route.activeTaskId;
 	return null;
+}
+
+/** The inline-diff request a route carries, or null when the diff is closed. */
+export function routeDiffRequest(route: Route): TaskInlineDiffRequest | null {
+	if (route.screen === "task") return route.diff ?? null;
+	if (route.screen === "project" && route.activeTaskId) return route.diff ?? null;
+	return null;
+}
+
+/**
+ * The same route with the diff open. Returns null for routes that cannot hold
+ * one (no task in view) so the reducer can ignore a stray open.
+ */
+export function routeWithDiff(route: Route, request: TaskInlineDiffRequest): Route | null {
+	if (route.screen === "task") return { ...route, diff: request };
+	if (route.screen === "project" && route.activeTaskId) return { ...route, diff: request };
+	return null;
+}
+
+/** The same route with the diff closed. */
+export function routeWithoutDiff(route: Route): Route {
+	if (route.screen === "task" || route.screen === "project") {
+		const { diff: _diff, ...rest } = route;
+		return rest;
+	}
+	return route;
+}
+
+/** True when two routes are the same task surface, ignoring the diff field. */
+function sameTaskLocation(a: Route, b: Route): boolean {
+	if (a.screen !== b.screen) return false;
+	if (a.screen === "task" && b.screen === "task") return a.projectId === b.projectId && a.taskId === b.taskId;
+	if (a.screen === "project" && b.screen === "project") {
+		return a.projectId === b.projectId && a.activeTaskId === b.activeTaskId && a.taskView === b.taskView;
+	}
+	return false;
 }
 
 /** The task open-mode preference (`dev3-task-open-mode`); "split" is the default. */
@@ -179,6 +222,8 @@ export type AppAction =
 	| { type: "navigate"; route: Route }
 	| { type: "goBack" }
 	| { type: "goForward" }
+	| { type: "openTaskDiff"; request: TaskInlineDiffRequest }
+	| { type: "closeTaskDiff" }
 	| { type: "setProjects"; projects: Project[] }
 	| { type: "reorderProjects"; projectIds: string[] }
 	| { type: "setTasks"; projectId: string; tasks: Task[] }
@@ -228,63 +273,76 @@ function normalizeProjectPath(path: string): string {
 	return path.replace(/\/+$/, "");
 }
 
+/** Push `route` onto the history stack, truncating any forward entries. */
+function pushRoute(state: AppState, route: Route): AppState {
+	const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
+	const currentProjectId = projectIdForRoute(state.route);
+	const nextProjectId = projectIdForRoute(route);
+	// Truncate any forward history beyond the current index, then push
+	const base = state.routeHistory.slice(0, state.historyIndex + 1);
+	base.push(route);
+	// Trim oldest entries if over the limit
+	const routeHistory = base.length > HISTORY_LIMIT ? base.slice(base.length - HISTORY_LIMIT) : base;
+	return {
+		...state,
+		route,
+		routeHistory,
+		historyIndex: routeHistory.length - 1,
+		bellCounts,
+		bellReasons,
+		taskMru: bumpMru(state.taskMru, route),
+		currentProjectTasks: currentProjectId === nextProjectId ? state.currentProjectTasks : [],
+	};
+}
+
+/** Overwrite the current history entry instead of stacking a new one. */
+function replaceRoute(state: AppState, route: Route): AppState {
+	const routeHistory = state.routeHistory.slice();
+	routeHistory[state.historyIndex] = route;
+	return { ...state, route, routeHistory };
+}
+
+/** Move to an existing history entry (Back / Forward). */
+function stepHistory(state: AppState, newIndex: number): AppState {
+	if (newIndex < 0 || newIndex >= state.routeHistory.length) return state;
+	const route = state.routeHistory[newIndex];
+	const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
+	return {
+		...state,
+		route,
+		historyIndex: newIndex,
+		bellCounts,
+		bellReasons,
+		taskMru: bumpMru(state.taskMru, route),
+		currentProjectTasks:
+			projectIdForRoute(state.route) === projectIdForRoute(route) ? state.currentProjectTasks : [],
+	};
+}
+
 export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
-		case "navigate": {
-			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, action.route);
-			const currentProjectId = projectIdForRoute(state.route);
-			const nextProjectId = projectIdForRoute(action.route);
-			// Truncate any forward history beyond the current index, then push
-			const base = state.routeHistory.slice(0, state.historyIndex + 1);
-			base.push(action.route);
-			// Trim oldest entries if over the limit
-			const routeHistory = base.length > HISTORY_LIMIT ? base.slice(base.length - HISTORY_LIMIT) : base;
-			const historyIndex = routeHistory.length - 1;
-			const taskMru = bumpMru(state.taskMru, action.route);
-			return {
-				...state,
-				route: action.route,
-				routeHistory,
-				historyIndex,
-				bellCounts,
-				bellReasons,
-				taskMru,
-				currentProjectTasks: currentProjectId === nextProjectId ? state.currentProjectTasks : [],
-			};
+		case "navigate":
+			return pushRoute(state, action.route);
+		case "goBack":
+			return stepHistory(state, state.historyIndex - 1);
+		case "goForward":
+			return stepHistory(state, state.historyIndex + 1);
+		case "openTaskDiff": {
+			const route = routeWithDiff(state.route, action.request);
+			if (!route) return state;
+			// Re-opening while already in the diff (a PR deep link, a different
+			// focus file) retargets the current entry — it must not stack a second
+			// diff step that Back would then have to walk through twice.
+			if (routeDiffRequest(state.route)) return replaceRoute(state, route);
+			return pushRoute(state, route);
 		}
-		case "goBack": {
-			if (state.historyIndex <= 0) return state;
-			const newIndex = state.historyIndex - 1;
-			const route = state.routeHistory[newIndex];
-			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
-			const taskMru = bumpMru(state.taskMru, route);
-			return {
-				...state,
-				route,
-				historyIndex: newIndex,
-				bellCounts,
-				bellReasons,
-				taskMru,
-				currentProjectTasks:
-					projectIdForRoute(state.route) === projectIdForRoute(route) ? state.currentProjectTasks : [],
-			};
-		}
-		case "goForward": {
-			if (state.historyIndex >= state.routeHistory.length - 1) return state;
-			const newIndex = state.historyIndex + 1;
-			const route = state.routeHistory[newIndex];
-			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
-			const taskMru = bumpMru(state.taskMru, route);
-			return {
-				...state,
-				route,
-				historyIndex: newIndex,
-				bellCounts,
-				bellReasons,
-				taskMru,
-				currentProjectTasks:
-					projectIdForRoute(state.route) === projectIdForRoute(route) ? state.currentProjectTasks : [],
-			};
+		case "closeTaskDiff": {
+			if (!routeDiffRequest(state.route)) return state;
+			const previous = state.routeHistory[state.historyIndex - 1];
+			// Closing is the same movement as Back when the diff was opened from
+			// this very task: step back so Forward still returns to the diff.
+			if (previous && sameTaskLocation(previous, state.route)) return stepHistory(state, state.historyIndex - 1);
+			return replaceRoute(state, routeWithoutDiff(state.route));
 		}
 		case "setProjects":
 			return { ...state, projects: action.projects };

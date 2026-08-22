@@ -45,6 +45,7 @@ function renderPopover(props: {
 	currentTaskId?: string;
 	navigate?: (route: Route) => void;
 	onClose?: () => void;
+	isFullPage?: boolean;
 }) {
 	const anchor = document.createElement("button");
 	document.body.appendChild(anchor);
@@ -70,6 +71,7 @@ function renderPopover(props: {
 				onClose={props.onClose ?? vi.fn()}
 				anchorEl={anchor}
 				projectId="p1"
+				isFullPage={props.isFullPage}
 			/>
 		</I18nProvider>,
 	);
@@ -115,6 +117,23 @@ describe("SiblingPopover", () => {
 			activeTaskId: "s2",
 		});
 		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("keeps the fullscreen task screen when opened from there", async () => {
+		const navigate = vi.fn();
+		renderPopover({
+			variants: [
+				makeSibling({ id: "s1", variantIndex: 1, status: "in-progress" }),
+				makeSibling({ id: "s2", variantIndex: 2, status: "user-questions" }),
+			],
+			currentTaskId: "s1",
+			navigate,
+			isFullPage: true,
+		});
+
+		await userEvent.click(screen.getByRole("button", { name: /Switch to Variant 2/ }));
+
+		expect(navigate).toHaveBeenCalledWith({ screen: "task", projectId: "p1", taskId: "s2" });
 	});
 
 	it("keeps completed siblings inert", async () => {

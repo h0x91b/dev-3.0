@@ -1,0 +1,3 @@
+Short: Project switcher is now visible
+
+The header project breadcrumb became one segmented control — the project name and the dropdown chevron now share a bordered shell, the same grammar as the back/forward pair beside it, so the switcher is visible instead of being a 12px glyph nobody clicked. Its list is also grouped by space now: each space is a tinted header with a hairline running to the edge, its projects sit indented off a vertical rule so they read as filed under it, and every space holding the current project is hoisted to the top (spaceless projects land under Home). The ⌘1-9 badges keep following board order.
