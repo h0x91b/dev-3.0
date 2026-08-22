@@ -163,6 +163,88 @@ async function testPush(root: string): Promise<void> {
 	check(output.includes("Push complete"), "the pane shows the success line");
 }
 
+/**
+ * The rebase-then-push case, end to end against real git.
+ *
+ * Three things get proven here that no unit test can: that a PLAIN push is really
+ * refused after a rebase (the failure users hit), that the leased force push
+ * really lands, and that the lease really REFUSES when origin moved after the sha
+ * was read. The third is the whole reason for the explicit `<branch>:<sha>` form —
+ * a mutation back to a bare `--force-with-lease` would still pass the first two.
+ */
+async function testForcePushWithLease(root: string): Promise<void> {
+	console.log("\nforce push — a rebase diverges the branch and the lease decides");
+	const base = join(root, "force");
+	const { origin, work, scripts } = await seedRepo(base);
+	await git(work, "checkout", "-b", "feature");
+	await Bun.write(join(work, "mine.txt"), "mine\n");
+	await git(work, "add", "-A");
+	await git(work, "commit", "-m", "my commit");
+	await git(work, "push", "origin", "HEAD");
+
+	// A base that moved plus a rebase is exactly how the branch diverges in dev3.
+	const other = join(base, "other").replaceAll("\\", "/");
+	await git(base, "clone", origin, other);
+	await git(other, "config", "user.email", "e2e@dev3.test");
+	await git(other, "config", "user.name", "dev3 e2e");
+	await Bun.write(join(other, "upstream.txt"), "upstream\n");
+	await git(other, "add", "-A");
+	await git(other, "commit", "-m", "upstream commit");
+	await git(other, "push", "origin", "main");
+	await git(work, "fetch", "origin", "main");
+	await git(work, "rebase", "origin/main");
+
+	// 1. The plain push must fail — otherwise the whole escalation is unnecessary.
+	const plainExit = join(scripts, "plain.exit").replaceAll("\\", "/");
+	const plain = await runPaneScript("git-push", work, scripts, buildGitOpScript(pushGitOpSpec({ exitFilePath: plainExit })));
+	check(plain.code !== 0, `a plain push after the rebase is refused (got ${plain.code})`);
+	check(plain.output.includes("non-fast-forward") || plain.output.includes("rejected"), "git's own non-fast-forward message reached the pane");
+
+	// 2. The lease, against the sha origin actually holds, must land.
+	await git(work, "fetch", "origin", "feature");
+	const expectSha = await git(work, "rev-parse", "origin/feature");
+	const localHead = await git(work, "rev-parse", "HEAD");
+	const leaseExit = join(scripts, "lease.exit").replaceAll("\\", "/");
+	const leased = await runPaneScript(
+		"git-push",
+		work,
+		scripts,
+		buildGitOpScript(pushGitOpSpec({ exitFilePath: leaseExit, lease: { branch: "feature", expectSha } })),
+	);
+	check(leased.code === 0, `the leased force push exits 0 (got ${leased.code})`);
+	check(await readVerdict(leaseExit) === "0", "the verdict file reads exactly \"0\"");
+	await checkVerdictBytes(leaseExit);
+	check(await git(origin, "rev-parse", "refs/heads/feature") === localHead, "origin/feature now points at the rebased commit");
+	check(leased.output.includes("Force push complete"), "the pane says it was a force push");
+
+	// 3. Someone else pushes, the lease is now stale, and it MUST refuse. This is
+	//    the case a bare `--force-with-lease` against a stale tracking ref would
+	//    silently overwrite.
+	await git(other, "fetch", "origin", "feature");
+	await git(other, "checkout", "-B", "feature", "origin/feature");
+	await Bun.write(join(other, "theirs.txt"), "theirs\n");
+	await git(other, "add", "-A");
+	await git(other, "commit", "-m", "their commit");
+	await git(other, "push", "origin", "feature");
+	const theirHead = await git(origin, "rev-parse", "refs/heads/feature");
+
+	await Bun.write(join(work, "mine2.txt"), "mine2\n");
+	await git(work, "add", "-A");
+	await git(work, "commit", "-m", "my second commit");
+	const staleExit = join(scripts, "stale.exit").replaceAll("\\", "/");
+	const stale = await runPaneScript(
+		"git-push",
+		work,
+		scripts,
+		// `expectSha` is deliberately the OLD value — dev3 read it before their push.
+		buildGitOpScript(pushGitOpSpec({ exitFilePath: staleExit, lease: { branch: "feature", expectSha } })),
+	);
+	check(stale.code !== 0, `the stale lease is refused (got ${stale.code})`);
+	check(await git(origin, "rev-parse", "refs/heads/feature") === theirHead, "their commit survived — the lease protected it");
+	check(stale.output.includes("Force push failed"), "the pane names the failed operation");
+	check(stale.output.includes("origin has moved"), "the pane explains why the lease refused");
+}
+
 async function testRebaseClean(root: string): Promise<void> {
 	console.log("\nrebase — the branch lands on top of a base that moved");
 	const { origin, work, scripts } = await seedRepo(join(root, "rebase"));
@@ -284,6 +366,7 @@ async function main(): Promise<void> {
 	console.log(`git-operation pane scripts on ${process.platform} (${root})`);
 	try {
 		await testPush(root);
+		await testForcePushWithLease(root);
 		await testRebaseClean(root);
 		await testRebaseConflict(root);
 		await testMerge(root);

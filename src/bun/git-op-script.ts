@@ -157,12 +157,47 @@ export function rebaseGitOpSpec(opts: {
 	};
 }
 
-export function pushGitOpSpec(opts: { exitFilePath: string }): GitOpScriptSpec {
+/**
+ * `lease` turns this into a force push. It carries the branch and the sha the
+ * caller just fetched, so the argv is `--force-with-lease=<branch>:<sha>` — the
+ * EXPLICIT form, resolved in TypeScript like every other decision here.
+ *
+ * The bare `--force-with-lease` was not an option: it leases against the
+ * remote-tracking ref on disk, which errors out when the branch has no upstream
+ * (dev3 pushed with `git push origin HEAD`, never `-u`) and, worse, silently
+ * leases against a STALE ref when one exists — overwriting a push nobody fetched.
+ * With the sha spelled out, git compares it against the remote's real value
+ * during the push handshake and refuses if anyone moved the branch meanwhile.
+ */
+export function pushGitOpSpec(opts: {
+	exitFilePath: string;
+	lease?: { branch: string; expectSha: string } | null;
+}): GitOpScriptSpec {
+	const command = opts.lease
+		? ["git", "push", `--force-with-lease=${opts.lease.branch}:${opts.lease.expectSha}`, "origin", "HEAD"]
+		: ["git", "push", "-u", "origin", "HEAD"];
 	return {
 		exitFilePath: opts.exitFilePath,
-		successMessage: "Push complete",
+		successMessage: opts.lease ? "Force push complete" : "Push complete",
 		successHoldSeconds: 2,
-		steps: [{ command: ["git", "push", "origin", "HEAD"], failureLabel: "Push" }],
+		steps: [
+			{
+				announce: opts.lease
+					? `Force-pushing ${opts.lease.branch} with a lease on ${opts.lease.expectSha.slice(0, 8)}...`
+					: undefined,
+				command,
+				failureLabel: opts.lease ? "Force push" : "Push",
+				failureAdvice: opts.lease
+					? [
+						"The lease was refused: origin has moved since dev3 fetched it.",
+						"Someone (or an agent) pushed to this branch — fetch and inspect before retrying.",
+					]
+					: [
+						"If git refused this as non-fast-forward, the branch was rebased after being pushed.",
+						"Refresh the branch status and use Force push, which leases against origin.",
+					],
+			},
+		],
 	};
 }
 
@@ -181,6 +216,14 @@ export function mergeGitOpSpec(opts: {
 	baseBranch: string;
 	branchForMerge: string;
 	messagePath: string;
+	/**
+	 * Push the base branch after committing. Without it the squash lands in the
+	 * main clone's LOCAL base branch and stops there: with a remote the work looks
+	 * landed while `origin/<base>` never hears about it, and nothing in the UI says
+	 * the local base is now ahead. The caller only sets it when there is a remote,
+	 * and the click is confirmed first because it bypasses review and CI.
+	 */
+	pushBase?: boolean;
 }): GitOpScriptSpec {
 	const steps: GitOpStep[] = [];
 	if (opts.checkoutCommand) {
@@ -194,9 +237,29 @@ export function mergeGitOpSpec(opts: {
 		announce: `Squash-merging ${opts.branchForMerge} into ${opts.baseBranch}...`,
 		command: ["git", "merge", "--squash", opts.branchForMerge],
 		failureLabel: "Merge",
+		failureAdvice: [
+			`The project clone is left mid-merge on ${opts.baseBranch}.`,
+			"Resolve it there, or discard with: git merge --abort",
+		],
 	});
 	steps.push({ command: ["git", "commit", "-F", opts.messagePath], failureLabel: "Commit" });
-	return { exitFilePath: opts.exitFilePath, successMessage: "Merge complete", successHoldSeconds: 5, steps };
+	if (opts.pushBase) {
+		steps.push({
+			announce: `Pushing ${opts.baseBranch} to origin...`,
+			command: ["git", "push", "origin", opts.baseBranch],
+			failureLabel: "Push",
+			failureAdvice: [
+				`The squash commit is on your local ${opts.baseBranch} but did NOT reach origin.`,
+				`Push it yourself, or reset with: git reset --hard origin/${opts.baseBranch}`,
+			],
+		});
+	}
+	return {
+		exitFilePath: opts.exitFilePath,
+		successMessage: opts.pushBase ? `Merged and pushed to origin/${opts.baseBranch}` : "Merge complete",
+		successHoldSeconds: 5,
+		steps,
+	};
 }
 
 /**

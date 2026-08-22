@@ -176,6 +176,8 @@ const defaultBranchStatus: BranchStatus = {
 	prUrl: null,
 	mergeCompletionFingerprint: null,
 	hasRemote: true,
+	remoteIsGitHub: true,
+	remoteAhead: 0,
 };
 
 const defaultDevServerStatus: DevServerStatus = {
@@ -245,6 +247,11 @@ describe("TaskInfoPanel", () => {
 		});
 		mockedApi.request.dismissMergeCompletionPrompt.mockResolvedValue(makeTask());
 		mockedApi.request.setTaskManualCompletion.mockResolvedValue(makeTask({ manualCompletion: true }));
+		// Default: the user approves. Merge (with a remote) and a diverged Push both
+		// go through `confirm` now, and an unset mock resolves undefined — which
+		// silently CANCELS, making every one of those tests fail for the wrong reason.
+		// The tests that care about the refusal set it to false themselves.
+		vi.mocked(confirm).mockResolvedValue(true);
 		// Default: getResolvedProject returns the project as-is
 		mockedApi.request.getResolvedProject.mockResolvedValue(project);
 	});
@@ -1821,6 +1828,91 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getAllByText("PR")[0].closest("button")!).not.toBeDisabled();
 		});
 
+		// `gh` is the only forge client dev3 speaks, so a GitLab/Gitea origin must
+		// not be offered a PR button whose agent prompt cannot run. Push is still
+		// perfectly possible there, so it stays live — the distinction is the point.
+		it("disables PR but not push when origin is not GitHub", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				hasRemote: true,
+				remoteIsGitHub: false,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			expect(screen.getAllByText("Push")[0].closest("button")!).not.toBeDisabled();
+			for (const label of ["PR", "Auto PR"]) {
+				const button = screen.getAllByText(label)[0].closest("button")!;
+				expect(button).toBeDisabled();
+				await user.hover(button.parentElement!);
+				expect(await screen.findByRole("tooltip")).toHaveTextContent(
+					"origin is not a GitHub remote",
+				);
+				await user.unhover(button.parentElement!);
+			}
+		});
+
+		// The rebase-then-push case: origin/<branch> holds commits HEAD does not, so
+		// a plain push is refused as non-fast-forward. The label has to say so before
+		// the click, because the backend escalates to a leased force push.
+		it("renames Push to Force push when the branch diverged from origin", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				hasRemote: true,
+				remoteAhead: 2,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			expect(screen.queryAllByText("Push")).toHaveLength(0);
+			expect(screen.getAllByText("Force push")[0].closest("button")!).not.toBeDisabled();
+		});
+
+		it("keeps the plain Push label when nothing diverged", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				hasRemote: true,
+				remoteAhead: 0,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			expect(screen.queryAllByText("Force push")).toHaveLength(0);
+			expect(screen.getAllByText("Push")[0].closest("button")!).not.toBeDisabled();
+		});
+
+		// A foreign-code task exists to READ commits the local user did not write. A
+		// disabled Push there still invites a click and an explanation; the three
+		// write actions are gone instead.
+		it("removes push, PR and merge for a foreign-code task", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				hasRemote: true,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask({ foreignCode: true }));
+			});
+
+			for (const label of ["Push", "Force push", "PR", "Auto PR", "Merge"]) {
+				expect(screen.queryAllByText(label)).toHaveLength(0);
+			}
+			// Read-only git stays: the diff and the rebase both serve the review.
+			expect(screen.getAllByText("Diff").length).toBeGreaterThan(0);
+			expect(screen.getAllByText("Rebase").length).toBeGreaterThan(0);
+		});
+
 		it("merge is disabled when behind > 0", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -2150,6 +2242,92 @@ describe("TaskInfoPanel", () => {
 
 			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
 			// alertSpy cleanup handled by clearAllMocks
+		});
+
+		// With a remote, Merge squashes AND pushes the base branch — that crosses
+		// review and CI, so it must not happen on a bare click.
+		it("confirms before merging when the base branch will be pushed", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 1,
+				behind: 0,
+				hasRemote: true,
+			});
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const merge = screen.getAllByText("Merge").find((b) => !b.closest("button")!.disabled)!;
+			await user.click(merge.closest("button")!);
+
+			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalled());
+			expect(mockedApi.request.mergeTask).not.toHaveBeenCalled();
+		});
+
+		it("merges without a confirmation when there is no remote to push to", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 1,
+				behind: 0,
+				hasRemote: false,
+			});
+			mockedApi.request.mergeTask.mockResolvedValue(undefined);
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const merge = screen.getAllByText("Merge").find((b) => !b.closest("button")!.disabled)!;
+			await user.click(merge.closest("button")!);
+
+			await waitFor(() => expect(mockedApi.request.mergeTask).toHaveBeenCalled());
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+		});
+
+		it("confirms before a force push and does nothing when declined", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 1,
+				hasRemote: true,
+				remoteAhead: 2,
+			});
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const push = screen.getAllByText("Force push").find((b) => !b.closest("button")!.disabled)!;
+			await user.click(push.closest("button")!);
+
+			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalled());
+			expect(mockedApi.request.pushTask).not.toHaveBeenCalled();
+		});
+
+		it("pushes without a confirmation when nothing diverged", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 1,
+				hasRemote: true,
+				remoteAhead: 0,
+			});
+			mockedApi.request.pushTask.mockResolvedValue(undefined);
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const push = screen.getAllByText("Push").find((b) => !b.closest("button")!.disabled)!;
+			await user.click(push.closest("button")!);
+
+			await waitFor(() => expect(mockedApi.request.pushTask).toHaveBeenCalled());
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
 		});
 
 		it("hands the rebase off to the agent when canRebase is false (conflicts)", async () => {

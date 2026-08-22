@@ -40,6 +40,12 @@ vi.mock("../../git", () => ({
 	getCurrentBranch: mocks.getCurrentBranch,
 	fetchOrigin: vi.fn(async () => true),
 	getBranchStatus: vi.fn(async () => ({ ahead: 1, behind: 0 })),
+	// This suite is about which INTERPRETER launches the pane, not about git state,
+	// so the remote reads answer "remote present, nothing diverged" — the path that
+	// keeps push plain and merge pushing the base branch.
+	hasOriginRemote: vi.fn(async () => true),
+	getBehindOriginCount: vi.fn(async () => 0),
+	resolveRef: vi.fn(async () => "1111111111111111111111111111111111111111"),
 }));
 
 vi.mock("../../task-aux-panes", () => ({

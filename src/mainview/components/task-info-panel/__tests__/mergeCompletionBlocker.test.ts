@@ -19,6 +19,8 @@ function makeStatus(overrides?: Partial<BranchStatus>): BranchStatus {
 		prUrl: null,
 		mergeCompletionFingerprint: null,
 		hasRemote: true,
+		remoteIsGitHub: true,
+		remoteAhead: 0,
 		...overrides,
 	};
 }

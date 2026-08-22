@@ -108,10 +108,15 @@ vi.mock("../git", () => ({
 	virtualWorkDir: vi.fn((p: any, t: any) => `${p.path}/${String(t.id).slice(0, 8)}/work`),
 	run: vi.fn(),
 	getOriginUrl: vi.fn().mockResolvedValue("https://github.com/test/repo.git"),
+	resolveRef: vi.fn().mockResolvedValue("1111111111111111111111111111111111111111"),
 }));
 
 vi.mock("../github", () => ({
 	runGitHub: vi.fn(),
+	// Whether `gh` can operate here at all. Its own behaviour lives in
+	// github.test.ts; here it is a switch so a handler can be tested both ways.
+	isGitHubRepo: vi.fn().mockResolvedValue(true),
+	isNotAGitHubRepoError: vi.fn().mockReturnValue(false),
 	isPullRequestMerged: vi.fn(),
 	getPullRequestSnapshot: vi.fn().mockResolvedValue(null),
 	getGitHubShellExports: vi.fn().mockResolvedValue([]),
@@ -5185,7 +5190,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
-		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false });
+		expect(result).toEqual({ ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 });
 	});
 
 	// A project added from a local folder has no `origin`. Comparing against
@@ -7268,6 +7273,78 @@ describe("handlers.mergeTask", () => {
 		).rejects.toThrow("Task has no worktree");
 	});
 
+	it("refuses to merge a foreign-code task's branch", async () => {
+		const project = makeProject();
+		const task = makeTask({ branchName: "pr/1234", worktreePath: "/tmp/wt", foreignCode: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await expect(
+			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" }),
+		).rejects.toThrow(/not yours/);
+	});
+
+	/**
+	 * Stopping at the local base branch is a half-landing: origin never hears about
+	 * the squash and nothing says the local base is ahead. The push step must be
+	 * last, so its exit code is the operation's verdict.
+	 */
+	it("pushes the base branch after the squash when there is a remote", async () => {
+		const project = makeProject({ path: "/tmp/project-root" });
+		const task = makeTask({ id: "task-1", title: "T", branchName: "dev3/t", worktreePath: "/tmp/wt" });
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		const intervalSpy = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as any);
+		const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as any);
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 } as any);
+		vi.mocked(git.refExists).mockResolvedValue(true);
+		vi.mocked(git.hasOriginRemote).mockResolvedValue(true);
+		mockSpawn.mockReturnValue({ stdout: new Response("%42\n"), stderr: new Response(""), exited: Promise.resolve(0) });
+
+		try {
+			await handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" });
+
+			const call = writeSpy.mock.calls.find(([p]) => String(p).endsWith("-git-merge.sh"));
+			const script = String(call?.[1] ?? "");
+			expect(script).toContain("'git' 'push' 'origin' 'main'");
+			expect(script.indexOf("'git' 'commit'")).toBeLessThan(script.indexOf("'git' 'push'"));
+		} finally {
+			writeSpy.mockRestore();
+			intervalSpy.mockRestore();
+			timeoutSpy.mockRestore();
+		}
+	});
+
+	it("stays local when the project has no remote", async () => {
+		const project = makeProject({ path: "/tmp/project-root" });
+		const task = makeTask({ id: "task-1", title: "T", branchName: "dev3/t", worktreePath: "/tmp/wt" });
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		const intervalSpy = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as any);
+		const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as any);
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 } as any);
+		vi.mocked(git.refExists).mockResolvedValue(true);
+		vi.mocked(git.hasOriginRemote).mockResolvedValue(false);
+		mockSpawn.mockReturnValue({ stdout: new Response("%42\n"), stderr: new Response(""), exited: Promise.resolve(0) });
+
+		try {
+			await handlers.mergeTask({ taskId: "task-1", projectId: "proj-1" });
+
+			const call = writeSpy.mock.calls.find(([p]) => String(p).endsWith("-git-merge.sh"));
+			expect(String(call?.[1] ?? "")).not.toContain("'push'");
+		} finally {
+			writeSpy.mockRestore();
+			intervalSpy.mockRestore();
+			timeoutSpy.mockRestore();
+		}
+	});
+
 	it("throws when task has no branch (both live and stored are null)", async () => {
 		const project = makeProject();
 		const task = makeTask({ branchName: null, worktreePath: "/tmp/wt" });
@@ -7593,6 +7670,80 @@ describe("handlers.pushTask", () => {
 		await expect(
 			handlers.pushTask({ taskId: "task-1", projectId: "proj-1" }),
 		).rejects.toThrow("Task has no worktree");
+	});
+
+	/** A foreign-code task is looking at commits the user did not write. */
+	it("refuses to push a foreign-code task's branch", async () => {
+		const project = makeProject();
+		const task = makeTask({ branchName: "pr/1234", worktreePath: "/tmp/wt", foreignCode: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await expect(
+			handlers.pushTask({ taskId: "task-1", projectId: "proj-1" }),
+		).rejects.toThrow(/not yours/);
+	});
+
+	/**
+	 * The rebase-then-push case. A plain push is refused as non-fast-forward, so the
+	 * handler must escalate on its own — the renderer cannot ask for a force.
+	 */
+	it("leases a force push when the branch diverged from origin", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", branchName: "dev3/t", worktreePath: "/tmp/wt" });
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		const intervalSpy = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as any);
+		const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as any);
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.hasOriginRemote).mockResolvedValue(true);
+		vi.mocked(git.getBehindOriginCount).mockResolvedValue(3);
+		vi.mocked(git.resolveRef).mockResolvedValue("abc123abc123abc123abc123abc123abc123abcd");
+		mockSpawn.mockReturnValue({ stdout: new Response("%42\n"), stderr: new Response(""), exited: Promise.resolve(0) });
+
+		try {
+			await handlers.pushTask({ taskId: "task-1", projectId: "proj-1" });
+
+			const call = writeSpy.mock.calls.find(([p]) => String(p).endsWith("-git-push.sh"));
+			const script = String(call?.[1] ?? "");
+			expect(script).toContain("'--force-with-lease=dev3/t:abc123abc123abc123abc123abc123abc123abcd'");
+			// A fresh fetch is what makes the lease sha meaningful.
+			expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, "dev3/t");
+		} finally {
+			writeSpy.mockRestore();
+			intervalSpy.mockRestore();
+			timeoutSpy.mockRestore();
+		}
+	});
+
+	it("pushes plainly when the branch has not diverged", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", branchName: "dev3/t", worktreePath: "/tmp/wt" });
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		const intervalSpy = vi.spyOn(globalThis, "setInterval").mockReturnValue(0 as any);
+		const timeoutSpy = vi.spyOn(globalThis, "setTimeout").mockReturnValue(0 as any);
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.hasOriginRemote).mockResolvedValue(true);
+		vi.mocked(git.getBehindOriginCount).mockResolvedValue(0);
+		mockSpawn.mockReturnValue({ stdout: new Response("%42\n"), stderr: new Response(""), exited: Promise.resolve(0) });
+
+		try {
+			await handlers.pushTask({ taskId: "task-1", projectId: "proj-1" });
+
+			const call = writeSpy.mock.calls.find(([p]) => String(p).endsWith("-git-push.sh"));
+			const script = String(call?.[1] ?? "");
+			expect(script).not.toContain("force");
+			expect(script).toContain("'git' 'push' '-u' 'origin' 'HEAD'");
+		} finally {
+			writeSpy.mockRestore();
+			intervalSpy.mockRestore();
+			timeoutSpy.mockRestore();
+		}
 	});
 });
 
@@ -13104,6 +13255,34 @@ describe("handlers.createPullRequest", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+	});
+
+	/**
+	 * `gh` is the only forge client dev3 speaks. Offering Create PR on a GitLab or
+	 * Gitea origin hands the agent a `gh pr create` it cannot run, and the failure
+	 * lands in the terminal minutes later looking like the agent's fault.
+	 */
+	it("refuses when origin is not a GitHub remote", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(github.isGitHubRepo).mockResolvedValueOnce(false);
+
+		await expect(
+			handlers.createPullRequest({ taskId: "task-1", projectId: project.id }),
+		).rejects.toThrow(/GitHub remote/);
+	});
+
+	it("refuses for a foreign-code task", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree", foreignCode: true });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await expect(
+			handlers.createPullRequest({ taskId: "task-1", projectId: project.id }),
+		).rejects.toThrow(/not yours/);
 	});
 
 	it("sends the PR prompt to the active pane of the task session", async () => {

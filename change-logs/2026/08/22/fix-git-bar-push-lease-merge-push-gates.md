@@ -1,0 +1,3 @@
+Short: Push now force-pushes safely after a rebase
+
+Push detects when the branch has diverged from origin, renames itself to "Force push", and runs `git push --force-with-lease=<branch>:<sha>` against a freshly fetched sha instead of failing with an unexplained non-fast-forward; Merge now pushes the base branch to origin behind a confirmation that names the review and CI bypass, so work is not left half-landed in the local clone. A git failure inside the operation pane also raises a toast now instead of only printing in the pane. Foreign-code tasks no longer offer Push, Merge or Create PR at all, and Create PR is unavailable when origin is not a GitHub remote.

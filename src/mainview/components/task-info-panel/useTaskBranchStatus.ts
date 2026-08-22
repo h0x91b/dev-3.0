@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 import { toast } from "../../toast";
+import { confirm } from "../../confirm";
 import {
 	type BranchStatus,
 	type Project,
@@ -267,6 +268,19 @@ export function useTaskBranchStatus({
 				return;
 			}
 
+			// A git failure INSIDE the pane produced no toast at all: the error path
+			// only fires when the RPC itself throws, and opening the pane always
+			// succeeds. So a refused push read as nothing happening unless the user
+			// happened to be looking at the pane before it closed.
+			if (!detail.ok) {
+				const failureKey = {
+					push: "infoPanel.pushPaneFailed",
+					rebase: "infoPanel.rebasePaneFailed",
+					merge: "infoPanel.mergePaneFailed",
+				}[detail.operation];
+				if (failureKey) toast.error(t(failureKey as "infoPanel.pushPaneFailed"), { taskId: task.id });
+			}
+
 			let refreshedStatus: BranchStatus | null = null;
 			try {
 				const status = await api.request.getBranchStatus({
@@ -397,9 +411,26 @@ export function useTaskBranchStatus({
 		setCommitting(false);
 	}, [committing, project.id, task.id, t]);
 
+	// With a remote, Merge squashes AND pushes the base branch — the work is not
+	// landed until origin has it. That crosses review and CI, so it is confirmed
+	// first. Without a remote the squash is purely local and needs no ceremony.
 	const handleMerge = useCallback(async () => {
 		if (merging) {
 			return;
+		}
+
+		const baseBranch = resolveTaskCompareBaseBranch(task, project);
+		if (branchStatus?.hasRemote) {
+			const pr = branchStatus.prNumber;
+			const ok = await confirm({
+				title: t("infoPanel.mergePushConfirm", { branch: baseBranch }),
+				message: pr != null
+					? t("infoPanel.mergePushConfirmWithPr", { branch: baseBranch, pr: String(pr) })
+					: t("infoPanel.mergePushConfirmMessage", { branch: baseBranch }),
+				confirmLabel: t("infoPanel.merge"),
+				danger: true,
+			});
+			if (!ok) return;
 		}
 
 		setMerging(true);
@@ -408,16 +439,32 @@ export function useTaskBranchStatus({
 				taskId: task.id,
 				projectId: project.id,
 			});
-			posthog.capture("task_merged");
+			posthog.capture("task_merged", { pushed_base: !!branchStatus?.hasRemote });
 		} catch (err) {
 			toast.error(t("infoPanel.mergeFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setMerging(false);
-	}, [merging, project.id, task.id, t]);
+	}, [branchStatus, merging, project, task, t]);
 
+	// `remoteAhead > 0` means origin/<branch> holds commits HEAD does not, so a
+	// plain push is refused as non-fast-forward — almost always a rebase after a
+	// push. The backend escalates to `--force-with-lease` on its own; the click is
+	// confirmed here because it rewrites a published branch.
 	const handlePush = useCallback(async () => {
 		if (pushing) {
 			return;
+		}
+
+		const diverged = branchStatus && branchStatus.hasRemote ? branchStatus.remoteAhead : 0;
+		if (diverged > 0) {
+			const branch = task.branchName ?? "";
+			const ok = await confirm({
+				title: t("infoPanel.forcePushConfirm"),
+				message: t("infoPanel.forcePushConfirmMessage", { branch, count: String(diverged) }),
+				confirmLabel: t("infoPanel.forcePush"),
+				danger: true,
+			});
+			if (!ok) return;
 		}
 
 		setPushing(true);
@@ -426,12 +473,12 @@ export function useTaskBranchStatus({
 				taskId: task.id,
 				projectId: project.id,
 			});
-			posthog.capture("task_pushed");
+			posthog.capture("task_pushed", { forced: diverged > 0 });
 		} catch (err) {
 			toast.error(t("infoPanel.pushFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setPushing(false);
-	}, [project.id, pushing, task.id, t]);
+	}, [branchStatus, project.id, pushing, task.branchName, task.id, t]);
 
 	const handleOpenPR = useCallback(() => {
 		if (branchStatus?.prUrl) {

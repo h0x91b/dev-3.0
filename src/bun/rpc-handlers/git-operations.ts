@@ -62,6 +62,23 @@ function assertGitTask(project: Project, task: Task): asserts task is Task & { w
 	}
 }
 
+/**
+ * Refuse the operations that WRITE to someone else's branch. A foreign-code task
+ * exists to read commits the local user did not author — a PR review, a
+ * colleague's branch — so pushing it, opening a PR for it, or squashing it into
+ * the local base is never the intent, and every one of those is one mis-click away
+ * in a bar that looks identical to a normal task's. The UI hides them too; this is
+ * the seam that also covers the CLI and any programmatic caller.
+ *
+ * Read-only git stays available on purpose: diff, branch status, and rebase all
+ * serve the review.
+ */
+function assertOwnBranch(task: Task, operation: string): void {
+	if (task.foreignCode) {
+		throw new Error(`${operation} is not available for a foreign-code task — this branch is not yours`);
+	}
+}
+
 // Bound concurrent heavy branch-status runs across all tasks (see getBranchStatus).
 const GIT_STATUS_MAX_CONCURRENCY = 4;
 const branchStatusSemaphore = new Semaphore(GIT_STATUS_MAX_CONCURRENCY);
@@ -204,7 +221,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	// polls this every 15s for any active task with a worktreePath, so return an
 	// inert status instead of spawning a doomed `git` in a non-repo directory.
 	if (project.kind === "virtual" || !task.worktreePath) {
-		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false };
+		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null, hasRemote: false, remoteIsGitHub: false, remoteAhead: 0 };
 	}
 
 	const resolvedBase = resolveTaskCompareBaseBranch(task, project);
@@ -228,7 +245,14 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	if (branchForPush && branchForPush !== baseBranch && branchForPush !== compareRefBranch) {
 		await git.fetchOrigin(project.path, branchForPush);
 	}
-	const prDetection: Promise<{ number: number; url: string } | null> = (async () => {
+	/**
+	 * PR detection, which doubles as the "can `gh` work here at all" probe. gh's
+	 * refusal on a non-GitHub remote is definitive and free — this call already
+	 * runs every poll — so no separate round trip is needed. Anything else (a
+	 * timeout, no auth, no gh) leaves `isGitHub` true; see
+	 * `github.isNotAGitHubRepoError` for why that polarity is the safe one.
+	 */
+	const prDetection: Promise<{ pr: { number: number; url: string } | null; isGitHub: boolean }> = (async () => {
 		try {
 			const ghResult = await github.runGitHub(
 				project,
@@ -236,28 +260,34 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 				["pr", "list", "--head", branchForPush, "--state", "open", "--json", "number,url", "--limit", "1"],
 				{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
 			);
+			const isGitHub = ghResult.ok || !github.isNotAGitHubRepoError(ghResult);
 			if (ghResult.ok && ghResult.stdout) {
 				const prs = JSON.parse(ghResult.stdout);
 				if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
 					const pr = { number: prs[0].number, url: typeof prs[0].url === "string" ? prs[0].url : "" };
 					if (pr.url) await persistTaskPrIdentity(project, task, pr.number, pr.url);
-					return pr;
+					return { pr, isGitHub };
 				}
 			}
+			return { pr: null, isGitHub };
 		} catch (err) {
 			log.warn("PR detection failed (non-fatal)", { error: String(err) });
 		}
-		return null;
+		return { pr: null, isGitHub: true };
 	})();
 
-	const [status, uncommitted, unpushed, branchDiff, detectedPr] = await Promise.all([
+	const [status, uncommitted, unpushed, remoteAhead, branchDiff, detected] = await Promise.all([
 		git.getBranchStatus(task.worktreePath, ref),
 		git.getUncommittedChanges(task.worktreePath),
 		git.getUnpushedCount(task.worktreePath, branchForPush),
+		// origin/<branch> was refreshed above, so this is the live answer to "would a
+		// plain push be refused as non-fast-forward".
+		hasRemote ? git.getBehindOriginCount(task.worktreePath, branchForPush) : Promise.resolve(0),
 		git.getBranchDiffStats(task.worktreePath, ref),
 		prDetection,
 	]);
-	let prInfo = detectedPr;
+	const remoteIsGitHub = hasRemote && detected.isGitHub;
+	let prInfo = detected.pr;
 	if (!prInfo && task.prNumber != null && task.prUrl) {
 		// The sticky number outlives the branch it was opened from: rename the
 		// branch, or inherit the number from the review task this one grew out of,
@@ -296,7 +326,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		diffFiles: branchDiff.files, diffInsertions: branchDiff.insertions, diffDeletions: branchDiff.deletions, diffFileStats: branchDiff.fileStats,
 		prNumber, prUrl,
 		mergeCompletionFingerprint,
-		hasRemote,
+		hasRemote, remoteIsGitHub, remoteAhead,
 	};
 	log.debug("← getBranchStatus", result);
 
@@ -436,6 +466,7 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	const task = await data.getTask(project, params.taskId);
 
 	assertGitTask(project, task);
+	assertOwnBranch(task, "Merge");
 
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
 	const branchForMerge = liveBranch ?? task.branchName;
@@ -473,36 +504,75 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	const messagePath = dev3TaskTempPath(task.id, "git-merge-message.txt");
 	await writeMergeCommitMessage(messagePath, task.title);
 
+	// With a remote, "merge" that stops at the local base branch is a half-landing:
+	// the squash commit sits in the main clone, origin/<base> never hears about it,
+	// and nothing in the UI says the local base is ahead. The renderer confirms the
+	// click first, naming the review/CI bypass.
+	const pushBase = await git.hasOriginRemote(project.path)
+		&& await git.refExists(project.path, `origin/${baseBranch}`);
+
 	await writeLaunchScript(scriptPath, buildGitOpScript(mergeGitOpSpec({
 		exitFilePath,
 		checkoutCommand,
 		baseBranch,
 		branchForMerge,
 		messagePath,
+		pushBase,
 	})));
 
 	const paneId = await openGitOpPane(task, project.path, scriptPath, socket);
 	monitorGitPane(paneId, task, params.projectId, "merge", socket);
 
-	log.info("← mergeTask (pane opened)", { paneId });
+	log.info("← mergeTask (pane opened)", { paneId, pushBase });
 }
 
+/**
+ * Push, escalating to a leased force push when the branch has diverged from
+ * `origin/<branch>` — which it has after every rebase-then-push, the single most
+ * common git failure in the app. A plain push there is refused as non-fast-forward
+ * and the pane could only print `✗ Push failed (exit 1)`.
+ *
+ * The decision is made HERE, not in the renderer: the caller cannot ask for a
+ * force. The renderer reads the same `remoteAhead` to label the button, so what it
+ * promises and what runs come from one number.
+ *
+ * The lease value is a sha resolved after a fresh fetch, so git compares it
+ * against origin's real value during the handshake and refuses if anyone moved the
+ * branch in between. Divergence with nothing to fetch (no `origin/<branch>` at
+ * all) cannot happen — that is the never-pushed case, and a plain push is right.
+ */
 async function pushTask(params: { taskId: string; projectId: string }): Promise<void> {
 	log.info("→ pushTask", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
 	assertGitTask(project, task);
+	assertOwnBranch(task, "Push");
 
 	const { scriptPath, exitFilePath } = gitOpPaths(task.id, "push");
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
-	await writeLaunchScript(scriptPath, buildGitOpScript(pushGitOpSpec({ exitFilePath })));
+	const branch = (await git.getCurrentBranch(task.worktreePath)) ?? task.branchName ?? "";
+	let lease: { branch: string; expectSha: string } | null = null;
+	if (branch && await git.hasOriginRemote(project.path)) {
+		await git.fetchOrigin(project.path, branch);
+		const diverged = await git.getBehindOriginCount(task.worktreePath, branch);
+		if (diverged > 0) {
+			const expectSha = await git.resolveRef(task.worktreePath, `origin/${branch}`);
+			if (!expectSha) throw new Error(`Cannot lease a force push: origin/${branch} could not be resolved`);
+			lease = { branch, expectSha };
+			log.info("pushTask: branch diverged from origin, leasing a force push", {
+				taskId: task.id.slice(0, 8), branch, diverged, expectSha: expectSha.slice(0, 8),
+			});
+		}
+	}
+
+	await writeLaunchScript(scriptPath, buildGitOpScript(pushGitOpSpec({ exitFilePath, lease })));
 
 	const paneId = await openGitOpPane(task, task.worktreePath, scriptPath, socket);
 	monitorGitPane(paneId, task, params.projectId, "push", socket);
 
-	log.info("← pushTask (pane opened)", { paneId });
+	log.info("← pushTask (pane opened)", { paneId, forced: lease !== null });
 }
 
 /**
@@ -548,6 +618,11 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 	const task = await data.getTask(project, params.taskId);
 
 	assertGitTask(project, task);
+	assertOwnBranch(task, "Create pull request");
+
+	if (!await github.isGitHubRepo(project, task.worktreePath)) {
+		throw new Error("Create pull request needs a GitHub remote — `gh` is the only forge client dev3 speaks");
+	}
 
 	// Only macOS registers a `dev3://` handler, so anywhere else the footer would
 	// publish a dead link into a public PR — the host decides before the preference does.

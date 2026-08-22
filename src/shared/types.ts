@@ -2825,6 +2825,15 @@ export interface BranchStatus {
 	// local folder has none, and then Push / Create PR / PR + auto-merge cannot
 	// work — they must read as unavailable instead of failing on click.
 	hasRemote: boolean;
+	// Whether `origin` is a GitHub host. `gh` is the only forge client dev3 speaks,
+	// so a GitLab/Gitea remote must not be offered Create PR — the handoff prompt
+	// would hand the agent a `gh pr create` it cannot run.
+	remoteIsGitHub: boolean;
+	// Commits on `origin/<branch>` that HEAD does not have. Non-zero means a plain
+	// push is refused as non-fast-forward — almost always because the branch was
+	// rebased after being pushed — so Push has to become a leased force push.
+	// 0 when never pushed, when up to date, or when there is no remote.
+	remoteAhead: number;
 }
 
 /**
