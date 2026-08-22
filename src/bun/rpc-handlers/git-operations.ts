@@ -573,6 +573,9 @@ async function mergeTask(params: { taskId: string; projectId: string; expectRout
 	const currentBranch = await git.getCurrentBranch(project.path);
 	let checkoutCommand: string[] | null = null;
 	if (currentBranch !== baseBranch) {
+		// remote-base-ok: not a comparison ref — the local base is missing, so this
+		// asks whether a tracking branch can be created from the remote one, and
+		// `refExists` answers no when there is no remote.
 		checkoutCommand = await git.refExists(project.path, baseBranch)
 			? ["git", "checkout", baseBranch]
 			: await git.refExists(project.path, `origin/${baseBranch}`)
@@ -590,6 +593,8 @@ async function mergeTask(params: { taskId: string; projectId: string; expectRout
 	// the squash commit sits in the main clone, origin/<base> never hears about it,
 	// and nothing in the UI says the local base is ahead. The renderer confirms the
 	// click first, naming the review/CI bypass.
+	// remote-base-ok: the question here IS "does the remote base exist", asked
+	// behind hasOriginRemote — not a comparison ref invented for a local repo.
 	const pushBase = await git.hasOriginRemote(project.path)
 		&& await git.refExists(project.path, `origin/${baseBranch}`);
 

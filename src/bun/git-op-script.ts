@@ -37,6 +37,14 @@ export interface GitOpStep {
 	failureLabel?: string;
 	/** Extra lines shown after this step's failure line (conflict guidance). */
 	failureAdvice?: string[];
+	/**
+	 * Advice that depends on HOW the step failed, because one blanket line lies in
+	 * the other case. `git rebase` exits 1 when it stopped mid-rebase (conflicts,
+	 * measured) and 128 when it refused before touching the branch — and telling
+	 * someone to `git rebase --continue` when no rebase is in progress sends them
+	 * looking for conflicts that do not exist.
+	 */
+	failureAdviceWhen?: { code: number; advice: string[]; otherwise: string[] };
 }
 
 export interface GitOpScriptSpec {
@@ -66,6 +74,12 @@ function failureTail(step: GitOpStep, exitVar: string, exitFilePath: string): st
 		d.writeExitCodeFile(exitVar, exitFilePath),
 		d.print(d.style(`✗ ${label} failed (exit %s)`, "error"), { blankBefore: true, args: [d.exitCodeArg(exitVar)] }),
 		...(step.failureAdvice ?? []).map((line) => d.print("%s", { args: [d.quote(line)] })),
+		...(step.failureAdviceWhen
+			? d.branchOnCode(exitVar, step.failureAdviceWhen.code, {
+				match: indentLines(2, step.failureAdviceWhen.advice.map((line) => d.print("%s", { args: [d.quote(line)] }))),
+				otherwise: indentLines(2, step.failureAdviceWhen.otherwise.map((line) => d.print("%s", { args: [d.quote(line)] }))),
+			})
+			: []),
 		d.print(CLOSE_PROMPT, { blankBefore: true }),
 		d.readKey(),
 		d.exitWith(exitVar),
@@ -154,10 +168,18 @@ export function rebaseGitOpSpec(opts: {
 				announce: `Rebasing on ${opts.rebaseTarget}...`,
 				command: ["git", "rebase", opts.rebaseTarget],
 				failureLabel: "Rebase",
-				failureAdvice: [
-					"Resolve conflicts in the main terminal, then: git rebase --continue",
-					"Or abort with: git rebase --abort",
-				],
+				failureAdviceWhen: {
+					code: 1,
+					advice: [
+						"The rebase stopped part-way. Resolve the conflicts in the main terminal, then: git rebase --continue",
+						"Or abort with: git rebase --abort",
+						"If git refused to start (uncommitted changes), commit or stash them first — there is nothing to continue.",
+					],
+					otherwise: [
+						`git refused before touching your branch — it is still where it was, and no rebase is in progress.`,
+						"Nothing to continue or abort. Read git's message above.",
+					],
+				},
 			},
 		],
 	};

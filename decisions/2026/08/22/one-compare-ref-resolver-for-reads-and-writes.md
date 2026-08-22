@@ -6,7 +6,10 @@
 remote-aware and named `resolveCompareRef` the "single server-side answer to what
 we compare against". It was applied to the READ path only — `getBranchStatus`,
 `getUnsavedWork`, `getTaskDiff`, `healDeadCompareBase`. The buttons kept their own
-`params.compareRef || \`origin/${baseBranch}\`` fallback.
+`params.compareRef || \`origin/${baseBranch}\`` fallback — and the renderer sends
+`compareRef: ""` whenever the server owns the choice, so the empty string is falsy
+and that "fallback" fired on the NORMAL path. A fallback that runs by default is
+not a fallback, it is the behaviour.
 
 So in a project with no remote (Seq 1642) the dropdown correctly said `master`,
 and pressing Rebase ran `git fetch origin master` (exit 128, "continuing") and
@@ -40,11 +43,27 @@ the resolver and never touched a call site, which is why it stayed green.
 4. `rebaseTask` verifies the target ref exists (fetching once first if it is a
    remote ref) and throws before opening a pane. A pane that can only print
    `invalid upstream` plus conflict advice is worse than a refusal in the UI.
-5. Coverage asserts the ACTION: `rpc-handlers/__tests__/git-op-compare-ref.test.ts`
+5. `rebaseGitOpSpec`'s failure advice is now exit-code aware
+   (`failureAdviceWhen`, on the new `branchOnCode` dialect primitive): `git rebase`
+   exits 1 when it stopped part-way and 128 when it refused before touching the
+   branch (both measured). One blanket "resolve conflicts, then `git rebase
+   --continue`" sent the user hunting for conflicts that never existed.
+6. `src/bun/__tests__/compare-ref-origin-guard.test.ts` is the structural half: any
+   `origin/${...base...}` inside `rpc-handlers/` or `lifecycle/` fails the suite
+   unless the line carries a `remote-base-ok:` justification. It does not make the
+   mistake impossible — it makes it a deliberate act with a written reason. It
+   found one more instance while being written: `launchColumnAgent` expanded a
+   prompt's `{baseBranch}` placeholder to `origin/<base>` unconditionally.
+7. Coverage asserts the ACTION: `rpc-handlers/__tests__/git-op-compare-ref.test.ts`
    drives the handlers and reads the script text that reaches the pane, with a
    remote-present positive control. Each assertion was proven by reverting the fix.
 
 ## Risks
+
+- Line counts on the Stats screen move for local-only projects. They were measured
+  against `origin/<base>`, which does not resolve there, and are now measured
+  against the local base — the old numbers were wrong, but a user who looked at
+  them will see them change.
 
 - The merge-watch activity now uses the local base in a remoteless repo, so a
   locally merged branch starts offering "Branch Merged → complete the task?" where

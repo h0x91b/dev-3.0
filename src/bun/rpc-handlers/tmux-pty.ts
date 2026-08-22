@@ -967,7 +967,10 @@ export async function launchColumnAgent(
 
 	const { agentId, configId, prompt: rawPrompt } = agentConfig;
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	const prompt = rawPrompt.replace(/\{baseBranch\}/g, `origin/${baseBranch}`);
+	// `{baseBranch}` becomes the ref this task is actually compared against — a
+	// column agent told to diff against `origin/<base>` in a repo with no remote
+	// reviews nothing at all.
+	const prompt = rawPrompt.replace(/\{baseBranch\}/g, await git.resolveCompareRef(project.path, baseBranch));
 
 	log.info("launchColumnAgent START", {
 		taskId: task.id.slice(0, 8),

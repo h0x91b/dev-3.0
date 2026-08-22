@@ -110,6 +110,39 @@ describe("POSIX git-op scripts (pinned)", () => {
 		expect(script).toContain("git rebase --abort");
 	});
 
+	// `git rebase` exits 1 when it stopped mid-rebase and 128 when it refused
+	// before touching the branch (both measured). One blanket "resolve conflicts,
+	// then --continue" sent the user hunting for conflicts that never existed.
+	it("tells apart a stopped rebase from one git refused to start", () => {
+		asPlatform("darwin");
+		const script = buildGitOpScript(rebaseGitOpSpec({
+			exitFilePath: EXIT,
+			fetchBranch: null,
+			rebaseTarget: "master",
+		}));
+		expect(script).toContain("if [ $__DEV3_EC0 -eq 1 ]; then");
+		const [onOne, onAnythingElse] = script.split("if [ $__DEV3_EC0 -eq 1 ]; then")[1].split(/^\s*else\s*$/m);
+		expect(onOne).toContain("git rebase --continue");
+		expect(onOne).toContain("git rebase --abort");
+		expect(onAnythingElse).toContain("Nothing to continue or abort");
+		expect(onAnythingElse).not.toContain("git rebase --continue");
+	});
+
+	// A local rebase target means no remote to fetch from: the step is absent, not
+	// present-and-failing with "Fetch exited with 128 — continuing".
+	it("omits the fetch step entirely for a local rebase target", () => {
+		asPlatform("darwin");
+		const script = buildGitOpScript(rebaseGitOpSpec({
+			exitFilePath: EXIT,
+			fetchBranch: null,
+			rebaseTarget: "master",
+		}));
+		expect(script).not.toContain("fetch");
+		expect(script).toContain("'git' 'rebase' 'master'");
+		// The rebase is now step 0, so its code is the one that becomes the verdict.
+		expect(script).toContain("printf '%s' \"$__DEV3_EC0\" > '/tmp/dev3-T-git-rebase.sh.exit'");
+	});
+
 	it("passes the merge subject as a file, never as an argument", () => {
 		asPlatform("darwin");
 		const script = buildGitOpScript(mergeGitOpSpec({

@@ -114,6 +114,8 @@ export interface LaunchDialect {
 	exitCodeArg(varName: string): string;
 	/** `if <varName> != 0 { fail } else { ok }`; `ok` empty omits the else arm. */
 	branchOnFailure(varName: string, arms: { fail: string[]; ok?: string[] }): string[];
+	/** `if <varName> == <code> { match } else { otherwise }`; empty `otherwise` omits the else arm. */
+	branchOnCode(varName: string, code: number, arms: { match: string[]; otherwise?: string[] }): string[];
 	/** Invoke another generated script from inside a script. */
 	runScript(scriptPath: string, options?: LaunchScriptOptions): string;
 	/** Hand the view over to `command` and never return to this script. */
@@ -246,6 +248,12 @@ const posixDialect: LaunchDialect = {
 		...(arms.ok?.length ? ["else", ...arms.ok] : []),
 		"fi",
 	],
+	branchOnCode: (varName, code, arms) => [
+		`if [ $${varName} -eq ${code} ]; then`,
+		...arms.match,
+		...(arms.otherwise?.length ? ["else", ...arms.otherwise] : []),
+		"fi",
+	],
 	runScript: (scriptPath, options) => {
 		const parts = [posixShellQuote(getLaunchShellPath(options?.shellPath))];
 		if (options?.trace) parts.push("-x");
@@ -374,6 +382,12 @@ const windowsDialect: LaunchDialect = {
 		`if ($${varName} -ne 0) {`,
 		...arms.fail,
 		...(arms.ok?.length ? ["} else {", ...arms.ok] : []),
+		"}",
+	],
+	branchOnCode: (varName, code, arms) => [
+		`if ($${varName} -eq ${code}) {`,
+		...arms.match,
+		...(arms.otherwise?.length ? ["} else {", ...arms.otherwise] : []),
 		"}",
 	],
 	runScript: (scriptPath, options) => {
