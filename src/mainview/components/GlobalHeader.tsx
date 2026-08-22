@@ -574,8 +574,10 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 										</button>
 									</Tooltip>
 								</div>
+								{/* `w-96`, not `w-72`: a row carries the space indent, an active-task
+								    count and a shortcut badge beside the project name. */}
 								{showProjectDropdown && (
-									<div role="menu" className="absolute left-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
+									<div role="menu" className="absolute left-0 top-full mt-1.5 w-96 max-md:fixed max-md:inset-x-3 max-md:top-14 max-md:mt-0 max-md:w-auto bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
 										{switcherGroups === null ? (
 											availableProjects.map((p) => renderSwitcherRow(p, "flat"))
 										) : (
