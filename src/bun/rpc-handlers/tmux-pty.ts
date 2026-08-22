@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import type { AgentFamily, ColumnAgentConfig, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, PtyThroughputStats, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
+import * as git from "../git";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
 import { getAgentAdapter } from "../../shared/agent-adapters/registry";
@@ -2685,18 +2686,20 @@ function sleep(ms: number): Promise<void> {
 // getDefaultTaskCompareRef (src/mainview/components/task-info-panel/useTaskBranchStatus.ts)
 // so the lightbox path honors the project's configured compare ref instead of
 // always assuming origin/<base>.
-export function resolveBugHunterCompareRef(task: Task, project: Project): string {
+export async function resolveBugHunterCompareRef(task: Task, project: Project): Promise<string> {
 	const projectBaseBranch = project.defaultBaseBranch || "main";
 	const taskBaseBranch = task.baseBranch || projectBaseBranch;
 	// Task forked from a non-default base → compare against that local branch.
 	if (taskBaseBranch !== projectBaseBranch) return taskBaseBranch;
 	if (project.defaultCompareRef) return project.defaultCompareRef;
 	if (project.defaultCompareRefMode === "local") return taskBaseBranch;
-	return `origin/${taskBaseBranch}`;
+	// Nothing configured: ask git rather than assume a remote, which would send the
+	// hunters at `git merge-base origin/<base> HEAD` in a repo that has no origin.
+	return git.resolveCompareRef(project.path, taskBaseBranch);
 }
 
-export function buildBugHunterPrompt(task: Task, project: Project, baseCmd = "", family?: AgentFamily): string {
-	const ref = resolveBugHunterCompareRef(task, project);
+export async function buildBugHunterPrompt(task: Task, project: Project, baseCmd = "", family?: AgentFamily): Promise<string> {
+	const ref = await resolveBugHunterCompareRef(task, project);
 	const branch = task.branchName || "HEAD";
 	const prefix = agents.skillInvocationPrefix(baseCmd, family);
 	return (
@@ -3052,7 +3055,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	// After the agents have had time to boot, paste the branch-scoped bug-hunter
 	// slash command into each pane. The scope clause is mandatory: hunters must
 	// only inspect files changed in this branch, never the whole codebase.
-	const prompt = buildBugHunterPrompt(task, project, resolvedBaseCmd, resolvedHunterFamily);
+	const prompt = await buildBugHunterPrompt(task, project, resolvedBaseCmd, resolvedHunterFamily);
 
 	// The agent keeps the keyboard: a hunter pane became active on every split, and
 	// the main agent must not lose input just because hunters started.

@@ -11,6 +11,7 @@ vi.mock("../data", () => ({
 
 vi.mock("../git", () => ({
 	getBranchDiffStats: vi.fn(),
+	resolveCompareRef: vi.fn(async (_path: string, base: string) => `origin/${base}`),
 }));
 
 vi.mock("../rpc-handlers/shared", () => ({

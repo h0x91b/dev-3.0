@@ -165,23 +165,17 @@ function monitorGitPane(paneId: string | null, task: Task, projectId: string, op
 }
 
 /**
- * The ref a task's numbers are measured against. An explicit choice (the user's
- * `vs … ▾` override, or the project's configured compare ref) always wins;
- * otherwise ask git, which knows whether `origin/<base>` exists at all. Never
- * assume `origin/` — a project added from a local folder has no remote, and
- * comparing against a ref that is not there produced "0 files changed" for
- * every task in the repo.
+ * The ONE server-side answer to "which ref", for reading a status and for running
+ * an action. Mirrors the renderer's `getDefaultTaskCompareRef` cascade so the ref
+ * a button runs against is the ref the git bar named.
  */
-async function resolveCompareRef(project: Project, baseBranch: string, explicit?: string): Promise<string> {
-	if (explicit) return explicit;
-	try {
-		return await git.detectDefaultCompareRef(project.path, baseBranch);
-	} catch (err) {
-		log.warn("Compare-ref detection failed, comparing against the local base branch", {
-			projectId: project.id, baseBranch, error: String(err),
-		});
-		return baseBranch;
-	}
+function resolveCompareRef(project: Project, baseBranch: string, explicit?: string): Promise<string> {
+	if (explicit) return Promise.resolve(explicit);
+	// A task-specific base branch is local by definition — it was forked from a
+	// branch in this repo, and origin/<it> usually does not exist at all.
+	const projectBase = project.defaultBaseBranch || "main";
+	if (baseBranch !== projectBase) return Promise.resolve(baseBranch);
+	return git.resolveCompareRef(project.path, baseBranch);
 }
 
 /**
@@ -233,17 +227,21 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		await syncTaskBranchName(project, task);
 	}
 
-	log.debug("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch: resolvedBase, branchName: branchForPush });
-	await git.fetchCompareRef(project.path, resolvedBase);
-	const baseBranch = await healDeadCompareBase(project, task, resolvedBase);
+	// Nothing to fetch without a remote — the doomed `git fetch origin <base>` was
+	// spawned on every 15s poll of a local-only project and always failed.
 	const hasRemote = await git.hasOriginRemote(project.path);
+	if (hasRemote) {
+		log.debug("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch: resolvedBase, branchName: branchForPush });
+		await git.fetchCompareRef(project.path, resolvedBase);
+	}
+	const baseBranch = await healDeadCompareBase(project, task, resolvedBase);
 	const ref = await resolveCompareRef(project, baseBranch, params.compareRef);
 	const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
 	if (compareRefBranch && compareRefBranch !== baseBranch) {
 		await git.fetchCompareRef(project.path, compareRefBranch);
 	}
 	// Also refresh origin/<task-branch> so getUnpushedCount reflects out-of-band remote pushes.
-	if (branchForPush && branchForPush !== baseBranch && branchForPush !== compareRefBranch) {
+	if (hasRemote && branchForPush && branchForPush !== baseBranch && branchForPush !== compareRefBranch) {
 		await git.fetchOrigin(project.path, branchForPush);
 	}
 	/**
@@ -392,7 +390,7 @@ async function getTaskDiff(params: {
 	// `uncommitted` needs no remote ref; `recent` is purely local — it diffs
 	// `HEAD~N..HEAD` and clamps against the already on-disk `origin/<base>`
 	// merge-base — so neither pays for a network fetch.
-	if (params.mode !== "uncommitted" && params.mode !== "recent") {
+	if (params.mode !== "uncommitted" && params.mode !== "recent" && await git.hasOriginRemote(project.path)) {
 		await git.fetchCompareRef(project.path, baseBranch);
 		const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
 		if (compareRefBranch && compareRefBranch !== baseBranch) {
@@ -432,15 +430,30 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 	assertGitTask(project, task);
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
-	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
-	const { scriptPath, exitFilePath } = gitOpPaths(task.id, "rebase");
-	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+	// The ref the UI promised, resolved the same way the status readout resolves
+	// it. `origin/${baseBranch}` here is what rebased a remoteless repo onto a ref
+	// that does not exist.
+	const rebaseTarget = await resolveCompareRef(project, baseBranch, params.compareRef);
 
-	// Fetch the ref we will actually rebase onto, not just baseBranch.
-	// rebaseTarget may be a custom compareRef (e.g. origin/develop) that differs from baseBranch.
+	// Fetch exactly the ref we rebase onto, and only when it is a remote one. A
+	// local base branch is already current, and a repo with no remote must not be
+	// made to fetch at all.
 	const fetchBranch = rebaseTarget.startsWith("origin/")
 		? rebaseTarget.slice("origin/".length)
-		: baseBranch;
+		: null;
+
+	// `exit 128 — invalid upstream` opened a pane only to die, then told the user
+	// to resolve conflicts that do not exist. Refuse before the pane opens — but
+	// give a remote ref its fetch first, since that is what would create it.
+	if (!await git.refExists(task.worktreePath, rebaseTarget)) {
+		if (fetchBranch) await git.fetchCompareRef(project.path, fetchBranch);
+		if (!await git.refExists(task.worktreePath, rebaseTarget)) {
+			throw new Error(`Cannot rebase: ${rebaseTarget} does not exist in this repository`);
+		}
+	}
+
+	const { scriptPath, exitFilePath } = gitOpPaths(task.id, "rebase");
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
 	await writeLaunchScript(scriptPath, buildGitOpScript(rebaseGitOpSpec({ exitFilePath, fetchBranch, rebaseTarget })));
 
@@ -507,7 +520,7 @@ async function mergeViaPullRequest(
  * refused instead of silently running the other one — a local squash-and-push
  * behind a confirm that said "merge the PR" is the worst outcome available here.
  */
-async function mergeTask(params: { taskId: string; projectId: string; expectRoute?: MergeRoute }): Promise<void> {
+async function mergeTask(params: { taskId: string; projectId: string; expectRoute?: MergeRoute; compareRef?: string }): Promise<void> {
 	log.info("→ mergeTask", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -542,11 +555,11 @@ async function mergeTask(params: { taskId: string; projectId: string; expectRout
 		return;
 	}
 
-	await git.fetchOrigin(project.path, baseBranch);
-	// For task-specific base branches (not the project default), compare against the local branch —
-	// consistent with what the UI displays. For the project default, check against the remote.
-	const projectBaseBranch = project.defaultBaseBranch || "main";
-	const rebaseCheckRef = baseBranch !== projectBaseBranch ? baseBranch : `origin/${baseBranch}`;
+	if (await git.hasOriginRemote(project.path)) await git.fetchOrigin(project.path, baseBranch);
+	// The ref the UI measured "N behind" against — passed in by the caller, resolved
+	// here when it owns the choice. Spelled `origin/<base>` this guard measured
+	// against a ref that does not exist in a remoteless repo, so it never fired.
+	const rebaseCheckRef = await resolveCompareRef(project, baseBranch, params.compareRef);
 	const status = await git.getBranchStatus(task.worktreePath, rebaseCheckRef);
 	if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
@@ -672,7 +685,10 @@ const COMMIT_AGENT_PROMPT =
 	"Please commit the current changes in this worktree. Review what changed (git status, git diff), stage everything that belongs to the work in this conversation, and create one or more commits with clear English messages describing the change. Do not push.";
 
 function rebaseConflictAgentPrompt(rebaseTarget: string): string {
-	return `This branch cannot be rebased automatically onto ${rebaseTarget} because of merge conflicts. Please rebase it and resolve the conflicts: run \`git fetch origin\`, then \`git rebase ${rebaseTarget}\`, resolve each conflict carefully preserving the intent of both sides, \`git add\` the resolved files, and \`git rebase --continue\` until the rebase finishes. If it becomes unsafe, abort with \`git rebase --abort\` and explain what happened.`;
+	// The fetch belongs to a remote target only — telling an agent in a repo with
+	// no remote to `git fetch origin` sends it chasing a failure of our making.
+	const fetch = rebaseTarget.startsWith("origin/") ? "run `git fetch origin`, then " : "";
+	return `This branch cannot be rebased automatically onto ${rebaseTarget} because of merge conflicts. Please rebase it and resolve the conflicts: ${fetch}\`git rebase ${rebaseTarget}\`, resolve each conflict carefully preserving the intent of both sides, \`git add\` the resolved files, and \`git rebase --continue\` until the rebase finishes. If it becomes unsafe, abort with \`git rebase --abort\` and explain what happened.`;
 }
 
 /**
@@ -721,7 +737,7 @@ async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; c
 	assertGitTask(project, task);
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
-	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
+	const rebaseTarget = await resolveCompareRef(project, baseBranch, params.compareRef);
 	const delivery = await deliverAgentPrompt(task, rebaseConflictAgentPrompt(rebaseTarget));
 	log.info("← rebaseTaskViaAgent", { taskId: task.id.slice(0, 8), status: delivery.status, reason: delivery.reason });
 	return { delivery };

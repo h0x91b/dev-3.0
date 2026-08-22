@@ -58,8 +58,9 @@ function shouldComputeLiveDiff(project: Project, task: Task): boolean {
 async function computeLiveDiff(project: Project, task: Task): Promise<RawDiff | null> {
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	try {
-		const stats = await git.getBranchDiffStats(task.worktreePath!, `origin/${baseBranch}`);
-		if (stats.files === 0 && stats.insertions === 0 && stats.deletions === 0) {
+		const ref = await git.resolveCompareRef(project.path, baseBranch);
+		const stats = await git.getBranchDiffStats(task.worktreePath!, ref);
+		if (ref !== baseBranch && stats.files === 0 && stats.insertions === 0 && stats.deletions === 0) {
 			const local = await git.getBranchDiffStats(task.worktreePath!, baseBranch);
 			if (local.files > 0 || local.insertions > 0 || local.deletions > 0) return local;
 		}

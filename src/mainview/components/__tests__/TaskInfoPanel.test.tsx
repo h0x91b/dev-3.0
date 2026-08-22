@@ -2016,6 +2016,9 @@ describe("TaskInfoPanel", () => {
 			expect(mockedApi.request.mergeTask).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
+				// The ref the git bar measured against travels with the click, so the
+				// server's rebase guard cannot check a different one.
+				compareRef: "origin/main",
 				expectRoute: "local-squash",
 			});
 		});
@@ -2048,6 +2051,7 @@ describe("TaskInfoPanel", () => {
 
 			await waitFor(() => expect(mockedApi.request.mergeTask).toHaveBeenCalledWith({
 				taskId: "t1",
+				compareRef: "origin/main",
 				projectId: "p1",
 				expectRoute: "pull-request",
 			}));

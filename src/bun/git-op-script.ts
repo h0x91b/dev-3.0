@@ -126,9 +126,15 @@ export function buildGitOpScript(spec: GitOpScriptSpec): string {
 // the app ships. A test that rebuilt an equivalent step list would stay green
 // while the handler drifted away from it.
 
+/**
+ * `fetchBranch` is null when the rebase target is a LOCAL ref — a repo with no
+ * remote, or a task based on a local branch. There is then no fetch step at all:
+ * `git fetch origin <base>` in a remoteless repo exited 128, the script printed
+ * "continuing", and the rebase went ahead against `origin/<base>` anyway.
+ */
 export function rebaseGitOpSpec(opts: {
 	exitFilePath: string;
-	fetchBranch: string;
+	fetchBranch: string | null;
 	rebaseTarget: string;
 }): GitOpScriptSpec {
 	return {
@@ -136,14 +142,14 @@ export function rebaseGitOpSpec(opts: {
 		successMessage: "Rebase complete",
 		successHoldSeconds: 5,
 		steps: [
-			{
+			...(opts.fetchBranch ? [{
 				announce: "Fetching origin...",
 				command: ["git", "fetch", "origin", opts.fetchBranch, "--quiet"],
 				// Unchanged from the bash original: a failed fetch never blocked the
 				// rebase, it just rebased onto the ref already on disk.
 				optional: true,
 				failureLabel: "Fetch",
-			},
+			}] : []),
 			{
 				announce: `Rebasing on ${opts.rebaseTarget}...`,
 				command: ["git", "rebase", opts.rebaseTarget],

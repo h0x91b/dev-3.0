@@ -28,6 +28,7 @@ vi.mock("../../data", () => ({ updateTask: vi.fn(async () => undefined), deleteT
 vi.mock("../../git", () => ({
 	removeWorktree: vi.fn(async () => undefined),
 	getBranchDiffStats: vi.fn(async () => ({ files: 1, insertions: 2, deletions: 3 })),
+	resolveCompareRef: vi.fn(async (_path: string, base: string) => `origin/${base}`),
 	taskDir: vi.fn(() => "/managed/task"),
 	virtualWorkDir: vi.fn(() => "/managed/ops"),
 }));

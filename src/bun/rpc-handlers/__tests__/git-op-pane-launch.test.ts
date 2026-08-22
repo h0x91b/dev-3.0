@@ -44,6 +44,8 @@ vi.mock("../../git", () => ({
 	// so the remote reads answer "remote present, nothing diverged" — the path that
 	// keeps push plain and merge pushing the base branch.
 	hasOriginRemote: vi.fn(async () => true),
+	resolveCompareRef: vi.fn(async (_path: string, base: string, explicit?: string) => explicit || `origin/${base}`),
+	fetchCompareRef: vi.fn(async () => true),
 	getBehindOriginCount: vi.fn(async () => 0),
 	resolveRef: vi.fn(async () => "1111111111111111111111111111111111111111"),
 }));

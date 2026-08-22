@@ -1253,6 +1253,33 @@ export async function detectDefaultCompareRef(
 }
 
 /**
+ * The ONE answer to "what does this task compare against, and what does an action
+ * run against". An explicit choice (the user's `vs … ▾` override, or the project's
+ * configured compare ref) always wins; otherwise ask git, which knows whether
+ * `origin/<base>` exists at all.
+ *
+ * Every caller goes through here — reading a status AND running a rebase or a
+ * merge check. Spelling `origin/${baseBranch}` at a call site is what shipped the
+ * Rebase button that announced the local base and then ran `git rebase
+ * origin/master` in a repo with no remote (`fatal: invalid upstream`).
+ */
+export async function resolveCompareRef(
+	projectPath: string,
+	baseBranch: string,
+	explicit?: string,
+): Promise<string> {
+	if (explicit) return explicit;
+	try {
+		return await detectDefaultCompareRef(projectPath, baseBranch);
+	} catch (err) {
+		log.warn("Compare-ref detection failed, comparing against the local base branch", {
+			projectPath, baseBranch, error: String(err),
+		});
+		return baseBranch;
+	}
+}
+
+/**
  * Does this repo have an `origin` remote at all? A project added from a local
  * folder has none, and then every `origin/...` ref, `git push`, and `gh` call is
  * a dead end. Callers use it to make the absence explicit instead of letting a

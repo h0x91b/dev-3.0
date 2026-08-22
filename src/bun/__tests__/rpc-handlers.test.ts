@@ -84,6 +84,10 @@ vi.mock("../git", () => ({
 	listRemotes: vi.fn().mockResolvedValue(["origin"]),
 	hasOriginRemote: vi.fn().mockResolvedValue(true),
 	detectDefaultCompareRef: vi.fn(async (_path: string, baseBranch: string) => `origin/${baseBranch}`),
+	// The real cascade, so a test that stubs detectDefaultCompareRef still steers
+	// every caller: explicit ref wins, otherwise git decides.
+	resolveCompareRef: vi.fn(async (path: string, baseBranch: string, explicit?: string) =>
+		explicit || git.detectDefaultCompareRef(path, baseBranch)),
 	isForeignBranchRef: vi.fn().mockResolvedValue(false),
 	refExists: vi.fn().mockResolvedValue(true),
 	isRefMergedInto: vi.fn().mockResolvedValue(false),
@@ -5495,7 +5499,10 @@ describe("handlers.getBranchStatus", () => {
 			await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 			expect(data.updateTask).not.toHaveBeenCalled();
-			expect(git.getBranchStatus).toHaveBeenCalledWith("/tmp/wt", "origin/feature/source");
+			// A task-specific base is LOCAL — the branch it forked from lives in this
+			// repo and may never have been pushed. Same rule the git bar labels with,
+			// and the same one merge's rebase guard uses.
+			expect(git.getBranchStatus).toHaveBeenCalledWith("/tmp/wt", "feature/source");
 		});
 
 		it("does not probe anything for a task on the project base", async () => {

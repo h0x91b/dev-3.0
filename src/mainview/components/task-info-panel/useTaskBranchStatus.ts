@@ -453,13 +453,16 @@ export function useTaskBranchStatus({
 				taskId: task.id,
 				projectId: project.id,
 				expectRoute: mergeRoute,
+				// The same ref the status line measured "behind" against, so the
+				// server's rebase guard cannot check a different one.
+				compareRef: compareRef || undefined,
 			});
 			posthog.capture("task_merged", { route: mergeRoute, pushed_base: !!branchStatus?.hasRemote });
 		} catch (err) {
 			toast.error(t("infoPanel.mergeFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setMerging(false);
-	}, [branchStatus, mergeRoute, merging, project, task, t]);
+	}, [branchStatus, compareRef, mergeRoute, merging, project, task, t]);
 
 	// `remoteAhead > 0` means origin/<branch> holds commits HEAD does not, so a
 	// plain push is refused as non-fast-forward — almost always a rebase after a

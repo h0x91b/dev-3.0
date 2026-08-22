@@ -4243,7 +4243,7 @@ export type AppRPCSchema = {
 				response: { delivery: AgentPromptDelivery };
 			};
 			mergeTask: {
-				params: { taskId: string; projectId: string; expectRoute?: MergeRoute };
+				params: { taskId: string; projectId: string; expectRoute?: MergeRoute; compareRef?: string };
 				response: void;
 			};
 			pushTask: {
