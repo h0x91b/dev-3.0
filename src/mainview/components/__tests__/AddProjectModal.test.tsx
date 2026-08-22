@@ -450,40 +450,26 @@ describe("AddProjectModal", () => {
 		expect(mockedApi.request.addVirtualProject).toHaveBeenCalledWith({ name: "Operations" });
 	});
 
-	// Blast-radius copy (bible §10). The split matters: "we don't touch your folder" is a
-	// promise about someone's work monorepo, and it is false on Clone and New, where dev3
-	// clones into or initialises the folder the user picked.
+	// Blast-radius copy (bible §10). Two lines only, and the same two on every git
+	// tab: a wall of reassurance reads as a warning, which is the opposite of the point.
 	describe("blast-radius copy", () => {
-		const baseClaim = /branches every task off this project's base branch/;
-		const branchClaim = /adds a new branch to your repository/;
-		const pushClaim = /Nothing reaches the remote by itself/;
-		const untouchedClaim = /does not touch the files in the folder you pick/;
+		const baseClaim = /Tasks start from this project's base branch/;
+		const branchClaim = /own branch in its own worktree/;
 
-		it("states the branch and push consequences on every git tab", async () => {
+		it("states both consequences on every git tab", async () => {
 			const user = userEvent.setup();
 			renderModal();
 
 			expect(screen.getByText(baseClaim)).toBeInTheDocument();
 			expect(screen.getByText(branchClaim)).toBeInTheDocument();
-			expect(screen.getByText(pushClaim)).toBeInTheDocument();
 
 			await user.click(screen.getByText("Clone from URL"));
 			expect(screen.getByText(baseClaim)).toBeInTheDocument();
 			expect(screen.getByText(branchClaim)).toBeInTheDocument();
-			expect(screen.getByText(pushClaim)).toBeInTheDocument();
-		});
-
-		it("claims the picked folder is untouched only on the Local tab", async () => {
-			const user = userEvent.setup();
-			renderModal();
-
-			expect(screen.getByText(untouchedClaim)).toBeInTheDocument();
-
-			await user.click(screen.getByText("Clone from URL"));
-			expect(screen.queryByText(untouchedClaim)).not.toBeInTheDocument();
 
 			await user.click(screen.getByText("New"));
-			expect(screen.queryByText(untouchedClaim)).not.toBeInTheDocument();
+			expect(screen.getByText(baseClaim)).toBeInTheDocument();
+			expect(screen.getByText(branchClaim)).toBeInTheDocument();
 		});
 
 		it("is absent on the Operations board, which has no repository at all", async () => {
@@ -493,8 +479,6 @@ describe("AddProjectModal", () => {
 
 			expect(screen.queryByText(baseClaim)).not.toBeInTheDocument();
 			expect(screen.queryByText(branchClaim)).not.toBeInTheDocument();
-			expect(screen.queryByText(pushClaim)).not.toBeInTheDocument();
-			expect(screen.queryByText(untouchedClaim)).not.toBeInTheDocument();
 		});
 	});
 });

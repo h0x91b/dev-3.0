@@ -767,7 +767,7 @@ ux_architecture:
       reject: ["permanent_info_icon_in_quickbars_cards_or_toolbars", "hardcoded_help_strings_in_components", "new_nav_destination_for_help"]  # the tour ban was lifted 2026-08-22 (bible 5.4a)
       carve_outs:
         - "first_run_callout: anchored to the one control it advertises, dismissible, once-only, killed by the same one-way flag entering help mode sets (bible 5.4a)"
-        - "blast_radius_copy: standing quiet plain-sentence statement at the top of a dialog that acts on the user's own files or remotes — what dev3 writes, where, and what it pushes. Never an (i), never dismissible, never hedged, no unverified OS-behaviour claim"
+        - "blast_radius_copy: standing quiet statement at the top of a dialog that acts on the user's own files or remotes — what dev3 writes and where, TWO LINES MAX. Never an (i), never dismissible, never hedged, no unverified OS-behaviour claim"
       status: "observed"
       rationale: "Help must add ZERO chrome to budget-protected zones (quickbars, task cards, toolbars) — they are covered by the help-mode overlay, not by standing icons. Header-bearing sections may carry at most one ghost (i). Content is data (help.ts + i18n domain), never JSX, so the same topics feed HelpSpot, help mode, and any future docs surface. The carve-outs are a different failure: a dialog pointed at someone's work monorepo has no second visit, and a user who cannot answer 'what will this write' closes the app instead of filing an issue. See PRODUCT_UX_BIBLE §5.4 + UX_DECISIONS 2026-07-03."
 

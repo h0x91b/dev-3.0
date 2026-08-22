@@ -295,12 +295,10 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 				<>
 				{/* Blast-radius copy (bible §10): standing, not dismissible — over half the
 				    userbase point this at a work monorepo and ask what it writes first.
-				    Only the two claims true of all three tabs live here; "your folder is
-				    untouched" is false on Clone and New, so it sits in the Local tab. */}
+				    Two lines, deliberately. Longer copy is its own way of scaring people off. */}
 				<div className="bg-raised border border-edge rounded-xl px-3 py-2.5 space-y-1.5 text-fg-3 text-xs leading-5">
 					<p>{t("addProject.safetyBase")}</p>
 					<p>{t("addProject.safetyBranch")}</p>
-					<p>{t("addProject.safetyPush")}</p>
 				</div>
 
 				{/* Tabs */}
@@ -342,9 +340,6 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 					<div className="space-y-3">
 						<p className="text-fg-3 text-sm">
 							{t("addProject.browseHint")}
-						</p>
-						<p className="text-fg-3 text-xs leading-5">
-							{t("addProject.safetyWorktree")}
 						</p>
 						<button
 							onClick={handleBrowseLocal}

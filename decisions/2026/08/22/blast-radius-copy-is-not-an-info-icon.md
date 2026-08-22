@@ -34,12 +34,15 @@ Two edits, both in `docs/ux`:
 2. **§10, new row** `onboarding_help outside help mode` — two carve-outs, and only two:
    **(a)** the first-run callout §5.4a already specifies (anchored, dismissible, once-only), and
    **(b)** *blast-radius copy* — a standing, quiet, non-dismissible plain-sentence statement at the
-   top of a dialog that acts on the user's own files or remotes, saying what dev3 writes, where, and
-   what it pushes. Not an `(i)`, not a warning banner, and never hedged.
+   top of a dialog that acts on the user's own files or remotes, saying what dev3 writes and where.
+   Not an `(i)`, not a warning banner, never hedged, and **capped at two lines** — the first draft ran
+   to four and the maintainer's reaction was that the volume itself is frightening, so the cap is part
+   of the rule rather than a style note.
 
-The first application is `AddProjectModal.tsx` (git kind): worktrees live under `~/.dev3.0`, each
-task gets its own branch, the user's checkout and current branch are untouched, and nothing reaches
-a remote until the user or the agent they launched pushes.
+The first application is `AddProjectModal.tsx` (git kind), two lines: where a task's branch comes
+from (the project's base branch — nothing to check out by hand), and that the work happens on its own
+branch in its own worktree under `~/.dev3.0` while the user's working copy is left alone. A third
+line about pushing and a fourth about the picked folder were written and then cut.
 
 ## Risks
 
@@ -61,7 +64,7 @@ a remote until the user or the agent they launched pushes.
   rather than a bug: help behind a click is help the frightened user does not click. They are
   deciding whether to hand the program their employer's repo, and an `(i)` reads as chrome.
 - **Show it once, then remember.** Rejected on the persona: the question returns with the second
-  repo, and it is the same three sentences either way. Once-only is right for advertising a control
+  repo, and it is the same two sentences either way. Once-only is right for advertising a control
   (§5.4a), wrong for a consequence.
 - **A `warning`-token banner.** Rejected — nothing is wrong. Amber on a safe, correct action trains
   the user to ignore amber where it does mean something.
