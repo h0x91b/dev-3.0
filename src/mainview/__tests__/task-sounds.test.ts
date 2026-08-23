@@ -54,11 +54,24 @@ class FakeAudioContext {
 
 type SoundsModule = typeof import("../task-sounds");
 
+// The module keeps its unlock listeners on `window` for the app's whole life, so
+// resetting the module registry is not enough — a previous test's listeners would
+// still answer the next test's gesture and build a second context. Track and drop
+// them between tests.
+const installedListeners: Array<[string, EventListenerOrEventListenerObject]> = [];
+const realAddEventListener = window.addEventListener.bind(window);
+
 // Every test gets a fresh module instance: unlock state, the decoded-buffer cache
 // and the pending queue are all module-level globals.
 async function loadModule(): Promise<SoundsModule> {
 	vi.resetModules();
 	return await import("../task-sounds");
+}
+
+/** One user gesture, the only thing allowed to build an AudioContext. */
+async function gesture(): Promise<void> {
+	window.dispatchEvent(new Event("pointerdown"));
+	await settle();
 }
 
 function latestContext(): FakeAudioContext {
@@ -78,6 +91,11 @@ let audioElementPlay: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
 	FakeAudioContext.instances = [];
+	installedListeners.length = 0;
+	window.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, opts?: unknown) => {
+		installedListeners.push([type, listener]);
+		realAddEventListener(type as keyof WindowEventMap, listener as EventListener, opts as AddEventListenerOptions);
+	}) as typeof window.addEventListener;
 	(window as unknown as { AudioContext: unknown }).AudioContext = FakeAudioContext;
 	// The whole point of the fix: nothing may reach an <audio> element.
 	audioElementPlay = vi
@@ -86,6 +104,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	window.addEventListener = realAddEventListener;
+	for (const [type, listener] of installedListeners) window.removeEventListener(type, listener);
+	installedListeners.length = 0;
 	audioElementPlay.mockRestore();
 	delete (window as unknown as { AudioContext?: unknown }).AudioContext;
 });
@@ -113,6 +134,8 @@ describe("task sound assets", () => {
 describe("completion sound playback", () => {
 	it("plays locally and reports the UI owns the sound when enabled", async () => {
 		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		await gesture();
 		mod.setTaskCompletionSoundEnabled(true);
 		expect(mod.playTaskCompletionSound("completed")).toBe(true);
 		await settle();
@@ -130,6 +153,8 @@ describe("completion sound playback", () => {
 
 	it("plays the backend push (CLI / branch-merge / agent approval)", async () => {
 		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		await gesture();
 		mod.playTaskSoundFromPush("completed");
 		await settle();
 		expect(latestContext().sources).toHaveLength(1);
@@ -137,6 +162,8 @@ describe("completion sound playback", () => {
 
 	it("rings for two different tasks completing back-to-back", async () => {
 		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		await gesture();
 		mod.setTaskCompletionSoundEnabled(true);
 		expect(mod.playTaskCompletionSound("completed")).toBe(true);
 		expect(mod.playTaskCompletionSound("cancelled")).toBe(true);
@@ -146,6 +173,8 @@ describe("completion sound playback", () => {
 
 	it("applies the per-sound volume through a gain node", async () => {
 		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		await gesture();
 		await mod.playTaskSound("cancelled");
 		await settle();
 		expect(latestContext().gains[0]?.gain.value).toBe(mod.SOUND_DEFS.cancelled.volume);
@@ -153,11 +182,15 @@ describe("completion sound playback", () => {
 
 	it("decodes each sound once and reuses the buffer", async () => {
 		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		// The gesture preloads both chimes, so every later play is buffer-only.
+		await gesture();
+		const ctx = latestContext();
+		expect(ctx.decodeCalls).toHaveLength(Object.keys(mod.SOUND_DEFS).length);
 		await mod.playTaskSound("completed");
 		await mod.playTaskSound("completed");
 		await settle();
-		const ctx = latestContext();
-		expect(ctx.decodeAudioData).toHaveBeenCalledTimes(1);
+		expect(ctx.decodeCalls).toHaveLength(Object.keys(mod.SOUND_DEFS).length);
 		expect(ctx.sources).toHaveLength(2);
 	});
 });
@@ -180,6 +213,8 @@ describe("macOS media-key ownership", () => {
 
 	it("releases the audio graph when the sound ends", async () => {
 		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		await gesture();
 		await mod.playTaskSound("completed");
 		await settle();
 		const ctx = latestContext();
@@ -211,33 +246,94 @@ describe("autoplay unlock (remote desktop browsers)", () => {
 		(window as unknown as { AudioContext: unknown }).AudioContext = SuspendedAudioContext;
 		const mod = await loadModule();
 		mod.initTaskSoundPlayback();
+		// First gesture builds the context; this fake refuses to resume until its
+		// own flag is set, standing in for a browser that wants a fresh gesture.
+		await gesture();
+		const ctx = latestContext() as SuspendedAudioContext;
 
 		await mod.playTaskSound("completed");
 		await settle();
-		const ctx = latestContext() as SuspendedAudioContext;
 		expect(ctx.sources).toHaveLength(0);
 
 		ctx.gestureSeen = true;
-		window.dispatchEvent(new Event("pointerdown"));
-		await settle();
+		await gesture();
 		expect(ctx.state).toBe("running");
 		expect(ctx.sources).toHaveLength(1);
-	});
-
-	it("does not construct a context before the first gesture or sound", async () => {
-		const mod = await loadModule();
-		mod.initTaskSoundPlayback();
-		expect(FakeAudioContext.instances).toHaveLength(0);
-
-		window.dispatchEvent(new Event("pointerdown"));
-		await settle();
-		expect(FakeAudioContext.instances).toHaveLength(1);
 	});
 
 	it("stays silent without crashing when Web Audio is unavailable", async () => {
 		delete (window as unknown as { AudioContext?: unknown }).AudioContext;
 		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		await gesture();
 		await expect(mod.playTaskSound("completed")).resolves.toBeUndefined();
 		expect(audioElementPlay).not.toHaveBeenCalled();
+	});
+});
+
+// The regression this file exists for. WebKit mutes an AudioContext created
+// without transient user activation while still reporting `running` and
+// advancing `currentTime`, and the context is cached for the app's lifetime — so
+// one gesture-less birth silenced every later chime until the app restarted.
+// Reproduced on release builds where a CLI completion pushed a sound before the
+// user's first click; a dev server that got clicked first stayed audible.
+describe("gesture-only context creation", () => {
+	it("never builds a context for a sound that arrives before any gesture", async () => {
+		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+
+		mod.playTaskSoundFromPush("completed");
+		await settle();
+		expect(FakeAudioContext.instances).toHaveLength(0);
+		expect(mod.taskSoundDiagnostics()).toMatchObject({ context: "none", unlocked: false, queued: 1 });
+	});
+
+	it("plays the queued sound on the first gesture, on the context that gesture built", async () => {
+		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		mod.playTaskSoundFromPush("completed");
+		await settle();
+
+		await gesture();
+		expect(FakeAudioContext.instances).toHaveLength(1);
+		expect(latestContext().sources).toHaveLength(1);
+		expect(mod.taskSoundDiagnostics()).toMatchObject({ unlocked: true, queued: 0 });
+	});
+
+	it("declines ownership when it cannot play, so the backend push still fans out", async () => {
+		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		mod.setTaskCompletionSoundEnabled(true);
+		// No gesture yet: the UI must NOT claim the sound, or the suppressed push
+		// would leave every client silent.
+		expect(mod.playTaskCompletionSound("completed")).toBe(false);
+	});
+
+	it("collapses the declined sound and its echoing push into one chime", async () => {
+		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		mod.setTaskCompletionSoundEnabled(true);
+		expect(mod.playTaskCompletionSound("completed")).toBe(false);
+		mod.playTaskSoundFromPush("completed");
+		await settle();
+		expect(mod.taskSoundDiagnostics().queued).toBe(1);
+
+		await gesture();
+		expect(latestContext().sources).toHaveLength(1);
+	});
+
+	it("keeps the unlock listeners after a success so a later click can still repair", async () => {
+		const mod = await loadModule();
+		mod.initTaskSoundPlayback();
+		await gesture();
+		const ctx = latestContext();
+
+		// WebKit can interrupt a healthy context later; the next click has to find
+		// it and resume it, which the old self-removing handlers could not do.
+		ctx.state = "suspended";
+		await gesture();
+		expect(ctx.resumeCalls).toBeGreaterThan(0);
+		expect(ctx.state).toBe("running");
+		expect(FakeAudioContext.instances).toHaveLength(1);
 	});
 });

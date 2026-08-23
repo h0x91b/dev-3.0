@@ -22,8 +22,18 @@ export const SOUND_DEFS: Record<TaskSoundStatus, { url: string; volume: number }
 // `navigator.audioSession.type = "playback"`, which we never do — so it can
 // neither steal the keys nor interrupt other audio (it mixes as ambient sound).
 // Chrome behaves the same way: WebAudio is ambient, an <audio> element is not.
+// An AudioContext built while the page has no transient user activation is
+// silently muted by WebKit: it reports `running`, advances `currentTime` and
+// starts sources without error, yet nothing reaches the speakers. Because the
+// context is cached for the app's lifetime, one such birth kills every chime
+// until the app restarts — the whole of issue "silent completions on release
+// builds". So the context is created ONLY inside a gesture handler, and a sound
+// that arrives without one is queued instead of building a doomed context.
 const SOUND_UNLOCK_EVENTS: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "touchstart"];
-const pendingQueue: TaskSoundStatus[] = [];
+// A Set, not an array: the same status can be queued twice (the UI declines
+// ownership, the backend then broadcasts its push back to us) and the user must
+// hear one chime, not two.
+const pendingQueue = new Set<TaskSoundStatus>();
 const buffers = new Map<TaskSoundStatus, AudioBuffer>();
 const decoding = new Map<TaskSoundStatus, Promise<AudioBuffer | null>>();
 
@@ -41,8 +51,10 @@ let unlockHandlersInstalled = false;
 //    renderer that played locally, so the backend pushes `taskSound` and
 //    `playTaskSoundFromPush` plays it.
 //
-// Because the two paths are mutually exclusive at the source, no client-side
-// echo de-dup is needed.
+// The two paths are mutually exclusive at the source whenever the UI could
+// actually play. When it could not (no gesture yet, so the sound is only
+// queued) it declines ownership and the push goes out — the queue is a Set, so
+// the push echoing back to this same renderer cannot double the chime.
 
 // Client-side mirror of the `playSoundOnTaskComplete` setting, kept in sync by
 // App.tsx. The bun process also gates its `taskSound` push on the same setting;
@@ -62,8 +74,11 @@ export function setTaskCompletionSoundEnabled(enabled: boolean): void {
  */
 export function playTaskCompletionSound(status: TaskSoundStatus): boolean {
 	if (!completionSoundEnabled) return false;
+	// No usable context means the sound is only queued, so the UI does NOT own
+	// it: let the backend push fan out, and whichever client can play, plays.
+	const owned = unlockedContext() !== null;
 	void playTaskSound(status);
-	return true;
+	return owned;
 }
 
 /**
@@ -77,12 +92,22 @@ export function playTaskSoundFromPush(status: TaskSoundStatus): void {
 /**
  * State of the audio pipeline, for the View → Debug sound probes. Never creates
  * the context — an untouched app must report `none`, not be primed by looking.
+ * `context` alone is not evidence of audible output: WebKit reports `running`
+ * for a gesture-less context that plays nothing, which is why `unlocked` (the
+ * context was born inside a gesture) is reported next to it.
  */
-export function taskSoundDiagnostics(): { context: string; buffers: number; queued: number; enabled: boolean } {
+export function taskSoundDiagnostics(): {
+	context: string;
+	unlocked: boolean;
+	buffers: number;
+	queued: number;
+	enabled: boolean;
+} {
 	return {
 		context: context?.state ?? "none",
+		unlocked: context !== null,
 		buffers: buffers.size,
-		queued: pendingQueue.length,
+		queued: pendingQueue.size,
 		enabled: completionSoundEnabled,
 	};
 }
@@ -93,12 +118,16 @@ function audioContextCtor(): typeof AudioContext | undefined {
 	return scoped.AudioContext ?? scoped.webkitAudioContext;
 }
 
-// Created lazily, never closed: a long-lived context stays unlocked, so later
-// push-driven sounds (which arrive seconds after any user gesture) can start
-// without another gesture. Constructing it on demand rather than at import also
-// keeps Chrome from logging its "AudioContext was not allowed to start" warning
-// on a page the user has not interacted with yet.
-function ensureContext(): AudioContext | null {
+/** The context, or null while no gesture has produced one yet. Never creates. */
+function unlockedContext(): AudioContext | null {
+	return context;
+}
+
+// Call ONLY from a user-gesture handler. Never closed afterwards: a long-lived
+// context born inside a gesture keeps playing push-driven sounds that arrive
+// minutes later, and building it on demand rather than at import keeps Chrome
+// from logging "AudioContext was not allowed to start" on an untouched page.
+function createContextInGesture(): AudioContext | null {
 	if (context) return context;
 	const Ctor = audioContextCtor();
 	if (!Ctor) return null;
@@ -185,31 +214,37 @@ function startSound(ctx: AudioContext, status: TaskSoundStatus, buffer: AudioBuf
 }
 
 function flushPendingQueue(): void {
-	while (pendingQueue.length > 0) {
-		const status = pendingQueue.shift();
-		if (!status) continue;
-		void playTaskSound(status);
-	}
+	const queued = [...pendingQueue];
+	pendingQueue.clear();
+	for (const status of queued) void playTaskSound(status);
 }
 
+// The listeners are installed once and NEVER removed. They used to uninstall
+// themselves after the first successful resume, which made the app
+// unrepairable: a context that reports `running` while playing nothing passes
+// that check, and with the handlers gone no later click could rebuild anything.
+// Three passive listeners that early-out cost nothing; being able to recover on
+// the next click is worth far more.
 function installUnlockHandlers(): void {
 	if (unlockHandlersInstalled || typeof window === "undefined") return;
 	unlockHandlersInstalled = true;
 
 	const unlock = () => {
-		const ctx = ensureContext();
+		const ready =
+			context !== null
+			&& context.state === "running"
+			&& pendingQueue.size === 0
+			&& buffers.size === Object.keys(SOUND_DEFS).length;
+		if (ready) return;
+
+		const ctx = createContextInGesture();
 		if (!ctx) return;
 		// Decode inside the gesture too, so the first sound needs no round-trip.
 		for (const status of Object.keys(SOUND_DEFS) as TaskSoundStatus[]) {
 			void loadBuffer(ctx, status);
 		}
 		void resume(ctx).then((running) => {
-			if (!running) return;
-			flushPendingQueue();
-			for (const eventName of SOUND_UNLOCK_EVENTS) {
-				window.removeEventListener(eventName, unlock);
-			}
-			unlockHandlersInstalled = false;
+			if (running) flushPendingQueue();
 		});
 	};
 
@@ -223,15 +258,21 @@ export function initTaskSoundPlayback(): void {
 }
 
 export async function playTaskSound(status: TaskSoundStatus): Promise<void> {
-	const ctx = ensureContext();
-	if (!ctx) return;
+	// Arm the repair path first: a sound arriving before any gesture must leave
+	// the app able to play it on the next click.
 	installUnlockHandlers();
+
+	const ctx = unlockedContext();
+	if (!ctx) {
+		pendingQueue.add(status);
+		return;
+	}
 
 	const buffer = await loadBuffer(ctx, status);
 	if (!buffer) return;
 
 	if (!(await resume(ctx))) {
-		pendingQueue.push(status);
+		pendingQueue.add(status);
 		return;
 	}
 

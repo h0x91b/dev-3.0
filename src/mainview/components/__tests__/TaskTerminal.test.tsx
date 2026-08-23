@@ -266,11 +266,13 @@ describe("TaskTerminal", () => {
 
 			// The shared move helper tries a normal move first (force is only the
 			// fallback when that fails), so the background call carries no force flag.
+			// `clientPlayedSound` is false because happy-dom has no Web Audio: the UI
+			// cannot own the chime and lets the backend push fan out instead.
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "completed",
-				clientPlayedSound: true,
+				clientPlayedSound: false,
 			});
 		});
 	});
