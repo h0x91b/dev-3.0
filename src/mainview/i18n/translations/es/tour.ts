@@ -7,7 +7,7 @@ const tour = {
 	"tour.skip": "Prefiero mirar por mi cuenta",
 
 	"tour.firstTask.title": "Tu primera tarea, de principio a fin",
-	"tour.firstTask.newTask.title": "Empieza aquí",
+	"tour.firstTask.newTask.title": "Tu tablero está vacío",
 	"tour.firstTask.newTask.body":
 		"El tablero está vacío. Pulsa Nueva tarea y dev-3.0 escribirá el texto por ti: en este repositorio hay un error real que encontrar.",
 	"tour.firstTask.prompt.title": "Esto es lo que se le pide al agente",
@@ -19,6 +19,9 @@ const tour = {
 	"tour.firstTask.launch.title": "Quién hace el trabajo",
 	"tour.firstTask.launch.body":
 		"Elige un agente y cuánta libertad tiene. Añade una segunda fila y dos agentes resolverán la misma tarea por separado, para comparar y quedarte con una.",
+	"tour.firstTask.openTask.title": "Ábrela",
+	"tour.firstTask.openTask.body":
+		"La tarea salió de Por hacer y ya tiene su propia rama: puede estar trabajando o ya preguntándote algo. Pulsa la tarjeta para verla; lanzar no te lleva allí por sí solo, así un tablero entero de agentes cabe en una pantalla.",
 	"tour.firstTask.terminal.title": "Aquí trabaja el agente",
 	"tour.firstTask.terminal.body":
 		"Una terminal real en una copia del repositorio que solo pertenece a esta tarea. Puedes escribir en ella: es una conversación, no una barra de progreso.",

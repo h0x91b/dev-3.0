@@ -82,9 +82,12 @@ describe("tour anchors exist in the components", () => {
 			const src = readFileSync(full, "utf8");
 			for (const m of src.matchAll(/data-tour-anchor="([a-z0-9.-]+)"/gi)) mounted.add(m[1]);
 			// `data-tour-anchor={immersive ? undefined : "task.terminal"}` — a gated
-			// anchor is still a real anchor.
+			// anchor is still a real anchor. Only the branches count: a literal in the
+			// CONDITION (`task.status === "in-progress" ? …`) is not an anchor, and
+			// counting it reported a dead anchor that never existed.
 			for (const m of src.matchAll(/data-tour-anchor=\{([^}]*)\}/g)) {
-				for (const lit of m[1].matchAll(/"([a-z0-9.-]+)"/gi)) mounted.add(lit[1]);
+				const branches = m[1].includes("?") ? m[1].slice(m[1].indexOf("?") + 1) : m[1];
+				for (const lit of branches.matchAll(/"([a-z0-9.-]+)"/gi)) mounted.add(lit[1]);
 			}
 		}
 	})(SRC_ROOT);

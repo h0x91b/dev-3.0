@@ -85,6 +85,16 @@ const FIRST_TASK_TOUR: Tour = {
 			anchor: "launch.variants",
 			titleKey: "tour.firstTask.launch.title",
 			bodyKey: "tour.firstTask.launch.body",
+			advanceOn: "board.running-task",
+		},
+		// Launching from the board does NOT navigate to the task — verified in a
+		// browser, where the tour ran out of anchors here and quit. So the handover is
+		// a step of its own, and it teaches what a card in Agent is Working is for.
+		{
+			id: "open-task",
+			anchor: "board.running-task",
+			titleKey: "tour.firstTask.openTask.title",
+			bodyKey: "tour.firstTask.openTask.body",
 			advanceOn: "task.terminal",
 		},
 		{

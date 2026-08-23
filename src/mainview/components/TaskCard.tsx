@@ -813,6 +813,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			data-task-id={task.id}
 			data-hint-id={task.id}
 			data-help-id="board.task-card"
+			// The guided tour's handover onto the task screen: launching from the board
+			// does not navigate, so a launched card is what it points at. ACTIVE_STATUSES,
+			// not "in-progress" — verified in a browser, where the very first sandbox task
+			// asked a question within a second and landed in Has Questions instead.
+			data-tour-anchor={ACTIVE_STATUSES.includes(task.status) ? "board.running-task" : undefined}
 			draggable={!isDisabled && !detailOpen && !isHibernated}
 			onDragStart={handleDragStart}
 			onContextMenu={handleContextMenu}

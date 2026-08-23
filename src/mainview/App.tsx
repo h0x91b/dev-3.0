@@ -508,15 +508,18 @@ function App() {
 
 	// Resume on the sandbox board. `openSandbox` starts the tour directly; this is
 	// the other way in — an app restart mid-tour, or a user who reached the board
-	// some other way — and it must not fire before settings have loaded, or a
-	// finished tour would replay on every boot.
+	// some other way. Two guards, both load-bearing: settings must have loaded, or a
+	// finished tour replays on every boot; and the board must be EMPTY, because the
+	// tour restarts from step one and "your board is empty" is a lie next to a task
+	// the user already made.
 	const sandboxRouteProjectId = state.route.screen === "project" ? state.route.projectId : null;
+	const currentProjectIsEmpty = state.currentProjectTasks.length === 0;
 	useEffect(() => {
-		if (!settingsLoaded || tour || !sandboxRouteProjectId) return;
+		if (!settingsLoaded || tour || !sandboxRouteProjectId || !currentProjectIsEmpty) return;
 		if (globalSettings.completedTours?.includes(FIRST_TASK_TOUR_ID)) return;
 		const project = state.projects.find((candidate) => candidate.id === sandboxRouteProjectId);
 		if (project?.sandbox) startTour(FIRST_TASK_TOUR_ID);
-	}, [settingsLoaded, tour, sandboxRouteProjectId, globalSettings.completedTours, state.projects]);
+	}, [settingsLoaded, tour, sandboxRouteProjectId, currentProjectIsEmpty, globalSettings.completedTours, state.projects]);
 
 	const activeTour = tour ? tourById(tour.id) : undefined;
 	const activeTourStep = activeTour?.steps[tour?.step ?? 0];
@@ -2521,6 +2524,7 @@ function App() {
 						updateDownloadStatus={updateDownloadStatus}
 						remoteAccessActive={remoteAccessActive}
 						helpDiscovered={globalSettings.helpModeDiscovered}
+						tourRunning={!!tour}
 					/>
 					{ghWarning && (
 						<GhWarningBanner

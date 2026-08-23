@@ -71,6 +71,11 @@ interface GlobalHeaderProps {
 	remoteAccessActive: boolean;
 	/** False until help mode has been opened once — see `HELP_ATTRACTOR_SCREENS`. */
 	helpDiscovered?: boolean;
+	/**
+	 * A guided tour is running. The callout stays down while it does: the tour is
+	 * already teaching, and bible §10 allows exactly one callout per screen.
+	 */
+	tourRunning?: boolean;
 }
 
 /**
@@ -98,9 +103,9 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive, helpDiscovered }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive, helpDiscovered, tourRunning }: GlobalHeaderProps) {
 	const t = useT();
-	const highlightHelp = !helpDiscovered && HELP_ATTRACTOR_SCREENS.has(route.screen);
+	const highlightHelp = !helpDiscovered && !tourRunning && HELP_ATTRACTOR_SCREENS.has(route.screen);
 	const privacy = useProjectPrivacy();
 	const { file: spacesFile } = useSpaces();
 	const compact = useCompact();

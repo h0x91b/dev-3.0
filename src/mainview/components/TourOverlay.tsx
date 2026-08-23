@@ -7,10 +7,10 @@ import { tourAdvanceAnchor, type Tour } from "../tour";
  * Renders one step of a guided tour: a ring around the control the user should
  * touch, and a card beside it saying what it does.
  *
- * Deliberately NOT a modal. There is no backdrop and nothing outside the card
- * takes pointer events, because the whole point is that the user clicks the real
- * button. Progress is then observed from the DOM (`tourAdvanceAnchor`), so no
- * component has to report anything back.
+ * Deliberately NOT a modal. The dim is the ring's own outer shadow rather than a
+ * backdrop node, and nothing outside the card takes pointer events, because the
+ * whole point is that the user clicks the real button. Progress is then observed
+ * from the DOM (`tourAdvanceAnchor`), so nothing has to report back.
  *
  * Positioning mirrors `HelpOverlay`/`HintOverlay`: measure the anchor's rect and
  * place absolutely. A single timer drives both the measuring and the "did the
@@ -145,7 +145,10 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 				<div
 					aria-hidden="true"
 					data-testid="tour-ring"
-					className="absolute rounded-xl border-2 border-accent bg-accent/10 shadow-[0_0_0_9999px] shadow-black/35"
+					// Ring only, no spotlight scrim. A full-screen dim was tried and dropped:
+					// the last two steps ask the user to READ the terminal and the git bar,
+					// and darkening the thing you are explaining is self-defeating.
+					className="absolute rounded-xl border-2 border-accent bg-accent/10"
 					style={{ top: rect.top - 4, left: rect.left - 4, width: rect.width + 8, height: rect.height + 8 }}
 				/>
 			)}
