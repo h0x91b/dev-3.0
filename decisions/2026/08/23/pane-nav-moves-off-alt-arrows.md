@@ -35,6 +35,24 @@ mouse-copy binding just below it). Guarded by
 `src/bun/tmux/__tests__/config.test.ts`. `⌃B` + arrows (tmux's default) is
 unchanged and still works.
 
+## Follow-up: freeing the key was not enough
+
+Freeing Alt+arrow only helps if something binds it. Measured on this machine:
+
+- zsh binds **neither** `^[[1;3x` (Alt+arrow) nor, by default, `^[[1;5x`
+  (Ctrl+arrow) — `zsh -f` has zero bindings for either. The user's own `.zshrc`
+  happened to bind the Ctrl form via a plugin.
+- macOS claims Ctrl+arrow **system-wide**: `com.apple.symbolichotkeys` IDs 79 and
+  81 ("move left/right a space") are enabled with keycodes 123/124 + control, so
+  the key never reaches any application.
+- tmux is innocent for the Ctrl form: fed `CSI 1;5 D` through a real PTY into
+  tmux running this config, the inner app receives `^[[1;5D` intact.
+
+So `src/bun/shell-init.ts` now binds `^[[1;3x` **and** `^[[1;5x` to
+`backward-word` / `forward-word` for zsh and bash, after sourcing the user's own
+config. Alt+arrow is the combo that survives the OS; the Ctrl form is bound too,
+for machines where the space-switch shortcuts are off.
+
 ## Risks
 
 - Muscle memory: existing users lose Alt+arrow pane switching. Mitigated by the

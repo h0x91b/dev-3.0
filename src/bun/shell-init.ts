@@ -56,6 +56,15 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
   setopt PROMPT_SUBST
   PROMPT='%F{blue}$(_dev3_short_path)%f%F{yellow}$(_dev3_git_branch)%f %# '
 fi
+
+# ── Word motion on modifier+arrow ────────────────────────────────────
+# zsh binds none of these out of the box, and macOS claims Ctrl+arrow for
+# "move a space" system-wide, so Alt+arrow is the combo that reaches the
+# shell. Runs after the user's .zshrc, so dev3 panes get it either way.
+bindkey "^[[1;3D" backward-word   # Alt+Left
+bindkey "^[[1;3C" forward-word    # Alt+Right
+bindkey "^[[1;5D" backward-word   # Ctrl+Left, where the OS lets it through
+bindkey "^[[1;5C" forward-word    # Ctrl+Right
 `;
 
 // ── bash init ───────────────────────────────────────────────────────
@@ -86,6 +95,12 @@ if [[ -n "$DEV3_WORKTREE_ROOT" ]]; then
 
   PS1='\\[\\e[34m\\]$(_dev3_short_path)\\[\\e[33m\\]$(_dev3_git_branch)\\[\\e[0m\\] \\$ '
 fi
+
+# Word motion on modifier+arrow — see the zsh block for why Alt, not Ctrl.
+bind '"\\e[1;3D": backward-word'
+bind '"\\e[1;3C": forward-word'
+bind '"\\e[1;5D": backward-word'
+bind '"\\e[1;5C": forward-word'
 `;
 
 // ── Write to /tmp ───────────────────────────────────────────────────
