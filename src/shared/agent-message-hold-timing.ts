@@ -11,8 +11,18 @@
  * Shared, because the CLI tells the sender how long its message will wait.
  */
 
-/** Quiet time after the last message or keystroke before the held message lands. */
+/** Quiet time after the last MESSAGE before the held message lands. */
 export const AGENT_MESSAGE_HOLD_IDLE_MS = 15_000;
+
+/**
+ * Quiet time after the last human KEYSTROKE, which is four times longer.
+ *
+ * A person composing a prompt stops to think, to read code, to look at a diff — a
+ * 15-second pause is an ordinary part of writing one line, not the end of it. Landing
+ * a peer's text into that pause is the same defect as landing it mid-word, only later,
+ * so his silence has to be much longer before it counts as "he is done".
+ */
+export const AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS = 60_000;
 
 /**
  * Hard ceiling measured from the first still-undelivered message. Without it a steady
@@ -26,9 +36,10 @@ export const AGENT_MESSAGE_HOLD_IDLE_MS = 15_000;
 export const AGENT_MESSAGE_HOLD_CEILING_MS = 60_000;
 
 /**
- * The idle window in whole seconds, for prose that quotes it — the CLI's own
- * "queued" line and the skill text every agent reads. Derived rather than restated,
- * because a retune of the constant used to leave four hand-written "ten seconds"
- * behind and agents were then told a number the code no longer honoured.
+ * Both windows in whole seconds, for prose that quotes them — the CLI's own "queued"
+ * line and the skill text every agent reads. Derived rather than restated, because a
+ * retune of the constant used to leave four hand-written "ten seconds" behind and
+ * agents were then told a number the code no longer honoured.
  */
 export const AGENT_MESSAGE_HOLD_IDLE_SECONDS = Math.round(AGENT_MESSAGE_HOLD_IDLE_MS / 1000);
+export const AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS = Math.round(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS / 1000);

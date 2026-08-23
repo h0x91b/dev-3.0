@@ -38,7 +38,11 @@ import {
 	sendPromptToPane,
 } from "../agent-prompt";
 import { deferHeldAgentMessagesForTask, flushHeldAgentMessagesForTask, resetAgentMessageHolds } from "../agent-message-hold";
-import { AGENT_MESSAGE_HOLD_CEILING_MS, AGENT_MESSAGE_HOLD_IDLE_MS } from "../../shared/agent-message-hold-timing";
+import {
+	AGENT_MESSAGE_HOLD_CEILING_MS,
+	AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
+	AGENT_MESSAGE_HOLD_IDLE_MS,
+} from "../../shared/agent-message-hold-timing";
 import type { PaneSessionEntry, Task } from "../../shared/types";
 
 const TASK_ID = "1234abcd-0000-4000-8000-000000000001";
@@ -292,6 +296,18 @@ describe("the held dev3 message — nothing reaches the pane until it goes quiet
 			deferHeldAgentMessagesForTask(TASK_ID);
 		}
 		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
+	});
+
+	it("keeps the pane clean through a pause to think, then lands on the human window", async () => {
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
+		deferHeldAgentMessagesForTask(TASK_ID);
+
+		// Three message windows of silence is still just a pause in his own line.
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS);
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
 	});
 
 	it("lands the moment the user submits his own line", async () => {

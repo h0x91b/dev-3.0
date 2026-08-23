@@ -78,7 +78,11 @@ import {
 	pendingAgentMessageHoldCount,
 	resetAgentMessageHolds,
 } from "../agent-message-hold";
-import { AGENT_MESSAGE_HOLD_CEILING_MS, AGENT_MESSAGE_HOLD_IDLE_MS } from "../../shared/agent-message-hold-timing";
+import {
+	AGENT_MESSAGE_HOLD_CEILING_MS,
+	AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
+	AGENT_MESSAGE_HOLD_IDLE_MS,
+} from "../../shared/agent-message-hold-timing";
 
 // ---- Typed mock handles ----
 
@@ -1384,7 +1388,14 @@ describe("noteHumanTerminalInput", () => {
 	it("keeps holding through a Shift+Enter, which is a newline he is still writing", async () => {
 		const item = heldMessage();
 		noteHumanTerminalInput(session, {}, "first line\x1b\r");
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS - 1);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS - 1);
+		expect(item.deliver).not.toHaveBeenCalled();
+	});
+
+	it("gives him the longer human window, not the message one, once he has typed", async () => {
+		const item = heldMessage();
+		noteHumanTerminalInput(session, {}, "thinking");
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
 		expect(item.deliver).not.toHaveBeenCalled();
 	});
 

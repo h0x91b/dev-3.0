@@ -8,7 +8,10 @@ import { resolveScheduleTarget } from "../../shared/schedule";
 import { MAX_SCHEDULED_MESSAGE_LENGTH } from "../../shared/types";
 import type { AgentPromptDeliveryStatus } from "../../shared/agent-prompt-delivery";
 import { CLI_EXIT_CODE_DELIVERY_UNCONFIRMED } from "../../shared/cli-exit-codes";
-import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
+import {
+	AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS,
+	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
+} from "../../shared/agent-message-hold-timing";
 
 const USAGE = 'Usage: dev3 message [--in <dur> | --at <hh:mm>] "text" [--task <id>]';
 
@@ -75,8 +78,8 @@ export async function handleMessage(
 		// never land in the middle of a line the user is writing.
 		process.stdout.write(
 			`Message queued for task ${shortId}. It lands after ${AGENT_MESSAGE_HOLD_IDLE_SECONDS}s of quiet on that ` +
-				`pane — longer while the user is typing, at once when they press Enter — and anything else sent ` +
-				`meanwhile arrives in the same turn.\n`,
+				`pane — ${AGENT_MESSAGE_HOLD_HUMAN_IDLE_SECONDS}s if the user has been typing there, at once when they ` +
+				`press Enter — and anything else sent meanwhile arrives in the same turn.\n`,
 		);
 		return;
 	}

@@ -18,10 +18,13 @@ list of undelivered messages plus one submit closure; nothing is written to the 
 (`src/bun/agent-prompt-native.ts`) register a hold instead of typing, and `deliverAgentPrompt`'s `hold` option
 replaces `coalesceSubmit`. Three rules on top of the old timing:
 
-- **Human-driven holds have no ceiling.** `deferHeldAgentMessagesForTask` marks the hold `humanHeld`, and the
-  delay is then the full idle window with no deadline behind it. A message-driven hold keeps the 60s ceiling,
-  so a stream of senders still cannot hold a receiver hostage. Arseny's ruling, verbatim: *"если оно
-  откладывается, потому что я пишу, то есть человек пишет, то потолка не должно быть никакого"*.
+- **Human-driven holds have no ceiling, and their own longer window.** `deferHeldAgentMessagesForTask` marks
+  the hold `humanHeld`; the delay is then `AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS` (60s, four times the message
+  window) with no deadline behind it. A message-driven hold keeps the 60s ceiling, so a stream of senders
+  still cannot hold a receiver hostage. Arseny's ruling on the ceiling, verbatim: *"если оно откладывается,
+  потому что я пишу, то есть человек пишет, то потолка не должно быть никакого"*; and on the window, after
+  this record's first draft raised the pause-mid-line risk below: *"если человек написал, то нужно ждать, я
+  думаю, наверное, минуту. Минута будет логично."*
 - **The user's own plain Enter releases everything at once**, so he watches the message arrive instead of
   wondering where it went. `scanHumanTerminalInput` (`src/shared/human-terminal-input.ts`) reads the raw client
   bytes: CR outside a bracketed paste is a submit, ESC+CR (dev3's Shift+Enter, see
@@ -38,9 +41,10 @@ A fourth delivery answer, `held`, carries this to the caller: nothing was typed,
 
 ## Risks
 
-- **A pause mid-line still lets a message land.** The release is quiet, not intent: 15s without a keystroke and
-  the message goes in behind whatever half-written line is there. Raised with Arseny as an open question
-  (should the human-idle window be longer than the message one?) rather than decided here.
+- **A long pause mid-line still lets a message land.** The release is quiet, not intent: a full minute without
+  a keystroke and the message goes in behind whatever half-written line is there. The minute was chosen to
+  cover an ordinary pause to think; a genuinely abandoned line is indistinguishable from a finished one, and
+  holding a peer's message forever on it would be worse.
 - **A hold outlives no crash.** Anything held when the app dies is gone, with no trace for the user. Accepted
   above; a separate strand (Seq 1650) is looking at a durable message log.
 - **Typing in a terminal dev3 does not serve** (an external `tmux attach`) is invisible to
@@ -59,4 +63,7 @@ A fourth delivery answer, `held`, carries this to the caller: nothing was typed,
   agent's input layer, and one merged paste would blow the seam's 5 000-byte per-stage budget that each message
   passes on its own.
 - **A hold ceiling for the human too** (a minute, say). Rejected by the ruling above; a deadline that fires
-  while he is typing is the very defect being fixed.
+  while he is typing is the very defect being fixed. Note the minute lives in the human IDLE window instead —
+  it is reset by every keystroke, so it never fires on someone who is still writing.
+- **One window for both** (the original draft, 15s everywhere). Rejected once the live QA showed a peer message
+  landing behind a line that had simply been paused for 15 seconds while its author was thinking.

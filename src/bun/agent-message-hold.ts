@@ -12,9 +12,10 @@
  *    messages would split the burst again, which is the original defect.
  *  - The newest registration wins the submit closure, because it carries the freshest
  *    pane pin; the ceiling deadline stays with the FIRST undelivered message.
- *  - A MESSAGE-driven hold keeps the ceiling; a HUMAN-driven one has none. A stream of
- *    senders cannot hold a receiver hostage, but the user's own typing outranks every
- *    deadline — his hold ends with his Enter or with his silence, never with a clock.
+ *  - A MESSAGE-driven hold keeps the ceiling; a HUMAN-driven one has none, and its quiet
+ *    window is four times longer, because a pause to think is part of writing a line. A
+ *    stream of senders cannot hold a receiver hostage, but the user's own typing
+ *    outranks every deadline — his hold ends with his Enter or with a long silence.
  *  - The user's own plain Enter releases the hold at once: he submitted his line, so
  *    the input box is no longer his and he should watch the message arrive.
  *  - No Enter is sent when no text landed — an Enter into an unknown input box would
@@ -27,7 +28,11 @@
  * PR, commit, rebase, bug-hunter prompts — type and submit at once.
  */
 
-import { AGENT_MESSAGE_HOLD_CEILING_MS, AGENT_MESSAGE_HOLD_IDLE_MS } from "../shared/agent-message-hold-timing";
+import {
+	AGENT_MESSAGE_HOLD_CEILING_MS,
+	AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
+	AGENT_MESSAGE_HOLD_IDLE_MS,
+} from "../shared/agent-message-hold-timing";
 import { createLogger } from "./logger";
 
 const log = createLogger("agent-message-hold");
@@ -64,9 +69,9 @@ function taskOfKey(key: string): string | undefined {
 }
 
 function delayFor(hold: Hold, now: number): number {
-	// A human at the keyboard gets the full window every time, with no deadline
-	// behind it — see the ceiling constant's own comment.
-	if (hold.humanHeld) return AGENT_MESSAGE_HOLD_IDLE_MS;
+	// A human at the keyboard gets his own, much longer window every time, with no
+	// deadline behind it — see both constants' own comments.
+	if (hold.humanHeld) return AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS;
 	return Math.max(0, Math.min(AGENT_MESSAGE_HOLD_IDLE_MS, hold.firstAt + AGENT_MESSAGE_HOLD_CEILING_MS - now));
 }
 

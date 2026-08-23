@@ -4,7 +4,11 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { AGENT_MESSAGE_HOLD_CEILING_MS, AGENT_MESSAGE_HOLD_IDLE_MS } from "../../shared/agent-message-hold-timing";
+import {
+	AGENT_MESSAGE_HOLD_CEILING_MS,
+	AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS,
+	AGENT_MESSAGE_HOLD_IDLE_MS,
+} from "../../shared/agent-message-hold-timing";
 import {
 	agentMessageHoldKey,
 	deferHeldAgentMessagesForTask,
@@ -121,7 +125,7 @@ describe("holdAgentMessage — the ceiling on message-driven holds", () => {
 });
 
 describe("deferHeldAgentMessagesForTask — the user is typing", () => {
-	it("pushes the hold back a full window on every keystroke", async () => {
+	it("pushes the hold back a full HUMAN window on every keystroke", async () => {
 		const item = message();
 		holdAgentMessage(KEY, item, {});
 
@@ -130,7 +134,21 @@ describe("deferHeldAgentMessagesForTask — the user is typing", () => {
 			expect(item.deliver).not.toHaveBeenCalled();
 			expect(deferHeldAgentMessagesForTask("task-1")).toBe(1);
 		}
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS);
+		expect(item.submit).toHaveBeenCalledTimes(1);
+	});
+
+	it("survives a pause to think: the message window alone does not release his hold", async () => {
+		// 15s without a keystroke is an ordinary pause while writing one line, so the
+		// message must not land behind it — only the far longer human window does.
+		const item = message();
+		holdAgentMessage(KEY, item, {});
+		deferHeldAgentMessagesForTask("task-1");
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 3);
+		expect(item.deliver).not.toHaveBeenCalled();
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS - AGENT_MESSAGE_HOLD_IDLE_MS * 3);
 		expect(item.submit).toHaveBeenCalledTimes(1);
 	});
 
@@ -147,8 +165,8 @@ describe("deferHeldAgentMessagesForTask — the user is typing", () => {
 		}
 		expect(item.deliver).not.toHaveBeenCalled();
 
-		// It is a hold, not a leak: his silence still releases it.
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		// It is a hold, not a leak: a long enough silence still releases it.
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS);
 		expect(item.submit).toHaveBeenCalledTimes(1);
 	});
 
@@ -182,7 +200,7 @@ describe("deferHeldAgentMessagesForTask — the user is typing", () => {
 		expect(mine.deliver).not.toHaveBeenCalled();
 		expect(sibling.deliver).not.toHaveBeenCalled();
 
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_HUMAN_IDLE_MS);
 		expect(mine.submit).toHaveBeenCalledTimes(1);
 		expect(sibling.submit).toHaveBeenCalledTimes(1);
 	});
