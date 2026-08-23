@@ -32,9 +32,15 @@ import type { TranslationKey } from "./i18n";
  *    that no longer existed, and Start over then opened New Task on top of the
  *    still-open Launch dialog.
  *
+ * 5. **Waiting is declared, and the end is an anchor going away.** A step may say
+ *    its anchor arrives later (`waitsForAnchor`) — the report an agent publishes
+ *    takes as long as the work does — and then its absence is the step, not a
+ *    loss. The last step's anchor disappearing finishes the tour: the merge
+ *    dialog closing IS the ending.
+ *
  * Losing sight of an anchor is a state, not an ending: the card says it lost the
- * thread and offers restart-or-leave. Leaving is always one click (Skip) or one
- * key (Escape) away, never an accident.
+ * thread and offers leaving. Leaving is always one click (Skip) or one key
+ * (Escape) away, never an accident.
  */
 
 /** A side effect the app performs when a step opens. Kept as a tiny closed set:
@@ -61,6 +67,13 @@ export interface TourStep {
 	 *  for the user, which is what they expect of a wizard's Next. */
 	action?: TourAction;
 	effect?: TourEffect;
+	/**
+	 * The anchor is expected to arrive later, so its absence is the step, not a
+	 * failure: the card waits instead of declaring itself lost or re-finding its
+	 * place. Set on steps that wait for something the agent produces — the report
+	 * it publishes takes as long as the work does.
+	 */
+	waitsForAnchor?: boolean;
 }
 
 export interface Tour {
@@ -131,10 +144,47 @@ const FIRST_TASK_TOUR: Tour = {
 			advanceOn: "manual",
 		},
 		{
+			// Manual on purpose, even though the next step waits on the agent: an
+			// artifact that arrived while the user was reading the terminal step would
+			// already be on screen, and an auto-advance that only fires on APPEARANCE
+			// would then never fire at all.
+			id: "dev-server",
+			anchor: "task.dev-server",
+			titleKey: "tour.firstTask.devServer.title",
+			bodyKey: "tour.firstTask.devServer.body",
+			advanceOn: "manual",
+		},
+		{
+			id: "artifact",
+			anchor: "task.artifact",
+			titleKey: "tour.firstTask.artifact.title",
+			bodyKey: "tour.firstTask.artifact.body",
+			advanceOn: "manual",
+			waitsForAnchor: true,
+		},
+		{
 			id: "review",
 			anchor: "task.git-bar",
 			titleKey: "tour.firstTask.review.title",
 			bodyKey: "tour.firstTask.review.body",
+			advanceOn: "manual",
+		},
+		{
+			id: "merge",
+			anchor: "task.merge",
+			titleKey: "tour.firstTask.merge.title",
+			bodyKey: "tour.firstTask.merge.body",
+			action: "click-anchor",
+			advanceOn: "confirm.dialog",
+		},
+		{
+			// dev3 notices the merge itself and offers to close the task, so the last
+			// step is that dialog. Pressing Complete task closes it, and a last step
+			// whose anchor is gone ends the tour — which is exactly the ending.
+			id: "complete",
+			anchor: "confirm.dialog",
+			titleKey: "tour.firstTask.complete.title",
+			bodyKey: "tour.firstTask.complete.body",
 			advanceOn: "manual",
 		},
 	],

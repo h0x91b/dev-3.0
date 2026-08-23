@@ -415,6 +415,7 @@ export default function TaskDevServer({ task, project, isTaskActive, compact = f
 					className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${stateClasses}`}
 					aria-label={devServerTitle}
 					aria-busy={isStarting}
+					data-tour-anchor="task.dev-server"
 				>
 					{devServerIcon}
 					{!compact && <span className="text-micro font-semibold">{devServerLabel}</span>}

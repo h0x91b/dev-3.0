@@ -42,6 +42,16 @@ const THREE_STEP_TOUR: Tour = {
 	],
 };
 
+/** A step whose anchor arrives only when the agent produces it. */
+const PENDING_TOUR: Tour = {
+	id: "pending-tour",
+	titleKey: "tour.firstTask.title",
+	steps: [
+		{ id: "watch", anchor: "a", titleKey: "tour.firstTask.terminal.title", bodyKey: "tour.firstTask.terminal.body", advanceOn: "manual" },
+		{ id: "report", anchor: "b", titleKey: "tour.firstTask.artifact.title", bodyKey: "tour.firstTask.artifact.body", advanceOn: "manual", waitsForAnchor: true },
+	],
+};
+
 const anchors: HTMLElement[] = [];
 
 /** happy-dom measures everything as 0×0, which the overlay reads as "no anchor". */
@@ -262,5 +272,58 @@ describe("TourOverlay", () => {
 		tick(3000);
 		expect(onStepChange).toHaveBeenCalledWith(2);
 		expect(onStepChange).not.toHaveBeenCalledWith(0);
+	});
+
+	it("waits for an anchor the agent has yet to produce, without giving up on it", () => {
+		// The artifact panel only exists once the agent publishes a report, which takes
+		// as long as the work does. Neither lost nor a resync may fire meanwhile.
+		anchor("a");
+		const onStepChange = vi.fn();
+		const onExit = vi.fn();
+		renderTour(1, { onStepChange, onExit }, PENDING_TOUR);
+		tick(5000);
+		expect(lostState()).toBe(false);
+		expect(onStepChange).not.toHaveBeenCalled();
+		expect(onExit).not.toHaveBeenCalled();
+		expect(screen.getByTestId("tour-pending")).toBeInTheDocument();
+		// Next would skip the very thing the step exists to show.
+		expect(screen.queryByTestId("tour-next")).not.toBeInTheDocument();
+		// And nothing is shielded: live QA caught the agent asking for permission
+		// while the tour covered the whole screen, so the answer could not be typed.
+		expect(screen.queryByTestId("tour-shield-all")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("tour-shield-top")).not.toBeInTheDocument();
+
+		anchor("b");
+		tick(200);
+		expect(screen.queryByTestId("tour-pending")).not.toBeInTheDocument();
+		expect(screen.getByTestId("tour-next")).toBeInTheDocument();
+	});
+
+	it("flashes the ring instead of pressing a disabled control", () => {
+		// Merge stays disabled until the agent has committed. A click that silently
+		// does nothing reads as the card being broken, so say so with the ring.
+		const el = anchor("a") as HTMLElement & { disabled?: boolean };
+		const clicked = vi.fn();
+		el.addEventListener("click", clicked);
+		el.setAttribute("aria-disabled", "true");
+		renderTour(0);
+
+		fireEvent.click(screen.getByTestId("tour-next"));
+		expect(clicked).not.toHaveBeenCalled();
+		expect(screen.getByTestId("tour-ring").className).toContain("ring-4");
+	});
+
+	it("ends as completed when the LAST step's anchor goes away", () => {
+		// The tour's last step is the merge-completion dialog: pressing Complete task
+		// closes it. That is the ending, not a lost thread.
+		const el = anchor("b");
+		const onExit = vi.fn();
+		const onStepChange = vi.fn();
+		renderTour(1, { onExit, onStepChange });
+		tick(200);
+		el.remove();
+		tick(3000);
+		expect(onExit).toHaveBeenCalledWith(true);
+		expect(onStepChange).not.toHaveBeenCalled();
 	});
 });

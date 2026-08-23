@@ -35,7 +35,7 @@ vi.mock("../data", () => ({
 	updateProject: (...args: unknown[]) => updateProject(...args),
 }));
 
-import { createSandboxProject, SANDBOX_REPO_PATH } from "../sandbox-project";
+import { createSandboxProject, SANDBOX_DEV_SCRIPT, SANDBOX_REPO_PATH } from "../sandbox-project";
 import { SANDBOX_FIRST_PROMPT } from "../../shared/sandbox-prompts";
 
 /** Reads state back with the machine's own git, never through the module's spawn. */
@@ -64,7 +64,10 @@ describe("createSandboxProject", () => {
 		expect(git(["status", "--porcelain"]).stdout.trim()).toBe("");
 
 		expect(existsSync(join(SANDBOX_REPO_PATH, "README.md"))).toBe(true);
-		expect(readFileSync(join(SANDBOX_REPO_PATH, "prices.js"), "utf8")).toContain("function total");
+		// The page and its server are the point: the first task changes a colour the
+		// user can SEE, and the dev-server button has something to run.
+		expect(readFileSync(join(SANDBOX_REPO_PATH, "index.html"), "utf8")).toContain("Ship it");
+		expect(readFileSync(join(SANDBOX_REPO_PATH, "server.js"), "utf8")).toContain("DEV3_PORT0");
 		expect(addProject).toHaveBeenCalledWith(SANDBOX_REPO_PATH, "Sandbox");
 	});
 
@@ -85,7 +88,21 @@ describe("createSandboxProject", () => {
 	it("pins the project's base branch when the stored record disagrees", async () => {
 		addProject.mockResolvedValueOnce({ id: "p-old", path: SANDBOX_REPO_PATH, name: "Sandbox", defaultBaseBranch: "master" });
 		await createSandboxProject();
-		expect(updateProject).toHaveBeenCalledWith("p-old", { defaultBaseBranch: "main", sandbox: true });
+		expect(updateProject).toHaveBeenCalledWith("p-old", {
+			defaultBaseBranch: "main",
+			sandbox: true,
+			devScript: SANDBOX_DEV_SCRIPT,
+			portCount: 1,
+		});
+	});
+
+	it("gives the sandbox a dev server, because the first task changes a page", async () => {
+		// Without a devScript the button on the task screen only offers to set one up,
+		// and the tour's dev-server step would point at a dead end.
+		await createSandboxProject();
+		const fixes = updateProject.mock.calls[0]?.[1] as Record<string, unknown> | undefined;
+		expect(fixes?.devScript).toBe(SANDBOX_DEV_SCRIPT);
+		expect(fixes?.portCount).toBe(1);
 	});
 
 	it("documents the exact prompt the guided tour prefills", async () => {

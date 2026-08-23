@@ -8,10 +8,17 @@
  * mention.
  */
 
+/**
+ * The first one is deliberately the smallest visible change in the repo: one
+ * colour, on one button, on a page the dev server already serves. A newcomer has
+ * to be able to SEE the agent's work without reading a diff — and the artifact
+ * carries the before/after, so the screenshots are part of the prompt rather
+ * than a step of the tour.
+ */
 export const SANDBOX_TASK_PROMPTS = [
-	"prices.js rounds money wrong — find the bug, fix it, and add a test.",
-	"Add a --currency flag to prices.js and document it in this README.",
-	"Translate this README into Spanish as README.es.md.",
+	"Change the Ship it button in index.html from green to blue. Take screenshots of the page before and after, show them in a dev3 artifact, then commit.",
+	"Give index.html a dark/light toggle, then show it off in a dev3 artifact.",
+	"Make the card in index.html look right on a phone-sized screen.",
 ] as const;
 
 /** What the guided tour puts in the description field. */

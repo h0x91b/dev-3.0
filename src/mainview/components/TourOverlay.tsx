@@ -136,8 +136,17 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 				setLost(false);
 				return;
 			}
+			// A step that waits for something the agent produces is not lost while its
+			// anchor is missing — that IS the step. It parks and says so.
+			if (step.waitsForAnchor) return;
 			missingSince ??= performance.now();
 			if (performance.now() - missingSince < LOST_ANCHOR_MS) return;
+			// The last step's anchor going away is the user finishing the last action,
+			// not the tour losing its place. Ending here is the ending.
+			if (stepIndex === tour.steps.length - 1) {
+				onExitRef.current(true);
+				return;
+			}
 			// The step's screen is gone. Follow the app to wherever it actually is
 			// before admitting defeat — that turns a dead end into a silent recovery.
 			const resync = resyncTarget(tour, stepIndex);
@@ -189,8 +198,15 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 	// must make themselves has no primary button at all.
 	const clickAnchor = useCallback(() => {
 		if (!step) return;
-		anchorEl(step.anchor)?.click();
-	}, [step]);
+		const el = anchorEl(step.anchor);
+		if (!el) return;
+		// A disabled control eats the click and nothing happens, which reads as the
+		// card being broken. Live QA hit exactly that on Merge, which stays disabled
+		// until the agent has committed. Flash the ring instead of lying.
+		const off = (el as HTMLButtonElement).disabled === true || el.getAttribute("aria-disabled") === "true";
+		if (off) { nudge(); return; }
+		el.click();
+	}, [step, nudge]);
 
 	const advance = useCallback(() => {
 		if (step?.action === "click-anchor") { clickAnchor(); return; }
@@ -201,6 +217,10 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 	if (!step) return null;
 
 	const waiting = !!advanceAnchor && step.action !== "click-anchor";
+	// Waiting on the agent, not on the user: the step's own anchor has not been
+	// produced yet. Its Next is hidden, or pressing it would skip the very thing
+	// the step exists to show.
+	const pendingAnchor = !!step.waitsForAnchor && !rect;
 	const primaryLabel = step.action === "click-anchor" ? t("tour.doIt") : t(isLast ? "tour.finish" : "tour.next");
 
 	// No anchor yet (a screen still mounting): the card parks bottom-centre rather
@@ -215,7 +235,12 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 	const hole = rect
 		? { top: rect.top - HOLE_PAD, left: rect.left - HOLE_PAD, right: rect.right + HOLE_PAD, bottom: rect.bottom + HOLE_PAD }
 		: null;
-	const bands: { key: string; style: React.CSSProperties }[] = hole
+	// Waiting on the agent is the one state with nothing to enforce, so it must not
+	// cage: live QA caught the agent asking for permission while the shield covered
+	// the whole screen, and the answer it was waiting for could not be typed.
+	const bands: { key: string; style: React.CSSProperties }[] = pendingAnchor
+		? []
+		: hole
 		? [
 				{ key: "top", style: { top: 0, left: 0, right: 0, height: Math.max(0, hole.top) } },
 				{ key: "bottom", style: { top: Math.max(0, hole.bottom), left: 0, right: 0, bottom: 0 } },
@@ -269,6 +294,9 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 				{waiting && !lost && (
 					<p className="text-fg-3 text-xs mt-2" data-testid="tour-waiting">{t("tour.waiting")}</p>
 				)}
+				{pendingAnchor && !lost && (
+					<p className="text-fg-3 text-xs mt-2" data-testid="tour-pending">{t("tour.pending")}</p>
+				)}
 				<div className="flex items-center justify-between gap-2 mt-3.5">
 					<button
 						type="button"
@@ -293,7 +321,8 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 						    when not one step's anchor is on screen, so there is nowhere to
 						    restart to. Re-entry lives in help mode instead. */}
 						{!lost &&
-							!waiting && (
+							!waiting &&
+							!pendingAnchor && (
 								<button
 									type="button"
 									onClick={advance}

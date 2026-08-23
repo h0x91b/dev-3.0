@@ -289,7 +289,11 @@ wizard. Evidence:
   own choice has no button.
 - **Progress is observed, not reported.** A step ends when the DOM shows the next
   `data-tour-anchor`; participating costs one attribute, never a callback.
-- **A lost anchor offers restart-or-leave**, never a silent end. Out is Skip or Esc, never a slip.
+- **A lost anchor offers leaving**, never a silent end. Out is Skip or Esc, never a slip.
+- **The tour follows the app, never rewinds it.** No Back onto a step that pressed a control; a
+  step whose screen is gone resyncs to the furthest visible one; a step may declare that it waits
+  for an anchor the agent has yet to produce (`waitsForAnchor`), and the LAST step's anchor going
+  away is the ending, not a loss.
 - **One owned dead end starts it** (an empty sandbox board), every visit until walked to the end
   (`completedTours`); help mode's banner restarts it after.
 - **Where the user will not type, dev3 types** (prefill from one shared constant), and a tour is

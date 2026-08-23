@@ -286,6 +286,7 @@ function TaskWorkspacePane({
 							ref={artifactPanelRef}
 							className="min-h-0 min-w-0 flex-shrink-0 overflow-hidden"
 							style={{ width: isNarrow ? "100%" : artifactWidth }}
+							data-tour-anchor="task.artifact"
 						>
 							<TaskArtifactViewer
 								taskId={taskId}

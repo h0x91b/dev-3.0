@@ -26,9 +26,18 @@ const log = createLogger("sandbox");
 export const SANDBOX_REPO_PATH = join(SANDBOX_DIR, "dev3-sandbox");
 export const SANDBOX_PROJECT_NAME = "Sandbox";
 
+/** What the project's dev-server button runs. One command, no install step, and
+ *  node rather than python or bun because every machine that has an agent CLI
+ *  installed from npm already has it. */
+export const SANDBOX_DEV_SCRIPT = "node server.js";
+
 /**
  * Deliberately tiny and deliberately not a build: an agent must be able to finish
  * a task here on a laptop with no toolchain, no network and no npm registry.
+ *
+ * It is a *page* rather than a script because the first task has to be visible.
+ * A rounding bug in a library reads only as a diff; a button changing colour on a
+ * page the dev server is already serving is something a newcomer can see.
  */
 const SEED_FILES: Record<string, string> = {
 	"README.md": [
@@ -49,33 +58,65 @@ const SEED_FILES: Record<string, string> = {
 		"",
 		"## What is in here",
 		"",
-		"- `prices.js` — a few lines of money arithmetic, with one real bug left in on",
-		"  purpose so the first task has something to find.",
+		"- `index.html` — one page with one green button, which is the whole point: the",
+		"  first task changes something you can see.",
+		`- \`server.js\` — serves this folder, no dependencies. The task screen's dev-server`,
+		`  button runs \`${SANDBOX_DEV_SCRIPT}\` for you on a port dev3 hands it.`,
 		"",
 	].join("\n"),
-	"prices.js": [
-		"// Adds up a cart and applies a discount.",
-		"//",
-		"// There is a genuine rounding bug in here, left in on purpose: it is the",
-		"// first thing to hand an agent. Everything else is honest.",
+	"index.html": [
+		"<!doctype html>",
+		'<html lang="en">',
+		"<head>",
+		'<meta charset="utf-8" />',
+		'<meta name="viewport" content="width=device-width, initial-scale=1" />',
+		"<title>dev3 sandbox</title>",
+		"<style>",
+		"\tbody { margin: 0; min-height: 100vh; display: grid; place-items: center;",
+		"\t\tfont: 16px/1.5 system-ui, sans-serif; background: #0f1115; color: #e6e8ee; }",
+		"\t.card { padding: 2.5rem 3rem; border-radius: 1rem; background: #171a21; text-align: center; }",
+		"\th1 { margin: 0 0 0.5rem; font-size: 1.35rem; }",
+		"\tp { margin: 0 0 1.5rem; color: #9aa1b1; }",
+		"\t/* The colour the first task changes. One line, on purpose. */",
+		"\t.ship { background: #22c55e; color: #05210f; border: 0; border-radius: 0.6rem;",
+		"\t\tpadding: 0.7rem 1.6rem; font-size: 1rem; font-weight: 600; cursor: pointer; }",
+		"\t.ship:hover { filter: brightness(1.08); }",
+		"</style>",
+		"</head>",
+		"<body>",
+		'\t<main class="card">',
+		"\t\t<h1>dev3 sandbox</h1>",
+		"\t\t<p>A page that exists so you can watch an agent change it.</p>",
+		'\t\t<button class="ship" onclick="alert(\'Shipped!\')">Ship it</button>',
+		"\t</main>",
+		"</body>",
+		"</html>",
 		"",
-		"function total(items, discountPercent = 0) {",
-		"\tlet sum = 0;",
-		"\tfor (const item of items) {",
-		"\t\tsum += item.price * item.quantity;",
-		"\t}",
-		"\tconst discounted = sum - (sum * discountPercent) / 100;",
-		"\treturn Math.round(discounted);",
-		"}",
+	].join("\n"),
+	"server.js": [
+		"// Serves this folder over HTTP. No dependencies and no build, so it starts on a",
+		"// laptop with no npm registry. dev3 passes the port in as DEV3_PORT0.",
+		'const http = require("node:http");',
+		'const { readFile } = require("node:fs/promises");',
+		'const { extname, join, normalize } = require("node:path");',
 		"",
-		"const cart = [",
-		"\t{ name: 'coffee', price: 7.4, quantity: 3 },",
-		"\t{ name: 'mug', price: 12.5, quantity: 1 },",
-		"];",
+		"const port = Number(process.env.DEV3_PORT0 || 4173);",
+		'const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };',
 		"",
-		"console.log(total(cart, 10));",
-		"",
-		"module.exports = { total };",
+		"http",
+		"\t.createServer(async (req, res) => {",
+		'\t\tconst asked = normalize(decodeURIComponent((req.url || "/").split("?")[0]));',
+		'\t\tconst file = asked === "/" ? "index.html" : asked.replace(/^[/\\\\]+/, "");',
+		"\t\ttry {",
+		"\t\t\tconst body = await readFile(join(__dirname, file));",
+		'\t\t\tres.writeHead(200, { "content-type": types[extname(file)] || "application/octet-stream" });',
+		"\t\t\tres.end(body);",
+		"\t\t} catch {",
+		'\t\t\tres.writeHead(404, { "content-type": "text/plain" });',
+		'\t\t\tres.end("Not found");',
+		"\t\t}",
+		"\t})",
+		'\t.listen(port, "127.0.0.1", () => console.log(`sandbox on http://127.0.0.1:${port}`));',
 		"",
 	].join("\n"),
 };
@@ -140,6 +181,11 @@ export async function createSandboxProject(): Promise<{ ok: true; project: Proje
 		const fixes: Partial<Project> = {};
 		if (project.defaultBaseBranch !== "main") fixes.defaultBaseBranch = "main";
 		if (!project.sandbox) fixes.sandbox = true;
+		// The dev server is half of what the sandbox is for: the first task changes
+		// something on a page, so there has to be a page to look at. One port, handed
+		// to `server.js` as DEV3_PORT0.
+		if (project.devScript !== SANDBOX_DEV_SCRIPT) fixes.devScript = SANDBOX_DEV_SCRIPT;
+		if (!project.portCount) fixes.portCount = 1;
 		if (Object.keys(fixes).length > 0) {
 			await data.updateProject(project.id, fixes);
 			Object.assign(project, fixes);

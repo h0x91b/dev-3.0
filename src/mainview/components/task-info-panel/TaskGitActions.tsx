@@ -621,6 +621,7 @@ export default function TaskGitActions({
 						mergeDisabled ? disabledBtnClass : enabledBtnClass
 					}`}
 					aria-label={mergeLabel}
+					data-tour-anchor="task.merge"
 				>
 					{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : mergeLabel, merging)}
 				</button>

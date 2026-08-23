@@ -218,6 +218,7 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 				aria-modal="true"
 				aria-labelledby="confirm-dialog-title"
 				tabIndex={-1}
+				data-tour-anchor="confirm.dialog"
 				className={`bg-overlay border rounded-2xl shadow-2xl max-w-[calc(100vw-2rem)] max-h-[calc(100vh-2rem)] overflow-y-auto p-6 space-y-4 outline-none ${
 					pending.outcomeCards ? "w-[34rem]" : pending.alternativeAction ? "w-[30rem]" : "w-[26.25rem]"
 				} ${
