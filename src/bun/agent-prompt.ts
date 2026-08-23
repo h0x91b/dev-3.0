@@ -1,7 +1,8 @@
 import type { PaneSessionEntry, Task } from "../shared/types";
 import type { PaneInputOutcome, PaneInputStage } from "../shared/pane-input";
+import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-prompt-delivery";
 import { sendPaneInput } from "./pane-input";
-import { agentPromptSubmitKey, coalesceAgentPromptSubmit } from "./agent-prompt-submit-coalescer";
+import { agentMessageHoldKey, holdAgentMessage } from "./agent-message-hold";
 import { DEFAULT_TMUX_SOCKET, tmux, taskSessionName, PANE_ID_FORMAT, TMUX_AGENT_PANE_OPTION, TMUX_LAST_AGENT_PANE_OPTION } from "./tmux";
 import { createLogger } from "./logger";
 
@@ -170,46 +171,59 @@ export function scheduleAgentPromptSubmit(send: () => void | Promise<void>, cont
  * "text Enter" as a single paste — newline included — and never submits. The
  * text is a text step, so the tmux adapter sends it with `-l` and a prompt whose
  * content reads like a key name (`C-c`, `Escape`) is typed rather than pressed.
- *
- * A coalesced delivery stops after the text: its Enter is a delivery of its own,
- * held by {@link coalesceAgentPromptSubmit}, because the seam caps a program's
- * in-band delays at two seconds ({@link PANE_INPUT_LIMITS}) and the quiet window
- * is many times that.
  */
-function agentPromptStages(prompt: string, coalesceSubmit: boolean): PaneInputStage[] {
-	const type: PaneInputStage = { steps: [{ kind: "text", text: prompt }] };
-	if (coalesceSubmit) return [type];
-	return [type, { delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] }];
+function agentPromptStages(prompt: string): PaneInputStage[] {
+	return [
+		{ steps: [{ kind: "text", text: prompt }] },
+		{ delayBeforeMs: AGENT_PROMPT_ENTER_DELAY_MS, steps: [{ kind: "key", key: "enter" }] },
+	];
 }
 
-/** The submit-only program a held Enter is delivered as. */
+/** The text-only program a held message's own paste is delivered as. */
+function agentMessageTextStages(prompt: string): PaneInputStage[] {
+	return [{ steps: [{ kind: "text", text: prompt }] }];
+}
+
+/**
+ * The submit-only program the Enter that ends a burst is delivered as. Separate from
+ * the text because the seam caps a program's in-band delays at two seconds
+ * ({@link PANE_INPUT_LIMITS}) and the quiet window is many times that.
+ */
 function agentPromptSubmitStages(): PaneInputStage[] {
 	return [{ steps: [{ kind: "key", key: "enter" }] }];
 }
 
 /**
- * Type the text now and hold its Enter until the traffic into `paneId` goes quiet.
+ * Hold a whole `dev3 message` for `paneId`: nothing is typed now, so nothing can land
+ * in the middle of the line the user is writing.
  *
- * The submit is a separate delivery against a FRESH pin, so a pane that dies inside
- * the window fails the Enter and says so, instead of typing into its successor. Held
- * only when the text provably landed: a text stage that stopped mid-way leaves an
- * unknown input box, and an Enter into that would submit whatever is in it.
+ * Text and Enter are separate deliveries against FRESH pins, taken when the hold
+ * releases, so a pane that dies inside the window fails them and says so instead of
+ * typing into its successor. The Enter follows only when a text provably landed — an
+ * Enter into an unknown input box would submit whatever is sitting in it.
  */
-async function sendCoalescedAgentPrompt(task: Task, paneId: string, prompt: string): Promise<PaneInputOutcome> {
-	const outcome = await sendPaneInput(task, paneId, agentPromptStages(prompt, true), { idPrefix: "agent-prompt" });
-	if (outcome.status !== "delivered") return outcome;
+function holdAgentMessageForPane(task: Task, paneId: string, prompt: string): AgentPromptDelivery {
 	const context = { taskId: task.id.slice(0, 8), paneId };
-	coalesceAgentPromptSubmit(
-		agentPromptSubmitKey("tmux", task.id, paneId),
-		async () => {
-			const submit = await sendPaneInput(task, paneId, agentPromptSubmitStages(), { idPrefix: "agent-submit" });
-			if (submit.status !== "delivered") {
-				log.warn("held agent prompt submit did not land", { ...context, status: submit.status });
-			}
+	const delayMs = holdAgentMessage(
+		agentMessageHoldKey("tmux", task.id, paneId),
+		{
+			deliver: async () => {
+				const text = await sendPaneInput(task, paneId, agentMessageTextStages(prompt), { idPrefix: "agent-prompt" });
+				if (text.status !== "delivered") {
+					log.warn("held agent message text did not land", { ...context, status: text.status });
+				}
+				return text.status === "delivered";
+			},
+			submit: async () => {
+				const submit = await sendPaneInput(task, paneId, agentPromptSubmitStages(), { idPrefix: "agent-submit" });
+				if (submit.status !== "delivered") {
+					log.warn("held agent message submit did not land", { ...context, status: submit.status });
+				}
+			},
 		},
 		context,
 	);
-	return outcome;
+	return agentPromptHeld(delayMs);
 }
 
 /** The verdict for a prompt that never found a pane to aim at. */
@@ -248,13 +262,47 @@ export async function sendPromptToAgentPane(
 	task: Task,
 	prompt: string,
 	agentPanes: PaneSessionEntry[] | undefined,
-	opts: { coalesceSubmit?: boolean } = {},
 ): Promise<PaneInputOutcome> {
 	const { tmuxSession, socket } = tmuxRouting(task);
 	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
 	if (!targetPane) return noTargetPane(`no agent pane could be resolved in ${tmuxSession}`);
-	if (opts.coalesceSubmit) return sendCoalescedAgentPrompt(task, targetPane, prompt);
-	return sendPaneInput(task, targetPane, agentPromptStages(prompt, false), { idPrefix: "agent-prompt" });
+	return sendPaneInput(task, targetPane, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
+}
+
+/**
+ * Hold a `dev3 message` for the task's agent pane. Resolution happens NOW, so a task
+ * with no agent pane is refused while its sender is still listening; the typing itself
+ * happens when the pane goes quiet.
+ */
+export async function holdMessageForAgentPane(
+	task: Task,
+	prompt: string,
+	agentPanes: PaneSessionEntry[] | undefined,
+): Promise<AgentPromptDelivery> {
+	const { tmuxSession, socket } = tmuxRouting(task);
+	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
+	if (!targetPane) {
+		return {
+			status: "not-delivered",
+			reason: "pane-absent",
+			detail: `no agent pane could be resolved in ${tmuxSession}`,
+		};
+	}
+	return holdAgentMessageForPane(task, targetPane, prompt);
+}
+
+/**
+ * Hold a `dev3 message` for one concrete pane id (the `{ kind: "pane" }` scheduled
+ * target). Liveness is checked now rather than only at the pin: a message held for a
+ * pane that is already gone would fail silently long after its sender walked away.
+ */
+export async function holdMessageForPane(task: Task, paneId: string, prompt: string): Promise<AgentPromptDelivery> {
+	const { tmuxSession, socket } = tmuxRouting(task);
+	const live = await listLivePaneIds(tmuxSession, socket);
+	if (!live.includes(paneId)) {
+		return { status: "not-delivered", reason: "pane-absent", detail: `pane ${paneId} is not live in ${tmuxSession}` };
+	}
+	return holdAgentMessageForPane(task, paneId, prompt);
 }
 
 /**
@@ -263,12 +311,6 @@ export async function sendPromptToAgentPane(
  * the server generation is part of the pinned incarnation — so it never silently
  * misfires into whatever pane inherited the id.
  */
-export async function sendPromptToPane(
-	task: Task,
-	paneId: string,
-	prompt: string,
-	opts: { coalesceSubmit?: boolean } = {},
-): Promise<PaneInputOutcome> {
-	if (opts.coalesceSubmit) return sendCoalescedAgentPrompt(task, paneId, prompt);
-	return sendPaneInput(task, paneId, agentPromptStages(prompt, false), { idPrefix: "agent-prompt" });
+export async function sendPromptToPane(task: Task, paneId: string, prompt: string): Promise<PaneInputOutcome> {
+	return sendPaneInput(task, paneId, agentPromptStages(prompt), { idPrefix: "agent-prompt" });
 }

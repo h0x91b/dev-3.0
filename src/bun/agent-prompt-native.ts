@@ -28,12 +28,14 @@
  * A write here can never be PROVEN: `NativeTaskTerminal.write` is void and the host
  * cannot acknowledge input yet (decision 201). So the best answer this module has is
  * `unconfirmed` — it reports that instead of the optimistic "delivered" it used to.
+ * A `dev3 message` answers `held` instead, because nothing has been written at all.
  */
 
 import type { Task } from "../shared/types";
-import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
+import { type AgentPromptDelivery, agentPromptHeld } from "../shared/agent-prompt-delivery";
+import { AGENT_MESSAGE_HOLD_IDLE_MS } from "../shared/agent-message-hold-timing";
 import { scheduleAgentPromptSubmit } from "./agent-prompt";
-import { agentPromptSubmitKey, coalesceAgentPromptSubmit } from "./agent-prompt-submit-coalescer";
+import { agentMessageHoldKey, holdAgentMessage } from "./agent-message-hold";
 import { createLogger } from "./logger";
 import { forwardToOwner, resolvePaneOwner } from "./native-pane-owner";
 import type { NativeTaskTerminal } from "./native-task-terminal";
@@ -63,11 +65,13 @@ export interface NativePromptDeliveryParams {
 	/** Final text, envelope-wrapping already applied by the sender. */
 	text: string;
 	/**
-	 * Whether the submit is held until the traffic into this pane goes quiet. Travels
-	 * on the wire because the holding has to happen in the process that owns the
-	 * pane's writer lease — the only one that can type the Enter.
+	 * Whether the WHOLE message waits for the traffic into this pane to go quiet.
+	 * Travels on the wire because the holding has to happen in the process that owns
+	 * the pane's writer lease — the only one that can type at all. An older dev3
+	 * process forwarding to us sends no such field, so its message is typed and
+	 * submitted at once, exactly as that version intended.
 	 */
-	coalesceSubmit?: boolean;
+	hold?: boolean;
 }
 
 /**
@@ -84,29 +88,40 @@ export async function resolveNativeAgentPane(taskId: string): Promise<string | n
 }
 
 /**
- * Type the prompt, then submit it. One paste, one CR.
+ * Perform one delivery through a terminal this process may write to.
  *
- * `coalesceSubmit` swaps the fixed 800 ms gap for the held submit `dev3 message`
- * uses, so a burst of messages into this pane ends in a single CR. The CR is
- * written through the same bound terminal either way — a native write is never
- * provable, so there is nothing extra to report.
+ * A hand-off types the prompt and submits it 800 ms later — one paste, one CR. A
+ * `dev3 message` writes nothing at all yet: text and CR both wait for the pane to go
+ * quiet, so neither can land in the middle of the user's own line. Every write goes
+ * through the same bound terminal, and a native write is never provable — so the
+ * answers are only "written, unacknowledged" and "held".
  */
-function typeThenSubmit(
+function performNativeDelivery(
 	terminal: NativeTaskTerminal,
 	taskId: string,
 	paneId: string,
 	prompt: string,
-	coalesceSubmit: boolean,
-): void {
-	terminal.write(prompt);
-	if (coalesceSubmit) {
-		coalesceAgentPromptSubmit(agentPromptSubmitKey("native", taskId, paneId), () => terminal.write(SUBMIT_KEY), {
-			taskId: taskId.slice(0, 8),
-			paneId,
-		});
-		return;
+	hold: boolean,
+): AgentPromptDelivery {
+	if (!hold) {
+		terminal.write(prompt);
+		scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId });
+		return wroteUnconfirmed();
 	}
-	scheduleAgentPromptSubmit(() => terminal.write(SUBMIT_KEY), { paneId });
+	const delayMs = holdAgentMessage(
+		agentMessageHoldKey("native", taskId, paneId),
+		{
+			deliver: () => {
+				terminal.write(prompt);
+				// A native write cannot be acknowledged, so "it landed" is the best answer
+				// there is — the same assumption the held CR has always been sent on.
+				return true;
+			},
+			submit: () => terminal.write(SUBMIT_KEY),
+		},
+		{ taskId: taskId.slice(0, 8), paneId },
+	);
+	return agentPromptHeld(delayMs);
 }
 
 /**
@@ -162,7 +177,7 @@ export async function deliverNativePromptAsOwner(params: NativePromptDeliveryPar
 			return false;
 		}
 	}
-	typeThenSubmit(terminal, params.taskId, params.paneId, params.text, params.coalesceSubmit === true);
+	performNativeDelivery(terminal, params.taskId, params.paneId, params.text, params.hold === true);
 	return true;
 }
 
@@ -191,9 +206,9 @@ export async function sendPromptToNativePane(
 	task: Task,
 	paneId: string,
 	prompt: string,
-	opts: { coalesceSubmit?: boolean } = {},
+	opts: { hold?: boolean } = {},
 ): Promise<AgentPromptDelivery> {
-	const coalesceSubmit = opts.coalesceSubmit === true;
+	const hold = opts.hold === true;
 	const terminal = await bindPane(task, paneId);
 	if (!terminal) return notDelivered("pane-absent", `no live native pane ${paneId} to bind`);
 
@@ -202,14 +217,12 @@ export async function sendPromptToNativePane(
 
 	switch (owner.kind) {
 		case "local":
-			typeThenSubmit(terminal, task.id, paneId, prompt, coalesceSubmit);
-			return wroteUnconfirmed();
+			return performNativeDelivery(terminal, task.id, paneId, prompt, hold);
 
 		case "vacant": {
 			// Nobody is typing — take the lease and deliver here.
 			if ((await terminal.claimHostWriter()) === "writer") {
-				typeThenSubmit(terminal, task.id, paneId, prompt, coalesceSubmit);
-				return wroteUnconfirmed();
+				return performNativeDelivery(terminal, task.id, paneId, prompt, hold);
 			}
 			log.info("Writer lease was taken while claiming it; not delivering", context);
 			return notDelivered("read-only", "another process took the pane's writer lease while claiming it");
@@ -218,7 +231,7 @@ export async function sendPromptToNativePane(
 		case "peer": {
 			// Forward the WHOLE delivery, never the bytes, and never write locally
 			// as well — that is what keeps it exactly once.
-			const params: NativePromptDeliveryParams = { taskId: task.id, paneId, text: prompt, coalesceSubmit };
+			const params: NativePromptDeliveryParams = { taskId: task.id, paneId, text: prompt, hold };
 			try {
 				const delivered = await forwardToOwner<{ delivered: boolean }>(
 					owner,
@@ -226,11 +239,14 @@ export async function sendPromptToNativePane(
 					params as unknown as Record<string, unknown>,
 				);
 				log.info("Prompt delivery routed to the owning app process", { ...context, ownerPid: owner.pid });
-				// The wire stays a boolean: it answers "did the owner write", which is as much
-				// as the owner itself can know. True is therefore unconfirmed, not delivered.
-				return delivered?.delivered === true
-					? wroteUnconfirmed()
-					: notDelivered("read-only", `the owning app process (pid ${owner.pid}) did not hold the lease`);
+				// The wire stays a boolean: it answers "did the owner take the delivery",
+				// which is as much as the owner itself can know — never "delivered". A held
+				// message is running its clock over there, so the wait we promise is the
+				// full window rather than the owner's own remaining headroom.
+				if (delivered?.delivered !== true) {
+					return notDelivered("read-only", `the owning app process (pid ${owner.pid}) did not hold the lease`);
+				}
+				return hold ? agentPromptHeld(AGENT_MESSAGE_HOLD_IDLE_MS) : wroteUnconfirmed();
 			} catch (err) {
 				log.warn("Forwarding the prompt to the owning app process failed", {
 					...context,
@@ -261,7 +277,7 @@ export async function sendPromptToNativePane(
 export async function sendPromptToNativeAgentPane(
 	task: Task,
 	prompt: string,
-	opts: { coalesceSubmit?: boolean } = {},
+	opts: { hold?: boolean } = {},
 ): Promise<AgentPromptDelivery> {
 	const paneId = await resolveNativeAgentPane(task.id);
 	if (!paneId) {

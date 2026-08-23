@@ -1489,7 +1489,7 @@ const handlers: Record<string, Handler> = {
 			taskId: (params.taskId as string) ?? "",
 			paneId: (params.paneId as string) ?? "",
 			text: ((params.text as string) ?? "").toString(),
-			coalesceSubmit: params.coalesceSubmit === true,
+			hold: params.hold === true,
 		});
 		return { delivered };
 	},

@@ -12,6 +12,9 @@ vi.mock("../data", () => ({
 vi.mock("../agent-prompt", () => ({
 	sendPromptToAgentPane: vi.fn(async () => true),
 	sendPromptToPane: vi.fn(async () => true),
+	// A message is HELD, never typed on arrival — these are the two the scheduler uses.
+	holdMessageForAgentPane: vi.fn(async () => ({ status: "held" })),
+	holdMessageForPane: vi.fn(async () => ({ status: "held" })),
 }));
 vi.mock("../agent-prompt-native", () => ({
 	sendPromptToNativeAgentPane: vi.fn(async () => true),
@@ -30,7 +33,7 @@ vi.mock("../logger", () => ({
 }));
 
 import * as data from "../data";
-import { sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
+import { holdMessageForAgentPane, holdMessageForPane, sendPromptToAgentPane, sendPromptToPane } from "../agent-prompt";
 import { sendPromptToNativeAgentPane, sendPromptToNativePane } from "../agent-prompt-native";
 import {
 	startScheduledMessageScheduler,
@@ -87,15 +90,14 @@ function mockUpdateTaskWith(task: Record<string, unknown>) {
 /** A tmux send the server accepted, as the pane-input seam reports it. */
 const TMUX_DELIVERED = { deliveryId: "d1", backend: "tmux", paneId: "%1", status: "delivered", acceptedThrough: 2 } as const;
 
-/** A tmux pane that is provably gone: nothing was sent. */
-const TMUX_PANE_GONE = {
-	deliveryId: "d1",
-	backend: "tmux",
-	paneId: "%1",
-	status: "not-started",
-	reason: "pane-absent",
-	retryableAsNewDelivery: false,
-} as const;
+/** A message dev3 accepted with nothing typed yet — what every message path now answers. */
+const HELD = { status: "held", detail: "held until the pane goes quiet" } as const;
+
+/** A pane that is provably gone: nothing was sent and nothing is held. */
+const PANE_GONE = { status: "not-delivered", reason: "pane-absent" } as const;
+
+/** A hold whose delivery could not be confirmed — the native arm's own answer. */
+const HOLD_UNCONFIRMED = { status: "unconfirmed", reason: "owner-unreachable" } as const;
 
 /** The best a native write can report — it is never "delivered". */
 const NATIVE_UNCONFIRMED = { status: "unconfirmed", reason: "unacknowledged" } as const;
@@ -108,6 +110,8 @@ beforeEach(() => {
 	vi.mocked(sendPromptToPane).mockResolvedValue(TMUX_DELIVERED);
 	vi.mocked(sendPromptToNativeAgentPane).mockResolvedValue(NATIVE_UNCONFIRMED);
 	vi.mocked(sendPromptToNativePane).mockResolvedValue(NATIVE_UNCONFIRMED);
+	vi.mocked(holdMessageForAgentPane).mockResolvedValue(HELD);
+	vi.mocked(holdMessageForPane).mockResolvedValue(HELD);
 });
 
 afterEach(() => {
@@ -123,8 +127,9 @@ describe("scheduled-message scheduler — tick", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
 		startScheduledMessageScheduler();
 		await flush();
-		expect(sendPromptToAgentPane).toHaveBeenCalledTimes(1);
-		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "check CI and continue", task.sessionState.panes, { coalesceSubmit: true });
+		expect(holdMessageForAgentPane).toHaveBeenCalledTimes(1);
+		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "check CI and continue", task.sessionState.panes);
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		// removed via updateTaskWith
 		expect(data.updateTaskWith).toHaveBeenCalledWith(project, task.id, expect.any(Function));
 	});
@@ -153,7 +158,7 @@ describe("scheduled-message scheduler — tick", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
 		startScheduledMessageScheduler();
 		await flush();
-		expect(sendPromptToPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue", { coalesceSubmit: true });
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue");
 	});
 
 	it("start is idempotent (double start = one tick)", async () => {
@@ -163,7 +168,7 @@ describe("scheduled-message scheduler — tick", () => {
 		startScheduledMessageScheduler();
 		startScheduledMessageScheduler();
 		await flush();
-		expect(sendPromptToAgentPane).toHaveBeenCalledTimes(1);
+		expect(holdMessageForAgentPane).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -172,7 +177,7 @@ describe("fireScheduledMessage — notification semantics", () => {
 		const task = makeTask();
 		mockUpdateTaskWith(task);
 		await fireScheduledMessage(project, task as never, makeMessage() as never, { late: false });
-		expect(sendPromptToAgentPane).toHaveBeenCalled();
+		expect(holdMessageForAgentPane).toHaveBeenCalled();
 		expect(pushFn).not.toHaveBeenCalledWith("cliToast", expect.anything());
 	});
 
@@ -180,14 +185,7 @@ describe("fireScheduledMessage — notification semantics", () => {
 		// The message leaves the queue whatever happened, so silence would read as
 		// "delivered" and the text would be unrecoverable. This is the native backend's
 		// everyday answer, not an edge case.
-		vi.mocked(sendPromptToAgentPane).mockResolvedValue({
-			deliveryId: "d1",
-			backend: "tmux",
-			paneId: "%1",
-			status: "indeterminate",
-			possiblyAcceptedThrough: 2,
-			reason: "backend-failure",
-		});
+		vi.mocked(holdMessageForAgentPane).mockResolvedValue(HOLD_UNCONFIRMED);
 		const task = makeTask();
 		mockUpdateTaskWith(task);
 
@@ -203,14 +201,7 @@ describe("fireScheduledMessage — notification semantics", () => {
 	it("does not throw an unconfirmed immediate send back at the caller", async () => {
 		// A throw reads as "nothing happened" and invites a re-send, which is a second
 		// submit into a live agent.
-		vi.mocked(sendPromptToAgentPane).mockResolvedValue({
-			deliveryId: "d1",
-			backend: "tmux",
-			paneId: "%1",
-			status: "indeterminate",
-			possiblyAcceptedThrough: 2,
-			reason: "backend-failure",
-		});
+		vi.mocked(holdMessageForAgentPane).mockResolvedValue(HOLD_UNCONFIRMED);
 
 		await expect(sendMessageImmediately(makeTask() as never, "hello")).resolves.toMatchObject({
 			status: "unconfirmed",
@@ -225,7 +216,7 @@ describe("fireScheduledMessage — notification semantics", () => {
 	});
 
 	it("notifies (toast + attention) and drops when the target is unresolvable", async () => {
-		vi.mocked(sendPromptToAgentPane).mockResolvedValue(TMUX_PANE_GONE);
+		vi.mocked(holdMessageForAgentPane).mockResolvedValue(PANE_GONE);
 		const task = makeTask();
 		mockUpdateTaskWith(task);
 		await fireScheduledMessage(project, task as never, makeMessage() as never, { late: false });
@@ -238,7 +229,7 @@ describe("fireScheduledMessage — notification semantics", () => {
 		const task = makeTask({ status: "completed" });
 		mockUpdateTaskWith(task);
 		await fireScheduledMessage(project, task as never, makeMessage() as never, { late: false });
-		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+		expect(holdMessageForAgentPane).not.toHaveBeenCalled();
 		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ level: "error" }));
 	});
 });
@@ -295,7 +286,7 @@ describe("cancel / send-now / immediate", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task as never);
 		mockUpdateTaskWith(task);
 		await sendScheduledMessageNow(project, task.id, "msg-1");
-		expect(sendPromptToAgentPane).toHaveBeenCalled();
+		expect(holdMessageForAgentPane).toHaveBeenCalled();
 	});
 
 	it("sendScheduledMessageNow throws for an unknown message id", async () => {
@@ -307,13 +298,13 @@ describe("cancel / send-now / immediate", () => {
 	it("sendMessageImmediately delivers to the agent", async () => {
 		const task = makeTask();
 		await sendMessageImmediately(task as never, "hello now");
-		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "hello now", task.sessionState.panes, { coalesceSubmit: true });
+		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "hello now", task.sessionState.panes);
 	});
 
 	it("sendMessageImmediately wraps a cross-task message in the envelope", async () => {
 		const task = makeTask();
 		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
-		const text = vi.mocked(sendPromptToAgentPane).mock.calls[0]![1];
+		const text = vi.mocked(holdMessageForAgentPane).mock.calls[0]![1];
 		expect(text).toContain("<dev3-ai-message>");
 		expect(text).toContain("<from-task>seq:7</from-task>");
 		expect(text).toContain("hello now");
@@ -324,7 +315,7 @@ describe("cancel / send-now / immediate", () => {
 		const task = makeTask({ scheduledMessages: [message] });
 		mockUpdateTaskWith(task);
 		await fireScheduledMessage(project, task as never, message as never, { late: false });
-		const text = vi.mocked(sendPromptToAgentPane).mock.calls[0]![1];
+		const text = vi.mocked(holdMessageForAgentPane).mock.calls[0]![1];
 		expect(text).toContain("<from-task>seq:7</from-task>");
 		expect(message.text).toBe("check CI and continue");
 	});
@@ -355,7 +346,7 @@ describe("cancel / send-now / immediate", () => {
 	});
 
 	it("does not announce an agent-to-agent send that landed nowhere", async () => {
-		vi.mocked(sendPromptToAgentPane).mockResolvedValue(TMUX_PANE_GONE);
+		vi.mocked(holdMessageForAgentPane).mockResolvedValue(PANE_GONE);
 		await expect(
 			sendMessageImmediately(makeTask() as never, "hi", null, { taskId: "other", seq: 7 }),
 		).rejects.toThrow(/no live agent/i);
@@ -374,7 +365,7 @@ describe("cancel / send-now / immediate", () => {
 	});
 
 	it("sendMessageImmediately throws when nothing is live to deliver to", async () => {
-		vi.mocked(sendPromptToAgentPane).mockResolvedValue(TMUX_PANE_GONE);
+		vi.mocked(holdMessageForAgentPane).mockResolvedValue(PANE_GONE);
 		const task = makeTask();
 		await expect(sendMessageImmediately(task as never, "hello")).rejects.toThrow(/no live agent/i);
 	});
@@ -393,7 +384,7 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(
 			expect.objectContaining({ id: task.id }),
 			"hello now",
-			{ coalesceSubmit: true },
+			{ hold: true },
 		);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});

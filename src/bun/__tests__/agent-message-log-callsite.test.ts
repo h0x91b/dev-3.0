@@ -28,6 +28,9 @@ vi.mock("../data", () => ({
 vi.mock("../agent-prompt", () => ({
 	sendPromptToAgentPane: vi.fn(async () => true),
 	sendPromptToPane: vi.fn(async () => true),
+	// A message is held, never typed on arrival — the two the message paths use.
+	holdMessageForAgentPane: vi.fn(async () => ({ status: "held" })),
+	holdMessageForPane: vi.fn(async () => ({ status: "held" })),
 }));
 vi.mock("../agent-prompt-native", () => ({
 	sendPromptToNativeAgentPane: vi.fn(async () => true),
@@ -89,7 +92,9 @@ describe("an immediate send", () => {
 			body: "check CI and continue",
 			bodyKind: "text",
 		});
-		expect(["delivered", "unconfirmed"]).toContain(rows[0]?.status);
+		// A message is held on arrival, so that is the outcome the row records — the
+		// log carries the real verdict, never the intent.
+		expect(["delivered", "held", "unconfirmed"]).toContain(rows[0]?.status);
 	});
 
 	it("records a message with no agent sender as having none", async () => {

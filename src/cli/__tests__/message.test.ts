@@ -67,13 +67,15 @@ describe("message — immediate (bare form)", () => {
 			projectId: CTX.projectId,
 			sourceTaskId: CTX.taskId,
 		});
-		expect(stdoutOutput).toContain("Message sent");
+		expect(stdoutOutput).toContain("Message queued");
 	});
 
-	it("says the submit is held, so the sender does not read it as 'the agent is reading it now'", async () => {
+	it("says the whole message is held, not that the agent is reading it now", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: CTX.taskId, projectId: CTX.projectId }));
 		await handleMessage(args(["continue please"]), SOCKET, CTX);
 		expect(stdoutOutput).toContain("15s of quiet");
+		expect(stdoutOutput).toContain("longer while the user is typing");
+		expect(stdoutOutput).not.toContain("Message sent");
 	});
 
 	it("attaches the worktree task as the sender when messaging another task", async () => {

@@ -32,11 +32,13 @@ vi.mock("../logger", () => ({
 import { tmux } from "../tmux";
 import {
 	AGENT_PROMPT_ENTER_DELAY_MS,
+	holdMessageForAgentPane,
+	holdMessageForPane,
 	sendPromptToAgentPane,
 	sendPromptToPane,
 } from "../agent-prompt";
-import { resetAgentPromptSubmits } from "../agent-prompt-submit-coalescer";
-import { AGENT_MESSAGE_SUBMIT_IDLE_MS } from "../../shared/agent-message-coalescing";
+import { deferHeldAgentMessagesForTask, flushHeldAgentMessagesForTask, resetAgentMessageHolds } from "../agent-message-hold";
+import { AGENT_MESSAGE_HOLD_CEILING_MS, AGENT_MESSAGE_HOLD_IDLE_MS } from "../../shared/agent-message-hold-timing";
 import type { PaneSessionEntry, Task } from "../../shared/types";
 
 const TASK_ID = "1234abcd-0000-4000-8000-000000000001";
@@ -245,53 +247,102 @@ describe("sendPromptToPane — concrete pane target", () => {
 	});
 });
 
-describe("coalesceSubmit — the held Enter behind dev3 message", () => {
-	afterEach(() => resetAgentPromptSubmits());
+describe("the held dev3 message — nothing reaches the pane until it goes quiet", () => {
+	afterEach(() => resetAgentMessageHolds());
 
-	it("types the text now and sends Enter only after the quiet window", async () => {
-		const delivery = await sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")], { coalesceSubmit: true });
+	it("types NOTHING on arrival, then the text and one Enter after the quiet window", async () => {
+		const delivery = await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
 
-		expect(delivery).toMatchObject({ status: "delivered" });
-		// One operation so far: the text. The 800ms inter-stage gap must not submit it.
+		expect(delivery).toMatchObject({ status: "held" });
+		// The user may be mid-word: not one byte may go into the pane yet, and the
+		// 800ms hand-off gap must not smuggle one in either.
 		await vi.advanceTimersByTimeAsync(AGENT_PROMPT_ENTER_DELAY_MS);
-		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
-		expect(sentChunks(0)).toEqual([{ literal: "check CI" }]);
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
 
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		expect(sentChunks(0)).toEqual([{ literal: "check CI" }]);
 		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
 		expect(sentPane(1)).toBe("%1");
 	});
 
-	it("stacks three messages into one Enter", async () => {
+	it("stacks three messages into three pastes and ONE Enter", async () => {
 		for (const text of ["one", "two", "three"]) {
-			await sendPromptToAgentPane(TASK, text, [agentPane("%1")], { coalesceSubmit: true });
+			await holdMessageForAgentPane(TASK, text, [agentPane("%1")]);
 			await vi.advanceTimersByTimeAsync(4_000);
 		}
-		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(3); // three texts, no Enter yet
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
 
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(4);
+		expect(sentChunks(0)).toEqual([{ literal: "one" }]);
+		expect(sentChunks(1)).toEqual([{ literal: "two" }]);
+		expect(sentChunks(2)).toEqual([{ literal: "three" }]);
 		expect(sentChunks(3)).toEqual([{ keys: ["Enter"] }]);
 	});
 
-	it("re-pins the pane for the held Enter, so a dead pane fails it instead of typing into a successor", async () => {
-		await sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")], { coalesceSubmit: true });
-		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "absent" } as never);
+	it("keeps the pane clean while the user types, with no ceiling on his hold", async () => {
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
 
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
-		// The text went in; nothing else did, because the pin refused the submit.
-		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
+		// Continuous typing for twice the ceiling: his half-written line is untouched.
+		let elapsed = 0;
+		while (elapsed < AGENT_MESSAGE_HOLD_CEILING_MS * 2) {
+			await vi.advanceTimersByTimeAsync(1_000);
+			elapsed += 1_000;
+			deferHeldAgentMessagesForTask(TASK_ID);
+		}
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
 	});
 
-	it("holds nothing when the text itself did not land", async () => {
+	it("lands the moment the user submits his own line", async () => {
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
+		flushHeldAgentMessagesForTask(TASK_ID);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(2);
+		expect(sentChunks(0)).toEqual([{ literal: "check CI" }]);
+		expect(sentChunks(1)).toEqual([{ keys: ["Enter"] }]);
+	});
+
+	it("pins the pane when the hold releases, so a dead pane types nothing at all", async () => {
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
+		vi.mocked(tmux.observePane).mockResolvedValue({ kind: "absent" } as never);
+
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
+	});
+
+	it("sends no Enter when the text itself did not land", async () => {
 		// A refused text stage leaves an unknown input box, so an Enter into it would
 		// submit whatever is sitting there.
 		vi.mocked(tmux.sendKeysGuarded).mockResolvedValue({ sent: false } as never);
-		await sendPromptToAgentPane(TASK, "check CI", [agentPane("%1")], { coalesceSubmit: true });
+		await holdMessageForAgentPane(TASK, "check CI", [agentPane("%1")]);
 
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS * 2);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS * 2);
 		expect(tmux.sendKeysGuarded).toHaveBeenCalledTimes(1);
+	});
+
+	it("refuses a message for a task with no agent pane, while its sender is listening", async () => {
+		vi.mocked(tmux.activePaneId).mockResolvedValue(null);
+		vi.mocked(tmux.listPanes).mockResolvedValue([] as never);
+
+		await expect(holdMessageForAgentPane(TASK, "check CI", [])).resolves.toMatchObject({
+			status: "not-delivered",
+			reason: "pane-absent",
+		});
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
+	});
+
+	it("refuses a concrete pane target that is not live", async () => {
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }] as never);
+
+		await expect(holdMessageForPane(TASK, "%9", "check CI")).resolves.toMatchObject({
+			status: "not-delivered",
+			reason: "pane-absent",
+		});
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
+		expect(tmux.sendKeysGuarded).not.toHaveBeenCalled();
 	});
 
 	it("leaves a hand-off's instant submit alone", async () => {

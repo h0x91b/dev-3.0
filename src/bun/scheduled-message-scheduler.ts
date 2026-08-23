@@ -67,10 +67,11 @@ async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<A
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
 	const text = message.source ? wrapAgentMessage(message.text, message.source) : message.text;
-	// Held submit: messages arrive in bursts (one agent writing three in a row, or
-	// several peers reporting at once), and one Enter each used to split the burst
-	// into that many agent turns. See agent-prompt-submit-coalescer.ts.
-	const delivery = await deliverAgentPrompt(task, text, message.target, { coalesceSubmit: true });
+	// Held message: nothing is typed until the pane goes quiet. Bursts (one agent
+	// writing three in a row, or several peers reporting at once) then become one
+	// agent turn, and no text lands in the middle of the user's own line. See
+	// agent-message-hold.ts.
+	const delivery = await deliverAgentPrompt(task, text, message.target, { hold: true });
 	if (message.source) announceAgentMessage(task, message, delivery);
 	return delivery;
 }
@@ -121,7 +122,8 @@ async function recordMessageAttempt(task: Task, message: ScheduledMessage, deliv
  * seam, so the immediate `dev3 message` send and a queued "Send later" fire
  * announce identically. Silent for anything the human sent (no `source`) and for
  * a send that landed nowhere; `unconfirmed` still announces, because the text is
- * gone from the queue and the terminal is where it has to be checked.
+ * gone from the queue and the terminal is where it has to be checked, and so does
+ * `held` — the traffic is real, it is simply waiting for a quiet pane.
  */
 function announceAgentMessage(task: Task, message: ScheduledMessage, delivery: AgentPromptDelivery): void {
 	const source = message.source;
@@ -210,10 +212,13 @@ export async function fireScheduledMessage(
 			reason: `Scheduled message sent without confirmation (removed from the queue): "${preview}"`,
 		});
 	} else if (opts.late) {
+		// A held message has not been typed yet, so "delivered" would be a lie about
+		// where it is — it is in dev3, waiting for the pane to go quiet.
+		const what = delivery.status === "held" ? "fired late, landing once the terminal is quiet" : "delivered late";
 		notifyOutcome(project, task, {
-			toast: `Scheduled message delivered late: "${preview}"`,
+			toast: `Scheduled message ${what}: "${preview}"`,
 			level: "success",
-			reason: `Scheduled message delivered late: "${preview}"`,
+			reason: `Scheduled message ${what}: "${preview}"`,
 		});
 	}
 	return { delivery, task: updated };

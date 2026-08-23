@@ -36,8 +36,8 @@ import { forwardToOwner, resolvePaneOwner } from "../native-pane-owner";
 import type { NativeTaskTerminal } from "../native-task-terminal";
 import { tmux } from "../tmux";
 import { AGENT_PROMPT_ENTER_DELAY_MS } from "../agent-prompt";
-import { resetAgentPromptSubmits } from "../agent-prompt-submit-coalescer";
-import { AGENT_MESSAGE_SUBMIT_IDLE_MS } from "../../shared/agent-message-coalescing";
+import { flushHeldAgentMessagesForTask, resetAgentMessageHolds } from "../agent-message-hold";
+import { AGENT_MESSAGE_HOLD_IDLE_MS } from "../../shared/agent-message-hold-timing";
 import {
 	NATIVE_AGENT_PANE_ID,
 	NATIVE_PROMPT_DELIVERY_METHOD,
@@ -147,21 +147,35 @@ describe("sendPromptToNativeAgentPane — this process owns the lease", () => {
 		expect(forwardToOwner).not.toHaveBeenCalled();
 	});
 
-	it("holds the carriage return for the quiet window when the submit is coalesced", async () => {
+	it("writes NOTHING until the quiet window closes, then both texts and one CR", async () => {
 		const { terminal, writes } = fakeTerminal("writer");
 		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
 
-		await sendPromptToNativeAgentPane(task(), "one", { coalesceSubmit: true });
+		await expect(sendPromptToNativeAgentPane(task(), "one", { hold: true })).resolves.toMatchObject({
+			status: "held",
+		});
 		await vi.advanceTimersByTimeAsync(4_000);
-		await sendPromptToNativeAgentPane(task(), "two", { coalesceSubmit: true });
-		// Both texts are in the input box and the 800ms hand-off gap has long passed,
-		// yet nothing has been submitted.
-		expect(writes).toEqual(["one", "two"]);
+		await sendPromptToNativeAgentPane(task(), "two", { hold: true });
+		// The user may be mid-word: nothing has been typed, not even the first text,
+		// and the 800ms hand-off gap has long passed.
+		expect(writes).toEqual([]);
 
-		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_SUBMIT_IDLE_MS);
+		await vi.advanceTimersByTimeAsync(AGENT_MESSAGE_HOLD_IDLE_MS);
 		expect(writes).toEqual(["one", "two", "\r"]);
 
-		resetAgentPromptSubmits();
+		resetAgentMessageHolds();
+	});
+
+	it("writes the held message the moment the user submits his own line", async () => {
+		const { terminal, writes } = fakeTerminal("writer");
+		vi.mocked(nativePaneTerminal).mockReturnValue(terminal);
+
+		await sendPromptToNativeAgentPane(task(), "one", { hold: true });
+		flushHeldAgentMessagesForTask(TASK_ID);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(writes).toEqual(["one", "\r"]);
+
+		resetAgentMessageHolds();
 	});
 
 	it("never writes and never schedules a submit when no agent pane is live", async () => {
@@ -201,7 +215,7 @@ describe("sendPromptToNativeAgentPane — another app process owns the lease", (
 		expect(forwardToOwner).toHaveBeenCalledWith(
 			{ kind: "peer", pid: 4242, endpoint: "/sock/4242.sock" },
 			NATIVE_PROMPT_DELIVERY_METHOD,
-			{ taskId: TASK_ID, paneId: NATIVE_AGENT_PANE_ID, text: "check CI", coalesceSubmit: false },
+			{ taskId: TASK_ID, paneId: NATIVE_AGENT_PANE_ID, text: "check CI", hold: false },
 		);
 
 		// Exactly once: no local paste, and no local Enter after the delay either.

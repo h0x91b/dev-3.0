@@ -8,7 +8,7 @@ import { resolveScheduleTarget } from "../../shared/schedule";
 import { MAX_SCHEDULED_MESSAGE_LENGTH } from "../../shared/types";
 import type { AgentPromptDeliveryStatus } from "../../shared/agent-prompt-delivery";
 import { CLI_EXIT_CODE_DELIVERY_UNCONFIRMED } from "../../shared/cli-exit-codes";
-import { AGENT_MESSAGE_SUBMIT_IDLE_SECONDS } from "../../shared/agent-message-coalescing";
+import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
 
 const USAGE = 'Usage: dev3 message [--in <dur> | --at <hh:mm>] "text" [--task <id>]';
 
@@ -70,12 +70,13 @@ export async function handleMessage(
 			);
 			process.exit(CLI_EXIT_CODE_DELIVERY_UNCONFIRMED);
 		}
-		// The text is already in the agent's input box; the Enter waits for the pane to
-		// go quiet, so several messages arriving together become one agent turn. Said
-		// out loud, because "sent" would otherwise read as "the agent is reading it now".
+		// Nothing has been typed yet, and saying "sent" would read as "the agent is
+		// reading it now". The whole message waits for the pane to go quiet, so it can
+		// never land in the middle of a line the user is writing.
 		process.stdout.write(
-			`Message sent to task ${shortId}. It submits after ${AGENT_MESSAGE_SUBMIT_IDLE_SECONDS}s ` +
-				`of quiet, so anything else sent meanwhile arrives in the same turn.\n`,
+			`Message queued for task ${shortId}. It lands after ${AGENT_MESSAGE_HOLD_IDLE_SECONDS}s of quiet on that ` +
+				`pane — longer while the user is typing, at once when they press Enter — and anything else sent ` +
+				`meanwhile arrives in the same turn.\n`,
 		);
 		return;
 	}

@@ -22,7 +22,7 @@ import {
 	CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND,
 } from "../../shared/cli-exit-codes";
 import { ARTIFACT_TEMPLATE_FILES } from "../../shared/artifact-template";
-import { AGENT_MESSAGE_SUBMIT_IDLE_SECONDS } from "../../shared/agent-message-coalescing";
+import { AGENT_MESSAGE_HOLD_IDLE_SECONDS } from "../../shared/agent-message-hold-timing";
 import { skillPrLinkInstruction } from "../../shared/agent-skill-content";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
 
@@ -231,7 +231,7 @@ describe("dev3 skill content", () => {
 	// inside the real window. The prose now interpolates the constant; this asserts
 	// the interpolation actually reaches the rendered text.
 	it("quotes the live coalescing window instead of a hand-written number", () => {
-		const seconds = AGENT_MESSAGE_SUBMIT_IDLE_SECONDS;
+		const seconds = AGENT_MESSAGE_HOLD_IDLE_SECONDS;
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent(), getAskDev3SkillContent()]) {
 			expect(skill).toContain(`~${seconds}s of quiet`);
 			expect(skill).toMatch(new RegExp(`about ${seconds} seconds|takes about ${seconds} seconds`));

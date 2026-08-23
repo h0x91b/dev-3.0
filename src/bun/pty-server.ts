@@ -27,7 +27,8 @@ import {
 	stopNativeTaskPanes,
 } from "./native-task-panes";
 import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
-import { deferAgentPromptSubmitsForTask } from "./agent-prompt-submit-coalescer";
+import { deferHeldAgentMessagesForTask, flushHeldAgentMessagesForTask } from "./agent-message-hold";
+import { scanHumanTerminalInput } from "../shared/human-terminal-input";
 import { batchWindowMs, isBackedUp } from "./pty-backpressure";
 import { forgetSession, noteBytesIn, noteFlush, noteQueued, noteWindow } from "./pty-throughput";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
@@ -1166,6 +1167,25 @@ function effectiveNativeRole(session: PtySession, ws: any): NativeStreamRole {
 }
 
 /**
+ * A human just typed into one of this task's terminals, and his keystrokes decide what
+ * happens to every `dev3 message` held for it.
+ *
+ * A plain Enter means he submitted his own line: the input box is his no longer, so the
+ * held messages land right away and he watches them arrive instead of wondering where
+ * they went. Anything else — including Shift+Enter, which is a newline he is still
+ * writing — only pushes the hold back, so nothing is ever typed mid-word.
+ *
+ * The bracketed-paste flag rides on the client, because a paste large enough to be
+ * split across frames would otherwise have its content read as keypresses.
+ */
+export function noteHumanTerminalInput(session: PtySession, ws: any, data: string): void {
+	const scan = scanHumanTerminalInput(data, ws.inBracketedPaste === true);
+	ws.inBracketedPaste = scan.inPaste;
+	if (scan.submitted) flushHeldAgentMessagesForTask(session.taskId);
+	else deferHeldAgentMessagesForTask(session.taskId);
+}
+
+/**
  * The PTY's current size, which an observer renders at instead of its own —
  * the bytes are laid out for the writer's width, so reflowing them locally
  * mangles every line that reaches the right edge.
@@ -2193,8 +2213,8 @@ const ptyServer = Bun.serve({
 						sendToClient(ws, roleMessage("observer", true));
 						return;
 					}
-					deferAgentPromptSubmitsForTask(session.taskId);
 					shell.write(data);
+					noteHumanTerminalInput(session, ws, data);
 					return;
 				}
 
@@ -2213,8 +2233,8 @@ const ptyServer = Bun.serve({
 
 				// Keystrokes from a viewer are the only human input that reaches a pane;
 				// our own `dev3 message` text goes in through tmux/the native writer.
-				deferAgentPromptSubmitsForTask(session.taskId);
 				shell.write(data);
+				noteHumanTerminalInput(session, ws, data);
 			} catch (err) {
 				log.error("WS message handler error", {
 					error: String(err),
