@@ -14,6 +14,7 @@ import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
 import { spillOversizedAgentMessage } from "./agent-message-spill";
+import { appendAgentMessageLog } from "./agent-message-log";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
 // this module through cli-socket-server — don't load the real Electrobun-backed
@@ -72,6 +73,46 @@ async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<A
 	const delivery = await deliverAgentPrompt(task, text, message.target, { coalesceSubmit: true });
 	if (message.source) announceAgentMessage(task, message, delivery);
 	return delivery;
+}
+
+/**
+ * Write the attempt to the project's append-only message log — the only durable
+ * record that one task spoke to another.
+ *
+ * Called from the two OUTCOME points rather than from `deliverToTarget`, because a
+ * message can end without ever reaching a pane: a finished task is dropped before
+ * delivery is attempted, and "we tried and nothing landed" is exactly the state a
+ * user reconstructing a silence needs to find. Every attempt is logged,
+ * `not-delivered` included, and the row carries the real verdict, never an intent.
+ */
+async function recordMessageAttempt(task: Task, message: ScheduledMessage, delivery: AgentPromptDelivery): Promise<void> {
+	try {
+		const project = await data.getProject(task.projectId);
+		const source = message.source;
+		appendAgentMessageLog(project, {
+			at: new Date().toISOString(),
+			fromTaskId: source?.taskId ?? null,
+			fromSeq: source?.seq ?? null,
+			...(source?.title ? { fromTitle: source.title } : {}),
+			...(source?.projectId ? { fromProjectId: source.projectId } : {}),
+			toTaskId: task.id,
+			toSeq: task.seq,
+			toTitle: getTaskTitle(task),
+			toProjectId: task.projectId,
+			// A queued item carries the time it was queued for; an immediate send has none.
+			kind: message.at ? "scheduled" : "immediate",
+			...(message.at ? { scheduledFor: message.at } : {}),
+			body: message.text,
+			bodyKind: message.spilledPath ? "spill-pointer" : "text",
+			...(message.spilledPath ? { spillPath: message.spilledPath } : {}),
+			status: delivery.status,
+			...(delivery.reason ? { reason: delivery.reason } : {}),
+			...(delivery.detail ? { detail: delivery.detail } : {}),
+		});
+	} catch (err) {
+		// Logging is observability, never a delivery precondition.
+		log.warn("Could not record the message in the project log", { taskId: task.id.slice(0, 8), error: String(err) });
+	}
 }
 
 /**
@@ -151,6 +192,7 @@ export async function fireScheduledMessage(
 			log.warn("Scheduled message delivery threw", { taskId: task.id.slice(0, 8), error: String(err) });
 		}
 	}
+	await recordMessageAttempt(task, message, delivery);
 	const updated = await removeFromQueue(project, task, message.id);
 	const preview = messagePreview(message.text);
 	if (delivery.status === "not-delivered") {
@@ -206,7 +248,7 @@ export async function scheduleMessage(
 	}
 	// Spilled at queue time, not at delivery: the queue lives in tasks.json, and 20
 	// pending messages of the full allowed length would put megabytes in there.
-	const { text } = await spillOversizedAgentMessage(task, validated);
+	const { text, spilledPath } = await spillOversizedAgentMessage(task, validated);
 	const at = new Date(input.at);
 	if (!Number.isFinite(at.getTime()) || at.getTime() <= Date.now()) {
 		throw new Error("Scheduled message time must be in the future");
@@ -217,6 +259,7 @@ export async function scheduleMessage(
 		at: at.toISOString(),
 		target: normalizeTarget(input.target),
 		...(input.source ? { source: input.source } : {}),
+		...(spilledPath ? { spilledPath } : {}),
 	};
 	const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
 		const queue = current.scheduledMessages ?? [];
@@ -264,13 +307,16 @@ export async function sendMessageImmediately(
 		throw new Error("Cannot send a message to a completed or cancelled task");
 	}
 	const { text: payload, spilledPath } = await spillOversizedAgentMessage(task, trimmed);
-	const delivery = await deliverToTarget(task, {
+	const message: ScheduledMessage = {
 		id: "",
 		text: payload,
 		at: "",
 		target: normalizeTarget(target),
 		...(source ? { source } : {}),
-	});
+		...(spilledPath ? { spilledPath } : {}),
+	};
+	const delivery = await deliverToTarget(task, message);
+	await recordMessageAttempt(task, message, delivery);
 	if (delivery.status === "not-delivered") {
 		throw new Error("Could not deliver the message — the task has no live agent session.");
 	}

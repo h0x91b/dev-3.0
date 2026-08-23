@@ -1,0 +1,3 @@
+Short: Agent messages are now logged
+
+Every message delivered into a task's agent is now recorded in an append-only per-project log at `~/.dev3.0/data/<project>/messages/YYYY-MM-DD.jsonl`, so task-to-task traffic survives the 30-second toast that used to be its only trace. Each row names both ends by task id and seq, the body (or the spill-file pointer for a body too large to type), whether it was immediate or scheduled, and the delivery outcome including attempts that landed nowhere. History is kept for 30 days and older day-files are deleted whole; a new `readAgentMessageLog` RPC reads it back newest-first.

@@ -1,6 +1,8 @@
 import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, Task, TaskNote, TaskStatus } from "../../shared/types";
 import { LABEL_COLORS, appendTaskNote } from "../../shared/types";
+import type { AgentMessageLogPage } from "../../shared/agent-message-log";
 import * as data from "../data";
+import { readAgentMessageLog as readMessageLog } from "../agent-message-log";
 import { getPushMessage, log } from "./shared";
 import { dispatchLifecycleEvent } from "../lifecycle/service";
 
@@ -307,7 +309,18 @@ async function deleteTaskNote(params: { taskId: string; projectId: string; noteI
 	return updated;
 }
 
+/**
+ * Read the project's message log. Read-only and never throws on a missing file: a
+ * project that has had no agent traffic yet answers with an empty page rather than
+ * an error the caller has to special-case.
+ */
+async function readAgentMessageLog(params: { projectId: string; limit?: number }): Promise<AgentMessageLogPage> {
+	const project = await data.getProject(params.projectId);
+	return readMessageLog(project, params.limit);
+}
+
 export const notesLabelsHandlers = {
+	readAgentMessageLog,
 	createLabel,
 	updateLabel,
 	deleteLabel,

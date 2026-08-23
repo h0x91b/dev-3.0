@@ -7,6 +7,7 @@ import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-
 import type { DeepLinkNav } from "./deep-link";
 import type { UpdateChannel } from "./update-channel";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
+import type { AgentMessageLogPage } from "./agent-message-log";
 
 // ---- Changelog ----
 
@@ -2322,6 +2323,12 @@ export interface ScheduledMessage {
 	target: ScheduledMessageTarget;
 	/** Set when another task's agent sent it — wraps the text at fire time. */
 	source?: AgentMessageSource;
+	/**
+	 * The file the real body was written to when it was too large to type, leaving
+	 * {@link text} a pointer to it. Carried so the message log can say a row holds a
+	 * pointer rather than a body, instead of guessing from the wording.
+	 */
+	spilledPath?: string;
 }
 
 /**
@@ -4675,6 +4682,11 @@ export type AppRPCSchema = {
 			deleteTaskNote: {
 				params: { taskId: string; projectId: string; noteId: string };
 				response: Task;
+			};
+			/** Read the project's append-only message log, newest first. */
+			readAgentMessageLog: {
+				params: { projectId: string; limit?: number };
+				response: AgentMessageLogPage;
 			};
 			taskPaneState: {
 				params: { taskId: string };
