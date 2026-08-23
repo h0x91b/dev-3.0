@@ -56,6 +56,18 @@ describe("PriorityBadge", () => {
 		expect(onChange).toHaveBeenCalledWith("P0");
 	});
 
+	// Portalled to <body>, so it competes with dialogs on z-index alone. Below
+	// them it is simply invisible — which is what a z-50 panel was inside the
+	// z-[60] agent-launch dialog.
+	it("floats the picker above every dialog layer", async () => {
+		const user = userEvent.setup();
+		renderBadge({ priority: "P2", onChange: vi.fn() });
+
+		await user.click(screen.getByRole("button", { name: /Priority P2/ }));
+
+		expect((await screen.findByRole("menu")).className).toContain("z-[9999]");
+	});
+
 	it("does not fire onChange when the current level is re-selected", async () => {
 		const onChange = vi.fn();
 		const user = userEvent.setup();

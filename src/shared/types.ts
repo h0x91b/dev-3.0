@@ -2635,6 +2635,13 @@ export interface AgentLaunchRequest {
 	requesterTitle: string;
 	subject: TaskDialogSubject;
 	/**
+	 * Priority the launch applies unless the user picks another in the dialog:
+	 * the target's own explicit priority, or the requester's when the target
+	 * never had one set (a scratch peer, or a task created without `--priority`).
+	 * An urgent agent's helpers inherit its urgency instead of sinking to P3.
+	 */
+	defaultPriority: TaskPriority;
+	/**
 	 * Epoch ms at which the request approves itself, or null when auto-approval
 	 * is off. The countdown is only a mirror — the timer that actually fires
 	 * lives in the bun process, so closing the window cannot stall the agent.
@@ -5101,19 +5108,19 @@ export type AppRPCSchema = {
 				params: {
 					requestId: string;
 					approved: boolean;
-					launch?: { agentId: string | null; configId: string | null; accountId?: string | null };
+					launch?: { agentId: string | null; configId: string | null; accountId?: string | null; priority?: TaskPriority };
 				};
 				response: void;
 			};
 			/**
-			 * Mirror the dialog's current agent/config/account pick into the pending
-			 * request, so an auto-approval that fires while nobody is watching still
-			 * launches with what the user last selected rather than the global default.
+			 * Mirror the dialog's current agent/config/account/priority pick into the
+			 * pending request, so an auto-approval that fires while nobody is watching
+			 * still launches with what the user last selected rather than the defaults.
 			 */
 			updateAgentLaunchChoice: {
 				params: {
 					requestId: string;
-					launch: { agentId: string | null; configId: string | null; accountId?: string | null };
+					launch: { agentId: string | null; configId: string | null; accountId?: string | null; priority?: TaskPriority };
 				};
 				response: void;
 			};

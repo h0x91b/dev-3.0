@@ -33,6 +33,7 @@ vi.mock("../rpc", () => ({
 			// synchronously inside its effect and tears the whole tree down.
 			listAgentAccounts: vi.fn(() => Promise.resolve({ agents: [] })),
 			getAgentRateLimits: vi.fn(() => Promise.resolve(null)),
+			updateAgentLaunchChoice: vi.fn(() => Promise.resolve(undefined)),
 		},
 	},
 }));
@@ -45,6 +46,7 @@ vi.mock("../components/AgentConfigPicker", () => ({
 }));
 
 import AgentLaunchRequestModal from "../components/AgentLaunchRequestModal";
+import { api } from "../rpc";
 
 function makeRequest(overrides?: Partial<AgentLaunchRequest>): AgentLaunchRequest {
 	return {
@@ -56,6 +58,7 @@ function makeRequest(overrides?: Partial<AgentLaunchRequest>): AgentLaunchReques
 		scratch: false,
 		requesterSeq: 3,
 		requesterTitle: "Asking task",
+		defaultPriority: "P2",
 		autoApproveAt: null,
 		subject: {
 			seqLabel: "7",
@@ -112,6 +115,7 @@ describe("AgentLaunchRequestModal", () => {
 			agentId: "builtin-claude",
 			configId: "claude-auto",
 			accountId: undefined,
+			priority: "P2",
 		});
 	});
 
@@ -122,6 +126,56 @@ describe("AgentLaunchRequestModal", () => {
 		await user.click(await screen.findByRole("button", { name: "Decline" }));
 
 		expect(onRespond).toHaveBeenCalledWith(false);
+	});
+
+	it("seeds the priority picker with the priority the launch would use", async () => {
+		// The requester's band when the target never had one of its own (#1496).
+		renderModal(makeRequest({ defaultPriority: "P0", subject: { ...makeRequest().subject, priority: "P3" } }));
+
+		expect(await screen.findByRole("button", { name: /^Priority P0/ })).toBeInTheDocument();
+	});
+
+	it("launches with the priority the user picked instead of the default", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal(makeRequest({ defaultPriority: "P3" }));
+
+		await user.click(await screen.findByRole("button", { name: /^Priority P3/ }));
+		await user.click(await screen.findByRole("menuitemradio", { name: /P1/ }));
+
+		expect(api.request.updateAgentLaunchChoice).not.toHaveBeenCalled(); // no auto-approve deadline
+
+		const launch = await screen.findByTestId("agent-launch-accept");
+		await waitFor(() => expect(launch).toBeEnabled());
+		await user.click(launch);
+
+		expect(onRespond).toHaveBeenCalledWith(true, expect.objectContaining({ priority: "P1" }));
+	});
+
+	it("mirrors a priority change to the pending request so an auto-approval uses it", async () => {
+		const user = userEvent.setup();
+		renderModal(makeRequest({ defaultPriority: "P3", autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		await user.click(await screen.findByRole("button", { name: /^Priority P3/ }));
+		await user.click(await screen.findByRole("menuitemradio", { name: /P0/ }));
+
+		expect(api.request.updateAgentLaunchChoice).toHaveBeenCalledWith({
+			requestId: "req-1",
+			launch: expect.objectContaining({ priority: "P0" }),
+		});
+	});
+
+	it("closes the priority picker on Escape without declining the launch", async () => {
+		// The dialog's own Esc handler mounts first; only the overlay-layer stack
+		// keeps it from throwing away the whole request (utils/overlay-layers.ts).
+		const user = userEvent.setup();
+		const { onRespond } = renderModal();
+
+		await user.click(await screen.findByRole("button", { name: /^Priority P2/ }));
+		await screen.findByRole("menu");
+		await user.keyboard("{Escape}");
+
+		expect(screen.queryByRole("menu")).toBeNull();
+		expect(onRespond).not.toHaveBeenCalled();
 	});
 
 	it("says a scratch task starts with no prompt", async () => {

@@ -1,3 +1,4 @@
+import type { TaskPriority } from "../shared/types";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 
@@ -9,12 +10,14 @@ const log = createLogger("agent-requests");
  */
 export type AgentRequestKind = "complete" | "launch";
 
-/** The agent/config/account the user picked in the launch dialog. */
+/** The agent/config/account/priority the user picked in the launch dialog. */
 export interface AgentLaunchChoice {
 	agentId: string | null;
 	configId: string | null;
 	/** undefined → registry default; null → system login; string → that account. */
 	accountId?: string | null;
+	/** undefined → the request's `defaultPriority`; otherwise the user's pick. */
+	priority?: TaskPriority;
 }
 
 export interface AgentRequestDecision {

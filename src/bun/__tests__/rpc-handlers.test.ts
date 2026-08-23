@@ -411,6 +411,7 @@ const {
 	emitTaskSound,
 	runCleanupScript,
 	portableReadKey,
+	launchTaskWithAgentChoice,
 } = await import("../rpc-handlers");
 const {
 	nativeHunterColumnRatios,
@@ -1350,6 +1351,62 @@ describe("handlers.reorderProjects", () => {
 
 		expect(data.reorderProjects).toHaveBeenCalledWith(["proj-2", "proj-1"]);
 		expect(result).toEqual(projects);
+	});
+});
+
+describe("launchTaskWithAgentChoice", () => {
+	beforeEach(() => vi.clearAllMocks());
+	// `clearAllMocks` keeps implementations, and these tests have to stub the whole
+	// lifecycle write path — so drop them explicitly or later suites inherit them.
+	afterEach(() => {
+		vi.mocked(data.updateTask).mockReset();
+		vi.mocked(data.getTask).mockReset();
+		vi.mocked(data.getProject).mockReset();
+		vi.mocked(data.setTaskPriority).mockReset();
+	});
+
+	it("applies the launch priority group-wide before the task moves", async () => {
+		// Issue #1496: the launch dialog's priority pick (or the inherited default)
+		// is not part of the single-task patch — priority belongs to the group.
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", status: "todo", priority: "P3" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.setTaskPriority).mockResolvedValue([{ ...task, priority: "P0" }]);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, patch) => ({ ...task, ...patch }));
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await launchTaskWithAgentChoice({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			choice: { agentId: null, configId: null, priority: "P0" },
+		});
+
+		expect(data.setTaskPriority).toHaveBeenCalledWith(project, "task-1", "P0");
+		expect(push).toHaveBeenCalledWith("taskUpdated", {
+			projectId: "proj-1",
+			task: expect.objectContaining({ priority: "P0" }),
+		});
+	});
+
+	it("leaves the priority alone when the launch asks for the one already stored", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", status: "todo", priority: "P1" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, patch) => ({ ...task, ...patch }));
+		setPushMessage(vi.fn());
+
+		await launchTaskWithAgentChoice({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			choice: { agentId: null, configId: null, priority: "P1" },
+		});
+
+		expect(data.setTaskPriority).not.toHaveBeenCalled();
 	});
 });
 

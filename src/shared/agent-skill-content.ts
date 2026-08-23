@@ -285,6 +285,8 @@ You may ask the user to set another task running. You never launch anything your
 - **An existing To Do task** → \`dev3 task move --task seq:<N> --status in-progress\`. Same command as a normal board move; because the task is not yours, it turns into an approval request instead.
 - **A throwaway peer agent** → \`dev3 task create --scratch --run\`. A scratch task has **no prompt by design** — it starts idle, and you drive it with messages.
 
+A launched task **inherits your priority** unless it already has one of its own, so a P0 investigation's helpers do not start at the bottom of the board — and the approval dialog lets the user change that band before it starts. You do not pass a priority yourself.
+
 On approval you get the new task's \`seq\` and the command to talk to it; it is told you started it and replies to you. **Declined** → exit code 10, nothing was launched: ask the user what to change instead of retrying the same request. **Timeout** → the dialog may still be open, so the task may start without you hearing back.
 
 An unanswered launch dialog **approves itself after a few minutes** (5 by default, configurable, and the user can switch it off) — so a user who stepped away costs you a delay, not a dead end. Wait for the answer instead of retrying: a second request for the same task joins the first one and does NOT restart its clock.

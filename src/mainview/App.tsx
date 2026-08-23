@@ -9,7 +9,7 @@ import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskPriority, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -1883,7 +1883,7 @@ function App() {
 	const respondToLaunchRequest = useCallback((
 		requestId: string,
 		approved: boolean,
-		launch?: { agentId: string | null; configId: string | null; accountId?: string | null },
+		launch?: { agentId: string | null; configId: string | null; accountId?: string | null; priority?: TaskPriority },
 	) => {
 		setLaunchRequests((queue) => queue.filter((r) => r.requestId !== requestId));
 		if (approved) trackEvent("task_moved", { to_status: "in-progress", agent_requested: true });

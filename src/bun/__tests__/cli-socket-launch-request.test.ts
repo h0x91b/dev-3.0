@@ -252,13 +252,98 @@ describe("task.move — agent-initiated launch approval", () => {
 			taskId: TARGET_ID,
 			projectId: "proj-1",
 			targetStatus: "in-progress",
-			choice: launch,
+			// P3 both sides: neither task set one, so nothing is inherited.
+			choice: { ...launch, priority: "P3" },
 		});
 		// A plain move would have ignored the picked agent entirely.
 		expect(moveTask).not.toHaveBeenCalled();
 		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
 			childTaskId: TARGET_ID,
 			source: expect.objectContaining({ seq: 3 }),
+		}));
+	});
+
+	it("defaults the launch to the requester's priority when the target has none", async () => {
+		// Issue #1496: a P0 agent's helper used to start at P3 and sink to the
+		// bottom of the board.
+		const target = makeTask();
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([target, { ...requester, priority: "P0" as const }]);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		expect(payload.defaultPriority).toBe("P0");
+
+		// Auto-approval with nobody watching carries no choice at all; the
+		// inherited priority must still be applied.
+		resolveAgentRequest(payload.requestId as string, { approved: true });
+		await respPromise;
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
+			choice: expect.objectContaining({ priority: "P0" }),
+		}));
+	});
+
+	it("keeps the target's own priority — an explicit band is not overwritten", async () => {
+		const target = makeTask({ priority: "P4" });
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([target, { ...requester, priority: "P0" as const }]);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		expect(payload.defaultPriority).toBe("P4");
+
+		resolveAgentRequest(payload.requestId as string, { approved: true });
+		await respPromise;
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
+			choice: expect.objectContaining({ priority: "P4" }),
+		}));
+	});
+
+	it("launches with the priority the user picked in the dialog", async () => {
+		const target = makeTask();
+		setupBoard(target);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+
+		resolveAgentRequest(payload.requestId as string, {
+			approved: true,
+			launch: { agentId: null, configId: null, priority: "P1" },
+		});
+		await respPromise;
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
+			choice: expect.objectContaining({ priority: "P1" }),
 		}));
 	});
 

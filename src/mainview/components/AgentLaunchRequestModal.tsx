@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AgentCheckResult, AgentLaunchRequest, CodingAgent, GlobalSettings } from "../../shared/types";
+import type { AgentCheckResult, AgentLaunchRequest, CodingAgent, GlobalSettings, TaskPriority } from "../../shared/types";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
@@ -11,6 +11,14 @@ import AgentPickerSkeleton from "./AgentPickerSkeleton";
 import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
 
 const NOT_INSTALLED_ID = "agent-launch-not-installed";
+
+/** What the dialog hands back on approval — the agent pick plus the priority. */
+interface LaunchChoice {
+	agentId: string | null;
+	configId: string | null;
+	accountId?: string | null;
+	priority?: TaskPriority;
+}
 
 /** Whole seconds left until `at`, floored at 0. */
 function secondsUntil(at: number): number {
@@ -26,7 +34,7 @@ function formatCountdown(totalSeconds: number): string {
 interface AgentLaunchRequestModalProps {
 	request: AgentLaunchRequest;
 	/** Answers the blocked CLI. `launch` is only set when approved. */
-	onRespond: (approved: boolean, launch?: { agentId: string | null; configId: string | null; accountId?: string | null }) => void;
+	onRespond: (approved: boolean, launch?: LaunchChoice) => void;
 }
 
 /**
@@ -49,6 +57,10 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	const [configId, setConfigId] = useState<string | null>(null);
 	// Per-launch account (undefined → the registry default preselect).
 	const [accountId, setAccountId] = useState<string | null | undefined>(undefined);
+	// Seeded from the request: the target's own priority, or the requesting task's
+	// when it never had one (issue #1496). Editable — this launch is the moment to
+	// decide how urgent the new task is.
+	const [priority, setPriority] = useState<TaskPriority>(request.defaultPriority);
 	const [launching, setLaunching] = useState(false);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
 
@@ -94,7 +106,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 
 	// Mirror every pick back to the pending request, so an auto-approval that
 	// fires while the user is away launches with what they last selected.
-	function reportChoice(next: { agentId: string | null; configId: string | null; accountId?: string | null }) {
+	function reportChoice(next: LaunchChoice) {
 		if (!autoApproveAt) return;
 		api.request.updateAgentLaunchChoice({ requestId: request.requestId, launch: next }).catch(() => {});
 	}
@@ -114,7 +126,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	function handleLaunch() {
 		if (agentNotInstalled) return;
 		setLaunching(true);
-		onRespond(true, { agentId, configId, accountId });
+		onRespond(true, { agentId, configId, accountId, priority });
 	}
 
 	return (
@@ -158,7 +170,11 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						body={request.scratch ? t("agentLaunch.scratchHasNoPrompt") : (request.subject.overview ?? undefined)}
 						seqLabel={request.subject.seqLabel}
 						projectName={request.subject.projectName}
-						priority={request.subject.priority}
+						priority={priority}
+						onPriorityChange={(next) => {
+							setPriority(next);
+							reportChoice({ agentId, configId, accountId, priority: next });
+						}}
 						labels={request.subject.labels}
 					/>
 
@@ -172,12 +188,12 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 							onChange={(next) => {
 								setAgentId(next.agentId);
 								setConfigId(next.configId);
-								reportChoice({ ...next, accountId });
+								reportChoice({ ...next, accountId, priority });
 							}}
 							accountId={accountId}
 							onAccountChange={(next) => {
 								setAccountId(next);
-								reportChoice({ agentId, configId, accountId: next });
+								reportChoice({ agentId, configId, accountId: next, priority });
 							}}
 							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 							showFavorites

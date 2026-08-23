@@ -310,9 +310,19 @@ export async function launchTaskWithAgentChoice(params: {
 }): Promise<Task> {
 	log.info("→ launchTaskWithAgentChoice", { taskId: params.taskId.slice(0, 8), status: params.targetStatus });
 	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
+	const stored = await data.getTask(project, params.taskId);
+	const { agentId, configId, accountId, priority } = params.choice;
+
+	// Priority lands before the move so the card never appears in the wrong sort
+	// band, and goes through the group-wide setter rather than `taskPatch`.
+	if (priority !== undefined && priority !== stored.priority) {
+		for (const changed of await data.setTaskPriority(project, stored.id, priority)) {
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: changed });
+		}
+	}
+	// Re-read so the lifecycle event carries the task it will actually patch.
+	const task = priority !== undefined ? await data.getTask(project, params.taskId) : stored;
 	const existingBranch = getSourceTaskBranch(task, project);
-	const { agentId, configId, accountId } = params.choice;
 
 	const launched = await dispatchLifecycleEvent(project.id, task.id, {
 		type: "moveRequested",

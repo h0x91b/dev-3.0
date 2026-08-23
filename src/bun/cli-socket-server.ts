@@ -1,10 +1,10 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskType, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskPriority, TaskStatus, TaskType, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { agentReplyRef } from "../shared/agent-message-envelope";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import type { DeepLinkNav } from "../shared/deep-link";
@@ -252,9 +252,27 @@ type LaunchApprovalOutcome =
 	| { approved: true; task: Task; seq: number; title: string; replyCommand: string };
 
 /**
+ * Priority an agent-initiated launch starts on. A target that never had one set
+ * (a scratch peer, or a task created without `--priority`) inherits the
+ * requesting task's band, so a P0 agent's helpers do not sink to P3 — issue
+ * #1496. An explicit priority on the target always wins, and the user can still
+ * override either in the launch dialog. Unreadable requester ⇒ the plain default.
+ */
+async function resolveLaunchPriority(task: Task, requester: AgentMessageSource): Promise<TaskPriority> {
+	if (task.priority) return task.priority;
+	try {
+		const found = await resolveTaskAcrossProjects(requester.taskId);
+		return found?.task.priority ?? DEFAULT_PRIORITY;
+	} catch {
+		return DEFAULT_PRIORITY;
+	}
+}
+
+/**
  * Ask the user to approve an agent-initiated launch, then perform it with the
- * agent/config/account they picked in the dialog. Blocks until the user answers,
- * exactly like the completion approval — the requesting CLI waits on the socket.
+ * agent/config/account/priority they picked in the dialog. Blocks until the user
+ * answers, exactly like the completion approval — the requesting CLI waits on the
+ * socket.
  *
  * The launched task's first message tells it who started it (`deliverLaunchHandoff`),
  * so the two agents can talk over the existing cross-task envelope.
@@ -274,6 +292,7 @@ async function requestAgentLaunchApproval(opts: {
 	// A launch is reversible, so an unanswered dialog approves itself rather than
 	// pinning the requesting agent to a dead socket. The completion dialog
 	// deliberately does not do this — it destroys a worktree.
+	const defaultPriority = await resolveLaunchPriority(task, requester);
 	const autoApproveAfterMs = agentLaunchAutoApproveMs(await loadSettings());
 	const { requestId, decision, isNew, autoApproveAt } = createAgentRequest(
 		"launch",
@@ -294,6 +313,7 @@ async function requestAgentLaunchApproval(opts: {
 			// Same read-only context card as the completion dialog, so the user
 			// recognizes which task an agent wants to set running.
 			subject: buildTaskDialogSubject(task, project),
+			defaultPriority,
 			autoApproveAt,
 		});
 	}
@@ -301,12 +321,15 @@ async function requestAgentLaunchApproval(opts: {
 	const answer = await decision;
 	if (!answer.approved) return { approved: false };
 
+	// An auto-approval with no client watching carries no launch choice at all —
+	// the inherited priority must still apply, so it is resolved here, not in the
+	// dialog.
 	const choice: AgentLaunchChoice = answer.launch ?? { agentId: null, configId: null };
 	const launched = await launchTaskWithAgentChoice({
 		taskId: task.id,
 		projectId: project.id,
 		targetStatus,
-		choice,
+		choice: { ...choice, priority: choice.priority ?? defaultPriority },
 	});
 	// Fire-and-forget: the handoff waits for the child's agent pane, which takes
 	// far longer than the requesting agent should sit blocked on a socket.

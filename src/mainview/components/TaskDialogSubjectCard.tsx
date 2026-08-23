@@ -11,8 +11,14 @@ export interface TaskDialogSubjectCardProps {
 	seqLabel?: string;
 	/** Owning project's display name. */
 	projectName?: string;
-	/** Task importance band, shown as a static `P{n}` badge. */
+	/** Task importance band, shown as a `P{n}` badge in the identity row. */
 	priority?: TaskPriority;
+	/**
+	 * Makes that badge a picker. Only the launch dialog passes it: the priority a
+	 * task starts on is part of the decision being made there, so it is a field,
+	 * not a fact. Everywhere else the badge stays read-only.
+	 */
+	onPriorityChange?: (priority: TaskPriority) => void;
 	/** Resolved task labels; read-only chips under the body. */
 	labels?: Label[];
 	/**
@@ -25,8 +31,8 @@ export interface TaskDialogSubjectCardProps {
 }
 
 /**
- * The read-only "which task is this about" card shared by every dialog that acts
- * on one task — the agent completion confirm, the merge prompt, and the
+ * The "which task is this about" card shared by every dialog that acts on one
+ * task — the agent completion confirm, the merge prompt, and the
  * agent launch request. The identity row (seq · project · priority) matters most
  * when the dialog fires while the user is looking at a different board.
  */
@@ -36,6 +42,7 @@ function TaskDialogSubjectCard({
 	seqLabel,
 	projectName,
 	priority,
+	onPriorityChange,
 	labels,
 	tone = "accent",
 	onTitleClick,
@@ -54,7 +61,14 @@ function TaskDialogSubjectCard({
 							<span className="truncate max-w-[12rem]">{projectName}</span>
 						</>
 					)}
-					{priority && <PriorityBadge priority={priority} size="sm" className="ml-auto" />}
+					{priority && (
+						<PriorityBadge
+							priority={priority}
+							onChange={onPriorityChange}
+							size="sm"
+							className="ml-auto"
+						/>
+					)}
 				</div>
 			)}
 			<div className="flex items-start gap-2">

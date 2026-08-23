@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ALL_PRIORITIES, DEFAULT_PRIORITY, type TaskPriority } from "../../shared/types";
-import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
+import { useOverlayLayer } from "../utils/useOverlayLayer";
 import { PRIORITY_NAME_KEYS, PRIORITY_STYLES } from "./priorityStyles";
 
 interface PriorityPickerProps {
@@ -49,7 +49,12 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 		rowRefs.current[idx >= 0 ? idx : 0]?.focus();
 	}, [anchorEl, current]);
 
-	useEscapeKey(onClose);
+	// Registered as an overlay layer, not a plain Esc listener: inside a dialog the
+	// modal's own handler mounts first and would close the whole dialog instead of
+	// this popover (see utils/overlay-layers.ts).
+	const anchorRef = useRef<HTMLElement | null>(anchorEl);
+	anchorRef.current = anchorEl;
+	useOverlayLayer(pickerRef, { onDismiss: onClose, triggerRef: anchorRef });
 
 	useEffect(() => {
 		function handleClick(e: MouseEvent) {
@@ -80,7 +85,9 @@ function PriorityPicker({ selected, onSelect, onClose, anchorEl }: PriorityPicke
 			ref={pickerRef}
 			role="menu"
 			aria-label={t("priority.pickerTitle")}
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden py-1 max-w-[calc(100vw-1rem)]"
+			// Above every dialog (z-[60]…z-[80]), matching `Select`'s portalled panel:
+			// a popover behind the modal that opened it is simply invisible.
+			className="fixed z-[9999] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden py-1 max-w-[calc(100vw-1rem)]"
 			style={{ top: pos.top, left: pos.left, width: 200, visibility: visible ? "visible" : "hidden" }}
 			onClick={(e) => e.stopPropagation()}
 		>
