@@ -173,7 +173,8 @@ export function scheduleAgentPromptSubmit(send: () => void | Promise<void>, cont
  *
  * A coalesced delivery stops after the text: its Enter is a delivery of its own,
  * held by {@link coalesceAgentPromptSubmit}, because the seam caps a program's
- * in-band delays at two seconds and the quiet window is ten.
+ * in-band delays at two seconds ({@link PANE_INPUT_LIMITS}) and the quiet window
+ * is many times that.
  */
 function agentPromptStages(prompt: string, coalesceSubmit: boolean): PaneInputStage[] {
 	const type: PaneInputStage = { steps: [{ kind: "text", text: prompt }] };

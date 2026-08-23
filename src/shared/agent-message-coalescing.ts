@@ -10,11 +10,19 @@
  */
 
 /** Quiet time after the last text before the submit fires. */
-export const AGENT_MESSAGE_SUBMIT_IDLE_MS = 10_000;
+export const AGENT_MESSAGE_SUBMIT_IDLE_MS = 15_000;
 
 /**
  * Hard ceiling measured from the first still-unsubmitted text. Without it a steady
  * stream of senders, each arriving inside the idle window, would hold the submit
  * forever and the receiver would never read a word.
  */
-export const AGENT_MESSAGE_SUBMIT_CEILING_MS = 30_000;
+export const AGENT_MESSAGE_SUBMIT_CEILING_MS = 60_000;
+
+/**
+ * The idle window in whole seconds, for prose that quotes it — the CLI's own
+ * "sent" line and the skill text every agent reads. Derived rather than restated,
+ * because a retune of the constant used to leave four hand-written "ten seconds"
+ * behind and agents were then told a number the code no longer honoured.
+ */
+export const AGENT_MESSAGE_SUBMIT_IDLE_SECONDS = Math.round(AGENT_MESSAGE_SUBMIT_IDLE_MS / 1000);

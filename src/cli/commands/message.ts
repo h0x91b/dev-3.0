@@ -8,7 +8,7 @@ import { resolveScheduleTarget } from "../../shared/schedule";
 import { MAX_SCHEDULED_MESSAGE_LENGTH } from "../../shared/types";
 import type { AgentPromptDeliveryStatus } from "../../shared/agent-prompt-delivery";
 import { CLI_EXIT_CODE_DELIVERY_UNCONFIRMED } from "../../shared/cli-exit-codes";
-import { AGENT_MESSAGE_SUBMIT_IDLE_MS } from "../../shared/agent-message-coalescing";
+import { AGENT_MESSAGE_SUBMIT_IDLE_SECONDS } from "../../shared/agent-message-coalescing";
 
 const USAGE = 'Usage: dev3 message [--in <dur> | --at <hh:mm>] "text" [--task <id>]';
 
@@ -74,7 +74,7 @@ export async function handleMessage(
 		// go quiet, so several messages arriving together become one agent turn. Said
 		// out loud, because "sent" would otherwise read as "the agent is reading it now".
 		process.stdout.write(
-			`Message sent to task ${shortId}. It submits after ${Math.round(AGENT_MESSAGE_SUBMIT_IDLE_MS / 1000)}s ` +
+			`Message sent to task ${shortId}. It submits after ${AGENT_MESSAGE_SUBMIT_IDLE_SECONDS}s ` +
 				`of quiet, so anything else sent meanwhile arrives in the same turn.\n`,
 		);
 		return;

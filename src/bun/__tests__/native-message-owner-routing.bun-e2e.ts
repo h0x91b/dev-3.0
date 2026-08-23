@@ -258,6 +258,7 @@ async function runSender(): Promise<void> {
 	const { startSocketServer } = await import("../cli-socket-server");
 	const { sendRequest } = await import("../../cli/socket-client");
 	const { AGENT_PROMPT_ENTER_DELAY_MS } = await import("../agent-prompt");
+	const { AGENT_MESSAGE_SUBMIT_IDLE_MS } = await import("../../shared/agent-message-coalescing");
 	const { resolvePaneOwner } = await import("../native-pane-owner");
 	const { NativeSessionClient } = await import("../native-terminal-registry/client");
 	const { readRecord } = await import("../native-terminal-registry/record");
@@ -450,7 +451,10 @@ async function runSender(): Promise<void> {
 			"the CLI handler reported the message delivered",
 		);
 
-		const cliDeadline = Date.now() + 15_000;
+		// Derived, not a literal: this path goes through the message handler, so its CR
+		// is held by the coalescer for a full quiet window. A hardcoded 15 s sat here and
+		// silently became shorter than the window the moment the window was retuned.
+		const cliDeadline = Date.now() + AGENT_MESSAGE_SUBMIT_IDLE_MS + 10_000;
 		while (Date.now() < cliDeadline && !paneOutput.includes(cliToken)) await delay(50);
 		check(
 			new RegExp(`(^|[\\r\\n])${cliToken}[\\r\\n]`).test(paneOutput),
