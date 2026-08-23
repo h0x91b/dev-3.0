@@ -28,15 +28,20 @@ export interface AgentToastItem {
 /**
  * A burst of agent traffic collapsed onto one card. `hubTaskId` is the task every
  * message touches — the coordinator, whether it is fanning out or being answered.
- * A single message has no hub and renders as a plain pair instead.
+ * A single message has no hub: the receiving task takes that place, because that
+ * is where the text landed.
  */
 export interface AgentToastGroup {
 	items: AgentToastItem[];
 	hubTaskId?: string;
 }
 
-/** Nodes drawn per direction before the rest collapse into a "+N" row. */
-export const MAX_AGENT_NODES = 4;
+/**
+ * Counterparts drawn per direction before the rest collapse into a "+N" row.
+ * Two, not more: four legs already measure ~314px tall, and this form's whole
+ * cost is vertical.
+ */
+export const MAX_AGENT_LEGS = 2;
 
 interface Endpoint {
 	taskId: string;
@@ -62,19 +67,60 @@ export function sharedParticipant(group: AgentToastGroup, link: AgentToastLink):
 	const first = group.items[0]?.link;
 	if (!first) return undefined;
 	const mine = new Set([link.fromTaskId, link.toTaskId]);
-	if (mine.has(first.fromTaskId)) return first.fromTaskId;
+	// Receiver first: when a second message repeats the same pair BOTH ends match,
+	// and the lone message already drew that task as the hub. Preferring the sender
+	// would flip the whole card inside out on the second message.
 	if (mine.has(first.toTaskId)) return first.toTaskId;
+	if (mine.has(first.fromTaskId)) return first.fromTaskId;
 	return undefined;
 }
 
-/** Endpoint identity of the hub, taken from whichever message names it. */
-function hubEndpoint(group: AgentToastGroup): Endpoint | undefined {
-	if (!group.hubTaskId) return undefined;
+/**
+ * Which task the composition is built around. With a hub it is that task; with a
+ * single message it is the receiver, so the card reads "landed here, sent by X".
+ */
+function hubOf(group: AgentToastGroup): { taskId: string; endpoint: Endpoint } | undefined {
+	const first = group.items[0]?.link;
+	if (!first) return undefined;
+	if (!group.hubTaskId) return { taskId: first.toTaskId, endpoint: receiver(first) };
 	for (const { link } of group.items) {
-		if (link.fromTaskId === group.hubTaskId) return sender(link);
-		if (link.toTaskId === group.hubTaskId) return receiver(link);
+		if (link.fromTaskId === group.hubTaskId) return { taskId: group.hubTaskId, endpoint: sender(link) };
+		if (link.toTaskId === group.hubTaskId) return { taskId: group.hubTaskId, endpoint: receiver(link) };
 	}
 	return undefined;
+}
+
+/** One counterpart of the hub, with every message it exchanged folded into it. */
+interface Leg {
+	endpoint: Endpoint;
+	/** Newest message on this leg — the older ones live only in the count. */
+	preview: string;
+	count: number;
+	inbound: boolean;
+}
+
+/**
+ * Collapse the burst by COUNTERPART, not by message: five "тест N" from one task
+ * is one box carrying `×5`, which is the whole reason the earlier node-per-message
+ * form was unreadable. Newest counterpart last, matching arrival order.
+ */
+function legsOf(group: AgentToastGroup, hubTaskId: string): Leg[] {
+	const order: string[] = [];
+	const byKey = new Map<string, Leg>();
+	for (const { link, preview } of group.items) {
+		const inbound = link.toTaskId === hubTaskId;
+		const endpoint = inbound ? sender(link) : receiver(link);
+		const key = `${endpoint.taskId}:${inbound ? "in" : "out"}`;
+		const existing = byKey.get(key);
+		if (existing) {
+			existing.count += 1;
+			existing.preview = preview;
+			continue;
+		}
+		order.push(key);
+		byKey.set(key, { endpoint, preview, count: 1, inbound });
+	}
+	return order.map((key) => byKey.get(key)!);
 }
 
 interface Wire {
@@ -92,12 +138,6 @@ const PULSE_PEAK = 0.85;
 function prefersReducedMotion(): boolean {
 	if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
 	return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
-/** Cubic wire from one box edge to another, flat at both ends so it leaves horizontally. */
-function wirePath(from: { x: number; y: number }, to: { x: number; y: number }): string {
-	const mid = (from.x + to.x) / 2;
-	return `M${from.x} ${from.y} C${mid} ${from.y} ${mid} ${to.y} ${to.x} ${to.y}`;
 }
 
 /**
@@ -160,17 +200,29 @@ function usePulses(svgRef: React.RefObject<SVGSVGElement | null>, wires: Wire[])
 	}, [svgRef, wires]);
 }
 
-interface GraphBoxes {
-	hub: React.MutableRefObject<HTMLElement | null>;
-	inbound: React.MutableRefObject<(HTMLElement | null)[]>;
-	outbound: React.MutableRefObject<(HTMLElement | null)[]>;
+/**
+ * An orthogonal bracket from the hub's right edge to each leg's left edge. Drawn
+ * from whichever end the message left, so the travelling dot runs in the
+ * message's own direction without the pulse loop knowing about direction at all.
+ */
+function bracketPath(hub: { x: number; y: number }, leg: { x: number; y: number }, inbound: boolean): string {
+	const mid = (hub.x + leg.x) / 2;
+	return inbound
+		? `M${leg.x} ${leg.y} H${mid} V${hub.y} H${hub.x}`
+		: `M${hub.x} ${hub.y} H${mid} V${leg.y} H${leg.x}`;
 }
 
-/** Wires are measured from the laid-out DOM: the graph stays ordinary flow layout. */
-function useWires(containerRef: React.RefObject<HTMLDivElement | null>, boxes: GraphBoxes, revision: number): Wire[] {
+interface BracketRefs {
+	hub: React.MutableRefObject<HTMLElement | null>;
+	legs: React.MutableRefObject<(HTMLElement | null)[]>;
+	inbound: React.MutableRefObject<boolean[]>;
+}
+
+/** Wires are measured from the laid-out DOM: the composition stays ordinary flow layout. */
+function useWires(containerRef: React.RefObject<HTMLDivElement | null>, refs: BracketRefs, revision: number): Wire[] {
 	const [wires, setWires] = useState<Wire[]>([]);
-	const boxesRef = useRef(boxes);
-	boxesRef.current = boxes;
+	const refsRef = useRef(refs);
+	refsRef.current = refs;
 
 	useLayoutEffect(() => {
 		const container = containerRef.current;
@@ -178,34 +230,20 @@ function useWires(containerRef: React.RefObject<HTMLDivElement | null>, boxes: G
 
 		function measure(): void {
 			const root = containerRef.current;
-			const hub = boxesRef.current.hub.current;
+			const hub = refsRef.current.hub.current;
 			if (!root || !hub) return;
 			const base = root.getBoundingClientRect();
 			const hubBox = hub.getBoundingClientRect();
 			if (!base.width || !hubBox.width) return;
+			const hubPoint = { x: hubBox.right - base.left, y: hubBox.top + hubBox.height / 2 - base.top };
 			const next: Wire[] = [];
-			const legs: { nodes: (HTMLElement | null)[]; inbound: boolean }[] = [
-				{ nodes: boxesRef.current.inbound.current, inbound: true },
-				{ nodes: boxesRef.current.outbound.current, inbound: false },
-			];
-			for (const leg of legs) {
-				for (const node of leg.nodes) {
-					if (!node) continue;
-					const nodeBox = node.getBoundingClientRect();
-					const hubPoint = {
-						x: (leg.inbound ? hubBox.left : hubBox.right) - base.left,
-						y: hubBox.top + hubBox.height / 2 - base.top,
-					};
-					const nodePoint = {
-						x: (leg.inbound ? nodeBox.right : nodeBox.left) - base.left,
-						y: nodeBox.top + nodeBox.height / 2 - base.top,
-					};
-					next.push({
-						d: leg.inbound ? wirePath(nodePoint, hubPoint) : wirePath(hubPoint, nodePoint),
-						inbound: leg.inbound,
-					});
-				}
-			}
+			refsRef.current.legs.current.forEach((node, index) => {
+				if (!node) return;
+				const legBox = node.getBoundingClientRect();
+				const inbound = refsRef.current.inbound.current[index] ?? true;
+				const legPoint = { x: legBox.left - base.left, y: legBox.top + legBox.height / 2 - base.top };
+				next.push({ d: bracketPath(hubPoint, legPoint, inbound), inbound });
+			});
 			setWires((previous) =>
 				previous.length === next.length && previous.every((wire, i) => wire.d === next[i].d) ? previous : next,
 			);
@@ -221,37 +259,40 @@ function useWires(containerRef: React.RefObject<HTMLDivElement | null>, boxes: G
 	return wires;
 }
 
-function NodeButton({
+/** A task box: the smallest thing that still reads as a card from the board. */
+function TaskBox({
 	endpoint,
-	preview,
+	count,
 	inbound,
+	hub,
 	label,
-	showPreview,
 	elementRef,
 }: {
 	endpoint: Endpoint;
-	preview: string;
-	inbound: boolean;
+	count?: number;
+	inbound?: boolean;
+	hub?: boolean;
 	label: string;
-	/** False when both directions share the width: a 5-character stub reads as broken. */
-	showPreview: boolean;
-	elementRef: (node: HTMLElement | null) => void;
+	elementRef?: (node: HTMLElement | null) => void;
 }) {
-	const tone = inbound ? "text-success" : "text-agent";
-	const content = (
+	const tone = hub ? "text-agent" : inbound ? "text-success" : "text-agent";
+	const surface = hub ? "bg-agent/15 ring-agent/60" : "bg-raised ring-edge";
+	const inner = (
 		<>
-			<span className={`font-mono text-micro ${tone} flex-shrink-0`}>#{endpoint.seq}</span>
-			{showPreview && <span className="truncate text-fg-2">{preview}</span>}
+			<span className="flex items-center gap-1">
+				<span className={`font-mono text-micro ${tone}`}>#{endpoint.seq}</span>
+				{count !== undefined && count > 1 && (
+					<span className="ml-auto rounded bg-elevated px-1 text-micro text-fg-muted">×{count}</span>
+				)}
+			</span>
+			{endpoint.title && <span className="line-clamp-2 text-micro leading-tight text-fg-3">{endpoint.title}</span>}
 		</>
 	);
+	const shape = `relative z-[1] flex flex-col gap-0.5 rounded-lg px-2 py-1.5 text-left ring-1 ${surface}`;
 	if (!endpoint.onOpen) {
 		return (
-			<div
-				ref={elementRef}
-				title={preview}
-				className="relative flex items-center gap-1.5 rounded-md bg-raised px-1.5 py-1 text-micro min-w-0"
-			>
-				{content}
+			<div ref={elementRef} title={endpoint.title} className={shape}>
+				{inner}
 			</div>
 		);
 	}
@@ -259,183 +300,129 @@ function NodeButton({
 		<button
 			ref={elementRef}
 			type="button"
-			title={preview}
+			title={endpoint.title}
 			aria-label={label}
 			onMouseDown={(event) => event.preventDefault()}
 			onClick={endpoint.onOpen}
-			className="relative flex items-center gap-1.5 rounded-md bg-raised px-1.5 py-1 text-micro min-w-0 text-left transition-[background-color,transform] duration-150 hover:bg-raised-hover active:scale-[0.96] cursor-pointer"
+			className={`${shape} cursor-pointer transition-[background-color,transform] duration-150 hover:bg-raised-hover active:scale-[0.96]`}
 		>
-			{content}
+			{inner}
 		</button>
-	);
-}
-
-/** The graph: hub on one side (or in the middle), its counterparts on the other. */
-function AgentGraph({ group, hub }: { group: AgentToastGroup; hub: Endpoint }) {
-	const t = useT();
-	const containerRef = useRef<HTMLDivElement | null>(null);
-	const svgRef = useRef<SVGSVGElement | null>(null);
-	const hubRef = useRef<HTMLElement | null>(null);
-	const inboundRefs = useRef<(HTMLElement | null)[]>([]);
-	const outboundRefs = useRef<(HTMLElement | null)[]>([]);
-
-	const outgoing = group.items.filter(({ link }) => link.fromTaskId === group.hubTaskId);
-	const incoming = group.items.filter(({ link }) => link.toTaskId === group.hubTaskId);
-	const shownOut = outgoing.slice(0, MAX_AGENT_NODES);
-	const shownIn = incoming.slice(0, MAX_AGENT_NODES);
-	const hiddenCount = outgoing.length - shownOut.length + (incoming.length - shownIn.length);
-	const mode = outgoing.length && incoming.length ? "both" : outgoing.length ? "out" : "in";
-
-	inboundRefs.current.length = shownIn.length;
-	outboundRefs.current.length = shownOut.length;
-
-	const wires = useWires(containerRef, { hub: hubRef, inbound: inboundRefs, outbound: outboundRefs }, group.items.length);
-	usePulses(svgRef, wires);
-
-	const hubNode = (
-		<button
-			ref={(node) => {
-				hubRef.current = node;
-			}}
-			type="button"
-			onMouseDown={(event) => event.preventDefault()}
-			onClick={hub.onOpen}
-			disabled={!hub.onOpen}
-			aria-label={t("toast.agent.openTask", { seq: String(hub.seq), title: hub.title ?? "" }).trim()}
-			title={hub.title}
-			className="relative z-[1] flex w-[5.5rem] flex-col gap-0.5 rounded-lg bg-agent/15 px-2 py-1.5 text-left ring-1 ring-agent/60 transition-[background-color,transform] duration-150 enabled:hover:bg-agent/25 enabled:active:scale-[0.96] enabled:cursor-pointer"
-		>
-			<span className="font-mono text-micro text-agent">#{hub.seq}</span>
-			{hub.title && <span className="text-micro text-fg-3 line-clamp-2 leading-tight">{hub.title}</span>}
-		</button>
-	);
-
-	function column(items: AgentToastItem[], inbound: boolean) {
-		const refs = inbound ? inboundRefs : outboundRefs;
-		return (
-			<div className={`relative z-[1] flex flex-col gap-1 ${mode === "both" ? "shrink-0" : "min-w-0 flex-1"}`}>
-				{items.map((item, index) => {
-					const endpoint = inbound ? sender(item.link) : receiver(item.link);
-					return (
-						<NodeButton
-							key={item.id}
-							endpoint={endpoint}
-							preview={item.preview}
-							inbound={inbound}
-							showPreview={mode !== "both"}
-							label={t(inbound ? "toast.agent.openSenderNode" : "toast.agent.openReceiverNode", {
-								seq: String(endpoint.seq),
-								preview: item.preview,
-							})}
-							elementRef={(node) => {
-								refs.current[index] = node;
-							}}
-						/>
-					);
-				})}
-			</div>
-		);
-	}
-
-	const footer =
-		mode === "both"
-			? t("toast.agent.mixedCount", { out: String(outgoing.length), in: String(incoming.length) })
-			: mode === "out"
-				? t("toast.agent.sentCount", { count: String(outgoing.length) })
-				: t("toast.agent.receivedCount", { count: String(incoming.length) });
-
-	return (
-		<div className="min-w-0 flex-1">
-			<div ref={containerRef} className={`relative flex items-center gap-3 ${mode === "both" ? "justify-center" : ""}`}>
-				<svg
-					ref={svgRef}
-					aria-hidden="true"
-					className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
-				>
-					{wires.map((wire, index) => (
-						<path
-							key={`w${index}`}
-							data-wire
-							d={wire.d}
-							fill="none"
-							strokeWidth={1.5}
-							strokeLinecap="round"
-							className={wire.inbound ? "stroke-success/45" : "stroke-agent/45"}
-						/>
-					))}
-					{wires.map((wire, index) => (
-						<circle
-							key={`p${index}`}
-							data-pulse
-							r={2.7}
-							opacity={0}
-							className={wire.inbound ? "fill-success" : "fill-agent"}
-						/>
-					))}
-				</svg>
-				{mode !== "out" && column(shownIn, true)}
-				{hubNode}
-				{mode !== "in" && column(shownOut, false)}
-			</div>
-			<div className="mt-1.5 flex items-center justify-between gap-2 text-micro text-fg-muted">
-				<span>{footer}</span>
-				{hiddenCount > 0 && <span>{t("toast.agent.more", { count: String(hiddenCount) })}</span>}
-			</div>
-		</div>
-	);
-}
-
-/** One message: the two squares the user asked for, with the text underneath. */
-function AgentPair({ item }: { item: AgentToastItem }) {
-	const t = useT();
-	const from = sender(item.link);
-	const to = receiver(item.link);
-
-	function square(endpoint: Endpoint, roleLabel: string) {
-		const inner = (
-			<>
-				<span className="text-micro uppercase tracking-wide text-fg-muted">{roleLabel}</span>
-				<span className="font-mono text-xs text-agent">#{endpoint.seq}</span>
-				{endpoint.title && <span className="text-micro text-fg-3 line-clamp-2 leading-tight">{endpoint.title}</span>}
-			</>
-		);
-		if (!endpoint.onOpen) {
-			return <div className="flex min-w-0 flex-1 flex-col gap-0.5 rounded-lg bg-raised px-2 py-1.5">{inner}</div>;
-		}
-		return (
-			<button
-				type="button"
-				onMouseDown={(event) => event.preventDefault()}
-				onClick={endpoint.onOpen}
-				aria-label={`${roleLabel}: ${t("toast.agent.openTask", { seq: String(endpoint.seq), title: endpoint.title ?? "" }).trim()}`}
-				className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 rounded-lg bg-raised px-2 py-1.5 text-left ring-1 ring-agent/40 transition-[background-color,transform] duration-150 hover:bg-raised-hover active:scale-[0.96]"
-			>
-				{inner}
-			</button>
-		);
-	}
-
-	return (
-		<div className="min-w-0 flex-1">
-			<div className="flex items-stretch gap-2">
-				{square(from, t("toast.agent.roleSender"))}
-				<span aria-hidden="true" className="self-center text-agent">
-					→
-				</span>
-				{square(to, t("toast.agent.roleReceiver"))}
-			</div>
-			<p className="mt-2 break-words text-sm leading-relaxed text-fg">{item.preview}</p>
-		</div>
 	);
 }
 
 /**
- * The body of an agent-traffic toast. One message renders as a pair of squares;
- * a burst around one hub renders as a graph, so five identical violet toasts
- * become one card whose shape says who is talking to whom.
+ * The body of an agent-traffic toast: the hub on the left, its counterparts on
+ * the right split into what came in and what went out, and the message text in
+ * the channel between them. One message is the same composition with one leg.
  */
 export function AgentMessageToast({ group }: { group: AgentToastGroup }) {
-	const hub = hubEndpoint(group);
-	if (group.items.length === 1 || !hub) return <AgentPair item={group.items[0]} />;
-	return <AgentGraph group={group} hub={hub} />;
+	const t = useT();
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const svgRef = useRef<SVGSVGElement | null>(null);
+	const hubRef = useRef<HTMLElement | null>(null);
+	const legRefs = useRef<(HTMLElement | null)[]>([]);
+	const legInbound = useRef<boolean[]>([]);
+
+	const hub = hubOf(group);
+	const legs = hub ? legsOf(group, hub.taskId) : [];
+	const received = legs.filter((leg) => leg.inbound).slice(0, MAX_AGENT_LEGS);
+	const sent = legs.filter((leg) => !leg.inbound).slice(0, MAX_AGENT_LEGS);
+	const hidden = legs.length - received.length - sent.length;
+	const shown = [...received, ...sent];
+
+	legRefs.current.length = shown.length;
+	legInbound.current = shown.map((leg) => leg.inbound);
+
+	const wires = useWires(containerRef, { hub: hubRef, legs: legRefs, inbound: legInbound }, shown.length);
+	usePulses(svgRef, wires);
+
+	if (!hub) return null;
+
+	function block(title: string, rows: Leg[], offset: number) {
+		return (
+			<div className="flex flex-col gap-1">
+				<div className="text-micro uppercase tracking-wide text-fg-muted">{title}</div>
+				{rows.map((leg, index) => (
+					<div
+						key={`${leg.endpoint.taskId}:${leg.inbound ? "in" : "out"}`}
+						ref={(node) => {
+							legRefs.current[offset + index] = node;
+						}}
+						className="relative z-[1] flex items-center gap-1.5"
+					>
+						<span
+							title={leg.preview}
+							className="min-w-0 flex-1 truncate rounded-md bg-raised px-1.5 py-1 text-micro text-fg"
+						>
+							<span className={`mr-1 ${leg.inbound ? "text-success" : "text-agent"}`}>
+								{leg.inbound ? "←" : "→"}
+							</span>
+							{leg.preview}
+						</span>
+						<div className="w-[8rem] shrink-0">
+							<TaskBox
+								endpoint={leg.endpoint}
+								count={leg.count}
+								inbound={leg.inbound}
+								label={t(leg.inbound ? "toast.agent.openSenderNode" : "toast.agent.openReceiverNode", {
+									seq: String(leg.endpoint.seq),
+									preview: leg.preview,
+								})}
+							/>
+						</div>
+					</div>
+				))}
+			</div>
+		);
+	}
+
+	return (
+		<div ref={containerRef} className="relative flex min-w-0 flex-1 items-center">
+			<svg
+				ref={svgRef}
+				aria-hidden="true"
+				className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+			>
+				{wires.map((wire, index) => (
+					<path
+						key={`w${index}`}
+						data-wire
+						d={wire.d}
+						fill="none"
+						strokeWidth={1.5}
+						strokeLinecap="round"
+						className={wire.inbound ? "stroke-success/45" : "stroke-agent/45"}
+					/>
+				))}
+				{wires.map((wire, index) => (
+					<circle
+						key={`p${index}`}
+						data-pulse
+						r={2.7}
+						opacity={0}
+						className={wire.inbound ? "fill-success" : "fill-agent"}
+					/>
+				))}
+			</svg>
+			<div className="w-[7rem] shrink-0">
+				<TaskBox
+					endpoint={hub.endpoint}
+					hub
+					elementRef={(node) => {
+						hubRef.current = node;
+					}}
+					label={t("toast.agent.openTask", { seq: String(hub.endpoint.seq), title: hub.endpoint.title ?? "" }).trim()}
+				/>
+			</div>
+			{/* Room for the bracket. The wires are absolutely positioned, so the gap
+			    has to be reserved by something with width. */}
+			<div aria-hidden="true" className="w-8 shrink-0" />
+			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+				{received.length > 0 && block(t("toast.agent.groupReceived"), received, 0)}
+				{sent.length > 0 && block(t("toast.agent.groupSent"), sent, received.length)}
+				{hidden > 0 && <div className="text-micro text-fg-muted">{t("toast.agent.more", { count: String(hidden) })}</div>}
+			</div>
+		</div>
+	);
 }

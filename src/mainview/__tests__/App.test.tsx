@@ -1214,7 +1214,8 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByText("check the payload")).toBeInTheDocument();
 			expect(screen.getByText("#7")).toBeInTheDocument();
 			expect(screen.getByText("#42")).toBeInTheDocument();
-			await userEvent.click(await screen.findByRole("button", { name: "received: task #42 Receiver" }));
+			// The receiving task is the hub box; the sender hangs off it under "received".
+			await userEvent.click(await screen.findByRole("button", { name: "task #42 Receiver" }));
 			await waitFor(() => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
 			});
@@ -1224,7 +1225,7 @@ describe("App keyboard shortcuts", () => {
 			await renderWithBoard();
 			dispatchAgentMessage();
 
-			await userEvent.click(await screen.findByRole("button", { name: "sent: task #7 Coordinator" }));
+			await userEvent.click(await screen.findByRole("button", { name: /open the sending task #7/ }));
 			await waitFor(() => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-sender");
 			});
@@ -1234,8 +1235,8 @@ describe("App keyboard shortcuts", () => {
 			await renderWithBoard();
 			dispatchAgentMessage({ fromTaskId: undefined });
 
-			expect(await screen.findByRole("button", { name: "received: task #42 Receiver" })).toBeInTheDocument();
-			expect(screen.queryByRole("button", { name: "sent: task #7 Coordinator" })).not.toBeInTheDocument();
+			expect(await screen.findByRole("button", { name: "task #42 Receiver" })).toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: /open the sending task #7/ })).not.toBeInTheDocument();
 		});
 
 		it("folds a burst around one hub into a single card instead of a pile", async () => {
@@ -1254,7 +1255,9 @@ describe("App keyboard shortcuts", () => {
 			});
 
 			await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(1));
-			expect(screen.getByText("2 sent · 1 received")).toBeInTheDocument();
+			expect(screen.getByText("sent")).toBeInTheDocument();
+			expect(screen.getByText("received")).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: /open the receiving task #43/ })).toBeInTheDocument();
 		});
 
 		it("drops the toast when the SENDER's project is sensitive on camera", async () => {

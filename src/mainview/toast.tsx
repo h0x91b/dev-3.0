@@ -570,15 +570,16 @@ function ToastCard({ entry, context, onClick, group, dismissLabel, paused, onDis
 			<div
 				data-toast-card
 				data-dragging={dragging ? "true" : "false"}
-				className={`toast-swipe group relative overflow-hidden bg-overlay border ${v.border} rounded-xl shadow-2xl w-[26rem] max-w-[calc(100vw-2rem)] flex items-start gap-3 p-4`}
+				className={`toast-swipe group relative overflow-hidden bg-overlay border ${v.border} rounded-xl shadow-2xl ${group ? "w-[32rem]" : "w-[26rem]"} max-w-[calc(100vw-2rem)] flex items-start gap-3 p-4`}
 				style={{ transform: `translateX(${dragX}px)`, opacity }}
 				onPointerDown={beginSwipe}
 				onPointerMove={updateSwipe}
 				onPointerUp={endSwipe}
 				onPointerCancel={cancelSwipe}
 			>
-				{/* The graph needs the full 26rem; the envelope would cost it a node column. */}
-				{!(group && group.items.length > 1) && (
+				{/* The composition needs the full width; the envelope would cost it the
+				    channel the message text lives in. */}
+				{!group && (
 					<span
 						className={`${v.text} text-2xl leading-none mt-0.5 flex-shrink-0`}
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
