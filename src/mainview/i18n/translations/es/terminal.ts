@@ -125,6 +125,7 @@ const terminal = {
 	"cheatSheet.lastPane": "Último panel activo",
 	"cheatSheet.showPaneNumbers": "Mostrar números de panel (saltar pulsando dígito)",
 	"cheatSheet.directionalSelect": "Seleccionar panel por dirección",
+	"cheatSheet.directionalSelectNoPrefix": "Seleccionar panel por dirección (sin prefijo)",
 	"cheatSheet.markPane": "Marcar el panel actual",
 	"cheatSheet.swapWithMarked": "Intercambiar panel actual con el marcado",
 	"cheatSheet.swapWithPrevNext": "Intercambiar con panel anterior / siguiente",

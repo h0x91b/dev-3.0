@@ -66,6 +66,24 @@ describe("buildThemeConfig", () => {
 		expect(config).not.toContain("MouseDragEnd1Pane send-keys -X copy-selection");
 	});
 
+	it("puts prefix-free pane navigation on Alt+Shift+arrow and frees plain Alt+arrow", () => {
+		for (const flavor of ["mocha", "latte"] as const) {
+			const config = buildThemeConfig(flavor);
+			for (const dir of [
+				["Left", "-L"],
+				["Right", "-R"],
+				["Up", "-U"],
+				["Down", "-D"],
+			] as const) {
+				expect(config).toContain(`bind -n M-S-${dir[0]} select-pane ${dir[1]}`);
+				// The unbind is required: configureTmux re-sources this config into a
+				// live server, where a merely deleted bind line stays in effect.
+				expect(config).toContain(`unbind -n M-${dir[0]}`);
+				expect(config).not.toContain(`bind -n M-${dir[0]} select-pane`);
+			}
+		}
+	});
+
 	it("writes a backslash split binding with a literal double backslash", () => {
 		expect(buildThemeConfig("mocha")).toContain(
 			String.raw`bind \\ split-window -h -c "${PANE_CWD_FORMAT}"`,

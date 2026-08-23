@@ -181,8 +181,8 @@ export function buildResizeDance(cols: number, rows: number): [string, string] {
  * - A zero horizontal delta returns "".
  *
  * Otherwise it emits |Δcol| of \x1b[C (right) or \x1b[D (left). Plain arrows
- * (no Alt modifier) are emitted on purpose so the sequence never collides with
- * tmux's `bind -n M-Left/Right` pane-switch bindings (which are Alt+Arrow).
+ * (no modifier) are emitted on purpose: Alt+Arrow is the shell's word motion and
+ * Alt+Shift+Arrow is tmux's prefix-free `select-pane` binding.
  *
  * Exported for unit testing — keeps the delta→sequence mapping pinned.
  */

@@ -127,6 +127,7 @@ const terminal = {
 	"cheatSheet.lastPane": "Последняя активная панель",
 	"cheatSheet.showPaneNumbers": "Показать номера панелей (прыжок по цифре)",
 	"cheatSheet.directionalSelect": "Выбрать панель по направлению",
+	"cheatSheet.directionalSelectNoPrefix": "Выбрать панель по направлению (без префикса)",
 	"cheatSheet.markPane": "Пометить текущую панель",
 	"cheatSheet.swapWithMarked": "Поменять текущую панель с помеченной",
 	"cheatSheet.swapWithPrevNext": "Поменять с предыдущей / следующей панелью",

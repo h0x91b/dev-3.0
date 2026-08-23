@@ -63,11 +63,16 @@ bind | split-window -h -c "#{pane_current_path}"
 bind \\ split-window -h -c "#{pane_current_path}"
 bind - split-window -v -c "#{pane_current_path}"
 
-# Alt+arrow pane switching (no prefix required)
-bind -n M-Left select-pane -L
-bind -n M-Right select-pane -R
-bind -n M-Up select-pane -U
-bind -n M-Down select-pane -D
+# Alt+Shift+arrow pane switching (no prefix required); plain Alt+arrow is left
+# to the shell for word motion
+unbind -n M-Left
+unbind -n M-Right
+unbind -n M-Up
+unbind -n M-Down
+bind -n M-S-Left select-pane -L
+bind -n M-S-Right select-pane -R
+bind -n M-S-Up select-pane -U
+bind -n M-S-Down select-pane -D
 
 # Status bar
 set -g status-right "#(ps -t #{pane_tty} -o pid=,comm= --sort=-start_time | head -1) | #(cd #{pane_current_path}; git branch --show-current 2>/dev/null || echo '-') | ^b+| split ^b+- hsplit ^b+z zoom"

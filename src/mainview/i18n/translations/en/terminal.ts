@@ -125,6 +125,7 @@ const terminal = {
 	"cheatSheet.lastPane": "Last active pane",
 	"cheatSheet.showPaneNumbers": "Show pane numbers (jump by digit)",
 	"cheatSheet.directionalSelect": "Select pane by direction",
+	"cheatSheet.directionalSelectNoPrefix": "Select pane by direction (no prefix)",
 	"cheatSheet.markPane": "Mark current pane",
 	"cheatSheet.swapWithMarked": "Swap current pane with the marked one",
 	"cheatSheet.swapWithPrevNext": "Swap with previous / next pane",

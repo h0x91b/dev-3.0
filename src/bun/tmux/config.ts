@@ -122,14 +122,22 @@ bind | split-window -h -c "${PANE_CWD_FORMAT}"
 bind \\ split-window -h -c "${PANE_CWD_FORMAT}"
 bind - split-window -v -c "${PANE_CWD_FORMAT}"
 
-# Alt+arrow pane switching (no prefix required)
-bind -n M-Left select-pane -L
-bind -n M-Right select-pane -R
-bind -n M-Up select-pane -U
-bind -n M-Down select-pane -D
+# Alt+Shift+arrow pane switching (no prefix required). Plain Alt+arrow is
+# deliberately NOT bound: the shell and agent TUIs use modifier+arrow for word
+# motion, and a root-table binding swallows the key before the pane sees it.
+# The unbinds are load-bearing, not cosmetic — configureTmux re-sources this
+# file into a LIVE server, where a merely deleted bind line stays in effect.
+unbind -n M-Left
+unbind -n M-Right
+unbind -n M-Up
+unbind -n M-Down
+bind -n M-S-Left select-pane -L
+bind -n M-S-Right select-pane -R
+bind -n M-S-Up select-pane -U
+bind -n M-S-Down select-pane -D
 
 # Remember the last AGENT pane the user focused, per session. Fires on every
-# pane selection (mouse, Alt+arrow, programmatic). The conditional keeps the
+# pane selection (mouse, Alt+Shift+arrow, programmatic). The conditional keeps the
 # previous value when the newly-focused pane is not an agent pane, so focusing a
 # shell / dev-server split never misroutes a hand-off. Read at send time by
 # resolveAgentPromptTargetPane. Session-scoped: the dev3 tmux server hosts many

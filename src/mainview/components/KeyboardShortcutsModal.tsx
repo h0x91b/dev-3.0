@@ -94,6 +94,7 @@ function buildTmuxSections(t: T, mac: boolean, remote: boolean): Section[] {
 				{ keys: "⌃B ;", desc: t("cheatSheet.lastPane") },
 				{ keys: "⌃B q", desc: t("cheatSheet.showPaneNumbers") },
 				{ keys: "⌃B ↑ ↓ ← →", desc: t("cheatSheet.directionalSelect") },
+				{ keys: "⌥⇧↑ ↓ ← →", desc: t("cheatSheet.directionalSelectNoPrefix") },
 				{ keys: "⌃B m", desc: t("cheatSheet.markPane") },
 				{ keys: "⌃B s", desc: t("cheatSheet.swapWithMarked") },
 				{ keys: "⌃B { / }", desc: t("cheatSheet.swapWithPrevNext") },

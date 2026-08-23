@@ -1407,12 +1407,14 @@ describe("buildCursorMoveSequence", () => {
 		expect(buildCursorMoveSequence(8, 5, 30, 6)).toBe("");
 	});
 
-	it("never emits Alt+Arrow (plain CSI only) so tmux pane-switch is untouched", () => {
+	it("emits plain CSI only — never word-motion or the pane-switch combo", () => {
 		const seq = buildCursorMoveSequence(1, 1, 4, 1);
-		// Plain CSI C/D, not the M-Left/Right \x1b\x1b[ or \x1b[1;3 forms.
+		// Plain CSI C/D: not \x1b\x1b[, not \x1b[1;3 (Alt = word motion in the
+		// shell), not \x1b[1;4 (Alt+Shift = tmux's prefix-free pane switch).
 		expect(seq).toBe(RIGHT.repeat(3));
 		expect(seq).not.toContain("\x1b\x1b");
 		expect(seq).not.toContain(";3");
+		expect(seq).not.toContain(";4");
 	});
 
 	it("scales the move by the exact column delta (one arrow per column)", () => {
