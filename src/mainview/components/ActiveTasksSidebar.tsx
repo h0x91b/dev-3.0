@@ -260,7 +260,8 @@ function ActiveTasksSidebar({
 
 	// Facet resolver + funnel pool for the token-DSL filter. Labels/statuses are
 	// resolved per the task's OWN project (the pool may be cross-project in
-	// global scope). The sidebar has no per-task PR number.
+	// global scope). The sidebar tracks no live PR map — the matcher falls back to
+	// the task's own sticky prNumber/prUrl, so PR search still works here.
 	const resolver: FacetResolver = useMemo(() => ({
 		agents,
 		labelsFor: (task) => {

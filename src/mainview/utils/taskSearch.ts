@@ -49,7 +49,9 @@ export interface TaskQueryContext {
 	 *  null on surfaces that cannot resolve spaces (a single project's board), so
 	 *  `space:` and `is:home` correctly match nothing there. */
 	spaceNames: string[] | null;
-	/** PR number for the task's branch, for free-text identifier matching. */
+	/** Live PR number for the task's branch, when the surface tracks one. The
+	 *  matcher falls back to the task's own sticky `prNumber`, so a surface with
+	 *  no live PR data still finds tasks by PR number. */
 	prNumber?: number | null;
 }
 
@@ -191,7 +193,17 @@ export function parseTaskQuery(query: string): ParsedQuery {
 }
 
 /**
- * Free-text matcher (title/description substring + seq/UUID/PR prefix), the
+ * `owner/repo/pull/N` extracted from a GitHub pull-request URL, lowercased —
+ * the comparable identity of a pasted PR link. Returns null for anything that
+ * is not such a URL.
+ */
+function prUrlIdentity(text: string): string | null {
+	const m = /github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/i.exec(text);
+	return m ? `${m[1]}/${m[2]}/pull/${m[3]}`.toLowerCase() : null;
+}
+
+/**
+ * Free-text matcher (title/description substring + seq/UUID/PR identifier), the
  * internal free-text step of `matchesTaskQuery`. All comparisons are
  * case-insensitive.
  *
@@ -201,6 +213,10 @@ export function parseTaskQuery(query: string): ParsedQuery {
  * long descriptions it matched almost any short/numeric query (a query like
  * "1172" found its scattered digits in nearly every task). Fuzzy ranking still
  * lives where it belongs, in the quick-switch palette (`fuzzyMatch.ts`).
+ *
+ * PR queries accept a number (`1488`, `#1488`, `pr1488`, `pr #1488`) or a full
+ * GitHub PR link. A link is matched on `owner/repo/pull/N` when the task's own
+ * PR URL is known, so PR 42 of one repo never matches PR 42 of another.
  */
 function matchesFreeText(task: Task, freeText: string, prNumber?: number | null): boolean {
 	const q = freeText.trim().toLowerCase();
@@ -217,11 +233,22 @@ function matchesFreeText(task: Task, freeText: string, prNumber?: number | null)
 
 	if (task.id.toLowerCase().startsWith(q)) return true;
 
-	if (prNumber != null) {
-		const prStr = String(prNumber);
+	// Live PR data when the surface has it, else the task's sticky PR fields.
+	const prNumberValue = prNumber ?? task.prNumber ?? null;
+
+	const queryPrUrl = prUrlIdentity(q);
+	if (queryPrUrl) {
+		const taskPrUrl = task.prUrl ? prUrlIdentity(task.prUrl) : null;
+		if (taskPrUrl) return taskPrUrl === queryPrUrl;
+		// Repo unknown for this task: fall back to the number the link carries.
+		return prNumberValue != null && String(prNumberValue) === queryPrUrl.split("/").pop();
+	}
+
+	if (prNumberValue != null) {
+		const prStr = String(prNumberValue);
 		if (prStr.startsWith(qNormalized)) return true;
-		const qLower = q.replace(/^pr\s*/i, "");
-		if (qLower && prStr.startsWith(qLower)) return true;
+		const bare = qNormalized.replace(/^(?:pull|pr)[\s#/-]*/, "");
+		if (bare && prStr.startsWith(bare)) return true;
 	}
 
 	return false;

@@ -30,6 +30,20 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 	};
 }
 
+/**
+ * A task whose text/seq/id can never match a PR-shaped query, so a PR test
+ * asserts the PR path and nothing else.
+ */
+function blankTask(overrides: Partial<Task> = {}): Task {
+	return makeTask({
+		title: "Quiet task",
+		description: "",
+		seq: 7,
+		id: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+		...overrides,
+	});
+}
+
 /** Build a facet context; every facet empty unless overridden. */
 function ctx(overrides: Partial<TaskQueryContext> = {}): TaskQueryContext {
 	return {
@@ -116,7 +130,7 @@ describe("matchesTaskQuery — free text (substring/identifier)", () => {
 		expect(matchesTaskQuery(makeTask(), "pr789", ctx({ prNumber: 789 }))).toBe(true);
 	});
 
-	it("does not match PR number when context prNumber is null", () => {
+	it("does not match PR number when neither context nor task carries one", () => {
 		expect(
 			matchesTaskQuery(
 				makeTask({ title: "No match", description: "No match", seq: 1, id: "00000000-0000-0000-0000-000000000000" }),
@@ -124,6 +138,41 @@ describe("matchesTaskQuery — free text (substring/identifier)", () => {
 				ctx({ prNumber: null }),
 			),
 		).toBe(false);
+	});
+
+	it("falls back to the task's sticky prNumber when the surface has no live PR data", () => {
+		// The Active Tasks sidebar tracks no live PR map — the persisted field is
+		// the only PR identity it has.
+		const task = blankTask({ prNumber: 1488 });
+		expect(matchesTaskQuery(task, "1488", ctx())).toBe(true);
+		expect(matchesTaskQuery(task, "#1488", ctx())).toBe(true);
+		expect(matchesTaskQuery(task, "pr1488", ctx())).toBe(true);
+		expect(matchesTaskQuery(task, "pr #1488", ctx())).toBe(true);
+		expect(matchesTaskQuery(task, "pull/1488", ctx())).toBe(true);
+		expect(matchesTaskQuery(task, "999", ctx())).toBe(false);
+	});
+
+	it("live context prNumber wins over the stale sticky field", () => {
+		const task = blankTask({ prNumber: 100 });
+		expect(matchesTaskQuery(task, "200", ctx({ prNumber: 200 }))).toBe(true);
+	});
+
+	it("matches a pasted GitHub PR link", () => {
+		const task = blankTask({ prNumber: 1488, prUrl: "https://github.com/h0x91b/dev-3.0/pull/1488" });
+		expect(matchesTaskQuery(task, "https://github.com/h0x91b/dev-3.0/pull/1488", ctx())).toBe(true);
+		// Deep links into the PR (files tab, a comment anchor) carry the same identity.
+		expect(matchesTaskQuery(task, "https://github.com/h0x91b/dev-3.0/pull/1488/files", ctx())).toBe(true);
+	});
+
+	it("a PR link from another repo does not match a same-numbered PR", () => {
+		const task = blankTask({ prNumber: 1488, prUrl: "https://github.com/h0x91b/dev-3.0/pull/1488" });
+		expect(matchesTaskQuery(task, "https://github.com/other/repo/pull/1488", ctx())).toBe(false);
+	});
+
+	it("a PR link falls back to its number when the task's PR URL is unknown", () => {
+		const task = blankTask({ prNumber: 1488 });
+		expect(matchesTaskQuery(task, "https://github.com/h0x91b/dev-3.0/pull/1488", ctx())).toBe(true);
+		expect(matchesTaskQuery(task, "https://github.com/h0x91b/dev-3.0/pull/1489", ctx())).toBe(false);
 	});
 });
 
