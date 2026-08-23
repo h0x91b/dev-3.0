@@ -275,7 +275,24 @@ Evidence: [first-run-advertises-help-mode](../../decisions/2026/08/22/first-run-
   only screen on nothing.
 - A **first-run-only action** (the sandbox button) belongs **inside the first-run strip**, never beside the
   screen's own primary action: `decisions/2026/08/22/the-sandbox-is-a-real-repo-dev3-owns.md`.
-- Multi-step tours are no longer banned as a class.
+
+#### 5.4b Guided tours — the sequence surface — `Observed`
+
+Help mode answers *what is this*; a tour answers *what do I press, and why* — unanswerable per zone,
+because the answer spans four surfaces. One mechanism (`mainview/tour.ts` + `TourOverlay`), never a
+bespoke wizard. Evidence:
+[a-guided-tour-points-it-does-not-drive](../../decisions/2026/08/23/a-guided-tour-points-it-does-not-drive.md).
+
+- **A step points; it never acts.** Ring + card, nothing else click-shielded. A Next that performs
+  the step teaches the wizard, not the app.
+- **Progress is observed, not reported.** A step ends when the DOM shows the next
+  `data-tour-anchor`; participating costs one attribute, never a callback.
+- **A lost anchor ends the tour**, quietly. A guide the user left must not follow them.
+- **Auto-start once, only from an owned dead end** (the sandbox board). Skipping counts as done
+  (`completedTours`) — a tour that returns after a wave-off is worse than none.
+- **Where the user will not type, dev3 types**: prefill, with the text and the data it refers to
+  from one shared constant.
+- **Never the only route to a control** — a shortcut through the product, not a gate in front.
 
 ### 5.5 Diagnostics — crash & error surface (remote/mobile) — `Observed`
 

@@ -1087,6 +1087,12 @@ export interface GlobalSettings {
 	 * anything (bible §5.4). One-way: it is never set back to false.
 	 */
 	helpModeDiscovered?: boolean;
+	/**
+	 * Guided tours the user has finished or dismissed (ids from `mainview/tour.ts`).
+	 * A tour auto-starts once and never again; skipping counts, because a wizard
+	 * that returns after being waved off is worse than no wizard.
+	 */
+	completedTours?: string[];
 	taskOpenMode?: "split" | "fullscreen"; // how active tasks open when clicked
 	/**
 	 * What Cmd/Ctrl+Click on a file path in terminal output does:
@@ -1551,6 +1557,13 @@ export interface Project {
 	customStatusLabels?: Record<string, string>;
 	// Number of ports to allocate per task/worktree (injected as DEV3_PORT0..N)
 	portCount?: number;
+	/**
+	 * dev3's own throwaway repo, created by `createSandboxProject`. The guided tour
+	 * recognises its board by this flag, so a tour cut short by a restart resumes
+	 * instead of dropping the user back onto an empty board. Additive and ignored
+	 * by older versions.
+	 */
+	sandbox?: boolean;
 	/**
 	 * Project kind. `"git"` (default when absent) is a normal repo-backed project
 	 * with worktrees. `"virtual"` is an "Operations" board: tasks run in a managed
@@ -3567,6 +3580,29 @@ export interface AgentCheckResult {
 	customPathError?: boolean;
 }
 
+/**
+ * Evidence that an installed agent CLI has credentials. Three-valued on purpose:
+ * `unknown` means dev3 has no probe for that CLI, and must never be treated as
+ * "logged out". See `bun/harness-readiness.ts`.
+ */
+export type HarnessSignIn = "signed-in" | "not-signed-in" | "unknown";
+
+export interface HarnessReadiness {
+	agentId: string;
+	name: string;
+	baseCommand: string;
+	installed: boolean;
+	signIn: HarnessSignIn;
+}
+
+export interface HarnessReadinessReport {
+	harnesses: HarnessReadiness[];
+	/** Agent ids that are installed and not provably signed out — what the UI gates on. */
+	usable: string[];
+	/** No agent CLI is installed at all: a different, more basic problem. */
+	noneInstalled: boolean;
+}
+
 // ---- CLI socket protocol ----
 
 export interface CliRequest {
@@ -4393,6 +4429,11 @@ export type AppRPCSchema = {
 			checkAgentAvailability: {
 				params: void;
 				response: AgentCheckResult[];
+			};
+			/** Installed AND holding credentials — what the first-run sandbox is gated on. */
+			checkHarnessReadiness: {
+				params: void;
+				response: HarnessReadinessReport;
 			};
 			setAgentBinaryPath: {
 				params: { agentId: string; path: string };

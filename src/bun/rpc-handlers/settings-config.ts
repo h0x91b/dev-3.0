@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PATHS } from "../electrobun-platform";
-import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo } from "../../shared/types";
 import * as data from "../data";
 import * as agents from "../agents";
 import * as github from "../github";
@@ -23,6 +23,7 @@ import { resolveAnalyticsDistinctId as resolveDistinctId } from "../analytics-id
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, hasModelProviderSection, tmuxSearchPaths } from "./shared-pure";
 import { agentBinaryPathOverride, isExecutableFile } from "../executable";
+import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
 
 /** Reject malformed env maps at the RPC boundary — the UI validates too, but
@@ -495,6 +496,14 @@ async function checkAgentAvailability(): Promise<AgentCheckResult[]> {
 	return results;
 }
 
+/** Availability plus credential evidence — see `harness-readiness.ts` for why the
+ *  two are separate questions. */
+async function checkHarnessReadiness(): Promise<HarnessReadinessReport> {
+	const report = harnessReadinessFrom(await checkAgentAvailability());
+	log.info("<- checkHarnessReadiness", { usable: report.usable, noneInstalled: report.noneInstalled });
+	return report;
+}
+
 async function setAgentBinaryPath(params: { agentId: string; path: string }): Promise<void> {
 	log.info("-> setAgentBinaryPath", params);
 	if (!existsSync(params.path)) {
@@ -585,6 +594,7 @@ export const settingsConfigHandlers = {
 	checkGhAvailable,
 	setCustomBinaryPath,
 	checkAgentAvailability,
+	checkHarnessReadiness,
 	setAgentBinaryPath,
 	checkCodexBedrockConfig,
 	setTmuxTheme,

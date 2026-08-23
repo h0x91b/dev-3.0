@@ -70,7 +70,10 @@ import TaskImageViewer from "./components/TaskImageViewer";
 import TaskArtifactViewer from "./components/TaskArtifactViewer";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
+import TourOverlay from "./components/TourOverlay";
 import { HELP_ATTRACTOR_DISMISS_EVENT, HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
+import { FIRST_TASK_TOUR_ID, TOUR_START_EVENT, startTour, tourById } from "./tour";
+import { SANDBOX_FIRST_PROMPT } from "../shared/sandbox-prompts";
 import BootstrapScreen, { type BootPhase } from "./components/BootstrapScreen";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import StatusDock from "./components/StatusDock";
@@ -451,10 +454,13 @@ function App() {
 	// sound, shortcut rebinds, terminal BiDi). Without it they stay at the
 	// hardcoded defaults until the user opens Settings — which re-enabled the
 	// completion sound on every launch for users who had turned it off (#1337).
+	// Guarded on by the guided tour: acting on default settings would replay a
+	// finished tour on every launch.
+	const [settingsLoaded, setSettingsLoaded] = useState(false);
 	useEffect(() => {
 		let alive = true;
 		api.request.getGlobalSettings()
-			.then((next) => { if (alive) setGlobalSettings(next); })
+			.then((next) => { if (alive) { setGlobalSettings(next); setSettingsLoaded(true); } })
 			.catch(() => {});
 		return () => { alive = false; };
 	}, []);
@@ -475,6 +481,51 @@ function App() {
 	useEffect(() => {
 		if (helpMode) markHelpDiscovered();
 	}, [helpMode, markHelpDiscovered]);
+
+	// ── Guided tours ──
+	// Owned here rather than by a screen: a tour walks across the board, two modals
+	// and the task screen, so anything mounted per-screen would unmount mid-step.
+	const [tour, setTour] = useState<{ id: string; step: number } | null>(null);
+
+	const finishTour = useCallback((tourId: string) => {
+		setTour(null);
+		setGlobalSettings((prev) => {
+			if (prev.completedTours?.includes(tourId)) return prev;
+			const next = { ...prev, completedTours: [...(prev.completedTours ?? []), tourId] };
+			api.request.saveGlobalSettings(next).catch(() => {});
+			return next;
+		});
+	}, []);
+
+	useEffect(() => {
+		function onStart(e: Event) {
+			const id = (e as CustomEvent<string>).detail;
+			if (tourById(id)) setTour({ id, step: 0 });
+		}
+		window.addEventListener(TOUR_START_EVENT, onStart);
+		return () => window.removeEventListener(TOUR_START_EVENT, onStart);
+	}, []);
+
+	// Resume on the sandbox board. `openSandbox` starts the tour directly; this is
+	// the other way in — an app restart mid-tour, or a user who reached the board
+	// some other way — and it must not fire before settings have loaded, or a
+	// finished tour would replay on every boot.
+	const sandboxRouteProjectId = state.route.screen === "project" ? state.route.projectId : null;
+	useEffect(() => {
+		if (!settingsLoaded || tour || !sandboxRouteProjectId) return;
+		if (globalSettings.completedTours?.includes(FIRST_TASK_TOUR_ID)) return;
+		const project = state.projects.find((candidate) => candidate.id === sandboxRouteProjectId);
+		if (project?.sandbox) startTour(FIRST_TASK_TOUR_ID);
+	}, [settingsLoaded, tour, sandboxRouteProjectId, globalSettings.completedTours, state.projects]);
+
+	const activeTour = tour ? tourById(tour.id) : undefined;
+	const activeTourStep = activeTour?.steps[tour?.step ?? 0];
+
+	// A step's declared effect, run when the step opens. The registry stays data;
+	// the doing lives here, where the state it touches already is.
+	useEffect(() => {
+		if (activeTourStep?.effect === "prefill-sandbox-prompt") setCreateTaskInitialText(SANDBOX_FIRST_PROMPT);
+	}, [activeTourStep]);
 
 	// Closing the callout counts too: the user has seen the button named, so
 	// nagging them again would be the point of the flag missed.
@@ -2496,6 +2547,14 @@ function App() {
 			)}
 			{hintMode && <HintOverlay onExit={() => setHintMode(false)} />}
 			{helpMode && <HelpOverlay onExit={() => setHelpMode(false)} />}
+			{activeTour && tour && !helpMode && (
+				<TourOverlay
+					tour={activeTour}
+					stepIndex={tour.step}
+					onStepChange={(step) => setTour({ id: activeTour.id, step })}
+					onExit={() => finishTour(activeTour.id)}
+				/>
+			)}
 			{showProjectSwitch && (
 				<ProjectQuickSwitchModal
 					projects={quickSwitch.projects}

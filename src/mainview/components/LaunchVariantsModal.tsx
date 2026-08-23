@@ -359,7 +359,7 @@ function LaunchVariantsModal({
 						<span />
 					</div>
 
-					<div className="space-y-3">
+					<div className="space-y-3" data-tour-anchor="launch.variants">
 						{variants.map((variant, index) => (
 							<div
 								key={index}

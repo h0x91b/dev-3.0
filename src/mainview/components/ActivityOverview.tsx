@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Dispatch, DragEvent } from "react";
-import type { Project, Space, Task, TaskStatus } from "../../shared/types";
+import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
 import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isTaskDisconnected, orderProjectsForDisplay } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { deleteSpaceWithConfirm, moveSpace, renameSpace, toggleSpaceSensitive } from "../utils/spaceActions";
 import { useT } from "../i18n";
+import { FIRST_TASK_TOUR_ID, startTour } from "../tour";
 import { toast } from "../toast";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
@@ -154,9 +155,24 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		navigate({ screen: "project", projectId });
 	}
 
-	const [creatingSandbox, setCreatingSandbox] = useState(false);
+	// A brand-new install is never at zero projects — the builtin Operations board
+	// is created on first boot — so the dashboard's own zero-projects empty state
+	// can never render. This is the state that actually happens: an install with
+	// no repository in it yet.
+	const noRepositoryYet = !projects.some((p) => !p.deleted && !isBuiltinOpsProject(p));
 
-	/** Creates dev3's own throwaway repo (or re-opens it) and lands on its board. */
+	const [creatingSandbox, setCreatingSandbox] = useState(false);
+	// Whether any agent CLI is installed AND holding credentials. `null` while the
+	// probe is in flight — the sandbox button stays disabled until we know, because
+	// handing a newcomer a repo whose tasks cannot run is the worst first minute
+	// the app can offer.
+	const [harness, setHarness] = useState<HarnessReadinessReport | null>(null);
+	// Only a KNOWN-empty list blocks. An in-flight probe keeps the neutral copy so
+	// the strip never accuses a perfectly configured machine of having no agent.
+	const harnessBlocked = harness !== null && harness.usable.length === 0;
+
+	/** Creates dev3's own throwaway repo (or re-opens it), lands on its board and
+	 *  hands the newcomer over to the guided tour. */
 	const openSandbox = useCallback(async () => {
 		setCreatingSandbox(true);
 		try {
@@ -167,12 +183,28 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 			}
 			dispatch({ type: "addProject", project: result.project });
 			navigate({ screen: "project", projectId: result.project.id });
+			startTour(FIRST_TASK_TOUR_ID);
 		} catch (err) {
 			toast.error(t("dashboard.firstRun.sandboxFailed", { error: String(err) }));
 		} finally {
 			setCreatingSandbox(false);
 		}
 	}, [dispatch, navigate, t]);
+
+	// Probed when the first-run strip is the thing on screen, and re-probed on
+	// focus: the fix is "go log in", which happens outside the app.
+	useEffect(() => {
+		if (!noRepositoryYet) return;
+		let alive = true;
+		const probe = () => {
+			api.request.checkHarnessReadiness()
+				.then((report) => { if (alive) setHarness(report); })
+				.catch(() => { if (alive) setHarness(null); });
+		};
+		probe();
+		window.addEventListener("focus", probe);
+		return () => { alive = false; window.removeEventListener("focus", probe); };
+	}, [noRepositoryYet]);
 
 	/** One background-work summary segment. A count cannot be glued onto a status
 	 * label — that produced "3 agent is working" — so each background status owns a
@@ -835,12 +867,6 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 		);
 	}
 
-	// A brand-new install is never at zero projects — the builtin Operations board
-	// is created on first boot — so the dashboard's own zero-projects empty state
-	// can never render. This is the state that actually happens: an install with
-	// no repository in it yet.
-	const noRepositoryYet = !projects.some((p) => !p.deleted && !isBuiltinOpsProject(p));
-
 	return (
 		<div className="h-full overflow-y-auto p-3 md:p-7">
 			<div className="max-w-5xl mx-auto space-y-4">
@@ -862,14 +888,25 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3">
 							<button
 								type="button"
-								onClick={openSandbox}
-								disabled={creatingSandbox}
+								onClick={harnessBlocked ? () => navigate({ screen: "settings" }) : openSandbox}
+								disabled={creatingSandbox || harness === null}
 								data-testid="dashboard-first-run-sandbox"
 								className="flex items-center gap-1.5 flex-shrink-0 px-4 py-1.5 min-h-[44px] md:min-h-0 border border-edge rounded-xl text-fg-2 text-sm hover:text-fg hover:border-edge-active transition-[color,border-color,transform] active:scale-[0.96] disabled:opacity-60 disabled:cursor-default"
 							>
-								{t("dashboard.firstRun.sandboxAction")}
+								{t(harnessBlocked ? "dashboard.firstRun.connectAgentAction" : "dashboard.firstRun.sandboxAction")}
 							</button>
-							<span className="text-fg-muted text-xs leading-5 text-pretty">{t("dashboard.firstRun.sandboxHint")}</span>
+							{/* The sandbox is worse than nothing without a working agent: the task
+							    would be created, launched, and die on a login prompt. So the button
+							    turns into the way out instead of staying a trap. */}
+							<span className="text-fg-muted text-xs leading-5 text-pretty" data-testid="dashboard-first-run-sandbox-hint">
+								{t(
+									!harnessBlocked
+										? "dashboard.firstRun.sandboxHint"
+										: harness?.noneInstalled
+											? "dashboard.firstRun.noAgentInstalled"
+											: "dashboard.firstRun.noAgentSignedIn",
+								)}
+							</span>
 						</div>
 					</div>
 				) : (

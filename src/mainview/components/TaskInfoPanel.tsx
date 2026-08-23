@@ -1525,7 +1525,7 @@ function TaskInfoPanel({
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
-						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar">
+						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
 							{project.kind === "virtual" ? (
 								<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
 							) : (
@@ -1593,7 +1593,7 @@ function TaskInfoPanel({
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
-							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar">
+							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar" data-tour-anchor="task.git-bar">
 								{project.kind === "virtual" ? (
 									<span className="text-fg-muted text-micro italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
 								) : (

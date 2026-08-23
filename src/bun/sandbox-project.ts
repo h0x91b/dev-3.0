@@ -17,6 +17,7 @@ import * as data from "./data";
 import * as git from "./git";
 import { createLogger } from "./logger";
 import { SANDBOX_DIR } from "./paths";
+import { SANDBOX_TASK_PROMPTS } from "../shared/sandbox-prompts";
 import type { Project } from "../shared/types";
 
 const log = createLogger("sandbox");
@@ -41,9 +42,7 @@ const SEED_FILES: Record<string, string> = {
 		"",
 		"Create a task on the board and paste one of these as the prompt:",
 		"",
-		"- `prices.js rounds money wrong — find the bug, fix it, and add a test.`",
-		"- `Add a --currency flag to prices.js and document it in this README.`",
-		"- `Translate this README into Spanish as README.es.md.`",
+		...SANDBOX_TASK_PROMPTS.map((prompt) => `- \`${prompt}\``),
 		"",
 		"Each one gives the agent its own branch in its own worktree. When it is done,",
 		"read the diff on the task screen before you merge it.",
@@ -135,9 +134,15 @@ export async function createSandboxProject(): Promise<{ ok: true; project: Proje
 		}
 
 		const project = await data.addProject(SANDBOX_REPO_PATH, SANDBOX_PROJECT_NAME);
-		if (project.defaultBaseBranch !== "main") {
-			await data.updateProject(project.id, { defaultBaseBranch: "main" });
-			project.defaultBaseBranch = "main";
+		// `sandbox` is what the guided tour recognises the board by, so a tour
+		// interrupted by a restart can pick itself up instead of leaving the user on
+		// an empty board again. Cheaper and more honest than matching the path.
+		const fixes: Partial<Project> = {};
+		if (project.defaultBaseBranch !== "main") fixes.defaultBaseBranch = "main";
+		if (!project.sandbox) fixes.sandbox = true;
+		if (Object.keys(fixes).length > 0) {
+			await data.updateProject(project.id, fixes);
+			Object.assign(project, fixes);
 		}
 		log.info("← createSandboxProject OK", { projectId: project.id, seeded: !alreadyRepo });
 		return { ok: true, project };

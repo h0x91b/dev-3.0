@@ -179,6 +179,15 @@ export const HELP_TOPICS: HelpTopic[] = [
 	},
 	{ id: "header.tmux-sessions", titleKey: "help.header.tmuxSessions.title", bodyKey: "help.header.tmuxSessions.body" },
 	{ id: "sidebar.active-tasks", titleKey: "help.sidebar.activeTasks.title", bodyKey: "help.sidebar.activeTasks.body" },
+	// Three glyphs and no labels: the one control on the task screen that changes
+	// what the whole list means, and it explained itself only through tooltips.
+	{ id: "sidebar.scope", titleKey: "help.sidebar.scope.title", bodyKey: "help.sidebar.scope.body" },
+
+	// ── Tips ──
+	// Occupies prime real estate on an empty board, so a newcomer meets it before
+	// they meet a task. Conditional (tips can be switched off), hence registered
+	// but not a REQUIRED_HELP_SURFACES entry.
+	{ id: "tips.card", titleKey: "help.tips.card.title", bodyKey: "help.tips.card.body" },
 ];
 
 /**
@@ -270,6 +279,7 @@ export const REQUIRED_HELP_SURFACES: string[] = [
 	"header.rateLimits",
 	"header.tmux-sessions",
 	"sidebar.active-tasks",
+	"sidebar.scope",
 	// Form fields (non-self-evident behavior)
 	"field.task-branch",
 	"field.streamer-mode",

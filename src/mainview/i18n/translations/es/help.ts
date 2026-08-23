@@ -237,6 +237,12 @@ const help = {
 	"help.header.connectionQuality.body":
 		"Solo cuando ves dev3 desde otro dispositivo: es la ida y vuelta de una petición real por la misma conexión que usa la aplicación. Sube a la cabecera cuando el enlace deja de ser rápido; el resto del tiempo espera en este menú. Pasa el cursor para ver cuánto se gastó en tu ordenador y cuánto en la red.",
 	"help.header.memory.body": "El número es memoria libre, no usada. Pasa el cursor para ver quién se llevó el resto: dev-3.0 en sí ocupa unos cientos de megabytes; los gigabytes son de los agentes que lanzaste y de lo demás que esté corriendo.",
+	"help.sidebar.scope.title": "Qué proyectos entran en la lista",
+	"help.sidebar.scope.body":
+		"Tres iconos, tres tamaños de lista. La carpeta muestra solo las tareas de este proyecto. El anillo muestra todos los proyectos del mismo espacio, y aparece tachado cuando este proyecto no está en ninguno. El globo muestra todas las tareas de la máquina: así encuentras trabajo que dejaste en otro sitio.",
+	"help.tips.card.title": "¿Sabías que...?",
+	"help.tips.card.body":
+		"Una pista corta cada vez sobre algo que dev3 hace y que ningún botón en pantalla anuncia: un atajo, un arrastre, un comando de la CLI. Si la cierras no vuelve, y en Ajustes hay un interruptor para quitarlas todas.",
 } as const;
 
 export default help;

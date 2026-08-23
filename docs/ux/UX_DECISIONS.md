@@ -11,6 +11,12 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-08-23 — A guided tour points; it does not drive
+
+- **Rule:** one tour mechanism (`mainview/tour.ts` + `TourOverlay`, `data-tour-anchor`, bible §5.4b): a step rings a real control, never performs it, and progress is read from the DOM.
+- **Record:** `decisions/2026/08/23/a-guided-tour-points-it-does-not-drive.md`.
+- **Status:** Observed.
+
 ## 2026-08-22 — The ordinary task terminal is owed help coverage
 - **Rule:** the immersive-fullscreen exemption in the §5.4 coverage floor does not cover the task screen's terminal (`terminal.task`), and a twice-rendered surface needs its own guard because reachability cannot tell which branch mounted a zone. **Why:** `decisions/2026/08/22/help-mode-was-blind-on-the-task-screen.md`.
 
@@ -21,7 +27,7 @@ else, so do not compact them by deleting it.
 - **Rule:** a dialog acting on the user's own files or remotes states what dev3 writes, where, and what it pushes — bible §10, §4/§9. **Why:** `decisions/2026/08/22/blast-radius-copy-is-not-an-info-icon.md`.
 
 ## 2026-08-22 — First run advertises help mode; the tour ban is lifted
-- **Rule:** the header `?` rests highlighted on `dashboard`/`project`/`task`/`project-settings` until help mode is opened once; the first-run panel takes the stats card's slot rather than adding one; an empty state may not name a control its column lacks; no tips at zero tasks. Multi-step tours stop being forbidden as a class. Bible §5.4a, §5.4, §10.
+- **Rule:** the header `?` rests highlighted on `dashboard`/`project`/`task`/`project-settings` until help mode is opened once; the first-run panel takes the stats card's slot rather than adding one; an empty state may not name a control its column lacks; no tips at zero tasks. Bible §5.4a, §5.4, §10; tours are now §5.4b.
 - **Why:** `decisions/2026/08/22/first-run-advertises-help-mode.md`.
 
 ## 2026-08-21 — Prompt presets share one picker under the description

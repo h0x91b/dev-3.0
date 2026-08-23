@@ -37,8 +37,8 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * log entry for this rule is a one-line pointer so it still fits.
  */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 123,
-	"ux-architecture.yaml": 110,
+	"PRODUCT_UX_BIBLE.md": 124,
+	"ux-architecture.yaml": 111,
 	"UX_DECISIONS.md": 80,
 };
 
@@ -59,7 +59,19 @@ const BUDGET_KB: Record<string, number> = {
  * entries carry a why that exists nowhere else, which the note above forbids deleting), so the
  * tree was genuinely at 309.3 of 309 with no fat left. The new log entry is itself a pointer.
  */
-const TOTAL_BUDGET_KB = 310;
+/**
+ * 310 → 313, the bible 123 → 124 and the yaml 110 → 111, for §5.4b + the `guided_tour` surface.
+ *
+ * Compaction ran first and this time it found something real, which is why the ratchet is 3 KB and
+ * not 4: §5.4a's "multi-step tours are no longer banned as a class", the yaml's `reject` comment
+ * saying the same, and the 2026-08-22 log entry's copy of it are all superseded by §5.4b existing,
+ * so all three folded. Beyond that it is the floor the note above describes — every record-backed
+ * entry in `UX_DECISIONS.md` is already a pointer, and the remaining full entries carry whys that
+ * exist nowhere else. What earned the rest is that a tour is a new SURFACE TYPE rather than another
+ * rule about an existing one: with no manifest entry, the next agent adding a walk-through invents a
+ * second mechanism — precisely the drift this tree exists to stop. The new log entry is a pointer.
+ */
+const TOTAL_BUDGET_KB = 313;
 
 const entries = readdirSync(UX_DIR, { withFileTypes: true });
 const kb = (name: string) => statSync(`${UX_DIR}/${name}`).size / 1024;

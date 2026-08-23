@@ -413,6 +413,7 @@ function KanbanColumn({
 				{ownsAddTask && (
 					<div className="flex justify-center pb-3">
 						<button
+							data-tour-anchor="board.new-task"
 							onClick={(e) => { e.stopPropagation(); onAddTask(); }}
 							className="text-fg-3 hover:text-accent transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96] w-7 h-7 flex items-center justify-center rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 text-base leading-none"
 							aria-label={t("kanban.newTask")}
@@ -652,7 +653,7 @@ function KanbanColumn({
 
 			{/* Tip card — pinned to bottom, above the add-task button */}
 			{tip && tipState && onTipChanged && (
-				<div className={`px-3 pb-3 flex-shrink-0 ${footerSeam}`}>
+				<div className={`px-3 pb-3 flex-shrink-0 ${footerSeam}`} data-help-id="tips.card">
 					<TipCard tip={tip} tipState={tipState} onChanged={onTipChanged} />
 				</div>
 			)}
@@ -661,6 +662,7 @@ function KanbanColumn({
 			{ownsAddTask && (
 				<div className={`px-3 pb-3 flex-shrink-0 ${tip ? "" : footerSeam}`}>
 					<button
+						data-tour-anchor="board.new-task"
 						onClick={onAddTask}
 						className="w-full text-fg-3 hover:text-accent text-sm font-medium text-center py-2.5 rounded-lg hover:bg-accent/10 border border-dashed border-edge hover:border-accent/30 transition-[color,background-color,border-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
 					>

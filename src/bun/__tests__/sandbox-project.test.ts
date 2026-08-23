@@ -36,6 +36,7 @@ vi.mock("../data", () => ({
 }));
 
 import { createSandboxProject, SANDBOX_REPO_PATH } from "../sandbox-project";
+import { SANDBOX_FIRST_PROMPT } from "../../shared/sandbox-prompts";
 
 /** Reads state back with the machine's own git, never through the module's spawn. */
 const git = (args: string[]) => spawnSync("git", args, { cwd: SANDBOX_REPO_PATH, encoding: "utf8" });
@@ -84,7 +85,14 @@ describe("createSandboxProject", () => {
 	it("pins the project's base branch when the stored record disagrees", async () => {
 		addProject.mockResolvedValueOnce({ id: "p-old", path: SANDBOX_REPO_PATH, name: "Sandbox", defaultBaseBranch: "master" });
 		await createSandboxProject();
-		expect(updateProject).toHaveBeenCalledWith("p-old", { defaultBaseBranch: "main" });
+		expect(updateProject).toHaveBeenCalledWith("p-old", { defaultBaseBranch: "main", sandbox: true });
+	});
+
+	it("documents the exact prompt the guided tour prefills", async () => {
+		// The tour types this into the Create Task modal. If the README drifted from
+		// it, the wizard would ask for work the repo never mentions.
+		await createSandboxProject();
+		expect(readFileSync(join(SANDBOX_REPO_PATH, "README.md"), "utf8")).toContain(SANDBOX_FIRST_PROMPT);
 	});
 
 	it("reports the failure instead of registering a project", async () => {

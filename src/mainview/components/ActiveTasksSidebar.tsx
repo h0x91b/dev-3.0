@@ -484,6 +484,7 @@ function ActiveTasksSidebar({
 					{project && (
 					<div
 							role="group"
+							data-help-id="sidebar.scope"
 							className="inline-flex items-center gap-px rounded-lg bg-raised p-0.5"
 							aria-label={t("sidebar.scopeToggleTitle")}
 						>
@@ -611,7 +612,7 @@ function ActiveTasksSidebar({
 
 			{/* Feature-discovery tip — terminal-context tips lead here (see useTipRotation) */}
 			{currentTip && tipState && (
-				<div className="px-3 py-2 border-b border-edge flex-shrink-0">
+				<div className="px-3 py-2 border-b border-edge flex-shrink-0" data-help-id="tips.card">
 					<TipCard tip={currentTip} tipState={tipState} onChanged={applyTipState} compact />
 				</div>
 			)}

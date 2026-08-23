@@ -189,6 +189,7 @@ describe("saveSettings", () => {
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,
 			helpModeDiscovered: true,
+			completedTours: ["first-task"],
 			reviewModePrompt: "Review the diff and report only blockers.",
 			taskOpenMode: "fullscreen",
 			defaultDiffViewMode: "unified",

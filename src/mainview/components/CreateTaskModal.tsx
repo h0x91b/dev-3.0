@@ -686,6 +686,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						)}
 							<textarea
 							id="create-task-description"
+							data-tour-anchor="create-task.prompt"
 							ref={textareaRef}
 							value={description}
 							onChange={(e) => {
@@ -1003,6 +1004,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								</button>
 								{onCreateAndRun && (
 									<button
+										data-tour-anchor="create-task.run"
 										onClick={handleCreateAndRun}
 										disabled={!description.trim() || creating}
 										className="px-3.5 py-1.5 bg-green-600/90 text-white text-xs font-medium rounded-lg hover:bg-green-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"

@@ -12,7 +12,8 @@ import ActivityOverview from "../ActivityOverview";
 import GlobalHeader from "../GlobalHeader";
 import KanbanColumn from "../KanbanColumn";
 import { I18nProvider } from "../../i18n";
-import type { Project } from "../../../shared/types";
+import { api } from "../../rpc";
+import type { HarnessReadinessReport, Project } from "../../../shared/types";
 import type { Route } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -21,7 +22,8 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			getAllProjectTasks: vi.fn().mockResolvedValue([]),
-			createSandboxProject: vi.fn().mockResolvedValue({ ok: true, project: { id: "sandbox", name: "Sandbox", path: "/tmp/sandbox" } }),
+			createSandboxProject: vi.fn().mockResolvedValue({ ok: true, project: { id: "sandbox", name: "Sandbox", path: "/tmp/sandbox", sandbox: true } }),
+			checkHarnessReadiness: vi.fn().mockResolvedValue({ harnesses: [], usable: ["builtin-claude"], noneInstalled: false }),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
 			reorderSpaces: vi.fn(),
 			reorderSpaceProjects: vi.fn(),
@@ -160,6 +162,67 @@ describe("Dashboard on a brand-new install", () => {
 	it("keeps the sandbox out of the way once a repository exists", async () => {
 		renderOverview([operations, gitProject]);
 		expect(screen.queryByTestId("dashboard-first-run-sandbox")).toBeNull();
+	});
+
+	it("starts the guided tour instead of leaving the newcomer on an empty board", async () => {
+		const started: string[] = [];
+		window.addEventListener("tour:start", (e) => started.push((e as CustomEvent<string>).detail));
+		renderOverview([operations]);
+		(await screen.findByTestId("dashboard-first-run-sandbox")).click();
+		await waitFor(() => expect(started).toEqual(["first-task"]));
+	});
+});
+
+/**
+ * The nuance that would have made the sandbox worse than nothing: no agent CLI
+ * configured. The task would be created, launched, and die on a login prompt, and
+ * the newcomer's first minute would end in a dead task they cannot diagnose.
+ */
+describe("The sandbox is gated on a usable agent", () => {
+	function harness(report: HarnessReadinessReport) {
+		vi.mocked(api.request.checkHarnessReadiness).mockResolvedValue(report);
+	}
+
+	afterEach(() => {
+		harness({ harnesses: [], usable: ["builtin-claude"], noneInstalled: false });
+	});
+
+	it("sends the user to Settings instead of creating a repo they cannot use", async () => {
+		harness({ harnesses: [], usable: [], noneInstalled: true });
+		vi.mocked(api.request.createSandboxProject).mockClear();
+		const navigate = vi.fn();
+		renderOverview([operations], { navigate });
+		const button = await screen.findByTestId("dashboard-first-run-sandbox");
+		await waitFor(() => expect(button.textContent).toContain("Connect an agent first"));
+		button.click();
+		expect(navigate).toHaveBeenCalledWith({ screen: "settings" });
+		expect(vi.mocked(api.request.createSandboxProject)).not.toHaveBeenCalled();
+	});
+
+	it("names the actual problem: nothing installed vs installed but not logged in", async () => {
+		harness({ harnesses: [], usable: [], noneInstalled: true });
+		renderOverview([operations]);
+		await waitFor(() => expect(screen.getByTestId("dashboard-first-run-sandbox-hint").textContent).toContain("No agent CLI found"));
+	});
+
+	it("says so plainly when a CLI is there but signed out", async () => {
+		harness({
+			harnesses: [{ agentId: "builtin-claude", name: "Claude", baseCommand: "claude", installed: true, signIn: "not-signed-in" }],
+			usable: [],
+			noneInstalled: false,
+		});
+		renderOverview([operations]);
+		await waitFor(() => expect(screen.getByTestId("dashboard-first-run-sandbox-hint").textContent).toContain("not signed in"));
+	});
+
+	it("stays neutral while the probe is still in flight", async () => {
+		vi.mocked(api.request.checkHarnessReadiness).mockReturnValue(new Promise(() => {}));
+		renderOverview([operations]);
+		const button = await screen.findByTestId("dashboard-first-run-sandbox");
+		// Neither accusing the machine of having no agent, nor clickable into a repo
+		// we cannot yet promise will work.
+		expect(button.textContent).toContain("Try a sandbox repo");
+		expect(button).toBeDisabled();
 	});
 
 	it("explains the Operations board with its own topic, not the git one", async () => {

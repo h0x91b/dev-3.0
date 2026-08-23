@@ -222,7 +222,7 @@ function TaskWorkspacePane({
 	}, [inlineDiffRequest]);
 
 	return (
-		<div ref={workspaceRef} className="h-full w-full relative overflow-hidden" data-help-id={immersive ? undefined : "terminal.task"}>
+		<div ref={workspaceRef} className="h-full w-full relative overflow-hidden" data-help-id={immersive ? undefined : "terminal.task"} data-tour-anchor={immersive ? undefined : "task.terminal"}>
 			{artifactResizing && (
 				<div data-testid="artifact-resize-shield" aria-hidden="true" className="absolute inset-0 z-[60] cursor-col-resize">
 					<div

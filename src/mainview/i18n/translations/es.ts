@@ -20,6 +20,7 @@ import automations from "./es/automations";
 import diagnostics from "./es/diagnostics";
 import nativePaneLab from "./es/nativePaneLab";
 import panes from "./es/panes";
+import tour from "./es/tour";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -43,6 +44,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...diagnostics,
 	...nativePaneLab,
 	...panes,
+	...tour,
 };
 
 export default es;

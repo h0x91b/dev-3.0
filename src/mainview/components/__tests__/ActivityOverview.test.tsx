@@ -15,6 +15,8 @@ vi.mock("../../rpc", () => ({
 			getSpaces: vi.fn(() => Promise.resolve({ version: 1, spaces: [], order: [] })),
 			reorderSpaces: vi.fn(),
 			reorderSpaceProjects: vi.fn(),
+			createSandboxProject: vi.fn(),
+			checkHarnessReadiness: vi.fn(() => Promise.resolve({ harnesses: [], usable: ["builtin-claude"], noneInstalled: false })),
 		},
 	},
 }));

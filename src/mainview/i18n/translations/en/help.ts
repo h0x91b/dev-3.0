@@ -243,6 +243,12 @@ const help = {
 	"help.header.connectionQuality.title": "How slow this connection is",
 	"help.header.connectionQuality.body":
 		"Only when you view dev3 from another device: the round trip of a real request over the same connection the app uses. It appears here once the link stops being quick, and otherwise waits in this menu. Hover it to see how much of the wait was spent on your computer versus on the network.",
+	"help.sidebar.scope.title": "Which project the list covers",
+	"help.sidebar.scope.body":
+		"Three glyphs, three sizes of list. The folder shows only this project's tasks. The ring shows every project in the same space, and is struck through when this project is in none of them. The globe shows every task on the machine, which is how you find work you left running somewhere else.",
+	"help.tips.card.title": "Did you know?",
+	"help.tips.card.body":
+		"One short pointer at a time towards something dev3 does that no button on screen announces — a shortcut, a drag, a CLI command. Dismiss it and it never returns; there is a switch in Settings if you would rather have none of them.",
 } as const;
 
 export default help;
