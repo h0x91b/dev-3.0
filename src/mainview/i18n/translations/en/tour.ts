@@ -24,7 +24,7 @@ const tour = {
 		"The blue button only saves the task to the board. The green one also gives it a branch of its own and starts an agent on it.",
 	"tour.firstTask.launch.title": "Who does the work",
 	"tour.firstTask.launch.body":
-		"Pick an agent and how much freedom it gets. Add a second row and two agents solve the same task separately, so you can compare and keep one. Press Launch at the bottom when you are happy.",
+		"Pick an agent and how much freedom it gets. Add a second row and two agents solve the same task separately, so you can compare and keep one. Press Launch at the bottom when you are happy. In the sandbox it starts in a mode that never stops to ask permission — this is a lesson, not your repository.",
 	"tour.firstTask.openTask.title": "Open it",
 	"tour.firstTask.openTask.body":
 		"The task left To Do and already has its own branch — it may be working, or already asking you something. Click the card to watch it; launching does not take you there on its own, so a whole board of agents stays one screen.",

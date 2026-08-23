@@ -101,6 +101,15 @@ per-screen would unmount mid-step. Five rules, mirrored in bible §5.4b:
    terminal step would already be on screen, and auto-advance only fires on
    *appearance*, so it would have hung forever.
 
+**The sandbox launches in a bypass preset.** `Auto` maps to Claude Code's own
+`--permission-mode auto` with no `--dangerously-skip-permissions`, so the agent CLI —
+not dev3 — stops and asks about ordinary shell commands. Live QA watched exactly that
+happen on `rtk ls`: the first task never started, and a first-run user has no basis to
+judge the question. `LaunchVariantsModal.makeDefaultVariant` therefore preselects the
+first configuration whose `permissionMode === "bypassPermissions"` **when
+`project.sandbox`**, falling back to the normal resolution — the user's own global
+default is untouched everywhere else, and the mode picker still shows what it picked.
+
 Two more rules came straight out of the live run, and both are about not lying:
 while a `waitsForAnchor` step is waiting, **nothing is shielded** — QA caught the agent
 asking for permission behind a full-screen shield, with no way to type the answer it
@@ -161,6 +170,10 @@ is never blocked by dev3's own ignorance.
   prints a not-found error and the tour's dev-server step points at a button that does
   nothing useful. The step is manual, so nothing hangs — but the sandbox's promise of
   "no toolchain" is now "no toolchain beyond node".
+- **The sandbox's bypass preselect is a real bypass.** An agent with no permission
+  gate in a throwaway repo is the point, but it is the same machine — a first task
+  that goes badly wrong is not confined to the sandbox folder. Accepted because the
+  alternative, observed live, is a newcomer staring at a question they cannot answer.
 - **The artifact step depends on the agent doing as it is told.** An agent that fixes
   the colour but publishes no artifact leaves the tour parked on a step that can only
   be skipped. The prompt asks for it explicitly, which is a request, not a guarantee.

@@ -207,6 +207,20 @@ describe("LaunchVariantsModal", () => {
 			expect(getSelectedText(getModeButtons()[0])).toBe("Default");
 		});
 
+		it("preselects a bypass mode on the sandbox, and only there", () => {
+			// A first-run user cannot judge "do you want to proceed?" from the agent
+			// CLI, and the guided tour would wait on work that never starts.
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default" });
+			renderModal(makeProject({ sandbox: true }), { globalSettings: gs });
+			expect(getSelectedText(getModeButtons()[0])).toContain("Bypass");
+		});
+
+		it("leaves the user's own default alone off the sandbox", () => {
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default" });
+			renderModal(makeProject(), { globalSettings: gs });
+			expect(getSelectedText(getModeButtons()[0])).toBe("Default");
+		});
+
 		it("decomposes a globalSettings.defaultConfigId with effort into model + mode", () => {
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-bypass-opus" });
 			renderModal(makeProject(), { globalSettings: gs });

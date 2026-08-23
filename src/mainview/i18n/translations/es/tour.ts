@@ -24,7 +24,7 @@ const tour = {
 		"El botón azul solo guarda la tarea en el tablero. El verde además le da su propia rama y arranca un agente sobre ella.",
 	"tour.firstTask.launch.title": "Quién hace el trabajo",
 	"tour.firstTask.launch.body":
-		"Elige un agente y cuánta libertad tiene. Añade una segunda fila y dos agentes resolverán la misma tarea por separado, para comparar y quedarte con una. Pulsa Launch abajo cuando te convenza.",
+		"Elige un agente y cuánta libertad tiene. Añade una segunda fila y dos agentes resolverán la misma tarea por separado, para comparar y quedarte con una. Pulsa Launch abajo cuando te convenza. En el sandbox arranca en un modo que nunca se detiene a pedir permiso: esto es una lección, no tu repositorio.",
 	"tour.firstTask.openTask.title": "Ábrela",
 	"tour.firstTask.openTask.body":
 		"La tarea salió de Por hacer y ya tiene su propia rama: puede estar trabajando o ya preguntándote algo. Pulsa la tarjeta para verla; lanzar no te lleva allí por sí solo, así un tablero entero de agentes cabe en una pantalla.",

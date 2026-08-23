@@ -77,7 +77,15 @@ function LaunchVariantsModal({
 		const globalConfigMatchesAgent =
 			!!globalSettings.defaultConfigId &&
 			!!agent?.configurations.some((c) => c.id === globalSettings.defaultConfigId);
+		// The sandbox is a lesson, not anyone's repository: a first-run user meeting
+		// "do you want to proceed?" from the agent CLI has no way to judge it, and the
+		// guided tour would sit there waiting on work that never starts. Prefer a
+		// bypass preset there and leave the user's own default alone everywhere else.
+		const sandboxBypass = project.sandbox
+			? agent?.configurations.find((c) => c.permissionMode === "bypassPermissions")
+			: undefined;
 		const configId =
+			sandboxBypass?.id ??
 			(globalConfigMatchesAgent ? globalSettings.defaultConfigId : null) ??
 			agent?.defaultConfigId ??
 			agent?.configurations[0]?.id ??
