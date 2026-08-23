@@ -35,9 +35,10 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 	const latest = latestArtifactVersion(artifact);
 	const dropped = droppedArtifactVersions(artifact);
 
-	// Measured rather than a CSS anchor: right-aligned to the chip it spills out of a
-	// docked pane's left edge, left-aligned it runs off the window — so it hangs under
-	// the chip and is clamped to the viewer header's own box.
+	// Measured rather than a CSS anchor, because neither anchor works on its own:
+	// right-aligned to the chip the popover spills out of a docked pane's left edge,
+	// left-aligned it runs off the window. So: right-align, fall back to growing
+	// rightwards from the chip, and clamp to the viewer header's own box.
 	const place = useCallback(() => {
 		const chip = buttonRef.current;
 		if (!chip) return;
@@ -46,7 +47,8 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 		const min = (box?.left ?? 0) + EDGE_GAP;
 		const max = (box?.right ?? window.innerWidth) - EDGE_GAP - POPOVER_WIDTH;
 		const wanted = rect.right - POPOVER_WIDTH;
-		setSpot({ left: Math.max(min, Math.min(max, wanted)), top: rect.bottom + 4 });
+		const left = wanted < min ? rect.left : wanted;
+		setSpot({ left: Math.max(min, Math.min(max, left)), top: rect.bottom + 4 });
 	}, []);
 
 	useEffect(() => {
