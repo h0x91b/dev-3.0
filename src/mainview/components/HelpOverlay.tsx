@@ -70,9 +70,13 @@ export function liveHelpZoneElement(zone: HelpZone): HTMLElement | null {
 
 interface HelpOverlayProps {
 	onExit: () => void;
+	/** Passed when a guided tour applies to this screen. Help mode is where a
+	 *  walkthrough is asked for a second time — the mode already means "teach me",
+	 *  and it needs no button of its own on the board. */
+	onRunTour?: () => void;
 }
 
-export default function HelpOverlay({ onExit }: HelpOverlayProps) {
+export default function HelpOverlay({ onExit, onRunTour }: HelpOverlayProps) {
 	const t = useT();
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const outlineRefs = useRef(new Map<string, HTMLDivElement>());
@@ -225,6 +229,19 @@ export default function HelpOverlay({ onExit }: HelpOverlayProps) {
 					</kbd>
 					<span className="font-medium text-fg">{t("help.ui.exitHint")}</span>
 				</span>
+				{onRunTour && (
+					<>
+						<span className="text-fg-muted">·</span>
+						<button
+							type="button"
+							onClick={onRunTour}
+							data-testid="help-run-tour"
+							className="flex-shrink-0 font-medium text-accent hover:text-accent-emphasis transition-[color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
+						>
+							{t("help.ui.runTour")}
+						</button>
+					</>
+				)}
 			</div>
 		</div>,
 		document.body,

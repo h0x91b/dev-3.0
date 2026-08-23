@@ -9,6 +9,7 @@ const help = {
 	"help.ui.aboutSection": "About this section",
 	"help.ui.modeBanner": "Help mode — click any highlighted zone to learn what it does",
 	"help.ui.exitHint": "Esc to exit",
+	"help.ui.runTour": "Walk me through the first task",
 	"help.ui.whatYouCanDo": "What you can do here",
 	"help.ui.explainScreen": "Explain this screen…",
 	"help.ui.openShortcuts": "Open keyboard shortcuts",

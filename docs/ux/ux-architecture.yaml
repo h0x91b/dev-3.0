@@ -463,9 +463,9 @@ ux_architecture:
     guided_tour:
       purpose: "Ordered walk-through of a flow spanning several surfaces (board -> Create Task -> Launch -> task screen): the sequence half of onboarding/help, help mode being the per-zone half."
       mechanism: "one registry (src/mainview/tour.ts) + TourOverlay; a participating control carries data-tour-anchor=<id>; a step ends when the DOM shows the next anchor, so components never call in"
-      allowed: ["pointing_at_a_real_control", "explanatory_copy", "prefilling_what_the_user_would_not_type", "back_next_skip"]
-      forbidden: ["performing_the_step", "click_shielding_anything_but_its_card", "being_the_only_route_to_a_control", "restart_after_a_skip", "durable_configuration"]
-      state: "GlobalSettings.completedTours (skip counts as done); auto-start once, only from an owned dead end (the sandbox board); a lost anchor exits quietly"
+      allowed: ["pointing_at_a_real_control", "pressing_the_step_own_control", "shielding_everything_else", "explanatory_copy", "prefilling_what_the_user_would_not_type", "back_next_skip"]
+      forbidden: ["faking_progress_the_app_did_not_make", "being_the_only_route_to_a_control", "durable_configuration"]
+      state: "GlobalSettings.completedTours (only walking to the END counts); auto-starts on every visit to an empty sandbox board until then; help mode's banner restarts it afterwards; a lost anchor offers restart-or-leave instead of exiting"
       evidence: ["bible §5.4b", "decisions/2026/08/23/a-guided-tour-points-it-does-not-drive.md"]
     keyboard_shortcuts_reference:
       purpose: "Read-only keymap reference overlay (Modal). ONE component with two tabs — App (renders from the keymap.ts registry) and Terminal (tmux) (folds in the tmux cheat sheet). onboarding/help + expert_shortcut content, same shell as TmuxCheatSheetModal."

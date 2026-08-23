@@ -5,18 +5,29 @@ import { I18nProvider } from "../../i18n";
 import type { Tour } from "../../tour";
 
 /**
- * The engine's whole contract lives in the timer: it advances on an anchor
- * appearing, it must NOT re-advance the instant you press Back, and it gives up
- * when its anchor is gone. All three are timing behaviour, so the clock is fake
- * and jsdom's zero-sized rects are given real numbers.
+ * The engine's contract: it advances on an anchor appearing, it must NOT
+ * re-advance the instant you press Back, its button presses the real control,
+ * everything else on screen is shielded, and losing the anchor says so instead
+ * of ending the tour. Timing behaviour throughout, so the clock is fake and
+ * jsdom's zero-sized rects are given real numbers.
  */
 
 const TOUR: Tour = {
 	id: "test-tour",
 	titleKey: "tour.firstTask.title",
 	steps: [
-		{ id: "one", anchor: "a", titleKey: "tour.firstTask.newTask.title", bodyKey: "tour.firstTask.newTask.body" },
+		{ id: "one", anchor: "a", titleKey: "tour.firstTask.newTask.title", bodyKey: "tour.firstTask.newTask.body", action: "click-anchor" },
 		{ id: "two", anchor: "b", titleKey: "tour.firstTask.prompt.title", bodyKey: "tour.firstTask.prompt.body", advanceOn: "manual" },
+	],
+};
+
+/** A step that waits on a choice only the user can make: an advance anchor, no action. */
+const WAITING_TOUR: Tour = {
+	id: "waiting-tour",
+	titleKey: "tour.firstTask.title",
+	steps: [
+		{ id: "pick", anchor: "a", titleKey: "tour.firstTask.launch.title", bodyKey: "tour.firstTask.launch.body", advanceOn: "b" },
+		{ id: "done", anchor: "b", titleKey: "tour.firstTask.review.title", bodyKey: "tour.firstTask.review.body", advanceOn: "manual" },
 	],
 };
 
@@ -32,11 +43,15 @@ function anchor(id: string): HTMLElement {
 	return el;
 }
 
-function renderTour(stepIndex: number, handlers: { onStepChange?: (i: number) => void; onExit?: (done: boolean) => void } = {}) {
+function renderTour(
+	stepIndex: number,
+	handlers: { onStepChange?: (i: number) => void; onExit?: (done: boolean) => void } = {},
+	tour: Tour = TOUR,
+) {
 	return render(
 		<I18nProvider>
 			<TourOverlay
-				tour={TOUR}
+				tour={tour}
 				stepIndex={stepIndex}
 				onStepChange={handlers.onStepChange ?? (() => {})}
 				onExit={handlers.onExit ?? (() => {})}
@@ -67,6 +82,41 @@ describe("TourOverlay", () => {
 		expect(screen.getByText("1/2")).toBeInTheDocument();
 	});
 
+	it("shields the screen around the anchor, leaving the anchor itself clickable", () => {
+		anchor("a");
+		renderTour(0);
+		for (const band of ["top", "bottom", "left", "right"]) {
+			expect(screen.getByTestId(`tour-shield-${band}`)).toBeInTheDocument();
+		}
+		expect(screen.queryByTestId("tour-shield-all")).not.toBeInTheDocument();
+	});
+
+	it("shields the whole viewport when there is no anchor to spare", () => {
+		renderTour(0);
+		expect(screen.getByTestId("tour-shield-all")).toBeInTheDocument();
+		expect(screen.queryByTestId("tour-shield-top")).not.toBeInTheDocument();
+	});
+
+	it("presses the real control instead of faking progress", () => {
+		const el = anchor("a");
+		const clicked = vi.fn();
+		el.addEventListener("click", clicked);
+		const onStepChange = vi.fn();
+		renderTour(0, { onStepChange });
+
+		fireEvent.click(screen.getByTestId("tour-next"));
+		expect(clicked).toHaveBeenCalled();
+		// The step ends when the DOM says so, never because the button was pressed.
+		expect(onStepChange).not.toHaveBeenCalled();
+	});
+
+	it("has no button at all on a step waiting for the user's own choice", () => {
+		anchor("a");
+		renderTour(0, {}, WAITING_TOUR);
+		expect(screen.queryByTestId("tour-next")).not.toBeInTheDocument();
+		expect(screen.getByTestId("tour-waiting")).toBeInTheDocument();
+	});
+
 	it("advances on its own once the next step's anchor appears", () => {
 		anchor("a");
 		const onStepChange = vi.fn();
@@ -90,18 +140,35 @@ describe("TourOverlay", () => {
 		expect(onStepChange).not.toHaveBeenCalled();
 	});
 
-	it("gives up when its own anchor has been gone long enough", () => {
+	it("says it lost the thread instead of ending the tour", () => {
 		const el = anchor("a");
 		const onExit = vi.fn();
-		renderTour(0, { onExit });
+		const onStepChange = vi.fn();
+		renderTour(0, { onExit, onStepChange });
 		tick(200);
-		expect(onExit).not.toHaveBeenCalled();
+		expect(screen.queryByTestId("tour-restart")).not.toBeInTheDocument();
 
 		el.remove();
 		tick(1000);
-		expect(onExit).not.toHaveBeenCalled();
+		expect(screen.queryByTestId("tour-restart")).not.toBeInTheDocument();
 		tick(2000);
-		expect(onExit).toHaveBeenCalledWith(false);
+		expect(screen.getByTestId("tour-restart")).toBeInTheDocument();
+		expect(onExit).not.toHaveBeenCalled();
+
+		fireEvent.click(screen.getByTestId("tour-restart"));
+		expect(onStepChange).toHaveBeenCalledWith(0);
+	});
+
+	it("recovers on its own when the anchor comes back", () => {
+		const el = anchor("a");
+		renderTour(0);
+		el.remove();
+		tick(3000);
+		expect(screen.getByTestId("tour-restart")).toBeInTheDocument();
+
+		anchor("a");
+		tick(200);
+		expect(screen.queryByTestId("tour-restart")).not.toBeInTheDocument();
 	});
 
 	it("reports a completed tour from the last step's button", () => {

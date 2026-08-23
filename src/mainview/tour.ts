@@ -10,23 +10,32 @@ import type { TranslationKey } from "./i18n";
  * it, because the answer is a sequence across four surfaces (board → Create Task
  * → Launch → task screen).
  *
- * Shape of the mechanism, and the two rules that keep it reusable:
+ * Shape of the mechanism, and the three rules that keep it reusable:
  *
- * 1. **A step points, it does not block.** The overlay draws a ring and a card
- *    and nothing else is click-shielded, so the user performs the real action on
- *    the real control. There is no fake "Next" that does the work for them.
- * 2. **Progress is observed, not reported.** A step advances when the DOM shows
+ * 1. **A step owns the screen.** Everything except the step's own control is
+ *    click-shielded, so the only way on is the way the step describes. The first
+ *    build only pointed, and it died on its first live run: the user pressed the
+ *    tour's Next while the app stood still, the step's anchor never appeared, and
+ *    the tour quietly quit.
+ * 2. **The step's button presses the real control** (`action: "click-anchor"`),
+ *    it never fakes progress. A step waiting on a choice only the user can make
+ *    has no button at all — it says so and waits.
+ * 3. **Progress is observed, not reported.** A step advances when the DOM shows
  *    the next anchor, so no component has to call into the tour. Participating
  *    costs one `data-tour-anchor="<id>"` attribute.
  *
- * A tour that loses sight of its anchor gives up quietly (`TourOverlay`), which
- * is what happens whenever the user goes their own way — the wizard is a guide,
- * never a cage.
+ * Losing sight of an anchor is a state, not an ending: the card says it lost the
+ * thread and offers restart-or-leave. Leaving is always one click (Skip) or one
+ * key (Escape) away, never an accident.
  */
 
 /** A side effect the app performs when a step opens. Kept as a tiny closed set:
  *  the registry stays data, and `App.tsx` owns the actual doing. */
 export type TourEffect = "prefill-sandbox-prompt";
+
+/** What the step's primary button does. Omitted: it just moves on (an
+ *  explanatory step), or there is no button (a step waiting on the user). */
+export type TourAction = "click-anchor";
 
 export interface TourStep {
 	id: string;
@@ -40,6 +49,9 @@ export interface TourStep {
 	 * (used for steps that only explain what is already on screen).
 	 */
 	advanceOn?: string | "manual";
+	/** Set where one named control is the whole step — the button then presses it
+	 *  for the user, which is what they expect of a wizard's Next. */
+	action?: TourAction;
 	effect?: TourEffect;
 }
 
@@ -62,6 +74,7 @@ const FIRST_TASK_TOUR: Tour = {
 			titleKey: "tour.firstTask.newTask.title",
 			bodyKey: "tour.firstTask.newTask.body",
 			advanceOn: "create-task.prompt",
+			action: "click-anchor",
 			// The prompt is filled in before the modal opens, so the step below can
 			// point at real text instead of asking a newcomer to invent one.
 			effect: "prefill-sandbox-prompt",
@@ -78,11 +91,15 @@ const FIRST_TASK_TOUR: Tour = {
 			anchor: "create-task.run",
 			titleKey: "tour.firstTask.start.title",
 			bodyKey: "tour.firstTask.start.body",
-			advanceOn: "launch.variants",
+			advanceOn: "launch.modal",
+			action: "click-anchor",
 		},
 		{
+			// Anchored on the whole dialog, not the variant rows: the shield leaves
+			// only the hole clickable, and the button that launches sits in the
+			// footer. A ring around the rows would lock the user out of it.
 			id: "launch",
-			anchor: "launch.variants",
+			anchor: "launch.modal",
 			titleKey: "tour.firstTask.launch.title",
 			bodyKey: "tour.firstTask.launch.body",
 			advanceOn: "board.running-task",
@@ -96,6 +113,7 @@ const FIRST_TASK_TOUR: Tour = {
 			titleKey: "tour.firstTask.openTask.title",
 			bodyKey: "tour.firstTask.openTask.body",
 			advanceOn: "task.terminal",
+			action: "click-anchor",
 		},
 		{
 			id: "terminal",

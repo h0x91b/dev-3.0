@@ -278,21 +278,22 @@ Evidence: [first-run-advertises-help-mode](../../decisions/2026/08/22/first-run-
 
 #### 5.4b Guided tours — the sequence surface — `Observed`
 
-Help mode answers *what is this*; a tour answers *what do I press, and why* — unanswerable per zone,
-because the answer spans four surfaces. One mechanism (`mainview/tour.ts` + `TourOverlay`), never a
-bespoke wizard. Evidence:
+Help mode answers *what is this*; a tour answers *what do I press* — unanswerable per zone, because
+the answer spans four surfaces. One mechanism (`mainview/tour.ts` + `TourOverlay`), never a bespoke
+wizard. Evidence:
 [a-guided-tour-points-it-does-not-drive](../../decisions/2026/08/23/a-guided-tour-points-it-does-not-drive.md).
 
-- **A step points; it never acts.** Ring + card, nothing else click-shielded. A Next that performs
-  the step teaches the wizard, not the app.
+- **A step owns the screen** — its control and card are the only live things. Pointing alone failed
+  live: the user pressed past the step and the tour lost the thread.
+- **The step's button presses that control**, never fakes progress; a step waiting on the user's
+  own choice has no button.
 - **Progress is observed, not reported.** A step ends when the DOM shows the next
   `data-tour-anchor`; participating costs one attribute, never a callback.
-- **A lost anchor ends the tour**, quietly. A guide the user left must not follow them.
-- **Auto-start once, only from an owned dead end** (the sandbox board). Skipping counts as done
-  (`completedTours`) — a tour that returns after a wave-off is worse than none.
-- **Where the user will not type, dev3 types**: prefill, with the text and the data it refers to
-  from one shared constant.
-- **Never the only route to a control** — a shortcut through the product, not a gate in front.
+- **A lost anchor offers restart-or-leave**, never a silent end. Out is Skip or Esc, never a slip.
+- **One owned dead end starts it** (an empty sandbox board), every visit until walked to the end
+  (`completedTours`); help mode's banner restarts it after.
+- **Where the user will not type, dev3 types** (prefill from one shared constant), and a tour is
+  never the only route to a control — a shortcut through the product, not a gate in front.
 
 ### 5.5 Diagnostics — crash & error surface (remote/mobile) — `Observed`
 

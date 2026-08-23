@@ -3,6 +3,7 @@ const help = {
 	"help.ui.aboutSection": "Acerca de esta sección",
 	"help.ui.modeBanner": "Modo ayuda — haz clic en cualquier zona resaltada para saber qué hace",
 	"help.ui.exitHint": "Esc para salir",
+	"help.ui.runTour": "Guíame en la primera tarea",
 	"help.ui.whatYouCanDo": "Qué puedes hacer aquí",
 	"help.ui.explainScreen": "Explicar esta pantalla…",
 	"help.ui.openShortcuts": "Abrir atajos de teclado",

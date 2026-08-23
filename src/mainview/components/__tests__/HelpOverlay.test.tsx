@@ -26,10 +26,10 @@ function makeZone(helpId: string, rect: { top: number; left: number; width: numb
 	return el;
 }
 
-function renderOverlay(onExit = vi.fn()) {
+function renderOverlay(onExit = vi.fn(), onRunTour?: () => void) {
 	const utils = render(
 		<I18nProvider>
-			<HelpOverlay onExit={onExit} />
+			<HelpOverlay onExit={onExit} onRunTour={onRunTour} />
 		</I18nProvider>,
 	);
 	return { onExit, ...utils };
@@ -120,5 +120,20 @@ describe("HelpOverlay", () => {
 		const { onExit } = renderOverlay();
 		await user.keyboard("{Escape}");
 		expect(onExit).toHaveBeenCalled();
+	});
+
+	// The only way back into a finished walkthrough. Absent where no tour applies,
+	// so help mode does not advertise something that would not start.
+	it("offers the walkthrough only when a tour applies to this screen", async () => {
+		const user = userEvent.setup();
+		makeZone("header.utilities", { top: 10, left: 500, width: 200, height: 30 });
+		const { unmount } = renderOverlay();
+		expect(screen.queryByTestId("help-run-tour")).not.toBeInTheDocument();
+		unmount();
+
+		const onRunTour = vi.fn();
+		renderOverlay(vi.fn(), onRunTour);
+		await user.click(screen.getByTestId("help-run-tour"));
+		expect(onRunTour).toHaveBeenCalled();
 	});
 });

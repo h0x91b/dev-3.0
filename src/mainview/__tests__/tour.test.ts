@@ -23,6 +23,18 @@ describe("tour registry", () => {
 		}
 	});
 
+	// A manual step's button must move the tour on. Giving it an action would make
+	// it press the control the step is only explaining.
+	it("never puts an action on a manual step", () => {
+		for (const tour of TOURS) {
+			for (const step of tour.steps) {
+				if (step.advanceOn === "manual") {
+					expect(step.action, `${tour.id}/${step.id} is manual and must have no action`).toBeUndefined();
+				}
+			}
+		}
+	});
+
 	it("resolves every title/body key in all locales", () => {
 		for (const tour of TOURS) {
 			for (const [name, locale] of [["en", en], ["ru", ru], ["es", es]] as const) {

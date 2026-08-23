@@ -487,8 +487,12 @@ function App() {
 	// and the task screen, so anything mounted per-screen would unmount mid-step.
 	const [tour, setTour] = useState<{ id: string; step: number } | null>(null);
 
-	const finishTour = useCallback((tourId: string) => {
+	// Only walking to the end counts as done. Waving it off does not: the tour is
+	// offered again on an empty sandbox board, which is the one place it belongs,
+	// and a user who left because they were curious elsewhere gets it back.
+	const finishTour = useCallback((tourId: string, completed: boolean) => {
 		setTour(null);
+		if (!completed) return;
 		setGlobalSettings((prev) => {
 			if (prev.completedTours?.includes(tourId)) return prev;
 			const next = { ...prev, completedTours: [...(prev.completedTours ?? []), tourId] };
@@ -506,20 +510,22 @@ function App() {
 		return () => window.removeEventListener(TOUR_START_EVENT, onStart);
 	}, []);
 
-	// Resume on the sandbox board. `openSandbox` starts the tour directly; this is
-	// the other way in — an app restart mid-tour, or a user who reached the board
-	// some other way. Two guards, both load-bearing: settings must have loaded, or a
-	// finished tour replays on every boot; and the board must be EMPTY, because the
-	// tour restarts from step one and "your board is empty" is a lie next to a task
-	// the user already made.
+	// Landing on an EMPTY sandbox board starts the walkthrough — again on every
+	// visit until it is walked to the end, because that board exists for nothing
+	// else and a newcomer who dropped out cannot be expected to know how to ask for
+	// it back. After it is finished, help mode's "Walk me through the first task"
+	// is the way in. Guards: settings must have loaded, the board must be empty
+	// ("your board is empty" is a lie next to a task the user made), and the
+	// project must be the sandbox.
 	const sandboxRouteProjectId = state.route.screen === "project" ? state.route.projectId : null;
 	const currentProjectIsEmpty = state.currentProjectTasks.length === 0;
+	const routeProject = state.projects.find((candidate) => candidate.id === sandboxRouteProjectId);
+	const onSandboxBoard = !!routeProject?.sandbox;
 	useEffect(() => {
-		if (!settingsLoaded || tour || !sandboxRouteProjectId || !currentProjectIsEmpty) return;
+		if (!settingsLoaded || tour || !onSandboxBoard || !currentProjectIsEmpty) return;
 		if (globalSettings.completedTours?.includes(FIRST_TASK_TOUR_ID)) return;
-		const project = state.projects.find((candidate) => candidate.id === sandboxRouteProjectId);
-		if (project?.sandbox) startTour(FIRST_TASK_TOUR_ID);
-	}, [settingsLoaded, tour, sandboxRouteProjectId, currentProjectIsEmpty, globalSettings.completedTours, state.projects]);
+		startTour(FIRST_TASK_TOUR_ID);
+	}, [settingsLoaded, tour, onSandboxBoard, currentProjectIsEmpty, globalSettings.completedTours]);
 
 	const activeTour = tour ? tourById(tour.id) : undefined;
 	const activeTourStep = activeTour?.steps[tour?.step ?? 0];
@@ -2550,13 +2556,18 @@ function App() {
 				/>
 			)}
 			{hintMode && <HintOverlay onExit={() => setHintMode(false)} />}
-			{helpMode && <HelpOverlay onExit={() => setHelpMode(false)} />}
+			{helpMode && (
+				<HelpOverlay
+					onExit={() => setHelpMode(false)}
+					onRunTour={onSandboxBoard ? () => { setHelpMode(false); startTour(FIRST_TASK_TOUR_ID); } : undefined}
+				/>
+			)}
 			{activeTour && tour && !helpMode && (
 				<TourOverlay
 					tour={activeTour}
 					stepIndex={tour.step}
 					onStepChange={(step) => setTour({ id: activeTour.id, step })}
-					onExit={() => finishTour(activeTour.id)}
+					onExit={(completed) => finishTour(activeTour.id, completed)}
 				/>
 			)}
 			{showProjectSwitch && (

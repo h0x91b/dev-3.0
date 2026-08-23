@@ -1,4 +1,10 @@
-# A guided tour points at real controls; it does not drive them
+# A guided tour owns the screen while a step is open
+
+> **Reversed on the day it landed** — the title of the first version was "a guided tour
+> points at real controls; it does not drive them". The question it settled was *may a
+> tour take the screen away from the user*, and the first answer was no. One live run
+> answered it the other way; see "The reversal" below. The rules here are the current
+> ones.
 
 ## Context
 
@@ -30,24 +36,50 @@ launches, prints a login prompt into a tmux pane, and the task sits there dead �
 which is what the sandbox would have handed to the exact user least able to
 diagnose it.
 
+## The reversal
+
+The pointing-only version survived one run by its first real user and lost the user
+inside ten seconds. Exactly what happened, in order: the tour opened on step one
+(ring on `+ New Task`), every other control on the board was still live, and the
+`Next` on the card advanced the *tour* while the *app* stood still. Step two then had
+no anchor to point at — the Create Task modal was never opened — so the card parked
+bottom-centre, and 2.5s later rule 3 fired and the tour was gone. There was no way
+back in: the board was no longer empty and a skip had counted as completion.
+
+Three separate rules were wrong, and the same reading is behind all of them: that a
+guide must never take the screen. It reads well and it is wrong for a first run — a
+user who does not know what a control does cannot be trusted to be the one holding
+the sequence together. Arseny's word: *"он ни хрена не блокирует весь UI, хотя должен
+на самом деле, чтобы юзер шёл именно строго по шагам"*.
+
 ## Decision
 
 `src/mainview/tour.ts` is the registry (steps: `anchor`, copy keys, `advanceOn`,
-optional `effect`), `components/TourOverlay.tsx` the engine, and
+optional `action` and `effect`), `components/TourOverlay.tsx` the engine, and
 `App.tsx` owns the state, because a tour crosses screens and anything mounted
-per-screen would unmount mid-step. Four rules, mirrored in bible §5.4b:
+per-screen would unmount mid-step. Five rules, mirrored in bible §5.4b:
 
-1. **A step points; it never acts.** No backdrop, nothing click-shielded but the
-   card itself — the user presses the real button. A `Next` that performs the step
-   would teach the wizard instead of the app.
-2. **Progress is observed.** A step ends when `[data-tour-anchor="<next>"]` appears.
+1. **A step owns the screen.** Four shield bands leave a hole around the step's own
+   control, so that control and the card are the only live things on screen. The
+   hole is a real gap in the DOM, so the control receives clicks normally.
+2. **The step's button presses the real control** (`action: "click-anchor"` →
+   `el.click()`), and a step waiting on a choice only the user can make has no
+   button at all. A button that advances the tour without moving the app is the
+   exact failure above.
+3. **Progress is observed.** A step ends when `[data-tour-anchor="<next>"]` appears.
    Auto-advance arms only after the target has been seen *absent*, or `Back` would
    re-advance on the next tick and be a dead button.
-3. **A lost anchor ends the tour** after 2.5s. Every derailment — Escape, `Save`
-   instead of `Save & Start`, navigating away — lands here, and a card floating
-   over an unrelated screen is worse than no card.
-4. **Auto-start once**, from the sandbox board only (`Project.sandbox`, additive),
-   and a skip counts as completion (`GlobalSettings.completedTours`).
+4. **A lost anchor is a state, not an ending.** After 2.5s the card says it lost the
+   thread and offers restart-or-leave, and it recovers on its own if the anchor
+   comes back. Out is `Skip` or Escape — a stray click can no longer end anything.
+5. **Entry and exit are both explicit.** An empty sandbox board starts it on *every*
+   visit until it is walked to the end; only reaching the end records
+   `completedTours`; afterwards help mode's banner carries "Walk me through the
+   first task". A skip no longer counts as done.
+
+The `launch` step is anchored on the whole Launch dialog rather than its variant
+rows, because the button that launches sits in the dialog's footer — a hole around
+the rows would have shielded the user out of the one control the step is about.
 
 The prompt the tour prefills lives in `shared/sandbox-prompts.ts`, imported by both
 the README seeder and the tour, so the wizard cannot ask for work the repo does not
@@ -63,6 +95,14 @@ is never blocked by dev3's own ignorance.
   blocks) and by `unknown` on any read error, but a renamed file is still a false
   block. The reverse — a stale credential file that no longer authenticates — reads
   as signed in, and the user meets the dead task the gate was meant to prevent.
+- **The shield is a wizard-shaped cage while a step is open.** On the `prompt` step
+  the rest of the Create Task form is unreachable, so a user who wanted to pick a
+  different agent there must leave the tour first. Deliberate — strict sequencing was
+  the requirement — but it is the rule most likely to need a per-step exception, and
+  the shape for one already exists (a second declared hole).
+- **`click-anchor` presses a real button with real consequences.** On the `start`
+  step that button creates a task and starts an agent. The copy says so, but the
+  distance between "Do it" and a running agent is one click.
 - **The engine polls at 100ms** instead of observing mutations. Cheap, but it means
   a step can advance up to 100ms after the user's click, and the timer runs for as
   long as the tour is open.
@@ -85,5 +125,12 @@ is never blocked by dev3's own ignorance.
   serve two contracts at once; ordering is exactly what it deliberately lacks.
 - **Components report progress to the tour.** Precise, no polling — and every new
   step means editing another component, with call sites that rot invisibly.
+- **Keep pointing, and fix only the `Next` button.** Would have left every other
+  control live, so the user can still click past a step — the failure was the pair,
+  not either half.
+- **A full-screen dim with a spotlight.** Tried before the shield and dropped: the
+  last two steps ask the user to *read* the terminal and the git bar, and dimming the
+  thing being explained is self-defeating. The shield dims what is *not* the step,
+  which is the same idea aimed the other way.
 - **Block the sandbox on `installed` alone.** One less probe, and it lets the exact
   failure this gate exists to prevent straight through.

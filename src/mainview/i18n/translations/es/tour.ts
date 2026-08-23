@@ -2,14 +2,20 @@
  *  el cuerpo dice qué pasa al pulsarlo. Ver `mainview/tour.ts`. */
 const tour = {
 	"tour.next": "Siguiente",
+	"tour.doIt": "Pulsarlo",
+	"tour.waiting": "Tu turno: elige algo arriba y yo sigo.",
+	"tour.restart": "Empezar de nuevo",
+	"tour.exit": "Salir del recorrido",
+	"tour.lost.title": "Perdí el hilo",
+	"tour.lost.body": "La pantalla a la que apuntaba este paso ya no está. Empieza el recorrido otra vez, o sal y explora por tu cuenta.",
 	"tour.back": "Atrás",
 	"tour.finish": "Listo",
 	"tour.skip": "Prefiero mirar por mi cuenta",
 
 	"tour.firstTask.title": "Tu primera tarea, de principio a fin",
-	"tour.firstTask.newTask.title": "Tu tablero está vacío",
+	"tour.firstTask.newTask.title": "Todo empieza en Nueva tarea",
 	"tour.firstTask.newTask.body":
-		"El tablero está vacío. Pulsa Nueva tarea y dev-3.0 escribirá el texto por ti: en este repositorio hay un error real que encontrar.",
+		"Toda tarea empieza aquí. Púlsalo y dev-3.0 escribirá el texto por ti: en este repositorio hay un error real que encontrar.",
 	"tour.firstTask.prompt.title": "Esto es lo que se le pide al agente",
 	"tour.firstTask.prompt.body":
 		"El texto ya está escrito: prices.js suma un carrito y redondea mal el total. Todo lo demás de este formulario es opcional.",
@@ -18,7 +24,7 @@ const tour = {
 		"El botón azul solo guarda la tarea en el tablero. El verde además le da su propia rama y arranca un agente sobre ella.",
 	"tour.firstTask.launch.title": "Quién hace el trabajo",
 	"tour.firstTask.launch.body":
-		"Elige un agente y cuánta libertad tiene. Añade una segunda fila y dos agentes resolverán la misma tarea por separado, para comparar y quedarte con una.",
+		"Elige un agente y cuánta libertad tiene. Añade una segunda fila y dos agentes resolverán la misma tarea por separado, para comparar y quedarte con una. Pulsa Launch abajo cuando te convenza.",
 	"tour.firstTask.openTask.title": "Ábrela",
 	"tour.firstTask.openTask.body":
 		"La tarea salió de Por hacer y ya tiene su propia rama: puede estar trabajando o ya preguntándote algo. Pulsa la tarjeta para verla; lanzar no te lleva allí por sí solo, así un tablero entero de agentes cabe en una pantalla.",

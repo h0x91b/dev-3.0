@@ -35,9 +35,16 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  * warns about, so the file grew by the size of one new rule instead. `TOTAL_BUDGET_KB` is
  * deliberately untouched: the tree cap is what actually bounds the per-feature token cost, and the
  * log entry for this rule is a one-line pointer so it still fits.
+ *
+ * 124 → 125 when §5.4b's tour rules were rewritten after the first live run: a pointing-only
+ * overlay let the user click past its own step, so "a step points" split into two rules (it owns
+ * the screen, and its button presses the real control) and the lost-anchor rule gained the
+ * restart-or-leave state. Compaction ran three times inside §5.4b first and bought ~230 bytes —
+ * two bullets merged, the intro shortened — leaving the section 57 bytes over. The rest of the
+ * file is §10 rows whose why exists nowhere else.
  */
 const BUDGET_KB: Record<string, number> = {
-	"PRODUCT_UX_BIBLE.md": 124,
+	"PRODUCT_UX_BIBLE.md": 125,
 	"ux-architecture.yaml": 111,
 	"UX_DECISIONS.md": 80,
 };

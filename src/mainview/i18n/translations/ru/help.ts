@@ -3,6 +3,7 @@ const help = {
 	"help.ui.aboutSection": "Об этой секции",
 	"help.ui.modeBanner": "Режим подсказок — кликните подсвеченную зону, чтобы узнать, что она делает",
 	"help.ui.exitHint": "Esc — выйти",
+	"help.ui.runTour": "Проведи меня по первой задаче",
 	"help.ui.whatYouCanDo": "Что здесь можно делать",
 	"help.ui.explainScreen": "Объяснить этот экран…",
 	"help.ui.openShortcuts": "Открыть горячие клавиши",
