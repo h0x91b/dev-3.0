@@ -89,6 +89,8 @@ vi.mock("../git", () => ({
 	resolveCompareRef: vi.fn(async (path: string, baseBranch: string, explicit?: string) =>
 		explicit || git.detectDefaultCompareRef(path, baseBranch)),
 	isForeignBranchRef: vi.fn().mockResolvedValue(false),
+	localBranchNameForRef: vi.fn(async (_path: string, ref: string) => ref.replace(/^origin\//, "")),
+	refAuthorAndSubject: vi.fn().mockResolvedValue({ author: null, subject: null }),
 	refExists: vi.fn().mockResolvedValue(true),
 	isRefMergedInto: vi.fn().mockResolvedValue(false),
 	getBranchStatus: vi.fn(),
@@ -5608,7 +5610,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 42, url: "" }, isGitHub: true });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 42, url: "", title: null, author: null }, isGitHub: true });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(42);
@@ -5628,7 +5630,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 42, url: prUrl }, isGitHub: true });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 42, url: prUrl, title: null, author: null }, isGitHub: true });
 		const push = vi.fn();
 		setPushMessage(push);
 
@@ -5695,7 +5697,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 10, url: "" }, isGitHub: true });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 10, url: "", title: null, author: null }, isGitHub: true });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(10);
@@ -7328,7 +7330,7 @@ describe("handlers.mergeTask", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 1475, url: "" }, isGitHub: true });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 1475, url: "", title: null, author: null }, isGitHub: true });
 		vi.mocked(github.resolveMergeMethod).mockResolvedValue("squash");
 		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "", stderr: "", code: 0 });
 
@@ -7354,7 +7356,7 @@ describe("handlers.mergeTask", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 7, url: "" }, isGitHub: true });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 7, url: "", title: null, author: null }, isGitHub: true });
 		vi.mocked(github.runGitHub).mockResolvedValue({
 			ok: false, stdout: "", stderr: "Pull request #7 is not mergeable: the base branch policy prohibits the merge", code: 1,
 		});
@@ -7373,7 +7375,7 @@ describe("handlers.mergeTask", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
-		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 9, url: "" }, isGitHub: true });
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 9, url: "", title: null, author: null }, isGitHub: true });
 
 		await expect(
 			handlers.mergeTask({ taskId: "task-1", projectId: "proj-1", expectRoute: "local-squash" }),
@@ -13224,6 +13226,143 @@ describe("createTask foreignCode", () => {
 		await handlers.createTask({ projectId: project.id, description: "An operation" });
 
 		expect(git.isForeignBranchRef).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// createTask — a review task's identity on the board
+// ================================================================
+
+/**
+ * Every assertion here is about the TITLE A REVIEW TASK ENDS UP WITH, not about
+ * the string builder: the whole complaint was that N review cards read the same,
+ * and only the create path decides that.
+ */
+describe("createTask review title", () => {
+	function titleOf(): string | undefined {
+		return vi.mocked(data.addTask).mock.calls[0]?.[3]?.title;
+	}
+
+	beforeEach(() => {
+		vi.mocked(data.getProject).mockReset();
+		vi.mocked(data.addTask).mockReset();
+		vi.mocked(git.isForeignBranchRef).mockResolvedValue(false);
+		vi.mocked(git.localBranchNameForRef).mockImplementation(async (_p, ref) => ref.replace(/^origin\//, ""));
+		vi.mocked(git.refAuthorAndSubject).mockResolvedValue({ author: null, subject: null });
+		vi.mocked(github.findOpenPullRequest).mockReset();
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(makeTask({ status: "todo", worktreePath: null }));
+	});
+
+	it("names the task after the pull request, its author and what it changes", async () => {
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({
+			pr: { number: 493, url: "u", title: "fix: pin tmux to a vendored keg (#493)", author: "Arseny Pavlenko" },
+			isGitHub: true,
+		});
+
+		await handlers.createTask({
+			projectId: "proj-1",
+			description: "Review the code changes on this branch. Your task is to perform a thorough review",
+			existingBranch: "origin/fix/tmux",
+			taskType: "pr-review",
+		});
+
+		expect(titleOf()).toBe("Review of #493 from Arseny Pavlenko about pin tmux to a vendored");
+	});
+
+	it("gives two review tasks on different branches two different titles", async () => {
+		vi.mocked(github.findOpenPullRequest)
+			.mockResolvedValueOnce({ pr: { number: 1, url: "u", title: "Add remote mode", author: "Ann" }, isGitHub: true })
+			.mockResolvedValueOnce({ pr: { number: 2, url: "u", title: "Drop the shim", author: "Bo" }, isGitHub: true });
+		const description = "Review the code changes on this branch.";
+
+		await handlers.createTask({ projectId: "proj-1", description, existingBranch: "origin/a", taskType: "pr-review" });
+		const first = titleOf();
+		vi.mocked(data.addTask).mockClear();
+		await handlers.createTask({ projectId: "proj-1", description, existingBranch: "origin/b", taskType: "pr-review" });
+
+		expect(first).toBe("Review of #1 from Ann about Add remote mode");
+		expect(titleOf()).toBe("Review of #2 from Bo about Drop the shim");
+		expect(titleOf()).not.toBe(first);
+	});
+
+	it("falls back to the branch and its commit tip when there is no pull request", async () => {
+		vi.mocked(git.refAuthorAndSubject).mockResolvedValue({ author: "Jane Doe", subject: "Rework the parser" });
+
+		await handlers.createTask({
+			projectId: "proj-1", description: "Review", existingBranch: "yanive/feat/x", taskType: "pr-review",
+		});
+
+		expect(titleOf()).toBe("Review of yanive/feat/x from Jane Doe about Rework the parser");
+	});
+
+	// The negative case that must not read as "from unknown": no PR, no readable
+	// author. A shorter honest title still tells the cards apart.
+	it("drops the author clause when nobody can be named", async () => {
+		await handlers.createTask({
+			projectId: "proj-1", description: "Review", existingBranch: "origin/feat/x", taskType: "pr-review",
+		});
+
+		expect(titleOf()).toBe("Review of feat/x");
+	});
+
+	it("keeps the review title even when the caller derived one from the description", async () => {
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({
+			pr: { number: 7, url: "u", title: "Speed up boot", author: "Ann" }, isGitHub: true,
+		});
+
+		await handlers.createTask({
+			projectId: "proj-1", description: "Review", title: "look at the migration path",
+			existingBranch: "origin/feat/x", taskType: "pr-review",
+		});
+
+		expect(titleOf()).toBe("Review of #7 from Ann about Speed up boot");
+	});
+
+	it("leaves a non-review task's title alone", async () => {
+		await handlers.createTask({
+			projectId: "proj-1", description: "My own work", title: "My own work", existingBranch: "origin/feat/x",
+		});
+
+		expect(titleOf()).toBe("My own work");
+		expect(github.findOpenPullRequest).not.toHaveBeenCalled();
+	});
+
+	it("keeps the derived title when gh and git both fail, instead of a broken one", async () => {
+		vi.mocked(github.findOpenPullRequest).mockRejectedValue(new Error("gh exploded"));
+
+		await handlers.createTask({
+			projectId: "proj-1", description: "Review", title: "derived", existingBranch: "origin/feat/x",
+			taskType: "pr-review",
+		});
+
+		expect(titleOf()).toBe("derived");
+	});
+
+	// The other half of the same invariant, guarded from this side: dev3 must write
+	// the draft into `title` only. Claiming a user edit here would make the CLI
+	// guard refuse the agent's rename, and the prompt's title step would be dead.
+	it("writes the draft as a plain title and never claims a user edit", async () => {
+		vi.mocked(github.findOpenPullRequest).mockResolvedValue({
+			pr: { number: 7, url: "u", title: "Speed up boot", author: "Ann" }, isGitHub: true,
+		});
+
+		await handlers.createTask({
+			projectId: "proj-1", description: "Review", existingBranch: "origin/feat/x", taskType: "pr-review",
+		});
+
+		const extras = vi.mocked(data.addTask).mock.calls[0]?.[3];
+		expect(extras?.title).toBe("Review of #7 from Ann about Speed up boot");
+		expect(extras?.titleEditedByUser).toBeUndefined();
+		expect(extras?.customTitle).toBeUndefined();
+	});
+
+	it("never asks GitHub for a review task with no branch to review", async () => {
+		await handlers.createTask({ projectId: "proj-1", description: "Review", taskType: "pr-review" });
+
+		expect(github.findOpenPullRequest).not.toHaveBeenCalled();
 	});
 });
 

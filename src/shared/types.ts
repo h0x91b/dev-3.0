@@ -449,7 +449,28 @@ Start by analyzing what was changed, then evaluate:
 - Edge cases and error handling
 - Security considerations
 
-Provide a structured review with actionable feedback.`;
+Provide a structured review with actionable feedback.
+
+BEFORE YOU FINISH, make this review readable on the board. Both steps are your
+job, and neither is optional — a board of review tasks that all look alike is
+useless to the person who has to pick one.
+
+1. Title — set it yourself with \`dev3 task update --title "..."\`, in this shape:
+
+       Review of #<PR number> from <the author, a readable name> about <what it changes, five words>
+
+   Example: Review of #493 from Arseny Pavlenko about pin tmux to a vendored keg
+
+   dev3 already put a DRAFT title of this shape on the task at creation, built from
+   the pull request's own title. Treat it as a draft and replace it: you have read
+   the diff and it has not, so the "about" clause should say what the change
+   actually does, not what its title claimed. Keep the number and the author unless
+   they are wrong. No pull request? Put the branch name where \`#<PR number>\` goes.
+2. Overview — \`dev3 overview set "<verdict>. <counts>"\`. Under 500 characters, a
+   sticky note and not the review itself. The verdict is one of "Safe to merge",
+   "Merge after fixes" or "Do not merge", and the counts are numbers, not prose.
+   Example: Safe to merge, nothing serious found. 0 blockers, 2 worth fixing,
+   3 nitpicks across 11 files.`;
 
 /**
  * Preamble the Coordinator task-type preset injects into a new task's
@@ -2873,6 +2894,52 @@ export function titleFromDescription(
 		return truncated.slice(0, lastSpace) + "\u2026";
 	}
 	return truncated + "\u2026";
+}
+
+/** Words of the "about" clause in a review title \u2014 five, as the board asks for. */
+const REVIEW_TITLE_TOPIC_WORDS = 5;
+
+/**
+ * The "about \u2026" clause of a review title, condensed from a pull-request title or
+ * a commit subject. Drops the conventional-commit prefix and GitHub's squash
+ * `(#123)` suffix, both of which would spend words on things the card already
+ * shows, then keeps the first {@link REVIEW_TITLE_TOPIC_WORDS} words. No
+ * ellipsis on purpose: a trailing `\u2026` is this project's marker for a title
+ * nobody has written yet (see `titleFromDescription`).
+ */
+export function reviewTitleTopic(source: string | null | undefined): string {
+	const text = (source ?? "")
+		.replace(/\s+/g, " ")
+		.replace(/\s*\(#\d+\)\s*$/, "")
+		.replace(/^\s*\w+(\([^)]*\))?!?:\s*/, "")
+		.trim();
+	if (!text) return "";
+	// Cutting at five words lands mid-sentence, so the join often ends on the comma
+	// or dash that led into the words we dropped.
+	return text.split(" ").slice(0, REVIEW_TITLE_TOPIC_WORDS).join(" ").replace(/[,;:—–-]+$/, "");
+}
+
+/**
+ * Board identity for a PR-review task. Every review card used to read "Review the
+ * code changes on this branch. Your task is to perform a thorough\u2026" \u2014 the preset
+ * preamble run through {@link titleFromDescription} \u2014 so N reviews produced N
+ * indistinguishable cards. Each clause is dropped rather than filled with a
+ * placeholder when its part is unknown, so a branch with no pull request and no
+ * readable author still gets a shorter honest title instead of "from unknown".
+ * Returns "" when even the subject is unknown, which means "keep the old title".
+ */
+export function reviewTaskTitle(parts: {
+	prNumber?: number | null;
+	branch?: string | null;
+	author?: string | null;
+	topic?: string | null;
+}): string {
+	const branch = parts.branch?.trim();
+	const subject = parts.prNumber != null ? `#${parts.prNumber}` : branch;
+	if (!subject) return "";
+	const author = parts.author?.trim();
+	const topic = reviewTitleTopic(parts.topic);
+	return `Review of ${subject}${author ? ` from ${author}` : ""}${topic ? ` about ${topic}` : ""}`;
 }
 
 /**

@@ -2246,6 +2246,38 @@ describe("task.update", () => {
 		expect(result.titlePreserved).toBe(false);
 	});
 
+	// The whole review-task naming design rests on this: dev3 writes a DRAFT title
+	// at creation and the reviewing agent is told to replace it. The draft lives in
+	// `title` with NO customTitle at all, which is a shape the guard's other cases
+	// never exercise — if it were protected, the prompt's instruction could not be
+	// carried out and every review card would keep the PR author's own wording.
+	it("lets an agent rename over dev3's drafted review title", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			title: "Review of #493 from Arseny Pavlenko about pin tmux to a vendored",
+			customTitle: undefined,
+			titleEditedByUser: false,
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, customTitle: "Review of #493 from Arseny Pavlenko about drop the PATH shim" });
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", {
+				taskId: task.id,
+				projectId: "proj-1",
+				title: "Review of #493 from Arseny Pavlenko about drop the PATH shim",
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect((resp.data as { titlePreserved: boolean }).titlePreserved).toBe(false);
+		const call = vi.mocked(data.updateTask).mock.calls[0][2];
+		expect(call.customTitle).toBe("Review of #493 from Arseny Pavlenko about drop the PATH shim");
+		expect(call.titleEditedByUser).toBeUndefined();
+	});
+
 	it("overwrites user-edited title when --force is set", async () => {
 		const project = makeProject();
 		const task = makeTask({ customTitle: "User-set title", titleEditedByUser: true });

@@ -1,8 +1,9 @@
 import type { LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
-import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, titleFromDescription } from "../../shared/types";
+import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
+import * as github from "../github";
 import { resolveAgentRequest, setAgentRequestLaunchChoice, type AgentLaunchChoice } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound } from "../lifecycle/executor";
@@ -36,6 +37,35 @@ function isScratchPlaceholderDescription(description: string): boolean {
  * this never enters `description`: a draft's description must stay empty so
  * "Save" remains unavailable until the user actually writes the prompt.
  */
+/**
+ * A DRAFT name for a PR-review task, at creation, from what dev3 already knows
+ * about the branch. The reviewing agent owns the final title — the preset prompt
+ * tells it to replace this one once it has read the diff, which dev3 never does.
+ * This exists because the card must not be anonymous in the meantime, and because
+ * the prompt is overridable per project and app-wide: a naming rule that lived
+ * only there would silently skip every user who customised it.
+ * Best-effort; "" means "keep the description-derived title".
+ */
+async function reviewTitleForBranch(project: Project, existingBranch: string): Promise<string> {
+	try {
+		const branch = await git.localBranchNameForRef(project.path, existingBranch);
+		const probe = await github.findOpenPullRequest(project, project.path, branch, { timeoutMs: 15_000 });
+		let author = probe.pr?.author ?? null;
+		let topic = probe.pr?.title ?? null;
+		// No pull request, or one gh could not fully describe: the branch tip still
+		// knows who wrote it and what they called it.
+		if (!author || !topic) {
+			const tip = await git.refAuthorAndSubject(project.path, existingBranch);
+			author ??= tip.author;
+			topic ??= tip.subject;
+		}
+		return reviewTaskTitle({ prNumber: probe.pr?.number ?? null, branch, author, topic });
+	} catch (err) {
+		log.warn("reviewTitleForBranch failed, keeping the derived title", { error: String(err) });
+		return "";
+	}
+}
+
 function draftPlaceholderTitle(now: Date = new Date()): string {
 	const hh = String(now.getHours()).padStart(2, "0");
 	const mm = String(now.getMinutes()).padStart(2, "0");
@@ -141,6 +171,13 @@ async function createTask(params: { projectId: string; description: string; titl
 	const foreignCode = project.kind === "virtual"
 		? false
 		: await git.isForeignBranchRef(project.path, params.existingBranch);
+	// A review task's draft identity beats a title derived from the description: the
+	// description leads with the review preamble, so every review card otherwise
+	// reads the same. A title the USER typed still wins — the modal sends that as
+	// `customTitle` after creation, which getTaskTitle prefers over this one.
+	const reviewTitle = params.taskType === "pr-review" && params.existingBranch && project.kind !== "virtual" && !isScratch
+		? await reviewTitleForBranch(project, params.existingBranch)
+		: "";
 	const extras: Parameters<typeof data.addTask>[3] = {
 		...(params.existingBranch ? { existingBranch: params.existingBranch } : {}),
 		...(foreignCode ? { foreignCode: true } : {}),
@@ -150,7 +187,9 @@ async function createTask(params: { projectId: string; description: string; titl
 		// A preset preamble leads the description, so the caller supplies the title
 		// derived from the user's own text. Never for a scratch task, whose
 		// description is a placeholder.
-		...(!isScratch && params.title?.trim() ? { title: params.title.trim() } : {}),
+		...(reviewTitle
+			? { title: reviewTitle }
+			: !isScratch && params.title?.trim() ? { title: params.title.trim() } : {}),
 		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
 		...(params.priority ? { priority: params.priority } : {}),
 		...(params.taskType ? { taskType: params.taskType } : {}),

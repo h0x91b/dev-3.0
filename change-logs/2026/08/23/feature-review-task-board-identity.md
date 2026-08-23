@@ -1,0 +1,3 @@
+Short: Review tasks name themselves
+
+A PR-review task is now called "Review of #493 from Arseny Pavlenko about pin tmux to a vendored keg" instead of the first 80 characters of the review prompt, so several reviews on the board are finally distinguishable at a glance; a branch with no pull request falls back to the branch, its commit author and its subject. That title is a draft built from the pull request's own words — the built-in review prompt tells the reviewing agent to replace it with what the diff actually does, and to leave a verdict overview: safe to merge, merge after fixes or do not merge, followed by how many blockers, fixes and nitpicks it found.

@@ -78,6 +78,8 @@ import {
 	deriveForkUrl,
 	fetchFork,
 	isForeignBranchRef,
+	localBranchNameForRef,
+	refAuthorAndSubject,
 	pullOrigin,
 	_resetFetchState,
 	_resetCompareRefCache,
@@ -904,5 +906,44 @@ describe("isForeignBranchRef", () => {
 	it("git failure → foreign, never trusted", async () => {
 		queueResponse(1, "", "fatal: not a git repository");
 		expect(await isForeignBranchRef("/not-a-repo", "origin/feat/x")).toBe(true);
+	});
+});
+
+// ─── localBranchNameForRef / refAuthorAndSubject ─────────────────────────────
+
+describe("localBranchNameForRef", () => {
+	it("strips the remote that owns the ref, origin and fork alike", async () => {
+		queueResponse(0, "abc123\n");
+		expect(await localBranchNameForRef("/repo", "origin/feat/x")).toBe("feat/x");
+		queueResponse(0, "abc123\n");
+		expect(await localBranchNameForRef("/repo", "yanive/feat/x")).toBe("feat/x");
+	});
+
+	// The reason this asks git instead of cutting at the first slash: `feat/x` is
+	// itself a legal local branch name, and cutting would review `x`.
+	it("leaves a local branch name that merely contains a slash alone", async () => {
+		queueResponse(1, "", "fatal: Needed a single revision");
+		expect(await localBranchNameForRef("/repo", "feat/x")).toBe("feat/x");
+	});
+});
+
+describe("refAuthorAndSubject", () => {
+	it("splits git's NUL-separated author and subject", async () => {
+		queueResponse(0, `Jane Doe\0Rework the parser\n`);
+		expect(await refAuthorAndSubject("/repo", "origin/feat/x")).toEqual({
+			author: "Jane Doe", subject: "Rework the parser",
+		});
+	});
+
+	// A subject can hold anything a commit message's first line holds, including
+	// the colons and parentheses the topic condenser later strips.
+	it("keeps the subject verbatim, punctuation included", async () => {
+		queueResponse(0, `Ann\0feat(remote): serve it (#12)\n`);
+		expect(await refAuthorAndSubject("/repo", "b")).toMatchObject({ subject: "feat(remote): serve it (#12)" });
+	});
+
+	it("answers nulls when the ref is not there, instead of throwing", async () => {
+		queueResponse(1, "", "fatal: bad revision");
+		expect(await refAuthorAndSubject("/repo", "gone")).toEqual({ author: null, subject: null });
 	});
 });

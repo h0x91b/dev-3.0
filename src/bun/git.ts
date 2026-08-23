@@ -1010,16 +1010,8 @@ export async function createWorktree(
 	}
 
 	if (existingBranch) {
-		// Check if this is a remote tracking ref (origin/xxx, yanive/xxx, etc.)
-		const isRemoteRef = (await run(
-			["git", "rev-parse", "--verify", `refs/remotes/${existingBranch}`],
-			project.path,
-		)).ok;
-
-		// For remote refs, extract local branch name by stripping the remote prefix
-		const resolvedBranch = isRemoteRef
-			? existingBranch.slice(existingBranch.indexOf("/") + 1)
-			: existingBranch;
+		const resolvedBranch = await localBranchNameForRef(project.path, existingBranch);
+		const isRemoteRef = resolvedBranch !== existingBranch;
 
 		log.info("Creating worktree from existing branch", {
 			wtPath, existingBranch, resolvedBranch, isRemoteRef, taskId: task.id,
@@ -1505,6 +1497,32 @@ export async function isForeignBranchRef(projectPath: string, existingBranch?: s
 	// tell" — and an unknown provenance is treated as foreign, never as trusted.
 	if (remotes.length === 0) return true;
 	return remotes.includes(ref.slice(0, slash));
+}
+
+/**
+ * The plain branch name behind a ref a task starts on: `origin/feat/x` and the
+ * fork remote's `arditti/feat/x` both become `feat/x`, a local name is returned
+ * untouched. Keyed off `refs/remotes/<ref>` existing rather than off the first
+ * slash, because `feat/x` is itself a legal local branch name.
+ */
+export async function localBranchNameForRef(projectPath: string, ref: string): Promise<string> {
+	const isRemoteRef = (await run(["git", "rev-parse", "--verify", `refs/remotes/${ref}`], projectPath)).ok;
+	return isRemoteRef ? ref.slice(ref.indexOf("/") + 1) : ref;
+}
+
+/**
+ * Who wrote the tip of a ref and what they called it — the fallback identity for
+ * a review task whose branch has no pull request to name it. `%an` is the commit
+ * author's own name, so a fork branch still names its real author.
+ */
+export async function refAuthorAndSubject(
+	projectPath: string,
+	ref: string,
+): Promise<{ author: string | null; subject: string | null }> {
+	const result = await run(["git", "log", "-1", "--format=%an%x00%s", ref], projectPath, { timeoutMs: 10_000 });
+	if (!result.ok) return { author: null, subject: null };
+	const [author, subject] = result.stdout.split("\0");
+	return { author: author?.trim() || null, subject: subject?.trim() || null };
 }
 
 /**

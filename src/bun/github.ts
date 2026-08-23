@@ -419,8 +419,12 @@ export async function runGitHub(
 
 /** What one `gh pr list --head` answer tells a caller. */
 export interface OpenPullRequestProbe {
-	/** The open PR whose head is this branch, or null when there is none. */
-	pr: { number: number; url: string } | null;
+	/**
+	 * The open PR whose head is this branch, or null when there is none. `title`
+	 * and `author` are what a review task is named after; both are null when gh
+	 * returned them empty, never a placeholder string.
+	 */
+	pr: { number: number; url: string; title: string | null; author: string | null } | null;
 	/** False ONLY when gh definitively said this is not a GitHub repo. */
 	isGitHub: boolean;
 }
@@ -440,7 +444,7 @@ export async function findOpenPullRequest(
 	const result = await runGitHub(
 		project,
 		cwd,
-		["pr", "list", "--head", headBranch, "--state", "open", "--json", "number,url", "--limit", "1"],
+		["pr", "list", "--head", headBranch, "--state", "open", "--json", "number,url,title,author", "--limit", "1"],
 		{ timeoutMs: options?.timeoutMs },
 	);
 	const isGitHub = result.ok || !isNotAGitHubRepoError(result);
@@ -448,8 +452,18 @@ export async function findOpenPullRequest(
 		try {
 			const prs = JSON.parse(result.stdout);
 			if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
+				const author = prs[0].author as { name?: unknown; login?: unknown } | null | undefined;
+				// A GitHub display name is optional, the login never is, and the login is
+				// what a human recognises anyway when the name is missing.
+				const authorName = [author?.name, author?.login]
+					.find((candidate) => typeof candidate === "string" && candidate.trim()) as string | undefined;
 				return {
-					pr: { number: prs[0].number, url: typeof prs[0].url === "string" ? prs[0].url : "" },
+					pr: {
+						number: prs[0].number,
+						url: typeof prs[0].url === "string" ? prs[0].url : "",
+						title: typeof prs[0].title === "string" && prs[0].title.trim() ? prs[0].title : null,
+						author: authorName?.trim() ?? null,
+					},
 					isGitHub,
 				};
 			}

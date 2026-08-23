@@ -277,7 +277,9 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		prDetection,
 	]);
 	const remoteIsGitHub = hasRemote && detected.isGitHub;
-	let prInfo = detected.pr;
+	// Only the identity travels on from here; the probe's title/author exist for
+	// naming a review task, not for the branch-status payload.
+	let prInfo: { number: number; url: string } | null = detected.pr;
 	if (!prInfo && task.prNumber != null && task.prUrl) {
 		// The sticky number outlives the branch it was opened from: rename the
 		// branch, or inherit the number from the review task this one grew out of,

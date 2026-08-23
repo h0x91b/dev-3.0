@@ -666,8 +666,30 @@ describe("github", () => {
 				mockGhRepoView(JSON.stringify([{ number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475" }]));
 				const { findOpenPullRequest } = await import("../github");
 				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "dev3/t")).resolves.toEqual({
-					pr: { number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475" },
+					pr: { number: 1475, url: "https://github.com/h0x91b/dev-3.0/pull/1475", title: null, author: null },
 					isGitHub: true,
+				});
+			});
+
+			// The two fields a review task is named after. A GitHub display name is
+			// optional, so the login has to carry the naming when it is missing.
+			it("prefers the author's display name and falls back to the login", async () => {
+				const { findOpenPullRequest } = await import("../github");
+				mockGhRepoView(JSON.stringify([
+					{ number: 1, url: "u", title: "Pin tmux", author: { login: "h0x91b", name: "Arseny Pavlenko" } },
+				]));
+				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "b")).resolves.toMatchObject({
+					pr: { title: "Pin tmux", author: "Arseny Pavlenko" },
+				});
+
+				mockGhRepoView(JSON.stringify([{ number: 1, url: "u", title: "", author: { login: "h0x91b", name: "" } }]));
+				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "b")).resolves.toMatchObject({
+					pr: { title: null, author: "h0x91b" },
+				});
+
+				mockGhRepoView(JSON.stringify([{ number: 1, url: "u" }]));
+				await expect(findOpenPullRequest(PROJECT, "/tmp/wt", "b")).resolves.toMatchObject({
+					pr: { title: null, author: null },
 				});
 			});
 
