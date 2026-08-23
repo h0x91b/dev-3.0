@@ -1198,6 +1198,7 @@ describe("App keyboard shortcuts", () => {
 						toSeq: 42,
 						toTitle: "Receiver",
 						fromSeq: 7,
+						fromTaskId: "t-sender",
 						fromTitle: "Coordinator",
 						preview: "check the payload",
 						...detail,
@@ -1210,13 +1211,50 @@ describe("App keyboard shortcuts", () => {
 			await renderWithBoard();
 			dispatchAgentMessage();
 
-			expect(screen.getByText("#7 Coordinator → #42 Receiver")).toBeInTheDocument();
-			await userEvent.click(
-				await screen.findByRole("button", { name: "#7 Coordinator → #42 Receiver — “check the payload”" }),
-			);
+			expect(screen.getByText("check the payload")).toBeInTheDocument();
+			expect(screen.getByText("#7")).toBeInTheDocument();
+			expect(screen.getByText("#42")).toBeInTheDocument();
+			await userEvent.click(await screen.findByRole("button", { name: "received: task #42 Receiver" }));
 			await waitFor(() => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-receiver");
 			});
+		});
+
+		it("clicks through to the SENDING task from the other square", async () => {
+			await renderWithBoard();
+			dispatchAgentMessage();
+
+			await userEvent.click(await screen.findByRole("button", { name: "sent: task #7 Coordinator" }));
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-sender");
+			});
+		});
+
+		it("leaves the sender square inert when the event carried no sending task id", async () => {
+			await renderWithBoard();
+			dispatchAgentMessage({ fromTaskId: undefined });
+
+			expect(await screen.findByRole("button", { name: "received: task #42 Receiver" })).toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "sent: task #7 Coordinator" })).not.toBeInTheDocument();
+		});
+
+		it("folds a burst around one hub into a single card instead of a pile", async () => {
+			await renderWithBoard();
+			// Coordinator #7 fans out, then two of them answer it.
+			dispatchAgentMessage({ taskId: "t-a", toSeq: 42, toTitle: "A" });
+			dispatchAgentMessage({ taskId: "t-b", toSeq: 43, toTitle: "B", preview: "second" });
+			dispatchAgentMessage({
+				taskId: "t-sender",
+				toSeq: 7,
+				toTitle: "Coordinator",
+				fromTaskId: "t-a",
+				fromSeq: 42,
+				fromTitle: "A",
+				preview: "answering",
+			});
+
+			await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(1));
+			expect(screen.getByText("2 sent · 1 received")).toBeInTheDocument();
 		});
 
 		it("drops the toast when the SENDER's project is sensitive on camera", async () => {

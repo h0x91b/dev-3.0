@@ -134,6 +134,7 @@ function announceAgentMessage(task: Task, message: ScheduledMessage, delivery: A
 		toSeq: task.seq,
 		toTitle: getTaskTitle(task),
 		fromSeq: source.seq,
+		fromTaskId: source.taskId,
 		...(source.title ? { fromTitle: source.title } : {}),
 		...(source.projectId ? { fromProjectId: source.projectId } : {}),
 		preview: messagePreview(message.text),

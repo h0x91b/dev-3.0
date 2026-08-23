@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { useT } from "./i18n";
 import type { TranslationKey } from "./i18n";
+import { AgentMessageToast, sharedParticipant } from "./components/AgentMessageToast";
+import type { AgentToastGroup, AgentToastLink } from "./components/AgentMessageToast";
 
 /**
  * `agent` is not a severity — it marks traffic between two agents with no human
@@ -39,6 +41,8 @@ export interface ToastEntry extends ToastOrigin {
 	onClick?: () => void;
 	/** Pre-composed source line. Wins over anything the host would resolve. */
 	context?: string;
+	/** Both ends of an agent→agent message. Turns the toast into the two-square form. */
+	agent?: AgentToastLink;
 }
 
 export interface ToastOpts extends ToastOrigin {
@@ -47,6 +51,8 @@ export interface ToastOpts extends ToastOrigin {
 	onClick?: () => void;
 	/** Pre-composed source line. Wins over anything the host would resolve. */
 	context?: string;
+	/** Both ends of an agent→agent message. Turns the toast into the two-square form. */
+	agent?: AgentToastLink;
 }
 
 /** Compact source line for a task-scoped toast, e.g. "#804 · dev-3.0 · Task title". */
@@ -101,6 +107,8 @@ interface RenderedToast {
 	/** Source line and click target, frozen when the toast was raised. */
 	context?: string;
 	onClick?: () => void;
+	/** Present for agent traffic: this card owns one or more messages. */
+	group?: AgentToastGroup;
 }
 
 const listeners = new Set<Listener>();
@@ -114,6 +122,8 @@ const MAX_VISIBLE_TOASTS = 5;
 /** Queue bound for entries raised while suppressed or before a host subscribed. */
 const MAX_PENDING_ENTRIES = 5;
 const NARROW_MAX_VISIBLE_TOASTS = 1;
+/** Messages one agent card keeps; older ones fall off the top of the group. */
+const MAX_AGENT_GROUP_ITEMS = 12;
 const NARROW_VIEWPORT_PX = 768;
 
 function deliver(entry: ToastEntry): void {
@@ -132,6 +142,7 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts): void {
 		contextDetail: opts?.contextDetail,
 		onClick: opts?.onClick,
 		context: opts?.context,
+		agent: opts?.agent,
 	};
 	// Queue while immersive fullscreen suppresses toasts, and also while no host is
 	// subscribed yet: `ToastHost` subscribes from a passive effect, so a toast raised
@@ -324,8 +335,39 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 		}
 	}, [maxVisibleToasts]);
 
+	/**
+	 * Fold a new agent message into a live card that already shares a participant
+	 * with it. Grouped by HUB rather than by sender: a coordinator answered by
+	 * three tasks is the same burst as a coordinator writing to three, and folding
+	 * only fan-out would leave the inbound direction as five identical toasts —
+	 * the exact pile this replaced. Returns false when nothing could take it.
+	 */
+	function absorbAgentMessage(entry: ToastEntry, link: AgentToastLink): boolean {
+		const previous = toastsRef.current;
+		for (let index = previous.length - 1; index >= 0; index -= 1) {
+			const view = previous[index];
+			if (!view.group) continue;
+			const hubTaskId = sharedParticipant(view.group, link);
+			if (!hubTaskId) continue;
+			const items = [...view.group.items, { id: entry.id, link, preview: entry.message }];
+			const next = [...previous];
+			next[index] = { ...view, group: { hubTaskId, items: items.slice(-MAX_AGENT_GROUP_ITEMS) } };
+			publish(next);
+			// The card is new information again, so it gets the full dwell time back.
+			const runtime = runtimesRef.current.get(view.entry.id);
+			if (runtime) {
+				pauseRuntime(view.entry.id);
+				runtime.remainingMs = Math.max(0, entry.durationMs);
+				startRuntime(view.entry.id);
+			}
+			return true;
+		}
+		return false;
+	}
+
 	useEffect(() => {
 		const listener: Listener = (entry) => {
+			if (entry.agent && absorbAgentMessage(entry, entry.agent)) return;
 			const runtime: ToastRuntime = {
 				remainingMs: Math.max(0, entry.durationMs),
 				startedAtMs: null,
@@ -357,8 +399,14 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 					paused: !activeRef.current,
 					// Whatever the call site passed explicitly always wins — a toast about
 					// a shared image opens the lightbox, not the task.
-					context: entry.context ?? resolvedContext,
-					onClick: entry.onClick ?? resolved?.onClick,
+					// An agent card names both tasks inside its own body, so a source
+					// line above it would repeat itself, and its click targets are the
+					// squares rather than the whole card.
+					context: entry.agent ? undefined : (entry.context ?? resolvedContext),
+					onClick: entry.agent ? undefined : (entry.onClick ?? resolved?.onClick),
+					...(entry.agent
+						? { group: { items: [{ id: entry.id, link: entry.agent, preview: entry.message }] } }
+						: {}),
 				},
 			];
 			publish(next);
@@ -381,12 +429,13 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 
 	return (
 		<div className="fixed top-14 right-4 z-[55] flex flex-col gap-2.5 pointer-events-none">
-			{toasts.map(({ entry, paused, context, onClick }) => (
+			{toasts.map(({ entry, paused, context, onClick, group }) => (
 				<ToastCard
 					key={entry.id}
 					entry={entry}
 					context={context}
 					onClick={onClick}
+					group={group}
 					dismissLabel={t("toast.dismiss")}
 					paused={paused}
 					onDismiss={removeToast}
@@ -410,6 +459,8 @@ interface ToastCardProps {
 	context?: string;
 	/** Click target after central resolution — not `entry.onClick`. */
 	onClick?: () => void;
+	/** Agent traffic: replaces the icon+text body with the squares or the graph. */
+	group?: AgentToastGroup;
 	dismissLabel: string;
 	paused: boolean;
 	onDismiss: (id: number) => void;
@@ -422,7 +473,7 @@ interface ToastCardProps {
  * right edge is the natural discard gesture. The visible X button and click
  * navigation still work; a completed drag suppresses the click that follows it.
  */
-function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, onInteraction }: ToastCardProps) {
+function ToastCard({ entry, context, onClick, group, dismissLabel, paused, onDismiss, onInteraction }: ToastCardProps) {
 	const v = VARIANT[entry.variant];
 	const [dragX, setDragX] = useState(0);
 	const [dragging, setDragging] = useState(false);
@@ -526,12 +577,17 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 				onPointerUp={endSwipe}
 				onPointerCancel={cancelSwipe}
 			>
-				<span
-					className={`${v.text} text-2xl leading-none mt-0.5 flex-shrink-0`}
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{v.icon}
-				</span>
+				{/* The graph needs the full 26rem; the envelope would cost it a node column. */}
+				{!(group && group.items.length > 1) && (
+					<span
+						className={`${v.text} text-2xl leading-none mt-0.5 flex-shrink-0`}
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{v.icon}
+					</span>
+				)}
+				{group && <AgentMessageToast group={group} />}
+				{!group && (
 				<div className="flex-1 min-w-0 pr-1">
 					{context && (
 						<div className="text-micro font-mono text-fg-muted truncate mb-0.5">
@@ -544,6 +600,7 @@ function ToastCard({ entry, context, onClick, dismissLabel, paused, onDismiss, o
 						{entry.message}
 					</div>
 				</div>
+				)}
 				{/* Whole-card hit area for a clickable toast, laid over the content so
 				    every pixel except the dismiss button activates it. Inset by 3px so
 				    the keyboard focus ring (2px outline, 2px offset) stays inside the

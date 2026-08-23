@@ -334,6 +334,7 @@ describe("cancel / send-now / immediate", () => {
 			toSeq: 42,
 			toTitle: "T",
 			fromSeq: 7,
+			fromTaskId: "other",
 			fromTitle: "Coordinator",
 			fromProjectId: "proj-9",
 			preview: "check the payload",
@@ -360,7 +361,7 @@ describe("cancel / send-now / immediate", () => {
 		await fireScheduledMessage(project, task as never, message as never, { late: false });
 		expect(pushFn).toHaveBeenCalledWith(
 			"agentMessage",
-			expect.objectContaining({ fromSeq: 7, toSeq: 42, preview: "check CI and continue" }),
+			expect.objectContaining({ fromSeq: 7, fromTaskId: "other", toSeq: 42, preview: "check CI and continue" }),
 		);
 	});
 

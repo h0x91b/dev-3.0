@@ -208,6 +208,8 @@ export interface AgentMessagePayload {
 	toSeq: number;
 	toTitle: string;
 	fromSeq: number;
+	/** Sending task — the second click target. A `seq` cannot resolve a task in another project. */
+	fromTaskId: string;
 	fromTitle?: string;
 	/** Sending task's project, gated alongside the receiver's (see {@link pushAgentMessage}). */
 	fromProjectId?: string;

@@ -1497,15 +1497,17 @@ function App() {
 	}, [openTaskFromNotification]);
 
 	// One agent wrote into another task's agent (`dev3 message` from a worktree).
-	// Its own violet variant and a two-identity source line — the only toast whose
-	// event has a sender AND a receiver. The click goes to the RECEIVER: that is
-	// where the text landed and where the reply gets typed.
+	// Its own violet variant and the only toast whose event has a sender AND a
+	// receiver, so both become squares the user can click: the receiver holds the
+	// text, the sender is where a reply gets typed.
 	useEffect(() => {
 		function onAgentMessage(e: Event) {
-			const { taskId, projectId, fromProjectId, toSeq, toTitle, fromSeq, fromTitle, preview } = (e as CustomEvent)
-				.detail as {
+			const { taskId, projectId, fromTaskId, fromProjectId, toSeq, toTitle, fromSeq, fromTitle, preview } = (
+				e as CustomEvent
+			).detail as {
 				taskId: string;
 				projectId: string;
+				fromTaskId?: string;
 				fromProjectId?: string;
 				toSeq: number;
 				toTitle: string;
@@ -1516,17 +1518,28 @@ function App() {
 			if (!taskId || !preview) return;
 			// Either side sensitive on camera drops the whole toast: it names both.
 			if (isProjectSilencedForDisplay(projectId) || isProjectSilencedForDisplay(fromProjectId)) return;
-			const from = [`#${fromSeq}`, fromTitle].filter(Boolean).join(" ");
-			const to = [`#${toSeq}`, toTitle].filter(Boolean).join(" ");
-			toast.agent(t("toast.agentMessage", { preview }), {
-				context: `${from} → ${to}`,
+			// The sender opens only when its project came along — a `seq` alone cannot
+			// resolve a task in a project the renderer was not told about.
+			const senderProjectId = fromProjectId ?? projectId;
+			toast.agent(preview, {
 				taskId,
-				onClick: () => openTaskFromNotification(taskId, projectId),
+				agent: {
+					fromTaskId: fromTaskId ?? `seq:${fromSeq}`,
+					fromSeq,
+					fromTitle,
+					toTaskId: taskId,
+					toSeq,
+					toTitle,
+					...(fromTaskId
+						? { onOpenFrom: () => openTaskFromNotification(fromTaskId, senderProjectId) }
+						: {}),
+					onOpenTo: () => openTaskFromNotification(taskId, projectId),
+				},
 			});
 		}
 		window.addEventListener("rpc:agentMessage", onAgentMessage);
 		return () => window.removeEventListener("rpc:agentMessage", onAgentMessage);
-	}, [openTaskFromNotification, t]);
+	}, [openTaskFromNotification]);
 
 	// Cmd/Ctrl+Click on a file path in any terminal (preview mode).
 	useEffect(() => {
