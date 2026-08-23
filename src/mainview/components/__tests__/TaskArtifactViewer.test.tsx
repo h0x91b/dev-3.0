@@ -82,6 +82,17 @@ describe("TaskArtifactViewer versions", () => {
 		}));
 	});
 
+	it("closes the version list on a click anywhere outside it", async () => {
+		render(<I18nProvider><TaskArtifactViewer artifacts={[versioned()]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		await userEvent.click(screen.getByTestId("artifact-version-picker"));
+		expect(screen.getByTestId("artifact-version-list")).toBeInTheDocument();
+
+		// The scrim is what catches it: a click landing on the sandboxed iframe never
+		// reaches this document, so a window listener would leave the list open.
+		await userEvent.click(screen.getByTestId("artifact-version-scrim"));
+		expect(screen.queryByTestId("artifact-version-list")).not.toBeInTheDocument();
+	});
+
 	it("hides the picker for an artifact published once", () => {
 		render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
 		expect(screen.queryByTestId("artifact-version-picker")).not.toBeInTheDocument();

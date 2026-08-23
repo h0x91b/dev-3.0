@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SharedArtifact } from "../../shared/types";
 import { artifactVersions, droppedArtifactVersions, latestArtifactVersion } from "../../shared/artifact-versions";
 import { useT } from "../i18n";
@@ -17,6 +17,9 @@ function formatStamp(ms: number): string {
 	}
 }
 
+const POPOVER_WIDTH = 256;
+const EDGE_GAP = 8;
+
 /**
  * One chip that opens the artifact's publish history — never a second pair of
  * arrows, which would read as the artifact pager sitting next to it. Renders
@@ -26,16 +29,35 @@ function formatStamp(ms: number): string {
 export default function ArtifactVersionPicker({ artifact, selected, onSelect }: ArtifactVersionPickerProps) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
-	const rootRef = useRef<HTMLDivElement>(null);
+	const [spot, setSpot] = useState<{ left: number; top: number } | null>(null);
+	const buttonRef = useRef<HTMLButtonElement>(null);
 	const versions = artifactVersions(artifact);
 	const latest = latestArtifactVersion(artifact);
 	const dropped = droppedArtifactVersions(artifact);
 
+	// Measured rather than a CSS anchor: right-aligned to the chip it spills out of a
+	// docked pane's left edge, left-aligned it runs off the window — so it hangs under
+	// the chip and is clamped to the viewer header's own box.
+	const place = useCallback(() => {
+		const chip = buttonRef.current;
+		if (!chip) return;
+		const rect = chip.getBoundingClientRect();
+		const box = chip.closest("header")?.getBoundingClientRect();
+		const min = (box?.left ?? 0) + EDGE_GAP;
+		const max = (box?.right ?? window.innerWidth) - EDGE_GAP - POPOVER_WIDTH;
+		const wanted = rect.right - POPOVER_WIDTH;
+		setSpot({ left: Math.max(min, Math.min(max, wanted)), top: rect.bottom + 4 });
+	}, []);
+
 	useEffect(() => {
 		if (!open) return;
-		function onPointerDown(event: MouseEvent) {
-			if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-		}
+		place();
+		window.addEventListener("resize", place);
+		return () => window.removeEventListener("resize", place);
+	}, [open, place]);
+
+	useEffect(() => {
+		if (!open) return;
 		// Capture phase, and Escape stops here: the viewer's own Escape chain would
 		// otherwise close the whole viewer while a popover is still on screen.
 		function onKey(event: KeyboardEvent) {
@@ -44,12 +66,8 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 			event.stopPropagation();
 			setOpen(false);
 		}
-		window.addEventListener("mousedown", onPointerDown);
 		window.addEventListener("keydown", onKey, { capture: true });
-		return () => {
-			window.removeEventListener("mousedown", onPointerDown);
-			window.removeEventListener("keydown", onKey, { capture: true });
-		};
+		return () => window.removeEventListener("keydown", onKey, { capture: true });
 	}, [open]);
 
 	if (versions.length < 2) return null;
@@ -57,12 +75,10 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 	const label = t("artifactViewer.versionOf", { version: String(selected), count: String(latest) });
 
 	return (
-		// Deliberately NOT a positioning context: the popover anchors to the viewer
-		// header instead, because the chip sits close enough to the pane's left edge
-		// that a chip-anchored popover is clipped by the docked pane.
-		<div className="flex-shrink-0" ref={rootRef}>
+		<div className="flex-shrink-0">
 			<button
 				type="button"
+				ref={buttonRef}
 				data-testid="artifact-version-picker"
 				className={`flex h-11 items-center gap-1 rounded-lg px-2 font-mono text-xs tabular-nums transition-colors sm:h-8 ${open ? "bg-accent/10 text-accent" : "text-fg-3 hover:bg-elevated-hover hover:text-fg"}`}
 				aria-haspopup="listbox"
@@ -76,11 +92,22 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 				<span aria-hidden="true" className="text-fg-muted">▾</span>
 			</button>
 			{open && (
+				<>
+				{/* An invisible scrim, not a window listener: most of the viewer is a
+				    sandboxed iframe, and a click inside it never reaches this document —
+				    so the popover used to stay open over the whole artifact. */}
+				<div
+					data-testid="artifact-version-scrim"
+					className="fixed inset-0 z-10"
+					onMouseDown={() => setOpen(false)}
+					aria-hidden="true"
+				/>
 				<div
 					role="listbox"
 					data-testid="artifact-version-list"
 					aria-label={t("artifactViewer.versions")}
-					className="absolute right-2 top-full z-20 mt-1 flex w-64 flex-col overflow-hidden rounded-lg border border-edge bg-overlay shadow-lg"
+					className="fixed z-20 flex w-64 flex-col overflow-hidden rounded-lg border border-edge bg-overlay shadow-lg"
+					style={{ left: spot?.left ?? 0, top: spot?.top ?? 0, visibility: spot ? undefined : "hidden" }}
 				>
 					<div className="max-h-72 overflow-y-auto py-1">
 					{[...versions].reverse().map((entry) => (
@@ -109,6 +136,7 @@ export default function ArtifactVersionPicker({ artifact, selected, onSelect }: 
 						</p>
 					)}
 				</div>
+				</>
 			)}
 		</div>
 	);

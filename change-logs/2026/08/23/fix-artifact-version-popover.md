@@ -1,0 +1,1 @@
+The artifact version popover now hangs under the version chip instead of the viewer header's right edge, clamped so it stays inside the docked pane, and a click anywhere outside it closes it — including over the artifact itself, whose sandboxed iframe swallowed those clicks before.
