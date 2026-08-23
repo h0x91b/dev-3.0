@@ -975,7 +975,10 @@ describe("task.show", () => {
 			makeRequest("task.show", { taskId: "deadbeef-1111-2222-3333-444444444444", projectId: "proj-1" }),
 		);
 		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Task not found: deadbeef");
+		// A project-scoped lookup names the board it searched and offers --project:
+		// addressing another project's task is the commonest cause of this miss.
+		expect(resp.error).toContain('Task not found in project "Test Project": deadbeef');
+		expect(resp.error).toContain("--project <id>");
 		expect(resp.error).toContain("seq:<N>");
 		expect(resp.error).toContain("dev3 tasks list");
 	});
@@ -3404,7 +3407,7 @@ describe("task.setLabels", () => {
 		);
 
 		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("Task not found: missing-task");
+		expect(resp.error).toContain("missing-task");
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 

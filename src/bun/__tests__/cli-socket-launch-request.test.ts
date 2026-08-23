@@ -378,6 +378,39 @@ describe("task.move — agent-initiated launch approval", () => {
 		}));
 	});
 
+	it("scopes the reply command with --project when the requester is on another board", async () => {
+		const target = makeTask();
+		const otherProject = makeProject({ id: "proj-2-fedcba98", name: "Other Project" });
+		const foreignRequester = { ...requester, projectId: otherProject.id };
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject(), otherProject]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p: Project) =>
+			(p.id === otherProject.id ? [foreignRequester] : [target]) as never,
+		);
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		resolveAgentRequest(payload.requestId as string, {
+			approved: true,
+			launch: { agentId: "builtin-claude", configId: "claude-auto", accountId: null },
+		});
+
+		const resp = await respPromise;
+		// Without the scope the requester would look seq:7 up on its OWN board.
+		expect((resp.data as { replyCommand: string }).replyCommand).toBe(
+			'dev3 message --task seq:7 --project proj-1 "your message"',
+		);
+	});
+
 	it("launches nothing when the user declines", async () => {
 		setupBoard(makeTask());
 		const pushFn = vi.fn();

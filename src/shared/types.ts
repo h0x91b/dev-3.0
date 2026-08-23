@@ -2383,7 +2383,8 @@ export interface AgentMessageSource {
 	/**
 	 * Sender's project. Carried so the delivery notification can be dropped when
 	 * EITHER side belongs to a sensitive project — the toast names both tasks, so
-	 * gating on the receiver alone would leak the sender's title on camera.
+	 * gating on the receiver alone would leak the sender's title on camera — and so
+	 * a cross-project reply command can carry `--project` (`agentReplyCommand`).
 	 */
 	projectId?: string;
 }

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskPriority, TaskStatus, TaskType, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
-import { agentReplyRef } from "../shared/agent-message-envelope";
+import { agentReplyCommand } from "../shared/agent-message-envelope";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
@@ -124,9 +124,20 @@ function findTaskByRef(tasks: Task[], ref: string): Task | null {
  * when the task was launched with variants, so stored ids can dangle — point
  * the caller at the stable seq handle instead of a bare failure.
  */
-function taskNotFoundError(ref: string): Error {
+/**
+ * `scopedProject` is the project the lookup was restricted to (explicit
+ * `--project`, or the caller's own worktree). Naming it turns the commonest
+ * failure — an agent addressing a task on ANOTHER board, where the CLI silently
+ * stamped its own project on the request — into an actionable hint instead of an
+ * id-drift wild goose chase.
+ */
+function taskNotFoundError(ref: string, scopedProject?: Project): Error {
+	const scope = scopedProject
+		? `Task not found in project "${scopedProject.name}": ${ref}. If it lives on another board, pass ` +
+			`\`--project <id>\` (\`dev3 projects list\`). `
+		: `Task not found: ${ref}. `;
 	return new Error(
-		`Task not found: ${ref}. If the task was launched by an older app version its id may have changed — ` +
+		`${scope}If the task was launched by an older app version its id may have changed — ` +
 		"run `dev3 tasks list` to find it by seq, or address it as `--task seq:<N>`.",
 	);
 }
@@ -152,7 +163,7 @@ async function requirePaneTask(params: Record<string, unknown>): Promise<{ proje
 	if (params.projectId) {
 		const project = await data.getProject(params.projectId as string);
 		const task = findTaskByRef(await data.loadTasks(project), taskId);
-		if (!task) throw taskNotFoundError(taskId);
+		if (!task) throw taskNotFoundError(taskId, project);
 		return { project, task };
 	}
 	const found = await resolveTaskAcrossProjects(taskId);
@@ -210,7 +221,7 @@ async function resolveTaskFromParams(params: Record<string, unknown>): Promise<{
 		const project = await data.getProject(params.projectId as string);
 		const tasks = await data.loadTasks(project);
 		const task = findTaskByRef(tasks, taskId);
-		if (!task) throw taskNotFoundError(taskId);
+		if (!task) throw taskNotFoundError(taskId, project);
 		return { project, task };
 	}
 
@@ -340,7 +351,13 @@ async function requestAgentLaunchApproval(opts: {
 		task: launched,
 		seq: launched.seq,
 		title: getTaskTitle(launched),
-		replyCommand: `dev3 message --task ${agentReplyRef(launched)} "your message"`,
+		// The requester may live on another board (it launched a task in a different
+		// project), and then the bare `--task` form would resolve against its own.
+		replyCommand: agentReplyCommand({
+			target: launched,
+			fromProjectId: requester.projectId ?? launched.projectId,
+			quoted: "your message",
+		}),
 	};
 }
 
@@ -517,7 +534,7 @@ const handlers: Record<string, Handler> = {
 			const project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const task = findTaskByRef(tasks, taskId);
-			if (!task) throw taskNotFoundError(taskId);
+			if (!task) throw taskNotFoundError(taskId, project);
 			return await withArchivedHistory(project, await syncTaskBranchName(project, task));
 		}
 
@@ -536,13 +553,14 @@ const handlers: Record<string, Handler> = {
 		if (!taskId) throw new Error("taskId is required");
 
 		let task: Task | null = null;
+		let scopedProject: Project | undefined;
 		if (params.projectId) {
-			const project = await data.getProject(params.projectId as string);
-			task = findTaskByRef(await data.loadTasks(project), taskId);
+			scopedProject = await data.getProject(params.projectId as string);
+			task = findTaskByRef(await data.loadTasks(scopedProject), taskId);
 		} else {
 			task = (await resolveTaskAcrossProjects(taskId))?.task ?? null;
 		}
-		if (!task) throw taskNotFoundError(taskId);
+		if (!task) throw taskNotFoundError(taskId, scopedProject);
 
 		return await taskPeek({
 			task,
@@ -662,7 +680,7 @@ const handlers: Record<string, Handler> = {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId);
+			if (!found) throw taskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
@@ -852,7 +870,7 @@ const handlers: Record<string, Handler> = {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId);
+			if (!found) throw taskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
@@ -891,7 +909,7 @@ const handlers: Record<string, Handler> = {
 			const project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId);
+			if (!found) throw taskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
@@ -915,7 +933,7 @@ const handlers: Record<string, Handler> = {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId);
+			if (!found) throw taskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
@@ -1292,7 +1310,7 @@ const handlers: Record<string, Handler> = {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
 			const found = findTaskByRef(tasks, taskId);
-			if (!found) throw taskNotFoundError(taskId);
+			if (!found) throw taskNotFoundError(taskId, project);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);

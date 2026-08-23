@@ -310,6 +310,28 @@ describe("cancel / send-now / immediate", () => {
 		expect(text).toContain("hello now");
 	});
 
+	it("scopes the reply command when the sender sits on another project", async () => {
+		const task = makeTask();
+		await sendMessageImmediately(task as never, "hello now", null, {
+			taskId: "other",
+			seq: 7,
+			projectId: "proj-2-abcdef",
+		});
+		const text = vi.mocked(holdMessageForAgentPane).mock.calls[0]![1];
+		expect(text).toContain('<reply-with>dev3 message --task seq:7 --project proj-2-a "your reply"</reply-with>');
+	});
+
+	it("leaves the reply command bare for a sender on the same project", async () => {
+		const task = makeTask();
+		await sendMessageImmediately(task as never, "hello now", null, {
+			taskId: "other",
+			seq: 7,
+			projectId: "proj-1",
+		});
+		const text = vi.mocked(holdMessageForAgentPane).mock.calls[0]![1];
+		expect(text).toContain('<reply-with>dev3 message --task seq:7 "your reply"</reply-with>');
+	});
+
 	it("fireScheduledMessage wraps a queued cross-task message but stores it plain", async () => {
 		const message = makeMessage({ source: { taskId: "other", seq: 7 } });
 		const task = makeTask({ scheduledMessages: [message] });

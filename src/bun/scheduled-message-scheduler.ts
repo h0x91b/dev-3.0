@@ -66,7 +66,7 @@ function messagePreview(text: string): string {
 async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<AgentPromptDelivery> {
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
-	const text = message.source ? wrapAgentMessage(message.text, message.source) : message.text;
+	const text = message.source ? wrapAgentMessage(message.text, message.source, task.projectId) : message.text;
 	// Held message: nothing is typed until the pane goes quiet. Bursts (one agent
 	// writing three in a row, or several peers reporting at once) then become one
 	// agent turn, and no text lands in the middle of the user's own line. See
