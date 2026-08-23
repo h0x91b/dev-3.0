@@ -48,6 +48,19 @@ function anchorRect(anchor: string): DOMRect | null {
 	return r.width === 0 && r.height === 0 ? null : r;
 }
 
+/** The furthest step whose anchor is on screen right now — i.e. how far the app
+ *  itself has actually got. Used to re-find the tour's place instead of guessing:
+ *  the app cannot be rewound, so the tour follows it, never the other way round.
+ *  Furthest, not first: the board's New Task button is visible under every modal,
+ *  and picking it would drag the user back to step one. */
+function resyncTarget(tour: Tour, stepIndex: number): number | null {
+	for (let i = tour.steps.length - 1; i >= 0; i--) {
+		if (i === stepIndex) continue;
+		if (anchorRect(tour.steps[i].anchor)) return i;
+	}
+	return null;
+}
+
 function sameRect(a: DOMRect | null, b: DOMRect | null): boolean {
 	if (!a || !b) return a === b;
 	return a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height;
@@ -80,6 +93,7 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 	const [cardHeight, setCardHeight] = useState(150);
 	const [lost, setLost] = useState(false);
 	const [nudging, setNudging] = useState(false);
+	const [backReachable, setBackReachable] = useState(false);
 
 	const onExitRef = useRef(onExit);
 	onExitRef.current = onExit;
@@ -88,6 +102,12 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 
 	const isLast = stepIndex === tour.steps.length - 1;
 	const advanceAnchor = tourAdvanceAnchor(tour, stepIndex);
+	// Back is only honest over an explanation whose screen is still up. A step that
+	// pressed a real control cannot be undone — the task exists, the modal is gone —
+	// so stepping back onto it would land on a dead anchor. Live QA found exactly
+	// that: Back from Launch pointed at Save & Start in a modal that had closed.
+	const prevStep = stepIndex > 0 ? tour.steps[stepIndex - 1] : undefined;
+	const prevAnchor = prevStep && !prevStep.action ? prevStep.anchor : null;
 
 	// One timer per step: re-measure the hole, and watch for the anchor that means
 	// the user performed the action.
@@ -101,6 +121,7 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 		const tick = () => {
 			const next = anchorRect(step.anchor);
 			setRect((prev) => (sameRect(prev, next) ? prev : next));
+			setBackReachable(prevAnchor ? !!anchorRect(prevAnchor) : false);
 
 			if (advanceAnchor) {
 				const present = !!anchorRect(advanceAnchor);
@@ -116,12 +137,20 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 				return;
 			}
 			missingSince ??= performance.now();
-			if (performance.now() - missingSince >= LOST_ANCHOR_MS) setLost(true);
+			if (performance.now() - missingSince < LOST_ANCHOR_MS) return;
+			// The step's screen is gone. Follow the app to wherever it actually is
+			// before admitting defeat — that turns a dead end into a silent recovery.
+			const resync = resyncTarget(tour, stepIndex);
+			if (resync !== null) {
+				onStepChangeRef.current(resync);
+				return;
+			}
+			setLost(true);
 		};
 		tick();
 		const timer = window.setInterval(tick, TICK_MS);
 		return () => window.clearInterval(timer);
-	}, [step, advanceAnchor, stepIndex]);
+	}, [step, advanceAnchor, stepIndex, tour, prevAnchor]);
 
 	useEffect(() => {
 		setLost(false);
@@ -196,7 +225,12 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 		: [{ key: "all", style: { inset: 0 } }];
 
 	return createPortal(
-		<div className="fixed inset-0 z-[90] pointer-events-none" data-testid="tour-overlay" data-tour-step={step.id}>
+		<div
+			className="fixed inset-0 z-[90] pointer-events-none"
+			data-testid="tour-overlay"
+			data-tour-step={step.id}
+			data-tour-lost={lost ? "true" : undefined}
+		>
 			{bands.map((band) => (
 				<div
 					key={band.key}
@@ -245,7 +279,7 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 						{t(lost ? "tour.exit" : "tour.skip")}
 					</button>
 					<div className="flex items-center gap-2">
-						{!lost && stepIndex > 0 && (
+						{!lost && stepIndex > 0 && backReachable && (
 							<button
 								type="button"
 								onClick={() => onStepChangeRef.current(stepIndex - 1)}
@@ -255,16 +289,10 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 								{t("tour.back")}
 							</button>
 						)}
-						{lost ? (
-							<button
-								type="button"
-								onClick={() => onStepChangeRef.current(0)}
-								data-testid="tour-restart"
-								className="px-3.5 py-1.5 rounded-lg bg-accent-fill text-white text-xs font-semibold hover:bg-accent-fill-hover transition-[background-color,transform] duration-150 ease-out motion-safe:active:scale-[0.96]"
-							>
-								{t("tour.restart")}
-							</button>
-						) : (
+						{/* No restart button here on purpose: the lost state is only reached
+						    when not one step's anchor is on screen, so there is nowhere to
+						    restart to. Re-entry lives in help mode instead. */}
+						{!lost &&
 							!waiting && (
 								<button
 									type="button"
@@ -274,8 +302,7 @@ export default function TourOverlay({ tour, stepIndex, onStepChange, onExit }: T
 								>
 									{primaryLabel}
 								</button>
-							)
-						)}
+							)}
 					</div>
 				</div>
 			</div>

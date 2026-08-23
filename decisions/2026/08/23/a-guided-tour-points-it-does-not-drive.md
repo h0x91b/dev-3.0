@@ -46,6 +46,13 @@ no anchor to point at — the Create Task modal was never opened — so the card
 bottom-centre, and 2.5s later rule 3 fired and the tour was gone. There was no way
 back in: the board was no longer empty and a skip had counted as completion.
 
+The second run, on the fixed build, found the other half of the same mistake in
+`Back`. From the `launch` step it pointed at `Save & Start` in a Create Task modal
+that had already closed, so the tour declared itself lost; `Start over` then pressed
+`+ New Task` on top of the still-open Launch dialog, stacking two modals. Rule 4
+below is the answer: a tour can drive the app forward but can never rewind it, so it
+follows the app instead of guessing.
+
 Three separate rules were wrong, and the same reading is behind all of them: that a
 guide must never take the screen. It reads well and it is wrong for a first run — a
 user who does not know what a control does cannot be trusted to be the one holding
@@ -69,9 +76,16 @@ per-screen would unmount mid-step. Five rules, mirrored in bible §5.4b:
 3. **Progress is observed.** A step ends when `[data-tour-anchor="<next>"]` appears.
    Auto-advance arms only after the target has been seen *absent*, or `Back` would
    re-advance on the next tick and be a dead button.
-4. **A lost anchor is a state, not an ending.** After 2.5s the card says it lost the
-   thread and offers restart-or-leave, and it recovers on its own if the anchor
-   comes back. Out is `Skip` or Escape — a stray click can no longer end anything.
+4. **The tour follows the app; it never rewinds it.** `Back` is offered only over a
+   step that explained something *and* whose anchor is still measurable — never over
+   a step that pressed a control, because that press cannot be undone. A step whose
+   screen is gone resyncs to the *furthest* step whose anchor is on screen
+   (`resyncTarget`), furthest rather than first because the board's `+ New Task` stays
+   measurable under every modal and picking it would drag the user back to step one.
+   A lost anchor therefore only survives when nothing at all is on screen: the card
+   says it lost the thread and offers leaving, with no restart button, since there is
+   provably nowhere to restart to. It recovers on its own if an anchor returns. Out is
+   `Skip` or Escape — a stray click can no longer end anything.
 5. **Entry and exit are both explicit.** An empty sandbox board starts it on *every*
    visit until it is walked to the end; only reaching the end records
    `completedTours`; afterwards help mode's banner carries "Walk me through the

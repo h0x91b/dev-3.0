@@ -24,6 +24,14 @@ import type { TranslationKey } from "./i18n";
  *    the next anchor, so no component has to call into the tour. Participating
  *    costs one `data-tour-anchor="<id>"` attribute.
  *
+ * 4. **The tour follows the app; it never rewinds it.** A step that pressed a
+ *    real control cannot be undone — the task exists, the modal has closed — so
+ *    there is no Back onto it, and a lost step re-finds its place at the furthest
+ *    step whose anchor is on screen rather than jumping to the beginning. Live QA
+ *    found both halves of this: Back from Launch pointed at a Save & Start button
+ *    that no longer existed, and Start over then opened New Task on top of the
+ *    still-open Launch dialog.
+ *
  * Losing sight of an anchor is a state, not an ending: the card says it lost the
  * thread and offers restart-or-leave. Leaving is always one click (Skip) or one
  * key (Escape) away, never an accident.

@@ -31,6 +31,17 @@ const WAITING_TOUR: Tour = {
 	],
 };
 
+/** Three steps, so "resync forwards" can be told apart from "resync anywhere". */
+const THREE_STEP_TOUR: Tour = {
+	id: "three-step-tour",
+	titleKey: "tour.firstTask.title",
+	steps: [
+		{ id: "first", anchor: "a", titleKey: "tour.firstTask.newTask.title", bodyKey: "tour.firstTask.newTask.body", advanceOn: "manual" },
+		{ id: "middle", anchor: "b", titleKey: "tour.firstTask.prompt.title", bodyKey: "tour.firstTask.prompt.body", advanceOn: "manual" },
+		{ id: "last", anchor: "c", titleKey: "tour.firstTask.review.title", bodyKey: "tour.firstTask.review.body", advanceOn: "manual" },
+	],
+};
+
 const anchors: HTMLElement[] = [];
 
 /** happy-dom measures everything as 0×0, which the overlay reads as "no anchor". */
@@ -140,23 +151,28 @@ describe("TourOverlay", () => {
 		expect(onStepChange).not.toHaveBeenCalled();
 	});
 
+	/** `lost` is only reachable when NOT ONE step's anchor is on screen — with any
+	 *  of them visible the overlay resyncs to it instead. */
+	function lostState(): boolean {
+		return screen.getByTestId("tour-overlay").getAttribute("data-tour-lost") === "true";
+	}
+
 	it("says it lost the thread instead of ending the tour", () => {
 		const el = anchor("a");
 		const onExit = vi.fn();
-		const onStepChange = vi.fn();
-		renderTour(0, { onExit, onStepChange });
+		renderTour(0, { onExit });
 		tick(200);
-		expect(screen.queryByTestId("tour-restart")).not.toBeInTheDocument();
+		expect(lostState()).toBe(false);
 
 		el.remove();
 		tick(1000);
-		expect(screen.queryByTestId("tour-restart")).not.toBeInTheDocument();
+		expect(lostState()).toBe(false);
 		tick(2000);
-		expect(screen.getByTestId("tour-restart")).toBeInTheDocument();
+		expect(lostState()).toBe(true);
 		expect(onExit).not.toHaveBeenCalled();
-
-		fireEvent.click(screen.getByTestId("tour-restart"));
-		expect(onStepChange).toHaveBeenCalledWith(0);
+		// Nowhere to restart to, so leaving is the only offer — and it is a choice.
+		expect(screen.queryByTestId("tour-next")).not.toBeInTheDocument();
+		expect(screen.getByTestId("tour-skip")).toBeInTheDocument();
 	});
 
 	it("recovers on its own when the anchor comes back", () => {
@@ -164,11 +180,11 @@ describe("TourOverlay", () => {
 		renderTour(0);
 		el.remove();
 		tick(3000);
-		expect(screen.getByTestId("tour-restart")).toBeInTheDocument();
+		expect(lostState()).toBe(true);
 
 		anchor("a");
 		tick(200);
-		expect(screen.queryByTestId("tour-restart")).not.toBeInTheDocument();
+		expect(lostState()).toBe(false);
 	});
 
 	it("reports a completed tour from the last step's button", () => {
@@ -194,9 +210,57 @@ describe("TourOverlay", () => {
 		expect(screen.getByTestId("tour-skip")).toBeInTheDocument();
 	});
 
-	it("offers Back on a later step only", () => {
+	it("offers Back over an explanation whose screen is still up", () => {
+		anchor("a");
 		anchor("b");
-		renderTour(1);
+		renderTour(1, {}, WAITING_TOUR);
+		tick(200);
 		expect(screen.getByTestId("tour-back")).toBeInTheDocument();
+	});
+
+	it("never offers Back onto a step that pressed a real control", () => {
+		anchor("a");
+		anchor("b");
+		// TOUR's first step has `action: "click-anchor"`: the app moved, so there is
+		// nothing to step back onto even though the anchor is still measurable.
+		renderTour(1);
+		tick(200);
+		expect(screen.queryByTestId("tour-back")).not.toBeInTheDocument();
+	});
+
+	it("hides Back once the previous step's screen is gone", () => {
+		const el = anchor("a");
+		anchor("b");
+		renderTour(1, {}, WAITING_TOUR);
+		tick(200);
+		expect(screen.getByTestId("tour-back")).toBeInTheDocument();
+
+		el.remove();
+		tick(200);
+		expect(screen.queryByTestId("tour-back")).not.toBeInTheDocument();
+	});
+
+	it("re-finds its place at the furthest step on screen instead of giving up", () => {
+		anchor("b");
+		const onStepChange = vi.fn();
+		const onExit = vi.fn();
+		// Step one's own anchor never appears, but step two's is on screen: the app
+		// is further along than the tour thinks, so follow it rather than stalling.
+		renderTour(0, { onStepChange, onExit }, WAITING_TOUR);
+		tick(3000);
+		expect(onStepChange).toHaveBeenCalledWith(1);
+		expect(onExit).not.toHaveBeenCalled();
+	});
+
+	it("resyncs forwards, never back to the first anchor it can see", () => {
+		// The board's New Task button stays measurable under every modal, so a naive
+		// "first visible anchor" would drag the user back to step one.
+		anchor("a");
+		anchor("c");
+		const onStepChange = vi.fn();
+		renderTour(1, { onStepChange }, THREE_STEP_TOUR);
+		tick(3000);
+		expect(onStepChange).toHaveBeenCalledWith(2);
+		expect(onStepChange).not.toHaveBeenCalledWith(0);
 	});
 });
