@@ -105,9 +105,13 @@ per-screen would unmount mid-step. Five rules, mirrored in bible §5.4b:
 `--permission-mode auto` with no `--dangerously-skip-permissions`, so the agent CLI —
 not dev3 — stops and asks about ordinary shell commands. Live QA watched exactly that
 happen on `rtk ls`: the first task never started, and a first-run user has no basis to
-judge the question. `LaunchVariantsModal.makeDefaultVariant` therefore preselects the
-first configuration whose `permissionMode === "bypassPermissions"` **when
-`project.sandbox`**, falling back to the normal resolution — the user's own global
+judge the question. `LaunchVariantsModal.makeDefaultVariant` therefore preselects, **when
+`project.sandbox`**, the bypass *twin* of whatever the normal resolution would have
+picked — same `model`, same `effort`, only the permission mode different — falling
+back to any bypass preset and then to the normal pick. The first version took the
+first bypass configuration outright, and the second live run showed why that is
+wrong: an `Auto (Opus 5, Medium)` default launched the sandbox on `Bypass (Fable 5,
+Medium)`, silently changing the model as well as the mode. The user's own global
 default is untouched everywhere else, and the mode picker still shows what it picked.
 
 Two more rules came straight out of the live run, and both are about not lying:
@@ -174,6 +178,9 @@ is never blocked by dev3's own ignorance.
   gate in a throwaway repo is the point, but it is the same machine — a first task
   that goes badly wrong is not confined to the sandbox folder. Accepted because the
   alternative, observed live, is a newcomer staring at a question they cannot answer.
+  A harness whose presets are not twinned (no bypass entry for the default's model)
+  still falls back to *some* bypass preset, so the model can change there — accepted,
+  because a sandbox that stops to ask is worse than a sandbox on another model.
 - **The artifact step depends on the agent doing as it is told.** An agent that fixes
   the colour but publishes no artifact leaves the tour parked on a step that can only
   be skipped. The prompt asks for it explicitly, which is a request, not a guarantee.

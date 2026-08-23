@@ -77,19 +77,27 @@ function LaunchVariantsModal({
 		const globalConfigMatchesAgent =
 			!!globalSettings.defaultConfigId &&
 			!!agent?.configurations.some((c) => c.id === globalSettings.defaultConfigId);
-		// The sandbox is a lesson, not anyone's repository: a first-run user meeting
-		// "do you want to proceed?" from the agent CLI has no way to judge it, and the
-		// guided tour would sit there waiting on work that never starts. Prefer a
-		// bypass preset there and leave the user's own default alone everywhere else.
-		const sandboxBypass = project.sandbox
-			? agent?.configurations.find((c) => c.permissionMode === "bypassPermissions")
-			: undefined;
-		const configId =
-			sandboxBypass?.id ??
+		const normalConfigId =
 			(globalConfigMatchesAgent ? globalSettings.defaultConfigId : null) ??
 			agent?.defaultConfigId ??
 			agent?.configurations[0]?.id ??
 			null;
+		// The sandbox is a lesson, not anyone's repository: a first-run user meeting
+		// "do you want to proceed?" from the agent CLI has no way to judge it, and the
+		// guided tour would sit there waiting on work that never starts. So swap in the
+		// bypass TWIN of what the user would normally get — same model, same effort —
+		// because taking the first bypass preset instead silently changed the model too
+		// (live QA: an Opus 5 default launched the sandbox on Fable 5).
+		const normalConfig = agent?.configurations.find((c) => c.id === normalConfigId);
+		const sandboxBypass = project.sandbox
+			? (agent?.configurations.find(
+					(c) =>
+						c.permissionMode === "bypassPermissions" &&
+						c.model === normalConfig?.model &&
+						c.effort === normalConfig?.effort,
+				) ?? agent?.configurations.find((c) => c.permissionMode === "bypassPermissions"))
+			: undefined;
+		const configId = sandboxBypass?.id ?? normalConfigId;
 		// On retry (addAttempts) seed the source task's account so the attempt
 		// re-runs under the same one; a fresh todo has none → the default preselect.
 		return { agentId, configId, accountId: task.accountId };
