@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
 import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
-import { DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
+import { BUILTIN_OPS_BOARD_NAME, DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
 import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMergedPrs, resolvePrevTag, selectReleaseWindow } from "../../shared/update-changelog";
 import * as data from "../data";
 import * as git from "../git";
@@ -145,7 +145,7 @@ async function getProjects(): Promise<Project[]> {
 	if (!builtinOpsEnsured) {
 		builtinOpsEnsured = true;
 		try {
-			await data.ensureBuiltinOperationsBoard("Operations");
+			await data.ensureBuiltinOperationsBoard(BUILTIN_OPS_BOARD_NAME);
 		} catch (err) {
 			builtinOpsEnsured = false;
 			log.warn("Failed to ensure built-in Operations board (non-fatal)", { error: String(err) });

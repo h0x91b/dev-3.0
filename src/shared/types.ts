@@ -1535,6 +1535,8 @@ export interface ConfigSourceEntry {
 export type ResolvedConfigSource = "local" | "repo" | "project" | "default" | "unset";
 
 export interface ProjectSettingsUpdate extends Dev3RepoConfig {
+	/** Display name only — the project's path (and every slug derived from it) never moves. */
+	name?: string;
 	githubAuthHost?: string | null;
 	githubAuthLogin?: string | null;
 	sensitive?: boolean;
@@ -1595,9 +1597,10 @@ export interface Project {
 	 */
 	kind?: "git" | "virtual";
 	/**
-	 * Marks the single built-in "Operations" board. Its display name is rendered
-	 * from a localized `t()` key until the user renames it (which clears this flag
-	 * for naming purposes). Only ever set on virtual projects.
+	 * Marks the single built-in "Operations" board. Pinned first, owns the ⌘0
+	 * shortcut, and renders its name from a localized `t()` key while it still
+	 * carries {@link BUILTIN_OPS_BOARD_NAME} — see {@link projectDisplayName}.
+	 * Only ever set on virtual projects.
 	 */
 	builtin?: boolean;
 	/**
@@ -1682,6 +1685,33 @@ export function withoutPresetPrompt(description: string, prompt: string): string
  */
 export function isBuiltinOpsProject(p: Pick<Project, "kind" | "builtin">): boolean {
 	return p.builtin === true && p.kind === "virtual";
+}
+
+/** The name the built-in Operations board is seeded with, in every locale. */
+export const BUILTIN_OPS_BOARD_NAME = "Operations";
+
+/** Longest project name accepted by a rename; long enough for any real name. */
+export const PROJECT_NAME_MAX_LENGTH = 120;
+
+/**
+ * A user-supplied project name, trimmed — or `null` when it is blank or over
+ * the length cap. The UI and the RPC boundary both go through this so they can
+ * never disagree about what a valid rename is.
+ */
+export function normalizeProjectName(raw: string): string | null {
+	const name = raw.trim();
+	if (!name || name.length > PROJECT_NAME_MAX_LENGTH) return null;
+	return name;
+}
+
+/**
+ * What to render as a project's name. The built-in Operations board shows the
+ * localized `[ Operations ]` chrome only while it still carries its seeded
+ * name; once renamed, the user's own name wins and the board keeps its pin,
+ * its ⌘0 shortcut and its SYSTEM identity.
+ */
+export function projectDisplayName(p: Pick<Project, "kind" | "builtin" | "name">, opsBoardName: string): string {
+	return isBuiltinOpsProject(p) && p.name === BUILTIN_OPS_BOARD_NAME ? opsBoardName : p.name;
 }
 
 /**

@@ -955,4 +955,70 @@ describe("environment variables editor", () => {
 			);
 		});
 	});
+	describe("project rename (Board tab)", () => {
+		it("saves a trimmed name on blur", async () => {
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockClear();
+			const user = userEvent.setup();
+			await renderProjectSettings();
+
+			const input = screen.getByLabelText("Project name");
+			expect(input).toHaveValue("Test Project");
+			await user.clear(input);
+			await user.type(input, "  Renamed  ");
+			await user.tab();
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", name: "Renamed" });
+			});
+		});
+
+		it("saves on Enter without needing a Save button", async () => {
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockClear();
+			const user = userEvent.setup();
+			await renderProjectSettings();
+
+			const input = screen.getByLabelText("Project name");
+			await user.clear(input);
+			await user.type(input, "Renamed{Enter}");
+
+			await vi.waitFor(() => {
+				expect(mockSave).toHaveBeenCalledWith({ projectId: "proj-1", name: "Renamed" });
+			});
+		});
+
+		it("refuses a blank name and restores the stored one", async () => {
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockClear();
+			const user = userEvent.setup();
+			await renderProjectSettings();
+
+			const input = screen.getByLabelText("Project name");
+			await user.clear(input);
+			expect(input).toHaveAttribute("aria-invalid", "true");
+			await user.tab();
+
+			expect(mockSave).not.toHaveBeenCalled();
+			expect(input).toHaveValue("Test Project");
+		});
+
+		it("does not save when the name is unchanged", async () => {
+			const mockSave = api.request.updateProjectSettings as ReturnType<typeof vi.fn>;
+			mockSave.mockClear();
+			const user = userEvent.setup();
+			await renderProjectSettings();
+
+			const input = screen.getByLabelText("Project name");
+			await user.click(input);
+			await user.tab();
+
+			expect(mockSave).not.toHaveBeenCalled();
+		});
+
+		it("shows the project path so it is clear nothing on disk moves", async () => {
+			await renderProjectSettings();
+			expect(screen.getByTitle("/tmp/test")).toHaveTextContent("/tmp/test");
+		});
+	});
 });

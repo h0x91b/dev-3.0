@@ -1,6 +1,6 @@
 import type { LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
-import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle, titleFromDescription } from "../../shared/types";
+import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
@@ -931,7 +931,7 @@ async function openQuickShell(_params: {}): Promise<Task> {
 }
 
 async function openQuickShellInner(): Promise<Task> {
-	const project = await data.ensureBuiltinOperationsBoard("Operations");
+	const project = await data.ensureBuiltinOperationsBoard(BUILTIN_OPS_BOARD_NAME);
 	// Always a brand-new scratch op (no reuse): normal `Scratch — HH:mm` title and
 	// a managed work dir (no opsWorkDir → git.virtualWorkDir). Leaving
 	// agentId/configId unset makes launchTaskPty resolve the project/global default

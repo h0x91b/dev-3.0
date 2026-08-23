@@ -29,7 +29,9 @@ const PROJECTS_BACKUP_FILE_PATTERN = /^projects-\d{4}-\d{2}-\d{2}\.json\.bak$/;
 const TASK_BACKUPS_DIR = "tasks-backups";
 const TASK_BACKUP_RETENTION_HOURS = 72;
 const TASK_BACKUP_FILE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}Z\.json$/;
-type ProjectUpdates = Partial<Pick<Project, "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels" | "sensitive" | "reviewModePrompt" | "coordinatorPrompt" | "env">>;
+// `name` is display-only: `path` is deliberately absent, so a rename never moves
+// a data dir, worktree dir or slug (AGENTS.md on-disk invariants).
+type ProjectUpdates = Partial<Pick<Project, "name" | "setupScript" | "setupScriptLaunchMode" | "devScript" | "cleanupScript" | "defaultBaseBranch" | "githubAuthHost" | "githubAuthLogin" | "clonePaths" | "labels" | "customColumns" | "columnOrder" | "autoReviewEnabled" | "peerReviewEnabled" | "sparseCheckoutEnabled" | "sparseCheckoutPaths" | "builtinColumnAgents" | "customStatusLabels" | "sensitive" | "reviewModePrompt" | "coordinatorPrompt" | "env">>;
 
 export class DataFileReadError extends Error {
 	override name = "DataFileReadError";

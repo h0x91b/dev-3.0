@@ -25,12 +25,20 @@ import { binaryCandidatesOnPath, hasModelProviderSection, tmuxSearchPaths } from
 import { agentBinaryPathOverride, isExecutableFile } from "../executable";
 import { harnessReadinessFrom } from "../harness-readiness";
 import { validateEnvMap } from "../../shared/env-text";
+import { normalizeProjectName, PROJECT_NAME_MAX_LENGTH } from "../../shared/types";
 
 /** Reject malformed env maps at the RPC boundary — the UI validates too, but
  *  saves must not depend on the client being well-behaved. */
 function assertValidEnvParam(env: unknown): void {
 	const problems = validateEnvMap(env);
 	if (problems.length > 0) throw new Error(`Invalid env config: ${problems.join("; ")}`);
+}
+
+/** A rename must never be able to blank a project's name out of the board. */
+function requireProjectName(raw: string): string {
+	const name = normalizeProjectName(raw);
+	if (!name) throw new Error(`Invalid project name: must be 1-${PROJECT_NAME_MAX_LENGTH} characters`);
+	return name;
 }
 
 // `resolveOperationalProjectConfig` moved to ../repo-config (it depends only on
@@ -76,6 +84,7 @@ async function updateProjectSettings(params: { projectId: string } & ProjectSett
 		: await repoConfig.saveConfigToWinningLayer(project.path, extractConfigFromParams(params));
 	const updates = {
 		...configUpdates,
+		...(params.name !== undefined ? { name: requireProjectName(params.name) } : {}),
 		...(params.githubAuthHost !== undefined ? { githubAuthHost: params.githubAuthHost } : {}),
 		...(params.githubAuthLogin !== undefined ? { githubAuthLogin: params.githubAuthLogin } : {}),
 		...(params.sensitive !== undefined ? { sensitive: params.sensitive } : {}),

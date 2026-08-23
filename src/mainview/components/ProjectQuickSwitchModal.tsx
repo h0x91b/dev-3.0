@@ -1,5 +1,5 @@
 import type { Project } from "../../shared/types";
-import { isBuiltinOpsProject } from "../../shared/types";
+import { isBuiltinOpsProject, projectDisplayName } from "../../shared/types";
 import { useT } from "../i18n";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
@@ -37,9 +37,9 @@ function ProjectQuickSwitchModal({ projects, shortcutIndexById, onSelect, onClos
 		<PaletteShell
 			items={projects}
 			getKey={(p) => p.id}
-			getText={(p) => (isBuiltinOpsProject(p) ? t("ops.boardName") : p.name)}
+			getText={(p) => projectDisplayName(p, t("ops.boardName"))}
 			getSearchText={(p) =>
-				isBuiltinOpsProject(p) ? t("ops.boardName") : projectSearchHaystack(p.name, spaces, p.id)
+				isBuiltinOpsProject(p) ? projectDisplayName(p, t("ops.boardName")) : projectSearchHaystack(p.name, spaces, p.id)
 			}
 			getTextClassName={(p) => privacy.maskClass(p)}
 			onSelect={(p) => onSelect(p.id)}

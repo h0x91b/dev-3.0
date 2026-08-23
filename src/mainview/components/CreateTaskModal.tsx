@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority, type TaskType } from "../../shared/types";
+import { DEFAULT_PRIORITY, orderProjectsForDisplay, projectDisplayName, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority, type TaskType } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
@@ -612,7 +612,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						/* The draft already lives on a board — moving it between projects is
 						   the card's own action, not a field of this popup. */
 						<div className="px-3 py-2 bg-raised border border-edge rounded-xl text-fg-2 text-sm truncate">
-							{isBuiltinOpsProject(project) ? t("ops.boardName") : project.name}
+							{projectDisplayName(project, t("ops.boardName"))}
 						</div>
 					) : (
 						<Select
@@ -620,7 +620,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 							value={project.id}
 							options={availableProjects.map((candidate) => ({
 								value: candidate.id,
-								label: isBuiltinOpsProject(candidate) ? t("ops.boardName") : candidate.name,
+								label: projectDisplayName(candidate, t("ops.boardName")),
 							}))}
 							onChange={handleProjectChange}
 						/>

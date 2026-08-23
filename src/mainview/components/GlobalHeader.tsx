@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import type { CodingAgent, Project, Task, UpdateChangelog } from "../../shared/types";
-import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay } from "../../shared/types";
+import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { HELP_ATTRACTOR_DISMISS_EVENT } from "../help";
@@ -351,7 +351,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 			const isOnKanban = route.screen === "project" && !route.activeTaskId && !route.taskView;
 			const projectNameOnClick = !isOnKanban ? handleProjectNameClick : undefined;
 			segments.push({
-				label: isBuiltinOpsProject(project) ? t("ops.boardName") : project.name,
+				label: projectDisplayName(project, t("ops.boardName")),
 				isProjectDropdown: true,
 				onClick: projectNameOnClick,
 			});
@@ -444,7 +444,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				{locked && (
 					<span aria-hidden="true" className="text-fg-muted flex-shrink-0 text-sm-plus" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F033E}"}</span>
 				)}
-				<span className={`truncate text-sm flex-1 ${privacy.maskClass(p)}`}>{isBuiltin ? t("ops.boardName") : p.name}</span>
+				<span className={`truncate text-sm flex-1 ${privacy.maskClass(p)}`}>{projectDisplayName(p, t("ops.boardName"))}</span>
 				{isBuiltin && (
 					<span className="flex-shrink-0 px-1 py-0.5 rounded bg-raised text-fg-3 text-nano font-medium uppercase tracking-wide">{t("ops.badgeSystem")}</span>
 				)}

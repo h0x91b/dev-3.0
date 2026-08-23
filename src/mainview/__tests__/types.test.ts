@@ -16,6 +16,10 @@ import {
 	getPrimaryStopTarget,
 	LABEL_COLORS,
 	isBuiltinOpsProject,
+	projectDisplayName,
+	normalizeProjectName,
+	BUILTIN_OPS_BOARD_NAME,
+	PROJECT_NAME_MAX_LENGTH,
 	orderProjectsForDisplay,
 	computeTaskTimeBreakdown,
 	buildTaskDialogSubject,
@@ -509,6 +513,40 @@ describe("orderProjectsForDisplay", () => {
 		const v = proj({ id: "v", kind: "virtual" });
 		const input = [a, v];
 		expect(orderProjectsForDisplay(input)).toBe(input);
+	});
+});
+
+describe("projectDisplayName", () => {
+	it("renders the localized chrome for a built-in board still carrying its seeded name", () => {
+		const ops = proj({ kind: "virtual", builtin: true, name: BUILTIN_OPS_BOARD_NAME });
+		expect(projectDisplayName(ops, "[ Operations ]")).toBe("[ Operations ]");
+	});
+
+	it("lets a renamed built-in board show the user's own name", () => {
+		const ops = proj({ kind: "virtual", builtin: true, name: "Chores" });
+		expect(projectDisplayName(ops, "[ Operations ]")).toBe("Chores");
+	});
+
+	it("never substitutes chrome for an ordinary project, even one named Operations", () => {
+		expect(projectDisplayName(proj({ name: "dev-3.0" }), "[ Operations ]")).toBe("dev-3.0");
+		expect(projectDisplayName(proj({ name: BUILTIN_OPS_BOARD_NAME }), "[ Operations ]")).toBe(BUILTIN_OPS_BOARD_NAME);
+	});
+});
+
+describe("normalizeProjectName", () => {
+	it("trims a usable name", () => {
+		expect(normalizeProjectName("  My repo  ")).toBe("My repo");
+	});
+
+	it("rejects blank input so a rename can never empty the board label", () => {
+		expect(normalizeProjectName("")).toBeNull();
+		expect(normalizeProjectName("   ")).toBeNull();
+		expect(normalizeProjectName("\t\n")).toBeNull();
+	});
+
+	it("accepts the cap and rejects one character past it", () => {
+		expect(normalizeProjectName("x".repeat(PROJECT_NAME_MAX_LENGTH))).toHaveLength(PROJECT_NAME_MAX_LENGTH);
+		expect(normalizeProjectName("x".repeat(PROJECT_NAME_MAX_LENGTH + 1))).toBeNull();
 	});
 });
 

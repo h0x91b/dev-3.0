@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type 
 import { toast } from "../toast";
 import { confirm } from "../confirm";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
-import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, PROJECT_NAME_MAX_LENGTH, getTaskTitle, normalizeProjectName } from "../../shared/types";
 import { hasEnvLineBreak, parseEnvText, serializeEnvText } from "../../shared/env-text";
 import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REVIEW_PROMPT, DEFAULT_REVIEW_AGENT_ID, DEFAULT_REVIEW_CONFIG_ID, DEFAULT_REVIEW_PROMPT, resolvePresetPrompt } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -1093,6 +1093,78 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath, envSt
 	);
 }
 
+/**
+ * The project's display name. Commits on blur / Enter like the label rows — the
+ * Board tab has no Save button. Escape restores the stored name, and the path
+ * underneath says out loud that nothing on disk moves.
+ */
+function ProjectNameField({ project, onRename }: { project: Project; onRename: (name: string) => Promise<boolean> }) {
+	const t = useT();
+	const [draft, setDraft] = useState(project.name);
+	const [saving, setSaving] = useState(false);
+	// A rename arriving from elsewhere (CLI, another window) refreshes the field,
+	// but never while the user is typing in it.
+	const focused = useRef(false);
+	useEffect(() => {
+		if (!focused.current) setDraft(project.name);
+	}, [project.name]);
+
+	const normalized = normalizeProjectName(draft);
+	const invalid = normalized === null;
+
+	async function commit() {
+		if (!normalized) {
+			setDraft(project.name);
+			return;
+		}
+		if (normalized === project.name) {
+			setDraft(normalized);
+			return;
+		}
+		setSaving(true);
+		const ok = await onRename(normalized);
+		setDraft(ok ? normalized : project.name);
+		setSaving(false);
+	}
+
+	return (
+		<div>
+			<input
+				id="project-name"
+				type="text"
+				value={draft}
+				maxLength={PROJECT_NAME_MAX_LENGTH}
+				onChange={(e) => setDraft(e.target.value)}
+				onFocus={() => { focused.current = true; }}
+				onBlur={() => {
+					focused.current = false;
+					void commit();
+				}}
+				onKeyDown={(e) => {
+					if (e.key === "Enter") e.currentTarget.blur();
+					if (e.key === "Escape") {
+						setDraft(project.name);
+						e.currentTarget.blur();
+					}
+				}}
+				disabled={saving}
+				aria-label={t("projectSettings.projectName")}
+				aria-invalid={invalid}
+				placeholder={t("projectSettings.projectNamePlaceholder")}
+				className={`w-full px-3 py-2 bg-base border rounded-lg text-fg text-sm outline-none placeholder-fg-muted transition-colors duration-150 ease-out disabled:opacity-60 ${
+					invalid ? "border-danger focus:border-danger" : "border-edge hover:border-edge-active focus:border-accent"
+				}`}
+			/>
+			{invalid && (
+				<p className="text-danger text-xs mt-2">{t("projectSettings.projectNameEmpty")}</p>
+			)}
+			<p className="text-fg-muted text-xs mt-2 font-mono truncate streamer-private" title={project.path}>
+				{project.path}
+			</p>
+		</div>
+	);
+}
+
 // ---- Main component ----
 
 type ConfigTab = "global" | "project" | "worktree" | "automations";
@@ -1437,6 +1509,19 @@ function ProjectSettings({
 	// Saves on toggle — the Board tab has no Save button. The flag lives on the
 	// project record (not .dev3/config.json): it is this machine's privacy call,
 	// not something to commit into the repo.
+	// Display name only: the path stays put, so every worktree, data dir and
+	// slug derived from it survives the rename untouched.
+	async function handleRenameProject(name: string): Promise<boolean> {
+		try {
+			const updated = await api.request.updateProjectSettings({ projectId, name });
+			dispatch({ type: "updateProject", project: updated });
+			return true;
+		} catch (err) {
+			toast.error(t("projectSettings.failedSave", { error: String(err) }), { projectId });
+			return false;
+		}
+	}
+
 	async function handleToggleSensitive(next: boolean) {
 		if (!project) return;
 		try {
@@ -1815,6 +1900,13 @@ function ProjectSettings({
 					{/* ======== Global tab ======== */}
 					{activeTab === "global" && (
 						<div data-help-id="project-settings.board">
+							<SettingsSection
+								title={t("projectSettings.projectName")}
+								description={t("projectSettings.projectNameDesc")}
+							>
+							<ProjectNameField project={project} onRename={handleRenameProject} />
+							</SettingsSection>
+
 							<SettingsSection
 								title={t("customColumns.settingsTitle")}
 								description={t("customColumns.settingsDesc")}

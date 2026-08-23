@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { Dispatch, DragEvent } from "react";
 import type { HarnessReadinessReport, Project, Space, Task, TaskStatus } from "../../shared/types";
-import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isTaskDisconnected, orderProjectsForDisplay } from "../../shared/types";
+import { compareTaskSortRank, getTaskTitle, isBuiltinOpsProject, isTaskDisconnected, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { deleteSpaceWithConfirm, moveSpace, renameSpace, toggleSpaceSensitive } from "../utils/spaceActions";
@@ -610,7 +610,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 						{/* The row's one navigation is into the board, so the name carries
 						    link emphasis on row hover. Without it the only cue was the
 						    background lifting one step, which reads as "row", not "link". */}
-						<span className={`truncate select-text ${locked ? "" : "group-hover:text-accent group-hover:underline decoration-accent/50 underline-offset-2"} ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{isBuiltinOps ? t("ops.boardName") : project.name}</span>
+						<span className={`truncate select-text ${locked ? "" : "group-hover:text-accent group-hover:underline decoration-accent/50 underline-offset-2"} ${privacy.maskClass(project)}`} title={locked || isBuiltinOps ? undefined : project.name}>{projectDisplayName(project, t("ops.boardName"))}</span>
 									{!isBuiltinOps && !compact && (
 										<ProjectSpaceChips
 											spaces={spacesFile.spaces}
@@ -1053,7 +1053,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					<BottomSheet
 						open={!!sheetProject}
 						onClose={() => setActionSheetProjectId(null)}
-						title={sheetIsBuiltin ? t("ops.boardName") : sheetProject.name}
+						title={projectDisplayName(sheetProject, t("ops.boardName"))}
 						ariaLabel={t("activity.projectActions")}
 						testId="activity-project-action-sheet"
 					>
