@@ -29,6 +29,14 @@ the 2 s in-band delay cap dropped its number instead: the relationship (window â
 cap, so the Enter cannot live inside one pane-input program) is what matters and
 holds harder at 15 s.
 
+A fifth site was coupled to the window and no prose grep could have found it: the
+live e2e `native-message-owner-routing.bun-e2e.ts` waited a hardcoded `15_000` ms
+for the held CR. At the old 10 s window that was 5 s of headroom; at 15 s it became
+a photo finish against the window itself â€” it passed locally and failed on the CI
+macOS runner. Now derived (`AGENT_MESSAGE_SUBMIT_IDLE_MS + 10_000`). A **timeout**
+that waits on the window is as coupled to it as the prose is; the next retune
+should grep for `_000` deadlines in the live e2e set, not only for words.
+
 Two guards, each proven by breaking what it guards:
 `agent-skills.test.ts` asserts the rendered skill bodies (all four variants) carry
 `~${AGENT_MESSAGE_SUBMIT_IDLE_SECONDS}s of quiet` and no stale spelled-out number;
