@@ -135,6 +135,64 @@ describe("TaskTerminal", () => {
 		}
 	});
 
+	describe("Closed task", () => {
+		it("offers the way out instead of a recovery card once the task is completed", async () => {
+			const navigate = vi.fn();
+			const user = userEvent.setup();
+			// The optimistic completion drops the worktree, which is what used to
+			// classify the pane as a broken environment.
+			const closed = makeTask({ status: "completed", worktreePath: null, branchName: null });
+
+			await act(async () => {
+				renderTerminal({ tasks: [closed], navigate });
+			});
+
+			expect(screen.getByTestId("terminal-task-closed-screen")).toBeInTheDocument();
+			expect(screen.getByText("This task is completed")).toBeInTheDocument();
+			expect(screen.queryByText("Task environment error")).not.toBeInTheDocument();
+			expect(mockedApi.request.getPtyUrl).not.toHaveBeenCalled();
+
+			await user.click(screen.getByText("Back to Kanban"));
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+		});
+
+		it("names the cancellation when the task was cancelled", async () => {
+			await act(async () => {
+				renderTerminal({ tasks: [makeTask({ status: "cancelled", worktreePath: null })] });
+			});
+
+			expect(screen.getByText("This task is cancelled")).toBeInTheDocument();
+		});
+
+		it("replaces a live terminal with the closed screen when the task completes under it", async () => {
+			mockedApi.request.getPtyUrl.mockResolvedValue({ url: "ws://pty/1" });
+			const { rerender } = render(
+				<I18nProvider>
+					<TaskTerminal projectId="p1" taskId="t1" tasks={[makeTask()]} projects={[project]} navigate={vi.fn()} dispatch={vi.fn()} />
+				</I18nProvider>,
+			);
+			await waitFor(() => expect(screen.getByTestId("terminal-view")).toBeInTheDocument());
+
+			await act(async () => {
+				rerender(
+					<I18nProvider>
+						<TaskTerminal
+							projectId="p1"
+							taskId="t1"
+							tasks={[makeTask({ status: "completed", worktreePath: null })]}
+							projects={[project]}
+							navigate={vi.fn()}
+							dispatch={vi.fn()}
+						/>
+					</I18nProvider>,
+				);
+			});
+
+			expect(screen.getByTestId("terminal-task-closed-screen")).toBeInTheDocument();
+			expect(screen.queryByTestId("terminal-view")).not.toBeInTheDocument();
+		});
+	});
+
 	describe("handleMove sets movedAt", () => {
 		it("sets movedAt when completing task from error screen", async () => {
 			const user = userEvent.setup();

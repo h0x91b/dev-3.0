@@ -9,6 +9,7 @@ import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskPreparingView from "./TaskPreparingView";
+import BackToKanbanEmptyState from "./BackToKanbanEmptyState";
 import ExtraKeyBar from "./ExtraKeyBar";
 import TerminalComposer, { type TerminalComposerApi } from "./TerminalComposer";
 import MobilePaneCarousel from "./MobilePaneCarousel";
@@ -63,6 +64,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const task = tasks.find((t) => t.id === taskId);
 	const project = projects.find((p) => p.id === projectId);
 	const isPreparing = task?.preparing === true;
+	// Completed/cancelled by design: the worktree and the session are gone on
+	// purpose, so every recovery offer in here would be a lie. This view has one
+	// honest exit, and it must win over the error and restart screens below.
+	const isClosed = task?.status === "completed" || task?.status === "cancelled";
 
 	// Detect native backend from the task record (available before state loads).
 	const isNative = task?.terminalBackend === "native";
@@ -171,7 +176,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// ── Tmux PTY URL effect (skipped for native) ──────────────────────────────
 	useEffect(() => {
 		if (isNative) return;
-		if (isPreparing) return;
+		if (isPreparing || isClosed) return;
 		let cancelled = false;
 		(async () => {
 			console.log("[TaskTerminal] Requesting PTY URL for task", taskId.slice(0, 8));
@@ -193,14 +198,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [taskId, isPreparing, isNative]);
+	}, [taskId, isPreparing, isNative, isClosed]);
 
 	// ── Native pane state ──────────────────────────────────────────────────────
 	// Every arrival — this poll, the inspector toolbar's poll, or any pane action's
 	// own response — comes through the bus, so a toolbar click repaints the canvas
 	// as soon as the server answers instead of on the next poll tick.
 	useEffect(() => {
-		if (!isNative || isPreparing) return;
+		if (!isNative || isPreparing || isClosed) return;
 		setAbsentReads(0);
 		return subscribePaneState(taskId, (state) => {
 			setNativePaneState(state);
@@ -247,12 +252,12 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				return next;
 			});
 		});
-	}, [taskId, isPreparing, isNative]);
+	}, [taskId, isPreparing, isNative, isClosed]);
 
 	// Reconciliation only: the server owns the tree, and a failed read is how this
 	// view learns the session died.
 	useEffect(() => {
-		if (!isNative || isPreparing) return;
+		if (!isNative || isPreparing || isClosed) return;
 		let cancelled = false;
 		const fetch = async () => {
 			try {
@@ -264,7 +269,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		void fetch();
 		const timer = setInterval(() => { void fetch(); }, NATIVE_PANE_POLL_MS);
 		return () => { cancelled = true; clearInterval(timer); };
-	}, [taskId, isPreparing, isNative]);
+	}, [taskId, isPreparing, isNative, isClosed]);
 
 	// ── Fetch per-pane URLs when new panes appear ─────────────────────────────
 	useEffect(() => {
@@ -329,13 +334,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	useEffect(() => {
 		function onPtyDied(e: Event) {
 			const detail = (e as CustomEvent).detail;
-			if (detail?.taskId === taskId) {
+			if (detail?.taskId === taskId && !isClosed) {
 				void classifyAndSetError();
 			}
 		}
 		window.addEventListener("rpc:ptyDied", onPtyDied);
 		return () => window.removeEventListener("rpc:ptyDied", onPtyDied);
-	}, [taskId, task?.worktreePath]);
+	}, [taskId, task?.worktreePath, isClosed]);
 
 	// Fallback timeout for cases where ptyDied doesn't fire
 	useEffect(() => {
@@ -437,6 +442,20 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		} finally {
 			setRestarting(false);
 		}
+	}
+
+	// A closed task has no workspace left to recover, so the only thing this pane
+	// owes the user is the way out — same empty state the task view shows when no
+	// task is selected.
+	if (isClosed) {
+		return (
+			<BackToKanbanEmptyState
+				testId="terminal-task-closed-screen"
+				message={task?.status === "cancelled" ? t("terminal.taskCancelledTitle") : t("terminal.taskCompletedTitle")}
+				hint={t("terminal.taskClosedHint")}
+				onBack={() => navigate({ screen: "project", projectId })}
+			/>
+		);
 	}
 
 	if (isPreparing && task && project) {

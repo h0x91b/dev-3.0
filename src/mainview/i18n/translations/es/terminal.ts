@@ -2,6 +2,9 @@ const terminal = {
 	// TaskTerminal
 	"terminal.connecting": "Conectando...",
 	"terminal.syncing": "Sincronizando terminal...",
+	"terminal.taskCompletedTitle": "Esta tarea está completada",
+	"terminal.taskCancelledTitle": "Esta tarea está cancelada",
+	"terminal.taskClosedHint": "Su terminal y su worktree se eliminaron al cerrar la tarea: ya no queda nada que ejecutar aquí.",
 	"terminal.envError": "Error del entorno de la tarea",
 	"terminal.worktreeNotFound": "El directorio de trabajo de la tarea ya no existe. Esto puede ocurrir cuando el worktree se elimina externamente.",
 	"terminal.errorPath": "Worktree no encontrado:",

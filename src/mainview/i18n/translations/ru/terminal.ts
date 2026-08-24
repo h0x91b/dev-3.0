@@ -2,6 +2,9 @@ const terminal = {
 	// TaskTerminal
 	"terminal.connecting": "Подключение...",
 	"terminal.syncing": "Синхронизация терминала...",
+	"terminal.taskCompletedTitle": "Задача завершена",
+	"terminal.taskCancelledTitle": "Задача отменена",
+	"terminal.taskClosedHint": "Её терминал и worktree удалены при закрытии задачи — запускать больше нечего.",
 	"terminal.envError": "Ошибка окружения задачи",
 	"terminal.worktreeNotFound": "Рабочая директория задачи больше не существует. Это может произойти, если worktree был удалён извне.",
 	"terminal.errorPath": "Worktree не найден:",

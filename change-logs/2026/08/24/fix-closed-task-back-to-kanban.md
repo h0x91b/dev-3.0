@@ -1,0 +1,1 @@
+Completing or cancelling a task while its view is open no longer leaves the terminal pane showing a "Task environment error / restart session" card for a worktree that was removed on purpose. The pane now shows a plain empty state naming the outcome with a single Back to Kanban button, and it stops polling the dead session.
