@@ -21,6 +21,7 @@ import Select, { type SelectOption } from "../Select";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
 import { api } from "../../rpc";
+import { openFilePicker } from "../../folder-picker";
 import type { TFunction, TranslationKey } from "../../i18n";
 import { buildPickerGroups, getModeLeafLabel, getModelGroupLabel, type PickerGroup } from "../../utils/agentPicker";
 import { useToggleFavorite } from "../../hooks/useToggleFavorite";
@@ -1110,6 +1111,17 @@ function AgentPane({
 											availability.customPathError ? "border-danger" : "border-edge"
 										}`}
 									/>
+									<button
+										type="button"
+										onClick={() => {
+											void openFilePicker({ initialPath: customPath.trim() || null })
+												.then((picked) => { if (picked) onCustomPathChange(picked); });
+										}}
+										aria-label={t("folderPicker.browseAria", { name: agent.baseCommand })}
+										className="px-2.5 py-1 rounded border border-edge text-fg-2 text-xs font-medium hover:bg-elevated hover:text-fg transition-colors shrink-0"
+									>
+										{t("folderPicker.browse")}
+									</button>
 									<button
 										type="button"
 										onClick={onSavePath}

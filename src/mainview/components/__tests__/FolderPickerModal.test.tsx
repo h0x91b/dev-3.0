@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import FolderPickerHost from "../FolderPickerModal";
-import { openFolderPicker } from "../../folder-picker";
+import { openFilePicker, openFolderPicker } from "../../folder-picker";
 import { I18nProvider } from "../../i18n";
 
 vi.mock("../../rpc", () => ({
@@ -268,6 +268,94 @@ describe("FolderPickerHost", () => {
 		expect(screen.getByText("zebra-notes")).toBeInTheDocument();
 		expect(screen.queryByText("aardvark")).not.toBeInTheDocument();
 		expect(screen.queryByText("midnight")).not.toBeInTheDocument();
+	});
+});
+
+describe("FolderPickerHost file mode", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.removeItem("dev3-folder-picker-recent");
+	});
+
+	it("lists files, resolves with the picked file, and never asks the backend to hide them", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/opt/homebrew/bin", [
+				{ name: "lib", isDir: true },
+				{ name: "claude", isDir: false },
+			]),
+		);
+
+		renderHost();
+		const picked = openFilePicker({ initialPath: "/opt/homebrew/bin" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		expect(mockedApi.request.listDirectory).toHaveBeenCalledWith({
+			path: "/opt/homebrew/bin",
+			includeFiles: true,
+			showHidden: true,
+		});
+
+		await user.click(await screen.findByText("claude"));
+		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
+		await user.click(screen.getByText("Select"));
+		await expect(picked).resolves.toBe("/opt/homebrew/bin/claude");
+	});
+
+	it("refuses to arm Select on a folder — the caller asked for a file", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/opt/homebrew/bin", [{ name: "lib", isDir: true }]),
+		);
+
+		renderHost();
+		openFilePicker({ initialPath: "/opt/homebrew/bin" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		// The whole-folder row is gone in file mode …
+		expect(screen.queryByTestId("folder-picker-current-row")).not.toBeInTheDocument();
+		// … and highlighting a subfolder leaves Select dead.
+		await user.click(await screen.findByText("lib"));
+		expect(screen.getByText("Select")).toBeDisabled();
+	});
+
+	it("opens on the folder of a file it was pointed at, with that file already selected", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockImplementation(async ({ path }) =>
+			path === "/opt/homebrew/bin/claude"
+				? { ...mockListing("/opt/homebrew/bin/claude", []), error: "ENOTDIR" }
+				: mockListing("/opt/homebrew/bin", [{ name: "claude", isDir: false }]),
+		);
+
+		renderHost();
+		const picked = openFilePicker({ initialPath: "/opt/homebrew/bin/claude" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		// The ENOTDIR from the file itself must not reach the user as an error.
+		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
+		expect(screen.queryByText(/ENOTDIR/)).not.toBeInTheDocument();
+		await user.click(screen.getByText("Select"));
+		await expect(picked).resolves.toBe("/opt/homebrew/bin/claude");
+	});
+
+	it("re-reads the folder without dotfiles when the hidden toggle is switched off", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test", [{ name: ".bun", isDir: true }]),
+		);
+
+		renderHost();
+		openFilePicker({ initialPath: "/Users/test" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		await user.click(screen.getByTestId("folder-picker-hidden-toggle"));
+		await waitFor(() =>
+			expect(mockedApi.request.listDirectory).toHaveBeenCalledWith({
+				path: "/Users/test",
+				includeFiles: true,
+				showHidden: false,
+			}),
+		);
 	});
 });
 

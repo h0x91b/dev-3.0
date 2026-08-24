@@ -2426,13 +2426,18 @@ function App() {
 	// Requirements check failed \u2014 a real, actionable screen; keep it ahead of the
 	// generic bootstrap loader.
 	if (reqStatus === "failed") {
+		// The host has to come along: this screen returns early, and its "Browse…"
+		// button would otherwise queue a picker request nothing ever renders.
 		return (
-			<RequirementsCheck
-				results={reqResults}
-				checking={reqChecking}
-				onRefresh={checkRequirements}
-				onRefreshResults={refreshResults}
-			/>
+			<>
+				<RequirementsCheck
+					results={reqResults}
+					checking={reqChecking}
+					onRefresh={checkRequirements}
+					onRefreshResults={refreshResults}
+				/>
+				<FolderPickerHost />
+			</>
 		);
 	}
 

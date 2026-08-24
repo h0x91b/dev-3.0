@@ -19,6 +19,13 @@ export interface FolderPickerOptions {
 	 * Default: false (existing call sites are for picking existing folders).
 	 */
 	allowCreateFolder?: boolean;
+	/**
+	 * What the caller wants back. In `"file"` mode folders are still walkable
+	 * but only a file can be selected — that is how a CLI binary gets picked.
+	 */
+	mode?: "folder" | "file";
+	/** Start with dotfiles visible. File mode defaults to true: most CLI binaries live under ~/.local/bin, ~/.bun/bin and friends. */
+	showHidden?: boolean;
 	/** Enable multi-selection (Cmd/Shift+click). */
 	multi: boolean;
 }
@@ -44,6 +51,16 @@ function enqueue(request: FolderPickerRequest): void {
 export function openFolderPicker(options: Omit<FolderPickerOptions, "multi"> = {}): Promise<string | null> {
 	return new Promise<string | null>((resolve) => {
 		enqueue({ options: { ...options, multi: false }, resolve: (result) => resolve(result?.[0] ?? null) });
+	});
+}
+
+/** Pick a single existing file (e.g. a CLI binary). Folders are walkable, not selectable. */
+export function openFilePicker(options: Omit<FolderPickerOptions, "multi" | "mode" | "allowCreateFolder"> = {}): Promise<string | null> {
+	return new Promise<string | null>((resolve) => {
+		enqueue({
+			options: { showHidden: true, ...options, mode: "file", multi: false },
+			resolve: (result) => resolve(result?.[0] ?? null),
+		});
 	});
 }
 

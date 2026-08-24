@@ -255,6 +255,12 @@ const common = {
 	"folderPicker.noMatches": "No loaded folder matches “{query}”",
 	"folderPicker.selectedCountLabel_one": "{count} folder selected",
 	"folderPicker.selectedCountLabel_other": "{count} folders selected",
+	"folderPicker.titleFile": "Select a file",
+	"folderPicker.filterFilesPlaceholder": "Filter…",
+	"folderPicker.filterFilesAriaLabel": "Filter files and folders",
+	"folderPicker.showHidden": "Hidden files",
+	"folderPicker.browse": "Browse…",
+	"folderPicker.browseAria": "Choose the {name} binary on disk",
 
 	// Stuck preparation popover (clone hangs on Fetching origin — macOS FDA)
 	"stuckPrep.popoverTitle": "Stuck on Fetching origin?",
