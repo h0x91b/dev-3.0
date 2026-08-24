@@ -62,8 +62,12 @@ function messagePreview(text: string): string {
  *
  * The ONE seam shared by immediate `dev3 message` sends and queued
  * "Send later" fires, so the two can never drift apart again.
+ *
+ * `hold` is the caller's call, not this seam's. A message that travelled through a
+ * CLI or a queue waits for the pane to go quiet; text the user just clicked "Send to
+ * agent" on does not — see {@link sendMessageImmediately}.
  */
-async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<AgentPromptDelivery> {
+async function deliverToTarget(task: Task, message: ScheduledMessage, hold: boolean): Promise<AgentPromptDelivery> {
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
 	const text = message.source ? wrapAgentMessage(message.text, message.source, task.projectId) : message.text;
@@ -71,7 +75,7 @@ async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<A
 	// writing three in a row, or several peers reporting at once) then become one
 	// agent turn, and no text lands in the middle of the user's own line. See
 	// agent-message-hold.ts.
-	const delivery = await deliverAgentPrompt(task, text, message.target, { hold: true });
+	const delivery = await deliverAgentPrompt(task, text, message.target, { hold });
 	if (message.source) announceAgentMessage(task, message, delivery);
 	return delivery;
 }
@@ -183,12 +187,14 @@ export async function fireScheduledMessage(
 	project: Project,
 	task: Task,
 	message: ScheduledMessage,
-	opts: { late: boolean },
+	opts: { late: boolean; hold?: boolean },
 ): Promise<{ delivery: AgentPromptDelivery; task: Task }> {
 	let delivery: AgentPromptDelivery = { status: "not-delivered", reason: "pane-absent", detail: "the task is finished" };
 	if (!isTerminal(task.status)) {
 		try {
-			delivery = await deliverToTarget(task, message);
+			// A fire on the clock is message traffic and waits for a quiet pane. The chip's
+			// "Send now" is a click, and a click has to do something visible: it opts out.
+			delivery = await deliverToTarget(task, message, opts.hold !== false);
 		} catch (err) {
 			delivery = { status: "not-delivered", reason: "backend-failure", detail: String(err) };
 			log.warn("Scheduled message delivery threw", { taskId: task.id.slice(0, 8), error: String(err) });
@@ -289,7 +295,7 @@ export async function sendScheduledMessageNow(project: Project, taskId: string, 
 	const task = await data.getTask(project, taskId);
 	const message = (task.scheduledMessages ?? []).find((m) => m.id === messageId);
 	if (!message) throw new Error("Scheduled message not found");
-	const { task: updated } = await fireScheduledMessage(project, task, message, { late: false });
+	const { task: updated } = await fireScheduledMessage(project, task, message, { late: false, hold: false });
 	return updated;
 }
 
@@ -300,12 +306,19 @@ export async function sendScheduledMessageNow(project: Project, taskId: string, 
  * Throws ONLY when nothing was sent, because a caller that catches reports a failure
  * and re-sends — and a re-send into a live agent is a double submit. An unconfirmed
  * send is therefore returned, not thrown, and the caller must say so out loud.
+ *
+ * `hold` defaults to true — the CLI path, where a burst of peer messages must become
+ * one turn and nothing may land in the middle of the user's line (issue #1495). A
+ * caller acting on a click the user just made passes `hold: false`: the user is
+ * watching that pane and expects to see their text go in, so a hold reads to them as
+ * a button that did nothing.
  */
 export async function sendMessageImmediately(
 	task: Task,
 	text: string,
 	target?: ScheduledMessageTarget | null,
 	source?: AgentMessageSource | null,
+	opts: { hold?: boolean } = {},
 ): Promise<AgentPromptDelivery & { spilledPath: string | null }> {
 	const trimmed = validateText(text);
 	if (isTerminal(task.status)) {
@@ -320,7 +333,7 @@ export async function sendMessageImmediately(
 		...(source ? { source } : {}),
 		...(spilledPath ? { spilledPath } : {}),
 	};
-	const delivery = await deliverToTarget(task, message);
+	const delivery = await deliverToTarget(task, message, opts.hold !== false);
 	await recordMessageAttempt(task, message, delivery);
 	if (delivery.status === "not-delivered") {
 		throw new Error("Could not deliver the message — the task has no live agent session.");

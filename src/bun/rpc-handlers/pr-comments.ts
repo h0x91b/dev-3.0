@@ -222,11 +222,16 @@ async function getTaskPrComments(params: { taskId: string; projectId: string; fo
  * Type text into the task's live agent pane right now. A review too large to be
  * typed is spilled to a file by `sendMessageImmediately` itself, which reports the
  * path back so the toast can name it.
+ *
+ * Never held (`hold: false`). This is the "Send to agent" button under a review
+ * comment: the user clicked it and is looking at the terminal, so the text has to go
+ * in and run while they watch. Holding it for a quiet pane made the button look
+ * broken — nothing appeared, and people re-clicked or pasted by hand (#1495 fallout).
  */
 async function sendAgentMessageNow(params: { taskId: string; projectId: string; text: string }): Promise<{ spilledPath: string | null }> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
-	const { spilledPath } = await sendMessageImmediately(task, params.text);
+	const { spilledPath } = await sendMessageImmediately(task, params.text, null, null, { hold: false });
 	return { spilledPath };
 }
 

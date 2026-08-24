@@ -51,7 +51,10 @@ export async function deliverLaunchHandoff(opts: {
 				return false;
 			}
 			if (!task.preparing && (task.sessionState?.panes?.length ?? 0) > 0) {
-				await sendMessageImmediately(task, HANDOFF_MESSAGE, null, opts.source);
+				// Not held: this is the first thing a just-booted agent hears, into a pane
+				// nobody has typed into yet. Waiting for it to "go quiet" would leave the
+				// child sitting idle for the whole window with the launcher watching.
+				await sendMessageImmediately(task, HANDOFF_MESSAGE, null, opts.source, { hold: false });
 				log.info("Handoff delivered", { taskId: shortId, fromSeq: opts.source.seq });
 				return true;
 			}

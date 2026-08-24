@@ -243,7 +243,15 @@ describe("sendAgentMessageNow", () => {
 	it("delivers the text to the task's live agent", async () => {
 		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: null });
 		await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
-		expect(sendMessageImmediately).toHaveBeenCalledWith(task, "fix it");
+		expect(sendMessageImmediately).toHaveBeenCalledWith(task, "fix it", null, null, { hold: false });
+	});
+
+	// The user clicked the button and is watching the terminal: a held message would
+	// type nothing at all, which is exactly what "the button does nothing" looked like.
+	it("never holds the send — the review text goes in while the user watches", async () => {
+		sendMessageImmediately.mockResolvedValue({ status: "delivered", spilledPath: null });
+		await prCommentsHandlers.sendAgentMessageNow({ taskId: "t1", projectId: "p1", text: "fix it" });
+		expect(sendMessageImmediately.mock.calls[0]?.[4]).toEqual({ hold: false });
 	});
 
 	it("propagates delivery failures", async () => {

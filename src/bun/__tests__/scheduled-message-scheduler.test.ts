@@ -281,12 +281,15 @@ describe("cancel / send-now / immediate", () => {
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
 	});
 
-	it("sendScheduledMessageNow delivers and removes the item", async () => {
+	// "Send now" on the chip is a click, so it types at once — the same reason the
+	// review comment's "Send to agent" does. A hold here looked like a dead button.
+	it("sendScheduledMessageNow delivers at once and removes the item", async () => {
 		const task = makeTask();
 		vi.mocked(data.getTask).mockResolvedValue(task as never);
 		mockUpdateTaskWith(task);
 		await sendScheduledMessageNow(project, task.id, "msg-1");
-		expect(holdMessageForAgentPane).toHaveBeenCalled();
+		expect(sendPromptToAgentPane).toHaveBeenCalled();
+		expect(holdMessageForAgentPane).not.toHaveBeenCalled();
 	});
 
 	it("sendScheduledMessageNow throws for an unknown message id", async () => {
@@ -299,6 +302,23 @@ describe("cancel / send-now / immediate", () => {
 		const task = makeTask();
 		await sendMessageImmediately(task as never, "hello now");
 		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "hello now", task.sessionState.panes);
+	});
+
+	// The click paths (a review comment's "Send to agent", the launch handoff) opt out
+	// of the hold: the user is watching that pane and a held message reads as a button
+	// that did nothing. Asserted on the tmux helpers rather than on the flag, so the
+	// test breaks if the flag stops reaching the backend.
+	it("sendMessageImmediately types and submits at once when the caller opts out of the hold", async () => {
+		const task = makeTask();
+		await sendMessageImmediately(task as never, "fix this", null, null, { hold: false });
+		expect(sendPromptToAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: task.id }), "fix this", task.sessionState.panes);
+		expect(holdMessageForAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("sendMessageImmediately holds by default — an omitted flag is never an instant send", async () => {
+		await sendMessageImmediately(makeTask() as never, "hello now");
+		expect(holdMessageForAgentPane).toHaveBeenCalled();
+		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});
 
 	it("sendMessageImmediately wraps a cross-task message in the envelope", async () => {
@@ -409,6 +429,16 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 			{ hold: true },
 		);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
+	});
+
+	it("carries the caller's opt-out into the native adapter", async () => {
+		const task = nativeTask();
+		await sendMessageImmediately(task as never, "fix this", null, null, { hold: false });
+		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(
+			expect.objectContaining({ id: task.id }),
+			"fix this",
+			{ hold: false },
+		);
 	});
 
 	it("sendMessageImmediately still fails honestly when no native agent is live", async () => {
