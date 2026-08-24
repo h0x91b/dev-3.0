@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en" data-dev3-artifact-template="v1">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Your first task in dev-3.0</title>
+  <meta name="description" content="A screen-by-screen walkthrough of your first task in dev-3.0: from an empty board to a merged and closed task, with nothing of your own involved.">
+  <link rel="canonical" href="https://dev3.h0x91b.com/first-task.html">
+  <link rel="icon" href="icon.png">
+  <meta property="og:title" content="Your first task in dev-3.0">
+  <meta property="og:description" content="The guided tour, screen by screen, from an empty board to a merged and closed task.">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="dev-3.0">
+  <meta property="og:url" content="https://dev3.h0x91b.com/first-task.html">
+  <meta property="og:image" content="https://dev3.h0x91b.com/og-image.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://dev3.h0x91b.com/og-image.jpg">
+  <link rel="stylesheet" href="first-task/app.css" data-dev3-artifact-shell>
+  <style>
+    /* Screenshot figures. Scoped to the report; the shell owns everything else. */
+    .shot { margin: 0; }
+    .shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 0.75rem;
+      border: 1px solid var(--dev3-border);
+      background: var(--dev3-surface-base);
+    }
+    .shot figcaption { margin-top: 0.6rem; }
+    .step-head { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
+    .step-num {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      color: var(--dev3-accent);
+      white-space: nowrap;
+    }
+    .pair { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
+    /* The shell styles buttons, not links, so the way back needs its own shape. */
+    .backlink {
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 12px;
+      border: 1px solid rgb(var(--dev3-border));
+      border-radius: 10px;
+      color: rgb(var(--dev3-text-primary));
+      text-decoration: none;
+      transition: .16s ease;
+    }
+    .backlink:hover { border-color: rgb(var(--dev3-accent) / .65); transform: translateY(-1px); }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="icon-192.png" alt="dev3 logo">
+        <div>
+          <div class="eyebrow">DEV3 GUIDE · YOUR FIRST TASK</div>
+          <h1>Your first task in dev-3.0</h1>
+          <div class="muted">The guided tour, screen by screen, from an empty board to a merged and closed task.</div>
+        </div>
+      </div>
+      <div class="actions">
+        <div class="segmented text-size" role="group" aria-label="Text size">
+          <button type="button" data-font-step="-1" title="Smaller text" aria-label="Smaller text">A−</button>
+          <button class="text-size-value" id="fontScaleValue" type="button" data-font-step="0" title="Reset text size to 100%" aria-label="Reset text size">100%</button>
+          <button type="button" data-font-step="1" title="Larger text" aria-label="Larger text">A+</button>
+        </div>
+        <a class="backlink" href="./" title="Back to dev-3.0">← dev-3.0</a>
+        <button class="ghost" id="artifactTheme" type="button" title="Theme: Follow host">◐ Auto</button>
+      </div>
+    </header>
+
+    <nav class="section-nav print-hidden" aria-label="Report sections">
+      <a href="#overview">Overview</a>
+      <a href="#walkthrough">Walkthrough</a>
+      <a href="#change">The change</a>
+      <a href="#after">Afterwards</a>
+    </nav>
+
+    <section class="card section section-anchor" id="overview">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">What this is</h2>
+          <div class="section-copy">One task, done for real, with nothing of yours involved</div>
+        </div>
+      </div>
+      <p class="prose">
+        dev-3.0 runs AI coding agents on git repositories. Every task gets its own branch, its own
+        folder and its own terminal, so several agents can work at the same time without touching
+        each other's files. That is easy to say and hard to picture, so the first run does it once
+        for you: dev-3.0 makes a small throwaway repository, fills in the first task, and a card
+        walks you through every button until the work is merged and the task is closed.
+      </p>
+      <p class="prose">
+        The card rings the one control you should press, holds back the rest of the screen so you
+        cannot get lost, and moves on by itself once the app moves. You can leave at any point with
+        Escape or <em>I'll look around myself</em>, and the tour comes back on every visit to an empty
+        sandbox board until you walk it to the end.
+      </p>
+      <div class="grid kpis">
+        <article class="card kpi"><div class="kpi-top"><span>Steps</span><span>◇</span></div><div class="kpi-value">11</div><div class="trend">from New Task to Complete task</div></article>
+        <article class="card kpi"><div class="kpi-top"><span>Time in this run</span><span>◷</span></div><div class="kpi-value">~4 min</div><div class="trend">agent worked for 2m 43s of it</div></article>
+        <article class="card kpi"><div class="kpi-top"><span>What you type</span><span>⌨</span></div><div class="kpi-value">Nothing</div><div class="trend">the prompt is filled in for you</div></article>
+        <article class="card kpi"><div class="kpi-top"><span>Your own repos</span><span>◎</span></div><div class="kpi-value">Untouched</div><div class="trend">the sandbox is thrown away</div></article>
+      </div>
+    </section>
+
+    <section class="card section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Before you start</h2>
+          <div class="section-copy">Two things have to be true, and dev-3.0 checks both</div>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>What</th><th>Why</th><th>If it is missing</th></tr></thead>
+        <tbody>
+          <tr><td>An agent CLI on your machine</td><td>Something has to do the work — Claude Code, Codex, Gemini, Cursor Agent or opencode</td><td>The first-run strip says so and sends you to Settings instead of a sandbox</td></tr>
+          <tr><td>That CLI signed in</td><td>An installed-but-unauthenticated CLI starts, prints a login prompt into the terminal, and the task sits there dead</td><td>Same: Settings, not a task that would have died on a login prompt</td></tr>
+          <tr><td><code>node</code> on your PATH</td><td>The sandbox page is served by a nine-line <code>server.js</code>, so the dev-server step has something to run</td><td>Only that one step is dull; nothing hangs</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section-anchor" id="walkthrough">
+      <div class="stack">
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">Start</span>
+					<h2 class="section-title">Try a sandbox repo</h2>
+				</div>
+			</div>
+			<p class="prose">A fresh dev-3.0 has no projects, so the first screen offers one. Press <em>Try a sandbox repo</em> and dev-3.0 creates a tiny repository of its own — one page, one button, one dependency-free server — and opens its board.</p>
+			<p class="prose">Nothing of yours is involved, and the whole thing is thrown away when you are done.</p>
+			<figure class="shot"><img src="first-task/img/00-first-run.jpg" alt="First-run screen with a Try a sandbox repo button"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">1 / 11</span>
+					<h2 class="section-title">Start with New Task</h2>
+				</div>
+			</div>
+			<p class="prose">The board is empty on purpose, and the card rings the only button that matters. Everything else is held back — the dark bands around the ring are a shield, so a stray click cannot take you somewhere the tour cannot follow.</p>
+			<p class="prose"><em>Do it</em> presses the real button. The card never fakes progress: if the app did not move, the tour did not move either.</p>
+			<figure class="shot"><img src="first-task/img/01-new-task.jpg" alt="Empty Kanban board with the tour card ringing the New Task button"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">2 / 11</span>
+					<h2 class="section-title">The prompt is already written</h2>
+				</div>
+			</div>
+			<p class="prose">A first task is a blank page problem, so dev-3.0 fills it in: <em>change the Ship it button in index.html from green to blue, take screenshots before and after, show them in a dev3 artifact, then commit.</em></p>
+			<p class="prose">That description <strong>is</strong> the agent's first prompt — plain words, no template. Everything else on this form is optional.</p>
+			<figure class="shot"><img src="first-task/img/02-prompt.jpg" alt="New Task dialog with a prefilled description"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">3 / 11</span>
+					<h2 class="section-title">Save parks it, Save &amp; Start runs it</h2>
+				</div>
+			</div>
+			<p class="prose">Two buttons that look almost the same and do very different things. The blue <em>Save</em> only puts the task on the board. The green <em>Save &amp; Start</em> also gives it a branch and a folder of its own and starts an agent on it.</p>
+			<p class="prose">This is the one thing new users get wrong, which is why it gets a step to itself.</p>
+			<figure class="shot"><img src="first-task/img/03-save-start.jpg" alt="The tour card explaining the difference between Save and Save and Start"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">4 / 11</span>
+					<h2 class="section-title">Who does the work</h2>
+				</div>
+			</div>
+			<p class="prose">Three separate choices: the <strong>harness</strong> (which agent CLI runs), the <strong>model</strong>, and the <strong>mode</strong> (how much freedom it gets). Add a second row and two agents solve the same task independently, so you can compare and keep one.</p>
+			<p class="prose">In the sandbox the mode is preselected to one that never stops to ask permission — a first-run user has no basis to judge <em>&ldquo;do you want to proceed?&rdquo;</em> from an agent CLI. Your own model stays whatever you normally use; only the permission mode changes, and only here.</p>
+			<figure class="shot"><img src="first-task/img/04-launch.jpg" alt="Launch dialog showing harness, model and mode"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">5 / 11</span>
+					<h2 class="section-title">Open it</h2>
+				</div>
+			</div>
+			<p class="prose">The task left To Do and already has its own branch. Launching deliberately does not navigate you anywhere: a board full of agents stays one screen, and you decide which one to watch.</p>
+			<p class="prose">Click the card to open it.</p>
+			<figure class="shot"><img src="first-task/img/05-open-it.jpg" alt="The task card in the Agent is Working column"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">6 / 11</span>
+					<h2 class="section-title">The agent works here</h2>
+				</div>
+			</div>
+			<p class="prose">A real terminal, in a copy of the repository that only this task owns. It is a conversation, not a progress bar — you can type into it at any time.</p>
+			<p class="prose">In this run the agent renamed its branch, gave the task a title and a label, read <code>index.html</code>, and screenshotted the page before touching anything.</p>
+			<figure class="shot"><img src="first-task/img/06-terminal.jpg" alt="The task screen with a live agent terminal"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">7 / 11</span>
+					<h2 class="section-title">Run the page while it works</h2>
+				</div>
+			</div>
+			<p class="prose">Every project can declare how to start itself. The sandbox declares <code>node server.js</code>, and dev-3.0 keeps a port for this task, so pressing play serves the page you are watching the agent change.</p>
+			<figure class="shot"><img src="first-task/img/07-dev-server.jpg" alt="The tour card ringing the Dev Server button"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">7 / 11</span>
+					<h2 class="section-title">&hellip;and the page is live</h2>
+				</div>
+			</div>
+			<p class="prose"><code>sandbox on http://127.0.0.1:18623</code> — a port dev-3.0 assigned to this task, so two tasks serving the same project never collide.</p>
+			<p class="prose">While that was starting, the agent finished the work and published its report, which is already open on the right.</p>
+			<figure class="shot"><img src="first-task/img/07b-dev-server-running.jpg" alt="The dev server pane serving the sandbox on a local port"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">8 / 11</span>
+					<h2 class="section-title">The agent's own report</h2>
+				</div>
+			</div>
+			<p class="prose">Agents can publish a page of their own — a dev3 artifact — and this one shows the button before and after, plus the exact line it changed. It stays with the task, so you can reopen it later.</p>
+			<p class="prose">This step waits as long as the work does. While the report does not exist yet the card says it is waiting on the agent, and nothing is shielded: an agent that stops to ask you something must be answerable.</p>
+			<figure class="shot"><img src="first-task/img/08-artifact.jpg" alt="The artifact panel showing the agent's before and after report"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">9 / 11</span>
+					<h2 class="section-title">Read it before you keep it</h2>
+				</div>
+			</div>
+			<p class="prose">The row above the terminal is the git bar: the branch, how far ahead it is, and the diff. This is where you decide the work was worth keeping — in your own repositories that decision is the whole point.</p>
+			<figure class="shot"><img src="first-task/img/09-review.jpg" alt="The tour card ringing the branch and diff row"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">10 / 11</span>
+					<h2 class="section-title">Keep the change</h2>
+				</div>
+			</div>
+			<p class="prose">Merge puts the branch back into the base branch. It only lights up once the agent has actually committed something; before that the card flashes the ring instead of pressing a dead button, because a click that silently does nothing reads as a bug.</p>
+			<figure class="shot"><img src="first-task/img/10-merge.jpg" alt="The tour card ringing the merge button"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">11 / 11</span>
+					<h2 class="section-title">And that closes it</h2>
+				</div>
+			</div>
+			<p class="prose">Nobody had to tell dev-3.0 the work was done: it watched the branch land and asked. <em>Complete task</em> moves it to Completed and cleans up the copy of the repository it worked in.</p>
+			<p class="prose">That is the whole loop — describe, launch, watch, review, merge, close.</p>
+			<figure class="shot"><img src="first-task/img/11-complete.jpg" alt="The branch merged dialog offering to complete the task"></figure>
+		</article>
+		</div>
+    </section>
+
+    <section class="card section section-anchor" id="change">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">The change you asked for</h2>
+          <div class="section-copy">One line in <code>index.html</code> — a thing you can see, not a diff you have to read</div>
+        </div>
+      </div>
+      <div class="pair">
+        <figure class="shot">
+          <img src="first-task/img/page-before.jpg" alt="The sandbox page with a green Ship it button">
+          <figcaption class="muted"><strong>Before</strong> — <code>background: #22c55e</code></figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="first-task/img/page-after.jpg" alt="The sandbox page with a blue Ship it button">
+          <figcaption class="muted"><strong>After</strong> — <code>background: #3b82f6</code></figcaption>
+        </figure>
+      </div>
+      <p class="prose">
+        This is deliberately the smallest visible change in the repository. The point of a first task
+        is not the code: it is watching an agent take a sentence, work in its own copy of the repo,
+        show you the result, and hand you a branch to keep or throw away.
+      </p>
+    </section>
+
+    <section class="section-anchor" id="after">
+      <div class="stack">
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">Afterwards</span>
+					<h2 class="section-title">The board is clear again</h2>
+				</div>
+			</div>
+			<p class="prose">The task is in Completed, its working folder is gone, and the tour does not come back — walking it to the end is what records it as done. A skip does not count, so leaving early costs you nothing.</p>
+			<figure class="shot"><img src="first-task/img/12-board-after.jpg" alt="An empty board after the task was completed"></figure>
+		</article>
+		<article class="card section">
+			<div class="section-head">
+				<div class="step-head">
+					<span class="step-num">Afterwards</span>
+					<h2 class="section-title">And it is still there when you want it</h2>
+				</div>
+			</div>
+			<p class="prose">Help mode (the <strong>?</strong> in the header) outlines every zone on the current screen and explains it when clicked. Its banner also carries <em>Walk me through the first task</em>, so the tour is one click away for as long as you want it.</p>
+			<figure class="shot"><img src="first-task/img/13-help-banner.jpg" alt="Help mode with a Walk me through the first task link"></figure>
+		</article>
+		</div>
+    </section>
+
+
+    <footer class="dev3-footer"><span><strong>dev-3.0</strong> · <a href="./">dev3.h0x91b.com</a> · <a href="https://github.com/h0x91b/dev-3.0">source on GitHub</a></span><span>Built with dev3 Artifacts</span></footer>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="first-task/app.js" data-dev3-artifact-shell></script>
+</body>
+</html>

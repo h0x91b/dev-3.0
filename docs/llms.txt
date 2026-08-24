@@ -14,6 +14,7 @@
 
 - [README](https://github.com/h0x91b/dev-3.0#readme): the most complete and current documentation — philosophy, features, install, troubleshooting
 - [Landing page](https://dev3.h0x91b.com/): product overview with screenshots
+- [Your first task](https://dev3.h0x91b.com/first-task.html): screen-by-screen walkthrough of the guided first task, from an empty board to a merged and closed task
 - [Agent support matrix](https://github.com/h0x91b/dev-3.0/blob/main/agent-support-matrix.md): feature compatibility across AI agents
 - [CLI exit codes](https://github.com/h0x91b/dev-3.0/blob/main/docs/cli-exit-codes.md): documented `dev3` CLI exit-code contract
 

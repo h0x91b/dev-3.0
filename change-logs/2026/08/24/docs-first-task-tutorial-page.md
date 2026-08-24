@@ -1,0 +1,1 @@
+The website now carries a screen-by-screen walkthrough of the guided first task at `/first-task.html`: every step of the tour with a real screenshot, the before/after of the change the agent makes, and what happens after the task closes. Screenshots come from a live run against a brand-new profile, with usernames, machine names and absolute paths blurred out.
