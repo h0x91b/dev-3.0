@@ -477,14 +477,11 @@ describe("TaskCard", () => {
 
 			await user.click(screen.getByLabelText("Cancel"));
 
-			// happy-dom has no Web Audio, so the UI cannot own the sound and lets the
-			// backend push fan out. The ownership contract itself lives in
-			// __tests__/task-sounds.test.ts.
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "cancelled",
-				clientPlayedSound: false,
+				clientPlayedSound: true,
 			});
 		});
 
@@ -1157,12 +1154,11 @@ describe("TaskCard", () => {
 			});
 
 			await waitFor(() => {
-				// No Web Audio under happy-dom — see the note on the cancel case above.
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
 					taskId: "t1",
 					projectId: "p1",
 					newStatus: "completed",
-					clientPlayedSound: false,
+					clientPlayedSound: true,
 				});
 			});
 

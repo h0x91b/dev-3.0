@@ -3034,9 +3034,6 @@ describe("TaskInfoPanel", () => {
 		});
 	});
 
-	// `clientPlayedSound` is false throughout: happy-dom has no Web Audio, so the
-	// UI cannot own the chime and lets the backend push fan out instead. The
-	// ownership contract itself is covered by __tests__/task-sounds.test.ts.
 	describe("post-merge auto-complete", () => {
 		it("toggles manual completion from the task context bar", async () => {
 			const task = makeTask({ manualCompletion: false });
@@ -3193,7 +3190,7 @@ describe("TaskInfoPanel", () => {
 					taskId: "t1",
 					projectId: "p1",
 					newStatus: "completed",
-					clientPlayedSound: false,
+					clientPlayedSound: true,
 				});
 			});
 		});
@@ -3246,7 +3243,7 @@ describe("TaskInfoPanel", () => {
 					taskId: "t1",
 					projectId: "p1",
 					newStatus: "completed",
-					clientPlayedSound: false,
+					clientPlayedSound: true,
 				});
 			});
 		});

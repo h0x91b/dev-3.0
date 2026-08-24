@@ -128,25 +128,20 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		// Deliberately the same calls the real flows make, so a silent chime here
 		// means the pipeline is broken, not the trigger. The toast is raw
 		// diagnostics (like terminal output), not localized product copy.
-		//
-		// A macOS menu item reaches the renderer as a push message, NOT as a DOM
-		// gesture, so this probe cannot unlock audio by itself. Say so in the
-		// toast: reading "context running" as "sound works" is exactly the trap
-		// that cost an evening of debugging.
 		case "debug-play-sound-completed":
 		case "debug-play-sound-cancelled": {
 			const status = action === "debug-play-sound-completed" ? "completed" : "cancelled";
 			playTaskCompletionSound(status);
-			// Decoding is async on the first play, so a same-tick snapshot would
-			// always report zero buffers.
+			// `play()` resolves or rejects asynchronously, so a same-tick snapshot
+			// would report the previous attempt's verdict.
 			await new Promise((resolve) => setTimeout(resolve, 300));
 			const probe = taskSoundDiagnostics();
 			const outcome = !probe.enabled
 				? "skipped — setting off"
-				: probe.unlocked
-					? "play requested"
-					: "queued — no gesture yet, click anywhere in the window";
-			const line = `sound ${status}: ${outcome} · context ${probe.context} · buffers ${probe.buffers} · queued ${probe.queued}`;
+				: probe.blocked
+					? "refused by autoplay policy — queued until the next click"
+					: "playing";
+			const line = `sound ${status}: ${outcome} · queued ${probe.queued}`;
 			console.info("[menu][sound-probe]", line);
 			toast.info(line, { source: "menu" });
 			return;
