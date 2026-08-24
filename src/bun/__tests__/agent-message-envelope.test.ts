@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentReplyCommand, agentReplyRef, wrapAgentMessage } from "../../shared/agent-message-envelope";
+import { agentReplyCommand, agentReplyRef, seqIsShared, wrapAgentMessage } from "../../shared/agent-message-envelope";
 
 const PROJECT_A = "aaaaaaaa-1111-2222-3333-444455556666";
 const PROJECT_B = "bbbbbbbb-1111-2222-3333-444455556666";
@@ -36,10 +36,10 @@ describe("wrapAgentMessage", () => {
 		expect(out).toContain("<from-title>Fix &lt;div&gt; &amp; span</from-title>");
 	});
 
-	it("addresses a variant sender by task id — its seq is shared with its siblings", () => {
+	it("addresses a shared-seq sender by task id — the seq would be ambiguous", () => {
 		const out = wrapAgentMessage(
 			"hi",
-			{ taskId: "7a9e61f4-1111-2222-3333-444455556666", seq: 1575, variantIndex: 1 },
+			{ taskId: "7a9e61f4-1111-2222-3333-444455556666", seq: 1575, variantIndex: 1, seqShared: true },
 			PROJECT_A,
 		);
 		expect(out).toContain("<from-task>7a9e61f4-1111-2222-3333-444455556666</from-task>");
@@ -52,6 +52,24 @@ describe("wrapAgentMessage", () => {
 		expect(out).toContain('<reply-with>dev3 message --task seq:1575 "your reply"</reply-with>');
 	});
 
+	it("keeps the seq address for a lone variant survivor", () => {
+		// The reported case: a variant whose siblings were dropped kept its index
+		// forever and was handed out as a raw UUID for no reason.
+		const out = wrapAgentMessage(
+			"hi",
+			{ taskId: "824c6557-59be-47ca-ac0e-f7db974cfe08", seq: 490, variantIndex: 1, seqShared: false },
+			PROJECT_A,
+		);
+		expect(out).toContain("<from-task>seq:490</from-task>");
+		expect(out).toContain('<reply-with>dev3 message --task seq:490 "your reply"</reply-with>');
+		expect(out).not.toContain("824c6557");
+	});
+
+	it("falls back to the id for a record queued before seqShared existed", () => {
+		const out = wrapAgentMessage("hi", { taskId: "t-9", seq: 1575, variantIndex: 1 }, PROJECT_A);
+		expect(out).toContain('<reply-with>dev3 message --task t-9 "your reply"</reply-with>');
+	});
+
 	it("scopes the reply command when the sender sits on another board", () => {
 		const out = wrapAgentMessage("hi", { taskId: "t-1", seq: 1623, projectId: PROJECT_B }, PROJECT_A);
 		expect(out).toContain('<reply-with>dev3 message --task seq:1623 --project bbbbbbbb "your reply"</reply-with>');
@@ -59,11 +77,31 @@ describe("wrapAgentMessage", () => {
 });
 
 describe("agentReplyRef", () => {
-	it("prefers the seq handle, falls back to the id for a variant", () => {
-		expect(agentReplyRef({ id: "abc", seq: 42, variantIndex: null })).toBe("seq:42");
-		expect(agentReplyRef({ id: "abc", seq: 42 })).toBe("seq:42");
-		expect(agentReplyRef({ id: "abc", seq: 42, variantIndex: 0 })).toBe("abc");
-		expect(agentReplyRef({ id: "abc", seq: 42, variantIndex: 2 })).toBe("abc");
+	it("prefers the seq handle, falls back to the id only when the seq is shared", () => {
+		expect(agentReplyRef({ id: "abc", seq: 42 }, false)).toBe("seq:42");
+		expect(agentReplyRef({ id: "abc", seq: 42 }, true)).toBe("abc");
+	});
+});
+
+describe("seqIsShared", () => {
+	const task = { id: "t-1", seq: 42 };
+
+	it("is false for the only task answering to that seq", () => {
+		expect(seqIsShared(task, [task, { id: "t-2", seq: 43 }])).toBe(false);
+	});
+
+	it("is false for a lone variant survivor — its siblings were dropped", () => {
+		// The shape that produced a raw UUID before: variantIndex 3 with nobody left
+		// to collide with. Its seq resolves fine.
+		expect(seqIsShared({ id: "t-9", seq: 490 }, [{ id: "t-9", seq: 490 }])).toBe(false);
+	});
+
+	it("is true while a variant group still has more than one member", () => {
+		expect(seqIsShared(task, [task, { id: "t-2", seq: 42 }])).toBe(true);
+	});
+
+	it("is false against a board that no longer lists the task at all", () => {
+		expect(seqIsShared(task, [{ id: "t-2", seq: 43 }])).toBe(false);
 	});
 });
 
@@ -88,10 +126,10 @@ describe("agentReplyCommand", () => {
 		).toBe('dev3 message --task seq:42 "your reply"');
 	});
 
-	it("addresses a variant target by id and still scopes it", () => {
+	it("addresses a shared-seq target by id and still scopes it", () => {
 		expect(
 			agentReplyCommand({
-				target: { id: "t-9", seq: 7, variantIndex: 2, projectId: PROJECT_B },
+				target: { id: "t-9", seq: 7, seqShared: true, projectId: PROJECT_B },
 				fromProjectId: PROJECT_A,
 				quoted: "your reply",
 			}),

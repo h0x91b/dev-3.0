@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskPriority, TaskStatus, TaskType, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
-import { agentReplyCommand } from "../shared/agent-message-envelope";
+import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
@@ -248,13 +248,26 @@ async function resolveAgentMessageSource(
 		return null; // ambiguous/broken sender ref — deliver the raw text instead
 	}
 	if (!found || found.task.id === targetTaskId) return null;
+	// Whether `seq:<N>` still resolves on the SENDER's board decides the reply
+	// address, and only the board can answer that (see agentReplyRef).
+	const seqShared = await isSeqSharedOnBoard(found.project, found.task);
 	return {
 		taskId: found.task.id,
 		seq: found.task.seq,
 		variantIndex: found.task.variantIndex,
+		seqShared,
 		title: getTaskTitle(found.task),
 		projectId: found.task.projectId,
 	};
+}
+
+/** {@link seqIsShared} against a project's live task list; pessimistic if it cannot be read. */
+async function isSeqSharedOnBoard(project: Project, task: Task): Promise<boolean> {
+	try {
+		return seqIsShared(task, await data.loadTasks(project));
+	} catch {
+		return task.variantIndex != null;
+	}
 }
 
 /** Result of the agent-initiated launch approval flow. */
@@ -346,6 +359,10 @@ async function requestAgentLaunchApproval(opts: {
 	// far longer than the requesting agent should sit blocked on a socket.
 	void deliverLaunchHandoff({ projectId: project.id, childTaskId: task.id, source: requester });
 
+	// Read the board AFTER the launch: launching with variants mints the siblings
+	// that decide whether `seq:<N>` is still an unambiguous address.
+	const launchedSeqShared = await isSeqSharedOnBoard(project, launched);
+
 	return {
 		approved: true,
 		task: launched,
@@ -354,7 +371,7 @@ async function requestAgentLaunchApproval(opts: {
 		// The requester may live on another board (it launched a task in a different
 		// project), and then the bare `--task` form would resolve against its own.
 		replyCommand: agentReplyCommand({
-			target: launched,
+			target: { ...launched, seqShared: launchedSeqShared },
 			fromProjectId: requester.projectId ?? launched.projectId,
 			quoted: "your message",
 		}),

@@ -2372,12 +2372,15 @@ export interface AgentMessageSource {
 	taskId: string;
 	/** Sender's stable `seq` — the reply address (`--task seq:<N>`) unless it is a variant. */
 	seq: number;
-	/**
-	 * Sender's variant index, when it is one attempt of a variant group. A group
-	 * shares one `seq`, so the reply address falls back to `taskId` — see
-	 * `agentReplyRef`.
-	 */
+	/** Sender's variant index, when it is one attempt of a variant group. */
 	variantIndex?: number | null;
+	/**
+	 * Another live task on the sender's board still answers to the same `seq`, so
+	 * `--task seq:<N>` would be rejected as ambiguous and the reply address has to
+	 * be the raw id. Counted at resolve time — see `seqIsShared`. Absent on a
+	 * record queued before this field existed.
+	 */
+	seqShared?: boolean;
 	/** Sender's title, for human-readable context in the envelope. */
 	title?: string;
 	/**
