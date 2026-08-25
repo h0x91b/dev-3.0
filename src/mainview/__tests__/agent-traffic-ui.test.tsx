@@ -175,6 +175,11 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 		expect(sheetRow.className).toContain("py-3");
 		expect(sheetRow.className).toContain("rounded-lg");
 		expect(sheetRow.className).toContain("text-sm");
+		// `.touch-actions` centres these rows itself; laying the row out by hand is
+		// what left it the one left-aligned item in a column of centred ones.
+		expect(sheetRow.className).not.toContain("flex-1");
+		expect(sheetRow.className).not.toMatch(/\bflex\b/);
+		expect(sheetRow.className).not.toContain("text-left");
 	});
 
 	// Ten unread messages and forty are the same decision, so the badge stops

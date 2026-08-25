@@ -163,10 +163,14 @@ export default function AgentTrafficIndicator({
 					type="button"
 					aria-label={accessibleName}
 					data-testid="agent-traffic-sheet-row"
-					className="w-full text-left px-2 py-3 rounded-lg text-fg-2 hover:bg-elevated hover:text-fg transition-colors text-sm active:scale-[0.96] flex items-center gap-2 min-h-[44px]"
+					// No `flex` and no `flex-1`: `.touch-actions` already makes every row in
+					// this sheet an inline-flex box that centres its content, and the peers
+					// rely on exactly that. Laying the row out by hand is what made it the
+					// one left-aligned item in a column of centred ones.
+					className="w-full px-2 py-3 gap-2 rounded-lg text-fg-2 hover:bg-elevated hover:text-fg transition-colors text-sm active:scale-[0.96]"
 					{...flyout.triggerProps}
 				>
-					<span className="flex-1">{t("traffic.label")}</span>
+					<span>{t("traffic.label")}</span>
 					{unread > 0 && (
 						<span
 							data-testid="agent-traffic-menu-badge"
