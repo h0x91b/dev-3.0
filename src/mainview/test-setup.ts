@@ -16,12 +16,13 @@ afterEach(() => {
 // desktop keymap (e.g. ⌘Q, zoom) set the flag themselves AND mock rpc — see
 // App.test.tsx / zoom.test.ts / KeyboardShortcutsModal.test.tsx.
 
-// Node 26 exposes an experimental global `localStorage` that is undefined unless
-// --localstorage-file is passed, and it shadows happy-dom's on both globalThis
-// and window (sessionStorage is unaffected). Substitute an in-memory Storage —
-// setupFiles run per test file, so each file gets a fresh, isolated store, which
-// is the isolation happy-dom's own storage provided.
-if (typeof globalThis.localStorage === "undefined") {
+// Node's experimental global `localStorage` shadows happy-dom's on both
+// globalThis and window (sessionStorage is unaffected). Without
+// --localstorage-file it is unusable, but not always absent: on Node 25.6 it is
+// an object whose methods are undefined, so probe for a working Storage rather
+// than for undefined. Substitute an in-memory one — setupFiles run per test
+// file, so each file gets a fresh, isolated store.
+if (typeof globalThis.localStorage?.getItem !== "function") {
 	const store = new Map<string, string>();
 	const storage: Storage = {
 		get length() {
