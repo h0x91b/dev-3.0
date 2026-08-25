@@ -36,6 +36,18 @@
       white-space: nowrap;
     }
     .pair { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
+    /* The point of the page: the same tour runs live in the app. */
+    .readahead {
+      margin-bottom: 1rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid rgb(var(--dev3-accent) / .35);
+      border-radius: 12px;
+      background: rgb(var(--dev3-accent) / .07);
+    }
+    .readahead p { margin: 0; }
+    .readahead p + p { margin-top: 0.6rem; color: rgb(var(--dev3-text-secondary)); }
+    .closing { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+    .closing a { font-weight: 600; }
     /* The shell styles buttons, not links, so the way back needs its own shape. */
     .backlink {
       display: inline-flex;
@@ -85,6 +97,15 @@
           <h2 class="section-title">What this is</h2>
           <div class="section-copy">One task, done for real, with nothing of yours involved</div>
         </div>
+      </div>
+      <div class="readahead">
+        <p><strong>You can do this tour instead of reading it.</strong> dev-3.0 runs exactly these
+        eleven steps live on its own, the first time you open it — a card rings the next button in the
+        real app and waits for you. Nothing here is a mock-up of that; it is a recording of one such
+        run.</p>
+        <p>So this page is for reading <em>ahead</em>: if you would rather see what using dev-3.0 feels
+        like before installing anything, this is that. If it is already installed, close the tab and
+        press <em>Try a sandbox repo</em> instead.</p>
       </div>
       <p class="prose">
         dev-3.0 runs AI coding agents on git repositories. Every task gets its own branch, its own
@@ -318,6 +339,23 @@
 		</div>
     </section>
 
+    <section class="card section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">Now do it for real</h2>
+          <div class="section-copy">The tour is waiting on the first screen — you do not have to remember any of this</div>
+        </div>
+      </div>
+      <p class="prose">dev-3.0 is free and open source, and the sandbox above is what it offers you on
+      the first launch. On macOS: <code>brew tap h0x91b/dev3 &amp;&amp; brew install --cask dev3</code>.</p>
+      <p class="prose closing">
+        <a href="https://github.com/h0x91b/dev-3.0/releases/latest">Download the latest release</a>
+        <span class="muted">·</span>
+        <a href="./">What dev-3.0 is</a>
+        <span class="muted">·</span>
+        <a href="https://github.com/h0x91b/dev-3.0#readme">Install guide and docs</a>
+      </p>
+    </section>
 
     <footer class="dev3-footer"><span><strong>dev-3.0</strong> · <a href="./">dev3.h0x91b.com</a> · <a href="https://github.com/h0x91b/dev-3.0">source on GitHub</a></span><span>Built with dev3 Artifacts</span></footer>
   </main>

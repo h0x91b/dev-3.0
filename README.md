@@ -272,6 +272,10 @@ different bet. Pick by your goal, not a feature checklist:
 
 ## Quick start
 
+📖 **Tutorial — [Your first task, screen by screen](https://dev3.h0x91b.com/first-task.html).** The
+guided tour dev-3.0 runs on its own first launch, written out with screenshots: describe a task, watch
+an agent do it in its own worktree, read the diff, merge, close. Nothing to install to read it.
+
 🤖 **The fastest way** — paste this into Claude Code, Codex, Gemini CLI, whatever you already
 run:
 
@@ -326,6 +330,7 @@ rate-limit tracking and skill directories differ per agent — the full grid is 
 
 | | |
 |---|---|
+| [Your first task](https://dev3.h0x91b.com/first-task.html) | The guided first-run tour, screen by screen — the fastest way to see what using dev-3.0 feels like |
 | [Install guide](docs/install.md) | Every install path, tmux versions on Linux, cloud-VM caveats, build from source |
 | [Remote access](docs/remote-access.md) | `dev3 remote` in depth — tunnels, systemd, sessions, exposed ports |
 | [Troubleshooting](docs/troubleshooting.md) | `dev3 doctor`, disk reclamation, Full Disk Access, terminal colors and agent themes |
