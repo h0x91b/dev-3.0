@@ -347,6 +347,39 @@ export function toggleZoom(tree: SplitTree, paneId: string = tree.activePaneId):
 	return tree.zoomedPaneId === paneId ? unzoomPane(tree) : zoomPane(tree, paneId);
 }
 
+/**
+ * Exchange the positions of two panes. Only the pane ids move — every split, ratio
+ * and boundary id stays put, so a swap never reshapes the layout. Active and zoomed
+ * panes are identities, not positions, so they are deliberately left alone: the pane
+ * the user is looking at is still the pane they are looking at, now somewhere else.
+ */
+export function swapPanes(tree: SplitTree, a: string, b: string): SplitTree {
+	if (a === b) return tree;
+	const ids = listPaneIds(tree);
+	if (!ids.includes(a) || !ids.includes(b)) return tree;
+	const swapNode = (node: SplitNode): SplitNode => {
+		if (node.type === "pane") {
+			if (node.id === a) return { ...node, id: b };
+			if (node.id === b) return { ...node, id: a };
+			return node;
+		}
+		return { ...node, first: swapNode(node.first), second: swapNode(node.second) };
+	};
+	return { ...tree, root: swapNode(tree.root) };
+}
+
+/**
+ * The pane one step after `paneId` in layout order, wrapping at both ends — the
+ * partner a "swap with next / previous" step means. Null when there is nobody to swap with.
+ */
+export function neighbourPaneId(tree: SplitTree, paneId: string, step: "next" | "prev"): string | null {
+	const ids = listPaneIds(tree);
+	const index = ids.indexOf(paneId);
+	if (index < 0 || ids.length < 2) return null;
+	const delta = step === "next" ? 1 : -1;
+	return ids[(index + delta + ids.length) % ids.length];
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

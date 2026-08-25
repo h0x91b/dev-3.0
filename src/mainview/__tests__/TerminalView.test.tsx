@@ -603,6 +603,48 @@ describe("TerminalView – keymap shortcuts", () => {
 		target.remove();
 	});
 
+	it("Shift+Cmd+Enter toggles pane zoom", async () => {
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter", metaKey: true, shiftKey: true, bubbles: true }));
+		});
+
+		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "zoom", mode: "toggle" } });
+		target.remove();
+	});
+
+	it("Shift+Cmd+. and Shift+Cmd+, swap the pane forward and back", async () => {
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "Period", metaKey: true, shiftKey: true, bubbles: true }));
+		});
+		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "swapStep", step: "next" } });
+
+		mockedTaskPaneAction.mockClear();
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "Comma", metaKey: true, shiftKey: true, bubbles: true }));
+		});
+		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "swapStep", step: "prev" } });
+		target.remove();
+	});
+
+	it("plain Enter and plain Cmd+, are left alone — they are the shell's and Settings'", async () => {
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "Enter", bubbles: true }));
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "Comma", metaKey: true, bubbles: true }));
+		});
+
+		expect(mockedTaskPaneAction).not.toHaveBeenCalled();
+		target.remove();
+	});
+
 	it("does NOT fire when terminal container does not have focus", async () => {
 		await renderAndSetup();
 		// Do NOT focus inside the container — activeElement remains document.body

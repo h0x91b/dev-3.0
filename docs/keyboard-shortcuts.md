@@ -24,6 +24,8 @@ this page and the website all read from it.
 | Find in the focused terminal | ⌘F | Ctrl+Shift+F |
 | Find in an HTML artifact | ⌘F | Ctrl+F |
 | Split pane vertically / horizontally | ⌘D / ⇧⌘D | Ctrl+Shift+E / Ctrl+Shift+O |
+| Zoom the focused pane (toggle) | ⇧⌘Enter | Ctrl+Shift+Enter |
+| Swap pane with previous / next | ⇧⌘, / ⇧⌘. | Ctrl+Shift+, / Ctrl+Shift+. |
 | Close pane / new tmux window | ⌘W / ⌘T | Ctrl+Shift+W / Ctrl+Shift+T |
 | Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
 | Previous / next live variant | ⇧⌘[ / ⇧⌘] | Ctrl+Shift+[ / Ctrl+Shift+] |

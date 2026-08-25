@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useT } from "../../i18n";
+import { useT, type TFunction } from "../../i18n";
+import { shortcutById, shortcutKeysFor } from "../../keymap";
 import { api } from "../../rpc";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
@@ -37,6 +38,8 @@ type PaneAction =
 	| "splitV"
 	| "newWindow"
 	| "zoom"
+	| "swapNext"
+	| "swapPrev"
 	| "nextLayout"
 	| "close"
 	| "layoutTiled"
@@ -49,6 +52,21 @@ type LayoutAction = "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH
 
 /** Reconciliation only: every action delivers its own state through the bus. */
 const PANE_STATE_POLL_MS = 3000;
+
+/**
+ * Swap lives in the layout menu rather than the bar: the bar is already at its
+ * four-visible budget, and swap is an occasional rearrange, not a per-minute action.
+ */
+const SWAP_ROWS: { action: PaneAction; descKey: Parameters<TFunction>[0]; shortcutId: string }[] = [
+	{ action: "swapPrev", descKey: "panes.swapPrev", shortcutId: "pane-swap-prev" },
+	{ action: "swapNext", descKey: "panes.swapNext", shortcutId: "pane-swap-next" },
+];
+
+/** The app-level combo, whatever the user rebound it to. Empty when it has none. */
+function swapShortcutKeys(id: string): string {
+	const spec = shortcutById(id);
+	return spec ? shortcutKeysFor(spec) : "";
+}
 
 export default function TaskPaneControls({ taskId, compact = false }: TaskPaneControlsProps) {
 	const t = useT();
@@ -167,6 +185,8 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 			splitH: { kind: "splitH", paneId: target },
 			splitV: { kind: "splitV", paneId: target },
 			zoom: { kind: "zoom", mode: "toggle", paneId: target },
+			swapNext: { kind: "swapStep", step: "next", paneId: target },
+			swapPrev: { kind: "swapStep", step: "prev", paneId: target },
 			nextLayout: { kind: "layoutCycle" },
 			layoutTiled: { kind: "layoutPreset", preset: "tiled" },
 			layoutEvenH: { kind: "layoutPreset", preset: "evenH" },
@@ -218,6 +238,7 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 	// clicked: they all rewrite the same tree.
 	const canSplit = supportsSplit && !actionBusy;
 	const canZoom = !actionBusy;
+	const canSwap = paneState !== null && taskPaneSupports(paneState, "swap") && !actionBusy;
 	const canClose = !actionBusy;
 	const layoutDisabled = actionBusy;
 
@@ -399,6 +420,29 @@ export default function TaskPaneControls({ taskId, compact = false }: TaskPaneCo
 							</button>
 						);
 					})}
+					{canSwap && (
+						<>
+							<div className="my-1 border-t border-edge" />
+							<div className="text-xs font-semibold text-fg px-1.5 pt-1 pb-2">{t("panes.swapMenuTitle")}</div>
+							{SWAP_ROWS.map(({ action, descKey, shortcutId }) => (
+								<button
+									key={action}
+									role="menuitem"
+									onClick={(event) => {
+										setLayoutOpen(false);
+										setLayoutVisible(false);
+										void handleAction(action)(event);
+									}}
+									className="tmux-anim w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
+								>
+									<span className="text-xs flex-1 text-fg-2">{t(descKey)}</span>
+									<kbd className="font-mono text-dense text-fg-muted flex-shrink-0">
+										{swapShortcutKeys(shortcutId)}
+									</kbd>
+								</button>
+							))}
+						</>
+					)}
 				</div>,
 				document.body,
 			)}

@@ -359,6 +359,9 @@ describe("command methods build the documented argv", () => {
 		["selectLayout", (c) => c.selectLayout("dev3-a", "tiled"), ["select-layout", "-t", "dev3-a", "tiled"]],
 		["nextLayout", (c) => c.nextLayout("dev3-a"), ["next-layout", "-t", "dev3-a"]],
 		["toggleZoom", (c) => c.toggleZoom("dev3-a"), ["resize-pane", "-Z", "-t", "dev3-a"]],
+		// -D/-U and no -d: exactly what tmux's own `}` / `{` run, so focus follows the pane.
+		["swapPaneStep next", (c) => c.swapPaneStep("dev3-a", "next"), ["swap-pane", "-D", "-t", "dev3-a"]],
+		["swapPaneStep prev", (c) => c.swapPaneStep("dev3-a", "prev"), ["swap-pane", "-U", "-t", "dev3-a"]],
 		["killPane", (c) => c.killPane("%4"), ["kill-pane", "-t", "%4"]],
 		["sendKeys", (c) => c.sendKeys("%4", ["Left", "Left"]), ["send-keys", "-t", "%4", "Left", "Left"]],
 		["sendKeys literal", (c) => c.sendKeys("%4", ["echo hi\r"], { literal: true }), ["send-keys", "-l", "-t", "%4", "echo hi\r"]],

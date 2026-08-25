@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 	tmuxSelectPane: vi.fn(),
 	tmuxSelectPaneDirection: vi.fn(),
 	tmuxToggleZoom: vi.fn(),
+	tmuxSwapPaneStep: vi.fn(),
 	tmuxSelectLayout: vi.fn(),
 	tmuxNextLayout: vi.fn(),
 	tmuxResizePaneDirection: vi.fn(),
@@ -76,6 +77,7 @@ vi.mock("../../tmux", () => ({
 		selectPane: mocks.tmuxSelectPane,
 		selectPaneDirection: mocks.tmuxSelectPaneDirection,
 		toggleZoom: mocks.tmuxToggleZoom,
+		swapPaneStep: mocks.tmuxSwapPaneStep,
 		selectLayout: mocks.tmuxSelectLayout,
 		nextLayout: mocks.tmuxNextLayout,
 		resizePaneDirection: mocks.tmuxResizePaneDirection,
@@ -186,6 +188,7 @@ beforeEach(() => {
 	mocks.tmuxSelectPane.mockResolvedValue(undefined);
 	mocks.tmuxSelectPaneDirection.mockResolvedValue(undefined);
 	mocks.tmuxToggleZoom.mockResolvedValue(undefined);
+	mocks.tmuxSwapPaneStep.mockResolvedValue(undefined);
 	mocks.tmuxSelectLayout.mockResolvedValue(undefined);
 	mocks.tmuxNextLayout.mockResolvedValue(undefined);
 	mocks.tmuxResizePaneDirection.mockResolvedValue(undefined);
@@ -349,6 +352,15 @@ describe("taskPaneAction (tmux)", () => {
 	it("zoom (toggle) calls toggleZoom", async () => {
 		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom" } });
 		expect(mocks.tmuxToggleZoom).toHaveBeenCalled();
+	});
+
+	it("swapStep hands the window and the step to tmux", async () => {
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
+		expect(mocks.tmuxSwapPaneStep).toHaveBeenCalledWith("dev3-aaaaaaaa", "next", expect.anything());
+
+		mocks.tmuxSwapPaneStep.mockClear();
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "prev" } });
+		expect(mocks.tmuxSwapPaneStep).toHaveBeenCalledWith("dev3-aaaaaaaa", "prev", expect.anything());
 	});
 
 	it("zoom:on does not toggle if already zoomed", async () => {
@@ -524,6 +536,30 @@ describe("taskPaneAction (native)", () => {
 		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "zoom", mode: "off" } });
 		const calledTree = mocks.setNativeTaskPaneLayout.mock.calls[0][1];
 		expect(calledTree.zoomedPaneId).toBeNull();
+	});
+
+	it("swapStep trades the active pane with its neighbour and wraps", async () => {
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
+		const tree = mocks.setNativeTaskPaneLayout.mock.calls[0][1];
+		// pane-1 was left of pane-2; after the swap it is on the right.
+		expect(tree.root.first.id).toBe("pane-2");
+		expect(tree.root.second.id).toBe("pane-1");
+		// Splits and ratios are untouched — a swap must not reshape the layout.
+		expect(tree.root.id).toBe("split-1");
+		expect(tree.root.ratio).toBe(0.5);
+		// Active pane is an identity, not a position: still pane-1, now on the right.
+		expect(tree.activePaneId).toBe("pane-1");
+
+		// prev wraps to the same partner in a two-pane tree.
+		mocks.setNativeTaskPaneLayout.mockClear();
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "prev" } });
+		expect(mocks.setNativeTaskPaneLayout.mock.calls[0][1].root.first.id).toBe("pane-2");
+	});
+
+	it("swapStep with a single pane changes nothing", async () => {
+		mocks.nativeTaskPanesState.mockResolvedValue(makeSingleNativeState());
+		await taskPanesHandlers.taskPaneAction({ taskId: TASK_ID, action: { kind: "swapStep", step: "next" } });
+		expect(mocks.setNativeTaskPaneLayout).not.toHaveBeenCalled();
 	});
 
 	it("close with 1 pane and no force returns unchanged state (refuses)", async () => {

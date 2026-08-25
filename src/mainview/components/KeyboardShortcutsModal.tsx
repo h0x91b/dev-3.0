@@ -71,7 +71,15 @@ function buildAppSections(t: T, mac: boolean, remote: boolean): Section[] {
  * what someone opening this from the terminal toolbar is looking for.
  */
 function buildTmuxSections(t: T, mac: boolean, remote: boolean): Section[] {
-	const paneIds = ["pane-split-vertical", "pane-split-horizontal", "pane-close", "tmux-new-window"];
+	const paneIds = [
+		"pane-split-vertical",
+		"pane-split-horizontal",
+		"pane-zoom",
+		"pane-swap-prev",
+		"pane-swap-next",
+		"pane-close",
+		"tmux-new-window",
+	];
 	const paneRows = paneIds
 		.map((id) => shortcutById(id))
 		.filter((spec): spec is ShortcutSpec => spec !== undefined)

@@ -464,6 +464,15 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["resize-pane", "-Z", "-t", target], opts);
 	}
 
+	/**
+	 * `swap-pane -D/-U -t` — trade places with the next/previous pane, exactly what
+	 * tmux's own `}` and `{` run. No `-d`, so focus travels with the pane.
+	 */
+	swapPaneStep(target: string, step: "next" | "prev", opts?: CommandOpts): Promise<void> {
+		const flag = step === "next" ? "-D" : "-U";
+		return this.runCommand(opts?.socket, ["swap-pane", flag, "-t", target], opts);
+	}
+
 	/** `select-pane -L/-R/-U/-D -t` — move focus by direction. */
 	selectPaneDirection(target: string, direction: "left" | "right" | "up" | "down", opts?: CommandOpts): Promise<void> {
 		const flag = { left: "-L", right: "-R", up: "-U", down: "-D" }[direction];

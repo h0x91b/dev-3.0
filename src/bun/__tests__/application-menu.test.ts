@@ -127,6 +127,10 @@ describe("buildApplicationMenu", () => {
 		expect(findItemByAction(menu, MENU_ACTIONS.termClosePane)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.termLayoutTiled)?.enabled).toBe(true);
 		expect(findItemByAction(menu, MENU_ACTIONS.termLayoutCycle)?.enabled).toBe(true);
+		// Live since `swapStep` landed on both backends — a working hotkey next to a
+		// greyed-out menu item of the same name is a lie about what the app can do.
+		expect(findItemByAction(menu, MENU_ACTIONS.termSwapNext)?.enabled).toBe(true);
+		expect(findItemByAction(menu, MENU_ACTIONS.termSwapPrev)?.enabled).toBe(true);
 	});
 
 	it("greys out tmux pane operations when no terminal is visible", () => {
@@ -153,7 +157,10 @@ describe("buildApplicationMenu", () => {
 	it("renders the mark/swap pane roadmap as disabled until follow-up", () => {
 		const menu = buildApplicationMenu() as AnyMenuItem[];
 		expect(findItemByAction(menu, MENU_ACTIONS.termMarkPane)?.enabled).toBe(false);
+		// Still roadmap: neither a marked pane nor rotation exists in the neutral
+		// pane vocabulary, so nothing backs them.
 		expect(findItemByAction(menu, MENU_ACTIONS.termSwapMarked)?.enabled).toBe(false);
+		expect(findItemByAction(menu, MENU_ACTIONS.termRotateCw)?.enabled).toBe(false);
 		expect(findItemByAction(menu, MENU_ACTIONS.termSyncPanes)?.enabled).toBe(false);
 	});
 

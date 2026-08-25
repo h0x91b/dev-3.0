@@ -1,6 +1,9 @@
 const panes = {
 	"panes.layoutLabel": "Макет",
 	"panes.chooseLayout": "Выбрать раскладку панелей",
+	"panes.swapMenuTitle": "Поменять панели местами",
+	"panes.swapNext": "Поменять со следующей панелью",
+	"panes.swapPrev": "Поменять с предыдущей панелью",
 	"panes.unzoom": "Убрать зум",
 	"panes.actionFailed": "Действие с панелью не удалось: {error}",
 	"panes.nativeHintsTitle": "Быстрые команды",

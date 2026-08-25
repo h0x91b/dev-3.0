@@ -1,6 +1,9 @@
 const panes = {
 	"panes.layoutLabel": "Layout",
 	"panes.chooseLayout": "Choose pane layout",
+	"panes.swapMenuTitle": "Swap Panes",
+	"panes.swapNext": "Swap with next pane",
+	"panes.swapPrev": "Swap with previous pane",
 	"panes.unzoom": "Unzoom",
 	"panes.actionFailed": "Pane action failed: {error}",
 	"panes.nativeHintsTitle": "Terminal Shortcuts",

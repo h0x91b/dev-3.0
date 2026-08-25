@@ -253,9 +253,10 @@ const NOT_YET_IMPLEMENTED: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	MENU_ACTIONS.termSelectRight,
 	MENU_ACTIONS.termChoosePane,
 	MENU_ACTIONS.termMarkPane,
+	// termSwapNext / termSwapPrev are absent on purpose: `taskPaneAction` kind
+	// `swapStep` backs them on both backends. `termSwapMarked` and the rotates stay
+	// disabled — neither a marked pane nor rotation exists in the neutral vocabulary.
 	MENU_ACTIONS.termSwapMarked,
-	MENU_ACTIONS.termSwapNext,
-	MENU_ACTIONS.termSwapPrev,
 	MENU_ACTIONS.termRotateCw,
 	MENU_ACTIONS.termRotateCcw,
 	MENU_ACTIONS.termResizeWiden,

@@ -14,6 +14,7 @@ import { initAutoFullscreen } from "./fullscreen";
 import { initKeyboardLock } from "./keyboard-lock";
 import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
+import { bootstrapTerminalFont } from "./terminal-font";
 import { startViewportDiagnostics } from "./viewport-diagnostics";
 import { startRendererHeartbeat } from "./renderer-heartbeat";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
@@ -102,6 +103,10 @@ initFeatureFlags();
 
 // Load saved terminal scroll speed into cache before terminals mount
 bootstrapScrollSpeed();
+
+// Same, for the terminal font — the first terminal must be built with it, because
+// cell metrics are measured at construction.
+bootstrapTerminalFont();
 
 // Mirror the page's own geometry into the backend log — the other half of the
 // display-change diagnostic the backend writes (see viewport-diagnostics.ts).

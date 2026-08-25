@@ -43,9 +43,11 @@ import {
 	focusPane,
 	getPaneRects,
 	listPaneIds,
+	neighbourPaneId,
 	restoreSplitTree,
 	resizeSplit,
 	setSplitRatio,
+	swapPanes,
 	toggleZoom,
 	unzoomPane,
 	zoomPane,
@@ -133,7 +135,7 @@ async function tmuxTaskPaneState(taskId: string): Promise<TaskPaneState> {
 		"newWindow",
 	];
 	if (count > 1) {
-		capabilities.push("focus", "focusDirection", "close", "closePick", "layoutPreset", "layoutCycle");
+		capabilities.push("focus", "focusDirection", "swap", "close", "closePick", "layoutPreset", "layoutCycle");
 	} else if (count === 1) {
 		capabilities.push("close");
 	}
@@ -226,7 +228,7 @@ function nativeStateToTaskPaneState(
 	const count = panes.length;
 	const capabilities: TaskPaneCapability[] = ["split", "zoom", "resize"];
 	if (count > 1) {
-		capabilities.push("focus", "focusDirection", "close", "closePick", "layoutPreset", "layoutCycle", "resizeSplit");
+		capabilities.push("focus", "focusDirection", "swap", "close", "closePick", "layoutPreset", "layoutCycle", "resizeSplit");
 	} else if (count === 1) {
 		capabilities.push("close");
 	}
@@ -349,6 +351,12 @@ async function tmuxPaneAction(taskId: string, action: TaskPaneAction): Promise<T
 			}
 			break;
 		}
+		case "swapStep": {
+			// bestEffort: a single-pane window has nobody to trade with and tmux says so
+			// rather than no-opping — that is not a failure worth surfacing.
+			await tmux.swapPaneStep(tmuxSession, action.step, { socket, bestEffort: true });
+			break;
+		}
 		case "close": {
 			if (action.paneId) {
 				await tmuxKillPane({ taskId, paneId: action.paneId, force: action.force });
@@ -444,6 +452,13 @@ async function nativePaneAction(taskId: string, action: TaskPaneAction): Promise
 				newTree = unzoomPane(tree);
 			}
 			updatedState = await setNativeTaskPaneLayout(taskId, newTree);
+			break;
+		}
+		case "swapStep": {
+			const mover = action.paneId ?? activePaneId;
+			const partner = mover ? neighbourPaneId(tree, mover, action.step) : null;
+			if (!partner) break;
+			updatedState = await setNativeTaskPaneLayout(taskId, swapPanes(tree, mover, partner));
 			break;
 		}
 		case "close": {

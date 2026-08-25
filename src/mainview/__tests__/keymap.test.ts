@@ -17,7 +17,7 @@ import {
 	slotBindings,
 	slotDefaults,
 } from "../keymap";
-import { isControlCharBinding, serializeBinding } from "../keymap-bindings";
+import { bindingsEqual, isControlCharBinding, serializeBinding } from "../keymap-bindings";
 import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import { setShortcutOverrides } from "../keymap-store";
 import en from "../i18n/translations/en";
@@ -298,7 +298,15 @@ describe("user overrides", () => {
 });
 
 describe("terminal pane shortcuts", () => {
-	const paneIds = ["pane-close", "pane-split-vertical", "pane-split-horizontal", "tmux-new-window"];
+	const paneIds = [
+		"pane-close",
+		"pane-split-vertical",
+		"pane-split-horizontal",
+		"pane-zoom",
+		"pane-swap-next",
+		"pane-swap-prev",
+		"tmux-new-window",
+	];
 
 	it("are registered as always-on terminal-group shortcuts", () => {
 		for (const id of paneIds) {
@@ -312,6 +320,28 @@ describe("terminal pane shortcuts", () => {
 		expect(shortcutKeysFor(specFor("pane-split-vertical"), true)).toBe("⌘D");
 		expect(shortcutKeysFor(specFor("pane-split-horizontal"), true)).toBe("⇧⌘D");
 		expect(shortcutKeysFor(specFor("tmux-new-window"), true)).toBe("⌘T");
+		expect(shortcutKeysFor(specFor("pane-zoom"), true)).toBe("⇧⌘Enter");
+		expect(shortcutKeysFor(specFor("pane-swap-prev"), true)).toBe("⇧⌘,");
+		expect(shortcutKeysFor(specFor("pane-swap-next"), true)).toBe("⇧⌘.");
+	});
+
+	it("zoom and swap do not shadow variant cycling or Settings", () => {
+		// ⇧⌘[ / ⇧⌘] cycle variants and ⌘, opens Settings. A terminal holds focus most
+		// of the time here, so a terminal-group shortcut sitting on those combos would
+		// silently kill them — different conflict groups would NOT have caught it.
+		const stolen = [
+			{ code: "BracketLeft", mods: ["Mod", "Shift"] },
+			{ code: "BracketRight", mods: ["Mod", "Shift"] },
+			{ code: "Comma", mods: ["Mod"] },
+		] as const;
+		for (const id of ["pane-zoom", "pane-swap-next", "pane-swap-prev"]) {
+			for (const binding of bindingsFor(specFor(id))) {
+				expect(
+					stolen.some((s) => bindingsEqual(binding, { code: s.code, mods: [...s.mods] })),
+					`${id} took ${serializeBinding(binding)} from an app-level shortcut`,
+				).toBe(false);
+			}
+		}
 	});
 
 	it("do not compete with the app-level combo space", () => {

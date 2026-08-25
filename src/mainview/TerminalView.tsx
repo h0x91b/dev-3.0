@@ -17,6 +17,7 @@ import {
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getEffectiveZoom, ZOOM_CHANGED_EVENT } from "./zoom";
+import { getTerminalFontSize, terminalFontStack, TERMINAL_FONT_CHANGED_EVENT } from "./terminal-font";
 import {
 	getTerminalBidiEnabled,
 	TERMINAL_BIDI_CHANGED_EVENT,
@@ -93,7 +94,10 @@ const LIGHT_TERMINAL_THEME = {
 	brightWhite: "#d1d5da",
 };
 
-const TERMINAL_BASE_FONT_SIZE = 14;
+/** The user's terminal font size, scaled by app zoom — what ghostty is told. */
+function scaledTerminalFontSize(zoom: number = getEffectiveZoom()): number {
+	return Math.round(getTerminalFontSize() * zoom);
+}
 /**
  * A terminal teardown longer than this blocked the renderer for that long: every
  * dispose on the path is synchronous. One frame at 60 Hz is 16 ms, so 50 ms is
@@ -633,8 +637,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// Preload bundled font before creating the terminal.
 		// Canvas rendering doesn't trigger CSS @font-face loading, so the
 		// font must be ready before ghostty-web measures it for cell metrics.
-		const TERMINAL_FONT = "'JetBrainsMono Nerd Font Mono', 'SF Mono', 'Menlo', monospace";
-		document.fonts.load(`${TERMINAL_BASE_FONT_SIZE}px ${TERMINAL_FONT}`).then(() => {
+		const TERMINAL_FONT = terminalFontStack();
+		document.fonts.load(`${getTerminalFontSize()}px ${TERMINAL_FONT}`).then(() => {
 			console.log("[TerminalView] Font preloaded, starting setup");
 			if (!disposed) setup();
 		}).catch(() => {
@@ -652,9 +656,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 
 			console.log("[TerminalView] Creating ghostty-web Terminal instance...");
-			const zoomLevel = getEffectiveZoom();
 			const term = new Terminal({
-				fontSize: Math.round(TERMINAL_BASE_FONT_SIZE * zoomLevel),
+				fontSize: scaledTerminalFontSize(),
 				fontFamily: TERMINAL_FONT,
 				cursorBlink: true,
 				cursorStyle: "bar",
@@ -2130,6 +2133,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			if (matchesShortcut(e, "pane-close", ctx)) pane({ kind: "close" });
 			else if (matchesShortcut(e, "pane-split-vertical", ctx)) pane({ kind: "splitV" });
 			else if (matchesShortcut(e, "pane-split-horizontal", ctx)) pane({ kind: "splitH" });
+			else if (matchesShortcut(e, "pane-zoom", ctx)) pane({ kind: "zoom", mode: "toggle" });
+			else if (matchesShortcut(e, "pane-swap-next", ctx)) pane({ kind: "swapStep", step: "next" });
+			else if (matchesShortcut(e, "pane-swap-prev", ctx)) pane({ kind: "swapStep", step: "prev" });
 			else if (matchesShortcut(e, "tmux-new-window", ctx)) {
 				fire(() => void api.request.tmuxNewWindow({ taskId }).catch(() => {}));
 			}
@@ -2227,13 +2233,34 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			const term = termRef.current;
 			if (term) {
 				try {
-					term.options.fontSize = Math.round(TERMINAL_BASE_FONT_SIZE * (e as CustomEvent).detail);
+					term.options.fontSize = scaledTerminalFontSize((e as CustomEvent).detail);
 					fitAddonRef.current?.fit();
 				} catch { /* disposed */ }
 			}
 		}
 		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+	}, []);
+
+	// Apply a Settings → Terminal font change live, on every open terminal. The font
+	// must be loaded before ghostty measures it, or the cell metrics come out of the
+	// fallback and the grid is wrong until the next reopen.
+	useEffect(() => {
+		function onFontChanged(e: Event) {
+			const { size, stack } = (e as CustomEvent<{ size: number; stack: string }>).detail;
+			const apply = () => {
+				const term = termRef.current;
+				if (!term) return;
+				try {
+					term.options.fontFamily = stack;
+					term.options.fontSize = scaledTerminalFontSize();
+					fitAddonRef.current?.fit();
+				} catch { /* disposed */ }
+			};
+			document.fonts.load(`${size}px ${stack}`).then(apply).catch(apply);
+		}
+		window.addEventListener(TERMINAL_FONT_CHANGED_EVENT, onFontChanged);
+		return () => window.removeEventListener(TERMINAL_FONT_CHANGED_EVENT, onFontChanged);
 	}, []);
 
 	// Apply the BiDi setting live: install or restore the visual-order view and

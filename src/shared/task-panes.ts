@@ -65,6 +65,8 @@ export type TaskPaneCapability =
 	| "focus"
 	| "focusDirection"
 	| "zoom"
+	/** Two panes can trade places without either of them being closed and re-split. */
+	| "swap"
 	| "close"
 	| "closePick"
 	| "resize"
@@ -100,6 +102,12 @@ export type TaskPaneAction =
 	| { kind: "focusStep"; step: "next" | "prev" }
 	| { kind: "focusDirection"; direction: SplitDirection }
 	| { kind: "zoom"; paneId?: string; mode?: "toggle" | "on" | "off" }
+	/**
+	 * Trade the active pane's place with its neighbour in layout order, wrapping at
+	 * the ends. Focus follows the pane, matching tmux's own `{` / `}` — the user is
+	 * moving the thing they are looking at, not walking away from it.
+	 */
+	| { kind: "swapStep"; step: "next" | "prev"; paneId?: string }
 	| { kind: "close"; paneId?: string; force?: boolean }
 	| { kind: "resize"; direction: SplitDirection; amount?: number; paneId?: string }
 	/**
