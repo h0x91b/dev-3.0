@@ -8,7 +8,8 @@ import { COORDINATOR_PROMPT, CUSTOM_COLUMN_INSTRUCTION_MAX_CHARS, DEFAULT_PR_REV
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
-import { ListEditor } from "./ListEditor";
+import { ListEditor, type ListEditorBrowse } from "./ListEditor";
+import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
 import AgentConfigPicker from "./AgentConfigPicker";
 import AutomationsPanel from "./AutomationsPanel";
 import ColorSwatchPicker from "./ColorSwatchPicker";
@@ -784,6 +785,26 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath, envSt
 		onChange({ ...config, [field]: value });
 	}
 
+	// Both path lists are stored relative to the repo root, so the picker is
+	// locked inside it and hands back relative paths. Without a known root there
+	// is nothing to be relative to, so the buttons stay away.
+	const repoBrowse: ListEditorBrowse | undefined = projectPath
+		? {
+			label: t("folderPicker.browse"),
+			rowLabel: t("folderPicker.browseInProject"),
+			pickOne: () => openFolderPicker({
+				confineTo: projectPath,
+				confineLabel: t("folderPicker.projectRoot"),
+				title: t("folderPicker.titleInProject"),
+			}),
+			pickMany: () => openFolderPickerMulti({
+				confineTo: projectPath,
+				confineLabel: t("folderPicker.projectRoot"),
+				title: t("folderPicker.titleInProject"),
+			}),
+		}
+		: undefined;
+
 	async function runAutoDetect() {
 		setDetecting(true);
 		setDetectFeedback(null);
@@ -957,6 +978,7 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath, envSt
 					placeholder={inheritedHint("clonePaths") || "node_modules"}
 					addLabel={t("projectSettings.addClonePath")}
 					removeLabel={t("listEditor.removeItem")}
+					browse={repoBrowse}
 				/>
 			</div>
 
@@ -1001,6 +1023,7 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath, envSt
 						placeholder={t("projectSettings.sparseCheckoutPlaceholder")}
 						addLabel={t("projectSettings.sparseCheckoutAddPath")}
 						removeLabel={t("listEditor.removeItem")}
+						browse={repoBrowse}
 					/>
 				)}
 			</div>

@@ -1,3 +1,3 @@
-Short: Browse for a CLI binary instead of typing it
+Short: Browse instead of typing paths by hand
 
-The folder picker can now pick a file, and the two places that used to demand a hand-typed path — the custom binary path in Settings → Agents and the requirements screen — got a "Browse…" button next to the input. Dotfiles are shown by default there, since most CLI binaries live under ~/.local/bin or ~/.bun/bin, and pointing the picker at a file opens its folder with that file already selected.
+Every field that used to demand a hand-typed path now has a "Browse…" button. The folder picker learned to pick a file, so the custom binary path in Settings → Agents and the requirements screen can point at a CLI on disk; dotfiles are shown there by default and a "Hidden files" toggle works everywhere. It also learned a confined mode used by Clone Paths and Sparse Checkout in project settings: the picker opens at the project root, refuses to leave it, and stores the path relative to the repo, with a second button for picking several folders at once.

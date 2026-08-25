@@ -15,6 +15,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import {
+	relativeToRoot,
 	subscribeFolderPicker,
 	type FolderPickerRequest,
 } from "../folder-picker";
@@ -37,8 +38,21 @@ function basename(p: string): string {
 /** Build crumbs. The root "/" crumb has no text label — rendered with a drive
  *  icon instead, so we never get a "/ / Users" double-slash artefact. */
 interface Crumb { label: string | null; path: string; isRoot: boolean }
-function buildBreadcrumbs(path: string): Crumb[] {
+function buildBreadcrumbs(path: string, confineTo?: string | null): Crumb[] {
 	if (!path) return [];
+	// Confined: the trail starts at the confinement root, because a crumb the
+	// picker refuses to open is worse than no crumb.
+	if (confineTo) {
+		const rel = relativeToRoot(confineTo, path);
+		const crumbs: Crumb[] = [{ label: basename(confineTo), path: confineTo, isRoot: false }];
+		if (rel === "" || rel === path) return crumbs;
+		let acc = confineTo;
+		for (const part of rel.split("/").filter(Boolean)) {
+			acc += "/" + part;
+			crumbs.push({ label: part, path: acc, isRoot: false });
+		}
+		return crumbs;
+	}
 	const root: Crumb = { label: null, path: "/", isRoot: true };
 	if (path === "/") return [root];
 	const parts = path.split("/").filter(Boolean);
@@ -49,6 +63,12 @@ function buildBreadcrumbs(path: string): Crumb[] {
 		crumbs.push({ label: part, path: acc, isRoot: false });
 	}
 	return crumbs;
+}
+
+/** Is `candidate` the confinement root or inside it? */
+function isInsideRoot(root: string, candidate: string): boolean {
+	const rel = relativeToRoot(root, candidate);
+	return rel === "" || rel !== candidate;
 }
 
 // ── Nerd Font glyphs ───────────────────────────────────────────────
@@ -163,7 +183,9 @@ export default function FolderPickerHost() {
 
 	const handleClose = useCallback((result: string[] | null) => {
 		if (!request) return;
-		if (result && result.length > 0) result.forEach(pushRecent);
+		// A confined pick is a folder inside one project — useless as a global
+		// shortcut, and it would push the real recents out of the list.
+		if (result && result.length > 0 && !request.options.confineTo) result.forEach(pushRecent);
 		request.resolve(result);
 		setRequest(null);
 	}, [request]);
@@ -193,12 +215,13 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 	const [listingError, setListingError] = useState<string | null>(null);
 	const [selectedPath, setSelectedPath] = useState<string[]>([]);
 	const [filterText, setFilterText] = useState("");
-	const [recentPaths] = useState<string[]>(() => loadRecent());
+	const [recentPaths] = useState<string[]>(() => (options.confineTo ? [] : loadRecent()));
 	const [home, setHome] = useState<string>("");
 	const [homeEntries, setHomeEntries] = useState<Set<string>>(new Set());
 	const [driveRoots, setDriveRoots] = useState<string[]>([]);
 	const [treeKey, setTreeKey] = useState(0);
 	const fileMode = options.mode === "file";
+	const confineTo = options.confineTo ?? null;
 	const [showHidden, setShowHidden] = useState(options.showHidden === true);
 	// A file the caller pointed at (or the user typed): the tree opens on its
 	// folder with the file already selected, so Select is live immediately.
@@ -225,6 +248,10 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 
 	/** List `path`; in file mode a path that IS a file resolves to its folder, with the file picked. */
 	const loadForPath = useCallback(async (path: string | null): Promise<{ listing: FolderListing; pick: string | null }> => {
+		if (confineTo && path && !isInsideRoot(confineTo, path)) {
+			const inside = await listDir(confineTo);
+			return { listing: { ...inside, error: t("folderPicker.outsideRoot") }, pick: null };
+		}
 		const listing = await listDir(path);
 		if (fileMode && listing.error && listing.parent) {
 			const parent = await listDir(listing.parent);
@@ -232,7 +259,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 			if (hit) return { listing: parent, pick: hit.path };
 		}
 		return { listing, pick: null };
-	}, [listDir, fileMode]);
+	}, [listDir, fileMode, confineTo, t]);
 
 	// Initial load: open the picker at `initialPath` (or home) AND fetch the
 	// home listing in parallel so we can populate sidebar shortcuts.
@@ -240,7 +267,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 		let cancelled = false;
 		(async () => {
 			try {
-				const { listing: initial, pick } = await loadForPath(options.initialPath ?? null);
+				const { listing: initial, pick } = await loadForPath(options.initialPath ?? confineTo);
 				if (cancelled) return;
 				listingsRef.current.set(initial.path, initial);
 				setCurrentRoot(initial.path);
@@ -266,7 +293,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [options.initialPath, loadForPath, listDir]);
+	}, [options.initialPath, confineTo, loadForPath, listDir]);
 
 	// Escape cancels the inline "new folder" input first, otherwise closes the modal.
 	useEscapeKey(() => {
@@ -298,10 +325,11 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 	// Toggling dotfiles changes what every listing contains, so the cache goes
 	// and the tree remounts on the folder the user is already looking at.
 	const toggleHidden = useCallback(() => {
-		setShowHidden((prev) => {
-			showHiddenRef.current = !prev;
-			return !prev;
-		});
+		// The ref has to flip BEFORE navigating: a state updater runs at render
+		// time, which is after the listing request has already gone out.
+		const next = !showHiddenRef.current;
+		showHiddenRef.current = next;
+		setShowHidden(next);
 		listingsRef.current.clear();
 		if (currentRoot) void navigateTo(currentRoot);
 	}, [currentRoot, navigateTo]);
@@ -320,7 +348,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 		}
 	}, [manualPath, navigateTo]);
 
-	const breadcrumbs = useMemo(() => buildBreadcrumbs(currentRoot ?? ""), [currentRoot]);
+	const breadcrumbs = useMemo(() => buildBreadcrumbs(currentRoot ?? "", confineTo), [currentRoot, confineTo]);
 
 	const handleSelect = useCallback(() => {
 		if (selectedPath.length === 0) return;
@@ -359,6 +387,11 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 	// Build sidebar shortcuts — only those that actually exist under $HOME.
 	const quickPlaces = useMemo(() => {
 		const items: Array<{ label: string; path: string; glyph: string }> = [];
+		// Confined: every shortcut out there is a place the picker will refuse to
+		// open, so the root is the only one left standing.
+		if (confineTo) {
+			return [{ label: options.confineLabel ?? basename(confineTo), path: confineTo, glyph: NF.folderOpen }];
+		}
 		if (home) {
 			items.push({ label: t("folderPicker.home"), path: home, glyph: NF.home });
 			if (homeEntries.has("Desktop")) items.push({ label: "Desktop", path: `${home}/Desktop`, glyph: NF.desktop });
@@ -373,7 +406,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 			items.push({ label: t("folderPicker.rootLabel"), path: "/", glyph: NF.hardDrive });
 		}
 		return items;
-	}, [home, homeEntries, driveRoots, t]);
+	}, [home, homeEntries, driveRoots, confineTo, options.confineLabel, t]);
 
 	return (
 		<div
@@ -640,6 +673,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									filterText={filterText}
 									multi={options.multi}
 									fileMode={fileMode}
+									hideCurrentRow={fileMode || (!!confineTo && currentRoot === confineTo)}
 									home={home}
 									preselectRoot={preselectRoot}
 									preselectPath={pinnedFile}
@@ -745,6 +779,8 @@ interface FolderTreeProps {
 	multi: boolean;
 	/** Files are listed and are the only selectable rows. */
 	fileMode: boolean;
+	/** Drop the "current folder" row — it is meaningless for a file pick, and empty for a confinement root. */
+	hideCurrentRow: boolean;
 	home: string;
 	/** Start with the "current folder" row selected (used right after creating one). */
 	preselectRoot: boolean;
@@ -754,7 +790,7 @@ interface FolderTreeProps {
 	onNavigate: (path: string) => void;
 }
 
-function FolderTree({ rootPath, listingsRef, listDir, filterText, multi, fileMode, home, preselectRoot, preselectPath, onSelect, onNavigate }: FolderTreeProps) {
+function FolderTree({ rootPath, listingsRef, listDir, filterText, multi, fileMode, hideCurrentRow, home, preselectRoot, preselectPath, onSelect, onNavigate }: FolderTreeProps) {
 	const t = useT();
 	// The folder the tree is rooted at is a legitimate answer, so it gets its own
 	// row. Without it the only way to pick the folder you navigated into was to
@@ -865,7 +901,7 @@ function FolderTree({ rootPath, listingsRef, listDir, filterText, multi, fileMod
 	return (
 		<div {...tree.getContainerProps()} className="outline-none flex flex-col" role="tree">
 			{/* The current folder, as a pickable row — meaningless when the caller wants a file. */}
-			{!fileMode && (
+			{!hideCurrentRow && (
 			<button
 				type="button"
 				data-testid="folder-picker-current-row"
@@ -891,7 +927,8 @@ function FolderTree({ rootPath, listingsRef, listDir, filterText, multi, fileMod
 			{empty && !filter && (
 				<div className="px-3 py-6 text-center">
 					<div className="text-fg-3 text-xs">{t("folderPicker.emptyFolder")}</div>
-					{!fileMode && <div className="text-fg-muted text-xs mt-1">{t("folderPicker.emptyFolderHint")}</div>}
+					{/* The hint says "pick it as it is" — only true while that row exists. */}
+					{!hideCurrentRow && <div className="text-fg-muted text-xs mt-1">{t("folderPicker.emptyFolderHint")}</div>}
 				</div>
 			)}
 			{empty && filter && (

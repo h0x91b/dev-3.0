@@ -262,6 +262,10 @@ const common = {
 	"folderPicker.showHidden": "Скрытые файлы",
 	"folderPicker.browse": "Обзор…",
 	"folderPicker.browseAria": "Выбрать бинарник {name} на диске",
+	"folderPicker.browseInProject": "Выбрать папку внутри проекта",
+	"folderPicker.titleInProject": "Выберите папку внутри проекта",
+	"folderPicker.projectRoot": "Корень проекта",
+	"folderPicker.outsideRoot": "Этот путь вне проекта — поле принимает только пути внутри него.",
 
 	// Stuck preparation popover (clone hangs on Fetching origin — macOS FDA)
 	"stuckPrep.popoverTitle": "Зависло на Fetching origin?",

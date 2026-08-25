@@ -26,6 +26,14 @@ export interface FolderPickerOptions {
 	mode?: "folder" | "file";
 	/** Start with dotfiles visible. File mode defaults to true: most CLI binaries live under ~/.local/bin, ~/.bun/bin and friends. */
 	showHidden?: boolean;
+	/**
+	 * Lock the picker inside this folder and hand the caller paths RELATIVE to
+	 * it. For fields that store a repo-relative path (clone paths, sparse
+	 * checkout) an absolute path is not a worse answer — it is a broken one.
+	 */
+	confineTo?: string | null;
+	/** Sidebar label for the confinement root. Defaults to its folder name. */
+	confineLabel?: string;
 	/** Enable multi-selection (Cmd/Shift+click). */
 	multi: boolean;
 }
@@ -48,9 +56,33 @@ function enqueue(request: FolderPickerRequest): void {
 	}
 }
 
+/** Normalise separators and drop a trailing slash so prefix maths is safe on Windows too. */
+function normalizeSeparators(p: string): string {
+	return p.replaceAll("\\", "/").replace(/\/+$/, "");
+}
+
+/**
+ * Rebase an absolute path onto `root`. The picker's confinement is what keeps
+ * a path inside the root, so an outsider here means a bug upstream — returning
+ * it unchanged is louder than silently emitting `../..`.
+ */
+export function relativeToRoot(root: string, full: string): string {
+	const r = normalizeSeparators(root);
+	const f = normalizeSeparators(full);
+	if (f === r) return "";
+	return f.startsWith(r + "/") ? f.slice(r.length + 1) : full;
+}
+
+function resolveResult(options: FolderPickerOptions, result: string[] | null): string[] | null {
+	if (!result || !options.confineTo) return result;
+	const root = options.confineTo;
+	return result.map((p) => relativeToRoot(root, p)).filter((p) => p !== "");
+}
+
 export function openFolderPicker(options: Omit<FolderPickerOptions, "multi"> = {}): Promise<string | null> {
 	return new Promise<string | null>((resolve) => {
-		enqueue({ options: { ...options, multi: false }, resolve: (result) => resolve(result?.[0] ?? null) });
+		const opts: FolderPickerOptions = { ...options, multi: false };
+		enqueue({ options: opts, resolve: (result) => resolve(resolveResult(opts, result)?.[0] ?? null) });
 	});
 }
 
@@ -66,7 +98,8 @@ export function openFilePicker(options: Omit<FolderPickerOptions, "multi" | "mod
 
 export function openFolderPickerMulti(options: Omit<FolderPickerOptions, "multi"> = {}): Promise<string[] | null> {
 	return new Promise<string[] | null>((resolve) => {
-		enqueue({ options: { ...options, multi: true }, resolve });
+		const opts: FolderPickerOptions = { ...options, multi: true };
+		enqueue({ options: opts, resolve: (result) => resolve(resolveResult(opts, result)) });
 	});
 }
 

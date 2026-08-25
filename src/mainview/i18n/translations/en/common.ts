@@ -261,6 +261,10 @@ const common = {
 	"folderPicker.showHidden": "Hidden files",
 	"folderPicker.browse": "Browse…",
 	"folderPicker.browseAria": "Choose the {name} binary on disk",
+	"folderPicker.browseInProject": "Pick a folder inside the project",
+	"folderPicker.titleInProject": "Select a folder inside the project",
+	"folderPicker.projectRoot": "Project root",
+	"folderPicker.outsideRoot": "That path is outside the project — this field only takes paths inside it.",
 
 	// Stuck preparation popover (clone hangs on Fetching origin — macOS FDA)
 	"stuckPrep.popoverTitle": "Stuck on Fetching origin?",

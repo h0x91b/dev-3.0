@@ -359,6 +359,88 @@ describe("FolderPickerHost file mode", () => {
 	});
 });
 
+describe("FolderPickerHost confined to a project root", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.setItem("dev3-folder-picker-recent", JSON.stringify(["/Users/test/elsewhere"]));
+	});
+
+	afterEach(() => {
+		localStorage.removeItem("dev3-folder-picker-recent");
+	});
+
+	it("resolves with a path relative to the root, not an absolute one", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test/repo", [{ name: "packages", isDir: true }]),
+		);
+
+		renderHost();
+		const picked = openFolderPicker({ confineTo: "/Users/test/repo" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		await user.click(await screen.findByText("packages"));
+		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
+		await user.click(screen.getByText("Select"));
+
+		await expect(picked).resolves.toBe("packages");
+	});
+
+	it("hides every shortcut that leads out of the root, including recents", async () => {
+		mockedApi.request.listDirectory.mockResolvedValue(mockListing("/Users/test/repo", []));
+
+		renderHost();
+		openFolderPicker({ confineTo: "/Users/test/repo", confineLabel: "Project root" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		const sidebar = await screen.findByTestId("folder-picker-sidebar");
+		expect(within(sidebar).getByText("Project root")).toBeInTheDocument();
+		expect(within(sidebar).queryByText("Home")).not.toBeInTheDocument();
+		expect(within(sidebar).queryByText("Root")).not.toBeInTheDocument();
+		expect(within(sidebar).queryByText("elsewhere")).not.toBeInTheDocument();
+		// Picking the root itself would store an empty string — no row for it.
+		expect(screen.queryByTestId("folder-picker-current-row")).not.toBeInTheDocument();
+	});
+
+	it("refuses a typed path that escapes the root and says so", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockImplementation(async ({ path }) =>
+			mockListing(path ?? "/Users/test/repo", []),
+		);
+
+		renderHost();
+		openFolderPicker({ confineTo: "/Users/test/repo" });
+		await screen.findByTestId("folder-picker-backdrop");
+
+		await user.clear(screen.getByLabelText("Folder path"));
+		await user.type(screen.getByLabelText("Folder path"), "/etc{Enter}");
+
+		expect(await screen.findByText(/outside the project/)).toBeInTheDocument();
+		// And it stayed put rather than showing /etc's contents.
+		expect(mockedApi.request.listDirectory).not.toHaveBeenCalledWith(
+			expect.objectContaining({ path: "/etc" }),
+		);
+	});
+
+	it("keeps a confined pick out of the global recents list", async () => {
+		const user = userEvent.setup();
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test/repo", [{ name: "packages", isDir: true }]),
+		);
+
+		renderHost();
+		const picked = openFolderPicker({ confineTo: "/Users/test/repo" });
+		await screen.findByTestId("folder-picker-backdrop");
+		await user.click(await screen.findByText("packages"));
+		await waitFor(() => expect(screen.getByText("Select")).not.toBeDisabled());
+		await user.click(screen.getByText("Select"));
+		await picked;
+
+		expect(JSON.parse(localStorage.getItem("dev3-folder-picker-recent") ?? "[]"))
+			.toEqual(["/Users/test/elsewhere"]);
+	});
+});
+
 describe("FolderPickerHost narrow viewport", () => {
 	const originalInnerWidth = window.innerWidth;
 	const originalMatchMedia = window.matchMedia;
