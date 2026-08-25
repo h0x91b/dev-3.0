@@ -115,7 +115,8 @@ export default function AgentTrafficIndicator({
 				className="w-full px-3 py-2 border-t border-edge flex items-center justify-between gap-2 text-dense text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
 			>
 				<span>{t("traffic.openLog")}</span>
-				{shortcut && <span className="text-nano tabular-nums text-fg-muted">{shortcut}</span>}
+				{/* A key combo is noise on a phone sheet. */}
+				{shortcut && !isNarrow && <span className="text-nano tabular-nums text-fg-muted">{shortcut}</span>}
 			</button>
 		</div>
 	);
