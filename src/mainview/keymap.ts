@@ -189,6 +189,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	},
 	{ id: "open-in", primary: [mod("KeyO")], descKey: "keymap.shortcut.openIn", category: "view", scope: "desktop" },
 	{ id: "keyboard-shortcuts", primary: [mod("Slash")], descKey: "keymap.shortcut.keyboardShortcuts", category: "view" },
+	{ id: "agent-traffic-log", primary: [mod("KeyM", "Shift")], descKey: "keymap.shortcut.agentTrafficLog", category: "view" },
 	{ id: "help-mode", primary: [mod("Slash", "Shift")], descKey: "keymap.shortcut.helpMode", category: "view" },
 	// F11 is the browser's own fullscreen off macOS; the ⇧⌘F alias carries remote.
 	{ id: "terminal-fullscreen", primary: [{ code: "F11", mods: [], desktopOnly: true }], alias: [mod("KeyF", "Shift")], descKey: "keymap.shortcut.terminalFullscreen", category: "view" },

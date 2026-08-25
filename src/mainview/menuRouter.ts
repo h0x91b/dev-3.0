@@ -1,6 +1,7 @@
 import { api } from "./rpc";
 import { startClosePanePicker } from "./close-pane-picker";
 import { toggleStreamerMode } from "./streamer-mode";
+import { openAgentTrafficLog } from "./agent-traffic-events";
 import { toast } from "./toast";
 import { playTaskCompletionSound, taskSoundDiagnostics } from "./task-sounds";
 import { moveTaskToStatus } from "./utils/moveTaskToStatus";
@@ -413,6 +414,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		// ── Shortcut reference overlay: open via CustomEvent — App.tsx wires the modal. ──
 		case "term-cheat-sheet":
 			window.dispatchEvent(new CustomEvent("menu:show-tmux-cheat-sheet"));
+			return;
+		case "view-agent-traffic-log":
+			openAgentTrafficLog();
 			return;
 		case "help-keyboard-shortcuts":
 			window.dispatchEvent(new CustomEvent("menu:show-keyboard-shortcuts"));

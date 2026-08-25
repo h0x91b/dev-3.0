@@ -1,1 +1,0 @@
-Six competing designs for how an agent-to-agent message is shown are now renderable inside the real app behind `?msgconcepts=1` (keys 1…6 switch, 0 clears). Throwaway scaffolding for a design decision — mock data, hardcoded English, not wired to the live `agentMessage` push and not a replacement for the current toast.

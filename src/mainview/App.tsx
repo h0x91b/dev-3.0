@@ -41,6 +41,9 @@ import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
+import AgentTrafficLog from "./components/agent-traffic/AgentTrafficLog";
+import { noteTrafficArrival } from "./agent-traffic";
+import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "./agent-traffic-events";
 import AgentMessageConceptGallery, {
 	isConceptGalleryEnabled,
 } from "./components/agent-message-concepts/AgentMessageConceptGallery";
@@ -195,6 +198,7 @@ function App() {
 	const rpcState = useRpcStatus();
 	// In-UI diagnostics viewer (opened from the floating indicator / menu).
 	const [showDiagnostics, setShowDiagnostics] = useState(false);
+	const [trafficLogOpen, setTrafficLogOpen] = useState(false);
 
 	// Listen for menu actions routed from the bun side. Any menu item that the
 	// renderer is responsible for arrives here as `rpc:menuAction` with
@@ -1158,6 +1162,13 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				setShortcutsModal((s) => (s.open ? { ...s, open: false } : { open: true, tab: "app" }));
+			} else if (matchesShortcut(e, "agent-traffic-log")) {
+				// The traffic log is an overlay over any screen, so the shortcut toggles
+				// it from wherever the user is — including a focused terminal.
+				e.preventDefault();
+				e.stopPropagation();
+				if (showQuitDialog) return;
+				setTrafficLogOpen((open) => !open);
 			} else if (matchesShortcut(e, "help-mode")) {
 				// Help mode ("Explain this screen"): every data-help-id zone gets an (i)
 				// badge with a HelpCard. Sibling of the shortcuts reference overlay.
@@ -1526,10 +1537,25 @@ function App() {
 				taskId,
 				onClick: () => openTaskFromNotification(taskId, projectId),
 			});
+			// The header readout and the traffic log read the persisted log, not this
+			// push — the row on disk carries the full body and the delivery verdict,
+			// which the preview does not. So the arrival only triggers a re-read.
+			noteTrafficArrival(projectId);
+			if (fromProjectId && fromProjectId !== projectId) noteTrafficArrival(fromProjectId);
 		}
 		window.addEventListener("rpc:agentMessage", onAgentMessage);
 		return () => window.removeEventListener("rpc:agentMessage", onAgentMessage);
 	}, [openTaskFromNotification, t]);
+
+	// Everything that opens the traffic log goes through one event: the header
+	// readout, the native View menu and the command palette all fire it.
+	useEffect(() => {
+		function onOpen() {
+			setTrafficLogOpen(true);
+		}
+		window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
+		return () => window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
+	}, []);
 
 	// Cmd/Ctrl+Click on a file path in any terminal (preview mode).
 	useEffect(() => {
@@ -3053,6 +3079,18 @@ function App() {
 			{/* Toasts are transient feedback, not immersive chrome; notification toasts
 			    must remain clickable so their handler can exit fullscreen first. */}
 			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} />
+			{/* Agent traffic log — an overlay over any screen (the nav budget is spent),
+			    opened from the header readout, ⇧⌘M, the View menu and the palette. */}
+			{trafficLogOpen && (
+				<AgentTrafficLog
+					projectId={projectIdForRoute(route)}
+					onClose={() => setTrafficLogOpen(false)}
+					onOpenTask={(taskId, projectId) => {
+						setTrafficLogOpen(false);
+						openTaskFromNotification(taskId, projectId);
+					}}
+				/>
+			)}
 			{/* Throwaway: six agent-message display concepts, `?msgconcepts=1` only. */}
 			{isConceptGalleryEnabled() && <AgentMessageConceptGallery />}
 		</div>

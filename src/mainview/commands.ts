@@ -90,6 +90,7 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 	{ id: "term-open-quick-shell", labelKey: "command.openQuickShell", category: "terminal", scope: "always" },
 	{ id: "term-cheat-sheet", labelKey: "command.tmuxCheatSheet", category: "terminal", scope: "always" },
 	{ id: "help-keyboard-shortcuts", labelKey: "command.keyboardShortcuts", category: "app", scope: "always" },
+	{ id: "view-agent-traffic-log", labelKey: "command.agentTrafficLog", category: "app", scope: "project" },
 ];
 
 export interface CommandContext {

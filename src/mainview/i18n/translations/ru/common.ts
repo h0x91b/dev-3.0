@@ -94,6 +94,32 @@ const common = {
 	"toast.clearAll": "Убрать все",
 	"common.close": "Закрыть",
 
+	// Трафик между агентами — индикатор в шапке и журнал
+	"traffic.label": "Трафик агентов",
+	"traffic.ariaLabel": "Трафик агентов: живых пар — {pairs}",
+	"traffic.pairCount_one": "{count} пара переписывается",
+	"traffic.pairCount_few": "{count} пары переписываются",
+	"traffic.pairCount_many": "{count} пар переписываются",
+	"traffic.pairCount_other": "{count} пар переписываются",
+	"traffic.quiet": "За последний час агенты не писали друг другу",
+	"traffic.openLog": "Открыть журнал трафика",
+	"traffic.logTitle": "Трафик агентов",
+	"traffic.empty": "Эти агенты ещё не писали друг другу.",
+	"traffic.noneMatch": "Под этот фильтр ничего не попало.",
+	"traffic.loading": "Читаю журнал…",
+	"traffic.filter.all": "Всё",
+	"traffic.filter.unsettled": "Только недоказанные",
+	"traffic.shownCount": "{shown} из {total}",
+	"traffic.unsettled": "dev3 не смог подтвердить доставку",
+	"traffic.status.unconfirmed": "Набрано, но панель не подтвердила",
+	"traffic.status.notDelivered": "Ничего не отправлено",
+	"traffic.status.held": "Принято и ждёт, пока панель затихнет",
+	"traffic.heldShort": "ждёт",
+	"traffic.scheduled": "отложенное",
+	"traffic.spilled": "Слишком большое, чтобы набрать — записано в файл",
+	"traffic.retention": "Хранится {days} дней · самый старый день здесь: {oldest}",
+	"traffic.retentionEmpty": "История хранится {days} дней",
+
 	// Status labels
 	"status.todo": "К выполнению",
 	"status.inProgress": "Агент работает",
@@ -206,6 +232,7 @@ const common = {
 	"command.openQuickShell": "Открыть быструю консоль",
 	"command.tmuxCheatSheet": "Показать шпаргалку tmux",
 	"command.keyboardShortcuts": "Горячие клавиши",
+	"command.agentTrafficLog": "Журнал трафика агентов",
 
 	// Open in...
 	"openIn.menuTitle": "Открыть в...",

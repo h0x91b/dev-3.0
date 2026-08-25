@@ -92,6 +92,30 @@ const common = {
 	"toast.clearAll": "Descartar todo",
 	"common.close": "Cerrar",
 
+	// Tráfico entre agentes — indicador de cabecera y registro
+	"traffic.label": "Tráfico de agentes",
+	"traffic.ariaLabel": "Tráfico de agentes: {pairs} parejas activas",
+	"traffic.pairCount_one": "{count} pareja hablando",
+	"traffic.pairCount_other": "{count} parejas hablando",
+	"traffic.quiet": "Ningún agente ha escrito en la última hora",
+	"traffic.openLog": "Abrir el registro de tráfico",
+	"traffic.logTitle": "Tráfico de agentes",
+	"traffic.empty": "Estos agentes aún no se han escrito.",
+	"traffic.noneMatch": "Nada coincide con este filtro.",
+	"traffic.loading": "Leyendo el registro…",
+	"traffic.filter.all": "Todo",
+	"traffic.filter.unsettled": "Solo sin confirmar",
+	"traffic.shownCount": "{shown} de {total}",
+	"traffic.unsettled": "dev3 no pudo confirmar la entrega",
+	"traffic.status.unconfirmed": "Escrito, pero el panel no lo confirmó",
+	"traffic.status.notDelivered": "No se envió nada",
+	"traffic.status.held": "Aceptado, esperando que el panel se calme",
+	"traffic.heldShort": "en espera",
+	"traffic.scheduled": "programado",
+	"traffic.spilled": "Demasiado grande para escribirlo — guardado en un archivo",
+	"traffic.retention": "Se guardan {days} días · el más antiguo aquí: {oldest}",
+	"traffic.retentionEmpty": "El historial se guarda {days} días",
+
 	// Status labels
 	"status.todo": "Por hacer",
 	"status.inProgress": "Agente trabajando",
@@ -204,6 +228,7 @@ const common = {
 	"command.openQuickShell": "Abrir Shell rápido",
 	"command.tmuxCheatSheet": "Mostrar referencia de tmux",
 	"command.keyboardShortcuts": "Atajos de teclado",
+	"command.agentTrafficLog": "Registro de tráfico de agentes",
 
 	// Open in...
 	"openIn.menuTitle": "Abrir en...",

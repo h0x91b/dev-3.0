@@ -233,6 +233,10 @@ const help = {
 	"help.field.streamerMode.title": "Oculta datos privados en directo",
 	"help.field.streamerMode.body":
 		"Al activarlo, los valores que revelan identidad — correos y nombres de cuentas, organizaciones, rutas de la carpeta personal, URLs de túnel y el código QR de acceso remoto — se difuminan en toda la interfaz. El contenido del terminal NO se oculta: los paneles muestran lo que impriman los agentes. Actívalo rápido desde la paleta de comandos ⇧⌘P.",
+	"help.header.agentTraffic.title": "Tráfico de agentes: quién habla y quién debe responder",
+	"help.header.agentTraffic.body": "El glifo aparece solo mientras tus agentes se han escrito en la última hora. El número cuenta parejas activas; ábrelo para verlas, y quien recibió el último mensaje es quien aún no ha respondido.",
+	"help.traffic.log.title": "Todos los mensajes que tus agentes se escribieron",
+	"help.traffic.log.body": "Todo el historial que dev3 guardó, lo más reciente primero: un toast dura 30 segundos, esto dura 30 días. Elige una pareja a la izquierda para leer solo esa conversación, y «Solo sin confirmar» muestra los mensajes cuya entrega dev3 no pudo probar.",
 	"help.header.memory.title": "La píldora de memoria muestra lo que QUEDA",
 	"help.header.connectionQuality.title": "Qué tan lenta es esta conexión",
 	"help.header.connectionQuality.body":

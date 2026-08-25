@@ -112,11 +112,12 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 
 | Surface | Purpose | Allowed | Forbidden | Evidence |
 |---|---|---|---|---|
-| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
+| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom), **≤1 conditional agent-traffic readout** (§5.9) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
 | Application menu (native) | Canonical home for the full action taxonomy | every action type | — | `application-menu.ts`, `menu-actions.ts` |
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, task filter (token-DSL search + funnel; label chips are a view of it) | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx`, `LabelFilterBar.tsx`, `FilterFunnel.tsx` |
 | Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge, native-backend marker (§5.6), **one dev-server split control (open \| stop, §9)** | full settings, global destination, unbounded dot rows, dev-server start/restart/logs | `TaskCard.tsx` (large — watch density) |
 | Task info panel (inspector) | Active-task control: git, dev server, scripts, notes, tmux, open-in | object/git/dev-server actions, metadata, **capped** notes preview (§5.8) | global destination, cross-project action, an uncapped note list | `TaskInfoPanel.tsx` (densest surface) |
+| Agent traffic log | Every `dev3 message` the project's agents typed into each other (§5.9) | read history, filter to one pair, filter to unproven deliveries, open the receiving task | global destination, sending a message, task lifecycle action, an importance filter | `agent-traffic/AgentTrafficLog.tsx` |
 | Task notes log | The whole agent-written note log of one task | read every note, add, edit, delete | task lifecycle action, git mutation, global destination | `TaskNotesOverlay.tsx` (sheet on narrow, dialog on wide — see 5.8) |
 | Terminal immersive fullscreen | Ephemeral task-bound terminal workspace for focused tmux work | tmux terminal, existing tmux window/pane controls, `dev3` brand, one wide Exit full screen action | global/app header, task switching UI, inspector controls, route persistence, any tmux pane/layout mutation | `App.tsx`, `TaskInfoPanel.tsx` |
 | Diff review viewer | Full-screen read + inline-review of a task's diff | view-mode toggle, file-tree nav, search, mark-read, per-file copy-path, inline comments, review export/copy/reset | task lifecycle action, git mutation, global destination | `TaskDiffViewer.tsx` (see 5.3) |
@@ -331,6 +332,32 @@ One shared, non-interactive glyph (`NativeBackendMark`) — a bolt in a rounded 
 - **The board carries the glyph only because the property belongs to the task.** A branch-level marker was rejected for the card: the card never shows a branch name, so a glyph about the branch has no object there to qualify (board noise is the project's top anti-pattern, §11).
 
 Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `TaskDiffViewer.tsx`, `ActiveTasksSidebar.tsx`, `GlobalHeader.tsx`.
+
+### 5.9 Agent traffic — the readout and the log — `Proposed`
+
+Task-to-task messages had exactly one surface: a 30-second toast (§5.7). The rows were already
+on disk (`data/<slug>/messages/YYYY-MM-DD.jsonl`, 30-day retention, `readAgentMessageLog`) with
+no UI reading them, so a user who stepped away could not reconstruct a silence.
+
+- **The header readout is CONDITIONAL, and that is the point.** It renders only while a pair has
+  spoken inside the live window (1 h), so the glyph's *presence* is the signal and a board with
+  no agent traffic carries no chrome. This does **not** spend the permanent ambient slot (§12.6),
+  which stays memory headroom: capacity is useful on the happy path, silence between agents is not.
+- **The count is live PAIRS, not messages**, because the three questions a human has are *must I
+  step in*, *did two tasks collide*, *who waits on whom* — all pair-shaped. Whoever received the
+  newest message is the one that owes an answer; a row navigates to that **receiver**, matching the
+  toast's click target.
+- **The log is an overlay, never a destination.** The nav budget is 8 and spent (§4), and this is a
+  log opened to answer one question and then left — the `task notes log` shape: dialog on wide, the
+  mandated BottomSheet on narrow. Reachable from the readout, `⇧⌘M`, the View menu and the palette.
+- **No invented importance axis.** A sender cannot mark a message important, so a chatter/blocker
+  split would be the UI asserting a fact it does not have. The one real axis is the row's own
+  delivery verdict, and `held` is never shown as a problem — it is a promise dev3 made.
+- **Trimmed history reads as trimmed:** the footer names the retention window and the oldest day
+  still on disk, so a deleted day is never mistaken for silence.
+
+Evidence: `agent-traffic/AgentTrafficIndicator.tsx`, `agent-traffic/AgentTrafficLog.tsx`,
+`agent-traffic.ts`, `shared/agent-message-log.ts`.
 
 ### 5.7 Toast anatomy — one shape for every origin — `Observed`
 
@@ -671,7 +698,7 @@ Evidence: `BottomSheet.tsx` — used by `GlobalHeader` narrow kebab, `ActivityOv
 
 | Surface | Narrow budget | Overflow rule |
 |---|---|---|
-| Global header utilities | logo + breadcrumb + **1** overflow kebab + **≤1 ambient resource readout** | everything else into the kebab/sheet |
+| Global header utilities | logo + breadcrumb + **1** overflow kebab + **≤1 ambient resource readout** (+ the conditional agent-traffic readout, §5.9) | everything else into the kebab/sheet |
 | Page primary action | 1 (a FAB or header button) | rest into a bottom sheet |
 | Inspector | 1 summary bar (+ conditional output readouts) | all *actions* into the actions sheet |
 | Any toolbar/action row | **shed, never stack** — one row that drops its lowest-priority items in a declared order; wrapping to a second row is not an option | shed item moves to the bottom sheet |

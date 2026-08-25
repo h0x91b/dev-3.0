@@ -25,6 +25,8 @@ import CanaryBadge from "./CanaryBadge";
 import PreventSleepToggle from "./PreventSleepToggle";
 import RateLimitIndicator from "./RateLimitIndicator";
 import MemoryHeadroomIndicator from "./MemoryHeadroomIndicator";
+import AgentTrafficIndicator from "./agent-traffic/AgentTrafficIndicator";
+import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "../agent-traffic-events";
 import ConnectionQualityIndicator from "./ConnectionQualityIndicator";
 import BottomSheet from "./BottomSheet";
 import Tooltip from "./Tooltip";
@@ -801,6 +803,15 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 								    itself (icon state, session count, memory number) is the answer. */}
 								<PreventSleepToggle variant="row" />
 								<MemoryHeadroomIndicator navigate={navigate} variant="menu" />
+								<AgentTrafficIndicator
+									projectId={currentProjectId}
+									navigate={navigate}
+									onOpenLog={() => {
+										setShowOverflowMenu(false);
+										window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT));
+									}}
+									variant="menu"
+								/>
 								{viewedOverRemote && <ConnectionQualityIndicator variant="menu" />}
 								<TmuxSessionManager navigate={navigate} variant="menu" />
 								<button
@@ -879,6 +890,18 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				    menu instead (the component decides — see its `variant`). Folds into
 				    the kebab sheet on narrow, where the breakdown is a BottomSheet. */}
 				{!isNarrow && <MemoryHeadroomIndicator navigate={navigate} />}
+
+				{/* Agent traffic — CONDITIONAL, unlike the memory readout above: it renders
+				    only while a pair has spoken in the last hour, so a board whose agents
+				    never write to each other carries no glyph at all. The permanent ambient
+				    slot stays spent on memory (PRODUCT_UX_BIBLE §5, §12.6). */}
+				{!isNarrow && (
+					<AgentTrafficIndicator
+						projectId={currentProjectId}
+						navigate={navigate}
+						onOpenLog={() => window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT))}
+					/>
+				)}
 
 				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
 				    (folded into the kebab bottom sheet on narrow). */}
@@ -1053,6 +1076,14 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					<div className="flex flex-wrap items-center gap-1.5 pb-3 mb-1 border-b border-edge/60">
 						<PreventSleepToggle />
 						<MemoryHeadroomIndicator navigate={navigate} />
+						<AgentTrafficIndicator
+							projectId={currentProjectId}
+							navigate={navigate}
+							onOpenLog={() => {
+								setShowActionSheet(false);
+								window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT));
+							}}
+						/>
 						{viewedOverRemote && <ConnectionQualityIndicator />}
 						<RateLimitIndicator compact={false} />
 						{currentProjectId && !isVirtualProject && (

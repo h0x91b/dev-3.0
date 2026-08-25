@@ -184,6 +184,7 @@ export const MENU_ACTIONS = {
 	helpDocumentation: "help-documentation",
 	helpKeyboardShortcuts: "help-keyboard-shortcuts",
 	helpExplainScreen: "help-explain-screen",
+	viewAgentTrafficLog: "view-agent-traffic-log",
 	helpReportBug: "help-report-bug",
 	helpGithub: "help-github",
 	showRemoteQr: "show-remote-qr",
@@ -303,6 +304,7 @@ const NOT_YET_IMPLEMENTED: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	// Help
 	MENU_ACTIONS.helpKeyboardShortcuts,
 	MENU_ACTIONS.helpDiagnostics,
+	MENU_ACTIONS.viewAgentTrafficLog,
 ]);
 
 /**
@@ -646,6 +648,7 @@ function viewMenu(): ApplicationMenuItemConfig {
 			item({ label: "Show Productivity Stats", action: MENU_ACTIONS.viewStats }),
 			item({ label: "Show Changelog", action: MENU_ACTIONS.viewChangelog }),
 			item({ label: "Show Tips", action: MENU_ACTIONS.viewTips }),
+			item({ label: "Agent Traffic Log (⇧⌘M)", action: MENU_ACTIONS.viewAgentTrafficLog }),
 			item({ label: "Keyboard Shortcuts (⌘/)", action: MENU_ACTIONS.helpKeyboardShortcuts }),
 			SEP,
 			item({ label: "Zoom In", action: MENU_ACTIONS.zoomIn, accelerator: "=" }),
@@ -851,6 +854,7 @@ function helpMenu(): ApplicationMenuItemConfig {
 		submenu: [
 			item({ label: "dev-3.0 Documentation", action: MENU_ACTIONS.helpDocumentation }),
 			item({ label: "Explain This Screen (⇧⌘/)", action: MENU_ACTIONS.helpExplainScreen }),
+			item({ label: "Agent Traffic Log (⇧⌘M)", action: MENU_ACTIONS.viewAgentTrafficLog }),
 			item({ label: "Keyboard Shortcuts (⌘/)", action: MENU_ACTIONS.helpKeyboardShortcuts }),
 			item({ label: "Tmux Cheat Sheet", action: MENU_ACTIONS.termCheatSheet }),
 			SEP,

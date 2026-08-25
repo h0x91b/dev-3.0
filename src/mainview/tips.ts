@@ -971,6 +971,17 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["board", "settings"],
 		settingsSection: "system",
 	},
+	// Score 3: the log is real hidden value (30 days of agent-to-agent history that
+	// used to exist only as a 30-second toast), reachable by a shortcut nothing on
+	// screen advertises — but only a board running several agents ever needs it.
+	{
+		id: "agent-traffic-log",
+		titleKey: "tip.agentTrafficLog.title",
+		bodyKey: "tip.agentTrafficLog.body",
+		icon: "\u{F01D9}", // nf-md-swap_horizontal
+		score: 3,
+		contexts: ["board", "terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

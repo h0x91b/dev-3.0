@@ -202,7 +202,12 @@ ux_architecture:
       evidence: ["src/mainview/diagnostics.ts", "src/mainview/components/RootErrorBoundary.tsx", "src/mainview/components/BootstrapScreen.tsx", "src/mainview/components/DiagnosticsPanel.tsx", "src/mainview/components/StatusDock.tsx", "src/mainview/components/ConnectionStatusPill.tsx", "src/mainview/components/DiagnosticsIndicator.tsx", "src/mainview/components/KanbanBoardSkeleton.tsx", "src/mainview/components/BoardLoadFailed.tsx", "src/mainview/index.html (pre-React loader)"]
     global_header:
       purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
-      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "variant_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout"]
+      allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "variant_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout", "agent_traffic_readout"]
+      agent_traffic_readout:
+        budget: 1
+        spec: "CONDITIONAL, unlike ambient_resource_readout: renders only while a task pair has exchanged a dev3 message inside the live window (1h), so a board whose agents never write to each other carries no glyph. The glyph's presence IS the signal; the number counts live PAIRS, not messages. Violet --agent (identity, never severity); text-warning only when a pair holds a message dev3 could not prove landed. Hover/tap opens the pair list (newest first, receiver of the newest message = the one that owes an answer); a row navigates to that RECEIVER. Never invents an importance axis — no sender can set one."
+        narrow: "folds into the kebab bottom sheet like the memory readout; >=44x44px; panel renders as BottomSheet."
+        status: "proposed"
       ambient_resource_readout:
         budget: 1   # currently memory headroom; a second one folds into the narrow sheet instead
         spec: "Permanent on roomy widths. Shows headroom LEFT (free GB), never a bare quantity labelled 'memory'; colour = OS pressure verdict (normal -> text-fg-3 neutral, warn -> text-warning, critical -> text-danger); never success-green (green means Completed here). Hover/tap opens a breakdown: system, swap, top-5 consumers outside the app, then the app's own share split from the agent share. NOT a link."
@@ -259,6 +264,14 @@ ux_architecture:
         split_controls: 1       # only dev_server_control; one budget slot, two focus stops
       status: "observed"
       evidence: ["src/mainview/components/TaskCard.tsx (32.9K - large, watch density)"]
+    agent_traffic_log:
+      purpose: "Every dev3 message the project's agents typed into each other, newest first."
+      allowed: ["read_history", "pair_filter", "delivery_status_filter", "open_receiving_task"]
+      forbidden: ["global_destination", "send_message", "task_lifecycle_action", "importance_filter"]
+      narrow_form: "bottom_sheet"   # wide renders the same content as a centered dialog
+      entry_point: "The header agent_traffic_readout panel, Shift+Cmd/Ctrl+M, View menu, command palette. NOT a nav destination — the 8-destination budget is spent, and this is a log opened to answer one question."
+      note: "Reads the log that already existed on disk (data/<slug>/messages/YYYY-MM-DD.jsonl, 30-day retention, readAgentMessageLog RPC) and had no UI at all. Filters are ONLY what the data supports: one pair, or messages whose delivery was never proven. An importance/blocker filter is forbidden because no sender can mark a message important — the UI would be inventing the fact. Trimmed history must read as trimmed: the footer names the retention window and the oldest day still on disk."
+      evidence: ["src/mainview/components/agent-traffic/AgentTrafficLog.tsx", "src/mainview/components/agent-traffic/AgentTrafficIndicator.tsx", "src/mainview/agent-traffic.ts", "src/shared/agent-message-log.ts"]
     task_notes_log:
       purpose: "The whole agent-written note log of one task, on its own surface."
       allowed: ["notes", "secondary_edit"]

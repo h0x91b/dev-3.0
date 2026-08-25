@@ -239,6 +239,10 @@ const help = {
 	"help.field.streamerMode.title": "Hide private info on stream",
 	"help.field.streamerMode.body":
 		"When on, identity-bearing values — account emails and names, organizations, home-folder paths, tunnel URLs, and the remote-access QR code — are blurred across the UI. Terminal content is NOT masked: panes print whatever agents output. Toggle it quickly from the ⇧⌘P command palette.",
+	"help.header.agentTraffic.title": "Agent traffic: who is talking, and who owes an answer",
+	"help.header.agentTraffic.body": "The glyph appears only while your agents have written to each other in the last hour. The number counts live pairs; open it to see each pair, and the task that received the last message is the one that has not answered yet.",
+	"help.traffic.log.title": "Every message your agents typed into each other",
+	"help.traffic.log.body": "The full history dev3 kept, newest first — a toast lasts 30 seconds, this lasts 30 days. Pick a pair on the left to read just that conversation, and \u201cUnproven only\u201d shows the messages dev3 could not prove reached the other pane.",
 	"help.header.memory.title": "The memory pill shows what is LEFT",
 	"help.header.memory.body": "The number is free memory, not used — hover it to see who actually took the rest. dev-3.0 itself holds a few hundred megabytes; the gigabytes belong to the agents you launched, and to whatever else is running.",
 	"help.header.connectionQuality.title": "How slow this connection is",

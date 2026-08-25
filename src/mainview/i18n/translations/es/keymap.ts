@@ -40,6 +40,7 @@ const keymap = {
 	"keymap.shortcut.openIn": "Abrir el proyecto/worktree actual en una app (selector)",
 	"keymap.shortcut.keyboardShortcuts": "Mostrar este panel de atajos de teclado",
 	"keymap.shortcut.helpMode": "Explicar esta pantalla (modo ayuda)",
+	"keymap.shortcut.agentTrafficLog": "Registro de tráfico de agentes",
 	"keymap.shortcut.terminalFullscreen": "Alternar pantalla inmersiva del terminal (solo en terminal de tarea)",
 	"keymap.shortcut.artifactSearch": "Buscar en el artefacto HTML abierto",
 	"keymap.shortcut.toggleProjectTerminal": "Alternar terminal del proyecto",

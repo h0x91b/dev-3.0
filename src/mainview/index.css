@@ -1248,6 +1248,37 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .header-anim:hover .hdr-pt-prompt { animation: hdr-pt-prompt 2.4s ease-in-out infinite; }
 .header-anim:hover .hdr-pt-cursor { animation: hdr-pt-cursor 2.4s steps(1) infinite; }
 
+/* -- Agent traffic: dots travel the wires, the middle one against the flow -- */
+@keyframes hdr-wire-out {
+	0%, 6% { transform: translateX(0); opacity: 0; }
+	18% { opacity: 1; }
+	72% { opacity: 1; }
+	88%, 100% { transform: translateX(11px); opacity: 0; }
+}
+@keyframes hdr-wire-back {
+	0%, 6% { transform: translateX(11px); opacity: 0; }
+	18% { opacity: 1; }
+	72% { opacity: 1; }
+	88%, 100% { transform: translateX(0); opacity: 0; }
+}
+/* One-shot on arrival: a message landed, and the count moved while nobody looked. */
+@keyframes hdr-wire-arrive {
+	0% { transform: scale(1); }
+	35% { transform: scale(1.14); }
+	100% { transform: scale(1); }
+}
+.header-anim:hover .hdr-wire-1 { animation: hdr-wire-out 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-wire-2 { animation: hdr-wire-back 2.4s ease-in-out .35s infinite; }
+.header-anim:hover .hdr-wire-3 { animation: hdr-wire-out 2.4s ease-in-out .7s infinite; }
+.hdr-wire-arrive { animation: hdr-wire-arrive .55s cubic-bezier(0.2, 0, 0, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+	.header-anim:hover .hdr-wire-1,
+	.header-anim:hover .hdr-wire-2,
+	.header-anim:hover .hdr-wire-3,
+	.hdr-wire-arrive { animation: none; }
+}
+
 /* -- Pull / Update: the arrow drops out of / launches into the cloud -- */
 @keyframes hdr-pull-arrow {
 	0%, 12% { transform: translateY(-3.5px); opacity: 0; }

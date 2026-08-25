@@ -40,6 +40,7 @@ const keymap = {
 	"keymap.shortcut.openIn": "Открыть текущий проект/worktree в приложении (выбор из списка)",
 	"keymap.shortcut.keyboardShortcuts": "Показать эту панель горячих клавиш",
 	"keymap.shortcut.helpMode": "Объяснить этот экран (режим подсказок)",
+	"keymap.shortcut.agentTrafficLog": "Журнал трафика агентов",
 	"keymap.shortcut.terminalFullscreen": "Переключить иммерсивный fullscreen терминала (только в терминале задачи)",
 	"keymap.shortcut.artifactSearch": "Поиск в открытом HTML-артефакте",
 	"keymap.shortcut.toggleProjectTerminal": "Переключить терминал проекта",

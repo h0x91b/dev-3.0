@@ -92,6 +92,30 @@ const common = {
 	"toast.clearAll": "Clear all",
 	"common.close": "Close",
 
+	// Agent traffic — the header readout and the traffic log
+	"traffic.label": "Agent traffic",
+	"traffic.ariaLabel": "Agent traffic: {pairs} live pairs",
+	"traffic.pairCount_one": "{count} pair talking",
+	"traffic.pairCount_other": "{count} pairs talking",
+	"traffic.quiet": "No agent talking in the last hour",
+	"traffic.openLog": "Open the traffic log",
+	"traffic.logTitle": "Agent traffic",
+	"traffic.empty": "These agents have not written to each other yet.",
+	"traffic.noneMatch": "Nothing matches this filter.",
+	"traffic.loading": "Reading the log…",
+	"traffic.filter.all": "All",
+	"traffic.filter.unsettled": "Unproven only",
+	"traffic.shownCount": "{shown} of {total}",
+	"traffic.unsettled": "dev3 could not prove this landed",
+	"traffic.status.unconfirmed": "Typed, but the pane never confirmed it",
+	"traffic.status.notDelivered": "Nothing was sent",
+	"traffic.status.held": "Accepted and waiting for the pane to go quiet",
+	"traffic.heldShort": "held",
+	"traffic.scheduled": "sent later",
+	"traffic.spilled": "Too large to type — written to a file instead",
+	"traffic.retention": "Kept {days} days · oldest still here: {oldest}",
+	"traffic.retentionEmpty": "History is kept for {days} days",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "Agent is Working",
@@ -205,6 +229,7 @@ const common = {
 	"command.openQuickShell": "Open Quick Shell",
 	"command.tmuxCheatSheet": "Show tmux cheat sheet",
 	"command.keyboardShortcuts": "Keyboard shortcuts",
+	"command.agentTrafficLog": "Agent traffic log",
 
 	// Open in...
 	"openIn.menuTitle": "Open in...",

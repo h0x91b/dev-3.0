@@ -178,6 +178,16 @@ export const HELP_TOPICS: HelpTopic[] = [
 		bodyKey: "help.header.connectionQuality.body",
 	},
 	{ id: "header.tmux-sessions", titleKey: "help.header.tmuxSessions.title", bodyKey: "help.header.tmuxSessions.body" },
+	// Both agent-traffic topics are conditional — the glyph exists only while agents
+	// are talking, and the log is an overlay the user opens — so they are registered
+	// for help mode but stay out of REQUIRED_HELP_SURFACES, same as the memory pill.
+	{
+		id: "header.agent-traffic",
+		titleKey: "help.header.agentTraffic.title",
+		bodyKey: "help.header.agentTraffic.body",
+		shortcutIds: ["agent-traffic-log"],
+	},
+	{ id: "traffic.log", titleKey: "help.traffic.log.title", bodyKey: "help.traffic.log.body" },
 	{ id: "sidebar.active-tasks", titleKey: "help.sidebar.activeTasks.title", bodyKey: "help.sidebar.activeTasks.body" },
 	// Three glyphs and no labels: the one control on the task screen that changes
 	// what the whole list means, and it explained itself only through tooltips.
