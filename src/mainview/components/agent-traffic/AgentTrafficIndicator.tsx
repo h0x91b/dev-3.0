@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Route } from "../../state";
 import { markTrafficSeen, type TrafficPair } from "../../agent-traffic";
+import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "../../agent-traffic-events";
 import { useT } from "../../i18n";
 import { useAgentTraffic } from "../../hooks/useAgentTraffic";
 import { useHeaderFlyout } from "../../hooks/useHeaderFlyout";
@@ -102,6 +103,17 @@ export default function AgentTrafficIndicator({
 		flyout.close();
 		onOpenLog();
 	}, [flyout, onOpenLog]);
+
+	// The log can also be opened by ⇧⌘M, the View menu or the palette, none of
+	// which route through the panel — and the panel is portaled above the dialog,
+	// so it would hang over the log it just handed off to.
+	useEffect(() => {
+		function onLogOpened() {
+			flyout.close();
+		}
+		window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onLogOpened);
+		return () => window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onLogOpened);
+	}, [flyout]);
 
 	// The bar pill is earned by unread traffic, and never shown on a phone. It
 	// outlives its own badge while the panel is open: opening marks the traffic

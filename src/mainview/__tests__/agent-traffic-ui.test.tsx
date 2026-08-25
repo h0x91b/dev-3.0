@@ -120,6 +120,19 @@ describe("AgentTrafficIndicator (bar)", () => {
 		expect(onOpenLog).toHaveBeenCalled();
 	});
 
+	// ⇧⌘M / the View menu / the palette open the log without going through the
+	// panel, and the panel is portaled above the dialog — it used to hang over the
+	// log it had just handed off to.
+	it("closes its panel when the log is opened from anywhere else", async () => {
+		withUnread();
+		setPage([row()]);
+		renderIndicator();
+		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
+		expect(await screen.findByTestId("agent-traffic-popover")).toBeTruthy();
+		window.dispatchEvent(new CustomEvent("open-agent-traffic-log"));
+		await waitFor(() => expect(screen.queryByTestId("agent-traffic-popover")).toBeNull());
+	});
+
 	// The click goes where the answer is owed — the receiver's task, whose pane holds
 	// the text — not to the sender that is already done talking.
 	it("navigates to the task that owes the answer", async () => {
