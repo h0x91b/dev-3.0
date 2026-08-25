@@ -3,6 +3,10 @@ import {
 	applyTerminalFontFamily,
 	applyTerminalFontSize,
 	bootstrapTerminalFont,
+	BUNDLED_TERMINAL_FONTS,
+	effectiveTerminalFontSize,
+	REFERENCE_TERMINAL_FONT,
+	terminalFontScale,
 	DEFAULT_TERMINAL_FONT_SIZE,
 	DEFAULT_TERMINAL_FONT_STACK,
 	getTerminalFontFamily,
@@ -134,5 +138,67 @@ describe("availability", () => {
 		vi.spyOn(document, "createElement").mockImplementation((() => ({ getContext: () => null })) as never);
 		expect(isTerminalFontAvailable("")).toBe(true);
 		expect(isTerminalFontAvailable("Anything")).toBe(true);
+	});
+
+	it("never warns about a bundled font — it ships with the app, the device is irrelevant", () => {
+		stubCanvas([]); // this machine has nothing installed
+		expect(isTerminalFontAvailable("IosevkaTerm Nerd Font Mono")).toBe(true);
+	});
+});
+
+describe("no bundled font is ever wider than the reference", () => {
+	it("the reference font is itself unscaled", () => {
+		expect(terminalFontScale(REFERENCE_TERMINAL_FONT)).toBe(1);
+		expect(BUNDLED_TERMINAL_FONTS[0].family).toBe(REFERENCE_TERMINAL_FONT);
+	});
+
+	it("every bundled scale shrinks or leaves alone, never enlarges", () => {
+		// Wider than the reference silently steals columns from a terminal the user
+		// already sized by eye; narrower costs nothing. So the rule is one-directional.
+		for (const font of BUNDLED_TERMINAL_FONTS) {
+			expect(font.scale).toBeGreaterThan(0.9);
+			expect(font.scale).toBeLessThanOrEqual(1);
+		}
+	});
+
+	it("applies the scale to the size the renderer is actually given", () => {
+		applyTerminalFontFamily("FiraCode Nerd Font Mono");
+		applyTerminalFontSize(20);
+		expect(effectiveTerminalFontSize()).toBeCloseTo(20 * 0.975, 5);
+	});
+
+	it("leaves a font that is already narrow at its nominal size", () => {
+		applyTerminalFontFamily("Iosevka Nerd Font Mono");
+		applyTerminalFontSize(16);
+		expect(effectiveTerminalFontSize()).toBe(16);
+	});
+
+	it("measures a font the user typed and pulls it in when it renders wide", () => {
+		// Not bundled, so there is no constant to read: the rule has to hold for a
+		// locally installed font too, or "never wider" is only true for our own list.
+		const ctx = {
+			font: "",
+			measureText: () => ({ width: ctx.font.includes("Fat Mono") ? 200 : 100 }),
+		};
+		vi.spyOn(document, "createElement").mockImplementation(((tag: string) =>
+			tag === "canvas" ? { getContext: () => ctx } : document.body) as never);
+		expect(terminalFontScale("Fat Mono")).toBeCloseTo(0.5, 5);
+	});
+
+	it("never ENLARGES a typed font that is already narrow", () => {
+		// The rule is one-directional. Scaling a narrow font up to fill the reference
+		// cell would be a second, unasked-for behaviour that changes what the user chose.
+		const ctx = {
+			font: "",
+			measureText: () => ({ width: ctx.font.includes("Thin Mono") ? 50 : 100 }),
+		};
+		vi.spyOn(document, "createElement").mockImplementation(((tag: string) =>
+			tag === "canvas" ? { getContext: () => ctx } : document.body) as never);
+		expect(terminalFontScale("Thin Mono")).toBe(1);
+	});
+
+	it("never shrinks a typed font it could not measure", () => {
+		vi.spyOn(document, "createElement").mockImplementation((() => ({ getContext: () => null })) as never);
+		expect(terminalFontScale("Unmeasurable Mono")).toBe(1);
 	});
 });

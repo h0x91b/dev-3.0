@@ -17,7 +17,11 @@ import {
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getEffectiveZoom, ZOOM_CHANGED_EVENT } from "./zoom";
-import { getTerminalFontSize, terminalFontStack, TERMINAL_FONT_CHANGED_EVENT } from "./terminal-font";
+import {
+	effectiveTerminalFontSize,
+	terminalFontStack,
+	TERMINAL_FONT_CHANGED_EVENT,
+} from "./terminal-font";
 import {
 	getTerminalBidiEnabled,
 	TERMINAL_BIDI_CHANGED_EVENT,
@@ -94,9 +98,13 @@ const LIGHT_TERMINAL_THEME = {
 	brightWhite: "#d1d5da",
 };
 
-/** The user's terminal font size, scaled by app zoom — what ghostty is told. */
+/**
+ * What ghostty is told: the user's size, narrowed to the reference font's cell if
+ * this family is wider, then scaled by app zoom. Rounding is the last step so the
+ * width normalization is not lost to it.
+ */
 function scaledTerminalFontSize(zoom: number = getEffectiveZoom()): number {
-	return Math.round(getTerminalFontSize() * zoom);
+	return Math.round(effectiveTerminalFontSize() * zoom);
 }
 /**
  * A terminal teardown longer than this blocked the renderer for that long: every
@@ -638,7 +646,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// Canvas rendering doesn't trigger CSS @font-face loading, so the
 		// font must be ready before ghostty-web measures it for cell metrics.
 		const TERMINAL_FONT = terminalFontStack();
-		document.fonts.load(`${getTerminalFontSize()}px ${TERMINAL_FONT}`).then(() => {
+		document.fonts.load(`${effectiveTerminalFontSize()}px ${TERMINAL_FONT}`).then(() => {
 			console.log("[TerminalView] Font preloaded, starting setup");
 			if (!disposed) setup();
 		}).catch(() => {

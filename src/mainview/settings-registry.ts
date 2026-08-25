@@ -290,6 +290,22 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "terminal-font",
+		category: "terminal",
+		titleKey: "settings.terminalFont",
+		descriptionKey: "settings.terminalFontDesc",
+		anchor: "terminal-font",
+		storage: "local",
+	},
+	{
+		id: "terminal-font-size",
+		category: "terminal",
+		titleKey: "settings.terminalFontSize",
+		descriptionKey: "settings.terminalFontSizeDesc",
+		anchor: "terminal-font-size",
+		storage: "local",
+	},
+	{
 		id: "terminal-scroll-speed",
 		category: "terminal",
 		titleKey: "settings.scrollSpeed",

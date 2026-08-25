@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { TFunction } from "../../i18n";
 import {
 	applyScrollSpeed,
@@ -13,16 +14,18 @@ import type { TerminalBackendIdentity } from "../../../shared/terminal-backend-i
 import {
 	applyTerminalFontFamily,
 	applyTerminalFontSize,
+	BUNDLED_TERMINAL_FONTS,
 	DEFAULT_TERMINAL_FONT_FAMILY,
 	DEFAULT_TERMINAL_FONT_SIZE,
 	isTerminalFontAvailable,
 	MAX_TERMINAL_FONT_SIZE,
 	MIN_TERMINAL_FONT_SIZE,
-	SUGGESTED_TERMINAL_FONTS,
+	terminalFontScale,
 	terminalFontStack,
 } from "../../terminal-font";
 import SettingsEntry from "./SettingsEntry";
 import TerminalBackendSetting from "./TerminalBackendSetting";
+import TerminalFontGallery from "./TerminalFontGallery";
 import SettingsSection from "./SettingsSection";
 import Select from "../Select";
 
@@ -62,8 +65,16 @@ export default function TerminalSettingsSection({
 	// Windows answers with no POSIX resolution at all — the whole choice is moot
 	// there, so the control stays off the screen instead of lying about it.
 	const showShellPicker = !shellAvailability || resolved !== null;
+	const [galleryOpen, setGalleryOpen] = useState(false);
 	const fontAvailable = isTerminalFontAvailable(terminalFontFamily);
-	const fontOptions = SUGGESTED_TERMINAL_FONTS.map((family) => ({ value: family, label: family }));
+	/** How much this font had to shrink to stay inside the reference cell, in percent. */
+	const narrowedBy = Math.round((1 - terminalFontScale(terminalFontFamily)) * 1000) / 10;
+	// The reference font is a normal option; the empty value stays reserved for
+	// "never chose one", which is what every existing user has stored.
+	const fontOptions = BUNDLED_TERMINAL_FONTS.map((font) => ({
+		value: font.family,
+		label: font.label,
+	}));
 	const pathOpenModeLabel: Record<TerminalPathOpenMode, string> = {
 		preview: t("settings.terminalPathOpenModePreview"),
 		system: t("settings.terminalPathOpenModeSystem"),
@@ -182,12 +193,40 @@ export default function TerminalSettingsSection({
 							{t("settings.terminalFontMissing")}
 						</p>
 					)}
+					{narrowedBy > 0 && (
+						<p className="text-fg-3 text-sm mt-2">
+							{t("settings.terminalFontNarrowedNote", { percent: String(narrowedBy) })}
+						</p>
+					)}
 					<p
 						className="mt-3 px-3 py-2 rounded-lg bg-base border border-edge text-fg-2 overflow-hidden text-ellipsis whitespace-nowrap"
-						style={{ fontFamily: terminalFontStack(terminalFontFamily), fontSize: terminalFontSize }}
+						style={{
+							fontFamily: terminalFontStack(terminalFontFamily),
+							fontSize: terminalFontSize * terminalFontScale(terminalFontFamily),
+						}}
 					>
 						{TERMINAL_FONT_PREVIEW}
 					</p>
+					<button
+						type="button"
+						onClick={() => setGalleryOpen((open) => !open)}
+						aria-expanded={galleryOpen}
+						className="mt-3 px-3 h-9 rounded-lg bg-raised border border-edge text-fg-2 text-sm hover:border-edge-active transition-colors"
+					>
+						{galleryOpen
+							? t("settings.terminalFontCompareHide")
+							: t("settings.terminalFontCompare", {
+									count: String(BUNDLED_TERMINAL_FONTS.length),
+								})}
+					</button>
+					{galleryOpen && (
+						<TerminalFontGallery
+							t={t}
+							value={terminalFontFamily}
+							size={terminalFontSize}
+							onSelect={applyTerminalFontFamily}
+						/>
+					)}
 				</div>
 			</SettingsEntry>
 

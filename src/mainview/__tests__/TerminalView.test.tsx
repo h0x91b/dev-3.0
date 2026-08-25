@@ -10,6 +10,7 @@ import {
 	syncTerminalBidiFromGlobalSettings,
 } from "../terminal-bidi/flag";
 import { isBidiRenderInstalled, uninstallBidiRender } from "../terminal-bidi/proxy";
+import { applyTerminalFontFamily, applyTerminalFontSize } from "../terminal-font";
 
 // ── Hoisted mocks (must be before vi.mock factories) ─────────────────────────
 
@@ -2153,5 +2154,30 @@ describe("TerminalView – renderer crash recovery", () => {
 		} finally {
 			Date.now = realNow;
 		}
+	});
+});
+
+describe("TerminalView – the terminal is never rendered wider than the reference font", () => {
+	it("hands ghostty the narrowed size, not the nominal one", async () => {
+		// The rule only counts where it reaches the renderer. Asserting the helper
+		// would pass even if the constructor kept reading the raw preference.
+		// 0xProto at 20px, deliberately: 20 -> 19.35 -> 19 survives the rounding, while
+		// a font/size pair that rounds back to 20 would let a broken scale pass.
+		applyTerminalFontFamily("0xProto Nerd Font Mono");
+		applyTerminalFontSize(20);
+		await renderAndSetup();
+
+		const options = vi.mocked(Terminal).mock.calls[0][0] as { fontSize: number; fontFamily: string };
+		expect(options.fontSize).toBe(19);
+		expect(options.fontFamily.startsWith("'0xProto Nerd Font Mono'")).toBe(true);
+	});
+
+	it("leaves a font that already fits at its nominal size", async () => {
+		applyTerminalFontFamily("Iosevka Nerd Font Mono");
+		applyTerminalFontSize(20);
+		await renderAndSetup();
+
+		const options = vi.mocked(Terminal).mock.calls[0][0] as { fontSize: number };
+		expect(options.fontSize).toBe(20);
 	});
 });
