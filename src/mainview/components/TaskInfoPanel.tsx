@@ -568,6 +568,23 @@ function TaskInfoPanel({
 		});
 	}
 
+	// The bar's compact diff button already knows which side carries the changes,
+	// so it pins the mode: the viewer's remembered preference would otherwise open
+	// the empty one and read as "the button is broken".
+	function openDiffWhereTheChangesAre(committed: boolean) {
+		if (!onOpenInlineDiff) return;
+		if (!committed) {
+			onOpenInlineDiff({ mode: "uncommitted", pinMode: true });
+			return;
+		}
+		onOpenInlineDiff({
+			mode: "branch",
+			pinMode: true,
+			compareRef: branchMeta?.compareRef,
+			compareLabel: branchMeta?.compareLabel ?? project.defaultCompareRef ?? resolveTaskCompareBaseBranch(task, project),
+		});
+	}
+
 	const openUnresolvedInDiff = onOpenInlineDiff
 		? () => onOpenInlineDiff({
 			mode: "branch",
@@ -674,6 +691,49 @@ function TaskInfoPanel({
 			</>
 		)}
 		</div>
+	) : null;
+	// `diffFiles` is `<compare>...HEAD` — committed work only. A branch whose
+	// changes are all still in the working tree has a diff the user wants to read
+	// and no committed one to count, so the dirty totals decide on their own.
+	const uncommittedInsertions = metadataBranchStatus?.insertions ?? 0;
+	const uncommittedDeletions = metadataBranchStatus?.deletions ?? 0;
+	const hasCommittedDiff = (metadataBranchStatus?.diffFiles ?? 0) > 0;
+	const hasUncommittedDiff = uncommittedInsertions > 0 || uncommittedDeletions > 0;
+	// The narrow bar's counterpart to the wide badge. The wide chip is ~100px and
+	// hides below a 400px container, which on a 390px phone left the diff behind
+	// the kebab entirely — this is the same action at icon width, so it never has
+	// to shed. It steps aside once the wide badge fits, unless the diff is
+	// uncommitted-only: the wide badge counts committed files and renders nothing
+	// then, so at every width this button is the only path to it.
+	const narrowDiffButton = narrow && project.kind !== "virtual" && (hasCommittedDiff || hasUncommittedDiff) ? (
+		<button
+			type="button"
+			data-testid="summary-bar-diff-compact"
+			onClick={() => openDiffWhereTheChangesAre(hasCommittedDiff)}
+			aria-label={t("infoPanel.showDiff")}
+			title={diffBadgeTitle}
+			className={`flex-shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg border border-edge bg-elevated px-2 min-w-[2.75rem] min-h-[2.75rem] text-micro font-mono text-fg-2 transition-colors hover:bg-elevated-hover ${
+				hasCommittedDiff ? "[@container(min-width:400px)]:hidden" : ""
+			}`}
+		>
+			<span className="text-fg-muted text-sm-plus leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0CB"}</span>
+			{/* The numbers go before the chip does. A 390px bar already carrying a
+			    variant switcher, status, priority, images and artifacts has ~44px
+			    left — a square and nothing more — while a dirty "+4000 −2000" needs
+			    ~72px, bought by truncating the status label. So the chip stays a
+			    square until the bar can hold the worst case. Only the
+			    uncommitted-only chip has numbers to reveal: the committed one hands
+			    over to the wide badge at 400px. */}
+			{!hasCommittedDiff && (
+				<span
+					className="hidden [@container(min-width:440px)]:flex items-center gap-1 tabular-nums"
+					data-testid="summary-bar-diff-compact-numbers"
+				>
+					<span className="text-success">+{uncommittedInsertions}</span>
+					<span className="text-danger">−{uncommittedDeletions}</span>
+				</span>
+			)}
+		</button>
 	) : null;
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(
 		<div
@@ -1307,6 +1367,7 @@ function TaskInfoPanel({
 						<TaskSharedImages task={task} projectId={project.id} compact touch />
 						<TaskArtifacts task={task} projectId={project.id} compact touch />
 					</span>
+					{narrowDiffButton}
 					{/* Task title intentionally omitted here — it already shows in the
 					    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
 					    bar; the freed space keeps status + priority + diff readable. */}

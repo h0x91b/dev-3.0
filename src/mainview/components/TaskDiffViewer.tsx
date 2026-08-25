@@ -102,10 +102,11 @@ function writePreferredDiffMode(mode: TaskDiffMode): void {
 
 function applyPreferredDiffMode(request: TaskInlineDiffRequest): TaskInlineDiffRequest {
 	// When the caller pinpoints a specific file (e.g. clicked from the branch-diff list)
-	// or the first unresolved GitHub thread (which only anchors in branch mode), honor
-	// their intent — the target may not exist in another mode. Otherwise, use the
-	// user's last selection (or uncommitted as the new default).
-	if (request.focusFile || request.focusFirstUnresolvedThread) {
+	// or the first unresolved GitHub thread (which only anchors in branch mode), or pins
+	// the mode because it knows which one is non-empty, honor their intent — the target
+	// may not exist in another mode. Otherwise, use the user's last selection (or
+	// uncommitted as the new default).
+	if (request.focusFile || request.focusFirstUnresolvedThread || request.pinMode) {
 		return request;
 	}
 	const preferred = readPreferredDiffMode();

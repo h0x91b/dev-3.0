@@ -3995,6 +3995,88 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(screen.getByTestId("diff-summary-badge")).toBeInTheDocument();
 		});
 
+		it("keeps a compact diff button on the bar for the widths that shed the wide badge", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 3,
+				diffInsertions: 451,
+				diffDeletions: 297,
+				diffFileStats: [
+					{ path: "src/a.ts", insertions: 400, deletions: 200 },
+					{ path: "src/b.ts", insertions: 50, deletions: 90 },
+					{ path: "src/c.ts", insertions: 1, deletions: 7 },
+				],
+			});
+			const onOpenInlineDiff = vi.fn();
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+			const compact = await screen.findByTestId("summary-bar-diff-compact");
+			// A square: no numbers at all. The bar's remaining width at 390px is one
+			// icon wide, and the wide badge carries the counts from 400px up.
+			expect(compact.textContent?.replace(/\s|\u{F0CB}/gu, "")).toBe("");
+			expect(compact.className).toContain("min-w-[2.75rem]");
+			// The two are exclusive: the compact one steps aside exactly where the
+			// wide badge's container query lets the wide one in.
+			expect(compact.className).toContain("[@container(min-width:400px)]:hidden");
+			await act(async () => {
+				fireEvent.click(compact);
+			});
+			expect(onOpenInlineDiff).toHaveBeenCalledWith(expect.objectContaining({ mode: "branch", pinMode: true }));
+		});
+
+		it("shows the compact diff button at every width when the diff is uncommitted-only", async () => {
+			// `diffFiles` counts `<compare>...HEAD`, so a branch with no commits and a
+			// dirty tree reports zero files — the wide badge renders nothing and the
+			// compact button is the only path to the diff.
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 0,
+				diffFiles: 0,
+				diffInsertions: 0,
+				diffDeletions: 0,
+				diffFileStats: [],
+				insertions: 12,
+				deletions: 3,
+			});
+			const onOpenInlineDiff = vi.fn();
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+			const compact = await screen.findByTestId("summary-bar-diff-compact");
+			expect(compact).toHaveTextContent("+12");
+			expect(compact.className).not.toContain("[@container(min-width:400px)]:hidden");
+			// The dirty totals are unbounded ("+4000 −2000" ≈ 72px), so they are
+			// themselves gated: below 440px the chip is a bare square.
+			const numbers = screen.getByTestId("summary-bar-diff-compact-numbers");
+			expect(numbers.className).toContain("hidden");
+			expect(numbers.className).toContain("[@container(min-width:440px)]:flex");
+			expect(screen.queryByTestId("diff-summary-badge")).not.toBeInTheDocument();
+			await act(async () => {
+				fireEvent.click(compact);
+			});
+			expect(onOpenInlineDiff).toHaveBeenCalledWith(expect.objectContaining({ mode: "uncommitted", pinMode: true }));
+		});
+
+		it("keeps the diff off the bar when the branch has neither commits nor dirty files", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 0,
+				diffFiles: 0,
+				diffInsertions: 0,
+				diffDeletions: 0,
+				diffFileStats: [],
+				insertions: 0,
+				deletions: 0,
+			});
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
+			});
+			await waitFor(() => expect(mockedApi.request.getBranchStatus).toHaveBeenCalled());
+			expect(screen.queryByTestId("summary-bar-diff-compact")).not.toBeInTheDocument();
+			expect(screen.queryByTestId("diff-summary-badge")).not.toBeInTheDocument();
+		});
+
 		it("does not arm the hover file-list popover on touch (tap fires mouseenter)", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,

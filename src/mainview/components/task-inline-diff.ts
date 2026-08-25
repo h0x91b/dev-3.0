@@ -10,6 +10,10 @@ export interface TaskInlineDiffRequest {
 	/** Scroll to the first unresolved GitHub review thread once the branch diff
 	 * and the PR comment payload have both loaded (PR status popover deep link). */
 	focusFirstUnresolvedThread?: boolean;
+	/** Open in `mode` even if the user's remembered mode says otherwise. For a
+	 * caller that already knows which mode is non-empty — landing on the stored
+	 * preference would show "No changes to show" for a diff that does exist. */
+	pinMode?: boolean;
 }
 
 /** Build the branch-diff request used by PR popover unresolved-comment links. */

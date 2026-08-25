@@ -3539,6 +3539,28 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		});
 	});
 
+	it("honours pinMode over the stored mode preference", async () => {
+		localStorage.setItem("dev3-inline-diff-mode-v1", "branch");
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={prTask}
+					project={project}
+					request={{ mode: "uncommitted", pinMode: true }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// The caller knows the changes are uncommitted; the remembered "branch"
+		// would have opened an empty diff.
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
+				expect.objectContaining({ mode: "uncommitted" }),
+			);
+		});
+	});
+
 	describe("markdown preview", () => {
 		function markdownFilePayload(file: Partial<TaskDiffResponse["files"][number]>): TaskDiffResponse {
 			return {
