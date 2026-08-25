@@ -33,6 +33,28 @@ import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import { refreshClaudeHooksForTask } from "./agent-hooks-refresh";
 
 /**
+ * Text appended once at the end of the agent's turn, after every message in the
+ * burst and before its Enter. Async and called at typing time, never at queue
+ * time, so a trailer describing live state is built from live state; returning
+ * "" adds nothing at all.
+ */
+export type AgentPromptEpilogue = () => Promise<string>;
+
+/**
+ * Append the trailer to a prompt that is typed in one piece. A trailer that
+ * throws costs the trailer, never the message it was riding on.
+ */
+export async function withEpilogue(prompt: string, epilogue?: AgentPromptEpilogue): Promise<string> {
+	if (!epilogue) return prompt;
+	try {
+		const trailer = await epilogue();
+		return trailer ? `${prompt}\n\n${trailer}` : prompt;
+	} catch {
+		return prompt;
+	}
+}
+
+/**
  * Type `prompt` into `task`'s agent (or into one concrete pane) and submit it,
  * reporting which of the three answers the backend could actually give.
  */
@@ -40,7 +62,7 @@ export async function deliverAgentPrompt(
 	task: Task,
 	prompt: string,
 	target: ScheduledMessageTarget = { kind: "agent" },
-	opts: { hold?: boolean } = {},
+	opts: { hold?: boolean; epilogue?: AgentPromptEpilogue } = {},
 ): Promise<AgentPromptDelivery> {
 	// The prompt about to land will fire UserPromptSubmit, so the hooks have to be
 	// in place before it is typed, not after. A no-op unless something rewrote the
@@ -49,18 +71,27 @@ export async function deliverAgentPrompt(
 	await refreshClaudeHooksForTask(task);
 
 	if (taskTerminalBackendIdentity(task) === "native") {
+		// The native arm folds the trailer in NOW rather than at release time, so a
+		// held message carries a snapshot up to one hold window old. Its delivery is
+		// a closure that may be forwarded to whichever process owns the pane's
+		// writer lease, and a closure does not cross a process boundary — a stale
+		// trailer beats a trailer that silently vanishes on the forwarding path.
+		const text = await withEpilogue(prompt, opts.epilogue);
 		return target.kind === "pane"
-			? sendPromptToNativePane(task, target.paneId, prompt, opts)
-			: sendPromptToNativeAgentPane(task, prompt, opts);
+			? sendPromptToNativePane(task, target.paneId, text, opts)
+			: sendPromptToNativeAgentPane(task, text, opts);
 	}
 	if (opts.hold) {
 		return target.kind === "pane"
-			? holdMessageForPane(task, target.paneId, prompt)
-			: holdMessageForAgentPane(task, prompt, task.sessionState?.panes);
+			? holdMessageForPane(task, target.paneId, prompt, opts.epilogue)
+			: holdMessageForAgentPane(task, prompt, task.sessionState?.panes, opts.epilogue);
 	}
+	// Nothing is held, so this send IS the whole turn: the trailer just rides on
+	// the end of the text instead of being typed as its own stage.
+	const text = await withEpilogue(prompt, opts.epilogue);
 	const outcome =
 		target.kind === "pane"
-			? await sendPromptToPane(task, target.paneId, prompt)
-			: await sendPromptToAgentPane(task, prompt, task.sessionState?.panes);
+			? await sendPromptToPane(task, target.paneId, text)
+			: await sendPromptToAgentPane(task, text, task.sessionState?.panes);
 	return agentPromptDeliveryFromPaneInput(outcome);
 }

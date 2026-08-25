@@ -14,7 +14,14 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-const { collectCoordinatorBoard } = await import("../coordinator-board");
+const getProject = vi.fn();
+const loadTasks = vi.fn();
+vi.mock("../data", () => ({
+	getProject: (...a: unknown[]) => getProject(...a),
+	loadTasks: (...a: unknown[]) => loadTasks(...a),
+}));
+
+const { collectCoordinatorBoard, coordinatorBoardEpilogue } = await import("../coordinator-board");
 
 const NOW = new Date("2026-08-25T18:00:00.000Z");
 
@@ -185,5 +192,46 @@ describe("collectCoordinatorBoard", () => {
 
 		expect(snap.live[0].hibernated).toBe(true);
 		expect(snap.live[0].activity).toEqual({ kind: "no-session", reason: "hibernated" });
+	});
+});
+
+describe("coordinatorBoardEpilogue", () => {
+	beforeEach(() => {
+		getProject.mockReset();
+		loadTasks.mockReset();
+		getProject.mockResolvedValue(project);
+		loadTasks.mockResolvedValue([task({ id: "a1", seq: 42, status: "in-progress" })]);
+	});
+
+	it("renders the board for a coordinator task", async () => {
+		const text = await coordinatorBoardEpilogue(task({ taskType: "coordinator" }));
+
+		expect(text).toContain("<dev3-board");
+		expect(text).toContain("seq:42");
+	});
+
+	// The trailer rides on every message dev3 delivers; only a coordinator's job
+	// is the board, and every other task would just pay bytes for it.
+	it("adds nothing for an ordinary task", async () => {
+		expect(await coordinatorBoardEpilogue(task())).toBe("");
+		expect(loadTasks).not.toHaveBeenCalled();
+	});
+
+	it("adds nothing for a pr-review task", async () => {
+		expect(await coordinatorBoardEpilogue(task({ taskType: "pr-review" }))).toBe("");
+	});
+
+	// A message that arrives without its trailer is worth incomparably more than
+	// a message that does not arrive.
+	it("returns an empty trailer instead of throwing when the board cannot be read", async () => {
+		loadTasks.mockRejectedValue(new Error("tasks.json is locked"));
+
+		await expect(coordinatorBoardEpilogue(task({ taskType: "coordinator" }))).resolves.toBe("");
+	});
+
+	it("returns an empty trailer when the project is gone", async () => {
+		getProject.mockRejectedValue(new Error("no such project"));
+
+		await expect(coordinatorBoardEpilogue(task({ taskType: "coordinator" }))).resolves.toBe("");
 	});
 });

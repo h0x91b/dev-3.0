@@ -12,6 +12,7 @@ import {
 import * as data from "./data";
 import type { AgentPromptDelivery } from "../shared/agent-prompt-delivery";
 import { deliverAgentPrompt } from "./agent-prompt-delivery";
+import { coordinatorBoardEpilogue } from "./coordinator-board";
 import { wrapAgentMessage } from "../shared/agent-message-envelope";
 import { spillOversizedAgentMessage } from "./agent-message-spill";
 import { appendAgentMessageLog } from "./agent-message-log";
@@ -71,11 +72,16 @@ async function deliverToTarget(task: Task, message: ScheduledMessage, hold: bool
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
 	const text = message.source ? wrapAgentMessage(message.text, message.source, task.projectId) : message.text;
+	// A coordinator's picture of the board goes stale between the messages it
+	// receives: things moved while it was not being spoken to. So every message
+	// reaching one ends on a fresh board snapshot — once per burst, built when the
+	// text is actually typed. Empty for every task that is not a coordinator.
+	const epilogue = () => coordinatorBoardEpilogue(task);
 	// Held message: nothing is typed until the pane goes quiet. Bursts (one agent
 	// writing three in a row, or several peers reporting at once) then become one
 	// agent turn, and no text lands in the middle of the user's own line. See
 	// agent-message-hold.ts.
-	const delivery = await deliverAgentPrompt(task, text, message.target, { hold });
+	const delivery = await deliverAgentPrompt(task, text, message.target, { hold, epilogue });
 	if (message.source) announceAgentMessage(task, message, delivery);
 	return delivery;
 }

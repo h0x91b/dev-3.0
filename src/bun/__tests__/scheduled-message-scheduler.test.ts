@@ -128,7 +128,7 @@ describe("scheduled-message scheduler — tick", () => {
 		startScheduledMessageScheduler();
 		await flush();
 		expect(holdMessageForAgentPane).toHaveBeenCalledTimes(1);
-		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "check CI and continue", task.sessionState.panes);
+		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "check CI and continue", task.sessionState.panes, expect.any(Function));
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		// removed via updateTaskWith
 		expect(data.updateTaskWith).toHaveBeenCalledWith(project, task.id, expect.any(Function));
@@ -158,7 +158,7 @@ describe("scheduled-message scheduler — tick", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task] as never);
 		startScheduledMessageScheduler();
 		await flush();
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue");
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "%3", "check CI and continue", expect.any(Function));
 	});
 
 	it("start is idempotent (double start = one tick)", async () => {
@@ -301,7 +301,7 @@ describe("cancel / send-now / immediate", () => {
 	it("sendMessageImmediately delivers to the agent", async () => {
 		const task = makeTask();
 		await sendMessageImmediately(task as never, "hello now");
-		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "hello now", task.sessionState.panes);
+		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: "task-12345678" }), "hello now", task.sessionState.panes, expect.any(Function));
 	});
 
 	// The click paths (a review comment's "Send to agent", the launch handoff) opt out
@@ -426,7 +426,7 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(
 			expect.objectContaining({ id: task.id }),
 			"hello now",
-			{ hold: true },
+			{ hold: true, epilogue: expect.any(Function) },
 		);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 	});
@@ -437,7 +437,7 @@ describe("scheduled-message scheduler — native-backend tasks", () => {
 		expect(sendPromptToNativeAgentPane).toHaveBeenCalledWith(
 			expect.objectContaining({ id: task.id }),
 			"fix this",
-			{ hold: false },
+			{ hold: false, epilogue: expect.any(Function) },
 		);
 	});
 

@@ -79,8 +79,8 @@ export interface BoardSnapshot {
 const MAX_TITLE = 64;
 
 const INSTRUCTION =
-	"Fresh board state, injected on every turn — read it instead of running `dev3 task list`. "
-	+ "Re-read the board only if this turn has run long or something below contradicts what you just saw. "
+	"Board state as of this message — read it instead of running `dev3 task list`. "
+	+ "It does NOT arrive when the user types to you directly, so re-read the board before answering him after a silence. "
 	+ "Address a task by its `seq:N`; a variant shows `:index (id)` and is addressed by that id.";
 
 /**

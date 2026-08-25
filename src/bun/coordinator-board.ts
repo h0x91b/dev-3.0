@@ -16,6 +16,7 @@ import type { Project, Task } from "../shared/types";
 import {
 	compareTaskSortRank,
 	getTaskTitle,
+	isCoordinatorTask,
 	isTaskDisconnected,
 	STATUS_LABELS,
 	type TaskStatus,
@@ -23,10 +24,12 @@ import {
 import {
 	BOARD_FINISHED_WINDOW_MS,
 	BOARD_MAX_ROWS,
+	renderCoordinatorBoard,
 	type BoardActivity,
 	type BoardRow,
 	type BoardSnapshot,
 } from "../shared/coordinator-board";
+import * as data from "./data";
 import { taskTerminalBackendIdentity } from "./task-terminal-backend";
 import * as pty from "./pty-server";
 import { tmux, ALL_PANE_ACTIVITY_FORMAT } from "./tmux";
@@ -142,8 +145,30 @@ function sharedSeqsOf(live: Task[]): Set<number> {
 }
 
 /**
+ * The board snapshot to append to a message being delivered to `task`, or "" if
+ * it is not a coordinator. Never throws and never blocks a delivery: a message
+ * that arrives without its trailer is worth incomparably more than one that does
+ * not arrive.
+ */
+export async function coordinatorBoardEpilogue(task: Task): Promise<string> {
+	if (!isCoordinatorTask(task)) return "";
+	try {
+		const project = await data.getProject(task.projectId);
+		const tasks = await data.loadTasks(project);
+		const now = new Date();
+		return renderCoordinatorBoard(await collectCoordinatorBoard(project, tasks, now), now);
+	} catch (err) {
+		log.warn("could not build the coordinator board trailer", {
+			taskId: task.id.slice(0, 8),
+			error: String(err),
+		});
+		return "";
+	}
+}
+
+/**
  * Build the snapshot for a coordinator's own board. Never throws: the caller is
- * a hook standing between the agent and its own prompt.
+ * standing between an agent and a message it is owed.
  */
 export async function collectCoordinatorBoard(
 	project: Project,

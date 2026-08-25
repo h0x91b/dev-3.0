@@ -4,9 +4,7 @@ import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATI
 import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
-import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isCoordinatorTask, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
-import { renderCoordinatorBoard } from "../shared/coordinator-board";
-import { collectCoordinatorBoard } from "./coordinator-board";
+import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
 import type { DeepLinkNav } from "../shared/deep-link";
@@ -560,30 +558,6 @@ const handlers: Record<string, Handler> = {
 		const found = await resolveTaskAcrossProjects(taskId);
 		if (!found) throw taskNotFoundError(taskId);
 		return await withArchivedHistory(found.project, await syncTaskBranchName(found.project, found.task));
-	},
-
-	/**
-	 * The `<dev3-board>` snapshot injected into a coordinator's every turn
-	 * (`dev3 hook board`). Answers with an empty string for anything that is not
-	 * a live coordinator task, so the hook can be installed unconditionally and
-	 * `--type coordinator` starts working mid-session without rewriting hooks.
-	 *
-	 * Scoped to the caller's own project on purpose: a coordinator drives its own
-	 * board, and every extra board is bytes in every turn of every coordinator.
-	 */
-	"board.snapshot": async (params) => {
-		const taskId = params.taskId as string;
-		const projectId = params.projectId as string;
-		if (!taskId || !projectId) return { text: "" };
-
-		const project = await data.getProject(projectId);
-		const tasks = await data.loadTasks(project);
-		const self = findTaskByRef(tasks, taskId);
-		if (!self || !isCoordinatorTask(self)) return { text: "" };
-
-		const now = new Date();
-		const snapshot = await collectCoordinatorBoard(project, tasks, now);
-		return { text: renderCoordinatorBoard(snapshot, now) };
 	},
 
 	/**

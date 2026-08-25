@@ -41,6 +41,14 @@ const log = createLogger("agent-message-hold");
 export interface HeldAgentMessage {
 	/** Types this message's text. True when it provably landed. */
 	deliver: () => boolean | Promise<boolean>;
+	/**
+	 * Optional trailer typed ONCE after the whole burst, just before the Enter —
+	 * the coordinator's board snapshot. It belongs here rather than on each
+	 * message for both reasons that matter: a burst is one agent turn and must
+	 * carry one snapshot, and the text is built at release time, so a message
+	 * that waited a full minute still ends on a board that is seconds old.
+	 */
+	epilogue?: () => boolean | Promise<boolean>;
 	/** The single Enter that ends the whole burst. */
 	submit: () => void | Promise<void>;
 }
@@ -53,6 +61,8 @@ interface Hold {
 	humanHeld: boolean;
 	/** Every message waiting for this pane, in arrival order. */
 	deliveries: HeldAgentMessage["deliver"][];
+	/** Typed once after them all; the newest registration wins, like `submit`. */
+	epilogue: HeldAgentMessage["epilogue"];
 	submit: HeldAgentMessage["submit"];
 	context: Record<string, string>;
 }
@@ -95,10 +105,12 @@ export function holdAgentMessage(key: string, message: HeldAgentMessage, context
 		firstAt: now,
 		humanHeld: false,
 		deliveries: [],
+		epilogue: message.epilogue,
 		submit: message.submit,
 		context,
 	};
 	hold.deliveries.push(message.deliver);
+	hold.epilogue = message.epilogue;
 	hold.submit = message.submit;
 	hold.context = context;
 	holds.set(key, hold);
@@ -179,6 +191,15 @@ async function release(key: string, hold: Hold): Promise<void> {
 	if (!landed) {
 		log.warn("held agent message landed nowhere; sending no Enter", hold.context);
 		return;
+	}
+	// After the messages, before the Enter — so the burst is one turn that ends on
+	// the board. A trailer that fails costs the snapshot, never the messages.
+	if (hold.epilogue) {
+		try {
+			await hold.epilogue();
+		} catch (err) {
+			log.warn("held agent message epilogue failed", { ...hold.context, error: String(err) });
+		}
 	}
 	try {
 		await hold.submit();

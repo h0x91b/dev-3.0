@@ -1,3 +1,3 @@
-Short: Coordinators always see the live board
+Short: Messages to a coordinator carry the board
 
-A coordinator task now receives a `<dev3-board>` snapshot at the start of every turn: every task that is not parked in To Do, everything finished in the last 24 hours, and how long each one's terminal has been quiet. It closes the gap where you walk the child tasks, come back to the coordinator and ask a question it answers from a picture taken before your walk — and it saves the coordinator a turn, since it no longer has to run `dev3 task list` before every status.
+Every message dev3 delivers to a coordinator task now ends with a `<dev3-board>` snapshot: each task not parked in To Do, everything finished in the last 24 hours, and how long each one's terminal has been quiet. A child reporting in therefore also tells the coordinator what else moved while it was not being spoken to, and the coordinator answers from that instead of spending a turn on `dev3 task list`. A burst of messages carries exactly one snapshot, built as it is typed.

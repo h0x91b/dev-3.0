@@ -57,16 +57,25 @@ describe("COORDINATOR_PROMPT", () => {
 	});
 
 	// The board used to be a snapshot the coordinator had to refresh by hand; it
-	// now arrives with every turn. The rule that replaced it has to do three
-	// things, and dropping any one of them costs either turns or accuracy.
-	it("points the coordinator at the injected board instead of a manual re-read", () => {
+	// now rides in on the messages dev3 delivers. The rule that replaced it must
+	// point at the block AND name every gap, or it trades one stale answer for
+	// a confidently stale one.
+	it("points the coordinator at the delivered board instead of a manual re-read", () => {
 		expect(COORDINATOR_PROMPT).toContain("<dev3-board>");
 		// Spending a turn on what the block already said is the waste this exists to stop.
-		expect(COORDINATOR_PROMPT).toMatch(/Do NOT spend a turn on `dev3 task list`/);
-		// The block is taken when the turn begins, so a long turn outlives it.
-		expect(COORDINATOR_PROMPT).toMatch(/this turn has run long/);
-		// A harness that cannot inject one must not leave the coordinator blind.
-		expect(COORDINATOR_PROMPT).toMatch(/If no block arrives/);
+		expect(COORDINATOR_PROMPT).toMatch(/do not spend a turn on `dev3 task list`/);
+	});
+
+	// The gap that matters most: the user types straight into the pane, which no
+	// delivery seam sees, so his turn carries no block at all.
+	it("warns that the user's own message brings no board", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/user typing to you directly brings NO block/);
+		expect(COORDINATOR_PROMPT).toMatch(/re-read the board before you answer him/);
+	});
+
+	it("keeps the long-turn and no-harness fallbacks", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/turn has run long/);
+		expect(COORDINATOR_PROMPT).toMatch(/no block at all/);
 	});
 
 	// A quiet time is not a screen: peek stays the only way to see what a child

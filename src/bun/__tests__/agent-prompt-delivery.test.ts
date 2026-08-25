@@ -183,14 +183,14 @@ describe("deliverAgentPrompt — a held dev3 message", () => {
 		await expect(deliverAgentPrompt(task(), "check CI", { kind: "agent" }, { hold: true })).resolves.toMatchObject({
 			status: "held",
 		});
-		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI", PANES);
+		expect(holdMessageForAgentPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "check CI", PANES, undefined);
 		expect(sendPromptToAgentPane).not.toHaveBeenCalled();
 		expect(sendPromptToPane).not.toHaveBeenCalled();
 	});
 
 	it("sends a concrete tmux pane target down the hold path", async () => {
 		await deliverAgentPrompt(task(), "check CI", { kind: "pane", paneId: "%4" }, { hold: true });
-		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%4", "check CI");
+		expect(holdMessageForPane).toHaveBeenCalledWith(expect.objectContaining({ id: TASK_ID }), "%4", "check CI", undefined);
 		expect(sendPromptToPane).not.toHaveBeenCalled();
 	});
 
