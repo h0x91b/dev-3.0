@@ -1,0 +1,1 @@
+Six alternative displays for agent-to-agent traffic, rendered as a throwaway concept scaffold behind `?concepts=agent` so they can be compared side by side in the running app. Nothing on the happy path changes: the existing agent toast is untouched and the scaffold renders nothing without the URL parameter.
