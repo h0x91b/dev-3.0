@@ -24,12 +24,17 @@ exactly the case a human has to step into.
 
 ## Decision
 
-- **The header readout is conditional** (`AgentTrafficIndicator`, `variant="bar"` returns `null`
-  with no live pair). It does **not** spend the header's one permanent ambient slot, which stays
-  memory headroom: machine capacity is useful on the happy path, silence between agents is not.
-  The live window is 1 h (`LIVE_WINDOW_MS` in `src/mainview/agent-traffic.ts`).
-- **The count is live pairs, not messages**, and a pair row navigates to the **receiver** of the
-  newest message — the task that owes an answer, and the same click target the toast uses.
+- **The readout's home is the overflow kebab; the bar slot is earned per occasion.** The labelled
+  kebab row is always present. The bar pill (`variant="bar"`) renders immediately right of the three
+  dots only while messages landed since the user's last look, and retires when they look — an unread
+  badge, not a counter. It does **not** spend the header's one permanent ambient slot, which stays
+  memory headroom. **Never on the bar at narrow width**: the phone header holds a breadcrumb and one
+  kebab, so the labelled sheet row is the only mobile entry.
+- **Unread is measured against the user's own last look** (`dev3-agent-traffic-seen`, localStorage,
+  per browser). A first-ever look stamps itself, so a fresh install never opens on a badge of 400;
+  the badge caps at `9+`. The pill deliberately outlives its own badge while its panel is open.
+- **A pair row navigates to the receiver** of the newest message — the task that owes an answer, and
+  the same click target the toast uses. The panel is not filtered by recency.
 - **The log is an overlay, not a destination** (`AgentTrafficLog`): the nav budget is 8 and spent
   (bible §4), so it takes the task-notes-log shape — dialog on wide, BottomSheet on narrow.
   Entry points: the readout panel, `⇧⌘M` (`keymap.ts`), the View menu, the command palette.
@@ -43,8 +48,11 @@ exactly the case a human has to step into.
 - **Two reads per arrival.** A burst of messages coalesces into one debounce, but a steady stream
   costs one `readdir` + day-file read per ~400 ms. Bounded by the 500-row page and the fact that
   only day-files are opened.
-- **The 1 h window is a guess.** Too short hides a slow conversation from the header; too long
-  turns the glyph into permanent chrome. It is one constant, and the log is unaffected either way.
+- **Unread state is per browser, not per user.** Reading the traffic on the desktop leaves the
+  phone's badge lit, and vice versa. Correct for a "have *I* seen this on *this* screen" signal, but
+  it will surprise anyone who expects the two to agree.
+- **A cleared badge is unrecoverable except through the log.** Opening the panel marks everything
+  seen, including rows the user scrolled past without reading; the log is the recourse.
 - **The pair key uses task ids** — a message whose sender task was deleted keeps its own pair rather
   than merging into a peer's. Acceptable: the row is history, not state.
 
@@ -52,6 +60,10 @@ exactly the case a human has to step into.
 
 - **A permanent header counter** (the memory-pill shape): rejected — it reads "0" on most boards
   forever, and the manifest's own anti-pattern list is header button creep.
+- **A recency-based glyph** (present while a pair spoke in the last hour) shipped first and was
+  rejected on sight of it running: it still puts a number in the header of an idle board, it lights
+  up for traffic the user already read, and it goes dark on traffic they have not — recency and
+  unread are simply different questions.
 - **A ninth nav destination for the log**: rejected — the destination budget is spent, and this is a
   surface you open to answer one question, not a place you work in.
 - **Inserting the pushed preview straight into the log**: rejected — it puts a shorter, statusless

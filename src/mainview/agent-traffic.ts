@@ -20,13 +20,77 @@ import type { AgentPromptDeliveryStatus } from "../shared/agent-prompt-delivery"
 import { api } from "./rpc";
 
 /**
- * How recent a pair's newest message must be for the header to call it live.
+ * When the user last looked at the traffic.
  *
- * The glyph answers "are my agents talking right now", so it has to forget: a
- * pair that went quiet before lunch is history, and history is what the log is
- * for. The log itself never filters by this.
+ * The header pill is UNREAD-driven, not recency-driven: it exists to say "there
+ * is something you have not seen", so the only clock that matters is the user's
+ * own last look. Per browser, like the theme and the locale — the same person on
+ * a phone and on the desktop is reading two different screens.
  */
-export const LIVE_WINDOW_MS = 60 * 60 * 1000;
+const SEEN_KEY = "dev3-agent-traffic-seen";
+
+function readSeen(): number {
+	try {
+		const stored = Number(localStorage.getItem(SEEN_KEY));
+		if (Number.isFinite(stored) && stored > 0) return stored;
+	} catch {
+		// Private mode / storage disabled: fall through to the first-look default.
+	}
+	return 0;
+}
+
+let seenAt: number | null = null;
+
+/**
+ * The user has never opened this before, so nothing in 30 days of history counts
+ * as unread — "since you last clicked" has no meaning yet. Stamping the first
+ * look is what keeps a fresh install from opening on a badge of 400.
+ */
+export function trafficSeenAt(): number {
+	if (seenAt === null) {
+		seenAt = readSeen();
+		if (seenAt === 0) {
+			seenAt = Date.now();
+			writeSeen(seenAt);
+		}
+	}
+	return seenAt;
+}
+
+function writeSeen(at: number): void {
+	try {
+		localStorage.setItem(SEEN_KEY, String(at));
+	} catch {
+		// Unwritable storage just means the badge returns after a reload.
+	}
+}
+
+/** Called when the user opens either traffic surface. */
+export function markTrafficSeen(): void {
+	seenAt = Date.now();
+	writeSeen(seenAt);
+	for (const projectId of states.keys()) emit(projectId);
+}
+
+/** Messages that landed after the user's last look. */
+export function unreadRows(rows: AgentMessageLogRow[], since = trafficSeenAt()): AgentMessageLogRow[] {
+	return rows.filter((row) => {
+		const at = Date.parse(row.at);
+		// Anything dev3 itself sent is not traffic between two agents.
+		if (Number.isNaN(at) || (row.fromSeq === null && row.fromTaskId === null)) return false;
+		return at > since;
+	});
+}
+
+/** Test seam: forget the cached last-look stamp. */
+export function resetTrafficSeen(): void {
+	seenAt = null;
+	try {
+		localStorage.removeItem(SEEN_KEY);
+	} catch {
+		// Nothing stored to forget.
+	}
+}
 
 /** A message whose text never provably reached the receiver's pane. */
 export function isUnsettled(status: AgentPromptDeliveryStatus): boolean {
@@ -129,11 +193,6 @@ export function derivePairs(rows: AgentMessageLogRow[]): TrafficPair[] {
 		}
 	}
 	return [...byKey.values()].sort((a, b) => b.lastAt - a.lastAt);
-}
-
-/** The pairs the header speaks for: talking inside {@link LIVE_WINDOW_MS}. */
-export function livePairs(pairs: TrafficPair[], now = Date.now()): TrafficPair[] {
-	return pairs.filter((pair) => now - pair.lastAt <= LIVE_WINDOW_MS);
 }
 
 /* ── store ──────────────────────────────────────────────────────────────── */

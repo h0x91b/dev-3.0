@@ -880,6 +880,17 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					</div>
 				)}
 
+				{/* Agent traffic — the ONLY control here whose bar slot is earned per
+				    occasion: the kebab row above is its home, and this pill appears
+				    immediately right of the three dots only while messages have landed
+				    since the user last looked, then disappears when they look. Never on a
+				    phone header (bible §5.9, §12.6). */}
+				<AgentTrafficIndicator
+					projectId={currentProjectId}
+					navigate={navigate}
+					onOpenLog={() => window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT))}
+				/>
+
 				{/* Prevent-sleep lives in the kebab sheet only, at every width: it is on for
 				    everyone and practically never switched off, so a permanent header slot
 				    bought nothing. */}
@@ -890,18 +901,6 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				    menu instead (the component decides — see its `variant`). Folds into
 				    the kebab sheet on narrow, where the breakdown is a BottomSheet. */}
 				{!isNarrow && <MemoryHeadroomIndicator navigate={navigate} />}
-
-				{/* Agent traffic — CONDITIONAL, unlike the memory readout above: it renders
-				    only while a pair has spoken in the last hour, so a board whose agents
-				    never write to each other carries no glyph at all. The permanent ambient
-				    slot stays spent on memory (PRODUCT_UX_BIBLE §5, §12.6). */}
-				{!isNarrow && (
-					<AgentTrafficIndicator
-						projectId={currentProjectId}
-						navigate={navigate}
-						onOpenLog={() => window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT))}
-					/>
-				)}
 
 				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
 				    (folded into the kebab bottom sheet on narrow). */}
@@ -1076,14 +1075,6 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					<div className="flex flex-wrap items-center gap-1.5 pb-3 mb-1 border-b border-edge/60">
 						<PreventSleepToggle />
 						<MemoryHeadroomIndicator navigate={navigate} />
-						<AgentTrafficIndicator
-							projectId={currentProjectId}
-							navigate={navigate}
-							onOpenLog={() => {
-								setShowActionSheet(false);
-								window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT));
-							}}
-						/>
 						{viewedOverRemote && <ConnectionQualityIndicator />}
 						<RateLimitIndicator compact={false} />
 						{currentProjectId && !isVirtualProject && (
@@ -1091,6 +1082,17 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						)}
 						<TmuxSessionManager navigate={navigate} />
 					</div>
+					{/* Agent traffic is the phone's only way in, so it is a labelled row
+					    rather than another number in the chip row above. */}
+					<AgentTrafficIndicator
+						projectId={currentProjectId}
+						navigate={navigate}
+						onOpenLog={() => {
+							setShowActionSheet(false);
+							window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT));
+						}}
+						variant="menu"
+					/>
 					{headerSheetRows.map((row) => (
 						<button
 							key={row.key}

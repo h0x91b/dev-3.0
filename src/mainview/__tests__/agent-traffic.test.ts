@@ -1,5 +1,5 @@
 import type { AgentMessageLogRow } from "../../shared/agent-message-log";
-import { derivePairs, isUnsettled, livePairs, LIVE_WINDOW_MS } from "../agent-traffic";
+import { derivePairs, isUnsettled, markTrafficSeen, resetTrafficSeen, trafficSeenAt, unreadRows } from "../agent-traffic";
 
 const NOW = Date.parse("2026-08-25T12:00:00.000Z");
 
@@ -92,18 +92,38 @@ describe("derivePairs", () => {
 	});
 });
 
-describe("livePairs", () => {
-	// Silence is the header's normal state: a pair that stopped talking before the
-	// window drops out, which is what lets the glyph disappear entirely.
-	it("keeps only pairs inside the live window", () => {
-		const pairs = derivePairs([
-			row({ at: new Date(NOW - 1000).toISOString() }),
-			row({ at: new Date(NOW - LIVE_WINDOW_MS - 1000).toISOString(), toTaskId: "task-c", toSeq: 33 }),
-		]);
-		expect(pairs).toHaveLength(2);
-		const live = livePairs(pairs, NOW);
-		expect(live).toHaveLength(1);
-		expect(live[0].toSeq).toBe(22);
+describe("unreadRows", () => {
+	beforeEach(() => {
+		resetTrafficSeen();
+	});
+
+	it("counts only what landed after the last look", () => {
+		const rows = [row({ at: new Date(NOW).toISOString() }), row({ at: new Date(NOW - 60_000).toISOString() })];
+		expect(unreadRows(rows, NOW - 30_000)).toHaveLength(1);
+	});
+
+	// A dev3 hand-off is not two agents talking, so it must not light the badge.
+	it("ignores rows with no sending agent", () => {
+		const rows = [row({ at: new Date(NOW).toISOString(), fromTaskId: null, fromSeq: null })];
+		expect(unreadRows(rows, NOW - 30_000)).toHaveLength(0);
+	});
+
+	// A fresh install has no "last time you clicked", so 30 days of history must
+	// not open on a badge of 400: the first look stamps itself.
+	it("treats a first-ever look as having seen everything", () => {
+		const before = Date.now();
+		const seen = trafficSeenAt();
+		expect(seen).toBeGreaterThanOrEqual(before);
+		expect(unreadRows([row({ at: new Date(NOW - 60_000).toISOString() })], seen)).toHaveLength(0);
+	});
+
+	// Looking is reading: the badge has to be able to go back to zero, or it is
+	// permanent chrome with extra steps.
+	it("clears once the traffic is marked seen", () => {
+		const rows = [row({ at: new Date().toISOString() })];
+		expect(unreadRows(rows, Date.now() - 60_000)).toHaveLength(1);
+		markTrafficSeen();
+		expect(unreadRows(rows)).toHaveLength(0);
 	});
 });
 

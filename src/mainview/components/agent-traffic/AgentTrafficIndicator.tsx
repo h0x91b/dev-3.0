@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Route } from "../../state";
-import type { TrafficPair } from "../../agent-traffic";
+import { markTrafficSeen, type TrafficPair } from "../../agent-traffic";
 import { useT } from "../../i18n";
 import { useAgentTraffic } from "../../hooks/useAgentTraffic";
 import { useHeaderFlyout } from "../../hooks/useHeaderFlyout";
@@ -12,29 +12,31 @@ import HeaderFlyoutPanel from "../HeaderFlyoutPanel";
 import { PairRow, TrafficGlyph } from "./TrafficRow";
 
 /**
- * The header's agent-traffic readout: are my agents talking, and who owes an answer.
+ * The header's agent-traffic readout: is there anything new, and who owes an answer.
  *
- * **Conditional, not permanent chrome.** The header's one permanent ambient slot
- * is spent on memory headroom (bible §5, §12.6), and unlike memory, silence here
- * is the normal state and needs no readout — most boards have no agent-to-agent
- * traffic at all. So the pill exists only while a pair has spoken inside
- * `LIVE_WINDOW_MS`, which makes the glyph's mere presence the signal. Narrow is
- * exempt for the same reason as the memory pill: there this markup IS the kebab
- * sheet row, and a sheet the user opened should not be empty.
+ * **Its home is the overflow kebab, not the header bar.** The bar pill is an
+ * exception the traffic has to earn: it appears only while messages have landed
+ * since the user last looked, and disappears the moment they look. So it is an
+ * unread badge, not a counter — a permanent number nobody acts on is the header
+ * button creep the UX manifest names as this app's top anti-pattern.
  *
- * The panel is a preview, not the archive: the newest pairs, then one link into
- * the traffic log, which is the surface that owns history.
+ * **Never on the bar at narrow width.** A phone header has room for a breadcrumb
+ * and one kebab (bible §12.6), so the labelled kebab row is the only mobile
+ * entry point — and it is labelled precisely because an unnamed glyph in a row of
+ * numbers is unfindable.
  */
 
 const POPOVER_WIDTH = 25 * 16;
 /** Pairs previewed in the panel before the log takes over. */
 const PANEL_PAIR_LIMIT = 6;
+/** Above this the badge stops counting: the exact number stops mattering. */
+const BADGE_CAP = 9;
 
 interface AgentTrafficIndicatorProps {
 	projectId: string | null;
 	navigate: (route: Route) => void;
 	onOpenLog: () => void;
-	/** `bar` is the header pill; `menu` is the labelled row in the header kebab. */
+	/** `bar` is the earned header pill; `menu` is the labelled row in the kebab. */
 	variant?: "bar" | "menu";
 }
 
@@ -47,22 +49,29 @@ export default function AgentTrafficIndicator({
 	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const traffic = useAgentTraffic(projectId);
-	const flyout = useHeaderFlyout({ variant, isNarrow, repositionKey: traffic.live.length });
+	const flyout = useHeaderFlyout({ variant, isNarrow, repositionKey: traffic.pairs.length });
 	const [arrived, setArrived] = useState(false);
-	const seen = useRef(traffic.rows.length);
+	const seenRows = useRef(traffic.rows.length);
 
 	// A one-shot pulse when the count moves, so a message landing is visible even
 	// to someone who was reading the board and never saw the toast. One-shot, not a
 	// loop: the hover loop is the glyph's personality, this is feedback.
 	useEffect(() => {
-		if (traffic.rows.length === seen.current) return;
-		const grew = traffic.rows.length > seen.current;
-		seen.current = traffic.rows.length;
+		if (traffic.rows.length === seenRows.current) return;
+		const grew = traffic.rows.length > seenRows.current;
+		seenRows.current = traffic.rows.length;
 		if (!grew) return;
 		setArrived(true);
 		const timer = setTimeout(() => setArrived(false), 600);
 		return () => clearTimeout(timer);
 	}, [traffic.rows.length]);
+
+	// Looking IS reading. The panel opening is the moment the badge has done its
+	// job, so it clears here rather than on some later click inside the panel.
+	const open = flyout.open;
+	useEffect(() => {
+		if (open) markTrafficSeen();
+	}, [open]);
 
 	const openReceiver = useCallback(
 		(pair: TrafficPair) => {
@@ -77,24 +86,25 @@ export default function AgentTrafficIndicator({
 		onOpenLog();
 	}, [flyout, onOpenLog]);
 
-	const live = traffic.live;
-	// Nothing to say: no live pair means no pill at all (see the header note above).
-	if (variant === "bar" && !isNarrow && live.length === 0) return null;
+	// The bar pill is earned by unread traffic, and never shown on a phone. It
+	// outlives its own badge while the panel is open: opening marks the traffic
+	// seen, so without `|| open` the pill — and the panel hanging off it — would
+	// vanish under the pointer in the same click that summoned it.
+	if (variant === "bar" && (isNarrow || (traffic.unread === 0 && !open))) return null;
 
-	const unsettled = live.some((pair) => pair.unsettled);
-	const accessibleName = t("traffic.ariaLabel", { pairs: String(live.length) });
+	const { pairs, unread } = traffic;
+	const accessibleName =
+		unread > 0 ? t("traffic.ariaLabelUnread", { count: String(unread) }) : t("traffic.ariaLabel");
 	const logShortcut = shortcutById("agent-traffic-log");
 	const shortcut = logShortcut ? shortcutKeysFor(logShortcut) : "";
 
 	const panel = (
 		<div>
 			<div className="px-3 py-2 border-b border-edge text-micro text-fg-3">
-				{live.length > 0
-					? t.plural("traffic.pairCount", live.length)
-					: t("traffic.quiet")}
+				{pairs.length > 0 ? t.plural("traffic.pairCount", pairs.length) : t("traffic.quiet")}
 			</div>
-			<div className="max-h-72 overflow-y-auto" role="list">
-				{live.slice(0, PANEL_PAIR_LIMIT).map((pair) => (
+			<div className="max-h-72 overflow-y-auto">
+				{pairs.slice(0, PANEL_PAIR_LIMIT).map((pair) => (
 					<PairRow key={pair.key} pair={pair} onSelect={openReceiver} />
 				))}
 			</div>
@@ -110,6 +120,8 @@ export default function AgentTrafficIndicator({
 		</div>
 	);
 
+	// The kebab row: always present, always labelled. This is the control's home,
+	// and on a phone it is the only way in.
 	if (variant === "menu") {
 		return (
 			<>
@@ -118,24 +130,45 @@ export default function AgentTrafficIndicator({
 					type="button"
 					role="menuitem"
 					aria-label={accessibleName}
-					data-testid="agent-traffic-indicator"
-					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+					data-testid="agent-traffic-menu-row"
+					className={`header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors ${
+						isNarrow ? "min-h-[44px]" : ""
+					}`}
 					{...flyout.triggerProps}
 				>
-					<TrafficGlyph muted={live.length === 0} />
+					<TrafficGlyph muted={unread === 0} />
 					<span className="text-sm flex-1 text-left">{t("traffic.label")}</span>
-					<span className="text-micro font-medium tabular-nums text-fg-3">{live.length}</span>
+					{unread > 0 && (
+						<span
+							data-testid="agent-traffic-menu-badge"
+							className={`text-micro font-medium tabular-nums ${
+								traffic.unreadUnsettled ? "text-warning" : "text-agent"
+							}`}
+						>
+							{unread > BADGE_CAP ? `${BADGE_CAP}+` : unread}
+						</span>
+					)}
 				</button>
-				{flyout.open && !isNarrow && (
-					<HeaderFlyoutPanel
-						flyout={flyout}
-						width={POPOVER_WIDTH}
-						ariaLabel={t("traffic.label")}
-						testId="agent-traffic-popover"
-					>
-						{panel}
-					</HeaderFlyoutPanel>
-				)}
+				{flyout.open &&
+					(isNarrow ? (
+						<BottomSheet
+							open
+							onClose={flyout.close}
+							title={t("traffic.label")}
+							testId="agent-traffic-sheet"
+						>
+							{panel}
+						</BottomSheet>
+					) : (
+						<HeaderFlyoutPanel
+							flyout={flyout}
+							width={POPOVER_WIDTH}
+							ariaLabel={t("traffic.label")}
+							testId="agent-traffic-popover"
+						>
+							{panel}
+						</HeaderFlyoutPanel>
+					))}
 			</>
 		);
 	}
@@ -148,41 +181,30 @@ export default function AgentTrafficIndicator({
 				aria-label={accessibleName}
 				data-help-id="header.agent-traffic"
 				data-testid="agent-traffic-indicator"
-				className={`header-anim flex shrink-0 items-center gap-1 rounded-lg transition-colors hover:bg-elevated ${
-					isNarrow ? "h-11 px-2" : "px-1.5 py-1"
-				} ${arrived ? "hdr-wire-arrive" : ""}`}
+				className={`header-anim flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-elevated ${
+					arrived ? "hdr-wire-arrive" : ""
+				}`}
 				{...flyout.triggerProps}
 			>
-				<TrafficGlyph muted={live.length === 0} />
+				<TrafficGlyph />
 				<span
 					className={`text-micro font-medium leading-none tabular-nums ${
-						unsettled ? "text-warning" : "text-agent"
+						traffic.unreadUnsettled ? "text-warning" : "text-agent"
 					}`}
 				>
-					{live.length}
+					{unread > BADGE_CAP ? `${BADGE_CAP}+` : unread}
 				</span>
 			</button>
 
-			{isNarrow ? (
-				<BottomSheet
-					open={flyout.open}
-					onClose={flyout.close}
-					title={t("traffic.label")}
-					testId="agent-traffic-sheet"
+			{flyout.open && (
+				<HeaderFlyoutPanel
+					flyout={flyout}
+					width={POPOVER_WIDTH}
+					ariaLabel={t("traffic.label")}
+					testId="agent-traffic-popover"
 				>
 					{panel}
-				</BottomSheet>
-			) : (
-				flyout.open && (
-					<HeaderFlyoutPanel
-						flyout={flyout}
-						width={POPOVER_WIDTH}
-						ariaLabel={t("traffic.label")}
-						testId="agent-traffic-popover"
-					>
-						{panel}
-					</HeaderFlyoutPanel>
-				)
+				</HeaderFlyoutPanel>
 			)}
 		</>
 	);

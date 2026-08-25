@@ -94,7 +94,8 @@ const common = {
 
 	// Tráfico entre agentes — indicador de cabecera y registro
 	"traffic.label": "Tráfico de agentes",
-	"traffic.ariaLabel": "Tráfico de agentes: {pairs} parejas activas",
+	"traffic.ariaLabel": "Tráfico de agentes",
+	"traffic.ariaLabelUnread": "Tráfico de agentes: {count} nuevos desde la última vez",
 	"traffic.pairCount_one": "{count} pareja hablando",
 	"traffic.pairCount_other": "{count} parejas hablando",
 	"traffic.quiet": "Ningún agente ha escrito en la última hora",

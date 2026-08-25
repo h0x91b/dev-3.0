@@ -205,8 +205,8 @@ ux_architecture:
       allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "variant_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout", "agent_traffic_readout"]
       agent_traffic_readout:
         budget: 1
-        spec: "CONDITIONAL, unlike ambient_resource_readout: renders only while a task pair has exchanged a dev3 message inside the live window (1h), so a board whose agents never write to each other carries no glyph. The glyph's presence IS the signal; the number counts live PAIRS, not messages. Violet --agent (identity, never severity); text-warning only when a pair holds a message dev3 could not prove landed. Hover/tap opens the pair list (newest first, receiver of the newest message = the one that owes an answer); a row navigates to that RECEIVER. Never invents an importance axis — no sender can set one."
-        narrow: "folds into the kebab bottom sheet like the memory readout; >=44x44px; panel renders as BottomSheet."
+        spec: "HOME IS THE KEBAB, and the bar slot is EARNED, unlike ambient_resource_readout: the labelled kebab row is always present, while the bar pill appears immediately right of the three dots only while messages landed since the user's last look (localStorage dev3-agent-traffic-seen, first look stamps itself, badge caps at 9+) and retires when they look. It is an unread badge, not a counter. The pill must outlive its own badge while its panel is open. Violet --agent (identity, never severity); text-warning only when an unread message has no proof of delivery. The panel lists pairs unfiltered by recency (receiver of the newest message = the one that owes an answer); a row navigates to that RECEIVER. Never invents an importance axis — no sender can set one."
+        narrow: "NEVER on the bar. The kebab bottom sheet is the only mobile entry, as a LABELLED row (not a glyph chip in the stateful chip row — unfindable among '28 GB' / '5.8 ms'); >=44px; panel renders as BottomSheet."
         status: "proposed"
       ambient_resource_readout:
         budget: 1   # currently memory headroom; a second one folds into the narrow sheet instead
@@ -270,7 +270,7 @@ ux_architecture:
       forbidden: ["global_destination", "send_message", "task_lifecycle_action", "importance_filter"]
       narrow_form: "bottom_sheet"   # wide renders the same content as a centered dialog
       entry_point: "The header agent_traffic_readout panel, Shift+Cmd/Ctrl+M, View menu, command palette. NOT a nav destination — the 8-destination budget is spent, and this is a log opened to answer one question."
-      note: "Reads the log that already existed on disk (data/<slug>/messages/YYYY-MM-DD.jsonl, 30-day retention, readAgentMessageLog RPC) and had no UI at all. Filters are ONLY what the data supports: one pair, or messages whose delivery was never proven. An importance/blocker filter is forbidden because no sender can mark a message important — the UI would be inventing the fact. Trimmed history must read as trimmed: the footer names the retention window and the oldest day still on disk."
+      note: "Reads the log that already existed on disk (data/<slug>/messages/*.jsonl, 30 days, readAgentMessageLog RPC) with no UI at all. Filters are ONLY what the data supports: one pair, or messages whose delivery was never proven. An importance/blocker filter is forbidden — no sender can mark a message important, so the UI would be inventing the fact. Trimmed history must read as trimmed: the footer names the retention window and the oldest day still on disk."
       evidence: ["src/mainview/components/agent-traffic/AgentTrafficLog.tsx", "src/mainview/components/agent-traffic/AgentTrafficIndicator.tsx", "src/mainview/agent-traffic.ts", "src/shared/agent-message-log.ts"]
     task_notes_log:
       purpose: "The whole agent-written note log of one task, on its own surface."

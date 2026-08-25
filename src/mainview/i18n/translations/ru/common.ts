@@ -96,7 +96,8 @@ const common = {
 
 	// Трафик между агентами — индикатор в шапке и журнал
 	"traffic.label": "Трафик агентов",
-	"traffic.ariaLabel": "Трафик агентов: живых пар — {pairs}",
+	"traffic.ariaLabel": "Трафик агентов",
+	"traffic.ariaLabelUnread": "Трафик агентов: новых с прошлого раза — {count}",
 	"traffic.pairCount_one": "{count} пара переписывается",
 	"traffic.pairCount_few": "{count} пары переписываются",
 	"traffic.pairCount_many": "{count} пар переписываются",

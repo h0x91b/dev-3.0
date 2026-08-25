@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AgentMessageLogPage, AgentMessageLogRow } from "../../shared/agent-message-log";
 import { I18nProvider } from "../i18n";
-import { resetTrafficStore } from "../agent-traffic";
+import { resetTrafficSeen, resetTrafficStore } from "../agent-traffic";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
 import AgentTrafficLog from "../components/agent-traffic/AgentTrafficLog";
 
@@ -47,9 +47,16 @@ function setPage(rows: AgentMessageLogRow[], over: Partial<AgentMessageLogPage> 
 
 beforeEach(() => {
 	resetTrafficStore();
+	resetTrafficSeen();
 	setPage([]);
 	knownTaskIds.value = ["task-a", "task-b", "task-c"];
 });
+
+/** Put the last look an hour back so the seeded rows read as unread. */
+function withUnread() {
+	resetTrafficSeen();
+	localStorage.setItem("dev3-agent-traffic-seen", String(Date.now() - 60 * 60 * 1000));
+}
 
 function renderIndicator() {
 	return render(
@@ -59,35 +66,43 @@ function renderIndicator() {
 	);
 }
 
-describe("AgentTrafficIndicator", () => {
-	// The header's permanent ambient slot belongs to memory headroom. Silence is the
-	// normal state here, so a board with no traffic must carry no glyph at all —
-	// otherwise this is one more dead control in a header the manifest already
-	// warns is crowded.
-	it("renders nothing while no agent is talking", async () => {
-		renderIndicator();
-		await waitFor(() => expect(page.value.rows).toHaveLength(0));
-		expect(screen.queryByTestId("agent-traffic-indicator")).toBeNull();
-	});
-
-	it("appears with the live pair count once agents talk", async () => {
-		setPage([row(), row({ toTaskId: "task-c", toSeq: 33 })]);
-		renderIndicator();
-		const pill = await screen.findByTestId("agent-traffic-indicator");
-		expect(pill.textContent).toContain("2");
-		// Never colour-and-number only: the count needs a name a screen reader reads.
-		expect(pill.getAttribute("aria-label")).toBeTruthy();
-	});
-
-	// A pair that went quiet long ago is history, and history lives in the log.
-	it("forgets a pair that stopped talking before the live window", async () => {
-		setPage([row({ at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() })]);
+describe("AgentTrafficIndicator (bar)", () => {
+	// The bar slot is earned per occasion. Nothing new means no pill: the kebab row
+	// is the control's home, and a permanent number nobody acts on is the header
+	// button creep the manifest names as this app's top anti-pattern.
+	it("renders nothing while there is nothing new", async () => {
+		setPage([row()]);
 		renderIndicator();
 		await waitFor(() => expect(page.value.rows).toHaveLength(1));
 		expect(screen.queryByTestId("agent-traffic-indicator")).toBeNull();
 	});
 
+	it("appears with the unread count once messages land", async () => {
+		withUnread();
+		setPage([row(), row({ toTaskId: "task-c", toSeq: 33 })]);
+		renderIndicator();
+		const pill = await screen.findByTestId("agent-traffic-indicator");
+		expect(pill.textContent).toContain("2");
+		// Never colour-and-number only: the count needs a name a screen reader reads.
+		expect(pill.getAttribute("aria-label")).toContain("2");
+	});
+
+	// Looking is reading, so opening the panel retires the badge — but the pill has
+	// to outlive it: clearing mid-click used to take the panel down with it.
+	it("survives its own badge while the panel is open, then goes", async () => {
+		withUnread();
+		setPage([row()]);
+		renderIndicator();
+		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
+		expect(await screen.findByTestId("agent-traffic-popover")).toBeTruthy();
+		expect(screen.getByTestId("agent-traffic-indicator").textContent).toContain("0");
+
+		await userEvent.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByTestId("agent-traffic-indicator")).toBeNull());
+	});
+
 	it("opens a panel listing each pair, and offers the log", async () => {
+		withUnread();
 		setPage([row()]);
 		const onOpenLog = vi.fn();
 		render(
@@ -106,6 +121,7 @@ describe("AgentTrafficIndicator", () => {
 	// The click goes where the answer is owed — the receiver's task, whose pane holds
 	// the text — not to the sender that is already done talking.
 	it("navigates to the task that owes the answer", async () => {
+		withUnread();
 		setPage([row()]);
 		const navigate = vi.fn();
 		render(
@@ -116,6 +132,41 @@ describe("AgentTrafficIndicator", () => {
 		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
 		await userEvent.click(screen.getByTestId("traffic-pair-row"));
 		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "proj-1", activeTaskId: "task-b" });
+	});
+});
+
+describe("AgentTrafficIndicator (kebab row)", () => {
+	function renderRow() {
+		return render(
+			<I18nProvider>
+				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} variant="menu" />
+			</I18nProvider>,
+		);
+	}
+
+	// The control's home, and on a phone the only way in — so it is always present
+	// and always carries its label, never a bare glyph among numbers.
+	it("is always present and labelled, even with no traffic at all", async () => {
+		renderRow();
+		const rowButton = await screen.findByTestId("agent-traffic-menu-row");
+		expect(rowButton.textContent).toContain("Agent traffic");
+		expect(screen.queryByTestId("agent-traffic-menu-badge")).toBeNull();
+	});
+
+	it("carries the unread count as a badge beside its label", async () => {
+		withUnread();
+		setPage([row(), row({ toTaskId: "task-c", toSeq: 33 })]);
+		renderRow();
+		expect((await screen.findByTestId("agent-traffic-menu-badge")).textContent).toBe("2");
+	});
+
+	// Ten unread messages and forty are the same decision, so the badge stops
+	// counting rather than growing into the label.
+	it("caps the badge instead of widening the row", async () => {
+		withUnread();
+		setPage(Array.from({ length: 14 }, (_, i) => row({ body: `msg ${i}` })));
+		renderRow();
+		expect((await screen.findByTestId("agent-traffic-menu-badge")).textContent).toBe("9+");
 	});
 });
 
