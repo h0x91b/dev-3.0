@@ -927,8 +927,10 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 					</svg>
 				</button>
 				)}
-				<div className="flex items-center justify-between gap-4">
-					<div>
+				{/* Stacks below `md`: the count plus both actions do not fit one phone
+				    row, and letting them overflow pushed `Add project` off-screen. */}
+				<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 md:gap-4">
+					<div className="min-w-0">
 						<h2 className="flex items-center gap-1.5 text-fg-2 text-sm font-medium">
 							{t.plural("dashboard.projectCount", visibleProjects.length)}
 							<HelpSpot topicId="dashboard.projects" />
@@ -937,7 +939,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							<div className="text-fg-3 text-xs mt-1">{t("activity.noActiveTasks")}</div>
 						)}
 					</div>
-					<div className="flex items-center gap-2 flex-shrink-0">
+					<div className="flex items-center gap-2 md:flex-shrink-0">
 						{/* Fallback only — the rail owns `New space` and passes no handler
 						    while it is on screen. When it does render there is no rail at
 						    all (commonly a first run with zero spaces), so it stays a full
@@ -950,13 +952,13 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 								   until a space does — so on a first run Spaces was unexplained
 								   exactly when it is hardest to grasp. */
 								data-help-id="dashboard.spaces"
-								className="flex items-center gap-1.5 flex-shrink-0 px-4 py-1.5 min-h-[44px] md:min-h-0 border border-edge rounded-xl text-fg-2 text-sm hover:text-fg hover:border-edge-active transition-[color,border-color,transform] active:scale-[0.96]"
+								className="flex-1 md:flex-none flex items-center justify-center md:justify-start gap-1.5 min-w-0 px-3 md:px-4 py-1.5 min-h-[44px] md:min-h-0 border border-edge rounded-xl text-fg-2 text-sm hover:text-fg hover:border-edge-active transition-[color,border-color,transform] active:scale-[0.96]"
 								data-testid="dashboard-new-space"
 							>
 								<svg aria-hidden="true" focusable="false" className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
 									<path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
 								</svg>
-								{t("spaces.newSpace")}
+								<span className="truncate">{t("spaces.newSpace")}</span>
 							</button>
 						)}
 						{onOpenAddProject && (
@@ -964,7 +966,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 								type="button"
 								onClick={() => onOpenAddProject()}
 								data-help-id="dashboard.add-project"
-								className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent-fill text-white text-sm font-semibold rounded-xl hover:bg-accent-fill-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96] flex-shrink-0"
+								className="flex-1 md:flex-none min-w-0 truncate px-3 md:px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent-fill text-white text-sm font-semibold rounded-xl hover:bg-accent-fill-hover shadow-lg shadow-accent/20 transition-[background-color,transform] active:scale-[0.96]"
 							>
 								{t("dashboard.addProject")}
 							</button>
@@ -997,7 +999,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 							value={projectQuery}
 							onChange={(e) => setProjectQuery(e.target.value)}
 							placeholder={t("spaces.searchPlaceholderDashboard")}
-							className="w-full bg-raised border border-edge rounded-xl pl-9 pr-3 py-2 text-sm text-fg placeholder:text-fg-muted focus:border-edge-active transition-colors"
+							className="w-full bg-raised border border-edge rounded-xl pl-9 pr-3 py-2 min-h-[44px] md:min-h-0 text-sm text-fg placeholder:text-fg-muted focus:border-edge-active transition-colors"
 							data-testid="dashboard-project-search"
 							aria-label={t("spaces.searchPlaceholderDashboard")}
 						/>
