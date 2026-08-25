@@ -58,10 +58,14 @@ is `cmd.exe /c` **or** `powershell -Command`, and no single expression is valid
 in both. Windows keeps the bare command.
 
 `ensureDev3HooksBlock` additionally collects `[[hooks.*]]` groups whose every
-handler is a dev3 command, so an orphaned copy is absorbed instead of duplicated.
-The edit is re-parsed and compared against the intended shape before it is kept —
-the same proof `pruneCodexProjectEntries` uses — and a group the user mixed their
-own handler into is left completely alone.
+handler is dev3's own status handler, so an orphaned copy is absorbed instead of
+duplicated. Two conditions make a group ours: the event is one of
+`CODEX_STATUS_HOOK_EVENTS`, and every command carries the `hook codex`
+subcommand — mentioning the CLI is not enough, because a hook the user wrote
+themselves may call `dev3 task move` for their own reasons and collecting that
+would delete their work. The edit is then re-parsed and compared against the
+intended shape before it is kept — the same proof `pruneCodexProjectEntries` uses
+— and a group the user mixed their own handler into is left completely alone.
 
 ## Risks
 
@@ -73,7 +77,9 @@ own handler into is left completely alone.
   are unaffected — they pass `--dangerously-bypass-hook-trust`.
 - Windows sessions keep the leak. Named, not fixed.
 - The content-based collection edits a file the user also owns. It only ever
-  removes groups that are entirely ours, and bails out on any surprise.
+  removes groups that are entirely our own status handler, on an event we
+  declare, and bails out on any surprise. A first cut selected on "mentions the
+  dev3 CLI" alone and would have deleted a user's own `dev3`-invoking hook.
 
 ## Alternatives considered
 

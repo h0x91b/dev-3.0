@@ -798,4 +798,48 @@ describe("ensureCodexConfig dev3 hook block (idempotence and self-healing)", () 
 			`command = "sh -c '[ -z \\"$DEV3_TASK_ID\\" ] || exec ~/.dev3.0/bin/dev3 hook codex'"`,
 		);
 	});
+
+	it("leaves alone a hook the user wrote themselves that calls the dev3 CLI", () => {
+		// Calling `dev3` is not what makes a group ours — the `hook codex`
+		// subcommand is. A user's own board automation must survive every launch.
+		const own = [
+			"[[hooks.Notification]]",
+			"",
+			"[[hooks.Notification.hooks]]",
+			'type = "command"',
+			'command = "~/.dev3.0/bin/dev3 task move --status in-progress"',
+			"",
+			"[[hooks.Stop]]",
+			"",
+			"[[hooks.Stop.hooks]]",
+			'type = "command"',
+			'command = "~/.dev3.0/bin/dev3 note add mine"',
+			"",
+		].join("\n");
+
+		const config = ensure(ensure(own));
+		expect(config).toContain('command = "~/.dev3.0/bin/dev3 task move --status in-progress"');
+		expect(config).toContain('command = "~/.dev3.0/bin/dev3 note add mine"');
+		expect(dev3Handlers(config)).toBe(6);
+		// Ours plus the user's two groups.
+		expect(groups(config)).toBe(8);
+	});
+
+	it("still collects an orphan left by an older build, or by the other platform", () => {
+		const orphaned = ensure(null).replace("# >>> dev3 status hooks (generated — do not edit) >>>\n", "");
+		const guarded = `sh -c '[ -z \\"$DEV3_TASK_ID\\" ] || exec ~/.dev3.0/bin/dev3 hook codex'`;
+
+		for (const spelling of [
+			"~/.dev3.0/bin/dev3 hook codex",
+			`\\"C:/Users/dev/.dev3.0/bin/dev3.exe\\" hook codex`,
+		]) {
+			const healed = ensure(orphaned.replaceAll(guarded, spelling));
+			expect(dev3Handlers(healed)).toBe(6);
+			expect(groups(healed)).toBe(6);
+			// Nothing but the freshly written, guarded block is left.
+			expect((healed.match(/^command = /gm) ?? []).length).toBe(6);
+			expect((healed.match(new RegExp(guarded.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length)
+				.toBe(6);
+		}
+	});
 });

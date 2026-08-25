@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { load } from "js-toml";
-import { buildCodexHooks, mentionsDev3Cli } from "../shared/agent-hooks";
+import { buildCodexHooks, CODEX_STATUS_HOOK_EVENTS, mentionsDev3Cli } from "../shared/agent-hooks";
 import type { HookCliDialect } from "../shared/dev3-cli-path";
 import { createLogger } from "./logger";
 import { spawnSync } from "./spawn";
@@ -867,6 +867,22 @@ function ensureDev3HooksBlock(config: string): string {
 /** `[[hooks.<Event>]]`, the head of one array-of-tables group. */
 const HOOKS_GROUP_HEADER = /^\[\[hooks\.([A-Za-z_][A-Za-z0-9_]*)\]\]$/;
 
+/** An event dev3 declares itself. A group on any other event is never ours. */
+function isDev3StatusEvent(event: string): boolean {
+	return (CODEX_STATUS_HOOK_EVENTS as readonly string[]).includes(event);
+}
+
+/**
+ * Our own status handler, in every spelling that can be left behind: guarded or
+ * bare, POSIX tilde or a quoted Windows path. Mentioning the CLI is NOT enough —
+ * a hook the user wrote themselves may call `dev3` for their own reasons (a
+ * `task move` on their own event), and collecting that would delete their work.
+ */
+function isDev3CodexHookCommand(command: string): boolean {
+	if (!mentionsDev3Cli(command)) return false;
+	return /(^|[\s'"])hook\s+codex(['"\s]|$)/.test(command);
+}
+
 /**
  * Drop `[[hooks.*]]` groups whose every handler is a dev3 command — the copies a
  * lost marker orphaned. A group holding anything else is left completely alone:
@@ -914,7 +930,10 @@ function stripOrphanedDev3HookTables(config: string): string {
 			.map((line) => line.trim().match(/^command\s*=\s*"(.*)"$/))
 			.filter((m): m is RegExpMatchArray => m != null)
 			.map((m) => m[1]);
-		if (commands.length > 0 && commands.every((command) => mentionsDev3Cli(unescapeTomlBasic(command)))) {
+		if (
+			isDev3StatusEvent(event) && commands.length > 0
+			&& commands.every((command) => isDev3CodexHookCommand(unescapeTomlBasic(command)))
+		) {
 			removedPerEvent.set(event, (removedPerEvent.get(event) ?? 0) + 1);
 			// Trailing blanks and our own leftover marker comments belong to the block.
 			while (keep.length > 0 && isDroppableLead(keep[keep.length - 1])) keep.pop();
@@ -989,7 +1008,7 @@ function isAllDev3Group(group: unknown): boolean {
 	if (!Array.isArray(handlers) || handlers.length === 0) return false;
 	return handlers.every((handler) => {
 		const command = (handler as { command?: unknown } | null)?.command;
-		return typeof command === "string" && mentionsDev3Cli(command);
+		return typeof command === "string" && isDev3CodexHookCommand(command);
 	});
 }
 
