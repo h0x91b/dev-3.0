@@ -292,6 +292,22 @@ describe("bundled artifact starter contract", () => {
 		expect(guide).toContain("`.prose`");
 	});
 
+	it("gives an unsized dashboard panel the whole row instead of a 1/12 sliver", () => {
+		const css = readFileSync(cssPath, "utf8");
+		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+
+		// span 12 would overflow the narrow and print grids, which have fewer columns.
+		expect(css).toContain(".dashboard-grid > * { min-width: 0; grid-column: 1 / -1; }");
+		expect(css).not.toContain(".dashboard-grid > * { min-width: 0; grid-column: span 12; }");
+		// The opt-in widths only exist where the 12 columns do.
+		const spanBlock = css.match(/@media \(min-width: 901px\) \{([\s\S]*?)\n {4}\}/)?.[1] || "";
+		for (const span of [3, 4, 5, 6, 7, 8, 9]) {
+			expect(spanBlock).toContain(`.dashboard-grid > .span-${span} { grid-column: span ${span}; }`);
+		}
+		expect(guide).toContain("`.dashboard-grid` is a 12-column grid");
+		expect(guide).toContain("`span-3` … `span-9`");
+	});
+
 	it("gives every table zebra rows, row hover, column rules, and a pinned header", () => {
 		const css = readFileSync(cssPath, "utf8");
 		const app = readFileSync(appPath, "utf8");
@@ -398,7 +414,7 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain(".scenario-panel, .table-tools, .toast, .print-hidden { display: none !important; }");
 		expect(css).toContain("break-inside: avoid");
 		expect(css).toContain("thead { display: table-header-group; }");
-		expect(css).toContain(".dashboard-grid > * { min-width: 0; }");
+		expect(css).toContain(".dashboard-grid > * { min-width: 0; grid-column: 1 / -1; }");
 		expect(css).toContain("var(--dev3-print-chart-height, 9.6875rem)");
 		expect(app).toContain('document.querySelectorAll("details:not([open])")');
 		expect(app).toContain("element.getBoundingClientRect()");
@@ -442,7 +458,7 @@ describe("bundled artifact starter contract", () => {
 		expect(statSync(htmlPath).size).toBeLessThan(MAX_SHARED_ARTIFACT_HTML_BYTES);
 		// The shell stylesheet is not part of the authoring surface, so its budget
 		// only has to stay far below an inlined library.
-		expect(statSync(cssPath).size).toBeLessThan(36_000);
+		expect(statSync(cssPath).size).toBeLessThan(37_000);
 		expect(statSync(appPath).size).toBeLessThan(30_000);
 		expect(statSync(reportPath).size).toBeLessThan(15_000);
 	});

@@ -32,6 +32,8 @@ Do not read or edit `app.css` or `app.js` unless the artifact format itself must
 
 `.card` already carries its own padding, so a bare `<section class="card">` looks right with plain content inside it. `.section` and `.kpi` set a roomier padding, and `.table-card` intentionally drops it so a table can run edge to edge. Never re-pad a card from report markup.
 
+`.dashboard-grid` is a 12-column grid. A panel inside it takes the whole row unless you give it a width, so a card you drop in never collapses into a sliver. To put panels side by side add `span-3` … `span-9` (`<article class="card section span-6">`); the widths apply above 900px and every panel goes full width below that and in print.
+
 The container grows with the viewport up to 1840px, so dense tables and dashboards use a wide monitor instead of leaving it empty. Because the panels are wide, put running prose in `<p class="prose">` (or any `.prose` block) to hold a readable line length; short `.muted` and `.section-copy` lines are capped for you. `.kpis` fits as many cards per row as the width allows, so a report may ship three or six KPI cards without a layout override.
 
 ## Text size

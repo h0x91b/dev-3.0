@@ -172,11 +172,24 @@
       grid-template-columns: repeat(12, minmax(0, 1fr));
       gap: 14px;
     }
-    .dashboard-grid > * { min-width: 0; }
+    /* 1 / -1, not span 12: a panel without a width class takes the whole row
+       instead of collapsing into a 1/12 sliver, and it survives the narrow and
+       print grids that have fewer than 12 columns. */
+    .dashboard-grid > * { min-width: 0; grid-column: 1 / -1; }
     .velocity-panel { grid-column: span 8; }
     .pie-panel { grid-column: span 4; }
     .radar-panel { grid-column: span 7; }
     .scenario-panel { grid-column: span 5; }
+    /* Opt-in widths for author panels, live only where 12 columns exist. */
+    @media (min-width: 901px) {
+      .dashboard-grid > .span-3 { grid-column: span 3; }
+      .dashboard-grid > .span-4 { grid-column: span 4; }
+      .dashboard-grid > .span-5 { grid-column: span 5; }
+      .dashboard-grid > .span-6 { grid-column: span 6; }
+      .dashboard-grid > .span-7 { grid-column: span 7; }
+      .dashboard-grid > .span-8 { grid-column: span 8; }
+      .dashboard-grid > .span-9 { grid-column: span 9; }
+    }
     .section { padding: 18px; }
     .section-head {
       display: flex;
