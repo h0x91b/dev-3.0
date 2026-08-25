@@ -625,12 +625,8 @@ else, so do not compact them by deleting it.
 
 ## 2026-05-29 — Button variants documented as role → token, not as a prop
 
-- **Rule:** Button semantics are documented as semantic role mapped to Tailwind token classes (`bg-accent` = primary, `text-danger`/`bg-danger` = destructive, ghost = hover surface) — there is no `<Button variant>` API.
-- **Why:** No formal Button component exists; AGENTS.md forbids hardcoded colors and mandates semantic tokens.
-- **Status:** Observed.
+Folded: role → Tailwind token, no `<Button variant>` API — owned by `PRODUCT_UX_BIBLE.md` §9a and AGENTS.md's semantic-token rule.
 
 ## 2026-05-29 — Initial manifest derived from repository
 
-- **Rule:** dev-3.0 is a full-screen desktop web app with a screen-based navigation model (the `Route` union in `state.ts`); the manifest's "routes" are screen ids.
-- **Why:** There is no URL router; modeling `useReducer` navigation as URL routes would be fiction.
-- **Status:** Observed.
+Folded: screens, not URL routes (the `Route` union in `state.ts`) — owned by `ux-architecture.yaml` `routes`.

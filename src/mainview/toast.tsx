@@ -277,6 +277,29 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 		if (next.some((view, index) => view !== toastsRef.current[index])) publish(next);
 	}
 
+	/**
+	 * Explicit user dismissal of the whole stack. Deliberately does NOT run
+	 * `onTaskOverflow`: that handler exists to preserve toasts capacity dropped
+	 * behind the user's back, and raising five attention badges for toasts the
+	 * user just swept away would defeat the button.
+	 */
+	function dismissAll(): void {
+		if (!toastsRef.current.length) return;
+		for (const { entry } of toastsRef.current) clearRuntime(entry.id);
+		publish([]);
+	}
+
+	/** Hovering/focusing Clear all pauses every timer, so the button can't slip away. */
+	function setStackInteraction(kind: "hovered" | "focused", value: boolean): void {
+		for (const [id, runtime] of runtimesRef.current) {
+			if (runtime[kind] === value) continue;
+			runtime[kind] = value;
+			if (!activeRef.current || runtime.hovered || runtime.focused) pauseRuntime(id);
+			else startRuntime(id);
+		}
+		publishPauseState();
+	}
+
 	function setInteraction(id: number, kind: "hovered" | "focused", value: boolean): void {
 		const runtime = runtimesRef.current.get(id);
 		if (!runtime || runtime[kind] === value) return;
@@ -393,6 +416,21 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 					onInteraction={setInteraction}
 				/>
 			))}
+			{toasts.length > 1 && (
+				<div className="flex justify-end">
+					<button
+						type="button"
+						onClick={dismissAll}
+						onMouseEnter={() => setStackInteraction("hovered", true)}
+						onMouseLeave={() => setStackInteraction("hovered", false)}
+						onFocus={() => setStackInteraction("focused", true)}
+						onBlur={() => setStackInteraction("focused", false)}
+						className="pointer-events-auto px-2.5 py-1 rounded-lg bg-overlay border border-edge hover:border-edge-active text-fg-muted hover:text-fg text-xs shadow-2xl transition-colors"
+					>
+						{t("toast.clearAll", { count: String(toasts.length) })}
+					</button>
+				</div>
+			)}
 		</div>
 	);
 }

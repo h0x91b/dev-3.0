@@ -537,6 +537,56 @@ describe("toast service", () => {
 		expect(onTaskOverflow).toHaveBeenCalledWith(expect.objectContaining({ message: "Oldest", taskId: "task-1" }));
 	});
 
+	it("offers no Clear all while a single toast owns its own dismiss button", () => {
+		render(<ToastHost />);
+		act(() => toast.info("Alone", { durationMs: 60_000 }));
+		expect(screen.queryByRole("button", { name: /Clear all/ })).not.toBeInTheDocument();
+	});
+
+	it("sweeps the whole stack with Clear all and counts what it will clear", async () => {
+		const user = userEvent.setup();
+		render(<ToastHost />);
+		act(() => {
+			toast.info("First", { durationMs: 60_000 });
+			toast.error("Second", { durationMs: 60_000 });
+			toast.success("Third", { durationMs: 60_000 });
+		});
+		await user.click(screen.getByRole("button", { name: "Clear all (3)" }));
+		expect(screen.queryAllByRole("alert")).toHaveLength(0);
+		expect(screen.queryByRole("button", { name: /Clear all/ })).not.toBeInTheDocument();
+	});
+
+	it("does not turn a Clear all sweep into attention badges", async () => {
+		const user = userEvent.setup();
+		const onTaskOverflow = vi.fn();
+		render(<ToastHost onTaskOverflow={onTaskOverflow} />);
+		act(() => {
+			toast.info("First", { durationMs: 60_000, taskId: "task-1" });
+			toast.error("Second", { durationMs: 60_000, taskId: "task-2" });
+		});
+		await user.click(screen.getByRole("button", { name: "Clear all (2)" }));
+		expect(onTaskOverflow).not.toHaveBeenCalled();
+	});
+
+	it("pauses every timer while Clear all is hovered so the button cannot slip away", async () => {
+		const user = userEvent.setup();
+		render(<ToastHost />);
+		act(() => {
+			toast.info("First", { durationMs: 60_000 });
+			toast.error("Second", { durationMs: 60_000 });
+		});
+		const clearAll = screen.getByRole("button", { name: "Clear all (2)" });
+		expect(document.querySelectorAll("[data-toast-progress]")).toHaveLength(2);
+		await user.hover(clearAll);
+		for (const bar of document.querySelectorAll("[data-toast-progress]")) {
+			expect(bar as HTMLElement).toHaveStyle({ animationPlayState: "paused" });
+		}
+		await user.unhover(clearAll);
+		for (const bar of document.querySelectorAll("[data-toast-progress]")) {
+			expect(bar as HTMLElement).toHaveStyle({ animationPlayState: "running" });
+		}
+	});
+
 	it("does not report unscoped, manually dismissed, or timed-out eviction", () => {
 		vi.useFakeTimers();
 		const onTaskOverflow = vi.fn();
