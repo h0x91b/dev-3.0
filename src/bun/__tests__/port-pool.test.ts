@@ -52,12 +52,28 @@ vi.mock("node:dgram", () => ({
 	},
 }));
 
+// Real locking by default; individual tests make acquisition fail on demand.
+const lockControl = vi.hoisted(() => ({ failWith: null as Error | null }));
+
+vi.mock("../file-lock", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../file-lock")>();
+	return {
+		...actual,
+		withFileLock: (path: string, fn: () => Promise<unknown>, options?: unknown) => {
+			if (lockControl.failWith) return Promise.reject(lockControl.failWith);
+			return actual.withFileLock(path, fn, options as never);
+		},
+	};
+});
+
+import { FileLockTimeoutError } from "../file-lock";
 import { allocatePorts, releasePorts, getPortAssignments, getAllAssignments, buildPortEnv, _resetState } from "../port-pool";
 
 describe("port-pool", () => {
 	beforeEach(() => {
 		_resetState();
 		portsInUse = new Set();
+		lockControl.failWith = null;
 		mkdirSync(TEST_HOME, { recursive: true });
 	});
 
@@ -200,6 +216,28 @@ describe("port-pool", () => {
 
 			_resetState();
 			expect(getPortAssignments("task-peer")).toEqual([19998, 19999]);
+			expect(getPortAssignments("task-old")).toEqual([]);
+		});
+
+		it("leaves the assignment on disk when the lock cannot be taken", async () => {
+			// Teardown must not stall or throw on a contended lock: the effect
+			// runs with the "continue" policy, so a rejection here would only
+			// surface as a generic lifecycle warning. Swallow the timeout, keep
+			// the record intact rather than writing an unsynchronized map.
+			await allocatePorts("task-stuck", 2);
+			const filePath = join(TEST_HOME, "port-assignments.json");
+			const before = JSON.parse(readFileSync(filePath, "utf-8"));
+
+			lockControl.failWith = new FileLockTimeoutError(`${filePath}.lock`, 5000, 3);
+			const released = await releasePorts("task-stuck");
+
+			expect(released).toEqual([]);
+			expect(JSON.parse(readFileSync(filePath, "utf-8"))).toEqual(before);
+		});
+
+		it("propagates a lock failure that is not a timeout", async () => {
+			lockControl.failWith = new Error("EACCES: permission denied");
+			await expect(releasePorts("task-any")).rejects.toThrow("EACCES");
 		});
 	});
 

@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createSocket } from "node:dgram";
 import { createServer } from "node:net";
 import { createLogger } from "./logger";
-import { withFileLock } from "./file-lock";
+import { withFileLock, FileLockTimeoutError } from "./file-lock";
 import { DEV3_HOME } from "./paths";
 
 const log = createLogger("port-pool");
@@ -170,17 +170,28 @@ export async function releasePorts(taskId: string): Promise<number[]> {
 	// Same critical section as allocatePorts: a peer instance sharing
 	// ~/.dev3.0 may have persisted allocations while we waited, and writing
 	// back the stale in-memory cache would drop them.
-	return withFileLock(ASSIGNMENTS_FILE, async () => {
-		assignments = readFromDisk();
-		const data = assignments;
-		const ports = data[taskId];
-		if (!ports) return [];
+	try {
+		return await withFileLock(ASSIGNMENTS_FILE, async () => {
+			assignments = readFromDisk();
+			const data = assignments;
+			const ports = data[taskId];
+			if (!ports) return [];
 
-		delete data[taskId];
-		save();
-		log.info("Ports released", { taskId: taskId.slice(0, 8), ports });
-		return ports;
-	});
+			delete data[taskId];
+			save();
+			log.info("Ports released", { taskId: taskId.slice(0, 8), ports });
+			return ports;
+		});
+	} catch (err) {
+		if (!(err instanceof FileLockTimeoutError)) throw err;
+		// Release runs during teardown, which must not stall on a contended lock.
+		// The record survives on disk: its ports drop out of the allocatable map
+		// until some later release removes them, which costs a few ports out of
+		// 10000 and locks nothing at the OS level. Log it by name so a growing
+		// port-assignments.json is diagnosable instead of mysterious.
+		log.error("Ports left assigned: assignment lock unavailable", { taskId: taskId.slice(0, 8) });
+		return [];
+	}
 }
 
 /** Get ports currently assigned to a task (without allocating). */

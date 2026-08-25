@@ -1,5 +1,11 @@
 # 102 — Serialize port allocation with a cross-process file lock
 
+> **Superseded in part by
+> [`decisions/2026/08/25/release-ports-under-the-assignment-lock.md`](../../08/25/release-ports-under-the-assignment-lock.md).**
+> The sentence below claiming `releasePorts()` keeps using the in-memory cache is
+> no longer true: release now takes the same lock and re-reads from disk. The
+> sync getters do still read the cache.
+
 ## Context
 
 `allocatePorts()` (`src/bun/port-pool.ts`) is async and `await`s an OS-level
