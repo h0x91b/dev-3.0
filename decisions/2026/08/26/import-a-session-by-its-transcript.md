@@ -46,6 +46,14 @@ transcripts on this machine and reading each one's `cwd` from its *content* took
 (`conversation-search-core.ts:41-43`), so a store directory name cannot be
 decoded back into a path.
 
+**Most sessions are not in a registered project.** Measured against this
+machine's own board: 3 registered projects, 30 transcripts carrying a cwd, of
+which 3 are already dev3 tasks and **7** sit under a registered project. The
+remaining 20 are in directories dev3 has never heard of. One near-miss is
+instructive: the registered project is `…/playground/dev-3.0`, while two
+sessions ran in `…/playground` — the parent, which must not match. So "no
+project for this cwd" is the common path, not an edge case.
+
 ## Decision
 
 **A session is identified by its transcript.** Import lists past sessions,
@@ -58,6 +66,18 @@ from the session's own** — stock `existingBranch` behaviour
   from Claude's `ai-title` records (`conversation-parsers/claude.ts:279`,
   registered at `:43`) — falling back to the first human turn, with
   `renderHandoff` (`conversation-render.ts:155`) as the body.
+- **A session is only ever importable into the project that owns its cwd.** The
+  picker lists a session only when its recorded cwd is the project's path or a
+  path beneath it; there is no cross-project import and no "pick the project
+  yourself" override. This is correctness, not tidiness — importing a session
+  from another repo would fork a branch in the wrong project and open a card
+  describing work that is not there. Matching is prefix-on-a-path-boundary, so a
+  sibling directory sharing a name prefix cannot match.
+- **Registering the project is a precondition, not a step import performs.**
+  When a session's cwd belongs to no project, import says so and points at the
+  existing `Add Local Project` flow (`AddProjectModal`'s `local` tab) rather than
+  creating a project implicitly. Given the measurement above this is the path
+  most sessions take, so it gets a real message, not a dead end.
 - The live registry is **optional garnish**: badge a row that is running right
   now, degrade to nothing when unreadable. It is never load-bearing, so no
   undocumented format and no pid arithmetic sits on the critical path.
@@ -92,7 +112,15 @@ The resolver must therefore check the recorded origin store before falling back.
   covered and must be reported rather than silently dropped.
 - **Subdirectory sessions.** A session started in `repo/packages/api` is a
   different cwd than `repo`. Prefix-matching the cwd read from content handles
-  it; exact equality (`conversation-search.ts:192-194, 249-251`) does not.
+  it; exact equality (`conversation-search.ts:192-194, 249-251`) does not — and
+  the prefix must stop at a path boundary, or `…/playground/dev-3.0` would claim
+  a session that ran in `…/playground/dev-3.0-scratch`.
+- **The scoping rule makes the feature unreachable for most sessions until a
+  project exists.** That is the intended trade: a wrong-project import is worse
+  than a message telling you to add the project first. It does mean the "no
+  project for this cwd" copy is a main path and must be written as one.
+- **Nested projects.** If two registered projects nest, a cwd matches both.
+  Longest matching path wins; no evidence yet that this occurs in practice.
 
 ## Alternatives considered
 
@@ -114,3 +142,12 @@ The resolver must therefore check the recorded origin store before falling back.
 - **Ask the running agent for a description** — Claude exposes an undocumented
   peer socket (`/tmp/cc-socks/<pid>.sock`), but it perturbs the target transcript
   and no other harness has one. Unnecessary: `ai-title` answers it from disk.
+- **Let the user choose the project for any session** — the flexible version, and
+  the one that quietly produces a card whose branch, diff and description belong
+  to three different repositories. The cwd already knows the answer.
+- **Create the project implicitly on import** — removes the dead end, but adds a
+  project to the user's board as a side effect of a differently-named action.
+- **A proactive nudge when importable sessions exist** — measured first: 7
+  importable sessions on this board, 1 touched in the last week. A hint that
+  fires for one stale session is board chrome that costs more than it returns.
+  Revisit only if the feature gets used and still gets forgotten.
