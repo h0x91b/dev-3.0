@@ -166,15 +166,21 @@ export async function allocatePorts(taskId: string, count: number): Promise<numb
 }
 
 /** Release ports assigned to a task. Returns the released ports. */
-export function releasePorts(taskId: string): number[] {
-	const data = ensureLoaded();
-	const ports = data[taskId];
-	if (!ports) return [];
+export async function releasePorts(taskId: string): Promise<number[]> {
+	// Same critical section as allocatePorts: a peer instance sharing
+	// ~/.dev3.0 may have persisted allocations while we waited, and writing
+	// back the stale in-memory cache would drop them.
+	return withFileLock(ASSIGNMENTS_FILE, async () => {
+		assignments = readFromDisk();
+		const data = assignments;
+		const ports = data[taskId];
+		if (!ports) return [];
 
-	delete data[taskId];
-	save();
-	log.info("Ports released", { taskId: taskId.slice(0, 8), ports });
-	return ports;
+		delete data[taskId];
+		save();
+		log.info("Ports released", { taskId: taskId.slice(0, 8), ports });
+		return ports;
+	});
 }
 
 /** Get ports currently assigned to a task (without allocating). */

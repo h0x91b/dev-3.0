@@ -738,7 +738,7 @@ export async function executeLifecycleEffect(
 			await killPreparationProcesses(ctx.task.id);
 			return {};
 		case "releasePorts":
-			portPool.releasePorts(ctx.task.id);
+			await portPool.releasePorts(ctx.task.id);
 			return {};
 		case "sendEvent":
 			return { followUp: effect.event };

@@ -165,22 +165,41 @@ describe("port-pool", () => {
 	describe("releasePorts", () => {
 		it("releases ports for a task", async () => {
 			await allocatePorts("task-r", 2);
-			const released = releasePorts("task-r");
+			const released = await releasePorts("task-r");
 			expect(released).toHaveLength(2);
 			expect(getPortAssignments("task-r")).toEqual([]);
 		});
 
-		it("returns empty array for unknown task", () => {
-			const released = releasePorts("nonexistent");
+		it("returns empty array for unknown task", async () => {
+			const released = await releasePorts("nonexistent");
 			expect(released).toEqual([]);
 		});
 
 		it("makes released ports available for re-allocation", async () => {
 			await allocatePorts("task-free", 3);
-			releasePorts("task-free");
+			await releasePorts("task-free");
 			// After release, these ports can be assigned to another task
 			const all = getAllAssignments();
 			expect(all["task-free"]).toBeUndefined();
+		});
+
+		it("does not drop a peer allocation that landed while releasing", async () => {
+			// Regression: releasePorts() rewrote port-assignments.json from the
+			// in-memory cache without the cross-process lock allocatePorts()
+			// holds. A second app instance allocating between this process's
+			// load and its save had its record silently erased, freeing its
+			// ports for a duplicate assignment. Simulate the peer by writing
+			// behind the cache, the way another process would.
+			await allocatePorts("task-old", 2);
+			const filePath = join(TEST_HOME, "port-assignments.json");
+			const onDisk = JSON.parse(readFileSync(filePath, "utf-8"));
+			onDisk["task-peer"] = [19998, 19999];
+			writeFileSync(filePath, JSON.stringify(onDisk));
+
+			await releasePorts("task-old");
+
+			_resetState();
+			expect(getPortAssignments("task-peer")).toEqual([19998, 19999]);
 		});
 	});
 

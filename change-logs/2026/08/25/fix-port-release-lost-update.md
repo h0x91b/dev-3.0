@@ -1,0 +1,1 @@
+Releasing a task's ports no longer races a second app instance allocating ports at the same moment: the release now takes the same cross-process lock as allocation and re-reads the assignment file first, so a peer's just-persisted task can no longer be erased from port-assignments.json and its ports handed out twice.
