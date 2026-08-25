@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AgentMessageLogRow } from "../../../shared/agent-message-log";
 import { isUnsettled, type TrafficPair } from "../../agent-traffic";
 import { useT } from "../../i18n";
+import { api } from "../../rpc";
 import { useAgentTraffic } from "../../hooks/useAgentTraffic";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
@@ -39,6 +40,27 @@ export default function AgentTrafficLog({ projectId, onClose, onOpenTask }: Agen
 	const traffic = useAgentTraffic(projectId);
 	const [filter, setFilter] = useState<Filter>("all");
 	const [pairKey, setPairKey] = useState<string | null>(null);
+	// Which receivers still exist. History outlives tasks: 30 days of rows will name
+	// tasks the user has since deleted, and a row that navigates nowhere — closing
+	// the log and leaving the board unchanged — reads as the app being broken.
+	const [knownTasks, setKnownTasks] = useState<Set<string> | null>(null);
+
+	useEffect(() => {
+		if (!projectId) return;
+		let cancelled = false;
+		api.request
+			.getTasks({ projectId })
+			.then((tasks) => {
+				if (!cancelled) setKnownTasks(new Set(tasks.map((task) => task.id)));
+			})
+			.catch(() => {
+				// Unresolved: leave every row inert rather than promising navigation.
+				if (!cancelled) setKnownTasks(new Set());
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [projectId]);
 
 	const selectedPair = traffic.pairs.find((pair) => pair.key === pairKey) ?? null;
 	const rows = useMemo(() => {
@@ -95,7 +117,7 @@ export default function AgentTrafficLog({ projectId, onClose, onOpenTask }: Agen
 							{traffic.loading ? t("traffic.loading") : t("traffic.noneMatch")}
 						</div>
 					) : (
-						<Ledger rows={rows} onOpenTask={onOpenTask} />
+						<Ledger rows={rows} onOpenTask={onOpenTask} knownTasks={knownTasks} />
 					)}
 				</div>
 			</div>
@@ -128,14 +150,18 @@ export default function AgentTrafficLog({ projectId, onClose, onOpenTask }: Agen
 function Ledger({
 	rows,
 	onOpenTask,
+	knownTasks,
 }: {
 	rows: AgentMessageLogRow[];
 	onOpenTask: (taskId: string, projectId: string) => void;
+	/** Null until the project's tasks have been resolved. */
+	knownTasks: Set<string> | null;
 }) {
+	const t = useT();
 	let day: string | null = null;
 	const out: React.ReactNode[] = [];
 	for (const row of rows) {
-		const rowDay = row.at.slice(0, 10);
+		const rowDay = localDay(row.at);
 		if (rowDay !== day) {
 			day = rowDay;
 			out.push(
@@ -143,22 +169,51 @@ function Ledger({
 					key={`day-${rowDay}`}
 					className="sticky top-0 bg-overlay/95 px-3 py-1 text-nano uppercase tracking-wide text-fg-muted"
 				>
-					{rowDay}
+					{dayLabel(rowDay, t)}
 				</div>,
 			);
 		}
+		const key = `${row.at}-${row.toTaskId}-${row.fromSeq ?? "x"}`;
+		const openable = knownTasks?.has(row.toTaskId) ?? false;
 		out.push(
-			<button
-				key={`${row.at}-${row.toTaskId}-${row.fromSeq ?? "x"}`}
-				type="button"
-				className="block w-full text-left hover:bg-elevated/60 transition-colors"
-				onClick={() => onOpenTask(row.toTaskId, row.toProjectId)}
-			>
-				<LedgerRow row={row} />
-			</button>,
+			openable ? (
+				<button
+					key={key}
+					type="button"
+					className="block w-full text-left hover:bg-elevated/60 transition-colors"
+					onClick={() => onOpenTask(row.toTaskId, row.toProjectId)}
+				>
+					<LedgerRow row={row} />
+				</button>
+			) : (
+				// The message stays readable; only the promise of navigation is withdrawn.
+				<div key={key} title={knownTasks ? t("traffic.taskGone") : undefined}>
+					<LedgerRow row={row} gone={Boolean(knownTasks)} />
+				</div>
+			),
 		);
 	}
 	return <div>{out}</div>;
+}
+
+/** The row's LOCAL day. The on-disk day-files are local days too, so an ISO slice
+ *  (which is UTC) would split one evening across two headings. */
+function localDay(at: string): string {
+	const date = new Date(at);
+	if (Number.isNaN(date.getTime())) return at.slice(0, 10);
+	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** Today and yesterday by name; anything older keeps its ISO day. */
+function dayLabel(day: string, t: ReturnType<typeof useT>): string {
+	const now = new Date();
+	const iso = (date: Date) =>
+		`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+	if (day === iso(now)) return t("traffic.today");
+	const yesterday = new Date(now);
+	yesterday.setDate(now.getDate() - 1);
+	if (day === iso(yesterday)) return t("traffic.yesterday");
+	return day;
 }
 
 function FilterChip({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {

@@ -10,10 +10,14 @@ const page: { value: AgentMessageLogPage } = {
 	value: { rows: [], oldestDay: null, retentionDays: 30, hasMore: false },
 };
 
+const knownTaskIds: { value: string[] } = { value: ["task-a", "task-b", "task-c"] };
+
 vi.mock("../rpc", () => ({
 	api: {
 		request: {
 			readAgentMessageLog: vi.fn(() => Promise.resolve(page.value)),
+			// The log resolves which receivers still exist before promising navigation.
+			getTasks: vi.fn(() => Promise.resolve(knownTaskIds.value.map((id) => ({ id })))),
 		},
 	},
 }));
@@ -44,6 +48,7 @@ function setPage(rows: AgentMessageLogRow[], over: Partial<AgentMessageLogPage> 
 beforeEach(() => {
 	resetTrafficStore();
 	setPage([]);
+	knownTaskIds.value = ["task-a", "task-b", "task-c"];
 });
 
 function renderIndicator() {
@@ -168,6 +173,20 @@ describe("AgentTrafficLog", () => {
 		setPage([row({ bodyKind: "spill-pointer", body: "", spillPath: "/tmp/spill.txt" })]);
 		renderLog();
 		expect(await screen.findByText(/written to a file/i)).toBeTruthy();
+	});
+
+	// A 30-day log outlives tasks. A row that closes the log and changes nothing
+	// reads as a broken app, so the row keeps its text and drops its click.
+	it("does not promise navigation to a task that no longer exists", async () => {
+		knownTaskIds.value = ["task-a"];
+		setPage([row()]);
+		const onOpenTask = vi.fn();
+		renderLog(onOpenTask);
+		const ledger = await screen.findByTestId("traffic-ledger-row");
+		await waitFor(() => expect(ledger.getAttribute("data-gone")).toBe("true"));
+		expect(ledger.textContent).toContain("rebase before you push");
+		await userEvent.click(ledger);
+		expect(onOpenTask).not.toHaveBeenCalled();
 	});
 
 	it("opens the receiving task from a ledger row", async () => {

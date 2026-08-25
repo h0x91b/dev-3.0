@@ -129,11 +129,24 @@ export function PairRow({ pair, selected = false, onSelect, now = Date.now() }: 
  * so the row says the message was too large to type and names the file it went
  * to instead.
  */
-export function LedgerRow({ row, now = Date.now() }: { row: AgentMessageLogRow; now?: number }) {
+export function LedgerRow({
+	row,
+	now = Date.now(),
+	gone = false,
+}: {
+	row: AgentMessageLogRow;
+	now?: number;
+	/** The receiving task no longer exists, so this row goes nowhere. */
+	gone?: boolean;
+}) {
 	const t = useT();
 	const spilled = row.bodyKind === "spill-pointer";
 	return (
-		<div data-testid="traffic-ledger-row" className="px-3 py-2 flex items-start gap-2 border-b border-edge/60">
+		<div
+			data-testid="traffic-ledger-row"
+			data-gone={gone ? "true" : undefined}
+			className={`px-3 py-2 flex items-start gap-2 border-b border-edge/60 ${gone ? "opacity-60" : ""}`}
+		>
 			<span className="mt-0.5 text-micro font-medium tabular-nums text-agent shrink-0">
 				{row.fromSeq === null ? "—" : `#${row.fromSeq}`}
 			</span>

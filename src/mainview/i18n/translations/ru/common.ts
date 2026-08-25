@@ -118,6 +118,9 @@ const common = {
 	"traffic.scheduled": "отложенное",
 	"traffic.spilled": "Слишком большое, чтобы набрать — записано в файл",
 	"traffic.retention": "Хранится {days} дней · самый старый день здесь: {oldest}",
+	"traffic.today": "сегодня",
+	"traffic.yesterday": "вчера",
+	"traffic.taskGone": "Этой задачи больше нет — сообщение осталось, задача нет",
 	"traffic.retentionEmpty": "История хранится {days} дней",
 
 	// Status labels

@@ -114,6 +114,9 @@ const common = {
 	"traffic.scheduled": "sent later",
 	"traffic.spilled": "Too large to type — written to a file instead",
 	"traffic.retention": "Kept {days} days · oldest still here: {oldest}",
+	"traffic.today": "today",
+	"traffic.yesterday": "yesterday",
+	"traffic.taskGone": "This task no longer exists — the message stays, the task does not",
 	"traffic.retentionEmpty": "History is kept for {days} days",
 
 	// Status labels
