@@ -1629,6 +1629,7 @@ function resolveResumeTarget(task: Task, pane: PaneSessionEntry, label: string):
 		pane.sessionId,
 		undefined,
 		pane.agentFamily ?? undefined,
+		pane.sessionOriginCwd,
 	);
 	if (target.substituted) {
 		log.warn("Stored session id has no transcript — resuming the newest conversation instead", {

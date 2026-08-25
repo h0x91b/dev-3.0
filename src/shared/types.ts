@@ -2605,6 +2605,12 @@ export interface PaneSessionEntry {
 	 *  carrying the task description. Absent on panes stored by older versions,
 	 *  which fall back to the command-name guess. */
 	agentFamily?: AgentFamily | null;
+	/** For a pane resumed from an IMPORTED session: the directory the session
+	 *  originally ran in. Its transcript stays in that directory's store forever —
+	 *  `--resume` appends to the original file — so recovery must look there, not
+	 *  in the task's own worktree store, or it heals a live id into a new session.
+	 *  Absent on every pane dev3 launched itself. */
+	sessionOriginCwd?: string | null;
 }
 
 /** Captured session state for agent recovery after tmux death / app restart. */

@@ -48,14 +48,34 @@ export function resolveResumableSessionId(
 	storedSessionId: string | null | undefined,
 	home: string = resolveUserHome(),
 	family?: AgentFamily,
+	/** For an imported session: the directory whose store actually holds the
+	 *  conversation. Checked before healing, because it is never the task's own. */
+	originCwd?: string | null,
 ): ResumeTarget {
 	const stored = storedSessionId ?? null;
-	const store = getAgentAdapter(agentCmd, family).transcriptStore?.(worktreePath, home) ?? null;
+	const adapter = getAgentAdapter(agentCmd, family);
+	const store = adapter.transcriptStore?.(worktreePath, home) ?? null;
 	if (!store || !existsSync(store.dir)) return { sessionId: stored, substituted: false };
 	if (!stored) return { sessionId: null, substituted: false };
 
 	const ids = sessionIdsNewestFirst(store.dir, store.ext);
 	if (ids.includes(stored)) return { sessionId: stored, substituted: false };
+
+	// An imported conversation stays in the store of the directory it was
+	// started in: `--resume` appends to the original file and only stamps the
+	// new cwd into the records. Meanwhile the agent DOES create the new
+	// worktree's store directory — empty, holding just `memory/` — so the
+	// early-out above sees a store that exists, finds no ids in it, and would
+	// heal a perfectly good id to null (i.e. `--continue`, i.e. a brand new
+	// session). Verified against Claude Code 2.1.246; see
+	// decisions/2026/08/26/import-a-session-by-its-transcript.md.
+	if (originCwd) {
+		const origin = adapter.transcriptStore?.(originCwd, home) ?? null;
+		if (origin && sessionIdsNewestFirst(origin.dir, origin.ext).includes(stored)) {
+			return { sessionId: stored, substituted: false };
+		}
+	}
+
 	return { sessionId: ids[0] ?? null, substituted: true };
 }
 
