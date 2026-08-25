@@ -349,17 +349,50 @@ The app reports usage analytics so the project can see what is actually used:
 | Google Analytics 4 | App launch, version, OS, screen resolution, language, screen navigation, a 10-minute heartbeat, agent launches, and unhandled errors. Identified by a random per-install id, geolocated via a public-IP lookup against `api.ipify.org`. Project *names* and file paths are deliberately never sent — only internal ids. |
 | PostHog | Task and project actions (created, moved, merged, pushed …) plus unhandled errors, under a random per-install id. Also delivers feature flags. Live in the official release builds; a build from source has no key and stays off. |
 
-Both are compiled in at build time and can be compiled out. Build from source with
-`VITE_TELEMETRY=off` in the repo-root `.env` (or in the environment) and no analytics code runs:
-no GA4 hits, no public-IP lookup, no PostHog client, no error autocapture (`false`, `0` and `no`
-work the same way; crash logging into the app's own local log file is unaffected). Feature flags then
-fall back to their shipped defaults. Leaving the variable unset means `on`, which is what the
-released binaries do.
+Neither channel sends your project names, task titles, file paths, prompts, diffs or terminal
+output. Autocapture runs with element text and attributes masked, and paths are stripped out of
+crash reports before they are sent — the local log file keeps the untouched text.
+
+### Turning it off
+
+Any **one** of these switches off everything at once: no GA4 hits, no public-IP lookup, no PostHog
+client, no crash reports. Feature flags then fall back to their shipped defaults.
+
+| How | Where | Takes effect |
+|---|---|---|
+| **Settings → System → Telemetry** | The toggle, in any released build | Switching off is immediate; switching back on needs a relaunch |
+| `DEV3_TELEMETRY=off` | The app's environment (`false`, `0` and `no` work the same way) | Next launch, and it locks the toggle off |
+| `DO_NOT_TRACK=1` | The app's environment — the [cross-vendor convention](https://consoledonottrack.com/) | Next launch, and it locks the toggle off |
+| `VITE_TELEMETRY=off` | A build from source; compiles the channels out entirely | Build time |
 
 ```bash
-echo 'VITE_TELEMETRY=off' >> .env
-bun run build
+# For one launch, or add it to your shell profile for every launch
+DEV3_TELEMETRY=off /Applications/dev-3.0.app/Contents/MacOS/dev-3.0
+
+# Compile it out instead
+echo 'VITE_TELEMETRY=off' >> .env && bun run build
 ```
+
+An environment variable read from your shell profile requires **Settings → System → Import shell
+environment** to be on (it is by default); a variable set on the launch command itself always
+applies. An opted-out install also stops handing its per-install id to the renderer at all, so a
+browser on the remote-access server cannot read it either.
+
+### The rules this project holds itself to
+
+These are not aspirations — they are the constraints any change touching telemetry has to meet.
+See [AGENTS.md](AGENTS.md#telemetry-anonymous-always-opt-out-always-respected-mandatory) for the
+contributor-facing version.
+
+1. **Everything sent is anonymous, always.** No project names, repo paths, task titles, branch
+   names, prompts, diffs, file contents, terminal output, or anything else that could identify you
+   or your customer. Only a random per-install id and coarse facts about the app itself.
+2. **An opt-out is always respected, everywhere.** One switch turns off every channel, with no
+   exception kept alive "just for crashes" or "just for feature flags".
+3. **An opt-out works in a released binary.** A switch that only exists when you rebuild from
+   source is not an opt-out.
+4. **A channel that cannot be masked is not enabled.** If a vendor feature would send visible text
+   or free-form strings we cannot redact, it stays off rather than shipping with a promise attached.
 
 ## Development
 

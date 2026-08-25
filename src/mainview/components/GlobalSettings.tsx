@@ -29,7 +29,9 @@ import { getInitialThemeState, getWindowInjectedThemeState } from "../theme-boot
 import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { setShortcutOverrides } from "../keymap-store";
-import { trackEvent } from "../analytics";
+import { destroyAnalytics, trackEvent } from "../analytics";
+import posthogClient from "../posthog";
+import { setRuntimeTelemetryOptOut } from "../telemetry";
 import { confirm } from "../confirm";
 import type { UpdateChannel } from "../../shared/update-channel";
 import AdvancedExperienceSection from "./global-settings/AdvancedExperienceSection";
@@ -43,6 +45,7 @@ import KeyboardSettingsSection from "./global-settings/KeyboardSettingsSection";
 import ModelCatalogSection from "./global-settings/ModelCatalogSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
 import SystemSettingsSection from "./global-settings/SystemSettingsSection";
+import TelemetrySettingsSection from "./global-settings/TelemetrySettingsSection";
 import TerminalSettingsSection from "./global-settings/TerminalSettingsSection";
 import WorkspaceSettingsSection from "./global-settings/WorkspaceSettingsSection";
 import type { SettingsPresetTarget, SettingsSectionId } from "../state";
@@ -488,6 +491,20 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleTelemetryToggle = useCallback(
+		(disabled: boolean) => {
+			// Silence the live channels before anything else, so the write that
+			// records the opt-out is not itself the last event sent.
+			setRuntimeTelemetryOptOut(disabled);
+			if (disabled) {
+				posthogClient.opt_out_capturing();
+				destroyAnalytics();
+			}
+			persistSettingChange({ telemetryDisabled: disabled ? true : undefined });
+		},
+		[persistSettingChange],
+	);
+
 	const handleTerminalBidiToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
@@ -779,6 +796,11 @@ function GlobalSettings({
 							onRemoteSilentUpdateToggle={handleRemoteSilentUpdateToggle}
 							onPreventSleepToggle={handlePreventSleepToggle}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
+						/>
+						<TelemetrySettingsSection
+							t={t}
+							globalSettings={globalSettings}
+							onToggle={handleTelemetryToggle}
 						/>
 						<PxpipeProxySettingsSection
 							t={t}

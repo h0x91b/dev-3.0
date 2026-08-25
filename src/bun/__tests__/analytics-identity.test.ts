@@ -13,7 +13,7 @@ vi.mock("../settings", () => ({
 	saveSettings: vi.fn(async (next: Record<string, unknown>) => { store.settings = { ...next }; }),
 }));
 
-import { analyticsDistinctIdSync, distinctIdBootstrapScript, resolveAnalyticsDistinctId } from "../analytics-identity";
+import { analyticsDistinctIdSync, telemetryBootstrapScript, resolveAnalyticsDistinctId } from "../analytics-identity";
 
 beforeEach(() => {
 	store.settings = {};
@@ -79,15 +79,57 @@ describe("analytics distinct id", () => {
 describe("renderer bootstrap script", () => {
 	it("hands the id over as one global assignment", async () => {
 		await resolveAnalyticsDistinctId("desktop-id");
-		expect(distinctIdBootstrapScript()).toBe('window.__DEV3_DISTINCT_ID__="desktop-id";');
+		expect(telemetryBootstrapScript()).toBe('window.__DEV3_DISTINCT_ID__="desktop-id";');
 	});
 
 	it("stays empty before an id exists, so the renderer falls back to its own", () => {
-		expect(distinctIdBootstrapScript()).toBe("");
+		expect(telemetryBootstrapScript()).toBe("");
 	});
 
 	it("escapes the value instead of concatenating it into the script", async () => {
 		await resolveAnalyticsDistinctId('id";alert(1);//');
-		expect(distinctIdBootstrapScript()).toBe('window.__DEV3_DISTINCT_ID__="id\\";alert(1);//";');
+		expect(telemetryBootstrapScript()).toBe('window.__DEV3_DISTINCT_ID__="id\\";alert(1);//";');
+	});
+});
+
+describe("telemetry opt-out in the renderer bootstrap", () => {
+	beforeEach(() => {
+		delete process.env.DEV3_TELEMETRY;
+		delete process.env.DO_NOT_TRACK;
+	});
+
+	it("names the setting as the source and withholds the id entirely", async () => {
+		await resolveAnalyticsDistinctId("desktop-id");
+		store.settings.telemetryDisabled = true;
+		const script = telemetryBootstrapScript();
+		expect(script).toBe('window.__DEV3_TELEMETRY_OPT_OUT__="setting";');
+		// The id is only ever useful to a channel that is now off, and this same
+		// script is served to an unauthenticated browser by the remote server.
+		expect(script).not.toContain("desktop-id");
+	});
+
+	it("lets DEV3_TELEMETRY opt out even with the setting untouched", async () => {
+		await resolveAnalyticsDistinctId("desktop-id");
+		process.env.DEV3_TELEMETRY = "off";
+		expect(telemetryBootstrapScript()).toBe('window.__DEV3_TELEMETRY_OPT_OUT__="env";');
+	});
+
+	it("honours DO_NOT_TRACK, the cross-vendor convention", async () => {
+		await resolveAnalyticsDistinctId("desktop-id");
+		process.env.DO_NOT_TRACK = "1";
+		expect(telemetryBootstrapScript()).toBe('window.__DEV3_TELEMETRY_OPT_OUT__="do-not-track";');
+	});
+
+	it("reports the environment, not the setting, when both opted out", async () => {
+		store.settings.telemetryDisabled = true;
+		process.env.DEV3_TELEMETRY = "off";
+		expect(telemetryBootstrapScript()).toBe('window.__DEV3_TELEMETRY_OPT_OUT__="env";');
+	});
+
+	it("keeps shipping the id when nothing opted out", async () => {
+		await resolveAnalyticsDistinctId("desktop-id");
+		process.env.DEV3_TELEMETRY = "on";
+		process.env.DO_NOT_TRACK = "0";
+		expect(telemetryBootstrapScript()).toBe('window.__DEV3_DISTINCT_ID__="desktop-id";');
 	});
 });

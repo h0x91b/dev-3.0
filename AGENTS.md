@@ -58,6 +58,38 @@ The app runs as the **Electrobun desktop** shell **and** as a **headless remote 
 
 **Exception — genuinely OS-level chrome, not dialogs:** `Utils.showNotification` (Notification Center) and the native macOS menu bar (`application-menu.ts`) are allowed (they no-op / are absent in browser mode). Any *dialog* triggered from a menu action must be routed to the renderer via a push message and shown as React UI.
 
+## Telemetry — anonymous always, opt-out always respected (MANDATORY)
+
+Two rules, and they are not negotiable. A change that cannot meet both does not ship.
+
+**1. Everything that leaves the machine is anonymous.** Project names, repo and worktree paths,
+task titles, branch names, prompts, diffs, file contents, terminal output, agent output, and the
+user's own name or email are **never** sent — not as an event property, not inside an error string,
+not as a URL, not harvested by a vendor SDK's automatic capture. What may be sent: a random
+per-install id, and coarse facts about the app itself (version, OS, which screen, which agent
+preset, a screen name, a duration).
+
+**2. An opt-out is respected everywhere, in a released binary.** One switch turns off every
+channel. No exception stays alive "just for crashes", "just for feature flags", or "just for the
+updater". A gate that only works when you rebuild from source is not an opt-out — that exact bug
+shipped once (`VITE_TELEMETRY` constant-folded to always-on in a release), which is why this
+section exists.
+
+What that means in code:
+
+| Rule | In practice |
+|---|---|
+| One gate, asked at send time | `telemetryEnabled()` (`src/mainview/telemetry.ts`) is the only authority. Never let a channel bypass it, and never cache its answer past a toggle |
+| The verdict arrives before page scripts | The host resolves it (`src/shared/telemetry-consent.ts`) and injects it into the HTML shell (`src/bun/analytics-identity.ts`) — posthog-js initializes at module import, so an RPC round trip is too late |
+| Free-form strings get redacted | Error messages and stack lines pass through `redactPaths()` before they go to a vendor. The local log file gets the untouched text |
+| Vendor auto-capture ships masked | `mask_all_text` and `mask_all_element_attributes` are on. Adding a channel that captures visible text or DOM attributes (session replay, copy capture, heatmaps, surveys) needs the same treatment or it stays off |
+| An opted-out install hands over no identity | No distinct id in the HTML shell — the remote server serves that same shell to an unauthenticated browser |
+| New env-level opt-outs are additive | `DEV3_TELEMETRY=off` and `DO_NOT_TRACK=1` each suffice on their own; none of them is allowed to be the *only* way out, because the in-app toggle must always work too |
+
+Adding a telemetry channel, a new event, or a new property? State plainly which of the two rules
+could be at risk and how the change satisfies it, and cover it with a test that fails when the
+protection is removed — a comment claiming a field is masked is not evidence.
+
 ## Language policy
 
 **All code-related content MUST be in English — no exceptions:** commit messages, changelog files (`change-logs/`), code comments and docstrings, decision records (`decisions/`), PR titles/descriptions, any text written inside source files. The user may communicate in Russian; everything written into the codebase or git history is English-only.

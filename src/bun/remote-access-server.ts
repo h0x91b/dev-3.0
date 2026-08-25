@@ -24,7 +24,7 @@ import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, re
 import { getTunnelUrl, getTunnelState, tunnelManager } from "./cloudflare-tunnel";
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
-import { distinctIdBootstrapScript } from "./analytics-identity";
+import { telemetryBootstrapScript } from "./analytics-identity";
 
 const log = createLogger("remote-access");
 
@@ -329,13 +329,14 @@ function getInitialThemeBootstrap(): { preference: "dark" | "light" | "system"; 
 
 export function injectInitialThemeBootstrap(html: string): string {
 	const { preference, resolved } = getInitialThemeBootstrap();
-	// The distinct id has to be on the page before posthog-js initializes, which
-	// happens at module import — an RPC round trip would be too late. Same script
-	// the desktop window gets as a webview preload, so both are one person.
+	// The telemetry verdict and distinct id have to be on the page before posthog-js
+	// initializes, which happens at module import — an RPC round trip would be too
+	// late. Same script the desktop window gets as a webview preload, so both are
+	// one person, and an opted-out install serves no id to this browser at all.
 	const script =
 		`<script>window.__DEV3_INITIAL_THEME__=${JSON.stringify(preference)};` +
 		`window.__DEV3_INITIAL_RESOLVED_THEME__=${JSON.stringify(resolved)};` +
-		distinctIdBootstrapScript() +
+		telemetryBootstrapScript() +
 		`</script>`;
 
 	return html.includes("</head>")

@@ -113,6 +113,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		playSoundOnTaskComplete: d.playSoundOnTaskComplete ?? true,
 		externalApps: Array.isArray(d.externalApps) ? d.externalApps : undefined,
 		tipsDisabled: d.tipsDisabled === true ? true : undefined,
+		// Default-off opt-out — only an explicit true silences telemetry.
+		telemetryDisabled: d.telemetryDisabled === true ? true : undefined,
 		helpModeDiscovered: d.helpModeDiscovered === true ? true : undefined,
 		completedTours: Array.isArray(d.completedTours) ? d.completedTours.filter((id: unknown): id is string => typeof id === "string") : undefined,
 		taskOpenMode: d.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,

@@ -423,6 +423,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "telemetry",
+		category: "system",
+		titleKey: "settings.telemetry",
+		descriptionKey: "settings.telemetryDesc",
+		anchor: "telemetry",
+		globalField: "telemetryDisabled",
+		storage: "global",
+	},
+	{
 		id: "developer-tools",
 		category: "system",
 		titleKey: "settings.devTools",
@@ -467,6 +476,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"playSoundOnTaskComplete",
 	"externalApps",
 	"tipsDisabled",
+	"telemetryDisabled",
 	"helpModeDiscovered",
 	"completedTours",
 	"taskOpenMode",

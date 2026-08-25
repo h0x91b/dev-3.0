@@ -503,6 +503,24 @@ const settings = {
 	"settings.terminalBidiCaveat":
 		"Solo visualización: el texto copiado conserva su orden original, que es el correcto. La selección con el ratón y el paso del cursor por los enlaces en esas líneas siguen el orden original, así que el resaltado puede verse mal. Las letras árabes no se unen en su forma cursiva.",
 
+	// Telemetry opt-out
+	"settings.telemetry": "Telemetría",
+	"settings.telemetryDesc":
+		"Analítica de uso anónima: qué pantallas y agentes se usan, además de informes de fallos. Se identifica con un id aleatorio por instalación; los nombres de tus proyectos, los títulos de las tareas y las rutas de archivos no se envían.",
+	"settings.telemetryToggle": "Enviar datos de uso anónimos",
+	"settings.telemetryToggleDesc":
+		"Desactivarlo lo detiene todo a la vez: ni Google Analytics, ni PostHog, ni consulta de IP pública, ni informes de fallos. Los indicadores de funciones vuelven a sus valores por defecto integrados.",
+	"settings.telemetryEnvHint":
+		"También puedes definir DEV3_TELEMETRY=off o DO_NOT_TRACK=1 en tu entorno, lo que lo mantiene desactivado en cada arranque.",
+	"settings.telemetryStoppedNow":
+		"La telemetría se detuvo de inmediato. Volver a activarla surte efecto tras reiniciar la aplicación.",
+	"settings.telemetryResumesAfterRestart":
+		"La telemetría se reanudará la próxima vez que inicies la aplicación.",
+	"settings.telemetryLockedEnv":
+		"Desactivado por DEV3_TELEMETRY en el entorno de esta aplicación. Quítala y reinicia para poder cambiarlo aquí.",
+	"settings.telemetryLockedDoNotTrack":
+		"Desactivado por DO_NOT_TRACK en el entorno de esta aplicación. Quítala y reinicia para poder cambiarlo aquí.",
+
 	// Token-saving proxy (pxpipe) — experimental, opt-in
 	"settings.pxpipeSection": "Proxy de ahorro de tokens (experimental)",
 	"settings.pxpipeSectionDesc": "Enruta Claude a través de un proxy local (pxpipe) que convierte el contexto voluminoso en imágenes para reducir los tokens de entrada. Desactivado por defecto.",

@@ -1112,6 +1112,16 @@ export interface GlobalSettings {
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;
 	/**
+	 * Switch every telemetry channel off for this install. Default off (undefined ⇒
+	 * telemetry runs). The host reads it at startup and injects the verdict into the
+	 * HTML shell, because posthog-js initializes at module import — see
+	 * src/bun/analytics-identity.ts and src/shared/telemetry-consent.ts.
+	 *
+	 * `DEV3_TELEMETRY=off` and `DO_NOT_TRACK=1` do the same thing from the
+	 * environment and override this field's absence.
+	 */
+	telemetryDisabled?: boolean;
+	/**
 	 * Set the first time the user opens help mode. Until then the header's `?`
 	 * rests highlighted on the main screens — help mode is the product's only
 	 * teaching channel, so a user who never finds the button never learns

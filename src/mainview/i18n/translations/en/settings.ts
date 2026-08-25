@@ -502,6 +502,24 @@ const settings = {
 	"settings.terminalBidiCaveat":
 		"Display only: copied text keeps its original order, which is correct. Selecting with the mouse and hovering links on those lines still follow the original order, so the highlight can look wrong. Arabic letters are not joined into their cursive forms.",
 
+	// Telemetry opt-out
+	"settings.telemetry": "Telemetry",
+	"settings.telemetryDesc":
+		"Anonymous usage analytics — which screens and agents get used, plus crash reports. Identified by a random per-install id; your project names, task titles and file paths are not sent.",
+	"settings.telemetryToggle": "Send anonymous usage data",
+	"settings.telemetryToggleDesc":
+		"Turning this off stops everything at once: no Google Analytics, no PostHog, no public-IP lookup, no crash reports. Feature flags fall back to their built-in defaults.",
+	"settings.telemetryEnvHint":
+		"You can also set DEV3_TELEMETRY=off or DO_NOT_TRACK=1 in your environment, which locks this off for every launch.",
+	"settings.telemetryStoppedNow":
+		"Telemetry stopped immediately. Turning it back on takes effect after you restart the app.",
+	"settings.telemetryResumesAfterRestart":
+		"Telemetry will resume the next time you start the app.",
+	"settings.telemetryLockedEnv":
+		"Locked off by DEV3_TELEMETRY in this app's environment. Unset it and restart to change this here.",
+	"settings.telemetryLockedDoNotTrack":
+		"Locked off by DO_NOT_TRACK in this app's environment. Unset it and restart to change this here.",
+
 	// Token-saving proxy (pxpipe) — experimental, opt-in
 	"settings.pxpipeSection": "Token-saving proxy (experimental)",
 	"settings.pxpipeSectionDesc": "Route Claude through a local proxy (pxpipe) that renders bulky context as images to cut input tokens. Off by default.",

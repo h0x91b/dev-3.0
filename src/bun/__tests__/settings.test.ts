@@ -188,6 +188,7 @@ describe("saveSettings", () => {
 			playSoundOnTaskComplete: false,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,
+			telemetryDisabled: true,
 			helpModeDiscovered: true,
 			completedTours: ["first-task"],
 			reviewModePrompt: "Review the diff and report only blockers.",

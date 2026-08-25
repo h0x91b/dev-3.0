@@ -481,6 +481,28 @@ function extractFilename(raw: string): string {
 	}
 }
 
+// Absolute paths in either OS's spelling, plus the `file://` / `views://` URL
+// forms a webview error message uses. Deliberately greedy up to whitespace or a
+// quote: the point is to remove the whole path, not to parse it.
+const ABSOLUTE_PATH_PATTERN =
+	/(?:[a-z][a-z0-9+.-]*:\/\/[^\s'"`)]+)|(?:\/(?:Users|home|var|tmp|private|opt)\/[^\s'"`)]*)|(?:[A-Za-z]:\\[^\s'"`)]*)/gi;
+
+/**
+ * Replace absolute paths with their last segment before an error string leaves
+ * the machine.
+ *
+ * An app that wraps git, worktrees and filesystem operations puts paths in error
+ * messages constantly, and a path carries the very thing the README promises never
+ * to send: the customer's repo name, the NDA'd codename, the user's own name. The
+ * basename is what makes a crash diagnosable; the directory tree above it is not.
+ */
+export function redactPaths(text: string): string {
+	return text.replace(ABSOLUTE_PATH_PATTERN, (match) => {
+		const segment = match.split(/[/\\]/).filter(Boolean).pop() ?? "";
+		return segment ? `…/${segment}` : "…";
+	});
+}
+
 /** Extract the first meaningful stack frame (skip the error message line). */
 function extractStackLine(stack: string | undefined): string {
 	if (!stack) return "no stack";
@@ -496,16 +518,18 @@ function setupErrorTracking(): void {
 	if (errorTrackingSetup) return;
 	errorTrackingSetup = true;
 
+	// The local log gets the untouched text — it never leaves the machine and is
+	// what makes a bug report useful. Only the GA copy is redacted.
 	window.addEventListener("error", (event) => {
 		const file = extractFilename(event.filename);
 		const description = `${event.message} at ${file}:${event.lineno}:${event.colno}`;
 		trackEvent("app_exception", {
-			description,
+			description: redactPaths(description),
 			fatal: false,
 			error_source: "error",
 			error_file: file,
 			error_line: event.lineno,
-			error_message: String(event.message).slice(0, 150),
+			error_message: redactPaths(String(event.message)).slice(0, 150),
 		});
 		logToBackend(description, "error");
 	});
@@ -517,12 +541,12 @@ function setupErrorTracking(): void {
 		const stackLine = isError ? extractStackLine(reason.stack) : "no stack";
 		const description = `Unhandled rejection: ${message} | ${stackLine}`;
 		trackEvent("app_exception", {
-			description,
+			description: redactPaths(description),
 			fatal: false,
 			error_source: "unhandledrejection",
 			error_file: extractFilename(stackLine),
-			error_message: message.slice(0, 150),
-			stack_line: stackLine.slice(0, 200),
+			error_message: redactPaths(message).slice(0, 150),
+			stack_line: redactPaths(stackLine).slice(0, 200),
 		});
 		logToBackend(description, "unhandledrejection");
 	});

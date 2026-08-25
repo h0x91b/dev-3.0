@@ -9,6 +9,8 @@
  * See decisions/2026/08/08/first-posthog-feature-flag.md.
  */
 import { randomUUID } from "node:crypto";
+import type { TelemetryOptOutSource } from "../shared/telemetry-consent";
+import { resolveTelemetryOptOut } from "../shared/telemetry-consent";
 import { loadSettings, loadSettingsSync, saveSettings } from "./settings";
 
 /** Read without minting: callers that only render the HTML shell. */
@@ -17,17 +19,34 @@ export function analyticsDistinctIdSync(): string | null {
 }
 
 /**
- * Inline script handing a renderer the install's id before page scripts run.
+ * The install's opt-out verdict, read fresh from the environment and settings.
  *
- * Both renderers need it from the same source: the desktop window gets it as a
- * webview preload, a remote browser as a tag in the served HTML. Without it
- * posthog-js mints its own id per renderer, so the id the Debug window showed was
- * not the one flags were evaluated against — and targeting it did nothing.
- *
- * Empty until an id exists (first launch), which lands the renderer on its own
- * posthog-js id — the very id it then reports back as the seed.
+ * Synchronous because the HTML shell is assembled synchronously, and the shell is
+ * the only place the answer can arrive early enough to matter.
  */
-export function distinctIdBootstrapScript(): string {
+export function telemetryOptOutSync(): TelemetryOptOutSource | null {
+	return resolveTelemetryOptOut(process.env, loadSettingsSync());
+}
+
+/**
+ * Inline script handing a renderer the telemetry verdict and the install's id
+ * before page scripts run.
+ *
+ * Both renderers need them from the same source: the desktop window gets this as a
+ * webview preload, a remote browser as a tag in the served HTML. Without the id
+ * posthog-js mints its own per renderer, so the id the Debug window showed was not
+ * the one flags were evaluated against — and targeting it did nothing.
+ *
+ * An opted-out install ships the verdict and **no id at all**: the identifier is
+ * only ever useful to a channel that is now switched off, and withholding it means
+ * an unauthenticated browser hitting the remote server cannot read it either.
+ */
+export function telemetryBootstrapScript(): string {
+	const optOut = telemetryOptOutSync();
+	if (optOut) return `window.__DEV3_TELEMETRY_OPT_OUT__=${JSON.stringify(optOut)};`;
+
+	// Empty until an id exists (first launch), which lands the renderer on its own
+	// posthog-js id — the very id it then reports back as the seed.
 	const id = analyticsDistinctIdSync();
 	return id ? `window.__DEV3_DISTINCT_ID__=${JSON.stringify(id)};` : "";
 }

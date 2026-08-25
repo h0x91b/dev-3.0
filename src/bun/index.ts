@@ -16,7 +16,7 @@ import {
 	isUpdateAlreadyReady,
 } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
-import { distinctIdBootstrapScript } from "./analytics-identity";
+import { telemetryBootstrapScript } from "./analytics-identity";
 import { shouldAutoOpenDevTools } from "./devtools-auto-open";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { initNativeNotifications } from "./native-notifications";
@@ -428,9 +428,10 @@ async function openMainWindow() {
 		title: makeTitle(APP_VERSION, lastBuildTime, buildChannel),
 		url,
 		handlers: handlers as unknown as Record<string, (...args: unknown[]) => unknown>,
-		// One analytics identity per install: hand it over before posthog-js boots,
-		// or the renderer mints its own and flag targeting aims at the wrong id.
-		preload: distinctIdBootstrapScript(),
+		// The telemetry verdict and, when telemetry may run, the install's identity —
+		// handed over before posthog-js boots, which happens at module import. Later
+		// is too late: the renderer would mint its own id and send its first events.
+		preload: telemetryBootstrapScript(),
 		onDomReady: async (win) => {
 			// dom-ready is the readiness contract: it only fires once a webview
 			// actually rendered, so it is the one signal that proves a renderer.

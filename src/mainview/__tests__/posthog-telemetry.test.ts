@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const { posthogJs } = vi.hoisted(() => ({
 	posthogJs: {
-		init: vi.fn(() => ({
+		init: vi.fn((_key: string, _config: Record<string, unknown>) => ({
 			capture: vi.fn(),
 			getFeatureFlag: vi.fn(() => true),
 			onFeatureFlags: vi.fn(() => () => undefined),
@@ -72,5 +72,52 @@ describe("posthog build-time telemetry gate", () => {
 		expect(client.getFeatureFlag("any-flag")).toBeUndefined();
 		expect(client.get_distinct_id()).toBe("");
 		expect(client.onFeatureFlags(() => undefined)).toBeTypeOf("function");
+	});
+
+	it("does not initialize when the host injected an opt-out verdict", async () => {
+		window.__DEV3_TELEMETRY_OPT_OUT__ = "setting";
+		try {
+			await loadClient();
+			expect(posthogJs.init).not.toHaveBeenCalled();
+		} finally {
+			delete window.__DEV3_TELEMETRY_OPT_OUT__;
+		}
+	});
+});
+
+/**
+ * Autocapture ships unmasked and harvests `textContent`, `title` and `aria-label`
+ * from clickable subtrees — which in this app are task titles and project names.
+ * These two options are the only thing stopping that, so they get a guard rather
+ * than a comment claiming they are set.
+ */
+describe("posthog autocapture masking", () => {
+	it("masks element text and attributes", async () => {
+		await loadClient();
+		expect(posthogJs.init).toHaveBeenCalledWith(
+			"phc_test_key",
+			expect.objectContaining({
+				mask_all_text: true,
+				mask_all_element_attributes: true,
+			}),
+		);
+	});
+
+	// These are remote-configurable by default, so a dashboard toggle on the vendor's
+	// side could switch them on with no app update. Pinned in the client instead.
+	it("pins off every channel that would capture content we cannot mask", async () => {
+		await loadClient();
+		expect(posthogJs.init).toHaveBeenCalledWith(
+			"phc_test_key",
+			expect.objectContaining({
+				disable_session_recording: true,
+				disable_surveys: true,
+			}),
+		);
+	});
+
+	it("leaves exception capture to the server-side config instead of forcing it on", async () => {
+		await loadClient();
+		expect(posthogJs.init.mock.calls[0]?.[1]).not.toHaveProperty("capture_exceptions");
 	});
 });

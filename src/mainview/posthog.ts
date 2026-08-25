@@ -1,8 +1,8 @@
 import posthog from "posthog-js";
 import { telemetryEnabled } from "./telemetry";
 
-// VITE_TELEMETRY=off outranks a configured key: the build asked for no
-// telemetry, so a missing key is not a misconfiguration worth shouting about.
+// An opt-out outranks a configured key: the install asked for no telemetry, so a
+// missing key is not a misconfiguration worth shouting about.
 const telemetry = telemetryEnabled();
 const apiKey = import.meta.env.VITE_POSTHOG_KEY;
 const apiHost = import.meta.env.VITE_POSTHOG_HOST;
@@ -15,12 +15,18 @@ if (telemetry && (!apiKey || !apiHost) && import.meta.env.DEV) {
 }
 
 // The flag APIs are exposed next to capture so feature-flags.ts can refresh and
-// read flags; the rest of the posthog surface stays out of reach. With no key
-// configured — or telemetry off — the no-op client reports every flag as unset,
+// read flags; `opt_out_capturing` so the Settings toggle can silence a client that
+// is already running. The rest of the posthog surface stays out of reach. With no
+// key configured — or telemetry off — the no-op client reports every flag as unset,
 // which lands the app on the shipped defaults in src/shared/feature-flags.ts.
 type PostHogClient = Pick<
 	typeof posthog,
-	"capture" | "getFeatureFlag" | "onFeatureFlags" | "reloadFeatureFlags" | "get_distinct_id"
+	| "capture"
+	| "getFeatureFlag"
+	| "onFeatureFlags"
+	| "reloadFeatureFlags"
+	| "get_distinct_id"
+	| "opt_out_capturing"
 >;
 
 // bun owns one distinct id per install and injects it into the HTML shell before
@@ -37,11 +43,17 @@ const client: PostHogClient = telemetry && apiKey && apiHost
 		...(injectedDistinctId
 			? { bootstrap: { distinctID: injectedDistinctId, isIdentifiedID: false } }
 			: {}),
-		capture_exceptions: {
-			capture_unhandled_errors: true,
-			capture_unhandled_rejections: true,
-			capture_console_errors: false,
-		},
+		// Autocapture ships unmasked by default, and this app renders task titles
+		// and project names as button text and in `title` / `aria-label`. Those are
+		// a customer's repo names and an NDA'd codename; the README promises they
+		// never leave the machine, and only these two options actually keep it.
+		mask_all_text: true,
+		mask_all_element_attributes: true,
+		// Both are remote-configurable, so a dashboard toggle could otherwise turn
+		// them on with no app update — in a window rendering source, diffs and live
+		// terminal panes. Pinned in the client, where the server cannot reach.
+		disable_session_recording: true,
+		disable_surveys: true,
 	})
 	: {
 		capture: () => undefined,
@@ -49,6 +61,7 @@ const client: PostHogClient = telemetry && apiKey && apiHost
 		onFeatureFlags: () => () => undefined,
 		reloadFeatureFlags: () => undefined,
 		get_distinct_id: () => "",
+		opt_out_capturing: () => undefined,
 	};
 
 export default client;
