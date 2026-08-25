@@ -259,6 +259,8 @@ const settings = {
 	"settings.pushNeedsInstall": "On iPhone and iPad, add dev-3.0 to your Home Screen first (Share \u2192 Add to Home Screen), then open it from that icon. Safari tabs cannot receive push.",
 	"settings.pushInsecure": "Push needs a secure context. Open dev-3.0 over HTTPS \u2014 a Cloudflare tunnel, Tailscale serve, or your own reverse proxy.",
 	"settings.pushUnsupported": "This browser does not support push notifications.",
+	"push.inviteBody": "Get notified on this device when an agent needs you — tap to enable",
+	"push.inviteDone": "This device will now be notified",
 	"settings.remoteSilentUpdate": "Update a remote box on its own",
 	"settings.remoteSilentUpdateDesc": "Let a headless dev3 remote server install updates itself once the box is quiet — no task in progress, no terminal output, nobody connected. The public link and open sessions survive the restart. Turn it off to hold a box on one build while investigating. No effect on this desktop app.",
 	"settings.preventSleep": "Prevent sleep",

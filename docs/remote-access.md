@@ -174,7 +174,7 @@ stable one:
 
 ```sh
 # Tailscale — free, private to your tailnet, no domain needed
-tailscale serve --bg --https=8443 http://127.0.0.1:<port>
+tailscale serve --bg --https=443 http://127.0.0.1:<port>
 
 # A named Cloudflare tunnel — needs a Cloudflare account and your own domain
 cloudflared tunnel create dev3
@@ -185,6 +185,13 @@ cloudflared tunnel run dev3
 ```
 
 Pass `--port` as well, so the port is stable too: the origin is scheme, host **and** port.
+
+> **If that node also has Tailscale Funnel enabled, serve on 443, not another port.** Funnel
+> publishes public DNS records for the machine's `ts.net` name, and those point at Tailscale's
+> ingress servers, which only terminate TLS for 443. A phone that resolves the name from public
+> DNS then fails the handshake on any other port — Safari reports "could not establish a secure
+> connection" and the request never reaches your machine at all. Plain HTTP straight to the
+> tailnet IP still works, which is a quick way to confirm the tunnel itself is healthy.
 
 ## Security notes
 

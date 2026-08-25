@@ -88,6 +88,7 @@ import { reconnectRpc } from "./rpc";
 import { DIAGNOSTICS_OPEN_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
 import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
+import { maybeInvitePushEnrollment } from "./utils/pushInvite";
 
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
@@ -175,6 +176,13 @@ function App() {
 			void api.request.setTerminalFocus?.({ active: false })?.catch?.(() => { /* best-effort */ });
 		};
 	}, []);
+
+	// Offer push once, late enough that it lands on a rendered board rather than
+	// competing with first paint.
+	useEffect(() => {
+		const timer = setTimeout(() => void maybeInvitePushEnrollment(t), 4000);
+		return () => clearTimeout(timer);
+	}, [t]);
 	useViewport(state.route);
 	// A phone scales differently per screen: dense inside a task, roomy on the
 	// screens the user only browses. No-op on a desktop-width viewport.

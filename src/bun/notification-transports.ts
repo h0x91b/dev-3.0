@@ -191,6 +191,9 @@ export async function deliverToPushDevices(event: NotificationEvent): Promise<vo
 		subs.map(async (sub) => {
 			try {
 				const res = await sendNotification(sub, payload, keys);
+				// Log the accepted case too: without it an operator cannot tell a
+				// working push path from a silent one.
+				if (res.statusCode < 400) log.info("Push accepted", { host: new URL(sub.endpoint).host, status: res.statusCode });
 				// A device that dropped its subscription would otherwise be retried
 				// forever; the push service tells us so with 404/410.
 				if (subscriptionIsGone(res.statusCode)) {

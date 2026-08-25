@@ -259,6 +259,8 @@ const settings = {
 	"settings.pushNeedsInstall": "En iPhone y iPad, agreg\u00e1 dev-3.0 a la pantalla de inicio primero (Compartir \u2192 Agregar a inicio) y abrilo desde ese \u00edcono. Las pesta\u00f1as de Safari no reciben push.",
 	"settings.pushInsecure": "El push necesita un contexto seguro. Abr\u00ed dev-3.0 por HTTPS: un t\u00fanel de Cloudflare, Tailscale serve o tu propio proxy inverso.",
 	"settings.pushUnsupported": "Este navegador no admite notificaciones push.",
+	"push.inviteBody": "Recib\u00ed avisos en este dispositivo cuando un agente te necesite: toc\u00e1 para activar",
+	"push.inviteDone": "Este dispositivo ya recibe avisos",
 	"settings.remoteSilentUpdate": "Actualizar una máquina remota por su cuenta",
 	"settings.remoteSilentUpdateDesc": "Permite que un servidor headless dev3 remote instale actualizaciones solo cuando la máquina está tranquila: ninguna tarea en curso, ninguna salida de terminal, nadie conectado. El enlace público y las sesiones abiertas sobreviven al reinicio. Desactívalo para mantener una máquina en una sola compilación mientras investigas. No afecta a esta aplicación de escritorio.",
 	"settings.preventSleep": "Evitar suspensión",
