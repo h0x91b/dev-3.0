@@ -40,8 +40,13 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("does not see or read your conversations");
 	});
 
-	it("requires a task to be named by number AND id", () => {
-		expect(COORDINATOR_PROMPT).toContain("Seq NNNN (<id>)");
+	// The seq alone is the name, because the board block now supplies it on every
+	// turn. Only a task whose seq a live variant sibling still shares needs the id
+	// — that is the one case where `--task seq:N` does not resolve.
+	it("requires a task to be named by its number, and a shared seq by its id too", () => {
+		expect(COORDINATOR_PROMPT).toContain("NAME EVERY TASK BY ITS NUMBER");
+		expect(COORDINATOR_PROMPT).toContain("Seq NNNN");
+		expect(COORDINATOR_PROMPT).toContain("seq:NNNN:index (id)");
 	});
 
 	it("keeps the four rules that were learned from a specific failure", () => {
@@ -51,9 +56,23 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("ANNOUNCE A REVERSAL AS A REVERSAL");
 	});
 
-	it("tells the coordinator its board picture is a snapshot, not a feed", () => {
-		expect(COORDINATOR_PROMPT).toContain("SNAPSHOT");
-		expect(COORDINATOR_PROMPT).toMatch(/before every status/);
+	// The board used to be a snapshot the coordinator had to refresh by hand; it
+	// now arrives with every turn. The rule that replaced it has to do three
+	// things, and dropping any one of them costs either turns or accuracy.
+	it("points the coordinator at the injected board instead of a manual re-read", () => {
+		expect(COORDINATOR_PROMPT).toContain("<dev3-board>");
+		// Spending a turn on what the block already said is the waste this exists to stop.
+		expect(COORDINATOR_PROMPT).toMatch(/Do NOT spend a turn on `dev3 task list`/);
+		// The block is taken when the turn begins, so a long turn outlives it.
+		expect(COORDINATOR_PROMPT).toMatch(/this turn has run long/);
+		// A harness that cannot inject one must not leave the coordinator blind.
+		expect(COORDINATOR_PROMPT).toMatch(/If no block arrives/);
+	});
+
+	// A quiet time is not a screen: peek stays the only way to see what a child
+	// is actually doing, and conflating the two would retire it by accident.
+	it("keeps peek as the way to see what a child is doing", () => {
+		expect(COORDINATOR_PROMPT).toMatch(/`dev3 peek` is still the only way/);
 	});
 
 	it("is English-only, so a locale file can never half-translate a behavioural rule", () => {

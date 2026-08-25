@@ -18,6 +18,12 @@ export const TOLERATE_APP_OFFLINE_FLAG = "--tolerate-app-offline";
 export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
 export const CODEX_DEV3_HOOK_COMMAND = `${DEV3_CLI} hook codex`;
 export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
+/**
+ * Prints the `<dev3-board>` snapshot into a coordinator's turn. Installed for
+ * EVERY task — the server answers empty for anything that is not a coordinator,
+ * so `--type coordinator` takes effect mid-session with no hook rewrite.
+ */
+export const CLAUDE_BOARD_HOOK_SUBCOMMAND = "hook board";
 export const CODEX_STATUS_HOOK_EVENTS = [
 	"SessionStart",
 	"UserPromptSubmit",
@@ -182,9 +188,22 @@ export function buildClaudeHooks(
 	// an existing tool call without emitting a new user prompt event.
 	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
 
+	// A coordinator's picture of the board goes stale between turns — the user
+	// walks the child tasks and comes back, and nothing told the coordinator. The
+	// snapshot rides the turn instead: UserPromptSubmit fires for the user's own
+	// Enter AND for a peer's delivered `dev3 message` (text + Enter reaches the
+	// harness as an ordinary prompt), so one hook covers every turn there is.
+	const boardCmd = `${dialect.cli} ${CLAUDE_BOARD_HOOK_SUBCOMMAND}`;
+
 	return {
 		UserPromptSubmit: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
+			{ hooks: [
+				{ type: "command", command: workingCmd },
+				// Its own entry, not folded into the move: this one WRITES to the
+				// turn's context, and it must stay silent and successful (a
+				// non-zero UserPromptSubmit hook erases the user's prompt).
+				{ type: "command", command: boardCmd, timeout: 5 },
+			] },
 		],
 		PreToolUse: [
 			{ hooks: [{ type: "command", command: workingCmd }] },

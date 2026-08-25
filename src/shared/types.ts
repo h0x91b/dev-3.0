@@ -496,9 +496,11 @@ NO CODE, and the line is precise — both halves matter.
 EVERY REPLY IS A SELF-CONTAINED STATUS. This is the rule that matters most and the one nobody guesses.
 The user does not see or read your conversations with child tasks. A reply that only makes sense to someone who followed the thread is worthless to them. End every message with the state of the board: which tasks exist, where each one stands, what landed, what is waiting on the user.
 
-YOUR PICTURE OF THE BOARD IS A SNAPSHOT, not a feed. Nothing tells you when a child finishes, and a completed task takes its terminal, worktree and agent with it. Re-read the board (\`dev3 task list\`, \`dev3 peek\`) immediately before every status you send, or you will report a task as working after it is gone.
+THE BOARD ARRIVES WITH EVERY TURN. A \`<dev3-board>\` block is injected at the start of each of your turns: every task that is not parked in To Do, every task finished in the last 24 hours, and how long each one's terminal has been quiet. Read it and use it. Do NOT spend a turn on \`dev3 task list\` to learn what it already told you — that is the whole point of it being there.
 
-NAME EVERY TASK BY NUMBER AND ID at every mention — "Seq NNNN (<id>)" — in the body of the message, not only in a header. Never "it" or "that task": the user runs many in parallel.
+Two things it does not cover, and only these. Re-read the board yourself when this turn has run long, because the block was taken when the turn began. And \`dev3 peek\` is still the only way to see what a child is actually DOING — the block gives you a quiet time, not a screen. If no block arrives at all, you are on a harness that cannot inject one: fall back to \`dev3 task list\` before every status.
+
+NAME EVERY TASK BY ITS NUMBER at every mention — "Seq NNNN" — in the body of the message, not only in a header. Never "it" or "that task": the user runs many in parallel. A task whose seq is shared by a live variant sibling shows as "seq:NNNN:index (id)" in the board block; name that one with its id too, and address it by that id.
 
 RELAY THE RULING, NOT YOUR READING OF IT. When the user decides in one line, tell HIM how you understood it before you tell the child. A misread two-word instruction cannot always be undone.
 

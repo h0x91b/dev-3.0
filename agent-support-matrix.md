@@ -69,6 +69,8 @@ Injected into `.claude/settings.local.json`.
 
 Codex has no equivalent event — a Codex session that runs out of quota is still only visible in the rate-limit indicator.
 
+`UserPromptSubmit` carries a second command, `dev3 hook board`, which is the only hook that WRITES into the turn instead of moving the task: for a coordinator task it prints the `<dev3-board>` snapshot on stdout and Claude folds it into that turn's context. Installed for every task — the server answers empty for anything that is not a coordinator, so `--type coordinator` takes effect mid-session with no hook rewrite. It is silent and successful on every failure, because a non-zero `UserPromptSubmit` hook erases the user's prompt.
+
 ### Codex
 
 Generated in each task's `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] hooks = true` on Codex 0.129+, `codex_hooks = true` before that). Current Codex deliberately reads project hooks from the root checkout instead of a linked worktree, so dev3 also injects the same definitions as session flags into every Codex pane. On Codex 0.129+, dev3 asks `hooks/list` for authoritative hashes and adds trust state to that session override only; it never changes `~/.codex/hooks.json`, persists hook trust, or trusts unrelated user/project/plugin hooks. The Codex skill forbids duplicate manual normal-lifecycle moves; semantic questions, custom columns, and explicit completion remain manual. `PermissionRequest` runs on Codex 0.122+; older hook parsers ignore that unknown event while retaining the others.
@@ -81,6 +83,8 @@ Generated in each task's `.codex/hooks.json` and enabled via `~/.codex/config.to
 | `PermissionRequest` | → `user-questions` | Codex is waiting for a tool or network approval |
 | `PostToolUse` | → `in-progress` | Clears the waiting state after an approved tool finishes |
 | `Stop` | → `review-by-ai` / `review-by-user` | One atomic server-side transition selects the correct review target and returns valid JSON to Codex |
+
+Codex gets no `<dev3-board>` injection. Its hook handler must answer with Stop-hook JSON (`{}`) on stdout, so free text cannot ride the same channel; a Codex coordinator falls back to `dev3 task list`, which its role brief tells it to do when no block arrives.
 
 Beyond status, the `SessionStart`/`UserPromptSubmit` hook payloads carry the Codex `session_id` (the resumable rollout id), and the hook process inherits `$TMUX_PANE`. dev3 records that id onto the matching `sessionState` pane so recovery can `codex resume <id>` the exact per-pane session — Codex has no launch-time session-id flag, so this is the only way to target a specific session (see decision 125).
 

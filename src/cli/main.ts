@@ -30,6 +30,7 @@ import { handleInlineHtml } from "./commands/inline-html";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleClaudeStopFailure } from "./commands/claude-stop-failure";
+import { handleBoardHook } from "./commands/hook-board";
 import { handleDoctor } from "./commands/doctor";
 import { handleUpdate } from "./commands/update";
 import { TOLERATE_APP_OFFLINE_FLAG } from "../shared/agent-hooks";
@@ -219,6 +220,11 @@ async function main(): Promise<void> {
 			socketPath || context?.socketPath || null,
 			context,
 		);
+	}
+	if (command === "hook" && subcommand === "board") {
+		// Internal: prints the coordinator's board snapshot into the turn's context.
+		// Silent and successful for every other task, and whenever anything fails.
+		return await handleBoardHook(socketPath || context?.socketPath || null, context);
 	}
 	if (command === "install-skills") {
 		return await handleInstallSkills();

@@ -165,7 +165,7 @@ describe("buildClaudeHooks", () => {
 				for (const entry of group.hooks) {
 					// Either "dev3 task move --status X" or a "dev3 hook <name>" adapter
 					// that reads the event from stdin — never a UUID either way.
-					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure/);
+					expect(entry.command).toMatch(/task move --status|hook claude-stop-failure|hook board/);
 					expect(entry.command).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
 				}
 			}
