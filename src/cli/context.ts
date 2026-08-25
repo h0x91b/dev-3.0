@@ -444,6 +444,17 @@ function liveEndpoints(): EndpointEntry[] {
 		.sort((a, b) => (b.mtimeMs !== a.mtimeMs ? b.mtimeMs - a.mtimeMs : b.pid - a.pid));
 }
 
+/**
+ * Every live endpoint's socket path, newest first — for a fan-out where reaching
+ * ALL instances is the point, not picking one. Guests are included: a second
+ * dev3 process (a task's dev-server, a `dev3 remote`) has its own windows and
+ * browser clients, and a notification the user can see in one app but not the
+ * other is the bug this exists to prevent.
+ */
+export function allLiveSocketPaths(): string[] {
+	return liveEndpoints().map((entry) => entry.socketPath);
+}
+
 /** Alive, or unprobeable (EPERM in a sandbox — may well be alive). */
 function isProbablyAlive(pid: number): boolean {
 	try {

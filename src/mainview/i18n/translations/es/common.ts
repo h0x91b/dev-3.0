@@ -87,7 +87,7 @@ const common = {
 	"toast.source.terminal": "Terminal",
 	"toast.agentMessage": "«{preview}»",
 	"toast.dismiss": "Descartar",
-	"toast.clearAll": "Descartar todo ({count})",
+	"toast.clearAll": "Descartar todo",
 	"common.close": "Cerrar",
 
 	// Status labels

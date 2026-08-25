@@ -416,8 +416,12 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 					onInteraction={setInteraction}
 				/>
 			))}
+			{/* Centered under the stack, sized to its own content: the control belongs to
+			    the pile without pretending to be another card in it. The border is
+			    structural here — it floats over arbitrary app content, so it needs an
+			    edge of its own to stay a readable object. */}
 			{toasts.length > 1 && (
-				<div className="flex justify-end">
+				<div className="flex justify-center">
 					<button
 						type="button"
 						onClick={dismissAll}
@@ -425,9 +429,20 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 						onMouseLeave={() => setStackInteraction("hovered", false)}
 						onFocus={() => setStackInteraction("focused", true)}
 						onBlur={() => setStackInteraction("focused", false)}
-						className="pointer-events-auto px-2.5 py-1 rounded-lg bg-overlay border border-edge hover:border-edge-active text-fg-muted hover:text-fg text-xs shadow-2xl transition-colors"
+						className="animate-slide-in-right pointer-events-auto group flex items-center gap-2 rounded-lg border border-edge bg-overlay/95 px-3 py-1.5 text-xs font-medium text-fg-3 shadow-xl backdrop-blur-sm outline-none transition-[color,background-color,border-color,transform] duration-150 ease-out hover:border-edge-active hover:bg-elevated hover:text-fg focus-visible:ring-2 focus-visible:ring-accent/50 active:scale-[0.96]"
 					>
-						{t("toast.clearAll", { count: String(toasts.length) })}
+						<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+							<path
+								strokeLinecap="round"
+								strokeLinejoin="round"
+								strokeWidth={1.5}
+								d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+							/>
+						</svg>
+						<span>{t("toast.clearAll")}</span>
+						<span className="rounded-full bg-fg/10 px-1.5 py-0.5 text-micro tabular-nums text-fg-2 transition-colors group-hover:bg-fg/20 group-hover:text-fg">
+							{toasts.length}
+						</span>
 					</button>
 				</div>
 			)}

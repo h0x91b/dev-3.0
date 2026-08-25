@@ -1,12 +1,37 @@
 import { sendRequest } from "../socket-client";
 import { exitError, exitUsage, printDetail } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, resolveProjectId, type CliContext } from "../context";
+import { allLiveSocketPaths, expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import type { TmuxLayout, TmuxPaneInfo } from "../../shared/types";
 import { parseNotificationDuration } from "../../shared/duration";
 
 const NOTIFY_MAX_LEN = 500;
+
+/**
+ * Deliver the same in-app toast to every OTHER live dev3 instance, best-effort.
+ *
+ * A toast is presentation with no persisted state, so a second delivery costs
+ * nothing and buys the thing the user actually expects: a notification reaches
+ * whichever app they happen to be looking at — the desktop window, a phone on
+ * the remote server, or a task's dev-server. Only the primary's reply is
+ * reported; a guest that is mid-teardown must never turn a delivered
+ * notification into an error. Returns how many extra instances accepted it.
+ */
+async function fanOutToast(primarySocketPath: string, params: Record<string, unknown>): Promise<number> {
+	const others = allLiveSocketPaths().filter((path) => path !== primarySocketPath);
+	if (!others.length) return 0;
+	const results = await Promise.all(
+		others.map(async (path) => {
+			try {
+				return (await sendRequest(path, "ui.notify", params)).ok;
+			} catch {
+				return false;
+			}
+		}),
+	);
+	return results.filter(Boolean).length;
+}
 
 /**
  * `dev3 notify "message"` — surface an in-app toast (default) or a native OS
@@ -66,6 +91,10 @@ export async function handleNotify(
 	const resp = await sendRequest(socketPath, "ui.notify", params);
 	if (!resp.ok) exitError(resp.error || "Failed to send notification");
 
+	// An OS notification is ONE surface no matter how many dev3 processes run, so
+	// only the in-app toast fans out — `--desktop` would just fire duplicates.
+	const alsoReached = desktop ? 0 : await fanOutToast(socketPath, params);
+
 	const data = resp.data as { delivered: boolean; mode: string; queued?: boolean; suppressed?: boolean };
 	if (data.queued) {
 		process.stdout.write(
@@ -78,10 +107,15 @@ export async function handleNotify(
 		return;
 	}
 	if (!data.delivered) {
-		process.stdout.write("App is running but has no open window — nothing was shown.\n");
+		process.stdout.write(
+			alsoReached > 0
+				? `Primary app has no open window; toast sent to ${alsoReached} other instance(s).\n`
+				: "App is running but has no open window — nothing was shown.\n",
+		);
 		return;
 	}
-	process.stdout.write(`${data.mode === "desktop" ? "Desktop notification" : "Toast"} sent.\n`);
+	const label = data.mode === "desktop" ? "Desktop notification" : "Toast";
+	process.stdout.write(alsoReached > 0 ? `${label} sent to ${alsoReached + 1} instances.\n` : `${label} sent.\n`);
 }
 
 /**

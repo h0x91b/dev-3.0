@@ -8,8 +8,17 @@ vi.mock("../socket-client", () => ({
 	sendRequest: vi.fn(),
 }));
 
+// Only the endpoint enumeration is faked — the rest of the context module (id
+// expansion, project resolution) is the real thing these tests already rely on.
+vi.mock("../context", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../context")>()),
+	allLiveSocketPaths: vi.fn(() => [] as string[]),
+}));
+
 import { sendRequest } from "../socket-client";
+import { allLiveSocketPaths } from "../context";
 const mockSend = vi.mocked(sendRequest);
+const mockEndpoints = vi.mocked(allLiveSocketPaths);
 
 let stdoutOutput: string;
 let stderrOutput: string;
@@ -52,6 +61,8 @@ beforeEach(() => {
 		throw new Error(`EXIT_${_code ?? 0}`);
 	}) as ReturnType<typeof vi.spyOn>;
 	mockSend.mockReset();
+	mockEndpoints.mockReset();
+	mockEndpoints.mockReturnValue([]);
 });
 
 afterEach(() => {
@@ -75,6 +86,41 @@ describe("notify", () => {
 			projectId: CTX.projectId,
 		});
 		expect(stdoutOutput).toContain("Toast sent");
+	});
+
+	it("delivers the toast to every live instance, not just the one it dialed", async () => {
+		mockEndpoints.mockReturnValue([SOCKET, "/tmp/guest-a.sock", "/tmp/guest-b.sock"]);
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
+
+		await handleNotify(args(["build is green"]), SOCKET, CTX);
+
+		const dialed = mockSend.mock.calls.map((call) => call[0]);
+		expect(dialed).toEqual([SOCKET, "/tmp/guest-a.sock", "/tmp/guest-b.sock"]);
+		expect(new Set(mockSend.mock.calls.map((call) => call[1]))).toEqual(new Set(["ui.notify"]));
+		expect(stdoutOutput).toContain("Toast sent to 3 instances");
+	});
+
+	it("still reports success when a second instance refuses the fan-out", async () => {
+		mockEndpoints.mockReturnValue([SOCKET, "/tmp/dying.sock"]);
+		mockSend.mockImplementation(async (socket: string) => {
+			if (socket !== SOCKET) throw new Error("Empty response from server");
+			return okResp({ delivered: true, mode: "toast", taskId: CTX.taskId });
+		});
+
+		await handleNotify(args(["build is green"]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Toast sent.");
+		expect(stderrOutput).toBe("");
+	});
+
+	it("does not fan out an OS notification — one machine, one Notification Center", async () => {
+		mockEndpoints.mockReturnValue([SOCKET, "/tmp/guest-a.sock"]);
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "desktop", taskId: CTX.taskId }));
+
+		await handleNotify(args(["build is green"], { desktop: "" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(stdoutOutput).toContain("Desktop notification sent.");
 	});
 
 	it("passes the chosen level", async () => {

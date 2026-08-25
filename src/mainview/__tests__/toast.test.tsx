@@ -551,7 +551,7 @@ describe("toast service", () => {
 			toast.error("Second", { durationMs: 60_000 });
 			toast.success("Third", { durationMs: 60_000 });
 		});
-		await user.click(screen.getByRole("button", { name: "Clear all (3)" }));
+		await user.click(screen.getByRole("button", { name: /Clear all/ }));
 		expect(screen.queryAllByRole("alert")).toHaveLength(0);
 		expect(screen.queryByRole("button", { name: /Clear all/ })).not.toBeInTheDocument();
 	});
@@ -564,7 +564,7 @@ describe("toast service", () => {
 			toast.info("First", { durationMs: 60_000, taskId: "task-1" });
 			toast.error("Second", { durationMs: 60_000, taskId: "task-2" });
 		});
-		await user.click(screen.getByRole("button", { name: "Clear all (2)" }));
+		await user.click(screen.getByRole("button", { name: /Clear all/ }));
 		expect(onTaskOverflow).not.toHaveBeenCalled();
 	});
 
@@ -575,7 +575,7 @@ describe("toast service", () => {
 			toast.info("First", { durationMs: 60_000 });
 			toast.error("Second", { durationMs: 60_000 });
 		});
-		const clearAll = screen.getByRole("button", { name: "Clear all (2)" });
+		const clearAll = screen.getByRole("button", { name: /Clear all/ });
 		expect(document.querySelectorAll("[data-toast-progress]")).toHaveLength(2);
 		await user.hover(clearAll);
 		for (const bar of document.querySelectorAll("[data-toast-progress]")) {
