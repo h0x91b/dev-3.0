@@ -138,10 +138,10 @@ describe("AgentTrafficIndicator (bar)", () => {
 });
 
 describe("AgentTrafficIndicator (kebab row)", () => {
-	function renderRow() {
+	function renderRow(variant: "menu" | "sheet" = "menu") {
 		return render(
 			<I18nProvider>
-				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} variant="menu" />
+				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} variant={variant} />
 			</I18nProvider>,
 		);
 	}
@@ -160,6 +160,21 @@ describe("AgentTrafficIndicator (kebab row)", () => {
 		setPage([row(), row({ toTaskId: "task-c", toSeq: 33 })]);
 		renderRow();
 		expect((await screen.findByTestId("agent-traffic-menu-badge")).textContent).toBe("2");
+	});
+
+	// The phone's action sheet is a stack of plain full-width text buttons. This row
+	// used to be the only one with a leading glyph and tighter padding, which is
+	// exactly what made it read as foreign.
+	it("takes the sheet's own row shape on the phone", async () => {
+		withUnread();
+		setPage([row()]);
+		renderRow("sheet");
+		const sheetRow = await screen.findByTestId("agent-traffic-sheet-row");
+		expect(sheetRow.querySelector("svg")).toBeNull();
+		expect(sheetRow.className).toContain("px-2");
+		expect(sheetRow.className).toContain("py-3");
+		expect(sheetRow.className).toContain("rounded-lg");
+		expect(sheetRow.className).toContain("text-sm");
 	});
 
 	// Ten unread messages and forty are the same decision, so the badge stops

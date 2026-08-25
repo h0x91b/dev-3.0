@@ -9,7 +9,8 @@ import { shortcutById, shortcutKeysFor } from "../../keymap";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import BottomSheet from "../BottomSheet";
 import HeaderFlyoutPanel from "../HeaderFlyoutPanel";
-import { PairRow, TrafficGlyph } from "./TrafficRow";
+import { AgentTrafficIcon } from "../HeaderIcons";
+import { PairRow } from "./TrafficRow";
 
 /**
  * The header's agent-traffic readout: is there anything new, and who owes an answer.
@@ -24,6 +25,13 @@ import { PairRow, TrafficGlyph } from "./TrafficRow";
  * and one kebab (bible §12.6), so the labelled kebab row is the only mobile
  * entry point — and it is labelled precisely because an unnamed glyph in a row of
  * numbers is unfindable.
+ *
+ * Each variant borrows the shape of the surface it lands on rather than inventing
+ * one: `bar` is a header pill, `menu` is a kebab row (glyph + label, like the
+ * memory and tmux rows), `sheet` is a phone action row (label first, no glyph,
+ * same padding and radius as every other row in that sheet). The glyph itself is
+ * a member of `HeaderIcons`, so it inherits the family's 24×24 stroke body,
+ * `currentColor`, and hover animation instead of being a bespoke badge.
  */
 
 const POPOVER_WIDTH = 25 * 16;
@@ -36,8 +44,11 @@ interface AgentTrafficIndicatorProps {
 	projectId: string | null;
 	navigate: (route: Route) => void;
 	onOpenLog: () => void;
-	/** `bar` is the earned header pill; `menu` is the labelled row in the kebab. */
-	variant?: "bar" | "menu";
+	/**
+	 * `bar` — the earned header pill. `menu` — the desktop kebab row. `sheet` — the
+	 * phone action-sheet row, shaped like its neighbours.
+	 */
+	variant?: "bar" | "menu" | "sheet";
 }
 
 export default function AgentTrafficIndicator({
@@ -49,7 +60,13 @@ export default function AgentTrafficIndicator({
 	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const traffic = useAgentTraffic(projectId);
-	const flyout = useHeaderFlyout({ variant, isNarrow, repositionKey: traffic.pairs.length });
+	// The sheet row lives inside a menu, so it opens like one (hover intent on a
+	// pointer, tap on touch) rather than like a bar pill.
+	const flyout = useHeaderFlyout({
+		variant: variant === "bar" ? "bar" : "menu",
+		isNarrow,
+		repositionKey: traffic.pairs.length,
+	});
 	const [arrived, setArrived] = useState(false);
 	const seenRows = useRef(traffic.rows.length);
 
@@ -121,6 +138,51 @@ export default function AgentTrafficIndicator({
 		</div>
 	);
 
+	const panelSurface = isNarrow ? (
+		<BottomSheet open onClose={flyout.close} title={t("traffic.label")} testId="agent-traffic-sheet">
+			{panel}
+		</BottomSheet>
+	) : (
+		<HeaderFlyoutPanel
+			flyout={flyout}
+			width={POPOVER_WIDTH}
+			ariaLabel={t("traffic.label")}
+			testId="agent-traffic-popover"
+		>
+			{panel}
+		</HeaderFlyoutPanel>
+	);
+
+	// The phone action sheet: every row there is a plain full-width text button, so
+	// this one is too. Only the unread count is added, pushed to the far end.
+	if (variant === "sheet") {
+		return (
+			<>
+				<button
+					ref={flyout.anchorRef}
+					type="button"
+					aria-label={accessibleName}
+					data-testid="agent-traffic-sheet-row"
+					className="w-full text-left px-2 py-3 rounded-lg text-fg-2 hover:bg-elevated hover:text-fg transition-colors text-sm active:scale-[0.96] flex items-center gap-2 min-h-[44px]"
+					{...flyout.triggerProps}
+				>
+					<span className="flex-1">{t("traffic.label")}</span>
+					{unread > 0 && (
+						<span
+							data-testid="agent-traffic-menu-badge"
+							className={`text-micro font-medium tabular-nums ${
+								traffic.unreadUnsettled ? "text-warning" : "text-accent"
+							}`}
+						>
+							{unread > BADGE_CAP ? `${BADGE_CAP}+` : unread}
+						</span>
+					)}
+				</button>
+				{flyout.open && panelSurface}
+			</>
+		);
+	}
+
 	// The kebab row: always present, always labelled. This is the control's home,
 	// and on a phone it is the only way in.
 	if (variant === "menu") {
@@ -132,12 +194,10 @@ export default function AgentTrafficIndicator({
 					role="menuitem"
 					aria-label={accessibleName}
 					data-testid="agent-traffic-menu-row"
-					className={`header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors ${
-						isNarrow ? "min-h-[44px]" : ""
-					}`}
+					className="header-anim w-full px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors active:scale-[0.96]"
 					{...flyout.triggerProps}
 				>
-					<TrafficGlyph muted={unread === 0} />
+					<AgentTrafficIcon className="w-[1.125rem] h-[1.125rem] flex-shrink-0" />
 					<span className="text-sm flex-1 text-left">{t("traffic.label")}</span>
 					{unread > 0 && (
 						<span
@@ -150,26 +210,7 @@ export default function AgentTrafficIndicator({
 						</span>
 					)}
 				</button>
-				{flyout.open &&
-					(isNarrow ? (
-						<BottomSheet
-							open
-							onClose={flyout.close}
-							title={t("traffic.label")}
-							testId="agent-traffic-sheet"
-						>
-							{panel}
-						</BottomSheet>
-					) : (
-						<HeaderFlyoutPanel
-							flyout={flyout}
-							width={POPOVER_WIDTH}
-							ariaLabel={t("traffic.label")}
-							testId="agent-traffic-popover"
-						>
-							{panel}
-						</HeaderFlyoutPanel>
-					))}
+				{flyout.open && panelSurface}
 			</>
 		);
 	}
@@ -182,12 +223,12 @@ export default function AgentTrafficIndicator({
 				aria-label={accessibleName}
 				data-help-id="header.agent-traffic"
 				data-testid="agent-traffic-indicator"
-				className={`header-anim flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-elevated ${
+				className={`header-anim flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-agent transition-colors hover:bg-elevated active:scale-[0.96] ${
 					arrived ? "hdr-wire-arrive" : ""
 				}`}
 				{...flyout.triggerProps}
 			>
-				<TrafficGlyph />
+				<AgentTrafficIcon className="w-[1.125rem] h-[1.125rem]" />
 				{/* No "0" while the panel is open: the pill is only still here because its
 				    panel is, and a zero badge reads as a broken counter. */}
 				{unread > 0 && (
@@ -201,16 +242,7 @@ export default function AgentTrafficIndicator({
 				)}
 			</button>
 
-			{flyout.open && (
-				<HeaderFlyoutPanel
-					flyout={flyout}
-					width={POPOVER_WIDTH}
-					ariaLabel={t("traffic.label")}
-					testId="agent-traffic-popover"
-				>
-					{panel}
-				</HeaderFlyoutPanel>
-			)}
+			{flyout.open && panelSurface}
 		</>
 	);
 }

@@ -289,6 +289,22 @@ export function SlidersIcon({ className }: HeaderIconProps) {
 	);
 }
 
+// 21b — Agent traffic: three wires between two tasks, dots travelling them, the
+// middle one against the flow. Same 24×24 stroke body as its neighbours, so it
+// reads as one of the header's own glyphs rather than a bespoke badge.
+export function AgentTrafficIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<path d="M5 6.5h14" />
+			<path d="M5 12h14" />
+			<path d="M5 17.5h14" />
+			<circle cx="7" cy="6.5" r="1.6" fill="currentColor" stroke="none" className="hdr hdr-wire-1" />
+			<circle cx="17" cy="12" r="1.6" fill="currentColor" stroke="none" className="hdr hdr-wire-2" />
+			<circle cx="7" cy="17.5" r="1.6" fill="currentColor" stroke="none" className="hdr hdr-wire-3" />
+		</svg>
+	);
+}
+
 // 22 — Update ready: the arrow launches up into the cloud.
 export function UpdateReadyIcon({ className }: HeaderIconProps) {
 	return (

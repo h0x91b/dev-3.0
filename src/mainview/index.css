@@ -1253,13 +1253,13 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	0%, 6% { transform: translateX(0); opacity: 0; }
 	18% { opacity: 1; }
 	72% { opacity: 1; }
-	88%, 100% { transform: translateX(11px); opacity: 0; }
+	88%, 100% { transform: translateX(10px); opacity: 0; }
 }
 @keyframes hdr-wire-back {
-	0%, 6% { transform: translateX(11px); opacity: 0; }
+	0%, 6% { transform: translateX(0); opacity: 0; }
 	18% { opacity: 1; }
 	72% { opacity: 1; }
-	88%, 100% { transform: translateX(0); opacity: 0; }
+	88%, 100% { transform: translateX(-10px); opacity: 0; }
 }
 /* One-shot on arrival: a message landed, and the count moved while nobody looked. */
 @keyframes hdr-wire-arrive {

@@ -182,7 +182,7 @@ function Ledger({
 				<button
 					key={key}
 					type="button"
-					className="block w-full text-left hover:bg-elevated/60 transition-colors"
+					className="block w-full text-left hover:bg-elevated/60 transition-colors active:scale-[0.96]"
 					onClick={() => onOpenTask(row.toTaskId, row.toProjectId)}
 				>
 					<LedgerRow row={row} />
@@ -224,8 +224,8 @@ function FilterChip({ active, onClick, label }: { active: boolean; onClick: () =
 			type="button"
 			aria-pressed={active}
 			onClick={onClick}
-			className={`px-2 py-1 rounded-md text-micro transition-colors ${
-				active ? "bg-accent/20 text-accent" : "text-fg-3 hover:bg-elevated hover:text-fg"
+			className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors active:scale-[0.96] ${
+				active ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
 			}`}
 		>
 			{label}
@@ -267,9 +267,9 @@ function LogDialog({
 						type="button"
 						onClick={onClose}
 						aria-label={t("common.close")}
-						className="text-fg-3 hover:text-fg transition-colors px-2"
+						className="-mr-1.5 flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted hover:bg-elevated hover:text-fg transition-colors active:scale-[0.96]"
 					>
-						✕
+						<span className="text-base leading-none">×</span>
 					</button>
 				</div>
 				{children}

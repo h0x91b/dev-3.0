@@ -1082,8 +1082,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						)}
 						<TmuxSessionManager navigate={navigate} />
 					</div>
-					{/* Agent traffic is the phone's only way in, so it is a labelled row
-					    rather than another number in the chip row above. */}
+					{/* Agent traffic is the phone's only way in, so it is a row here — and it
+					    takes the same shape as the rows below it, not the chip row above. */}
 					<AgentTrafficIndicator
 						projectId={currentProjectId}
 						navigate={navigate}
@@ -1091,7 +1091,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 							setShowActionSheet(false);
 							window.dispatchEvent(new CustomEvent(OPEN_AGENT_TRAFFIC_LOG_EVENT));
 						}}
-						variant="menu"
+						variant="sheet"
 					/>
 					{headerSheetRows.map((row) => (
 						<button

@@ -30,30 +30,15 @@ export function Wire({ width = 22, muted = false }: { width?: number; muted?: bo
 			aria-hidden="true"
 			focusable="false"
 		>
-			<line x1={0} y1={4} x2={width} y2={4} stroke={stroke} strokeWidth={1} opacity={0.35} />
+			<line x1={0} y1={4} x2={width} y2={4} stroke={stroke} strokeWidth={1.5} opacity={0.35} />
 			<path
 				d={`M ${width - 6} 1 L ${width - 1} 4 L ${width - 6} 7`}
 				fill="none"
 				stroke={stroke}
-				strokeWidth={1.25}
+				strokeWidth={1.5}
 				strokeLinecap="round"
 				strokeLinejoin="round"
 			/>
-		</svg>
-	);
-}
-
-/** The header glyph: three wires, one running against the flow. */
-export function TrafficGlyph({ muted = false }: { muted?: boolean }) {
-	const stroke = muted ? "rgb(var(--fg-muted))" : "rgb(var(--agent))";
-	return (
-		<svg width={18} height={14} viewBox="0 0 18 14" aria-hidden="true" focusable="false">
-			{[3, 7, 11].map((y, i) => (
-				<g key={y}>
-					<line x1={1} y1={y} x2={17} y2={y} stroke={stroke} strokeWidth={1} opacity={0.3} />
-					<circle className={`hdr-wire-${i + 1}`} cx={3} cy={y} r={1.5} fill={stroke} opacity={0.9} />
-				</g>
-			))}
 		</svg>
 	);
 }
@@ -102,7 +87,7 @@ export function PairRow({ pair, selected = false, onSelect, now = Date.now() }: 
 			data-testid="traffic-pair-row"
 			aria-pressed={selected}
 			onClick={() => onSelect(pair)}
-			className={`w-full px-3 py-2 flex items-center gap-2 text-left transition-colors ${
+			className={`w-full px-3 py-2 flex items-center gap-2 text-left transition-colors active:scale-[0.96] ${
 				selected ? "bg-elevated text-fg" : "text-fg-2 hover:bg-elevated hover:text-fg"
 			}`}
 		>
