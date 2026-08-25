@@ -97,7 +97,9 @@ export default function AgentTrafficLog({ projectId, onClose, onOpenTask }: Agen
 			<div className="flex min-h-0 flex-1 flex-col md:flex-row">
 				{/* The pair index is a filter over the ledger beside it, not a second list
 				    of messages: one place owns the text. */}
-				<div className="md:w-64 shrink-0 md:border-r border-edge overflow-y-auto max-h-40 md:max-h-none">
+				{/* Stacked on narrow, the index and the ledger read as one list of
+				    near-duplicate rows without a rule between them. */}
+				<div className="md:w-64 shrink-0 border-b md:border-b-0 md:border-r border-edge bg-raised/40 md:bg-transparent overflow-y-auto max-h-40 md:max-h-none">
 					{traffic.pairs.map((pair) => (
 						<PairRow
 							key={pair.key}
