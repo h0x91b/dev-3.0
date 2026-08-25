@@ -332,7 +332,7 @@ rate-limit tracking and skill directories differ per agent — the full grid is 
 |---|---|
 | [Your first task](https://dev3.h0x91b.com/first-task.html) | The guided first-run tour, screen by screen — the fastest way to see what using dev-3.0 feels like |
 | [Install guide](docs/install.md) | Every install path, tmux versions on Linux, cloud-VM caveats, build from source |
-| [Remote access](docs/remote-access.md) | `dev3 remote` in depth — tunnels, systemd, sessions, exposed ports |
+| [Remote access](docs/remote-access.md) | `dev3 remote` in depth — tunnels, systemd, sessions, exposed ports, phone notifications |
 | [Troubleshooting](docs/troubleshooting.md) | `dev3 doctor`, disk reclamation, Full Disk Access, terminal colors and agent themes |
 | [Keyboard shortcuts](docs/keyboard-shortcuts.md) | The complete list, mirroring the in-app ⌘/ panel |
 | [Agent support matrix](agent-support-matrix.md) | What each agent supports, feature by feature |

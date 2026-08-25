@@ -153,10 +153,14 @@ the task ids, so the hook can still link back.
 
 ### Web Push, including an iPhone
 
-Open dev-3.0 in a browser over HTTPS and enable it under **Settings → Browser
-notifications → Push to this device**. The payload is encrypted end to end (RFC 8291), so
-Apple's and Google's push services relay it without being able to read it, and dev-3.0
-needs no account with either.
+Open dev-3.0 in a browser over HTTPS. The first time a browser could accept push, a toast
+offers it — tapping that runs the whole enrolment in one go. It is offered once; if you
+dismiss it, turn push on later under **Settings → System → Browser notifications → Push to
+this device**.
+
+The payload is encrypted end to end (RFC 8291), so Apple's and Google's push services relay
+it without being able to read it, and dev-3.0 needs no account with either. The keypair is
+generated on this machine, at `~/.dev3.0/web-push-keys.json`.
 
 Two requirements, and both fail quietly if you miss them:
 
@@ -192,6 +196,23 @@ Pass `--port` as well, so the port is stable too: the origin is scheme, host **a
 > DNS then fails the handshake on any other port — Safari reports "could not establish a secure
 > connection" and the request never reaches your machine at all. Plain HTTP straight to the
 > tailnet IP still works, which is a quick way to confirm the tunnel itself is healthy.
+
+**Enabled it and nothing arrives?** Check in this order.
+
+1. **Confirm the device registered.** `~/.dev3.0/web-push-subscriptions.json` should list it.
+   Empty means enrolment never completed — the toggle in Settings reports which requirement
+   is missing.
+2. **Confirm something is actually notifying.** This is the usual answer. dev-3.0 does not
+   notify on every task event: a status change only notifies for a task you marked
+   **watched**. To prove the path end to end regardless, run
+   `dev3 notify "test" --desktop --task <id>` — it goes through the same delivery as
+   everything else.
+3. **Check the log.** An accepted push logs `Push accepted` with the push service's host; a
+   rejection logs the status. A device the service reports as gone (404/410) is dropped from
+   the store automatically, so a phone that was reinstalled simply stops appearing.
+
+Each registered browser is its own device. Enrolling a laptop and a phone notifies both;
+turning it off in Settings removes only the device you are on.
 
 ## Security notes
 
