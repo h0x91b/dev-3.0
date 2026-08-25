@@ -55,7 +55,10 @@ invocations and no error; with it, all invocations as before.
 The guard is POSIX-only. Codex derives the hook runner from the session shell
 (`build_hooks_for_config`, `codex-rs/core/src/session/mod.rs`), which on Windows
 is `cmd.exe /c` **or** `powershell -Command`, and no single expression is valid
-in both. Windows keeps the bare command.
+in both. Windows keeps the bare command — and that position is now asserted, not
+merely documented: `ensureCodexConfig` takes the dialect as an option, so
+`codex-config.test.ts` runs its hook-block cases against both dialects on every
+runner and the Windows case checks that no guard is written.
 
 `ensureDev3HooksBlock` additionally collects `[[hooks.*]]` groups whose every
 handler is dev3's own status handler, so an orphaned copy is absorbed instead of

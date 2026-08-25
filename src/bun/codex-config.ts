@@ -45,6 +45,13 @@ interface CodexConfig {
 
 interface CodexConfigOptions {
 	codexVersion?: string | null;
+	/**
+	 * How the hook command is spelled. Same reason `joinLike` exists: reading the
+	 * host's dialect makes an assertion about the other platform's output
+	 * impossible to write, and the tests then only ever cover the runner they are
+	 * on. Production leaves it unset and gets the host's dialect.
+	 */
+	dialect?: HookCliDialect;
 }
 
 interface CodexVersion {
@@ -805,7 +812,7 @@ export function ensureCodexConfig(
 	}
 
 	// --- 6. Ensure dev3's status hooks are declared in the file ---
-	config = ensureDev3HooksBlock(config);
+	config = ensureDev3HooksBlock(config, options.dialect);
 
 	return config;
 }
@@ -859,9 +866,9 @@ export function buildDev3CodexHooksBlock(options?: { dialect?: HookCliDialect })
  * twelve, and a stranger's Codex session pays for all of them. So anything left
  * that is unmistakably ours is collected by content too.
  */
-function ensureDev3HooksBlock(config: string): string {
+function ensureDev3HooksBlock(config: string, dialect?: HookCliDialect): string {
 	const stripped = stripOrphanedDev3HookTables(config.replace(DEV3_HOOKS_BLOCK, "\n"));
-	return appendBlock(stripped, `\n${buildDev3CodexHooksBlock()}`);
+	return appendBlock(stripped, `\n${buildDev3CodexHooksBlock({ dialect })}`);
 }
 
 /** `[[hooks.<Event>]]`, the head of one array-of-tables group. */

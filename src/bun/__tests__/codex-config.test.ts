@@ -5,7 +5,10 @@ import {
 	getCodexSyntaxForVersion,
 	parseCodexVersion,
 	pickCodexProfileLaunchFlag,
+	tomlBasicString,
 } from "../codex-config";
+import { codexHookCommand } from "../../shared/agent-hooks";
+import { hookCliDialect } from "../../shared/dev3-cli-path";
 
 describe("ensureCodexConfig", () => {
 	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
@@ -714,14 +717,43 @@ enabled = true
 	});
 });
 
-describe("ensureCodexConfig dev3 hook block (idempotence and self-healing)", () => {
+/**
+ * The hook command is spelled per platform, so these run against BOTH dialects
+ * on every runner instead of whichever one the host happens to be. Reading the
+ * host's dialect is exactly what made these seven red on windows-latest while
+ * macOS stayed green — same trap `joinLike` exists for.
+ */
+const POSIX_DIALECT = hookCliDialect({ platform: "darwin" });
+const WINDOWS_DIALECT = hookCliDialect({
+	platform: "win32",
+	execDir: "C:\\Program Files\\dev3",
+	homeDir: "C:\\Users\\dev",
+	exists: () => false,
+});
+
+/** Every spelling of our handler an older build or the other platform leaves behind. */
+const ALL_HOOK_COMMAND_SPELLINGS = [
+	codexHookCommand(POSIX_DIALECT),
+	`${POSIX_DIALECT.cli} hook codex`,
+	codexHookCommand(WINDOWS_DIALECT),
+];
+
+describe.each([
+	["POSIX", POSIX_DIALECT],
+	["Windows", WINDOWS_DIALECT],
+])("ensureCodexConfig dev3 hook block on %s (idempotence and self-healing)", (_name, dialect) => {
 	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
 	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
-	const NEW = { codexVersion: "0.147.0" };
+	const NEW = { codexVersion: "0.147.0", dialect };
 	const ensure = (content: string | null) =>
 		ensureCodexConfig(content, WORKTREES_PATH, SOCKETS_PATH, [], NEW);
-	const dev3Handlers = (config: string) => (config.match(/dev3 hook codex/g) ?? []).length;
+	/** Handlers carrying the `hook codex` subcommand, in any CLI spelling. */
+	const dev3Handlers = (config: string) => (config.match(/hook codex/g) ?? []).length;
 	const groups = (config: string) => (config.match(/^\[\[hooks\.[A-Za-z]+\]\]$/gm) ?? []).length;
+	/** The exact `command = "…"` line this dialect writes, TOML escaping included. */
+	const commandLine = (command: string) => `command = ${tomlBasicString(command)}`;
+	const ourCommandLine = commandLine(codexHookCommand(dialect));
+	const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
 
 	it("declares each status hook exactly once, however often it runs", () => {
 		let config = ensure(null);
@@ -792,11 +824,24 @@ describe("ensureCodexConfig dev3 hook block (idempotence and self-healing)", () 
 		expect(dev3Handlers(config)).toBe(7);
 	});
 
-	it("guards the command it writes into the user's config", () => {
+	it("writes the command this platform's hook runner can actually execute", () => {
 		const config = ensure(null);
-		expect(config).toContain(
-			`command = "sh -c '[ -z \\"$DEV3_TASK_ID\\" ] || exec ~/.dev3.0/bin/dev3 hook codex'"`,
-		);
+		expect(count(config, ourCommandLine)).toBe(6);
+
+		if (dialect.posixShell) {
+			// The env guard is what keeps a foreign Codex session free (#1527).
+			expect(config).toContain(
+				`command = "sh -c '[ -z \\"$DEV3_TASK_ID\\" ] || exec ~/.dev3.0/bin/dev3 hook codex'"`,
+			);
+			return;
+		}
+		// Windows keeps the bare command on purpose: the runner there may be
+		// cmd.exe OR PowerShell and no one guard expression is valid in both, so a
+		// guard would cost every Windows task its status moves. See
+		// decisions/2026/08/25/guard-codex-status-hooks-on-dev3-task-env.md.
+		expect(config).toContain(commandLine(`${dialect.cli} hook codex`));
+		expect(config).not.toContain("sh -c");
+		expect(config).not.toContain("DEV3_TASK_ID");
 	});
 
 	it("leaves alone a hook the user wrote themselves that calls the dev3 CLI", () => {
@@ -827,19 +872,17 @@ describe("ensureCodexConfig dev3 hook block (idempotence and self-healing)", () 
 
 	it("still collects an orphan left by an older build, or by the other platform", () => {
 		const orphaned = ensure(null).replace("# >>> dev3 status hooks (generated — do not edit) >>>\n", "");
-		const guarded = `sh -c '[ -z \\"$DEV3_TASK_ID\\" ] || exec ~/.dev3.0/bin/dev3 hook codex'`;
 
-		for (const spelling of [
-			"~/.dev3.0/bin/dev3 hook codex",
-			`\\"C:/Users/dev/.dev3.0/bin/dev3.exe\\" hook codex`,
-		]) {
-			const healed = ensure(orphaned.replaceAll(guarded, spelling));
+		for (const spelling of ALL_HOOK_COMMAND_SPELLINGS) {
+			// Re-spell the orphan the way the other platform, or an older build,
+			// would have written it — then heal it with THIS dialect.
+			const foreign = orphaned.replaceAll(ourCommandLine, commandLine(spelling));
+			const healed = ensure(foreign);
 			expect(dev3Handlers(healed)).toBe(6);
 			expect(groups(healed)).toBe(6);
-			// Nothing but the freshly written, guarded block is left.
+			// Nothing but the freshly written block is left.
 			expect((healed.match(/^command = /gm) ?? []).length).toBe(6);
-			expect((healed.match(new RegExp(guarded.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length)
-				.toBe(6);
+			expect(count(healed, ourCommandLine)).toBe(6);
 		}
 	});
 });
