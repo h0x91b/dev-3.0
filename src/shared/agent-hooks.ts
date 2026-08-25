@@ -16,7 +16,41 @@ export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
 /** Makes the CLI exit 0 instead of `CLI_EXIT_CODE_APP_NOT_RUNNING`, still warning on stderr. */
 export const TOLERATE_APP_OFFLINE_FLAG = "--tolerate-app-offline";
 export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
-export const CODEX_DEV3_HOOK_COMMAND = `${DEV3_CLI} hook codex`;
+/**
+ * The env var that tells a Codex hook it is running inside a dev3 task. dev3
+ * injects it into every task pane (`buildAgentEnv`), so a Codex session the user
+ * started themselves never has it.
+ */
+export const CODEX_HOOK_SESSION_ENV = "DEV3_TASK_ID";
+
+/**
+ * The command dev3 declares for every Codex status hook.
+ *
+ * Codex only reads hooks from sources that are visible in *every* session — the
+ * user's `config.toml`, a project checkout, or session flags — and a linked
+ * worktree's own `.codex/` is deliberately not one of them. So these entries sit
+ * in `~/.codex/config.toml` and Codex fires them in unrelated workspaces too
+ * (h0x91b/dev-3.0#1527). The env guard is what keeps that free: no dev3 process
+ * is spawned at all unless the session is a dev3 task.
+ *
+ * It must exit 0 when it skips — a non-zero hook exit is a failure Codex reports
+ * to the user, and exit 2 would block the tool call outright.
+ *
+ * POSIX goes through an explicit `sh -c` rather than relying on the caller's
+ * shell: Codex runs hook commands through the session's own shell, which may be
+ * zsh, bash or fish. Windows deliberately keeps the bare command — there the
+ * same runner may be `cmd.exe /c` OR `powershell -Command` (Codex derives it
+ * from the session shell), and no one guard expression is valid in both. A
+ * broken guard would cost every Windows dev3 task its status moves, which is
+ * worse than the leak it would close.
+ */
+export function codexHookCommand(dialect: HookCliDialect = DEFAULT_DIALECT): string {
+	const run = `${dialect.cli} hook codex`;
+	if (!dialect.posixShell) return run;
+	return `sh -c '[ -z "$${CODEX_HOOK_SESSION_ENV}" ] || exec ${run}'`;
+}
+
+export const CODEX_DEV3_HOOK_COMMAND = codexHookCommand();
 export const CLAUDE_STOP_FAILURE_HOOK_SUBCOMMAND = "hook claude-stop-failure";
 export const CODEX_STATUS_HOOK_EVENTS = [
 	"SessionStart",
@@ -220,7 +254,7 @@ export function buildCodexHooks(options?: { dialect?: HookCliDialect }): HookMap
 	const dialect = options?.dialect ?? DEFAULT_DIALECT;
 	const handler: HookEntry = {
 		type: "command",
-		command: `${dialect.cli} hook codex`,
+		command: codexHookCommand(dialect),
 		timeout: 5,
 	};
 	const toolMatcher = "Bash|Edit|Write|^apply_patch$|^mcp__.*";
@@ -267,7 +301,7 @@ export function buildCodexHooks(options?: { dialect?: HookCliDialect }): HookMap
  * a different platform's dev3 (a repo checked out on both), so the POSIX spelling
  * is always accepted alongside this platform's.
  */
-function mentionsDev3Cli(command?: string): boolean {
+export function mentionsDev3Cli(command?: string): boolean {
 	if (typeof command !== "string" || !command) return false;
 	// Trailing space so the last token gets the same boundary as the others.
 	const normalized = `${normalizeCliMention(command)} `;

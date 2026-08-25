@@ -713,3 +713,89 @@ enabled = true
 		expect(twice).not.toContain("allow_unix_sockets");
 	});
 });
+
+describe("ensureCodexConfig dev3 hook block (idempotence and self-healing)", () => {
+	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
+	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
+	const NEW = { codexVersion: "0.147.0" };
+	const ensure = (content: string | null) =>
+		ensureCodexConfig(content, WORKTREES_PATH, SOCKETS_PATH, [], NEW);
+	const dev3Handlers = (config: string) => (config.match(/dev3 hook codex/g) ?? []).length;
+	const groups = (config: string) => (config.match(/^\[\[hooks\.[A-Za-z]+\]\]$/gm) ?? []).length;
+
+	it("declares each status hook exactly once, however often it runs", () => {
+		let config = ensure(null);
+		for (let i = 0; i < 3; i++) config = ensure(config);
+		expect(dev3Handlers(config)).toBe(6);
+		expect(groups(config)).toBe(6);
+	});
+
+	it("collapses a duplicated block whose opening marker was lost", () => {
+		// Exactly the shape found in the wild (h0x91b/dev-3.0#1527): one block that
+		// no longer starts with its marker, so the marker-based replace misses it and
+		// every launch appends one more copy.
+		const orphaned = ensure(null).replace("# >>> dev3 status hooks (generated — do not edit) >>>\n", "");
+		expect(dev3Handlers(orphaned)).toBe(6);
+
+		const healed = ensure(orphaned);
+		expect(dev3Handlers(healed)).toBe(6);
+		expect(groups(healed)).toBe(6);
+		expect(ensure(healed)).toBe(healed);
+	});
+
+	it("leaves the user's own hooks, and their own hand-written content, alone", () => {
+		const userConfig = [
+			'model = "gpt-5"',
+			"",
+			"# my own notification hook — do not touch",
+			"[[hooks.Stop]]",
+			"",
+			"[[hooks.Stop.hooks]]",
+			'type = "command"',
+			'command = "~/bin/notify-me.sh"',
+			"timeout = 5",
+			"",
+			'[hooks.state."/Users/testuser/.codex/config.toml:stop:0:0"]',
+			'trusted_hash = "sha256:abc"',
+			"",
+		].join("\n");
+
+		const config = ensure(ensure(userConfig));
+		expect(config).toContain('command = "~/bin/notify-me.sh"');
+		expect(config).toContain("# my own notification hook — do not touch");
+		expect(config).toContain('trusted_hash = "sha256:abc"');
+		expect(config).toContain('model = "gpt-5"');
+		expect(dev3Handlers(config)).toBe(6);
+		// Ours plus the user's one Stop group.
+		expect(groups(config)).toBe(7);
+	});
+
+	it("keeps a mixed group the user glued together, rather than guessing", () => {
+		const mixed = [
+			'model = "gpt-5"',
+			"",
+			"[[hooks.Stop]]",
+			"",
+			"[[hooks.Stop.hooks]]",
+			'type = "command"',
+			'command = "~/.dev3.0/bin/dev3 hook codex"',
+			"",
+			"[[hooks.Stop.hooks]]",
+			'type = "command"',
+			'command = "~/bin/notify-me.sh"',
+			"",
+		].join("\n");
+
+		const config = ensure(mixed);
+		expect(config).toContain('command = "~/bin/notify-me.sh"');
+		// The user's group survives untouched, so its dev3 handler is still counted.
+		expect(dev3Handlers(config)).toBe(7);
+	});
+
+	it("guards the command it writes into the user's config", () => {
+		const config = ensure(null);
+		expect(config).toContain(
+			`command = "sh -c '[ -z \\"$DEV3_TASK_ID\\" ] || exec ~/.dev3.0/bin/dev3 hook codex'"`,
+		);
+	});
+});

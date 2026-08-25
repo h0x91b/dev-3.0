@@ -870,7 +870,9 @@ describe("POSIX hook output (byte-identical contract)", () => {
 	});
 
 	it("renders the exact Codex handler command", () => {
-		expect(buildCodexHooks({ dialect: posix }).Stop[0].hooks[0].command).toBe("~/.dev3.0/bin/dev3 hook codex");
+		expect(buildCodexHooks({ dialect: posix }).Stop[0].hooks[0].command).toBe(
+			`sh -c '[ -z "$DEV3_TASK_ID" ] || exec ~/.dev3.0/bin/dev3 hook codex'`,
+		);
 	});
 
 	it("never carries the Windows tolerance flag", () => {
