@@ -41,6 +41,9 @@ import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
+import AgentMessageConceptGallery, {
+	isConceptGalleryEnabled,
+} from "./components/agent-message-concepts/AgentMessageConceptGallery";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -3050,6 +3053,8 @@ function App() {
 			{/* Toasts are transient feedback, not immersive chrome; notification toasts
 			    must remain clickable so their handler can exit fullscreen first. */}
 			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} />
+			{/* Throwaway: six agent-message display concepts, `?msgconcepts=1` only. */}
+			{isConceptGalleryEnabled() && <AgentMessageConceptGallery />}
 		</div>
 	);
 
