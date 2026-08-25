@@ -187,13 +187,17 @@ export default function AgentTrafficIndicator({
 				{...flyout.triggerProps}
 			>
 				<TrafficGlyph />
-				<span
-					className={`text-micro font-medium leading-none tabular-nums ${
-						traffic.unreadUnsettled ? "text-warning" : "text-agent"
-					}`}
-				>
-					{unread > BADGE_CAP ? `${BADGE_CAP}+` : unread}
-				</span>
+				{/* No "0" while the panel is open: the pill is only still here because its
+				    panel is, and a zero badge reads as a broken counter. */}
+				{unread > 0 && (
+					<span
+						className={`text-micro font-medium leading-none tabular-nums ${
+							traffic.unreadUnsettled ? "text-warning" : "text-agent"
+						}`}
+					>
+						{unread > BADGE_CAP ? `${BADGE_CAP}+` : unread}
+					</span>
+				)}
 			</button>
 
 			{flyout.open && (

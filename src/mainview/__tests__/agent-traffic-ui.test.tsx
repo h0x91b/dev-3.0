@@ -95,7 +95,9 @@ describe("AgentTrafficIndicator (bar)", () => {
 		renderIndicator();
 		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
 		expect(await screen.findByTestId("agent-traffic-popover")).toBeTruthy();
-		expect(screen.getByTestId("agent-traffic-indicator").textContent).toContain("0");
+		// Still on the bar because its panel is, but carrying no number: a "0" badge
+		// reads as a counter that broke.
+		expect(screen.getByTestId("agent-traffic-indicator").textContent).not.toContain("0");
 
 		await userEvent.keyboard("{Escape}");
 		await waitFor(() => expect(screen.queryByTestId("agent-traffic-indicator")).toBeNull());
