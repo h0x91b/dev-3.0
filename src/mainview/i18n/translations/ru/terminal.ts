@@ -34,8 +34,12 @@ const terminal = {
 	"terminal.setupFailedTitle": "Setup упал (код {code})",
 	"terminal.setupFailedDesc": "Скрипт настройки проекта не доработал, поэтому агент не был запущен. Его можно запустить всё равно — промпт задачи сохранён.",
 	"terminal.setupFailedStartAnyway": "Всё равно запустить агента",
-	"terminal.setupFailedShowLog": "Показать лог setup",
-	"terminal.setupFailedHint": "Зависимости могут быть не установлены. Setup повторно не запустится.",
+	"terminal.setupFailedRerun": "Перезапустить setup",
+	"terminal.setupRerunning": "Setup идёт…",
+	"terminal.setupRerunFailed": "Не удалось перезапустить setup: {error}",
+	"terminal.setupFailedDismiss": "Закрыть",
+	"terminal.setupFailedAgentRunningDesc": "Агент работает — зависимостей может не быть.",
+	"terminal.setupFailedHint": "Зависимостей может не быть. Перезапуск setup агента не трогает, запуск с нуля — трогает.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Панели терминала",

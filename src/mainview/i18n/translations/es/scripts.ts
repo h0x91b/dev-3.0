@@ -23,6 +23,9 @@ const scripts = {
 	"scripts.picker.cancel": "Cancelar",
 	"scripts.picker.back": "Atrás",
 	"scripts.error.runFailed": "Error al ejecutar \"{name}\": {error}",
+	"scripts.error.rerunSetupFailed": "No se pudo volver a ejecutar el setup: {error}",
+	"scripts.rerunSetup": "Volver a ejecutar el setup del proyecto",
+	"scripts.rerunSetupDesc": "Ejecuta el script de setup del proyecto en su propio panel. El agente sigue en marcha.",
 };
 
 export default scripts;

@@ -23,6 +23,9 @@ const scripts = {
 	"scripts.picker.cancel": "Cancel",
 	"scripts.picker.back": "Back",
 	"scripts.error.runFailed": "Failed to run \"{name}\": {error}",
+	"scripts.error.rerunSetupFailed": "Could not re-run setup: {error}",
+	"scripts.rerunSetup": "Re-run project setup",
+	"scripts.rerunSetupDesc": "Runs the project's setup script in its own pane. The agent keeps running.",
 };
 
 export default scripts;

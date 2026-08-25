@@ -2039,11 +2039,18 @@ export interface Task {
 	/**
 	 * Exit code of a `setupScript` that failed during launch, reported by the
 	 * setup wrapper itself (the script runs inside the pane, so bun cannot see
-	 * its result). Non-null means the agent was never started in `blocking` /
-	 * native launches; the task pane offers to start it anyway. Cleared by the
-	 * next launch.
+	 * its result). Cleared by the next launch, by re-running setup, and by the
+	 * user dismissing the notice.
 	 */
 	setupFailedExitCode?: number | null;
+	/**
+	 * Whether the agent was already running when that setup failed. A `parallel`
+	 * tmux launch splits the agent pane BEFORE setup, so the failure finds a live
+	 * agent; `blocking` and native launches gate the agent behind setup, so it
+	 * never started. The two need opposite offers — restarting the session is
+	 * recovery in one case and destruction of a working agent in the other.
+	 */
+	setupFailedAgentRunning?: boolean | null;
 	/** Additive lifecycle runtime hint; older app versions ignore this field. */
 	runtimeState?: TaskRuntimeState;
 	/**
@@ -4373,6 +4380,20 @@ export type AppRPCSchema = {
 			restartTask: {
 				params: { taskId: string };
 				response: string;
+			};
+			/**
+			 * Re-run the project's `setupScript` in its own auxiliary pane, leaving the
+			 * agent and every other pane untouched. Clears the previous setup verdict and
+			 * arms a fresh watch, so a second failure raises the notice again.
+			 */
+			rerunSetupScript: {
+				params: { taskId: string };
+				response: void;
+			};
+			/** Drop a setup-failure verdict the user has acknowledged. */
+			dismissSetupFailure: {
+				params: { taskId: string };
+				response: void;
 			};
 			getProjectPtyUrl: {
 				params: { projectId: string };

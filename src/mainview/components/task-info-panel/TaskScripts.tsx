@@ -15,6 +15,7 @@ import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import Tooltip from "../Tooltip";
 import { ScriptsIcon } from "../TaskIcons";
+import { useResolvedTaskProject } from "./useResolvedTaskProject";
 
 const DEFAULT_PLACEMENT_IDX = SCRIPT_PLACEMENTS.indexOf("right");
 
@@ -96,6 +97,12 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	placementIdxRef.current = placementIdx;
 	const taskRef = useRef(task);
 	taskRef.current = task;
+	// The project's own setupScript is not a package.json script, so it is a pinned
+	// row rather than a list entry. It lives here because re-running setup after
+	// dismissing the failure notice is a rare recovery action, and the manifest puts
+	// those in an existing overflow instead of a new always-visible button.
+	const resolvedProject = useResolvedTaskProject(task, project);
+	const hasSetupScript = !!resolvedProject.setupScript?.trim();
 
 	const refresh = useCallback(async () => {
 		try {
@@ -211,6 +218,19 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		};
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [task.id, isTaskActive]);
+
+	async function runSetupScript() {
+		setBusy(true);
+		setError(null);
+		try {
+			await api.request.rerunSetupScript({ taskId: task.id });
+			closeDropdown();
+		} catch (err) {
+			setError(t("scripts.error.rerunSetupFailed", { error: String(err) }));
+		} finally {
+			setBusy(false);
+		}
+	}
 
 	async function launch(name: string, source: ScriptSource, placement: ScriptPlacement) {
 		setBusy(true);
@@ -402,6 +422,18 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 									className="w-full bg-base border border-edge rounded-lg px-2.5 py-1.5 text-sm text-fg placeholder:text-fg-muted focus:border-accent"
 								/>
 							</div>
+						)}
+
+						{hasSetupScript && (
+							<button
+								data-testid="scripts-rerun-setup"
+								onClick={runSetupScript}
+								disabled={busy}
+								className="flex-shrink-0 w-full text-left px-3 py-2 border-b border-edge hover:bg-elevated-hover disabled:opacity-50"
+							>
+								<div className="text-sm text-fg-2">{t("scripts.rerunSetup")}</div>
+								<div className="text-micro text-fg-3">{t("scripts.rerunSetupDesc")}</div>
+							</button>
 						)}
 
 						{/* Scrollable list */}

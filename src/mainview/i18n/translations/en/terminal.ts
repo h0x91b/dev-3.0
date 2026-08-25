@@ -34,8 +34,12 @@ const terminal = {
 	"terminal.setupFailedTitle": "Setup failed (exit {code})",
 	"terminal.setupFailedDesc": "The project setup script did not finish, so the agent was not started. You can start it anyway — the task prompt is preserved.",
 	"terminal.setupFailedStartAnyway": "Start agent anyway",
-	"terminal.setupFailedShowLog": "Show setup log",
-	"terminal.setupFailedHint": "Dependencies may be missing. Setup will not be re-run.",
+	"terminal.setupFailedRerun": "Re-run setup",
+	"terminal.setupRerunning": "Running setup…",
+	"terminal.setupRerunFailed": "Could not re-run setup: {error}",
+	"terminal.setupFailedDismiss": "Dismiss",
+	"terminal.setupFailedAgentRunningDesc": "The agent is running — dependencies may be missing.",
+	"terminal.setupFailedHint": "Dependencies may be missing. Re-running setup leaves the agent alone; starting it fresh does not.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Terminal panes",

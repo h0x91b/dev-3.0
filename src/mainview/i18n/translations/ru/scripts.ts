@@ -23,6 +23,9 @@ const scripts = {
 	"scripts.picker.cancel": "Отмена",
 	"scripts.picker.back": "Назад",
 	"scripts.error.runFailed": "Не удалось запустить \"{name}\": {error}",
+	"scripts.error.rerunSetupFailed": "Не удалось перезапустить setup: {error}",
+	"scripts.rerunSetup": "Перезапустить setup проекта",
+	"scripts.rerunSetupDesc": "Запускает setup-скрипт проекта в отдельном пейне. Агент продолжает работать.",
 };
 
 export default scripts;

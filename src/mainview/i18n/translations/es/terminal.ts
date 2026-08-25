@@ -34,8 +34,12 @@ const terminal = {
 	"terminal.setupFailedTitle": "El setup falló (código {code})",
 	"terminal.setupFailedDesc": "El script de configuración del proyecto no terminó, así que el agente no se inició. Puedes iniciarlo igualmente — el prompt de la tarea se conserva.",
 	"terminal.setupFailedStartAnyway": "Iniciar el agente igualmente",
-	"terminal.setupFailedShowLog": "Ver el log del setup",
-	"terminal.setupFailedHint": "Puede que falten dependencias. El setup no se volverá a ejecutar.",
+	"terminal.setupFailedRerun": "Volver a ejecutar el setup",
+	"terminal.setupRerunning": "Ejecutando el setup…",
+	"terminal.setupRerunFailed": "No se pudo volver a ejecutar el setup: {error}",
+	"terminal.setupFailedDismiss": "Cerrar",
+	"terminal.setupFailedAgentRunningDesc": "El agente está en marcha — puede que falten dependencias.",
+	"terminal.setupFailedHint": "Puede que falten dependencias. Volver a ejecutar el setup no toca al agente; iniciarlo de cero sí.",
 
 	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
 	"panePager.role": "Paneles del terminal",

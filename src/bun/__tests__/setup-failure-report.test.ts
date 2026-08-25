@@ -78,6 +78,40 @@ describe("setup wrapper — recording a failed setupScript", () => {
 	});
 });
 
+// A re-run happens when a session already exists, so the point is what the
+// script does NOT do: split a pane, exec an agent, or touch tmux at all.
+describe("setup re-run wrapper", () => {
+	const RERUN_ARGS = { setupPath: "/tmp/dev3-T-setup.sh", shellPath: "/bin/zsh", setupExitPath: "/tmp/dev3-T-setup-exit" };
+
+	it("runs the setup script and nothing else", async () => {
+		const { buildSetupRerunScript } = await import("../rpc-handlers/shared-pure");
+		const script = buildSetupRerunScript(RERUN_ARGS);
+
+		expect(script).toContain("/tmp/dev3-T-setup.sh");
+		expect(script).not.toContain("split-window");
+		expect(script).not.toContain("tmux");
+		expect(script).not.toContain("dev3-T-cmd.sh");
+	});
+
+	// Same channel as the launch wrapper: without the file a second failure is
+	// invisible and the notice never comes back.
+	it("reports a second failure through the same exit-code file", async () => {
+		const { buildSetupRerunScript } = await import("../rpc-handlers/shared-pure");
+		const lines = buildSetupRerunScript(RERUN_ARGS).split("\n").map((l) => l.trim());
+
+		const write = lines.findIndex((l) => l === `printf '%s' "$S" > '/tmp/dev3-T-setup-exit'`);
+		const shell = lines.findIndex((l) => l === "exec '/bin/zsh'");
+		expect(write).toBeGreaterThan(-1);
+		expect(shell).toBeGreaterThan(write);
+	});
+
+	it("records nothing on the success path", async () => {
+		const { buildSetupRerunScript } = await import("../rpc-handlers/shared-pure");
+		const script = buildSetupRerunScript(RERUN_ARGS);
+		expect(script.slice(script.indexOf("✓ Setup done"))).not.toContain("dev3-T-setup-exit");
+	});
+});
+
 // ---- The watcher ----
 
 describe("watchSetupFailure", () => {

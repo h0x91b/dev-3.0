@@ -3,6 +3,7 @@ import type { Task, Project, TaskSessionState } from "../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { toast } from "../toast";
 import { trackEvent } from "../analytics";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TerminalView from "../TerminalView";
@@ -94,13 +95,38 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [hibernated, setHibernated] = useState(false);
 	const [restarting, setRestarting] = useState(false);
 	// A `setupScript` that exits non-zero leaves a live shell behind, so nothing
-	// else in here reads as broken — the pane just never got its agent. Dismissing
-	// only hides the card; every launch clears the flag, which re-arms it.
+	// else in here reads as broken. What the pane may OFFER depends on whether the
+	// agent was already running when it failed — see `setupFailedAgentRunning`.
+	// Dismissing clears the verdict in the task, so it cannot come back when this
+	// component is re-created (key={taskId}) or in a second viewer.
 	const setupFailedExitCode = task?.setupFailedExitCode ?? null;
+	const setupFailedAgentRunning = task?.setupFailedAgentRunning === true;
 	const [setupFailureDismissed, setSetupFailureDismissed] = useState(false);
+	const [rerunningSetup, setRerunningSetup] = useState(false);
 	useEffect(() => {
 		if (setupFailedExitCode == null) setSetupFailureDismissed(false);
 	}, [setupFailedExitCode]);
+
+	const dismissSetupFailure = useCallback(() => {
+		setSetupFailureDismissed(true);
+		api.request.dismissSetupFailure({ taskId }).catch((err) => {
+			console.error("[TaskTerminal] dismissSetupFailure failed:", err);
+		});
+	}, [taskId]);
+
+	async function handleRerunSetup() {
+		setRerunningSetup(true);
+		try {
+			await api.request.rerunSetupScript({ taskId });
+			setSetupFailureDismissed(true);
+			if (isNative) await fetchPaneState(taskId);
+		} catch (err) {
+			console.error("[TaskTerminal] rerunSetupScript failed:", err);
+			toast.error(t("terminal.setupRerunFailed", { error: String(err) }));
+		} finally {
+			setRerunningSetup(false);
+		}
+	}
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// ── Native multi-pane state ─────────────────────────────────────────────────
@@ -444,6 +470,100 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
+	const showSetupFailure = setupFailedExitCode != null && !setupFailureDismissed;
+	const setupFailedTitle = t("terminal.setupFailedTitle", { code: String(setupFailedExitCode) });
+	const rerunSetupLabel = rerunningSetup ? t("terminal.setupRerunning") : t("terminal.setupFailedRerun");
+
+	// The agent is alive and typing into it still works, so this must not be a
+	// modal: a dialog here would cover a running session and — with autofocus —
+	// swallow the next Enter into a button. A strip states the fact and offers the
+	// only action that helps, which is re-running setup, never a session restart.
+	const setupFailedStrip = showSetupFailure && setupFailedAgentRunning && (
+		<div
+			data-testid="terminal-setup-failed-strip"
+			role="status"
+			className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-3 py-2 rounded-lg bg-raised border border-danger/40 shadow-lg max-w-[calc(100%-1rem)]"
+		>
+			<span className="text-danger shrink-0">⚠</span>
+			<div className="min-w-0">
+				<div className="text-fg text-sm font-medium truncate">{setupFailedTitle}</div>
+				<div className="text-fg-3 text-xs">{t("terminal.setupFailedAgentRunningDesc")}</div>
+			</div>
+			<button
+				onClick={handleRerunSetup}
+				disabled={rerunningSetup}
+				className="shrink-0 px-3 py-1.5 bg-elevated text-fg-2 rounded text-xs font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
+			>
+				{rerunSetupLabel}
+			</button>
+			<button
+				onClick={dismissSetupFailure}
+				aria-label={t("terminal.setupFailedDismiss")}
+				className="shrink-0 px-2 py-1 text-fg-3 rounded hover:bg-elevated-hover hover:text-fg transition-colors"
+			>
+				✕
+			</button>
+		</div>
+	);
+
+	// The agent never started, so nothing is behind this to interrupt: a dialog is
+	// honest here. Re-running setup leads, because starting the agent on a broken
+	// worktree is the fallback, not the fix.
+	const setupFailedCard = showSetupFailure && !setupFailedAgentRunning && (
+		<div className="absolute inset-0 z-20 flex items-center justify-center p-4" onClick={dismissSetupFailure}>
+			<div
+				data-testid="terminal-setup-failed-card"
+				role="alertdialog"
+				aria-labelledby="setup-failed-title"
+				onClick={(event) => event.stopPropagation()}
+				onKeyDown={(event) => {
+					if (event.key !== "Escape") return;
+					event.stopPropagation();
+					dismissSetupFailure();
+				}}
+				className="relative bg-raised border border-edge rounded-lg p-6 space-y-4 w-[28rem] max-w-[calc(100vw-2rem)] shadow-2xl"
+			>
+				<button
+					autoFocus
+					onClick={dismissSetupFailure}
+					aria-label={t("terminal.setupFailedDismiss")}
+					className="absolute top-3 right-3 px-2 py-1 text-fg-3 rounded hover:bg-elevated-hover hover:text-fg transition-colors"
+				>
+					✕
+				</button>
+				<div id="setup-failed-title" className="flex items-center gap-2 font-medium text-danger pr-8">
+					<span className="text-lg">⚠</span>
+					<span>{setupFailedTitle}</span>
+				</div>
+				<p className="text-fg-3 text-sm">{t("terminal.setupFailedDesc")}</p>
+				<div className="flex gap-3 pt-2">
+					<button
+						onClick={handleRerunSetup}
+						disabled={rerunningSetup}
+						className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
+					>
+						{rerunSetupLabel}
+					</button>
+					<button
+						onClick={handleStartFresh}
+						disabled={restarting}
+						className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors disabled:opacity-50"
+					>
+						{restarting ? t("terminal.connecting") : t("terminal.setupFailedStartAnyway")}
+					</button>
+				</div>
+				<p className="text-fg-muted text-xs">{t("terminal.setupFailedHint")}</p>
+			</div>
+		</div>
+	);
+
+	const setupFailedNotice = (
+		<>
+			{setupFailedStrip}
+			{setupFailedCard}
+		</>
+	);
+
 	// A closed task has no workspace left to recover, so the only thing this pane
 	// owes the user is the way out — same empty state the task view shows when no
 	// task is selected.
@@ -763,6 +883,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						/>
 					)}
 					<MobilePaneCarousel taskId={taskId}>{nativeTerminalArea}</MobilePaneCarousel>
+					{setupFailedNotice}
 					{touchInput && focusedPaneHandle && (
 						<div className={rawMode ? "hidden" : "contents"}>
 							<TerminalComposer handle={focusedPaneHandle} task={task} project={project} dispatch={dispatch} apiRef={composerApiRef} />
@@ -873,6 +994,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						</div>
 					</div>
 				)}
+				{setupFailedNotice}
 				{touchInput && focusedPaneHandle && (
 					<div className={rawMode ? "hidden" : "contents"}>
 						<TerminalComposer handle={focusedPaneHandle} task={task} project={project} dispatch={dispatch} apiRef={composerApiRef} />
@@ -915,39 +1037,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		</div>
 	);
 
-	const setupFailedCard = setupFailedExitCode != null && !setupFailureDismissed && (
-		<div className="absolute inset-0 z-20 flex items-center justify-center p-4">
-			<div
-				data-testid="terminal-setup-failed-card"
-				role="alertdialog"
-				aria-labelledby="setup-failed-title"
-				className="bg-raised border border-edge rounded-lg p-6 space-y-4 w-[28rem] max-w-[calc(100vw-2rem)] shadow-2xl"
-			>
-				<div id="setup-failed-title" className="flex items-center gap-2 font-medium text-danger">
-					<span className="text-lg">⚠</span>
-					<span>{t("terminal.setupFailedTitle", { code: String(setupFailedExitCode) })}</span>
-				</div>
-				<p className="text-fg-3 text-sm">{t("terminal.setupFailedDesc")}</p>
-				<div className="flex gap-3 pt-2">
-					<button
-						autoFocus
-						onClick={handleStartFresh}
-						disabled={restarting}
-						className="flex-1 px-4 py-2 bg-accent-fill text-white rounded text-sm font-medium hover:bg-accent-fill-hover transition-colors disabled:opacity-50"
-					>
-						{restarting ? t("terminal.connecting") : t("terminal.setupFailedStartAnyway")}
-					</button>
-					<button
-						onClick={() => setSetupFailureDismissed(true)}
-						className="flex-1 px-4 py-2 bg-elevated text-fg-2 rounded text-sm font-medium hover:bg-elevated-hover transition-colors"
-					>
-						{t("terminal.setupFailedShowLog")}
-					</button>
-				</div>
-				<p className="text-fg-muted text-xs">{t("terminal.setupFailedHint")}</p>
-			</div>
-		</div>
-	);
 
 	return (
 		<div className="relative h-full w-full flex flex-col overflow-hidden">
@@ -971,14 +1060,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					<MobileWindowCarousel taskId={taskId} onSwitch={() => setWindowEpoch((e) => e + 1)}>
 						<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
 					</MobileWindowCarousel>
-					{setupFailedCard}
+					{setupFailedNotice}
 				</div>
 			) : (
 				<div className="relative isolate flex-1 min-h-0 overflow-hidden">
 					{terminalArea}
 					{ptyUrl && <PaneZoomBadge taskId={taskId} />}
 					{ptyUrl && <ClosePanePicker taskId={taskId} />}
-					{setupFailedCard}
+					{setupFailedNotice}
 				</div>
 			)}
 			{touchInput && termHandle && (

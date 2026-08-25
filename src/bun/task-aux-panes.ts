@@ -51,7 +51,7 @@ import { createLogger } from "./logger";
 const log = createLogger("task-aux-panes");
 
 /** Which action owns the pane. One live pane per purpose per task, at most. */
-export type AuxPanePurpose = "devServer" | "gitOp" | "columnAgent";
+export type AuxPanePurpose = "devServer" | "gitOp" | "columnAgent" | "setupRerun";
 
 /** Where the new pane lands relative to the pane it splits off. */
 export type AuxPanePlacement = "right" | "below";
@@ -124,6 +124,7 @@ const AUX_PANE_PURPOSES: Record<AuxPanePurpose, AuxPanePurposeMeta> = {
 	devServer: { scriptSuffix: "dev", title: "Dev Server", provenReplace: false },
 	gitOp: { scriptSuffix: "git-", title: "Git", provenReplace: false },
 	columnAgent: { scriptSuffix: "col-agent", title: "Column Agent", provenReplace: true },
+	setupRerun: { scriptSuffix: "setup-rerun", title: "Setup", provenReplace: false },
 };
 
 /** The substring that identifies a purpose's pane in a launch command. */
