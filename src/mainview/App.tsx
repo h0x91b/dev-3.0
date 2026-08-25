@@ -44,9 +44,6 @@ import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry
 import AgentTrafficLog from "./components/agent-traffic/AgentTrafficLog";
 import { noteTrafficArrival } from "./agent-traffic";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "./agent-traffic-events";
-import AgentMessageConceptGallery, {
-	isConceptGalleryEnabled,
-} from "./components/agent-message-concepts/AgentMessageConceptGallery";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -3091,8 +3088,6 @@ function App() {
 					}}
 				/>
 			)}
-			{/* Throwaway: six agent-message display concepts, `?msgconcepts=1` only. */}
-			{isConceptGalleryEnabled() && <AgentMessageConceptGallery />}
 		</div>
 	);
 
