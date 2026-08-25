@@ -180,6 +180,9 @@ const help = {
 	"help.modal.createTask.title": "Creating a task",
 	"help.modal.createTask.body":
 		"The description becomes the agent's prompt. Save parks the task in To Do for later; Run starts an agent on it immediately; Scratch opens a terminal where you explain the goal interactively.",
+	"help.modal.importSession.title": "Importing a session",
+	"help.modal.importSession.body":
+		"Agent sessions you ran in this project's folder outside dev3. Picking one fills the title, description and branch from its own transcript — all editable before you save. Saving starts the agent with that conversation resumed, on a new branch forked from the one the session was on. Only sessions from this project appear; a session from another folder belongs to that folder's project.",
 	"help.modal.launchVariants.title": "Variants",
 	"help.modal.launchVariants.body":
 		"N variants means N independent agents solving the same task in parallel, each in its own worktree and branch. Compare the results, keep the best one — the rest are cancelled.",

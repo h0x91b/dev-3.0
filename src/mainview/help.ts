@@ -137,6 +137,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 
 	// ── Modals ──
 	{ id: "modal.create-task", titleKey: "help.modal.createTask.title", bodyKey: "help.modal.createTask.body" },
+	{ id: "modal.import-session", titleKey: "help.modal.importSession.title", bodyKey: "help.modal.importSession.body" },
 	{ id: "modal.launch-variants", titleKey: "help.modal.launchVariants.title", bodyKey: "help.modal.launchVariants.body" },
 	{ id: "modal.add-project", titleKey: "help.modal.addProject.title", bodyKey: "help.modal.addProject.body" },
 	{ id: "modal.spawn-agent", titleKey: "help.modal.spawnAgent.title", bodyKey: "help.modal.spawnAgent.body" },
@@ -277,6 +278,7 @@ export const REQUIRED_HELP_SURFACES: string[] = [
 	"stats.model-configuration",
 	// Modals (create/config surfaces owed help)
 	"modal.create-task",
+	"modal.import-session",
 	"modal.launch-variants",
 	"modal.add-project",
 	"modal.spawn-agent",

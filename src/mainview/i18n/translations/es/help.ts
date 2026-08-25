@@ -174,6 +174,9 @@ const help = {
 	"help.modal.createTask.title": "Crear una tarea",
 	"help.modal.createTask.body":
 		"La descripción se convierte en el prompt del agente. Save guarda la tarea en Por hacer; Run lanza un agente de inmediato; Scratch abre una terminal donde explicas el objetivo de forma interactiva.",
+	"help.modal.importSession.title": "Importar una sesión",
+	"help.modal.importSession.body":
+		"Sesiones de agente que ejecutaste en la carpeta de este proyecto fuera de dev3. Al elegir una se rellenan el título, la descripción y la rama desde su propia transcripción, y todo sigue siendo editable. Al guardar, el agente arranca reanudando esa conversación en una rama nueva derivada de la que tenía la sesión. Solo aparecen sesiones de este proyecto.",
 	"help.modal.launchVariants.title": "Variantes",
 	"help.modal.launchVariants.body":
 		"N variantes significa N agentes independientes resolviendo la misma tarea en paralelo, cada uno en su propio worktree y rama. Compara los resultados y quédate con el mejor — el resto se cancela.",

@@ -4268,6 +4268,16 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: ImportableSession[];
 			};
+			/**
+			 * What importing one session would put on the card. Rendered before the
+			 * task exists so the user can read and edit it — these transcript formats
+			 * are reverse-engineered, so nothing is applied unseen. Null when the
+			 * session is not (or no longer) importable into this project.
+			 */
+			describeImportableSession: {
+				params: { projectId: string; sessionId: string };
+				response: { title: string | null; description: string; gitBranch: string | null; cwd: string } | null;
+			};
 			createTask: {
 				/**
 				 * Optional board title. Set when the description leads with a built-in

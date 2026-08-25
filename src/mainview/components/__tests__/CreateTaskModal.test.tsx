@@ -25,6 +25,8 @@ vi.mock("../../rpc", () => ({
 			openImageFile: vi.fn(),
 			listAgentSkills: vi.fn(),
 			getGlobalSettings: vi.fn().mockResolvedValue({}),
+			listImportableSessions: vi.fn(),
+			describeImportableSession: vi.fn(),
 		},
 	},
 	isElectrobun: false,
@@ -1959,5 +1961,112 @@ describe("CreateTaskModal — task type presets", () => {
 
 		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
 		expect(mockedApi.request.createTask.mock.calls[0][0].taskType).toBeUndefined();
+	});
+});
+
+describe("CreateTaskModal — importing a session", () => {
+	const session = {
+		source: "claude" as const,
+		sessionId: "sess-1",
+		path: "/home/user/.claude/projects/enc/sess-1.jsonl",
+		cwd: "/home/user/test-project",
+		title: "Debug the flaky login test",
+		gitBranch: "fix/flaky-login",
+		startedAt: "2026-08-20T09:00:00Z",
+		endedAt: "2026-08-20T10:00:00Z",
+		mtimeMs: 1_787_000_000_000,
+		turns: 12,
+	};
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
+		mockedApi.request.listAgentSkills.mockResolvedValue([]);
+		mockedApi.request.listImportableSessions.mockResolvedValue([session]);
+		mockedApi.request.describeImportableSession.mockResolvedValue({
+			title: session.title,
+			description: "# Retold from a claude transcript\n\nThe login test flakes.",
+			gitBranch: session.gitBranch,
+			cwd: session.cwd,
+		});
+	});
+
+	/** The Select renders its options only once open, so every pick opens it first. */
+	async function pickSession(user: ReturnType<typeof userEvent.setup>, label: string) {
+		await user.click(screen.getByLabelText("Session"));
+		await user.click(await screen.findByText(label));
+	}
+
+	it("does not look for sessions until Import mode is chosen", () => {
+		renderModal();
+		expect(mockedApi.request.listImportableSessions).not.toHaveBeenCalled();
+	});
+
+	it("lists the project's importable sessions once Import is chosen", async () => {
+		const user = userEvent.setup();
+		renderModal();
+
+		await user.click(screen.getByTestId("create-task-mode-import"));
+
+		await waitFor(() => expect(mockedApi.request.listImportableSessions).toHaveBeenCalledWith({ projectId: "p1" }));
+		await user.click(await screen.findByLabelText("Session"));
+		expect(await screen.findByText("Debug the flaky login test")).toBeInTheDocument();
+	});
+
+	it("fills the description and title from the chosen session", async () => {
+		const user = userEvent.setup();
+		renderModal();
+
+		await user.click(screen.getByTestId("create-task-mode-import"));
+		await waitFor(() => expect(mockedApi.request.listImportableSessions).toHaveBeenCalled());
+		await pickSession(user, "Debug the flaky login test");
+
+		await waitFor(() => {
+			expect(screen.getByLabelText("Description")).toHaveValue(
+				"# Retold from a claude transcript\n\nThe login test flakes.",
+			);
+		});
+	});
+
+	it("sends importSession and the session's branch when the task is created", async () => {
+		const user = userEvent.setup();
+		renderModal();
+
+		await user.click(screen.getByTestId("create-task-mode-import"));
+		await waitFor(() => expect(mockedApi.request.listImportableSessions).toHaveBeenCalled());
+		await pickSession(user, "Debug the flaky login test");
+		await waitFor(() => expect(mockedApi.request.describeImportableSession).toHaveBeenCalled());
+		await user.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith(
+				expect.objectContaining({
+					importSession: { sessionId: "sess-1", originCwd: "/home/user/test-project" },
+					existingBranch: "fix/flaky-login",
+				}),
+			);
+		});
+	});
+
+	it("never sends importSession from Describe mode", async () => {
+		const user = userEvent.setup();
+		renderModal();
+
+		await user.type(screen.getByLabelText("Description"), "write it myself");
+		await user.click(screen.getByText("Save"));
+
+		await waitFor(() => expect(mockedApi.request.createTask).toHaveBeenCalled());
+		expect(mockedApi.request.createTask.mock.calls[0][0]).not.toHaveProperty("importSession");
+	});
+
+	it("says so plainly when the project has no importable sessions", async () => {
+		mockedApi.request.listImportableSessions.mockResolvedValue([]);
+		const user = userEvent.setup();
+		renderModal();
+
+		await user.click(screen.getByTestId("create-task-mode-import"));
+
+		expect(await screen.findByText(/No sessions to import/i)).toBeInTheDocument();
 	});
 });

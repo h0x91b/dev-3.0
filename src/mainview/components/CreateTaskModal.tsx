@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
+import type { ImportableSession } from "../../shared/conversation-model";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { DEFAULT_PRIORITY, orderProjectsForDisplay, projectDisplayName, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt, type GlobalSettings, type Project, type Task, type TaskPriority, type TaskType } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api, isElectrobun } from "../rpc";
-import { useT } from "../i18n";
+import { useT, useLocale } from "../i18n";
 import { useProjectPrivacy } from "../sensitive-projects";
 import { trackEvent } from "../analytics";
 import posthog from "../posthog";
@@ -67,6 +68,7 @@ function sameLabelIds(left: string[], right: string[]): boolean {
 
 function CreateTaskModal({ project: initialProject, projects, dispatch, initialText, onClose, onCreateAndRun, onOpenAutomations, draftTask }: CreateTaskModalProps) {
 	const t = useT();
+	const [locale] = useLocale();
 	const privacy = useProjectPrivacy();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const availableProjects = useMemo(() => {
@@ -107,6 +109,15 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
 	const [opsFolder, setOpsFolder] = useState<string | null>(null);
 	const [opsFolderConflict, setOpsFolderConflict] = useState(false);
+	// "Describe" writes a new prompt; "Import" re-hosts a conversation that already
+	// happened outside dev3. Two origins for one object, the same shape
+	// AddProjectModal uses for local | clone | init.
+	const [createMode, setCreateMode] = useState<"describe" | "import">("describe");
+	const [importSessions, setImportSessions] = useState<ImportableSession[] | null>(null);
+	const [importLoading, setImportLoading] = useState(false);
+	const [importSessionId, setImportSessionId] = useState<string | null>(null);
+	const [importOriginCwd, setImportOriginCwd] = useState<string | null>(null);
+	const [importDescribing, setImportDescribing] = useState(false);
 	const projectBranchRequestRef = useRef(0);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
@@ -426,6 +437,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 				// Only the coordinator preset is a persisted task type — PR review changes
 				// the prompt and nothing about the task (see TASK_TYPES).
 				...(taskType !== "standard" ? { taskType } : {}),
+				...(importSession ? { importSession } : {}),
 			});
 			// The task is now persisted on disk. Make it visible on the board
 			// IMMEDIATELY — a task created into "todo" pushes no taskUpdated, so
@@ -571,6 +583,68 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		void commit(branch, mode);
 	}
 
+	// Import candidates are per project, so a project switch invalidates them.
+	useEffect(() => {
+		if (createMode !== "import" || isVirtual) return;
+		let cancelled = false;
+		setImportLoading(true);
+		api.request
+			.listImportableSessions({ projectId: project.id })
+			.then((sessions) => {
+				if (!cancelled) setImportSessions(sessions);
+			})
+			.catch((err) => {
+				if (cancelled) return;
+				setImportSessions([]);
+				toast.error(t("createTask.importLoadFailed", { error: String(err) }), { projectId: project.id });
+			})
+			.finally(() => {
+				if (!cancelled) setImportLoading(false);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [createMode, isVirtual, project.id, t]);
+
+	/**
+	 * Fill the form from the chosen session. Everything lands in fields the user
+	 * can still edit — these transcript formats are reverse-engineered, so the
+	 * retelling is offered rather than applied unseen.
+	 */
+	async function selectImportSession(sessionId: string) {
+		setImportSessionId(sessionId);
+		setImportDescribing(true);
+		try {
+			const described = await api.request.describeImportableSession({ projectId: project.id, sessionId });
+			if (!described) {
+				toast.error(t("createTask.importDescribeFailed"), { projectId: project.id });
+				return;
+			}
+			setDescription(described.description);
+			setCustomTitle(described.title);
+			setImportOriginCwd(described.cwd);
+			// A detached HEAD is not a branch to fork from; let the project's base win.
+			setSelectedBranch(described.gitBranch && described.gitBranch !== "HEAD" ? described.gitBranch : null);
+			setBranchTouched(true);
+		} catch (err) {
+			toast.error(t("createTask.importDescribeFailed", { error: String(err) }), { projectId: project.id });
+		} finally {
+			setImportDescribing(false);
+		}
+	}
+
+	function switchCreateMode(next: "describe" | "import") {
+		setCreateMode(next);
+		if (next === "describe") {
+			setImportSessionId(null);
+			setImportOriginCwd(null);
+		}
+	}
+
+	const importSession = createMode === "import" && importSessionId && importOriginCwd
+		? { sessionId: importSessionId, originCwd: importOriginCwd }
+		: null;
+
 	function toggleLabelId(labelId: string) {
 		setSelectedLabelIds((prev) =>
 			prev.includes(labelId) ? prev.filter((id) => id !== labelId) : [...prev, labelId],
@@ -603,6 +677,30 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 					</button>
 				</div>
 
+				{/* Two origins for one task: a prompt you write, or a conversation that
+				    already happened. Same mode strip AddProjectModal uses for its three. */}
+				{!isDraftEdit && !isVirtual && (
+					<div className="flex gap-1 p-1 bg-raised rounded-xl" role="tablist" aria-label={t("createTask.title")}>
+						{(["describe", "import"] as const).map((candidate) => (
+							<button
+								key={candidate}
+								type="button"
+								role="tab"
+								aria-selected={createMode === candidate}
+								onClick={() => switchCreateMode(candidate)}
+								className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+									createMode === candidate
+										? "bg-elevated text-fg shadow-sm"
+										: "text-fg-3 hover:text-fg-2"
+								}`}
+								data-testid={`create-task-mode-${candidate}`}
+							>
+								{t(candidate === "describe" ? "createTask.modeDescribe" : "createTask.modeImport")}
+							</button>
+						))}
+					</div>
+				)}
+
 				{/* Project context — defaults to the board that opened this modal. */}
 				<div className="space-y-1.5">
 					<label htmlFor={isDraftEdit ? undefined : "create-task-project"} className="text-fg-2 text-sm font-medium">
@@ -626,6 +724,67 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 						/>
 					)}
 				</div>
+
+				{createMode === "import" && (
+					<div className="space-y-1.5">
+						<div className="flex items-center gap-1.5">
+							<label htmlFor="create-task-import-session" className="text-fg-2 text-sm font-medium">
+								{t("createTask.importSessionLabel")}
+							</label>
+							<HelpSpot topicId="modal.import-session" className="w-4 h-4 text-sm" />
+						</div>
+						{importLoading ? (
+							<div className="px-3 py-2 bg-raised border border-edge rounded-xl text-fg-3 text-sm">
+								{t("createTask.importLoading")}
+							</div>
+						) : importSessions && importSessions.length > 0 ? (
+							<Select
+								id="create-task-import-session"
+								value={importSessionId ?? ""}
+								searchable
+								growList
+								placeholder={t("createTask.importPlaceholder")}
+								searchPlaceholder={t("createTask.importSearchPlaceholder")}
+								searchLabel={t("createTask.importSearchLabel")}
+								options={importSessions.map((session) => ({
+									value: session.sessionId,
+									label: session.title ?? t("createTask.importUntitled"),
+								}))}
+								renderOption={(option) => {
+									const session = importSessions.find((s) => s.sessionId === option.value);
+									if (!session) return option.label;
+									return (
+										<div className="min-w-0">
+											<div className="truncate">{option.label}</div>
+											<div className="text-fg-3 text-xs truncate">
+												{[
+													session.gitBranch && session.gitBranch !== "HEAD" ? session.gitBranch : null,
+													t.plural("createTask.importTurns", session.turns),
+													new Date(session.mtimeMs).toLocaleString(locale, {
+														month: "short",
+														day: "numeric",
+														hour: "2-digit",
+														minute: "2-digit",
+													}),
+												]
+													.filter(Boolean)
+													.join(" · ")}
+											</div>
+										</div>
+									);
+								}}
+								onChange={(value) => void selectImportSession(value)}
+							/>
+						) : (
+							<div className="px-3 py-2 bg-raised border border-edge rounded-xl text-fg-3 text-sm">
+								{t("createTask.importEmpty")}
+							</div>
+						)}
+						<p className="text-fg-muted text-xs">
+							{importDescribing ? t("createTask.importReading") : t("createTask.importHint")}
+						</p>
+					</div>
+				)}
 
 				{/* Description textarea + drop zone */}
 				<div className="space-y-1.5">
@@ -705,7 +864,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 								}
 							}}
 							onPaste={handlePaste}
-							placeholder={t("createTask.descriptionPlaceholder")}
+							placeholder={t(createMode === "import" ? "createTask.descriptionImportPlaceholder" : "createTask.descriptionPlaceholder")}
 							rows={4}
 							className="w-full px-3 py-2.5 bg-elevated border border-edge-active rounded-xl text-fg text-sm placeholder-fg-muted outline-none focus:border-accent/50 transition-colors resize-y min-h-[5rem] max-h-[18.75rem]"
 						/>
@@ -915,6 +1074,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 							<p className="text-xs text-amber-500">{t("ops.create.workDirConflict")}</p>
 						)}
 					</div>
+				) : createMode === "import" ? (
+					/* The session names its own branch; a manual picker would contradict it. */
+					<></>
 				) : (
 					/* Branch selector — collapsible */
 					<BranchSelector

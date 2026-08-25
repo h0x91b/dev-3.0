@@ -2,6 +2,8 @@ import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isPathInside, transcriptsUnderPath } from "./conversation-search";
 import { parseTranscriptFile } from "./conversation-parse";
+import { renderHandoff } from "../shared/conversation-render";
+import { titleFromDescription } from "../shared/types";
 import type { ConversationSource, ImportableSession } from "../shared/conversation-model";
 import { DEV3_HOME } from "./paths";
 
@@ -84,6 +86,46 @@ export function sessionLabel(session: Pick<ImportableSession, "title">, firstUse
 	if (title) return title;
 	const opening = firstUserText?.trim().replace(/\s+/g, " ");
 	return opening ? opening : null;
+}
+
+export interface ImportedTaskDraft {
+	title: string | null;
+	/** The whole conversation retold as one markdown message. */
+	description: string;
+}
+
+export interface DescribeSessionOptions {
+	/**
+	 * Cap the retelling's size in bytes. The CLI socket refuses a request over
+	 * 1 MB, and a long session's retelling passes that. Trimming keeps the most
+	 * recent turns and says how many it dropped.
+	 */
+	maxDescriptionBytes?: number;
+}
+
+/**
+ * The title and description an imported session turns into, so every surface
+ * describes the same session identically.
+ */
+export function describeImportableSession(
+	session: Pick<ImportableSession, "path" | "source" | "title">,
+	options: DescribeSessionOptions = {},
+): ImportedTaskDraft | null {
+	const parsed = parseTranscriptFile(session.path, session.source);
+	if (!parsed) return null;
+
+	const firstUserText = parsed.turns.find((turn) => turn.userText?.trim())?.userText ?? "";
+	const title = session.title?.trim() || (firstUserText ? titleFromDescription(firstUserText) : null);
+
+	let description = renderHandoff(parsed, { target: "markdown" });
+	const budget = options.maxDescriptionBytes;
+	let maxTurns = parsed.stats.turns;
+	while (budget && Buffer.byteLength(description) > budget && maxTurns > 1) {
+		maxTurns = Math.floor(maxTurns / 2);
+		description = renderHandoff(parsed, { target: "markdown", maxTurns });
+	}
+
+	return { title: title || null, description };
 }
 
 function mtimeMsOf(path: string): number {

@@ -48,6 +48,7 @@ Last updated: 2026-07-13
 | **Status hooks (automatic)** | Yes (6 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — |
+| **Session import** (adopt a session run outside dev3 as a task) | Yes — transcript store + free `ai-title` | — (store unresearched) | Yes — rollout store; no title, first turn is used | — (located, not parsed) | — (no store, resume-last only) |
 | **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`, restored by `dev3 artifact-template`) | Yes | Yes | Yes | Yes |
 
 ## Status Hooks

@@ -4,7 +4,7 @@ import type { ConversationMatch } from "../../shared/conversation-search-core";
 import * as data from "../data";
 import { projectSlug } from "../git";
 import { searchConversations, type EngineTask } from "../conversation-search";
-import { listImportableSessions, type ImportableSession } from "../session-import";
+import { describeImportableSession, listImportableSessions, type ImportableSession } from "../session-import";
 import { readAllTaskBlobs } from "../task-blobs";
 import { log } from "./shared";
 
@@ -82,7 +82,34 @@ async function listImportableSessionsHandler(params: {
 	return sessions;
 }
 
+/**
+ * The title and description an imported session would produce.
+ *
+ * Rendered up front so the user reads what dev3 derived and can edit it before
+ * the task exists — the transcript formats are reverse-engineered, so the
+ * retelling is offered, never applied behind their back.
+ */
+async function describeImportableSessionHandler(params: {
+	projectId: string;
+	sessionId: string;
+}): Promise<{ title: string | null; description: string; gitBranch: string | null; cwd: string } | null> {
+	log.info("→ describeImportableSession", { projectId: params.projectId, sessionId: params.sessionId.slice(0, 8) });
+	const project = await data.getProject(params.projectId);
+	if (project.kind === "virtual" || !project.path) return null;
+
+	const session = listImportableSessions(project.path).find((s) => s.sessionId === params.sessionId);
+	if (!session) {
+		log.warn("← describeImportableSession: no such session under this project", { sessionId: params.sessionId.slice(0, 8) });
+		return null;
+	}
+	const draft = describeImportableSession(session);
+	if (!draft) return null;
+
+	return { ...draft, gitBranch: session.gitBranch, cwd: session.cwd };
+}
+
 export const conversationSearchHandlers = {
 	searchConversations: searchConversationsHandler,
 	listImportableSessions: listImportableSessionsHandler,
+	describeImportableSession: describeImportableSessionHandler,
 };
