@@ -1,15 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Project, Task } from "../../shared/types";
 
-const listPanes = vi.fn();
-
-vi.mock("../tmux", () => ({
-	tmux: { listPanes: (...args: unknown[]) => listPanes(...args) },
-	ALL_PANE_ACTIVITY_FORMAT: { fields: [] },
-}));
-vi.mock("../pty-server", () => ({
-	getSessionSocket: () => "dev3",
-}));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
@@ -43,11 +34,6 @@ function task(overrides: Partial<Task> = {}): Task {
 }
 
 const project = { id: "p1", name: "dev-3.0" } as unknown as Project;
-
-beforeEach(() => {
-	listPanes.mockReset();
-	listPanes.mockResolvedValue([]);
-});
 
 describe("collectCoordinatorBoard", () => {
 	// The coordinator asked for what it is managing: To Do is not started and
@@ -119,58 +105,32 @@ describe("collectCoordinatorBoard", () => {
 		expect(snap.live[0].seqShared).toBe(false);
 	});
 
-	// One `list-panes -a` answers for the whole board — a peek per task on every
-	// turn is exactly the cost this design exists to avoid.
-	it("reads every task's activity with a single server-wide tmux call", async () => {
-		listPanes.mockResolvedValue([
-			{ windowActivity: Math.floor(Date.parse("2026-08-25T17:50:00.000Z") / 1000), sessionName: "dev3-a1111111" },
-			{ windowActivity: Math.floor(Date.parse("2026-08-25T17:00:00.000Z") / 1000), sessionName: "dev3-a2222222" },
-		]);
-
+	// `statusEnteredAt` is stamped on every status change and is the precise
+	// answer to "how long has it been sitting there".
+	it("dates the stint from statusEnteredAt when the task has one", async () => {
 		const snap = await collectCoordinatorBoard(project, [
-			task({ id: "a1111111-0000-0000-0000-000000000000", seq: 1 }),
-			task({ id: "a2222222-0000-0000-0000-000000000000", seq: 2 }),
+			task({ statusEnteredAt: "2026-08-25T17:19:00.000Z", movedAt: "2026-08-25T12:00:00.000Z" }),
 		], NOW);
 
-		expect(listPanes).toHaveBeenCalledTimes(1);
-		expect(listPanes.mock.calls[0][1]).toMatchObject({ scope: "server" });
-		expect(snap.live[0].activity).toEqual({ kind: "age", ms: 10 * 60_000, granularity: "window" });
-		expect(snap.live[1].activity).toEqual({ kind: "age", ms: 60 * 60_000, granularity: "window" });
+		expect(snap.live[0].columnSince).toBe("2026-08-25T17:19:00.000Z");
 	});
 
-	it("takes the freshest window when a task owns several", async () => {
-		listPanes.mockResolvedValue([
-			{ windowActivity: Math.floor(Date.parse("2026-08-25T16:00:00.000Z") / 1000), sessionName: "dev3-a1111111" },
-			{ windowActivity: Math.floor(Date.parse("2026-08-25T17:55:00.000Z") / 1000), sessionName: "dev3-a1111111" },
-		]);
-
+	it("falls back to movedAt for a task older than status tracking", async () => {
 		const snap = await collectCoordinatorBoard(project, [
-			task({ id: "a1111111-0000-0000-0000-000000000000", seq: 1 }),
+			task({ statusEnteredAt: undefined, movedAt: "2026-08-25T12:00:00.000Z" }),
 		], NOW);
 
-		expect(snap.live[0].activity).toEqual({ kind: "age", ms: 5 * 60_000, granularity: "window" });
+		expect(snap.live[0].columnSince).toBe("2026-08-25T12:00:00.000Z");
 	});
 
-	it("ignores sessions that are not a task's own", async () => {
-		listPanes.mockResolvedValue([
-			{ windowActivity: Math.floor(Date.parse("2026-08-25T17:59:00.000Z") / 1000), sessionName: "dev3-dev-a1111111" },
-			{ windowActivity: Math.floor(Date.parse("2026-08-25T17:59:00.000Z") / 1000), sessionName: "someones-own-session" },
-		]);
-
+	// Never null while a createdAt exists: "unknown" is reserved for a task that
+	// genuinely carries no stamp at all.
+	it("falls back to createdAt when the task never moved", async () => {
 		const snap = await collectCoordinatorBoard(project, [
-			task({ id: "a1111111-0000-0000-0000-000000000000", seq: 1 }),
+			task({ statusEnteredAt: undefined, movedAt: undefined }),
 		], NOW);
 
-		expect(snap.live[0].activity).toEqual({ kind: "no-session", reason: "not running" });
-	});
-
-	// A tmux server we cannot reach says nothing about whether a child is working.
-	it("survives a tmux failure without reporting anyone as quiet", async () => {
-		listPanes.mockRejectedValue(new Error("no server running"));
-
-		const snap = await collectCoordinatorBoard(project, [task({ id: "a1111111-0000-0000-0000-000000000000" })], NOW);
-
-		expect(snap.live[0].activity.kind).toBe("no-session");
+		expect(snap.live[0].columnSince).toBe("2026-08-25T10:00:00.000Z");
 	});
 
 	it("names a custom column by the name the user gave it", async () => {
@@ -187,11 +147,10 @@ describe("collectCoordinatorBoard", () => {
 		expect(snap.live[0].column).toBe("On hold");
 	});
 
-	it("reports a hibernated task without asking tmux about it", async () => {
+	it("carries the hibernated flag through to the row", async () => {
 		const snap = await collectCoordinatorBoard(project, [task({ hibernated: true })], NOW);
 
 		expect(snap.live[0].hibernated).toBe(true);
-		expect(snap.live[0].activity).toEqual({ kind: "no-session", reason: "hibernated" });
 	});
 });
 

@@ -20,6 +20,11 @@
  *    need the previous snapshot kept somewhere, and the freshly-finished tasks
  *    section covers the one delta that actually matters — a task the user
  *    completed while the coordinator was not looking.
+ *  - The right-hand column is how long the task has sat in its column, NOT how
+ *    long its terminal has been silent. tmux's `window_activity` looked like the
+ *    better signal and is not: an app-wide redraw repaints every idle shell at
+ *    once, so 45 of 60 panes carry one identical timestamp that jumps in a herd.
+ *    See `decisions/2026/08/25/board-age-is-column-age-not-terminal-silence.md`.
  *
  * Rendering is pure and lives in shared/ so the socket payload and the hook
  * output can never drift apart. See
@@ -39,15 +44,6 @@ export const BOARD_FINISHED_WINDOW_MS = 24 * 60 * 60 * 1000;
  */
 export const BOARD_MAX_ROWS = 100;
 
-/** Why a row carries no activity time — never smoothed into "quiet". */
-export type BoardActivity =
-	/** Age of the last terminal output, in ms at snapshot time. */
-	| { kind: "age"; ms: number; granularity: "pane" | "window" }
-	/** The task has no terminal: draft, hibernated, idle, or finished. */
-	| { kind: "no-session"; reason: string }
-	/** A terminal may well be running; we could not read a time for it. */
-	| { kind: "unknown" };
-
 export interface BoardRow {
 	taskId: string;
 	seq: number;
@@ -60,7 +56,8 @@ export interface BoardRow {
 	column: string;
 	hibernated: boolean;
 	draft: boolean;
-	activity: BoardActivity;
+	/** ISO time the task entered the column it is in now; null on a legacy task. */
+	columnSince: string | null;
 	/** ISO time the task reached completed/cancelled; null for a live task. */
 	finishedAt: string | null;
 }
@@ -81,7 +78,8 @@ const MAX_TITLE = 64;
 const INSTRUCTION =
 	"Board state as of this message — read it instead of running `dev3 task list`. "
 	+ "It does NOT arrive when the user types to you directly, so re-read the board before answering him after a silence. "
-	+ "Address a task by its `seq:N`; a variant shows `:index (id)` and is addressed by that id.";
+	+ "Address a task by its `seq:N`; a variant shows `:index (id)` and is addressed by that id. "
+	+ "The last column is when the task landed in the column it is in — not how busy its agent is.";
 
 /**
  * How a coordinator must name and address this task. A plain task travels as
@@ -101,24 +99,21 @@ function truncate(text: string, max: number): string {
 	return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-/** The right-hand column: what the task's terminal is doing, or why we cannot say. */
+/**
+ * The right-hand column: when the task last landed where it is. Deliberately NOT
+ * "quiet 41m", the wording this replaced — that promised terminal silence, and a
+ * task can sit in one column for an hour with its agent typing the whole time.
+ */
 function activityCell(row: BoardRow, nowMs: number): string {
-	if (row.draft) return "draft, never started";
-	if (row.hibernated) return "hibernated";
+	// Finished wins over hibernated: once a task is done, WHEN it finished is the
+	// fact the coordinator needs, and hibernation is bookkeeping about its memory.
 	if (row.finishedAt !== null) {
 		return `finished ${formatAge(nowMs - Date.parse(row.finishedAt))}`;
 	}
-	switch (row.activity.kind) {
-		case "age": {
-			const precision = row.activity.granularity === "window" ? "*" : "";
-			return `quiet ${formatAge(row.activity.ms)}${precision}`;
-		}
-		case "no-session":
-			return `no terminal — ${row.activity.reason}`;
-		case "unknown":
-			// Never "quiet": we do not know whether it is quiet.
-			return "activity unknown";
-	}
+	if (row.draft) return "draft, never started";
+	if (row.hibernated) return "hibernated";
+	if (row.columnSince === null) return "moved at an unknown time";
+	return `moved ${formatAge(nowMs - Date.parse(row.columnSince))}`;
 }
 
 /** Columns are padded to the widest cell present, never to a fixed budget — the
@@ -168,11 +163,6 @@ export function renderCoordinatorBoard(snapshot: BoardSnapshot, now: Date): stri
 	if (snapshot.omitted > 0) {
 		out.push("");
 		out.push(`(${snapshot.omitted} more rows not shown — the board is over the ${BOARD_MAX_ROWS}-row cap.)`);
-	}
-
-	if (rows.some((r) => r.activity.kind === "age" && r.activity.granularity === "window")) {
-		out.push("");
-		out.push("* this backend reports activity per tmux window, not per pane.");
 	}
 
 	out.push("</dev3-board>");

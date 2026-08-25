@@ -156,17 +156,6 @@ export const PANE_SIGHTING_FORMAT = tmuxFormat()
 	.tail("sessionName", "session_name")
 	.build();
 
-/**
- * Server-wide activity times (`list-panes -a`) for the coordinator board
- * snapshot: one command answers for every task at once, instead of a peek per
- * task on every turn. `window_activity` is per WINDOW — tmux has no per-pane
- * variable (see {@link PEEK_PANE_FORMAT}) — and the board labels it as such.
- */
-export const ALL_PANE_ACTIVITY_FORMAT = tmuxFormat()
-	.number("windowActivity", "window_activity")
-	.tail("sessionName", "session_name")
-	.build();
-
 /** Pane id + the command the pane was started with — viewer-pane discovery. */
 export const PANE_START_COMMAND_FORMAT = tmuxFormat()
 	.string("paneId", "pane_id")

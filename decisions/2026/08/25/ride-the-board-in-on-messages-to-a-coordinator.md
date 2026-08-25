@@ -36,8 +36,7 @@ carry it is a different problem, deliberately left open.
 
 - `shared/coordinator-board.ts` — contract plus the pure renderer.
 - `bun/coordinator-board.ts` — `collectCoordinatorBoard` (live tasks sorted by
-  `compareTaskSortRank`, plus a rolling 24 hours of finished ones; activity from
-  one `tmux list-panes -a` per socket, not a peek per task) and
+  `compareTaskSortRank`, plus a rolling 24 hours of finished ones) and
   `coordinatorBoardEpilogue`, which returns "" for anything but a coordinator and
   for every failure.
 - `AgentPromptEpilogue` on `deliverAgentPrompt`: a trailer typed once at the END
@@ -61,9 +60,9 @@ costs the trailer, never the message or its Enter.
   closure may be forwarded to whichever process owns the pane's writer lease, and
   a closure does not cross a process boundary; a stale trailer beats one that
   silently vanishes.
-- **Native tasks report `activity unknown`.** Peek only learns a native pane's
-  time by capturing it, far too expensive per task per message. Deliberately not
-  smoothed into "quiet".
+- **The right-hand column shipped as terminal quiet time and was wrong.** Replaced
+  the same day by column age; the measurements are in
+  `board-age-is-column-age-not-terminal-silence.md`.
 - **The trailer is visible in the pane**, unlike the hook version. Measured on a
   1762-task board: 7 live + 3 finished rows, ~1.4 KB.
 

@@ -19,7 +19,7 @@ function row(overrides: Partial<BoardRow> = {}): BoardRow {
 		column: "In Progress",
 		hibernated: false,
 		draft: false,
-		activity: { kind: "age", ms: 41 * 60_000, granularity: "window" },
+		columnSince: "2026-08-25T17:19:00.000Z",
 		finishedAt: null,
 		...overrides,
 	};
@@ -59,12 +59,12 @@ describe("boardRef", () => {
 });
 
 describe("renderCoordinatorBoard", () => {
-	it("renders a live row with its column, title and quiet time", () => {
+	it("renders a live row with its column, title and how long it has sat there", () => {
 		const text = renderCoordinatorBoard(snapshot(), NOW);
 		expect(text).toContain("seq:1620");
 		expect(text).toContain("In Progress");
 		expect(text).toContain("Fix auth race in login flow");
-		expect(text).toContain("quiet 41m ago");
+		expect(text).toContain("moved 41m ago");
 		expect(text).toContain('live="1"');
 		expect(text.endsWith("</dev3-board>")).toBe(true);
 	});
@@ -84,38 +84,42 @@ describe("renderCoordinatorBoard", () => {
 		expect(text).toContain('finished-24h="1"');
 	});
 
-	// "Not checked" must never render as "checked and quiet" — the single most
-	// expensive misread a coordinator can make about a child.
-	it("never reports an unreadable activity time as quiet", () => {
-		const text = renderCoordinatorBoard(snapshot({ live: [row({ activity: { kind: "unknown" } })] }), NOW);
-		expect(text).toContain("activity unknown");
-		expect(text).not.toContain("quiet");
+	// A legacy task with no stamp must not read as "just moved here" — zero is the
+	// one value a coordinator would act on.
+	it("says the stint is unknown rather than rendering it as zero", () => {
+		const text = renderCoordinatorBoard(snapshot({ live: [row({ columnSince: null })] }), NOW);
+		expect(text).toContain("moved at an unknown time");
+		expect(text).not.toContain("moved 0s");
 	});
 
-	it("names why a task has no terminal instead of showing a time", () => {
-		const text = renderCoordinatorBoard(snapshot({
-			live: [row({ activity: { kind: "no-session", reason: "not running" } })],
-		}), NOW);
-		expect(text).toContain("no terminal — not running");
-	});
-
-	it("reports a hibernated task as hibernated, whatever its activity says", () => {
+	it("reports a hibernated task as hibernated, whatever its stamp says", () => {
 		const text = renderCoordinatorBoard(snapshot({ live: [row({ hibernated: true })] }), NOW);
 		expect(text).toContain("hibernated");
-		expect(text).not.toContain("quiet 41m");
+		expect(text).not.toContain("moved 41m ago");
 	});
 
-	it("marks window-level activity and explains the mark once", () => {
-		const text = renderCoordinatorBoard(snapshot(), NOW);
-		expect(text).toContain("quiet 41m ago*");
-		expect(text).toContain("* this backend reports activity per tmux window, not per pane.");
-	});
-
-	it("does not explain the mark when no row is window-level", () => {
+	// Seen on the real board: a completed-then-hibernated task said "hibernated"
+	// and hid the one thing that mattered — when it finished.
+	it("still dates a finished task that is also hibernated", () => {
 		const text = renderCoordinatorBoard(snapshot({
-			live: [row({ activity: { kind: "age", ms: 5_000, granularity: "pane" } })],
+			live: [],
+			finished: [row({ column: "Completed", hibernated: true, finishedAt: "2026-08-25T16:00:00.000Z" })],
 		}), NOW);
-		expect(text).toContain("quiet 5s ago");
+		expect(text).toContain("finished 2h ago");
+		expect(text).not.toContain("hibernated");
+	});
+
+	it("reports a draft as never started rather than as a stint", () => {
+		const text = renderCoordinatorBoard(snapshot({ live: [row({ draft: true })] }), NOW);
+		expect(text).toContain("draft, never started");
+		expect(text).not.toContain("moved 41m ago");
+	});
+
+	// The column is column age, not terminal silence: `window_activity` moves for
+	// every idle shell at once, so promising quietness here would be a lie.
+	it("never claims anything about how quiet a task's terminal is", () => {
+		const text = renderCoordinatorBoard(snapshot(), NOW);
+		expect(text).not.toContain("quiet");
 		expect(text).not.toContain("per tmux window");
 	});
 

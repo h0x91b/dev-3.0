@@ -2,14 +2,14 @@
  * Collect the `<dev3-board>` snapshot a coordinator receives on every turn.
  *
  * The contract and the rendering live in `shared/coordinator-board`; this module
- * only gathers the facts. The design constraint that shapes it: this runs inside
- * a hook on EVERY turn of a coordinator task, so it must be cheap and it must
+ * only gathers the facts. The design constraint that shapes it: this runs on
+ * EVERY message delivered to a coordinator task, so it must be cheap and it must
  * never throw — a snapshot that fails is a missing block, never a blocked agent.
  *
- * Activity times therefore cost exactly one `tmux list-panes -a` per distinct
- * socket (normally one for the whole machine), not one peek per task. Native
- * panes have no cheap per-pane time at all — peek only learns one by capturing
- * — so they report `unknown` rather than borrowing a clock.
+ * Everything here therefore comes out of `tasks.json`, which the caller has
+ * already loaded. It deliberately does NOT ask tmux how quiet a task's terminal
+ * is: that number is unusable on a real board, and asking cost a `list-panes`
+ * per socket for the privilege of printing noise.
  */
 
 import type { Project, Task } from "../shared/types";
@@ -17,7 +17,6 @@ import {
 	compareTaskSortRank,
 	getTaskTitle,
 	isCoordinatorTask,
-	isTaskDisconnected,
 	STATUS_LABELS,
 	type TaskStatus,
 } from "../shared/types";
@@ -25,15 +24,10 @@ import {
 	BOARD_FINISHED_WINDOW_MS,
 	BOARD_MAX_ROWS,
 	renderCoordinatorBoard,
-	type BoardActivity,
 	type BoardRow,
 	type BoardSnapshot,
 } from "../shared/coordinator-board";
 import * as data from "./data";
-import { taskTerminalBackendIdentity } from "./task-terminal-backend";
-import * as pty from "./pty-server";
-import { tmux, ALL_PANE_ACTIVITY_FORMAT } from "./tmux";
-import { parseDev3SessionName } from "./tmux/session-names";
 import { createLogger } from "./logger";
 
 const log = createLogger("coordinator-board");
@@ -62,61 +56,16 @@ function columnOf(task: Task, project: Project): string {
 }
 
 /**
- * Newest tmux activity per task, keyed by the 8-char id its session name
- * carries. One `list-panes -a` per socket; a task's windows may report several
- * times, and the freshest one is the task's.
+ * When the task entered the column it is in now. `statusEnteredAt` is the
+ * precise answer; `movedAt` covers tasks that predate it and also carries
+ * custom-column moves, and `createdAt` is the floor for the oldest tasks. Same
+ * fallback chain as `accumulateStatusDuration` and `dev3 doctor-worktrees`.
  */
-async function tmuxActivityByShortId(tasks: Task[]): Promise<Map<string, number>> {
-	const sockets = new Set<string>();
-	for (const task of tasks) sockets.add(pty.getSessionSocket(task.id));
-
-	const newest = new Map<string, number>();
-	for (const socket of sockets) {
-		let rows: Array<{ windowActivity: number; sessionName: string }>;
-		try {
-			rows = await tmux.listPanes(ALL_PANE_ACTIVITY_FORMAT, { scope: "server", socket });
-		} catch (err) {
-			// A dead or absent server is not an error here — those tasks simply
-			// report no session. It must never read as "quiet".
-			log.debug("could not list panes for the board snapshot", { socket, error: String(err) });
-			continue;
-		}
-		for (const row of rows) {
-			const parsed = parseDev3SessionName(row.sessionName);
-			if (!parsed || parsed.kind !== "task") continue;
-			if (!Number.isFinite(row.windowActivity) || row.windowActivity <= 0) continue;
-			const at = row.windowActivity * 1000;
-			const previous = newest.get(parsed.shortId);
-			if (previous === undefined || at > previous) newest.set(parsed.shortId, at);
-		}
-	}
-	return newest;
+function columnSince(task: Task): string | null {
+	return task.statusEnteredAt ?? task.movedAt ?? task.createdAt ?? null;
 }
 
-function activityOf(task: Task, tmuxActivity: Map<string, number>, nowMs: number): BoardActivity {
-	if (task.draft) return { kind: "no-session", reason: "draft" };
-	if (task.hibernated) return { kind: "no-session", reason: "hibernated" };
-
-	if (taskTerminalBackendIdentity(task) === "native") {
-		// Peek only learns a native pane's time by capturing it, which is far too
-		// expensive for every task on every turn. Say so rather than guess.
-		return { kind: "unknown" };
-	}
-
-	const at = tmuxActivity.get(task.id.slice(0, 8));
-	if (at === undefined) {
-		return { kind: "no-session", reason: isTaskDisconnected(task) ? "disconnected" : "not running" };
-	}
-	return { kind: "age", ms: Math.max(0, nowMs - at), granularity: "window" };
-}
-
-function toRow(
-	task: Task,
-	project: Project,
-	sharedSeqs: Set<number>,
-	tmuxActivity: Map<string, number>,
-	nowMs: number,
-): BoardRow {
+function toRow(task: Task, project: Project, sharedSeqs: Set<number>): BoardRow {
 	return {
 		taskId: task.id,
 		seq: task.seq,
@@ -126,7 +75,7 @@ function toRow(
 		column: columnOf(task, project),
 		hibernated: task.hibernated === true,
 		draft: task.draft === true,
-		activity: activityOf(task, tmuxActivity, nowMs),
+		columnSince: columnSince(task),
 		finishedAt: isFinished(task.status as TaskStatus) ? finishedAt(task) : null,
 	};
 }
@@ -156,7 +105,7 @@ export async function coordinatorBoardEpilogue(task: Task): Promise<string> {
 		const project = await data.getProject(task.projectId);
 		const tasks = await data.loadTasks(project);
 		const now = new Date();
-		return renderCoordinatorBoard(await collectCoordinatorBoard(project, tasks, now), now);
+		return renderCoordinatorBoard(collectCoordinatorBoard(project, tasks, now), now);
 	} catch (err) {
 		log.warn("could not build the coordinator board trailer", {
 			taskId: task.id.slice(0, 8),
@@ -170,11 +119,7 @@ export async function coordinatorBoardEpilogue(task: Task): Promise<string> {
  * Build the snapshot for a coordinator's own board. Never throws: the caller is
  * standing between an agent and a message it is owed.
  */
-export async function collectCoordinatorBoard(
-	project: Project,
-	tasks: Task[],
-	now: Date,
-): Promise<BoardSnapshot> {
+export function collectCoordinatorBoard(project: Project, tasks: Task[], now: Date): BoardSnapshot {
 	const nowMs = now.getTime();
 
 	const live = tasks
@@ -185,9 +130,8 @@ export async function collectCoordinatorBoard(
 		.filter((t) => nowMs - Date.parse(finishedAt(t)) <= BOARD_FINISHED_WINDOW_MS)
 		.sort((a, b) => Date.parse(finishedAt(b)) - Date.parse(finishedAt(a)));
 
-	const tmuxActivity = await tmuxActivityByShortId(live);
 	const sharedSeqs = sharedSeqsOf(live);
-	const row = (task: Task) => toRow(task, project, sharedSeqs, tmuxActivity, nowMs);
+	const row = (task: Task) => toRow(task, project, sharedSeqs);
 
 	// Live rows are what the coordinator manages, so the cap eats the finished
 	// tail first and reports honestly how much it dropped.
