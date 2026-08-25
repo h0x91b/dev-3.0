@@ -15,6 +15,7 @@ export const CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING = 13;
 export const CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND = 14;
 export const CLI_EXIT_CODE_UPDATE_REFUSED = 15;
 export const CLI_EXIT_CODE_INSTANCE_NOT_FOUND = 16;
+export const CLI_EXIT_CODE_NO_PROJECT_FOR_CWD = 17;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -76,7 +77,7 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		constant: "CLI_EXIT_CODE_LAUNCH_DECLINED",
 		code: CLI_EXIT_CODE_LAUNCH_DECLINED,
 		description:
-			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) and the user declined the approval dialog. Nothing was launched and the target task stays where it was.",
+			"An agent asked to start another task (`dev3 task move --task <other> --status in-progress`, or `dev3 task create --scratch --run`) and the user declined the approval dialog, or the user answered no to `dev3 import`'s confirmation. Nothing was launched and the target task stays where it was.",
 	},
 	{
 		constant: "CLI_EXIT_CODE_DELIVERY_UNCONFIRMED",
@@ -113,5 +114,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_INSTANCE_NOT_FOUND,
 		description:
 			"`--instance <selector>` was well-formed but no running instance answers to it — or more than one does (a `seq:<N>` shared by variants, or a `task:` prefix matching two guests). The message lists what IS running. Distinct from exit 2, which means no instance is reachable at all, and from exit 3, which means the selector itself was misspelled. The command never falls back to another instance.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_NO_PROJECT_FOR_CWD",
+		code: CLI_EXIT_CODE_NO_PROJECT_FOR_CWD,
+		description:
+			"`dev3 import` was run in a directory no registered dev3 project owns. A session can only be imported into the project that owns the directory it ran in, so the project has to be added to the board first — there is deliberately no flag to import somewhere else. The message names the directory checked and lists the projects that ARE registered.",
 	},
 ] as const;

@@ -763,21 +763,30 @@ export function readProjectDirect(projectId: string): ProjectDirect | null {
 	return match ? { ...match, name: match.name ?? "" } : null;
 }
 
+/** Every registered project (git + virtual), read directly from data files. */
+export function listProjectsDirect(): ProjectDirect[] {
+	return readAllProjectsRaw().map((p) => ({ ...p, name: p.name ?? "" }));
+}
+
+/** Read a project's whole task list directly from data files (no socket needed). */
+export function readTasksDirect(projectId: string): Array<Record<string, unknown>> {
+	try {
+		const project = readAllProjectsRaw().find((p) => p.id === projectId);
+		if (!project) return [];
+
+		const tasksFile = `${DEV3_HOME}/data/${projectStorageKey(project.path)}/tasks.json`;
+		if (!existsSync(tasksFile)) return [];
+
+		const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<Record<string, unknown>>;
+		return Array.isArray(tasks) ? tasks : [];
+	} catch {
+		return [];
+	}
+}
+
 /**
  * Read task info directly from data files (no socket needed).
  */
 export function readTaskDirect(projectId: string, taskId: string): Record<string, unknown> | null {
-	try {
-		const project = readAllProjectsRaw().find((p) => p.id === projectId);
-		if (!project) return null;
-
-		const slug = projectStorageKey(project.path);
-		const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
-		if (!existsSync(tasksFile)) return null;
-
-		const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<Record<string, unknown>>;
-		return tasks.find((t) => t.id === taskId || (t.id as string).startsWith(taskId)) || null;
-	} catch {
-		return null;
-	}
+	return readTasksDirect(projectId).find((t) => t.id === taskId || (t.id as string).startsWith(taskId)) || null;
 }

@@ -49,6 +49,7 @@ export {
 } from "./lifecycle/activities";
 export {
 	createScratchTask,
+	createTask,
 	deleteTask,
 	handleBellAutoStatus,
 	isTaskInProgress,

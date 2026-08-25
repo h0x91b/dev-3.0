@@ -18,7 +18,7 @@ import type { AgentLaunchChoice } from "../shared/types";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import { loadSpacesFile } from "./spaces-data";
-import { createScratchTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
+import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
@@ -683,6 +683,27 @@ const handlers: Record<string, Handler> = {
 		}
 
 		const project = await data.getProject(projectId);
+		const importSession = params.importSession as { sessionId?: string; originCwd?: string } | undefined;
+		// `dev3 import`: re-host a session that ran outside dev3. It needs the
+		// worktree and the `--resume` launch, so it goes through the lifecycle
+		// path instead of parking a card in To Do.
+		if (importSession) {
+			if (!importSession.sessionId || !importSession.originCwd) {
+				throw new Error("importSession requires both sessionId and originCwd");
+			}
+			const imported = await createTask({
+				projectId: project.id,
+				title,
+				description: description || title,
+				status: "in-progress",
+				existingBranch: (params.existingBranch as string | undefined)?.trim() || undefined,
+				importSession: { sessionId: importSession.sessionId, originCwd: importSession.originCwd },
+				...(priority ? { priority } : {}),
+			});
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: imported });
+			return imported;
+		}
+
 		// Use description as the task body if provided, otherwise fall back to title.
 		// Only pass the extras arg when a priority was given (keeps the common 3-arg call).
 		const task = priority

@@ -17,6 +17,7 @@ import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
 import { handleGui } from "./commands/gui";
 import { handleConversations } from "./commands/conversations";
+import { handleImport } from "./commands/import";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleMessage } from "./commands/message";
 import { handlePeek } from "./commands/peek";
@@ -75,6 +76,7 @@ Commands:
   dev3 conversations search "<query>" [--limit N] [--all-statuses] [--json]  Search past task conversations (completed/cancelled)
   dev3 conversations dump [--latest] [--stdout]  Parse this task's agent transcripts into JSON
   dev3 conversations handoff [--for claude|codex]  Retell this conversation as one message for another agent
+  dev3 import [--session <id>] [--yes]  Put a session that ran outside dev3 on the board (run it where the session ran)
   dev3 dev-server start [task-id]       Start a task dev server
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server
@@ -319,6 +321,10 @@ async function main(): Promise<void> {
 				return await handleShowArtifact(rawArgs.slice(1), socketPath, context);
 			case "artifact-template":
 				return await handleArtifactTemplate(args, socketPath, context);
+			case "import":
+				// The cwd is the discovery key, so the raw tokens are re-parsed here
+				// (there is no subcommand, and -y is a short flag parseArgs skips).
+				return await handleImport(rawArgs.slice(1), socketPath);
 			case "peek":
 				return await handlePeek(args, socketPath, context);
 			case "pane":
