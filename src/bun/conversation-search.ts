@@ -46,6 +46,14 @@ interface TranscriptLocator {
 	 * gemini aliased dirs). Returns null for path-keyed stores (claude).
 	 */
 	buildIndex?(home: string): WorktreeIndex | null;
+	/**
+	 * cwd → files for EVERY cwd this store knows, for callers that scope by a
+	 * project root instead of one exact worktree (session import). Deliberately
+	 * separate from `buildIndex`: Claude's store is path-keyed, so search resolves
+	 * it in O(1), and only this scanning path pays to learn which cwd each
+	 * transcript belongs to. Required, so a new locator cannot silently skip it.
+	 */
+	buildCwdIndex(home: string): WorktreeIndex | null;
 	/** Transcript files for one worktree path (may use the prebuilt index). */
 	filesForWorktree(worktreePath: string, home: string, index: WorktreeIndex | null): string[];
 	/** Parse a transcript file into searchable message texts (one unit per message). */
@@ -72,6 +80,27 @@ function readFileSafe(path: string): string | null {
 }
 
 /** Read just the first line of a (possibly large) file without loading it whole. */
+/** Lines from the file's leading `HEADER_READ_BYTES`. The last one may be cut off. */
+function readPrefixLines(path: string): string[] {
+	let fd: number | null = null;
+	try {
+		fd = openSync(path, "r");
+		const buf = Buffer.alloc(HEADER_READ_BYTES);
+		const bytes = readSync(fd, buf, 0, HEADER_READ_BYTES, 0);
+		return buf.toString("utf-8", 0, bytes).split("\n");
+	} catch {
+		return [];
+	} finally {
+		if (fd !== null) {
+			try {
+				closeSync(fd);
+			} catch {
+				/* ignore */
+			}
+		}
+	}
+}
+
 function readFirstLine(path: string): string | null {
 	let fd: number | null = null;
 	try {
@@ -109,8 +138,50 @@ function textFromBlocks(content: unknown, wanted: (type: string) => boolean): st
 
 // ---- claude: path-keyed under ~/.claude/projects/<encoded-cwd> ----
 
+/**
+ * The cwd a Claude transcript belongs to, read from its CONTENT.
+ *
+ * The directory name cannot answer this: `claudeEncodePath` maps both `/` and
+ * `.` to `-`, so it is lossy and does not invert. Records carry `cwd`, but the
+ * first line need not — a transcript can open with `summary` or `ai-title` —
+ * so scan the prefix rather than just line one.
+ */
+function claudeCwdOf(path: string): string | null {
+	for (const line of readPrefixLines(path)) {
+		if (!line.includes('"cwd"')) continue;
+		try {
+			const cwd = (JSON.parse(line) as Record<string, unknown>).cwd;
+			if (typeof cwd === "string" && cwd) return cwd;
+		} catch {
+			// A truncated final line in the prefix window is expected; keep scanning.
+		}
+	}
+	return null;
+}
+
 const claudeLocator: TranscriptLocator = {
 	kind: "claude",
+	buildCwdIndex(home) {
+		const root = `${home}/.claude/projects`;
+		if (!existsSync(root)) return null;
+		const index: WorktreeIndex = new Map();
+		let dirs: string[];
+		try {
+			dirs = readdirSync(root);
+		} catch {
+			return null;
+		}
+		for (const dir of dirs) {
+			for (const file of jsonlFilesIn(`${root}/${dir}`)) {
+				const cwd = claudeCwdOf(file);
+				if (!cwd) continue;
+				const list = index.get(cwd);
+				if (list) list.push(file);
+				else index.set(cwd, [file]);
+			}
+		}
+		return index;
+	},
 	filesForWorktree(worktreePath, home) {
 		return jsonlFilesIn(`${home}/.claude/projects/${claudeEncodePath(worktreePath)}`);
 	},
@@ -189,6 +260,10 @@ const codexLocator: TranscriptLocator = {
 		}
 		return scanned ? index : null;
 	},
+	/** Codex's index is already keyed by every cwd it saw, so the scan is the same. */
+	buildCwdIndex(home) {
+		return codexLocator.buildIndex?.(home) ?? null;
+	},
 	filesForWorktree(worktreePath, _home, index) {
 		return index?.get(worktreePath) ?? [];
 	},
@@ -246,6 +321,10 @@ const geminiLocator: TranscriptLocator = {
 		}
 		return index;
 	},
+	/** Gemini's index maps `.project_root` → chats, which is already cwd-keyed. */
+	buildCwdIndex(home) {
+		return geminiLocator.buildIndex?.(home) ?? null;
+	},
 	filesForWorktree(worktreePath, _home, index) {
 		return index?.get(worktreePath) ?? [];
 	},
@@ -293,6 +372,47 @@ export function transcriptFilesForWorktree(worktreePath: string, home: string = 
 		const index = locator.buildIndex ? locator.buildIndex(home) : null;
 		for (const path of locator.filesForWorktree(worktreePath, home, index)) {
 			found.push({ kind: locator.kind, path });
+		}
+	}
+	return found;
+}
+
+/** One transcript found under a project root, with the cwd it actually ran in. */
+export interface TranscriptUnderPath extends TranscriptFile {
+	cwd: string;
+}
+
+/**
+ * Is `child` the same path as `parent`, or inside it?
+ *
+ * Compares on a path boundary, never as a bare string prefix: a project at
+ * `…/playground/dev-3.0` must not claim a session that ran in
+ * `…/playground/dev-3.0-scratch`, and must not be matched by its own parent
+ * `…/playground`. Trailing slashes on either side are noise.
+ */
+export function isPathInside(child: string, parent: string): boolean {
+	const c = child.replace(/\/+$/, "");
+	const p = parent.replace(/\/+$/, "");
+	return c === p || c.startsWith(`${p}/`);
+}
+
+/**
+ * Every parseable transcript whose recorded cwd is at or below `rootPath`.
+ *
+ * This is the scoping primitive for session import: a session belongs to the
+ * project that owns the directory it ran in, and nothing else. Unlike
+ * `transcriptFilesForWorktree` it spans a whole project (including
+ * subdirectories a session may have been started from), so it pays for a full
+ * cwd index of each store.
+ */
+export function transcriptsUnderPath(rootPath: string, home: string = homedir()): TranscriptUnderPath[] {
+	const found: TranscriptUnderPath[] = [];
+	for (const locator of LOCATORS) {
+		const index = locator.buildCwdIndex(home);
+		if (!index) continue;
+		for (const [cwd, paths] of index) {
+			if (!isPathInside(cwd, rootPath)) continue;
+			for (const path of paths) found.push({ kind: locator.kind, path, cwd });
 		}
 	}
 	return found;
