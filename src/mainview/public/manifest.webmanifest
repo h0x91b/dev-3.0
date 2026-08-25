@@ -1,0 +1,13 @@
+{
+  "name": "dev-3.0",
+  "short_name": "dev-3.0",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "background_color": "#0f1218",
+  "theme_color": "#0f1218",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

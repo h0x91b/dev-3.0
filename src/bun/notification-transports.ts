@@ -24,6 +24,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn } from "./spawn";
+import { loadOrCreateVapidKeys, sendNotification, subscriptionIsGone } from "./web-push";
+import { loadSubscriptions, removeSubscription } from "./web-push-store";
 
 const log = createLogger("notification-transports");
 
@@ -175,16 +177,49 @@ export async function deliverToTransports(event: NotificationEvent, config: Noti
 	);
 }
 
+/**
+ * Registered devices. Unlike the configured transports these are not a
+ * destination the user typed — the device registered itself — so there is no
+ * config file to be absent: no devices means nothing is sent.
+ */
+export async function deliverToPushDevices(event: NotificationEvent): Promise<void> {
+	const subs = loadSubscriptions();
+	if (subs.length === 0) return;
+	const keys = await loadOrCreateVapidKeys();
+	const payload = JSON.stringify(event);
+	await Promise.all(
+		subs.map(async (sub) => {
+			try {
+				const res = await sendNotification(sub, payload, keys);
+				// A device that dropped its subscription would otherwise be retried
+				// forever; the push service tells us so with 404/410.
+				if (subscriptionIsGone(res.statusCode)) {
+					removeSubscription(sub.endpoint);
+					log.info("Pruned a subscription the push service reported gone", { host: new URL(sub.endpoint).host });
+				} else if (res.statusCode >= 400) {
+					log.warn("Push rejected", { host: new URL(sub.endpoint).host, status: res.statusCode, body: res.body });
+				}
+			} catch (err) {
+				log.warn("Push failed", { error: String(err) });
+			}
+		}),
+	);
+}
+
 /** Fire and forget; never throws. Config is re-read per event so an edit applies
  *  without a relaunch — this fires at human speed, not in a hot path. */
 export function outboundNotify(event: NotificationEvent): void {
 	void (async () => {
 		try {
 			const config = loadNotificationConfig();
-			if (!config) return;
-			await deliverToTransports(event, config);
+			if (config) await deliverToTransports(event, config);
 		} catch (err) {
 			log.warn("Outbound notify failed", { error: String(err) });
+		}
+		try {
+			await deliverToPushDevices(event);
+		} catch (err) {
+			log.warn("Push fan-out failed", { error: String(err) });
 		}
 	})();
 }

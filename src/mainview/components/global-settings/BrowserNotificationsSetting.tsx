@@ -6,6 +6,7 @@ import {
 	setBrowserNotificationsEnabled,
 	webNotificationsSupported,
 } from "../../utils/webNotification";
+import { isSubscribed, pushReadiness, subscribeToPush, unsubscribeFromPush } from "../../utils/webPush";
 
 type Permission = "default" | "granted" | "denied" | "unsupported";
 
@@ -23,6 +24,14 @@ function readPermission(): Permission {
 export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 	const [permission, setPermission] = useState<Permission>(() => readPermission());
 	const [muted, setMuted] = useState<boolean>(() => !browserNotificationsEnabled());
+	const [pushed, setPushed] = useState(false);
+	const [pushBusy, setPushBusy] = useState(false);
+	const [pushError, setPushError] = useState<string | null>(null);
+	const readiness = pushReadiness();
+
+	useEffect(() => {
+		void isSubscribed().then(setPushed);
+	}, []);
 
 	// Re-read on focus — the user may flip the browser's site permission elsewhere.
 	useEffect(() => {
@@ -44,6 +53,24 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 			}
 		} catch {
 			setPermission(readPermission());
+		}
+	}
+
+	async function togglePush() {
+		setPushBusy(true);
+		setPushError(null);
+		try {
+			if (pushed) {
+				await unsubscribeFromPush();
+				setPushed(false);
+			} else {
+				await subscribeToPush();
+				setPushed(true);
+			}
+		} catch (err) {
+			setPushError(err instanceof Error ? err.message : String(err));
+		} finally {
+			setPushBusy(false);
 		}
 	}
 
@@ -99,6 +126,33 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 						{!muted ? t("settings.on") : t("settings.off")}
 					</span>
 				</label>
+			)}
+
+			{permission === "granted" && (
+				<div className="mt-4 pt-4 border-t border-edge">
+					<p className="block text-fg text-sm font-semibold mb-2">{t("settings.pushNotifications")}</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.pushNotificationsDesc")}</p>
+					{readiness.ready ? (
+						<>
+							<button
+								onClick={() => void togglePush()}
+								disabled={pushBusy}
+								className="px-4 py-2 rounded-xl border border-edge bg-raised text-fg text-sm hover:border-accent/40 transition-colors disabled:opacity-50"
+							>
+								{pushed ? t("settings.pushDisable") : t("settings.pushEnable")}
+							</button>
+							{pushError && <p className="text-danger text-xs mt-2">{pushError}</p>}
+						</>
+					) : (
+						<p className="text-fg-muted text-xs">
+							{readiness.reason === "needs-install"
+								? t("settings.pushNeedsInstall")
+								: readiness.reason === "insecure"
+									? t("settings.pushInsecure")
+									: t("settings.pushUnsupported")}
+						</p>
+					)}
+				</div>
 			)}
 		</div>
 	);

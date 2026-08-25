@@ -114,6 +114,78 @@ Under systemd the log goes to the journal: `journalctl --user -u dev3-remote.ser
 `--static-code=<value>` replaces the rotating token with a fixed one. **Local development
 only** — never expose a static code on the public internet.
 
+## Notifications that reach you when nothing is open
+
+The desktop banner needs the app in front of you and the in-browser notification needs a
+tab that is open and connected. Neither survives a shut laptop, which is the moment a
+blocked agent costs the most. Two destinations do.
+
+### A command or webhook
+
+Create `~/.dev3.0/notifications.json`. Absent or malformed, nothing is sent — dev-3.0
+never picks a destination for you.
+
+```json
+{
+  "transports": [
+    { "kind": "exec", "command": ["/Users/you/.dev3.0/notify-hook.sh"] },
+    { "kind": "webhook", "url": "https://your-host/notify", "headers": { "authorization": "Bearer …" } }
+  ],
+  "includeContent": true,
+  "levels": ["info", "error"]
+}
+```
+
+| Key | Default | Meaning |
+|---|---|---|
+| `transports` | — | `exec` runs a command with the event as JSON on **stdin**; `webhook` POSTs the same JSON |
+| `includeContent` | `true` | Include task titles and project names. Also settable per transport |
+| `levels` | all | Allowlist of `info` / `success` / `error` |
+| `timeoutMs` | `5000` | Per transport |
+
+`chmod 600` it if a transport carries a token. Commands are argv-only and the payload
+arrives on stdin, so a task title can never reach a shell. A hook that hangs or fails is
+logged and dropped; it cannot fail the task transition that triggered it.
+
+Set `"includeContent": false` on a transport whose operator you would not show a client's
+repo name to — a public ntfy topic is readable by anyone who guesses its name. It leaves
+the task ids, so the hook can still link back.
+
+### Web Push, including an iPhone
+
+Open dev-3.0 in a browser over HTTPS and enable it under **Settings → Browser
+notifications → Push to this device**. The payload is encrypted end to end (RFC 8291), so
+Apple's and Google's push services relay it without being able to read it, and dev-3.0
+needs no account with either.
+
+Two requirements, and both fail quietly if you miss them:
+
+1. **A valid certificate.** A plain `http://` LAN address is not a secure context and
+   cannot register a service worker at all.
+2. **On iPhone and iPad, install it first** — Share → Add to Home Screen, then open it
+   from that icon. A Safari tab has no notification API whatsoever, so the button will
+   tell you so rather than appearing to work.
+
+**Use an origin that does not change.** A quick tunnel gets a new
+`*.trycloudflare.com` hostname on every `cloudflared` process, and a subscription is
+bound to its origin: after a restart the old registration keeps firing notifications for
+an address that no longer loads, and you have to install again. Any of these give you a
+stable one:
+
+```sh
+# Tailscale — free, private to your tailnet, no domain needed
+tailscale serve --bg --https=8443 http://127.0.0.1:<port>
+
+# A named Cloudflare tunnel — needs a Cloudflare account and your own domain
+cloudflared tunnel create dev3
+cloudflared tunnel route dns dev3 dev3.yourdomain.com
+cloudflared tunnel run dev3
+
+# or any reverse proxy you already run, terminating TLS in front of dev3 remote
+```
+
+Pass `--port` as well, so the port is stable too: the origin is scheme, host **and** port.
+
 ## Security notes
 
 - The rotating token is the only credential; treat a live tunnel URL as a live session.

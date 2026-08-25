@@ -12,6 +12,9 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Web Push on iOS is granted only to a Home Screen install, and only a
+         standalone display mode counts as installed. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>dev-3.0</title>
     <style>
       /* Pre-React boot fallback. Inline + theme-neutral on purpose: it must be

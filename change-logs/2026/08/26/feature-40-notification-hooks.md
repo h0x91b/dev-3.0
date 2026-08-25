@@ -1,3 +1,0 @@
-Short: Send task notifications anywhere
-
-Task notifications can now be handed to a command or a webhook you configure in `~/.dev3.0/notifications.json`, so an agent that gets blocked can reach you when the app is closed and no browser tab is open — the desktop banner and the in-browser notification both need a live listener, and neither survives a shut laptop. dev-3.0 never picks the destination: an install without that file sends nothing, anywhere. Task titles and project names are included by default so a notification is worth triaging, and can be reduced to ids per destination for a channel you do not control.
