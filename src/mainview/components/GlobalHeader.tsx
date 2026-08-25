@@ -544,13 +544,16 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		<div className="relative z-30 flex items-center justify-between px-2.5 py-2.5 border-b border-edge flex-shrink-0 glass-header" data-collapse-on-compose>
 			{/* Breadcrumbs */}
 			<nav className="flex items-center gap-2 text-sm min-w-0" aria-label={t("nav.appHeader")}>
-				{/* Back / forward navigation — segmented history control (Safari toolbar style) */}
+				{/* Back / forward navigation — segmented history control (Safari toolbar style).
+					    Both halves centre their glyph explicitly: on a coarse pointer the 24px
+					    touch floor grows the box past its padding, and content that is not
+					    centred then parks at the left edge. */}
 				<div className="flex items-stretch flex-shrink-0 -ml-1.5 rounded-md border border-edge bg-raised overflow-hidden">
 					<Tooltip content={t("header.navBack")} detail={t("ttip.header.navBack")}>
 						<button
 							onClick={goBack}
 							disabled={!canGoBack}
-							className={`header-anim px-1.5 py-[5px] transition-colors ${
+							className={`header-anim px-1.5 py-[5px] inline-flex items-center justify-center transition-colors ${
 								canGoBack
 									? "text-fg-3 hover:text-fg hover:bg-elevated"
 									: "text-fg-muted/40 cursor-default"
@@ -565,7 +568,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 						<button
 							onClick={goForward}
 							disabled={!canGoForward}
-							className={`header-anim px-1.5 py-[5px] transition-colors ${
+							className={`header-anim px-1.5 py-[5px] inline-flex items-center justify-center transition-colors ${
 								canGoForward
 									? "text-fg-3 hover:text-fg hover:bg-elevated"
 									: "text-fg-muted/40 cursor-default"
@@ -619,7 +622,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 											onClick={() => setShowProjectDropdown((v) => !v)}
 											aria-haspopup="menu"
 											aria-expanded={showProjectDropdown}
-											className={`header-anim px-1.5 py-[3px] flex items-center transition-colors ${
+											className={`header-anim px-1.5 py-[3px] flex items-center justify-center transition-colors ${
 												showProjectDropdown ? "text-fg bg-elevated" : "text-fg-3 hover:text-fg hover:bg-elevated"
 											}`}
 											aria-label={t("header.switchProject")}

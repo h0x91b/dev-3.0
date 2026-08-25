@@ -38,11 +38,13 @@ function svgBase(className?: string, strokeWidth = 1.7): SVGProps<SVGSVGElement>
 }
 
 // 01 — Back: the chevron lunges left, a ghost echo trails off.
+// Path spans x 8.75-15.25, so its box is centred on the 24×24 viewBox — the old
+// 8-14.5 leaned a stroke's width left of centre inside the button.
 export function BackIcon({ className }: HeaderIconProps) {
 	return (
 		<svg {...svgBase(className, 2)}>
-			<path d="M14.5 5.5 8 12l6.5 6.5" className="hdr hdr-back" />
-			<path d="M14.5 5.5 8 12l6.5 6.5" className="hdr hdr-back-ghost" opacity="0" />
+			<path d="M15.25 5.5 8.75 12l6.5 6.5" className="hdr hdr-back" />
+			<path d="M15.25 5.5 8.75 12l6.5 6.5" className="hdr hdr-back-ghost" opacity="0" />
 		</svg>
 	);
 }
@@ -51,8 +53,8 @@ export function BackIcon({ className }: HeaderIconProps) {
 export function ForwardIcon({ className }: HeaderIconProps) {
 	return (
 		<svg {...svgBase(className, 2)}>
-			<path d="M9.5 5.5 16 12l-6.5 6.5" className="hdr hdr-fwd" />
-			<path d="M9.5 5.5 16 12l-6.5 6.5" className="hdr hdr-fwd-ghost" opacity="0" />
+			<path d="M8.75 5.5 15.25 12l-6.5 6.5" className="hdr hdr-fwd" />
+			<path d="M8.75 5.5 15.25 12l-6.5 6.5" className="hdr hdr-fwd-ghost" opacity="0" />
 		</svg>
 	);
 }

@@ -60,7 +60,7 @@ function TaskBreadcrumbBadge({ task, groupMembers, agents, isFullPage, navigate,
 					aria-expanded={open}
 					aria-label={t("header.switchVariant")}
 					data-testid="variant-breadcrumb-toggle"
-					className={`header-anim px-1 py-[3px] flex items-center transition-colors ${
+					className={`header-anim px-1 py-[3px] flex items-center justify-center transition-colors ${
 						open ? "text-fg bg-elevated" : "text-fg-3 hover:text-fg hover:bg-elevated"
 					}`}
 				>
