@@ -1,5 +1,6 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "./conversation-search-core";
+import type { ImportableSession } from "./conversation-model";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
@@ -4258,6 +4259,15 @@ export type AppRPCSchema = {
 				params: { projectId: string; query: string; currentTaskId?: string | null; limit?: number; allStatuses?: boolean };
 				response: ConversationMatch[];
 			};
+			/**
+			 * Agent sessions that ran under this project's directory, outside dev3,
+			 * and could be imported as tasks. Newest first; empty for a virtual
+			 * project, which has no repo to scope to.
+			 */
+			listImportableSessions: {
+				params: { projectId: string };
+				response: ImportableSession[];
+			};
 			createTask: {
 				/**
 				 * Optional board title. Set when the description leads with a built-in
@@ -4266,7 +4276,7 @@ export type AppRPCSchema = {
 				 * `renameTask`'s customTitle: this does NOT mark the title user-edited,
 				 * so an agent may still rename it.
 				 */
-				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType };
+				params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; importSession?: { sessionId: string; originCwd: string } };
 				response: Task;
 			};
 			hibernateTask: {

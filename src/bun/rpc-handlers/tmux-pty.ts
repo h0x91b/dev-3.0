@@ -631,7 +631,7 @@ export async function launchTaskPty(
 	configId?: string | null,
 	runSetup = false,
 	resume = false,
-	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string },
+	opts?: { sessionId?: string; skipSessionPersist?: boolean; branchName?: string; sessionOriginCwd?: string },
 ): Promise<void> {
 	const sessionId = opts?.sessionId;
 	const skipSessionPersist = opts?.skipSessionPersist ?? false;
@@ -729,6 +729,9 @@ export async function launchTaskPty(
 				configId: configId ?? task.configId,
 				accountId: task.accountId,
 				agentFamily: resolvedAgentFamily,
+				// Only an imported session has one, and only it needs one: its
+				// transcript never moves into this worktree's store.
+				...(opts?.sessionOriginCwd ? { sessionOriginCwd: opts.sessionOriginCwd } : {}),
 			};
 			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry] };

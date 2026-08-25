@@ -2,8 +2,10 @@ import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { isPathInside, transcriptsUnderPath } from "./conversation-search";
 import { parseTranscriptFile } from "./conversation-parse";
-import type { ConversationSource } from "../shared/conversation-model";
+import type { ConversationSource, ImportableSession } from "../shared/conversation-model";
 import { DEV3_HOME } from "./paths";
+
+export type { ImportableSession };
 
 /**
  * Finding agent sessions that ran outside dev3 so they can be imported as tasks.
@@ -19,24 +21,6 @@ import { DEV3_HOME } from "./paths";
 
 /** Stores dev3 can turn into a described session. Gemini is located but not parsed. */
 const IMPORTABLE_KINDS = new Set<string>(["claude", "codex"]);
-
-export interface ImportableSession {
-	source: ConversationSource;
-	/** What `--resume` takes. Sessions without one cannot be re-hosted. */
-	sessionId: string;
-	/** Absolute path of the native transcript. */
-	path: string;
-	/** The directory the session actually ran in — at or below the project root. */
-	cwd: string;
-	/** Agent-generated title when the format records one (Claude's `ai-title`). */
-	title: string | null;
-	gitBranch: string | null;
-	startedAt: string | null;
-	endedAt: string | null;
-	/** Transcript mtime — the ordering key, and "when I last touched this". */
-	mtimeMs: number;
-	turns: number;
-}
 
 export interface ListImportableOptions {
 	home?: string;

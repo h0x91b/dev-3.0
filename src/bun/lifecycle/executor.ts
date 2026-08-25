@@ -310,13 +310,20 @@ async function prepareTask(
 			"launchTaskPty",
 			() => launchTaskPty(
 				resolved,
-				taskWithLaunchDescription(task, effect.isReopen),
+				// An imported session already holds the conversation, so — like a
+				// reopen — it must not be handed the description as a fresh prompt.
+				taskWithLaunchDescription(task, effect.isReopen || Boolean(launch.importSession)),
 				worktree.worktreePath,
 				launch.agentId,
 				launch.configId,
 				true,
-				effect.isReopen,
-				{ branchName: worktree.branchName },
+				effect.isReopen || Boolean(launch.importSession),
+				{
+					branchName: worktree.branchName,
+					...(launch.importSession
+						? { sessionId: launch.importSession.sessionId, sessionOriginCwd: launch.importSession.originCwd }
+						: {}),
+				},
 			),
 		);
 		return worktree;

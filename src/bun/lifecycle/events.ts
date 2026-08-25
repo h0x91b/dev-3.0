@@ -53,6 +53,9 @@ export interface PreparationLaunch {
 	configId: string | null;
 	existingBranch?: string;
 	variantBranchName?: string;
+	/** Re-host a conversation that ran outside dev3: launch with `--resume` instead
+	 *  of a fresh session, and remember the directory whose store holds it. */
+	importSession?: { sessionId: string; originCwd: string };
 }
 
 export type LifecycleTaskPatch = Partial<Pick<

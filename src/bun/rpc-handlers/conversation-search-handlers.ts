@@ -4,6 +4,7 @@ import type { ConversationMatch } from "../../shared/conversation-search-core";
 import * as data from "../data";
 import { projectSlug } from "../git";
 import { searchConversations, type EngineTask } from "../conversation-search";
+import { listImportableSessions, type ImportableSession } from "../session-import";
 import { readAllTaskBlobs } from "../task-blobs";
 import { log } from "./shared";
 
@@ -56,6 +57,32 @@ async function searchConversationsHandler(params: {
 	return results;
 }
 
+/**
+ * Sessions that ran under this project's directory and could be imported.
+ *
+ * Scoped to the project that owns the session's cwd and nothing else — a
+ * cross-project import would fork a branch in the wrong repo. Session ids
+ * already spoken for by a task are hidden, so a session cannot be imported
+ * twice.
+ */
+async function listImportableSessionsHandler(params: {
+	projectId: string;
+}): Promise<ImportableSession[]> {
+	log.info("→ listImportableSessions", { projectId: params.projectId });
+	const project = await data.getProject(params.projectId);
+	if (project.kind === "virtual" || !project.path) {
+		log.info("← listImportableSessions skipped (no repo path)", { projectId: params.projectId });
+		return [];
+	}
+	const tasks = await data.loadTasks(project);
+	const claimed = tasks.flatMap((t) => (t.sessionState?.panes ?? []).map((p) => p.sessionId).filter((id): id is string => !!id));
+
+	const sessions = listImportableSessions(project.path, { excludeSessionIds: claimed });
+	log.info("← listImportableSessions done", { count: sessions.length });
+	return sessions;
+}
+
 export const conversationSearchHandlers = {
 	searchConversations: searchConversationsHandler,
+	listImportableSessions: listImportableSessionsHandler,
 };

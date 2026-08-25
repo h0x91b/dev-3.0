@@ -154,6 +154,30 @@ export interface ParsedConversation {
 	fidelity: ConversationFidelity;
 }
 
+/**
+ * One agent session that ran outside dev3 and could be imported as a task.
+ *
+ * A flat summary of a `ParsedConversation` plus where it lives on disk — enough
+ * to render a picker row and to re-host the conversation with `--resume`.
+ */
+export interface ImportableSession {
+	source: ConversationSource;
+	/** What `--resume` takes. Sessions without one cannot be re-hosted. */
+	sessionId: string;
+	/** Absolute path of the native transcript. */
+	path: string;
+	/** The directory the session actually ran in — at or below the project root. */
+	cwd: string;
+	/** Agent-generated title when the format records one (Claude's `ai-title`). */
+	title: string | null;
+	gitBranch: string | null;
+	startedAt: string | null;
+	endedAt: string | null;
+	/** Transcript mtime — the ordering key, and "when I last touched this". */
+	mtimeMs: number;
+	turns: number;
+}
+
 /** Every conversation event in file order, flattened back out of the turns. */
 export function conversationEvents(parsed: ParsedConversation): ConversationEvent[] {
 	return parsed.turns.flatMap((turn) => turn.events);

@@ -135,7 +135,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[];
 	return results;
 }
 
-async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType }): Promise<Task> {
+async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType; importSession?: { sessionId: string; originCwd: string } }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",
@@ -209,6 +209,7 @@ async function createTask(params: { projectId: string; description: string; titl
 					agentId: task.agentId,
 					configId: task.configId,
 					existingBranch: task.existingBranch ?? undefined,
+					...(params.importSession ? { importSession: params.importSession } : {}),
 				},
 				awaitCompletion: true,
 				publishColumn: false,
