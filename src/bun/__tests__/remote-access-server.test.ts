@@ -55,6 +55,7 @@ vi.mock("../jwt", () => ({
 
 vi.mock("../cloudflare-tunnel", () => ({
 	getTunnelUrl: vi.fn().mockReturnValue(null),
+	getTunnelState: vi.fn().mockReturnValue("idle"),
 }));
 
 vi.mock("../settings", () => ({
@@ -417,5 +418,38 @@ describe("closeUpstreamSocket (F5)", () => {
 	it("is a no-op for a missing upstream", () => {
 		expect(() => closeUpstreamSocket(undefined)).not.toThrow();
 		expect(() => closeUpstreamSocket(null)).not.toThrow();
+	});
+});
+
+// ================================================================
+// isRemoteAccessActive — the predicate the update countdown reads
+// ================================================================
+
+import { isRemoteAccessActive } from "../remote-access-server";
+import { getTunnelState } from "../cloudflare-tunnel";
+
+describe("isRemoteAccessActive", () => {
+	const mockedTunnelState = vi.mocked(getTunnelState);
+
+	it("is false with the tunnel idle and nobody attached", () => {
+		mockedTunnelState.mockReturnValue("idle");
+		expect(isRemoteAccessActive()).toBe(false);
+	});
+
+	// The LAN server always listens, so only a deliberate tunnel counts — and it counts
+	// from the moment the user asks for it, not once cloudflared finishes handshaking.
+	it("is true while the tunnel is still starting", () => {
+		mockedTunnelState.mockReturnValue("starting");
+		expect(isRemoteAccessActive()).toBe(true);
+	});
+
+	it("is true once the tunnel is connected", () => {
+		mockedTunnelState.mockReturnValue("connected");
+		expect(isRemoteAccessActive()).toBe(true);
+	});
+
+	it("is false when the tunnel failed", () => {
+		mockedTunnelState.mockReturnValue("failed");
+		expect(isRemoteAccessActive()).toBe(false);
 	});
 });

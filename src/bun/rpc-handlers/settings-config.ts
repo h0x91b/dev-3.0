@@ -306,14 +306,21 @@ async function applyUpdate(): Promise<{ restarting: boolean; message?: string }>
 
 /**
  * What the update popover needs to warn before restarting: whether this is a
- * headless box at all, and how many tasks are mid-flight right now.
+ * headless box at all, whether the app is being reached remotely, and how many
+ * tasks are mid-flight right now.
  *
- * It is a WARNING, not a gate. A restart does not kill an agent — tmux sessions are
- * detached and lifecycles are rehydrated at boot — so the button stays enabled; the
- * count just lets someone on a phone decide to wait a minute.
+ * The task count is a WARNING, not a gate. A restart does not kill an agent — tmux
+ * sessions are detached and lifecycles are rehydrated at boot — so the button stays
+ * enabled; the count just lets someone on a phone decide to wait a minute.
+ *
+ * `remoteActive` IS a gate, but only over the unattended countdown: nobody in a
+ * browser can see a timer running on the desktop, so it must not fire under them.
+ * The manual restart stays available in every state.
  */
-async function getUpdateRestartContext(): Promise<{ headless: boolean; tasksInProgress: number }> {
+async function getUpdateRestartContext(): Promise<{ headless: boolean; remoteActive: boolean; tasksInProgress: number }> {
 	const headless = isHeadless();
+	const { isRemoteAccessActive } = await import("../remote-access-server");
+	const remoteActive = isRemoteAccessActive();
 	let tasksInProgress = 0;
 	try {
 		const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
@@ -324,7 +331,7 @@ async function getUpdateRestartContext(): Promise<{ headless: boolean; tasksInPr
 	} catch (err) {
 		log.warn("getUpdateRestartContext: could not count in-progress tasks", { error: String(err) });
 	}
-	return { headless, tasksInProgress };
+	return { headless, remoteActive, tasksInProgress };
 }
 
 async function saveLastRoute({ route }: { route: string }): Promise<void> {

@@ -103,6 +103,9 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
+/** How often the update toast re-reads remote/headless state while it is on screen. */
+const RESTART_CONTEXT_POLL_MS = 5_000;
+
 function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive, helpDiscovered, tourRunning }: GlobalHeaderProps) {
 	const t = useT();
 	const highlightHelp = !helpDiscovered && !tourRunning && HELP_ATTRACTOR_SCREENS.has(route.screen);
@@ -120,7 +123,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const overflowMenuRef = useRef<HTMLDivElement>(null);
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
 	const [restarting, setRestarting] = useState(false);
-	const [restartContext, setRestartContext] = useState<{ headless: boolean; tasksInProgress: number } | null>(null);
+	const [restartContext, setRestartContext] = useState<{ headless: boolean; remoteActive: boolean; tasksInProgress: number } | null>(null);
 	const [showToast, setShowToast] = useState(false);
 	const [countdown, setCountdown] = useState(0);
 	const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -150,23 +153,39 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	// the version the same way the popover does or the two disagree.
 	const offeredBuild = parseDisplayVersion(updateVersion ?? "");
 
-	// Show toast with 5min countdown on every update announcement — the first one
-	// and each periodic reminder for a postponed, already-downloaded version.
+	// Someone is on the far end of this app right now — a connected browser, or the
+	// public tunnel up. The countdown below must not run in that state: the person a
+	// relaunch would cut off is exactly the one who cannot see the timer.
+	const remoteEngaged = restartContext?.remoteActive === true;
+
+	// Show the toast on every update announcement — the first one and each periodic
+	// reminder for a postponed, already-downloaded version. Keeping this separate from
+	// the timer below is what lets the timer stop and start on remote state without
+	// re-opening a toast the user postponed.
 	useEffect(() => {
-		if (updateVersion) {
-			setShowToast(true);
-			setCountdown(300);
-			countdownRef.current = setInterval(() => {
-				setCountdown((prev) => {
-					if (prev <= 1) return 0;
-					return prev - 1;
-				});
-			}, 1000);
-			return () => {
-				if (countdownRef.current) clearInterval(countdownRef.current);
-			};
-		}
+		if (updateVersion) setShowToast(true);
 	}, [updateVersion, updateAnnouncement]);
+
+	// The 5-minute countdown itself. It exists only while the toast is up AND remote
+	// access is off; flipping remote on mid-countdown stops it, flipping remote off
+	// starts a fresh five minutes rather than resuming a stale one — the user only
+	// just handed the machine back.
+	useEffect(() => {
+		if (!showToast || !updateVersion) return;
+		if (remoteEngaged) {
+			setCountdown(0);
+			return;
+		}
+		setCountdown(300);
+		const id = setInterval(() => {
+			setCountdown((prev) => (prev <= 1 ? 0 : prev - 1));
+		}, 1000);
+		countdownRef.current = id;
+		return () => {
+			clearInterval(id);
+			if (countdownRef.current === id) countdownRef.current = null;
+		};
+	}, [showToast, updateVersion, updateAnnouncement, remoteEngaged]);
 
 	// Auto-restart when countdown reaches 0.
 	//
@@ -182,21 +201,28 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	// as "this is a desktop", which is exactly how a phone tab could restart a remote
 	// server unattended. Not knowing means not restarting; the button still works.
 	useEffect(() => {
-		if (countdown === 0 && showToast && restartContext?.headless === false) {
+		if (countdown === 0 && showToast && restartContext?.headless === false && !remoteEngaged) {
 			if (countdownRef.current) clearInterval(countdownRef.current);
 			handleRestart();
 		}
-	}, [countdown, showToast, restartContext]);
+	}, [countdown, showToast, restartContext, remoteEngaged]);
 
-	// What a restart would interrupt, and whether it keeps the remote link. Fetched
-	// once per offered update rather than polled: it feeds a warning on a deliberate
-	// action, not a live indicator.
+	// What a restart would interrupt, and whether anyone is reaching this app remotely.
+	// Re-read on a slow tick WHILE THE TOAST IS UP, because the remote half of it gates
+	// an unattended restart: a phone that connects during those five minutes has to stop
+	// the timer, and a tunnel the user shuts down has to release it. Once the toast is
+	// gone this is a one-shot again — it feeds a warning on a deliberate action.
 	useEffect(() => {
 		if (!updateVersion) return;
-		api.request.getUpdateRestartContext()
-			.then(setRestartContext)
-			.catch(() => setRestartContext(null));
-	}, [updateVersion]);
+		let cancelled = false;
+		const read = () => api.request.getUpdateRestartContext()
+			.then((ctx) => { if (!cancelled) setRestartContext(ctx); })
+			.catch(() => { if (!cancelled) setRestartContext(null); });
+		read();
+		if (!showToast) return () => { cancelled = true; };
+		const id = setInterval(read, RESTART_CONTEXT_POLL_MS);
+		return () => { cancelled = true; clearInterval(id); };
+	}, [updateVersion, showToast]);
 
 	// Close whichever header dropdown is open on Escape.
 	useEscapeKey(
@@ -1074,6 +1100,11 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 								navigate({ screen: "changelog" });
 							}}
 						/>
+						{remoteEngaged && (
+							<div className="text-fg-3 text-xs mt-2" data-testid="update-remote-no-countdown">
+								{t("update.remoteNoAutoRestart")}
+							</div>
+						)}
 						<div className="flex items-center gap-2 mt-2.5">
 							<button
 								onClick={() => { dismissToast(); handleRestart(); }}

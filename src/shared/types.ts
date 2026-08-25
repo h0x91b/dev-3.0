@@ -4511,7 +4511,7 @@ export type AppRPCSchema = {
 			};
 			getUpdateRestartContext: {
 				params: void;
-				response: { headless: boolean; tasksInProgress: number };
+				response: { headless: boolean; remoteActive: boolean; tasksInProgress: number };
 			};
 			saveLastRoute: {
 				params: { route: string };

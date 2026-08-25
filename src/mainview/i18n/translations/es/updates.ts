@@ -14,6 +14,7 @@ const updates = {
 	"update.restartBtn": "Reiniciar para actualizar",
 	"update.restartCountdown": "Reiniciar para actualizar ({seconds}s)",
 	"update.postponeBtn": "Posponer",
+	"update.remoteNoAutoRestart": "El acceso remoto está activo, así que nada se reinicia solo. Reinicia cuando te venga bien.",
 	"update.restarting": "Reiniciando...",
 	"update.checking": "Verificando...",
 	"update.downloading": "Descargando...",

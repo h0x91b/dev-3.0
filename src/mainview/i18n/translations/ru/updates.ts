@@ -14,6 +14,7 @@ const updates = {
 	"update.restartBtn": "Перезапустить",
 	"update.restartCountdown": "Перезапустить ({seconds}с)",
 	"update.postponeBtn": "Отложить",
+	"update.remoteNoAutoRestart": "Удалённый доступ включён — сам ничего не перезапустится. Перезапустите, когда будет удобно.",
 	"update.restarting": "Перезапуск...",
 	"update.checking": "Проверка...",
 	"update.downloading": "Загрузка...",

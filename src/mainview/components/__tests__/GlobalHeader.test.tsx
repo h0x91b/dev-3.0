@@ -18,7 +18,7 @@ vi.mock("../../rpc", () => ({
 			applyUpdate: vi.fn(),
 			// The update plaque asks what a restart would interrupt (and whether it keeps
 			// the remote link) as soon as an update is offered.
-			getUpdateRestartContext: vi.fn().mockResolvedValue({ headless: false, tasksInProgress: 0 }),
+			getUpdateRestartContext: vi.fn().mockResolvedValue({ headless: false, remoteActive: false, tasksInProgress: 0 }),
 			saveLastRoute: vi.fn(),
 			renameTask: vi.fn(),
 			// `behindOrigin` > 0 keeps the pull button rendered — it hides when there is nothing to pull.
@@ -808,7 +808,7 @@ describe("GlobalHeader — update countdown", () => {
 		mockedApi.request.saveLastRoute.mockResolvedValue(undefined as any);
 		// Auto-restart now requires a KNOWN non-headless context, so each test states
 		// it — `clearAllMocks` clears calls but not an implementation a sibling set.
-		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: false, tasksInProgress: 0 });
+		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: false, remoteActive: false, tasksInProgress: 0 });
 	});
 
 	afterEach(() => {
@@ -909,7 +909,7 @@ describe("GlobalHeader — update countdown", () => {
 	// `dev3 remote` server, where an unattended restart from a phone tab is exactly
 	// what the quiet-window policy refuses. Not knowing means not restarting.
 	it("does NOT auto-restart on a headless box", async () => {
-		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: true, tasksInProgress: 0 });
+		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: true, remoteActive: false, tasksInProgress: 0 });
 		renderHeader({ screen: "dashboard" }, [project1], vi.fn(), [], { updateVersion: "1.2.3" });
 
 		act(() => { vi.advanceTimersByTime(300_000); });
@@ -926,6 +926,55 @@ describe("GlobalHeader — update countdown", () => {
 		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
 		expect(mockedApi.request.applyUpdate).not.toHaveBeenCalled();
+	});
+
+	// Remote access on = somebody may be driving this machine from a browser or a phone.
+	// They cannot see a countdown running on the desktop, so it must not run at all —
+	// not "run and refuse to fire". The manual button stays, with a line saying why.
+	it("never runs the countdown while remote access is engaged", async () => {
+		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: false, remoteActive: true, tasksInProgress: 0 });
+		renderHeader({ screen: "dashboard" }, [project1], vi.fn(), [], { updateVersion: "1.2.3" });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+		expect(screen.queryByText(/Restart to Update \(\d+s\)/)).not.toBeInTheDocument();
+		expect(screen.getByText("Restart to Update")).toBeInTheDocument();
+		expect(screen.getByTestId("update-remote-no-countdown")).toBeInTheDocument();
+
+		act(() => { vi.advanceTimersByTime(300_000); });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		expect(mockedApi.request.applyUpdate).not.toHaveBeenCalled();
+	});
+
+	it("stops a running countdown when a remote session appears mid-flight", async () => {
+		renderHeader({ screen: "dashboard" }, [project1], vi.fn(), [], { updateVersion: "1.2.3" });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		act(() => { vi.advanceTimersByTime(10_000); });
+		expect(screen.getByText(/Restart to Update \(\d+s\)/)).toBeInTheDocument();
+
+		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: false, remoteActive: true, tasksInProgress: 0 });
+		await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+
+		expect(screen.queryByText(/Restart to Update \(\d+s\)/)).not.toBeInTheDocument();
+		expect(screen.getByTestId("update-remote-no-countdown")).toBeInTheDocument();
+
+		act(() => { vi.advanceTimersByTime(300_000); });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		expect(mockedApi.request.applyUpdate).not.toHaveBeenCalled();
+	});
+
+	// The other direction, and deliberately a FULL five minutes rather than the
+	// remainder of an old one: the machine was just handed back.
+	it("starts a fresh five minutes once remote access goes away", async () => {
+		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: false, remoteActive: true, tasksInProgress: 0 });
+		renderHeader({ screen: "dashboard" }, [project1], vi.fn(), [], { updateVersion: "1.2.3" });
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		expect(screen.queryByText(/Restart to Update \(\d+s\)/)).not.toBeInTheDocument();
+
+		mockedApi.request.getUpdateRestartContext.mockResolvedValue({ headless: false, remoteActive: false, tasksInProgress: 0 });
+		await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+
+		expect(screen.getByText(/Restart to Update \(300s\)/)).toBeInTheDocument();
+		expect(screen.queryByTestId("update-remote-no-countdown")).not.toBeInTheDocument();
 	});
 
 	it("shows an error toast and re-enables restart when applyUpdate fails (issue #813)", async () => {

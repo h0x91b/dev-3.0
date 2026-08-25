@@ -790,12 +790,19 @@ export function getConnectedClientCount(): number {
 }
 
 /**
- * Whether the app is currently reachable / being used remotely: either the
- * Cloudflare tunnel is connected, or at least one browser client is attached.
- * While true, sleep prevention is forced on regardless of the user setting.
+ * Whether the app is currently reachable / being used remotely: the Cloudflare
+ * tunnel is up (or coming up), or at least one browser client is attached.
+ * While true, sleep prevention is forced on regardless of the user setting, and
+ * the update toast refuses to run its auto-restart countdown.
+ *
+ * The LAN server itself is always listening, so "the server exists" can never be
+ * the signal — it would be permanently true. `starting` counts: the user has just
+ * asked for the tunnel deliberately, and that is the state the header already
+ * paints as remote-on.
  */
 export function isRemoteAccessActive(): boolean {
-	return getTunnelState() === "connected" || rpcClients.size > 0;
+	const tunnel = getTunnelState();
+	return tunnel === "connected" || tunnel === "starting" || rpcClients.size > 0;
 }
 
 /**
