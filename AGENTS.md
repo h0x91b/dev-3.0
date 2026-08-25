@@ -90,6 +90,14 @@ Adding a telemetry channel, a new event, or a new property? State plainly which 
 could be at risk and how the change satisfies it, and cover it with a test that fails when the
 protection is removed — a comment claiming a field is masked is not evidence.
 
+**This section governs egress dev-3.0 chooses the destination for.** Data sent somewhere the
+*user* configured — a notification hook, a webhook, a push subscription — is their own data going
+where they asked, and the rules above do not apply to its content. Two conditions make that
+distinction real rather than a loophole: dev-3.0 must never ship a default endpoint, so an
+unconfigured install sends nothing anywhere; and where a relay carries the payload it must be
+unreadable to it (Web Push is encrypted end-to-end under RFC 8291). Cover the first with a test,
+same as above. Reference implementation: `src/bun/notification-transports.ts`.
+
 ## Language policy
 
 **All code-related content MUST be in English — no exceptions:** commit messages, changelog files (`change-logs/`), code comments and docstrings, decision records (`decisions/`), PR titles/descriptions, any text written inside source files. The user may communicate in Russian; everything written into the codebase or git history is English-only.

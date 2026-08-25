@@ -33,6 +33,7 @@ import type { RendererLogLevel, SharedArtifact, SharedImage, Task } from "../../
 import { formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
 import { postNativeTaskNotification } from "../native-notifications";
+import { outboundNotify } from "../notification-transports";
 import { log, getPushMessage } from "./shared-pure";
 
 const rendererLog = createLogger("renderer");
@@ -419,6 +420,20 @@ function deliverTaskNotification(
 		});
 	}
 	pushWebNotification({ task, body, projectName: projectName ?? "" });
+	// A destination that survives having no listener. Sits here, after the silence
+	// and suppression gates above, so a muted project or a foregrounded app is
+	// still respected — and before the early return, which only concerns the
+	// legacy focus-proxy below.
+	outboundNotify({
+		taskId: task.id,
+		projectId: task.projectId,
+		title,
+		body,
+		level: "info",
+		taskSeq: task.seq,
+		taskTitle: getTaskTitle(task),
+		projectName: projectName ?? "",
+	});
 	if (nativePosted) return;
 	// Only arm click-to-open when the app is NOT already in the foreground. If the
 	// user is actively looking at the app, the banner is purely informational — a
