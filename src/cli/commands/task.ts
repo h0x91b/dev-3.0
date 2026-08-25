@@ -391,7 +391,8 @@ interface LaunchApprovalOutcome {
 	approved: boolean;
 	seq?: number;
 	title?: string;
-	replyCommand?: string;
+	/** One entry per task that started, in variant order; length 1 for a plain launch. */
+	launched?: Array<{ variantIndex: number | null; replyCommand: string }>;
 }
 
 function isLaunchApprovalOutcome(data: unknown): data is LaunchApprovalOutcome {
@@ -428,9 +429,26 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 		process.stdout.write(CODEX_STOP_HOOK_SUCCESS_JSON);
 		return;
 	}
+	const launched = outcome.launched ?? [];
+	const fallback = `dev3 message --task seq:${outcome.seq} "your message"`;
+	if (launched.length > 1) {
+		// The user turned one launch into a variant group. Every sibling shares
+		// `seq:<N>`, so that handle is ambiguous and each address is per-task —
+		// hand out all of them rather than picking one and looking like the only.
+		const rows = launched
+			.map((entry, i) => `  variant #${entry.variantIndex ?? i + 1}  ${entry.replyCommand}`)
+			.join("\n");
+		process.stdout.write(
+			`User approved — seq:${outcome.seq} is starting as ${launched.length} variants: ${outcome.title ?? ""}\n` +
+			`They all share seq:${outcome.seq}, so address each one by its own id:\n` +
+			`${rows}\n` +
+			"They are independent agents on the same prompt. Each knows you started it and reports back to this task.\n",
+		);
+		return;
+	}
 	process.stdout.write(
 		`User approved — task seq:${outcome.seq} is starting: ${outcome.title ?? ""}\n` +
-		`Talk to it with: ${outcome.replyCommand ?? `dev3 message --task seq:${outcome.seq} "your message"`}\n` +
+		`Talk to it with: ${launched[0]?.replyCommand ?? fallback}\n` +
 		"It knows you started it and will report back to this task.\n",
 	);
 }

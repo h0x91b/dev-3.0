@@ -84,7 +84,7 @@ describe("resolveAgentRequest", () => {
 
 	it("carries the picked launch choice back to the waiter", async () => {
 		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1");
-		const launch = { agentId: "builtin-claude", configId: "claude-auto", accountId: null };
+		const launch = { variants: [{ agentId: "builtin-claude", configId: "claude-auto", accountId: null }] };
 
 		resolveAgentRequest(requestId, { approved: true, launch });
 		await expect(decision).resolves.toEqual({ approved: true, launch });
@@ -103,7 +103,7 @@ describe("resolveAgentRequest", () => {
 	it("broadcasts agentRequestResolved so other clients close their copy of the dialog", () => {
 		const { requestId } = createAgentRequest("launch", "task-1", "proj-1");
 
-		resolveAgentRequest(requestId, { approved: true, launch: { agentId: null, configId: null } });
+		resolveAgentRequest(requestId, { approved: true, launch: { variants: [{ agentId: null, configId: null }] } });
 
 		expect(push).toHaveBeenCalledWith("agentRequestResolved", {
 			requestId,
@@ -154,7 +154,7 @@ describe("auto-approval", () => {
 		const { requestId, decision } = createAgentRequest("launch", "task-1", "proj-1", {
 			autoApproveAfterMs: 60_000,
 		});
-		const launch = { agentId: "builtin-codex", configId: "codex-default", accountId: null };
+		const launch = { variants: [{ agentId: "builtin-codex", configId: "codex-default", accountId: null }] };
 
 		expect(setAgentRequestLaunchChoice(requestId, launch)).toBe(true);
 		vi.advanceTimersByTime(60_000);
@@ -201,6 +201,6 @@ describe("auto-approval", () => {
 	});
 
 	it("ignores a choice reported for an unknown request", () => {
-		expect(setAgentRequestLaunchChoice("nope", { agentId: null, configId: null })).toBe(false);
+		expect(setAgentRequestLaunchChoice("nope", { variants: [{ agentId: null, configId: null }] })).toBe(false);
 	});
 });

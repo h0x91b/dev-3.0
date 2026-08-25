@@ -2322,6 +2322,18 @@ export interface LaunchVariant {
 	accountId?: string | null;
 }
 
+/**
+ * What the agent-requested launch dialog hands back on approval: the variant
+ * rows the user composed (always at least one — index 0 is variant #1) plus the
+ * priority the launch applies. One variant takes the plain single-task launch
+ * path; more mint a variant group exactly like the Launch modal does.
+ */
+export interface AgentLaunchChoice {
+	variants: LaunchVariant[];
+	/** undefined → the request's `defaultPriority`; otherwise the user's pick. */
+	priority?: TaskPriority;
+}
+
 /** A one-shot deferred launch persisted on a `todo` task. See {@link Task.scheduledLaunch}. */
 export interface ScheduledLaunch {
 	/** ISO timestamp when the launch should fire. */
@@ -2652,6 +2664,13 @@ export interface AgentLaunchRequest {
 	 * An urgent agent's helpers inherit its urgency instead of sinking to P3.
 	 */
 	defaultPriority: TaskPriority;
+	/**
+	 * May the user turn this launch into a variant group? Only a plain `todo`
+	 * task that is not already in a group can be spawned as variants; anything
+	 * else renders the single picker with no add affordance rather than offering
+	 * a control that would fail on approval.
+	 */
+	canAddVariants: boolean;
 	/**
 	 * Epoch ms at which the request approves itself, or null when auto-approval
 	 * is off. The countdown is only a mirror — the timer that actually fires
@@ -5126,26 +5145,26 @@ export type AppRPCSchema = {
 			};
 			/**
 			 * Renderer answers an `agentLaunchRequested` dialog. Approval hands back
-			 * the agent/config/account the user picked, and the blocked CLI request
-			 * launches the task with it; decline releases it with a refusal.
+			 * the variants + priority the user composed, and the blocked CLI request
+			 * launches the task with them; decline releases it with a refusal.
 			 */
 			respondToAgentLaunchRequest: {
 				params: {
 					requestId: string;
 					approved: boolean;
-					launch?: { agentId: string | null; configId: string | null; accountId?: string | null; priority?: TaskPriority };
+					launch?: AgentLaunchChoice;
 				};
 				response: void;
 			};
 			/**
-			 * Mirror the dialog's current agent/config/account/priority pick into the
-			 * pending request, so an auto-approval that fires while nobody is watching
-			 * still launches with what the user last selected rather than the defaults.
+			 * Mirror the dialog's current variants/priority pick into the pending
+			 * request, so an auto-approval that fires while nobody is watching still
+			 * launches with what the user last selected rather than the defaults.
 			 */
 			updateAgentLaunchChoice: {
 				params: {
 					requestId: string;
-					launch: { agentId: string | null; configId: string | null; accountId?: string | null; priority?: TaskPriority };
+					launch: AgentLaunchChoice;
 				};
 				response: void;
 			};

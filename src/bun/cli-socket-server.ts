@@ -13,7 +13,8 @@ import { SharedImageError, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { appendArtifactVersion, latestArtifactVersion } from "../shared/artifact-versions";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
-import { createAgentRequest, type AgentLaunchChoice } from "./agent-requests";
+import { createAgentRequest } from "./agent-requests";
+import type { AgentLaunchChoice } from "../shared/types";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import { loadSpacesFile } from "./spaces-data";
@@ -270,10 +271,23 @@ async function isSeqSharedOnBoard(project: Project, task: Task): Promise<boolean
 	}
 }
 
-/** Result of the agent-initiated launch approval flow. */
+/**
+ * Result of the agent-initiated launch approval flow.
+ *
+ * `launched` is one entry per task that actually started, in variant order — a
+ * plain launch has exactly one. The seq is shared by the whole group, which is
+ * why the address the requester must use lives per entry rather than being
+ * derivable from the seq (see `agentReplyRef` and the
+ * `address-a-peer-by-seq-unless-the-seq-is-shared` record).
+ */
 type LaunchApprovalOutcome =
 	| { approved: false }
-	| { approved: true; task: Task; seq: number; title: string; replyCommand: string };
+	| {
+		approved: true;
+		seq: number;
+		title: string;
+		launched: Array<{ variantIndex: number | null; replyCommand: string }>;
+	};
 
 /**
  * Priority an agent-initiated launch starts on. A target that never had one set
@@ -338,6 +352,7 @@ async function requestAgentLaunchApproval(opts: {
 			// recognizes which task an agent wants to set running.
 			subject: buildTaskDialogSubject(task, project),
 			defaultPriority,
+			canAddVariants: canSpawnAsVariants(task),
 			autoApproveAt,
 		});
 	}
@@ -346,36 +361,69 @@ async function requestAgentLaunchApproval(opts: {
 	if (!answer.approved) return { approved: false };
 
 	// An auto-approval with no client watching carries no launch choice at all —
-	// the inherited priority must still apply, so it is resolved here, not in the
-	// dialog.
-	const choice: AgentLaunchChoice = answer.launch ?? { agentId: null, configId: null };
+	// one default variant, and the inherited priority must still apply, so it is
+	// resolved here, not in the dialog.
+	const choice: AgentLaunchChoice = answer.launch ?? { variants: [{ agentId: null, configId: null }] };
+	// The dialog only offers the control when the target can take it, but the
+	// choice arrives over RPC from any connected client — clamp rather than let
+	// spawnVariants throw and strand the requester.
+	const variants = canSpawnAsVariants(task) ? choice.variants : choice.variants.slice(0, 1);
 	const launched = await launchTaskWithAgentChoice({
 		taskId: task.id,
 		projectId: project.id,
 		targetStatus,
-		choice: { ...choice, priority: choice.priority ?? defaultPriority },
+		choice: { variants, priority: choice.priority ?? defaultPriority },
 	});
-	// Fire-and-forget: the handoff waits for the child's agent pane, which takes
-	// far longer than the requesting agent should sit blocked on a socket.
-	void deliverLaunchHandoff({ projectId: project.id, childTaskId: task.id, source: requester });
+	// Fire-and-forget: the handoff waits for each child's agent pane, which takes
+	// far longer than the requesting agent should sit blocked on a socket. Every
+	// variant gets its own note — each one is a separate agent that has to know
+	// who started it.
+	for (const child of launched) {
+		void deliverLaunchHandoff({ projectId: project.id, childTaskId: child.id, source: requester });
+	}
 
 	// Read the board AFTER the launch: launching with variants mints the siblings
 	// that decide whether `seq:<N>` is still an unambiguous address.
-	const launchedSeqShared = await isSeqSharedOnBoard(project, launched);
+	const head = launched[0]!;
+	const boardTasks = await loadBoardTasks(project);
 
 	return {
 		approved: true,
-		task: launched,
-		seq: launched.seq,
-		title: getTaskTitle(launched),
-		// The requester may live on another board (it launched a task in a different
-		// project), and then the bare `--task` form would resolve against its own.
-		replyCommand: agentReplyCommand({
-			target: { ...launched, seqShared: launchedSeqShared },
-			fromProjectId: requester.projectId ?? launched.projectId,
-			quoted: "your message",
-		}),
+		seq: head.seq,
+		title: getTaskTitle(head),
+		launched: launched.map((child) => ({
+			variantIndex: child.variantIndex ?? null,
+			// The requester may live on another board (it launched a task in a
+			// different project), and then the bare `--task` form would resolve
+			// against its own.
+			replyCommand: agentReplyCommand({
+				target: {
+					...child,
+					seqShared: boardTasks ? seqIsShared(child, boardTasks) : child.variantIndex != null,
+				},
+				fromProjectId: requester.projectId ?? child.projectId,
+				quoted: "your message",
+			}),
+		})),
 	};
+}
+
+/**
+ * Can this launch be turned into a variant group? `spawnVariants` mints a fresh
+ * group off a `todo` source, so a task that is already running, or already a
+ * member of a group, has nothing to spawn from.
+ */
+function canSpawnAsVariants(task: Task): boolean {
+	return task.status === "todo" && task.groupId == null;
+}
+
+/** The board's task list for seq-sharing checks, or null if it cannot be read. */
+async function loadBoardTasks(project: Project): Promise<Task[] | null> {
+	try {
+		return await data.loadTasks(project);
+	} catch {
+		return null;
+	}
 }
 
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;

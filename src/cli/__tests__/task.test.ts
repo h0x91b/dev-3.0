@@ -1467,7 +1467,7 @@ describe("task move — agent asking to start another task", () => {
 	const OTHER = "bbbbbbbb-1111-2222-3333-444444444444";
 
 	it("tells the app which task is asking, so a foreign activation can be gated", async () => {
-		mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other task", replyCommand: 'dev3 message --task seq:77 "your message"' }));
+		mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: 'dev3 message --task seq:77 "your message"' }] }));
 
 		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
 
@@ -1479,7 +1479,7 @@ describe("task move — agent asking to start another task", () => {
 	});
 
 	it("prints the new task's seq and how to talk to it on approval", async () => {
-		mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other task", replyCommand: 'dev3 message --task seq:77 "your message"' }));
+		mockSend.mockResolvedValue(okResp({ approved: true, seq: 77, title: "Other task", launched: [{ variantIndex: null, replyCommand: 'dev3 message --task seq:77 "your message"' }] }));
 
 		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
 
@@ -1494,6 +1494,29 @@ describe("task move — agent asking to start another task", () => {
 			handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX),
 		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_LAUNCH_DECLINED}`);
 		expect(stderrOutput).toContain("declined the launch request");
+	});
+
+	it("hands out one address per variant when the user launched a group", async () => {
+		// The seq is shared by the whole group, so quoting it as THE address would
+		// give the requester a handle the CLI rejects as ambiguous.
+		mockSend.mockResolvedValue(okResp({
+			approved: true,
+			seq: 77,
+			title: "Other task",
+			launched: [
+				{ variantIndex: 1, replyCommand: 'dev3 message --task 11111111 "your message"' },
+				{ variantIndex: 2, replyCommand: 'dev3 message --task 22222222 "your message"' },
+				{ variantIndex: 3, replyCommand: 'dev3 message --task 33333333 "your message"' },
+			],
+		}));
+
+		await handleTask("move", args([], { task: OTHER, status: "in-progress" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("starting as 3 variants");
+		expect(stdoutOutput).toContain("variant #1  dev3 message --task 11111111");
+		expect(stdoutOutput).toContain("variant #3  dev3 message --task 33333333");
+		// Never hand back the shared seq as an address for a live group.
+		expect(stdoutOutput).not.toContain('--task seq:77 "your message"');
 	});
 
 	it("keeps the agent's OWN status move on the fast path", async () => {

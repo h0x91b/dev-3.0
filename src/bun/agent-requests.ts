@@ -1,4 +1,4 @@
-import type { TaskPriority } from "../shared/types";
+import type { AgentLaunchChoice } from "../shared/types";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 
@@ -9,16 +9,6 @@ const log = createLogger("agent-requests");
  * happen. Each kind blocks the requesting CLI until the user answers in the app.
  */
 export type AgentRequestKind = "complete" | "launch";
-
-/** The agent/config/account/priority the user picked in the launch dialog. */
-export interface AgentLaunchChoice {
-	agentId: string | null;
-	configId: string | null;
-	/** undefined → registry default; null → system login; string → that account. */
-	accountId?: string | null;
-	/** undefined → the request's `defaultPriority`; otherwise the user's pick. */
-	priority?: TaskPriority;
-}
 
 export interface AgentRequestDecision {
 	approved: boolean;
@@ -104,7 +94,7 @@ export function createAgentRequest(
 }
 
 /**
- * Remember the agent/config/account a dialog currently shows, so an auto-approval
+ * Remember the variants/priority a dialog currently shows, so an auto-approval
  * launches with the user's pick rather than the global default. Last writer wins:
  * the dialog is broadcast to every client, and only one of them can be right.
  */

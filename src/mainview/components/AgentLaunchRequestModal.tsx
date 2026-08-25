@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AgentCheckResult, AgentLaunchRequest, CodingAgent, GlobalSettings, TaskPriority } from "../../shared/types";
+import type { AgentCheckResult, AgentLaunchChoice, AgentLaunchRequest, CodingAgent, GlobalSettings, LaunchVariant, TaskPriority } from "../../shared/types";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
@@ -8,16 +8,31 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import AgentConfigPicker from "./AgentConfigPicker";
 import AgentPickerSkeleton from "./AgentPickerSkeleton";
+import MemoryPressureBanner from "./MemoryPressureBanner";
 import TaskDialogSubjectCard from "./TaskDialogSubjectCard";
 
 const NOT_INSTALLED_ID = "agent-launch-not-installed";
 
-/** What the dialog hands back on approval — the agent pick plus the priority. */
-interface LaunchChoice {
-	agentId: string | null;
-	configId: string | null;
-	accountId?: string | null;
-	priority?: TaskPriority;
+/**
+ * The agent/config a fresh variant row starts on: the global default, falling
+ * back to the first installed harness. The config is only honoured when it
+ * belongs to the resolved agent — settings can pair `defaultAgentId` with a
+ * `defaultConfigId` from a different harness, which renders an empty Mode.
+ */
+function defaultVariant(agents: CodingAgent[], settings: GlobalSettings): LaunchVariant {
+	let agentId: string | null = settings.defaultAgentId ?? null;
+	let agent = agentId ? agents.find((a) => a.id === agentId) : null;
+	if (!agent && agents.length > 0) {
+		agent = agents[0];
+		agentId = agent.id;
+	}
+	const globalConfig = settings.defaultConfigId && agent?.configurations.some((c) => c.id === settings.defaultConfigId)
+		? settings.defaultConfigId
+		: null;
+	return {
+		agentId,
+		configId: globalConfig ?? agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? null,
+	};
 }
 
 /** Whole seconds left until `at`, floored at 0. */
@@ -34,7 +49,7 @@ function formatCountdown(totalSeconds: number): string {
 interface AgentLaunchRequestModalProps {
 	request: AgentLaunchRequest;
 	/** Answers the blocked CLI. `launch` is only set when approved. */
-	onRespond: (approved: boolean, launch?: LaunchChoice) => void;
+	onRespond: (approved: boolean, launch?: AgentLaunchChoice) => void;
 }
 
 /**
@@ -53,10 +68,9 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	const reducedMotion = useReducedMotion();
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
-	const [agentId, setAgentId] = useState<string | null>(null);
-	const [configId, setConfigId] = useState<string | null>(null);
-	// Per-launch account (undefined → the registry default preselect).
-	const [accountId, setAccountId] = useState<string | null | undefined>(undefined);
+	// One row per variant the launch will start. Exactly one until the user adds
+	// more — approving without touching anything must never mint a group.
+	const [variants, setVariants] = useState<LaunchVariant[]>([{ agentId: null, configId: null }]);
 	// Seeded from the request: the target's own priority, or the requesting task's
 	// when it never had one (issue #1496). Editable — this launch is the moment to
 	// decide how urgent the new task is.
@@ -72,19 +86,9 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 		]).then(([a, gs]) => {
 			setAgents(a);
 			setGlobalSettings(gs);
-
-			let defaultAgentId: string | null = gs.defaultAgentId ?? null;
-			let agent = defaultAgentId ? a.find((ag) => ag.id === defaultAgentId) : null;
-			if (!agent && a.length > 0) {
-				agent = a[0];
-				defaultAgentId = agent.id;
-			}
-			setAgentId(defaultAgentId);
-			// Only honour gs.defaultConfigId when it belongs to the resolved agent.
-			const globalConfig = gs.defaultConfigId && agent?.configurations.some((c) => c.id === gs.defaultConfigId)
-				? gs.defaultConfigId
-				: null;
-			setConfigId(globalConfig ?? agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? null);
+			// Nothing is interactive until settings land (the picker is a skeleton and
+			// there is no add affordance), so this can seed the list outright.
+			setVariants([defaultVariant(a, gs)]);
 		}).catch(() => {});
 	}, []);
 
@@ -106,19 +110,32 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 
 	// Mirror every pick back to the pending request, so an auto-approval that
 	// fires while the user is away launches with what they last selected.
-	function reportChoice(next: LaunchChoice) {
+	function reportChoice(next: AgentLaunchChoice) {
 		if (!autoApproveAt) return;
 		api.request.updateAgentLaunchChoice({ requestId: request.requestId, launch: next }).catch(() => {});
 	}
 
+	function updateVariants(next: LaunchVariant[]) {
+		setVariants(next);
+		reportChoice({ variants: next, priority });
+	}
+
 	const handleToggleFavorite = useToggleFavorite(setGlobalSettings);
 
-	const selectedAgent = agents.find((a) => a.id === agentId);
-	const selectedAvailability = agentAvailability.find((a) => a.agentId === agentId);
-	const agentNotInstalled = selectedAvailability ? !selectedAvailability.installed : false;
+	// Variants may run different harnesses, so "not installed" is a property of the
+	// list: the first offending row names itself in the warning, and any of them
+	// blocks the launch — a group that starts three worktrees and two agents is
+	// worse than a launch that refuses.
+	const missing = variants
+		.map((variant, index) => ({ index, agent: agents.find((a) => a.id === variant.agentId) }))
+		.find(({ agent }) => agent && agentAvailability.some((a) => a.agentId === agent.id && !a.installed));
+	const selectedAgent = missing?.agent;
+	const selectedAvailability = agentAvailability.find((a) => a.agentId === selectedAgent?.id);
+	const agentNotInstalled = selectedAgent != null;
 	// "Not ready" (missing agent / still loading) must not look like "in flight",
 	// which keeps full colour and gets a spinner instead.
 	const notReady = agentNotInstalled || !globalSettings;
+	const canAddVariants = request.canAddVariants && globalSettings != null;
 	const pressFeedback = reducedMotion
 		? "transition-colors"
 		: "transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.96]";
@@ -126,7 +143,7 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 	function handleLaunch() {
 		if (agentNotInstalled) return;
 		setLaunching(true);
-		onRespond(true, { agentId, configId, accountId, priority });
+		onRespond(true, { variants, priority });
 	}
 
 	return (
@@ -173,33 +190,90 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 						priority={priority}
 						onPriorityChange={(next) => {
 							setPriority(next);
-							reportChoice({ agentId, configId, accountId, priority: next });
+							reportChoice({ variants, priority: next });
 						}}
 						labels={request.subject.labels}
 					/>
 
+					{/* Only speaks up under real pressure, and the forecast scales with
+					    the variant count — same banner the Launch modal shows. */}
+					<div className="empty:hidden">
+						<MemoryPressureBanner launchCount={variants.length} />
+					</div>
+
 					{globalSettings ? (
-						<AgentConfigPicker
-							idPrefix="agent-launch"
-							agents={agents}
-							agentId={agentId}
-							configId={configId}
-							agentAvailability={agentAvailability}
-							onChange={(next) => {
-								setAgentId(next.agentId);
-								setConfigId(next.configId);
-								reportChoice({ ...next, accountId, priority });
-							}}
-							accountId={accountId}
-							onAccountChange={(next) => {
-								setAccountId(next);
-								reportChoice({ agentId, configId, accountId: next, priority });
-							}}
-							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
-							showFavorites
-							favorites={globalSettings.favorites ?? []}
-							onToggleFavorite={handleToggleFavorite}
-						/>
+						<div className="space-y-2">
+							{variants.map((variant, index) => (
+								<div
+									key={index}
+									// A single launch is not a group and gets no rails: the row
+									// chrome (#N, remove) appears only once there is a second
+									// variant to tell apart.
+									{...(variants.length > 1
+										? { role: "group", "aria-label": t("launch.variantGroup", { n: String(index + 1) }) }
+										: {})}
+									className={variants.length > 1
+										? "grid grid-cols-[1.75rem_minmax(0,1fr)_1.5rem] items-start gap-3"
+										: undefined}
+								>
+									{variants.length > 1 && (
+										<span className="flex h-[34px] items-center text-accent font-bold text-sm">
+											#{index + 1}
+										</span>
+									)}
+									<AgentConfigPicker
+										idPrefix={`agent-launch-${index}`}
+										agents={agents}
+										agentId={variant.agentId}
+										configId={variant.configId}
+										agentAvailability={agentAvailability}
+										onChange={(next) => updateVariants(
+											variants.map((v, i) => (i === index ? { ...v, ...next } : v)),
+										)}
+										accountId={variant.accountId}
+										onAccountChange={(accountId) => updateVariants(
+											variants.map((v, i) => (i === index ? { ...v, accountId } : v)),
+										)}
+										// Labels once, above the first row only — repeating them per
+										// variant is the vertical bloat the Launch modal already rejected.
+										showLabels={index === 0}
+										pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
+										showFavorites
+										favorites={globalSettings.favorites ?? []}
+										onToggleFavorite={handleToggleFavorite}
+									/>
+									{variants.length > 1 && (
+										<button
+											type="button"
+											onClick={() => updateVariants(variants.filter((_, i) => i !== index))}
+											disabled={launching}
+											className={`flex h-[34px] w-6 items-center justify-center text-fg-muted hover:text-danger disabled:opacity-50 ${pressFeedback}`}
+											title={t("launch.removeVariant")}
+											aria-label={t("launch.removeVariant")}
+										>
+											<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+												<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+											</svg>
+										</button>
+									)}
+								</div>
+							))}
+
+							{/* Beside the list it grows, never in the footer: the footer's left
+							    slot is the countdown, and it must stay visible on a short
+							    viewport with only Decline and Launch beside it. */}
+							{canAddVariants && (
+								<button
+									type="button"
+									data-testid="agent-launch-add-variant"
+									onClick={() => updateVariants([...variants, defaultVariant(agents, globalSettings)])}
+									disabled={launching}
+									className={`text-accent hover:text-accent-emphasis text-sm font-medium disabled:opacity-50 ${pressFeedback}`}
+								>
+									{t("launch.addVariant")}
+								</button>
+							)}
+						</div>
 					) : (
 						<AgentPickerSkeleton />
 					)}
@@ -260,7 +334,14 @@ function AgentLaunchRequestModal({ request, onRespond }: AgentLaunchRequestModal
 								aria-hidden="true"
 							/>
 						)}
-						{launching ? t("agentLaunch.launching") : t("agentLaunch.launch")}
+						{/* The button must say how many tasks the click starts — approving a
+						    three-variant group under a bare "Launch" is a surprise the user
+						    pays for in worktrees. */}
+						{launching
+							? t("agentLaunch.launching")
+							: variants.length > 1
+								? t.plural("agentLaunch.launchVariants", variants.length)
+								: t("agentLaunch.launch")}
 					</button>
 				</div>
 			</div>

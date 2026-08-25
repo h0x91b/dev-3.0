@@ -34,6 +34,9 @@ vi.mock("../rpc", () => ({
 			listAgentAccounts: vi.fn(() => Promise.resolve({ agents: [] })),
 			getAgentRateLimits: vi.fn(() => Promise.resolve(null)),
 			updateAgentLaunchChoice: vi.fn(() => Promise.resolve(undefined)),
+			// Reached by MemoryPressureBanner, which scales its forecast with the
+			// variant count; null = no pressure, so the banner renders nothing.
+			getSystemMemory: vi.fn(() => Promise.resolve(null)),
 		},
 	},
 }));
@@ -59,6 +62,7 @@ function makeRequest(overrides?: Partial<AgentLaunchRequest>): AgentLaunchReques
 		requesterSeq: 3,
 		requesterTitle: "Asking task",
 		defaultPriority: "P2",
+		canAddVariants: true,
 		autoApproveAt: null,
 		subject: {
 			seqLabel: "7",
@@ -112,9 +116,7 @@ describe("AgentLaunchRequestModal", () => {
 		await user.click(launch);
 
 		expect(onRespond).toHaveBeenCalledWith(true, {
-			agentId: "builtin-claude",
-			configId: "claude-auto",
-			accountId: undefined,
+			variants: [{ agentId: "builtin-claude", configId: "claude-auto" }],
 			priority: "P2",
 		});
 	});
@@ -200,5 +202,87 @@ describe("AgentLaunchRequestModal — auto-approve countdown", () => {
 
 		await screen.findByText(/Asked by task #3/);
 		expect(screen.queryByTestId("agent-launch-countdown")).toBeNull();
+	});
+});
+
+describe("AgentLaunchRequestModal — variants", () => {
+	it("approves ONE task when the user never touches the variant control", async () => {
+		// The whole point of the default: someone who just wants to say yes must
+		// not end up with three worktrees.
+		const user = userEvent.setup();
+		const { onRespond } = renderModal();
+
+		const launch = await screen.findByTestId("agent-launch-accept");
+		await waitFor(() => expect(launch).toBeEnabled());
+		expect(launch).toHaveTextContent("Launch");
+		expect(screen.queryByLabelText("Variant 1")).toBeNull();
+		await user.click(launch);
+
+		expect(onRespond).toHaveBeenCalledWith(true, expect.objectContaining({
+			variants: [{ agentId: "builtin-claude", configId: "claude-auto" }],
+		}));
+	});
+
+	it("hands back one variant per row the user added, and says so on the button", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal();
+
+		const add = await screen.findByTestId("agent-launch-add-variant");
+		await user.click(add);
+		await user.click(add);
+
+		// Numbered rows only appear once there is more than one to tell apart.
+		expect(await screen.findByLabelText("Variant 1")).toBeInTheDocument();
+		expect(screen.getByLabelText("Variant 3")).toBeInTheDocument();
+
+		const launch = screen.getByTestId("agent-launch-accept");
+		expect(launch).toHaveTextContent("Launch 3 variants");
+		await user.click(launch);
+
+		expect(onRespond).toHaveBeenCalledWith(true, expect.objectContaining({
+			variants: [
+				{ agentId: "builtin-claude", configId: "claude-auto" },
+				{ agentId: "builtin-claude", configId: "claude-auto" },
+				{ agentId: "builtin-claude", configId: "claude-auto" },
+			],
+		}));
+	});
+
+	it("drops a row again on Remove, back to a single unnumbered launch", async () => {
+		const user = userEvent.setup();
+		const { onRespond } = renderModal();
+
+		await user.click(await screen.findByTestId("agent-launch-add-variant"));
+		const removes = await screen.findAllByRole("button", { name: "Remove" });
+		await user.click(removes[1]!);
+
+		expect(screen.queryByLabelText("Variant 1")).toBeNull();
+		await user.click(screen.getByTestId("agent-launch-accept"));
+
+		expect(onRespond).toHaveBeenCalledWith(true, expect.objectContaining({
+			variants: [{ agentId: "builtin-claude", configId: "claude-auto" }],
+		}));
+	});
+
+	it("offers no variant control when the target cannot be spawned as a group", async () => {
+		// A task that is already running, or already in a variant group, has
+		// nothing for spawnVariants to branch from — so the affordance is absent
+		// rather than failing on approval.
+		renderModal(makeRequest({ canAddVariants: false }));
+
+		await waitFor(() => expect(screen.getByTestId("agent-launch-accept")).toBeEnabled());
+		expect(screen.queryByTestId("agent-launch-add-variant")).toBeNull();
+	});
+
+	it("mirrors an added variant to the pending request so an auto-approval uses it", async () => {
+		const user = userEvent.setup();
+		renderModal(makeRequest({ autoApproveAt: Date.now() + 5 * 60_000 }));
+
+		await user.click(await screen.findByTestId("agent-launch-add-variant"));
+
+		expect(api.request.updateAgentLaunchChoice).toHaveBeenCalledWith({
+			requestId: "req-1",
+			launch: expect.objectContaining({ variants: [expect.anything(), expect.anything()] }),
+		});
 	});
 });

@@ -1381,7 +1381,7 @@ describe("launchTaskWithAgentChoice", () => {
 			taskId: "task-1",
 			projectId: "proj-1",
 			targetStatus: "in-progress",
-			choice: { agentId: null, configId: null, priority: "P0" },
+			choice: { variants: [{ agentId: null, configId: null }], priority: "P0" },
 		});
 
 		expect(data.setTaskPriority).toHaveBeenCalledWith(project, "task-1", "P0");
@@ -1403,10 +1403,56 @@ describe("launchTaskWithAgentChoice", () => {
 			taskId: "task-1",
 			projectId: "proj-1",
 			targetStatus: "in-progress",
-			choice: { agentId: null, configId: null, priority: "P1" },
+			choice: { variants: [{ agentId: null, configId: null }], priority: "P1" },
 		});
 
 		expect(data.setTaskPriority).not.toHaveBeenCalled();
+	});
+
+	// The agent-request dialog's variant picker ends here. Asserting the control
+	// renders proves nothing — this is the seam where N tasks actually start.
+	it("mints a real variant group when the launch carries more than one variant", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", status: "todo", seq: 5, priority: "P2", worktreePath: null, branchName: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, taskId, mutator) => {
+			const { updates, result } = await mutator({ ...task, id: taskId });
+			return { task: { ...task, id: taskId, ...updates } as Task, result };
+		});
+		vi.mocked(data.addTask).mockImplementation(async (_p, description, status, extra) => (
+			{ ...task, id: "task-2", description, status, ...extra } as Task
+		));
+		vi.mocked(data.updateTask).mockImplementation(async (_p, id, patch) => ({ ...task, id, ...patch }));
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/task-1" });
+		setPushMessage(vi.fn());
+
+		const launched = await launchTaskWithAgentChoice({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			choice: {
+				variants: [
+					{ agentId: "agent-1", configId: "cfg-1" },
+					{ agentId: "agent-2", configId: "cfg-2" },
+				],
+				priority: "P2",
+			},
+		});
+
+		expect(launched).toHaveLength(2);
+		// The source keeps its id — only variants 2..N are new tasks.
+		expect(launched[0].id).toBe("task-1");
+		expect(launched[0].variantIndex).toBe(1);
+		expect(launched[1].variantIndex).toBe(2);
+		// One group, one seq, two different agents: a real variant group, not two
+		// unrelated launches.
+		expect(launched[0].groupId).toBeTruthy();
+		expect(launched[1].groupId).toBe(launched[0].groupId);
+		expect(launched[1].seq).toBe(launched[0].seq);
+		expect(launched[0].agentId).toBe("agent-1");
+		expect(launched[1].agentId).toBe("agent-2");
+		expect(data.addTask).toHaveBeenCalledTimes(1);
 	});
 });
 

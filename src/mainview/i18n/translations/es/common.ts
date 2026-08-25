@@ -31,6 +31,8 @@ const common = {
 	"agentLaunch.requestedBy": "Solicitado por la tarea #{seq} — {title}",
 	"agentLaunch.scratchHasNoPrompt": "Se inicia sin prompt. El agente que la pidió le enviará instrucciones.",
 	"agentLaunch.launch": "Iniciar",
+	"agentLaunch.launchVariants_one": "Iniciar {count} variante",
+	"agentLaunch.launchVariants_other": "Iniciar {count} variantes",
 	"agentLaunch.launching": "Iniciando…",
 	"agentLaunch.decline": "Rechazar",
 	"agentLaunch.autoApproveIn": "Se inicia solo en {time}",

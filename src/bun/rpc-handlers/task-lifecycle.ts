@@ -1,10 +1,10 @@
-import type { LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
-import { resolveAgentRequest, setAgentRequestLaunchChoice, type AgentLaunchChoice } from "../agent-requests";
+import { resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
@@ -293,28 +293,42 @@ async function debugEmitTaskSound(params: { status: "completed" | "cancelled" })
 }
 
 /**
- * Activate a task with an explicitly picked agent/config/account, the way the
- * launch modal does — but for a single task, with no variant group. Used by the
- * approved agent-initiated launch (see the `task.move` approval branch in
- * cli-socket-server.ts): a bare `moveTask` would fall back to the user's default
- * agent and silently ignore what they chose in the dialog.
+ * Activate a task with the variants the user composed in the agent-request
+ * dialog, the way the launch modal does. Used by the approved agent-initiated
+ * launch (see the `task.move` approval branch in cli-socket-server.ts): a bare
+ * `moveTask` would fall back to the user's default agent and silently ignore
+ * what they chose in the dialog.
+ *
+ * One variant takes the single-task path (no group, works from any column the
+ * lifecycle machine allows); two or more delegate to {@link spawnVariants},
+ * which is the one implementation of a variant group in the app.
  *
  * Returns as soon as preparation is dispatched; the worktree + agent come up
- * asynchronously, exactly like a launch from the board.
+ * asynchronously, exactly like a launch from the board. The returned array is
+ * in variant order and always holds at least one task.
  */
 export async function launchTaskWithAgentChoice(params: {
 	taskId: string;
 	projectId: string;
 	targetStatus: TaskStatus;
 	choice: AgentLaunchChoice;
-}): Promise<Task> {
-	log.info("→ launchTaskWithAgentChoice", { taskId: params.taskId.slice(0, 8), status: params.targetStatus });
+}): Promise<Task[]> {
+	log.info("→ launchTaskWithAgentChoice", {
+		taskId: params.taskId.slice(0, 8),
+		status: params.targetStatus,
+		variants: params.choice.variants.length,
+	});
 	const project = await data.getProject(params.projectId);
 	const stored = await data.getTask(project, params.taskId);
-	const { agentId, configId, accountId, priority } = params.choice;
+	const { variants, priority } = params.choice;
+	const first = variants[0];
+	if (!first) throw new Error("At least one variant is required");
+	const { agentId, configId, accountId } = first;
 
 	// Priority lands before the move so the card never appears in the wrong sort
 	// band, and goes through the group-wide setter rather than `taskPatch`.
+	// spawnVariants copies the source's priority onto every sibling, so setting it
+	// here is also what keeps a whole agent-requested group out of the P3 band.
 	if (priority !== undefined && priority !== stored.priority) {
 		for (const changed of await data.setTaskPriority(project, stored.id, priority)) {
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: changed });
@@ -322,6 +336,18 @@ export async function launchTaskWithAgentChoice(params: {
 	}
 	// Re-read so the lifecycle event carries the task it will actually patch.
 	const task = priority !== undefined ? await data.getTask(project, params.taskId) : stored;
+
+	if (variants.length > 1) {
+		const spawned = await spawnVariants({
+			taskId: task.id,
+			projectId: project.id,
+			targetStatus: params.targetStatus,
+			variants,
+		});
+		log.info("← launchTaskWithAgentChoice spawned variants", { taskId: task.id.slice(0, 8), count: spawned.length });
+		return spawned;
+	}
+
 	const existingBranch = getSourceTaskBranch(task, project);
 
 	const launched = await dispatchLifecycleEvent(project.id, task.id, {
@@ -347,7 +373,7 @@ export async function launchTaskWithAgentChoice(params: {
 	}, { project, task });
 
 	log.info("← launchTaskWithAgentChoice dispatched", { taskId: task.id.slice(0, 8) });
-	return launched;
+	return [launched];
 }
 
 async function cancelTaskPreparation(params: { taskId: string; projectId: string }): Promise<Task> {

@@ -31,6 +31,8 @@ const common = {
 	"agentLaunch.requestedBy": "Asked by task #{seq} — {title}",
 	"agentLaunch.scratchHasNoPrompt": "Starts with no prompt. The asking agent sends it instructions once it is up.",
 	"agentLaunch.launch": "Launch",
+	"agentLaunch.launchVariants_one": "Launch {count} variant",
+	"agentLaunch.launchVariants_other": "Launch {count} variants",
 	"agentLaunch.launching": "Launching…",
 	"agentLaunch.decline": "Decline",
 	"agentLaunch.autoApproveIn": "Starts on its own in {time}",

@@ -220,7 +220,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 		const launched = { ...target, status: "in-progress" as const };
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue(launched);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([launched]);
 
 		const respPromise = handleRequest(moveRequest({
 			taskId: TARGET_ID,
@@ -240,13 +240,13 @@ describe("task.move — agent-initiated launch approval", () => {
 		expect(payload.requesterSeq).toBe(3);
 		expect(payload.requesterTitle).toBe("Asking task");
 
-		const launch = { agentId: "builtin-claude", configId: "claude-auto", accountId: null };
+		const launch = { variants: [{ agentId: "builtin-claude", configId: "claude-auto", accountId: null }] };
 		resolveAgentRequest(payload.requestId as string, { approved: true, launch });
 
 		const resp = await respPromise;
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ approved: true, seq: 7, title: "Target task" });
-		expect((resp.data as { replyCommand: string }).replyCommand).toContain("dev3 message --task seq:7");
+		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toContain("dev3 message --task seq:7");
 		// The user's pick reaches the launch — NOT the default agent.
 		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith({
 			taskId: TARGET_ID,
@@ -273,7 +273,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([target, { ...requester, priority: "P0" as const }]);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
 
 		const respPromise = handleRequest(moveRequest({
 			taskId: TARGET_ID,
@@ -302,7 +302,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([target, { ...requester, priority: "P0" as const }]);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
 
 		const respPromise = handleRequest(moveRequest({
 			taskId: TARGET_ID,
@@ -326,7 +326,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		setupBoard(target);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
 
 		const respPromise = handleRequest(moveRequest({
 			taskId: TARGET_ID,
@@ -339,7 +339,7 @@ describe("task.move — agent-initiated launch approval", () => {
 
 		resolveAgentRequest(payload.requestId as string, {
 			approved: true,
-			launch: { agentId: null, configId: null, priority: "P1" },
+			launch: { variants: [{ agentId: null, configId: null }], priority: "P1" },
 		});
 		await respPromise;
 		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
@@ -359,7 +359,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([target, targetSibling, variantRequester]);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress", variantIndex: 2 });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress", variantIndex: 2 }]);
 
 		const respPromise = handleRequest(moveRequest({
 			taskId: TARGET_ID,
@@ -371,11 +371,11 @@ describe("task.move — agent-initiated launch approval", () => {
 		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
 		resolveAgentRequest(payload.requestId as string, {
 			approved: true,
-			launch: { agentId: "builtin-claude", configId: "claude-auto", accountId: null },
+			launch: { variants: [{ agentId: "builtin-claude", configId: "claude-auto", accountId: null }] },
 		});
 
 		const resp = await respPromise;
-		expect((resp.data as { replyCommand: string }).replyCommand).toBe(`dev3 message --task ${TARGET_ID} "your message"`);
+		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe(`dev3 message --task ${TARGET_ID} "your message"`);
 		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
 			source: expect.objectContaining({ seq: 3, variantIndex: 1 }),
 		}));
@@ -388,7 +388,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		setupBoard(target);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
 
 		const respPromise = handleRequest(moveRequest({
 			taskId: TARGET_ID,
@@ -400,11 +400,11 @@ describe("task.move — agent-initiated launch approval", () => {
 		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
 		resolveAgentRequest(payload.requestId as string, {
 			approved: true,
-			launch: { agentId: "builtin-claude", configId: "claude-auto", accountId: null },
+			launch: { variants: [{ agentId: "builtin-claude", configId: "claude-auto", accountId: null }] },
 		});
 
 		const resp = await respPromise;
-		expect((resp.data as { replyCommand: string }).replyCommand).toBe('dev3 message --task seq:7 "your message"');
+		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe('dev3 message --task seq:7 "your message"');
 	});
 
 	it("scopes the reply command with --project when the requester is on another board", async () => {
@@ -418,7 +418,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
 
 		const respPromise = handleRequest(moveRequest({
 			taskId: TARGET_ID,
@@ -430,12 +430,12 @@ describe("task.move — agent-initiated launch approval", () => {
 		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
 		resolveAgentRequest(payload.requestId as string, {
 			approved: true,
-			launch: { agentId: "builtin-claude", configId: "claude-auto", accountId: null },
+			launch: { variants: [{ agentId: "builtin-claude", configId: "claude-auto", accountId: null }] },
 		});
 
 		const resp = await respPromise;
 		// Without the scope the requester would look seq:7 up on its OWN board.
-		expect((resp.data as { replyCommand: string }).replyCommand).toBe(
+		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe(
 			'dev3 message --task seq:7 --project proj-1 "your message"',
 		);
 	});
@@ -522,7 +522,7 @@ describe("task.createScratchAndRun", () => {
 		const scratch = makeTask({ title: "Scratch — 14:32", description: "Scratch — 14:32", scratch: true, seq: 9 });
 		setupBoard(scratch);
 		vi.mocked(createScratchTask).mockResolvedValue(scratch);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...scratch, status: "in-progress" });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...scratch, status: "in-progress" }]);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 
@@ -535,7 +535,7 @@ describe("task.createScratchAndRun", () => {
 
 		resolveAgentRequest(payload.requestId as string, {
 			approved: true,
-			launch: { agentId: "codex", configId: "codex-default" },
+			launch: { variants: [{ agentId: "codex", configId: "codex-default" }] },
 		});
 
 		const resp = await respPromise;
@@ -575,7 +575,7 @@ describe("task.move — unanswered launch auto-approves", () => {
 		setupBoard(target);
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
-		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue({ ...target, status: "in-progress" });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([{ ...target, status: "in-progress" }]);
 
 		// Installed BEFORE the request: the timer is created inside it, and a clock
 		// swapped in afterwards would never own it.
@@ -625,5 +625,107 @@ describe("task.move — unanswered launch auto-approves", () => {
 		expect(payload.autoApproveAt).toBeNull();
 		resolveAgentRequest(payload.requestId, { approved: false });
 		await respPromise;
+	});
+});
+
+describe("task.move — agent-initiated launch with variants", () => {
+	const SIBLING_ID = "task-sib33333-1111-2222-3333-444444444444";
+
+	/**
+	 * Drive the approval dialog to a decision and return the CLI response.
+	 * `boardAfter` replaces the task list the reply addresses are computed from —
+	 * the launch is what mints the siblings, so it is read after approval.
+	 */
+	async function approveWith(launch: unknown, boardAfter?: Task[]) {
+		setupBoard(makeTask());
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID,
+			newStatus: "in-progress",
+			projectId: "proj-1",
+			sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		if (boardAfter) vi.mocked(data.loadTasks).mockResolvedValue(boardAfter);
+		resolveAgentRequest(payload.requestId as string, { approved: true, launch } as never);
+		return { resp: await respPromise, payload };
+	}
+
+	it("tells the dialog whether the target can be spawned as a group", async () => {
+		const pushFn = vi.fn();
+		setupBoard(makeTask());
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([makeTask({ status: "in-progress" })]);
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		expect(payload.canAddVariants).toBe(true);
+		resolveAgentRequest(payload.requestId as string, { approved: true });
+		await respPromise;
+	});
+
+	it("refuses variants for a target that is already in a group", async () => {
+		// spawnVariants mints a FRESH group off a todo source; a member of an
+		// existing group has nothing to branch from.
+		const pushFn = vi.fn();
+		setupBoard(makeTask({ groupId: "grp-1", variantIndex: 2 }));
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([makeTask({ status: "in-progress" })]);
+
+		const respPromise = handleRequest(moveRequest({
+			taskId: TARGET_ID, newStatus: "in-progress", projectId: "proj-1", sourceTaskId: REQUESTER_ID,
+		}));
+		await vi.waitFor(() => expect(pushFn).toHaveBeenCalled());
+		const [, payload] = pushFn.mock.calls[0] as [string, Record<string, unknown>];
+		expect(payload.canAddVariants).toBe(false);
+
+		// A client that asks for three anyway is clamped, not allowed to blow up
+		// inside spawnVariants and strand the blocked requester.
+		resolveAgentRequest(payload.requestId as string, {
+			approved: true,
+			launch: { variants: [{ agentId: "a", configId: "x" }, { agentId: "b", configId: "y" }, { agentId: "c", configId: "z" }] },
+		});
+		await respPromise;
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
+			choice: expect.objectContaining({ variants: [{ agentId: "a", configId: "x" }] }),
+		}));
+	});
+
+	it("launches every picked variant, hands off to each, and addresses them by id", async () => {
+		const head = makeTask({ status: "in-progress", groupId: "grp-9", variantIndex: 1 });
+		const sibling = makeTask({ id: SIBLING_ID, status: "in-progress", groupId: "grp-9", variantIndex: 2 });
+		vi.mocked(launchTaskWithAgentChoice).mockResolvedValue([head, sibling]);
+
+		const variants = [
+			{ agentId: "builtin-claude", configId: "claude-auto" },
+			{ agentId: "builtin-codex", configId: "codex-default" },
+		];
+		// The board AFTER the launch — this is what makes seq:7 ambiguous.
+		const { resp } = await approveWith({ variants }, [head, sibling, requester]);
+
+		expect(launchTaskWithAgentChoice).toHaveBeenCalledWith(expect.objectContaining({
+			choice: expect.objectContaining({ variants }),
+		}));
+		// Every variant is a separate agent and has to be told who started it.
+		expect(deliverLaunchHandoff).toHaveBeenCalledTimes(2);
+		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({ childTaskId: TARGET_ID }));
+		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({ childTaskId: SIBLING_ID }));
+
+		// seq:7 now matches two live tasks, so the requester gets one address per
+		// variant and neither of them is the shared seq.
+		expect(resp.data).toMatchObject({
+			approved: true,
+			seq: 7,
+			launched: [
+				{ variantIndex: 1, replyCommand: `dev3 message --task ${TARGET_ID} "your message"` },
+				{ variantIndex: 2, replyCommand: `dev3 message --task ${SIBLING_ID} "your message"` },
+			],
+		});
 	});
 });
