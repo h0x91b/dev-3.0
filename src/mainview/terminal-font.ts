@@ -177,7 +177,22 @@ export function effectiveTerminalFontSize(
 	return size * terminalFontScale(family);
 }
 
+/**
+ * Point the app's `font-mono` utility at the chosen family, so branch names, paths,
+ * seq numbers and script editors read in the same font as the terminal. Nerd Font
+ * icons are NOT part of this: they pin the reference family inline, because a glyph
+ * asset is not typography the user picked, and a chosen font might not carry it.
+ */
+function applyChromeStack() {
+	try {
+		document.documentElement.style.setProperty("--dev3-mono-stack", terminalFontStack());
+	} catch {
+		// No document (tests, SSR) — the CSS default in index.css still applies.
+	}
+}
+
 function emit() {
+	applyChromeStack();
 	window.dispatchEvent(
 		new CustomEvent(TERMINAL_FONT_CHANGED_EVENT, {
 			detail: { family: currentFamily, size: currentSize, stack: terminalFontStack() },
@@ -217,4 +232,5 @@ export function bootstrapTerminalFont() {
 	} catch {
 		currentSize = DEFAULT_TERMINAL_FONT_SIZE;
 	}
+	applyChromeStack();
 }

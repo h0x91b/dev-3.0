@@ -146,6 +146,36 @@ describe("availability", () => {
 	});
 });
 
+describe("the app's own monospace text follows the same font", () => {
+	const stack = () => document.documentElement.style.getPropertyValue("--dev3-mono-stack");
+
+	it("points the font-mono utility at the chosen family", () => {
+		// `font-mono` resolves to this variable, so writing it is what makes branch
+		// names, paths and seq numbers match the terminal.
+		applyTerminalFontFamily("Hack Nerd Font Mono");
+		expect(stack()).toBe(`'Hack Nerd Font Mono', ${DEFAULT_TERMINAL_FONT_STACK}`);
+	});
+
+	it("is already correct before React mounts, not one repaint later", () => {
+		localStorage.setItem("dev3-terminal-font-family", "Iosevka Nerd Font Mono");
+		document.documentElement.style.removeProperty("--dev3-mono-stack");
+		bootstrapTerminalFont();
+		expect(stack()).toBe(`'Iosevka Nerd Font Mono', ${DEFAULT_TERMINAL_FONT_STACK}`);
+	});
+
+	it("falls back to the historical stack when nothing was chosen", () => {
+		applyTerminalFontFamily("");
+		expect(stack()).toBe(DEFAULT_TERMINAL_FONT_STACK);
+	});
+
+	it("keeps the reference font in the tail so Nerd Font icons still resolve", () => {
+		// UI icons pin the reference family inline, but any glyph missing from the
+		// chosen font must still fall through to it rather than to a box.
+		applyTerminalFontFamily("Some Font Without Icons");
+		expect(stack()).toContain(REFERENCE_TERMINAL_FONT);
+	});
+});
+
 describe("no bundled font is ever wider than the reference", () => {
 	it("the reference font is itself unscaled", () => {
 		expect(terminalFontScale(REFERENCE_TERMINAL_FONT)).toBe(1);

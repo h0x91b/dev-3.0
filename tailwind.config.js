@@ -28,12 +28,14 @@ export default {
 				// text-2xl 1.5rem   24px  (Tailwind default)
 			},
 			fontFamily: {
-				mono: [
-					"'JetBrainsMono Nerd Font Mono'",
-					"'SF Mono'",
-					"Menlo",
-					"monospace",
-				],
+				// The user's chosen monospace font, so `font-mono` text — branch names,
+				// paths, seq numbers, script editors — matches the terminal. The variable
+				// is written by terminal-font.ts; index.css holds the default so a first
+				// paint before the bootstrap runs is still the historical stack.
+				// Nerd Font ICONS deliberately do NOT go through this: they pin
+				// 'JetBrainsMono Nerd Font Mono' inline, because a glyph asset is not
+				// typography the user picked.
+				mono: ["var(--dev3-mono-stack)"],
 			},
 			// `base` is deliberately NOT in `colors`: that would also emit a
 			// `.text-base` COLOR utility, which collides with Tailwind's built-in

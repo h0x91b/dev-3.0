@@ -117,11 +117,6 @@ const BUDGET_KB: Record<string, number> = {
  * The terminal-font picker's placement rule spends the headroom left above rather than
  * ratcheting again: its log entry was drafted full, then folded to a two-line pointer once
  * its record existed, ~0.2 KB.
- *
- * Note for whoever reads that entry: `ux-architecture.yaml` still says the Settings left-nav
- * has EIGHT categories and lists eight names, while the code has had nine since `models`
- * landed and the bible now says nine. The entry's ruling turns on that count, so trust the
- * bible and the registry over the yaml until someone reconciles it.
  */
 const TOTAL_BUDGET_KB = 320;
 

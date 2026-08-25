@@ -144,6 +144,13 @@ html {
    hue with a monotonic lightness ramp, the text ladder is spaced by APCA
    contrast, and hover tokens move in the direction their role needs
    (fills deepen, text lifts on dark). See DESIGN.md for the measured table. */
+/* The monospace stack every `font-mono` utility resolves to. terminal-font.ts
+   rewrites it when the user picks a font; this default is what the app has always
+   rendered, so the first paint never flashes an unstyled fallback. */
+:root {
+	--dev3-mono-stack: 'JetBrainsMono Nerd Font Mono', 'SF Mono', 'Menlo', monospace;
+}
+
 :root,
 [data-theme="dark"] {
 	/* ---- Surfaces (opaque fallbacks, used outside kanban) ----
