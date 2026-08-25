@@ -21,6 +21,7 @@ import { initStreamerMode } from "./streamer-mode";
 import { buildChannelTitlePrefix } from "../shared/update-channel";
 import RootErrorBoundary from "./components/RootErrorBoundary";
 import MobilePortraitGate from "./components/MobilePortraitGate";
+import { AgentMessageConcepts, agentMessageConceptsRequested } from "./components/concepts/AgentMessageConcepts";
 import { recordError, recordRejection } from "./diagnostics";
 
 // ── Global crash handlers (renderer) ──
@@ -160,6 +161,10 @@ async function bootstrap() {
 					<I18nProvider>
 						<MobilePortraitGate>
 							<App />
+							{/* Throwaway concept gallery, `?concepts=agent-msg` only. Sits beside
+							    App so the shipping toast stays untouched and both can be compared
+							    in one sitting. */}
+							{agentMessageConceptsRequested() && <AgentMessageConcepts />}
 						</MobilePortraitGate>
 					</I18nProvider>
 				</MobileProvider>

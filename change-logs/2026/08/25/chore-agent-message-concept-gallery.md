@@ -1,0 +1,1 @@
+Added a throwaway concept gallery for agent-to-agent message display, reachable only at `?concepts=agent-msg`: six divergent display mechanisms plus the shipping toast for side-by-side comparison. Nothing in the app changes without that URL flag, and the existing notification is untouched.
