@@ -159,9 +159,7 @@ export default function SystemSettingsSection({
 				</div>
 			</SettingsEntry>
 
-			<SettingsEntry anchor="browser-notifications">
-				<BrowserNotificationsSetting t={t} />
-			</SettingsEntry>
+			<BrowserNotificationsSetting t={t} />
 		</SettingsSection>
 	);
 }

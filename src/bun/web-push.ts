@@ -98,8 +98,8 @@ async function readOrCreateVapidKeys(path: string): Promise<VapidKeys> {
 	} catch (err) {
 		const winner = readVapidFile(path);
 		if (winner) return winner;
-		log.warn("Could not persist VAPID keys — subscriptions will not survive a restart", { path, error: String(err) });
-		return keys;
+		log.warn("Could not persist VAPID keys", { path, error: String(err) });
+		throw new Error("Could not persist VAPID keys");
 	}
 }
 

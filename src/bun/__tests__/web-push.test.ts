@@ -8,7 +8,7 @@
  * to catch a broken HKDF or a swapped nonce before a device does.
  */
 import { describe, it, expect, afterAll } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -183,5 +183,13 @@ describe("the install keypair", () => {
 	it("keeps the keypair it already has", async () => {
 		const path = join(dir, "stable.json");
 		expect((await loadOrCreateVapidKeys(path)).publicKey).toBe((await loadOrCreateVapidKeys(path)).publicKey);
+	});
+
+	it("refuses to hand out a keypair that could not be persisted", async () => {
+		const parent = join(dir, "not-a-directory");
+		writeFileSync(parent, "blocks mkdir");
+		await expect(loadOrCreateVapidKeys(join(parent, "keys.json"))).rejects.toThrow(
+			"Could not persist VAPID keys",
+		);
 	});
 });

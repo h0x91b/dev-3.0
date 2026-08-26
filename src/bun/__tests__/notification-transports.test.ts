@@ -16,9 +16,17 @@ import { join } from "node:path";
 // These tests run under Node, where Bun.spawn does not exist; the repo's
 // convention is to mock the wrapper and assert the contract passed to it.
 const spawned: { cmd: string[]; stdin: string }[] = [];
+const spawnControl = vi.hoisted(() => ({
+	next: null as null | { exited: Promise<number>; kill: ReturnType<typeof vi.fn> },
+}));
 vi.mock("../spawn", () => ({
 	spawn: vi.fn((cmd: string[], opts: { stdin?: Uint8Array }) => {
 		spawned.push({ cmd, stdin: new TextDecoder().decode(opts?.stdin ?? new Uint8Array()) });
+		if (spawnControl.next) {
+			const next = spawnControl.next;
+			spawnControl.next = null;
+			return next;
+		}
 		return { exited: Promise.resolve(0), kill: () => {} };
 	}),
 	spawnSync: vi.fn(() => ({ exitCode: 0, stdout: new Uint8Array() })),
@@ -50,6 +58,7 @@ const sent = (i = 0): NotificationEvent => JSON.parse(spawned[i].stdin);
 
 beforeEach(() => {
 	spawned.length = 0;
+	spawnControl.next = null;
 });
 
 describe("no destination unless the user picked one", () => {
@@ -155,6 +164,25 @@ describe("a broken hook cannot break the caller", () => {
 			transports: [{ kind: "webhook", url: "http://127.0.0.1:1/nope", timeoutMs: 250 }],
 		});
 		expect(Date.now() - started).toBeLessThan(5_000);
+	});
+
+	it("hard-kills an exec hook at its configured deadline", async () => {
+		let finish!: (code: number) => void;
+		const exited = new Promise<number>((resolve) => {
+			finish = resolve;
+		});
+		const kill = vi.fn((signal: number) => {
+			if (signal === 9) finish(137);
+		});
+		spawnControl.next = { exited, kill };
+
+		const started = Date.now();
+		await deliverToTransports(event, {
+			transports: [{ kind: "exec", command: hook, timeoutMs: 20 }],
+		});
+
+		expect(kill).toHaveBeenCalledWith(9);
+		expect(Date.now() - started).toBeLessThan(500);
 	});
 });
 

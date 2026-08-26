@@ -256,6 +256,7 @@ const settings = {
 	"settings.pushNotificationsDesc": "Segu\u00ed recibiendo notificaciones de tareas cuando dev-3.0 est\u00e1 cerrado y esta pesta\u00f1a no est\u00e1 abierta. El contenido va cifrado de extremo a extremo: el servicio de push lo transmite sin poder leerlo.",
 	"settings.pushEnable": "Activar en este dispositivo",
 	"settings.pushDisable": "Desactivar en este dispositivo",
+	"settings.pushNeedsBrowserPermission": "Primero activá las notificaciones del navegador arriba y después activá el push en este dispositivo.",
 	"settings.pushNeedsInstall": "En iPhone y iPad, agreg\u00e1 dev-3.0 a la pantalla de inicio primero (Compartir \u2192 Agregar a inicio) y abrilo desde ese \u00edcono. Las pesta\u00f1as de Safari no reciben push.",
 	"settings.pushInsecure": "El push necesita un contexto seguro. Abr\u00ed dev-3.0 por HTTPS: un t\u00fanel de Cloudflare, Tailscale serve o tu propio proxy inverso.",
 	"settings.pushUnsupported": "Este navegador no admite notificaciones push.",

@@ -60,6 +60,7 @@ import {
 	normalizeSettingsCategoryId,
 	SETTINGS_CATEGORIES,
 	type SettingsCategoryId,
+	type SettingsEntryAnchor,
 	type SettingsEntry as SettingsRegistryEntry,
 } from "../settings-registry";
 import {
@@ -88,8 +89,13 @@ interface SettingChangeOptions extends PersistOptions {
 
 function GlobalSettings({
 	section,
+	anchor,
 	preset,
-}: { section?: SettingsSectionId; preset?: SettingsPresetTarget } = {}) {
+}: {
+	section?: SettingsSectionId;
+	anchor?: SettingsEntryAnchor;
+	preset?: SettingsPresetTarget;
+} = {}) {
 	const t = useT();
 	const [locale, setLocale] = useLocale();
 	const injectedThemeState = getWindowInjectedThemeState();
@@ -136,7 +142,7 @@ function GlobalSettings({
 		() => (section ? normalizeSettingsCategoryId(section) : null),
 	);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+	const [pendingAnchor, setPendingAnchor] = useState<string | null>(anchor ?? null);
 	// A deep-link that names a preset, held until the agents list has loaded and
 	// the Agents page has actually pointed at it. One-shot: leaving it set would
 	// yank the selection back on every later visit to this screen.
@@ -589,6 +595,10 @@ function GlobalSettings({
 		setActiveCategory(nextCategory);
 		if (narrow && section) setMobileCategory(nextCategory);
 	}, [narrow, section]);
+
+	useEffect(() => {
+		if (anchor) setPendingAnchor(anchor);
+	}, [anchor]);
 
 	useEffect(() => {
 		if (!narrow) setMobileCategory(null);

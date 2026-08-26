@@ -1,6 +1,6 @@
 import { useReducer } from "react";
 import type { DevServerSummary, PortInfo, Project, Task, ResourceUsage } from "../shared/types";
-import type { SettingsRouteSectionId } from "./settings-registry";
+import type { SettingsEntryAnchor, SettingsRouteSectionId } from "./settings-registry";
 import type { TaskInlineDiffRequest } from "./components/task-inline-diff";
 
 // ---- Routes ----
@@ -29,7 +29,7 @@ export interface SettingsPresetTarget {
  *  object form exists for callers that know exactly which record they mean. */
 export type OpenSettingsSectionDetail =
 	| SettingsSectionId
-	| { section: SettingsSectionId; preset?: SettingsPresetTarget };
+	| { section: SettingsSectionId; anchor?: SettingsEntryAnchor; preset?: SettingsPresetTarget };
 
 /**
  * The diff viewer is a full-bleed surface that replaces the task workspace, so
@@ -43,7 +43,7 @@ export type Route =
 	| { screen: "project-terminal"; projectId: string }
 	| { screen: "task"; projectId: string; taskId: string; openUnresolvedComments?: boolean; diff?: TaskInlineDiffRequest }
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree" | "automations"; worktreeTaskId?: string }
-	| { screen: "settings"; section?: SettingsSectionId; preset?: SettingsPresetTarget }
+	| { screen: "settings"; section?: SettingsSectionId; anchor?: SettingsEntryAnchor; preset?: SettingsPresetTarget }
 	| { screen: "changelog" }
 	| { screen: "stats" }
 	| { screen: "gauge-demo" }

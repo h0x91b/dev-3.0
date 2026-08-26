@@ -136,12 +136,23 @@ async function runExec(t: Extract<NotificationTransport, { kind: "exec" }>, payl
 		stdout: "ignore",
 		stderr: "ignore",
 	});
-	const timer = setTimeout(() => proc.kill(), timeoutFor(t));
-	try {
-		await proc.exited;
-	} finally {
-		clearTimeout(timer);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const result = await Promise.race([
+		proc.exited.then((exitCode) => ({ kind: "exit" as const, exitCode })),
+		new Promise<{ kind: "timeout" }>((resolve) => {
+			timer = setTimeout(() => resolve({ kind: "timeout" }), timeoutFor(t));
+		}),
+	]);
+	clearTimeout(timer);
+	if (result.kind === "timeout") {
+		try {
+			proc.kill(9);
+		} catch {
+			// It may have exited between the deadline and the signal.
+		}
+		throw new Error(`Timed out after ${timeoutFor(t)}ms`);
 	}
+	if (result.exitCode !== 0) throw new Error(`Exited with code ${result.exitCode}`);
 }
 
 async function runWebhook(t: Extract<NotificationTransport, { kind: "webhook" }>, payload: string): Promise<void> {
@@ -209,20 +220,24 @@ export async function deliverToPushDevices(event: NotificationEvent): Promise<vo
 	);
 }
 
-/** Fire and forget; never throws. Config is re-read per event so an edit applies
- *  without a relaunch — this fires at human speed, not in a hot path. */
-export function outboundNotify(event: NotificationEvent): void {
-	void (async () => {
-		try {
-			const config = loadNotificationConfig();
-			if (config) await deliverToTransports(event, config);
-		} catch (err) {
-			log.warn("Outbound notify failed", { error: String(err) });
-		}
-		try {
-			await deliverToPushDevices(event);
-		} catch (err) {
+/** Start user-configured transports and registered-device push independently. */
+export async function deliverOutbound(
+	event: NotificationEvent,
+	config: NotificationHookConfig | null = loadNotificationConfig(),
+): Promise<void> {
+	await Promise.all([
+		config
+			? deliverToTransports(event, config).catch((err) => {
+				log.warn("Outbound notify failed", { error: String(err) });
+			})
+			: Promise.resolve(),
+		deliverToPushDevices(event).catch((err) => {
 			log.warn("Push fan-out failed", { error: String(err) });
-		}
-	})();
+		}),
+	]);
+}
+
+/** Fire and forget. Config is re-read per event so edits apply without relaunch. */
+export function outboundNotify(event: NotificationEvent): void {
+	void deliverOutbound(event);
 }

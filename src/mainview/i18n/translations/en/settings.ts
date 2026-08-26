@@ -256,6 +256,7 @@ const settings = {
 	"settings.pushNotificationsDesc": "Keep getting task notifications when dev-3.0 is closed and this tab is not open. The payload is encrypted end to end — the push service relays it without being able to read it.",
 	"settings.pushEnable": "Enable on this device",
 	"settings.pushDisable": "Disable on this device",
+	"settings.pushNeedsBrowserPermission": "Enable browser notifications above before enabling push on this device.",
 	"settings.pushNeedsInstall": "On iPhone and iPad, add dev-3.0 to your Home Screen first (Share \u2192 Add to Home Screen), then open it from that icon. Safari tabs cannot receive push.",
 	"settings.pushInsecure": "Push needs a secure context. Open dev-3.0 over HTTPS \u2014 a Cloudflare tunnel, Tailscale serve, or your own reverse proxy.",
 	"settings.pushUnsupported": "This browser does not support push notifications.",

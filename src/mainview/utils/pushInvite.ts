@@ -55,8 +55,13 @@ export async function maybeInvitePushEnrollment(t: TFunction): Promise<void> {
 
 	toast.info(t("push.inviteBody"), {
 		durationMs: 15_000,
+		source: "settings",
 		onClick: () =>
-			window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: "system" })),
+			window.dispatchEvent(
+				new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, {
+					detail: { section: "system", anchor: "push-notifications" },
+				}),
+			),
 	});
 	// Offered once. Whether they take it or ignore it, we do not ask again.
 	try {

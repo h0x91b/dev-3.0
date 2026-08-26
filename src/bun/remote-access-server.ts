@@ -741,7 +741,12 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 			if (url.pathname === "/push/key") {
 				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
 				const { loadOrCreateVapidKeys } = await import("./web-push");
-				return Response.json({ publicKey: (await loadOrCreateVapidKeys()).publicKey });
+				try {
+					return Response.json({ publicKey: (await loadOrCreateVapidKeys()).publicKey });
+				} catch (err) {
+					log.error("Could not prepare push keys", { error: String(err) });
+					return Response.json({ error: "Push keys unavailable" }, { status: 500 });
+				}
 			}
 
 			// Registering is a capability to wake this person's phone, so it is
@@ -749,14 +754,18 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 			if (url.pathname === "/push/subscribe" && req.method === "POST") {
 				if (!checkOrigin(req)) return new Response("Forbidden", { status: 403 });
 				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
-				const { addSubscription } = await import("./web-push-store");
+				const { addSubscription, MalformedPushSubscriptionError } = await import("./web-push-store");
 				try {
 					const body = (await req.json()) as { subscription?: unknown; label?: string };
 					const subs = addSubscription(body?.subscription, body?.label);
 					log.info("Push device registered", { count: subs.length });
 					return Response.json({ ok: true, count: subs.length });
 				} catch (err) {
-					return Response.json({ error: String(err) }, { status: 400 });
+					if (err instanceof SyntaxError || err instanceof MalformedPushSubscriptionError) {
+						return Response.json({ error: "Malformed push subscription" }, { status: 400 });
+					}
+					log.error("Could not register push device", { error: String(err) });
+					return Response.json({ error: "Could not register push device" }, { status: 500 });
 				}
 			}
 
@@ -766,7 +775,12 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 				const { removeSubscription } = await import("./web-push-store");
 				const body = (await req.json().catch(() => ({}))) as { endpoint?: string };
 				if (!body?.endpoint) return Response.json({ error: "endpoint required" }, { status: 400 });
-				return Response.json({ ok: true, count: removeSubscription(body.endpoint).length });
+				try {
+					return Response.json({ ok: true, count: removeSubscription(body.endpoint).length });
+				} catch (err) {
+					log.error("Could not unregister push device", { error: String(err) });
+					return Response.json({ error: "Could not unregister push device" }, { status: 500 });
+				}
 			}
 
 			// ── Static files (no auth — UI code is not sensitive) ──

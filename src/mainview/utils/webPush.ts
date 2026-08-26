@@ -74,27 +74,34 @@ export async function subscribeToPush(): Promise<string> {
 		applicationServerKey: b64urlToBytes(publicKey) as BufferSource,
 	});
 
-	const stored = await fetch("/push/subscribe", {
-		method: "POST",
-		credentials: "same-origin",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ subscription: subscription.toJSON(), label: deviceLabel() }),
-	});
-	if (!stored.ok) throw new Error(`could not register device (${stored.status})`);
-	return subscription.endpoint;
+	try {
+		const stored = await fetch("/push/subscribe", {
+			method: "POST",
+			credentials: "same-origin",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ subscription: subscription.toJSON(), label: deviceLabel() }),
+		});
+		if (!stored.ok) throw new Error(`could not register device (${stored.status})`);
+		return subscription.endpoint;
+	} catch (err) {
+		await subscription.unsubscribe().catch(() => {});
+		throw err;
+	}
 }
 
 export async function unsubscribeFromPush(): Promise<void> {
 	const registration = await navigator.serviceWorker.getRegistration("/sw.js");
 	const subscription = await registration?.pushManager.getSubscription();
 	if (!subscription) return;
-	await fetch("/push/unsubscribe", {
+	const removed = await fetch("/push/unsubscribe", {
 		method: "POST",
 		credentials: "same-origin",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify({ endpoint: subscription.endpoint }),
-	}).catch(() => {});
-	await subscription.unsubscribe().catch(() => {});
+	});
+	if (!removed.ok) throw new Error(`could not unregister device (${removed.status})`);
+	const unsubscribed = await subscription.unsubscribe();
+	if (!unsubscribed) throw new Error("could not disable push in this browser");
 }
 
 export async function isSubscribed(): Promise<boolean> {

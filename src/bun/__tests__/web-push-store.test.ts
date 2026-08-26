@@ -64,6 +64,14 @@ describe("registering a device", () => {
 		expect(() => addSubscription({ endpoint: "https://a/1" }, undefined, file)).toThrow();
 		expect(loadSubscriptions(file)).toEqual([]);
 	});
+
+	it("does not report a device registered when the store cannot be written", () => {
+		const parent = join(dir, "not-a-store-directory");
+		writeFileSync(parent, "blocks mkdir");
+		expect(() => addSubscription(sub("https://a/1"), "iPhone", join(parent, "subs.json"))).toThrow(
+			"Could not persist push subscriptions",
+		);
+	});
 });
 
 describe("removing a device", () => {

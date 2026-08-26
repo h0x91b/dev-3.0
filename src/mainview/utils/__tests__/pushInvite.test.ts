@@ -20,10 +20,11 @@ vi.mock("../webPush", () => ({
 	},
 }));
 
-const shown: { msg: string; onClick?: () => void }[] = [];
+const shown: { msg: string; onClick?: () => void; source?: string }[] = [];
 vi.mock("../../toast", () => ({
 	toast: {
-		info: (msg: string, opts?: { onClick?: () => void }) => shown.push({ msg, onClick: opts?.onClick }),
+		info: (msg: string, opts?: { onClick?: () => void; source?: string }) =>
+			shown.push({ msg, onClick: opts?.onClick, source: opts?.source }),
 		success: (msg: string) => shown.push({ msg }),
 		error: (msg: string) => shown.push({ msg }),
 	},
@@ -72,7 +73,8 @@ describe("when it offers", () => {
 		shown[0]?.onClick?.();
 		window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpen);
 
-		expect(seen).toEqual(["system"]);
+		expect(seen).toEqual([{ section: "system", anchor: "push-notifications" }]);
+		expect(shown[0]?.source).toBe("settings");
 		expect(subscribeCalls).toEqual([]);
 	});
 });

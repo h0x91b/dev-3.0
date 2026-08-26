@@ -7,6 +7,7 @@ import {
 	webNotificationsSupported,
 } from "../../utils/webNotification";
 import { isSubscribed, pushReadiness, subscribeToPush, unsubscribeFromPush } from "../../utils/webPush";
+import SettingsEntry from "./SettingsEntry";
 
 type Permission = "default" | "granted" | "denied" | "unsupported";
 
@@ -81,58 +82,74 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 	}
 
 	return (
-		<div>
-			<p className="block text-fg text-sm font-semibold mb-2">
-				{t("settings.browserNotifications")}
-			</p>
-			<p className="text-fg-3 text-sm mb-3">{t("settings.browserNotificationsDesc")}</p>
+		<>
+			<SettingsEntry anchor="browser-notifications">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.browserNotifications")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.browserNotificationsDesc")}</p>
 
-			{permission === "unsupported" ? (
-				<p className="text-fg-muted text-xs">{t("settings.browserNotificationsInsecure")}</p>
-			) : permission === "denied" ? (
-				<p className="text-fg-muted text-xs">{t("settings.browserNotificationsBlocked")}</p>
-			) : permission === "default" ? (
-				<button
-					onClick={requestPermission}
-					className="px-4 py-2 rounded-xl border border-edge bg-raised text-fg text-sm hover:border-accent/40 transition-colors"
-				>
-					{t("settings.browserNotificationsEnable")}
-				</button>
-			) : (
-				<label className="inline-flex items-center gap-3 cursor-pointer select-none">
-					<div
-						role="switch"
-						aria-checked={!muted}
-						aria-label={t("settings.browserNotifications")}
-						tabIndex={0}
-						className={`relative w-11 h-6 rounded-full transition-colors ${
-							!muted ? "bg-accent" : "bg-raised border border-edge"
-						}`}
-						onClick={toggleMuted}
-						onKeyDown={(event) => {
-							if (event.key === "Enter" || event.key === " ") {
-								event.preventDefault();
-								toggleMuted();
-							}
-						}}
-					>
-						<div
-							className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-								!muted ? "translate-x-5" : ""
-							}`}
-						/>
-					</div>
-					<span className="text-fg text-sm">
-						{!muted ? t("settings.on") : t("settings.off")}
-					</span>
-				</label>
-			)}
+					{permission === "unsupported" ? (
+						<p className="text-fg-muted text-xs">{t("settings.browserNotificationsInsecure")}</p>
+					) : permission === "denied" ? (
+						<p className="text-fg-muted text-xs">{t("settings.browserNotificationsBlocked")}</p>
+					) : permission === "default" ? (
+						<button
+							onClick={requestPermission}
+							className="px-4 py-2 rounded-xl border border-edge bg-raised text-fg text-sm hover:border-accent/40 transition-colors"
+						>
+							{t("settings.browserNotificationsEnable")}
+						</button>
+					) : (
+						<label className="inline-flex items-center gap-3 cursor-pointer select-none">
+							<div
+								role="switch"
+								aria-checked={!muted}
+								aria-label={t("settings.browserNotifications")}
+								tabIndex={0}
+								className={`relative w-11 h-6 rounded-full transition-colors ${
+									!muted ? "bg-accent" : "bg-raised border border-edge"
+								}`}
+								onClick={toggleMuted}
+								onKeyDown={(event) => {
+									if (event.key === "Enter" || event.key === " ") {
+										event.preventDefault();
+										toggleMuted();
+									}
+								}}
+							>
+								<div
+									className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+										!muted ? "translate-x-5" : ""
+									}`}
+								/>
+							</div>
+							<span className="text-fg text-sm">
+								{!muted ? t("settings.on") : t("settings.off")}
+							</span>
+						</label>
+					)}
+				</div>
+			</SettingsEntry>
 
-			{permission === "granted" && (
-				<div className="mt-4 pt-4 border-t border-edge">
+			<SettingsEntry anchor="push-notifications">
+				<div>
 					<p className="block text-fg text-sm font-semibold mb-2">{t("settings.pushNotifications")}</p>
 					<p className="text-fg-3 text-sm mb-3">{t("settings.pushNotificationsDesc")}</p>
-					{readiness.ready ? (
+					{permission === "denied" ? (
+						<p className="text-fg-muted text-xs">{t("settings.browserNotificationsBlocked")}</p>
+					) : !readiness.ready ? (
+						<p className="text-fg-muted text-xs">
+							{readiness.reason === "needs-install"
+								? t("settings.pushNeedsInstall")
+								: readiness.reason === "insecure"
+									? t("settings.pushInsecure")
+									: t("settings.pushUnsupported")}
+						</p>
+					) : permission !== "granted" ? (
+						<p className="text-fg-muted text-xs">{t("settings.pushNeedsBrowserPermission")}</p>
+					) : (
 						<>
 							<button
 								onClick={() => void togglePush()}
@@ -143,17 +160,9 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 							</button>
 							{pushError && <p className="text-danger text-xs mt-2">{pushError}</p>}
 						</>
-					) : (
-						<p className="text-fg-muted text-xs">
-							{readiness.reason === "needs-install"
-								? t("settings.pushNeedsInstall")
-								: readiness.reason === "insecure"
-									? t("settings.pushInsecure")
-									: t("settings.pushUnsupported")}
-						</p>
 					)}
 				</div>
-			)}
-		</div>
+			</SettingsEntry>
+		</>
 	);
 }

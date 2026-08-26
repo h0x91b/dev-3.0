@@ -4,6 +4,7 @@ import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import type { SettingsSectionId } from "../../state";
+import type { SettingsEntryAnchor } from "../../settings-registry";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -91,10 +92,10 @@ const mockGlobalSettings: GlobalSettingsType = {
 	updateChannel: "stable",
 };
 
-function renderGlobalSettings(section?: SettingsSectionId) {
+function renderGlobalSettings(section?: SettingsSectionId, anchor?: SettingsEntryAnchor) {
 	return render(
 		<I18nProvider>
-			<GlobalSettings section={section} />
+			<GlobalSettings section={section} anchor={anchor} />
 		</I18nProvider>,
 	);
 }
@@ -909,6 +910,26 @@ describe("GlobalSettings", () => {
 	});
 
 	describe("system settings", () => {
+		it("gives push notifications their own deep-link target", async () => {
+			setupMocks();
+			const scrollIntoView = vi.fn();
+			const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+			Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+				configurable: true,
+				value: scrollIntoView,
+			});
+			try {
+				renderGlobalSettings("system", "push-notifications");
+				await waitForLoad();
+
+				expect(document.querySelector('[data-settings-entry="push-notifications"]')).not.toBeNull();
+				await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" }));
+			} finally {
+				if (original) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", original);
+				else delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+			}
+		});
+
 		it("round-trips the confirm-before-quit toggle through skipQuitDialog", async () => {
 			setupMocks(mockAgents, { ...mockGlobalSettings, skipQuitDialog: true });
 			const user = userEvent.setup();

@@ -22,6 +22,13 @@ export type StoredSubscription = PushSubscription & {
 	createdAt: string;
 };
 
+export class MalformedPushSubscriptionError extends Error {
+	constructor() {
+		super("Malformed push subscription");
+		this.name = "MalformedPushSubscriptionError";
+	}
+}
+
 function isSubscription(v: unknown): v is StoredSubscription {
 	if (!v || typeof v !== "object") return false;
 	const s = v as Record<string, any>;
@@ -50,13 +57,14 @@ export function saveSubscriptions(subs: StoredSubscription[], path: string = SUB
 		writeFileSync(path, `${JSON.stringify(subs, null, 2)}\n`, { mode: 0o600 });
 	} catch (err) {
 		log.warn("Could not persist subscriptions", { path, error: String(err) });
+		throw new Error("Could not persist push subscriptions");
 	}
 }
 
 /** The endpoint is the device's identity: re-subscribing the same device must
  *  replace its entry, not add a second one that double-buzzes. */
 export function addSubscription(sub: unknown, label: string | undefined, path: string = SUBSCRIPTIONS_FILE, now = new Date()): StoredSubscription[] {
-	if (!isSubscription(sub)) throw new Error("Malformed push subscription");
+	if (!isSubscription(sub)) throw new MalformedPushSubscriptionError();
 	const rest = loadSubscriptions(path).filter((s) => s.endpoint !== sub.endpoint);
 	const next: StoredSubscription[] = [
 		...rest,

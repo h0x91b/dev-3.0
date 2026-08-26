@@ -764,7 +764,12 @@ function App() {
 				navigate({ screen: "settings", section: detail });
 				return;
 			}
-			navigate({ screen: "settings", section: detail.section, preset: detail.preset });
+			navigate({
+				screen: "settings",
+				section: detail.section,
+				anchor: detail.anchor,
+				preset: detail.preset,
+			});
 		}
 		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettingsSection);
 		return () => window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettingsSection);
@@ -3285,7 +3290,7 @@ function App() {
 					/>
 				);
 			case "settings":
-				return <GlobalSettings section={route.section} preset={route.preset} />;
+				return <GlobalSettings section={route.section} anchor={route.anchor} preset={route.preset} />;
 			case "changelog":
 				return (
 					<Changelog
