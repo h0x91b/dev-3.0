@@ -102,7 +102,7 @@ const common = {
 	"traffic.pairCount_few": "{count} пары переписываются",
 	"traffic.pairCount_many": "{count} пар переписываются",
 	"traffic.pairCount_other": "{count} пар переписываются",
-	"traffic.quiet": "За последний час агенты не писали друг другу",
+	"traffic.quiet": "Агенты пока не писали друг другу",
 	"traffic.openLog": "Открыть журнал трафика",
 	"traffic.logTitle": "Трафик агентов",
 	"traffic.empty": "Эти агенты ещё не писали друг другу.",

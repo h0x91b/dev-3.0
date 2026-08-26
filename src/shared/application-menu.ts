@@ -304,7 +304,6 @@ const NOT_YET_IMPLEMENTED: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	// Help
 	MENU_ACTIONS.helpKeyboardShortcuts,
 	MENU_ACTIONS.helpDiagnostics,
-	MENU_ACTIONS.viewAgentTrafficLog,
 ]);
 
 /**

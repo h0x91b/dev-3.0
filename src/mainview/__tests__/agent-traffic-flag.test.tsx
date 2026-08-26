@@ -1,6 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import type { AgentMessageLogPage } from "../../shared/agent-message-log";
-import { buildApplicationMenu } from "../../shared/application-menu";
+import { buildApplicationMenu, isComingSoonAction } from "../../shared/application-menu";
+import { buildBrowserMenu } from "../components/AppMenuBar";
+import { BROWSER_HANDLED_ACTIONS } from "../menuRouter";
 import { I18nProvider } from "../i18n";
 import { resetTrafficSeen, resetTrafficStore } from "../agent-traffic";
 import {
@@ -57,6 +59,16 @@ function menuLabels(items: unknown[]): string[] {
 }
 
 const MENU_CTX = { hasTask: true, hasProject: true, hasTerminal: true };
+
+/** Leaf labels of the browser-mode menu tree, submenus flattened. */
+function browserLabels(nodes: ReturnType<typeof buildBrowserMenu>): string[] {
+	const out: string[] = [];
+	for (const node of nodes) {
+		if (node.kind === "item") out.push(node.label);
+		if (node.kind === "submenu") out.push(...browserLabels(node.children));
+	}
+	return out;
+}
 
 describe("agent-traffic feature flag", () => {
 	it("defaults to off", () => {
@@ -115,6 +127,20 @@ describe("agent-traffic feature flag", () => {
 
 		const on = menuLabels(buildApplicationMenu({ ...MENU_CTX, agentTrafficEnabled: true }));
 		expect(on.filter((l) => l.startsWith("Agent Traffic Log"))).toHaveLength(2);
+	});
+
+	it("reaches the browser menu bar too, and is not a roadmap placeholder", () => {
+		// Both were true when the feature shipped: the action sat in
+		// NOT_YET_IMPLEMENTED (so the native rows rendered disabled) and was absent
+		// from BROWSER_HANDLED_ACTIONS (so the browser menu dropped it).
+		expect(isComingSoonAction("view-agent-traffic-log")).toBe(false);
+		expect(BROWSER_HANDLED_ACTIONS.has("view-agent-traffic-log")).toBe(true);
+
+		const off = buildBrowserMenu({ ...MENU_CTX, agentTrafficEnabled: false });
+		expect(browserLabels(off).filter((l) => l.startsWith("Agent Traffic Log"))).toHaveLength(0);
+
+		const on = buildBrowserMenu({ ...MENU_CTX, agentTrafficEnabled: true });
+		expect(browserLabels(on).filter((l) => l.startsWith("Agent Traffic Log"))).toHaveLength(2);
 	});
 
 	it("keeps the tip out of the pool while off", () => {

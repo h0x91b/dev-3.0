@@ -458,6 +458,9 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"about", "hard-refresh",
 	// View / navigation
 	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "open-settings",
+	// The traffic log is a renderer overlay, so it works in a browser tab too — it
+	// was only ever missing here, which left remote users on ⇧⌘M and the palette.
+	"view-agent-traffic-log",
 	"go-back", "go-forward", "gauge-demo", "viewport-lab", "native-pane-layout-lab", "update-popover-preview", "feature-flags",
 	"terminal-perf-overlay",
 	"debug-play-sound-completed", "debug-play-sound-cancelled", "debug-push-sound-completed",

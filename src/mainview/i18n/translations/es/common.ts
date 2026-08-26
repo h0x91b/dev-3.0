@@ -98,7 +98,7 @@ const common = {
 	"traffic.ariaLabelUnread": "Tráfico de agentes: {count} nuevos desde la última vez",
 	"traffic.pairCount_one": "{count} pareja hablando",
 	"traffic.pairCount_other": "{count} parejas hablando",
-	"traffic.quiet": "Ningún agente ha escrito en la última hora",
+	"traffic.quiet": "Ningún agente ha escrito a otro todavía",
 	"traffic.openLog": "Abrir el registro de tráfico",
 	"traffic.logTitle": "Tráfico de agentes",
 	"traffic.empty": "Estos agentes aún no se han escrito.",
