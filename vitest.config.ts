@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { configureTestIsolation } from "./test-isolation";
 import { ciRetry } from "./test-retry";
+import { resolveMaxWorkers } from "./test-workers";
 
 const repoRoot = fileURLToPath(new URL(".", import.meta.url));
 configureTestIsolation("mainview", repoRoot);
@@ -11,6 +12,7 @@ export default defineConfig({
 	plugins: [react()],
 	test: {
 		retry: ciRetry,
+		maxWorkers: resolveMaxWorkers("mainview"),
 		root: "src/mainview",
 		environment: "happy-dom",
 		globals: true,
