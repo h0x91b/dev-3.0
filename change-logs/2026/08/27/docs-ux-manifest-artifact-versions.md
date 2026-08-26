@@ -1,0 +1,1 @@
+The UX manifest now records artifact version switching as an allowed action of the task artifact workspace, and corrects the shared-images retention line that claimed artifacts are also kept unbounded — republishing under the same title groups into one record capped at 20 versions.
