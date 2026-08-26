@@ -478,7 +478,7 @@ export function useTaskBranchStatus({
 			const branch = task.branchName ?? "";
 			const ok = await confirm({
 				title: t("infoPanel.forcePushConfirm"),
-				message: t("infoPanel.forcePushConfirmMessage", { branch, count: String(diverged) }),
+				message: t.plural("infoPanel.forcePushConfirmMessage", diverged, { branch }),
 				confirmLabel: t("infoPanel.forcePush"),
 				danger: true,
 			});

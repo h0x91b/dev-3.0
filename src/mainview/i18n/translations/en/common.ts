@@ -95,7 +95,8 @@ const common = {
 	// Agent traffic — the header readout and the traffic log
 	"traffic.label": "Agent traffic",
 	"traffic.ariaLabel": "Agent traffic",
-	"traffic.ariaLabelUnread": "Agent traffic: {count} new since you last looked",
+	"traffic.ariaLabelUnread_one": "Agent traffic: {count} new since you last looked",
+	"traffic.ariaLabelUnread_other": "Agent traffic: {count} new since you last looked",
 	"traffic.pairCount_one": "{count} pair talking",
 	"traffic.pairCount_other": "{count} pairs talking",
 	"traffic.quiet": "No agents have messaged each other yet",

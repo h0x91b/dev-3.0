@@ -97,7 +97,10 @@ const columns = {
 	"notes.placeholder": "Напишите заметку...",
 	"notes.showMore": "Показать полностью",
 	"notes.showLess": "Свернуть",
-	"notes.showAll": "Показать все заметки ({count})",
+	"notes.showAll_one": "Показать все заметки ({count})",
+	"notes.showAll_few": "Показать все заметки ({count})",
+	"notes.showAll_many": "Показать все заметки ({count})",
+	"notes.showAll_other": "Показать все заметки ({count})",
 	"notes.failedAdd": "Не удалось добавить заметку: {error}",
 	"notes.failedDelete": "Не удалось удалить заметку: {error}",
 

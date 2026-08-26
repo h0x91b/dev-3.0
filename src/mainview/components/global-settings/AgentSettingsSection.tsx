@@ -279,9 +279,8 @@ export default function AgentSettingsSection({
 	async function deleteAgent(agent: CodingAgent) {
 		const ok = await confirm({
 			title: t("settings.deleteAgentConfirmTitle"),
-			message: t("settings.deleteAgentConfirmMessage", {
+			message: t.plural("settings.deleteAgentConfirmMessage", agent.configurations.length, {
 				name: agent.name,
-				count: String(agent.configurations.length),
 			}),
 			confirmLabel: t("settings.deleteAgent"),
 			danger: true,
@@ -405,9 +404,7 @@ export default function AgentSettingsSection({
 									type="search"
 									value={presetQuery}
 									onChange={(event) => setPresetQuery(event.target.value)}
-									placeholder={t("settings.presetSearch", {
-										count: String(activeAgent.configurations.length),
-									})}
+									placeholder={t.plural("settings.presetSearch", activeAgent.configurations.length)}
 									aria-label={t("settings.presetSearchLabel")}
 									className="w-full px-2.5 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-sm placeholder:text-fg-muted outline-none focus:border-accent transition-colors"
 								/>

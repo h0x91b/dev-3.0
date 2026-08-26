@@ -97,7 +97,7 @@ export default function KeyboardSettingsSection({
 	const resetAll = useCallback(async () => {
 		const ok = await confirm({
 			title: t("keymap.edit.resetAllTitle"),
-			message: t("keymap.edit.resetAllMessage", { count: String(overrideCount()) }),
+			message: t.plural("keymap.edit.resetAllMessage", overrideCount()),
 			confirmLabel: t("keymap.edit.resetAllConfirmLabel"),
 			danger: true,
 		});
@@ -127,7 +127,7 @@ export default function KeyboardSettingsSection({
 						{changed > 0 ? (
 							<>
 								<span className="shrink-0 text-accent text-xs tabular-nums">
-									{t("keymap.edit.changedCount", { count: String(changed) })}
+									{t.plural("keymap.edit.changedCount", changed)}
 								</span>
 								<button
 									type="button"

@@ -140,7 +140,7 @@ function QualityBreakdown({ stats, titled = true }: { stats: QualityStats; title
 				<div className="flex items-baseline justify-between gap-3">
 					<span className="text-fg-2 text-xs">{t("connQuality.samples")}</span>
 					<span className="text-fg text-xs font-medium tabular-nums">
-						{stats.lost > 0 ? t("connQuality.samplesWithLoss", { count: String(stats.count), lost: String(stats.lost) }) : String(stats.count)}
+						{stats.lost > 0 ? t.plural("connQuality.samplesWithLoss", stats.lost, { samples: String(stats.count) }) : String(stats.count)}
 					</span>
 				</div>
 				<div className="flex items-baseline justify-between gap-3">

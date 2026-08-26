@@ -66,7 +66,8 @@ const diagnostics = {
 	"connQuality.pathLocal": "Same machine",
 	"connQuality.pathOther": "Remote, route unknown",
 	"connQuality.samples": "Samples",
-	"connQuality.samplesWithLoss": "{count} ({lost} lost)",
+	"connQuality.samplesWithLoss_one": "{samples} ({count} lost)",
+	"connQuality.samplesWithLoss_other": "{samples} ({count} lost)",
 	"connQuality.host": "Address",
 	"connQuality.compareHint": "This is the whole loop. To blame the tunnel, open the direct local-network URL and compare the same number.",
 } as const;

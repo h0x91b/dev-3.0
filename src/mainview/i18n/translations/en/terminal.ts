@@ -177,7 +177,8 @@ const terminal = {
 	"tmuxSessions.orphaned": "orphaned",
 	"tmuxSessions.killAll": "Kill All",
 	"tmuxSessions.killAllConfirmTitle": "Kill all tmux sessions",
-	"tmuxSessions.killAllConfirmMessage": "Kill all {count} dev3 tmux sessions? This will terminate all processes in them.",
+	"tmuxSessions.killAllConfirmMessage_one": "Kill the {count} dev3 tmux session? This will terminate all processes in it.",
+	"tmuxSessions.killAllConfirmMessage_other": "Kill all {count} dev3 tmux sessions? This will terminate all processes in them.",
 	"tmuxSessions.killAllConfirmLabel": "Kill all sessions",
 	"tmuxSessions.refresh": "Refresh",
 

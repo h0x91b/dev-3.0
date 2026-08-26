@@ -28,8 +28,10 @@ const SAME_IN_EVERY_LOCALE = new Set<string>([
 	"addProject.gitUrlPlaceholder",
 	"projectSettings.envVarsPlaceholder",
 	"catalog.modelIdPlaceholder",
-	"scripts.dropdown.header",
-	"scripts.dropdown.headerMake",
+	"scripts.dropdown.header_one",
+	"scripts.dropdown.header_other",
+	"scripts.dropdown.headerMake_one",
+	"scripts.dropdown.headerMake_other",
 ]);
 
 /** Long enough, and prose enough, that an identical copy means "not translated". */

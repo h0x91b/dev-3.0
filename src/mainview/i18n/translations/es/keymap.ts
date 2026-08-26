@@ -71,7 +71,8 @@ const keymap = {
 	"keymap.edit.reset": "Restaurar el predeterminado",
 	"keymap.edit.resetAll": "Restaurar todos los atajos",
 	"keymap.edit.resetAllTitle": "¿Restaurar todos los atajos?",
-	"keymap.edit.resetAllMessage": "Tus {count} atajos cambiados vuelven a sus valores por defecto. No se puede deshacer.",
+	"keymap.edit.resetAllMessage_one": "Tu {count} atajo cambiado vuelve a su valor por defecto. No se puede deshacer.",
+	"keymap.edit.resetAllMessage_other": "Tus {count} atajos cambiados vuelven a sus valores por defecto. No se puede deshacer.",
 	"keymap.edit.resetAllConfirmLabel": "Restaurar atajos",
 	"keymap.edit.conflict": "{name} ya lo usa. Al guardar, se lo quitas.",
 	"keymap.edit.stolen": "{name} se quedó sin atajo.",
@@ -81,7 +82,8 @@ const keymap = {
 	"keymap.edit.desktopOnly": "Solo en la app de escritorio",
 	"keymap.edit.browserReserved": "Tu navegador se queda con esta combinación: solo funcionará en la app de escritorio o en pantalla completa.",
 	"keymap.edit.inBrowser": "En el navegador: {keys}",
-	"keymap.edit.changedCount": "{count} cambiados",
+	"keymap.edit.changedCount_one": "{count} cambiado",
+	"keymap.edit.changedCount_other": "{count} cambiados",
 };
 
 export default keymap;

@@ -116,7 +116,7 @@ function LeftoverProcessesSection({ onCloseOverlay }: { onCloseOverlay: () => vo
 		onCloseOverlay();
 		const confirmed = await confirm({
 			title: t("memory.leftoversConfirmTitle"),
-			message: t("memory.leftoversConfirmBody", { count: String(processCount), size: formatBytes(rss) }),
+			message: t.plural("memory.leftoversConfirmBody", processCount, { size: formatBytes(rss) }),
 			confirmLabel: t("memory.leftoversKillAll"),
 			danger: true,
 		});

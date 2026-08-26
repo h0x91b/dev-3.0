@@ -4148,7 +4148,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 													{pendingReviewExportEntries.length}
 													{sentReviewCommentCount > 0 && (
 														<span data-testid="review-export-sent-count" className="text-success">
-															{` · ${t("infoPanel.diffReviewSentCount", { count: String(sentReviewCommentCount) })}`}
+															{` · ${t.plural("infoPanel.diffReviewSentCount", sentReviewCommentCount)}`}
 														</span>
 													)}
 												</span>

@@ -314,8 +314,8 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				targets: data!.makefile.targets.length,
 			});
 		}
-		if (pkgHasScripts) return t("scripts.dropdown.header", { count: data!.package.scripts.length });
-		if (mkHasTargets) return t("scripts.dropdown.headerMake", { count: data!.makefile.targets.length });
+		if (pkgHasScripts) return t.plural("scripts.dropdown.header", data!.package.scripts.length);
+		if (mkHasTargets) return t.plural("scripts.dropdown.headerMake", data!.makefile.targets.length);
 		// Nothing runnable — surface the most informative reason.
 		const pkgErr = data?.package.error;
 		if (pkgErr?.startsWith("parse-failed")) return t("scripts.empty.parseError", { error: pkgErr });

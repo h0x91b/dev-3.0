@@ -18,7 +18,9 @@ vi.mock("../../../rpc", () => ({
 import { api } from "../../../rpc";
 
 // Stub translator: return the key so assertions are stable and locale-agnostic.
-const t = ((key: string) => key) as unknown as TFunction;
+const t = Object.assign((key: string) => key, {
+	plural: (key: string, count: number) => `${key}|${count}`,
+}) as unknown as TFunction;
 
 function makeStatus(over: Partial<PxpipeProxyStatus> = {}): PxpipeProxyStatus {
 	return {

@@ -9,23 +9,22 @@ export function interpolate(
 	);
 }
 
-export function getPluralForm(
-	count: number,
-	locale: Locale,
-): "one" | "few" | "many" | "other" {
-	if (locale === "ru") {
-		const mod10 = count % 10;
-		const mod100 = count % 100;
-		if (mod10 === 1 && mod100 !== 11) return "one";
-		if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20))
-			return "few";
-		return "many";
-	}
+/** The suffixes a key may carry; `Intl.PluralRules` picks between them. */
+export type PluralForm = Intl.LDMLPluralRule;
 
-	if (locale === "es") {
-		return count === 1 ? "one" : "other";
-	}
+const rules = new Map<Locale, Intl.PluralRules>();
 
-	// en
-	return count === 1 ? "one" : "other";
+/**
+ * CLDR decides, not us. The hand-rolled mod-10/mod-100 branch this replaced was
+ * byte-identical to `Intl.PluralRules` for en/ru at every integer, and a fourth
+ * locale (Polish, Czech, Arabic) would have needed its own branch. Categories a
+ * locale has no key for fall through to `_other` in `t.plural`.
+ */
+export function getPluralForm(count: number, locale: Locale): PluralForm {
+	let pr = rules.get(locale);
+	if (!pr) {
+		pr = new Intl.PluralRules(locale);
+		rules.set(locale, pr);
+	}
+	return pr.select(count);
 }

@@ -68,7 +68,10 @@ const diagnostics = {
 	"connQuality.pathLocal": "Та же машина",
 	"connQuality.pathOther": "Удалённо, маршрут неизвестен",
 	"connQuality.samples": "Замеров",
-	"connQuality.samplesWithLoss": "{count} (потеряно {lost})",
+	"connQuality.samplesWithLoss_one": "{samples} (потеряна {count})",
+	"connQuality.samplesWithLoss_few": "{samples} (потеряно {count})",
+	"connQuality.samplesWithLoss_many": "{samples} (потеряно {count})",
+	"connQuality.samplesWithLoss_other": "{samples} (потеряно {count})",
 	"connQuality.host": "Адрес",
 	"connQuality.compareHint": "Это весь путь целиком. Чтобы обвинить туннель, откройте прямой адрес в локальной сети и сравните то же число.",
 } as const;

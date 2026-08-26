@@ -91,7 +91,8 @@ const columns = {
 	"notes.placeholder": "Write a note...",
 	"notes.showMore": "Show more",
 	"notes.showLess": "Show less",
-	"notes.showAll": "Show all {count} notes",
+	"notes.showAll_one": "Show all {count} note",
+	"notes.showAll_other": "Show all {count} notes",
 	"notes.failedAdd": "Failed to add note: {error}",
 	"notes.failedDelete": "Failed to delete note: {error}",
 

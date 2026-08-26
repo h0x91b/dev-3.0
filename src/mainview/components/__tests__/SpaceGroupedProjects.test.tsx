@@ -173,7 +173,7 @@ describe("SpaceGroupedProjects — header details from the mock", () => {
 		);
 		const header = screen.getByTestId("space-header-sp_a");
 		expect(header).toHaveTextContent("2 projects");
-		expect(header).toHaveTextContent("1 need you");
+		expect(header).toHaveTextContent("1 needs you");
 		expect(header).toHaveTextContent("2 working");
 		// No amber/blue dot: its only legend was this very line saying it in words.
 		expect(header.querySelector(".bg-awake")).toBeNull();

@@ -264,12 +264,12 @@ function SpaceGroupedProjects({
 								    only legend was this same line saying it out loud. */}
 								{needsYou > 0 && (
 									<span className={`flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
-										{t("spaces.needYou", { count: String(needsYou) })}
+										{t.plural("spaces.needYou", needsYou)}
 									</span>
 								)}
 								{working > 0 && (
 									<span className={`flex-shrink-0 text-xs text-fg-3 ${masked ? MASK_CLASS : ""}`}>
-										{t("spaces.working", { count: String(working) })}
+										{t.plural("spaces.working", working)}
 									</span>
 								)}
 							</button>

@@ -30,8 +30,11 @@ const mockedManual = vi.mocked(api.request.setTaskManualCompletion);
 const mockedConfirm = vi.mocked(confirm);
 
 // Echoes interpolation params so tests can assert the branch/task flow into copy.
-const t = ((key: string, params?: Record<string, string>) =>
-	params ? `${key}|${params.taskTitle ?? ""}|${params.branchName ?? ""}` : key) as unknown as TFunction;
+const t = Object.assign(
+	(key: string, params?: Record<string, string>) =>
+		params ? `${key}|${params.taskTitle ?? ""}|${params.branchName ?? ""}` : key,
+	{ plural: (key: string, count: number) => `${key}|${count}` },
+) as unknown as TFunction;
 
 const project = { id: "p1", name: "Alpha", path: "/a", labels: [] } as unknown as Project;
 const task = {

@@ -281,7 +281,7 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 			message: presets > 0
 				? t("catalog.removeProviderInUse", { models: String(orphans.length), presets: String(presets) })
 				: orphans.length > 0
-					? t("catalog.removeProviderOrphans", { count: String(orphans.length) })
+					? t.plural("catalog.removeProviderOrphans", orphans.length)
 					: t("catalog.removeProviderBody"),
 			confirmLabel: t("catalog.removeProvider"),
 			danger: true,
@@ -451,7 +451,7 @@ export default function ModelCatalogSection({ t }: { t: TFunction }) {
 						{listError ? (
 							<span className="text-xs text-warning-strong">{t("catalog.listUnavailable")}</span>
 						) : available === null ? null : available.length > 0 ? (
-							<span className="text-xs text-fg-3">{t("catalog.listLoaded", { count: String(available.length) })}</span>
+							<span className="text-xs text-fg-3">{t.plural("catalog.listLoaded", available.length)}</span>
 						) : (
 							<span className="text-xs text-warning-strong">{t("catalog.listEmpty")}</span>
 						)}

@@ -108,7 +108,8 @@ const stats = {
 	"stats.momentum.steady": "Holding a steady pace",
 	"stats.momentum.idle": "Ship a task to get the needle moving",
 	"stats.momentum.idlePast": "Nothing shipped in this period",
-	"stats.momentum.lifetime": "{count} tasks shipped, all-time. Respect.",
+	"stats.momentum.lifetime_one": "{count} task shipped, all-time. Respect.",
+	"stats.momentum.lifetime_other": "{count} tasks shipped, all-time. Respect.",
 	// Contribution heatmap
 	"stats.heatmap.title": "Activity",
 	"stats.heatmap.subtitle": "Last 12 months",

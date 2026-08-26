@@ -219,9 +219,7 @@ function TmuxSessionManager({ navigate, variant = "bar" }: TmuxSessionManagerPro
 		if (sessions.length === 0) return;
 		const confirmed = await confirm({
 			title: t("tmuxSessions.killAllConfirmTitle"),
-			message: t("tmuxSessions.killAllConfirmMessage", {
-				count: String(sessions.length),
-			}),
+			message: t.plural("tmuxSessions.killAllConfirmMessage", sessions.length),
 			confirmLabel: t("tmuxSessions.killAllConfirmLabel"),
 			danger: true,
 		});

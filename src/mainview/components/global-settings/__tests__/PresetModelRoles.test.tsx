@@ -4,7 +4,9 @@ import type { AgentConfiguration, ModelCatalogView } from "../../../../shared/ty
 import { I18nProvider, type TFunction } from "../../../i18n";
 import PresetModelRoles from "../PresetModelRoles";
 
-const t = ((key: string) => key) as unknown as TFunction;
+const t = Object.assign((key: string) => key, {
+	plural: (key: string, count: number) => `${key}|${count}`,
+}) as unknown as TFunction;
 
 const CATALOG: ModelCatalogView = {
 	providers: [

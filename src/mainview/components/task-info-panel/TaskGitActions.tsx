@@ -289,13 +289,13 @@ export default function TaskGitActions({
 			) : branchStatus.behind > 0 ? (
 				<span className="text-fg-3 font-medium">
 					<BehindCount
-						text={t("infoPanel.commitsBehind", { count: BEHIND_SLOT })}
+						text={t.plural("infoPanel.commitsBehind", branchStatus.behind, { count: BEHIND_SLOT })}
 						behind={branchStatus.behind}
 					/>
 				</span>
 			) : (
 				<span className="text-fg-3 font-medium">
-					{t("infoPanel.commitsAhead", { count: String(branchStatus.ahead) })}
+					{t.plural("infoPanel.commitsAhead", branchStatus.ahead)}
 				</span>
 			)}
 		</span>

@@ -123,9 +123,9 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 											{t("updateSim.fallbackBadge")}
 										</span>
 									)}
-									<span className="text-fg-muted">{t("updateSim.totalEntries", { count: String(diag?.totalEntries ?? 0) })}</span>
+									<span className="text-fg-muted">{t.plural("updateSim.totalEntries", diag?.totalEntries ?? 0)}</span>
 									{diag && diag.mergedPRs > 0 && (
-										<span className="text-fg-muted">{t("updateSim.mergedPRs", { count: String(diag.mergedPRs) })}</span>
+										<span className="text-fg-muted">{t.plural("updateSim.mergedPRs", diag.mergedPRs)}</span>
 									)}
 								</div>
 								<p className="text-fg-muted text-micro">{t("updateSim.includesUncommitted")}</p>

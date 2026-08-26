@@ -182,7 +182,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 			case "behind":
 				return t("stats.momentum.behind", { pct: String(pct ?? 0) });
 			case "lifetime":
-				return t("stats.momentum.lifetime", { count: String(data.counters.allTimeCompleted) });
+				return t.plural("stats.momentum.lifetime", data.counters.allTimeCompleted);
 			case "idle":
 				// "Ship a task" only makes sense for the present period.
 				return offset > 0 ? t("stats.momentum.idlePast") : t("stats.momentum.idle");

@@ -111,7 +111,7 @@ export default function TaskNotes({ task, project, dispatch, variant = "preview"
 					className="mb-2 w-full rounded-lg border border-edge px-2 py-1.5 text-xs text-accent hover:bg-elevated hover:text-accent-emphasis transition-colors"
 					data-testid="task-notes-show-all"
 				>
-					{t("notes.showAll", { count: String(notes.length) })}
+					{t.plural("notes.showAll", notes.length)}
 				</button>
 			)}
 			{shown.map((note) => (

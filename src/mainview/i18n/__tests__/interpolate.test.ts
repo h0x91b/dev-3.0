@@ -83,6 +83,17 @@ describe("getPluralForm", () => {
 		it("returns 'many' for 0", () => {
 			expect(getPluralForm(0, "ru")).toBe("many");
 		});
+
+		// The few/many boundary is where the hand-rolled mod-10/mod-100 branch
+		// this function replaced used to live. Same answers, from CLDR now.
+		it.each([
+			[101, "one"],
+			[102, "few"],
+			[111, "many"],
+			[1001, "one"],
+		])("returns '%s' → %s", (count, form) => {
+			expect(getPluralForm(count as number, "ru")).toBe(form);
+		});
 	});
 
 	describe("Spanish", () => {

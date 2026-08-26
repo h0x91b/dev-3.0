@@ -181,7 +181,10 @@ const terminal = {
 	"tmuxSessions.orphaned": "осиротевшая",
 	"tmuxSessions.killAll": "Убить все",
 	"tmuxSessions.killAllConfirmTitle": "Убить все сессии tmux",
-	"tmuxSessions.killAllConfirmMessage": "Убить все {count} сессий dev3? Все процессы будут завершены.",
+	"tmuxSessions.killAllConfirmMessage_one": "Убить {count} сессию dev3? Все процессы в ней будут завершены.",
+	"tmuxSessions.killAllConfirmMessage_few": "Убить все {count} сессии dev3? Все процессы в них будут завершены.",
+	"tmuxSessions.killAllConfirmMessage_many": "Убить все {count} сессий dev3? Все процессы в них будут завершены.",
+	"tmuxSessions.killAllConfirmMessage_other": "Убить все {count} сессий dev3? Все процессы в них будут завершены.",
 	"tmuxSessions.killAllConfirmLabel": "Убить все сессии",
 	"tmuxSessions.refresh": "Обновить",
 

@@ -74,7 +74,8 @@ const keymap = {
 	"keymap.edit.reset": "Restore default",
 	"keymap.edit.resetAll": "Restore all defaults",
 	"keymap.edit.resetAllTitle": "Restore all keyboard shortcuts?",
-	"keymap.edit.resetAllMessage": "Your {count} changed shortcuts go back to their defaults. This cannot be undone.",
+	"keymap.edit.resetAllMessage_one": "Your {count} changed shortcut goes back to its default. This cannot be undone.",
+	"keymap.edit.resetAllMessage_other": "Your {count} changed shortcuts go back to their defaults. This cannot be undone.",
 	"keymap.edit.resetAllConfirmLabel": "Reset shortcuts",
 	"keymap.edit.conflict": "{name} already uses this. Saving takes it away from that one.",
 	"keymap.edit.stolen": "{name} lost its shortcut and is now unassigned.",
@@ -84,7 +85,8 @@ const keymap = {
 	"keymap.edit.desktopOnly": "Desktop app only",
 	"keymap.edit.browserReserved": "Your browser keeps this combo — it will only work in the desktop app, or in fullscreen.",
 	"keymap.edit.inBrowser": "In the browser: {keys}",
-	"keymap.edit.changedCount": "{count} changed",
+	"keymap.edit.changedCount_one": "{count} changed",
+	"keymap.edit.changedCount_other": "{count} changed",
 } as const;
 
 export default keymap;

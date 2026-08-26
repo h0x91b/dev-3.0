@@ -130,7 +130,7 @@ export default function AgentTrafficIndicator({
 
 	const { pairs, unread } = traffic;
 	const accessibleName =
-		unread > 0 ? t("traffic.ariaLabelUnread", { count: String(unread) }) : t("traffic.ariaLabel");
+		unread > 0 ? t.plural("traffic.ariaLabelUnread", unread) : t("traffic.ariaLabel");
 	const logShortcut = shortcutById("agent-traffic-log");
 	const shortcut = logShortcut ? shortcutKeysFor(logShortcut) : "";
 

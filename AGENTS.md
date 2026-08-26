@@ -401,9 +401,11 @@ All user-facing renderer strings are localized via `src/mainview/i18n/`; locales
 
 **Interpolation:** `{variable}` placeholders — `t("dashboard.failedAdd", { error: String(err) })`.
 
-**Pluralization:** suffix convention `_one`, `_few`, `_many`, `_other`; call `t.plural("dashboard.projectCount", count)`. English needs only `_one`/`_other`; Russian needs all four (`"{count} проект"` / `"{count} проекта"` / `"{count} проектов"` / `"{count} проектов"`).
+**Pluralization:** suffix convention `_one`, `_few`, `_many`, `_other`; call `t.plural("dashboard.projectCount", count)`. English needs only `_one`/`_other`; Russian needs all four (`"{count} проект"` / `"{count} проекта"` / `"{count} проектов"` / `"{count} проектов"`). Which suffix a count selects comes from `Intl.PluralRules` (`i18n/interpolate.ts`), so the categories are CLDR's — a new locale needs no code, only its keys.
 
-**Adding a locale:** mirror the `en/` domain files under `translations/{locale}/` + a merging barrel satisfying `TranslationRecord` (copy `ru.ts` structure); register in `ALL_LOCALES`/`LOCALE_LABELS` (`i18n/types.ts`) and `translationSets` (`i18n/context.tsx`); add plural rules in `i18n/interpolate.ts` (`getPluralForm`).
+**A `{count}` string is plural by default.** `__tests__/plural-keys.test.ts` fails on any translation value containing `{count}` whose key has no plural suffix, on an incomplete form set, and on a plural base one locale has and another does not. A count that genuinely needs no agreement — a parenthetical `(N)`, a ratio `N/M`, an abbreviated unit, the total in "N of M" — goes in that test's `FLAT_COUNT_KEYS` **with a reason**. Never render a count with a hand-written ternary: `{n} {n === 1 ? "file" : "files"}` is untranslated and wrong in two of the three locales.
+
+**Adding a locale:** mirror the `en/` domain files under `translations/{locale}/` + a merging barrel satisfying `TranslationRecord` (copy `ru.ts` structure); register in `ALL_LOCALES`/`LOCALE_LABELS` (`i18n/types.ts`) and `translationSets` (`i18n/context.tsx`). Plural rules need no code — `Intl.PluralRules` already knows the new locale; give every plural base the suffixes CLDR asks for (Polish and Czech want `_few`/`_many`, Arabic also `_zero`/`_two`), and `plural-keys.test.ts` will name the missing ones.
 
 **Do NOT translate:** input placeholders that are command examples (`"bun install"`, `"claude"`, `"main"`), terminal output (`term.writeln()`), the app name in breadcrumbs (`"dev-3.0"`).
 

@@ -26,7 +26,9 @@ import { api } from "../../../rpc";
 import { confirm } from "../../../confirm";
 
 /** Stub translator: keys make assertions stable and locale-agnostic. */
-const t = ((key: string) => key) as unknown as TFunction;
+const t = Object.assign((key: string) => key, {
+	plural: (key: string, count: number) => `${key}|${count}`,
+}) as unknown as TFunction;
 
 const CATALOG: ModelCatalogView = {
 	providers: [{ id: "p-or", kind: "openrouter", label: "OpenRouter", hasKey: true }],
@@ -245,7 +247,7 @@ describe("editing the catalog", () => {
 		renderSection();
 		await userEvent.click(await screen.findByRole("button", { name: "catalog.removeProvider" }));
 		await waitFor(() => expect(confirm).toHaveBeenCalled());
-		expect(vi.mocked(confirm).mock.calls[0][0].message).toBe("catalog.removeProviderOrphans");
+		expect(vi.mocked(confirm).mock.calls[0][0].message).toBe("catalog.removeProviderOrphans|1");
 	});
 
 	it("says how many presets a deletion would break", async () => {
@@ -362,7 +364,7 @@ describe("the live model list", () => {
 		vi.mocked(api.request.modelCatalogListModels).mockResolvedValue({ models: ["openrouter/a", "openrouter/b"] });
 		renderSection();
 		await userEvent.click(await screen.findByRole("button", { name: "catalog.refreshModels" }));
-		expect(await screen.findByText("catalog.listLoaded")).toBeTruthy();
+		expect(await screen.findByText("catalog.listLoaded|2")).toBeTruthy();
 	});
 
 	it("says an empty listing is empty, rather than looking like a no-op", async () => {

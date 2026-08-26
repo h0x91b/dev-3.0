@@ -66,7 +66,8 @@ const diagnostics = {
 	"connQuality.pathLocal": "La misma máquina",
 	"connQuality.pathOther": "Remoto, ruta desconocida",
 	"connQuality.samples": "Muestras",
-	"connQuality.samplesWithLoss": "{count} ({lost} perdidas)",
+	"connQuality.samplesWithLoss_one": "{samples} ({count} perdida)",
+	"connQuality.samplesWithLoss_other": "{samples} ({count} perdidas)",
 	"connQuality.host": "Dirección",
 	"connQuality.compareHint": "Esto es el recorrido completo. Para culpar al túnel, abre la URL directa de la red local y compara el mismo número.",
 } as const;
