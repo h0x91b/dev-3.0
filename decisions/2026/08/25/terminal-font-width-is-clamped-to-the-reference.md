@@ -33,7 +33,11 @@ what the user chose.
   (`terminalFontScale`), so a locally installed font obeys the same rule.
 - Unmeasurable means `1`. Never guess a shrink.
 - `effectiveTerminalFontSize()` is what reaches ghostty, via `scaledTerminalFontSize()`
-  in `TerminalView.tsx`; rounding happens last so the trim is not lost to it.
+  in `TerminalView.tsx`. **A trimmed font is handed an exact fractional size, never a
+  rounded one.** ghostty's cell is `ceil(measureText("M").width)`, so rounding the size
+  back up hands the trim straight back: at 15px, 20px and the default 14px the rounded
+  value equalled the nominal one and the terminal came out a pixel per column wider
+  after all. An untrimmed font (scale `1`, nine of the fifteen) still rounds, unchanged.
 
 Settings shows the consequence rather than hiding it: the entry says a font was
 narrowed and by how much, and each gallery row carries the same figure.

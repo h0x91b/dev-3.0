@@ -2161,15 +2161,31 @@ describe("TerminalView – the terminal is never rendered wider than the referen
 	it("hands ghostty the narrowed size, not the nominal one", async () => {
 		// The rule only counts where it reaches the renderer. Asserting the helper
 		// would pass even if the constructor kept reading the raw preference.
-		// 0xProto at 20px, deliberately: 20 -> 19.35 -> 19 survives the rounding, while
-		// a font/size pair that rounds back to 20 would let a broken scale pass.
 		applyTerminalFontFamily("0xProto Nerd Font Mono");
 		applyTerminalFontSize(20);
 		await renderAndSetup();
 
 		const options = vi.mocked(Terminal).mock.calls[0][0] as { fontSize: number; fontFamily: string };
-		expect(options.fontSize).toBe(19);
+		expect(options.fontSize).toBeCloseTo(20 * 0.9677, 5);
 		expect(options.fontFamily.startsWith("'0xProto Nerd Font Mono'")).toBe(true);
+	});
+
+	// The pairs an integer round would hand straight back. ghostty's cell is
+	// `ceil(measureText("M").width)`, so a size rounded back up renders one pixel per
+	// column wider than the reference — the exact harm the scale exists to prevent.
+	// Any of these expressed as `Math.round` fails: 19.5 -> 20, 14.949 -> 15, 13.548 -> 14.
+	it.each([
+		["FiraCode Nerd Font Mono", 20, 0.975],
+		["Hack Nerd Font Mono", 15, 0.9966],
+		["0xProto Nerd Font Mono", 14, 0.9677],
+	])("keeps the trim on %s at %ipx instead of rounding it away", async (family, size, scale) => {
+		applyTerminalFontFamily(family);
+		applyTerminalFontSize(size);
+		await renderAndSetup();
+
+		const options = vi.mocked(Terminal).mock.calls[0][0] as { fontSize: number };
+		expect(options.fontSize).toBeCloseTo(size * scale, 5);
+		expect(options.fontSize).toBeLessThan(size);
 	});
 
 	it("leaves a font that already fits at its nominal size", async () => {

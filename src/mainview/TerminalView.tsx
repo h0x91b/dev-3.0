@@ -19,6 +19,7 @@ import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getEffectiveZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import {
 	effectiveTerminalFontSize,
+	terminalFontScale,
 	terminalFontStack,
 	TERMINAL_FONT_CHANGED_EVENT,
 } from "./terminal-font";
@@ -100,11 +101,17 @@ const LIGHT_TERMINAL_THEME = {
 
 /**
  * What ghostty is told: the user's size, narrowed to the reference font's cell if
- * this family is wider, then scaled by app zoom. Rounding is the last step so the
- * width normalization is not lost to it.
+ * this family is wider, then scaled by app zoom.
+ *
+ * A trimmed font keeps its exact fractional size. Rounding it hands the trim
+ * straight back — ghostty's cell is `ceil(measureText("M").width)`, so `round`
+ * erased the clamp entirely at sizes like 15 and 20 and the terminal came out one
+ * pixel per column wider than the reference after all. An untrimmed font (scale 1,
+ * nine of the fifteen) still rounds exactly as it always did.
  */
 function scaledTerminalFontSize(zoom: number = getEffectiveZoom()): number {
-	return Math.round(effectiveTerminalFontSize() * zoom);
+	const exact = effectiveTerminalFontSize() * zoom;
+	return terminalFontScale() < 1 ? exact : Math.round(exact);
 }
 /**
  * A terminal teardown longer than this blocked the renderer for that long: every
@@ -2260,7 +2267,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				const term = termRef.current;
 				if (!term) return;
 				try {
-					term.options.fontFamily = stack;
+					// Read the live stack, not the one this event carried: two quick picks
+					// race on `document.fonts.load`, and the slower load resolving last
+					// would otherwise re-apply the font the user already moved off.
+					term.options.fontFamily = terminalFontStack();
 					term.options.fontSize = scaledTerminalFontSize();
 					fitAddonRef.current?.fit();
 				} catch { /* disposed */ }
