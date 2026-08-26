@@ -70,9 +70,9 @@ describe("cliTransportFor", () => {
 });
 
 describe("defaultLaunchShellPath", () => {
-	it("keeps the historical POSIX default", () => {
+	it("keeps the POSIX default on $SHELL, last-resorting to /bin/sh", () => {
 		expect(defaultLaunchShellPath("darwin", { SHELL: "/bin/zsh" })).toBe("/bin/zsh");
-		expect(defaultLaunchShellPath("linux", {})).toBe("/bin/zsh");
+		expect(defaultLaunchShellPath("linux", {})).toBe("/bin/sh");
 	});
 
 	it("resolves Windows PowerShell 5.1 from %SystemRoot%", () => {

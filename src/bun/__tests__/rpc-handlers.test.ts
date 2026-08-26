@@ -353,6 +353,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
+import { getUserShell } from "../shell-env";
 import { tmux } from "../tmux";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
@@ -8939,7 +8940,9 @@ describe("handlers.getProjectPtyUrl", () => {
 			`project-${project.id}`,
 			project.id,
 			"/tmp/test-project",
-			process.env.SHELL || "/bin/zsh",
+			// The resolved shell, not a pinned path: this suite mocks node:fs, so
+			// the resolver finds no candidate installed and last-resorts to /bin/sh.
+			getUserShell(),
 			{ API_URLS: "https://api.example.com,http://api.example.com" },
 			"dev3",
 			"project",

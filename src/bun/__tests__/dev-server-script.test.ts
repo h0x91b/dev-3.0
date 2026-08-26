@@ -53,7 +53,7 @@ const POSIX_TMUX = [
 	"set +x",
 	"if [ $EXIT_CODE -ne 0 ]; then",
 	"  printf '\\nProcess exited with code %s. Press any key to close.\\n' \"$EXIT_CODE\"",
-	"  if [ -n \"$ZSH_VERSION\" ]; then read -k 1 -s; else read -n 1 -s; fi",
+	"  if [ -n \"$ZSH_VERSION\" ]; then read -k 1 -s; elif [ -n \"$BASH_VERSION\" ]; then read -n 1 -s; else read -r _dev3_key; fi",
 	"fi",
 	'"/opt/tmux" detach-client 2>/dev/null || true',
 ].join("\n") + "\n";
@@ -76,7 +76,7 @@ describe("POSIX dev-server wrapper (pinned)", () => {
 		expect(script).toBe(["#!/bin/bash", "export A='1'", "", "set -x", "bun run dev", "EXIT_CODE=$?", "set +x",
 			"if [ $EXIT_CODE -ne 0 ]; then",
 			"  printf '\\nProcess exited with code %s. Press any key to close.\\n' \"$EXIT_CODE\"",
-			"  if [ -n \"$ZSH_VERSION\" ]; then read -k 1 -s; else read -n 1 -s; fi",
+			"  if [ -n \"$ZSH_VERSION\" ]; then read -k 1 -s; elif [ -n \"$BASH_VERSION\" ]; then read -n 1 -s; else read -r _dev3_key; fi",
 			"fi"].join("\n") + "\n");
 	});
 });

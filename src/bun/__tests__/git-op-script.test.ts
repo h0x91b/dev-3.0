@@ -52,7 +52,7 @@ const POSIX_PUSH = [
 	"  printf '%s\\n' 'If git refused this as non-fast-forward, the branch was rebased after being pushed.'",
 	"  printf '%s\\n' 'Refresh the branch status and use Force push, which leases against origin.'",
 	"  printf '\\nPress any key to close this pane.\\n'",
-	"  if [ -n \"$ZSH_VERSION\" ]; then read -k 1 -s; else read -n 1 -s; fi",
+	"  if [ -n \"$ZSH_VERSION\" ]; then read -k 1 -s; elif [ -n \"$BASH_VERSION\" ]; then read -n 1 -s; else read -r _dev3_key; fi",
 	"  exit $__DEV3_EC0",
 	"fi",
 	"printf '%s' \"$__DEV3_EC0\" > '/tmp/dev3-T-git-rebase.sh.exit'",

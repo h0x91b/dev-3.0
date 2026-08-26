@@ -39,9 +39,11 @@ describe("dialect selection", () => {
 		expect(launchDialect("linux").scriptByteOrderMark).toBe("");
 	});
 
-	it("keeps the historical POSIX default shell", () => {
+	it("prefers $SHELL, and last-resorts to the one shell POSIX guarantees", () => {
 		expect(defaultLaunchShellPath("darwin", { SHELL: "/bin/fish" })).toBe("/bin/fish");
-		expect(defaultLaunchShellPath("linux", {})).toBe("/bin/zsh");
+		// NOT /bin/zsh: a minimal Linux box has none, and a wrapper pointed at a
+		// missing binary cannot even report why it died.
+		expect(defaultLaunchShellPath("linux", {})).toBe("/bin/sh");
 	});
 
 	it("resolves the Windows default shell from SystemRoot", () => {

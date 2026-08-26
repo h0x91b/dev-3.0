@@ -51,6 +51,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "../spawn";
 import { DEV3_HOME } from "../paths";
+import { _resetUserShellCacheForTests } from "../shell-env";
 import { TmuxSpawnError, TMUX_CONF_DARK_PATH } from "../tmux";
 import {
 	cwdExists,
@@ -235,6 +236,9 @@ describe("pty-server", () => {
 
 		it("uses the user shell when tmuxCommand is empty", () => {
 			process.env.SHELL = "/bin/zsh";
+			// The shell is resolved once and cached for an hour — including at the
+			// import that wrote the tmux config, long before this line.
+			_resetUserShellCacheForTests();
 			const id = track("task-defcmd-01");
 			createSession(id, "proj-1", "/tmp/cwd", "", {});
 
