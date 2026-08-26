@@ -1,4 +1,5 @@
 import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { CodingAgent, Project, Task, UpdateChangelog } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { Route } from "../state";
@@ -13,7 +14,7 @@ import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api, isElectrobun } from "../rpc";
 import { isRemote } from "../utils/platform";
 import { subscribeFullscreen, isFullscreenActive, isFullscreenSupported, toggleFullscreen } from "../fullscreen";
-import { toast } from "../toast";
+import { toast, usePinnedToastSlot } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import NativeBackendMark from "./NativeBackendMark";
@@ -127,6 +128,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const [restarting, setRestarting] = useState(false);
 	const [restartContext, setRestartContext] = useState<{ headless: boolean; remoteActive: boolean; tasksInProgress: number } | null>(null);
 	const [showToast, setShowToast] = useState(false);
+	const pinnedToastSlot = usePinnedToastSlot();
 	const [countdown, setCountdown] = useState(0);
 	const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const [showProjectDropdown, setShowProjectDropdown] = useState(false);
@@ -1109,10 +1111,14 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 				</div>
 			</BottomSheet>
 		)}
-		{/* Toast notification for update ready */}
-		{showToast && updateVersion && (
-			<div className="fixed top-14 right-4 z-50 animate-slide-in-right">
-				<div className="bg-overlay border border-accent/30 rounded-xl shadow-2xl p-4 w-80 flex items-start gap-3">
+		{/* The update prompt is not a toast: it never expires, it is never evicted, and
+		    it carries a restart deadline. So it does NOT own a corner of its own — it
+		    pins into the toast host's slot, above the transient pile, and the two can no
+		    longer cover each other. Width matches a toast card so the column has one
+		    trailing edge. */}
+		{showToast && updateVersion && pinnedToastSlot && createPortal(
+			<div className="animate-slide-in-right pointer-events-auto" data-testid="update-prompt-pinned">
+				<div className="bg-overlay border border-accent/30 rounded-xl shadow-2xl p-4 w-[26rem] max-w-[calc(100vw-2rem)] flex items-start gap-3">
 					<UpdateReadyIcon className="w-5 h-5 text-accent mt-0.5 flex-shrink-0" />
 					<div className="flex-1 min-w-0">
 						<div className="text-fg text-sm font-semibold">
@@ -1158,14 +1164,16 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					</div>
 					<button
 						onClick={dismissToast}
+						aria-label={t("update.postponeBtn")}
 						className="text-fg-muted hover:text-fg transition-colors flex-shrink-0"
 					>
-						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
 				</div>
-			</div>
+			</div>,
+			pinnedToastSlot,
 		)}
 		</>
 	);

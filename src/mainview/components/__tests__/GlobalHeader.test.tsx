@@ -54,6 +54,10 @@ vi.mock("../../toast", () => ({
 		info: vi.fn(),
 		success: vi.fn(),
 	},
+	// Stands in for the real ToastHost slot, which no header test mounts. Body is
+	// the honest substitute: the update prompt portals somewhere queryable, exactly
+	// as it does in the app.
+	usePinnedToastSlot: () => document.body,
 }));
 
 import { api } from "../../rpc";

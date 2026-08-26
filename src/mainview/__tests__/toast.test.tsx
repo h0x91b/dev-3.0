@@ -2,7 +2,8 @@ import type { ReactElement } from "react";
 import { act, fireEvent, render as rtlRender, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../i18n";
-import { setToastSuppressed, taskToastContext, ToastHost, toast } from "../toast";
+import { createPortal } from "react-dom";
+import { setToastSuppressed, taskToastContext, ToastHost, toast, usePinnedToastSlot } from "../toast";
 
 /** `ToastHost` localizes its dismiss label, so every render needs the provider. */
 function render(ui: ReactElement) {
@@ -643,4 +644,31 @@ describe("toast service", () => {
 		expect(await screen.findByText("First queued")).toBeInTheDocument();
 		expect(screen.getByText("Second queued")).toBeInTheDocument();
 	});
+});
+
+describe("ToastHost — the pinned slot owns the corner with the toasts", () => {
+	function Pinned() {
+		const slot = usePinnedToastSlot();
+		return slot ? createPortal(<div data-testid="pinned">Update ready</div>, slot) : null;
+	}
+
+	it("exposes the slot with an empty stack, because that is when a prompt needs it most", () => {
+		render(<><ToastHost /><Pinned /></>);
+		expect(screen.getByTestId("pinned")).toBeInTheDocument();
+	});
+
+	it("keeps the pinned surface above the toasts inside one stack", async () => {
+		render(<><ToastHost /><Pinned /></>);
+		act(() => toast.info("Agent shared 2 images"));
+
+		const pinned = await screen.findByTestId("pinned");
+		const card = toastCard();
+		// Same fixed container: neither can cover the other, whatever either one's height.
+		const stack = pinned.closest("div.fixed");
+		expect(stack).not.toBeNull();
+		expect(stack?.contains(card)).toBe(true);
+		// Pinned first in DOM order, so it renders at the top of the column.
+		expect(pinned.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
 });

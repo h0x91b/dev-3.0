@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { useT } from "./i18n";
 import type { TranslationKey } from "./i18n";
@@ -192,6 +192,36 @@ const VARIANT: Record<ToastVariant, { icon: string; border: string; text: string
 	// Envelope, not a severity glyph: this toast reports mail between agents.
 	agent: { icon: "\uf0e0", border: "border-agent/40", text: "text-agent", bar: "bg-agent" },
 };
+
+// THE TOP-RIGHT CORNER HAS EXACTLY ONE OWNER, and it is the host below. A second
+// `fixed top-14 right-4` stack cannot know how tall the first one is, so the two
+// simply land on top of each other — the update prompt used to disappear under an
+// arriving toast. Anything persistent that belongs in this corner portals into the
+// slot instead and gets stacked, the same way StatusDock owns the bottom-left one.
+let pinnedSlot: HTMLElement | null = null;
+const pinnedSlotListeners = new Set<() => void>();
+
+function setPinnedSlot(node: HTMLElement | null): void {
+	if (pinnedSlot === node) return;
+	pinnedSlot = node;
+	for (const listener of pinnedSlotListeners) listener();
+}
+
+/**
+ * The node above the transient toast stack, for a surface that must stay put until
+ * the user acts on it (the update prompt). `null` until {@link ToastHost} mounts —
+ * render nothing then rather than falling back to your own fixed position.
+ */
+export function usePinnedToastSlot(): HTMLElement | null {
+	return useSyncExternalStore(
+		(onChange) => {
+			pinnedSlotListeners.add(onChange);
+			return () => pinnedSlotListeners.delete(onChange);
+		},
+		() => pinnedSlot,
+		() => null,
+	);
+}
 
 function rendererIsActive(): boolean {
 	if (typeof document === "undefined") return true;
@@ -400,10 +430,17 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 		};
 	}, []);
 
-	if (!toasts.length) return null;
-
+	// NO EARLY RETURN even with an empty stack: the pinned slot is a portal target, so
+	// it has to exist in the DOM before the update prompt can ask for it — and the
+	// prompt is at its most useful precisely when no toast is on screen.
 	return (
-		<div className="fixed top-14 right-4 z-[55] flex flex-col gap-2.5 pointer-events-none">
+		<div className="fixed top-14 right-4 z-[55] flex flex-col gap-5 pointer-events-none">
+			{/* Pinned above the transient pile, separated by twice the intra-group gap so
+			    the two read as "a decision waiting for you" and "things that just
+			    happened" rather than one undifferentiated column. */}
+			<div ref={setPinnedSlot} className="flex flex-col gap-2.5 empty:hidden" />
+			{toasts.length > 0 && (
+			<div className="flex flex-col gap-2.5">
 			{toasts.map(({ entry, paused, context, onClick }) => (
 				<ToastCard
 					key={entry.id}
@@ -445,6 +482,8 @@ export function ToastHost({ onTaskOverflow, resolveOrigin }: ToastHostProps = {}
 						</span>
 					</button>
 				</div>
+			)}
+			</div>
 			)}
 		</div>
 	);
