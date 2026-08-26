@@ -1,0 +1,118 @@
+[
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"merge-base",
+			"origin/main",
+			"HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "ZjAzODllZjU0NzNmNzVjM2ZhZDRhYjM5NWZmZGFlM2NjMzc2NWQ1Ygo=",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"rev-list",
+			"--count",
+			"f0389ef5473f75c3fad4ab395ffdae3cc3765d5b..HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "Mwo=",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"diff",
+			"--name-status",
+			"-z",
+			"--find-renames",
+			"--find-copies",
+			"--diff-filter=ACDMRT",
+			"HEAD~3",
+			"HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "QQBhLnRzAEEAYi50cwBBAGMudHMA",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"diff",
+			"--shortstat",
+			"--find-renames",
+			"--find-copies",
+			"HEAD~3",
+			"HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "IDMgZmlsZXMgY2hhbmdlZCwgMyBpbnNlcnRpb25zKCspCg==",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"diff",
+			"--numstat",
+			"-z",
+			"--find-renames",
+			"--find-copies",
+			"--diff-filter=ACDMRT",
+			"HEAD~3",
+			"HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "MQkwCWEudHMAMQkwCWIudHMAMQkwCWMudHMA",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"cat-file",
+			"--batch-check"
+		],
+		"cwd": "<repo>",
+		"stdin": "SEVBRDphLnRzCkhFQUQ6Yi50cwpIRUFEOmMudHMK",
+		"exitCode": 0,
+		"stdout": "Y2M3OThmZjUwZGE5NDczZWZmZThiZGIzMWM4YzEyMGZlNDJiNjFlMyBibG9iIDIwCjIwMjEwMzA4NWNlNzZjNjU0ZWFlMDUyOGNiZDA1YTZjNDczMDQ1NjAgYmxvYiAyMAo1ZjBjYWJlZjg0ZjY5MTI1ZTQ3YTQ2YWVlNGIzOWU0Mjg4NDkyNjBiIGJsb2IgMjAK",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"cat-file",
+			"--batch"
+		],
+		"cwd": "<repo>",
+		"stdin": "SEVBRDphLnRzCkhFQUQ6Yi50cwpIRUFEOmMudHMK",
+		"exitCode": 0,
+		"stdout": "Y2M3OThmZjUwZGE5NDczZWZmZThiZGIzMWM4YzEyMGZlNDJiNjFlMyBibG9iIDIwCmV4cG9ydCBjb25zdCBhID0gMTsKCjIwMjEwMzA4NWNlNzZjNjU0ZWFlMDUyOGNiZDA1YTZjNDczMDQ1NjAgYmxvYiAyMApleHBvcnQgY29uc3QgYiA9IDI7Cgo1ZjBjYWJlZjg0ZjY5MTI1ZTQ3YTQ2YWVlNGIzOWU0Mjg4NDkyNjBiIGJsb2IgMjAKZXhwb3J0IGNvbnN0IGMgPSAzOwoK",
+		"stderr": ""
+	}
+]

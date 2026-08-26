@@ -6,7 +6,7 @@
  * See git-merge-detection.test.ts for the reference pattern.
  */
 import { execSync } from "child_process";
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawn as cpSpawn } from "child_process";
@@ -42,13 +42,24 @@ export interface TestRepo {
 	local: string;
 }
 
-// ── Template repo (created once per worker, cloned via cp -r for each test) ──
+// ── Template repo ───────────────────────────────────────────────────────────
+//
+// Built ONCE per test run and shared by every worker, not once per worker: each
+// vitest file gets its own module registry, so a module-local cache rebuilt the
+// template for every file — 8 real git processes each, measured at 7 rebuilds in
+// one backend run. The template is read-only after `.ready` appears, so sharing it
+// across workers is safe; the lock directory is the cross-worker handshake
+// (mkdir of an existing path fails atomically on every platform).
 let _templateDir: string | null = null;
 
-function getTemplateDir(): string {
-	if (_templateDir) return _templateDir;
+const SHARED_TEMPLATE_ROOT = () => join(process.env.DEV3_TEST_ROOT ?? tmpdir(), "git-template");
 
-	const dir = mkdtempSync(join(tmpdir(), "dev3-git-template-"));
+/** Sleep without a subprocess and without going async — this runs inside sync helpers. */
+function sleepSync(ms: number): void {
+	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function buildTemplate(dir: string): void {
 	const origin = join(dir, "origin.git");
 	const local = join(dir, "local");
 
@@ -62,9 +73,54 @@ function getTemplateDir(): string {
 	g('git commit -m "initial"', local);
 	g("git branch -M main", local);
 	g("git push -u origin main", local);
+}
 
-	_templateDir = dir;
-	return dir;
+function getTemplateDir(): string {
+	if (_templateDir) return _templateDir;
+
+	const shared = SHARED_TEMPLATE_ROOT();
+	const ready = join(shared, ".ready");
+	const lock = `${shared}.lock`;
+
+	for (let attempt = 0; attempt < 600; attempt += 1) {
+		if (existsSync(ready)) {
+			_templateDir = shared;
+			return shared;
+		}
+		try {
+			mkdirSync(lock); // atomic: throws EEXIST if another worker is building
+		} catch {
+			sleepSync(50);
+			continue;
+		}
+		try {
+			// A previous crashed build may have left a partial tree.
+			rmSync(shared, { recursive: true, force: true });
+			mkdirSync(shared, { recursive: true });
+			buildTemplate(shared);
+			writeFileSync(ready, "");
+			_templateDir = shared;
+			return shared;
+		} finally {
+			rmSync(lock, { recursive: true, force: true });
+		}
+	}
+	throw new Error(`git test template was never built at ${shared} (waited 30s for another worker)`);
+}
+
+/**
+ * Point the clone at its own copy of the origin. A `git remote set-url` spawn per
+ * fixture was 23 real git processes in one backend run; the clone's config is a
+ * plain file and this is the only line in it that has to move.
+ */
+function repointOrigin(local: string, originPath: string): void {
+	const configPath = join(local, ".git", "config");
+	const config = readFileSync(configPath, "utf-8");
+	const repointed = config.replace(/^(\s*url\s*=\s*).*$/m, `$1${originPath}`);
+	if (repointed === config) {
+		throw new Error(`no remote url line to repoint in ${configPath}:\n${config}`);
+	}
+	writeFileSync(configPath, repointed);
 }
 
 export function createTestRepo(): TestRepo {
@@ -74,7 +130,7 @@ export function createTestRepo(): TestRepo {
 	cpSync(join(template, "origin.git"), join(dir, "origin.git"), { recursive: true });
 	cpSync(join(template, "local"), join(dir, "local"), { recursive: true });
 	const local = join(dir, "local");
-	g(`git remote set-url origin "${join(dir, "origin.git")}"`, local);
+	repointOrigin(local, join(dir, "origin.git"));
 	return { dir, local };
 }
 
@@ -92,9 +148,11 @@ export function cleanup({ dir }: TestRepo): void {
 	retiredDirs.push(dir);
 	if (removalHookInstalled) return;
 	removalHookInstalled = true;
+	// The template is deliberately NOT removed here: it is shared with every other
+	// worker, which may still be cloning it. `cleanupTestIsolation` wipes the whole
+	// run root (DEV3_TEST_ROOT) once, after the last worker.
 	process.once("exit", () => {
 		for (const retired of retiredDirs) rmSync(retired, { recursive: true, force: true });
-		if (_templateDir) rmSync(_templateDir, { recursive: true, force: true });
 	});
 }
 

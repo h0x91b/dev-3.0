@@ -1,0 +1,118 @@
+[
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"merge-base",
+			"origin/main",
+			"HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "ZjAzODllZjU0NzNmNzVjM2ZhZDRhYjM5NWZmZGFlM2NjMzc2NWQ1Ygo=",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"rev-list",
+			"--count",
+			"f0389ef5473f75c3fad4ab395ffdae3cc3765d5b..HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "Mwo=",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"diff",
+			"--name-status",
+			"-z",
+			"--find-renames",
+			"--find-copies",
+			"--diff-filter=ACDMRT",
+			"HEAD~1",
+			"HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "QQBjLnRzAA==",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"diff",
+			"--shortstat",
+			"--find-renames",
+			"--find-copies",
+			"HEAD~1",
+			"HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "IDEgZmlsZSBjaGFuZ2VkLCAxIGluc2VydGlvbigrKQo=",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"diff",
+			"--numstat",
+			"-z",
+			"--find-renames",
+			"--find-copies",
+			"--diff-filter=ACDMRT",
+			"HEAD~1",
+			"HEAD"
+		],
+		"cwd": "<repo>",
+		"stdin": null,
+		"exitCode": 0,
+		"stdout": "MQkwCWMudHMA",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"cat-file",
+			"--batch-check"
+		],
+		"cwd": "<repo>",
+		"stdin": "SEVBRDpjLnRzCg==",
+		"exitCode": 0,
+		"stdout": "NWYwY2FiZWY4NGY2OTEyNWU0N2E0NmFlZTRiMzllNDI4ODQ5MjYwYiBibG9iIDIwCg==",
+		"stderr": ""
+	},
+	{
+		"cmd": [
+			"git",
+			"-c",
+			"core.quotepath=false",
+			"cat-file",
+			"--batch"
+		],
+		"cwd": "<repo>",
+		"stdin": "SEVBRDpjLnRzCg==",
+		"exitCode": 0,
+		"stdout": "NWYwY2FiZWY4NGY2OTEyNWU0N2E0NmFlZTRiMzllNDI4ODQ5MjYwYiBibG9iIDIwCmV4cG9ydCBjb25zdCBjID0gMzsKCg==",
+		"stderr": ""
+	}
+]

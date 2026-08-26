@@ -74,10 +74,15 @@ describe("BehaviorSettingsSection — review prompt", () => {
 		expect(onReviewModePromptChange).toHaveBeenCalledWith("Only blockers.");
 	});
 
+	// Pasted, not typed: the built-in prompt is 649 characters and `type()` renders
+	// the whole section once per keystroke — 649 act() cycles for an assertion that
+	// only cares about the value at blur. The sibling test above still types
+	// character by character, so per-keystroke behaviour stays covered.
 	it("stores nothing when the field is left equal to the built-in prompt", async () => {
 		const { textarea, onReviewModePromptChange } = renderSection({ reviewModePrompt: "Only blockers." });
 		await userEvent.clear(textarea);
-		await userEvent.type(textarea, BUILTIN_PROMPT);
+		await userEvent.paste(BUILTIN_PROMPT);
+		expect(textarea.value).toBe(BUILTIN_PROMPT);
 		await userEvent.tab();
 		expect(onReviewModePromptChange).toHaveBeenCalledWith("");
 	});
