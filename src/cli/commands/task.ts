@@ -1,4 +1,4 @@
-import type { CliResponse, Task, TaskStatus, TaskHistoryEntry, TaskNote } from "../../shared/types";
+import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskCompletesManually } from "../../shared/types";
 import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
@@ -20,6 +20,19 @@ const CLI_ALLOWED_STATUSES = ALL_STATUSES.filter((s) => !DESTRUCTIVE_STATUSES.in
 // How long the CLI waits for the user to answer an approval dialog.
 const COMPLETION_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 const LAUNCH_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * The one reading of `--type` for every command that takes it, so `task create`
+ * and `task update` can never accept different spellings of the same three
+ * roles. `standard` (and its aliases) means "no type" and maps to null.
+ */
+function parseTypeFlag(raw: string): TaskType | null {
+	const value = raw.trim().toLowerCase();
+	if (value === "standard" || value === "none" || value === "") return null;
+	const normalized = normalizeTaskType(value);
+	if (!normalized) exitUsage(`--type must be one of ${TASK_TYPES.join(", ")} or standard (got "${raw}")`);
+	return normalized;
+}
 
 function formatDate(iso: string): string {
 	const d = new Date(iso);
@@ -159,7 +172,7 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "title", "description", "scratch", "run"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
@@ -174,14 +187,17 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		);
 	}
 	if (scratch) {
-		if (args.positional[0] || args.flags.title || args.flags.description) {
+		if (args.positional[0] || args.flags.title || args.flags.description || args.flags.type) {
 			exitUsage(
-				"A scratch task takes no title or description — it has no prompt by design.\n" +
+				"A scratch task takes no title, description or type — it has no prompt by design.\n" +
 				"Create a normal task instead, or send instructions with `dev3 message --task seq:<N>` after it starts.",
 			);
 		}
 		return createScratchAndRun(projectId, socketPath, context);
 	}
+
+	// Read before the title check so a bad --type fails on its own message.
+	const taskType = args.flags.type === undefined ? null : parseTypeFlag(args.flags.type);
 
 	// A literal "-" is the conventional CLI sentinel for reading the value
 	// from stdin. Read it only for the description flag so title-only creates
@@ -203,12 +219,18 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 
 	const params: Record<string, unknown> = { projectId, title };
 	if (description) params.description = description;
+	if (taskType) params.taskType = taskType;
 
 	const resp = await sendRequest(socketPath, "task.create", params);
 	if (!resp.ok) exitError(resp.error || "Failed to create task");
 
 	const task = resp.data as Task;
 	process.stdout.write(`Created task ${task.id.slice(0, 8)} (seq ${task.seq}): ${getTaskTitle(task)}\n`);
+	// The type is only real once the role brief is in the description the agent
+	// will read, so name it rather than leaving the caller to check the card.
+	if (task.taskType) {
+		process.stderr.write(`Role: ${task.taskType} — created with its role brief already in the description.\n`);
+	}
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
@@ -253,12 +275,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		params.manualCompletion = normalized === "on";
 	}
 	const rawType = args.flags.type;
-	if (rawType !== undefined) {
-		const value = rawType.trim().toLowerCase();
-		if (value === "standard" || value === "none" || value === "") params.taskType = null;
-		else if (normalizeTaskType(value)) params.taskType = normalizeTaskType(value);
-		else exitUsage(`--type must be one of ${TASK_TYPES.join(", ")} or standard (got "${rawType}")`);
-	}
+	if (rawType !== undefined) params.taskType = parseTypeFlag(rawType);
 	if (args.flags.force === "true") {
 		params.force = true;
 	}

@@ -104,7 +104,7 @@ Each task has a priority \`P0\` (highest) … \`P4\` (lowest), default \`P3\`; t
 
 ## Task type
 
-A task may be the board's **coordinator**: it manages other tasks instead of doing their work. \`dev3 task show\` prints it as \`Type:\`, its card is dashed green, it sorts above every priority band, and it never auto-completes. A task may also be a **pr-review**, which is only named on the card and changes nothing else. \`dev3 task update --type coordinator|pr-review|standard\` sets or clears the type; either way dev3 rewrites the role preamble in the description and tells the running agent, so the badge and the agent behind it always agree.
+A task may be the board's **coordinator**: it manages other tasks instead of doing their work. \`dev3 task show\` prints it as \`Type:\`, its card is dashed green, it sorts above every priority band, and it never auto-completes. A task may also be a **pr-review**, which is only named on the card and changes nothing else. \`dev3 task update --type coordinator|pr-review|standard\` sets or clears the type; either way dev3 rewrites the role preamble in the description and tells the running agent, so the badge and the agent behind it always agree. \`dev3 task create --title "..." --type <same values>\` starts a task with its role already set, so there is no window in which the card claims a role its description never carried.
 
 **Never promote or demote a task on your own initiative — least of all yourself.** Who coordinates is the user's call, in the same protected class as priority.
 `;

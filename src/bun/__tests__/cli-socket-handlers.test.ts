@@ -1222,6 +1222,96 @@ describe("task.create", () => {
 		);
 		expect(resp.ok).toBe(true);
 	});
+
+	// The whole point of the flag: a task created with a type must carry the role
+	// brief in the description the agent reads, not just the badge on the card.
+	describe("--type", () => {
+		function wireCreate() {
+			const project = makeProject();
+			const task = makeTask({ status: "todo" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.addTask).mockResolvedValue(task);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+			vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+			return { project, task };
+		}
+
+		it("writes the coordinator preamble above the description and stores the type", async () => {
+			const { project } = wireCreate();
+
+			const resp = await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Run the board",
+				description: "coordinate my board",
+				taskType: "coordinator",
+			}));
+
+			expect(resp.ok).toBe(true);
+			const [, body, status, extras] = vi.mocked(data.addTask).mock.calls[0]!;
+			expect(body).toBe(withPresetPrompt("coordinate my board", COORDINATOR_PROMPT));
+			expect(status).toBe("todo");
+			expect(extras).toEqual({ taskType: "coordinator" });
+			expect(data.getProject).toHaveBeenCalledWith(project.id);
+		});
+
+		it("writes the pr-review preamble and keeps the title off the preamble", async () => {
+			const { task } = wireCreate();
+
+			const resp = await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Review PR 42",
+				taskType: "pr-review",
+			}));
+
+			expect(resp.ok).toBe(true);
+			const [, body] = vi.mocked(data.addTask).mock.calls[0]!;
+			expect(body).toBe(withPresetPrompt("Review PR 42", DEFAULT_PR_REVIEW_PROMPT));
+			// Without a customTitle every review card would be named after the preamble.
+			expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), task.id, { customTitle: "Review PR 42" });
+		});
+
+		it("carries a priority alongside the type", async () => {
+			wireCreate();
+
+			const resp = await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Run the board",
+				taskType: "coordinator",
+				priority: "P0",
+			}));
+
+			expect(resp.ok).toBe(true);
+			expect(vi.mocked(data.addTask).mock.calls[0]![3]).toEqual({ priority: "P0", taskType: "coordinator" });
+		});
+
+		it("treats standard as no type at all", async () => {
+			wireCreate();
+
+			const resp = await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Ordinary task",
+				taskType: "standard",
+			}));
+
+			expect(resp.ok).toBe(true);
+			expect(data.addTask).toHaveBeenCalledWith(expect.anything(), "Ordinary task", "todo");
+		});
+
+		it("rejects an unknown type and creates nothing", async () => {
+			wireCreate();
+
+			const resp = await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Nope",
+				taskType: "reviewer",
+			}));
+
+			expect(resp.ok).toBe(false);
+			expect(resp.error).toContain('Invalid task type "reviewer"');
+			expect(resp.error).toContain("coordinator, pr-review");
+			expect(data.addTask).not.toHaveBeenCalled();
+		});
+	});
 });
 
 describe("ui.show-image", () => {

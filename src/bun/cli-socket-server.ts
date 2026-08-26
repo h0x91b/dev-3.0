@@ -750,14 +750,33 @@ const handlers: Record<string, Handler> = {
 			if (!priority) throw new Error(`Invalid priority "${params.priority}". Use P0, P1, P2, P3, or P4.`);
 		}
 
+		let taskType: TaskType | undefined;
+		if (params.taskType !== undefined && params.taskType !== null && params.taskType !== "standard") {
+			taskType = normalizeTaskType(String(params.taskType)) ?? undefined;
+			if (!taskType) throw new Error(`Invalid task type "${params.taskType}". Use ${TASK_TYPES.join(", ")} or standard.`);
+		}
+
 		const project = await data.getProject(projectId);
 		// Use description as the task body if provided, otherwise fall back to title.
-		// Only pass the extras arg when a priority was given (keeps the common 3-arg call).
-		const task = priority
-			? await data.addTask(project, description || title, "todo", { priority })
-			: await data.addTask(project, description || title, "todo");
-		// If a separate title was given alongside a description, store it as customTitle
-		if (description && title) {
+		// A type puts its role brief above that text at creation, through the same
+		// function `task update --type` uses, so a card never claims a role its
+		// agent was not given.
+		const ownText = description || title;
+		const body = taskType
+			? withPresetPrompt(ownText, presetPromptForTaskType(taskType, project, await loadSettings()))
+			: ownText;
+		// Only pass the extras arg when there is something to put in it (keeps the common 3-arg call).
+		const extras = {
+			...(priority ? { priority } : {}),
+			...(taskType ? { taskType } : {}),
+		};
+		const task = Object.keys(extras).length
+			? await data.addTask(project, body, "todo", extras)
+			: await data.addTask(project, body, "todo");
+		// If a separate title was given alongside a description, store it as customTitle.
+		// A role brief counts as a body too: without this the card would be named
+		// after the first 80 characters of the preamble, so every one would read alike.
+		if ((description || taskType) && title) {
 			const updated = await data.updateTask(project, task.id, { customTitle: title });
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			return updated;

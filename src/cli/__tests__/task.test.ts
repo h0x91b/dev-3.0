@@ -340,6 +340,57 @@ describe("task create", () => {
 		expect(params.projectId).toBe(CTX.projectId);
 	});
 
+	it("sends --type and names the role it created", async () => {
+		mockSend.mockResolvedValue(okResp({ ...createdTask, taskType: "pr-review" }));
+
+		await handleTask("create", args([], { project: "proj-001", title: "Review PR 42", type: "PR-Review" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+			projectId: "proj-001",
+			title: "Review PR 42",
+			taskType: "pr-review",
+		});
+		expect(stderrOutput).toContain("Role: pr-review");
+	});
+
+	it("sends --type coordinator alongside a description", async () => {
+		mockSend.mockResolvedValue(okResp({ ...createdTask, taskType: "coordinator" }));
+
+		await handleTask(
+			"create",
+			args([], { project: "proj-001", title: "Run the board", description: "manage the agents", type: "coordinator" }),
+			SOCKET,
+			null,
+		);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+			projectId: "proj-001",
+			title: "Run the board",
+			description: "manage the agents",
+			taskType: "coordinator",
+		});
+	});
+
+	it("omits taskType for --type standard", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+
+		await handleTask("create", args([], { project: "proj-001", title: "New task", type: "standard" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+			projectId: "proj-001",
+			title: "New task",
+		});
+		expect(stderrOutput).not.toContain("Role:");
+	});
+
+	it("rejects an unknown --type before contacting the app", async () => {
+		await expect(
+			handleTask("create", args([], { project: "proj-001", title: "New task", type: "reviewer" }), SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--type must be one of coordinator, pr-review or standard");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("exits with usage error when --project missing and no context", async () => {
 		await expect(
 			handleTask("create", args([], { title: "New task" }), SOCKET, null),
@@ -1548,7 +1599,15 @@ describe("task create --scratch --run", () => {
 		await expect(
 			handleTask("create", args(["do the thing"], { scratch: "true", run: "true", project: "proj-001" }), SOCKET, CTX),
 		).rejects.toThrow("EXIT_3");
-		expect(stderrOutput).toContain("no title or description");
+		expect(stderrOutput).toContain("no title, description or type");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("refuses --type — a scratch task has no prompt to put a role brief above", async () => {
+		await expect(
+			handleTask("create", args([], { scratch: "true", run: "true", type: "coordinator", project: "proj-001" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("no title, description or type");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 

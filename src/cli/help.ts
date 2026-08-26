@@ -75,13 +75,17 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..." | --description -] | dev3 task create --scratch --run',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -] [--type coordinator|pr-review|standard] | dev3 task create --scratch --run',
 				summary: "Create a task in To Do, or ask the user to start a scratch peer agent.",
 				details: [
 					"--title <text>        Task title (required).",
 					"--description <text>  Longer description (optional); use - to read it from stdin.",
 					"Positional content (or @file) becomes the description; its first line",
 					"is used as the title when --title is omitted.",
+					"--type coordinator|pr-review|standard  Create the task with its type already set",
+					"                      (standard = no type, the default). The role preamble goes",
+					"                      into the description now, so a task launched straight away",
+					"                      is told what it is. Same values as `task update --type`.",
 					"--scratch --run       Ask the user to start a throwaway peer agent — no title,",
 					"                      no prompt. Blocks up to 10 min on their approval in the",
 					"                      app; exit 10 if declined. Drive it with `dev3 message`.",
