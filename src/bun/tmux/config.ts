@@ -187,14 +187,26 @@ function shellEnvConfig(): string {
 	// itself forever.
 	const shrc = `${SHELL_INIT_DIR}/.shrc`;
 	const inherited = process.env.ENV?.trim();
-	const userEnv = inherited && inherited !== shrc ? inherited : undefined;
+	const userEnv = inherited && inherited !== shrc ? tmuxConfigValue(inherited) : null;
+	const envLine = tmuxConfigValue(shrc);
 	return [
 		"# Shell prompt — POSIX sh reads $ENV for interactive shells",
 		...(userEnv ? [`set-environment -g DEV3_USER_ENV ${userEnv}`] : []),
-		`set-environment -g ENV ${shrc}`,
+		...(envLine ? [`set-environment -g ENV ${envLine}`] : []),
 		...defaultShellConfig(),
 		"",
 	].join("\n");
+}
+
+/**
+ * A path spliced into a tmux config line, quoted. tmux splits a config line into
+ * words, so an unquoted value with a space dies with "too many arguments" and a
+ * value with a newline becomes a second COMMAND (verified on tmux 3.6a). Single
+ * quotes are literal in tmux and have no escape, so a value carrying one — or a
+ * newline — is dropped rather than emitted broken.
+ */
+function tmuxConfigValue(value: string): string | null {
+	return /['\r\n]/.test(value) ? null : `'${value}'`;
 }
 
 /**
@@ -209,7 +221,9 @@ function shellEnvConfig(): string {
 function defaultShellConfig(): string[] {
 	try {
 		const shell = getUserShell();
-		return shell.startsWith("/") ? [`set -g default-shell ${shell}`] : [];
+		if (!shell.startsWith("/")) return [];
+		const quoted = tmuxConfigValue(shell);
+		return quoted ? [`set -g default-shell ${quoted}`] : [];
 	} catch {
 		return [];
 	}

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { PATHS } from "../electrobun-platform";
 import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability } from "../../shared/types";
 import { SHELL_FALLBACK_ORDER, type ShellFlavor, shellCandidatePaths } from "../../shared/posix-shell";
-import { resolveUserShell, setShellPreference } from "../shell-env";
+import { getUserShell, resolveUserShell, setShellPreference } from "../shell-env";
 import * as data from "../data";
 import * as agents from "../agents";
 import * as github from "../github";
@@ -20,7 +20,7 @@ import { DEV3_HOME } from "../paths";
 import { writeDev3SelfShim } from "../cli-self-install";
 import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
-import { setCurrentUiTheme } from "../theme-state";
+import { getCurrentUiTheme, setCurrentUiTheme } from "../theme-state";
 import { getAllFeatureFlags, setFeatureFlags as cacheFeatureFlags } from "../feature-flags";
 import { resolveAnalyticsDistinctId as resolveDistinctId } from "../analytics-identity";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
@@ -191,14 +191,21 @@ function getShellAvailability(): ShellAvailability {
 }
 
 /**
- * The tmux config bakes the chosen shell into `default-shell`, which is what a
- * pane the user splits off inherits. Rewrite it and source it into the live
- * server, so the choice reaches those panes without an app restart.
+ * Push the new shell everywhere a live process still reads the old one.
+ *
+ * `$SHELL` is what the native backend launches (`defaultNativeShellLaunchSpec`)
+ * and `default-shell` in the tmux config is what a pane the user splits off
+ * inherits. Both are frozen at boot, so without this the picker only takes
+ * effect after a restart while Settings already reports the new shell.
+ *
+ * The theme is re-applied, not chosen: sourcing the config into a live server
+ * goes through `applyTmuxTheme`, which also pins the active themed config path.
  */
-async function applyShellChangeToTmux(theme: "dark" | "light" | undefined): Promise<void> {
+async function applyShellChange(theme: "dark" | "light"): Promise<void> {
 	try {
+		process.env.SHELL = getUserShell();
 		writeTmuxConfigs();
-		await pty.applyTmuxTheme(theme === "light" ? "light" : "dark");
+		await pty.applyTmuxTheme(theme);
 	} catch (err) {
 		log.warn("Failed to push the shell change into tmux (non-fatal)", { error: String(err) });
 	}
@@ -222,7 +229,12 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	const stored = await loadSettings();
 	const next: GlobalSettings = { ...params, analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId };
 	await saveSettings(next);
-	if (stored.terminalShell !== next.terminalShell) await applyShellChangeToTmux(next.resolvedTheme);
+	// `resolvedTheme` may be absent (nothing has called setTmuxTheme yet); the
+	// live in-memory theme is the fallback, never a hardcoded "dark" — that would
+	// flip a light-theme user's terminals on an unrelated shell change.
+	if (process.platform !== "win32" && stored.terminalShell !== next.terminalShell) {
+		await applyShellChange(next.resolvedTheme ?? getCurrentUiTheme());
+	}
 	getPushMessage()?.("globalSettingsUpdated", next);
 	log.info("← saveGlobalSettings done");
 }
