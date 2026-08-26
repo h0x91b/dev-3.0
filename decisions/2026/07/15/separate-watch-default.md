@@ -1,5 +1,7 @@
 # 131 — Separate Watch defaults from task overrides
 
+> Superseded on 2026-08-27 by `decisions/2026/08/27/notification-preferences-settings-home.md`: the global Watch default now lives in Settings → Notifications.
+
 ## Context
 Watch exists at two scopes: `GlobalSettings.watchByDefault` seeds future launches, while `Task.watched` controls notifications for one task. Persisting a preference from task-level controls made a local action silently change future behavior.
 

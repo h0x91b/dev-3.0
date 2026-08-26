@@ -1,5 +1,7 @@
 # 084 — Browser Web Notifications in remote mode
 
+> Superseded on 2026-08-27 by `decisions/2026/08/27/notification-preferences-settings-home.md`: browser notification controls now live in Settings → Notifications.
+
 ## Context
 
 `dev3 notify --desktop` and watched-task banners call `Utils.showNotification`, which is a no-op stub in headless mode (`electrobun-platform.ts`). So when the UI is opened in a browser via `dev3 remote`, desktop-style notifications silently vanished — only the in-app toast path (`cliToast`) reached browsers.

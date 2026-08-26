@@ -11,6 +11,9 @@ import SettingsEntry from "./SettingsEntry";
 
 type Permission = "default" | "granted" | "denied" | "unsupported";
 
+const ACTION_BUTTON_CLASS =
+	"min-h-11 px-4 py-2 rounded-lg border border-edge bg-raised text-fg text-sm hover:border-accent/40 transition-[border-color,transform] motion-safe:active:scale-[0.96] motion-reduce:active:scale-100 disabled:cursor-not-allowed disabled:opacity-50";
+
 function readPermission(): Permission {
 	if (!webNotificationsSupported()) return "unsupported";
 	return Notification.permission as Permission;
@@ -27,15 +30,15 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 	const readiness = pushReadiness();
 
 	useEffect(() => {
-		void isSubscribed().then(setPushSubscribed).catch(() => setPushSubscribed(false));
-	}, []);
-
-	// Re-read on focus — the user may flip the browser's site permission elsewhere.
-	useEffect(() => {
-		const onFocus = () => {
-			setPermission(readPermission());
+		const refreshSubscription = () => {
 			void isSubscribed().then(setPushSubscribed).catch(() => setPushSubscribed(false));
 		};
+		// Re-read on focus — the user may flip the browser's site permission elsewhere.
+		const onFocus = () => {
+			setPermission(readPermission());
+			refreshSubscription();
+		};
+		refreshSubscription();
 		window.addEventListener("focus", onFocus);
 		return () => window.removeEventListener("focus", onFocus);
 	}, []);
@@ -101,7 +104,7 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 							onClick={requestPermission}
 							disabled={permissionBusy}
 							aria-busy={permissionBusy}
-							className="min-h-11 px-4 py-2 rounded-lg border border-edge bg-raised text-fg text-sm hover:border-accent/40 transition-[border-color,transform] motion-safe:active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
+							className={ACTION_BUTTON_CLASS}
 						>
 							{t("settings.browserNotificationsEnable")}
 						</button>
@@ -164,7 +167,7 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 								onClick={() => void togglePush()}
 								disabled={pushBusy}
 								aria-busy={pushBusy}
-								className="min-h-11 px-4 py-2 rounded-lg border border-edge bg-raised text-fg text-sm hover:border-accent/40 transition-[border-color,transform] motion-safe:active:scale-[0.96] motion-reduce:active:scale-100 focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
+								className={ACTION_BUTTON_CLASS}
 							>
 								{isPushSubscribed ? t("settings.pushDisable") : t("settings.pushEnable")}
 							</button>

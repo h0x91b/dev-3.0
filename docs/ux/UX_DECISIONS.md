@@ -11,10 +11,9 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
-## 2026-08-26 — Notification preferences have one Settings home
+## 2026-08-27 — Notification preferences have one Settings home
 
-- **Rule:** Settings → Notifications owns focus, watch default, sound, browser alerts, and Web Push; anchors stay stable. Bible §10 / yaml `surfaces.settings.notifications`.
-- **Why:** The Tasks/System split hid push; rejected a new destination and toast-owned setup.
+- **Rule:** Settings → Notifications owns focus, watch default, sound, browser alerts, and Web Push; anchors stay stable. **Why:** `decisions/2026/08/27/notification-preferences-settings-home.md`.
 
 ## 2026-08-25 — Agent traffic: a conditional header readout plus an overlay log
 
