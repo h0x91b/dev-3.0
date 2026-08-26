@@ -35,6 +35,10 @@ vi.mock("../../rpc", () => ({
 				.fn()
 				.mockResolvedValue({ available: true, tmuxSupported: true, diagnostics: [] }),
 			getNewTaskTerminalBackend: vi.fn().mockResolvedValue({ backend: null }),
+			getShellAvailability: vi.fn().mockResolvedValue({
+				resolved: { path: "/bin/zsh", flavor: "zsh", requested: "auto", fellBack: false },
+				installed: { zsh: "/bin/zsh", bash: "/bin/bash", sh: "/bin/sh" },
+			}),
 			setNewTaskTerminalBackend: vi.fn().mockResolvedValue({ backend: "native" }),
 			listAgentAccounts: vi.fn().mockResolvedValue({
 				claude: { accounts: [], activeId: null, systemIdentity: null },
