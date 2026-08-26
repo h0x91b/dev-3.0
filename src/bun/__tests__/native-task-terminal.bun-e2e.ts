@@ -1045,6 +1045,9 @@ async function run(): Promise<void> {
 				// best-effort
 			}
 		}
+		// Unconditional: a half-started sentinel still left a socket FILE behind,
+		// and tmux never unlinks one. The name is pid-keyed, so nothing else owns it.
+		await tmux.killServer({ socket: sentinelSocket });
 		try {
 			rmSync(root, { recursive: true, force: true });
 		} catch {

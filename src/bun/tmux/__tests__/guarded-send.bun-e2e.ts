@@ -109,6 +109,8 @@ async function tearDown(): Promise<void> {
 	for (const session of [MINE, OTHER]) {
 		await client.killSession(session, { socket: SOCKET, bestEffort: true }).catch(() => undefined);
 	}
+	// The pid-keyed socket FILE outlives the server unless we unlink it.
+	await client.killServer({ socket: SOCKET });
 	rmSync(root, { recursive: true, force: true });
 }
 

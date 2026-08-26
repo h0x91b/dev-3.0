@@ -326,6 +326,16 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 	sweepStaleWorktreeTrust();
 }
 
+// tmux never unlinks a socket file when its server dies, and every pid-keyed
+// socket name is one file that would otherwise stay forever. Conservative:
+// dev3-prefixed, ours, no live server behind it, older than a minute.
+{
+	const { sweepDeadTmuxSockets } = await import("./tmux");
+	sweepDeadTmuxSockets().catch((err) => {
+		log.warn("Startup tmux socket sweep failed (non-fatal)", { err: String(err) });
+	});
+}
+
 // Side-effect: starts the PTY WebSocket server (dynamic import so PATH is patched first)
 const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort, registerBackpressureProbe } = await import("./pty-server");
 const { setNativeDevServerProbe, startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");

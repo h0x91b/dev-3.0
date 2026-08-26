@@ -10,12 +10,15 @@
  */
 // electrobun + data + agents are stubbed via --preload (see pane-exit-e2e-preload.ts)
 import { spawnSync as nodeSpawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { Project, Task, PaneSessionEntry } from "../../shared/types";
 import * as pty from "../pty-server";
 import { launchTaskPty, handlePaneExited } from "../rpc-handlers/tmux-pty";
+// Leaf import, not the tmux barrel: this script runs under a preload that mocks
+// whole modules, and the barrel pulls in far more than the unlink helper.
+import { removeTmuxSocketFile } from "../tmux/socket-files";
 
 // ── Config ──────────────────────────────────────────────────────────
 
@@ -79,6 +82,9 @@ function tmuxSync(args: string[]): ReturnType<typeof nodeSpawnSync> {
 function cleanup(): void {
 	try { pty.destroySession(TASK_ID, TEST_SOCKET); } catch { /* ignore */ }
 	try { tmuxSync(["-L", TEST_SOCKET, "kill-server"]); } catch { /* ignore */ }
+	// kill-server leaves the socket FILE behind, and this name is pid-keyed.
+	removeTmuxSocketFile(TEST_SOCKET);
+	try { rmSync(WORK_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
 }
 
 async function waitFor(fn: () => boolean, timeoutMs = 10_000, intervalMs = 100): Promise<void> {

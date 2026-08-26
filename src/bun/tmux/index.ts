@@ -9,6 +9,8 @@
  * - config.ts      bundled tmux config generator + client-cwd policy
  * - themes.ts      Catppuccin plugin payload
  * - alt-click.ts   pure logic for the Alt/Option-click cursor-move gesture
+ * - socket-files.ts  the socket FILE on disk: path resolution + sweep decision
+ * - socket-sweep.ts  the IO shell that applies that decision at startup
  * - errors.ts      TmuxError / TmuxSpawnError
  *
  * HARD RULE: never spawn `tmux` directly outside this module — always go
@@ -17,6 +19,18 @@
 export { tmux, TmuxClient } from "./client";
 export type { TmuxClientOptions, SplitOrientation, TmuxLayoutName } from "./client";
 export { DEFAULT_TMUX_SOCKET, CAPTURE_SCROLLBACK_START_LINE } from "./constants";
+export {
+	tmuxSocketDir,
+	tmuxSocketPath,
+	removeTmuxSocketFile,
+	isSweepCandidate,
+	selectSweepableSockets,
+	SWEEP_SOCKET_PREFIX,
+	SWEEP_MIN_AGE_MS,
+} from "./socket-files";
+export type { SocketFileFacts, SocketLiveness, SweepDecision } from "./socket-files";
+export { sweepDeadTmuxSockets, probeSocketLiveness } from "./socket-sweep";
+export type { SweepResult } from "./socket-sweep";
 export { TmuxError, isTmuxError, TmuxSpawnError, isTmuxSpawnError, TmuxTimeoutError, isTmuxTimeoutError } from "./errors";
 export {
 	tmuxFormat,

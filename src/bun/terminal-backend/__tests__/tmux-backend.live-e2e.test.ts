@@ -71,6 +71,8 @@ describe.skipIf(!TMUX_VERSION || process.platform === "win32")(
 		afterAll(async () => {
 			await backend.dispose();
 			await client.killSession(SESSION, { bestEffort: true }).catch(() => {});
+			// The pid-keyed socket FILE outlives the server unless we unlink it.
+			await client.killServer({ socket });
 			rmSync(workDir, { recursive: true, force: true });
 		});
 

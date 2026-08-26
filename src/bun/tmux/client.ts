@@ -28,6 +28,7 @@ import { activeTmuxConfigPath, tmuxClientCwd } from "./config";
 import { TmuxError, TmuxSpawnError, TmuxTimeoutError } from "./errors";
 import type { TmuxFormat } from "./formats";
 import { PANE_ID_FORMAT, PANE_SIGHTING_FORMAT } from "./formats";
+import { removeTmuxSocketFile } from "./socket-files";
 
 type SpawnFn = typeof defaultSpawn;
 type SpawnedProcess = ReturnType<SpawnFn>;
@@ -176,6 +177,17 @@ export class TmuxClient {
 	/** `kill-session -t`. */
 	killSession(session: string, opts?: CommandOpts): Promise<void> {
 		return this.runCommand(opts?.socket, ["kill-session", "-t", session], opts);
+	}
+
+	/**
+	 * `kill-server`, then unlink the socket file it leaves behind. tmux never
+	 * removes that file itself, so whoever mints a socket name has to — this is
+	 * the one call that does both. Always best-effort: there may be no server.
+	 */
+	async killServer(opts?: SocketOpt): Promise<void> {
+		const socket = opts?.socket ?? this.defaultSocket;
+		await this.run(socket, ["kill-server"]).catch(() => undefined);
+		removeTmuxSocketFile(socket);
 	}
 
 	/** `list-sessions -F` parsed through a typed format declaration. */

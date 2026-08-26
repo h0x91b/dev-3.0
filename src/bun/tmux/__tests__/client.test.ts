@@ -14,7 +14,11 @@ import {
 	STATUS_GEOMETRY_FORMAT,
 } from "../formats";
 import { activeTmuxConfigPath } from "../config";
+import { tmuxSocketPath } from "../socket-files";
 import { DEV3_HOME } from "../../paths";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 
 // The client is constructed with an INJECTED fake spawn — the only seam its
 // own tests use. Assertions target external behavior: the argv handed to
@@ -64,6 +68,43 @@ describe("argv construction", () => {
 		const client = new TmuxClient({ spawn: spawnFn as never, socket: "custom" });
 		await client.killSession("s");
 		expect(argvOf(spawnFn).slice(0, 3)).toEqual(["tmux", "-L", "custom"]);
+	});
+
+	it("killServer kills the server AND unlinks the socket file tmux leaves behind", async () => {
+		const root = mkdtempSync(join(tmpdir(), "dev3-socket-file-"));
+		const previous = process.env.TMUX_TMPDIR;
+		process.env.TMUX_TMPDIR = root;
+		try {
+			const socketPath = tmuxSocketPath("dev3-live-test-42");
+			mkdirSync(dirname(socketPath), { recursive: true });
+			writeFileSync(socketPath, "");
+			const { client, spawnFn } = makeClient();
+			await client.killServer({ socket: "dev3-live-test-42" });
+			expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3-live-test-42", "kill-server"]);
+			expect(existsSync(socketPath)).toBe(false);
+		} finally {
+			if (previous === undefined) delete process.env.TMUX_TMPDIR;
+			else process.env.TMUX_TMPDIR = previous;
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("killServer still unlinks the socket file when there is no server to kill", async () => {
+		const root = mkdtempSync(join(tmpdir(), "dev3-socket-file-"));
+		const previous = process.env.TMUX_TMPDIR;
+		process.env.TMUX_TMPDIR = root;
+		try {
+			const socketPath = tmuxSocketPath("dev3-live-test-43");
+			mkdirSync(dirname(socketPath), { recursive: true });
+			writeFileSync(socketPath, "");
+			const { client } = makeClient({ exited: Promise.resolve(1), stderr: "no server running" });
+			await expect(client.killServer({ socket: "dev3-live-test-43" })).resolves.toBeUndefined();
+			expect(existsSync(socketPath)).toBe(false);
+		} finally {
+			if (previous === undefined) delete process.env.TMUX_TMPDIR;
+			else process.env.TMUX_TMPDIR = previous;
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 
 	it("pipes stdout and stderr for every run", async () => {

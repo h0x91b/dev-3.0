@@ -6,22 +6,27 @@
  * (killViewProcess, geometry) the conformance suite needs.
  */
 
+import { rmSync } from "node:fs";
 import { NATIVE_MULTIPANE_DIR_ENV } from "../../native-terminal-multipane/paths";
 import { createFakeRegistry, type FakeRegistry } from "../../native-terminal-multipane/__tests__/fake-panes";
 import type { CoordinatorDeps } from "../../native-terminal-multipane/coordinator";
 
 export class FakeCoordinatorWorld {
 	readonly registry: FakeRegistry;
+	private readonly tempDir: string;
 
 	constructor() {
 		// Use a fresh temp dir override so coordinator records don't collide.
-		const tmp = `/tmp/dev3-fake-coordinator-${Math.random().toString(36).slice(2)}`;
-		process.env[NATIVE_MULTIPANE_DIR_ENV] = tmp;
+		this.tempDir = `/tmp/dev3-fake-coordinator-${Math.random().toString(36).slice(2)}`;
+		process.env[NATIVE_MULTIPANE_DIR_ENV] = this.tempDir;
 		this.registry = createFakeRegistry();
 	}
 
 	cleanup(): void {
 		delete process.env[NATIVE_MULTIPANE_DIR_ENV];
+		// One dir per instance, so without this every test run leaves one behind
+		// forever: 25 591 of them had piled up in /tmp before this line existed.
+		rmSync(this.tempDir, { recursive: true, force: true });
 	}
 
 	deps(): Partial<CoordinatorDeps> {

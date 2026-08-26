@@ -73,6 +73,8 @@ describe.skipIf(!TMUX_VERSION)("TmuxClient against a live tmux server", () => {
 		for (const name of [SESSION, "dev3-livetest2"]) {
 			await client.killSession(name, { bestEffort: true }).catch(() => {});
 		}
+		// The pid-keyed socket FILE outlives the server unless we unlink it.
+		await client.killServer({ socket: SOCKET });
 		rmSync(workDir, { recursive: true, force: true });
 	});
 

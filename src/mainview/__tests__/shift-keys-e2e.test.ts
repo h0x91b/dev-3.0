@@ -30,6 +30,9 @@ import {
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+// Leaf import, not the tmux barrel: the barrel's binary module has module-load
+// side effects that have no business running in a renderer test.
+import { removeTmuxSocketFile } from "../../bun/tmux/socket-files";
 
 // ── Production tmux config ────────────────────────────────────────────────────
 // Copied from src/bun/pty-server.ts (TMUX_CONFIG constant).
@@ -256,6 +259,8 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 				stdio: "ignore",
 				env: isolatedTmuxEnv(),
 			});
+			// kill-server leaves the socket FILE behind, and this name is pid-keyed.
+			removeTmuxSocketFile(tmuxSocket);
 			pythonProc?.kill();
 			if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
 		});

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -24,6 +24,11 @@ const task = { id: "t1", projectId: "p1" } as Task;
 beforeEach(async () => {
 	vi.clearAllMocks();
 	getProject.mockResolvedValue({ id: "p1", path: "/tmp/proj" });
+	await rm(taskDirRoot, { recursive: true, force: true });
+});
+
+// beforeEach alone leaves the LAST run's directory on disk, one per pid, forever.
+afterAll(async () => {
 	await rm(taskDirRoot, { recursive: true, force: true });
 });
 

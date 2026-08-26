@@ -94,16 +94,23 @@ async function codeOf(run: () => Promise<unknown>): Promise<TerminalBackendError
 }
 
 describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
-	let cleanupFn: (() => void) | undefined;
+	// A list, not one slot: two tests below build a second harness of their own, and
+	// a single slot silently dropped their cleanup — one leaked temp dir per run.
+	const cleanups: (() => void)[] = [];
 
 	afterEach(() => {
-		cleanupFn?.();
-		cleanupFn = undefined;
+		for (const cleanup of cleanups.splice(0)) cleanup();
 	});
 
-	function world() {
+	/** Every harness in this suite comes from here, so none escapes cleanup. */
+	function harnessOf(): ReturnType<ConformanceCase["setup"]> {
 		const harness = testCase.setup();
-		cleanupFn = harness.cleanup;
+		if (harness.cleanup) cleanups.push(harness.cleanup);
+		return harness;
+	}
+
+	function world() {
+		const harness = harnessOf();
 		return { ...harness, backend: harness.create() };
 	}
 
@@ -268,7 +275,7 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 	});
 
 	it("keeps view ids stable for a fresh controller and lets it capture (reconnect)", async () => {
-		const harness = testCase.setup();
+		const harness = harnessOf();
 		const owner = harness.create();
 		const created = await owner.openSession({ id: SESSION, cwd: CWD });
 		const attachment = await owner.attachView(SESSION);
@@ -295,7 +302,7 @@ describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
 	});
 
 	it("keeps the session alive across dispose (sessions are persistent)", async () => {
-		const harness = testCase.setup();
+		const harness = harnessOf();
 		const backend = harness.create();
 		const created = await backend.openSession({ id: SESSION, cwd: CWD });
 		await backend.dispose();
