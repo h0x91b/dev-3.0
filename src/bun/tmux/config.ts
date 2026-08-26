@@ -13,6 +13,7 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { DEV3_HOME } from "../paths";
 import { dev3TempPath } from "../temp-paths";
 import { SHELL_INIT_DIR, writeShellInit } from "../shell-init";
+import { getUserShell } from "../shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./themes";
 
 /**
@@ -186,8 +187,27 @@ function shellEnvConfig(): string {
 		"# Shell prompt — POSIX sh reads $ENV for interactive shells",
 		...(userEnv ? [`set-environment -g DEV3_USER_ENV ${userEnv}`] : []),
 		`set-environment -g ENV ${SHELL_INIT_DIR}/.shrc`,
+		...defaultShellConfig(),
 		"",
 	].join("\n");
+}
+
+/**
+ * Panes dev3 spawns carry their shell explicitly; a pane the USER splits off
+ * takes tmux's `default-shell`, which a long-lived server froze at whatever
+ * `$SHELL` was when it started — yesterday's zsh, on a machine whose owner has
+ * since chosen sh. Naming it here makes sourcing this config repair that.
+ *
+ * Best-effort: an unreadable shell setting must not stop the tmux config from
+ * being written at all.
+ */
+function defaultShellConfig(): string[] {
+	try {
+		const shell = getUserShell();
+		return shell.startsWith("/") ? [`set -g default-shell ${shell}`] : [];
+	} catch {
+		return [];
+	}
 }
 
 // Status bar setup — references Catppuccin status modules built by the plugin
@@ -213,8 +233,17 @@ export function buildThemeConfig(flavor: "mocha" | "latte"): string {
 	].join("\n");
 }
 
+/**
+ * Rewrite both themed configs. Called at startup, and again when a setting the
+ * config embeds changes — today that is the shell, whose path is baked into
+ * `default-shell`.
+ */
+export function writeTmuxConfigs(): void {
+	writeShellInit();
+	writeFileSync(TMUX_CONF_DARK_PATH, buildThemeConfig("mocha"));
+	writeFileSync(TMUX_CONF_LIGHT_PATH, buildThemeConfig("latte"));
+}
+
 // Write Catppuccin plugin files + both themed configs + shell init at startup
 writeCatppuccinPlugin();
-writeShellInit();
-writeFileSync(TMUX_CONF_DARK_PATH, buildThemeConfig("mocha"));
-writeFileSync(TMUX_CONF_LIGHT_PATH, buildThemeConfig("latte"));
+writeTmuxConfigs();

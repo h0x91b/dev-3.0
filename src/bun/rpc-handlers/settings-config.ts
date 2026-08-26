@@ -13,6 +13,7 @@ import * as rosetta from "../rosetta";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { tmux } from "../tmux";
+import { writeTmuxConfigs } from "../tmux/config";
 import { loadSettings, saveSettings } from "../settings";
 import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
@@ -189,6 +190,20 @@ function getShellAvailability(): ShellAvailability {
 	return availability;
 }
 
+/**
+ * The tmux config bakes the chosen shell into `default-shell`, which is what a
+ * pane the user splits off inherits. Rewrite it and source it into the live
+ * server, so the choice reaches those panes without an app restart.
+ */
+async function applyShellChangeToTmux(theme: "dark" | "light" | undefined): Promise<void> {
+	try {
+		writeTmuxConfigs();
+		await pty.applyTmuxTheme(theme === "light" ? "light" : "dark");
+	} catch (err) {
+		log.warn("Failed to push the shell change into tmux (non-fatal)", { error: String(err) });
+	}
+}
+
 async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	log.info("→ saveGlobalSettings", { params });
 	// Terminals launched after this point must use the newly chosen shell; the
@@ -207,6 +222,7 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	const stored = await loadSettings();
 	const next: GlobalSettings = { ...params, analyticsDistinctId: stored.analyticsDistinctId ?? params.analyticsDistinctId };
 	await saveSettings(next);
+	if (stored.terminalShell !== next.terminalShell) await applyShellChangeToTmux(next.resolvedTheme);
 	getPushMessage()?.("globalSettingsUpdated", next);
 	log.info("← saveGlobalSettings done");
 }
