@@ -17,11 +17,12 @@ import { PairRow } from "./TrafficRow";
 /**
  * The header's agent-traffic readout: is there anything new, and who owes an answer.
  *
- * **Its home is the overflow kebab, not the header bar.** The bar pill is an
- * exception the traffic has to earn: it appears only while messages have landed
- * since the user last looked, and disappears the moment they look. So it is an
- * unread badge, not a counter — a permanent number nobody acts on is the header
- * button creep the UX manifest names as this app's top anti-pattern.
+ * **The bar pill stays while the project has traffic to show.** Presence follows
+ * the data, the badge follows the unread count — two separate questions. The
+ * first shipped rule tied presence to unread as well, so hovering the pill (which
+ * is what marks the traffic seen) made it retire under the pointer; a control that
+ * vanishes because you looked at it cannot be clicked twice. A project whose
+ * agents never message each other still gets no pill at all.
  *
  * **Never on the bar at narrow width.** A phone header has room for a breadcrumb
  * and one kebab (bible §12.6), so the labelled kebab row is the only mobile
@@ -122,13 +123,13 @@ export default function AgentTrafficIndicator({
 	// After the hooks, never before — an early return would reorder them.
 	if (!featureOn) return null;
 
-	// The bar pill is earned by unread traffic, and never shown on a phone. It
-	// outlives its own badge while the panel is open: opening marks the traffic
-	// seen, so without `|| open` the pill — and the panel hanging off it — would
-	// vanish under the pointer in the same click that summoned it.
-	if (variant === "bar" && (isNarrow || (traffic.unread === 0 && !open))) return null;
-
 	const { pairs, unread } = traffic;
+
+	// Presence is the data, not the unread count: the pill stays for as long as
+	// there is a pair to show, and only a project with no traffic at all loses it.
+	// Never on a phone bar, where the kebab row is the only entry (bible §12.6).
+	if (variant === "bar" && (isNarrow || pairs.length === 0)) return null;
+
 	const accessibleName =
 		unread > 0 ? t.plural("traffic.ariaLabelUnread", unread) : t("traffic.ariaLabel");
 	const logShortcut = shortcutById("agent-traffic-log");
@@ -252,8 +253,8 @@ export default function AgentTrafficIndicator({
 				{...flyout.triggerProps}
 			>
 				<AgentTrafficIcon className="w-[1.125rem] h-[1.125rem]" />
-				{/* No "0" while the panel is open: the pill is only still here because its
-				    panel is, and a zero badge reads as a broken counter. */}
+				{/* Glyph alone once everything is read: the pill's presence already says
+				    there is traffic, and a zero badge reads as a counter that broke. */}
 				{unread > 0 && (
 					<span
 						className={`text-micro font-medium leading-none tabular-nums ${

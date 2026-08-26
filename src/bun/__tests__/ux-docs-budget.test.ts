@@ -118,7 +118,29 @@ const BUDGET_KB: Record<string, number> = {
  * ratcheting again: its log entry was drafted full, then folded to a two-line pointer once
  * its record existed, ~0.2 KB.
  */
-const TOTAL_BUDGET_KB = 320;
+/**
+ * 320 → 340, on Arseny's own ruling, for the rule that a conditional header slot keys off data and
+ * not off having been read (bible §5.9 / yaml `agent_traffic_readout`) — and to stop this number
+ * being re-litigated every week.
+ *
+ * The change itself is small and was compacted first: the new rule and the two entries it supersedes
+ * were rewritten three times, taking its footprint from ~690 bytes to ~420, with the reverted-rule
+ * history left only in `decisions/2026/08/26/header-slot-presence-follows-data-not-unread.md`. That
+ * compaction stays; the headroom is not a licence to put the narration back.
+ *
+ * What earns twenty KB rather than one is that the previous number had stopped being a budget. `main`
+ * alone had reached 319.58 of 320, so ANY addition failed the aggregate job — this branch was red
+ * twice from unrelated PRs landing docs growth while it was open — and the four ratchets before this
+ * one each bought a single KB and were spent within days. Ten bytes of slack is a counter, not a
+ * budget.
+ *
+ * Note for whoever hits the next wall: it will not be this number. The three PER-FILE caps sum to
+ * 322 KB and have ~2 KB of combined room left (bible 127.6/128, yaml 113.8/114, log 78.6/80), so
+ * they are the binding constraint from here, and the tree cap is what it was designed to be — a
+ * backstop against a fourth file appearing. Per-file caps are deliberately untouched: they are what
+ * keeps one document from bloating, and lowering one is still always welcome.
+ */
+const TOTAL_BUDGET_KB = 340;
 
 const entries = readdirSync(UX_DIR, { withFileTypes: true });
 const kb = (name: string) => statSync(`${UX_DIR}/${name}`).size / 1024;

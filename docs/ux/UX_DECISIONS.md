@@ -15,9 +15,13 @@ else, so do not compact them by deleting it.
 
 - **Rule:** Settings → Notifications owns focus, watch default, sound, browser alerts, and Web Push; anchors stay stable. **Why:** `decisions/2026/08/27/notification-preferences-settings-home.md`.
 
+## 2026-08-26 — A conditional header slot keys off data, not off being read
+
+- **Rule:** the agent-traffic pill is present while the project has traffic; unread is only its badge, since hovering it is what marks the traffic seen. **Why:** `decisions/2026/08/26/header-slot-presence-follows-data-not-unread.md`.
+
 ## 2026-08-25 — Agent traffic: a conditional header readout plus an overlay log
 
-- **Rule:** the readout lives in the kebab and only earns a bar slot while unread; the log is an overlay, never a ninth destination. **Why:** `decisions/2026/08/25/agent-traffic-readout-and-log.md`.
+- **Rule:** the readout's home is the kebab, never a phone bar (bar slot superseded 2026-08-26); the log is an overlay, never a ninth destination. **Why:** `decisions/2026/08/25/agent-traffic-readout-and-log.md`.
 
 ## 2026-08-25 — A self-previewing option list earns a disclosure, not a Settings category
 - **Rule:** the terminal font picker stays in Settings → Terminal behind a collapsed "Compare all N" disclosure of preview rows; no category of its own. **Why:** `decisions/2026/08/25/terminal-font-width-is-clamped-to-the-reference.md`.

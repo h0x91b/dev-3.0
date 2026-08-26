@@ -112,7 +112,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 
 | Surface | Purpose | Allowed | Forbidden | Evidence |
 |---|---|---|---|---|
-| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom), **≤1 unread-earned agent-traffic pill** (§5.9) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
+| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom), **≤1 conditional agent-traffic pill** (§5.9) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
 | Application menu (native) | Canonical home for the full action taxonomy | every action type | — | `application-menu.ts`, `menu-actions.ts` |
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, task filter (token-DSL search + funnel; label chips are a view of it) | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx`, `LabelFilterBar.tsx`, `FilterFunnel.tsx` |
 | Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge, native-backend marker (§5.6), **one dev-server split control (open \| stop, §9)** | full settings, global destination, unbounded dot rows, dev-server start/restart/logs | `TaskCard.tsx` (large — watch density) |
@@ -341,12 +341,12 @@ Task-to-task messages had one surface, a 30-second toast (§5.7), while the rows
 - **Beta, off by default, and off means invisible.** Settings → System → Advanced Experience gates
   the whole feature; while off there is no kebab row, no pill, no `⇧⌘M`, no menu row, no palette
   command and no tip. A greyed row or a dead shortcut is a trace, and a trace is worse than absence.
-- **Home is the overflow kebab (labelled row, always there); the bar slot is EARNED.** The pill sits
-  immediately right of the three dots only while messages landed since the user's last look, and
-  retires when they look — an unread badge, not a counter, so it never spends the permanent ambient
-  slot (§12.6). Unread is measured against that last look, stored per browser; a first-ever look
-  stamps itself (no fresh install opening on 400), the badge caps at `9+`, and the pill outlives its
-  own badge while its panel is open — clearing mid-click took the panel down with it.
+- **Presence is the data; the badge is the unread count — never one question.** The kebab keeps a
+  labelled row always; the bar pill sits right of the three dots while the project's agents have
+  messaged each other, and is absent where they never have — conditional, not a permanent ambient
+  slot (§12.6). Never key presence off unread: hovering the pill marks it seen, so it shipped once
+  as a control retiring under the pointer. Unread counts from the last look, per browser, first look
+  stamps itself (no fresh install opening on 400), cap `9+`.
 - **Never on the bar at narrow width**, where the kebab row is the only entry — *labelled*, because
   an unnamed glyph among the sheet's numbers ("28 GB", "5.8 ms") is unfindable.
 - **The panel lists pairs, unfiltered by recency.** The human's three questions — *must I step in*,
@@ -704,7 +704,7 @@ Evidence: `BottomSheet.tsx` — used by `GlobalHeader` narrow kebab, `ActivityOv
 
 | Surface | Narrow budget | Overflow rule |
 |---|---|---|
-| Global header utilities | logo + breadcrumb + **1** overflow kebab + **≤1 ambient resource readout** (the agent-traffic pill is desktop-only — §5.9) | everything else into the kebab/sheet |
+| Global header utilities | logo + breadcrumb + **1** overflow kebab + **≤1 ambient resource readout** (the agent-traffic pill is conditional, desktop-only — §5.9) | everything else into the kebab/sheet |
 | Page primary action | 1 (a FAB or header button) | rest into a bottom sheet |
 | Inspector | 1 summary bar (+ conditional output readouts) | all *actions* into the actions sheet |
 | Any toolbar/action row | **shed, never stack** — one row that drops its lowest-priority items in a declared order; wrapping to a second row is not an option | shed item moves to the bottom sheet |

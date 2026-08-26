@@ -75,14 +75,22 @@ function renderIndicator() {
 }
 
 describe("AgentTrafficIndicator (bar)", () => {
-	// The bar slot is earned per occasion. Nothing new means no pill: the kebab row
-	// is the control's home, and a permanent number nobody acts on is the header
-	// button creep the manifest names as this app's top anti-pattern.
-	it("renders nothing while there is nothing new", async () => {
+	// Presence follows the data: a project whose agents never messaged each other
+	// has nothing to open, so it gets no pill.
+	it("renders nothing while the project has no traffic at all", async () => {
+		setPage([]);
+		renderIndicator();
+		await waitFor(() => expect(page.value.rows).toHaveLength(0));
+		expect(screen.queryByTestId("agent-traffic-indicator")).toBeNull();
+	});
+
+	// The first shipped rule tied presence to the unread count, so hovering the pill
+	// retired it under the pointer. Traffic already read still keeps the pill.
+	it("stays on the bar with everything read, carrying no badge", async () => {
 		setPage([row()]);
 		renderIndicator();
-		await waitFor(() => expect(page.value.rows).toHaveLength(1));
-		expect(screen.queryByTestId("agent-traffic-indicator")).toBeNull();
+		const pill = await screen.findByTestId("agent-traffic-indicator");
+		expect(pill.textContent).not.toContain("0");
 	});
 
 	it("appears with the unread count once messages land", async () => {
@@ -95,20 +103,19 @@ describe("AgentTrafficIndicator (bar)", () => {
 		expect(pill.getAttribute("aria-label")).toContain("2");
 	});
 
-	// Looking is reading, so opening the panel retires the badge — but the pill has
-	// to outlive it: clearing mid-click used to take the panel down with it.
-	it("survives its own badge while the panel is open, then goes", async () => {
+	// Looking is reading, so opening the panel retires the badge. The pill itself is
+	// not affected — that coupling is exactly what made it vanish under the cursor.
+	it("drops only its badge when the traffic is read, not itself", async () => {
 		withUnread();
 		setPage([row()]);
 		renderIndicator();
 		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
 		expect(await screen.findByTestId("agent-traffic-popover")).toBeTruthy();
-		// Still on the bar because its panel is, but carrying no number: a "0" badge
-		// reads as a counter that broke.
-		expect(screen.getByTestId("agent-traffic-indicator").textContent).not.toContain("0");
+		expect(screen.getByTestId("agent-traffic-indicator").textContent).not.toContain("1");
 
 		await userEvent.keyboard("{Escape}");
-		await waitFor(() => expect(screen.queryByTestId("agent-traffic-indicator")).toBeNull());
+		await waitFor(() => expect(screen.queryByTestId("agent-traffic-popover")).toBeNull());
+		expect(screen.getByTestId("agent-traffic-indicator")).toBeTruthy();
 	});
 
 	it("opens a panel listing each pair, and offers the log", async () => {

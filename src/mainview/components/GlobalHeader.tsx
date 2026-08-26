@@ -882,11 +882,11 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 					</div>
 				)}
 
-				{/* Agent traffic — the ONLY control here whose bar slot is earned per
-				    occasion: the kebab row above is its home, and this pill appears
-				    immediately right of the three dots only while messages have landed
-				    since the user last looked, then disappears when they look. Never on a
-				    phone header (bible §5.9, §12.6). */}
+				{/* Agent traffic — a conditional slot immediately right of the three dots:
+				    the pill is here for as long as the project's agents have messaged each
+				    other, and absent entirely for a project where they never have. The
+				    badge on it is the unread count, which is a different question. Never on
+				    a phone header (bible §5.9, §12.6). */}
 				<AgentTrafficIndicator
 					projectId={currentProjectId}
 					navigate={navigate}
