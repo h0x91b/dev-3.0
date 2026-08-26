@@ -28,8 +28,14 @@ fi
 
 sign_one() {
   local bin="$1"
+  local entitlements="${2:-}"
   if [ ! -f "$bin" ]; then
     return 0
+  fi
+
+  local ent_args=()
+  if [ -n "$entitlements" ]; then
+    ent_args=(--entitlements "$entitlements")
   fi
 
   # Strip any pre-existing pseudo-blob from bun's output before re-signing.
@@ -39,16 +45,21 @@ sign_one() {
     codesign --force --verbose --timestamp \
       --sign "$ELECTROBUN_DEVELOPER_ID" \
       --options runtime \
+      "${ent_args[@]}" \
       "$bin"
     echo "[sign-cli-binaries] Developer ID signed: $bin"
     return 0
   fi
 
-  codesign --force --sign - "$bin"
+  codesign --force --sign - --options runtime "${ent_args[@]}" "$bin"
   echo "[sign-cli-binaries] ad-hoc signed: $bin"
 }
 
-sign_one dist/dev3
+# The CLI binary is Bun: hardened runtime without the JIT entitlements turns
+# every `bun:ffi` dlopen into a SIGTRAP that no try/catch can see. That killed
+# `dev3 remote` outright whenever a task creation reached the CoW clone —
+# decisions/2026/08/26/sign-cli-binary-with-jit-entitlements.md.
+sign_one dist/dev3 scripts/cli-entitlements.plist
 # Bundled tmux helper (staged by scripts/stage-bundled-tmux.sh) must carry its
 # signature BEFORE electrobun signs/notarizes the outer app bundle.
 sign_one dist/tmux/tmux
