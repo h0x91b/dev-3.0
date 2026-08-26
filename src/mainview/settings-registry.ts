@@ -415,6 +415,14 @@ export const SETTINGS_ENTRIES = [
 		storage: "browser",
 	},
 	{
+		id: "push-notifications",
+		category: "system",
+		titleKey: "settings.pushNotifications",
+		descriptionKey: "settings.pushNotificationsDesc",
+		anchor: "browser-notifications",
+		storage: "browser",
+	},
+	{
 		id: "model-catalog",
 		category: "models",
 		titleKey: "catalog.section",

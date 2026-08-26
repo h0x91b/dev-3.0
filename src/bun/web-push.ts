@@ -67,28 +67,55 @@ export async function generateVapidKeys(): Promise<VapidKeys> {
 	return { publicKey: bytesToB64url(raw), privateKey: jwk.d ?? "" };
 }
 
-/**
- * Load the install's keypair, generating it once. Rotating it invalidates every
- * existing subscription, so it is written exactly once and never regenerated.
- */
-export async function loadOrCreateVapidKeys(path: string = VAPID_FILE): Promise<VapidKeys> {
-	if (existsSync(path)) {
-		try {
-			const parsed = JSON.parse(readFileSync(path, "utf-8")) as VapidKeys;
-			if (parsed?.publicKey && parsed?.privateKey) return parsed;
-			log.warn("Ignoring malformed VAPID key file", { path });
-		} catch (err) {
-			log.warn("Could not read VAPID keys", { path, error: String(err) });
-		}
+function readVapidFile(path: string): VapidKeys | null {
+	if (!existsSync(path)) return null;
+	try {
+		const parsed = JSON.parse(readFileSync(path, "utf-8")) as VapidKeys;
+		if (parsed?.publicKey && parsed?.privateKey) return parsed;
+		log.warn("Ignoring malformed VAPID key file", { path });
+	} catch (err) {
+		log.warn("Could not read VAPID keys", { path, error: String(err) });
 	}
+	return null;
+}
+
+/** One in-flight creation per path, so concurrent callers in this process cannot
+ *  each mint a keypair and hand out the ones that never reached disk. */
+const creating = new Map<string, Promise<VapidKeys>>();
+
+async function readOrCreateVapidKeys(path: string): Promise<VapidKeys> {
+	const existing = readVapidFile(path);
+	if (existing) return existing;
+
 	const keys = await generateVapidKeys();
 	try {
 		mkdirSync(dirname(path), { recursive: true });
-		writeFileSync(path, `${JSON.stringify(keys, null, 2)}\n`, { mode: 0o600 });
+		// "wx" fails instead of overwriting, so another process that generated keys
+		// in parallel loses the write rather than orphaning the subscriptions the
+		// winner has already issued.
+		writeFileSync(path, `${JSON.stringify(keys, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+		return keys;
 	} catch (err) {
+		const winner = readVapidFile(path);
+		if (winner) return winner;
 		log.warn("Could not persist VAPID keys — subscriptions will not survive a restart", { path, error: String(err) });
+		return keys;
 	}
-	return keys;
+}
+
+/**
+ * Load the install's keypair, generating it once. Rotating it invalidates every
+ * existing subscription, so whatever reaches disk first is what every caller
+ * gets back — a browser must never subscribe with a key nobody kept.
+ */
+export function loadOrCreateVapidKeys(path: string = VAPID_FILE): Promise<VapidKeys> {
+	let run = creating.get(path);
+	if (!run) {
+		run = readOrCreateVapidKeys(path);
+		creating.set(path, run);
+		void run.catch(() => {}).finally(() => creating.delete(path));
+	}
+	return run;
 }
 
 function vapidJwk(keys: VapidKeys): JsonWebKey {

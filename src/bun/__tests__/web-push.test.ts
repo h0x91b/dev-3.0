@@ -7,8 +7,18 @@
  * These tests decrypt with a subscription key we control, which is the only way
  * to catch a broken HKDF or a swapped nonce before a device does.
  */
-import { describe, it, expect } from "vitest";
-import { encryptPayload, generateVapidKeys, subscriptionIsGone, vapidAuthHeader, type PushSubscription } from "../web-push";
+import { describe, it, expect, afterAll } from "vitest";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+	encryptPayload,
+	generateVapidKeys,
+	loadOrCreateVapidKeys,
+	subscriptionIsGone,
+	vapidAuthHeader,
+	type PushSubscription,
+} from "../web-push";
 
 const b64urlToBytes = (s: string): Uint8Array => {
 	const pad = "=".repeat((4 - (s.length % 4)) % 4);
@@ -145,5 +155,33 @@ describe("subscription pruning", () => {
 		expect(subscriptionIsGone(429)).toBe(false);
 		expect(subscriptionIsGone(500)).toBe(false);
 		expect(subscriptionIsGone(201)).toBe(false);
+	});
+});
+
+describe("the install keypair", () => {
+	const dir = mkdtempSync(join(tmpdir(), "dev3-vapid-"));
+	afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+	it("hands every concurrent caller the key that reached disk", async () => {
+		const path = join(dir, "single-flight.json");
+		const keys = await Promise.all(Array.from({ length: 8 }, () => loadOrCreateVapidKeys(path)));
+		const onDisk = JSON.parse(readFileSync(path, "utf-8")) as { publicKey: string };
+		expect(new Set(keys.map((k) => k.publicKey))).toEqual(new Set([onDisk.publicKey]));
+	});
+
+	it("adopts the winner's key when another writer got there first", async () => {
+		// Two spellings of one file defeat the per-path single flight on purpose:
+		// that is the shape of a second *process*, where both sides generate a
+		// keypair and only one write can land.
+		const path = join(dir, "contended.json");
+		const [a, b] = await Promise.all([loadOrCreateVapidKeys(path), loadOrCreateVapidKeys(`${dir}/./contended.json`)]);
+		const onDisk = JSON.parse(readFileSync(path, "utf-8")) as { publicKey: string };
+		expect(a.publicKey).toBe(onDisk.publicKey);
+		expect(b.publicKey).toBe(onDisk.publicKey);
+	});
+
+	it("keeps the keypair it already has", async () => {
+		const path = join(dir, "stable.json");
+		expect((await loadOrCreateVapidKeys(path)).publicKey).toBe((await loadOrCreateVapidKeys(path)).publicKey);
 	});
 });

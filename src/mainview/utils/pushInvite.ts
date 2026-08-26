@@ -7,29 +7,31 @@
  * existed still did not reach it.
  *
  * Shown as a toast rather than a modal on purpose — it is an offer, not a
- * decision the user has to make before continuing.
+ * decision the user has to make before continuing. The toast only points at the
+ * setting; permission and enrolment are durable multi-step setup and stay behind
+ * the explicit controls in Settings → System → Notifications.
  */
 import type { TFunction } from "../i18n";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { toast } from "../toast";
-import { isSubscribed, pushReadiness, subscribeToPush } from "./webPush";
+import { isSubscribed, pushReadiness } from "./webPush";
 
 const DISMISSED_KEY = "dev3-push-invite-dismissed";
 
-function alreadyAnswered(): boolean {
+/**
+ * Storage we can actually write. A readable-but-unwritable store is the trap: we
+ * would offer, fail to record the dismissal, and nag again on every load — so
+ * treat it exactly like a store that cannot be read at all.
+ */
+function usableStorage(): Storage | null {
 	try {
-		return localStorage.getItem(DISMISSED_KEY) === "1";
+		const probe = `${DISMISSED_KEY}-probe`;
+		localStorage.setItem(probe, "1");
+		const ok = localStorage.getItem(probe) === "1";
+		localStorage.removeItem(probe);
+		return ok ? localStorage : null;
 	} catch {
-		// Private mode or blocked storage: better to stay silent than to nag on
-		// every load, since we would have no way to remember a dismissal.
-		return true;
-	}
-}
-
-function remember(): void {
-	try {
-		localStorage.setItem(DISMISSED_KEY, "1");
-	} catch {
-		// Nothing to do — the invite simply may appear again next session.
+		return null;
 	}
 }
 
@@ -43,7 +45,8 @@ function remember(): void {
  * why if the user goes looking.
  */
 export async function maybeInvitePushEnrollment(t: TFunction): Promise<void> {
-	if (alreadyAnswered()) return;
+	const storage = usableStorage();
+	if (!storage || storage.getItem(DISMISSED_KEY) === "1") return;
 	if (!pushReadiness().ready) return;
 	// "denied" is a decision the user already made in the browser; re-asking is
 	// noise, since the prompt will never appear again anyway.
@@ -52,22 +55,14 @@ export async function maybeInvitePushEnrollment(t: TFunction): Promise<void> {
 
 	toast.info(t("push.inviteBody"), {
 		durationMs: 15_000,
-		onClick: () => {
-			remember();
-			void (async () => {
-				try {
-					if (Notification.permission !== "granted") {
-						const result = await Notification.requestPermission();
-						if (result !== "granted") return;
-					}
-					await subscribeToPush();
-					toast.success(t("push.inviteDone"));
-				} catch (err) {
-					toast.error(err instanceof Error ? err.message : String(err));
-				}
-			})();
-		},
+		onClick: () =>
+			window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: "system" })),
 	});
 	// Offered once. Whether they take it or ignore it, we do not ask again.
-	remember();
+	try {
+		storage.setItem(DISMISSED_KEY, "1");
+	} catch {
+		// Storage filled up between the probe and now — the invite may return next
+		// session, which is the mild half of the two failure modes.
+	}
 }

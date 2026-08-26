@@ -154,9 +154,9 @@ the task ids, so the hook can still link back.
 ### Web Push, including an iPhone
 
 Open dev-3.0 in a browser over HTTPS. The first time a browser could accept push, a toast
-offers it — tapping that runs the whole enrolment in one go. It is offered once; if you
-dismiss it, turn push on later under **Settings → System → Browser notifications → Push to
-this device**.
+offers it — tapping that takes you to the setting, where you allow notifications and turn
+push on. It is offered once; if you dismiss it, the same controls are under **Settings →
+System → Browser notifications → Push to this device**.
 
 The payload is encrypted end to end (RFC 8291), so Apple's and Google's push services relay
 it without being able to read it, and dev-3.0 needs no account with either. The keypair is

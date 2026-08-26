@@ -19,10 +19,23 @@ afterEach(() => {
 // Node's experimental global `localStorage` shadows happy-dom's on both
 // globalThis and window (sessionStorage is unaffected). Without
 // --localstorage-file it is unusable, but not always absent: on Node 25.6 it is
-// an object whose methods are undefined, so probe for a working Storage rather
-// than for undefined. Substitute an in-memory one — setupFiles run per test
-// file, so each file gets a fresh, isolated store.
-if (typeof globalThis.localStorage?.getItem !== "function") {
+// an object whose methods are undefined, and without the flag a present-looking
+// one throws on write. Only a write/read/delete round trip tells the two apart,
+// so probe rather than sniff for methods. Substitute an in-memory Storage —
+// setupFiles run per test file, so each file gets a fresh, isolated store.
+function localStorageWorks(): boolean {
+	try {
+		const probe = "__dev3_test_setup_probe__";
+		globalThis.localStorage.setItem(probe, "1");
+		const ok = globalThis.localStorage.getItem(probe) === "1";
+		globalThis.localStorage.removeItem(probe);
+		return ok;
+	} catch {
+		return false;
+	}
+}
+
+if (!localStorageWorks()) {
 	const store = new Map<string, string>();
 	const storage: Storage = {
 		get length() {
