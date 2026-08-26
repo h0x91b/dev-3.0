@@ -250,6 +250,56 @@ jobs:
             echo "::warning::no self-extractor payload (*.tar.zst) found — inner binaries and launcher not smoke-tested"
           fi
 
+      # Gate the CLI binary's JIT entitlements. Like issue #563 this bug class is
+      # invisible to signing, notarization and green CI: a hardened-runtime bun
+      # binary without them takes an uncatchable SIGTRAP on its first `bun:ffi`
+      # dlopen, which killed `dev3 remote` on every task creation. Two checks,
+      # because they fail for different reasons — the artifact can lose the
+      # entitlements (dropped flag, a re-signing step), or the entitlement set can
+      # stop being sufficient (a bun upgrade wanting another key).
+      - name: Verify CLI binary can run bun:ffi (JIT entitlements gate)
+        run: |
+          set -euo pipefail
+          CLI_BIN=$(find "$RUNNER_TEMP/eb-payload" ./build -path "*/Resources/app/cli/dev3" -type f 2>/dev/null | head -1)
+          if [ -z "$CLI_BIN" ]; then
+            echo "::error::no CLI binary found in the built app (Resources/app/cli/dev3)"
+            exit 1
+          fi
+          echo "checking $CLI_BIN"
+          ENTS=$(codesign -d --entitlements - --xml "$CLI_BIN" 2>&1 || true)
+          for key in com.apple.security.cs.allow-jit com.apple.security.cs.allow-unsigned-executable-memory; do
+            if ! echo "$ENTS" | grep -q "$key"; then
+              echo "::error::shipped CLI binary is missing $key — every bun:ffi dlopen in it will SIGTRAP"
+              echo "$ENTS"
+              exit 1
+            fi
+          done
+          echo "shipped CLI carries both JIT entitlements"
+
+          # Runtime half: the real cow-clone code, signed the way the CLI is.
+          PROBE_DIR=$(mktemp -d)
+          mkdir -p "$PROBE_DIR/src/node_modules" "$PROBE_DIR/dest"
+          echo probe > "$PROBE_DIR/src/node_modules/file.txt"
+          cat > "$PROBE_DIR/probe.ts" <<PROBE
+          import { clonePaths } from "$GITHUB_WORKSPACE/src/bun/cow-clone";
+          const r = await clonePaths(process.argv[2], process.argv[3], ["node_modules"]);
+          if (r[0].method !== "clonefile") throw new Error(\`expected clonefile, got \${r[0].method}\`);
+          console.log("ffi clonefile OK");
+          PROBE
+          bun build "$PROBE_DIR/probe.ts" --compile --outfile "$PROBE_DIR/probe"
+          codesign --remove-signature "$PROBE_DIR/probe" 2>/dev/null || true
+          codesign --force --sign - --options runtime \
+            --entitlements scripts/cli-entitlements.plist "$PROBE_DIR/probe"
+          set +e
+          OUT=$("$PROBE_DIR/probe" "$PROBE_DIR/src" "$PROBE_DIR/dest" 2>&1)
+          CODE=$?
+          set -e
+          echo "$OUT"
+          if [ "$CODE" -ne 0 ]; then
+            echo "::error::bun:ffi is unusable under the CLI signing recipe (exit $CODE) — 133 means SIGTRAP on dlopen"
+            exit 1
+          fi
+
       - name: Create CLI tarball
         run: bash ./scripts/create-cli-tarball.sh macos ${{ inputs.arch }}
 

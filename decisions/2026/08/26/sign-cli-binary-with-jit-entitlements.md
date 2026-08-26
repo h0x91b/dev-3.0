@@ -62,6 +62,16 @@ not the same as them being armed today.
 Entitlements are scoped to `dist/dev3`; the bundled tmux and the bifrost sidecar
 are not Bun and need no JIT.
 
+A release gate in `release-build-macos.yml` guards both ways this can regress:
+it asserts the CLI binary inside the built app still carries both keys (a
+dropped flag, or a re-signing step stripping them), and it compiles the real
+`clonePaths` into a probe, signs it with the same recipe, and runs a clone — so
+an entitlement set that stops being sufficient (a bun upgrade wanting another
+key) fails the build instead of shipping. Same reasoning as the Mach-O gate in
+`decisions/2026/07/05/macho-headerpad-codesign-surgery.md`: this bug class is
+invisible to signing, notarization, and green CI, so only executing the thing
+catches it.
+
 ## Risks
 
 Hardened runtime also enables library validation, so the CLI can only `dlopen`
