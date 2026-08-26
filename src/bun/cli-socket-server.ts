@@ -104,18 +104,54 @@ function parseSeqRef(ref: string): number | null {
 	return match ? Number(match[1]) : null;
 }
 
+const VARIANT_NEEDS_SEQ =
+	'--variant narrows a variant group addressed by seq. Pass `--task seq:<N> --variant <i>`.';
+
+/** The seq resolved, but no member carries the requested `--variant <i>`. */
+class VariantNotFoundError extends Error {}
+
+/** The variant indices a seq actually answers to, for a "no such variant" error. */
+function describeLiveVariants(matches: Task[]): string {
+	const indices = matches
+		.map((m) => m.variantIndex)
+		.filter((i): i is number => i != null)
+		.sort((a, b) => a - b);
+	if (indices.length === 0) return "It is not a variant group — drop --variant.";
+	return `Live variants: ${indices.join(", ")}.`;
+}
+
 /**
  * Resolve a task reference — full id, ≥8-char id prefix, or `seq:<N>` — against
  * one project's task list. Throws on ambiguity (a variant group shares one seq;
  * a short prefix can match several ids), returns null when nothing matches.
+ *
+ * `variantIndex` is `dev3 message --variant <i>` and nothing else passes it: it
+ * narrows the same-seq matches to the one member carrying that index. It is a
+ * plain filter even when the seq is already unambiguous, so a group's survivor
+ * keeps answering to the address it handed out while its siblings were alive —
+ * `variantIndex` is permanent, the collision that minted it is not.
  */
-function findTaskByRef(tasks: Task[], ref: string): Task | null {
+function findTaskByRef(tasks: Task[], ref: string, variantIndex?: number): Task | null {
 	const seq = parseSeqRef(ref);
-	if (seq === null) return findByIdPrefix(tasks, ref, "task");
+	if (seq === null) {
+		if (variantIndex !== undefined) throw new Error(VARIANT_NEEDS_SEQ);
+		return findByIdPrefix(tasks, ref, "task");
+	}
 	const matches = tasks.filter((t) => t.seq === seq);
+	if (variantIndex !== undefined && matches.length > 0) {
+		const picked = matches.filter((t) => t.variantIndex === variantIndex);
+		if (picked.length === 0) {
+			throw new VariantNotFoundError(`Task ref "${ref}" has no variant ${variantIndex}. ${describeLiveVariants(matches)}`);
+		}
+		if (picked.length > 1) {
+			const ids = picked.map((m) => m.id.slice(0, 8)).join(", ");
+			throw new Error(`Task ref "${ref}" matches ${picked.length} tasks with variant ${variantIndex} (${ids}). Address one of them by id.`);
+		}
+		return picked[0];
+	}
 	if (matches.length > 1) {
 		const ids = matches.map((m) => m.id.slice(0, 8)).join(", ");
-		throw new Error(`Task ref "${ref}" matches ${matches.length} variant tasks (${ids}). Address one of them by id.`);
+		throw new Error(`Task ref "${ref}" matches ${matches.length} variant tasks (${ids}). Address one of them by id, or with \`dev3 message\` by \`--variant <i>\`.`);
 	}
 	return matches[0] ?? null;
 }
@@ -172,10 +208,14 @@ async function requirePaneTask(params: Record<string, unknown>): Promise<{ proje
 	return found;
 }
 
-async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Project; task: Task } | null> {
+async function resolveTaskAcrossProjects(taskId: string, variantIndex?: number): Promise<{ project: Project; task: Task } | null> {
 	// Scan virtual ("Operations") boards too, so `dev3` commands run from inside
 	// an operation worktree (no explicit --project) can resolve their task.
 	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+	// Raised here rather than inside the loop: the id-prefix path below swallows
+	// everything but "Ambiguous", so a `--variant` misuse would come back as a
+	// bare "task not found".
+	if (variantIndex !== undefined && parseSeqRef(taskId) === null) throw new Error(VARIANT_NEEDS_SEQ);
 
 	// Seq refs must collect matches across ALL projects instead of returning the
 	// first hit: every board counts 1..N, so cross-project collisions are routine
@@ -184,16 +224,25 @@ async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Pro
 	// collisions unrealistic, and the CLI already guards them (decision 102).
 	if (parseSeqRef(taskId) !== null) {
 		const matches: Array<{ project: Project; task: Task }> = [];
+		// A board carrying the seq but not that variant is a near miss, not a
+		// verdict: another board may hold the real group (seq collisions across
+		// projects are routine). Kept, and raised only if nothing matched anywhere.
+		let variantMiss: VariantNotFoundError | null = null;
 		for (const project of projects) {
 			try {
 				const tasks = await data.loadTasks(project);
-				const task = findTaskByRef(tasks, taskId);
+				const task = findTaskByRef(tasks, taskId, variantIndex);
 				if (task) matches.push({ project, task });
 			} catch (err) {
+				if (err instanceof VariantNotFoundError) {
+					variantMiss ??= err;
+					continue;
+				}
 				// Re-throw ambiguity errors, skip broken task files
 				if (err instanceof Error && err.message.startsWith("Task ref")) throw err;
 			}
 		}
+		if (matches.length === 0 && variantMiss) throw variantMiss;
 		if (matches.length > 1) {
 			const shown = matches.map((m) => `${m.task.id.slice(0, 8)} (${m.project.name})`).join(", ");
 			throw new Error(`Task ref "${taskId}" matches ${matches.length} tasks across projects (${shown}). Pass --project to disambiguate.`);
@@ -214,21 +263,40 @@ async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Pro
 	return null;
 }
 
-async function resolveTaskFromParams(params: Record<string, unknown>): Promise<{ project: Project; task: Task }> {
+/**
+ * `opts.variantIndex` is `dev3 message --variant <i>` and only that: no other
+ * command accepts the flag, so every other caller resolves exactly as before.
+ */
+async function resolveTaskFromParams(
+	params: Record<string, unknown>,
+	opts?: { variantIndex?: number },
+): Promise<{ project: Project; task: Task }> {
 	const taskId = params.taskId as string;
 	if (!taskId) throw new Error("taskId is required");
+	const variantIndex = opts?.variantIndex;
 
 	if (params.projectId) {
 		const project = await data.getProject(params.projectId as string);
 		const tasks = await data.loadTasks(project);
-		const task = findTaskByRef(tasks, taskId);
+		const task = findTaskByRef(tasks, taskId, variantIndex);
 		if (!task) throw taskNotFoundError(taskId, project);
 		return { project, task };
 	}
 
-	const found = await resolveTaskAcrossProjects(taskId);
+	const found = await resolveTaskAcrossProjects(taskId, variantIndex);
 	if (!found) throw taskNotFoundError(taskId);
 	return found;
+}
+
+/** `dev3 message --variant <i>` off the wire; rejected here as well as in the CLI. */
+function messageVariantIndex(params: Record<string, unknown>): number | undefined {
+	const raw = params.variantIndex;
+	if (raw === undefined || raw === null) return undefined;
+	const value = Number(raw);
+	if (!Number.isInteger(value) || value < 0) {
+		throw new Error(`Invalid --variant "${String(raw)}": expected a non-negative integer index.`);
+	}
+	return value;
 }
 
 /**
@@ -1550,7 +1618,7 @@ const handlers: Record<string, Handler> = {
 	// agent immediately. Throws only when nothing was sent; an unconfirmed send
 	// travels back as its own status so the CLI reports it as neither.
 	"message.send": async (params) => {
-		const { project, task } = await resolveTaskFromParams(params);
+		const { project, task } = await resolveTaskFromParams(params, { variantIndex: messageVariantIndex(params) });
 		const text = ((params.text as string) ?? "").toString();
 		const source = await resolveAgentMessageSource(params, task.id);
 		const delivery = await sendMessageImmediately(task, text, null, source);
@@ -1586,7 +1654,7 @@ const handlers: Record<string, Handler> = {
 	// `dev3 message --in <dur> | --at <hh:mm> "text"`: queue a scheduled message on
 	// the task's live agent (validation + cap live in the scheduler core).
 	"message.schedule": async (params) => {
-		const { project, task } = await resolveTaskFromParams(params);
+		const { project, task } = await resolveTaskFromParams(params, { variantIndex: messageVariantIndex(params) });
 		const text = ((params.text as string) ?? "").toString();
 		const at = (params.at as string) ?? "";
 		const source = await resolveAgentMessageSource(params, task.id);

@@ -36,13 +36,23 @@ describe("wrapAgentMessage", () => {
 		expect(out).toContain("<from-title>Fix &lt;div&gt; &amp; span</from-title>");
 	});
 
-	it("addresses a shared-seq sender by task id — the seq would be ambiguous", () => {
+	it("addresses a live variant group member by seq + --variant", () => {
 		const out = wrapAgentMessage(
 			"hi",
 			{ taskId: "7a9e61f4-1111-2222-3333-444455556666", seq: 1575, variantIndex: 1, seqShared: true },
 			PROJECT_A,
 		);
+		// `<from-task>` is an address, not a command, so it cannot carry a flag.
 		expect(out).toContain("<from-task>7a9e61f4-1111-2222-3333-444455556666</from-task>");
+		expect(out).toContain('<reply-with>dev3 message --task seq:1575 --variant 1 "your reply"</reply-with>');
+	});
+
+	it("still falls back to the id when a shared seq has no variant index to name", () => {
+		const out = wrapAgentMessage(
+			"hi",
+			{ taskId: "7a9e61f4-1111-2222-3333-444455556666", seq: 1575, variantIndex: null, seqShared: true },
+			PROJECT_A,
+		);
 		expect(out).toContain('<reply-with>dev3 message --task 7a9e61f4-1111-2222-3333-444455556666 "your reply"</reply-with>');
 		expect(out).not.toContain("seq:1575");
 	});
@@ -65,9 +75,11 @@ describe("wrapAgentMessage", () => {
 		expect(out).not.toContain("824c6557");
 	});
 
-	it("falls back to the id for a record queued before seqShared existed", () => {
+	it("addresses a record queued before seqShared existed by seq + --variant", () => {
+		// The pessimistic legacy path assumes the seq is shared; --variant makes that
+		// assumption cheap instead of spending a UUID on it.
 		const out = wrapAgentMessage("hi", { taskId: "t-9", seq: 1575, variantIndex: 1 }, PROJECT_A);
-		expect(out).toContain('<reply-with>dev3 message --task t-9 "your reply"</reply-with>');
+		expect(out).toContain('<reply-with>dev3 message --task seq:1575 --variant 1 "your reply"</reply-with>');
 	});
 
 	it("scopes the reply command when the sender sits on another board", () => {
@@ -126,7 +138,7 @@ describe("agentReplyCommand", () => {
 		).toBe('dev3 message --task seq:42 "your reply"');
 	});
 
-	it("addresses a shared-seq target by id and still scopes it", () => {
+	it("addresses a shared-seq target with no variant index by id, and still scopes it", () => {
 		expect(
 			agentReplyCommand({
 				target: { id: "t-9", seq: 7, seqShared: true, projectId: PROJECT_B },
@@ -134,5 +146,25 @@ describe("agentReplyCommand", () => {
 				quoted: "your reply",
 			}),
 		).toBe('dev3 message --task t-9 --project bbbbbbbb "your reply"');
+	});
+
+	it("names a live variant group member by seq + --variant, before --project", () => {
+		expect(
+			agentReplyCommand({
+				target: { id: "t-9", seq: 7, seqShared: true, variantIndex: 0, projectId: PROJECT_B },
+				fromProjectId: PROJECT_A,
+				quoted: "your reply",
+			}),
+		).toBe('dev3 message --task seq:7 --variant 0 --project bbbbbbbb "your reply"');
+	});
+
+	it("ignores the variant index once the seq stopped being shared", () => {
+		expect(
+			agentReplyCommand({
+				target: { id: "t-9", seq: 7, seqShared: false, variantIndex: 3 },
+				fromProjectId: PROJECT_A,
+				quoted: "your reply",
+			}),
+		).toBe('dev3 message --task seq:7 "your reply"');
 	});
 });

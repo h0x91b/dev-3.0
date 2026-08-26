@@ -347,10 +347,10 @@ describe("task.move — agent-initiated launch approval", () => {
 		}));
 	});
 
-	it("addresses variants by task id — a live variant group shares one seq", async () => {
+	it("addresses variants by seq + --variant — a live variant group shares one seq", async () => {
 		const target = makeTask();
 		// A real variant launch mints siblings: two tasks answering to seq 7 is what
-		// makes `--task seq:7` ambiguous and forces the id form.
+		// makes a bare `--task seq:7` ambiguous, so the address has to name the member.
 		const targetSibling = makeTask({ id: "task-tgt33333-1111-2222-3333-444444444444", variantIndex: 2 });
 		const variantRequester = { ...requester, variantIndex: 1 };
 		const project = makeProject();
@@ -375,7 +375,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		});
 
 		const resp = await respPromise;
-		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe(`dev3 message --task ${TARGET_ID} "your message"`);
+		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe('dev3 message --task seq:7 --variant 2 "your message"');
 		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
 			source: expect.objectContaining({ seq: 3, variantIndex: 1 }),
 		}));
@@ -718,13 +718,13 @@ describe("task.move — agent-initiated launch with variants", () => {
 		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({ childTaskId: SIBLING_ID }));
 
 		// seq:7 now matches two live tasks, so the requester gets one address per
-		// variant and neither of them is the shared seq.
+		// variant — the shared seq plus the index that tells them apart.
 		expect(resp.data).toMatchObject({
 			approved: true,
 			seq: 7,
 			launched: [
-				{ variantIndex: 1, replyCommand: `dev3 message --task ${TARGET_ID} "your message"` },
-				{ variantIndex: 2, replyCommand: `dev3 message --task ${SIBLING_ID} "your message"` },
+				{ variantIndex: 1, replyCommand: 'dev3 message --task seq:7 --variant 1 "your message"' },
+				{ variantIndex: 2, replyCommand: 'dev3 message --task seq:7 --variant 2 "your message"' },
 			],
 		});
 	});

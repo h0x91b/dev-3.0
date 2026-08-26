@@ -135,6 +135,11 @@ vi.mock("../agent-prompt-delivery", () => ({
 	deliverAgentPrompt: vi.fn(async () => ({ status: "delivered" })),
 }));
 
+vi.mock("../scheduled-message-scheduler", () => ({
+	sendMessageImmediately: vi.fn(async () => ({ status: "delivered" })),
+	scheduleMessage: vi.fn(async (_project: unknown, task: { scheduledMessages?: unknown[] }) => task),
+}));
+
 vi.mock("../vents", () => ({
 	addVent: vi.fn(() => ({ fileName: "2026-06-15_14-30_x.md", path: "/tmp/v/2026-06-15_14-30_x.md", name: "x" })),
 }));
@@ -182,6 +187,7 @@ import { getServerPort } from "../remote-access-server";
 import { saveSharedImage } from "../shared-images";
 import { saveSharedArtifact } from "../shared-artifacts";
 import { closePaneRun, paneRunListing, readPaneRun, startPaneRun } from "../task-pane-runs";
+import { scheduleMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
 
 // `task.open` imports the window layer lazily; mocking it keeps electrobun out.
 vi.mock("../window-manager", () => ({
@@ -3843,5 +3849,153 @@ describe("task.open", () => {
 		const resp = await handleRequest(makeRequest("task.open", { taskId: "nope-1234", projectId: "proj-1" }));
 
 		expect(resp.ok).toBe(false);
+	});
+});
+
+// ---- `dev3 message --variant <i>` ----
+
+describe("message.send — --variant narrows a variant group", () => {
+	const V1 = "aaaaaaaa-1111-2222-3333-444444444444";
+	const V2 = "bbbbbbbb-1111-2222-3333-444444444444";
+
+	function group() {
+		return [
+			makeTask({ id: V1, seq: 42, groupId: "g1", variantIndex: 1 }),
+			makeTask({ id: V2, seq: 42, groupId: "g1", variantIndex: 2 }),
+		];
+	}
+
+	function scopeTo(tasks: Task[]) {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue(tasks);
+	}
+
+	it("resolves the member carrying that index instead of rejecting the shared seq", async () => {
+		scopeTo(group());
+
+		const resp = await handleRequest(
+			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: 2, text: "hi" }),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ taskId: V2 });
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0]?.[0]).toMatchObject({ id: V2 });
+	});
+
+	it("still rejects the shared seq when no --variant is given", async () => {
+		scopeTo(group());
+
+		const resp = await handleRequest(
+			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", text: "hi" }),
+		);
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("matches 2 variant tasks");
+		expect(resp.error).toContain("--variant");
+	});
+
+	it("fails loudly on an index nobody carries, naming the ones that exist", async () => {
+		scopeTo(group());
+
+		const resp = await handleRequest(
+			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: 5, text: "hi" }),
+		);
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("has no variant 5");
+		expect(resp.error).toContain("Live variants: 1, 2");
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("says the seq is not a group when the only task has no variant index", async () => {
+		scopeTo([makeTask({ id: V1, seq: 42 })]);
+
+		const resp = await handleRequest(
+			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: 1, text: "hi" }),
+		);
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("not a variant group");
+	});
+
+	it("still resolves a lone survivor by the index it was minted with", async () => {
+		// `variantIndex` is permanent, the collision that minted it is not — a
+		// reply command emitted while the siblings were alive keeps working.
+		scopeTo([makeTask({ id: V1, seq: 42, groupId: "g1", variantIndex: 1 })]);
+
+		const resp = await handleRequest(
+			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: 1, text: "hi" }),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ taskId: V1 });
+	});
+
+	it("rejects --variant against an id ref, where it cannot mean anything", async () => {
+		scopeTo(group());
+
+		const resp = await handleRequest(
+			makeRequest("message.send", { taskId: V1, projectId: "proj-1", variantIndex: 1, text: "hi" }),
+		);
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("--variant narrows a variant group addressed by seq");
+	});
+
+	it("rejects a non-integer --variant", async () => {
+		scopeTo(group());
+
+		const resp = await handleRequest(
+			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: "one", text: "hi" }),
+		);
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("expected a non-negative integer");
+	});
+
+	it("narrows the same way when the message is scheduled", async () => {
+		scopeTo(group());
+
+		const resp = await handleRequest(
+			makeRequest("message.schedule", {
+				taskId: "seq:42",
+				projectId: "proj-1",
+				variantIndex: 1,
+				text: "hi",
+				at: new Date(Date.now() + 60_000).toISOString(),
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ taskId: V1 });
+		expect(vi.mocked(scheduleMessage).mock.calls[0]?.[1]).toMatchObject({ id: V1 });
+	});
+
+	it("keeps looking on other boards when one carries the seq but not the variant", async () => {
+		const alpha = makeProject({ id: "proj-a", name: "Alpha", path: "/tmp/a" });
+		const beta = makeProject({ id: "proj-b", name: "Beta", path: "/tmp/b" });
+		vi.mocked(data.loadProjects).mockResolvedValue([alpha, beta]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) =>
+			p.id === "proj-a"
+				? [makeTask({ id: V1, seq: 42, projectId: "proj-a" })]
+				: [makeTask({ id: V2, seq: 42, projectId: "proj-b", groupId: "g1", variantIndex: 1 })],
+		);
+
+		const resp = await handleRequest(makeRequest("message.send", { taskId: "seq:42", variantIndex: 1, text: "hi" }));
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ taskId: V2 });
+	});
+
+	it("leaves every other command's resolution untouched", async () => {
+		scopeTo(group());
+
+		const resp = await handleRequest(
+			makeRequest("task.show", { taskId: "seq:42", projectId: "proj-1", variantIndex: 1 }),
+		);
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("matches 2 variant tasks");
 	});
 });

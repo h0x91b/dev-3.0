@@ -13,7 +13,25 @@ import {
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "../../shared/agent-message-hold-timing";
 
-const USAGE = 'Usage: dev3 message [--in <dur> | --at <hh:mm>] "text" [--task <id>]';
+const USAGE = 'Usage: dev3 message [--in <dur> | --at <hh:mm>] "text" [--task <id>] [--variant <i>]';
+
+const VARIANT_NEEDS_SEQ =
+	"--variant narrows a variant group addressed by seq. Pass --task seq:<N> --variant <i>.";
+
+/**
+ * `--variant <i>` — the member of a live variant group to address. A group
+ * shares one seq, so `seq:<N>` alone is rejected as ambiguous and the index is
+ * what tells the members apart (the card shows it as `<seq>-<i>`).
+ */
+function parseVariantFlag(raw: unknown): number | undefined {
+	if (raw === undefined) return undefined;
+	const value = String(raw).trim();
+	if (value === "" || value === "true") exitUsage("--variant needs an index, e.g. --variant 1.");
+	if (!/^\d+$/.test(value)) {
+		exitUsage(`Invalid --variant "${value}". It is the index shown on the card as <seq>-<index>, e.g. 1.`);
+	}
+	return Number(value);
+}
 
 /**
  * `dev3 message "text"` — deliver a message into the current task's live agent.
@@ -27,7 +45,7 @@ export async function handleMessage(
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
-	rejectUnknownFlags(args, ["task", "task-id", "project", "in", "at", "message"]);
+	rejectUnknownFlags(args, ["task", "task-id", "project", "in", "at", "message", "variant"]);
 
 	const text = (args.positional[0] ?? args.flags.message ?? "").toString().trim();
 	if (!text) exitUsage(USAGE);
@@ -49,7 +67,14 @@ export async function handleMessage(
 		exitUsage("No task in context. Run inside a worktree or pass --task <id> / --task-id <id>.");
 	}
 
+	const variantIndex = parseVariantFlag(args.flags.variant);
+	// A UUID already names one member, and the worktree's own task is not a group
+	// address at all — either one plus `--variant` is a confused command, not a
+	// filter to apply silently.
+	if (variantIndex !== undefined && !/^seq:\d+$/.test(String(rawTaskId))) exitUsage(VARIANT_NEEDS_SEQ);
+
 	const params: Record<string, unknown> = { taskId: expandShortId(rawTaskId, context), text };
+	if (variantIndex !== undefined) params.variantIndex = variantIndex;
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 	// Running inside a worktree means an agent is the author: hand the app our own

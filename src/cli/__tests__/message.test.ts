@@ -153,3 +153,60 @@ describe("message — validation", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
+
+describe("message — --variant", () => {
+	it("carries the index to the server alongside the seq ref", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: "bbbbbbbb-1111-2222-3333-444444444444" }));
+		await handleMessage(args(["ping"], { task: "seq:490", variant: "1" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(
+			SOCKET,
+			"message.send",
+			expect.objectContaining({ taskId: "seq:490", variantIndex: 1 }),
+		);
+	});
+
+	it("carries the index on the scheduled form too", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: "bbbbbbbb-1111-2222-3333-444444444444", pending: 1 }));
+		await handleMessage(args(["ping"], { task: "seq:490", variant: "2", in: "30m" }), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(
+			SOCKET,
+			"message.schedule",
+			expect.objectContaining({ taskId: "seq:490", variantIndex: 2 }),
+		);
+	});
+
+	it("omits the field entirely when the flag is absent", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: "bbbbbbbb-1111-2222-3333-444444444444" }));
+		await handleMessage(args(["ping"], { task: "seq:490" }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]?.[2]).not.toHaveProperty("variantIndex");
+	});
+
+	it("rejects --variant against a task id — it names one member already", async () => {
+		await expect(
+			handleMessage(args(["ping"], { task: "bbbbbbbb-1111-2222-3333-444444444444", variant: "1" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toMatch(/--task seq:<N> --variant/);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects --variant with no --task, where it would mean the worktree's own task", async () => {
+		await expect(handleMessage(args(["ping"], { variant: "1" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects a bare --variant with no index", async () => {
+		await expect(
+			handleMessage(args(["ping"], { task: "seq:490", variant: "true" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toMatch(/--variant needs an index/);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects a non-numeric --variant", async () => {
+		await expect(
+			handleMessage(args(["ping"], { task: "seq:490", variant: "one" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toMatch(/Invalid --variant/);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
