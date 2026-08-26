@@ -16,6 +16,7 @@ function row(overrides: Partial<BoardRow> = {}): BoardRow {
 		variantIndex: null,
 		seqShared: false,
 		title: "Fix auth race in login flow",
+		priority: "P2",
 		column: "In Progress",
 		hibernated: false,
 		draft: false,
@@ -154,5 +155,30 @@ describe("renderCoordinatorBoard", () => {
 		const text = renderCoordinatorBoard(snapshot({ live: [row({ title: long })] }), NOW);
 		expect(text).toContain("…");
 		expect(text).not.toContain(long);
+	});
+});
+
+describe("priority cell", () => {
+	it("prints the priority between the ref and the column", () => {
+		const text = renderCoordinatorBoard(snapshot({ live: [row({ priority: "P0" })] }), NOW);
+		expect(text).toMatch(/seq:1620\s+P0\s+In Progress\s+Fix auth race/);
+	});
+
+	// The cell sits between two padded columns, so a wider ref on one row must not
+	// shift the column of the row below it.
+	it("keeps the columns aligned across rows of differing ref width", () => {
+		const text = renderCoordinatorBoard(
+			snapshot({ live: [row({ seq: 7, priority: "P0" }), row({ seq: 1631, priority: "P4" })] }),
+			NOW,
+		);
+		const lines = text.split("\n").filter((l) => l.includes("In Progress"));
+		expect(lines).toHaveLength(2);
+		expect(lines[0].indexOf("In Progress")).toBe(lines[1].indexOf("In Progress"));
+		expect(lines[0]).toContain("P0");
+		expect(lines[1]).toContain("P4");
+	});
+
+	it("names the priority column in the instruction line", () => {
+		expect(renderCoordinatorBoard(snapshot(), NOW)).toContain("`P0`…`P4`");
 	});
 });

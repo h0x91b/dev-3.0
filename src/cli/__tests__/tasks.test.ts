@@ -527,3 +527,165 @@ describe("tasks list --offset paging", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });
+
+// ─── tasks list: priority column, filter and sort ────────────────────────────
+// The board ranks a column by priority; before this the CLI listing hid the
+// field entirely and ordered by seq, so the two disagreed and triaging from the
+// terminal meant one `task show` per task.
+
+describe("tasks list priority", () => {
+	function withPriority(seq: number, priority: Task["priority"], extra: Partial<Task> = {}): Task {
+		return {
+			...TASKS[0],
+			id: `p${String(seq).padStart(8, "0")}-1111-2222-3333-444444444444`,
+			seq,
+			title: `task ${seq}`,
+			status: "todo",
+			priority,
+			...extra,
+		};
+	}
+
+	it("prints a PRI column carrying each task's priority", async () => {
+		mockSend.mockResolvedValue(okResp([withPriority(1, "P0")]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("PRI");
+		expect(stdoutOutput).toMatch(/P0\s+To Do\s+task 1/);
+	});
+
+	it("shows the default priority for a task that predates the field", async () => {
+		mockSend.mockResolvedValue(okResp([{ ...TASKS[0], priority: undefined }]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput).toMatch(/P3\s+To Do\s+First task/);
+	});
+
+	it("sorts by priority inside a group, highest first", async () => {
+		mockSend.mockResolvedValue(
+			okResp([withPriority(1, "P4"), withPriority(2, "P0"), withPriority(3, "P2")]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		const at = (title: string) => stdoutOutput.indexOf(title);
+		expect(at("task 2")).toBeLessThan(at("task 3"));
+		expect(at("task 3")).toBeLessThan(at("task 1"));
+	});
+
+	it("breaks a priority tie with newest seq first", async () => {
+		mockSend.mockResolvedValue(okResp([withPriority(5, "P1"), withPriority(9, "P1")]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput.indexOf("task 9")).toBeLessThan(stdoutOutput.indexOf("task 5"));
+	});
+
+	it("keeps the status grouping above priority — a P0 in To Do stays under live work", async () => {
+		mockSend.mockResolvedValue(
+			okResp([withPriority(1, "P0"), withPriority(2, "P4", { status: "in-progress" })]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput.indexOf("task 2")).toBeLessThan(stdoutOutput.indexOf("task 1"));
+	});
+
+	it("sinks a hibernated task below every live priority, as the board does", async () => {
+		mockSend.mockResolvedValue(
+			okResp([
+				withPriority(1, "P0", { status: "in-progress", hibernated: true }),
+				withPriority(2, "P4", { status: "in-progress" }),
+			]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput.indexOf("task 2")).toBeLessThan(stdoutOutput.indexOf("task 1"));
+	});
+
+	it("--sort seq restores plain newest-first inside a group", async () => {
+		mockSend.mockResolvedValue(okResp([withPriority(1, "P0"), withPriority(2, "P4")]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", sort: "seq" } }, SOCKET, null);
+
+		expect(stdoutOutput.indexOf("task 2")).toBeLessThan(stdoutOutput.indexOf("task 1"));
+	});
+
+	it("rejects an unknown --sort key", async () => {
+		await expect(
+			handleTasks("list", { positional: [], flags: { project: "proj-001", sort: "title" } }, SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--sort");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("--priority keeps only the named band", async () => {
+		mockSend.mockResolvedValue(
+			okResp([withPriority(1, "P0"), withPriority(2, "P2"), withPriority(3, "P4")]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "P2" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("task 2");
+		expect(stdoutOutput).not.toContain("task 1");
+		expect(stdoutOutput).not.toContain("task 3");
+		expect(stdoutOutput).toContain("Showing 1-1 of 1.");
+	});
+
+	it("--priority accepts a comma-separated list, in any case and bare digits", async () => {
+		mockSend.mockResolvedValue(
+			okResp([withPriority(1, "P0"), withPriority(2, "P1"), withPriority(3, "P4")]),
+		);
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "p0,1" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("task 1");
+		expect(stdoutOutput).toContain("task 2");
+		expect(stdoutOutput).not.toContain("task 3");
+	});
+
+	it("--priority P3 matches a task that predates the field", async () => {
+		mockSend.mockResolvedValue(okResp([{ ...TASKS[0], priority: undefined }]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "P3" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("First task");
+	});
+
+	it("composes --priority with --label", async () => {
+		mockSend.mockResolvedValue(
+			okResp([
+				withPriority(1, "P0", { labelIds: ["lab00001"] }),
+				withPriority(2, "P0", { labelIds: ["other111"] }),
+			]),
+		);
+
+		await handleTasks(
+			"list",
+			{ positional: [], flags: { project: "proj-001", priority: "P0", label: "lab00001" } },
+			SOCKET,
+			null,
+		);
+
+		expect(stdoutOutput).toContain("task 1");
+		expect(stdoutOutput).not.toContain("task 2");
+	});
+
+	it("rejects an invalid --priority before sending to the server", async () => {
+		await expect(
+			handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "P9" } }, SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--priority");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects an empty --priority", async () => {
+		await expect(
+			handleTasks("list", { positional: [], flags: { project: "proj-001", priority: "," } }, SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});

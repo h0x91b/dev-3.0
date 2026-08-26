@@ -160,3 +160,23 @@ describe("registry coverage", () => {
 		}
 	});
 });
+
+// `dev3 project list` used to die with "Unknown command: project" and no hint,
+// so the reader concluded the feature did not exist. main.ts forwards the
+// singular to `projects`; the help registry has to agree.
+describe("the singular `project` alias", () => {
+	it("resolves help to the plural projects command", () => {
+		expect(hasCommandHelp("project")).toBe(true);
+		expect(getCommandHelp("project")).toBe(getCommandHelp("projects"));
+		expect(renderHelp("project", "list")).toContain("dev3 projects list");
+	});
+});
+
+describe("tasks list help", () => {
+	it("documents the priority column, the filter and the sort key", () => {
+		const out = renderHelp("tasks", "list")!;
+		expect(out).toContain("--priority");
+		expect(out).toContain("--sort priority|seq");
+		expect(out).toContain("PRI column");
+	});
+});

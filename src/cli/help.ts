@@ -137,14 +137,17 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "list",
-				usage: "dev3 tasks list [--status <s>] [--label <id>] [--limit <n>] [--offset <n>]",
+				usage: "dev3 tasks list [--status <s>] [--label <id>] [--priority <P0..P4>] [--sort priority|seq] [--limit <n>] [--offset <n>]",
 				summary: "List tasks: live work, then To Do, then completed, then cancelled (default 50 per page).",
 				details: [
-					"Newest first (highest seq) inside each group.",
-					"--status <s>   Filter by status.",
-					"--label <id>   Filter by label id (8-char prefix works).",
-					"--limit <n>    Page size (default 50).",
-					"--offset <n>   Skip n tasks, for paging.",
+					"Highest priority first inside each group, exactly as the board ranks a column; newest (highest seq) breaks ties.",
+					"The PRI column is the task's priority, P0 (highest) … P4 (lowest).",
+					"--status <s>       Filter by status.",
+					"--label <id>       Filter by label id (8-char prefix works).",
+					"--priority <list>  Keep only these priorities, comma-separated: --priority P0,P1.",
+					"--sort priority|seq  Order inside each group (default priority).",
+					"--limit <n>        Page size (default 50).",
+					"--offset <n>       Skip n tasks, for paging.",
 				],
 			},
 		],
@@ -607,6 +610,10 @@ const COMMANDS: CommandHelp[] = [
 ];
 
 const COMMAND_INDEX: Map<string, CommandHelp> = new Map(COMMANDS.map((c) => [c.name, c]));
+
+// Command aliases: the singular `project` forwards to `projects` in main.ts, so
+// its help must resolve too — otherwise the hint and the command disagree.
+COMMAND_INDEX.set("project", COMMAND_INDEX.get("projects") as CommandHelp);
 
 /** Whether the registry knows how to render help for this command. */
 export function hasCommandHelp(command: string): boolean {

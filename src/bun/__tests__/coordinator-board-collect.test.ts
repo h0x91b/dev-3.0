@@ -194,3 +194,17 @@ describe("coordinatorBoardEpilogue", () => {
 		await expect(coordinatorBoardEpilogue(task({ taskType: "coordinator" }))).resolves.toBe("");
 	});
 });
+
+describe("collectCoordinatorBoard priority", () => {
+	it("carries the task's priority onto its row", () => {
+		const snap = collectCoordinatorBoard(project, [task({ priority: "P0" })], NOW);
+		expect(snap.live[0].priority).toBe("P0");
+	});
+
+	// A task created before the field existed must band as P3 on the board, the
+	// same value `priorityRank` sorts it with.
+	it("stamps a task with no priority as the default", () => {
+		const snap = collectCoordinatorBoard(project, [task({ priority: undefined })], NOW);
+		expect(snap.live[0].priority).toBe("P3");
+	});
+});

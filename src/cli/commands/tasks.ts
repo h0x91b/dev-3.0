@@ -1,5 +1,13 @@
-import type { Task, TaskStatus } from "../../shared/types";
-import { STATUS_LABELS, ALL_STATUSES, getTaskTitle } from "../../shared/types";
+import type { Task, TaskPriority, TaskStatus } from "../../shared/types";
+import {
+	STATUS_LABELS,
+	ALL_STATUSES,
+	ALL_PRIORITIES,
+	DEFAULT_PRIORITY,
+	compareTaskSortRank,
+	getTaskTitle,
+	normalizePriority,
+} from "../../shared/types";
 import { sendRequest } from "../socket-client";
 import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -29,6 +37,28 @@ function groupRank(task: Task): number {
 	return STATUS_GROUP_RANK[task.status] ?? 1;
 }
 
+/**
+ * Parse `--priority P0,P1` into the set to keep. Accepts anything
+ * {@link normalizePriority} accepts (`p1`, `1`, `P1`), comma-separated. A list
+ * rather than a range: the enum has five values, so the longest useful filter is
+ * five tokens, and one syntax beats teaching two.
+ */
+function parsePriorityFilter(raw: string): Set<TaskPriority> {
+	const wanted = new Set<TaskPriority>();
+	for (const token of raw.split(",")) {
+		if (token.trim() === "") continue;
+		const normalized = normalizePriority(token);
+		if (!normalized) {
+			exitUsage(`Invalid --priority: "${token.trim()}". Valid: ${ALL_PRIORITIES.join(", ")} (comma-separated for several).`);
+		}
+		wanted.add(normalized);
+	}
+	if (wanted.size === 0) {
+		exitUsage(`Invalid --priority: "${raw}". Valid: ${ALL_PRIORITIES.join(", ")} (comma-separated for several).`);
+	}
+	return wanted;
+}
+
 export async function handleTasks(
 	subcommand: string | undefined,
 	args: ParsedArgs,
@@ -48,6 +78,13 @@ export async function handleTasks(
 			}
 			params.status = args.flags.status;
 		}
+		const priorityFilter = args.flags.priority ? parsePriorityFilter(args.flags.priority) : null;
+
+		const sortKey = args.flags.sort ?? "priority";
+		if (sortKey !== "priority" && sortKey !== "seq") {
+			exitUsage(`Invalid --sort: "${args.flags.sort}". Valid: priority, seq.`);
+		}
+
 		let limit = DEFAULT_LIST_LIMIT;
 		if (args.flags.limit) {
 			const parsed = Number(args.flags.limit);
@@ -77,10 +114,21 @@ export async function handleTasks(
 			tasks = tasks.filter((t) => t.labelIds?.some((id) => id === labelId || id.startsWith(labelId)));
 		}
 
-		// Live work first, then To Do, then completed, then cancelled; newest
-		// (highest seq) first inside each group. Done before paging so
-		// --offset/--limit walk the same order the board reads in.
-		tasks = [...tasks].sort((a, b) => groupRank(a) - groupRank(b) || b.seq - a.seq);
+		if (priorityFilter) {
+			tasks = tasks.filter((t) => priorityFilter.has(t.priority ?? DEFAULT_PRIORITY));
+		}
+
+		// Live work first, then To Do, then completed, then cancelled. Inside a
+		// group the default is the board's own comparator (priority bands, with
+		// the coordinator lift and the hibernated sink), so a listing and the
+		// Kanban column agree on what is at the top; seq breaks ties, newest
+		// first. `--sort seq` drops the priority key for chronological reading.
+		// Done before paging so --offset/--limit walk the printed order.
+		tasks = [...tasks].sort((a, b) =>
+			groupRank(a) - groupRank(b)
+			|| (sortKey === "priority" ? compareTaskSortRank(a, b) : 0)
+			|| b.seq - a.seq,
+		);
 
 		// Client-side paging (server returns all tasks matching status filter).
 		// Defaults to the newest DEFAULT_LIST_LIMIT so large boards don't flood.
@@ -97,12 +145,15 @@ export async function handleTasks(
 		}
 
 		printTable(
-			["SEQ", "ID", "STATUS", "TITLE"],
+			["SEQ", "ID", "PRI", "STATUS", "TITLE"],
 			page.map((t) => {
 				const title = getTaskTitle(t);
 				return [
 					String(t.seq),
 					t.id.slice(0, 8),
+					// Two characters wide and it is what the board ranks on — the
+					// cheapest column on this table.
+					t.priority ?? DEFAULT_PRIORITY,
 					// Drafts share the To Do column but are not runnable — mark them
 					// here so a listing never reads as "ready to pick up".
 					`${STATUS_LABELS[t.status] || t.status}${t.draft === true ? " (draft)" : ""}`,

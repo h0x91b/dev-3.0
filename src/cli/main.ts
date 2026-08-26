@@ -64,7 +64,7 @@ Commands:
   dev3 label delete <id>                Delete label
   dev3 label set <id> [<id>...] [--task <task>]  Assign labels to a task
   dev3 label set --clear [--task <id>]  Remove all labels from a task
-  dev3 tasks list [--status <s>] [--label <id>] [--limit <n>] [--offset <n>]  List tasks (newest first, default 50)
+  dev3 tasks list [--status <s>] [--label <id>] [--priority P0,P1] [--sort priority|seq] [--limit <n>] [--offset <n>]  List tasks (highest priority first, default 50)
   dev3 automations list                 List project automations (scheduled agent runs)
   dev3 automations show <id>            Automation details + run history
   dev3 automations create --name "..." [--prompt "..." | --prompt -] --rrule "FREQ=DAILY;BYHOUR=9" [--template shipped-report]
@@ -278,6 +278,10 @@ async function main(): Promise<void> {
 	try {
 		switch (command) {
 			case "projects":
+			// Alias: the plural is the real command, but `dev3 project list` is the
+			// natural mistype and used to answer "Unknown command" with no hint —
+			// the same forwarding `task list` already does for `tasks list`.
+			case "project":
 				return await handleProjects(subcommand, args, socketPath);
 			case "tasks":
 				return await handleTasks(subcommand, args, socketPath, context);

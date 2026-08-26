@@ -15,6 +15,7 @@
 import type { Project, Task } from "../shared/types";
 import {
 	compareTaskSortRank,
+	DEFAULT_PRIORITY,
 	getTaskTitle,
 	isCoordinatorTask,
 	STATUS_LABELS,
@@ -72,6 +73,7 @@ function toRow(task: Task, project: Project, sharedSeqs: Set<number>): BoardRow 
 		variantIndex: task.variantIndex ?? null,
 		seqShared: sharedSeqs.has(task.seq),
 		title: getTaskTitle(task),
+		priority: task.priority ?? DEFAULT_PRIORITY,
 		column: columnOf(task, project),
 		hibernated: task.hibernated === true,
 		draft: task.draft === true,

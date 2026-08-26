@@ -52,6 +52,8 @@ export interface BoardRow {
 	/** Does another live task on this board still answer to the same seq? */
 	seqShared: boolean;
 	title: string;
+	/** `P0`…`P4`. The rows are already sorted by it, so it names what it sees. */
+	priority: string;
 	/** Built-in status, or the custom column's name when the task sits in one. */
 	column: string;
 	hibernated: boolean;
@@ -79,6 +81,7 @@ const INSTRUCTION =
 	"Board state as of this message — read it instead of running `dev3 task list`. "
 	+ "It does NOT arrive when the user types to you directly, so re-read the board before answering him after a silence. "
 	+ "Address a task by its `seq:N`; a variant shows `:index (id)` and is addressed by that id. "
+	+ "The `P0`…`P4` cell is the task's priority, and the rows are sorted by it — highest first, exactly as the board ranks them. "
 	+ "The last column is when the task landed in the column it is in — not how busy its agent is.";
 
 /**
@@ -123,10 +126,12 @@ function renderRows(rows: BoardRow[], nowMs: number): string[] {
 	const titles = rows.map((r) => truncate(r.title, MAX_TITLE));
 	const width = (cells: string[]) => Math.max(0, ...cells.map((c) => c.length));
 	const refWidth = width(refs);
+	const priorityWidth = width(rows.map((r) => r.priority));
 	const columnWidth = width(rows.map((r) => r.column));
 	const titleWidth = width(titles);
 	return rows.map((row, i) =>
-		(`${refs[i].padEnd(refWidth)}  ${row.column.padEnd(columnWidth)}  `
+		(`${refs[i].padEnd(refWidth)}  ${row.priority.padEnd(priorityWidth)}  `
+			+ `${row.column.padEnd(columnWidth)}  `
 			+ `${titles[i].padEnd(titleWidth)}  ${activityCell(row, nowMs)}`).trimEnd(),
 	);
 }
