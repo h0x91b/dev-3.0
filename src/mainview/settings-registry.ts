@@ -14,6 +14,11 @@ export const SETTINGS_CATEGORIES = [
 		descriptionKey: "settings.categoryTasksDesc",
 	},
 	{
+		id: "notifications",
+		labelKey: "settings.categoryNotifications",
+		descriptionKey: "settings.categoryNotificationsDesc",
+	},
+	{
 		id: "keyboard",
 		labelKey: "settings.categoryKeyboard",
 		descriptionKey: "settings.categoryKeyboardDesc",
@@ -162,7 +167,7 @@ export const SETTINGS_ENTRIES = [
 	},
 	{
 		id: "watch-by-default",
-		category: "tasks",
+		category: "notifications",
 		titleKey: "settings.watchByDefault",
 		descriptionKey: "settings.watchByDefaultDesc",
 		anchor: "watch-by-default",
@@ -198,7 +203,7 @@ export const SETTINGS_ENTRIES = [
 	},
 	{
 		id: "task-complete-sound",
-		category: "tasks",
+		category: "notifications",
 		titleKey: "settings.taskCompleteSound",
 		descriptionKey: "settings.taskCompleteSoundDesc",
 		anchor: "task-complete-sound",
@@ -207,7 +212,7 @@ export const SETTINGS_ENTRIES = [
 	},
 	{
 		id: "focus-mode",
-		category: "tasks",
+		category: "notifications",
 		titleKey: "settings.focusMode",
 		descriptionKey: "settings.focusModeDesc",
 		anchor: "focus-mode",
@@ -408,7 +413,7 @@ export const SETTINGS_ENTRIES = [
 	},
 	{
 		id: "browser-notifications",
-		category: "system",
+		category: "notifications",
 		titleKey: "settings.browserNotifications",
 		descriptionKey: "settings.browserNotificationsDesc",
 		anchor: "browser-notifications",
@@ -416,7 +421,7 @@ export const SETTINGS_ENTRIES = [
 	},
 	{
 		id: "push-notifications",
-		category: "system",
+		category: "notifications",
 		titleKey: "settings.pushNotifications",
 		descriptionKey: "settings.pushNotificationsDesc",
 		anchor: "push-notifications",

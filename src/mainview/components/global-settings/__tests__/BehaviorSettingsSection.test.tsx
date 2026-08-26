@@ -29,13 +29,10 @@ function renderSection(
 				globalSettings={{ taskSortOrder: "oldest-first", ...settings } as GlobalSettings}
 				tipsResetDone={false}
 				onDefaultDiffViewModeChange={vi.fn()}
-				onSoundToggle={vi.fn()}
-				onWatchByDefaultToggle={vi.fn()}
 				onSuggestCompletingTasksAfterMergeToggle={vi.fn()}
 				onPrOriginTaskLinkToggle={onPrOriginTaskLinkToggle}
 				onAgentLaunchAutoApproveChange={vi.fn()}
 				prOriginTaskLinkSupported={prOriginTaskLinkSupported}
-				onFocusModeToggle={vi.fn()}
 				onTaskSortOrderChange={vi.fn()}
 				onTaskOpenModeChange={vi.fn()}
 				onTipsDisabledToggle={vi.fn()}

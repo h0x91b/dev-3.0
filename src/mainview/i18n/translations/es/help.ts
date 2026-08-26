@@ -120,7 +120,10 @@ const help = {
 	"help.settings.appearance.body": "Tema, idioma, zoom y desplazamiento — cómo se ve y se siente la aplicación.",
 	"help.settings.tasks.title": "Tareas y tablero",
 	"help.settings.tasks.body":
-		"Comportamiento por defecto del tablero y las tareas: dónde cae una tarjeta arrastrada en su columna, el sonido al completar una tarea, el modo concentración, el seguimiento por defecto y los consejos de funciones.",
+		"Comportamiento por defecto del tablero y las tareas: dónde cae una tarjeta, cómo se abren las tareas, los prompts de revisión y los consejos.",
+	"help.settings.notifications.title": "Notificaciones",
+	"help.settings.notifications.body":
+		"Elige cuándo los eventos de las tareas reclaman tu atención y cómo los entrega este navegador o dispositivo.",
 	"help.settings.keyboard.title": "Teclado",
 	"help.settings.keyboard.body":
 		"Todos los atajos de la aplicación en un solo lugar. Haz clic en las teclas que muestra una fila y escribe la combinación que quieras; si otro atajo ya la tiene, se te dice cuál antes de quitársela. Cada atajo admite además una segunda combinación opcional. Unos pocos quedan fijos — secuencias como `g d`, la familia ⌘1–9, el conmutador de tareas que se mantiene pulsado y Esc — y cada uno explica por qué.",
@@ -132,7 +135,7 @@ const help = {
 		"Inicia sesión en varias cuentas por agente (Claude Code, Codex), cambia cuál está activa y gestiona los perfiles de claves API.",
 	"help.settings.system.title": "Sistema",
 	"help.settings.system.body":
-		"Mecánica a nivel de aplicación: el canal de actualizaciones, mantener la máquina despierta mientras trabajan los agentes, la confirmación al salir y las notificaciones del navegador.",
+		"Mecánica de la aplicación: canal de actualizaciones, mantener el equipo despierto, confirmación al salir, proxy y herramientas de desarrollo.",
 	"help.settings.workspace.title": "Espacio de trabajo",
 	"help.settings.workspace.body":
 		"Dónde viven los worktrees de las tareas en disco, qué editores y aplicaciones externas alimentan open-in, y tus cuentas de GitHub.",

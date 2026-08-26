@@ -126,7 +126,10 @@ const help = {
 	"help.settings.appearance.body": "Theme, language, zoom and scrolling — how the app looks and feels.",
 	"help.settings.tasks.title": "Tasks & Board",
 	"help.settings.tasks.body":
-		"Board and task behavior defaults: where a dropped card lands in its column, the task-completion sound, focus mode, watch-by-default, and feature tips.",
+		"Board and task behavior defaults: where a dropped card lands in its column, how tasks open, review prompts, and feature tips.",
+	"help.settings.notifications.title": "Notifications",
+	"help.settings.notifications.body":
+		"Choose when task events get your attention and how this browser or device delivers them.",
 	"help.settings.keyboard.title": "Keyboard",
 	"help.settings.keyboard.body":
 		"Every app-level shortcut in one place. Click the keys shown on a row and type the combo you want; if another shortcut already owns it, you are told whose it is before you take it. Each shortcut also has an optional second combo. A few stay fixed — key sequences like `g d`, the ⌘1–9 project family, the hold-to-cycle task switcher and Esc — and each says why.",
@@ -138,7 +141,7 @@ const help = {
 		"Sign in to multiple accounts per agent (Claude Code, Codex), switch which one is active, and manage API-key profiles.",
 	"help.settings.system.title": "System",
 	"help.settings.system.body":
-		"App-level machinery: the update channel, keeping the machine awake while agents work, quit confirmation, and browser notifications.",
+		"App-level machinery: the update channel, keeping the machine awake while agents work, quit confirmation, proxy, and developer tools.",
 	"help.settings.workspace.title": "Workspace",
 	"help.settings.workspace.body":
 		"Where task worktrees live on disk, which external editors and apps power open-in, and your GitHub accounts.",

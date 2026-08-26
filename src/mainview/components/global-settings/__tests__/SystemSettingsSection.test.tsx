@@ -5,9 +5,6 @@ import type { GlobalSettings } from "../../../../shared/types";
 import { I18nProvider, type TFunction } from "../../../i18n";
 import SystemSettingsSection from "../SystemSettingsSection";
 
-// Browser-notification setting talks to the Notification API — out of scope here.
-vi.mock("../BrowserNotificationsSetting", () => ({ default: () => null }));
-
 const t = Object.assign((key: string) => key, {
 	plural: (key: string, count: number) => `${key}|${count}`,
 }) as unknown as TFunction;

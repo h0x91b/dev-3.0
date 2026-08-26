@@ -12,8 +12,6 @@ interface BehaviorSettingsSectionProps {
 	globalSettings: GlobalSettings;
 	tipsResetDone: boolean;
 	onDefaultDiffViewModeChange: (mode: "split" | "unified" | "auto") => void;
-	onSoundToggle: (enabled: boolean) => void;
-	onWatchByDefaultToggle: (enabled: boolean) => void;
 	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
 	onPrOriginTaskLinkToggle: (enabled: boolean) => void;
 	/** Minutes before an unanswered agent-launch dialog approves itself; 0 = never. */
@@ -21,7 +19,6 @@ interface BehaviorSettingsSectionProps {
 	/** False on a host with no OS-registered `dev3://` handler (Windows, Linux) — the
 	 *  toggle then reads Off and inert, while the stored preference on disk is untouched. */
 	prOriginTaskLinkSupported: boolean;
-	onFocusModeToggle: (enabled: boolean) => void;
 	onTaskSortOrderChange: (order: GlobalSettings["taskSortOrder"]) => void;
 	onTaskOpenModeChange: (mode: "split" | "fullscreen") => void;
 	onTipsDisabledToggle: (disabled: boolean) => void;
@@ -37,13 +34,10 @@ export default function BehaviorSettingsSection({
 	globalSettings,
 	tipsResetDone,
 	onDefaultDiffViewModeChange,
-	onSoundToggle,
-	onWatchByDefaultToggle,
 	onSuggestCompletingTasksAfterMergeToggle,
 	onPrOriginTaskLinkToggle,
 	onAgentLaunchAutoApproveChange,
 	prOriginTaskLinkSupported,
-	onFocusModeToggle,
 	onTaskSortOrderChange,
 	onTaskOpenModeChange,
 	onTipsDisabledToggle,
@@ -117,64 +111,6 @@ export default function BehaviorSettingsSection({
 						icon="↓"
 					/>
 				</div>
-			</div>
-			</SettingsEntry>
-
-			<SettingsEntry anchor="task-complete-sound">
-			<div>
-				<p className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.taskCompleteSound")}
-				</p>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.taskCompleteSoundDesc")}
-				</p>
-				<SettingsToggle
-					checked={globalSettings.playSoundOnTaskComplete !== false}
-					ariaLabel={t("settings.taskCompleteSound")}
-					onLabel={t("settings.on")}
-					offLabel={t("settings.off")}
-					onToggle={() =>
-						onSoundToggle(globalSettings.playSoundOnTaskComplete === false)
-					}
-				/>
-			</div>
-			</SettingsEntry>
-
-			<SettingsEntry anchor="focus-mode">
-			<div>
-				<p className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.focusMode")}
-				</p>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.focusModeDesc")}
-				</p>
-				<SettingsToggle
-					checked={globalSettings.focusMode === true}
-					ariaLabel={t("settings.focusMode")}
-					onLabel={t("settings.on")}
-					offLabel={t("settings.off")}
-					onToggle={() => onFocusModeToggle(globalSettings.focusMode !== true)}
-				/>
-			</div>
-			</SettingsEntry>
-
-			<SettingsEntry anchor="watch-by-default">
-			<div>
-				<p className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.watchByDefault")}
-				</p>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.watchByDefaultDesc")}
-				</p>
-				<SettingsToggle
-					checked={globalSettings.watchByDefault === true}
-					ariaLabel={t("settings.watchByDefault")}
-					onLabel={t("settings.on")}
-					offLabel={t("settings.off")}
-					onToggle={() =>
-						onWatchByDefaultToggle(globalSettings.watchByDefault !== true)
-					}
-				/>
 			</div>
 			</SettingsEntry>
 

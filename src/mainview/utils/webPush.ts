@@ -1,3 +1,5 @@
+import { base64UrlToBytes } from "../../shared/base64url";
+
 /**
  * Enrolling this browser for Web Push.
  *
@@ -30,12 +32,6 @@ export function pushReadiness(): PushReadiness {
 		return { ready: false, reason: "unsupported" };
 	}
 	return { ready: true };
-}
-
-function b64urlToBytes(value: string): Uint8Array {
-	const pad = "=".repeat((4 - (value.length % 4)) % 4);
-	const raw = atob((value + pad).replace(/-/g, "+").replace(/_/g, "/"));
-	return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
 /** A short human label so a device list is readable — never anything identifying. */
@@ -71,7 +67,7 @@ export async function subscribeToPush(): Promise<string> {
 
 	const subscription = await registration.pushManager.subscribe({
 		userVisibleOnly: true,
-		applicationServerKey: b64urlToBytes(publicKey) as BufferSource,
+		applicationServerKey: base64UrlToBytes(publicKey) as BufferSource,
 	});
 
 	try {

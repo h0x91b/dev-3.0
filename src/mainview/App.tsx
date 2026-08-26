@@ -88,7 +88,7 @@ import { reconnectRpc } from "./rpc";
 import { DIAGNOSTICS_OPEN_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
 import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
-import { maybeInvitePushEnrollment } from "./utils/pushInvite";
+import PushEnrollmentInvite from "./components/PushEnrollmentInvite";
 
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
@@ -177,12 +177,6 @@ function App() {
 		};
 	}, []);
 
-	// Offer push once, late enough that it lands on a rendered board rather than
-	// competing with first paint.
-	useEffect(() => {
-		const timer = setTimeout(() => void maybeInvitePushEnrollment(t), 4000);
-		return () => clearTimeout(timer);
-	}, [t]);
 	useViewport(state.route);
 	// A phone scales differently per screen: dense inside a task, roomy on the
 	// screens the user only browses. No-op on a desktop-width viewport.
@@ -3162,6 +3156,7 @@ function App() {
 			{showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 			{/* Toasts are transient feedback, not immersive chrome; notification toasts
 			    must remain clickable so their handler can exit fullscreen first. */}
+			<PushEnrollmentInvite t={t} />
 			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} />
 			{/* Agent traffic log — an overlay over any screen (the nav budget is spent),
 			    opened from the header readout, ⇧⌘M, the View menu and the palette. */}

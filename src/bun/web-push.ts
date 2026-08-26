@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
+import { base64UrlToBytes } from "../shared/base64url";
 
 const log = createLogger("web-push");
 const enc = new TextEncoder();
@@ -27,12 +28,6 @@ export type PushResult = { statusCode: number; body?: string };
 /** The subject a push service can contact about this sender. An https URI naming
  *  the software, never a user's address — it travels to a third party. */
 export const VAPID_SUBJECT = "https://github.com/h0x91b/dev-3.0";
-
-function b64urlToBytes(s: string): Uint8Array {
-	const pad = "=".repeat((4 - (s.length % 4)) % 4);
-	const bin = atob((s + pad).replace(/-/g, "+").replace(/_/g, "/"));
-	return Uint8Array.from(bin, (c) => c.charCodeAt(0));
-}
 
 function bytesToB64url(b: Uint8Array): string {
 	return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -119,7 +114,7 @@ export function loadOrCreateVapidKeys(path: string = VAPID_FILE): Promise<VapidK
 }
 
 function vapidJwk(keys: VapidKeys): JsonWebKey {
-	const pub = b64urlToBytes(keys.publicKey);
+	const pub = base64UrlToBytes(keys.publicKey);
 	if (pub.length !== 65 || pub[0] !== 0x04) throw new Error("VAPID public key must be a 65-byte uncompressed P-256 point");
 	return {
 		kty: "EC",
@@ -150,8 +145,8 @@ export async function vapidAuthHeader(endpoint: string, keys: VapidKeys, subject
  * so the device needs only its own subscription keys to decrypt.
  */
 export async function encryptPayload(sub: PushSubscription, plaintext: string, salt?: Uint8Array): Promise<Uint8Array> {
-	const uaPublic = b64urlToBytes(sub.keys.p256dh);
-	const authSecret = b64urlToBytes(sub.keys.auth);
+	const uaPublic = base64UrlToBytes(sub.keys.p256dh);
+	const authSecret = base64UrlToBytes(sub.keys.auth);
 
 	const ephemeral = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
 	const asPublic = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeral.publicKey));

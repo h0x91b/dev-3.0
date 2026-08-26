@@ -46,6 +46,7 @@ import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
 import KeyboardSettingsSection from "./global-settings/KeyboardSettingsSection";
 import ModelCatalogSection from "./global-settings/ModelCatalogSection";
+import NotificationSettingsSection from "./global-settings/NotificationSettingsSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
 import SystemSettingsSection from "./global-settings/SystemSettingsSection";
 import TelemetrySettingsSection from "./global-settings/TelemetrySettingsSection";
@@ -776,19 +777,26 @@ function GlobalSettings({
 						globalSettings={globalSettings}
 						tipsResetDone={tipsResetDone}
 						onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
-						onSoundToggle={handleSoundToggle}
-						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
 						onPrOriginTaskLinkToggle={handlePrOriginTaskLinkToggle}
 						onAgentLaunchAutoApproveChange={handleAgentLaunchAutoApproveChange}
 						prOriginTaskLinkSupported={prOriginTaskLinkSupported}
-						onFocusModeToggle={handleFocusModeToggle}
 						onTaskSortOrderChange={handleTaskSortOrderChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}
 						onTipsDisabledToggle={handleTipsDisabledToggle}
 						onTipsReset={handleTipsReset}
 						onReviewModePromptChange={handleReviewModePromptChange}
 						onCoordinatorPromptChange={handleCoordinatorPromptChange}
+					/>
+				);
+			case "notifications":
+				return (
+					<NotificationSettingsSection
+						t={t}
+						globalSettings={globalSettings}
+						onSoundToggle={handleSoundToggle}
+						onFocusModeToggle={handleFocusModeToggle}
+						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 					/>
 				);
 			case "keyboard":

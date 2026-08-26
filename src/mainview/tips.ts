@@ -773,7 +773,7 @@ const ALL_TIPS: Tip[] = [
 		icon: "\uF0F3", // nf-fa-bell
 		score: 4,
 		contexts: ["settings", "board"],
-		settingsSection: "system",
+		settingsSection: "notifications",
 	},
 	{
 		id: "remote-detach-lifecycle",

@@ -1,9 +1,4 @@
-/**
- * The push invite. The failure modes are symmetric and both bad: nag someone on
- * every load, or stay silent where enrolling would have worked. Each condition
- * below exists because of one of those — plus the rule that a toast may point at
- * a setting but must never own the setup itself.
- */
+/** The invite fails silently when unavailable and only navigates to Settings. */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 
@@ -73,7 +68,7 @@ describe("when it offers", () => {
 		shown[0]?.onClick?.();
 		window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpen);
 
-		expect(seen).toEqual([{ section: "system", anchor: "push-notifications" }]);
+		expect(seen).toEqual([{ section: "notifications", anchor: "push-notifications" }]);
 		expect(shown[0]?.source).toBe("settings");
 		expect(subscribeCalls).toEqual([]);
 	});

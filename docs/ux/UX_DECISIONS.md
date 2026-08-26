@@ -11,11 +11,14 @@ record wins and this file stays an index. Write the entry in full only while no 
 exists; that is the case for 84 of the entries below, and their reasoning lives nowhere
 else, so do not compact them by deleting it.
 
+## 2026-08-26 — Notification preferences have one Settings home
+
+- **Rule:** Settings → Notifications owns focus, watch default, sound, browser alerts, and Web Push; anchors stay stable. Bible §10 / yaml `surfaces.settings.notifications`.
+- **Why:** The Tasks/System split hid push; rejected a new destination and toast-owned setup.
+
 ## 2026-08-25 — Agent traffic: a conditional header readout plus an overlay log
 
-- **Rule:** bible §5.9 / yaml `agent_traffic_log` — the readout lives in the kebab and earns a bar slot only while unread traffic exists (never on a phone bar), the log is an overlay (not a 9th destination), and no importance axis may be invented over the delivery verdict the rows already carry.
-- **Why:** the rows were already on disk with no reader, and the rejected alternatives — a permanent header counter, or a recency-based glyph — both put a number nobody acts on in the header of boards where agents never talk.
-- **Status:** proposed. Record: `decisions/2026/08/25/agent-traffic-readout-and-log.md`.
+- **Rule:** the readout lives in the kebab and only earns a bar slot while unread; the log is an overlay, never a ninth destination. **Why:** `decisions/2026/08/25/agent-traffic-readout-and-log.md`.
 
 ## 2026-08-23 — A guided tour points; it does not drive
 

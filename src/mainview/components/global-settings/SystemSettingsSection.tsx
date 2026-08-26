@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { GlobalSettings, RemoteTunnelSettings } from "../../../shared/types";
 import type { UpdateChannel } from "../../../shared/update-channel";
 import type { TFunction } from "../../i18n";
-import BrowserNotificationsSetting from "./BrowserNotificationsSetting";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import SettingsToggle from "./SettingsToggle";
@@ -158,8 +157,6 @@ export default function SystemSettingsSection({
 					/>
 				</div>
 			</SettingsEntry>
-
-			<BrowserNotificationsSetting t={t} />
 		</SettingsSection>
 	);
 }

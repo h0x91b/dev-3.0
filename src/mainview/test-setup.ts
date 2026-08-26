@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { createElement } from "react";
 import { _resetPendingToastsForTests } from "./toast";
+import { storageIsWritable } from "./utils/storage";
 
 // Toasts raised without a mounted host are queued for the next host (see toast.tsx),
 // so drop the queue between tests instead of leaking them into the next render.
@@ -16,20 +17,11 @@ afterEach(() => {
 // desktop keymap (e.g. ⌘Q, zoom) set the flag themselves AND mock rpc — see
 // App.test.tsx / zoom.test.ts / KeyboardShortcutsModal.test.tsx.
 
-// Node's experimental global `localStorage` shadows happy-dom's on both
-// globalThis and window (sessionStorage is unaffected). Without
-// --localstorage-file it is unusable, but not always absent: on Node 25.6 it is
-// an object whose methods are undefined, and without the flag a present-looking
-// one throws on write. Only a write/read/delete round trip tells the two apart,
-// so probe rather than sniff for methods. Substitute an in-memory Storage —
-// setupFiles run per test file, so each file gets a fresh, isolated store.
+// Node's experimental localStorage may shadow happy-dom with an unusable object.
+// A write/read/delete probe distinguishes it; each setup file gets a fresh store.
 function localStorageWorks(): boolean {
 	try {
-		const probe = "__dev3_test_setup_probe__";
-		globalThis.localStorage.setItem(probe, "1");
-		const ok = globalThis.localStorage.getItem(probe) === "1";
-		globalThis.localStorage.removeItem(probe);
-		return ok;
+		return storageIsWritable(globalThis.localStorage, "__dev3_test_setup_probe__");
 	} catch {
 		return false;
 	}

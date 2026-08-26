@@ -191,6 +191,7 @@ describe("GlobalSettings", () => {
 
 			expect(screen.getByRole("button", { name: "Appearance" })).toBeInTheDocument();
 			expect(screen.getByRole("button", { name: "Tasks & Board" })).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
 			expect(screen.getByRole("button", { name: "System" })).toBeInTheDocument();
 		expect(document.getElementById("settings-category-title")!).toHaveTextContent("Appearance");
 			expect(screen.getByText("Dark")).toBeInTheDocument();
@@ -362,14 +363,14 @@ describe("GlobalSettings", () => {
 		});
 	});
 
-		describe("watch default", () => {
+	describe("watch default", () => {
 		function getWatchDefaultSwitch() {
 			return screen.getByRole("switch", { name: "Watch tasks by default" });
 		}
 
 		it("is off when no preference is stored", async () => {
 			setupMocks();
-			renderGlobalSettings("tasks");
+			renderGlobalSettings("notifications");
 			await waitForLoad();
 
 			expect(getWatchDefaultSwitch()).toHaveAttribute("aria-checked", "false");
@@ -378,7 +379,7 @@ describe("GlobalSettings", () => {
 		it("saves the global preference without changing a task", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings("tasks");
+			renderGlobalSettings("notifications");
 			await waitForLoad();
 
 			await user.click(getWatchDefaultSwitch());
@@ -909,7 +910,7 @@ describe("GlobalSettings", () => {
 		});
 	});
 
-	describe("system settings", () => {
+	describe("notification settings", () => {
 		it("gives push notifications their own deep-link target", async () => {
 			setupMocks();
 			const scrollIntoView = vi.fn();
@@ -919,7 +920,7 @@ describe("GlobalSettings", () => {
 				value: scrollIntoView,
 			});
 			try {
-				renderGlobalSettings("system", "push-notifications");
+				renderGlobalSettings("notifications", "push-notifications");
 				await waitForLoad();
 
 				expect(document.querySelector('[data-settings-entry="push-notifications"]')).not.toBeNull();
@@ -929,7 +930,9 @@ describe("GlobalSettings", () => {
 				else delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
 			}
 		});
+	});
 
+	describe("system settings", () => {
 		it("round-trips the confirm-before-quit toggle through skipQuitDialog", async () => {
 			setupMocks(mockAgents, { ...mockGlobalSettings, skipQuitDialog: true });
 			const user = userEvent.setup();

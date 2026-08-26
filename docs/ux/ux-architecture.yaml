@@ -408,6 +408,7 @@ ux_architecture:
       purpose: "Durable configuration. GlobalSettings (app-wide) and ProjectSettings (per-project scripts, columns, labels, gh account)."
       allowed: ["configuration", "preference", "integration", "permission", "scripts"]
       forbidden: ["daily_operational_action"]
+      notifications: "Owns focus mode, watch default, sound, browser alerts, and Web Push. Invites only link here; image auto-open stays in Tasks."
       evidence: ["src/mainview/components/GlobalSettings.tsx", "src/mainview/components/ProjectSettings.tsx (59.9K)", "src/mainview/components/global-settings/*"]
     sidebar:
       purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."
@@ -666,7 +667,7 @@ ux_architecture:
       actions: "object + git + dev-server actions, scoped to the task"
     settings_screen:
       example: "GlobalSettings, ProjectSettings"
-      grouping: "GlobalSettings uses a left-nav list of eight Settings categories (Appearance, Tasks & Board, Keyboard, Terminal, Agents, Accounts, Workspace, System); ProjectSettings keeps its existing tabs. The Keyboard category owns every binding surface — the app-shortcut editor and the terminal keymap preset moved out of Terminal — so a user hunting for 'where do I change a key' has one destination"
+      grouping: "Ten categories: Appearance, Tasks & Board, Notifications, Keyboard, Terminal, Agents, Accounts, API models, Workspace, System. Project Settings keeps tabs; Keyboard owns bindings and Notifications owns alert delivery"
       registry: "src/mainview/settings-registry.ts is the declarative metadata source for Settings entries, localized search copy, category membership, anchors, and GlobalSettings field integrity"
       search: "localized title + description search groups matches by Settings category and jumps to the registered anchor"
       deep_links: "Route.section accepts current category ids plus legacy appearance/behavior/workspace/agents/proxy/developer ids, normalized by LEGACY_SETTINGS_CATEGORY_MAP"
@@ -744,6 +745,12 @@ ux_architecture:
       reject: ["kanban_board", "task_info_panel", "toolbar"]
       status: "observed"
       rationale: "Durable behavior changes live in settings, not in operational surfaces."
+    - id: "notification-preferences-have-one-settings-home"
+      when: { feature_class: "configuration", scope: "notification_delivery" }
+      place_in: ["global_settings.notifications"]
+      reject: ["tasks", "system", "toast_setup", "top_level_destination"]
+      status: "observed"
+      rationale: "One job: when and how task events reach the user."
     - id: "destructive-needs-friction"
       when: { feature_class: "destructive" }
       place_in: ["context_menu", "confirmation_dialog", "danger_zone", "overflow"]

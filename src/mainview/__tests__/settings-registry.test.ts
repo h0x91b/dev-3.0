@@ -18,6 +18,7 @@ describe("settings registry", () => {
 		expect(SETTINGS_CATEGORIES.map((category) => category.id)).toEqual([
 			"appearance",
 			"tasks",
+			"notifications",
 			"keyboard",
 			"terminal",
 			"agents",
@@ -28,6 +29,25 @@ describe("settings registry", () => {
 		]);
 		const ids = SETTINGS_ENTRIES.map((entry) => entry.id);
 		expect(new Set(ids).size).toBe(ids.length);
+	});
+
+	it("keeps notification delivery and attention controls in one destination", () => {
+		const notificationEntryIds = [
+			"task-complete-sound",
+			"focus-mode",
+			"watch-by-default",
+			"browser-notifications",
+			"push-notifications",
+		];
+
+		for (const id of notificationEntryIds) {
+			expect(SETTINGS_ENTRIES.find((entry) => entry.id === id)?.category).toBe(
+				"notifications",
+			);
+		}
+		expect(SETTINGS_ENTRIES.find((entry) => entry.id === "auto-open-images")?.category).toBe(
+			"tasks",
+		);
 	});
 
 	// Buried in System it was undiscoverable: the catalog is a destination of its
