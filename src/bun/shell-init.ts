@@ -113,8 +113,13 @@ bind '"\\e[1;5C": forward-word'
 // absolute path here would wrap the line, and there is no `%~` in POSIX.
 
 const SHRC = `\
-# dev3: source the user's own sh config, then override the prompt
-[ -n "$DEV3_USER_ENV" ] && [ -f "$DEV3_USER_ENV" ] && . "$DEV3_USER_ENV"
+# dev3: source the user's own sh config, then override the prompt.
+# The guard is load-bearing: dev3 itself runs inside these shells, so a stale
+# DEV3_USER_ENV pointing back here would recurse until the shell dies.
+if [ -z "$DEV3_SHRC_LOADED" ]; then
+  DEV3_SHRC_LOADED=1
+  [ -n "$DEV3_USER_ENV" ] && [ -f "$DEV3_USER_ENV" ] && . "$DEV3_USER_ENV"
+fi
 
 if [ -n "$DEV3_WORKTREE_ROOT" ]; then
   _dev3_short_path() {

@@ -182,11 +182,16 @@ set-environment -g ZDOTDIR ${SHELL_INIT_DIR}
  * as `sh`, where the file is valid anyway).
  */
 function shellEnvConfig(): string {
-	const userEnv = process.env.ENV?.trim();
+	// dev3 runs inside its own tmux panes, so `$ENV` here is often the file we
+	// are about to point at — forwarding that would make the init file source
+	// itself forever.
+	const shrc = `${SHELL_INIT_DIR}/.shrc`;
+	const inherited = process.env.ENV?.trim();
+	const userEnv = inherited && inherited !== shrc ? inherited : undefined;
 	return [
 		"# Shell prompt — POSIX sh reads $ENV for interactive shells",
 		...(userEnv ? [`set-environment -g DEV3_USER_ENV ${userEnv}`] : []),
-		`set-environment -g ENV ${SHELL_INIT_DIR}/.shrc`,
+		`set-environment -g ENV ${shrc}`,
 		...defaultShellConfig(),
 		"",
 	].join("\n");
