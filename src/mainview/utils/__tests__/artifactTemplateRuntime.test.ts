@@ -11,6 +11,10 @@ const htmlSource = readFileSync(resolve(templateDir, "index.html"), "utf8");
 const textSizeControl =
 	'<div class="segmented text-size"><button data-font-step="-1">A−</button><button id="fontScaleValue" data-font-step="0">100%</button><button data-font-step="1">A+</button></div>';
 
+function shellApi<T>(): T {
+	return (window as typeof window & { dev3Artifact: T }).dev3Artifact;
+}
+
 describe("artifact starter runtime", () => {
 	afterEach(() => {
 		localStorage.clear();
@@ -66,6 +70,43 @@ describe("artifact starter runtime", () => {
 		for (let step = 0; step < 8; step += 1) smaller.click();
 		expect(scale()).toBe("0.8");
 		expect(smaller.disabled).toBe(true);
+	});
+
+	it("names the fix when chart() is called with an id instead of an element", () => {
+		document.body.innerHTML = '<div id="toast"></div><div id="host"></div>';
+		window.eval(appSource);
+		const { chart } = shellApi<{ chart: (element: unknown, factory: () => unknown) => unknown }>();
+
+		expect(() => chart("host", () => ({}))).toThrow(/getElementById\("host"\)/);
+	});
+
+	it("rejects an option passed to update() or remount() instead of ignoring it", () => {
+		document.body.innerHTML = '<div id="toast"></div><div id="host"></div>';
+		window.eval(appSource);
+		const { chart } = shellApi<{ chart: (element: unknown, factory: () => unknown) => { update: (...args: unknown[]) => void; remount: (...args: unknown[]) => void } }>();
+		// No window.echarts in happy-dom, so this is the offline no-op handle — the
+		// argument guard has to sit in front of it, not behind a live chart.
+		const handle = chart(document.getElementById("host"), () => ({}));
+
+		expect(() => handle.update({ series: [] })).toThrow(/takes no arguments/);
+		expect(() => handle.remount({ series: [] })).toThrow(/takes no arguments/);
+		expect(() => handle.update()).not.toThrow();
+	});
+
+	it("resolves a runtime asset path through the viewer map and passes everything else through", () => {
+		document.body.innerHTML = '<div id="toast"></div>';
+		const scoped = window as typeof window & { __dev3ArtifactAssets?: Record<string, string> };
+		scoped.__dev3ArtifactAssets = { "shots/run.png": "data:image/png;base64,UlVO" };
+		window.eval(appSource);
+		const { asset } = shellApi<{ asset: (path: string) => string }>();
+
+		expect(asset("shots/run.png")).toBe("data:image/png;base64,UlVO");
+		expect(asset("./shots/run.png")).toBe("data:image/png;base64,UlVO");
+		expect(asset("https://example.com/x.png")).toBe("https://example.com/x.png");
+		expect(asset("shots/missing.png")).toBe("shots/missing.png");
+		delete scoped.__dev3ArtifactAssets;
+		// No map (file:// and the extracted ZIP) — the relative path is already right.
+		expect(asset("shots/run.png")).toBe("shots/run.png");
 	});
 
 	it("keeps the text-size control in the markup and every shell font size relative", () => {

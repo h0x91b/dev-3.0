@@ -226,12 +226,35 @@ describe("bundled artifact starter contract", () => {
 		expect(guide).toContain("dev3 show-artifact");
 		expect(guide).toContain("Print and PDF");
 		expect(guide).toContain("Apache ECharts");
-		expect(guide).toContain("window.dev3Artifact.chart()");
+		expect(guide).toContain("window.dev3Artifact.asset()");
+		expect(guide).toContain("`.chart()`");
 		expect(guide).toContain("Dense evidence tables");
 		expect(guide).toContain("`evidence-data.js`");
 		expect(css).toContain(".evidence-table-scroll");
 		expect(css).toContain(".evidence-table .sig");
 		expect(css).toContain(".evidence-table tr.regime td");
+	});
+
+	// Each of these was described in prose and cost an author a debug loop, because
+	// the wrong form fails without an error: an unwrapped token renders nothing, an
+	// id string throws from minified ECharts, a runtime src resolves to nothing in
+	// the sandbox. Prose is not enough — the guide has to show the call.
+	it("shows the exact call for every form that fails silently when written wrong", () => {
+		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+		const app = readFileSync(appPath, "utf8");
+
+		expect(guide).toContain("background: rgb(var(--dev3-surface-raised));");
+		expect(guide).toContain("rgb(var(--dev3-accent) / .18)");
+		expect(guide).toContain("box-shadow: 0 8px 24px rgb(var(--dev3-shadow) / .35);");
+		expect(guide).toContain('dev3Artifact.chart(document.getElementById("velocityChart"), () => ({');
+		expect(guide).toContain("velocity.update();");
+		expect(guide).toContain("velocity.remount();");
+		expect(guide).toContain('dev3Artifact.asset("shots/run-42.png")');
+
+		// The shell has to back every form the guide promises.
+		expect(app).toContain("asset: assetUrl");
+		expect(app).toContain("needs an element, not an id");
+		expect(app).toContain("takes no arguments");
 	});
 
 	it("scales the whole report from one root text size, including chart labels", () => {

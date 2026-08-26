@@ -36,6 +36,29 @@ Do not read or edit `app.css` or `app.js` unless the artifact format itself must
 
 The container grows with the viewport up to 1840px, so dense tables and dashboards use a wide monitor instead of leaving it empty. Because the panels are wide, put running prose in `<p class="prose">` (or any `.prose` block) to hold a readable line length; short `.muted` and `.section-copy` lines are capped for you. `.kpis` fits as many cards per row as the width allows, so a report may ship three or six KPI cards without a layout override.
 
+## Color tokens
+
+Every `--dev3-*` color token holds a **raw RGB triplet** (`14 18 30`), not a color. `background: var(--dev3-surface-raised)` is therefore an invalid value: the declaration is dropped and the element renders with no background, silently. Always wrap the token:
+
+```css
+background: rgb(var(--dev3-surface-raised));
+color: rgb(var(--dev3-text-secondary));
+border: 1px solid rgb(var(--dev3-border));
+background: rgb(var(--dev3-accent) / .18);          /* the slash sets alpha */
+box-shadow: 0 8px 24px rgb(var(--dev3-shadow) / .35);
+```
+
+`--dev3-shadow` is a triplet like the rest — the shadow geometry is yours, the token only supplies its color. The `--dev3-z-*` stacking tokens are plain numbers and are used bare (`z-index: var(--dev3-z-overlay)`).
+
+From report JavaScript ask the shell instead of reading the variable — it returns a finished color string:
+
+```js
+const line = dev3Artifact.color("--dev3-accent");        // "rgb(68, 150, 255)"
+const fill = dev3Artifact.color("--dev3-accent", .3);    // "rgba(68, 150, 255, 0.3)"
+```
+
+The tokens: `--dev3-surface-base`, `--dev3-surface-raised`, `--dev3-surface-elevated`, `--dev3-text-primary`, `--dev3-text-secondary`, `--dev3-text-muted`, `--dev3-border`, `--dev3-accent`, `--dev3-on-accent`, `--dev3-success`, `--dev3-warning`, `--dev3-danger`, `--dev3-shadow`.
+
 ## Text size
 
 The topbar carries an `A− / 100% / A+` group beside the theme button. It steps the whole report between 80% and 150% in ten-point stops, the percentage doubles as the reset button, and the choice is remembered per browser (silently skipped in the sandboxed viewer, whose opaque origin has no storage). Keep the control in `.actions`.
@@ -61,7 +84,17 @@ dev3 show-artifact ./dev3-artifact-report/index.html \
   --title "Report title"
 ```
 
-Keep assets beside or below `index.html` and reference them with relative paths. dev3 rewrites local CSS, classic JavaScript, raster references, and CSS `@import` chains for its sandboxed viewer, then includes the original paths in the downloadable ZIP. Pass every imported stylesheet explicitly in `--assets`. The extracted ZIP also opens directly through `file://`. Avoid ES modules and `fetch()` for local files because browsers restrict them for opaque and file origins.
+Keep assets beside or below `index.html` and reference them with relative paths. dev3 rewrites local CSS, classic JavaScript, raster references, and CSS `@import` chains for its sandboxed viewer, then includes the original paths in the downloadable ZIP.
+
+**A path your report code builds at runtime needs `dev3Artifact.asset()`.** The rewriting above scans the stored HTML text, so an `src` that only exists after `report.js` runs is never in it — and the viewer's iframe has an opaque origin where a relative path resolves to nothing. Resolve it through the shell instead:
+
+```js
+const src = dev3Artifact.asset("shots/run-42.png");        // data URL in the viewer, the path itself over file://
+host.innerHTML = `<img src="${src}" alt="Run 42 timeline">`;
+element.style.backgroundImage = `url("${dev3Artifact.asset("shots/grid.png")}")`;
+```
+
+It is safe everywhere: with no viewer map (file://, the extracted ZIP) it returns the path unchanged, and it leaves absolute URLs, data URLs, and CDN links alone. The viewer also heals a bare relative `src` on `img` and `source` elements added after load, so an older report still renders — but write `asset()` in new code, because that fallback covers nothing else (CSS you build in JS, `fetch()`, canvas, a download link). Pass every imported stylesheet explicitly in `--assets`. The extracted ZIP also opens directly through `file://`. Avoid ES modules and `fetch()` for local files because browsers restrict them for opaque and file origins.
 
 ## Network access and external libraries
 
@@ -73,9 +106,31 @@ The starter already pins ECharts 6.1.0, Choices.js 11.2.3, and noUiSlider 15.8.1
 
 `index.html` loads Apache ECharts 6.1.0 through a versioned cdnjs tag. Keep that tag intact when the report has charts. Offline, chart hosts show a notice while the rest of the report remains usable.
 
-The stable bridge lives in `app.js` and exposes `window.dev3Artifact.chart()`, `.color()`, `.enhance()`, `.fontScale()`, `.popover()`, `.scaleFont()`, `.setControl()`, and `.toast()`. Keep chart options, values, labels, filters, and interactions in `report.js`; use the exposed helpers there without editing the shell. The chart helper applies dev3 tokens, uses the SVG renderer for crisp print/PDF output, adds aria descriptions, re-renders on theme changes, and resizes with its container.
+The stable bridge lives in `app.js` and exposes `window.dev3Artifact.asset()`, `.chart()`, `.color()`, `.enhance()`, `.fontScale()`, `.popover()`, `.scaleFont()`, `.setControl()`, and `.toast()`. Keep chart options, values, labels, filters, and interactions in `report.js`; use the exposed helpers there without editing the shell. The chart helper applies dev3 tokens, uses the SVG renderer for crisp print/PDF output, adds aria descriptions, re-renders on theme changes, and resizes with its container.
 
 The shell declares the card surface as each chart's `backgroundColor`, because ECharts derives value-label contrast from it — without that, every label renders dark grey inside a white halo, which is illegible on the dark theme. Keep report code out of that decision: do not set `backgroundColor` or hand-color value labels unless the chart sits on a surface other than `--dev3-surface-raised`.
+
+`chart()` takes an **element** and an **option factory** — a function returning the option object, so the shell can re-read it on a theme change, a text-size change, or a data change:
+
+```js
+let period = 30;
+const velocity = dev3Artifact.chart(document.getElementById("velocityChart"), () => ({
+  xAxis: { type: "category", data: labels[period] },
+  yAxis: { type: "value" },
+  series: [{ type: "line", data: series[period], itemStyle: { color: dev3Artifact.color("--dev3-accent") } }],
+}));
+
+period = 90;
+velocity.update();    // () — re-reads the factory, morphs the data in place
+velocity.remount();   // () — re-reads the factory, redraws geometry from scratch
+velocity.resize();    // () — the shell already calls this on container resize
+```
+
+Three rules the signature implies, each of which used to fail quietly:
+
+- **Pass the element, never its id.** `chart("velocityChart", …)` reaches ECharts as a string and throws from minified library code; the shell now throws first with the fix in the message.
+- **`update()` and `remount()` take no arguments.** They re-read your factory, so change the data the factory closes over and then call them. Passing a new option object used to be ignored and read like a caching bug; it now throws.
+- **A throwing `chart()` call kills the whole report**, because `report.js` is one IIFE — every later chart, table, and listener in the file dies with it. A blank report with one error is usually one bad `chart()` call, not four broken panels.
 
 Use `.remount()` when switching a chart view so ECharts redraws its geometry from left to right; use `.update()` when live data should morph in place. The shell keeps ECharts' native timing and disables motion when the user prefers reduced motion.
 
@@ -153,7 +208,8 @@ Choose Auto, Light, or Dark in the report, then print with Cmd/Ctrl+P. The style
 - Keep `Built with dev3 Artifacts` in the footer.
 - Keep the Auto → Light → Dark theme control and the `A− / 100% / A+` text-size control.
 - Keep local navigation functional: a click must scroll, focus the section heading, and expose `aria-current`.
-- Use only the bundled `--dev3-*` semantic tokens for color, and the `--dev3-z-*` tokens for stacking.
+- Use only the bundled `--dev3-*` semantic tokens for color, always as `rgb(var(--token))` or `rgb(var(--token) / a)`, and the `--dev3-z-*` tokens for stacking.
+- Resolve any asset path built by report code through `dev3Artifact.asset()`.
 - Route every panel that opens over the report through `.popover` / `dev3Artifact.popover()`; never hand-roll an absolutely positioned menu.
 - Keep the page responsive and keyboard-accessible.
 - Keep report content/data local; external libraries and live integrations are allowed.

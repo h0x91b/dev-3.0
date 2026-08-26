@@ -461,8 +461,27 @@
     });
   }
 
+  // Misuse throws here with the fix in the message. Left to ECharts, an id string
+  // surfaces as `t.appendChild is not a function` from minified library code, and
+  // an argument passed to update()/remount() is silently ignored — both cost a
+  // debug loop because neither says what to write instead.
+  function assertNoArgument(name, args) {
+    if (args.length === 0) return;
+    throw new TypeError(`dev3Artifact.chart(...).${name}() takes no arguments — it re-reads the option factory passed to chart(). Update the data your factory reads, then call ${name}().`);
+  }
+
   function dev3Chart(element, optionFactory) {
-    const unavailable = { chart: null, update() {}, resize() {}, remount() {} };
+    if (typeof element === "string") {
+      throw new TypeError(`dev3Artifact.chart(element, optionFactory) needs an element, not an id — pass document.getElementById("${element}").`);
+    }
+    // Offline and missing-host handles keep the argument guard: an author who hits
+    // the misuse while cdnjs is unreachable must still be told, not silently no-opped.
+    const unavailable = {
+      chart: null,
+      update() { assertNoArgument("update", arguments); },
+      resize() {},
+      remount() { assertNoArgument("remount", arguments); },
+    };
     if (!element) return unavailable;
     if (!chartsAvailable) {
       element.innerHTML = '<div class="chart-unavailable">Charts need network access to cdnjs.cloudflare.com — reconnect and reload.</div>';
@@ -472,6 +491,7 @@
     const entry = {
       chart: null,
       update() {
+        assertNoArgument("update", arguments);
         entry.chart.setOption(chartShellOption(factory()));
         syncChartViewBox(element);
       },
@@ -481,6 +501,7 @@
         syncChartViewBox(element);
       },
       remount() {
+        assertNoArgument("remount", arguments);
         if (entry.chart) entry.chart.dispose();
         entry.chart = window.echarts.init(element, "dev3", { renderer: "svg" });
         entry.update();
@@ -626,7 +647,28 @@
     };
   }
 
+  // ---- local assets ---------------------------------------------------------
+  // The in-app viewer rewrites asset references by scanning the stored HTML, so a
+  // src built by report code is never rewritten and resolves to nothing inside the
+  // opaque-origin iframe. The viewer publishes its resolved map instead; over
+  // file:// and in the downloaded ZIP there is no map and the path is already right.
+  function assetUrl(path) {
+    if (typeof path !== "string" || !path) return path;
+    const map = window.__dev3ArtifactAssets;
+    if (!map) return path;
+    const clean = path.trim().split(/[?#]/)[0];
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\/)/i.test(clean)) return path;
+    const segments = [];
+    for (const segment of clean.split("/")) {
+      if (!segment || segment === ".") continue;
+      if (segment === "..") { segments.pop(); continue; }
+      segments.push(segment);
+    }
+    return map[segments.join("/")] || path;
+  }
+
   window.dev3Artifact = Object.freeze({
+    asset: assetUrl,
     chart: dev3Chart,
     color: tokenColor,
     enhance: enhanceControls,
