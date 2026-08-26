@@ -17,7 +17,7 @@ this page and the website all read from it.
 | Go to project (quick switch) | ⌘K | Ctrl+K |
 | Command palette | ⇧⌘P / ⇧⌘Space | Ctrl+Shift+P / Ctrl+Shift+Space |
 | Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
-| Agent traffic log | ⇧⌘M | Ctrl+Shift+M |
+| Agent traffic log (beta — Settings → System → Advanced Experience) | ⇧⌘M | Ctrl+Shift+M |
 | Help mode (explain this screen) | ⇧⌘/ | Ctrl+Shift+/ |
 | Open current project/worktree in an app (picker) | ⌘O | Ctrl+O |
 | Terminal immersive fullscreen | F11 / ⇧⌘F | F11 / Ctrl+Shift+F |

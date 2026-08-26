@@ -45,7 +45,7 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  */
 const BUDGET_KB: Record<string, number> = {
 	"PRODUCT_UX_BIBLE.md": 128,
-	"ux-architecture.yaml": 113,
+	"ux-architecture.yaml": 114,
 	"UX_DECISIONS.md": 80,
 };
 
@@ -98,7 +98,22 @@ const BUDGET_KB: Record<string, number> = {
  * ambient slot, and that a log with a 30-day history is still an overlay rather than a ninth
  * destination. The new log entry is itself a pointer to `decisions/2026/08/25/`.
  */
-const TOTAL_BUDGET_KB = 319;
+/**
+ * 319 → 320 and the yaml 113 → 114, for the rule that the agent-traffic feature is gated behind an
+ * experimental setting and that OFF means invisible rather than greyed out.
+ *
+ * Compaction ran first and bought ~200 bytes inside the two agent-traffic entries: the readout's
+ * localStorage key and the phone sheet's "28 GB / 5.8 ms" example are implementation detail the
+ * bible and the code already carry, and the log's `note` was restating its own forbidden-filter
+ * rule twice. That covered half the addition; the rest is the rule itself.
+ *
+ * What earns the KB is that "hidden, not disabled" contradicts the mechanism the native menu
+ * already has — `meetsContext` greys items out, which is right for "no task selected" and wrong for
+ * a feature the user switched off. Without the entry the next agent adding a flagged surface
+ * reaches for the disable path and ships a permanently dead row. The why in full lives in
+ * `decisions/2026/08/26/gate-agent-traffic-behind-an-experimental-setting.md`.
+ */
+const TOTAL_BUDGET_KB = 320;
 
 const entries = readdirSync(UX_DIR, { withFileTypes: true });
 const kb = (name: string) => statSync(`${UX_DIR}/${name}`).size / 1024;

@@ -1,3 +1,4 @@
+import { getAgentTrafficEnabled } from "./agent-traffic-flag";
 import type { TranslationKey } from "./i18n/translations/en";
 import type { TipState } from "../shared/types";
 import type { SettingsRouteSectionId } from "./settings-registry";
@@ -997,6 +998,9 @@ function seededUnit(seed: number): number {
 /** Tips that are not snoozed and either unseen or past their cooldown. */
 function availableTips(state: TipState, now: number): Tip[] {
 	return ALL_TIPS.filter((t) => {
+		// Never advertise a feature the user has switched off — the tip would tell
+		// them to press a shortcut that does nothing.
+		if (t.id === "agent-traffic-log" && !getAgentTrafficEnabled()) return false;
 		const lastSeen = state.seen[t.id];
 		if (!lastSeen) return true;
 		return now - lastSeen > COOLDOWN_MS;

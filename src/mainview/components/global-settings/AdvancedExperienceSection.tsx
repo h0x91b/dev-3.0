@@ -12,12 +12,15 @@ export default function AdvancedExperienceSection({
 	t,
 	globalSettings,
 	onTerminalBidiToggle,
+	onAgentTrafficToggle,
 }: {
 	t: TFunction;
 	globalSettings: GlobalSettings;
 	onTerminalBidiToggle: (enabled: boolean) => void;
+	onAgentTrafficToggle: (enabled: boolean) => void;
 }) {
 	const bidiEnabled = globalSettings.experimentalTerminalBidi === true;
+	const trafficEnabled = globalSettings.experimentalAgentTraffic === true;
 
 	return (
 		<SettingsSection
@@ -42,6 +45,25 @@ export default function AdvancedExperienceSection({
 					/>
 					<p className="text-fg-muted text-xs mt-2">
 						{t("settings.terminalBidiCaveat")}
+					</p>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="experimental-agent-traffic">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.agentTraffic")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.agentTrafficDesc")}</p>
+					<SettingsToggle
+						checked={trafficEnabled}
+						ariaLabel={t("settings.agentTraffic")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onAgentTrafficToggle(!trafficEnabled)}
+					/>
+					<p className="text-fg-muted text-xs mt-2">
+						{t("settings.agentTrafficCaveat")}
 					</p>
 				</div>
 			</SettingsEntry>

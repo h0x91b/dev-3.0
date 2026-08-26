@@ -18,6 +18,7 @@ import {
 	slotDefaults,
 } from "../keymap";
 import { isControlCharBinding, serializeBinding } from "../keymap-bindings";
+import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import { setShortcutOverrides } from "../keymap-store";
 import en from "../i18n/translations/en";
 
@@ -153,6 +154,9 @@ describe("transport-aware keymap", () => {
 	});
 
 	it("appShortcutsForMode(remote) excludes every desktop-only shortcut", () => {
+		// Transport is the axis under test; experimental gating is the other axis and
+		// has its own suite, so switch its feature on to compare full registries.
+		setAgentTrafficEnabledForTests(true);
 		const remote = appShortcutsForMode(true);
 		const ids = remote.map((s) => s.id);
 		for (const id of ["quit", "hide", "new-window", "zoom-in", "zoom-out", "zoom-reset", "hard-refresh", "open-in"]) {
@@ -160,6 +164,7 @@ describe("transport-aware keymap", () => {
 		}
 		expect(appShortcutsForMode(false).length).toBe(APP_SHORTCUTS.length);
 		expect(remote.length).toBeLessThan(APP_SHORTCUTS.length);
+		setAgentTrafficEnabledForTests(false);
 	});
 
 	it("shortcutKeysForMode applies the remote display only in remote mode", () => {

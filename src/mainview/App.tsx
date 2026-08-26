@@ -44,6 +44,8 @@ import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry
 import AgentTrafficLog from "./components/agent-traffic/AgentTrafficLog";
 import { noteTrafficArrival } from "./agent-traffic";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "./agent-traffic-events";
+import { getAgentTrafficEnabled, syncAgentTrafficFromGlobalSettings } from "./agent-traffic-flag";
+import { useAgentTrafficEnabled } from "./hooks/useAgentTrafficEnabled";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -241,13 +243,17 @@ function App() {
 	// Context that drives which menu items apply, derived from the current route.
 	// Used both to grey out native-menu items (pushed to bun below) and to build
 	// the browser-mode React menu bar (`AppMenuBar`).
+	// Read through the hook rather than `globalSettings` (declared further down):
+	// the flag also has to reach registries that are not components, so the module
+	// mirror is the single source and this just re-renders when it flips.
+	const agentTrafficOn = useAgentTrafficEnabled();
 	const menuContext = useMemo(() => {
 		const r = state.route;
 		const hasProject = r.screen === "project" || r.screen === "task" || r.screen === "project-terminal" || r.screen === "project-settings";
 		const hasTask = r.screen === "task" || (r.screen === "project" && Boolean(r.activeTaskId));
 		const hasTerminal = r.screen === "task" || r.screen === "project-terminal";
-		return { hasTask, hasProject, hasTerminal };
-	}, [state.route]);
+		return { hasTask, hasProject, hasTerminal, agentTrafficEnabled: agentTrafficOn };
+	}, [state.route, agentTrafficOn]);
 
 	// Push the current MenuContext to the bun side on every route change so the
 	// native menu can grey out task / project / terminal items that don't apply.
@@ -1159,9 +1165,10 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				setShortcutsModal((s) => (s.open ? { ...s, open: false } : { open: true, tab: "app" }));
-			} else if (matchesShortcut(e, "agent-traffic-log")) {
+			} else if (matchesShortcut(e, "agent-traffic-log") && getAgentTrafficEnabled()) {
 				// The traffic log is an overlay over any screen, so the shortcut toggles
-				// it from wherever the user is — including a focused terminal.
+				// it from wherever the user is — including a focused terminal. Read
+				// through the module getter so the beta flag needs no effect re-bind.
 				e.preventDefault();
 				e.stopPropagation();
 				if (showQuitDialog) return;
@@ -1440,6 +1447,12 @@ function App() {
 		syncTerminalBidiFromGlobalSettings(globalSettings);
 	}, [globalSettings]);
 
+	// Same shape for the agent-traffic beta: registries outside React (the keymap,
+	// the palette, the tip pool) read the module mirror, so it is fed here.
+	useEffect(() => {
+		syncAgentTrafficFromGlobalSettings(globalSettings);
+	}, [globalSettings]);
+
 	useEffect(() => {
 		function onProjectUpdated(e: Event) {
 			const { project } = (e as CustomEvent).detail;
@@ -1537,6 +1550,9 @@ function App() {
 			// The header readout and the traffic log read the persisted log, not this
 			// push — the row on disk carries the full body and the delivery verdict,
 			// which the preview does not. So the arrival only triggers a re-read.
+			// No reader while the beta is off, so no re-read either — the toast above
+			// is unaffected and keeps working exactly as before.
+			if (!getAgentTrafficEnabled()) return;
 			noteTrafficArrival(projectId);
 			if (fromProjectId && fromProjectId !== projectId) noteTrafficArrival(fromProjectId);
 		}
@@ -1548,6 +1564,7 @@ function App() {
 	// readout, the native View menu and the command palette all fire it.
 	useEffect(() => {
 		function onOpen() {
+			if (!getAgentTrafficEnabled()) return;
 			setTrafficLogOpen(true);
 		}
 		window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onOpen);
@@ -3078,7 +3095,9 @@ function App() {
 			<ToastHost onTaskOverflow={handleToastOverflow} resolveOrigin={resolveToastOrigin} />
 			{/* Agent traffic log — an overlay over any screen (the nav budget is spent),
 			    opened from the header readout, ⇧⌘M, the View menu and the palette. */}
-			{trafficLogOpen && (
+			{/* The flag also closes an open log, so switching the beta off mid-session
+			    does not leave an overlay nothing can reach any more. */}
+			{trafficLogOpen && agentTrafficOn && (
 				<AgentTrafficLog
 					projectId={projectIdForRoute(route)}
 					onClose={() => setTrafficLogOpen(false)}

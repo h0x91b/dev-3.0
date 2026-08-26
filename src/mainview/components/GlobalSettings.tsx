@@ -520,6 +520,21 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleAgentTrafficToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ experimentalAgentTraffic: enabled ? true : undefined },
+				{
+					tracking: {
+						setting: "experimental_agent_traffic",
+						value: String(enabled),
+					},
+				},
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handlePxpipeProxyToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange(
@@ -811,6 +826,7 @@ function GlobalSettings({
 							t={t}
 							globalSettings={globalSettings}
 							onTerminalBidiToggle={handleTerminalBidiToggle}
+							onAgentTrafficToggle={handleAgentTrafficToggle}
 						/>
 						<DeveloperToolsSection
 							t={t}

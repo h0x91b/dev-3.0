@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import { selectTip, getAvailableTipsCount, ALL_TIPS, SNOOZE_MS, type TipContext } from "../tips";
+import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import type { TipState } from "../../shared/types";
 
 function freshState(overrides: Partial<TipState> = {}): TipState {
@@ -10,6 +11,11 @@ const MAX_SCORE = Math.max(...ALL_TIPS.map((t) => t.score));
 const VALID_CONTEXTS: TipContext[] = ["board", "terminal", "diff", "settings", "preparing"];
 
 describe("tips", () => {
+	// Selection logic is the subject here, so every tip in the registry counts —
+	// including the one gated behind the agent-traffic beta, whose own hiding is
+	// asserted in agent-traffic-flag.test.tsx.
+	beforeEach(() => setAgentTrafficEnabledForTests(true));
+
 	it("returns a tip with fresh state", () => {
 		const tip = selectTip(freshState());
 		expect(tip).not.toBeNull();

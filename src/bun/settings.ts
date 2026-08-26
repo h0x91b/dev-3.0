@@ -160,6 +160,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		pxpipeProxyEnabled: d.pxpipeProxyEnabled === true ? true : undefined,
 		// Default-off beta toggle — only an explicit true is a stored opt-in.
 		experimentalTerminalBidi: d.experimentalTerminalBidi === true ? true : undefined,
+		// Default-off beta toggle — only an explicit true is a stored opt-in.
+		experimentalAgentTraffic: d.experimentalAgentTraffic === true ? true : undefined,
 		// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
 		favorites: sanitizeFavorites(d.favorites),
 		// User shortcut rebinds; sparse by design — absent means "all defaults".

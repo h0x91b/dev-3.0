@@ -341,12 +341,19 @@ export interface MenuContext {
 	hasProject: boolean;
 	/** A terminal is visible on screen (task / project-terminal). */
 	hasTerminal: boolean;
+	/**
+	 * The agent-traffic beta is on. Unlike the three above this HIDES its items
+	 * rather than greying them: an off feature must leave no trace, and a
+	 * permanently disabled row is a trace.
+	 */
+	agentTrafficEnabled?: boolean;
 }
 
 export const EMPTY_MENU_CONTEXT: MenuContext = {
 	hasTask: false,
 	hasProject: false,
 	hasTerminal: false,
+	agentTrafficEnabled: false,
 };
 
 const REQUIRES_TASK: ReadonlySet<MenuAction> = new Set<MenuAction>([
@@ -491,6 +498,12 @@ function item(spec: Item): ApplicationMenuItemConfig {
 }
 
 const SEP: ApplicationMenuItemConfig = { type: "separator" };
+
+/** The traffic-log row, present only while the beta flag is on (View and Help). */
+function agentTrafficItems(): ApplicationMenuItemConfig[] {
+	if (!currentContext.agentTrafficEnabled) return [];
+	return [item({ label: "Agent Traffic Log (⇧⌘M)", action: MENU_ACTIONS.viewAgentTrafficLog })];
+}
 
 function appMenu(): ApplicationMenuItemConfig {
 	return {
@@ -648,7 +661,7 @@ function viewMenu(): ApplicationMenuItemConfig {
 			item({ label: "Show Productivity Stats", action: MENU_ACTIONS.viewStats }),
 			item({ label: "Show Changelog", action: MENU_ACTIONS.viewChangelog }),
 			item({ label: "Show Tips", action: MENU_ACTIONS.viewTips }),
-			item({ label: "Agent Traffic Log (⇧⌘M)", action: MENU_ACTIONS.viewAgentTrafficLog }),
+			...agentTrafficItems(),
 			item({ label: "Keyboard Shortcuts (⌘/)", action: MENU_ACTIONS.helpKeyboardShortcuts }),
 			SEP,
 			item({ label: "Zoom In", action: MENU_ACTIONS.zoomIn, accelerator: "=" }),
@@ -854,7 +867,7 @@ function helpMenu(): ApplicationMenuItemConfig {
 		submenu: [
 			item({ label: "dev-3.0 Documentation", action: MENU_ACTIONS.helpDocumentation }),
 			item({ label: "Explain This Screen (⇧⌘/)", action: MENU_ACTIONS.helpExplainScreen }),
-			item({ label: "Agent Traffic Log (⇧⌘M)", action: MENU_ACTIONS.viewAgentTrafficLog }),
+			...agentTrafficItems(),
 			item({ label: "Keyboard Shortcuts (⌘/)", action: MENU_ACTIONS.helpKeyboardShortcuts }),
 			item({ label: "Tmux Cheat Sheet", action: MENU_ACTIONS.termCheatSheet }),
 			SEP,

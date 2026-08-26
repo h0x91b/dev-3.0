@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { AgentMessageLogPage, AgentMessageLogRow } from "../../shared/agent-message-log";
 import { I18nProvider } from "../i18n";
 import { resetTrafficSeen, resetTrafficStore } from "../agent-traffic";
+import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 import AgentTrafficIndicator from "../components/agent-traffic/AgentTrafficIndicator";
 import AgentTrafficLog from "../components/agent-traffic/AgentTrafficLog";
 
@@ -50,6 +51,13 @@ beforeEach(() => {
 	resetTrafficSeen();
 	setPage([]);
 	knownTaskIds.value = ["task-a", "task-b", "task-c"];
+	// The feature ships off; these tests describe it switched on. The off state has
+	// its own suite in agent-traffic-flag.test.tsx.
+	setAgentTrafficEnabledForTests(true);
+});
+
+afterEach(() => {
+	setAgentTrafficEnabledForTests(false);
 });
 
 /** Put the last look an hour back so the seeded rows read as unread. */

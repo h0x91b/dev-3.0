@@ -1,3 +1,4 @@
+import { getAgentTrafficEnabled } from "./agent-traffic-flag";
 import type { TranslationKey } from "./i18n";
 
 /**
@@ -120,6 +121,9 @@ const REMOTE_HIDDEN_COMMANDS = new Set<string>(["task-open-in-finder"]);
 export function availableCommands(ctx: CommandContext): PaletteCommand[] {
 	return ALL_COMMANDS.filter((c) => {
 		if (ctx.remote && REMOTE_HIDDEN_COMMANDS.has(c.id)) return false;
+		// Beta, off by default: a palette entry that opens nothing is worse than no
+		// entry, so the command disappears with the feature.
+		if (c.id === "view-agent-traffic-log" && !getAgentTrafficEnabled()) return false;
 		if (
 			ctx.isVirtual &&
 			(c.category === "git" ||

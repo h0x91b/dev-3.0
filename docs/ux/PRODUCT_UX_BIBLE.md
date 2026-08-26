@@ -338,6 +338,9 @@ Evidence: `NativeBackendMark.tsx`, `ForeignCodeMark.tsx`, `TaskCard.tsx`, `TaskI
 Task-to-task messages had one surface, a 30-second toast (§5.7), while the rows were already on disk
 (`data/<slug>/messages/*.jsonl`, 30 days, `readAgentMessageLog`) with no UI reading them.
 
+- **Beta, off by default, and off means invisible.** Settings → System → Advanced Experience gates
+  the whole feature; while off there is no kebab row, no pill, no `⇧⌘M`, no menu row, no palette
+  command and no tip. A greyed row or a dead shortcut is a trace, and a trace is worse than absence.
 - **Home is the overflow kebab (labelled row, always there); the bar slot is EARNED.** The pill sits
   immediately right of the three dots only while messages landed since the user's last look, and
   retires when they look — an unread badge, not a counter, so it never spends the permanent ambient

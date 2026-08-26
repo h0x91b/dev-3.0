@@ -501,6 +501,11 @@ const settings = {
 		"Reorder Hebrew, Arabic and Persian output so it reads correctly in terminal panes instead of appearing reversed. Applies to open panes immediately.",
 	"settings.terminalBidiCaveat":
 		"Display only: copied text keeps its original order, which is correct. Selecting with the mouse and hovering links on those lines still follow the original order, so the highlight can look wrong. Arabic letters are not joined into their cursive forms.",
+	"settings.agentTraffic": "Agent traffic readout and log",
+	"settings.agentTrafficDesc":
+		"Show what your agents typed into each other: an unread indicator in the header and a log of the last 30 days, opened with ⇧⌘M.",
+	"settings.agentTrafficCaveat":
+		"While this is off the feature leaves no trace — no header control, no shortcut, no menu item, no palette command. Messages are still recorded on disk either way, so turning it on later shows the history you already have. Unread state is per browser, so reading on the desktop leaves a phone badge lit.",
 
 	// Telemetry opt-out
 	"settings.telemetry": "Telemetry",

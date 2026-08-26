@@ -502,6 +502,11 @@ const settings = {
 		"Reordena la salida en hebreo, árabe y persa para que se lea correctamente en las terminales en lugar de aparecer invertida. Se aplica de inmediato a los paneles abiertos.",
 	"settings.terminalBidiCaveat":
 		"Solo visualización: el texto copiado conserva su orden original, que es el correcto. La selección con el ratón y el paso del cursor por los enlaces en esas líneas siguen el orden original, así que el resaltado puede verse mal. Las letras árabes no se unen en su forma cursiva.",
+	"settings.agentTraffic": "Indicador y registro del tráfico de agentes",
+	"settings.agentTrafficDesc":
+		"Muestra lo que tus agentes se escribieron entre sí: un indicador de mensajes sin leer en la cabecera y un registro de los últimos 30 días, que se abre con ⇧⌘M.",
+	"settings.agentTrafficCaveat":
+		"Mientras está desactivado la función no deja rastro: ni control en la cabecera, ni atajo, ni entrada de menú, ni comando de la paleta. Los mensajes se guardan en disco de todos modos, así que al activarla verás el historial que ya tienes. El estado de lectura es por navegador, así que leer en el escritorio deja el distintivo encendido en el móvil.",
 
 	// Telemetry opt-out
 	"settings.telemetry": "Telemetría",

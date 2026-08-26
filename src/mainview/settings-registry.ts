@@ -423,6 +423,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "experimental-agent-traffic",
+		category: "system",
+		titleKey: "settings.agentTraffic",
+		descriptionKey: "settings.agentTrafficDesc",
+		anchor: "experimental-agent-traffic",
+		globalField: "experimentalAgentTraffic",
+		storage: "global",
+	},
+	{
 		id: "telemetry",
 		category: "system",
 		titleKey: "settings.telemetry",
@@ -473,6 +482,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentBinaryPaths",
 	"agentCustomBinaryPaths",
 	"experimentalTerminalBidi",
+	"experimentalAgentTraffic",
 	"playSoundOnTaskComplete",
 	"externalApps",
 	"tipsDisabled",

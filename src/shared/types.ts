@@ -1108,6 +1108,12 @@ export interface GlobalSettings {
 	 * selection and link hover on those lines stay logical too. Default off.
 	 */
 	experimentalTerminalBidi?: boolean;
+	/**
+	 * Beta: the agent-traffic readout in the header and its 30-day log. Off by
+	 * default, and while off the feature leaves no trace — no header control, no
+	 * ⇧⌘M, no menu item, no palette command, no tip.
+	 */
+	experimentalAgentTraffic?: boolean;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
 	tipsDisabled?: boolean;

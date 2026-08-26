@@ -1,3 +1,4 @@
+import { getAgentTrafficEnabled } from "./agent-traffic-flag";
 import type { TranslationKey } from "./i18n";
 import type { ShortcutSlot } from "../shared/types";
 import {
@@ -314,9 +315,23 @@ export function shortcutAppliesInMode(spec: ShortcutSpec, remote: boolean): bool
 	return remote ? scope === "remote" : scope === "desktop";
 }
 
+/**
+ * Shortcuts gated behind an experimental setting: listed only while their feature
+ * exists. A combo the overlay advertises and nothing answers reads as a bug.
+ */
+const FLAGGED_SHORTCUTS: Record<string, () => boolean> = {
+	"agent-traffic-log": getAgentTrafficEnabled,
+};
+
+/** Whether the shortcut's feature is currently switched on (true when ungated). */
+export function shortcutFeatureIsOn(spec: ShortcutSpec): boolean {
+	const gate = FLAGGED_SHORTCUTS[spec.id];
+	return gate ? gate() : true;
+}
+
 /** Shortcuts that apply under the current transport, in registry order. */
 export function appShortcutsForMode(remote: boolean): ShortcutSpec[] {
-	return APP_SHORTCUTS.filter((s) => shortcutAppliesInMode(s, remote));
+	return APP_SHORTCUTS.filter((s) => shortcutAppliesInMode(s, remote) && shortcutFeatureIsOn(s));
 }
 
 /** Shortcuts of one category, in registry order. */

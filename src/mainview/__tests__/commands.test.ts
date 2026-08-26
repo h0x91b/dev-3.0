@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { ALL_COMMANDS, availableCommands } from "../commands";
+import { setAgentTrafficEnabledForTests } from "../agent-traffic-flag";
 
 describe("availableCommands", () => {
+	// Scope is the axis under test; the agent-traffic beta is a second axis with
+	// its own suite, so its feature is on here to compare full registries.
+	beforeEach(() => setAgentTrafficEnabledForTests(true));
+
 	it("with no project and no task, returns only always-scoped commands", () => {
 		const cmds = availableCommands({ hasProject: false, hasTask: false });
 		expect(cmds.length).toBeGreaterThan(0);

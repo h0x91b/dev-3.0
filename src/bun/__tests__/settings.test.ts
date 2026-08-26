@@ -185,6 +185,7 @@ describe("saveSettings", () => {
 			agentCustomBinaryPaths: { "builtin-codex": "/opt/wrappers/codex-wrapper" },
 			keyboardShortcuts: { "go-to-project": { primary: "Mod+KeyJ", alias: null } },
 			experimentalTerminalBidi: true,
+			experimentalAgentTraffic: true,
 			playSoundOnTaskComplete: false,
 			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
 			tipsDisabled: true,

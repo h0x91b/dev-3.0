@@ -4,6 +4,7 @@ import { markTrafficSeen, type TrafficPair } from "../../agent-traffic";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "../../agent-traffic-events";
 import { useT } from "../../i18n";
 import { useAgentTraffic } from "../../hooks/useAgentTraffic";
+import { useAgentTrafficEnabled } from "../../hooks/useAgentTrafficEnabled";
 import { useHeaderFlyout } from "../../hooks/useHeaderFlyout";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { shortcutById, shortcutKeysFor } from "../../keymap";
@@ -59,6 +60,7 @@ export default function AgentTrafficIndicator({
 	variant = "bar",
 }: AgentTrafficIndicatorProps) {
 	const t = useT();
+	const featureOn = useAgentTrafficEnabled();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const traffic = useAgentTraffic(projectId);
 	// The sheet row lives inside a menu, so it opens like one (hover intent on a
@@ -114,6 +116,11 @@ export default function AgentTrafficIndicator({
 		window.addEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onLogOpened);
 		return () => window.removeEventListener(OPEN_AGENT_TRAFFIC_LOG_EVENT, onLogOpened);
 	}, [flyout]);
+
+	// Beta, off by default: every variant disappears with the flag, so the kebab
+	// and the phone sheet lose the row entirely rather than gaining a dead one.
+	// After the hooks, never before — an early return would reorder them.
+	if (!featureOn) return null;
 
 	// The bar pill is earned by unread traffic, and never shown on a phone. It
 	// outlives its own badge while the panel is open: opening marks the traffic
