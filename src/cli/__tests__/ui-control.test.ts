@@ -254,6 +254,41 @@ describe("attention", () => {
 		await expect(handleAttention(args(["x"]), SOCKET, CTX)).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Task not found");
 	});
+
+	it("clears the badge with --clear and sends no reason", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: CTX.taskId }));
+
+		await handleAttention(args([], { clear: "true" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.attention", {
+			taskId: CTX.taskId,
+			reason: "",
+			clear: true,
+			projectId: CTX.projectId,
+		});
+		expect(stdoutOutput).toContain("Attention badge cleared");
+	});
+
+	it("refuses --clear together with a reason", async () => {
+		await expect(handleAttention(args(["all clear"], { clear: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(stderrOutput).toContain("--clear cannot carry a reason");
+	});
+
+	// `--clear "text"` parses as clear="text": reject it instead of swallowing the text.
+	it("refuses a valued --clear", async () => {
+		await expect(handleAttention(args([], { clear: "all clear" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(stderrOutput).toContain("--clear takes no value");
+	});
+
+	it("reports a windowless app when clearing", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: false, taskId: CTX.taskId }));
+
+		await handleAttention(args([], { clear: "true" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("nothing to clear");
+	});
 });
 
 // ─── ui state ────────────────────────────────────────────────────────────────

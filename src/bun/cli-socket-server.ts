@@ -18,7 +18,7 @@ import type { AgentLaunchChoice } from "../shared/types";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import { loadSpacesFile } from "./spaces-data";
-import { createScratchTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
+import { createScratchTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
@@ -1531,11 +1531,21 @@ const handlers: Record<string, Handler> = {
 		return { delivered: true, mode: "toast", taskId };
 	},
 
-	// UI control: light the red attention badge on a task card with a reason.
+	// UI control: light the red attention badge on a task card with a reason,
+	// or (--clear) take it back down together with its accumulated reasons.
 	"ui.attention": async (params) => {
 		const reason = ((params.reason as string) ?? "").trim();
 		const { project, task } = await resolveTaskFromParams(params);
 		if ((await loadSettings()).focusMode) setFocusMode(true);
+		if (params.clear === true) {
+			// Never queued and never silenced: a stale badge has to go down even
+			// while Focus Mode or a silenced project holds new badges back.
+			dropQueuedAttention(task.id);
+			const clearPush = getPushMessage();
+			if (!clearPush) return { delivered: false, taskId: task.id };
+			clearPush("cliAttention", { taskId: task.id, reason: "", clear: true });
+			return { delivered: true, taskId: task.id, projectId: project.id };
+		}
 		if (isNotificationSuppressed()) {
 			pushCliAttention({ taskId: task.id, projectId: task.projectId, reason });
 			return { delivered: true, queued: true, taskId: task.id, projectId: project.id };

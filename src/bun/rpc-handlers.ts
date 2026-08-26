@@ -27,6 +27,7 @@ export {
 	isNotificationSuppressed,
 	queueTerminalFocusToast,
 	queueTerminalFocusAttention,
+	dropQueuedAttention,
 	isProjectSilenced,
 	setStreamerPrivacy,
 	pushCliToast,

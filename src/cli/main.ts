@@ -81,6 +81,7 @@ Commands:
   dev3 dev-server status [task-id]      Show task dev server status
   dev3 notify "msg" [--level info|success|error] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
   dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
+  dev3 attention --clear [--task <id>]  Lower the attention badge and drop its accumulated reasons
   dev3 message "text" [--in <dur> | --at <hh:mm>] [--task <id>]  Send text to the task's live agent now, or schedule it (Send later)
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
   dev3 show-artifact <file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; local CSS, JS, and images are exported as ZIP

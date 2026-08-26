@@ -97,6 +97,7 @@ vi.mock("../rpc-handlers", () => {
 		isTerminalFocusActive: vi.fn(() => false),
 		isNotificationSuppressed: vi.fn(() => false),
 		pushCliAttention: vi.fn(),
+		dropQueuedAttention: vi.fn(),
 		pushCliToast: vi.fn(),
 		pushCliShowImage: vi.fn(),
 		pushCliShowArtifact: vi.fn(),
@@ -171,7 +172,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
+import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
 import { loadSettings } from "../settings";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
@@ -1806,6 +1807,27 @@ describe("ui control (notify / attention / state)", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ delivered: true, taskId: task.id });
 		expect(pushFn).toHaveBeenCalledWith("cliAttention", { taskId: task.id, reason: "PR ready" });
+	});
+
+	it("ui.attention --clear: lowers the badge even while focus mode suppresses new ones", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
+
+		const resp = await handleRequest(
+			makeRequest("ui.attention", { taskId: task.id, projectId: project.id, reason: "", clear: true }),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: true, taskId: task.id });
+		expect(dropQueuedAttention).toHaveBeenCalledWith(task.id);
+		expect(pushCliAttention).not.toHaveBeenCalled();
+		expect(pushFn).toHaveBeenCalledWith("cliAttention", { taskId: task.id, reason: "", clear: true });
 	});
 
 	it("ui.state: reports foreground and active context", async () => {

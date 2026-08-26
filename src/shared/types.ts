@@ -5431,9 +5431,10 @@ export type AppRPCSchema = {
 			/**
 			 * CLI-initiated attention signal (`dev3 attention`). Lights the red bell
 			 * badge on the task card with a hoverable `reason`, same surface the
-			 * terminal bell uses.
+			 * terminal bell uses. `clear: true` (`dev3 attention --clear`) lowers the
+			 * badge and drops every accumulated reason instead of adding one.
 			 */
-			cliAttention: { taskId: string; reason: string };
+			cliAttention: { taskId: string; reason: string; clear?: boolean };
 			/**
 			 * CLI-shared images (`dev3 show-image`). Carries the task's shared images
 			 * so the renderer can raise the attention badge and open the lightbox

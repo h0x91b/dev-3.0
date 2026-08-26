@@ -1501,8 +1501,14 @@ function App() {
 	// the terminal bell, but carries a hoverable reason.
 	useEffect(() => {
 		function onCliAttention(e: Event) {
-			const { taskId, projectId, reason } = (e as CustomEvent).detail as { taskId: string; projectId?: string; reason: string };
+			const { taskId, projectId, reason, clear } = (e as CustomEvent).detail as { taskId: string; projectId?: string; reason: string; clear?: boolean };
 			if (!taskId) return;
+			// Clearing shows nothing, so a silenced project must not keep a stale
+			// badge lit; only raising a badge is gated on display silencing.
+			if (clear) {
+				dispatch({ type: "clearBell", taskId });
+				return;
+			}
 			if (isProjectSilencedForDisplay(projectId)) return;
 			dispatch({ type: "addBell", taskId, reason: reason ?? "" });
 		}

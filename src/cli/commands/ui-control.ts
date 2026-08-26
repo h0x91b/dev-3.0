@@ -121,15 +121,26 @@ export async function handleNotify(
 /**
  * `dev3 attention "reason"` — light the red attention badge on a task card, with
  * an optional hoverable reason. Same visual surface as the terminal bell.
+ * `dev3 attention --clear` takes the badge back down with its reasons.
  */
 export async function handleAttention(
 	args: ParsedArgs,
 	socketPath: string,
 	context: CliContext | null,
 ): Promise<void> {
-	rejectUnknownFlags(args, ["task", "task-id", "project", "reason"]);
+	rejectUnknownFlags(args, ["task", "task-id", "project", "reason", "clear"]);
+
+	const clear = "clear" in args.flags;
+	// `--clear "text"` would silently swallow the text as the flag's value, so a
+	// valued --clear is a usage error rather than a half-understood command.
+	if (clear && args.flags.clear !== "true") {
+		exitUsage("--clear takes no value. Lower the badge with `dev3 attention --clear`.");
+	}
 
 	const reason = (args.positional[0] ?? args.flags.reason ?? "").toString().trim();
+	if (clear && reason) {
+		exitUsage("--clear cannot carry a reason. Raise with `dev3 attention \"reason\"`, lower with `dev3 attention --clear`.");
+	}
 	if (reason.length > NOTIFY_MAX_LEN) {
 		exitUsage(`Reason too long (${reason.length} chars). Keep it under ${NOTIFY_MAX_LEN} characters.`);
 	}
@@ -140,13 +151,24 @@ export async function handleAttention(
 	}
 
 	const params: Record<string, unknown> = { taskId: expandShortId(rawTaskId, context), reason };
+	if (clear) params.clear = true;
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, "ui.attention", params);
-	if (!resp.ok) exitError(resp.error || "Failed to raise attention");
+	if (!resp.ok) exitError(resp.error || (clear ? "Failed to clear attention" : "Failed to raise attention"));
 
 	const data = resp.data as { delivered: boolean; taskId: string; queued?: boolean; suppressed?: boolean };
+	if (clear) {
+		// Clearing is never queued or suppressed — a badge that outlived its cause
+		// must go down even while Focus Mode is on.
+		if (!data.delivered) {
+			process.stdout.write("App is running but has no open window — nothing to clear.\n");
+			return;
+		}
+		process.stdout.write(`Attention badge cleared on task ${data.taskId.slice(0, 8)}.\n`);
+		return;
+	}
 	if (data.queued) {
 		process.stdout.write("Attention badge queued until Focus Mode ends.\n");
 		return;

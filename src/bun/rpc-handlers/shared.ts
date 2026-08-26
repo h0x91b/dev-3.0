@@ -289,6 +289,21 @@ export function queueTerminalFocusAttention(payload: TerminalFocusAttentionPaylo
 	queuedTerminalNotifications.push({ kind: "attention", payload });
 }
 
+/**
+ * Drop a task's queued badge events (`dev3 attention --clear`). Attention calls
+ * and terminal bells light the same badge, so both go — otherwise a badge
+ * cleared during Focus Mode reappears when the queue flushes.
+ */
+export function dropQueuedAttention(taskId: string): void {
+	for (let i = queuedTerminalNotifications.length - 1; i >= 0; i--) {
+		const queued = queuedTerminalNotifications[i];
+		const isBadge = queued.kind === "attention" || queued.kind === "terminalBell";
+		if (isBadge && queued.payload.taskId === taskId) {
+			queuedTerminalNotifications.splice(i, 1);
+		}
+	}
+}
+
 export function pushCliToast(payload: TerminalFocusToastPayload): void {
 	if (isProjectSilenced(payload.projectId)) return;
 	if (isNotificationSuppressed()) {

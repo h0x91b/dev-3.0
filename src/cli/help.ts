@@ -435,12 +435,15 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "attention",
-		summary: "Light the red attention badge on a task card, with an optional reason.",
+		summary: "Light the red attention badge on a task card, or clear it.",
 		subcommands: [],
-		usage: 'dev3 attention "reason" [--task <id>]',
+		usage: 'dev3 attention "reason" | --clear [--task <id>]',
 		details: [
 			"Same visual surface as the terminal bell; the reason shows on hover.",
-			"The badge clears when the user opens the task.",
+			"Reasons accumulate (newest 5 kept) until the badge is cleared.",
+			"--clear      Lower the badge now and drop every accumulated reason.",
+			"The badge also clears when the user opens the task.",
+			"--clear takes no reason; clear a resolved alert, then raise a new one if needed.",
 			"Targets the current worktree's task; override with --task <id>.",
 		],
 	},

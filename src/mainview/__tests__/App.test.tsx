@@ -1311,6 +1311,32 @@ describe("App keyboard shortcuts", () => {
 
 			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "2"));
 		});
+
+		it("lowers the badge when `dev3 attention --clear` arrives", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliAttention", {
+					detail: { taskId: "t-overflow", projectId: "p1", reason: "blocked" },
+				}));
+				window.dispatchEvent(new CustomEvent("rpc:cliAttention", {
+					detail: { taskId: "t-overflow", projectId: "p1", reason: "still blocked" },
+				}));
+			});
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "2"));
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliAttention", {
+					detail: { taskId: "t-overflow", projectId: "p1", reason: "", clear: true },
+				}));
+			});
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "0"));
+		});
 	});
 
 	describe("route restore on launch", () => {

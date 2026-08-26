@@ -409,6 +409,9 @@ const {
 	setTerminalFocus,
 	setFocusMode,
 	isNotificationSuppressed,
+	pushCliAttention,
+	pushTerminalBell,
+	dropQueuedAttention,
 	emitTaskSound,
 	runCleanupScript,
 	portableReadKey,
@@ -13121,6 +13124,28 @@ describe("notifyWatchedTaskStatusChange", () => {
 
 		expect(Utils.showNotification).toHaveBeenCalledTimes(1);
 		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ taskId: task.id }));
+	});
+});
+
+describe("dropQueuedAttention (dev3 attention --clear)", () => {
+	afterEach(() => {
+		setTerminalFocus(false);
+		setPushMessage(() => {});
+	});
+
+	it("drops a task's queued badges so the flush cannot resurrect them", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setTerminalFocus(true);
+		pushCliAttention({ taskId: "task-cleared", projectId: "proj-1", reason: "blocked" });
+		pushTerminalBell("task-cleared");
+		pushCliAttention({ taskId: "task-other", projectId: "proj-1", reason: "still waiting" });
+
+		dropQueuedAttention("task-cleared");
+		setTerminalFocus(false);
+
+		expect(push).toHaveBeenCalledTimes(1);
+		expect(push).toHaveBeenCalledWith("cliAttention", expect.objectContaining({ taskId: "task-other" }));
 	});
 });
 
