@@ -6,6 +6,7 @@ import type { TerminalBackendIdentity } from "./terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-panes";
 import type { DeepLinkNav } from "./deep-link";
 import type { UpdateChannel } from "./update-channel";
+import type { PosixShellResolution, ShellFlavor } from "./posix-shell";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 import type { AgentMessageLogPage } from "./agent-message-log";
 
@@ -1182,6 +1183,15 @@ export interface GlobalSettings {
 	 * vars (PATH/LANG/...) for an isolated environment.
 	 */
 	importShellEnv?: boolean;
+	/**
+	 * Which POSIX shell dev3 runs in its terminals and generated wrapper
+	 * scripts. Undefined ⇒ auto-detect (the user's login shell, else the first
+	 * of zsh → bash → sh that is installed). Set it when the detected shell is
+	 * not the one you want, or on a minimal Linux box that ships only `sh`.
+	 * A chosen shell that is not installed falls back down the same order.
+	 * Ignored on Windows, which runs PowerShell.
+	 */
+	terminalShell?: ShellFlavor;
 	focusMode?: boolean; // when true, queue agent-initiated attention UI and viewer events until Focus Mode ends
 	/**
 	 * Track agent rate-limit windows (Claude via an injected statusLine wrapper,
@@ -1518,6 +1528,14 @@ export interface GitHubCliStatus {
 	authStatus: GitHubCliAuthStatus;
 	binaryPath: string | null;
 	accounts: GitHubAccount[];
+}
+
+/** What the Settings screen needs to explain the `terminalShell` choice. */
+export interface ShellAvailability {
+	/** The shell dev3 runs right now; null on Windows, which has no POSIX shell. */
+	resolved: PosixShellResolution | null;
+	/** Path of each installed flavor. A missing key means it is not on this machine. */
+	installed: Partial<Record<ShellFlavor, string>>;
 }
 
 /** Fields that can be stored in .dev3/config.json (repo-level, shareable). */
@@ -4107,6 +4125,11 @@ export type AppRPCSchema = {
 			getGitHubCliStatus: {
 				params: void;
 				response: GitHubCliStatus;
+			};
+			/** Which shells this machine has, and which one dev3 actually runs. */
+			getShellAvailability: {
+				params: void;
+				response: ShellAvailability;
 			};
 			saveGlobalSettings: {
 				params: GlobalSettings;

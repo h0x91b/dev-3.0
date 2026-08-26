@@ -267,6 +267,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "sidecar",
 	},
 	{
+		id: "terminal-shell",
+		category: "terminal",
+		titleKey: "settings.terminalShell",
+		descriptionKey: "settings.terminalShellDesc",
+		anchor: "terminal-shell",
+		globalField: "terminalShell",
+		storage: "global",
+	},
+	{
 		id: "terminal-path-open-mode",
 		category: "terminal",
 		titleKey: "settings.terminalPathOpenMode",
@@ -505,6 +514,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"preventSleepWhileRunning",
 	"skipQuitDialog",
 	"importShellEnv",
+	"terminalShell",
 	"focusMode",
 	"agentRateLimitTracking",
 	"watchByDefault",

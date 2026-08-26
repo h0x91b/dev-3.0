@@ -171,6 +171,25 @@ set -ga update-environment TERM_PROGRAM
 set-environment -g ZDOTDIR ${SHELL_INIT_DIR}
 `;
 
+/**
+ * `$ENV` is the only rc file a POSIX `sh` (dash / busybox ash) reads for an
+ * interactive shell, so it is where the dev3 prompt goes. The user's own value
+ * travels along as `DEV3_USER_ENV` and the init file sources it first —
+ * clobbering `$ENV` outright would silently drop their aliases.
+ *
+ * Harmless for zsh (ignores `$ENV`) and for bash (reads it only when invoked
+ * as `sh`, where the file is valid anyway).
+ */
+function shellEnvConfig(): string {
+	const userEnv = process.env.ENV?.trim();
+	return [
+		"# Shell prompt — POSIX sh reads $ENV for interactive shells",
+		...(userEnv ? [`set-environment -g DEV3_USER_ENV ${userEnv}`] : []),
+		`set-environment -g ENV ${SHELL_INIT_DIR}/.shrc`,
+		"",
+	].join("\n");
+}
+
 // Status bar setup — references Catppuccin status modules built by the plugin
 const TMUX_STATUS_BAR = `
 # Status bar — Catppuccin modules
@@ -189,6 +208,7 @@ export function buildThemeConfig(flavor: "mocha" | "latte"): string {
 		`source "${pluginDir}/catppuccin_options_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_tmux.conf"`,
 		TMUX_CONFIG_FUNCTIONAL,
+		shellEnvConfig(),
 		TMUX_STATUS_BAR,
 	].join("\n");
 }

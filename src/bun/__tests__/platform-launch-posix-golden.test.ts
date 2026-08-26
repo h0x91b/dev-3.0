@@ -68,7 +68,7 @@ const AGENT_RETRY_WRAPPER = [
 	"#!/bin/bash",
 	"",
 	"check_and_run() {",
-	"  if command -v 'claude' &>/dev/null; then",
+	"  if command -v 'claude' >/dev/null 2>&1; then",
 	"    printf '\\n\\033[1;32m✓ Found %s\\033[0m\\n\\n' 'claude'",
 	"    exec '/bin/zsh' '/tmp/dev3-T-original-cmd.sh'",
 	"  fi",
@@ -110,7 +110,7 @@ const STARTUP_WRAPPER_TMUX_PARALLEL = [
 	"fi",
 	"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
 	"printf '\\033[2mClosing in 15s — press any key to close now\\033[0m\\n'",
-	"if [ -n \"$ZSH_VERSION\" ]; then read -t 15 -k 1 -s; else read -t 15 -n 1 -s; fi",
+	"if [ -n \"$ZSH_VERSION\" ]; then read -t 15 -k 1 -s; elif [ -n \"$BASH_VERSION\" ]; then read -t 15 -n 1 -s; else sleep 15; fi",
 	"exit 0",
 ].join("\n") + "\n";
 
@@ -126,7 +126,7 @@ const STARTUP_WRAPPER_TMUX_BLOCKING = [
 	"tmux split-window -v -b -c \"/w/t\" \"'/bin/zsh' '/tmp/dev3-T-cmd.sh'\"",
 	"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
 	"printf '\\033[2mClosing in 15s — press any key to close now\\033[0m\\n'",
-	"if [ -n \"$ZSH_VERSION\" ]; then read -t 15 -k 1 -s; else read -t 15 -n 1 -s; fi",
+	"if [ -n \"$ZSH_VERSION\" ]; then read -t 15 -k 1 -s; elif [ -n \"$BASH_VERSION\" ]; then read -t 15 -n 1 -s; else sleep 15; fi",
 	"exit 0",
 ].join("\n") + "\n";
 
@@ -206,9 +206,11 @@ describe("POSIX launch primitives", () => {
 	});
 
 	it("renders the shell-portable read-key snippet", () => {
-		expect(portableReadKey()).toBe('if [ -n "$ZSH_VERSION" ]; then read -k 1 -s; else read -n 1 -s; fi');
+		expect(portableReadKey()).toBe(
+			'if [ -n "$ZSH_VERSION" ]; then read -k 1 -s; elif [ -n "$BASH_VERSION" ]; then read -n 1 -s; else read -r _dev3_key; fi',
+		);
 		expect(portableReadKey({ timeoutSeconds: 15 })).toBe(
-			'if [ -n "$ZSH_VERSION" ]; then read -t 15 -k 1 -s; else read -t 15 -n 1 -s; fi',
+			'if [ -n "$ZSH_VERSION" ]; then read -t 15 -k 1 -s; elif [ -n "$BASH_VERSION" ]; then read -t 15 -n 1 -s; else sleep 15; fi',
 		);
 	});
 });

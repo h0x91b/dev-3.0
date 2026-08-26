@@ -13,6 +13,15 @@ vi.mock("../spawn", () => ({
 	spawnSync: spawnSyncMock,
 }));
 
+// Every shell these tests name is "installed": the resolver probes the real
+// filesystem, and a `$SHELL` that does not exist on the test machine would be
+// discarded before the code under test ever sees it.
+vi.mock("../executable", () => ({ isExecutableFile: () => true }));
+
+// The preference comes from the user's own settings.json; these tests are about
+// auto-detection, so they answer with an empty settings record.
+vi.mock("../settings", () => ({ loadSettingsSync: () => ({}) }));
+
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 function fakeProc(stdout: string, stderr = "", exitCode = 0) {
@@ -281,9 +290,41 @@ describe("shell environment bootstrap", () => {
 			expect(getShellRcFiles("/bin/zsh", home, none)).toEqual([`${home}/.zshrc`]);
 		});
 
+		it("uses ~/.profile for a POSIX sh — dash reads no other rc on login", async () => {
+			const { getShellRcFiles } = await import("../shell-env");
+			expect(getShellRcFiles("/bin/sh", home, none)).toEqual([`${home}/.profile`]);
+			expect(getShellRcFiles("/bin/dash", home, none)).toEqual([`${home}/.profile`]);
+		});
+
 		it("returns no files for unsupported shells like fish", async () => {
 			const { getShellRcFiles } = await import("../shell-env");
 			expect(getShellRcFiles("/usr/local/bin/fish", home, none)).toEqual([]);
+		});
+	});
+
+	describe("the terminalShell preference", () => {
+		it("runs the chosen shell instead of the detected one", async () => {
+			process.env.SHELL = "/bin/zsh";
+			const { getUserShell, setShellPreference } = await import("../shell-env");
+			setShellPreference("bash");
+			expect(getUserShell()).toBe("/bin/bash");
+		});
+
+		it("re-resolves immediately when the setting changes, instead of serving the hour-long cache", async () => {
+			process.env.SHELL = "/bin/zsh";
+			const { getUserShell, setShellPreference } = await import("../shell-env");
+			expect(getUserShell()).toBe("/bin/zsh");
+			setShellPreference("sh");
+			expect(getUserShell()).toBe("/bin/sh");
+		});
+
+		it("points generated wrapper scripts at the same shell the terminals run", async () => {
+			process.env.SHELL = "/bin/zsh";
+			const { getUserShell, setShellPreference } = await import("../shell-env");
+			const { defaultLaunchShellPath } = await import("../../shared/platform-launch");
+			setShellPreference("bash");
+			getUserShell();
+			expect(defaultLaunchShellPath("darwin", { SHELL: "/bin/zsh" })).toBe("/bin/bash");
 		});
 	});
 

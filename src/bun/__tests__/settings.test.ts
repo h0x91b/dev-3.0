@@ -184,6 +184,7 @@ describe("saveSettings", () => {
 			// on platforms the canary feed publishes for.
 			updateChannel: "canary",
 			terminalPathOpenMode: "reveal",
+			terminalShell: "sh",
 			theme: "light",
 			analyticsDistinctId: "11111111-2222-3333-4444-555555555555",
 			resolvedTheme: "light",

@@ -18,9 +18,11 @@ import type {
 	GlobalSettings as GlobalSettingsType,
 	NativeTerminalAvailability,
 	RemoteTunnelSettings,
+	ShellAvailability,
 	ShortcutOverrides,
 	TerminalPathOpenMode,
 } from "../../shared/types";
+import type { ShellFlavor } from "../../shared/posix-shell";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { invalidateAvailableApps } from "../hooks/useAvailableApps";
 import { useDebouncedCallback } from "../hooks/useDebouncedCallback";
@@ -123,6 +125,9 @@ function GlobalSettings({
 		useState<NativeTerminalAvailability | null>(null);
 	const [newTaskTerminalBackend, setNewTaskTerminalBackend] =
 		useState<TerminalBackendIdentity | undefined>(undefined);
+	// Null until the host answers — the shell picker hides rather than claiming a
+	// machine has no zsh before anyone has looked.
+	const [shellAvailability, setShellAvailability] = useState<ShellAvailability | null>(null);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
 		normalizeSettingsCategoryId(section),
@@ -235,6 +240,9 @@ function GlobalSettings({
 			.catch(() => {});
 		api.request.getNewTaskTerminalBackend()
 			.then(({ backend }) => setNewTaskTerminalBackend(backend ?? undefined))
+			.catch(() => {});
+		api.request.getShellAvailability()
+			.then(setShellAvailability)
 			.catch(() => {});
 	}, []);
 
@@ -453,6 +461,24 @@ function GlobalSettings({
 					},
 				},
 			);
+		},
+		[persistSettingChange],
+	);
+
+	const handleTerminalShellChange = useCallback(
+		(shell: ShellFlavor | undefined) => {
+			persistSettingChange(
+				{ terminalShell: shell },
+				{
+					tracking: {
+						setting: "terminal_shell",
+						value: shell ?? "auto",
+					},
+				},
+			);
+			// The host re-resolves on save; re-read so a missing shell reports its
+			// fallback immediately instead of after a reopen.
+			api.request.getShellAvailability().then(setShellAvailability).catch(() => {});
 		},
 		[persistSettingChange],
 	);
@@ -770,8 +796,11 @@ function GlobalSettings({
 						newTaskTerminalBackend={newTaskTerminalBackend}
 						nativeTerminalAvailability={nativeTerminalAvailability}
 						terminalPathOpenMode={globalSettings.terminalPathOpenMode}
+						terminalShell={globalSettings.terminalShell}
+						shellAvailability={shellAvailability}
 						onNewTaskTerminalBackendChange={handleNewTaskTerminalBackendChange}
 						onTerminalPathOpenModeChange={handleTerminalPathOpenModeChange}
+						onTerminalShellChange={handleTerminalShellChange}
 					/>
 				);
 			case "agents":

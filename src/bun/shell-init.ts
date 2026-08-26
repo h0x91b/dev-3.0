@@ -103,10 +103,47 @@ bind '"\\e[1;5D": backward-word'
 bind '"\\e[1;5C": forward-word'
 `;
 
+// ── POSIX sh init ───────────────────────────────────────────────────
+// Reached through `$ENV`, which dash / busybox ash read for interactive
+// shells. dash has no PROMPT_COMMAND, but it does expand command substitution
+// in PS1 on every prompt (verified against /bin/dash), so the same short path
+// and branch a bash pane shows work here.
+//
+// Outside the worktree the prompt drops to the directory's own name: a full
+// absolute path here would wrap the line, and there is no `%~` in POSIX.
+
+const SHRC = `\
+# dev3: source the user's own sh config, then override the prompt
+[ -n "$DEV3_USER_ENV" ] && [ -f "$DEV3_USER_ENV" ] && . "$DEV3_USER_ENV"
+
+if [ -n "$DEV3_WORKTREE_ROOT" ]; then
+  _dev3_short_path() {
+    if [ "$PWD" = "$DEV3_WORKTREE_ROOT" ]; then
+      printf .
+    elif [ "\${PWD#$DEV3_WORKTREE_ROOT/}" != "$PWD" ]; then
+      printf './%s' "\${PWD#$DEV3_WORKTREE_ROOT/}"
+    else
+      printf '%s' "\${PWD##*/}"
+    fi
+  }
+
+  _dev3_git_branch() {
+    b=$(git symbolic-ref --short HEAD 2>/dev/null) ||
+      b=$(git rev-parse --short HEAD 2>/dev/null) || return 0
+    printf ' (%s)' "$b"
+  }
+
+  PS1='$(_dev3_short_path)$(_dev3_git_branch) $ '
+fi
+`;
+
 // ── Write to /tmp ───────────────────────────────────────────────────
 
 export function writeShellInit(): void {
 	mkdirSync(SHELL_INIT_DIR, { recursive: true });
+
+	// sh
+	writeFileSync(`${SHELL_INIT_DIR}/.shrc`, SHRC);
 
 	// zsh
 	writeFileSync(`${SHELL_INIT_DIR}/.zshenv`, ZSHENV);

@@ -152,6 +152,12 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		preventSleepWhileRunning: d.preventSleepWhileRunning ?? undefined,
 		skipQuitDialog: d.skipQuitDialog === true ? true : undefined,
 		importShellEnv: d.importShellEnv === false ? false : undefined,
+		// Undefined is the meaningful default here ("auto-detect"), so only one of
+		// the three known flavors is ever stored.
+		terminalShell:
+			d.terminalShell === "zsh" || d.terminalShell === "bash" || d.terminalShell === "sh"
+				? d.terminalShell
+				: undefined,
 		focusMode: d.focusMode === true ? true : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		agentRateLimitTracking: d.agentRateLimitTracking === false ? false : undefined,

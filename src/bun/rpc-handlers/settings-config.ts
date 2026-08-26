@@ -2,7 +2,9 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PATHS } from "../electrobun-platform";
-import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability } from "../../shared/types";
+import { SHELL_FALLBACK_ORDER, type ShellFlavor, shellCandidatePaths } from "../../shared/posix-shell";
+import { resolveUserShell, setShellPreference } from "../shell-env";
 import * as data from "../data";
 import * as agents from "../agents";
 import * as github from "../github";
@@ -166,8 +168,32 @@ async function getGitHubCliStatus(): Promise<GitHubCliStatus> {
 	return status;
 }
 
+/**
+ * Which shells this machine has and which one dev3 runs, so the Settings screen
+ * can say "zsh is not installed here — using bash" instead of leaving the user
+ * with a chosen shell that silently never starts.
+ */
+function getShellAvailability(): ShellAvailability {
+	const installed: Partial<Record<ShellFlavor, string>> = {};
+	if (process.platform !== "win32") {
+		for (const flavor of SHELL_FALLBACK_ORDER) {
+			const found = shellCandidatePaths(flavor).find((path) => isExecutableFile(path));
+			if (found) installed[flavor] = found;
+		}
+	}
+	const availability: ShellAvailability = {
+		resolved: process.platform === "win32" ? null : resolveUserShell(),
+		installed,
+	};
+	log.info("← getShellAvailability", { resolved: availability.resolved?.path, installed });
+	return availability;
+}
+
 async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	log.info("→ saveGlobalSettings", { params });
+	// Terminals launched after this point must use the newly chosen shell; the
+	// resolver caches for an hour, so it has to be told.
+	setShellPreference(params.terminalShell);
 	// A JSON-RPC patch may omit optional `focusMode`; preserve the live gate in
 	// that case instead of accidentally releasing queued agent notifications while
 	// the user changes an unrelated setting.
@@ -593,6 +619,7 @@ export const settingsConfigHandlers = {
 	getRepoConfigSources,
 	getGlobalSettings,
 	getGitHubCliStatus,
+	getShellAvailability,
 	saveGlobalSettings,
 	toggleFavoriteAgent,
 	installDev3Cli,

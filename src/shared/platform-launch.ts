@@ -164,8 +164,24 @@ export function windowsPowerShellPath(env: Record<string, string | undefined> = 
 export const WINDOWS_POWERSHELL_FALLBACK = "powershell.exe";
 
 /**
+ * The POSIX shell chosen by {@link resolvePosixShell}, published here by
+ * `shell-env.resolveUserShell()`. The dialect cannot read the `terminalShell`
+ * setting itself — it is shared code with no host access — so the host pushes
+ * the answer in and every generated wrapper follows the same shell the panes do.
+ */
+let posixDefaultShell: string | null = null;
+
+export function setPosixDefaultShell(shellPath: string | null): void {
+	posixDefaultShell = shellPath?.trim() || null;
+}
+
+/**
  * The shell that interprets dev3's generated scripts when no explicit path is
- * given. POSIX keeps the historical `$SHELL || /bin/zsh`.
+ * given: the resolved shell, else `$SHELL`, else `/bin/sh`.
+ *
+ * The last resort is `/bin/sh` rather than the historical `/bin/zsh` because it
+ * is the only shell POSIX guarantees exists — a minimal Linux box has no zsh,
+ * and a wrapper pointed at a missing binary cannot even report why it died.
  *
  * This is called during app boot (`getUserShell`), long before a window exists,
  * so it must not throw: an unset `%SystemRoot%` degrades to a PATH lookup rather
@@ -175,7 +191,7 @@ export function defaultLaunchShellPath(
 	platform: NodeJS.Platform = process.platform,
 	env: Record<string, string | undefined> = process.env,
 ): string {
-	if (platform !== "win32") return env.SHELL || "/bin/zsh";
+	if (platform !== "win32") return posixDefaultShell || env.SHELL || "/bin/sh";
 	try {
 		return windowsPowerShellPath(env);
 	} catch {
@@ -266,16 +282,30 @@ const posixDialect: LaunchDialect = {
 	readKey: (options) => {
 		// The wrapper scripts carry a `#!/bin/bash` shebang but are executed via
 		// the user's login shell (shebang ignored). bash-only `read -n 1 -s` then
-		// breaks under zsh, which spells "read N chars" as `-k N`.
+		// breaks under zsh, which spells "read N chars" as `-k N` — and a plain
+		// POSIX `sh` (dash / busybox ash) has neither `-n`/`-k` nor `-t`, so it
+		// waits for a whole line, or just sleeps out the countdown when there is
+		// one. Losing "any key closes it now" beats a syntax error in the pane.
 		const t = options?.timeoutSeconds;
 		const timeout = typeof t === "number" ? `-t ${t} ` : "";
-		return `if [ -n "$ZSH_VERSION" ]; then read ${timeout}-k 1 -s; else read ${timeout}-n 1 -s; fi`;
+		const posixArm = typeof t === "number" ? `sleep ${t}` : "read -r _dev3_key";
+		return (
+			`if [ -n "$ZSH_VERSION" ]; then read ${timeout}-k 1 -s; ` +
+			`elif [ -n "$BASH_VERSION" ]; then read ${timeout}-n 1 -s; ` +
+			`else ${posixArm}; fi`
+		);
 	},
 	readLine: () => "read -r",
 	declareFunction: (name, body) => [`${name}() {`, ...body, "}"],
 	callFunction: (name) => name,
 	loopForever: (body) => ["while true; do", ...body, "done"],
-	ifCommandExists: (binary, body) => [`if command -v ${posixShellQuote(binary)} &>/dev/null; then`, ...body, "fi"],
+	// `>/dev/null 2>&1`, not bash's `&>` — a POSIX `sh` reads `&>` as "run in the
+	// background, then redirect", so the guard would always pass.
+	ifCommandExists: (binary, body) => [
+		`if command -v ${posixShellQuote(binary)} >/dev/null 2>&1; then`,
+		...body,
+		"fi",
+	],
 	scriptLaunch: (scriptPath, options) =>
 		defineShellLaunchSpec({
 			executable: getLaunchShellPath(options.shellPath),

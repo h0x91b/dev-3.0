@@ -132,7 +132,10 @@ export function defaultNativeShellLaunchSpec(options: DefaultNativeShellOptions)
 		});
 	}
 	return defineShellLaunchSpec({
-		executable: options.env.SHELL || "/bin/bash",
+		// `$SHELL` carries the resolved `terminalShell` choice (set at boot); the
+		// literal is only for an environment that has none, where `/bin/sh` is the
+		// one shell POSIX guarantees.
+		executable: options.env.SHELL || "/bin/sh",
 		argv: [],
 		cwd: options.cwd,
 		env: {},

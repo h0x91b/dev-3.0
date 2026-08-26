@@ -1,21 +1,19 @@
 import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
-import { defaultLaunchShellPath } from "../shared/platform-launch";
+import { defaultLaunchShellPath, setPosixDefaultShell } from "../shared/platform-launch";
+import { isExecutableFile } from "./executable";
+import { loadSettingsSync } from "./settings";
+import {
+	type PosixShellResolution,
+	type ShellFlavor,
+	resolvePosixShell,
+	shellFlavorOf,
+} from "../shared/posix-shell";
 
 const log = createLogger("shell-env");
 
-type SupportedShell = "bash" | "zsh";
-
-function getShellName(shell: string): string {
-	return shell.split("/").pop() || shell;
-}
-
-export function getSupportedShell(shell: string): SupportedShell | null {
-	const name = getShellName(shell);
-	if (name === "bash" || name === "zsh") {
-		return name;
-	}
-	return null;
+export function getSupportedShell(shell: string): ShellFlavor | null {
+	return shellFlavorOf(shell);
 }
 
 // Shell rc files that should carry the `~/.dev3.0/bin` PATH line so the `dev3`
@@ -33,10 +31,17 @@ export function getSupportedShell(shell: string): SupportedShell | null {
 //
 // zsh reads `.zshrc` for every interactive shell (login or not), so one file
 // is enough there.
+//
+// A plain POSIX `sh` (dash / busybox ash) reads only the login profile
+// `~/.profile`; its non-login interactive rc is whatever `$ENV` points at,
+// which we must not hijack for the user's own machine-wide config.
 export function getShellRcFiles(shell: string, home: string, fileExists: (path: string) => boolean): string[] {
 	const supportedShell = getSupportedShell(shell);
 	if (supportedShell === "zsh") {
 		return [`${home}/.zshrc`];
+	}
+	if (supportedShell === "sh") {
+		return [`${home}/.profile`];
 	}
 	if (supportedShell === "bash") {
 		const loginCandidates = [`${home}/.bash_profile`, `${home}/.bash_login`, `${home}/.profile`];
@@ -96,24 +101,87 @@ function readAccountShell(): string | null {
 // sync spawn to every task launch / cleanup script run, which is the actual
 // cost we're avoiding. One refresh per hour is a fine compromise.
 const USER_SHELL_TTL_MS = 60 * 60 * 1000;
-let cachedUserShell: string | null = null;
+let cachedResolution: PosixShellResolution | null = null;
 let cachedUserShellAt = 0;
+let shellPreference: ShellFlavor | undefined;
+let shellPreferenceLoaded = false;
+
+/**
+ * Apply the `terminalShell` setting. Called whenever settings are saved; it
+ * drops the cache so the next launched terminal uses the new shell.
+ *
+ * Takes the value rather than re-reading the file: the save handler calls this
+ * before `saveSettings` returns, and a re-read would still see the old JSON.
+ */
+export function setShellPreference(preference: ShellFlavor | undefined): void {
+	shellPreference = preference;
+	shellPreferenceLoaded = true;
+	cachedResolution = null;
+	cachedUserShellAt = 0;
+}
+
+/**
+ * Read the stored preference on first use rather than requiring every entry
+ * point (app, headless server, e2e harness) to remember to push it in.
+ */
+function currentShellPreference(): ShellFlavor | undefined {
+	if (!shellPreferenceLoaded) {
+		try {
+			shellPreference = loadSettingsSync().terminalShell;
+		} catch (err) {
+			log.warn("Failed to read the shell preference — auto-detecting", { error: String(err) });
+			shellPreference = undefined;
+		}
+		shellPreferenceLoaded = true;
+	}
+	return shellPreference;
+}
+
+/**
+ * The resolved shell, including whether the requested flavor was missing — the
+ * Settings screen shows that as a warning instead of failing silently.
+ */
+export function resolveUserShell(): PosixShellResolution {
+	const now = Date.now();
+	if (cachedResolution && now - cachedUserShellAt < USER_SHELL_TTL_MS) {
+		return cachedResolution;
+	}
+	// Windows has no login-shell record to read and no POSIX shell at all — the
+	// dialect's own default (PowerShell) is the whole answer there.
+	if (process.platform === "win32") {
+		const path = defaultLaunchShellPath();
+		cachedResolution = { path, flavor: null, requested: "auto", fellBack: false };
+	} else {
+		cachedResolution = resolvePosixShell({
+			preference: currentShellPreference(),
+			accountShell: readAccountShell(),
+			envShell: process.env.SHELL ?? null,
+			exists: isExecutableFile,
+		});
+		if (cachedResolution.fellBack) {
+			log.warn("Configured shell is not installed — falling back", {
+				requested: cachedResolution.requested,
+				using: cachedResolution.path,
+			});
+		}
+		// Generated wrapper scripts resolve their shell through the launch
+		// dialect, which has no access to the setting; keep the two in lockstep.
+		setPosixDefaultShell(cachedResolution.path);
+	}
+	cachedUserShellAt = now;
+	return cachedResolution;
+}
 
 export function getUserShell(): string {
-	const now = Date.now();
-	if (cachedUserShell && now - cachedUserShellAt < USER_SHELL_TTL_MS) {
-		return cachedUserShell;
-	}
-	// Platform-aware default: on Windows there is no login-shell record to read
-	// and no `/bin/zsh` — the shell is Windows PowerShell.
-	cachedUserShell = readAccountShell() || defaultLaunchShellPath();
-	cachedUserShellAt = now;
-	return cachedUserShell;
+	return resolveUserShell().path;
 }
 
 export function _resetUserShellCacheForTests(): void {
-	cachedUserShell = null;
+	cachedResolution = null;
 	cachedUserShellAt = 0;
+	shellPreference = undefined;
+	shellPreferenceLoaded = false;
+	setPosixDefaultShell(null);
 }
 
 export interface ResolvedShellEnv {
@@ -207,6 +275,20 @@ function parseNullDelimitedEnv(stdout: string): Record<string, string> {
 	return result;
 }
 
+async function runEnvDump(
+	shell: string,
+	args: string[],
+	timeout: number,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+	const proc = spawn([shell, ...args], { stdout: "pipe", stderr: "pipe" });
+	const timer = setTimeout(() => proc.kill(), timeout);
+	const exitCode = await proc.exited;
+	clearTimeout(timer);
+	const stdout = await new Response(proc.stdout).text();
+	const stderr = await new Response(proc.stderr).text();
+	return { exitCode, stdout, stderr: stderr.trim() };
+}
+
 /**
  * Resolve the user's shell environment by spawning their login shell.
  *
@@ -218,8 +300,8 @@ function parseNullDelimitedEnv(stdout: string): Record<string, string> {
  * - No user-exported credentials (MCP connection strings, API keys, ...): every
  *   env-based MCP server then fails inside agent sessions.
  *
- * This runs the user's *active* login shell (bash or zsh, whichever `getUserShell`
- * reports) and captures its full exported environment so spawned processes (tmux,
+ * This runs the user's *active* login shell (zsh, bash or sh, whichever
+ * `getUserShell` reports) and captures its full exported environment so spawned processes (tmux,
  * git, gh, pbcopy, agents, MCP servers) see exactly what a real terminal would.
  */
 export async function resolveShellEnv(): Promise<ResolvedShellEnv> {
@@ -239,24 +321,23 @@ export async function resolveShellEnv(): Promise<ResolvedShellEnv> {
 		// into the tty's foreground — and after it exits the foreground process
 		// group is left pointing at a dead pgid, so Ctrl+C delivers SIGINT to
 		// nobody and the app looks unkillable from the terminal.
-		const proc = spawn([shell, "+m", "-ilc", ENV_DUMP_COMMAND], {
-			stdout: "pipe",
-			stderr: "pipe",
-		});
+		//
+		// A minimal `sh` may reject that argument cluster outright, and its whole
+		// exported environment is what puts PATH in every agent session — so a
+		// refusal retries with the plain login form instead of leaving the app on
+		// the bare `.app` PATH.
+		let run = await runEnvDump(shell, ["+m", "-ilc", ENV_DUMP_COMMAND], timeout);
+		if (run.exitCode !== 0 && getSupportedShell(shell) === "sh") {
+			log.info("Retrying env dump without job-control flags", { shell, exitCode: run.exitCode });
+			run = await runEnvDump(shell, ["-lc", ENV_DUMP_COMMAND], timeout);
+		}
 
-		const timer = setTimeout(() => proc.kill(), timeout);
-
-		const exitCode = await proc.exited;
-		clearTimeout(timer);
-
-		if (exitCode !== 0) {
-			const stderr = await new Response(proc.stderr).text();
-			log.warn("Shell exited with non-zero code", { shell, exitCode, stderr: stderr.trim() });
+		if (run.exitCode !== 0) {
+			log.warn("Shell exited with non-zero code", { shell, exitCode: run.exitCode, stderr: run.stderr });
 			return {};
 		}
 
-		const stdout = await new Response(proc.stdout).text();
-		const parsed = parseNullDelimitedEnv(stdout);
+		const parsed = parseNullDelimitedEnv(run.stdout);
 
 		const pathVal = parsed.PATH?.trim();
 		const langVal = parsed.LANG?.trim();
