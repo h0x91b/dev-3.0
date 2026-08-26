@@ -18,6 +18,10 @@ vi.mock("../../rpc", () => ({
 
 const tip = ALL_TIPS.find((t) => t.id === "terminal-select-copies")!;
 const linkedTip = ALL_TIPS.find((t) => t.id === "focus-mode-mutes-pings")!;
+
+it("links the Focus Mode tip to Notifications", () => {
+	expect(linkedTip.settingsSection).toBe("notifications");
+});
 const tipState: TipState = { snoozedUntil: 0, seen: {}, rotationIndex: 3 };
 
 function renderCard(onChanged = vi.fn(), which = tip) {
