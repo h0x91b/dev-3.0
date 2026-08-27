@@ -375,7 +375,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		});
 
 		const resp = await respPromise;
-		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe('dev3 message --task seq:7 --variant 2 "your message"');
+		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe('dev3 message --task seq:7 --variant 2 --subject "what your reply is about" "your message"');
 		expect(deliverLaunchHandoff).toHaveBeenCalledWith(expect.objectContaining({
 			source: expect.objectContaining({ seq: 3, variantIndex: 1 }),
 		}));
@@ -404,7 +404,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		});
 
 		const resp = await respPromise;
-		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe('dev3 message --task seq:7 "your message"');
+		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe('dev3 message --task seq:7 --subject "what your reply is about" "your message"');
 	});
 
 	it("scopes the reply command with --project when the requester is on another board", async () => {
@@ -436,7 +436,7 @@ describe("task.move — agent-initiated launch approval", () => {
 		const resp = await respPromise;
 		// Without the scope the requester would look seq:7 up on its OWN board.
 		expect((resp.data as { launched: Array<{ replyCommand: string }> }).launched[0]!.replyCommand).toBe(
-			'dev3 message --task seq:7 --project proj-1 "your message"',
+			'dev3 message --task seq:7 --project proj-1 --subject "what your reply is about" "your message"',
 		);
 	});
 
@@ -723,8 +723,8 @@ describe("task.move — agent-initiated launch with variants", () => {
 			approved: true,
 			seq: 7,
 			launched: [
-				{ variantIndex: 1, replyCommand: 'dev3 message --task seq:7 --variant 1 "your message"' },
-				{ variantIndex: 2, replyCommand: 'dev3 message --task seq:7 --variant 2 "your message"' },
+				{ variantIndex: 1, replyCommand: 'dev3 message --task seq:7 --variant 1 --subject "what your reply is about" "your message"' },
+				{ variantIndex: 2, replyCommand: 'dev3 message --task seq:7 --variant 2 --subject "what your reply is about" "your message"' },
 			],
 		});
 	});

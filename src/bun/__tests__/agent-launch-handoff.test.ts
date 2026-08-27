@@ -21,7 +21,7 @@ vi.mock("../rpc-handlers", () => ({
 	pushCliToast: (...args: unknown[]) => pushCliToast(...args),
 }));
 
-import { deliverLaunchHandoff, HANDOFF_MESSAGE } from "../agent-launch-handoff";
+import { deliverLaunchHandoff, HANDOFF_MESSAGE, HANDOFF_SUBJECT } from "../agent-launch-handoff";
 
 const project = { id: "p1", path: "/tmp/proj" };
 const source = { taskId: "parent", seq: 7, title: "Parent" };
@@ -46,7 +46,7 @@ describe("deliverLaunchHandoff", () => {
 	it("delivers the note once the child's agent pane is up", async () => {
 		getTask.mockResolvedValue(liveTask());
 		await expect(deliverLaunchHandoff({ projectId: "p1", childTaskId: "child-1234", source })).resolves.toBe(true);
-		expect(sendMessageImmediately).toHaveBeenCalledWith(expect.objectContaining({ id: "child-1234" }), HANDOFF_MESSAGE, null, source, { hold: false });
+		expect(sendMessageImmediately).toHaveBeenCalledWith(expect.objectContaining({ id: "child-1234" }), HANDOFF_MESSAGE, null, source, { hold: false, subject: HANDOFF_SUBJECT });
 	});
 
 	// A held handoff would leave a freshly booted agent idle for the whole quiet
@@ -54,7 +54,7 @@ describe("deliverLaunchHandoff", () => {
 	it("never holds the note — the child hears it at once", async () => {
 		getTask.mockResolvedValue(liveTask());
 		await deliverLaunchHandoff({ projectId: "p1", childTaskId: "child-1234", source });
-		expect(sendMessageImmediately.mock.calls[0]?.[4]).toEqual({ hold: false });
+		expect(sendMessageImmediately.mock.calls[0]?.[4]).toMatchObject({ hold: false });
 	});
 
 	it("gives up without sending when the child is already terminal", async () => {
