@@ -183,11 +183,13 @@ Every table gets its reading aids from the shell: alternating row tint, a full-r
 
 Mark a sortable heading with `data-sort` plus `tabindex="0"`; the shell maintains `aria-sort` and renders the ascending/descending caret, so report code only has to sort the data. A heading without `data-sort` renders as a plain label with no pointer cursor.
 
+**No table scrolls sideways, and you write nothing to get that.** Below 768px of the table's own container each row stops being a row of columns and becomes a stack of labelled lines; the shell copies every `thead` heading onto the cells beneath it, so a plain `<table>` with a real `<thead>` is the whole requirement. Never add a horizontal scroller, a `width: max-content`, or a `white-space: nowrap` around a table — that is the pattern this replaces. Two consequences worth knowing: a table needs a `<thead>` or its stacked cells have no labels, and the header row is hidden while stacked, so a report that must stay sortable on a phone puts a sort `<select>` in `.table-tools`. Print is unaffected — paper always gets real columns and a repeating header.
+
 ## Dense evidence tables
 
 Keep decision summaries and charts first, then preserve exhaustive source rows in a visible evidence ledger. Large mechanically produced datasets may live in an additional classic JavaScript asset such as `evidence-data.js`; list it in `--assets`, load it before `report.js`, and keep only rendering logic in `report.js`.
 
-Wrap wide tables in `.evidence-table-scroll` and add `.evidence-table` to the table. The shell keeps every column reachable with horizontal scrolling on narrow screens and lays all columns out for print. The first column is pinned while the numbers scroll past it, so put the row's identity there — a day, a cohort, a file — and never a value that only makes sense next to its neighbours. Reuse the semantic source markers `.good`, `.bad`, `.sig`, `.flat`, `.dim`, `.sep`, `.regime`, and `.total`; the shell maps them to dev3 tokens, quiet typographic significance emphasis, column separators, rollout boundaries, and total rows.
+Wrap wide tables in `.evidence-table-scroll` and add `.evidence-table` to the table. The wrapper keeps its name but no longer scrolls: it is what makes the table measure its own box, so a ledger inside a half-width panel stacks while the page is still wide. Put the row's identity in the first column — a day, a cohort, a file — and never a value that only makes sense next to its neighbours; it is the line a reader looks for first in both the tabular and the stacked form. Mark a prose cell `.wrap` and it takes the full width instead of one column when stacked. Reuse the semantic source markers `.good`, `.bad`, `.sig`, `.flat`, `.dim`, `.sep`, `.regime`, and `.total`; the shell maps them to dev3 tokens, quiet typographic significance emphasis, column separators, rollout boundaries, and total rows.
 
 ## Print and PDF
 

@@ -490,6 +490,9 @@
     [data-popover-trigger][aria-expanded="true"] .popover-caret { transform: rotate(180deg); }
     /* clip, not hidden: hidden makes the card a scrollport and unpins the header. */
     .table-card { padding: 0; overflow: clip; }
+    /* A table answers to the box it sits in, not to the window: one inside a
+       half-width panel has to stack while the page is still wide. */
+    .table-card, .evidence-table-scroll { container: dev3-table / inline-size; }
     .table-head { padding: 16px 18px 12px; }
     .table-tools { gap: 8px; }
     .table-tools input, .table-tools select {
@@ -502,7 +505,7 @@
     }
     .table-tools input { width: 12rem; }
     table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-    th, td { padding: 11px 18px; border-top: 1px solid rgb(var(--dev3-border)); text-align: left; font-size: .75rem; }
+    th, td { padding: 11px 18px; border-top: 1px solid rgb(var(--dev3-border)); overflow-wrap: break-word; text-align: left; font-size: .75rem; }
     /* A vertical rule keeps the eye inside one column across a wide row; every
        cell owns its trailing edge so a pinned column can strengthen its own. */
     th:not(:last-child), td:not(:last-child) { border-inline-end: 1px solid rgb(var(--dev3-border) / .5); }
@@ -543,17 +546,13 @@
     .evidence-table-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 14px 8px; background: rgb(var(--dev3-surface-elevated) / .42); }
     .evidence-table-title { margin: 0; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; font-weight: 700; }
     .evidence-table-meta { flex: 0 0 auto; color: rgb(var(--dev3-text-muted)); font: .625rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .evidence-table-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-gutter: stable; }
-    .evidence-table { width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
-    .evidence-table th, .evidence-table td { padding: 6px 9px; white-space: nowrap; text-align: right; font-size: .65625rem; }
+    /* Kept as the table's query container; it deliberately does not scroll. */
+    .evidence-table-scroll { max-width: 100%; }
+    .evidence-table { width: 100%; font-variant-numeric: tabular-nums; }
+    .evidence-table th, .evidence-table td { padding: 6px 9px; text-align: right; font-size: .65625rem; }
     .evidence-table th { background: rgb(var(--dev3-surface-raised)); cursor: default; font-size: .59375rem; }
-    /* Its own scroller is the scrollport, so the page offset would push the
-       header onto the rows instead of pinning it. */
-    .evidence-table thead th { top: 0; }
-    /* The label column stays put while the numbers scroll past it. */
-    .evidence-table th:first-child, .evidence-table td:first-child { position: sticky; inset-inline-start: 0; border-inline-end-color: rgb(var(--dev3-border)); text-align: left; }
-    .evidence-table thead th:first-child { z-index: 6; }
-    .evidence-table tbody td:first-child { z-index: 1; background-color: rgb(var(--dev3-surface-raised)); background-image: linear-gradient(var(--dev3-row-tint, transparent), var(--dev3-row-tint, transparent)); }
+    /* The row's identity reads as a label, not as one more number. */
+    .evidence-table th:first-child, .evidence-table td:first-child { border-inline-end-color: rgb(var(--dev3-border)); text-align: left; }
     .evidence-table th.grp { border-left: 1px solid rgb(var(--dev3-border)); text-align: center; color: rgb(var(--dev3-text-secondary)); }
     .evidence-table .sep { border-left: 1px solid rgb(var(--dev3-border)); }
     .evidence-table .day { color: rgb(var(--dev3-text-primary)); font-weight: 650; }
@@ -561,7 +560,7 @@
     .evidence-table .bad, .evidence-table .neg { color: rgb(var(--dev3-danger)); }
     .evidence-table .flat, .evidence-table .dim { color: rgb(var(--dev3-text-muted)); }
     .evidence-table .sig { font-weight: 700; }
-    .evidence-table .wrap { min-width: 15rem; white-space: normal; text-align: left; line-height: 1.45; }
+    .evidence-table .wrap { text-align: left; line-height: 1.45; }
     .evidence-table tr.regime td { border-top: 2px solid rgb(var(--dev3-accent) / .55); }
     .evidence-table tr.total td { border-top: 2px solid rgb(var(--dev3-border)); color: rgb(var(--dev3-text-primary)); font-weight: 700; }
     .pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: .6875rem; font-weight: 650; }
@@ -623,11 +622,36 @@
       .choice-grid { grid-template-columns: 1fr; }
       .table-tools { align-items: stretch; flex-direction: column; }
       .table-tools input { width: 100%; }
-      th:nth-child(3), td:nth-child(3), th:nth-child(5), td:nth-child(5) { display: none; }
-      .evidence-table th:nth-child(3), .evidence-table td:nth-child(3), .evidence-table th:nth-child(5), .evidence-table td:nth-child(5) { display: table-cell; }
       .evidence-group-head, .evidence-toolbar { align-items: stretch; flex-direction: column; }
       .evidence-toolbar .choices { width: 100%; min-width: 0; }
       .dev3-footer { align-items: flex-start; flex-direction: column; }
+    }
+    /* No table ever scrolls sideways. Past the narrow gate a row stops being a
+       row of columns and becomes a stack of labelled lines, so a 20-column table
+       still fits a phone — long vertically, never wide. auto-fit pairs cells up
+       while there is room and drops to one per line on the narrowest screens. */
+    @container dev3-table (max-width: 768px) {
+      /* Every cell carries its own heading now, and a row of headings is exactly
+         the width pressure being removed. */
+      thead { display: none; }
+      table, tbody { display: block; }
+      tbody tr { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 2px 16px; padding: 12px 16px; border-top: 1px solid rgb(var(--dev3-border)); }
+      tbody th, tbody td { display: block; padding: 4px 0; border: 0; text-align: left; font-size: .75rem; }
+      /* The shell copies thead text onto each cell, so authors write no labels. */
+      tbody td[data-dev3-label]::before {
+        display: block;
+        color: rgb(var(--dev3-text-muted));
+        content: attr(data-dev3-label);
+        font-size: .5625rem;
+        font-weight: 600;
+        letter-spacing: .05em;
+        text-transform: uppercase;
+      }
+      /* Its own selector outranks the generic cell rule, so a stacked ledger cell
+         has to be told again not to hug the right edge. */
+      .evidence-table th, .evidence-table td { text-align: left; font-size: .6875rem; }
+      /* A prose cell takes the whole width instead of one 13rem column. */
+      .evidence-table .wrap { grid-column: 1 / -1; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
@@ -684,8 +708,10 @@
       .evidence-table-head { padding: 5px 7px 3px; break-after: avoid; }
       .evidence-table-title { font-size: .4375rem; }
       .evidence-table-meta { font-size: .375rem; }
-      .evidence-table-scroll { overflow: visible; }
-      .evidence-table { width: 100%; min-width: 0; table-layout: auto; }
+      /* Paper is narrow enough to trip the stacking query, and print wants real
+         columns with a repeating header — so the query container goes away. */
+      .table-card, .evidence-table-scroll { container: normal; }
+      .evidence-table { width: 100%; table-layout: auto; }
       .evidence-table th, .evidence-table td { display: table-cell; padding: 1.5px 3px; white-space: normal; font-size: .3875rem; }
       .evidence-table th { font-size: .3625rem; }
       .pill { padding: 2px 5px; font-size: .4375rem; }

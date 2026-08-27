@@ -342,8 +342,6 @@ describe("bundled artifact starter contract", () => {
 		expect(css).toContain("top: var(--dev3-table-head-top, 0px)");
 		// hidden would turn the card into a scrollport and unpin the header.
 		expect(css).toContain(".table-card { padding: 0; overflow: clip; }");
-		// The evidence scroller is its own scrollport, so the page offset must not apply.
-		expect(css).toContain(".evidence-table thead th { top: 0; }");
 		expect(css).toContain('th[aria-sort="descending"]::after');
 		expect(app).toContain("function trackStickyOffset");
 		expect(app).toContain("--dev3-table-head-top");
@@ -352,15 +350,33 @@ describe("bundled artifact starter contract", () => {
 		expect(guide).toContain("## Tables");
 	});
 
-	it("keeps the pinned evidence label column readable while the numbers scroll", () => {
+	it("stacks a table into labelled lines instead of scrolling it sideways", () => {
 		const css = readFileSync(cssPath, "utf8");
+		const app = readFileSync(appPath, "utf8");
 		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+		const stackedBlock = css.slice(css.indexOf("@container dev3-table"));
 		const printBlock = css.slice(css.indexOf("@media print"));
 
-		expect(css).toContain("inset-inline-start: 0");
-		expect(css).toContain("background-image: linear-gradient(var(--dev3-row-tint, transparent)");
-		expect(printBlock).toContain(".evidence-table th:first-child, .evidence-table td:first-child { position: static;");
-		expect(guide).toContain("The first column is pinned");
+		// No table may reintroduce a horizontal scroller or an unwrappable cell.
+		// `.section-nav` is the one sanctioned inline scroller and is not a table.
+		const scrollers = css.match(/[^\n]*overflow-x:\s*auto[^\n]*/g) || [];
+		expect(scrollers).toHaveLength(1);
+		expect(css.slice(0, css.indexOf("overflow-x: auto"))).toMatch(/\.section-nav\s*\{[^}]*$/);
+		expect(css).not.toMatch(/width:\s*max-content/);
+		// A cell must be able to wrap, or the table grows past its container.
+		const evidenceCells = css.match(/\.evidence-table th, \.evidence-table td \{([^}]*)\}/)?.[1] || "";
+		expect(evidenceCells).not.toContain("nowrap");
+		expect(css).toContain("overflow-wrap: break-word");
+		// The table measures its own box, so one in a narrow panel stacks too.
+		expect(css).toContain(".table-card, .evidence-table-scroll { container: dev3-table / inline-size; }");
+		expect(stackedBlock).toContain("thead { display: none; }");
+		expect(stackedBlock).toContain("content: attr(data-dev3-label)");
+		// Paper is narrow enough to match the query, so print drops the container.
+		expect(printBlock).toContain(".table-card, .evidence-table-scroll { container: normal; }");
+		// Labels come from the shell, so a plain <table> needs no new markup.
+		expect(app).toContain("function labelTableCells");
+		expect(app).toContain('cell.setAttribute("data-dev3-label", label)');
+		expect(guide).toContain("No table scrolls sideways");
 	});
 
 	it("keeps dense-table significance markers typographic", () => {
@@ -479,10 +495,12 @@ describe("bundled artifact starter contract", () => {
 		// makes artifact HTML unreadable for agents (the reason we load from CDN).
 		expect(statSync(htmlPath).size).toBeLessThan(120_000);
 		expect(statSync(htmlPath).size).toBeLessThan(MAX_SHARED_ARTIFACT_HTML_BYTES);
-		// The shell stylesheet is not part of the authoring surface, so its budget
-		// only has to stay far below an inlined library.
-		expect(statSync(cssPath).size).toBeLessThan(37_000);
-		expect(statSync(appPath).size).toBeLessThan(30_000);
+		// The shell stylesheet and script are not part of the authoring surface, so
+		// their budgets only have to stay far below an inlined library — these are
+		// ~25x under one, and both sat at 98%+ of the previous caps before the
+		// responsive-table work, which left no room for any real change.
+		expect(statSync(cssPath).size).toBeLessThan(40_000);
+		expect(statSync(appPath).size).toBeLessThan(33_000);
 		expect(statSync(reportPath).size).toBeLessThan(15_000);
 	});
 });

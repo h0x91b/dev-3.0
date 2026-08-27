@@ -369,10 +369,38 @@
     });
   }
 
+  // A narrow table stacks each row into labelled lines, and the label has to come
+  // from the column heading. The shell copies it onto every cell so report markup
+  // stays a plain <table> with no per-cell label attribute to keep in sync.
+  function labelTableCells(root = document) {
+    root.querySelectorAll("table").forEach((table) => {
+      const headings = Array.from(table.querySelectorAll("thead tr:last-of-type th"), (th) => th.textContent.trim());
+      if (!headings.length) return;
+      table.querySelectorAll("tbody tr").forEach((row) => {
+        Array.from(row.cells).forEach((cell, index) => {
+          // A spanning cell (empty state, total) belongs to no single column.
+          if (cell.colSpan > 1) return;
+          const label = headings[index];
+          if (label) cell.setAttribute("data-dev3-label", label);
+        });
+      });
+    });
+  }
+
+  let queuedLabelPass = 0;
+  function scheduleTableLabels() {
+    if (queuedLabelPass) return;
+    queuedLabelPass = requestAnimationFrame(() => {
+      queuedLabelPass = 0;
+      labelTableCells();
+    });
+  }
+
   function enhanceControls(root = document) {
     initializePopovers(root);
     initializeSelects(root);
     initializeSliders(root);
+    labelTableCells(root);
   }
 
   function setControlValue(control, value) {
@@ -552,6 +580,13 @@
   trackStickyOffset();
   initializeSortIndicators();
   enhanceControls();
+
+  // report.js renders and re-renders rows after the shell has run, so relabel
+  // whenever a table's contents change. childList only — writing the attribute
+  // must not retrigger the pass.
+  new MutationObserver((records) => {
+    if (records.some((record) => record.target instanceof Element && record.target.closest("table"))) scheduleTableLabels();
+  }).observe(document.body, { childList: true, subtree: true });
 
   // ---- generic shell controls -----------------------------------------------
   let themeMode = "auto";
