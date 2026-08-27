@@ -53,6 +53,7 @@ vi.mock("../rpc", () => ({
 			markTaskSharedItemsRead: vi.fn().mockResolvedValue({ id: "updated-task" }),
 			listAgentSkills: vi.fn().mockResolvedValue([]),
 			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
+			listPendingCompletionRequests: vi.fn().mockResolvedValue([]),
 			respondToAgentLaunchRequest: vi.fn().mockResolvedValue(undefined),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			getRemoteAccessQR: vi.fn().mockResolvedValue({
@@ -170,6 +171,9 @@ import { confirm } from "../confirm";
 vi.mock("../confirm", () => ({
 	confirm: vi.fn().mockResolvedValue(false),
 	ConfirmHost: () => null,
+	// The stubbed host is always "mounted" here — the real readiness wait is
+	// covered in confirm.test.tsx against the real ConfirmHost.
+	whenConfirmHostMounted: vi.fn().mockResolvedValue(true),
 }));
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "../task-sounds";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "../zoom";
@@ -2734,6 +2738,47 @@ describe("App keyboard shortcuts", () => {
 				priority: "P0",
 				labels: [{ id: "l1", name: "Feature", color: "#84cc16" }],
 			});
+		});
+	});
+
+	// `agentCompletionRequested` is a one-shot push, so a window that reloads
+	// before answering never sees it again — and the blocked agent's retry joins
+	// the same request rather than pushing a second time. A connecting client asks
+	// what is still pending, which is what makes the request answerable at all.
+	describe("pending completion requests on connect", () => {
+		it("draws a dialog for a request that was pushed before this window existed", async () => {
+			vi.mocked(api.request.listPendingCompletionRequests).mockResolvedValue([
+				{ requestId: "req-orphan", taskId: "t1", projectId: "p1", taskTitle: "Stranded task", subject: undefined },
+			] as never);
+			vi.mocked(confirm).mockResolvedValue(false);
+
+			await renderApp();
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalledWith({
+					requestId: "req-orphan",
+					approved: false,
+				});
+			});
+		});
+
+		it("does not stack two dialogs when the push and the replay name the same request", async () => {
+			vi.mocked(api.request.listPendingCompletionRequests).mockResolvedValue([
+				{ requestId: "req-dup", taskId: "t1", projectId: "p1", taskTitle: "Same task", subject: undefined },
+			] as never);
+			// Never settles, so the first dialog is still open when the push arrives.
+			vi.mocked(confirm).mockImplementation((() => new Promise<boolean>(() => {})) as never);
+
+			await renderApp();
+			await waitFor(() => expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1));
+
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", {
+					detail: { requestId: "req-dup", taskId: "t1", projectId: "p1", taskTitle: "Same task" },
+				}));
+			});
+
+			expect(vi.mocked(confirm)).toHaveBeenCalledTimes(1);
 		});
 	});
 

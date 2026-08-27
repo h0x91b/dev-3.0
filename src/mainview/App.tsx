@@ -52,7 +52,7 @@ import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/Keyboard
 import UpdatePopoverSimulatorModal from "./components/UpdatePopoverSimulatorModal";
 import RemoteAccessDialog from "./components/RemoteAccessDialog";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
-import { ConfirmHost, confirm } from "./confirm";
+import { ConfirmHost, confirm, whenConfirmHostMounted } from "./confirm";
 import AgentLaunchRequestModal from "./components/AgentLaunchRequestModal";
 import AboutModal from "./components/AboutModal";
 import FeatureFlagsModal from "./components/FeatureFlagsModal";
@@ -615,6 +615,10 @@ function App() {
 	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings, diff viewer)
 	const navigationGuardRef = useRef<NavigationGuard | null>(null);
 	const [pendingNavigation, setPendingNavigation] = useState<Route | null>(null);
+
+	// Completion dialogs this window already has on screen, so the push and the
+	// on-connect replay of the same request cannot stack two confirms.
+	const completionDialogsShowingRef = useRef<Set<string>>(new Set());
 
 	// Latest route mirror — async event handlers read this to make routing decisions
 	// without re-subscribing every navigation.
@@ -1867,13 +1871,22 @@ function App() {
 	// Listen for agent-initiated completion requests — the CLI is blocked on a
 	// socket waiting for the user's decision, so always respond, even on cancel.
 	useEffect(() => {
-		async function onAgentCompletionRequested(e: Event) {
-			const { requestId, taskId, taskTitle, subject } = (e as CustomEvent).detail as {
-				requestId: string;
-				taskId: string;
-				taskTitle: string;
-				subject?: TaskDialogSubject;
-			};
+		// One dialog per request on this client. The push and the on-connect replay
+		// can both name the same request (a reload that raced the push), and two
+		// stacked confirms for one approval is worse than the bug being fixed. The
+		// set lives in a ref because this effect re-runs on every `t`/`navigate`
+		// identity change — a set rebuilt per run would forget what is on screen.
+		const showing = completionDialogsShowingRef.current;
+
+		async function showCompletionDialog(request: {
+			requestId: string;
+			taskId: string;
+			taskTitle: string;
+			subject?: TaskDialogSubject;
+		}) {
+			const { requestId, taskId, taskTitle, subject } = request;
+			if (showing.has(requestId)) return;
+			showing.add(requestId);
 			let approved = false;
 			// The same dialog is up on every connected client; the first answer
 			// closes the rest (see createAgentRequestAbort).
@@ -1893,6 +1906,7 @@ function App() {
 				console.error("[App] confirm (agent-completion) failed:", err);
 			} finally {
 				abort.cleanup();
+				showing.delete(requestId);
 			}
 			// Answered on another client — that client owns every side effect, and
 			// the CLI already has its decision.
@@ -1912,7 +1926,31 @@ function App() {
 				console.error("respondToAgentCompletionRequest failed:", err),
 			);
 		}
+
+		function onAgentCompletionRequested(e: Event) {
+			void showCompletionDialog((e as CustomEvent).detail);
+		}
 		window.addEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
+
+		// The push above is a one-shot event. A window that reloads before answering
+		// would otherwise never be offered the dialog again — the blocked agent's
+		// retry joins the same request instead of triggering a new push — so the
+		// request would sit unanswerable for the rest of the app session. Ask what
+		// is still pending as soon as this client is listening.
+		api.request.listPendingCompletionRequests({}).then(async (pending) => {
+			if (pending.length === 0) return;
+			// `confirm()` is fail-closed, and this runs during startup: calling it
+			// before ConfirmHost has mounted would resolve `false` with no dialog on
+			// screen and answer "declined" for a user who was never asked. Rather
+			// than auto-decline, leave the request pending — the next window to
+			// connect replays it again.
+			if (!await whenConfirmHostMounted()) {
+				console.error("[App] pending completion dialogs skipped — ConfirmHost never mounted");
+				return;
+			}
+			for (const request of pending) void showCompletionDialog(request);
+		}).catch((err) => console.error("listPendingCompletionRequests failed:", err));
+
 		return () => window.removeEventListener("rpc:agentCompletionRequested", onAgentCompletionRequested);
 	}, [dispatch, navigate, t]);
 

@@ -16,10 +16,20 @@ vi.mock("../rpc-handlers/shared-pure", () => ({
 
 import {
 	createAgentRequest,
+	listPendingAgentRequests,
 	resolveAgentRequest,
 	setAgentRequestLaunchChoice,
 	_resetAgentRequestsForTests,
 } from "../agent-requests";
+import type { TaskDialogSubject } from "../../shared/types";
+
+const SUBJECT: TaskDialogSubject = {
+	seqLabel: "42",
+	projectName: "Test Project",
+	priority: "P3",
+	labels: [],
+	overview: null,
+};
 
 beforeEach(() => {
 	_resetAgentRequestsForTests();
@@ -202,5 +212,57 @@ describe("auto-approval", () => {
 
 	it("ignores a choice reported for an unknown request", () => {
 		expect(setAgentRequestLaunchChoice("nope", { variants: [{ agentId: null, configId: null }] })).toBe(false);
+	});
+});
+
+// A dialog lives only as a promise inside a renderer, and the push that draws it
+// fires once. Without this list, a renderer that reloads before answering leaves
+// the request alive and unanswerable for the rest of the app session, because a
+// retrying agent joins the same entry instead of triggering a second push.
+describe("listPendingAgentRequests", () => {
+	it("returns a pending request so a renderer that connects later can redraw it", () => {
+		const { requestId } = createAgentRequest("complete", "task-1", "proj-1", {
+			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
+		});
+
+		expect(listPendingAgentRequests("complete")).toEqual([
+			{ requestId, taskId: "task-1", projectId: "proj-1", dialog: { taskTitle: "Ship the thing", subject: SUBJECT } },
+		]);
+	});
+
+	it("stops returning a request once it is answered", () => {
+		const { requestId } = createAgentRequest("complete", "task-1", "proj-1", {
+			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
+		});
+		resolveAgentRequest(requestId, { approved: false });
+
+		expect(listPendingAgentRequests("complete")).toEqual([]);
+	});
+
+	it("keeps a joined retry to ONE entry, so the reconnecting renderer draws one dialog", () => {
+		const first = createAgentRequest("complete", "task-1", "proj-1", {
+			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
+		});
+		const retry = createAgentRequest("complete", "task-1", "proj-1", {
+			dialog: { taskTitle: "Ship the thing", subject: SUBJECT },
+		});
+
+		expect(retry.isNew).toBe(false);
+		expect(listPendingAgentRequests("complete")).toHaveLength(1);
+		expect(listPendingAgentRequests("complete")[0].requestId).toBe(first.requestId);
+	});
+
+	it("does not mix the kinds", () => {
+		createAgentRequest("complete", "task-1", "proj-1", { dialog: { taskTitle: "A", subject: SUBJECT } });
+		createAgentRequest("launch", "task-2", "proj-1", { dialog: { taskTitle: "B", subject: SUBJECT } });
+
+		expect(listPendingAgentRequests("complete").map((r) => r.taskId)).toEqual(["task-1"]);
+		expect(listPendingAgentRequests("launch").map((r) => r.taskId)).toEqual(["task-2"]);
+	});
+
+	it("omits a request created without a dialog — there would be nothing to draw", () => {
+		createAgentRequest("complete", "task-1", "proj-1");
+
+		expect(listPendingAgentRequests("complete")).toEqual([]);
 	});
 });

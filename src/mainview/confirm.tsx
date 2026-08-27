@@ -120,6 +120,32 @@ export function confirm(options: ConfirmOptions): Promise<boolean | string> {
 	});
 }
 
+/**
+ * Resolves once `<ConfirmHost />` can actually draw a dialog, or `false` if it
+ * has not mounted within `timeoutMs`.
+ *
+ * `confirm()` is fail-closed: with no host it resolves `false` immediately and
+ * draws nothing. For a user-triggered confirm that is right — the host is long
+ * mounted by then. For anything fired during startup it is not: a caller that
+ * treats `false` as "the user said no" would answer on the user's behalf for a
+ * dialog nobody ever saw. Such callers wait for this first.
+ */
+export function whenConfirmHostMounted(timeoutMs = 10_000): Promise<boolean> {
+	if (listener) return Promise.resolve(true);
+	return new Promise((resolve) => {
+		const started = Date.now();
+		const poll = setInterval(() => {
+			if (listener) {
+				clearInterval(poll);
+				resolve(true);
+			} else if (Date.now() - started >= timeoutMs) {
+				clearInterval(poll);
+				resolve(false);
+			}
+		}, 50);
+	});
+}
+
 export function ConfirmHost() {
 	const [pending, setPending] = useState<PendingConfirm | null>(null);
 

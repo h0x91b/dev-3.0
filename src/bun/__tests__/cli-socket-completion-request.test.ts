@@ -86,7 +86,7 @@ vi.mock("node:fs", () => ({
 
 import * as data from "../data";
 import { moveTask, getPushMessage } from "../rpc-handlers";
-import { resolveAgentRequest, _resetAgentRequestsForTests } from "../agent-requests";
+import { listPendingAgentRequests, resolveAgentRequest, _resetAgentRequestsForTests } from "../agent-requests";
 
 const { handleRequest } = await import("../cli-socket-server");
 
@@ -209,6 +209,38 @@ describe("task.requestCompletion", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual({ approved: false });
 		expect(moveTask).not.toHaveBeenCalled();
+	});
+
+	// The orphan: a renderer that reloads before answering takes the only copy of
+	// the dialog with it. The request stays alive, and the agent's retry joins it
+	// rather than pushing again — so without the pending list the user can never
+	// be asked again and the task can never be completed this app session.
+	it("keeps a request answerable after the renderer that owned its dialog reloaded", async () => {
+		setupTask(makeTask());
+		const rendererA = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(rendererA);
+
+		const first = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await vi.waitFor(() => expect(rendererA).toHaveBeenCalledTimes(1));
+
+		// The tab reloads. The new renderer gets no push — it has to ask.
+		const rendererB = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(rendererB);
+		const retry = handleRequest(makeRequest({ taskId: "task-abc12345", projectId: "proj-1" }));
+		await new Promise((r) => setTimeout(r, 10));
+		expect(rendererB).not.toHaveBeenCalled();
+
+		// ...and asking finds the request, with everything needed to draw it.
+		const pending = listPendingAgentRequests("complete");
+		expect(pending).toHaveLength(1);
+		expect(pending[0].dialog.taskTitle).toBe("Test task");
+		expect(pending[0].dialog.subject.projectName).toBe("Test Project");
+
+		// Answering the redrawn dialog releases BOTH blocked callers.
+		resolveAgentRequest(pending[0].requestId, { approved: false });
+		const [respA, respB] = await Promise.all([first, retry]);
+		expect(respA.data).toEqual({ approved: false });
+		expect(respB.data).toEqual({ approved: false });
 	});
 
 	it("joins an existing pending request instead of pushing a second dialog", async () => {

@@ -1530,17 +1530,18 @@ const handlers: Record<string, Handler> = {
 			throw new Error("No app window is connected — cannot ask the user for approval");
 		}
 
-		const { requestId, decision, isNew } = createAgentRequest("complete", task.id, project.id);
+		// Kept ON the request, not just pushed: the push is a one-shot event, so a
+		// renderer that reloads before answering could never be handed the dialog
+		// again (a retry joins instead of re-pushing). It asks for this on connect.
+		const dialog = {
+			taskTitle: getTaskTitle(task),
+			// Full read-only context (project, seq, priority, labels, overview)
+			// so the user recognizes which task the prompt destroys.
+			subject: buildTaskDialogSubject(task, project),
+		};
+		const { requestId, decision, isNew } = createAgentRequest("complete", task.id, project.id, { dialog });
 		if (isNew) {
-			push("agentCompletionRequested", {
-				requestId,
-				taskId: task.id,
-				projectId: project.id,
-				taskTitle: getTaskTitle(task),
-				// Full read-only context (project, seq, priority, labels, overview)
-				// so the user recognizes which task the prompt destroys.
-				subject: buildTaskDialogSubject(task, project),
-			});
+			push("agentCompletionRequested", { requestId, taskId: task.id, projectId: project.id, ...dialog });
 		}
 
 		const { approved } = await decision;

@@ -1,10 +1,10 @@
-import type { AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
+import type { AgentCompletionRequest, AgentLaunchChoice, LaunchVariant, NativeTerminalAvailability, Project, Task, TaskPriority, TaskStatus, TaskTerminalBackendInfo, TaskType } from "../../shared/types";
 import type { TerminalBackendIdentity } from "../../shared/terminal-backend-identity";
 import { ACTIVE_STATUSES, BUILTIN_OPS_BOARD_NAME, DRAFT_TASK_ACTIVATION_ERROR, reviewTaskTitle, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
-import { resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
+import { listPendingAgentRequests, resolveAgentRequest, setAgentRequestLaunchChoice } from "../agent-requests";
 import { loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { emitTaskSound } from "../lifecycle/executor";
 import { getPushMessage, isActive, log } from "./shared";
@@ -899,6 +899,22 @@ async function setTaskManualCompletion(params: { taskId: string; projectId: stri
 	return updated;
 }
 
+/**
+ * Completion dialogs still waiting for an answer, for a renderer that just
+ * connected. `agentCompletionRequested` is a one-shot push, so a window that
+ * reloads before answering would otherwise leave the request unanswerable: the
+ * blocked agent's retry joins the same entry instead of triggering a new push.
+ */
+async function listPendingCompletionRequests(): Promise<AgentCompletionRequest[]> {
+	return listPendingAgentRequests("complete").map((r) => ({
+		requestId: r.requestId,
+		taskId: r.taskId,
+		projectId: r.projectId,
+		taskTitle: r.dialog.taskTitle,
+		subject: r.dialog.subject,
+	}));
+}
+
 async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean }): Promise<void> {
 	const known = resolveAgentRequest(params.requestId, { approved: params.approved });
 	if (!known) {
@@ -1174,6 +1190,7 @@ export const taskLifecycleHandlers = {
 	scheduleTaskLaunch,
 	cancelScheduledLaunch,
 	startScheduledLaunchNow,
+	listPendingCompletionRequests,
 	respondToAgentCompletionRequest,
 	respondToAgentLaunchRequest,
 	updateAgentLaunchChoice,

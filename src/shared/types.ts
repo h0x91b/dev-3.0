@@ -2706,6 +2706,19 @@ export interface TaskDialogSubject {
 }
 
 /**
+ * An agent asking the user for permission to complete its own task — the payload
+ * of the `agentCompletionRequested` push, and of `listPendingCompletionRequests`
+ * for a renderer that connected after the push went out.
+ */
+export interface AgentCompletionRequest {
+	requestId: string;
+	taskId: string;
+	projectId: string;
+	taskTitle: string;
+	subject: TaskDialogSubject;
+}
+
+/**
  * An agent asking the user to set ANOTHER task running — the payload of the
  * `agentLaunchRequested` push. Carries who asked (`requesterSeq`/`requesterTitle`)
  * so the dialog can name the agent, and the same read-only subject card the
@@ -5224,6 +5237,17 @@ export type AppRPCSchema = {
 				response: void;
 			};
 			/**
+			 * Completion dialogs that are still waiting for an answer. A renderer
+			 * asks on connect, because `agentCompletionRequested` is a one-shot push:
+			 * a window that reloads before answering would otherwise never see the
+			 * dialog again, and the blocked agent's retry joins the same request
+			 * rather than triggering a new push.
+			 */
+			listPendingCompletionRequests: {
+				params: Record<string, never>;
+				response: AgentCompletionRequest[];
+			};
+			/**
 			 * Renderer answers an `agentLaunchRequested` dialog. Approval hands back
 			 * the variants + priority the user composed, and the blocked CLI request
 			 * launches the task with them; decline releases it with a refusal.
@@ -5313,7 +5337,7 @@ export type AppRPCSchema = {
 			 * carries the read-only task context shown in the dialog (overview lives
 			 * on `subject.overview`).
 			 */
-			agentCompletionRequested: { requestId: string; taskId: string; projectId: string; taskTitle: string; subject: TaskDialogSubject };
+			agentCompletionRequested: AgentCompletionRequest;
 			/**
 			 * Emitted when an agent asks to set ANOTHER task running — either
 			 * `dev3 task move --task <other> --status <active>` or

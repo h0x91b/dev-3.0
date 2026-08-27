@@ -1,4 +1,4 @@
-import type { AgentLaunchChoice } from "../shared/types";
+import type { AgentLaunchChoice, TaskDialogSubject } from "../shared/types";
 import { createLogger } from "./logger";
 import { getPushMessage } from "./rpc-handlers/shared-pure";
 
@@ -16,6 +16,16 @@ export interface AgentRequestDecision {
 	launch?: AgentLaunchChoice;
 }
 
+/**
+ * What a renderer needs to draw the completion dialog, beyond the ids it already
+ * gets. Kept on the pending entry so a client that arrives AFTER the original
+ * push can still be handed the dialog — see {@link listPendingAgentRequests}.
+ */
+export interface AgentRequestDialog {
+	taskTitle: string;
+	subject: TaskDialogSubject;
+}
+
 interface PendingAgentRequest {
 	requestId: string;
 	kind: AgentRequestKind;
@@ -23,6 +33,8 @@ interface PendingAgentRequest {
 	projectId: string;
 	decision: Promise<AgentRequestDecision>;
 	resolve: (decision: AgentRequestDecision) => void;
+	/** Present when the caller supplied one; absent kinds are not replayable. */
+	dialog?: AgentRequestDialog;
 	/** Auto-approval timer, when the request was created with a deadline. */
 	autoApproveTimer?: ReturnType<typeof setTimeout>;
 	/** Epoch ms the timer fires at; mirrored to the dialog for its countdown. */
@@ -51,6 +63,8 @@ export function createAgentRequest(
 	opts: {
 		/** Approve the request automatically after this many ms. 0/omitted ⇒ never. */
 		autoApproveAfterMs?: number;
+		/** Lets a renderer that connects later be handed this dialog. */
+		dialog?: AgentRequestDialog;
 	} = {},
 ): { requestId: string; decision: Promise<AgentRequestDecision>; isNew: boolean; autoApproveAt: number | null } {
 	const key = dedupKey(kind, taskId);
@@ -73,7 +87,10 @@ export function createAgentRequest(
 
 	const autoApproveAfterMs = opts.autoApproveAfterMs ?? 0;
 	const autoApproveAt = autoApproveAfterMs > 0 ? Date.now() + autoApproveAfterMs : null;
-	const entry: PendingAgentRequest = { requestId, kind, taskId, projectId, decision, resolve, autoApproveAt };
+	const entry: PendingAgentRequest = {
+		requestId, kind, taskId, projectId, decision, resolve, autoApproveAt,
+		...(opts.dialog ? { dialog: opts.dialog } : {}),
+	};
 	pendingByRequestId.set(requestId, entry);
 	requestIdByKey.set(key, requestId);
 
@@ -103,6 +120,27 @@ export function setAgentRequestLaunchChoice(requestId: string, launch: AgentLaun
 	if (!entry) return false;
 	entry.launchChoice = launch;
 	return true;
+}
+
+/**
+ * Every pending request of a kind that still has nobody to answer it.
+ *
+ * A dialog lives only as a promise inside a renderer, and the push that created
+ * it is a one-shot event. So a renderer that reloads — a remote browser tab
+ * refresh is the cheap case — leaves the entry alive with no dialog behind it,
+ * and because a retry JOINS instead of re-pushing, the request could never be
+ * drawn again. A connecting renderer asks for this list and re-draws what it
+ * finds, which is what makes the entry reachable again.
+ */
+export function listPendingAgentRequests(
+	kind: AgentRequestKind,
+): Array<{ requestId: string; taskId: string; projectId: string; dialog: AgentRequestDialog }> {
+	const out: Array<{ requestId: string; taskId: string; projectId: string; dialog: AgentRequestDialog }> = [];
+	for (const entry of pendingByRequestId.values()) {
+		if (entry.kind !== kind || !entry.dialog) continue;
+		out.push({ requestId: entry.requestId, taskId: entry.taskId, projectId: entry.projectId, dialog: entry.dialog });
+	}
+	return out;
 }
 
 /** Resolve a pending request with the user's decision. Returns false if the request is unknown/expired. */
