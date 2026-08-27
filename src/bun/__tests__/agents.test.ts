@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, migrateOldFormat, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyBinaryPathOverride, applyLayoutResync, migrateOldFormat, applyModelOverride, applyProviderModel, resolveLaunchConfig, claudeModelFamily, claudeDefaultEnv, getDefaultEnvForAgent, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -1400,5 +1400,29 @@ describe("claudeModelFamily", () => {
 		expect(claudeModelFamily("claude-haiku-4-5")).toBe("haiku");
 		expect(claudeModelFamily("claude-fable-5")).toBe("fable");
 		expect(claudeModelFamily("openrouter/deepseek-v4")).toBeNull();
+	});
+});
+
+describe("claudeDefaultEnv — Claude's bypass guard under uid 0", () => {
+	it("declares the sandbox when running as root on a non-Windows box", () => {
+		expect(claudeDefaultEnv(0, "linux").IS_SANDBOX).toBe("1");
+	});
+
+	it("stays out of the way for an ordinary user", () => {
+		expect(claudeDefaultEnv(501, "linux").IS_SANDBOX).toBeUndefined();
+		expect(claudeDefaultEnv(0, "win32").IS_SANDBOX).toBeUndefined();
+		expect(claudeDefaultEnv(undefined, "linux").IS_SANDBOX).toBeUndefined();
+	});
+
+	it("keeps the other Claude defaults in every case", () => {
+		for (const env of [claudeDefaultEnv(0, "linux"), claudeDefaultEnv(501, "darwin")]) {
+			expect(env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe("1");
+			expect(env.CLAUDE_CODE_NO_FLICKER).toBe("1");
+		}
+	});
+
+	it("reaches a Claude launch's env, and only a Claude one", () => {
+		expect(getDefaultEnvForAgent(makeAgent())).toEqual(claudeDefaultEnv());
+		expect(getDefaultEnvForAgent(makeAgent({ baseCommand: "codex" }))).toEqual({});
 	});
 });

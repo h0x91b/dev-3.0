@@ -605,11 +605,25 @@ export const CLAUDE_DEFAULT_ENV: Record<string, string> = {
 	CLAUDE_CODE_NO_FLICKER: "1",
 };
 
+/**
+ * Claude's defaults, plus the sandbox declaration a root box needs: Claude Code
+ * exits(1) under uid 0 the moment bypass mode is merely reachable, and dev3
+ * passes --allow-dangerously-skip-permissions on every launch.
+ * See decisions/2026/08/27/claude-bypass-mode-under-root.md.
+ */
+export function claudeDefaultEnv(
+	uid = process.getuid?.(),
+	platform: string = process.platform,
+): Record<string, string> {
+	const sandbox: Record<string, string> = platform !== "win32" && uid === 0 ? { IS_SANDBOX: "1" } : {};
+	return { ...CLAUDE_DEFAULT_ENV, ...sandbox };
+}
+
 /** Build default env vars for an agent based on which CLI it is. */
 export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfiguration): Record<string, string> {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
 	if (isClaudeCommand(baseCmd, agent.agentFamily)) {
-		return { ...CLAUDE_DEFAULT_ENV };
+		return claudeDefaultEnv();
 	}
 	return {};
 }
