@@ -26,6 +26,7 @@ vi.mock("../logger", () => ({
 
 import { forwardToOwner, isForwardToOwnerError } from "../native-pane-owner";
 import { CLI_ENDPOINT_VERSION, CLI_LOOPBACK_HOST, serializeCliEndpointRecord } from "../../shared/cli-endpoint";
+import { testSocketPath } from "../../../test-scoped-path";
 
 const OWNER_PID = 4711;
 
@@ -169,9 +170,12 @@ afterEach(() => {
 	rmSync(root, { recursive: true, force: true });
 });
 
-/** A unix socket path short enough for the 104-byte sun_path limit. */
+/**
+ * A unix socket path that actually fits the kernel's 104-byte `sun_path` limit —
+ * `root` above does not, it hangs off the isolated (and deep) TMPDIR.
+ */
 function socketPath(): string {
-	return join(root, "o.sock");
+	return testSocketPath("o.sock");
 }
 
 function endpointRecord(port: number, token: string): string {
@@ -267,7 +271,7 @@ describe("forwardToOwner over a unix socket", () => {
 
 	it("rejects when the owner's socket is not there at all", async () => {
 		await expect(
-			forwardToOwner({ pid: OWNER_PID, endpoint: join(root, "missing.sock") }, "message.send", { text: "x" }),
+			forwardToOwner({ pid: OWNER_PID, endpoint: testSocketPath("missing.sock") }, "message.send", { text: "x" }),
 		).rejects.toThrow();
 	});
 });
@@ -340,7 +344,7 @@ describe("a forward failure says which side of dispatch it happened on", () => {
 
 	it("reports before-dispatch when the owner's socket is not there", async () => {
 		const failure = await phaseOf(
-			forwardToOwner({ pid: OWNER_PID, endpoint: join(root, "missing.sock") }, "m", { text: "x" }),
+			forwardToOwner({ pid: OWNER_PID, endpoint: testSocketPath("missing.sock") }, "m", { text: "x" }),
 		);
 		expect(failure.phase).toBe("before-dispatch");
 	});

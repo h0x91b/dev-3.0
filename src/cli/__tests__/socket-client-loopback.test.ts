@@ -11,6 +11,7 @@ import {
 	serializeCliEndpointRecord,
 } from "../../shared/cli-endpoint";
 import type { CliRequest } from "../../shared/types";
+import { testSocketRoot } from "../../../test-scoped-path";
 
 const TOKEN = "b".repeat(64);
 
@@ -24,9 +25,7 @@ function tempDir(): string {
 }
 
 function socketTempDir(): string {
-	// Unix-domain socket paths are capped around 104 bytes on macOS.
-	const root = process.platform === "win32" ? process.env.DEV3_TEST_ROOT as string : "/tmp";
-	const dir = mkdtempSync(join(root, "dev3-cli-socket-"));
+	const dir = mkdtempSync(join(testSocketRoot(), "s-"));
 	dirs.push(dir);
 	return dir;
 }

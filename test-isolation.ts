@@ -15,6 +15,30 @@ export function testWorktreeId(worktreeRoot: string): string {
 	return createHash("sha256").update(safeRealpath(worktreeRoot)).digest("hex").slice(0, 12);
 }
 
+/**
+ * The longest a unix socket path may be. macOS caps `sun_path` at 104 bytes
+ * including the terminating NUL; Linux allows 108. The smaller number is the
+ * one every fixture has to fit, and it is a HARD kernel limit — a path over it
+ * fails to bind with a bare EINVAL that reads like a broken fixture.
+ */
+export const MAX_UNIX_SOCKET_PATH_BYTES = 103;
+
+/**
+ * Where a test may put a unix socket, as opposed to any other fixture.
+ *
+ * The isolated run root lives under the platform temp dir, and on macOS that is
+ * a ~48-byte `/var/folders/...` path before a test adds anything — deep enough
+ * that an ordinary fixture name blows the socket limit above. So sockets get
+ * their own short root, bounded BY CONSTRUCTION rather than by how short this
+ * machine's temp dir happens to be. Windows has no such limit and no
+ * world-writable `/tmp`, so it keeps its sockets inside the run root.
+ */
+export function deriveTestSocketRoot(worktreeRoot: string, suite: string, pid: number, tempRoot = tmpdir()): string {
+	const safeSuite = suite.replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 8);
+	const base = process.platform === "win32" ? join(tempRoot, "dev3-tests") : "/tmp";
+	return join(base, "d3s", testWorktreeId(worktreeRoot).slice(0, 8), `${safeSuite}-${pid}`);
+}
+
 export function deriveTestRunRoot(
 	worktreeRoot: string,
 	suite: string,
@@ -58,6 +82,7 @@ const INHERITED_NATIVE_SESSION_ENV_PREFIX = "DEV3_NATIVE_SESSION_";
 export function configureTestIsolation(suite: string, worktreeRoot = process.cwd()): string {
 	const originalTempRoot = tmpdir();
 	const root = deriveTestRunRoot(worktreeRoot, suite, process.pid, originalTempRoot);
+	const socketRoot = deriveTestSocketRoot(worktreeRoot, suite, process.pid, originalTempRoot);
 	const home = join(root, "home");
 	const dev3Home = join(home, ".dev3.0");
 	const temp = join(root, "tmp");
@@ -67,7 +92,7 @@ export function configureTestIsolation(suite: string, worktreeRoot = process.cwd
 	const xdgData = join(root, "xdg-data");
 	const xdgState = join(root, "xdg-state");
 
-	for (const dir of [home, dev3Home, temp, runtime, xdgConfig, xdgCache, xdgData, xdgState]) {
+	for (const dir of [home, dev3Home, temp, runtime, xdgConfig, xdgCache, xdgData, xdgState, socketRoot]) {
 		mkdirSync(dir, { recursive: true });
 	}
 
@@ -83,6 +108,7 @@ export function configureTestIsolation(suite: string, worktreeRoot = process.cwd
 	// silently read this run's shared root instead of their fixture.
 	Object.assign(process.env, {
 		DEV3_TEST_ROOT: root,
+		DEV3_TEST_SOCKET_ROOT: socketRoot,
 		DEV3_TEST_WORKTREE_ID: testWorktreeId(worktreeRoot),
 		DEV3_LOG_DIR: join(root, "logs"),
 		HOME: home,
@@ -99,9 +125,14 @@ export function configureTestIsolation(suite: string, worktreeRoot = process.cwd
 	return root;
 }
 
-export function cleanupTestIsolation(root: string): void {
+export function cleanupTestIsolation(root: string, socketRoot?: string): void {
 	if (!root.includes(`${join("dev3-tests", "")}`)) {
 		throw new Error(`Refusing to clean a non-test path: ${root}`);
 	}
 	rmSync(root, { recursive: true, force: true });
+	if (!socketRoot) return;
+	if (!socketRoot.includes(`${join("d3s", "")}`)) {
+		throw new Error(`Refusing to clean a non-socket-root path: ${socketRoot}`);
+	}
+	rmSync(socketRoot, { recursive: true, force: true });
 }

@@ -10,6 +10,7 @@ import net from "node:net";
 import { join } from "node:path";
 import { probeSocketLiveness, sweepDeadTmuxSockets } from "../socket-sweep";
 import { tmuxSocketDir } from "../socket-files";
+import { testSocketRoot } from "../../../../test-scoped-path";
 
 let root = "";
 let dir = "";
@@ -45,9 +46,9 @@ function listenOn(path: string): Promise<void> {
 }
 
 beforeEach(() => {
-	// Short root on purpose: a unix socket path is capped at ~104 bytes, and the
-	// suite's own TMPDIR is already long enough to blow that on its own.
-	root = mkdtempSync("/tmp/d3sw-");
+	// The run's short socket root, not its TMPDIR: a unix socket path is capped
+	// at ~104 bytes and the isolated TMPDIR blows that on its own.
+	root = mkdtempSync(join(testSocketRoot(), "sw-"));
 	previousTmpdir = process.env.TMUX_TMPDIR;
 	process.env.TMUX_TMPDIR = root;
 	dir = tmuxSocketDir();

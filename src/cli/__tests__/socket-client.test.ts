@@ -2,19 +2,20 @@ import { describe, it, expect } from "vitest";
 import { createServer, type Server } from "node:net";
 import { unlinkSync, existsSync } from "node:fs";
 import { sendRequest } from "../socket-client";
-import { testScopedPath } from "../../../test-scoped-path";
+import { join } from "node:path";
+import { testSocketPath, testSocketRoot } from "../../../test-scoped-path";
 
-const NONEXISTENT_SOCKET = `${process.env.DEV3_TEST_ROOT}/nonexistent.sock`;
+// Under the socket root like every other path here, so a dial against it fails
+// with ENOENT — the absence being tested — and never with a too-long-path EINVAL.
+const NONEXISTENT_SOCKET = join(testSocketRoot(), "nonexistent.sock");
 
 /**
  * Every test binds its OWN socket path, captured in a local const. A test that
  * fails by timeout keeps executing, and one shared path let the zombie rebind
  * it under the next test — see the vitest-timeout-keeps-running decision record.
- * The short "s.sock" name is deliberate: the isolated run root already eats most
- * of the ~104-byte unix socket path budget.
  */
 function socketPath(): string {
-	return testScopedPath("s.sock");
+	return testSocketPath("s.sock");
 }
 
 function cleanSocket(socket: string) {

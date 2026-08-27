@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
-import { INHERITED_TASK_CONTEXT_ENV, deriveTestRunRoot, testWorktreeId } from "../../../test-isolation";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { createServer } from "node:net";
+import { testScopedPath, testSocketPath } from "../../../test-scoped-path";
+import {
+	INHERITED_TASK_CONTEXT_ENV,
+	MAX_UNIX_SOCKET_PATH_BYTES,
+	deriveTestRunRoot,
+	deriveTestSocketRoot,
+	testWorktreeId,
+} from "../../../test-isolation";
 import { resolveDev3Home } from "../../shared/dev3-home";
 
 describe("test process isolation", () => {
@@ -33,6 +43,44 @@ describe("test process isolation", () => {
 		expect(process.env.DEV3_LOG_DIR).toContain(root);
 		expect(process.env.XDG_CONFIG_HOME).toContain(root);
 		expect(process.env.XDG_RUNTIME_DIR).toContain(root);
+	});
+
+	it("keeps the socket root short enough to bind, however deep the temp dir is", () => {
+		// The whole point: bounded by CONSTRUCTION, not by how short this machine's
+		// $TMPDIR happens to be. macOS already spends ~48 bytes on /var/folders/…,
+		// and a fixture under the run root came to 119 bytes — 15 over the limit.
+		const absurdTempRoot = `/var/folders/${"n".repeat(180)}/T`;
+		const socketRoot = deriveTestSocketRoot("/repo/worktrees/alpha", "bun", 99999, absurdTempRoot);
+		const longestFixture = join(socketRoot, `${"a".repeat(8)}-endpoint.sock`);
+
+		expect(Buffer.byteLength(longestFixture)).toBeLessThanOrEqual(MAX_UNIX_SOCKET_PATH_BYTES);
+		expect(socketRoot.startsWith(absurdTempRoot)).toBe(false);
+	});
+
+	it("gives the live run a socket root that is created and under the limit", () => {
+		const socketRoot = process.env.DEV3_TEST_SOCKET_ROOT;
+		expect(socketRoot).toBeTruthy();
+		expect(existsSync(socketRoot as string)).toBe(true);
+		expect(Buffer.byteLength(testSocketPath("o.sock"))).toBeLessThanOrEqual(MAX_UNIX_SOCKET_PATH_BYTES);
+	});
+
+	it("really binds a socket at the path the helper hands out", async () => {
+		// The guard above is arithmetic; this is the kernel's own verdict.
+		const path = testSocketPath("bind.sock");
+		const server = createServer();
+		try {
+			await new Promise<void>((resolve, reject) => {
+				server.once("error", reject);
+				server.listen(path, () => resolve());
+			});
+			expect(existsSync(path)).toBe(true);
+		} finally {
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
+
+	it("refuses to hand a socket path out of the deep run root", () => {
+		expect(() => testScopedPath("s.sock")).toThrow(/testSocketPath/);
 	});
 
 	it("scrubs the task context of the agent that started this run", () => {
