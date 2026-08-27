@@ -47,9 +47,10 @@ vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import type { Project, Task } from "../../shared/types";
+import type { Project, ScheduledMessage, Task } from "../../shared/types";
+import * as data from "../data";
 import { messageLogDir, readAgentMessageLog, resetAgentMessageLogPruneState } from "../agent-message-log";
-import { fireScheduledMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
+import { fireScheduledMessage, scheduleMessage, sendMessageImmediately } from "../scheduled-message-scheduler";
 
 const project = { id: "proj-1", name: "Proj", path: "/Users/x/repo" } as unknown as Project;
 
@@ -97,6 +98,14 @@ describe("an immediate send", () => {
 		expect(["delivered", "held", "unconfirmed"]).toContain(rows[0]?.status);
 	});
 
+	it("persists the subject the sender chose", async () => {
+		await sendMessageImmediately(makeTask(), "all four contexts are green", null, source, {
+			subject: "PR 1577 merged, main green",
+		});
+		const { rows } = readAgentMessageLog(project);
+		expect(rows[0]?.subject).toBe("PR 1577 merged, main green");
+	});
+
 	it("records a message with no agent sender as having none", async () => {
 		await sendMessageImmediately(makeTask(), "rebase finished", null, null);
 		const { rows } = readAgentMessageLog(project);
@@ -122,6 +131,32 @@ describe("a queued fire", () => {
 		const { rows } = readAgentMessageLog(project);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).toMatchObject({ kind: "scheduled", scheduledFor: at, body: "wake up", fromSeq: 1141 });
+	});
+
+	it("keeps the subject across the delay, from queueing to the fire", async () => {
+		const at = new Date(Date.now() - 1000).toISOString();
+		// Queued through the real path, so the subject has to survive the task record.
+		// The shared updateTaskWith mock answers with a pristine task; this one has to
+		// see what was actually written into the queue.
+		vi.mocked(data.updateTaskWith).mockImplementationOnce((async (_p: unknown, _id: unknown, mutator: (t: unknown) => { updates: Partial<Task> }) => {
+			const { updates } = mutator(makeTask());
+			return { task: { ...makeTask(), ...updates }, result: undefined };
+		}) as unknown as typeof data.updateTaskWith);
+		const queued = await scheduleMessage(project, makeTask(), {
+			text: "shard 3 finished",
+			at: new Date(Date.now() + 60_000).toISOString(),
+			source,
+			subject: "shard 3 done, 0 failures",
+		});
+		const stored = (queued.scheduledMessages ?? [])[0]! as ScheduledMessage;
+		expect(stored.subject).toBe("shard 3 done, 0 failures");
+
+		// …and then fired later, which is the only moment the log row is written.
+		await fireScheduledMessage(project, makeTask({ scheduledMessages: [{ ...stored, at }] }), { ...stored, at }, {
+			late: true,
+		});
+		const { rows } = readAgentMessageLog(project);
+		expect(rows[0]?.subject).toBe("shard 3 done, 0 failures");
 	});
 
 	it("records an attempt that landed nowhere rather than staying silent", async () => {

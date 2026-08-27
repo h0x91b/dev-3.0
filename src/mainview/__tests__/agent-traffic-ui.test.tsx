@@ -135,6 +135,34 @@ describe("AgentTrafficIndicator (bar)", () => {
 		expect(onOpenLog).toHaveBeenCalled();
 	});
 
+	// The one line a pair row has is the reason subjects exist: the head of a body
+	// is the sender naming itself and its task, which the row already shows.
+	it("shows the subject in the pair row, not the head of the body", async () => {
+		withUnread();
+		setPage([row({ subject: "PR 1577 merged, main green", body: "Seq 11 -> Coordinator: PR 1577 has merged…" })]);
+		render(
+			<I18nProvider>
+				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} />
+			</I18nProvider>,
+		);
+		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
+		const pairRow = await screen.findByTestId("traffic-pair-row");
+		expect(pairRow.textContent).toContain("PR 1577 merged, main green");
+		expect(pairRow.textContent).not.toContain("Seq 11 -> Coordinator");
+	});
+
+	it("falls back to the body for a row written before subjects existed", async () => {
+		withUnread();
+		setPage([row({ body: "rebase before you push" })]);
+		render(
+			<I18nProvider>
+				<AgentTrafficIndicator projectId="proj-1" navigate={vi.fn()} onOpenLog={vi.fn()} />
+			</I18nProvider>,
+		);
+		await userEvent.click(await screen.findByTestId("agent-traffic-indicator"));
+		expect((await screen.findByTestId("traffic-pair-row")).textContent).toContain("rebase before you push");
+	});
+
 	// ⇧⌘M / the View menu / the palette open the log without going through the
 	// panel, and the panel is portaled above the dialog — it used to hang over the
 	// log it had just handed off to.
@@ -266,6 +294,15 @@ describe("AgentTrafficLog", () => {
 		setPage([row()]);
 		renderLog();
 		expect(await screen.findByText(/2026-08-01/)).toBeTruthy();
+	});
+
+	it("leads a ledger row with the subject and keeps the whole body under it", async () => {
+		setPage([row({ subject: "shard 3 done, 0 failures", body: "the full body, never clamped for looks" })]);
+		renderLog();
+		const ledger = await screen.findByTestId("traffic-ledger-row");
+		expect(ledger.textContent).toContain("shard 3 done, 0 failures");
+		expect(ledger.textContent).toContain("the full body, never clamped for looks");
+		expect(ledger.textContent!.indexOf("shard 3 done")).toBeLessThan(ledger.textContent!.indexOf("the full body"));
 	});
 
 	// A body too large to type never had text to show; the row must say that rather

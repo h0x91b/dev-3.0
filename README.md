@@ -191,7 +191,7 @@ disturbing it.
 dev3 attention "Need a decision on the schema"    # red badge on the card
 dev3 show-image before.png --caption "the bug"    # in-app image viewer
 dev3 peek --task seq:1383                         # read-only look at a peer's terminal
-dev3 message --task seq:1383 --in 30m "status?"   # type into a live agent, now or later
+dev3 message --task seq:1383 --in 30m --subject "status check" "status?"   # type into a live agent, now or later
 dev3 doctor --worktrees --prune-orphans           # reclaim disk from dead worktrees
 ```
 

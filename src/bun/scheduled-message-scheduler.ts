@@ -71,7 +71,9 @@ function messagePreview(text: string): string {
 async function deliverToTarget(task: Task, message: ScheduledMessage, hold: boolean): Promise<AgentPromptDelivery> {
 	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
 	// card chip that previews it) keeps the plain text the sender wrote.
-	const text = message.source ? wrapAgentMessage(message.text, message.source, task.projectId) : message.text;
+	const text = message.source
+		? wrapAgentMessage(message.text, message.source, task.projectId, message.subject)
+		: message.text;
 	// A coordinator's picture of the board goes stale between the messages it
 	// receives: things moved while it was not being spoken to. So every message
 	// reaching one ends on a fresh board snapshot — once per burst, built when the
@@ -113,6 +115,7 @@ async function recordMessageAttempt(task: Task, message: ScheduledMessage, deliv
 			// A queued item carries the time it was queued for; an immediate send has none.
 			kind: message.at ? "scheduled" : "immediate",
 			...(message.at ? { scheduledFor: message.at } : {}),
+			...(message.subject ? { subject: message.subject } : {}),
 			body: message.text,
 			bodyKind: message.spilledPath ? "spill-pointer" : "text",
 			...(message.spilledPath ? { spillPath: message.spilledPath } : {}),
@@ -146,7 +149,10 @@ function announceAgentMessage(task: Task, message: ScheduledMessage, delivery: A
 		fromSeq: source.seq,
 		...(source.title ? { fromTitle: source.title } : {}),
 		...(source.projectId ? { fromProjectId: source.projectId } : {}),
-		preview: messagePreview(message.text),
+		// The subject is the sender's own one-liner, which is exactly what a preview
+		// wants to be. The clamped head of the body is the fallback for a message
+		// that predates subjects.
+		preview: message.subject ?? messagePreview(message.text),
 	});
 }
 
@@ -257,7 +263,14 @@ function validateText(text: string): string {
 export async function scheduleMessage(
 	project: Project,
 	task: Task,
-	input: { text: string; at: string; target?: ScheduledMessageTarget | null; source?: AgentMessageSource | null },
+	input: {
+		text: string;
+		at: string;
+		target?: ScheduledMessageTarget | null;
+		source?: AgentMessageSource | null;
+		/** The sender's one-liner; stored with the message and logged at fire time. */
+		subject?: string | null;
+	},
 ): Promise<Task> {
 	const validated = validateText(input.text);
 	if (isTerminal(task.status)) {
@@ -273,6 +286,7 @@ export async function scheduleMessage(
 	const item: ScheduledMessage = {
 		id: crypto.randomUUID(),
 		text,
+		...(input.subject ? { subject: input.subject } : {}),
 		at: at.toISOString(),
 		target: normalizeTarget(input.target),
 		...(input.source ? { source: input.source } : {}),
@@ -324,7 +338,7 @@ export async function sendMessageImmediately(
 	text: string,
 	target?: ScheduledMessageTarget | null,
 	source?: AgentMessageSource | null,
-	opts: { hold?: boolean } = {},
+	opts: { hold?: boolean; subject?: string | null } = {},
 ): Promise<AgentPromptDelivery & { spilledPath: string | null }> {
 	const trimmed = validateText(text);
 	if (isTerminal(task.status)) {
@@ -334,6 +348,7 @@ export async function sendMessageImmediately(
 	const message: ScheduledMessage = {
 		id: "",
 		text: payload,
+		...(opts.subject ? { subject: opts.subject } : {}),
 		at: "",
 		target: normalizeTarget(target),
 		...(source ? { source } : {}),

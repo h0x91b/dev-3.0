@@ -132,6 +132,40 @@ describe("append and read", () => {
 		expect(page.rows.map((r) => r.body)).toEqual(["second", "first"]);
 	});
 
+	it("stores the subject on disk and reads it back", () => {
+		const day = new Date(2026, 7, 23, 12, 0, 0);
+		appendAgentMessageLog(project, makeRow({ subject: "PR 1577 merged, main green" }), day);
+
+		// Read the bytes, not the API: a subject that only exists in memory would
+		// be worthless to the traffic view, which is the whole reason it is stored.
+		const raw = readFileSync(`${messageLogDir(project)}/2026-08-23.jsonl`, "utf8");
+		expect(JSON.parse(raw.trim()).subject).toBe("PR 1577 merged, main green");
+		expect(readAgentMessageLog(project).rows[0]?.subject).toBe("PR 1577 merged, main green");
+	});
+
+	it("keeps the subject when a huge body is clamped away", () => {
+		const day = new Date(2026, 7, 23, 12, 0, 0);
+		appendAgentMessageLog(
+			project,
+			makeRow({ subject: "backfill finished", body: "x".repeat(AGENT_MESSAGE_LOG_MAX_ROW_BYTES * 2) }),
+			day,
+		);
+		const row = readAgentMessageLog(project).rows[0]!;
+		expect(row.subject).toBe("backfill finished");
+		expect(row.body.endsWith(AGENT_MESSAGE_LOG_TRUNCATION_MARK)).toBe(true);
+	});
+
+	it("reads a row written before subjects existed, with no subject on it", () => {
+		const day = new Date(2026, 7, 23, 12, 0, 0);
+		const { subject: _dropped, ...legacy } = makeRow({ body: "an old message" }) as AgentMessageLogInput & {
+			subject?: string;
+		};
+		appendAgentMessageLog(project, legacy, day);
+		const row = readAgentMessageLog(project).rows[0]!;
+		expect(row.subject).toBeUndefined();
+		expect(row.body).toBe("an old message");
+	});
+
 	it("answers an empty page for a project that has never sent a message", () => {
 		const page = readAgentMessageLog(project);
 		expect(page).toEqual({ rows: [], oldestDay: null, retentionDays: AGENT_MESSAGE_LOG_RETENTION_DAYS, hasMore: false });

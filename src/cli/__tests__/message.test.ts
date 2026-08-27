@@ -30,7 +30,13 @@ function okResp(data: unknown): CliResponse {
 function errResp(error: string): CliResponse {
 	return { id: "test-id", ok: false, error };
 }
+/** Every call needs a subject now, so the helper supplies one unless a test overrides it. */
+const SUBJECT = "test subject";
 function args(positional: string[] = [], flags: Record<string, string> = {}): ParsedArgs {
+	return { positional, flags: { subject: SUBJECT, ...flags } };
+}
+/** Verbatim flags — for the tests that are ABOUT the subject being absent or wrong. */
+function rawArgs(positional: string[] = [], flags: Record<string, string> = {}): ParsedArgs {
 	return { positional, flags };
 }
 
@@ -64,6 +70,7 @@ describe("message — immediate (bare form)", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "message.send", {
 			taskId: CTX.taskId,
 			text: "continue please",
+			subject: SUBJECT,
 			projectId: CTX.projectId,
 			sourceTaskId: CTX.taskId,
 		});
@@ -150,6 +157,87 @@ describe("message — validation", () => {
 		const ctxNoTask = { projectId: null, taskId: null, socketPath: SOCKET } as unknown as CliContext;
 		await expect(handleMessage(args(["x"]), SOCKET, ctxNoTask)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toMatch(/no task in context/i);
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+});
+
+describe("message — --subject is mandatory", () => {
+	// The error path IS the feature: every agent alive has the habit of sending
+	// without a subject, so this is the message they will actually meet.
+	it("refuses a message with no subject, with its own exit code", async () => {
+		await expect(handleMessage(rawArgs(["ping"], { task: "seq:490" }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
+		expect(mockSend).not.toHaveBeenCalled();
+		expect(stderrOutput).toContain("dev3 message needs --subject");
+	});
+
+	it("teaches the shape: the limit, a good example, a bad one, and the corrected command", async () => {
+		await expect(
+			handleMessage(rawArgs(["CI is green on all four shards"], { task: "seq:490" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_17");
+		expect(stderrOutput).toContain("about 6 words");
+		expect(stderrOutput).toContain("80 characters at most");
+		expect(stderrOutput).toContain('good:  --subject "PR 1577 merged, main green"');
+		expect(stderrOutput).toContain('bad:   --subject "Seq 1722 -> Coordinator: PR 1577 merged"');
+		// The corrected command keeps the caller's own target flags and their text.
+		expect(stderrOutput).toContain('dev3 message --task seq:490 --subject');
+		expect(stderrOutput).toContain('"CI is green on all four shards"');
+	});
+
+	it("suggests a subject taken from the body, with the sender's self-address stripped", async () => {
+		await expect(
+			handleMessage(rawArgs(["Seq 1722 -> Coordinator: PR 1577 merged, main green"], {}), SOCKET, CTX),
+		).rejects.toThrow("EXIT_17");
+		expect(stderrOutput).toContain('Suggested from your own text');
+		expect(stderrOutput).toContain('"PR 1577 merged, main green"');
+	});
+
+	it("does not paste a long body back into the corrected command", async () => {
+		const long = "x".repeat(400);
+		await expect(handleMessage(rawArgs([long], {}), SOCKET, CTX)).rejects.toThrow("EXIT_17");
+		expect(stderrOutput).toContain('"<your text>"');
+		expect(stderrOutput).not.toContain("x".repeat(80));
+	});
+
+	it("treats a bare --subject with no value as missing", async () => {
+		await expect(handleMessage(rawArgs(["ping"], { subject: "true" }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("treats a whitespace-only subject as missing", async () => {
+		await expect(handleMessage(rawArgs(["ping"], { subject: "   \t " }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects an over-limit subject instead of truncating it", async () => {
+		const tooLong = "a".repeat(81);
+		await expect(handleMessage(rawArgs(["ping"], { subject: tooLong }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
+		expect(stderrOutput).toContain("--subject is too long: 81 characters");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("accepts a subject exactly at the limit", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: CTX.taskId, projectId: CTX.projectId }));
+		const exact = "a".repeat(80);
+		await handleMessage(rawArgs(["ping"], { subject: exact }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]?.[2]?.subject).toBe(exact);
+	});
+
+	it("collapses a multi-line subject into the one line it is", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: CTX.taskId, projectId: CTX.projectId }));
+		await handleMessage(rawArgs(["ping"], { subject: "  CI green\n  on   main " }), SOCKET, CTX);
+		expect(mockSend.mock.calls[0]?.[2]?.subject).toBe("CI green on main");
+	});
+
+	it("carries the subject on the scheduled form too", async () => {
+		mockSend.mockResolvedValue(okResp({ taskId: CTX.taskId, pending: 1 }));
+		await handleMessage(args(["later"], { in: "30m" }), SOCKET, CTX);
+		const [, method, params] = mockSend.mock.calls[0]!;
+		expect(method).toBe("message.schedule");
+		expect(params!.subject).toBe(SUBJECT);
+	});
+
+	it("refuses a scheduled message with no subject", async () => {
+		await expect(handleMessage(rawArgs(["later"], { in: "30m" }), SOCKET, CTX)).rejects.toThrow("EXIT_17");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

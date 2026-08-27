@@ -338,7 +338,7 @@ describe("cancel / send-now / immediate", () => {
 			projectId: "proj-2-abcdef",
 		});
 		const text = vi.mocked(holdMessageForAgentPane).mock.calls[0]![1];
-		expect(text).toContain('<reply-with>dev3 message --task seq:7 --project proj-2-a "your reply"</reply-with>');
+		expect(text).toContain('<reply-with>dev3 message --task seq:7 --project proj-2-a --subject "what your reply is about" "your reply"</reply-with>');
 	});
 
 	it("leaves the reply command bare for a sender on the same project", async () => {
@@ -349,7 +349,7 @@ describe("cancel / send-now / immediate", () => {
 			projectId: "proj-1",
 		});
 		const text = vi.mocked(holdMessageForAgentPane).mock.calls[0]![1];
-		expect(text).toContain('<reply-with>dev3 message --task seq:7 "your reply"</reply-with>');
+		expect(text).toContain('<reply-with>dev3 message --task seq:7 --subject "what your reply is about" "your reply"</reply-with>');
 	});
 
 	it("fireScheduledMessage wraps a queued cross-task message but stores it plain", async () => {

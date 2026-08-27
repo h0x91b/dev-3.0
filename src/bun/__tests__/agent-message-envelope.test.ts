@@ -16,13 +16,34 @@ describe("wrapAgentMessage", () => {
 				"<dev3-ai-message>",
 				"<from-task>seq:1310</from-task>",
 				"<from-title>Fix the parser</from-title>",
-				'<reply-with>dev3 message --task seq:1310 "your reply"</reply-with>',
+				'<reply-with>dev3 message --task seq:1310 --subject "what your reply is about" "your reply"</reply-with>',
 				"<message>",
 				"do the thing",
 				"</message>",
 				"</dev3-ai-message>",
 			].join("\n"),
 		);
+	});
+
+	it("carries the sender's subject, before the body", () => {
+		const out = wrapAgentMessage(
+			"all four contexts are green",
+			{ taskId: "t-1", seq: 1310, title: "CI watch", projectId: PROJECT_A },
+			PROJECT_A,
+			"PR 1577 merged, main green",
+		);
+		expect(out).toContain("<subject>PR 1577 merged, main green</subject>");
+		expect(out.indexOf("<subject>")).toBeLessThan(out.indexOf("<message>"));
+	});
+
+	it("escapes a subject that contains markup", () => {
+		const out = wrapAgentMessage("x", { taskId: "t-1", seq: 7 }, PROJECT_A, "fix <div> & span");
+		expect(out).toContain("<subject>fix &lt;div&gt; &amp; span</subject>");
+	});
+
+	it("omits the tag entirely for a message that has no subject", () => {
+		const out = wrapAgentMessage("x", { taskId: "t-1", seq: 7 }, PROJECT_A);
+		expect(out).not.toContain("<subject>");
 	});
 
 	it("keeps a multi-line body verbatim", () => {
@@ -44,7 +65,7 @@ describe("wrapAgentMessage", () => {
 		);
 		// `<from-task>` is an address, not a command, so it cannot carry a flag.
 		expect(out).toContain("<from-task>7a9e61f4-1111-2222-3333-444455556666</from-task>");
-		expect(out).toContain('<reply-with>dev3 message --task seq:1575 --variant 1 "your reply"</reply-with>');
+		expect(out).toContain('<reply-with>dev3 message --task seq:1575 --variant 1 --subject "what your reply is about" "your reply"</reply-with>');
 	});
 
 	it("still falls back to the id when a shared seq has no variant index to name", () => {
@@ -53,13 +74,13 @@ describe("wrapAgentMessage", () => {
 			{ taskId: "7a9e61f4-1111-2222-3333-444455556666", seq: 1575, variantIndex: null, seqShared: true },
 			PROJECT_A,
 		);
-		expect(out).toContain('<reply-with>dev3 message --task 7a9e61f4-1111-2222-3333-444455556666 "your reply"</reply-with>');
+		expect(out).toContain('<reply-with>dev3 message --task 7a9e61f4-1111-2222-3333-444455556666 --subject "what your reply is about" "your reply"</reply-with>');
 		expect(out).not.toContain("seq:1575");
 	});
 
 	it("keeps the seq address when the sender has no variant", () => {
 		const out = wrapAgentMessage("hi", { taskId: "t-1", seq: 1575, variantIndex: null }, PROJECT_A);
-		expect(out).toContain('<reply-with>dev3 message --task seq:1575 "your reply"</reply-with>');
+		expect(out).toContain('<reply-with>dev3 message --task seq:1575 --subject "what your reply is about" "your reply"</reply-with>');
 	});
 
 	it("keeps the seq address for a lone variant survivor", () => {
@@ -71,7 +92,7 @@ describe("wrapAgentMessage", () => {
 			PROJECT_A,
 		);
 		expect(out).toContain("<from-task>seq:490</from-task>");
-		expect(out).toContain('<reply-with>dev3 message --task seq:490 "your reply"</reply-with>');
+		expect(out).toContain('<reply-with>dev3 message --task seq:490 --subject "what your reply is about" "your reply"</reply-with>');
 		expect(out).not.toContain("824c6557");
 	});
 
@@ -79,12 +100,12 @@ describe("wrapAgentMessage", () => {
 		// The pessimistic legacy path assumes the seq is shared; --variant makes that
 		// assumption cheap instead of spending a UUID on it.
 		const out = wrapAgentMessage("hi", { taskId: "t-9", seq: 1575, variantIndex: 1 }, PROJECT_A);
-		expect(out).toContain('<reply-with>dev3 message --task seq:1575 --variant 1 "your reply"</reply-with>');
+		expect(out).toContain('<reply-with>dev3 message --task seq:1575 --variant 1 --subject "what your reply is about" "your reply"</reply-with>');
 	});
 
 	it("scopes the reply command when the sender sits on another board", () => {
 		const out = wrapAgentMessage("hi", { taskId: "t-1", seq: 1623, projectId: PROJECT_B }, PROJECT_A);
-		expect(out).toContain('<reply-with>dev3 message --task seq:1623 --project bbbbbbbb "your reply"</reply-with>');
+		expect(out).toContain('<reply-with>dev3 message --task seq:1623 --project bbbbbbbb --subject "what your reply is about" "your reply"</reply-with>');
 	});
 });
 
@@ -122,20 +143,20 @@ describe("agentReplyCommand", () => {
 
 	it("omits --project inside one project", () => {
 		expect(agentReplyCommand({ target, fromProjectId: PROJECT_B, quoted: "your message" })).toBe(
-			'dev3 message --task seq:42 "your message"',
+			'dev3 message --task seq:42 --subject "what your reply is about" "your message"',
 		);
 	});
 
 	it("adds an 8-char --project prefix across projects", () => {
 		expect(agentReplyCommand({ target, fromProjectId: PROJECT_A, quoted: "your message" })).toBe(
-			'dev3 message --task seq:42 --project bbbbbbbb "your message"',
+			'dev3 message --task seq:42 --project bbbbbbbb --subject "what your reply is about" "your message"',
 		);
 	});
 
 	it("stays bare when the target project is unknown", () => {
 		expect(
 			agentReplyCommand({ target: { id: "t-1", seq: 42 }, fromProjectId: PROJECT_A, quoted: "your reply" }),
-		).toBe('dev3 message --task seq:42 "your reply"');
+		).toBe('dev3 message --task seq:42 --subject "what your reply is about" "your reply"');
 	});
 
 	it("addresses a shared-seq target with no variant index by id, and still scopes it", () => {
@@ -145,7 +166,7 @@ describe("agentReplyCommand", () => {
 				fromProjectId: PROJECT_A,
 				quoted: "your reply",
 			}),
-		).toBe('dev3 message --task t-9 --project bbbbbbbb "your reply"');
+		).toBe('dev3 message --task t-9 --project bbbbbbbb --subject "what your reply is about" "your reply"');
 	});
 
 	it("names a live variant group member by seq + --variant, before --project", () => {
@@ -155,7 +176,7 @@ describe("agentReplyCommand", () => {
 				fromProjectId: PROJECT_A,
 				quoted: "your reply",
 			}),
-		).toBe('dev3 message --task seq:7 --variant 0 --project bbbbbbbb "your reply"');
+		).toBe('dev3 message --task seq:7 --variant 0 --project bbbbbbbb --subject "what your reply is about" "your reply"');
 	});
 
 	it("ignores the variant index once the seq stopped being shared", () => {
@@ -165,6 +186,6 @@ describe("agentReplyCommand", () => {
 				fromProjectId: PROJECT_A,
 				quoted: "your reply",
 			}),
-		).toBe('dev3 message --task seq:7 "your reply"');
+		).toBe('dev3 message --task seq:7 --subject "what your reply is about" "your reply"');
 	});
 });

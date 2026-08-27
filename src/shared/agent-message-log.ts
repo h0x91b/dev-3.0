@@ -65,6 +65,15 @@ export interface AgentMessageLogRow {
 	kind: AgentMessageLogKind;
 	/** ISO time the message was queued for, on `scheduled` rows only. */
 	scheduledFor?: string;
+	/**
+	 * The sender's one-line summary — what the traffic surfaces render for this
+	 * row. Required on every `dev3 message` since it was introduced; absent on
+	 * rows written before that, and on the few internal hand-offs that are not
+	 * agent traffic. A reader falls back to the body's head, exactly as it did
+	 * before the field existed. Never derived at write time: a guessed subject
+	 * would be indistinguishable from one an agent chose.
+	 */
+	subject?: string;
 	body: string;
 	bodyKind: AgentMessageBodyKind;
 	spillPath?: string;

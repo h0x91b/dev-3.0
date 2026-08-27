@@ -2,6 +2,7 @@ import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskPriority, TaskStatus, TaskType, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { agentReplyCommand, seqIsShared } from "../shared/agent-message-envelope";
+import { requireMessageSubject } from "../shared/agent-message-subject";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
@@ -1650,8 +1651,12 @@ const handlers: Record<string, Handler> = {
 	"message.send": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params, { variantIndex: messageVariantIndex(params) });
 		const text = ((params.text as string) ?? "").toString();
+		// The app's half of the subject gate. The CLI checks it first and reports it
+		// better, so reaching this means an older `dev3` binary that never learned
+		// the flag — it gets the same explanation instead of writing a mute row.
+		const subject = requireMessageSubject(params.subject, text);
 		const source = await resolveAgentMessageSource(params, task.id);
-		const delivery = await sendMessageImmediately(task, text, null, source);
+		const delivery = await sendMessageImmediately(task, text, null, source, { subject });
 		return {
 			delivered: true,
 			status: delivery.status,
@@ -1687,8 +1692,10 @@ const handlers: Record<string, Handler> = {
 		const { project, task } = await resolveTaskFromParams(params, { variantIndex: messageVariantIndex(params) });
 		const text = ((params.text as string) ?? "").toString();
 		const at = (params.at as string) ?? "";
+		// Same gate as the immediate send: a delay changes nothing about the subject.
+		const subject = requireMessageSubject(params.subject, text);
 		const source = await resolveAgentMessageSource(params, task.id);
-		const updated = await scheduleMessageCore(project, task, { text, at, source });
+		const updated = await scheduleMessageCore(project, task, { text, at, source, subject });
 		return { taskId: task.id, projectId: project.id, at, pending: (updated.scheduledMessages ?? []).length };
 	},
 

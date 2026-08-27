@@ -1,6 +1,13 @@
 import { ID_PREFIX_MIN_LENGTH, type AgentMessageSource } from "./types";
 
 /**
+ * What stands in for the subject in a printed reply command. Obviously a slot to
+ * fill rather than a subject to send — a plausible-looking one would be pasted
+ * verbatim, and every reply would then carry the same line.
+ */
+export const REPLY_SUBJECT_PLACEHOLDER = "what your reply is about";
+
+/**
  * Wrap a cross-task agent message in a pseudo-XML envelope so the receiving
  * agent immediately sees the text came from another task's agent (not from the
  * human) and knows the exact command to answer with.
@@ -12,6 +19,7 @@ export function wrapAgentMessage(
 	text: string,
 	source: AgentMessageSource,
 	receiverProjectId: string,
+	subject?: string,
 ): string {
 	// A record queued before `seqShared` existed only knows it was a variant, so it
 	// keeps the old pessimistic address rather than risking an ambiguous seq.
@@ -24,6 +32,10 @@ export function wrapAgentMessage(
 		`<from-task>${ref}</from-task>`,
 	];
 	if (source.title) lines.push(`<from-title>${escapeXmlText(source.title)}</from-title>`);
+	// The sender's own summary, shown before the body so the receiver reads what
+	// this is about before reading it. Absent on a message queued before subjects
+	// were required.
+	if (subject) lines.push(`<subject>${escapeXmlText(subject)}</subject>`);
 	lines.push(
 		`<reply-with>${agentReplyCommand({
 			target: {
@@ -76,6 +88,8 @@ export function agentReplyCommand(opts: {
 	target: { id: string; seq: number; seqShared?: boolean; variantIndex?: number | null; projectId?: string };
 	fromProjectId: string;
 	quoted: string;
+	/** Placeholder for the mandatory `--subject`; overridden only by tests. */
+	subject?: string;
 }): string {
 	const { target, fromProjectId, quoted } = opts;
 	const crossProject = target.projectId != null && target.projectId !== fromProjectId;
@@ -84,7 +98,10 @@ export function agentReplyCommand(opts: {
 	const address = seqShared && target.variantIndex != null
 		? `seq:${target.seq} --variant ${target.variantIndex}`
 		: agentReplyRef(target, seqShared);
-	return `dev3 message --task ${address}${scope} "${quoted}"`;
+	// `--subject` is mandatory, so the printed command must carry it: a caller who
+	// copy-pastes the old shape is rejected with exit 17 instead of being heard.
+	const subject = opts.subject ?? REPLY_SUBJECT_PLACEHOLDER;
+	return `dev3 message --task ${address}${scope} --subject "${subject}" "${quoted}"`;
 }
 
 /**

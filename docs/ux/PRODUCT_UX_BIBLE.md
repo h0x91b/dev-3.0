@@ -342,13 +342,12 @@ Task-to-task messages had one surface, a 30-second toast (§5.7), while the rows
   the whole feature; while off there is no kebab row, no pill, no `⇧⌘M`, no menu row, no palette
   command and no tip. A greyed row or a dead shortcut is a trace, and a trace is worse than absence.
 - **Presence is the data; the badge is the unread count — never one question.** The kebab keeps a
-  labelled row always; the bar pill sits right of the three dots while the project's agents have
-  messaged each other, and is absent where they never have — conditional, not a permanent ambient
-  slot (§12.6). Never key presence off unread: hovering the pill marks it seen, so it shipped once
-  as a control retiring under the pointer. Unread counts from the last look, per browser, first look
-  stamps itself (no fresh install opening on 400), cap `9+`.
-- **Never on the bar at narrow width**, where the kebab row is the only entry — *labelled*, because
-  an unnamed glyph among the sheet's numbers ("28 GB", "5.8 ms") is unfindable.
+  labelled row always; the bar pill appears only while the project's agents have messaged each other
+  — conditional, not a permanent ambient slot (§12.6). Never key presence off unread: hovering marks it seen, so it
+  shipped once as a control retiring under the pointer. Unread counts from the last look, per
+  browser, first look stamps itself (no fresh install opening on 400), cap `9+`.
+- **Never on the bar at narrow width**, where the kebab row is the only entry — *labelled*, because an
+  unnamed glyph among the sheet's numbers is unfindable.
 - **The panel lists pairs, unfiltered by recency.** The human's three questions — *must I step in*,
   *did two tasks collide*, *who waits on whom* — are all pair-shaped; the receiver of the newest
   message owes the answer, and a row navigates there, matching the toast's click target. Filtering
@@ -356,6 +355,10 @@ Task-to-task messages had one surface, a 30-second toast (§5.7), while the rows
 - **The log is an overlay, never a destination.** The nav budget is 8 and spent (§4), and this is
   opened to answer one question and then left — the `task notes log` shape: dialog on wide,
   BottomSheet on narrow. Reachable from the readout, `⇧⌘M`, the View menu and the palette.
+- **Both surfaces render the sender's subject, never the body head.** `dev3 message` requires
+  `--subject` (one line, 80 chars, rejected over the cap, never truncated) and stores it: a body head
+  is the sender naming itself and its task, which the row already shows. A pre-subject row keeps the
+  head; nothing is backfilled — a guessed subject cannot be told from a chosen one.
 - **No invented importance axis.** A sender cannot mark a message important, so a chatter/blocker
   split asserts a fact the UI does not have. The one real axis is the row's delivery verdict, and
   `held` is never a problem — it is a promise dev3 made.

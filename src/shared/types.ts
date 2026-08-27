@@ -2454,6 +2454,12 @@ export interface ScheduledMessage {
 	id: string;
 	/** The text delivered (send-keys paste + Enter). */
 	text: string;
+	/**
+	 * The sender's one-line summary of the message, carried to the delivery
+	 * outcome so the message log stores it. Required on everything `dev3 message`
+	 * queues; absent only where dev3 itself hands a task some text.
+	 */
+	subject?: string;
 	/** ISO timestamp when it should be delivered. */
 	at: string;
 	/** Delivery target; `{ kind: "agent" }` by default. */

@@ -8,6 +8,7 @@
 // `OWNS_HELP` below).
 
 import { AGENT_MESSAGE_SPILL_THRESHOLD_BYTES, MAX_SCHEDULED_MESSAGE_LENGTH } from "../shared/types";
+import { MAX_MESSAGE_SUBJECT_LENGTH, MESSAGE_SUBJECT_WORD_GUIDANCE } from "../shared/agent-message-subject";
 
 /** One subcommand of a command group (e.g. `task create`). */
 export interface SubcommandHelp {
@@ -460,8 +461,16 @@ const COMMANDS: CommandHelp[] = [
 		name: "message",
 		summary: "Send text to the task's live agent now, or schedule it for later.",
 		subcommands: [],
-		usage: 'dev3 message "text" [--in <dur> | --at <hh:mm>] [--task <id>] [--variant <i>]',
+		usage: 'dev3 message --subject "<what it is about>" "text" [--in <dur> | --at <hh:mm>] [--task <id>] [--variant <i>]',
 		details: [
+			`--subject <text>  REQUIRED. One line saying what the message is about: about`,
+			`                  ${MESSAGE_SUBJECT_WORD_GUIDANCE} words, ${MAX_MESSAGE_SUBJECT_LENGTH} characters at most (hard limit — an over-limit`,
+			"                  subject is rejected, never shortened for you). It is stored with",
+			"                  the message and it is the line the agent-traffic view shows, so",
+			"                  do NOT repeat who is talking — that view already shows the pair.",
+			'                    good:  --subject "PR 1577 merged, main green"',
+			'                    bad:   --subject "Seq 1722 -> Coordinator: PR 1577 merged"',
+			"                  Omitting it exits 17 with the corrected command.",
 			"Bare form delivers the text into the live agent immediately (types it + Enter).",
 			"--in <dur>    Schedule after a delay, e.g. 30m, 2h, 1h30m (Send later).",
 			"--at <hh:mm>  Schedule at the next occurrence of a local time (today or tomorrow).",

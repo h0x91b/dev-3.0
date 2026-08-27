@@ -323,7 +323,7 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		const projectFlag = args.flags.project ? ` --project ${args.flags.project}` : "";
 		process.stdout.write(
 			`Note: the running agent will NOT see this — a description is delivered as its first prompt at launch, and nothing re-delivers it.\n`
-			+ `Tell it too: dev3 message --task ${task.id.slice(0, 8)}${projectFlag} "<what changed>"\n`,
+			+ `Tell it too: dev3 message --task ${task.id.slice(0, 8)}${projectFlag} --subject "brief updated" "<what changed>"\n`,
 		);
 	}
 }
@@ -457,7 +457,7 @@ function reportLaunchOutcome(outcome: LaunchApprovalOutcome, codexStopHook: bool
 		return;
 	}
 	const launched = outcome.launched ?? [];
-	const fallback = `dev3 message --task seq:${outcome.seq} "your message"`;
+	const fallback = `dev3 message --task seq:${outcome.seq} --subject "what this is about" "your message"`;
 	if (launched.length > 1) {
 		// The user turned one launch into a variant group. Every sibling shares
 		// `seq:<N>`, so that handle is ambiguous and each address is per-task —

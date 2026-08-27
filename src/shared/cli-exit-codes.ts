@@ -15,6 +15,7 @@ export const CLI_EXIT_CODE_ARTIFACT_ASSET_MISSING = 13;
 export const CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND = 14;
 export const CLI_EXIT_CODE_UPDATE_REFUSED = 15;
 export const CLI_EXIT_CODE_INSTANCE_NOT_FOUND = 16;
+export const CLI_EXIT_CODE_MESSAGE_SUBJECT_REQUIRED = 17;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -113,5 +114,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_INSTANCE_NOT_FOUND,
 		description:
 			"`--instance <selector>` was well-formed but no running instance answers to it — or more than one does (a `seq:<N>` shared by variants, or a `task:` prefix matching two guests). The message lists what IS running. Distinct from exit 2, which means no instance is reachable at all, and from exit 3, which means the selector itself was misspelled. The command never falls back to another instance.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_MESSAGE_SUBJECT_REQUIRED",
+		code: CLI_EXIT_CODE_MESSAGE_SUBJECT_REQUIRED,
+		description:
+			"`dev3 message` was called without a usable `--subject`, or with one over the character limit. Nothing was sent and nothing was queued. Every message carries a one-line subject: it is stored with the message and it is the line the agent-traffic view shows, so it can be neither defaulted nor derived. The error prints the limit, a good and a bad example, and the corrected command. An over-limit subject is rejected, never truncated. Distinct from exit 3 so automation can recognise this one case and retry with a subject instead of treating it as a misspelled command.",
 	},
 ] as const;

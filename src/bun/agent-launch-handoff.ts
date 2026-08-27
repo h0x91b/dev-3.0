@@ -22,6 +22,13 @@ export const HANDOFF_MESSAGE =
 	"Report your progress, questions, and final result back to it with the reply command below.";
 
 /**
+ * The subject of that note. Fixed, and not a guess about anyone's content: dev3
+ * wrote this body itself, so it can say what it is. Every other subject in the
+ * log is the sender's own words.
+ */
+export const HANDOFF_SUBJECT = "Started by a peer agent";
+
+/**
  * Deliver the handoff note into a freshly launched task once its agent pane is
  * actually alive. The launch is asynchronous (worktree + tmux + agent boot), so
  * a straight send would hit "no live agent session" — hence the poll. Reloads the
@@ -54,7 +61,10 @@ export async function deliverLaunchHandoff(opts: {
 				// Not held: this is the first thing a just-booted agent hears, into a pane
 				// nobody has typed into yet. Waiting for it to "go quiet" would leave the
 				// child sitting idle for the whole window with the launcher watching.
-				await sendMessageImmediately(task, HANDOFF_MESSAGE, null, opts.source, { hold: false });
+				await sendMessageImmediately(task, HANDOFF_MESSAGE, null, opts.source, {
+					hold: false,
+					subject: HANDOFF_SUBJECT,
+				});
 				log.info("Handoff delivered", { taskId: shortId, fromSeq: opts.source.seq });
 				return true;
 			}

@@ -64,6 +64,22 @@ export function UnsettledMark({ label }: { label: string }) {
 	);
 }
 
+/**
+ * The one line a pair row gets.
+ *
+ * The subject, because that is the sender's own summary of the message and the
+ * reason the field exists: the head of a body is almost always the sender naming
+ * itself and its task — the two things the row already shows either side of the
+ * wire — so the reader used to learn nothing from it.
+ *
+ * A row written before subjects were required keeps the old body head. Nothing is
+ * backfilled: a subject invented from a body would be indistinguishable from one
+ * an agent chose, and the whole value of the column is that it was chosen.
+ */
+export function rowHeadline(row: AgentMessageLogRow): string {
+	return row.subject ?? row.body;
+}
+
 interface PairRowProps {
 	pair: TrafficPair;
 	/** Highlighted because the log is currently filtered to this pair. */
@@ -96,7 +112,7 @@ export function PairRow({ pair, selected = false, onSelect, now = Date.now() }: 
 			</span>
 			<Wire />
 			<span className="text-micro font-medium tabular-nums text-fg-3 shrink-0">{`#${pair.toSeq}`}</span>
-			<span className="min-w-0 flex-1 truncate text-dense streamer-private">{pair.last.body}</span>
+			<span className="min-w-0 flex-1 truncate text-dense streamer-private">{rowHeadline(pair.last)}</span>
 			{pair.unsettled && <UnsettledMark label={t("traffic.unsettled")} />}
 			{pair.count > 1 && (
 				<span className="shrink-0 text-nano tabular-nums text-fg-muted">{`×${pair.count}`}</span>
@@ -140,7 +156,16 @@ export function LedgerRow({
 			</span>
 			<span className="mt-0.5 text-micro font-medium tabular-nums text-fg-3 shrink-0">{`#${row.toSeq}`}</span>
 			<div className="min-w-0 flex-1">
-				<div className="text-dense text-fg whitespace-pre-wrap break-words streamer-private">
+				{/* The subject leads, the body follows in the quieter weight: the ledger is
+				    read by scanning subjects and stopping on one. */}
+				{row.subject && (
+					<div className="text-dense font-medium text-fg break-words streamer-private">{row.subject}</div>
+				)}
+				<div
+					className={`text-dense whitespace-pre-wrap break-words streamer-private ${
+						row.subject ? "text-fg-2" : "text-fg"
+					}`}
+				>
 					{spilled ? t("traffic.spilled") : row.body}
 				</div>
 				<div className="mt-0.5 flex items-center gap-1.5 text-nano text-fg-muted">

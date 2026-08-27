@@ -288,6 +288,65 @@ beforeEach(() => {
 	});
 });
 
+describe("message.send / message.schedule — the subject gate", () => {
+	// The app's half of the gate. The CLI checks first, so reaching here means an
+	// older `dev3` binary — and per the no-deprecation rule there is no path where
+	// a subject-less message still goes through.
+	beforeEach(() => {
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask()]);
+		vi.mocked(data.getTask).mockResolvedValue(makeTask());
+	});
+
+	function send(params: Record<string, unknown>) {
+		return handleRequest(makeRequest("message.send", { taskId: makeTask().id, projectId: "proj-1", ...params }));
+	}
+
+	it("delivers with the subject and hands it to the send seam", async () => {
+		const resp = await send({ text: "ping", subject: "CI green on main" });
+		expect(resp.ok).toBe(true);
+		expect(vi.mocked(sendMessageImmediately).mock.calls[0]?.[4]).toMatchObject({ subject: "CI green on main" });
+	});
+
+	it("refuses a send with no subject, and never reaches the send seam", async () => {
+		const resp = await send({ text: "ping" });
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("needs --subject");
+		expect(resp.error).toContain("dev3 update");
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("refuses a whitespace-only subject", async () => {
+		const resp = await send({ text: "ping", subject: "  " });
+		expect(resp.ok).toBe(false);
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("refuses an over-limit subject rather than clipping it", async () => {
+		const resp = await send({ text: "ping", subject: "a".repeat(81) });
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("too long");
+		expect(sendMessageImmediately).not.toHaveBeenCalled();
+	});
+
+	it("applies the same gate to a scheduled message", async () => {
+		const at = new Date(Date.now() + 60_000).toISOString();
+		const bad = await handleRequest(
+			makeRequest("message.schedule", { taskId: makeTask().id, projectId: "proj-1", text: "later", at }),
+		);
+		expect(bad.ok).toBe(false);
+		expect(scheduleMessage).not.toHaveBeenCalled();
+
+		const good = await handleRequest(
+			makeRequest("message.schedule", { taskId: makeTask().id, projectId: "proj-1", text: "later", at, subject: "wake-up ping" }),
+		);
+		expect(good.ok).toBe(true);
+		expect(vi.mocked(scheduleMessage).mock.calls[0]?.[2]).toMatchObject({ subject: "wake-up ping" });
+	});
+});
+
 describe("remote.accessUrl", () => {
 	it("errors when no remote-access server is bound (serverPort 0)", async () => {
 		vi.mocked(getServerPort).mockReturnValue(0);
@@ -3986,7 +4045,7 @@ describe("message.send — --variant narrows a variant group", () => {
 		scopeTo(group());
 
 		const resp = await handleRequest(
-			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: 2, text: "hi" }),
+			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", variantIndex: 2, text: "hi" }),
 		);
 
 		expect(resp.ok).toBe(true);
@@ -3998,7 +4057,7 @@ describe("message.send — --variant narrows a variant group", () => {
 		scopeTo(group());
 
 		const resp = await handleRequest(
-			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", text: "hi" }),
+			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", text: "hi" }),
 		);
 
 		expect(resp.ok).toBe(false);
@@ -4010,7 +4069,7 @@ describe("message.send — --variant narrows a variant group", () => {
 		scopeTo(group());
 
 		const resp = await handleRequest(
-			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: 5, text: "hi" }),
+			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", variantIndex: 5, text: "hi" }),
 		);
 
 		expect(resp.ok).toBe(false);
@@ -4023,7 +4082,7 @@ describe("message.send — --variant narrows a variant group", () => {
 		scopeTo([makeTask({ id: V1, seq: 42 })]);
 
 		const resp = await handleRequest(
-			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: 1, text: "hi" }),
+			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", variantIndex: 1, text: "hi" }),
 		);
 
 		expect(resp.ok).toBe(false);
@@ -4036,7 +4095,7 @@ describe("message.send — --variant narrows a variant group", () => {
 		scopeTo([makeTask({ id: V1, seq: 42, groupId: "g1", variantIndex: 1 })]);
 
 		const resp = await handleRequest(
-			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: 1, text: "hi" }),
+			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", variantIndex: 1, text: "hi" }),
 		);
 
 		expect(resp.ok).toBe(true);
@@ -4047,7 +4106,7 @@ describe("message.send — --variant narrows a variant group", () => {
 		scopeTo(group());
 
 		const resp = await handleRequest(
-			makeRequest("message.send", { taskId: V1, projectId: "proj-1", variantIndex: 1, text: "hi" }),
+			makeRequest("message.send", { subject: "test subject", taskId: V1, projectId: "proj-1", variantIndex: 1, text: "hi" }),
 		);
 
 		expect(resp.ok).toBe(false);
@@ -4058,7 +4117,7 @@ describe("message.send — --variant narrows a variant group", () => {
 		scopeTo(group());
 
 		const resp = await handleRequest(
-			makeRequest("message.send", { taskId: "seq:42", projectId: "proj-1", variantIndex: "one", text: "hi" }),
+			makeRequest("message.send", { subject: "test subject", taskId: "seq:42", projectId: "proj-1", variantIndex: "one", text: "hi" }),
 		);
 
 		expect(resp.ok).toBe(false);
@@ -4069,7 +4128,7 @@ describe("message.send — --variant narrows a variant group", () => {
 		scopeTo(group());
 
 		const resp = await handleRequest(
-			makeRequest("message.schedule", {
+			makeRequest("message.schedule", { subject: "test subject",
 				taskId: "seq:42",
 				projectId: "proj-1",
 				variantIndex: 1,
@@ -4094,7 +4153,7 @@ describe("message.send — --variant narrows a variant group", () => {
 				: [makeTask({ id: V2, seq: 42, projectId: "proj-b", groupId: "g1", variantIndex: 1 })],
 		);
 
-		const resp = await handleRequest(makeRequest("message.send", { taskId: "seq:42", variantIndex: 1, text: "hi" }));
+		const resp = await handleRequest(makeRequest("message.send", { subject: "test subject", taskId: "seq:42", variantIndex: 1, text: "hi" }));
 
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ taskId: V2 });
