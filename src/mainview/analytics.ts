@@ -2,8 +2,9 @@
 // Uses fetch() instead of gtag.js because WKWebView blocks external
 // script loading from the views:// custom protocol.
 
-import type { CodingAgent } from "../shared/types";
-import { BUILD_COMMIT, BUILD_TASK_LABEL } from "../shared/build-info.generated";
+import type { CodingAgent, TelemetryProfile } from "../shared/types";
+import { BUILD_COMMIT } from "../shared/build-info.generated";
+import { countryForTimezone, currentTimezone } from "../shared/timezone-country";
 import type { Route } from "./state";
 import { api } from "./rpc";
 import { telemetryEnabled } from "./telemetry";
@@ -55,26 +56,28 @@ function normalizeBuildChannel(buildChannel: string | undefined): string {
 }
 
 /**
- * The version string GA reports: `1.48.1` for a stable install, `canary-1.48.1`,
- * `dev-1.48.1`, or `dev-1.48.1-1716-1` for a dev build out of a dev3 task worktree.
+ * The version string GA reports: `1.48.1` for a stable install, `canary-1.48.1`
+ * for a canary build, and a bare `dev` for anything built from source.
  *
  * It carries the channel because `app_version` is one of GA4's OWN dimensions and
  * shows up in every report unaided, while a user property does nothing until
- * someone registers it as a custom dimension. This string is for analytics only —
- * the bundle's `version.json` must keep the bare version, because `dev3 doctor`
- * compares it against the CLI version by string equality.
+ * someone registers it as a custom dimension.
  *
- * `taskLabel` is a parameter rather than a direct read so the function stays pure
- * and testable: its baked-in value differs between a worktree build and CI.
+ * A DEV BUILD REPORTS NO VERSION AT ALL, ON PURPOSE. Every agent building from its
+ * own worktree would otherwise mint a distinct value, and GA4 collapses a
+ * dimension's long tail into "(other)" — the tail would be the developers'
+ * builds, drowning the released versions that the dimension exists to measure.
+ * "It came from source" is the entire question a dev build has to answer.
+ *
+ * This string is for analytics only — the bundle's `version.json` must keep the
+ * bare version, because `dev3 doctor` compares it against the CLI version by
+ * string equality.
  */
-export function analyticsVersion(
-	appVersion: string,
-	buildChannel: string | undefined,
-	taskLabel: string = BUILD_TASK_LABEL,
-): string {
+export function analyticsVersion(appVersion: string, buildChannel: string | undefined): string {
 	const channel = normalizeBuildChannel(buildChannel);
+	if (channel === "dev") return "dev";
 	if (channel === "stable") return appVersion;
-	return `${channel}-${appVersion}${taskLabel ? `-${taskLabel}` : ""}`;
+	return `${channel}-${appVersion}`;
 }
 
 // Agents registered by the app (App.tsx) so events like `task_moved` can carry
@@ -138,6 +141,42 @@ function getScreenResolution(): string {
 
 function getLanguage(): string {
 	return navigator.language || "unknown";
+}
+
+/**
+ * The standard GA4 `device` object.
+ *
+ * OS, language and screen resolution live HERE rather than in `user_properties`:
+ * they are fields the Measurement Protocol already understands, so they populate
+ * GA4's own built-in dimensions instead of eating three of the twenty-five custom
+ * user-property slots and then showing nothing until someone registers them.
+ *
+ * The OS VERSION comes from the host, never from the User-Agent: WebKit reports
+ * `Mac OS X 10_15_7` on every Mac Apple has ever shipped, so a UA-derived version
+ * would report one wrong number for the entire macOS population.
+ */
+function deviceInfo(): Record<string, string> {
+	return {
+		category: "desktop",
+		language: getLanguage(),
+		screen_resolution: getScreenResolution(),
+		operating_system: getOS(),
+		...(osVersion ? { operating_system_version: osVersion } : {}),
+	};
+}
+
+// ── Country (no IP, no network) ──
+// Derived from the machine's own timezone against a baked-in table, so it costs
+// one map lookup and no request. An unmapped zone leaves it empty and the field
+// is omitted — a wrong country would be worse than none.
+let country = "";
+
+/** Host-reported OS version; empty until the profile lands, and then omitted. */
+let osVersion = "";
+
+/** Resolve the country from the machine's timezone. Idempotent; never throws. */
+export function resolveCountry(): void {
+	country = countryForTimezone(currentTimezone());
 }
 
 function isFirstVisit(): boolean {
@@ -212,11 +251,19 @@ function sendToGA(events: Array<{ name: string; params?: Record<string, unknown>
 	const body = {
 		client_id: clientId,
 		user_agent: navigator.userAgent,
+		// Top-level, so it costs none of the 25 user-property slots. Omitted rather
+		// than sent empty when the timezone maps to no country.
+		...(country ? { user_location: { country_id: country } } : {}),
+		device: deviceInfo(),
 		user_properties: userProperties,
 		events: events.map((e, index) => ({
 			name: e.name,
 			params: {
 				session_id: sessionId,
+				// An event parameter, not a user property: the commit describes the
+				// build that emitted THIS hit, and as a dimension it is one distinct
+				// value per merge — cardinality no user-scoped report survives.
+				build_commit: BUILD_COMMIT,
 				...(index === 0 ? { engagement_time_msec: engagementMs } : {}),
 				...e.params,
 			},
@@ -237,8 +284,15 @@ function sendToGA(events: Array<{ name: string; params?: Record<string, unknown>
  * `buildChannel` is the channel baked into the bundle (`dev` / `canary` /
  * stable), not the channel the user subscribes to — the caller reads it from
  * `getAppVersion`.
+ *
+ * `profile` is the host's coarse install facts (see `bun/telemetry-profile.ts`);
+ * omit it and those properties are simply not reported.
  */
-export function initAnalytics(appVersion: string, buildChannel?: string): void {
+export function initAnalytics(
+	appVersion: string,
+	buildChannel?: string,
+	profile?: TelemetryProfile,
+): void {
 	// Runs before the telemetry gate on purpose: an opted-out install must also
 	// shed the IP an earlier version cached, and erasing it sends nothing.
 	clearStaleIpCache();
@@ -263,13 +317,23 @@ export function initAnalytics(appVersion: string, buildChannel?: string): void {
 		typeof document === "undefined" || document.visibilityState !== "hidden" ? Date.now() : 0;
 	setupEngagementTracking();
 
+	resolveCountry();
+	osVersion = profile?.osVersion ?? "";
+
 	userProperties = {
-		operating_system: { value: getOS() },
 		app_version: { value: analyticsVersion(appVersion, buildChannel) },
 		build_channel: { value: normalizeBuildChannel(buildChannel) },
-		build_commit: { value: BUILD_COMMIT },
-		screen_resolution: { value: getScreenResolution() },
-		language: { value: getLanguage() },
+		...(profile
+			? {
+					cpu_arch: { value: profile.cpuArch },
+					install_type: { value: profile.installType },
+					terminal_backend: { value: profile.terminalBackend },
+					default_agent: { value: profile.defaultAgent },
+					project_count_bucket: { value: profile.projectCountBucket },
+					task_count_bucket: { value: profile.taskCountBucket },
+					install_age_bucket: { value: profile.installAgeBucket },
+				}
+			: {}),
 	};
 
 	const initEvents: Array<{ name: string; params?: Record<string, unknown> }> = [];
@@ -338,23 +402,17 @@ export interface AnalyticsLocation {
 	 * the SAME GA4 property (measurement_id "G-…"), so without the prefix their
 	 * Page-path rows would be indistinguishable.
 	 *
-	 * The project identifier is the app's internal id, never the project *name*:
-	 * a repo/folder name can be confidential (client under NDA, unreleased
-	 * codename) and must not leave the machine. The task identifier is the
-	 * human-readable per-project seq label (e.g. "981-1", see
-	 * {@link taskSeqLabel}) when resolvable, falling back to the raw task id.
+	 * NO IDENTIFIERS GO IN HERE — not the project id, not the task id, not the
+	 * task's seq label. GA4 derives its Page-path dimension from this string, so
+	 * an id in the path mints one row per project and per task and shreds the
+	 * screen-level numbers the dimension exists to give. The path names the
+	 * SCREEN; which project or task it was is not a question analytics asks.
 	 */
 	path: string;
 }
 
-/**
- * Map a route to a GA4 location. Pure — safe to unit-test in isolation.
- *
- * `taskLabel` is the human-readable seq id (e.g. "981-1") for the route's task,
- * resolved by the caller from the loaded task list; when omitted (task not
- * loaded) the raw task id is used so the hit is never dropped.
- */
-export function analyticsLocationForRoute(route: Route, taskLabel?: string): AnalyticsLocation {
+/** Map a route to a GA4 location. Pure — safe to unit-test in isolation. */
+export function analyticsLocationForRoute(route: Route): AnalyticsLocation {
 	switch (route.screen) {
 		case "dashboard":
 			return { screen: "dashboard", title: "Dashboard", path: "/app/dashboard" };
@@ -362,14 +420,14 @@ export function analyticsLocationForRoute(route: Route, taskLabel?: string): Ana
 			// Split view with a task selected is really the task surface; the bare
 			// board (with or without an empty split list) is "kanban".
 			return route.activeTaskId
-				? { screen: "task", title: "Task", path: `/app/project/${route.projectId}/task/${taskLabel ?? route.activeTaskId}` }
-				: { screen: "kanban", title: "Kanban", path: `/app/project/${route.projectId}/kanban` };
+				? { screen: "task", title: "Task", path: "/app/project/task" }
+				: { screen: "kanban", title: "Kanban", path: "/app/project/kanban" };
 		case "project-terminal":
-			return { screen: "project-terminal", title: "Project Terminal", path: `/app/project/${route.projectId}/terminal` };
+			return { screen: "project-terminal", title: "Project Terminal", path: "/app/project/terminal" };
 		case "task":
-			return { screen: "task", title: "Task", path: `/app/project/${route.projectId}/task/${taskLabel ?? route.taskId}` };
+			return { screen: "task", title: "Task", path: "/app/project/task" };
 		case "project-settings":
-			return { screen: "project-settings", title: "Project Settings", path: `/app/project/${route.projectId}/settings` };
+			return { screen: "project-settings", title: "Project Settings", path: "/app/project/settings" };
 		case "settings":
 			return { screen: "settings", title: "Settings", path: "/app/settings" };
 		case "changelog":
@@ -402,13 +460,9 @@ function pageLocation(path: string): string {
 	return `${APP_LOCATION_ORIGIN}${path}`;
 }
 
-/**
- * Track a virtual page view for SPA navigation, derived from the route.
- * `taskLabel` (e.g. "981-1") is resolved by the caller from the loaded task
- * list; it lands in the path in place of the raw task id.
- */
-export function trackPageView(route: Route, taskLabel?: string): void {
-	const loc = analyticsLocationForRoute(route, taskLabel);
+/** Track a virtual page view for SPA navigation, derived from the route. */
+export function trackPageView(route: Route): void {
+	const loc = analyticsLocationForRoute(route);
 	currentScreen = loc.screen;
 	sendToGA([{
 		name: "page_view",
@@ -422,16 +476,15 @@ export function trackPageView(route: Route, taskLabel?: string): void {
 /**
  * Track opening the inline diff viewer as its own virtual page view. The diff is
  * not a routable screen (it opens in-place over a task), so callers fire this
- * explicitly on open. `taskLabel` is the human-readable seq id (e.g. "981-1");
- * project id is the internal id, never the project name.
+ * explicitly on open.
  */
-export function trackDiffView(projectId: string, taskLabel: string): void {
+export function trackDiffView(): void {
 	currentScreen = "diff";
 	sendToGA([{
 		name: "page_view",
 		params: {
 			page_title: "Diff",
-			page_location: pageLocation(`/app/project/${projectId}/diff/${taskLabel}`),
+			page_location: pageLocation("/app/project/diff"),
 		},
 	}]);
 }

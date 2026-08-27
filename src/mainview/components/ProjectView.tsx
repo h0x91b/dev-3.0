@@ -16,7 +16,6 @@ import TaskWorkspacePane from "./TaskWorkspacePane";
 import BackToKanbanEmptyState from "./BackToKanbanEmptyState";
 import { createUnresolvedCommentsDiffRequest, useTaskInlineDiffState } from "./task-inline-diff";
 import { trackDiffView } from "../analytics";
-import { taskSeqLabel } from "../../shared/types";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { useAgents } from "../hooks/useAgents";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -157,13 +156,10 @@ function ProjectView({
 
 	// The diff is a history step on the task route, not its own screen — fire its
 	// page view explicitly (once per open) so it shows up alongside navigation.
-	// Use the human-readable seq id (e.g. "981-1"), falling back to the raw id.
 	useEffect(() => {
 		if (!inlineDiff.isOpen || !activeTaskId) return;
-		const task = tasks.find((t) => t.id === activeTaskId);
-		trackDiffView(projectId, task ? taskSeqLabel(task) : activeTaskId);
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per open
-	}, [inlineDiff.isOpen, projectId, activeTaskId]);
+		trackDiffView();
+	}, [inlineDiff.isOpen, activeTaskId]);
 
 	// The empty "select a task" pane is a dead end on narrow viewports — there is
 	// no split task list to pick from — so bounce straight back to the Kanban board.

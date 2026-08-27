@@ -145,7 +145,12 @@ async function bootstrap() {
 			api.request.getAppVersion(),
 			new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
 		]);
-		initAnalytics(version, buildChannel);
+		// The profile is a nice-to-have: a slow or failing probe must not delay the
+		// launch or cost us the hit, so it degrades to no profile properties.
+		const profile = await api.request
+			.getTelemetryProfile()
+			.catch(() => undefined);
+		initAnalytics(version, buildChannel, profile);
 		// Non-stable channels get a visible prefix so the window is unmistakable next to
 		// an installed stable one — shared with the native window title.
 		document.title = `${buildChannelTitlePrefix(buildChannel)}dev-3.0 v${version}`;

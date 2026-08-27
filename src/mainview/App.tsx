@@ -10,7 +10,7 @@ import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
-import { orderProjectsForDisplay, taskSeqLabel, getTaskTitle } from "../shared/types";
+import { orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
@@ -2464,14 +2464,10 @@ function App() {
 		return () => clearInterval(tick);
 	}, [applyRemoteQR, qrModalOpen]);
 
-	// Track page views on route changes. Resolve the task's human-readable seq id
-	// (e.g. "981-1") from the loaded task list so analytics paths carry the task
-	// number, not the opaque hash; falls back to the raw id if not yet loaded.
+	// Track page views on route changes. The path names the screen only — no
+	// project or task identifier goes into it (see AnalyticsLocation).
 	useEffect(() => {
-		const taskId = routeTaskId(state.route);
-		const task = taskId ? state.currentProjectTasks.find((t) => t.id === taskId) : undefined;
-		trackPageView(state.route, task ? taskSeqLabel(task) : undefined);
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per navigation; task list read at that moment
+		trackPageView(state.route);
 	}, [state.route]);
 
 	// Escape: close quit dialog or navigate back from settings screens

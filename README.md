@@ -347,7 +347,7 @@ The app reports usage analytics so the project can see what is actually used:
 
 | Channel | What it sends |
 |---|---|
-| Google Analytics 4 | App launch, version, OS, screen resolution, language, screen navigation, a 10-minute heartbeat, agent launches, and unhandled errors. Identified by a random per-install id. Your IP address is never looked up and never sent as data. Project *names* and file paths are deliberately never sent — only internal ids. |
+| Google Analytics 4 | App launch, version and build channel, OS and its major version, screen resolution, language, CPU architecture, how the app was installed, which screen you are on, a 10-minute heartbeat, agent launches, and unhandled errors. How many projects and tasks you have is sent only as a coarse bucket (`6-15`, `201-1000`), and how long ago you installed dev3 only as an age band (`day-0`, `week-03`). Your country is derived from your computer's timezone — your IP address is never looked up and never sent as data, and no city or region is sent. Identified by a random per-install id. Project *names*, task titles and file paths are deliberately never sent, and no project or task identifier goes into the page address either. |
 | PostHog | Task and project actions (created, moved, merged, pushed …) plus unhandled errors, under a random per-install id. Also delivers feature flags. Live in the official release builds; a build from source has no key and stays off. |
 
 Neither channel sends your project names, task titles, file paths, prompts, diffs or terminal

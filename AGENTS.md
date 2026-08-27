@@ -85,6 +85,9 @@ What that means in code:
 | Vendor auto-capture ships masked | `mask_all_text` and `mask_all_element_attributes` are on. Adding a channel that captures visible text or DOM attributes (session replay, copy capture, heatmaps, surveys) needs the same treatment or it stays off |
 | An opted-out install hands over no identity | No distinct id in the HTML shell — the remote server serves that same shell to an unauthenticated browser |
 | New env-level opt-outs are additive | `DEV3_TELEMETRY=off` and `DO_NOT_TRACK=1` each suffice on their own; none of them is allowed to be the *only* way out, because the in-app toggle must always work too |
+| A count is bucketed before it leaves the host | A raw project/task count or install age is a near-unique fingerprint. `src/shared/telemetry-profile.ts` owns the buckets; `src/bun/telemetry-profile.ts` is the only thing that reads the boards, and it returns bucket strings, never numbers |
+| Location is derived locally, never looked up | Country comes from the machine's timezone against a baked-in table (`src/shared/timezone-country.ts`) and goes in `user_location.country_id`. No IP lookup, no third-party geolocation service, no city, no region — see `decisions/2026/08/27/drop-ip-override-geolocation.md` |
+| No identifier goes into `page_location` | GA4 derives Page path from it, so a project or task id there is both a leak and one row per project. The path names the screen |
 
 Adding a telemetry channel, a new event, or a new property? State plainly which of the two rules
 could be at risk and how the change satisfies it, and cover it with a test that fails when the

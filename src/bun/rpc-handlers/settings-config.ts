@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { PATHS } from "../electrobun-platform";
-import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, HarnessReadinessReport, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo, ShellAvailability, TelemetryProfile } from "../../shared/types";
 import { SHELL_FALLBACK_ORDER, type ShellFlavor, shellCandidatePaths } from "../../shared/posix-shell";
 import { getUserShell, resolveUserShell, setShellPreference } from "../shell-env";
 import * as data from "../data";
@@ -23,6 +23,7 @@ import { spawn } from "../spawn";
 import { getCurrentUiTheme, setCurrentUiTheme } from "../theme-state";
 import { getAllFeatureFlags, setFeatureFlags as cacheFeatureFlags } from "../feature-flags";
 import { resolveAnalyticsDistinctId as resolveDistinctId } from "../analytics-identity";
+import { collectTelemetryProfile } from "../telemetry-profile";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { binaryCandidatesOnPath, hasModelProviderSection, tmuxSearchPaths } from "./shared-pure";
 import { agentBinaryPathOverride, isExecutableFile } from "../executable";
@@ -434,6 +435,10 @@ async function getAppVersion(): Promise<{ version: string; channel: string; buil
 	return result;
 }
 
+async function getTelemetryProfile(): Promise<TelemetryProfile> {
+	return collectTelemetryProfile();
+}
+
 /**
  * Commit to a tmux binary: a live dev3 server started by a different tmux
  * version rejects our clients outright, so selectTmuxBinary probes for that
@@ -677,6 +682,7 @@ export const settingsConfigHandlers = {
 	saveLastRoute,
 	getLastRoute,
 	getAppVersion,
+	getTelemetryProfile,
 	checkSystemRequirements,
 	getRosettaWarning,
 	checkGhAvailable,

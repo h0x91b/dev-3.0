@@ -6,6 +6,8 @@ import type { TerminalBackendIdentity } from "./terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-panes";
 import type { DeepLinkNav } from "./deep-link";
 import type { UpdateChannel } from "./update-channel";
+import type { TelemetryProfile } from "./telemetry-profile";
+export type { TelemetryProfile } from "./telemetry-profile";
 import type { PosixShellResolution, ShellFlavor } from "./posix-shell";
 import type { AgentPromptDelivery } from "./agent-prompt-delivery";
 import type { AgentMessageLogPage } from "./agent-message-log";
@@ -4682,6 +4684,11 @@ export type AppRPCSchema = {
 			getAppVersion: {
 				params: void;
 				response: { version: string; channel: string; buildChannel: string };
+			};
+			/** Coarse, bucketed install facts for analytics — never names, paths or titles. */
+			getTelemetryProfile: {
+				params: void;
+				response: TelemetryProfile;
 			};
 			checkSystemRequirements: {
 				params: void;

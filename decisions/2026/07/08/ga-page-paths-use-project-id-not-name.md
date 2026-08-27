@@ -1,5 +1,13 @@
 # 114 — GA4 page paths use project id, never the project name
 
+> **Superseded on 2026-08-27 by `decisions/2026/08/27/ga4-payload-device-buckets-and-country.md`:**
+> `page_location` now carries NO identifier at all — not the project id, not the task seq
+> label. The path names the screen (`/app/project/kanban`, `/app/project/task`), because an
+> id in it mints one Page-path row per project and per task. Everything below about never
+> sending the project *name*, and about `page_location` having to be a real https URL,
+> still holds; `analyticsLocationForRoute` no longer takes a `taskLabel`, and
+> `trackDiffView()` takes no arguments.
+
 ## Context
 
 The app reports to a GA4 **web** data stream (measurement_id `G-L1NSQH6FGY`) via the

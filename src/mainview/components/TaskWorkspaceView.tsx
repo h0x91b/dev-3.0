@@ -8,7 +8,6 @@ import TaskInfoPanel from "./TaskInfoPanel";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { createUnresolvedCommentsDiffRequest, useTaskInlineDiffState } from "./task-inline-diff";
 import { trackDiffView } from "../analytics";
-import { taskSeqLabel } from "../../shared/types";
 
 interface TaskWorkspaceViewProps {
 	projectId: string;
@@ -76,12 +75,10 @@ function TaskWorkspaceView({
 
 	// The diff is a history step on the task route, not its own screen — fire its
 	// page view once per open so it shows up in analytics like any other screen.
-	// Use the human-readable seq id (e.g. "981-1"), falling back to the raw id.
 	useEffect(() => {
 		if (!inlineDiff.isOpen) return;
-		trackDiffView(projectId, task ? taskSeqLabel(task) : taskId);
-		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per open
-	}, [inlineDiff.isOpen, projectId, taskId]);
+		trackDiffView();
+	}, [inlineDiff.isOpen]);
 
 	useEffect(() => {
 		if (!openUnresolvedComments) {
