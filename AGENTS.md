@@ -164,7 +164,7 @@ Hard rules for any feature that leans on an external binary:
 
 ### GitHub CLI (`gh`)
 
-The repo is owned by the personal **`h0x91b`** account; the dev machine also has `h0x91b-wix` configured. Before `gh` commands against this repo:
+The repo is owned by the personal **`h0x91b`** account; the dev machine may also have a second account configured. Before `gh` commands against this repo:
 
 ```bash
 gh auth switch --user h0x91b 2>/dev/null || true

@@ -407,18 +407,18 @@ describe("codex accounts", () => {
 	});
 
 	it("resolves and persists the selected ChatGPT workspace name", async () => {
-		mockCodexWorkspaceNames([{ id: "workspace-base44", name: "Base44 ChatGPT Enterprise" }]);
+		mockCodexWorkspaceNames([{ id: "workspace-globex", name: "Globex ChatGPT Enterprise" }]);
 		const { accountId } = await prepareCodexLogin(paths);
 		writeFileSync(
 			join(codexAccountDir(accountId, paths), "auth.json"),
-			codexAuth("workspace-base44", "shared@example.com"),
+			codexAuth("workspace-globex", "shared@example.com"),
 		);
 
 		const account = await completeCodexLogin(accountId, paths);
 
-		expect(account.identity?.organization).toBe("Base44 ChatGPT Enterprise");
+		expect(account.identity?.organization).toBe("Globex ChatGPT Enterprise");
 		const registry = JSON.parse(readFileSync(join(paths.accountsDir, "accounts.json"), "utf-8"));
-		expect(registry.codex.accounts[0].workspaceName).toBe("Base44 ChatGPT Enterprise");
+		expect(registry.codex.accounts[0].workspaceName).toBe("Globex ChatGPT Enterprise");
 	});
 
 	it("completeCodexLogin rejects a login that duplicates an existing account", async () => {
@@ -430,7 +430,7 @@ describe("codex accounts", () => {
 	});
 
 	it("names the selected workspace in a duplicate error", async () => {
-		mockCodexWorkspaceNames([{ id: "b8e0e9ae-workspace", name: "Base44 ChatGPT Enterprise" }]);
+		mockCodexWorkspaceNames([{ id: "b8e0e9ae-workspace", name: "Globex ChatGPT Enterprise" }]);
 		seedCodexLogin("b8e0e9ae-workspace");
 		await importCurrentCodexAccount(paths);
 		const { accountId } = await prepareCodexLogin(paths);
@@ -440,29 +440,29 @@ describe("codex accounts", () => {
 		);
 
 		await expect(completeCodexLogin(accountId, paths)).rejects.toThrow(
-			'Codex workspace "Base44 ChatGPT Enterprise" (b8e0e9ae) is already added as',
+			'Codex workspace "Globex ChatGPT Enterprise" (b8e0e9ae) is already added as',
 		);
 	});
 
 	it("backfills readable names for legacy Codex accounts", async () => {
-		seedCodexLogin("workspace-wix");
+		seedCodexLogin("workspace-acme");
 		const imported = await importCurrentCodexAccount(paths);
 		expect(imported.identity?.organization).toBeNull();
-		await renameAgentAccount("codex", imported.id, "workspace-wix@example.com (Workspace workspac)", paths);
+		await renameAgentAccount("codex", imported.id, "workspace-acme@example.com (Workspace workspac)", paths);
 
-		mockCodexWorkspaceNames([{ id: "workspace-wix", name: "Wix" }]);
+		mockCodexWorkspaceNames([{ id: "workspace-acme", name: "Acme" }]);
 		const state = await listAgentAccounts(paths);
 
-		expect(state.codex.accounts[0]?.identity?.organization).toBe("Wix");
-		expect(state.codex.accounts[0]?.label).toBe("workspace-wix@example.com (Wix)");
-		expect(state.codex.currentIdentity?.organization).toBe("Wix");
+		expect(state.codex.accounts[0]?.identity?.organization).toBe("Acme");
+		expect(state.codex.accounts[0]?.label).toBe("workspace-acme@example.com (Acme)");
+		expect(state.codex.currentIdentity?.organization).toBe("Acme");
 	});
 
 	it("treats the Codex workspace id as authoritative when organization metadata changes", async () => {
 		mkdirSync(paths.codexHome, { recursive: true });
 		writeFileSync(
 			join(paths.codexHome, "auth.json"),
-			codexAuth("workspace-same", "shared@example.com", {}, [{ id: "org-1", title: "Wix" }]),
+			codexAuth("workspace-same", "shared@example.com", {}, [{ id: "org-1", title: "Acme" }]),
 		);
 		await importCurrentCodexAccount(paths);
 

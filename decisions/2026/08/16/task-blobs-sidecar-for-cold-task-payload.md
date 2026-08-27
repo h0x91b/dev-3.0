@@ -2,14 +2,14 @@
 
 ## Context
 
-`~/.dev3.0/data/<slug>/tasks.json` reached 14 MB on base44 (501 tasks) and 9.7 MB
+`~/.dev3.0/data/<slug>/tasks.json` reached 14 MB on the largest measured board (501 tasks) and 9.7 MB
 on dev-3.0 (1654 tasks). The whole file is parsed and rewritten on every task
 mutation, so its size is a direct cost on the UI thread — the 2026-08-16 freeze
 record already traces a UI stall back to it.
 
 ## Investigation
 
-Measured per-field bytes across both real files. Two findings dominated base44's
+Measured per-field bytes across both real files. Two findings dominated that board's
 14 MB:
 
 | Contributor | Bytes | Share |
@@ -69,7 +69,7 @@ Entries are keyed on `at` + `changed` + `title` + `overview` and re-sorted by
 `at`, so a late arrival lands chronologically.
 
 Measured by running the real `updateTask` path against a copy of the live store:
-base44's tasks.json went 14.59 → 5.00 MB on the migrating save (153 ms, 277
+That board's tasks.json went 14.59 → 5.00 MB on the migrating save (153 ms, 277
 sidecars written), and each subsequent edit took ~23 ms. dev-3.0 goes 9.81 →
 6.72 MB (−31%).
 

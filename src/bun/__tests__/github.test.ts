@@ -64,7 +64,7 @@ describe("github", () => {
 			hosts: {
 				"github.com": [
 					{ login: "h0x91b", host: "github.com", active: true, state: "success" },
-					{ login: "h0x91b-wix", host: "github.com", active: false, state: "success" },
+					{ login: "h0x91b-work", host: "github.com", active: false, state: "success" },
 					{ login: "broken", host: "github.com", active: false, state: "failure" },
 				],
 			},
@@ -76,7 +76,7 @@ describe("github", () => {
 			binaryPath: "/opt/homebrew/bin/gh",
 			accounts: [
 				{ login: "h0x91b", host: "github.com", active: true },
-				{ login: "h0x91b-wix", host: "github.com", active: false },
+				{ login: "h0x91b-work", host: "github.com", active: false },
 			],
 		});
 	});
@@ -89,12 +89,12 @@ describe("github", () => {
 					hosts: {
 						"github.com": [
 							{ login: "h0x91b", host: "github.com", active: true, state: "success" },
-							{ login: "h0x91b-wix", host: "github.com", active: false, state: "success" },
+							{ login: "h0x91b-work", host: "github.com", active: false, state: "success" },
 						],
 					},
 				}));
 			}
-			if (cmd.join(" ") === "gh auth token --hostname github.com --user h0x91b-wix") {
+			if (cmd.join(" ") === "gh auth token --hostname github.com --user h0x91b-work") {
 				return fakeProc("secret-token\n");
 			}
 			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
@@ -103,7 +103,7 @@ describe("github", () => {
 		const { getGitHubAuthEnv } = await import("../github");
 		await expect(getGitHubAuthEnv({
 			githubAuthHost: "github.com",
-			githubAuthLogin: "h0x91b-wix",
+			githubAuthLogin: "h0x91b-work",
 		})).resolves.toEqual({
 			GH_TOKEN: "secret-token",
 			GITHUB_TOKEN: "secret-token",
@@ -145,7 +145,7 @@ describe("github", () => {
 			if (cmd.join(" ") === "gh auth status") {
 				const text =
 					"github.com\n" +
-					"  ✓ Logged in to github.com as h0x91b-wix (keyring)\n" +
+					"  ✓ Logged in to github.com as h0x91b-work (keyring)\n" +
 					"  ✓ Logged in to github.com as h0x91b (oauth_token)\n";
 				return fakeProc(text, "", 0);
 			}
@@ -156,7 +156,7 @@ describe("github", () => {
 		const status = await getGitHubCliStatus();
 		expect(status.authStatus).toBe("authenticated");
 		expect(status.accounts).toEqual([
-			{ login: "h0x91b-wix", host: "github.com", active: true },
+			{ login: "h0x91b-work", host: "github.com", active: true },
 			{ login: "h0x91b", host: "github.com", active: false },
 		]);
 	});
@@ -198,7 +198,7 @@ describe("github", () => {
 			if (cmd.join(" ") === "gh auth status") {
 				const text =
 					"github.com\n" +
-					"  ✓ Logged in to github.com account h0x91b-wix (keyring)\n" +
+					"  ✓ Logged in to github.com account h0x91b-work (keyring)\n" +
 					"  - Active account: false\n" +
 					"\n" +
 					"  ✓ Logged in to github.com account h0x91b (keyring)\n" +
@@ -213,7 +213,7 @@ describe("github", () => {
 		expect(status.authStatus).toBe("authenticated");
 		expect(status.accounts).toEqual([
 			{ login: "h0x91b", host: "github.com", active: true },
-			{ login: "h0x91b-wix", host: "github.com", active: false },
+			{ login: "h0x91b-work", host: "github.com", active: false },
 		]);
 	});
 
@@ -352,7 +352,7 @@ describe("github", () => {
 				return fakeProc(JSON.stringify({
 					hosts: {
 						"github.com": [
-							{ login: "h0x91b-wix", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
+							{ login: "h0x91b-work", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
 						],
 					},
 				}));
@@ -368,7 +368,7 @@ describe("github", () => {
 		process.env.GH_TOKEN = "env-injected-token";
 		try {
 			const { getGitHubAuthEnv } = await import("../github");
-			await expect(getGitHubAuthEnv({ githubAuthHost: "github.com", githubAuthLogin: "h0x91b-wix" }))
+			await expect(getGitHubAuthEnv({ githubAuthHost: "github.com", githubAuthLogin: "h0x91b-work" }))
 				.resolves.toEqual({ GH_TOKEN: "env-injected-token", GITHUB_TOKEN: "env-injected-token" });
 			// Env-backed accounts must never invoke `gh auth token --user`.
 			expect(spawnedTokenCmds).toEqual([]);
@@ -385,7 +385,7 @@ describe("github", () => {
 				return fakeProc(JSON.stringify({
 					hosts: {
 						"github.com": [
-							{ login: "h0x91b-wix", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
+							{ login: "h0x91b-work", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
 						],
 					},
 				}));
@@ -397,7 +397,7 @@ describe("github", () => {
 		delete process.env.GH_TOKEN;
 		try {
 			const { getGitHubAuthEnv } = await import("../github");
-			await expect(getGitHubAuthEnv({ githubAuthHost: "github.com", githubAuthLogin: "h0x91b-wix" }))
+			await expect(getGitHubAuthEnv({ githubAuthHost: "github.com", githubAuthLogin: "h0x91b-work" }))
 				.rejects.toThrow(/authenticated via GH_TOKEN/);
 		} finally {
 			if (original !== undefined) process.env.GH_TOKEN = original;
@@ -434,7 +434,7 @@ describe("github", () => {
 		spawnMock.mockReturnValue(fakeProc(JSON.stringify({
 			hosts: {
 				"github.com": [
-					{ login: "h0x91b-wix", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
+					{ login: "h0x91b-work", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
 				],
 			},
 		})));

@@ -133,15 +133,15 @@ describe("parseCodexIdentity", () => {
 			tokens: {
 				id_token: makeJwt({
 					"https://api.openai.com/auth": {
-						chatgpt_account_id: "workspace-base44",
-						organizations: [{ id: "org-wix", title: "Wix", is_default: true }],
+						chatgpt_account_id: "workspace-globex",
+						organizations: [{ id: "org-acme", title: "Acme", is_default: true }],
 					},
 				}),
-				account_id: "workspace-base44",
+				account_id: "workspace-globex",
 			},
 		});
 
-		expect(identity).toMatchObject({ accountId: "workspace-base44", organization: null });
+		expect(identity).toMatchObject({ accountId: "workspace-globex", organization: null });
 	});
 
 	it("falls back to the JWT chatgpt_account_id when tokens.account_id is missing", () => {

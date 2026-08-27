@@ -437,7 +437,7 @@ describe("AgentAccountsSection", () => {
 							label: "shared@example.com",
 							identity: {
 								email: "shared@example.com",
-								organization: "Base44 ChatGPT Enterprise",
+								organization: "Globex ChatGPT Enterprise",
 								plan: "enterprise_cbp_usage_based",
 								planLabel: "Enterprise",
 								accountId: "b8e0e9ae-workspace",
@@ -454,7 +454,7 @@ describe("AgentAccountsSection", () => {
 		);
 
 		renderSection();
-		expect(await screen.findByText("Workspace Base44 ChatGPT Enterprise")).toBeTruthy();
+		expect(await screen.findByText("Workspace Globex ChatGPT Enterprise")).toBeTruthy();
 		expect(screen.queryByText("Workspace b8e0e9ae")).toBeNull();
 	});
 });

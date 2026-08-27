@@ -6,7 +6,7 @@ dev3's backend talks to GitHub through `github.ts`: it resolves the project's ac
 
 ## Investigation
 
-On a headless **Coder** workspace (`dev3 remote`), pasting a PR URL into New Task failed with `Couldn't resolve the pull request: Error: no oauth token found for github.com account h0x91b-wix`. Confirmed live on the box: `~/.config/gh` does not exist, `gh auth status` without an env token reports "not logged into any GitHub hosts", and `.bashrc`/`.zshrc` export `GH_TOKEN` from Coder's GitHub external-auth. So gh is authenticated **only** via the `GH_TOKEN` env var — there is no stored credential.
+On a headless **Coder** workspace (`dev3 remote`), pasting a PR URL into New Task failed with `Couldn't resolve the pull request: Error: no oauth token found for github.com account h0x91b-work`. Confirmed live on the box: `~/.config/gh` does not exist, `gh auth status` without an env token reports "not logged into any GitHub hosts", and `.bashrc`/`.zshrc` export `GH_TOKEN` from Coder's GitHub external-auth. So gh is authenticated **only** via the `GH_TOKEN` env var — there is no stored credential.
 
 `gh auth status --json` still lists the account (login resolved from the env token) with `"tokenSource":"GH_TOKEN"`. But `gh auth token --hostname github.com --user <login>` has no stored credential to return; on the box's gh version it errors `no oauth token found for … account …` (on gh 2.96 it happens to fall through to the env token — the behavior is version-dependent, so `--user` cannot be relied on for env-backed accounts). dev3 surfaced gh's raw stderr verbatim.
 

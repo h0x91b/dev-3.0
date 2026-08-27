@@ -69,6 +69,6 @@ sneaking back into `build.yml`.
   dependencies installed. Explicitly rejected.
 - **Pinning or downgrading `mermaid`, or vendoring its tarball** — the failure is not version
   specific, and touching `bun.lock` on a developer machine rewrites resolution URLs to the private
-  Wix Artifactory mirror, which breaks CI outright.
+  Artifactory mirror, which breaks CI outright.
 - **Lowering bun's network concurrency** — slows every install to maybe reduce a failure whose cause
   is a bad response body, not a race.

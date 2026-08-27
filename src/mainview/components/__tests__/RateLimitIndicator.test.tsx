@@ -508,7 +508,7 @@ describe("RateLimitIndicator", () => {
 				accounts: [],
 				activeId: null,
 				systemIdentity: {
-					email: "arseny@wix.com",
+					email: "dev@example.com",
 					organization: "Acme Workspace",
 					plan: "default_claude_max_5x",
 					planLabel: "Max 5x",
@@ -520,7 +520,7 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 		await userEvent.tab();
-		expect(await screen.findByText("arseny@wix.com")).toBeTruthy();
+		expect(await screen.findByText("dev@example.com")).toBeTruthy();
 		expect(screen.getByText("· Acme Workspace")).toBeTruthy();
 	});
 
@@ -545,8 +545,8 @@ describe("RateLimitIndicator", () => {
 					{
 						id: "acc-cdx",
 						kind: "codex",
-						label: "arsenyp@wix.com (Wix)",
-						identity: { email: "arsenyp@wix.com", organization: "Wix", plan: "enterprise", planLabel: "Enterprise", accountId: "acc-cdx" },
+						label: "dev@example.com (Acme)",
+						identity: { email: "dev@example.com", organization: "Acme", plan: "enterprise", planLabel: "Enterprise", accountId: "acc-cdx" },
 						auth: "oauth",
 						api: null,
 						createdAt: 0,
@@ -560,9 +560,9 @@ describe("RateLimitIndicator", () => {
 		await act(async () => {});
 		await userEvent.tab();
 		// The verbose "email (workspace)" parenthetical is collapsed to email …
-		expect(await screen.findByText("arsenyp@wix.com")).toBeTruthy();
-		expect(screen.queryByText("arsenyp@wix.com (Wix)")).toBeNull();
+		expect(await screen.findByText("dev@example.com")).toBeTruthy();
+		expect(screen.queryByText("dev@example.com (Acme)")).toBeNull();
 		// … and the workspace shows exactly once as the chip.
-		expect(screen.getAllByText("· Wix")).toHaveLength(1);
+		expect(screen.getAllByText("· Acme")).toHaveLength(1);
 	});
 });

@@ -10,7 +10,7 @@ ambiguous `seq:<N>`.
 
 ## Investigation
 
-Reported from a live board: task Seq 490 in `base44` handed out
+Reported from a live board: task Seq 490 on another project's board handed out
 `--task 824c6557-59be-47ca-ac0e-f7db974cfe08`. Reading `tasks.json` for that project, its group
 (`groupId 87c65640…`) had exactly **one** member and exactly one task answered to seq 490 — the
 survivor of a variant run whose siblings the user dropped. `variantIndex: 1` is permanent; the

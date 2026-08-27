@@ -27,7 +27,7 @@ Run `dev3 task show --task <id> --notes`.
 
 **PRs as a request surface: yes.** External GitHub PRs against `h0x91b/dev-3.0` are treated as feature requests and pulled into the same triage flow, using the same triage labels (see `docs/agents/triage-labels.md`). Collaborators' in-flight PRs are left alone.
 
-- **Account**: run `gh auth switch --user h0x91b` before any `gh` write (the dev machine also has `h0x91b-wix`).
+- **Account**: run `gh auth switch --user h0x91b` before any `gh` write (the dev machine may also have a second account configured).
 - **Read a PR**: `gh pr view <number> --comments`; `gh pr diff <number>` for the diff.
 - **List external PRs for triage**: `gh pr list --state open --json number,title,body,labels,author,authorAssociation,comments`, then keep only `authorAssociation` of `CONTRIBUTOR`, `FIRST_TIME_CONTRIBUTOR`, or `NONE` (drop `OWNER`/`MEMBER`/`COLLABORATOR`).
 - **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.

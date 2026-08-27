@@ -187,7 +187,7 @@ describe("atomic JSON writes stay backward-compatible on success", () => {
 		await data.saveTasks(project, tasks);
 
 		const content = readFileSync(tasksFile, "utf8");
-		// Compact since the 14 MB cleanup — indentation alone was 3.5 MB of base44's
+		// Compact since the 14 MB cleanup — indentation alone was 3.5 MB of the largest
 		// file. The compatibility contract is the PARSED value, not the bytes: a
 		// pretty-printed and a compact file are the same document to JSON.parse, so
 		// every older app version reads this unchanged.

@@ -6,7 +6,7 @@ Codex OAuth stores the selected ChatGPT workspace as `tokens.account_id` / `chat
 
 ## Investigation
 
-Two real logins for Wix and Base44 produced distinct workspace IDs while both JWTs reported Wix as the default API organization. ChatGPT's first-party accounts check endpoint returned the authoritative `account.id → account.name` mapping for both workspaces.
+Two real logins for different organizations produced distinct workspace IDs while both JWTs reported the same default API organization. ChatGPT's first-party accounts check endpoint returned the authoritative `account.id → account.name` mapping for both workspaces.
 
 ## Decision
 

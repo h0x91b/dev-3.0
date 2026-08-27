@@ -557,7 +557,7 @@ async function codexPaneSessionAlreadyRecorded(
  * The steady state is exactly that no-op — codex fires this hook continuously for
  * the whole life of a session — so it is answered from the cached read BEFORE
  * taking the file lock. Going through the lock for it made every hook re-parse the
- * board strictly (14 MB on base44); see the 2026-08-16 freeze record.
+ * board strictly (14 MB on the largest measured board); see the 2026-08-16 freeze record.
  */
 async function captureCodexPaneSession(
 	project: Project,

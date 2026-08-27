@@ -4,7 +4,7 @@
 
 On 2026-08-16 the app froze. In the last three minutes before the user killed it,
 `data.updateTaskWith` logged 1005 writes for a single task, ~11 per second, all
-for the same Codex task on the base44 board — whose `tasks.json` is 14 MB across
+for the same Codex task on the largest measured board — whose `tasks.json` is 14 MB across
 498 tasks. The same storm had run 613 times earlier that morning (07:01-07:08),
 alongside 1896 `Lock acquisition timed out` warnings across the day.
 

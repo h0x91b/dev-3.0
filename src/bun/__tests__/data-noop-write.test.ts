@@ -5,9 +5,10 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs
 import type { Project, Task } from "../../shared/types";
 
 // A task update that changes nothing must not rewrite tasks.json. On a big board
-// (base44 runs a 14 MB file) an agent hook reporting an already-recorded value
-// used to burn a full parse+serialize+write per call, ~11 times a second, pinning
-// the event loop until the UI froze. See the 2026-08-16 freeze record.
+// (the largest one measured runs a 14 MB file) an agent hook reporting an
+// already-recorded value used to burn a full parse+serialize+write per call,
+// ~11 times a second, pinning the event loop until the UI froze. See the
+// 2026-08-16 freeze record.
 //
 // Proof is the inode: rawSaveTasks writes atomically through a rename, so every
 // real save lands a new one and a skipped save leaves it alone.

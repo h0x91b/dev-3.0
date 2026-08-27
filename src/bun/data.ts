@@ -744,7 +744,7 @@ async function rawSaveTasks(
 	const split = splitTaskBlobs(tasks);
 	if (split.changed) await persistTaskBlobs(project, split.blobs);
 
-	// Compact, not pretty-printed: indentation alone was 3.5 MB of base44's
+	// Compact, not pretty-printed: indentation alone was 3.5 MB of the largest
 	// 13.9 MB file. JSON.parse is indifferent to it, so every older app version
 	// reads the file exactly as before.
 	await atomicWriteFile(file, JSON.stringify(split.tasks));
@@ -1212,9 +1212,10 @@ export async function moveTaskToProject(
 /**
  * Apply `updates` to `tasks[idx]` in place. `changed` tells the caller whether the
  * array was touched at all, so a no-op never rewrites the file: on a big board
- * (base44 runs a 14 MB tasks.json) an agent hook that reports an already-recorded
- * value used to burn a full parse+serialize+write per call, ~11 times a second,
- * which pinned the event loop and froze the UI. See the 2026-08-16 freeze record.
+ * (the largest one measured runs a 14 MB tasks.json) an agent hook reporting an
+ * already-recorded value used to burn a full parse+serialize+write per call, ~11
+ * times a second, which pinned the event loop and froze the UI. See the
+ * 2026-08-16 freeze record.
  */
 function applyTaskUpdate(
 	tasks: Task[],
