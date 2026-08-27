@@ -1,5 +1,6 @@
 /**
- * Collect the `<dev3-board>` snapshot a coordinator receives on every turn.
+ * Collect the `<dev3-board>` snapshot a coordinator receives on every delivered
+ * message.
  *
  * The contract and the rendering live in `shared/coordinator-board`; this module
  * only gathers the facts. The design constraint that shapes it: this runs on

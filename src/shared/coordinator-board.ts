@@ -1,5 +1,6 @@
 /**
- * The `<dev3-board>` snapshot a coordinator agent receives on every turn.
+ * The `<dev3-board>` snapshot dev3 appends to every message it delivers to a
+ * coordinator agent.
  *
  * A coordinator's picture of the board used to be a snapshot it had to refresh
  * by hand (`COORDINATOR_PROMPT`: "not a feed"), which cost a tool call and only
@@ -7,12 +8,17 @@
  * walks the child tasks, changes things, comes back to the coordinator and asks
  * a question — and the coordinator answers from a picture taken before that walk.
  *
- * So the snapshot rides the turn instead. It is injected by the
- * `UserPromptSubmit` hook, which fires for EVERY turn — the user's own Enter and
- * a peer agent's `dev3 message` alike, since a delivered message is text plus an
- * Enter and reaches the harness as an ordinary prompt.
+ * So the snapshot rides the delivery instead: `renderCoordinatorBoard` is called
+ * by `coordinatorBoardEpilogue` (`src/bun/coordinator-board.ts`), which
+ * `deliverToTarget` hands to `deliverAgentPrompt` as its epilogue — the one seam
+ * behind immediate `dev3 message` sends, the "Send to agent" UI and scheduled fires.
  *
- * Two rules hold this together:
+ * KNOWN LIMITATION: the user typing into the pane himself carries no block, since
+ * those keystrokes reach the pty directly and nothing hooks that path.
+ * `COORDINATOR_PROMPT` names the gap and tells a coordinator to re-read the board
+ * when the user speaks to it after a silence.
+ *
+ * Three rules hold this together:
  *  - Board state is a PASSENGER of a turn, never its driver. Nothing here may
  *    wake an agent up; a timer that pushed the board into a pane on its own
  *    would make the coordinator chatter and burn tokens on "nothing changed".
@@ -26,9 +32,9 @@
  *    once, so 45 of 60 panes carry one identical timestamp that jumps in a herd.
  *    See `decisions/2026/08/25/board-age-is-column-age-not-terminal-silence.md`.
  *
- * Rendering is pure and lives in shared/ so the socket payload and the hook
- * output can never drift apart. See
- * `decisions/2026/08/25/inject-the-board-into-every-coordinator-turn.md`.
+ * This module holds the contract plus the pure renderer; `src/bun/coordinator-board.ts`
+ * fills that contract from live task state. See
+ * `decisions/2026/08/25/ride-the-board-in-on-messages-to-a-coordinator.md`.
  */
 
 import { formatAge } from "./task-peek";
