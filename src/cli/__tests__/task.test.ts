@@ -3,7 +3,7 @@ import { handleTask } from "../commands/task";
 import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { Task, CliResponse } from "../../shared/types";
-import { DRAFT_TASK_ACTIVATION_ERROR } from "../../shared/types";
+import { DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX } from "../../shared/types";
 import { CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 
 vi.mock("../stdin", () => ({
@@ -396,6 +396,92 @@ describe("task create", () => {
 			handleTask("create", args([], { title: "New task" }), SOCKET, null),
 		).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("--project");
+	});
+
+	describe("--pr / --branch", () => {
+		it("sends --pr, implies pr-review, and says where the worktree starts", async () => {
+			mockSend.mockResolvedValue(okResp({
+				...createdTask,
+				taskType: "pr-review",
+				existingBranch: "arditti/fix/ctrl-o",
+				foreignCode: true,
+			}));
+
+			await handleTask("create", args([], { project: "proj-001", title: "Review of #1512", pr: "1512" }), SOCKET, null);
+
+			expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+				projectId: "proj-001",
+				title: "Review of #1512",
+				taskType: "pr-review",
+				pr: "1512",
+			});
+			expect(stderrOutput).toContain("Starts on: arditti/fix/ctrl-o");
+			expect(stderrOutput).toContain("someone else's code");
+		});
+
+		it("lets an explicit --type override what --pr would imply", async () => {
+			mockSend.mockResolvedValue(okResp(createdTask));
+
+			await handleTask("create", args([], { project: "proj-001", title: "X", pr: "5", type: "standard" }), SOCKET, null);
+
+			expect(mockSend.mock.calls[0]![2]!).not.toHaveProperty("taskType");
+			expect(mockSend.mock.calls[0]![2]!.pr).toBe("5");
+		});
+
+		it("sends --branch without implying a type", async () => {
+			mockSend.mockResolvedValue(okResp({ ...createdTask, existingBranch: "origin/feat/x" }));
+
+			await handleTask("create", args([], { project: "proj-001", title: "Look", branch: "origin/feat/x" }), SOCKET, null);
+
+			expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+				projectId: "proj-001",
+				title: "Look",
+				branch: "origin/feat/x",
+			});
+			expect(stderrOutput).toContain("Starts on: origin/feat/x");
+			expect(stderrOutput).not.toContain("someone else's code");
+		});
+
+		it("rejects --pr together with --branch before contacting the app", async () => {
+			await expect(
+				handleTask("create", args([], { project: "proj-001", title: "X", pr: "1", branch: "origin/x" }), SOCKET, null),
+			).rejects.toThrow("EXIT_3");
+			expect(stderrOutput).toContain("pass one of them");
+			expect(mockSend).not.toHaveBeenCalled();
+		});
+
+		// Nothing was created, so the caller must be able to tell this apart from
+		// "the task failed to be written" — hence its own code, not exit 1.
+		it("exits 18 with the readable reason when the ref does not resolve", async () => {
+			mockSend.mockResolvedValue({
+				id: "1",
+				ok: false,
+				error: `${TASK_REF_UNRESOLVED_PREFIX}no pull request 999999 in this project (could not resolve).`,
+			});
+
+			await expect(
+				handleTask("create", args([], { project: "proj-001", title: "Review of #999999", pr: "999999" }), SOCKET, null),
+			).rejects.toThrow("EXIT_18");
+			expect(stderrOutput).toContain("no pull request 999999 in this project");
+			expect(stderrOutput).toContain("No task was created.");
+			// The wire marker is plumbing — it must not reach the user's terminal.
+			expect(stderrOutput).not.toContain(TASK_REF_UNRESOLVED_PREFIX);
+		});
+
+		it("still exits 1 for an ordinary creation failure", async () => {
+			mockSend.mockResolvedValue({ id: "1", ok: false, error: "disk is full" });
+
+			await expect(
+				handleTask("create", args([], { project: "proj-001", title: "X" }), SOCKET, null),
+			).rejects.toThrow("EXIT_1");
+		});
+
+		it("refuses --pr on a scratch task", async () => {
+			await expect(
+				handleTask("create", args([], { project: "proj-001", scratch: "true", run: "true", pr: "5" }), SOCKET, null),
+			).rejects.toThrow("EXIT_3");
+			expect(mockSend).not.toHaveBeenCalled();
+		});
 	});
 
 	it("exits with usage error when --title missing", async () => {

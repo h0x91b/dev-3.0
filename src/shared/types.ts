@@ -106,6 +106,14 @@ export const DRAFT_TASK_ACTIVATION_ERROR =
 export const HIBERNATED_TASK_MOVE_ERROR =
 	"Task is hibernated — wake it from its terminal before moving it to another column.";
 
+/**
+ * Prefix on every "could not work out what this task is about" rejection from
+ * `task.create` — an unresolvable `--pr` or `--branch`. The CLI strips it and
+ * exits with its own code, so like {@link DRAFT_TASK_ACTIVATION_ERROR} the
+ * string is a contract.
+ */
+export const TASK_REF_UNRESOLVED_PREFIX = "task-ref-unresolved: ";
+
 export const MERGE_COMPLETE_ELIGIBLE_STATUSES: TaskStatus[] = [
 	"user-questions",
 	"review-by-user",
@@ -459,6 +467,11 @@ Do not skip this step. Move the task exactly once, at the end.`;
 export const DEFAULT_PR_REVIEW_PROMPT = `Review the code changes on this branch.
 
 Your task is to perform a thorough code review — do NOT modify any code.
+
+FIRST, know what you are looking at: \`dev3 current\` prints the branch this
+worktree is on. Normally it is already the branch under review. If it is the
+project's base branch instead, nothing was checked out for you — fetch the
+changes yourself and say in your report that you reviewed them that way.
 
 Start by analyzing what was changed, then evaluate:
 - Correctness and potential bugs

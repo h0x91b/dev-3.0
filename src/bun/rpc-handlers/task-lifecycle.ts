@@ -135,7 +135,12 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[];
 	return results;
 }
 
-async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType }): Promise<Task> {
+/**
+ * The one place a task is born. The CLI (`dev3 task create`) routes through it
+ * too — a second creation path is how `foreignCode` came to be set in the GUI
+ * and nowhere else.
+ */
+export async function createTask(params: { projectId: string; description: string; title?: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority; taskType?: TaskType }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",

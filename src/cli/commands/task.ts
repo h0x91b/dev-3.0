@@ -1,6 +1,6 @@
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
-import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
-import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
+import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_REF_UNRESOLVED_PREFIX, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
+import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT, CLI_EXIT_CODE_TASK_REF_UNRESOLVED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
@@ -172,7 +172,7 @@ async function showTask(args: ParsedArgs, socketPath: string, context: CliContex
 }
 
 async function createTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run"]);
+	rejectUnknownFlags(args, ["project", "title", "description", "type", "scratch", "run", "pr", "branch"]);
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (!projectId) {
 		exitUsage("--project <id> is required (or run from inside a worktree)");
@@ -187,7 +187,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		);
 	}
 	if (scratch) {
-		if (args.positional[0] || args.flags.title || args.flags.description || args.flags.type) {
+		if (args.positional[0] || args.flags.title || args.flags.description || args.flags.type || args.flags.pr || args.flags.branch) {
 			exitUsage(
 				"A scratch task takes no title, description or type — it has no prompt by design.\n" +
 				"Create a normal task instead, or send instructions with `dev3 message --task seq:<N>` after it starts.",
@@ -196,8 +196,18 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		return createScratchAndRun(projectId, socketPath, context);
 	}
 
+	const prFlag = args.flags.pr?.trim();
+	const branchFlag = args.flags.branch?.trim();
+	if (prFlag && branchFlag) {
+		exitUsage("--pr and --branch name the same thing two ways — pass one of them.");
+	}
+
 	// Read before the title check so a bad --type fails on its own message.
-	const taskType = args.flags.type === undefined ? null : parseTypeFlag(args.flags.type);
+	// `--pr` means the task is about someone's pull request, which is what
+	// pr-review is; the GUI flips the same switch when a PR is resolved there.
+	const taskType = args.flags.type === undefined
+		? (prFlag ? "pr-review" as const : null)
+		: parseTypeFlag(args.flags.type);
 
 	// A literal "-" is the conventional CLI sentinel for reading the value
 	// from stdin. Read it only for the description flag so title-only creates
@@ -220,9 +230,23 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	const params: Record<string, unknown> = { projectId, title };
 	if (description) params.description = description;
 	if (taskType) params.taskType = taskType;
+	if (prFlag) params.pr = prFlag;
+	if (branchFlag) params.branch = branchFlag;
 
 	const resp = await sendRequest(socketPath, "task.create", params);
-	if (!resp.ok) exitError(resp.error || "Failed to create task");
+	if (!resp.ok) {
+		// An unresolvable --pr/--branch created NOTHING, and it is not the same
+		// failure as "the task could not be written".
+		const marker = resp.error?.indexOf(TASK_REF_UNRESOLVED_PREFIX) ?? -1;
+		if (marker >= 0 && resp.error) {
+			exitError(
+				resp.error.slice(marker + TASK_REF_UNRESOLVED_PREFIX.length),
+				"No task was created.",
+				CLI_EXIT_CODE_TASK_REF_UNRESOLVED,
+			);
+		}
+		exitError(resp.error || "Failed to create task");
+	}
 
 	const task = resp.data as Task;
 	process.stdout.write(`Created task ${task.id.slice(0, 8)} (seq ${task.seq}): ${getTaskTitle(task)}\n`);
@@ -230,6 +254,13 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 	// will read, so name it rather than leaving the caller to check the card.
 	if (task.taskType) {
 		process.stderr.write(`Role: ${task.taskType} — created with its role brief already in the description.\n`);
+	}
+	// Where the worktree will sit is the whole difference between a review task
+	// that can read the diff and one stranded on the base branch — say it.
+	if (task.existingBranch) {
+		process.stderr.write(
+			`Starts on: ${task.existingBranch}${task.foreignCode ? " (someone else's code — the branch's own scripts and MCP config are ignored)" : ""}\n`,
+		);
 	}
 }
 

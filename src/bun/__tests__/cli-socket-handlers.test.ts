@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
-import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact, type SharedImage } from "../../shared/types";
+import { COORDINATOR_PROMPT, DEFAULT_PR_REVIEW_PROMPT, TASK_REF_UNRESOLVED_PREFIX, getAllowedTransitions, withPresetPrompt, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact, type SharedImage } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -85,6 +85,7 @@ vi.mock("../rpc-handlers", () => {
 	return {
 		isActive: vi.fn((status: string) => ACTIVE.includes(status)),
 		activateTask: vi.fn(),
+		createTask: vi.fn(),
 		moveTask: vi.fn(),
 		runCleanupScript: vi.fn(),
 		emitTaskSound: vi.fn(),
@@ -106,6 +107,10 @@ vi.mock("../rpc-handlers", () => {
 		queueTerminalFocusToast: vi.fn(),
 	};
 });
+
+vi.mock("../task-start-ref", () => ({
+	resolveTaskStartRef: vi.fn(async () => undefined),
+}));
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({
@@ -177,10 +182,11 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
+import { activateTask, createTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, dropQueuedAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
 import { loadSettings } from "../settings";
 import { deliverAgentPrompt } from "../agent-prompt-delivery";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
+import { resolveTaskStartRef } from "../task-start-ref";
 import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import { addVent } from "../vents";
@@ -900,18 +906,18 @@ describe("task.update — priority", () => {
 });
 
 describe("task.create — priority", () => {
-	it("passes an explicit priority through to addTask", async () => {
+	it("passes an explicit priority through to creation", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo", priority: "P1" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(createTask).mockResolvedValue(task);
 		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
 
 		const resp = await handleRequest(
 			makeRequest("task.create", { projectId: "proj-1", title: "Urgent", priority: "P1" }),
 		);
 		expect(resp.ok).toBe(true);
-		expect(data.addTask).toHaveBeenCalledWith(project, "Urgent", "todo", { priority: "P1" });
+		expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "Urgent", priority: "P1" });
 	});
 
 	it("rejects a garbage priority on create", async () => {
@@ -1234,14 +1240,14 @@ describe("task.create", () => {
 		const pushFn = vi.fn();
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(createTask).mockResolvedValue(task);
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 
 		const resp = await handleRequest(
 			makeRequest("task.create", { projectId: "proj-1", title: "New task" }),
 		);
 		expect(resp.ok).toBe(true);
-		expect(data.addTask).toHaveBeenCalledWith(project, "New task", "todo");
+		expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "New task" });
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task });
 	});
 
@@ -1252,7 +1258,7 @@ describe("task.create", () => {
 		const pushFn = vi.fn();
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(createTask).mockResolvedValue(task);
 		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 
@@ -1264,7 +1270,7 @@ describe("task.create", () => {
 			}),
 		);
 		expect(resp.ok).toBe(true);
-		expect(data.addTask).toHaveBeenCalledWith(project, "Long detailed description\nwith multiple lines", "todo");
+		expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "Long detailed description\nwith multiple lines" });
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Short title" });
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task: updatedTask });
 	});
@@ -1273,7 +1279,7 @@ describe("task.create", () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(createTask).mockResolvedValue(task);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
@@ -1289,7 +1295,7 @@ describe("task.create", () => {
 			const project = makeProject();
 			const task = makeTask({ status: "todo" });
 			vi.mocked(data.getProject).mockResolvedValue(project);
-			vi.mocked(data.addTask).mockResolvedValue(task);
+			vi.mocked(createTask).mockResolvedValue(task);
 			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
 			vi.mocked(getPushMessage).mockReturnValue(vi.fn());
 			return { project, task };
@@ -1306,10 +1312,11 @@ describe("task.create", () => {
 			}));
 
 			expect(resp.ok).toBe(true);
-			const [, body, status, extras] = vi.mocked(data.addTask).mock.calls[0]!;
-			expect(body).toBe(withPresetPrompt("coordinate my board", COORDINATOR_PROMPT));
-			expect(status).toBe("todo");
-			expect(extras).toEqual({ taskType: "coordinator" });
+			expect(createTask).toHaveBeenCalledWith({
+				projectId: project.id,
+				description: withPresetPrompt("coordinate my board", COORDINATOR_PROMPT),
+				taskType: "coordinator",
+			});
 			expect(data.getProject).toHaveBeenCalledWith(project.id);
 		});
 
@@ -1323,8 +1330,8 @@ describe("task.create", () => {
 			}));
 
 			expect(resp.ok).toBe(true);
-			const [, body] = vi.mocked(data.addTask).mock.calls[0]!;
-			expect(body).toBe(withPresetPrompt("Review PR 42", DEFAULT_PR_REVIEW_PROMPT));
+			expect(vi.mocked(createTask).mock.calls[0]![0].description)
+				.toBe(withPresetPrompt("Review PR 42", DEFAULT_PR_REVIEW_PROMPT));
 			// Without a customTitle every review card would be named after the preamble.
 			expect(data.updateTask).toHaveBeenCalledWith(expect.anything(), task.id, { customTitle: "Review PR 42" });
 		});
@@ -1340,7 +1347,7 @@ describe("task.create", () => {
 			}));
 
 			expect(resp.ok).toBe(true);
-			expect(vi.mocked(data.addTask).mock.calls[0]![3]).toEqual({ priority: "P0", taskType: "coordinator" });
+			expect(vi.mocked(createTask).mock.calls[0]![0]).toMatchObject({ priority: "P0", taskType: "coordinator" });
 		});
 
 		it("treats standard as no type at all", async () => {
@@ -1353,7 +1360,7 @@ describe("task.create", () => {
 			}));
 
 			expect(resp.ok).toBe(true);
-			expect(data.addTask).toHaveBeenCalledWith(expect.anything(), "Ordinary task", "todo");
+			expect(createTask).toHaveBeenCalledWith({ projectId: "proj-1", description: "Ordinary task" });
 		});
 
 		it("rejects an unknown type and creates nothing", async () => {
@@ -1368,7 +1375,78 @@ describe("task.create", () => {
 			expect(resp.ok).toBe(false);
 			expect(resp.error).toContain('Invalid task type "reviewer"');
 			expect(resp.error).toContain("coordinator, pr-review");
-			expect(data.addTask).not.toHaveBeenCalled();
+			expect(createTask).not.toHaveBeenCalled();
+		});
+	});
+
+	// The CLI reaches GUI parity by handing the SAME creation function the same
+	// ref — `foreignCode` is derived from it there, and nowhere else.
+	describe("--pr / --branch", () => {
+		function wireCreate() {
+			const project = makeProject();
+			const task = makeTask({ status: "todo" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(createTask).mockResolvedValue(task);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates }));
+			vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+			return { project, task };
+		}
+
+		it("passes the resolved pull-request ref to creation as existingBranch", async () => {
+			const { project } = wireCreate();
+			vi.mocked(resolveTaskStartRef).mockResolvedValue("arditti/fix/ctrl-o");
+
+			const resp = await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Review of #1512",
+				taskType: "pr-review",
+				pr: "1512",
+			}));
+
+			expect(resp.ok).toBe(true);
+			expect(resolveTaskStartRef).toHaveBeenCalledWith({ project, pr: "1512", branch: undefined });
+			expect(vi.mocked(createTask).mock.calls[0]![0]).toMatchObject({
+				existingBranch: "arditti/fix/ctrl-o",
+				taskType: "pr-review",
+			});
+		});
+
+		it("passes a --branch ref through the same seam", async () => {
+			wireCreate();
+			vi.mocked(resolveTaskStartRef).mockResolvedValue("origin/feat/x");
+
+			const resp = await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Look at feat/x",
+				branch: "origin/feat/x",
+			}));
+
+			expect(resp.ok).toBe(true);
+			expect(vi.mocked(createTask).mock.calls[0]![0]).toMatchObject({ existingBranch: "origin/feat/x" });
+		});
+
+		it("creates NOTHING when the ref does not resolve", async () => {
+			wireCreate();
+			vi.mocked(resolveTaskStartRef).mockRejectedValue(new Error(`${TASK_REF_UNRESOLVED_PREFIX}no pull request 999 in this project.`));
+
+			const resp = await handleRequest(makeRequest("task.create", {
+				projectId: "proj-1",
+				title: "Review of #999",
+				pr: "999",
+			}));
+
+			expect(resp.ok).toBe(false);
+			expect(resp.error).toContain(TASK_REF_UNRESOLVED_PREFIX);
+			expect(createTask).not.toHaveBeenCalled();
+		});
+
+		it("sends no existingBranch key at all when neither flag was passed", async () => {
+			wireCreate();
+			vi.mocked(resolveTaskStartRef).mockResolvedValue(undefined);
+
+			await handleRequest(makeRequest("task.create", { projectId: "proj-1", title: "Ordinary" }));
+
+			expect(vi.mocked(createTask).mock.calls[0]![0]).not.toHaveProperty("existingBranch");
 		});
 	});
 });
@@ -3803,7 +3881,7 @@ describe("startSocketServer", () => {
 		const splitAt = Math.floor(request.length / 2);
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(createTask).mockResolvedValue(task);
 		vi.mocked(data.updateTask).mockResolvedValue(task);
 
 		await socketHandlers.data(socket, Buffer.from(request.slice(0, splitAt), "utf-8"));
@@ -3811,7 +3889,7 @@ describe("startSocketServer", () => {
 
 		await socketHandlers.data(socket, Buffer.from(request.slice(splitAt), "utf-8"));
 
-		expect(data.addTask).toHaveBeenCalledWith(project, description.trim(), "todo");
+		expect(createTask).toHaveBeenCalledWith({ projectId: project.id, description: description.trim() });
 		const flushCalls = vi.mocked(flushAndEnd).mock.calls;
 		const response = flushCalls[flushCalls.length - 1][1] as string;
 		expect(JSON.parse(response.trim())).toMatchObject({ id: "req-1", ok: true });

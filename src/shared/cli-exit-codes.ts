@@ -16,6 +16,7 @@ export const CLI_EXIT_CODE_ARTIFACT_SECRET_FOUND = 14;
 export const CLI_EXIT_CODE_UPDATE_REFUSED = 15;
 export const CLI_EXIT_CODE_INSTANCE_NOT_FOUND = 16;
 export const CLI_EXIT_CODE_MESSAGE_SUBJECT_REQUIRED = 17;
+export const CLI_EXIT_CODE_TASK_REF_UNRESOLVED = 18;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -120,5 +121,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_MESSAGE_SUBJECT_REQUIRED,
 		description:
 			"`dev3 message` was called without a usable `--subject`, or with one over the character limit. Nothing was sent and nothing was queued. Every message carries a one-line subject: it is stored with the message and it is the line the agent-traffic view shows, so it can be neither defaulted nor derived. The error prints the limit, a good and a bad example, and the corrected command. An over-limit subject is rejected, never truncated. Distinct from exit 3 so automation can recognise this one case and retry with a subject instead of treating it as a misspelled command.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_TASK_REF_UNRESOLVED",
+		code: CLI_EXIT_CODE_TASK_REF_UNRESOLVED,
+		description:
+			"`dev3 task create --pr <n>` or `--branch <ref>` could not resolve what the task is about, so NOTHING was created: no such pull request, no such ref, the pull request's fork could not be fetched, `gh` is missing or unauthenticated, or the project is not a GitHub repo. The task is not created half-right on the base branch — fix the argument and run it again. Distinct from exit 1, which means the task itself failed to be created.",
 	},
 ] as const;

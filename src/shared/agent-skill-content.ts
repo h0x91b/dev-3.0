@@ -109,6 +109,12 @@ A task may be the board's **coordinator**: it manages other tasks instead of doi
 
 **Never promote or demote a task on your own initiative — least of all yourself.** Who coordinates is the user's call, in the same protected class as priority.
 
+### Creating a review task
+
+\`dev3 task create --pr <number> --title "Review of #<number>"\` — and that is the whole recipe. \`--pr\` is what makes it a review: dev3 fetches the pull request's head branch (a fork too) and the worktree **starts on it**, so the diff is right there, and the code is marked as somebody else's (\`foreignCode\`: the branch's own \`setupScript\`/\`devScript\`/\`env\` and its \`.mcp.json\` are ignored, deliberately). It implies \`--type pr-review\`, so do NOT write your own review instructions — the role brief is injected above your text at creation. Without \`--pr\` the task lands on the base branch with nothing to review; an unresolvable \`--pr\` creates nothing and exits 18. For a branch that is not a pull request, \`--branch origin/feat/x\` (already fetched locally).
+
+The agent that gets it renames its own task and keeps an overview carrying the verdict, same as any task.
+
 ## Editing a description never reaches a running agent
 
 \`--type\` is the ONLY flag that tells a live agent anything. A task's description is delivered as its agent's first prompt at launch and nothing re-delivers it — not a resume, not a push — so \`dev3 task update --description\` on a running task changes the board and the agent never finds out (it only sees the new text if it happens to re-run \`dev3 current\` / \`dev3 task show\` itself). Widening or correcting a running task's brief takes both: the \`--description\` edit for the record, and \`dev3 message --task <id> --subject "brief updated"\` so its agent actually hears it. On a task that has not started, the edit alone is enough.

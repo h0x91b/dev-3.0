@@ -19,7 +19,8 @@ import type { AgentLaunchChoice } from "../shared/types";
 import { deliverLaunchHandoff } from "./agent-launch-handoff";
 import * as data from "./data";
 import { loadSpacesFile } from "./spaces-data";
-import { createScratchTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
+import { resolveTaskStartRef } from "./task-start-ref";
+import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
@@ -744,6 +745,8 @@ const handlers: Record<string, Handler> = {
 		const description = (params.description as string | undefined)?.trim() || "";
 		if (!projectId) throw new Error("projectId is required");
 		if (!title) throw new Error("title is required");
+		const prRef = typeof params.pr === "string" ? params.pr : undefined;
+		const branchRef = typeof params.branch === "string" ? params.branch : undefined;
 
 		let priority = undefined;
 		if (params.priority !== undefined) {
@@ -758,6 +761,10 @@ const handlers: Record<string, Handler> = {
 		}
 
 		const project = await data.getProject(projectId);
+		// What the task is ABOUT, resolved before it exists — creation derives
+		// foreignCode from this ref, and a ref set afterwards would leave the trust
+		// decision already made on the base branch (see task-start-ref.ts).
+		const existingBranch = await resolveTaskStartRef({ project, pr: prRef, branch: branchRef });
 		// Use description as the task body if provided, otherwise fall back to title.
 		// A type puts its role brief above that text at creation, through the same
 		// function `task update --type` uses, so a card never claims a role its
@@ -766,14 +773,16 @@ const handlers: Record<string, Handler> = {
 		const body = taskType
 			? withPresetPrompt(ownText, presetPromptForTaskType(taskType, project, await loadSettings()))
 			: ownText;
-		// Only pass the extras arg when there is something to put in it (keeps the common 3-arg call).
-		const extras = {
+		// The GUI's own creation handler — never a parallel path. It owns
+		// foreignCode, and the CLI reached feature parity by calling it rather than
+		// by copying it.
+		const task = await createTask({
+			projectId: project.id,
+			description: body,
+			...(existingBranch ? { existingBranch } : {}),
 			...(priority ? { priority } : {}),
 			...(taskType ? { taskType } : {}),
-		};
-		const task = Object.keys(extras).length
-			? await data.addTask(project, body, "todo", extras)
-			: await data.addTask(project, body, "todo");
+		});
 		// If a separate title was given alongside a description, store it as customTitle.
 		// A role brief counts as a body too: without this the card would be named
 		// after the first 80 characters of the preamble, so every one would read alike.
