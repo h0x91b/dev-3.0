@@ -15,7 +15,8 @@ import {
 } from "../../shared/rate-limits";
 import type { AgentAccountsState } from "../../shared/agent-accounts";
 import { AGENT_ACCOUNTS_CHANGED_EVENT } from "./AgentAccountIndicator";
-import { AccountCard, SOURCE_NAMES, resolveAccount, severityFill } from "./rate-limit-ui";
+import { SOURCE_NAMES, severityFill } from "./rate-limit-ui";
+import AgentUsageModal from "./AgentUsageModal";
 
 /** The pill stacks one mini bar per account, capped to keep the header slim. */
 const MAX_PILL_BARS = 4;
@@ -26,8 +27,8 @@ const MAX_PILL_BARS = 4;
  * dev running many parallel agents is never blindsided by hitting a limit.
  * Hidden until usable data exists; shows the most constrained window for the
  * most recently active account and treats unlimited credits as 0% used.
- * Details for every recently active account live in the tooltip as per-account
- * quota cards with usage bars. Codex monthly credits come from a cached
+ * Clicking it opens the usage modal: the same per-account quota cards, plus the
+ * settings screen's radio control for the default account. Codex monthly credits come from a cached
  * app-server account read; all other data comes from local files — see
  * rate-limit-monitor.ts.
  */
@@ -35,6 +36,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const t = useT();
 	const [report, setReport] = useState<AgentRateLimitsReport | null>(null);
 	const [accounts, setAccounts] = useState<AgentAccountsState | null>(null);
+	const [modalOpen, setModalOpen] = useState(false);
 
 	useEffect(() => {
 		api.request.getAgentRateLimits().then(setReport).catch(() => {
@@ -96,64 +98,63 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	};
 
 	return (
-		<Tooltip
-			content={t("rateLimits.tooltipTitle")}
-			wide
-			detail={
-				<div className="flex w-[24rem] max-w-[calc(100vw-3rem)] flex-col gap-1.5">
-					{report.snapshots.map((snap) => (
-						<AccountCard
-							key={`${snap.source}:${snap.accountId ?? "system"}`}
-							snap={snap}
-							account={resolveAccount(snap.source, accounts, snap.accountId)}
-							now={now}
-						/>
-					))}
-				</div>
-			}
-		>
-			<button
-				type="button"
-				aria-label={interactiveAriaLabel}
-				data-help-id="header.rateLimits"
-				onClick={openAccountsSettings}
-				className={`header-anim flex cursor-pointer select-none items-center gap-1.5 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
-			>
-				{/* One mini bar per recently active account, top-to-bottom in the
-				    same order as the tooltip cards. Unlimited accounts render a
-				    full success bar (matching the ∞ chip) instead of a fake 0%.
-				    In compact mode the bars ARE the whole pill. */}
-				<span aria-hidden="true" className="flex w-7 shrink-0 flex-col gap-[0.0625rem]">
-					{pillSnapshots.map((snap) => {
-						const snapUnlimited = isUnlimitedRateLimitSnapshot(snap);
-						const snapPercent = snapUnlimited ? 100 : Math.round(worstSnapshotWindow(snap)?.usedPercent ?? 0);
-						const clamped = Math.max(0, Math.min(100, snapPercent));
-						return (
-							<span
-								key={`${snap.source}:${snap.accountId ?? "system"}`}
-								className={`relative block w-full overflow-hidden rounded-full bg-fg/15 ${pillSnapshots.length > 1 ? "h-[0.125rem]" : "h-[0.1875rem]"}`}
-							>
+		<>
+			<Tooltip content={t("rateLimits.tooltipTitle")}>
+				<button
+					type="button"
+					aria-label={interactiveAriaLabel}
+					aria-haspopup="dialog"
+					data-help-id="header.rateLimits"
+					onClick={() => setModalOpen(true)}
+					className={`header-anim flex cursor-pointer select-none items-center gap-1.5 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
+				>
+					{/* One mini bar per recently active account, top-to-bottom in the
+					    same order as the modal cards. Unlimited accounts render a
+					    full success bar (matching the ∞ chip) instead of a fake 0%.
+					    In compact mode the bars ARE the whole pill. */}
+					<span aria-hidden="true" className="flex w-7 shrink-0 flex-col gap-[0.0625rem]">
+						{pillSnapshots.map((snap) => {
+							const snapUnlimited = isUnlimitedRateLimitSnapshot(snap);
+							const snapPercent = snapUnlimited ? 100 : Math.round(worstSnapshotWindow(snap)?.usedPercent ?? 0);
+							const clamped = Math.max(0, Math.min(100, snapPercent));
+							return (
 								<span
-									className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ${snapUnlimited ? "bg-success" : severityFill(snapPercent)}`}
-									style={{ width: `${clamped}%`, minWidth: clamped > 0 ? "0.125rem" : undefined }}
-								/>
-							</span>
-						);
-					})}
-				</span>
-				{!compact && (
-					<span className="text-micro font-medium tabular-nums">
-						{unlimited ? (
-							t("rateLimits.unlimited")
-						) : (
-							<>
-								{percent}%<span className="ml-0.5 text-nano font-normal opacity-70">{t("rateLimits.used")}</span>
-							</>
-						)}
+									key={`${snap.source}:${snap.accountId ?? "system"}`}
+									className={`relative block w-full overflow-hidden rounded-full bg-fg/15 ${pillSnapshots.length > 1 ? "h-[0.125rem]" : "h-[0.1875rem]"}`}
+								>
+									<span
+										className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ${snapUnlimited ? "bg-success" : severityFill(snapPercent)}`}
+										style={{ width: `${clamped}%`, minWidth: clamped > 0 ? "0.125rem" : undefined }}
+									/>
+								</span>
+							);
+						})}
 					</span>
-				)}
-			</button>
-		</Tooltip>
+					{!compact && (
+						<span className="text-micro font-medium tabular-nums">
+							{unlimited ? (
+								t("rateLimits.unlimited")
+							) : (
+								<>
+									{percent}%<span className="ml-0.5 text-nano font-normal opacity-70">{t("rateLimits.used")}</span>
+								</>
+							)}
+						</span>
+					)}
+				</button>
+			</Tooltip>
+			{modalOpen ? (
+				<AgentUsageModal
+					report={report}
+					accounts={accounts}
+					onClose={() => setModalOpen(false)}
+					onOpenSettings={() => {
+						setModalOpen(false);
+						openAccountsSettings();
+					}}
+				/>
+			) : null}
+		</>
 	);
 }
 

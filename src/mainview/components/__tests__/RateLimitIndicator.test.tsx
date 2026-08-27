@@ -59,6 +59,12 @@ function getIndicator() {
 	return screen.getByRole("button", { name: /Agent rate limits/ });
 }
 
+/** Per-account details now live in the usage modal, one click away. */
+async function openUsageModal() {
+	await userEvent.click(getIndicator());
+	return await screen.findByRole("dialog");
+}
+
 beforeEach(() => {
 	mockedGet.mockReset();
 	mockedAccounts.mockReset();
@@ -173,14 +179,23 @@ describe("RateLimitIndicator", () => {
 		expect(getIndicator().getAttribute("aria-label")).toContain("42% used");
 	});
 
-	it("opens agent accounts settings when the usage indicator is clicked", async () => {
+	it("opens the usage modal when the indicator is clicked", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		renderIndicator();
+		await act(async () => {});
+		const dialog = await openUsageModal();
+		expect(dialog.textContent).toContain("Agent rate limits");
+	});
+
+	it("opens agent accounts settings from the modal's account-settings button", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		const onOpenSettings = vi.fn();
 		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettings);
 		try {
 			renderIndicator();
 			await act(async () => {});
-			await userEvent.click(getIndicator());
+			await openUsageModal();
+			await userEvent.click(screen.getByRole("button", { name: "Account settings" }));
 
 			expect(onOpenSettings).toHaveBeenCalledTimes(1);
 			expect((onOpenSettings.mock.calls[0]?.[0] as CustomEvent).detail).toBe("accounts");
@@ -189,11 +204,11 @@ describe("RateLimitIndicator", () => {
 		}
 	});
 
-	it("spells out '<n>% used' on each Claude window row in the tooltip", async () => {
+	it("spells out '<n>% used' on each Claude window row in the usage modal", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		expect(await screen.findByText("5h")).toBeTruthy();
 		expect(screen.getByText("5% used")).toBeTruthy();
 		expect(screen.getByText("7d")).toBeTruthy();
@@ -204,10 +219,10 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockResolvedValue(report(97));
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		await screen.findByText("5h");
-		const tooltip = screen.getByRole("tooltip");
-		const fills = tooltip.querySelectorAll("[class*='rounded-full'] > span");
+		const dialog = screen.getByRole("dialog");
+		const fills = dialog.querySelectorAll("[class*='rounded-full'] > span");
 		expect(fills.length).toBe(2);
 		expect((fills[0] as HTMLElement).className).toContain("bg-accent");
 		expect((fills[0] as HTMLElement).style.width).toBe("5%");
@@ -231,8 +246,8 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
-		// One match in the pill label, one as the tooltip card chip.
+		await openUsageModal();
+		// One match in the pill label, one as the modal card chip.
 		expect((await screen.findAllByText("∞ unlimited")).length).toBe(2);
 		expect(screen.queryByText(/credits: unlimited/)).toBeNull();
 	});
@@ -252,7 +267,7 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		expect(await screen.findByText("captured just now")).toBeTruthy();
 	});
 
@@ -275,7 +290,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		const note = await screen.findByText("captured 20m ago");
 		expect(note.className).toContain("text-warning");
 	});
@@ -401,11 +416,11 @@ describe("RateLimitIndicator", () => {
 
 		expect(screen.getByText("97%")).toBeTruthy();
 		expect(getIndicator().getAttribute("aria-label")).toContain("monthly credits");
-		await userEvent.tab();
+		await openUsageModal();
 		expect(await screen.findByText(/329.53 \/ 8,824/)).toBeTruthy();
 	});
 
-	it("shows the system-login account identity and plan in the tooltip", async () => {
+	it("shows the system-login account identity and plan in the usage modal", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		mockedAccounts.mockResolvedValue({
 			claude: {
@@ -423,7 +438,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		expect(await screen.findByText("alice@example.com")).toBeTruthy();
 		expect(screen.getByText("Max 5x")).toBeTruthy();
 	});
@@ -456,7 +471,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		expect(await screen.findByText("Work account")).toBeTruthy();
 		expect(screen.getByText("Pro")).toBeTruthy();
 	});
@@ -495,7 +510,7 @@ describe("RateLimitIndicator", () => {
 
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		expect(await screen.findByText("Work Claude")).toBeTruthy();
 		expect(screen.getByText("Personal Claude")).toBeTruthy();
 		expect(screen.getByText("Enterprise Codex")).toBeTruthy();
@@ -519,7 +534,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		expect(await screen.findByText("dev@example.com")).toBeTruthy();
 		expect(screen.getByText("· Acme Workspace")).toBeTruthy();
 	});
@@ -558,7 +573,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await userEvent.tab();
+		await openUsageModal();
 		// The verbose "email (workspace)" parenthetical is collapsed to email …
 		expect(await screen.findByText("dev@example.com")).toBeTruthy();
 		expect(screen.queryByText("dev@example.com (Acme)")).toBeNull();

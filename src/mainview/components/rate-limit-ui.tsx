@@ -141,19 +141,21 @@ export function WindowBarRow({
 	);
 }
 
-/** One account's quota card: identity header + a bar per limit window. */
-export function AccountCard({
-	snap,
+/** Shared card chrome, so surfaces that have an account but no usage reading
+ *  (the usage modal) render an identical-looking card. */
+export const ACCOUNT_CARD_CLASS = "flex flex-col gap-1.5 rounded-md border border-edge bg-raised/65 px-2.5 py-2";
+
+/** Card headline: provider name, account identity, plan/API chips. */
+export function AccountCardHeader({
+	source,
 	account,
-	now,
+	unlimited,
 }: {
-	snap: AgentRateLimitSnapshot;
+	source: RateLimitSource;
 	account: AccountLine | null;
-	now: number;
+	unlimited?: boolean;
 }) {
 	const t = useT();
-	const [locale] = useLocale();
-	const unlimited = isUnlimitedRateLimitSnapshot(snap);
 	// Collapse the auto-generated "email (workspace)" label into a plain
 	// email so every row reads consistently as "email · workspace" (the
 	// chip carries the workspace). A user-custom label is left untouched.
@@ -165,30 +167,39 @@ export function AccountCard({
 		!!account?.organization &&
 		account.organization !== displayName &&
 		!(displayName ?? "").endsWith(`(${account.organization})`);
+	return (
+		<div className="flex items-center gap-1.5">
+			<span className="text-fg-2 font-medium shrink-0">{SOURCE_NAMES[source] ?? source}</span>
+			{displayName && <span className="min-w-0 truncate text-fg-3 streamer-private">{displayName}</span>}
+			{showOrg && <span className="text-fg-muted whitespace-nowrap shrink-0 streamer-private">· {account?.organization}</span>}
+			{account?.planLabel && (
+				<span className="text-accent text-micro px-1 py-px bg-accent/10 rounded shrink-0">{account.planLabel}</span>
+			)}
+			{/* API is an auth kind, not a warning — neutral chip, same as the workspace chip. */}
+			{account?.isApi && <span className="text-fg-3 text-micro px-1 py-px bg-raised rounded shrink-0">API</span>}
+			{unlimited && (
+				<span className="ml-auto text-success-strong text-micro px-1 py-px bg-success/10 rounded shrink-0 font-medium">
+					{t("rateLimits.unlimited")}
+				</span>
+			)}
+		</div>
+	);
+}
 
+/** Every usage bar of one account: limit windows, monthly credits, provenance.
+ *  Split out of AccountCard so the usage modal can wrap the same bars in a
+ *  selectable row without re-implementing them. */
+export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot; now: number }) {
+	const t = useT();
+	const [locale] = useLocale();
+	const unlimited = isUnlimitedRateLimitSnapshot(snap);
 	const numberFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 });
 	const monthly = snap.monthlyCredits;
 	// The monthly_credits window mirrors snap.monthlyCredits; the dedicated row
 	// below renders it with its used/limit detail, so skip the duplicate here.
 	const windows = snap.windows.filter((w: RateLimitWindow) => !(w.id === "monthly_credits" && monthly));
-
 	return (
-		<div className="flex flex-col gap-1.5 rounded-md border border-edge bg-raised/65 px-2.5 py-2">
-			<div className="flex items-center gap-1.5">
-				<span className="text-fg-2 font-medium shrink-0">{SOURCE_NAMES[snap.source] ?? snap.source}</span>
-				{displayName && <span className="min-w-0 truncate text-fg-3 streamer-private">{displayName}</span>}
-				{showOrg && <span className="text-fg-muted whitespace-nowrap shrink-0 streamer-private">· {account?.organization}</span>}
-				{account?.planLabel && (
-					<span className="text-accent text-micro px-1 py-px bg-accent/10 rounded shrink-0">{account.planLabel}</span>
-				)}
-				{/* API is an auth kind, not a warning — neutral chip, same as the workspace chip. */}
-				{account?.isApi && <span className="text-fg-3 text-micro px-1 py-px bg-raised rounded shrink-0">API</span>}
-				{unlimited && (
-					<span className="ml-auto text-success-strong text-micro px-1 py-px bg-success/10 rounded shrink-0 font-medium">
-						{t("rateLimits.unlimited")}
-					</span>
-				)}
-			</div>
+		<>
 			{windows.map((win) => (
 				<WindowBarRow key={win.id} label={windowLabel(win)} usedPercent={win.usedPercent} resetsAt={win.resetsAt} now={now} />
 			))}
@@ -209,6 +220,24 @@ export function AccountCard({
 				<span className="text-fg-3">{t("rateLimits.credits", { balance: snap.creditsBalance })}</span>
 			)}
 			<CapturedNote capturedAt={snap.capturedAt} now={now} />
+		</>
+	);
+}
+
+/** One account's quota card: identity header + a bar per limit window. */
+export function AccountCard({
+	snap,
+	account,
+	now,
+}: {
+	snap: AgentRateLimitSnapshot;
+	account: AccountLine | null;
+	now: number;
+}) {
+	return (
+		<div className={ACCOUNT_CARD_CLASS}>
+			<AccountCardHeader source={snap.source} account={account} unlimited={isUnlimitedRateLimitSnapshot(snap)} />
+			<AccountQuotaLines snap={snap} now={now} />
 		</div>
 	);
 }

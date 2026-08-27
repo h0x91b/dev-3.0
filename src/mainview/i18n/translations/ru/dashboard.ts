@@ -154,7 +154,10 @@ const dashboard = {
 
 	// Ambient agent rate-limit indicator
 	"rateLimits.tooltipTitle": "Лимиты агентов",
-	"rateLimits.openAccounts": "Открыть настройки аккаунтов агентов",
+	"rateLimits.openAccounts": "Открыть использование и аккаунты агентов",
+	"rateLimits.manageAccounts": "Настройки аккаунтов",
+	"rateLimits.modalSubtitle": "Использование по аккаунтам. Выберите аккаунт, с которым будут стартовать новые запуски — запущенные сессии сохранят текущий логин.",
+	"rateLimits.makeDefault": "Сделать {label} аккаунтом по умолчанию",
 	"rateLimits.used": "использовано",
 	"rateLimits.percentUsed": "{percent}% использовано",
 	"rateLimits.resetsIn": "сброс через {time}",
