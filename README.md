@@ -347,7 +347,7 @@ The app reports usage analytics so the project can see what is actually used:
 
 | Channel | What it sends |
 |---|---|
-| Google Analytics 4 | App launch, version, OS, screen resolution, language, screen navigation, a 10-minute heartbeat, agent launches, and unhandled errors. Identified by a random per-install id, geolocated via a public-IP lookup against `api.ipify.org`. Project *names* and file paths are deliberately never sent — only internal ids. |
+| Google Analytics 4 | App launch, version, OS, screen resolution, language, screen navigation, a 10-minute heartbeat, agent launches, and unhandled errors. Identified by a random per-install id. Your IP address is never looked up and never sent as data. Project *names* and file paths are deliberately never sent — only internal ids. |
 | PostHog | Task and project actions (created, moved, merged, pushed …) plus unhandled errors, under a random per-install id. Also delivers feature flags. Live in the official release builds; a build from source has no key and stays off. |
 
 Neither channel sends your project names, task titles, file paths, prompts, diffs or terminal
@@ -356,8 +356,8 @@ crash reports before they are sent — the local log file keeps the untouched te
 
 ### Turning it off
 
-Any **one** of these switches off everything at once: no GA4 hits, no public-IP lookup, no PostHog
-client, no crash reports. Feature flags then fall back to their shipped defaults.
+Any **one** of these switches off everything at once: no GA4 hits, no PostHog client, no crash
+reports. Feature flags then fall back to their shipped defaults.
 
 | How | Where | Takes effect |
 |---|---|---|

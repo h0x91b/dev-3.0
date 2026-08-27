@@ -64,6 +64,7 @@ import {
 	trackDiffView,
 	analyticsLocationForRoute,
 } from "../analytics";
+import { setRuntimeTelemetryOptOut, _resetTelemetryRuntimeStateForTests } from "../telemetry";
 import type { CodingAgent } from "../../shared/types";
 import { taskSeqLabel } from "../../shared/types";
 import type { Route } from "../state";
@@ -211,7 +212,7 @@ describe("registerAgents / agentNameFromId", () => {
 	});
 });
 
-describe("ip_override (geolocation)", () => {
+describe("the user's IP never leaves the machine", () => {
 	let fetchMock: ReturnType<typeof vi.fn>;
 
 	beforeEach(() => {
@@ -220,11 +221,7 @@ describe("ip_override (geolocation)", () => {
 		destroyAnalytics();
 		fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
 		fetchMock.mockReset();
-		fetchMock.mockImplementation((url: string) =>
-			typeof url === "string" && url.includes("ipify")
-				? Promise.resolve({ json: () => Promise.resolve({ ip: "203.0.113.7" }) })
-				: Promise.resolve(undefined),
-		);
+		fetchMock.mockResolvedValue(undefined);
 	});
 
 	afterEach(() => {
@@ -233,40 +230,41 @@ describe("ip_override (geolocation)", () => {
 		fetchMock.mockResolvedValue(undefined);
 	});
 
-	it("adds ip_override to the GA payload once the public IP resolves", async () => {
+	it("never requests the public IP from a third-party lookup service", async () => {
+		initAnalytics("1.0.0");
+		await flushMicrotasks();
+		trackEvent("ping");
+
+		const hosts = fetchMock.mock.calls.map((c) => String(c[0]));
+		expect(hosts.every((url) => url.startsWith("https://www.google-analytics.com/"))).toBe(true);
+	});
+
+	it("sends no ip_override field to GA", async () => {
 		initAnalytics("1.0.0");
 		await flushMicrotasks();
 		fetchMock.mockClear();
 
 		trackEvent("ping");
-		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-		expect(body.ip_override).toBe("203.0.113.7");
+		const raw = fetchMock.mock.calls[0][1].body as string;
+		expect(JSON.parse(raw).ip_override).toBeUndefined();
+		expect(raw).not.toContain("ip_override");
 	});
 
-	it("caches the resolved IP and skips the lookup on the next launch", async () => {
-		initAnalytics("1.0.0");
-		await flushMicrotasks();
+	it("erases an IP a previous version cached, even with telemetry off", async () => {
+		store["dev3-ga-ip"] = "203.0.113.7";
+		store["dev3-ga-ip-ts"] = String(Date.now());
+		setRuntimeTelemetryOptOut(true);
 
-		const ipifyCalls = () =>
-			fetchMock.mock.calls.filter((c) => typeof c[0] === "string" && c[0].includes("ipify")).length;
-		expect(ipifyCalls()).toBe(1);
+		try {
+			initAnalytics("1.0.0");
+			await flushMicrotasks();
+		} finally {
+			_resetTelemetryRuntimeStateForTests();
+		}
 
-		destroyAnalytics();
-		initAnalytics("1.0.0"); // cache is fresh → no second ipify request
-		await flushMicrotasks();
-		expect(ipifyCalls()).toBe(1);
-	});
-
-	it("omits ip_override when the lookup fails (best-effort)", async () => {
-		fetchMock.mockReset();
-		fetchMock.mockResolvedValue(undefined); // ipify resolves to undefined → json() throws
-		initAnalytics("1.0.0");
-		await flushMicrotasks();
-		fetchMock.mockClear();
-
-		trackEvent("ping");
-		const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-		expect(body.ip_override).toBeUndefined();
+		expect(store["dev3-ga-ip"]).toBeUndefined();
+		expect(store["dev3-ga-ip-ts"]).toBeUndefined();
+		expect(fetchMock).not.toHaveBeenCalled();
 	});
 });
 

@@ -9,6 +9,9 @@ import { telemetryEnabled } from "./telemetry";
 import { randomUUID } from "./uuid";
 
 const GA_MEASUREMENT_ID = "G-L1NSQH6FGY";
+// Not a credential despite the name: a Measurement Protocol secret for a web
+// stream is write-only and has to ship in the client, exactly as gtag.js ships
+// the measurement id. Secret scanners flag it; there is nothing to protect.
 const GA_API_SECRET = "WlYPp7bSTVS5cMRMS4dJwQ";
 const GA_ENDPOINT = `https://www.google-analytics.com/mp/collect?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`;
 
@@ -35,15 +38,10 @@ let engagementTrackingSetup = false;
 // Cap a single engagement report so a suspended laptop / clock jump can't spike
 // the metric with a multi-hour "engaged" interval.
 const MAX_ENGAGEMENT_MS = 30 * 60 * 1000;
-// Public IP used for `ip_override`. GA4 Measurement Protocol does NOT geolocate
-// web-stream hits from the request's source IP — without ip_override the
-// Country/City dimensions stay "(not set)". Resolved best-effort (see
-// resolvePublicIp); empty string until/unless a lookup succeeds.
-let ipOverride = "";
 
-const IP_CACHE_KEY = "dev3-ga-ip";
-const IP_CACHE_TS_KEY = "dev3-ga-ip-ts";
-const IP_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // refresh at most once a day
+// Left behind by the removed public-IP lookup; cleared so no install keeps a
+// stored IP on disk. See decisions/2026/08/27/drop-ip-override-geolocation.md.
+const STALE_IP_CACHE_KEYS = ["dev3-ga-ip", "dev3-ga-ip-ts"];
 
 // Agents registered by the app (App.tsx) so events like `task_moved` can carry
 // a human-readable agent name without threading the agents list everywhere.
@@ -60,31 +58,9 @@ export function agentNameFromId(agentId: string | null | undefined): string {
 	return knownAgents.find((a) => a.id === agentId)?.name ?? "unknown";
 }
 
-/**
- * Resolve the user's public IP (best-effort) for `ip_override`, so GA4 can
- * geolocate events. Uses a cached value immediately if present, then refreshes
- * from api.ipify.org at most once a day. One request per app launch at most —
- * silent on any failure (analytics still works, just without geo this session).
- */
-function resolvePublicIp(): void {
-	const cached = localStorage.getItem(IP_CACHE_KEY) || "";
-	if (cached) ipOverride = cached;
-
-	const cachedTs = Number(localStorage.getItem(IP_CACHE_TS_KEY) || "0");
-	if (cached && Date.now() - cachedTs < IP_CACHE_TTL_MS) return; // still fresh
-
-	fetch("https://api.ipify.org?format=json")
-		.then((res) => res.json())
-		.then((data: { ip?: unknown }) => {
-			if (data && typeof data.ip === "string" && data.ip) {
-				ipOverride = data.ip;
-				localStorage.setItem(IP_CACHE_KEY, data.ip);
-				localStorage.setItem(IP_CACHE_TS_KEY, String(Date.now()));
-			}
-		})
-		.catch(() => {
-			// Best-effort — keep any cached IP, otherwise no geo this session.
-		});
+/** Erase the IP the removed geolocation lookup used to cache on this machine. */
+function clearStaleIpCache(): void {
+	for (const key of STALE_IP_CACHE_KEYS) localStorage.removeItem(key);
 }
 
 function getOrCreateClientId(): string {
@@ -202,8 +178,6 @@ function sendToGA(events: Array<{ name: string; params?: Record<string, unknown>
 	const body = {
 		client_id: clientId,
 		user_agent: navigator.userAgent,
-		// Lets GA4 derive Country/City — MP web hits are NOT geolocated otherwise.
-		...(ipOverride ? { ip_override: ipOverride } : {}),
 		user_properties: userProperties,
 		events: events.map((e, index) => ({
 			name: e.name,
@@ -225,13 +199,17 @@ function sendToGA(events: Array<{ name: string; params?: Record<string, unknown>
 
 /** Initialize GA4 with user properties and start heartbeat. */
 export function initAnalytics(appVersion: string): void {
+	// Runs before the telemetry gate on purpose: an opted-out install must also
+	// shed the IP an earlier version cached, and erasing it sends nothing.
+	clearStaleIpCache();
+
 	// Wired before the telemetry gate: the listeners are local diagnostics first —
 	// logToBackend writes the app's own log file and never leaves the machine. The
 	// GA event they also raise is dropped by sendToGA when telemetry is off.
 	setupErrorTracking();
 
-	// Gated separately from sendToGA: the ipify lookup and the heartbeat interval
-	// below never pass through the transport.
+	// Gated separately from sendToGA: the heartbeat interval below never passes
+	// through the transport.
 	if (!telemetryEnabled()) return;
 
 	clientId = getOrCreateClientId();
@@ -244,10 +222,6 @@ export function initAnalytics(appVersion: string): void {
 	engagementResumeTs =
 		typeof document === "undefined" || document.visibilityState !== "hidden" ? Date.now() : 0;
 	setupEngagementTracking();
-
-	// Load cached IP synchronously (so session_start can carry it) and kick off
-	// a best-effort refresh for the geo dimensions.
-	resolvePublicIp();
 
 	userProperties = {
 		operating_system: { value: getOS() },
@@ -301,8 +275,6 @@ export function destroyAnalytics(): void {
 		clearInterval(heartbeatInterval);
 		heartbeatInterval = null;
 	}
-	// Drop the in-memory geo IP; the next init re-reads it from the localStorage cache.
-	ipOverride = "";
 	// Tear down engagement tracking so a fresh init re-wires it cleanly.
 	if (engagementTrackingSetup && typeof document !== "undefined") {
 		document.removeEventListener("visibilitychange", onVisibilityChange);

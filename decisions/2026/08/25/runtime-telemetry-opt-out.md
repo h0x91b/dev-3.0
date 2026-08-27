@@ -71,7 +71,8 @@ recording a window that renders source, diffs and live terminal panes with no ap
 - **Read the setting over RPC at boot.** Too late by construction: posthog-js initializes at
   module import.
 - **`posthog.opt_out_capturing()` alone, no host gate.** Only covers PostHog; GA4, the ipify
-  lookup and the heartbeat would keep running, and posthog-js still initializes and fetches
+  lookup (removed on 2026-08-27, see `decisions/2026/08/27/drop-ip-override-geolocation.md`)
+  and the heartbeat would keep running, and posthog-js still initializes and fetches
   remote config first.
 - **`autocapture: false` instead of masking.** Simpler and strictly safer, but it also drops
   the rage-click and dead-click signals that are genuinely anonymous. Masking keeps the shape

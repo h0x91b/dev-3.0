@@ -10,7 +10,8 @@ switch they can prove is off, not a runtime setting a future release could quiet
 ## Investigation
 
 Gating only the GA transport is not enough. `sendToGA` carries the seven event types, but
-`initAnalytics` separately fires the `api.ipify.org` lookup that supplies `ip_override`, starts
+`initAnalytics` separately fired the `api.ipify.org` lookup that supplied `ip_override` (removed
+on 2026-08-27, see `decisions/2026/08/27/drop-ip-override-geolocation.md`), starts
 the 10-minute heartbeat interval, and installs the global `error` / `unhandledrejection`
 listeners — none of which pass through `sendToGA`. PostHog needs its own gate because it turns
 itself on from build-time keys the release workflows inject, so "leave the key unset" is not a
