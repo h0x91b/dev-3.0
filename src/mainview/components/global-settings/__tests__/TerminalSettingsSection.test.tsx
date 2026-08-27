@@ -104,6 +104,8 @@ describe("TerminalSettingsSection — shell picker", () => {
 // passing assertion red — they are about the control's behaviour, not its wording.
 /** The gallery has its own radiogroup; the backend picker on the same page has another. */
 const GALLERY = "settings.terminalFontGallery";
+/** The count is plural, so the fake `t` renders `<key>|<count>` — see below. */
+const COMPARE = `settings.terminalFontCompare|${BUNDLED_TERMINAL_FONTS.length}`;
 
 const t = Object.assign((key: string) => key, {
 	plural: (key: string, count: number) => `${key}|${count}`,
@@ -197,7 +199,7 @@ describe("terminal font controls", () => {
 		const user = userEvent.setup();
 		expect(screen.queryByRole("radiogroup", { name: GALLERY })).toBeNull();
 
-		await user.click(screen.getByText("settings.terminalFontCompare"));
+		await user.click(screen.getByText(COMPARE));
 
 		const rows = within(screen.getByRole("radiogroup", { name: GALLERY })).getAllByRole("radio");
 		expect(rows).toHaveLength(BUNDLED_TERMINAL_FONTS.length);
@@ -206,7 +208,7 @@ describe("terminal font controls", () => {
 	it("picking a font in the gallery commits it", async () => {
 		renderFontSection();
 		const user = userEvent.setup();
-		await user.click(screen.getByText("settings.terminalFontCompare"));
+		await user.click(screen.getByText(COMPARE));
 
 		await user.click(screen.getByText("Iosevka Term"));
 
@@ -218,7 +220,7 @@ describe("terminal font controls", () => {
 		// reference font — so the reference row is the one that must read as checked.
 		renderFontSection();
 		const user = userEvent.setup();
-		await user.click(screen.getByText("settings.terminalFontCompare"));
+		await user.click(screen.getByText(COMPARE));
 
 		const checked = within(screen.getByRole("radiogroup", { name: GALLERY }))
 			.getAllByRole("radio")
@@ -231,7 +233,7 @@ describe("terminal font controls", () => {
 		// Go Mono is 0.02% wider than the reference. True, and useless to say.
 		renderFontSection();
 		const user = userEvent.setup();
-		await user.click(screen.getByText("settings.terminalFontCompare"));
+		await user.click(screen.getByText(COMPARE));
 
 		const shown = screen.queryAllByText("settings.terminalFontNarrowed").length;
 		const rounded = BUNDLED_TERMINAL_FONTS.filter((f) => Math.round((1 - f.scale) * 1000) / 10 > 0);

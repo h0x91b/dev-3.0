@@ -215,9 +215,7 @@ export default function TerminalSettingsSection({
 					>
 						{galleryOpen
 							? t("settings.terminalFontCompareHide")
-							: t("settings.terminalFontCompare", {
-									count: String(BUNDLED_TERMINAL_FONTS.length),
-								})}
+							: t.plural("settings.terminalFontCompare", BUNDLED_TERMINAL_FONTS.length)}
 					</button>
 					{galleryOpen && (
 						<TerminalFontGallery
