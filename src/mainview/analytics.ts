@@ -3,6 +3,7 @@
 // script loading from the views:// custom protocol.
 
 import type { CodingAgent } from "../shared/types";
+import { BUILD_COMMIT, BUILD_TASK_LABEL } from "../shared/build-info.generated";
 import type { Route } from "./state";
 import { api } from "./rpc";
 import { telemetryEnabled } from "./telemetry";
@@ -42,6 +43,39 @@ const MAX_ENGAGEMENT_MS = 30 * 60 * 1000;
 // Left behind by the removed public-IP lookup; cleared so no install keeps a
 // stored IP on disk. See decisions/2026/08/27/drop-ip-override-geolocation.md.
 const STALE_IP_CACHE_KEYS = ["dev3-ga-ip", "dev3-ga-ip-ts"];
+
+/**
+ * The channel baked into the bundle (`dev`, `canary`, or a stable build's own
+ * value), never absent. Without it every build reported the bare version, so a
+ * `bun run dev` session and a canary build were indistinguishable from a stable
+ * install on the same version number.
+ */
+function normalizeBuildChannel(buildChannel: string | undefined): string {
+	return buildChannel || "stable";
+}
+
+/**
+ * The version string GA reports: `1.48.1` for a stable install, `canary-1.48.1`,
+ * `dev-1.48.1`, or `dev-1.48.1-1716-1` for a dev build out of a dev3 task worktree.
+ *
+ * It carries the channel because `app_version` is one of GA4's OWN dimensions and
+ * shows up in every report unaided, while a user property does nothing until
+ * someone registers it as a custom dimension. This string is for analytics only —
+ * the bundle's `version.json` must keep the bare version, because `dev3 doctor`
+ * compares it against the CLI version by string equality.
+ *
+ * `taskLabel` is a parameter rather than a direct read so the function stays pure
+ * and testable: its baked-in value differs between a worktree build and CI.
+ */
+export function analyticsVersion(
+	appVersion: string,
+	buildChannel: string | undefined,
+	taskLabel: string = BUILD_TASK_LABEL,
+): string {
+	const channel = normalizeBuildChannel(buildChannel);
+	if (channel === "stable") return appVersion;
+	return `${channel}-${appVersion}${taskLabel ? `-${taskLabel}` : ""}`;
+}
 
 // Agents registered by the app (App.tsx) so events like `task_moved` can carry
 // a human-readable agent name without threading the agents list everywhere.
@@ -197,8 +231,14 @@ function sendToGA(events: Array<{ name: string; params?: Record<string, unknown>
 	});
 }
 
-/** Initialize GA4 with user properties and start heartbeat. */
-export function initAnalytics(appVersion: string): void {
+/**
+ * Initialize GA4 with user properties and start heartbeat.
+ *
+ * `buildChannel` is the channel baked into the bundle (`dev` / `canary` /
+ * stable), not the channel the user subscribes to — the caller reads it from
+ * `getAppVersion`.
+ */
+export function initAnalytics(appVersion: string, buildChannel?: string): void {
 	// Runs before the telemetry gate on purpose: an opted-out install must also
 	// shed the IP an earlier version cached, and erasing it sends nothing.
 	clearStaleIpCache();
@@ -225,7 +265,9 @@ export function initAnalytics(appVersion: string): void {
 
 	userProperties = {
 		operating_system: { value: getOS() },
-		app_version: { value: appVersion },
+		app_version: { value: analyticsVersion(appVersion, buildChannel) },
+		build_channel: { value: normalizeBuildChannel(buildChannel) },
+		build_commit: { value: BUILD_COMMIT },
 		screen_resolution: { value: getScreenResolution() },
 		language: { value: getLanguage() },
 	};

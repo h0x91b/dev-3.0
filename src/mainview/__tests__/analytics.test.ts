@@ -63,8 +63,10 @@ import {
 	trackPageView,
 	trackDiffView,
 	analyticsLocationForRoute,
+	analyticsVersion,
 } from "../analytics";
 import { setRuntimeTelemetryOptOut, _resetTelemetryRuntimeStateForTests } from "../telemetry";
+import { BUILD_COMMIT, BUILD_TASK_LABEL } from "../../shared/build-info.generated";
 import type { CodingAgent } from "../../shared/types";
 import { taskSeqLabel } from "../../shared/types";
 import type { Route } from "../state";
@@ -265,6 +267,84 @@ describe("the user's IP never leaves the machine", () => {
 		expect(store["dev3-ga-ip"]).toBeUndefined();
 		expect(store["dev3-ga-ip-ts"]).toBeUndefined();
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+});
+
+describe("build channel and commit", () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		vi.useRealTimers();
+		for (const key of Object.keys(store)) delete store[key];
+		destroyAnalytics();
+		fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+		fetchMock.mockReset();
+		fetchMock.mockResolvedValue(undefined);
+	});
+
+	afterEach(() => destroyAnalytics());
+
+	const propsOfFirstHit = () =>
+		JSON.parse(fetchMock.mock.calls[0][1].body).user_properties;
+
+	it("reports a dev build as its own channel, not as the stable version", () => {
+		initAnalytics("1.48.1", "dev");
+		expect(propsOfFirstHit().build_channel.value).toBe("dev");
+	});
+
+	it("reports a canary build as canary", () => {
+		initAnalytics("1.48.1", "canary");
+		expect(propsOfFirstHit().build_channel.value).toBe("canary");
+	});
+
+	it("falls back to stable when the caller has no channel to give", () => {
+		initAnalytics("1.48.1");
+		expect(propsOfFirstHit().build_channel.value).toBe("stable");
+	});
+
+	it("carries the build commit so two builds on one version are distinguishable", () => {
+		initAnalytics("1.48.1", "canary");
+		expect(propsOfFirstHit().build_commit.value).toBe(BUILD_COMMIT);
+	});
+
+	// The payload itself, not just the helper: app_version is the dimension GA
+	// shows unaided, so a non-stable build must never report the bare version there.
+	it("puts the channel into app_version, the dimension GA reports unaided", () => {
+		initAnalytics("1.48.1", "dev");
+		expect(propsOfFirstHit().app_version.value).toBe(analyticsVersion("1.48.1", "dev"));
+		expect(propsOfFirstHit().app_version.value.startsWith("dev-1.48.1")).toBe(true);
+	});
+
+	it("leaves app_version bare for a stable install", () => {
+		initAnalytics("1.48.1", "stable");
+		expect(propsOfFirstHit().app_version.value).toBe("1.48.1");
+	});
+});
+
+describe("analyticsVersion", () => {
+	// app_version is a built-in GA4 dimension and shows up unaided, so the channel
+	// rides in the string itself rather than only in a user property.
+	it("leaves a stable install's version untouched", () => {
+		expect(analyticsVersion("1.48.1", "stable", "1716-1")).toBe("1.48.1");
+		expect(analyticsVersion("1.48.1", undefined, "1716-1")).toBe("1.48.1");
+	});
+
+	it("names the dev3 task a dev build came out of", () => {
+		expect(analyticsVersion("1.48.1", "dev", "1716-1")).toBe("dev-1.48.1-1716-1");
+		expect(analyticsVersion("1.48.1", "dev", "1716")).toBe("dev-1.48.1-1716");
+	});
+
+	it("still marks a dev build with no task behind it", () => {
+		expect(analyticsVersion("1.48.1", "dev", "")).toBe("dev-1.48.1");
+	});
+
+	it("prefixes a canary build so it stops reading as the stable release", () => {
+		expect(analyticsVersion("1.48.1", "canary", "")).toBe("canary-1.48.1");
+	});
+
+	it("defaults to the label baked into this build", () => {
+		const expected = BUILD_TASK_LABEL ? `dev-1.48.1-${BUILD_TASK_LABEL}` : "dev-1.48.1";
+		expect(analyticsVersion("1.48.1", "dev")).toBe(expected);
 	});
 });
 

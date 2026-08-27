@@ -48,6 +48,26 @@ try {
 	if (out) buildOrder = Number(out) || 0;
 } catch { /* non-git env */ }
 
+// The dev3 task this build came out of, "1716" or "1716-1", empty everywhere else.
+// Several agents build from their own worktrees against one analytics property, so
+// without it every one of their dev builds is the same anonymous "dev" row.
+// Read-only: resolves the worktree path against the board's own tasks.json.
+let buildTaskLabel = "";
+try {
+	const marker = "/.dev3.0/worktrees/";
+	const cwd = process.cwd();
+	const at = cwd.indexOf(marker);
+	if (at !== -1) {
+		const [slug, taskIdPrefix] = cwd.slice(at + marker.length).split("/");
+		const home = process.env.HOME ?? "";
+		const tasks = await Bun.file(`${home}/.dev3.0/data/${slug}/tasks.json`).json();
+		const task = tasks.find((t: { id: string }) => t.id.startsWith(taskIdPrefix));
+		if (task?.seq != null) {
+			buildTaskLabel = task.variantIndex != null ? `${task.seq}-${task.variantIndex}` : `${task.seq}`;
+		}
+	}
+} catch { /* not in a dev3 worktree, or the board is unreadable — stay empty */ }
+
 // Get version from package.json
 let buildVersion = "0.0.0";
 try {
@@ -60,7 +80,9 @@ export const BUILD_TIME = ${JSON.stringify(buildTime)};
 export const BUILD_COMMIT = ${JSON.stringify(buildCommit)};
 export const BUILD_VERSION = ${JSON.stringify(buildVersion)};
 export const BUILD_ORDER = ${JSON.stringify(buildOrder)};
+export const BUILD_TASK_LABEL = ${JSON.stringify(buildTaskLabel)};
 `;
 
 await Bun.write(outPath, content);
-console.log(`[build-info] v${buildVersion} ${buildCommit} #${buildOrder} ${buildTime} → src/shared/build-info.generated.ts`);
+const taskNote = buildTaskLabel ? ` task ${buildTaskLabel}` : "";
+console.log(`[build-info] v${buildVersion} ${buildCommit} #${buildOrder}${taskNote} ${buildTime} → src/shared/build-info.generated.ts`);

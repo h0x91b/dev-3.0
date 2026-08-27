@@ -145,7 +145,7 @@ async function bootstrap() {
 			api.request.getAppVersion(),
 			new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
 		]);
-		initAnalytics(version);
+		initAnalytics(version, buildChannel);
 		// Non-stable channels get a visible prefix so the window is unmistakable next to
 		// an installed stable one — shared with the native window title.
 		document.title = `${buildChannelTitlePrefix(buildChannel)}dev-3.0 v${version}`;
