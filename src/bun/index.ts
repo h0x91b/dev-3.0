@@ -42,6 +42,7 @@ import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-s
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
+import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { ensureCodexConfigFile } from "./codex-config";
 import { ensureWindowsShortcuts } from "./windows-shortcuts";
 import { makeTitle } from "./app-utils";
@@ -164,7 +165,12 @@ log.info("Log files", { dir: getLogPath() });
 
 	// Windows ships `dev3.exe`; the bundle name is owned by electrobun.config so
 	// the copy map and this install path can never disagree.
-	installBinary(cliBinaryName());
+	//
+	// A dev-channel build (`bun run dev`) is deliberately not allowed here: this
+	// copy owns the CLI every agent on the machine runs, and a worktree build
+	// landing on it silently swaps everyone onto an unmerged branch. See
+	// managed-cli-guard.ts.
+	if (managedCliWriteAllowed(PATHS.VIEWS_FOLDER, DEV3_HOME)) installBinary(cliBinaryName());
 
 	// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
 	// Overwritten on every start to match the running app version (same pattern as CLI binary).

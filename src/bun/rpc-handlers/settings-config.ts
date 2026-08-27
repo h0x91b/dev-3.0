@@ -263,6 +263,12 @@ async function toggleFavoriteAgent(params: { agentId: string; configId: string }
  * freshly built CLI talking to the installed app is why new flags look broken.
  * See `writeDev3SelfShim` for why arming the second name — never `bin/dev3` —
  * is what keeps agent hooks out of a guest instance.
+ *
+ * DELIBERATELY NOT gated by `managedCliWriteAllowed`. That guard stops a build
+ * from claiming the shared CLI behind the user's back; this handler runs only
+ * because they pressed "Install dev3 CLI" in Settings, which is the whole point
+ * of the button on a dev build. It is the in-app twin of the
+ * `DEV3_INSTALL_MANAGED_CLI=1` env opt-in.
  */
 async function installDev3Cli(): Promise<{ installedFrom: string; selfShimPath: string; selfInstance: string }> {
 	log.info("→ installDev3Cli");

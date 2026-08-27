@@ -24,6 +24,7 @@ import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskI
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { ensureDev3CliSymlink } from "./cli-self-install";
+import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
@@ -175,7 +176,11 @@ if (!process.env.DEV3_VIEWS_DIR) {
 // the CLI by that absolute path (agent-hooks.ts `DEV3_CLI`). The GUI keeps it
 // current; a headless `dev3 remote` box otherwise inherits a stale/dangling
 // entry, so every hook fails with "…/.dev3.0/bin/dev3: not found".
-ensureDev3CliSymlink(DEV3_HOME, process.execPath);
+//
+// Not from a source checkout, though: there `process.execPath` IS the `bun`
+// binary, so this used to aim the shared name at bun and every `dev3` command
+// on the machine died with `Script not found "tasks"`. See managed-cli-guard.ts.
+if (managedCliWriteAllowed(process.execPath, DEV3_HOME)) ensureDev3CliSymlink(DEV3_HOME, process.execPath);
 
 // ── Resolve shell PATH + LANG + key gh config vars (same as GUI entry) ──
 process.env.SHELL = getUserShell();
