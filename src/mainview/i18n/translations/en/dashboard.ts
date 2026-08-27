@@ -140,7 +140,7 @@ const dashboard = {
 	"rateLimits.tooltipTitle": "Agent rate limits",
 	"rateLimits.openAccounts": "Open agent usage and accounts",
 	"rateLimits.manageAccounts": "Account settings",
-	"rateLimits.modalSubtitle": "Usage per account. Pick the account new launches start with — running sessions keep their current login.",
+	"rateLimits.panelSubtitle": "Usage per account. Pick the account new launches start with — running sessions keep their current login.",
 	"rateLimits.makeDefault": "Make {label} the default account",
 	"rateLimits.used": "used",
 	"rateLimits.percentUsed": "{percent}% used",

@@ -59,10 +59,11 @@ function getIndicator() {
 	return screen.getByRole("button", { name: /Agent rate limits/ });
 }
 
-/** Per-account details now live in the usage modal, one click away. */
-async function openUsageModal() {
+/** Per-account details now live in the pill's own flyout panel, one click away
+ *  (a click pins it; hover alone opens it too). */
+async function openUsagePanel() {
 	await userEvent.click(getIndicator());
-	return await screen.findByRole("dialog");
+	return await screen.findByTestId("agent-usage-panel");
 }
 
 beforeEach(() => {
@@ -179,12 +180,15 @@ describe("RateLimitIndicator", () => {
 		expect(getIndicator().getAttribute("aria-label")).toContain("42% used");
 	});
 
-	it("opens the usage modal when the indicator is clicked", async () => {
+	it("opens the usage panel anchored to the indicator, not a centred dialog", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
-		const dialog = await openUsageModal();
-		expect(dialog.textContent).toContain("Agent rate limits");
+		const panel = await openUsagePanel();
+		// Anchored + portaled: fixed-position panel, no full-screen backdrop over the app.
+		expect(panel.className).toContain("fixed");
+		expect(panel.textContent).toContain("Claude");
+		expect(document.querySelector(".bg-black\\/50")).toBeNull();
 	});
 
 	it("opens agent accounts settings from the modal's account-settings button", async () => {
@@ -194,7 +198,7 @@ describe("RateLimitIndicator", () => {
 		try {
 			renderIndicator();
 			await act(async () => {});
-			await openUsageModal();
+			await openUsagePanel();
 			await userEvent.click(screen.getByRole("button", { name: "Account settings" }));
 
 			expect(onOpenSettings).toHaveBeenCalledTimes(1);
@@ -208,7 +212,7 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		expect(await screen.findByText("5h")).toBeTruthy();
 		expect(screen.getByText("5% used")).toBeTruthy();
 		expect(screen.getByText("7d")).toBeTruthy();
@@ -219,7 +223,7 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockResolvedValue(report(97));
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		await screen.findByText("5h");
 		const dialog = screen.getByRole("dialog");
 		const fills = dialog.querySelectorAll("[class*='rounded-full'] > span");
@@ -246,7 +250,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		// One match in the pill label, one as the modal card chip.
 		expect((await screen.findAllByText("∞ unlimited")).length).toBe(2);
 		expect(screen.queryByText(/credits: unlimited/)).toBeNull();
@@ -267,7 +271,7 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		expect(await screen.findByText("captured just now")).toBeTruthy();
 	});
 
@@ -290,7 +294,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		const note = await screen.findByText("captured 20m ago");
 		expect(note.className).toContain("text-warning");
 	});
@@ -416,7 +420,7 @@ describe("RateLimitIndicator", () => {
 
 		expect(screen.getByText("97%")).toBeTruthy();
 		expect(getIndicator().getAttribute("aria-label")).toContain("monthly credits");
-		await openUsageModal();
+		await openUsagePanel();
 		expect(await screen.findByText(/329.53 \/ 8,824/)).toBeTruthy();
 	});
 
@@ -438,7 +442,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		expect(await screen.findByText("alice@example.com")).toBeTruthy();
 		expect(screen.getByText("Max 5x")).toBeTruthy();
 	});
@@ -471,7 +475,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		expect(await screen.findByText("Work account")).toBeTruthy();
 		expect(screen.getByText("Pro")).toBeTruthy();
 	});
@@ -510,7 +514,7 @@ describe("RateLimitIndicator", () => {
 
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		expect(await screen.findByText("Work Claude")).toBeTruthy();
 		expect(screen.getByText("Personal Claude")).toBeTruthy();
 		expect(screen.getByText("Enterprise Codex")).toBeTruthy();
@@ -534,7 +538,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		expect(await screen.findByText("dev@example.com")).toBeTruthy();
 		expect(screen.getByText("· Acme Workspace")).toBeTruthy();
 	});
@@ -573,7 +577,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		await openUsageModal();
+		await openUsagePanel();
 		// The verbose "email (workspace)" parenthetical is collapsed to email …
 		expect(await screen.findByText("dev@example.com")).toBeTruthy();
 		expect(screen.queryByText("dev@example.com (Acme)")).toBeNull();

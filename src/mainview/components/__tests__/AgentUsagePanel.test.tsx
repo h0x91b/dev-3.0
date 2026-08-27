@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
-import AgentUsageModal from "../AgentUsageModal";
+import AgentUsagePanel from "../AgentUsagePanel";
 import { AGENT_ACCOUNTS_CHANGED_EVENT } from "../AgentAccountIndicator";
 import type { AgentAccountsState } from "../../../shared/agent-accounts";
 import type { AgentRateLimitsReport } from "../../../shared/rate-limits";
@@ -47,10 +47,10 @@ function report(): AgentRateLimitsReport {
 	};
 }
 
-function renderModal(state: AgentAccountsState | null = accounts()) {
+function renderPanel(state: AgentAccountsState | null = accounts()) {
 	return render(
 		<I18nProvider>
-			<AgentUsageModal report={report()} accounts={state} onClose={() => {}} onOpenSettings={() => {}} />
+			<AgentUsagePanel report={report()} accounts={state} onOpenSettings={() => {}} />
 		</I18nProvider>,
 	);
 }
@@ -60,9 +60,9 @@ beforeEach(() => {
 	setActive.mockResolvedValue(undefined);
 });
 
-describe("AgentUsageModal", () => {
+describe("AgentUsagePanel", () => {
 	it("lists every account, with usage on the one that has a reading", async () => {
-		renderModal();
+		renderPanel();
 		expect(screen.getByText("Work Claude")).toBeTruthy();
 		expect(screen.getByText("Home Claude")).toBeTruthy();
 		expect(screen.getByText("42% used")).toBeTruthy();
@@ -70,7 +70,7 @@ describe("AgentUsageModal", () => {
 	});
 
 	it("marks the current default and leaves it inert", async () => {
-		renderModal();
+		renderPanel();
 		const radios = screen.getAllByRole("radio");
 		const current = radios.find((r) => r.getAttribute("aria-checked") === "true");
 		expect(current?.textContent).toContain("Work Claude");
@@ -82,7 +82,7 @@ describe("AgentUsageModal", () => {
 		const onChanged = vi.fn();
 		window.addEventListener(AGENT_ACCOUNTS_CHANGED_EVENT, onChanged);
 		try {
-			renderModal();
+			renderPanel();
 			await userEvent.click(screen.getByRole("radio", { name: "Make Home Claude the default account" }));
 			expect(setActive).toHaveBeenCalledWith({ kind: "claude", accountId: "home" });
 			expect(onChanged).toHaveBeenCalledTimes(1);
@@ -92,7 +92,7 @@ describe("AgentUsageModal", () => {
 	});
 
 	it("switches back to the Claude system login", async () => {
-		renderModal();
+		renderPanel();
 		await userEvent.click(
 			screen.getByRole("radio", { name: "Make System login (~/.claude) the default account" }),
 		);
@@ -108,7 +108,7 @@ describe("AgentUsageModal", () => {
 			planLabel: "Enterprise",
 			accountId: "cdx",
 		};
-		renderModal(state);
+		renderPanel(state);
 		const unmanaged = screen.getAllByRole("radio").find((r) => r.textContent?.includes("Unmanaged login"));
 		expect(unmanaged).toBeTruthy();
 		await userEvent.click(unmanaged as HTMLElement);

@@ -5,8 +5,6 @@ import { isUnlimitedRateLimitSnapshot } from "../../shared/rate-limits";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT, type TFunction } from "../i18n";
-import { useEscapeKey } from "../hooks/useEscapeKey";
-import { useFocusTrap } from "../utils/useFocusTrap";
 import { notifyAgentAccountsChanged } from "./AgentAccountIndicator";
 import {
 	ACCOUNT_CARD_CLASS,
@@ -191,26 +189,24 @@ function UsageRowCard({
 }
 
 /**
- * Usage details for every agent account, as a modal instead of a hover panel.
- * It is the same quota cards the header pill used to show on hover, plus the
- * settings screen's radio semantics: clicking a card makes that account the
- * default for new launches (running sessions keep their login).
+ * Usage details for every agent account: the quota cards the header pill has
+ * always shown, plus the settings screen's radio semantics — clicking a card
+ * makes that account the default for new launches (running sessions keep their
+ * login). Rendered as the pill's own anchored flyout (or a BottomSheet on
+ * narrow), never as a centred dialog: the readout belongs next to the pill it
+ * explains, not on top of the whole board.
  */
-export default function AgentUsageModal({
+export default function AgentUsagePanel({
 	report,
 	accounts,
-	onClose,
 	onOpenSettings,
 }: {
 	report: AgentRateLimitsReport;
 	accounts: AgentAccountsState | null;
-	onClose: () => void;
 	onOpenSettings: () => void;
 }) {
 	const t = useT();
-	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [busy, setBusy] = useState(false);
-	useEscapeKey(onClose);
 	const now = Date.now();
 
 	const setDefault = useCallback(async (kind: AgentAccountKind, accountId: string | null) => {
@@ -233,65 +229,35 @@ export default function AgentUsageModal({
 	);
 
 	return (
-		<div
-			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
-			onMouseDown={(e) => {
-				if (e.target === e.currentTarget) onClose();
-			}}
-		>
-			<div
-				ref={trapRef}
-				role="dialog"
-				aria-modal="true"
-				aria-labelledby="agent-usage-title"
-				tabIndex={-1}
-				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[30rem] max-w-full max-h-[calc(100dvh-2rem)] flex flex-col outline-none"
+		<div className="p-3 space-y-3 text-xs">
+			<p className="text-fg-3 leading-snug">{t("rateLimits.panelSubtitle")}</p>
+			{blocks.map((block) => (
+				<div key={block.kind} className="space-y-1.5">
+					<div className="text-fg-2 font-semibold uppercase tracking-wider">
+						{SOURCE_NAMES[block.kind] ?? block.kind}
+					</div>
+					<div role="radiogroup" aria-label={SOURCE_NAMES[block.kind] ?? block.kind} className="space-y-1.5">
+						{block.rows.map((row) => (
+							<UsageRowCard
+								key={row.key}
+								row={row}
+								now={now}
+								busy={busy}
+								onSetDefault={() => setDefault(row.kind, row.accountId)}
+								t={t}
+							/>
+						))}
+					</div>
+				</div>
+			))}
+			<p className="text-fg-muted">{t("settings.accountsNewSessionsHint")}</p>
+			<button
+				type="button"
+				onClick={onOpenSettings}
+				className="w-full px-3 py-1.5 rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
 			>
-				<div className="px-5 pt-5 pb-3 space-y-1">
-					<h2 id="agent-usage-title" className="text-fg text-base font-semibold">
-						{t("rateLimits.tooltipTitle")}
-					</h2>
-					<p className="text-fg-3 text-xs leading-snug">{t("rateLimits.modalSubtitle")}</p>
-				</div>
-				<div className="min-h-0 flex-1 overflow-y-auto px-5 pb-3 space-y-3 text-xs">
-					{blocks.map((block) => (
-						<div key={block.kind} className="space-y-1.5">
-							<div className="text-fg-2 text-xs font-semibold uppercase tracking-wider">
-								{SOURCE_NAMES[block.kind] ?? block.kind}
-							</div>
-							<div role="radiogroup" aria-label={SOURCE_NAMES[block.kind] ?? block.kind} className="space-y-1.5">
-								{block.rows.map((row) => (
-									<UsageRowCard
-										key={row.key}
-										row={row}
-										now={now}
-										busy={busy}
-										onSetDefault={() => setDefault(row.kind, row.accountId)}
-										t={t}
-									/>
-								))}
-							</div>
-						</div>
-					))}
-					<p className="text-fg-muted text-xs">{t("settings.accountsNewSessionsHint")}</p>
-				</div>
-				<div className="flex items-center justify-end gap-2 border-t border-edge px-5 py-3">
-					<button
-						type="button"
-						onClick={onOpenSettings}
-						className="px-3 py-1.5 text-xs rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
-					>
-						{t("rateLimits.manageAccounts")}
-					</button>
-					<button
-						type="button"
-						onClick={onClose}
-						className="px-3 py-1.5 text-xs rounded-lg bg-accent-fill text-white hover:bg-accent-fill-hover transition-colors"
-					>
-						{t("common.close")}
-					</button>
-				</div>
-			</div>
+				{t("rateLimits.manageAccounts")}
+			</button>
 		</div>
 	);
 }
