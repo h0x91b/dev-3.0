@@ -16,7 +16,7 @@ const mockedBranchStatus = vi.mocked(api.request.getBranchStatus);
 const mockedUnsavedWork = vi.mocked(api.request.getUnsavedWork);
 const mockedConfirm = vi.mocked(confirm);
 
-const t = ((key: string) => key) as never;
+const t = Object.assign((key: string) => key, { plural: (key: string) => key }) as never;
 
 const baseTask = {
 	id: "t1",
@@ -125,6 +125,41 @@ describe("confirmTaskCompletion", () => {
 
 		expect(ok).toBe(true);
 		expect(mockedConfirm).not.toHaveBeenCalled();
+	});
+
+	// Issue #1545: `git push origin HEAD:other-name` leaves no origin/<branch>, so
+	// the backend used to answer -1 here and the dialog claimed preserved commits
+	// would be lost. `unpushed: 0` with commits ahead is what that push now looks
+	// like — unmerged, yes; at risk, no.
+	it("never says work will be lost when every commit is on a remote", async () => {
+		mockedBranchStatus.mockResolvedValue({
+			insertions: 0,
+			deletions: 0,
+			unpushed: 0,
+			ahead: 3,
+			mergedByContent: false,
+		} as Awaited<ReturnType<typeof api.request.getBranchStatus>>);
+
+		await confirmTaskCompletion(baseTask, project, "completed", t);
+
+		const message = mockedConfirm.mock.calls[0]![0].message!;
+		expect(message).toContain("task.warnUnmerged");
+		expect(message).not.toContain("task.warnNeverPushed");
+		expect(message).not.toContain("task.warnUnpushed");
+	});
+
+	it("still says work will be lost when nothing is preserved", async () => {
+		mockedBranchStatus.mockResolvedValue({
+			insertions: 0,
+			deletions: 0,
+			unpushed: -1,
+			ahead: 3,
+			mergedByContent: false,
+		} as Awaited<ReturnType<typeof api.request.getBranchStatus>>);
+
+		await confirmTaskCompletion(baseTask, project, "completed", t);
+
+		expect(mockedConfirm.mock.calls[0]![0].message!).toContain("task.warnNeverPushed");
 	});
 
 	describe("alwaysConfirm (one-click quick-complete)", () => {

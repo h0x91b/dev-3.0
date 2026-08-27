@@ -2017,6 +2017,42 @@ export async function getUnpushedCount(
 	return parseInt(result.stdout, 10) || 0;
 }
 
+/**
+ * Commits that exist on no remote — the honest answer to "what would deleting
+ * this worktree destroy". Same -1/0/N contract as {@link getUnpushedCount}, and
+ * the same answer whenever `origin/<branch>` exists.
+ *
+ * The name-based check alone called preserved work lost: `git push origin
+ * HEAD:other-name` leaves no `origin/<branch>`, so a branch whose every commit
+ * is on the remote reported the never-pushed sentinel (issue #1545). Fall back
+ * to reachability from ANY remote ref — a fork or a configured upstream counts,
+ * because both are remote refs. A repo with no remote refs at all preserves
+ * nothing, and there the reachability count is the whole history, so it stays
+ * -1 exactly as before.
+ *
+ * Anything not fully preserved keeps the -1 sentinel rather than a partial
+ * count: the loss warning must stay loud, and only the provably-safe case is
+ * allowed to go quiet.
+ *
+ * Deliberately separate from {@link getUnpushedCount}: merge detection and PR
+ * polling ask the name-based question on purpose, and -1 is what keeps a
+ * brand-new branch out of their content-merge path.
+ */
+export async function getUnpreservedCount(
+	worktreePath: string,
+	branchName: string,
+): Promise<number> {
+	const named = await getUnpushedCount(worktreePath, branchName);
+	if (named >= 0) return named;
+
+	const anywhere = await run(
+		["git", "rev-list", "--count", "HEAD", "--not", "--remotes"],
+		worktreePath,
+	);
+	if (!anywhere.ok) return -1;
+	return parseInt(anywhere.stdout, 10) === 0 ? 0 : -1;
+}
+
 export async function getBehindOriginCount(
 	worktreePath: string,
 	branchName: string,

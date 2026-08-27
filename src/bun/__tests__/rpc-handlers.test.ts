@@ -98,6 +98,7 @@ vi.mock("../git", () => ({
 	getTaskDiff: vi.fn(),
 	getUncommittedChanges: vi.fn(),
 	getUnpushedCount: vi.fn(),
+	getUnpreservedCount: vi.fn(),
 	getBehindOriginCount: vi.fn().mockResolvedValue(0),
 	getBranchDiffStats: vi.fn(),
 	canRebaseCleanly: vi.fn(),
@@ -5355,7 +5356,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.detectDefaultCompareRef).mockResolvedValueOnce("main");
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(-1);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 1, insertions: 5, deletions: 0, fileStats: [] });
 		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
 
@@ -5376,7 +5377,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.detectDefaultCompareRef).mockResolvedValueOnce("origin/main");
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(1);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(1);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 1, insertions: 1, deletions: 0, fileStats: [] });
 		vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
 
@@ -5395,7 +5396,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 3, behind: 2 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 10, deletions: 5 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(1);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(1);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 4, insertions: 50, deletions: 20, fileStats: [{path:"a.ts",insertions:50,deletions:20},{path:"b.ts",insertions:0,deletions:0},{path:"c.ts",insertions:0,deletions:0},{path:"d.ts",insertions:0,deletions:0}] });
 		vi.mocked(git.canRebaseCleanly).mockResolvedValue(true);
 
@@ -5422,7 +5423,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
@@ -5439,7 +5440,7 @@ describe("handlers.getBranchStatus", () => {
 			vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind });
 			vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-			vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+			vi.mocked(git.getUnpreservedCount).mockResolvedValue(-1);
 			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 			vi.mocked(git.canRebaseCleanly).mockResolvedValue(true);
 		}
@@ -5523,7 +5524,7 @@ describe("handlers.getBranchStatus", () => {
 			vi.mocked(git.getCurrentBranch).mockResolvedValue("fix/mine");
 			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 3 });
 			vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-			vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+			vi.mocked(git.getUnpreservedCount).mockResolvedValue(-1);
 			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 			vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", exitCode: 0 } as any);
 		}
@@ -5598,7 +5599,7 @@ describe("handlers.getBranchStatus", () => {
 			vi.mocked(git.getCurrentBranch).mockResolvedValue("feature/source-v2");
 			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 0 });
 			vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-			vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+			vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 			vi.mocked(git.isContentMergedInto).mockResolvedValue(false);
 			vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", exitCode: 0 } as any);
@@ -5670,7 +5671,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 5, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 3, insertions: 30, deletions: 10, fileStats: [] });
 		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", code: 0 });
 
@@ -5690,7 +5691,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 
 		const push = vi.fn();
@@ -5700,8 +5701,8 @@ describe("handlers.getBranchStatus", () => {
 
 		// Should have synced the stored branchName
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { branchName: "dev3/fix-login" });
-		// Should pass live branch name to getUnpushedCount
-		expect(git.getUnpushedCount).toHaveBeenCalledWith("/tmp/wt", "dev3/fix-login");
+		// Should pass live branch name to getUnpreservedCount
+		expect(git.getUnpreservedCount).toHaveBeenCalledWith("/tmp/wt", "dev3/fix-login");
 		// Must notify the renderer so the header/cards re-render with the new
 		// branch instead of showing the stale name until a reload.
 		expect(push).toHaveBeenCalledWith("taskUpdated", {
@@ -5719,7 +5720,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 
 		const push = vi.fn();
@@ -5740,7 +5741,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 42, url: "", title: null, author: null }, isGitHub: true });
 
@@ -5760,7 +5761,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 42, url: prUrl, title: null, author: null }, isGitHub: true });
 		const push = vi.fn();
@@ -5784,7 +5785,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: null, isGitHub: true });
 
@@ -5806,7 +5807,7 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", code: 0 });
 
@@ -5827,12 +5828,56 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
 		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
 		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
-		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 		vi.mocked(github.findOpenPullRequest).mockResolvedValue({ pr: { number: 10, url: "", title: null, author: null }, isGitHub: true });
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(10);
+	});
+});
+
+// The completion dialog's data source: the number it renders "will be lost" from.
+describe("handlers.getUnsavedWork", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	function setup() {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 3, behind: 0 });
+	}
+
+	it("asks what is preserved anywhere, not what is on origin/<branch>", async () => {
+		setup();
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(0);
+
+		const result = await handlers.getUnsavedWork({ taskId: "task-1", projectId: "proj-1" });
+
+		expect(git.getUnpreservedCount).toHaveBeenCalledWith("/tmp/wt", "dev3/t");
+		expect(git.getUnpushedCount).not.toHaveBeenCalled();
+		// 0 with commits ahead is the cross-branch push (issue #1545): the dialog
+		// must stay silent, because nothing would be lost.
+		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: 0, ahead: 3 });
+	});
+
+	it("keeps the never-pushed sentinel when nothing is preserved", async () => {
+		setup();
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(-1);
+
+		const result = await handlers.getUnsavedWork({ taskId: "task-1", projectId: "proj-1" });
+		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: -1, ahead: 3 });
+	});
+
+	it("passes a partial count through", async () => {
+		setup();
+		vi.mocked(git.getUnpreservedCount).mockResolvedValue(2);
+
+		const result = await handlers.getUnsavedWork({ taskId: "task-1", projectId: "proj-1" });
+		expect(result).toEqual({ insertions: 0, deletions: 0, unpushed: 2, ahead: 3 });
 	});
 });
 

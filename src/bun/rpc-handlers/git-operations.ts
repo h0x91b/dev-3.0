@@ -242,7 +242,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	if (compareRefBranch && compareRefBranch !== baseBranch) {
 		await git.fetchCompareRef(project.path, compareRefBranch);
 	}
-	// Also refresh origin/<task-branch> so getUnpushedCount reflects out-of-band remote pushes.
+	// Also refresh origin/<task-branch> so getUnpreservedCount reflects out-of-band remote pushes.
 	if (hasRemote && branchForPush && branchForPush !== baseBranch && branchForPush !== compareRefBranch) {
 		await git.fetchOrigin(project.path, branchForPush);
 	}
@@ -269,7 +269,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const [status, uncommitted, unpushed, remoteAhead, branchDiff, detected] = await Promise.all([
 		git.getBranchStatus(task.worktreePath, ref),
 		git.getUncommittedChanges(task.worktreePath),
-		git.getUnpushedCount(task.worktreePath, branchForPush),
+		git.getUnpreservedCount(task.worktreePath, branchForPush),
 		// origin/<branch> was refreshed above, so this is the live answer to "would a
 		// plain push be refused as non-fast-forward".
 		hasRemote ? git.getBehindOriginCount(task.worktreePath, branchForPush) : Promise.resolve(0),
@@ -347,7 +347,7 @@ async function getUnsavedWork(params: { taskId: string; projectId: string }): Pr
 	const ref = await resolveCompareRef(project, resolveTaskCompareBaseBranch(task, project));
 	const [uncommitted, unpushed, counts] = await Promise.all([
 		git.getUncommittedChanges(task.worktreePath),
-		git.getUnpushedCount(task.worktreePath, branchForPush),
+		git.getUnpreservedCount(task.worktreePath, branchForPush),
 		git.getBranchStatus(task.worktreePath, ref),
 	]);
 	return { ...uncommitted, unpushed, ahead: counts.ahead };

@@ -3109,7 +3109,10 @@ export interface BranchStatus {
 	canRebase: boolean;
 	insertions: number;
 	deletions: number;
-	unpushed: number; // -1 = never pushed, 0 = all pushed, N = N unpushed commits
+	// Commits that exist on no remote: -1 = nothing of this branch is preserved
+	// anywhere, 0 = everything is on a remote (under this branch's name or any
+	// other), N = N commits missing from `origin/<branch>`. See `getUnpreservedCount`.
+	unpushed: number;
 	mergedByContent: boolean; // true if git diff base HEAD is empty (squash/rebase merge)
 	diffFiles: number; // total files changed in branch vs base
 	diffInsertions: number; // total lines added in branch vs base
@@ -3144,7 +3147,10 @@ export interface BranchStatus {
 export interface UnsavedWork {
 	insertions: number;
 	deletions: number;
-	unpushed: number; // -1 = never pushed, 0 = all pushed, N = N unpushed commits
+	// Commits that exist on no remote: -1 = nothing of this branch is preserved
+	// anywhere, 0 = everything is on a remote (under this branch's name or any
+	// other), N = N commits missing from `origin/<branch>`. See `getUnpreservedCount`.
+	unpushed: number;
 	ahead: number; // commits ahead of the base branch, per the last known origin ref
 }
 
