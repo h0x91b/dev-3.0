@@ -136,9 +136,18 @@ concurrent scripts — and only those two — export the flag.
   vitest parents had 4, 4 and 1 fork children (`pgrep -P`), against 15 at the default.
 - Nothing is dropped by the cap: `vitest list` collects 4704 mainview / 7075 bun / 868
   cli tests with the budget on and with it off, identically.
-- `bun run test:full` could not be taken green on this machine. Three suites time out
-  (`git-merge-detection`, `git-worktree`, `git-diff-no-remote` — 23 timeouts, zero
-  assertion failures) and a paired run of those same three files **with no budget set at
-  all**, i.e. the pre-change behaviour, fails the same way (10 tests, 7 timeouts, zero
-  assertion failures). They are the known load flake and the two suites already excluded
-  from `bun run test` for their 146 and 102 real `git` spawns. Not caused by this change.
+- `bun run test:full` could not be taken green on this machine at all, with or without the
+  budget — the box was never quiet. Paired back-to-back runs of the **whole** bun suite,
+  same ambient load (~16 at the start of each), settle the attribution:
+
+  | | Test files failed | Tests failed | Timeouts | AssertionError |
+  |---|---|---|---|---|
+  | No budget (vitest default, 15 workers) | 8 | 24 | 24 | **0** |
+  | Budget on (4 workers) | 2 | 12 | 12 | **0** |
+
+  Every failure is a 5 s timeout in a suite that spawns real `git` — `git-merge-detection`
+  (146 spawns) and `git-worktree` (102), both already excluded from `bun run test` and
+  both named follow-ups. Zero assertion failures on either side, so this is CPU
+  starvation, not a defect: the budget **halves** it rather than causing it. CI, which
+  runs one vitest at a time on a quiet runner, was fully green on the pre-rebase sha.
+  The mainview side fails only `shift-keys-e2e` on `ready FIFO timed out`, a known flake.
