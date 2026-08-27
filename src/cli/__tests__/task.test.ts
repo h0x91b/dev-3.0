@@ -625,6 +625,50 @@ describe("task update", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
+	// The description is the agent's first prompt at launch and nothing re-delivers
+	// it, so a rewrite on a live task has to say so at the keyboard.
+	it("warns that a running agent will not see a new description", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
+
+		await handleTask("update", args(["aaaaaaaa"], { description: "Now also fix it" }), SOCKET, null);
+
+		expect(stdoutOutput).toContain("running agent will NOT see this");
+		expect(stdoutOutput).toContain("dev3 message --task aaaaaaaa");
+	});
+
+	it("carries --project into the suggested message for a cross-project task", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
+
+		await handleTask(
+			"update",
+			args(["aaaaaaaa"], { description: "Now also fix it", project: "proj-002" }),
+			SOCKET,
+			null,
+		);
+
+		expect(stdoutOutput).toContain("dev3 message --task aaaaaaaa --project proj-002");
+	});
+
+	it("stays quiet when no agent is running to miss the edit", async () => {
+		mockSend.mockResolvedValue(okResp({
+			task: { ...FAKE_TASK, status: "todo", worktreePath: null },
+			titlePreserved: false,
+		}));
+
+		await handleTask("update", args(["aaaaaaaa"], { description: "Brief for later" }), SOCKET, null);
+
+		expect(stdoutOutput).toContain("Updated task");
+		expect(stdoutOutput).not.toContain("running agent");
+	});
+
+	it("stays quiet for a title-only update on a running task", async () => {
+		mockSend.mockResolvedValue(okResp({ task: FAKE_TASK, titlePreserved: false }));
+
+		await handleTask("update", args(["aaaaaaaa"], { title: "Renamed by the agent" }), SOCKET, null);
+
+		expect(stdoutOutput).not.toContain("running agent");
+	});
+
 	it("prints a notice when the server reports titlePreserved=true (issue #564)", async () => {
 		mockSend.mockResolvedValue(okResp({
 			task: { ...FAKE_TASK, customTitle: "User-set title" },

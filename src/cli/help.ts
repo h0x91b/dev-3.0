@@ -98,6 +98,8 @@ const COMMANDS: CommandHelp[] = [
 				details: [
 					"--title <text>        New title (cannot be empty).",
 					'--description <text>  New description ("" clears it); use - to read it from stdin.',
+					"                      A running agent never sees this — the description is its first prompt at",
+					"                      launch and nothing re-delivers it; send `dev3 message` as well.",
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest); applies to the whole variant group.",
 					"                      Only set priority when the user asks — never on your own initiative.",
 					"--manual-completion on|off  Control whether merge detection suggests completing this task.",

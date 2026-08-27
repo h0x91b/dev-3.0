@@ -358,6 +358,20 @@ export function isTaskDisconnected(task: TaskSortFields): boolean {
 }
 
 /**
+ * Does this task look like it has an agent session running right now? Derived
+ * from persisted state only — nothing is probed — so it may only decide whether
+ * to TELL the user something, never whether a delivery happened. A launch that
+ * has not happened yet (`todo`, draft, preparing) reads false on purpose: such a
+ * task still gets its description as the agent's first prompt.
+ */
+export function taskAgentSessionLooksLive(task: TaskSortFields): boolean {
+	if (task.hibernated || task.draft || task.preparing || task.shuttingDown) return false;
+	if (!task.worktreePath) return false;
+	if (!task.status || !ACTIVE_STATUSES.includes(task.status)) return false;
+	return !isTaskDisconnected(task);
+}
+
+/**
  * Sort rank of a task: its {@link priorityRank}, plus {@link HIBERNATED_SORT_OFFSET}
  * when hibernated, {@link DISCONNECTED_SORT_OFFSET} when its session died, or
  * {@link COORDINATOR_SORT_OFFSET} when it is a live coordinator. None of the

@@ -1,5 +1,5 @@
 import type { CliResponse, Task, TaskStatus, TaskType, TaskHistoryEntry, TaskNote } from "../../shared/types";
-import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskCompletesManually } from "../../shared/types";
+import { STATUS_LABELS, ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, TASK_TYPES, getTaskTitle, getTaskOverview, normalizePriority, normalizeTaskType, taskAgentSessionLooksLive, taskCompletesManually } from "../../shared/types";
 import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_LAUNCH_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
@@ -316,6 +316,16 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		);
 	}
 	process.stdout.write(`Updated task ${task.id.slice(0, 8)}: ${getTaskTitle(task)}\n`);
+	// The trap this exists for: a description is the agent's first prompt at
+	// launch and nothing re-delivers it, so rewriting a live task's brief reaches
+	// the board and not the agent. Docs are read once; the mistake happens here.
+	if (params.description !== undefined && taskAgentSessionLooksLive(task)) {
+		const projectFlag = args.flags.project ? ` --project ${args.flags.project}` : "";
+		process.stdout.write(
+			`Note: the running agent will NOT see this — a description is delivered as its first prompt at launch, and nothing re-delivers it.\n`
+			+ `Tell it too: dev3 message --task ${task.id.slice(0, 8)}${projectFlag} "<what changed>"\n`,
+		);
+	}
 }
 
 async function requestCompletion(

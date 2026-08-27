@@ -1,6 +1,7 @@
 import {
 	compareTaskSortRank,
 	isTaskDisconnected,
+	taskAgentSessionLooksLive,
 	taskSortRank,
 	hexToRgb,
 	titleFromDescription,
@@ -871,6 +872,38 @@ describe("isTaskDisconnected — a session that died with the app", () => {
 		const disconnectedP0 = dead({ priority: "P0" });
 		expect(compareTaskSortRank(disconnectedP0, { priority: "P4" })).toBeGreaterThan(0);
 		expect(compareTaskSortRank(disconnectedP0, { priority: "P0", hibernated: true })).toBeLessThan(0);
+	});
+});
+
+describe("taskAgentSessionLooksLive — is there an agent that would miss a description edit", () => {
+	const live = (over: Partial<Task> = {}): Partial<Task> => ({
+		status: "in-progress",
+		worktreePath: "/wt",
+		runtimeState: { runtime: "running", updatedAt: 1 },
+		...over,
+	});
+
+	it("is true for a task running in an active column", () => {
+		expect(taskAgentSessionLooksLive(live())).toBe(true);
+		expect(taskAgentSessionLooksLive(live({ status: "review-by-user" }))).toBe(true);
+	});
+
+	it("says nothing is live before the launch that will read the description", () => {
+		expect(taskAgentSessionLooksLive(live({ status: "todo" }))).toBe(false);
+		expect(taskAgentSessionLooksLive(live({ worktreePath: null }))).toBe(false);
+		expect(taskAgentSessionLooksLive(live({ draft: true }))).toBe(false);
+		expect(taskAgentSessionLooksLive(live({ preparing: true }))).toBe(false);
+	});
+
+	it("says nothing is live once the session is gone", () => {
+		expect(taskAgentSessionLooksLive(live({ hibernated: true }))).toBe(false);
+		expect(taskAgentSessionLooksLive(live({ shuttingDown: true }))).toBe(false);
+		expect(taskAgentSessionLooksLive(live({ status: "completed" }))).toBe(false);
+		expect(taskAgentSessionLooksLive(live({ runtimeState: { runtime: "idle", updatedAt: 1 } }))).toBe(false);
+	});
+
+	it("treats a task whose runtime was never persisted as live, same as the sort bands do", () => {
+		expect(taskAgentSessionLooksLive(live({ runtimeState: undefined }))).toBe(true);
 	});
 });
 
