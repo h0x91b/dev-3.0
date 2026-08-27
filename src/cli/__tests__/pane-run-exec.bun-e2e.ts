@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { spawn } from "../../bun/spawn";
 import { paneRunLogPath, paneRunSpecPath, paneRunStatusPath, PANE_RUN_VERB } from "../../bun/pane-run-store";
 import { launchDialect } from "../../shared/platform-launch";
+import { PANE_RUN_AUTO_CLOSE_SECONDS } from "../../shared/pane-runs";
 
 const IS_WINDOWS = process.platform === "win32";
 /** Non-ASCII on purpose: this is what a wrong output encoding destroys. */
@@ -80,6 +81,30 @@ async function runPane(dir: string, runId: string, command: string): Promise<Run
 		stderr,
 		cliExitCode,
 	};
+}
+
+/**
+ * The same runner, but with stdin HELD OPEN — a real pane, with a human in front of
+ * it who presses nothing. Only this configuration can show whether a finished pane
+ * closes itself: with stdin closed the wait ends instantly either way.
+ */
+function startHeldPane(dir: string, runId: string, command: string) {
+	writeFileSync(
+		paneRunSpecPath(dir, runId),
+		`${JSON.stringify({ runId, taskId: "e2e", command, cwd: dir, label: "", requestedAt: new Date().toISOString() })}\n`,
+		"utf8",
+	);
+	return spawn([process.execPath, CLI_ENTRY, PANE_RUN_VERB, dir, runId], {
+		cwd: dir,
+		stdin: "pipe",
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+}
+
+/** Resolves to the exit code, or to null if the process outlived the deadline. */
+async function exitedWithin(child: ReturnType<typeof spawn>, ms: number): Promise<number | null> {
+	return await Promise.race([child.exited, Bun.sleep(ms).then(() => null)]);
 }
 
 /**
@@ -156,6 +181,17 @@ try {
 	check(normal.status.state === "exited", `the run ended in state 'exited' (got ${String(normal.status.state)})`);
 	check(normal.status.exitCode === 3, `the command's exit code 3 survived the shell (got ${String(normal.status.exitCode)})`);
 	check(normal.cliExitCode === 0, `the runner itself exited 0 (got ${String(normal.cliExitCode)})`);
+
+	// A pane nobody touches: the green one must go away by itself, the red one must not.
+	const clean = startHeldPane(root, "run-0123456789ad", printMarkerAndExit(0));
+	const cleanExit = await exitedWithin(clean, (PANE_RUN_AUTO_CLOSE_SECONDS + 8) * 1000);
+	if (cleanExit === null) clean.kill();
+	check(cleanExit === 0, `a successful run closed its own pane with nobody pressing anything (got ${String(cleanExit)})`);
+
+	const failed = startHeldPane(root, "run-0123456789ae", printMarkerAndExit(3));
+	const failedExit = await exitedWithin(failed, (PANE_RUN_AUTO_CLOSE_SECONDS + 5) * 1000);
+	check(failedExit === null, `a failed run kept its pane open past the auto-close window (got ${String(failedExit)})`);
+	failed.kill();
 
 	if (IS_WINDOWS) {
 		// CONTROL first, with the environment untouched: it separates "the wrapper this

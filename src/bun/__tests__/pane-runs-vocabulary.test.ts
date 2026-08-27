@@ -8,6 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+	PANE_RUN_AUTO_CLOSE_SECONDS,
 	PANE_RUN_COMMAND_MAX_LENGTH,
 	PANE_RUN_TAIL_DEFAULT_LINES,
 	PANE_RUN_TAIL_MAX_LINES,
@@ -16,6 +17,7 @@ import {
 	isPaneRunId,
 	isPaneRunLabel,
 	paneRunCommandProblem,
+	paneRunDismissal,
 	paneRunOutcomeLine,
 	paneRunTail,
 	renderPaneRunListing,
@@ -173,6 +175,24 @@ describe("status decoding", () => {
 		const decoded = decodePaneRunStatus({ runId: "run-0123456789ab", state: "exited", exitCode: null });
 		expect(decoded?.exitCode).toBeNull();
 		expect(decoded?.state).toBe("exited");
+	});
+});
+
+describe("what a finished pane does with itself", () => {
+	it("closes a clean run on the timer, and says how long it has", () => {
+		const plan = paneRunDismissal(0);
+		expect(plan.autoCloseMs).toBe(PANE_RUN_AUTO_CLOSE_SECONDS * 1000);
+		expect(plan.message).toContain(`${PANE_RUN_AUTO_CLOSE_SECONDS}s`);
+	});
+
+	it("keeps a failed run on screen forever — its output is the whole point", () => {
+		expect(paneRunDismissal(1).autoCloseMs).toBeNull();
+		expect(paneRunDismissal(1).message).toBe("press Enter to close this pane");
+	});
+
+	it("treats an unreadable outcome as a failure, never as a success", () => {
+		// null is what a signal death writes: killed is not clean.
+		expect(paneRunDismissal(null).autoCloseMs).toBeNull();
 	});
 });
 

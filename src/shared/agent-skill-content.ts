@@ -16,6 +16,7 @@ import {
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "./agent-message-hold-timing";
 import { deepLinkSchemeRegistered } from "./deep-link";
+import { PANE_RUN_AUTO_CLOSE_SECONDS } from "./pane-runs";
 
 /**
  * How the agent should link a PR back to its task — or why it must not. The
@@ -251,6 +252,8 @@ dev3 pane close <run-id>                      # close that pane (kills the comma
 \`\`\`
 
 The outcome line distinguishes **still running** from **finished, exit code N** — never treat a quiet tail as a finished command. Runs are non-interactive (stdin is closed): builds, tests, servers, watchers. Quick one-shot commands stay inline in your own shell, and the project's canonical dev server is \`dev3 dev-server start\`, not a pane run.
+
+**Clean up after yourself — a finished pane the user has to close by hand is litter.** A run that exits 0 closes its own pane after ${PANE_RUN_AUTO_CLOSE_SECONDS} seconds, so the ordinary green case needs nothing from you. Everything else stays on screen deliberately: a failed run keeps its pane so the user can read it, and a server or watcher you started keeps running until something stops it. Once you have read what you needed from a run you are done with, \`dev3 pane close <run-id>\` — do not leave a watcher or a red build parked in the user's terminal after the work that needed it is over.
 
 Reading the SCREEN of a pane you did not start (the user's own pane, "look at the error on the right") is a different thing and is **tmux-only today**: \`dev3 peek --pane <N>\` returns a screen tail on a tmux task, and on a native task it returns the pane summary with no tail, because the native host publishes no screen snapshot. \`dev3 pane list\` says which case you are in.
 

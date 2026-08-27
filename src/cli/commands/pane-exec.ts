@@ -20,7 +20,13 @@
 import { appendFileSync, closeSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "../../bun/spawn";
 import { paneRunShell, paneRunLogPath, paneRunSpecPath, paneRunStatusPath } from "../../bun/pane-run-store";
-import { decodePaneRunSpec, isPaneRunId, type PaneRunSpec, type PaneRunState } from "../../shared/pane-runs";
+import {
+	decodePaneRunSpec,
+	isPaneRunId,
+	paneRunDismissal,
+	type PaneRunSpec,
+	type PaneRunState,
+} from "../../shared/pane-runs";
 import { CLI_EXIT_CODE_SUCCESS } from "../../shared/cli-exit-codes";
 import { exitInternalError, exitUsage } from "../output";
 
@@ -69,17 +75,28 @@ async function pump(stream: unknown, logFd: number): Promise<void> {
 	for await (const chunk of stream as AsyncIterable<Uint8Array>) mirror(logFd, chunk);
 }
 
-/**
- * Hold the pane open after the command ends, so a finished build stays on screen
- * instead of the pane vanishing the moment it succeeds. The agent never needs this
- * — it reads the log — so the wait exists purely for the human watching.
- */
-async function waitForDismissal(): Promise<void> {
-	process.stdout.write("[dev3] press Enter to close this pane\n");
+/** Resolves on the first byte from the pane's keyboard, or when stdin ends. */
+async function keyPressed(): Promise<void> {
 	for await (const _chunk of Bun.stdin.stream()) {
 		void _chunk;
 		return;
 	}
+}
+
+/**
+ * Hold the pane open after the command ends, so a finished build stays on screen
+ * instead of the pane vanishing the moment it succeeds. The agent never needs this
+ * — it reads the log — so the wait exists purely for the human watching, and a
+ * clean run gives that human a few seconds rather than a pane to close by hand.
+ */
+async function waitForDismissal(exitCode: number | null): Promise<void> {
+	const { autoCloseMs, message } = paneRunDismissal(exitCode);
+	process.stdout.write(`[dev3] ${message}\n`);
+	if (autoCloseMs === null) {
+		await keyPressed();
+		return;
+	}
+	await Promise.race([keyPressed(), Bun.sleep(autoCloseMs)]);
 }
 
 export async function handlePaneExec(rawArgs: string[]): Promise<void> {
@@ -174,6 +191,6 @@ export async function handlePaneExec(rawArgs: string[]): Promise<void> {
 		// Already closed or already broken — nothing left to do with it.
 	}
 
-	await waitForDismissal();
+	await waitForDismissal(signalled ? null : exitCode);
 	process.exit(CLI_EXIT_CODE_SUCCESS);
 }
