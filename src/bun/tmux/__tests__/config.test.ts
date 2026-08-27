@@ -7,6 +7,8 @@ vi.mock("../../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
+import { readFileSync } from "node:fs";
+
 import {
 	TMUX_CONF_DARK_PATH,
 	TMUX_CONF_LIGHT_PATH,
@@ -14,7 +16,9 @@ import {
 	setActiveTmuxTheme,
 	buildThemeConfig,
 	PANE_CWD_FORMAT,
+	setTmuxPaneDimming,
 	tmuxClientCwd,
+	writeTmuxConfigs,
 } from "../config";
 import { DEV3_HOME } from "../../paths";
 
@@ -96,6 +100,50 @@ describe("buildThemeConfig", () => {
 			expect(config).not.toContain("/etc/tmux.conf");
 			expect(config).not.toContain("~/.tmux.conf");
 			expect(config).not.toContain("~/.config/tmux/tmux.conf");
+		}
+	});
+
+	// The Catppuccin plugin dims inactive panes itself, so the override has to be
+	// sourced AFTER it — and both states must emit the lines, because these configs
+	// are re-sourced into a live server where an omitted line keeps its old value.
+	it("dims inactive panes by default", () => {
+		const config = buildThemeConfig("mocha");
+		expect(config).toContain('set -gF window-style "bg=#{@thm_mantle},fg=#{@thm_overlay_1}"');
+		expect(config).toContain('set -gF pane-border-style "fg=#{@thm_surface_1},bg=#{@thm_mantle}"');
+	});
+
+	it("gives every pane the active colors when dimming is off", () => {
+		const config = buildThemeConfig("mocha", false);
+		expect(config).toContain('set -gF window-style "bg=#{@thm_bg},fg=#{@thm_fg}"');
+		expect(config).toContain('set -gF pane-border-style "fg=#{@thm_surface_1},bg=#{@thm_bg}"');
+		expect(config).not.toContain("@thm_overlay_1");
+	});
+
+	it("overrides the plugin's own pane styling rather than being overridden by it", () => {
+		const config = buildThemeConfig("latte", false);
+		expect(config.indexOf('set -gF window-style "bg=#{@thm_bg}')).toBeGreaterThan(
+			config.indexOf("catppuccin_tmux.conf"),
+		);
+	});
+
+	// The preference is pushed in rather than read from settings.ts: this module
+	// writes its configs at import time, and importing the settings loader made
+	// every suite that mocks `../settings` fail to collect.
+	it("writes the pushed-in dimming preference to both themed configs", () => {
+		try {
+			setTmuxPaneDimming(false);
+			writeTmuxConfigs();
+			for (const path of [TMUX_CONF_DARK_PATH, TMUX_CONF_LIGHT_PATH]) {
+				expect(readFileSync(path, "utf-8")).toContain('set -gF window-style "bg=#{@thm_bg},fg=#{@thm_fg}"');
+			}
+			setTmuxPaneDimming(true);
+			writeTmuxConfigs();
+			for (const path of [TMUX_CONF_DARK_PATH, TMUX_CONF_LIGHT_PATH]) {
+				expect(readFileSync(path, "utf-8")).toContain('set -gF window-style "bg=#{@thm_mantle},fg=#{@thm_overlay_1}"');
+			}
+		} finally {
+			setTmuxPaneDimming(true);
+			writeTmuxConfigs();
 		}
 	});
 

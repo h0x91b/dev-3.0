@@ -1206,6 +1206,13 @@ export interface GlobalSettings {
 	 * Ignored on Windows, which runs PowerShell.
 	 */
 	terminalShell?: ShellFlavor;
+	/**
+	 * Darken every pane except the focused one in a tmux terminal, so the split
+	 * that takes the keyboard is obvious. Default on; set to `false` to give all
+	 * panes the same background and foreground. tmux backend only — the native
+	 * backend never dimmed anything.
+	 */
+	dimInactivePanes?: boolean;
 	focusMode?: boolean; // when true, queue agent-initiated attention UI and viewer events until Focus Mode ends
 	/**
 	 * Track agent rate-limit windows (Claude via an injected statusLine wrapper,

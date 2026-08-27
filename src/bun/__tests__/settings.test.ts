@@ -185,6 +185,7 @@ describe("saveSettings", () => {
 			updateChannel: "canary",
 			terminalPathOpenMode: "reveal",
 			terminalShell: "sh",
+			dimInactivePanes: false,
 			theme: "light",
 			analyticsDistinctId: "11111111-2222-3333-4444-555555555555",
 			resolvedTheme: "light",

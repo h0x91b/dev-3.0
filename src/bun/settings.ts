@@ -158,6 +158,8 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 			d.terminalShell === "zsh" || d.terminalShell === "bash" || d.terminalShell === "sh"
 				? d.terminalShell
 				: undefined,
+		// Default-on toggle — only an explicit false is a stored opt-out.
+		dimInactivePanes: d.dimInactivePanes === false ? false : undefined,
 		focusMode: d.focusMode === true ? true : undefined,
 		// Default-on toggle — only an explicit false is a stored opt-out.
 		agentRateLimitTracking: d.agentRateLimitTracking === false ? false : undefined,

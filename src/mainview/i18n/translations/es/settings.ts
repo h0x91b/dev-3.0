@@ -195,6 +195,8 @@ const settings = {
 	"settings.terminalShellResolved": "Ejecutando {path}",
 	"settings.terminalShellMissing": "{shell} no está instalado en esta máquina; se usa {path} en su lugar.",
 	"settings.terminalShellNotInstalled": "no instalado",
+	"settings.dimInactivePanes": "Atenuar paneles inactivos",
+	"settings.dimInactivePanesDesc": "Oscurece todos los paneles salvo aquel en el que estás escribiendo, para que el panel activo destaque. Solo en terminales tmux.",
 	"settings.terminalPathOpenMode": "Acción al hacer clic en una ruta",
 	"settings.terminalPathOpenModeDesc": "Qué hace ⌘-clic (Ctrl en Linux) sobre una ruta de archivo en la salida del terminal. Las sesiones remotas en el navegador siempre muestran la vista previa en dev3.",
 	"settings.terminalPathOpenModePreview": "Vista previa en dev3",

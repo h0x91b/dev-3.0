@@ -195,6 +195,8 @@ const settings = {
 	"settings.terminalShellResolved": "Running {path}",
 	"settings.terminalShellMissing": "{shell} is not installed on this machine — using {path} instead.",
 	"settings.terminalShellNotInstalled": "not installed",
+	"settings.dimInactivePanes": "Dim inactive panes",
+	"settings.dimInactivePanesDesc": "Darken every split except the one you are typing in, so the focused pane stands out. tmux terminals only.",
 	"settings.terminalPathOpenMode": "File path click action",
 	"settings.terminalPathOpenModeDesc": "What ⌘-clicking (Ctrl on Linux) a file path in terminal output does. Remote browser sessions always preview in dev3.",
 	"settings.terminalPathOpenModePreview": "Preview in dev3",

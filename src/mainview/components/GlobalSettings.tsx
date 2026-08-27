@@ -487,6 +487,21 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleDimInactivePanesToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ dimInactivePanes: enabled },
+				{
+					tracking: {
+						setting: "dim_inactive_panes",
+						value: enabled ? "on" : "off",
+					},
+				},
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handleTerminalShellChange = useCallback(
 		(shell: ShellFlavor | undefined) => {
 			persistSettingChange(
@@ -833,9 +848,11 @@ function GlobalSettings({
 						terminalPathOpenMode={globalSettings.terminalPathOpenMode}
 						terminalShell={globalSettings.terminalShell}
 						shellAvailability={shellAvailability}
+						dimInactivePanes={globalSettings.dimInactivePanes}
 						onNewTaskTerminalBackendChange={handleNewTaskTerminalBackendChange}
 						onTerminalPathOpenModeChange={handleTerminalPathOpenModeChange}
 						onTerminalShellChange={handleTerminalShellChange}
+						onDimInactivePanesToggle={handleDimInactivePanesToggle}
 					/>
 				);
 			case "agents":

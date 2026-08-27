@@ -201,6 +201,8 @@ const settings = {
 	"settings.terminalShellResolved": "Запускается {path}",
 	"settings.terminalShellMissing": "{shell} не установлен на этой машине — используется {path}.",
 	"settings.terminalShellNotInstalled": "не установлен",
+	"settings.dimInactivePanes": "Затемнять неактивные панели",
+	"settings.dimInactivePanesDesc": "Приглушать все панели, кроме той, в которой вы печатаете, чтобы активная была заметна. Только для терминалов tmux.",
 	"settings.terminalPathOpenMode": "Действие по клику на путь к файлу",
 	"settings.terminalPathOpenModeDesc": "Что делает ⌘-клик (Ctrl в Linux) по пути к файлу в выводе терминала. Удалённые сессии в браузере всегда показывают предпросмотр в dev3.",
 	"settings.terminalPathOpenModePreview": "Предпросмотр в dev3",

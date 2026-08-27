@@ -13,7 +13,7 @@ import * as rosetta from "../rosetta";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { tmux } from "../tmux";
-import { writeTmuxConfigs } from "../tmux/config";
+import { setTmuxPaneDimming, writeTmuxConfigs } from "../tmux/config";
 import { loadSettings, saveSettings } from "../settings";
 import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
@@ -191,23 +191,29 @@ function getShellAvailability(): ShellAvailability {
 }
 
 /**
- * Push the new shell everywhere a live process still reads the old one.
+ * Rewrite the tmux configs and source them into every live server, so a setting
+ * the config embeds takes effect without restarting the app.
  *
- * `$SHELL` is what the native backend launches (`defaultNativeShellLaunchSpec`)
- * and `default-shell` in the tmux config is what a pane the user splits off
- * inherits. Both are frozen at boot, so without this the picker only takes
- * effect after a restart while Settings already reports the new shell.
+ * `refreshShell` additionally updates `$SHELL`: it is what the native backend
+ * launches (`defaultNativeShellLaunchSpec`) and `default-shell` in the tmux
+ * config is what a pane the user splits off inherits. Both are frozen at boot,
+ * so without this the picker only takes effect after a restart while Settings
+ * already reports the new shell.
  *
  * The theme is re-applied, not chosen: sourcing the config into a live server
  * goes through `applyTmuxTheme`, which also pins the active themed config path.
  */
-async function applyShellChange(theme: "dark" | "light"): Promise<void> {
+async function applyTmuxConfigChange(
+	theme: "dark" | "light",
+	options: { refreshShell: boolean; dimInactivePanes: boolean },
+): Promise<void> {
 	try {
-		process.env.SHELL = getUserShell();
+		if (options.refreshShell) process.env.SHELL = getUserShell();
+		setTmuxPaneDimming(options.dimInactivePanes);
 		writeTmuxConfigs();
 		await pty.applyTmuxTheme(theme);
 	} catch (err) {
-		log.warn("Failed to push the shell change into tmux (non-fatal)", { error: String(err) });
+		log.warn("Failed to push the settings change into tmux (non-fatal)", { error: String(err) });
 	}
 }
 
@@ -232,8 +238,13 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	// `resolvedTheme` may be absent (nothing has called setTmuxTheme yet); the
 	// live in-memory theme is the fallback, never a hardcoded "dark" — that would
 	// flip a light-theme user's terminals on an unrelated shell change.
-	if (process.platform !== "win32" && stored.terminalShell !== next.terminalShell) {
-		await applyShellChange(next.resolvedTheme ?? getCurrentUiTheme());
+	const shellChanged = stored.terminalShell !== next.terminalShell;
+	const dimChanged = (stored.dimInactivePanes !== false) !== (next.dimInactivePanes !== false);
+	if (process.platform !== "win32" && (shellChanged || dimChanged)) {
+		await applyTmuxConfigChange(next.resolvedTheme ?? getCurrentUiTheme(), {
+			refreshShell: shellChanged,
+			dimInactivePanes: next.dimInactivePanes !== false,
+		});
 	}
 	getPushMessage()?.("globalSettingsUpdated", next);
 	log.info("← saveGlobalSettings done");

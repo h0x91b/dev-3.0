@@ -2002,6 +2002,25 @@ describe("handlers.saveGlobalSettings", () => {
 
 		expect(pty.applyTmuxTheme).not.toHaveBeenCalled();
 	});
+
+	// Pane dimming lives in the tmux config, so switching it has to reach the live
+	// server the same way a shell change does — otherwise the toggle only takes
+	// effect after an app restart.
+	it.skipIf(process.platform === "win32")("re-sources tmux when pane dimming is switched off", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as GlobalSettings);
+
+		await handlers.saveGlobalSettings({ updateChannel: "stable", dimInactivePanes: false } as GlobalSettings);
+
+		expect(pty.applyTmuxTheme).toHaveBeenCalled();
+	});
+
+	it.skipIf(process.platform === "win32")("leaves tmux alone when pane dimming stays at its default", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as GlobalSettings);
+
+		await handlers.saveGlobalSettings({ updateChannel: "stable", dimInactivePanes: true } as GlobalSettings);
+
+		expect(pty.applyTmuxTheme).not.toHaveBeenCalled();
+	});
 });
 
 describe("handlers.setTmuxTheme", () => {

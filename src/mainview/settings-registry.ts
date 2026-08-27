@@ -272,6 +272,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "sidecar",
 	},
 	{
+		id: "terminal-dim-inactive-panes",
+		category: "terminal",
+		titleKey: "settings.dimInactivePanes",
+		descriptionKey: "settings.dimInactivePanesDesc",
+		anchor: "terminal-dim-inactive-panes",
+		globalField: "dimInactivePanes",
+		storage: "global",
+	},
+	{
 		id: "terminal-shell",
 		category: "terminal",
 		titleKey: "settings.terminalShell",
@@ -551,6 +560,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"skipQuitDialog",
 	"importShellEnv",
 	"terminalShell",
+	"dimInactivePanes",
 	"focusMode",
 	"agentRateLimitTracking",
 	"watchByDefault",

@@ -24,6 +24,7 @@ import {
 	terminalFontStack,
 } from "../../terminal-font";
 import SettingsEntry from "./SettingsEntry";
+import SettingsToggle from "./SettingsToggle";
 import TerminalBackendSetting from "./TerminalBackendSetting";
 import TerminalFontGallery from "./TerminalFontGallery";
 import SettingsSection from "./SettingsSection";
@@ -44,9 +45,11 @@ export default function TerminalSettingsSection({
 	terminalPathOpenMode,
 	terminalShell,
 	shellAvailability,
+	dimInactivePanes,
 	onNewTaskTerminalBackendChange,
 	onTerminalPathOpenModeChange,
 	onTerminalShellChange,
+	onDimInactivePanesToggle,
 }: {
 	t: TFunction;
 	scrollSpeed: number;
@@ -57,9 +60,11 @@ export default function TerminalSettingsSection({
 	terminalPathOpenMode: TerminalPathOpenMode | undefined;
 	terminalShell: ShellFlavor | undefined;
 	shellAvailability: ShellAvailability | null;
+	dimInactivePanes: boolean | undefined;
 	onNewTaskTerminalBackendChange: (backend: TerminalBackendIdentity) => void;
 	onTerminalPathOpenModeChange: (mode: TerminalPathOpenMode) => void;
 	onTerminalShellChange: (shell: ShellFlavor | undefined) => void;
+	onDimInactivePanesToggle: (enabled: boolean) => void;
 }) {
 	const resolved = shellAvailability?.resolved ?? null;
 	// Windows answers with no POSIX resolution at all — the whole choice is moot
@@ -89,6 +94,22 @@ export default function TerminalSettingsSection({
 					availability={nativeTerminalAvailability}
 					onChange={onNewTaskTerminalBackendChange}
 				/>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="terminal-dim-inactive-panes">
+				<div>
+					<p className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.dimInactivePanes")}
+					</p>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.dimInactivePanesDesc")}</p>
+					<SettingsToggle
+						checked={dimInactivePanes !== false}
+						ariaLabel={t("settings.dimInactivePanes")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => onDimInactivePanesToggle(dimInactivePanes === false)}
+					/>
+				</div>
 			</SettingsEntry>
 
 			{showShellPicker && (

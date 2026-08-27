@@ -41,9 +41,11 @@ function Harness(props: {
 			terminalPathOpenMode={undefined}
 			terminalShell={props.terminalShell}
 			shellAvailability={props.availability}
+			dimInactivePanes={undefined}
 			onNewTaskTerminalBackendChange={vi.fn()}
 			onTerminalPathOpenModeChange={vi.fn()}
 			onTerminalShellChange={props.onTerminalShellChange}
+			onDimInactivePanesToggle={vi.fn()}
 		/>
 	);
 }
@@ -100,6 +102,59 @@ describe("TerminalSettingsSection — shell picker", () => {
 	});
 });
 
+describe("TerminalSettingsSection — pane dimming", () => {
+	function renderDimming(dimInactivePanes: boolean | undefined) {
+		const onDimInactivePanesToggle = vi.fn();
+		render(
+			<I18nProvider>
+				<DimHarness value={dimInactivePanes} onToggle={onDimInactivePanesToggle} />
+			</I18nProvider>,
+		);
+		return { onDimInactivePanesToggle };
+	}
+
+	it("reads as on for an install that never touched the setting", () => {
+		renderDimming(undefined);
+		expect(screen.getByRole("switch", { name: "Dim inactive panes" })).toHaveAttribute("aria-checked", "true");
+	});
+
+	it("switches dimming off", async () => {
+		const { onDimInactivePanesToggle } = renderDimming(undefined);
+		await userEvent.click(screen.getByRole("switch", { name: "Dim inactive panes" }));
+		expect(onDimInactivePanesToggle).toHaveBeenCalledWith(false);
+	});
+
+	it("switches dimming back on", async () => {
+		const { onDimInactivePanesToggle } = renderDimming(false);
+		const toggle = screen.getByRole("switch", { name: "Dim inactive panes" });
+		expect(toggle).toHaveAttribute("aria-checked", "false");
+		await userEvent.click(toggle);
+		expect(onDimInactivePanesToggle).toHaveBeenCalledWith(true);
+	});
+});
+
+function DimHarness({ value, onToggle }: { value: boolean | undefined; onToggle: (enabled: boolean) => void }) {
+	const t = useT();
+	return (
+		<TerminalSettingsSection
+			t={t}
+			scrollSpeed={1}
+			terminalFontFamily=""
+			terminalFontSize={DEFAULT_TERMINAL_FONT_SIZE}
+			newTaskTerminalBackend={undefined}
+			nativeTerminalAvailability={null}
+			terminalPathOpenMode={undefined}
+			terminalShell={undefined}
+			shellAvailability={MAC}
+			dimInactivePanes={value}
+			onNewTaskTerminalBackendChange={vi.fn()}
+			onTerminalPathOpenModeChange={vi.fn()}
+			onTerminalShellChange={vi.fn()}
+			onDimInactivePanesToggle={onToggle}
+		/>
+	);
+}
+
 // The font tests read raw keys instead of English, so a copy change cannot turn a
 // passing assertion red — they are about the control's behaviour, not its wording.
 /** The gallery has its own radiogroup; the backend picker on the same page has another. */
@@ -124,9 +179,11 @@ function renderFontSection(family = "", size = DEFAULT_TERMINAL_FONT_SIZE) {
 				terminalPathOpenMode="preview"
 				terminalShell={undefined}
 				shellAvailability={MAC}
+				dimInactivePanes={undefined}
 				onNewTaskTerminalBackendChange={vi.fn()}
 				onTerminalPathOpenModeChange={vi.fn()}
 				onTerminalShellChange={vi.fn()}
+				onDimInactivePanesToggle={vi.fn()}
 			/>
 		</I18nProvider>,
 	);

@@ -237,7 +237,28 @@ set -g status-right "#{E:@catppuccin_status_application}#{E:@catppuccin_status_s
 set -g status-left ""
 `;
 
-export function buildThemeConfig(flavor: "mocha" | "latte"): string {
+/**
+ * How much an unfocused pane differs from the focused one.
+ *
+ * Catppuccin's own config darkens every inactive pane so the focused split is
+ * obvious; the user can switch that off (`dimInactivePanes`), and then every
+ * pane keeps the theme's normal background and foreground. Both states emit the
+ * lines: these configs are re-sourced into a LIVE tmux server, where a merely
+ * omitted line leaves the previous value in effect.
+ */
+function paneDimConfig(dimInactivePanes: boolean): string {
+	const bg = dimInactivePanes ? "#{@thm_mantle}" : "#{@thm_bg}";
+	const fg = dimInactivePanes ? "#{@thm_overlay_1}" : "#{@thm_fg}";
+	return [
+		"",
+		"# Inactive pane contrast (Settings → Terminal → Dim inactive panes)",
+		`set -gF window-style "bg=${bg},fg=${fg}"`,
+		`set -gF pane-border-style "fg=#{@thm_surface_1},bg=${bg}"`,
+		"",
+	].join("\n");
+}
+
+export function buildThemeConfig(flavor: "mocha" | "latte", dimInactivePanes = true): string {
 	const pluginDir = CATPPUCCIN_PLUGIN_DIR;
 	return [
 		`# dev3 tmux config — Catppuccin ${flavor}`,
@@ -246,6 +267,7 @@ export function buildThemeConfig(flavor: "mocha" | "latte"): string {
 		`source "${pluginDir}/themes/catppuccin_${flavor}_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_options_tmux.conf"`,
 		`source "${pluginDir}/catppuccin_tmux.conf"`,
+		paneDimConfig(dimInactivePanes),
 		TMUX_CONFIG_FUNCTIONAL,
 		shellEnvConfig(),
 		TMUX_STATUS_BAR,
@@ -253,14 +275,27 @@ export function buildThemeConfig(flavor: "mocha" | "latte"): string {
 }
 
 /**
+ * The `dimInactivePanes` preference, pushed in by the host at startup and on
+ * every settings save. Held here rather than read from `settings.ts`: this
+ * module writes its configs at import time, and importing the settings loader
+ * for that would drag the whole settings graph into every module that touches
+ * tmux.
+ */
+let dimInactivePanes = true;
+
+export function setTmuxPaneDimming(enabled: boolean): void {
+	dimInactivePanes = enabled;
+}
+
+/**
  * Rewrite both themed configs. Called at startup, and again when a setting the
- * config embeds changes — today that is the shell, whose path is baked into
- * `default-shell`.
+ * config embeds changes: the shell (baked into `default-shell`) and whether
+ * inactive panes are dimmed.
  */
 export function writeTmuxConfigs(): void {
 	writeShellInit();
-	writeFileSync(TMUX_CONF_DARK_PATH, buildThemeConfig("mocha"));
-	writeFileSync(TMUX_CONF_LIGHT_PATH, buildThemeConfig("latte"));
+	writeFileSync(TMUX_CONF_DARK_PATH, buildThemeConfig("mocha", dimInactivePanes));
+	writeFileSync(TMUX_CONF_LIGHT_PATH, buildThemeConfig("latte", dimInactivePanes));
 }
 
 // Write Catppuccin plugin files + both themed configs + shell init at startup

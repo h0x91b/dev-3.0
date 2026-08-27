@@ -16,6 +16,7 @@ import {
 	isUpdateAlreadyReady,
 } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
+import { setTmuxPaneDimming, writeTmuxConfigs } from "./tmux/config";
 import { telemetryBootstrapScript } from "./analytics-identity";
 import { shouldAutoOpenDevTools } from "./devtools-auto-open";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitConfirmed, markQuitDialogPending } from "./quit-manager";
@@ -492,6 +493,13 @@ setPushMessage((name, payload) => {
 // Initialize the backend gate before background pollers and CLI requests can
 // raise agent notifications. Queued entries flush when Focus Mode is disabled.
 setFocusMode(loadSettingsSync().focusMode === true);
+
+// The tmux configs were written at import time on the built-in default (dimmed);
+// hand the module the user's own answer and rewrite them before any pane spawns.
+if (loadSettingsSync().dimInactivePanes === false) {
+	setTmuxPaneDimming(false);
+	writeTmuxConfigs();
+}
 
 // `exposedPortsChanged` rides its own hook because port-tunnels lives below
 // rpc-handlers — same broadcast target as above.
