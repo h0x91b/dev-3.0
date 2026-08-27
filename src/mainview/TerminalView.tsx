@@ -4,6 +4,7 @@ import { useT } from "./i18n";
 import { toast } from "./toast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
+import { debugLog } from "./debug-log";
 import { encodeResizeSequence } from "../shared/resize-protocol";
 import {
 	claimMessage,
@@ -513,7 +514,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// \x1b)B     = Designate G1 as US-ASCII
 			// \x1b[!p    = DECSTR (Soft Terminal Reset)
 			ws.send("\x0f\x1b(B\x1b)B\x1b[!p");
-			console.log("[TerminalView] Soft reset sent");
+			debugLog("terminal", "[TerminalView] Soft reset sent");
 		}
 
 		function handleHardReset() {
@@ -526,7 +527,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					term.reset();
 					term.renderer?.remeasureFont();
 				} catch { /* disposed */ }
-				console.log("[TerminalView] Hard reset: term.reset() + remeasureFont()");
+				debugLog("terminal", "[TerminalView] Hard reset: term.reset() + remeasureFont()");
 			}
 
 			if (ws?.readyState !== WebSocket.OPEN) return;
@@ -548,7 +549,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					}, 50);
 				} catch { /* disposed */ }
 			}
-			console.log("[TerminalView] Hard reset sent");
+			debugLog("terminal", "[TerminalView] Hard reset sent");
 		}
 
 		window.addEventListener("rpc:terminalSoftReset", handleSoftReset);
@@ -647,14 +648,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			log: logCopyEvent,
 		});
 
-		console.log("[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
+		debugLog("terminal", "[TerminalView] useEffect fired", { ptyUrl, taskId: taskId.slice(0, 8) });
 
 		// Preload bundled font before creating the terminal.
 		// Canvas rendering doesn't trigger CSS @font-face loading, so the
 		// font must be ready before ghostty-web measures it for cell metrics.
 		const TERMINAL_FONT = terminalFontStack();
 		document.fonts.load(`${effectiveTerminalFontSize()}px ${TERMINAL_FONT}`).then(() => {
-			console.log("[TerminalView] Font preloaded, starting setup");
+			debugLog("terminal", "[TerminalView] Font preloaded, starting setup");
 			if (!disposed) setup();
 		}).catch(() => {
 			console.warn("[TerminalView] Font preload failed, starting setup with fallback");
@@ -670,7 +671,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				return;
 			}
 
-			console.log("[TerminalView] Creating ghostty-web Terminal instance...");
+			debugLog("terminal", "[TerminalView] Creating ghostty-web Terminal instance...");
 			const term = new Terminal({
 				fontSize: scaledTerminalFontSize(),
 				fontFamily: TERMINAL_FONT,
@@ -679,13 +680,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				theme: resolvedTheme === "light" ? LIGHT_TERMINAL_THEME : DARK_TERMINAL_THEME,
 			});
 
-			console.log("[TerminalView] Terminal created, loading FitAddon...");
+			debugLog("terminal", "[TerminalView] Terminal created, loading FitAddon...");
 			fitAddon = new FitAddon();
 			fitAddon.proposeDimensions = proposeDimensionsWithoutScrollbarReserve.bind(fitAddon);
 			fitAddonRef.current = fitAddon;
 			term.loadAddon(fitAddon);
 
-			console.log("[TerminalView] Opening terminal in DOM...");
+			debugLog("terminal", "[TerminalView] Opening terminal in DOM...");
 			try {
 				term.open(containerRef.current);
 			} catch (err) {
@@ -697,7 +698,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				});
 				return;
 			}
-			console.log("[TerminalView] Terminal opened in DOM successfully");
+			debugLog("terminal", "[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
 			session.liveTerminals += 1;
 			countedLive = true;
@@ -1144,7 +1145,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						return;
 					}
 					didInitialFit = true;
-					console.log("[TerminalView] Container has dimensions, fitting terminal", {
+					debugLog("terminal", "[TerminalView] Container has dimensions, fitting terminal", {
 						width: el.clientWidth,
 						height: el.clientHeight,
 					});
@@ -1167,7 +1168,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 								const seq = getShiftKeySequence(event);
 								if (seq) {
 									const hex = Array.from(seq, c => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
-									console.log(`[ShiftKey] intercepted ${event.code} → sending ${seq.length}B: ${hex}`);
+									debugLog("terminal", `[ShiftKey] intercepted ${event.code} → sending ${seq.length}B: ${hex}`);
 									if (wsRef.current?.readyState === WebSocket.OPEN) {
 										wsRef.current.send(seq);
 									}
@@ -1230,7 +1231,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 								blur: () => { try { hiddenTextarea?.blur(); } catch { /* disposed */ } },
 							});
 
-							console.log("[TerminalView] Terminal fitted, connecting PTY...");
+							debugLog("terminal", "[TerminalView] Terminal fitted, connecting PTY...");
 							connectPty(term, fitAddon!);
 						} catch (err) {
 							console.error("[TerminalView] Post-layout setup FAILED:", err);
@@ -1745,7 +1746,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				writeToTerminal("\x1bc", false);
 			}
 			const diagnosticPtyUrl = ptyUrl.replace(/([?&]token=)[^&]+/, "$1***");
-			console.log("[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
+			debugLog("terminal", "[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
 			let socket: WebSocket;
 			try {
 				socket = new WebSocket(ptyUrlWithSince(ptyUrl, nativeSeqRef.current));
@@ -1757,15 +1758,15 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			}
 			ws = socket;
 			wsRef.current = ws;
-			console.log("[TerminalView] WebSocket created, readyState:", ws.readyState);
+			debugLog("terminal", "[TerminalView] WebSocket created, readyState:", ws.readyState);
 
 			socket.onopen = () => {
 				if (socket !== ws) return;
-				console.log("[TerminalView] WebSocket OPEN");
+				debugLog("terminal", "[TerminalView] WebSocket OPEN");
 				if (disposed) return;
 				reconnectAttempt = 0;
 				const dims = fit.proposeDimensions();
-				console.log("[TerminalView] Proposed dimensions:", dims);
+				debugLog("terminal", "[TerminalView] Proposed dimensions:", dims);
 				if (dims) {
 					// See buildResizeDance() — row-nudge keeps text wrapping
 					// identical between the two paints. See decision 041.
@@ -1922,7 +1923,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 		// setup() is called after font preload above — not here directly
 
 		return () => {
-			console.log("[TerminalView] Cleanup (unmount/re-render)", { taskId: taskId.slice(0, 8) });
+			debugLog("terminal", "[TerminalView] Cleanup (unmount/re-render)", { taskId: taskId.slice(0, 8) });
 			// term.dispose() and fitAddon.dispose() are synchronous, so a slow one blocks
 			// the renderer for its whole duration. A duration logged afterwards can only
 			// describe a cleanup that FINISHED, so a permanent hang would leave no trace
@@ -1935,7 +1936,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			// only evidence a permanent hang can produce. Console AND the durable sink:
 			// the console does not survive a restart, and the sink does not survive a
 			// dead bridge (decision 199).
-			console.debug("[TerminalView] cleanup started", { taskId: taskId.slice(0, 8) });
+			debugLog("terminal", "[TerminalView] cleanup started", { taskId: taskId.slice(0, 8) });
 			// info, not debug: prod/staging/canary run the logger at a minimum of info,
 			// so a debug line never reaches the file and the marker would not be durable.
 			logDiagnostic("terminal-dispose", "info", "cleanup started");
@@ -2009,7 +2010,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				termRef.current = null;
 			}
 			const disposeMs = Math.round(performance.now() - disposeStartedAt);
-			console.debug("[TerminalView] cleanup finished", { taskId: taskId.slice(0, 8), disposeMs });
+			debugLog("terminal", "[TerminalView] cleanup finished", { taskId: taskId.slice(0, 8), disposeMs });
 			logDiagnostic("terminal-dispose", "info", "cleanup finished", { disposeMs });
 			if (disposeMs >= TERMINAL_DISPOSE_BUDGET_MS) {
 				console.warn("[TerminalView] cleanup exceeded its budget", {

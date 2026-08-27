@@ -21,6 +21,7 @@
  */
 
 import { api } from "./rpc";
+import { underTest } from "./debug-log";
 
 export type DevServerOp = "runDevServer" | "stopDevServer" | "checkDevServer";
 
@@ -74,10 +75,13 @@ function emit(
 	extra: Record<string, string | number | boolean | null>,
 ): void {
 	// The console mirror is what remains when the bridge cannot carry the sink.
-	// `debug` keeps it out of the way unless the reader is looking for it.
+	// `debug` keeps it out of the way unless the reader is looking for it. Under
+	// vitest there is no bridge to lose, so the mirror is only noise.
 	if (!shouldEmit(op, boundary)) return;
-	const consoleFn = level === "warn" ? console.warn : console.debug;
-	consoleFn(`[dev-server] ${op} ${boundary}`, extra);
+	if (!underTest()) {
+		const consoleFn = level === "warn" ? console.warn : console.debug;
+		consoleFn(`[dev-server] ${op} ${boundary}`, extra);
+	}
 	try {
 		const request = api.request.logRendererDiagnostic({
 			level,

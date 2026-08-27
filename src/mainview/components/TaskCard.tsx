@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
+import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
@@ -580,7 +580,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [configRef, configTruncated] = useIsTruncated<HTMLSpanElement>(configLabel);
 
 	// ---- SIGNALS zone: read-only facts, grouped git / run / time -------------
-	const gitSignals = [prBadge, mergeBadge, reviewBadge, commentBadge].filter(Boolean);
+	// Keyed here rather than on each badge: they are built as standalone nodes above
+	// and only become a list at this point.
+	const gitSignals = ([
+		["pr", prBadge],
+		["merge", mergeBadge],
+		["review", reviewBadge],
+		["comment", commentBadge],
+	] as const)
+		.filter(([, node]) => Boolean(node))
+		.map(([key, node]) => <Fragment key={key}>{node}</Fragment>);
 	const runSignals: React.ReactNode[] = [];
 	if (isActive && ports && ports.length > 0) {
 		runSignals.push(

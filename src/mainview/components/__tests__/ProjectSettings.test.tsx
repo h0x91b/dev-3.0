@@ -33,6 +33,7 @@ vi.mock("../../rpc", () => ({
 			getProjects: vi.fn().mockResolvedValue([]),
 			getAgents: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({}),
+			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
 		},
 	},
 }));

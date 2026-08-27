@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type DragEvent, type ReactNode } from "react";
 import { isSpaceSensitive, type Project, type Space } from "../../shared/types";
 import { HOME_GROUP_ID, type DashboardGroup } from "../utils/spaceGroups";
 import { MASK_CLASS } from "../sensitive-projects";
@@ -222,7 +222,12 @@ function SpaceGroupedProjects({
 								<span className="text-fg-muted text-xs tabular-nums">{group.projects.length}</span>
 							</div>
 							<div className={ROWS_CLASS}>
-								{group.projects.map((project) => renderBottomBlockProject(project, group.projects))}
+								{group.projects.map((project) => (
+									// The caller's node carries no key of its own.
+									<Fragment key={`no-space:${project.id}`}>
+										{renderBottomBlockProject(project, group.projects)}
+									</Fragment>
+								))}
 							</div>
 						</div>
 					);

@@ -162,7 +162,7 @@ function Ledger({
 	const t = useT();
 	let day: string | null = null;
 	const out: React.ReactNode[] = [];
-	for (const row of rows) {
+	for (const [index, row] of rows.entries()) {
 		const rowDay = localDay(row.at);
 		if (rowDay !== day) {
 			day = rowDay;
@@ -175,7 +175,9 @@ function Ledger({
 				</div>,
 			);
 		}
-		const key = `${row.at}-${row.toTaskId}-${row.fromSeq ?? "x"}`;
+		// Two messages from one sender to one task in the same millisecond are a real
+		// case (a split reply arrives as three), so the index has to be part of the key.
+		const key = `${row.at}-${row.toTaskId}-${row.fromSeq ?? "x"}-${index}`;
 		const openable = knownTasks?.has(row.toTaskId) ?? false;
 		out.push(
 			openable ? (

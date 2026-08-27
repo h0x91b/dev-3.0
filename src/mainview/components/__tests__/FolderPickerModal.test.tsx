@@ -411,6 +411,13 @@ describe("FolderPickerHost confined to a project root", () => {
 		renderHost();
 		openFolderPicker({ confineTo: "/Users/test/repo" });
 		await screen.findByTestId("folder-picker-backdrop");
+		// The backdrop is on screen from the first render, while the path input stays
+		// empty until the initial listing lands. Clearing before that is a no-op, the
+		// root then arrives, and "/etc" gets typed onto the END of it — which IS inside
+		// the root, so no refusal ever appears. That was the ubuntu CI flake.
+		await waitFor(() =>
+			expect(screen.getByLabelText("Folder path")).toHaveValue("/Users/test/repo"),
+		);
 
 		await user.clear(screen.getByLabelText("Folder path"));
 		await user.type(screen.getByLabelText("Folder path"), "/etc{Enter}");

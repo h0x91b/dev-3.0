@@ -20,6 +20,7 @@ vi.mock("../../rpc", () => ({
 				}),
 			),
 			saveGlobalSettings: vi.fn(),
+			getSpaces: vi.fn(() => Promise.resolve({ version: 1, spaces: [], order: [] })),
 		},
 	},
 }));

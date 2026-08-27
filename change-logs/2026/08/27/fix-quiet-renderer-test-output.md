@@ -1,0 +1,3 @@
+Short: Renderer tests stop spamming 12k log lines
+
+The renderer test run printed 12 192 lines of output and now prints 589. Along the way it turned up real defects rather than just noise: the suite was firing Google Analytics hits and an ipify lookup from every dev machine and CI runner, three test files were missing `getSpaces` from their RPC mock, and `TaskCard`, `SpaceGroupedProjects` and the agent-traffic ledger were rendering lists with missing or colliding React keys. Terminal and RPC setup traces moved to an opt-in debug channel (`localStorage["dev3-debug"] = "terminal,rpc"`), React's repeated act(...) boilerplate is now one tallied line per file, and the FolderPickerModal test that failed on ubuntu CI was fixed at its real cause.

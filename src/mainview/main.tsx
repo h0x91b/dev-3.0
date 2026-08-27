@@ -9,6 +9,7 @@ import { I18nProvider, resolveInitialLocale } from "./i18n";
 import { MobileProvider, detectMobile } from "./hooks/useMobile";
 import { initAnalytics } from "./analytics";
 import { initFeatureFlags } from "./feature-flags";
+import { debugLog } from "./debug-log";
 import { api, isElectrobun } from "./rpc";
 import { initAutoFullscreen } from "./fullscreen";
 import { initKeyboardLock } from "./keyboard-lock";
@@ -122,11 +123,11 @@ startRendererHeartbeat();
 document.documentElement.lang = resolveInitialLocale();
 
 async function bootstrap() {
-	console.log("[main] bootstrap() starting...");
+	debugLog("boot", "[main] bootstrap() starting...");
 	try {
-		console.log("[main] Initializing ghostty-web...");
+		debugLog("boot", "[main] Initializing ghostty-web...");
 		await init();
-		console.log("[main] ghostty-web initialized");
+		debugLog("boot", "[main] ghostty-web initialized");
 	} catch (err) {
 		console.error("[main] ghostty-web init() FAILED:", err);
 		console.error("[main] This will prevent terminal rendering. Error:", {
@@ -154,7 +155,7 @@ async function bootstrap() {
 		document.title = "dev-3.0";
 	}
 
-	console.log("[main] Rendering React app...");
+	debugLog("boot", "[main] Rendering React app...");
 	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
 	// I18nProvider/MobileProvider themselves still renders a visible fallback
 	// instead of a blank, unmounted tree.
@@ -171,7 +172,7 @@ async function bootstrap() {
 			</RootErrorBoundary>
 		</StrictMode>,
 	);
-	console.log("[main] React app rendered");
+	debugLog("boot", "[main] React app rendered");
 }
 
 bootstrap().catch((err) => {

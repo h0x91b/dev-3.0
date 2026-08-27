@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode
 import type { Task, Project, TaskSessionState } from "../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
+import { debugLog } from "../debug-log";
 import { useT } from "../i18n";
 import { toast } from "../toast";
 import { trackEvent } from "../analytics";
@@ -205,16 +206,16 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		if (isPreparing || isClosed) return;
 		let cancelled = false;
 		(async () => {
-			console.log("[TaskTerminal] Requesting PTY URL for task", taskId.slice(0, 8));
+			debugLog("terminal", "[TaskTerminal] Requesting PTY URL for task", taskId.slice(0, 8));
 			try {
 				const result = await api.request.getPtyUrl({ taskId });
 				if (cancelled) return;
 				if ("recoverable" in result) {
-					console.log("[TaskTerminal] Recoverable session detected", result.sessionState);
+					debugLog("terminal", "[TaskTerminal] Recoverable session detected", result.sessionState);
 					setRecoverable(result.sessionState);
 					setHibernated(result.hibernated === true);
 				} else {
-					console.log("[TaskTerminal] Got PTY URL:", result.url);
+					debugLog("terminal", "[TaskTerminal] Got PTY URL:", result.url);
 					setPtyUrl(result.url);
 				}
 			} catch (err) {

@@ -19,6 +19,7 @@ vi.mock("../rpc", () => ({
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
+			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
 			getLastRoute: vi.fn().mockResolvedValue({ route: null }),
 			saveLastRoute: vi.fn().mockResolvedValue(undefined),
 			quitApp: vi.fn().mockResolvedValue(undefined),

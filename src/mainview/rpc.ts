@@ -4,6 +4,7 @@ import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { createWatchdogState, decidePingOutcome, shouldAllowReload } from "./rpc-watchdog";
 import { recordDiagnostic, RPC_STATUS_EVENT, type RpcConnectionState } from "./diagnostics";
 import { createRemoteSession, type RemoteSessionState, type SocketLike } from "./remote-session";
+import { debugLog } from "./debug-log";
 
 // ── Transport connection state ──────────────────────────────────────
 // Surfaced to the bootstrap screen so a stuck "Loading…" can tell the user
@@ -372,7 +373,7 @@ function initBrowserApi(): ApiShape {
 	// by initStreamerMode) instead of wiping the whole query.
 	const urlParams = new URLSearchParams(window.location.search);
 	const qrToken = urlParams.get("token") || "";
-	console.log("[browser-rpc] init", { isViteDevServer, hasQrToken: !!qrToken, protocol: wsProtocol });
+	debugLog("rpc", "[browser-rpc] init", { isViteDevServer, hasQrToken: !!qrToken, protocol: wsProtocol });
 	if (qrToken) {
 		urlParams.delete("token");
 		const rest = urlParams.toString();
@@ -458,7 +459,7 @@ function initBrowserApi(): ApiShape {
 		callbacks: {
 			onStateChange: (state) => setRpcState(mapSessionState(state)),
 			onSocketOpen: (socket) => {
-				console.log("[browser-rpc] WS OPEN");
+				debugLog("rpc", "[browser-rpc] WS OPEN");
 				activeSocket = socket;
 				flushQueuedRequests(socket);
 			},
