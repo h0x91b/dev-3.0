@@ -444,6 +444,8 @@ async function runSender(): Promise<void> {
 			taskId: TASK_ID,
 			projectId: PROJECT_ID,
 			text: cliToken,
+			// Mandatory on every send; the gate rejects the request before delivery.
+			subject: "owner routing e2e token",
 		});
 		check(response.ok === true, `message.send through app B's socket succeeded${response.ok ? "" : `: ${response.error}`}`);
 		check(
