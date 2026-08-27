@@ -33,6 +33,9 @@ sign_one() {
     return 0
   fi
 
+  # `${a[@]+"${a[@]}"}`, not `"${a[@]}"`: macOS ships bash 3.2 as /bin/bash, and
+  # there an empty array under `set -u` is an "unbound variable" error, which
+  # aborted the whole script before tmux and bifrost were signed.
   local ent_args=()
   if [ -n "$entitlements" ]; then
     ent_args=(--entitlements "$entitlements")
@@ -45,13 +48,13 @@ sign_one() {
     codesign --force --verbose --timestamp \
       --sign "$ELECTROBUN_DEVELOPER_ID" \
       --options runtime \
-      "${ent_args[@]}" \
+      ${ent_args[@]+"${ent_args[@]}"} \
       "$bin"
     echo "[sign-cli-binaries] Developer ID signed: $bin"
     return 0
   fi
 
-  codesign --force --sign - --options runtime "${ent_args[@]}" "$bin"
+  codesign --force --sign - --options runtime ${ent_args[@]+"${ent_args[@]}"} "$bin"
   echo "[sign-cli-binaries] ad-hoc signed: $bin"
 }
 
