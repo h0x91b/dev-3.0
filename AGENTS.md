@@ -364,6 +364,15 @@ The app auto-installs the **dev3 skill** into agent config dirs (`~/.claude/skil
 
 **Feature differences between agents** (hooks, skill variants, CLI flags, integrations) are tracked in [`agent-support-matrix.md`](agent-support-matrix.md) — keep it up to date when adding or changing agent-specific behavior.
 
+### The protocol body is capped — adding a section means removing one (MANDATORY)
+
+The same text is also injected as the agent's system prompt at launch, and for every agent except Claude it travels **on the command line**. A Windows command line stops at **32 767 characters** (`CreateProcess` refuses past it, and PowerShell reports that as `ApplicationFailedException` naming neither the length nor the argument), so a body that grows too big does not fail loudly — it makes Windows refuse to start the agent at all. That is exactly how it shipped: the body reached ~34 000 characters and no agent could launch on Windows, with an error that looked like a quoting bug.
+
+- `src/shared/agent-command-line-budget.ts` owns the numbers: `WINDOWS_COMMAND_LINE_LIMIT`, the `AGENT_COMMAND_LINE_RESERVE` kept for the user's own task description, and `AGENT_SKILL_BODY_LIMIT` derived from them.
+- `src/bun/__tests__/agent-command-line-budget.test.ts` enforces both: each composed body against the cap **on both platforms** (the PR-footer section differs by platform, and the Windows wording is the longer one), and the whole `resolveAgentCommand` line for **every** agent against the ceiling with a full-size task.
+- When it fails, **cut prose — do not raise the cap.** Raising it moves the failure back into the OS, where there is no error message. Adding a new adapter means adding its command to that test's `AGENT_COMMANDS`.
+- Nothing else warns you: writing in `agent-skill-content.ts` gives no length signal, and POSIX has no comparable limit, so a body written on macOS looks fine right up to the point where Windows will not launch.
+
 ## Project scripts
 
 Each project has three lifecycle scripts (free-form shell), configurable in Project Settings (`src/mainview/components/ProjectSettings.tsx`), stored as fields on the `Project` type (`src/shared/types.ts`) in `projects.json`, saved via the `updateProjectSettings` handler (`src/bun/rpc-handlers/settings-config.ts`):

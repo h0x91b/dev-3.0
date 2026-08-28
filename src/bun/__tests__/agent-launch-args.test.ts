@@ -5,7 +5,8 @@ import { resolveAgentCommand, buildResumeCommand, DEV3_SYSTEM_PROMPT, type Templ
 import type { CodingAgent } from "../../shared/types";
 import { claudeAdapter } from "../../shared/agent-adapters/claude";
 import { CLAUDE_SKILL_BODY } from "../../shared/agent-skill-content";
-import { systemPromptNeedsFile, WINDOWS_COMMAND_LINE_LIMIT } from "../agent-system-prompt-file";
+import { systemPromptNeedsFile } from "../agent-system-prompt-file";
+import { AGENT_SKILL_BODY_LIMIT, WINDOWS_COMMAND_LINE_LIMIT } from "../../shared/agent-command-line-budget";
 
 // ---------------------------------------------------------------------------
 // The agent command line is TEXT that a generated wrapper script re-parses
@@ -160,10 +161,15 @@ describe("the launch call site", () => {
 });
 
 describe("the command-line ceiling", () => {
-	it("the dev3 protocol does not fit in a Windows command line at any quoting", () => {
-		// Found by the first Windows run of the E2E: CreateProcess refuses past
-		// 32 767 characters, and the body alone is longer than that.
-		expect(CLAUDE_SKILL_BODY.length).toBeGreaterThan(WINDOWS_COMMAND_LINE_LIMIT);
+	it("the protocol fits the ceiling now, but would leave the user almost nothing", () => {
+		// The first Windows run of the E2E found the body was longer than a whole
+		// command line (33 650 chars against 32 767) — no quoting could have
+		// delivered it. It has since been cut under AGENT_SKILL_BODY_LIMIT, so the
+		// reason for the file channel changed: not "cannot fit" but "would spend
+		// four fifths of the line on a constant". `agent-command-line-budget.test.ts`
+		// keeps it under the cap; this pins WHY Windows still gets a file.
+		expect(CLAUDE_SKILL_BODY.length).toBeLessThanOrEqual(AGENT_SKILL_BODY_LIMIT);
+		expect(CLAUDE_SKILL_BODY.length).toBeGreaterThan(WINDOWS_COMMAND_LINE_LIMIT / 2);
 	});
 
 	it("only Windows needs the file", () => {

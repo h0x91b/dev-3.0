@@ -121,6 +121,12 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/bun/__tests__/agent-launch-args.bun-e2e.ts",
 	"src/bun/agent-system-prompt-file.ts",
 	"src/bun/__tests__/agent-command-golden.test.ts",
+	// The length budget and the prose it caps. Same criterion (1): a body over the
+	// Windows ceiling means no agent starts there at all, and the OS says nothing
+	// useful about why — so a prompt edit has to re-prove Windows.
+	"src/shared/agent-command-line-budget.ts",
+	"src/shared/agent-skill-content.ts",
+	"src/bun/__tests__/agent-command-line-budget.test.ts",
 	// The git-operation panes (Seq 1547). Same criterion (1): these scripts push,
 	// rebase and squash-merge, and only a Windows run can tell the two dialects
 	// apart — a bash body handed to PowerShell half-runs instead of failing.

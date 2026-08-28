@@ -17,10 +17,12 @@
  * the other.
  *
  * The first Windows run of this file also found the bug BEHIND the reported one:
- * a Windows command line stops at 32 767 characters and the dev3 protocol is
+ * a Windows command line stops at 32 767 characters and the dev3 protocol was
  * ~34 000, so `--append-system-prompt <body>` could never have been delivered
- * there at any quoting. The ceiling leg proves that from the OS, and proves the
- * file-shaped command line dev3 sends instead.
+ * there at any quoting. The protocol has since been cut under a budget
+ * (`agent-command-line-budget.test.ts` holds it there); the ceiling leg here
+ * still proves the OS limit from the OS, and proves the file-shaped command line
+ * Windows gets instead.
  *
  * The POSIX legs are the control that none of this changed macOS/Linux.
  *
@@ -39,7 +41,7 @@ import { join } from "node:path";
 import { spawn } from "../spawn";
 import { CLAUDE_SKILL_BODY } from "../../shared/agent-skill-content";
 import { commandToken, shellEscape } from "../../shared/agent-adapters/shell";
-import { WINDOWS_COMMAND_LINE_LIMIT } from "../agent-system-prompt-file";
+import { AGENT_SKILL_BODY_LIMIT, WINDOWS_COMMAND_LINE_LIMIT } from "../../shared/agent-command-line-budget";
 import { buildCmdScript, generatedScriptLaunch, generatedScriptName, writeLaunchScript } from "../rpc-handlers/shared-pure";
 
 let failures = 0;
@@ -205,26 +207,40 @@ try {
 		else check(delivered, `${name}: delivered (got ${JSON.stringify(args)})`);
 	}
 
-	console.log("\nthe command-line ceiling — why the protocol travels as a file on Windows");
+	console.log("\nthe command-line ceiling — the OS limit, and where the protocol sits under it");
 	{
-		// The protocol body alone is longer than a whole Windows command line, so
-		// `--append-system-prompt <body>` cannot be delivered there at any quoting.
+		// The protocol used to be LONGER than a whole Windows command line (33 650
+		// chars against 32 767), so no quoting could deliver it and every Claude
+		// launch there was dead. It has since been cut under the budget, so what is
+		// proved here is the ceiling itself — from the OS, with a synthetic argument
+		// — plus the fact that the real protocol now sits under it.
 		check(
-			CLAUDE_SKILL_BODY.length > WINDOWS_COMMAND_LINE_LIMIT,
-			`the dev3 protocol is ${CLAUDE_SKILL_BODY.length} chars against a ${WINDOWS_COMMAND_LINE_LIMIT}-char ceiling`,
+			CLAUDE_SKILL_BODY.length <= AGENT_SKILL_BODY_LIMIT,
+			`the dev3 protocol is ${CLAUDE_SKILL_BODY.length} chars, budget ${AGENT_SKILL_BODY_LIMIT}, OS ceiling ${WINDOWS_COMMAND_LINE_LIMIT}`,
 		);
-		const { output } = await runAgent(process.execPath, [CLAUDE_SKILL_BODY]);
+		const oversized = "x".repeat(WINDOWS_COMMAND_LINE_LIMIT + 1000);
+		const { output } = await runAgent(process.execPath, [oversized]);
 		const args = received();
-		const inlineWorked = args !== null && args.length === 1 && args[0] === CLAUDE_SKILL_BODY;
+		const inlineWorked = args !== null && args.length === 1 && args[0] === oversized;
 		if (windows) {
-			check(!inlineWorked, "inline delivery is refused by the OS, not by dev3");
+			check(!inlineWorked, "past the ceiling, delivery is refused by the OS, not by dev3");
 			check(
 				/too long|ApplicationFailed|NativeCommandFailed/i.test(output),
 				`the refusal names the command line (${JSON.stringify(output.trim().slice(-200))})`,
 			);
 		} else {
-			check(inlineWorked, "POSIX has no such ceiling, so inline delivery still works there");
+			check(inlineWorked, "POSIX has no such ceiling, so even this argument is delivered");
 		}
+
+		// And the real body, at its real size, goes through inline on every platform
+		// — which is what makes the Windows file channel a budget choice rather than
+		// the only way to launch at all.
+		await runAgent(process.execPath, [CLAUDE_SKILL_BODY]);
+		const body = received();
+		check(
+			body !== null && body.length === 1 && body[0] === CLAUDE_SKILL_BODY,
+			"the protocol itself is deliverable inline at its current size",
+		);
 
 		// The shape dev3 actually launches on Windows: a path, not a body.
 		const promptFile = join(root, "claude.md");

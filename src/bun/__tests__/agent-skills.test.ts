@@ -36,18 +36,18 @@ describe("platform feedback skill section (always present)", () => {
 			expect(skill).toContain("## Platform feedback — vents");
 			expect(skill).toContain('dev3 vents "short name" "markdown body"');
 			expect(skill).toContain("Anonymity is mandatory");
-			expect(skill).toContain("would the dev3 maintainer have to change or extend dev3 to address this?");
-			expect(skill).toContain("Something is missing that would help");
+			expect(skill).toContain("would the maintainer have to change dev3 for this?");
+			expect(skill).toContain("**Something is missing** — a capability that would have saved you work");
 			expect(skill).toContain("at most once per user message");
 			expect(skill).toContain("### Offer to file a public bug report");
-			expect(skill).toContain("send the private vent first (silently, as always)");
-			expect(skill).toContain("Never mention the private vent");
+			expect(skill).toContain("vent privately first (silently)");
+			expect(skill).toContain("never mention the vent or that anything was \"already sent\"");
 			expect(skill).toContain("this offer is the first they hear of it");
-			expect(skill).toContain("an explicit yes/no ask");
-			expect(skill).toContain("using your GitHub");
+			expect(skill).toContain("an explicit yes/no");
+			expect(skill).toContain("public under their GitHub (`gh`) account");
 			expect(skill).toContain("--repo h0x91b/dev-3.0");
 			expect(skill).toContain('--label "Reported by AI"');
-			expect(skill).toContain("still never reference the vent");
+			expect(skill).toContain("still never referencing the vent");
 			expect(skill.indexOf('dev3 vents "short name" "markdown body"')).toBeLessThan(
 				skill.indexOf("### Offer to file a public bug report"),
 			);
@@ -59,13 +59,11 @@ describe("dev3 skill content", () => {
 	it("exempts in-task bug hunters from mutating the originating task", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## In-task Bug Hunter isolation");
-			expect(skill).toContain("This exception overrides the session-start checklist");
+			expect(skill).toContain("this overrides the session-start checklist and every lifecycle duty below");
 			expect(skill).toContain(
-				"Do NOT change the existing task's title, description, overview, labels, priority, status, assigned agent, or configuration.",
+				"Do NOT rename the branch, or change the task's title, description, overview, labels, priority, status, assigned agent or configuration.",
 			);
-			expect(skill).toContain(
-				"The only allowed write to the existing task is `dev3 note add`",
-			);
+			expect(skill).toContain("The only allowed write is `dev3 note add`");
 			expect(skill.indexOf("## In-task Bug Hunter isolation")).toBeLessThan(
 				skill.indexOf("## Session-start checklist"),
 			);
@@ -101,14 +99,12 @@ describe("dev3 skill content", () => {
 
 	it("folds label guidance into the session-start title pass", () => {
 		const codexSkill = getCodexSkillContent();
-		expect(codexSkill).toContain(
-			"Aim for **1-2 meaningful labels per task** in the normal case",
-		);
-		expect(codexSkill).toContain("In the same session-start pass, also assign task labels:");
+		expect(codexSkill).toContain("aiming for **1-2 meaningful labels**");
+		expect(codexSkill).toContain("Labels, same session-start pass:");
 		expect(codexSkill).toContain("dev3 label list");
 		expect(codexSkill).toContain('dev3 label create "name"');
 		expect(codexSkill).toContain("dev3 label set <id> [<id>...]");
-		expect(codexSkill).toContain("Creating a label without attaching it does **not** complete this step.");
+		expect(codexSkill).toContain("creating without attaching does **not** complete this step");
 		expect(codexSkill).not.toContain("## Task labels");
 		expect(codexSkill.indexOf("## Title generation")).toBeLessThan(
 			codexSkill.indexOf("dev3 label list"),
@@ -119,7 +115,7 @@ describe("dev3 skill content", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## Session-start checklist");
 			// Event-anchored gate, not "session start" which agents race past
-			expect(skill).toContain("finish this checklist before you end your first turn");
+			expect(skill).toContain("finish it before ending your first turn");
 			// Title step explicitly covers the scratch placeholder, the case that fell through
 			expect(skill).toContain("replace a scratch placeholder");
 			// Checklist precedes the detailed sections it points at
@@ -135,32 +131,32 @@ describe("dev3 skill content", () => {
 	});
 
 	it("keeps embedded label guidance consistent across agent variants", () => {
-		expect(CLAUDE_SKILL_BODY).toContain("In the same session-start pass, also assign task labels:");
-		expect(getGenericSkillContent()).toContain("In the same session-start pass, also assign task labels:");
-		expect(CLAUDE_SKILL_BODY).toContain("reuse existing labels whenever possible.");
-		expect(getGenericSkillContent()).toContain("reuse existing labels whenever possible.");
-		expect(CLAUDE_SKILL_BODY).toContain("attach it to the current task immediately.");
-		expect(getGenericSkillContent()).toContain("attach it to the current task immediately.");
+		expect(CLAUDE_SKILL_BODY).toContain("Labels, same session-start pass:");
+		expect(getGenericSkillContent()).toContain("Labels, same session-start pass:");
+		expect(CLAUDE_SKILL_BODY).toContain("reuse existing ones");
+		expect(getGenericSkillContent()).toContain("reuse existing ones");
+		expect(CLAUDE_SKILL_BODY).toContain("attach it at once");
+		expect(getGenericSkillContent()).toContain("attach it at once");
 	});
 
 	it("gates completion on preserved work or an explicit user request", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
-			expect(skill).toContain("Never move a task to `completed`, and never request completion approval");
+			expect(skill).toContain("never move a task to `completed` or request approval while its work exists only in a disposable worktree");
 			expect(skill).toContain("safely preserved in the destination the task requires");
-			expect(skill).toContain("commonly a pull request merged into `main`");
-			expect(skill).toContain("external file, task note, shared artifact");
-			expect(skill).toContain("the user explicitly asks to complete the task");
-			expect(skill).toContain("A local commit, passing tests, or an open/unmerged pull request is not enough by itself");
-			expect(skill).toContain("If the required destination is unclear or the work is not safely preserved");
+			expect(skill).toContain("usually a PR merged into `main`");
+			expect(skill).toContain("an external file, a task note, a shared artifact");
+			expect(skill).toContain("the user explicitly asks to complete it");
+			expect(skill).toContain("A local commit, passing tests, or an open unmerged PR is not enough");
+			expect(skill).toContain("Unclear destination or unpreserved work → keep the task open and ask");
 		}
 	});
 
 	it("adds conservative dev-server control guidance across agent variants", () => {
 		expect(getCodexSkillContent()).toContain("## Dev Server Control");
 		expect(getCodexSkillContent()).toContain("`dev3 dev-server status` is low-risk");
-		expect(getCodexSkillContent()).toContain("Do not use them by default.");
-		expect(CLAUDE_SKILL_BODY).toContain("Before doing so, briefly tell the user what you are about to do.");
-		expect(getGenericSkillContent()).toContain("If you started the dev server only for verification, stop it afterwards");
+		expect(getCodexSkillContent()).toContain("do not use them by default");
+		expect(CLAUDE_SKILL_BODY).toContain("say what you are about to do first");
+		expect(getGenericSkillContent()).toContain("stop it again afterwards unless asked to keep it running");
 	});
 
 	it("documents mutually exclusive notify duration and desktop forms", () => {
@@ -168,11 +164,8 @@ describe("dev3 skill content", () => {
 			expect(skill).toContain(
 				'`dev3 notify "message" [--level info|success|error] [--duration <seconds>]` — clickable in-app toast',
 			);
-			expect(skill).toContain(
-				'`dev3 notify "message" [--level info|success|error] --desktop` — sends a native OS notification',
-			);
-			expect(skill).toContain("`--duration` applies only to in-app toasts.");
-			expect(skill).toContain("do not combine `--desktop` with `--duration`.");
+			expect(skill).toContain("`--desktop` instead sends a native OS notification");
+			expect(skill).toContain("never combine the two flags");
 
 			const notifyExamples = skill.split("\n").filter((line) => line.startsWith("- `dev3 notify"));
 			const notifyCommands = notifyExamples.map((line) => line.match(/^- `([^`]+)`/)?.[1] ?? "");

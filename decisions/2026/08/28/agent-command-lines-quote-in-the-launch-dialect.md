@@ -38,10 +38,15 @@ other. It runs in the packaged Windows proof, with the POSIX legs as the control
 **Its first Windows run found the bug behind the reported one.** A Windows
 command line stops at 32 767 characters (`CreateProcess` returns
 ERROR_FILENAME_EXCED_RANGE, which PowerShell reports as
-`ApplicationFailedException` with no useful text), and the dev3 protocol is
+`ApplicationFailedException` with no useful text), and the dev3 protocol was
 **33 650** characters on its own. So `--append-system-prompt <body>` could never
 have been delivered on Windows at any quoting — fixing the quoting alone would
 have moved the failure one step later and looked just as dead.
+
+The protocol has since been **cut to ~26 000 characters** and put under a budget
+(below), so it is no longer the ceiling that kills a launch. The file channel
+stays anyway: 26 000 of a 32 767-character line spent on a constant leaves the
+user's own task description to blow the ceiling instead.
 
 Two limits of Windows PowerShell 5.1 remain, both measured and both asserted in
 that E2E rather than left silent:
@@ -79,12 +84,27 @@ On Windows the protocol also stops travelling on the command line at all:
 2.1.112 that the flag exists and applies the file's content. POSIX keeps the
 inline form, so nothing about a macOS or Linux launch changes.
 
-**Only Claude is fixed by that.** Codex delivers the protocol through
-`-c developer_instructions=<34 506 chars>` and Gemini / Cursor / OpenCode /
-generic concatenate it onto the prompt (34 463 chars), so those launches are
-still over the Windows ceiling. Each needs its own channel — Codex's belongs in
-the `config.toml` dev3 already generates — and none of them can be papered over
-by the file above.
+**The file only covers Claude**, because only Claude has a flag that takes a
+path. Codex carries the protocol in `-c developer_instructions=`, and Cursor and
+OpenCode concatenate it onto the prompt, so for them the body is on the command
+line and nothing can move it there. That is what forced the second half of this
+change: instead of a per-agent channel each, **the protocol itself was cut** from
+~34 500 to ~26 000 characters and capped.
+
+`src/shared/agent-command-line-budget.ts` owns three numbers:
+`WINDOWS_COMMAND_LINE_LIMIT` (32 767, the OS), `AGENT_COMMAND_LINE_RESERVE`
+(5 000, kept for the user's own task description) and `AGENT_SKILL_BODY_LIMIT`
+derived from them. `src/bun/__tests__/agent-command-line-budget.test.ts` fails on
+a body over the cap **on either platform** — the PR-footer section is rewritten
+where `dev3://` is not registered and the Windows wording is the longer one — and
+on any agent's full `resolveAgentCommand` line exceeding the ceiling with a
+full-size task. Proved by mutation: padding the body by ~1 200 characters fails
+the Codex and generic legs.
+
+The reserve is a majority guarantee, not an absolute one. A task description of
+5 000 characters (~800 words) survives; a pasted 20 KB spec still cannot launch
+Codex, Cursor or OpenCode on Windows, and only a per-agent off-command-line
+channel would fix that.
 
 `shellEscape`/`commandToken` in `src/shared/agent-adapters/shell.ts` delegate to
 the dialect, so all six adapters follow the platform without knowing it exists.
@@ -105,7 +125,21 @@ string is about to be re-parsed.
   with a space typed there still breaks, exactly as it did before — dev3 cannot
   tell that from a command with arguments.
 
+- Cutting the protocol cost content. It was rewritten section by section rather
+  than truncated, and one compression introduced a real bug the existing skill
+  test caught: collapsing the `show-artifact --assets` paths into a brace
+  expansion `{app.css,report.js,…}`, which bash expands and PowerShell does not.
+
 ## Alternatives considered
+
+- **A per-agent off-command-line channel for Codex / Cursor / OpenCode** —
+  Codex's would fit in the `config.toml` dev3 already generates, but Cursor and
+  OpenCode have no such surface at all, so the protocol would have needed three
+  different homes and would still have been unbounded. Capping the text is one
+  rule for every agent.
+- **A bigger reserve** — over-provisioning the task-text allowance (8 000+) reads
+  safer, but it buys nothing real (a pasted spec beats any reserve) while forcing
+  cuts deep enough to lose rules.
 
 - **Pass the command as argv instead of a re-parsed string** — the agent command
   is a user-editable string that may carry shell operators; turning it into argv

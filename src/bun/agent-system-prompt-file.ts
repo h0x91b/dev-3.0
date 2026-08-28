@@ -1,12 +1,13 @@
 /**
  * The dev3 protocol delivered as a FILE instead of a command-line argument.
  *
- * Windows caps a process command line at 32 767 characters (`CreateProcess`
- * returns ERROR_FILENAME_EXCED_RANGE past it, which PowerShell reports as
- * `ApplicationFailedException` with no useful text). The dev3 system prompt is
- * ~34 000 characters on its own, so it can never travel inline there — measured
- * on a real Windows runner, see
- * decisions/2026/08/28/agent-command-lines-quote-in-the-launch-dialect.md.
+ * Windows caps a process command line at `WINDOWS_COMMAND_LINE_LIMIT`
+ * characters, and the protocol used to be longer than that on its own, so no
+ * Claude session could start there at all. The protocol is now inside
+ * `AGENT_SKILL_BODY_LIMIT` and would fit — but it would eat four fifths of the
+ * line, leaving the user's own task description to blow the ceiling instead. So
+ * on Windows the body still travels as a file, and the whole line stays for the
+ * task text. See decisions/2026/08/28/agent-command-lines-quote-in-the-launch-dialect.md.
  *
  * POSIX has no such ceiling worth caring about (`ARG_MAX` is 1 MB on macOS,
  * 2 MB on Linux), so it keeps the inline form and this file is never written
@@ -22,9 +23,6 @@ import { createLogger } from "./logger";
 const log = createLogger("agent-system-prompt");
 
 export const AGENT_PROMPTS_DIR = join(DEV3_HOME, "data", "agent-prompts");
-
-/** Windows `CreateProcess` command-line ceiling, in characters. */
-export const WINDOWS_COMMAND_LINE_LIMIT = 32767;
 
 /** True when this platform cannot carry the protocol on the command line. */
 export function systemPromptNeedsFile(platform: NodeJS.Platform = process.platform): boolean {
