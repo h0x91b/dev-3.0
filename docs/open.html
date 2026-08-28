@@ -127,7 +127,7 @@ code {
   </div>
   <div id="bad" class="hidden">
     <h1>Nothing to open</h1>
-    <p class="muted">This link is missing a task or project to open.</p>
+    <p class="muted">This link is missing a task, project or space to open.</p>
     <p class="muted" style="margin-top:16px;"><a class="getlink" href="/">Go to dev-3.0</a></p>
   </div>
 </div>
@@ -149,6 +149,8 @@ code {
       deepLink = "dev3://task/" + encodeURIComponent(p.get("task"));
     } else if (p.get("project")) {
       deepLink = "dev3://project/" + encodeURIComponent(p.get("project"));
+    } else if (p.get("space")) {
+      deepLink = "dev3://space/" + encodeURIComponent(p.get("space"));
     }
 
     if (!deepLink) {

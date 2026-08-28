@@ -7,6 +7,7 @@
 // Grammar (host = intent, id in the path, params in the query):
 //   dev3://task/<taskId>
 //   dev3://project/<projectId>
+//   dev3://space/<spaceId>
 //   dev3://new-task?project=<projectId>&text=<url-encoded>
 //
 // macOS-only in practice (Electrobun registers CFBundleURLTypes; Windows/Linux
@@ -36,6 +37,7 @@ export const DEEP_LINK_WEB_BASE = "https://dev3.h0x91b.com";
 export type DeepLinkTarget =
 	| { kind: "task"; taskId: string }
 	| { kind: "project"; projectId: string }
+	| { kind: "space"; spaceId: string }
 	| { kind: "new-task"; projectId?: string; text?: string };
 
 /**
@@ -46,6 +48,8 @@ export type DeepLinkTarget =
 export type DeepLinkNav =
 	| { kind: "task"; taskId: string; projectId: string }
 	| { kind: "project"; projectId: string }
+	/** A space board still names the project it opens on — see `routeSpaceId`. */
+	| { kind: "space"; spaceId: string; projectId: string }
 	| { kind: "new-task"; projectId: string; text: string };
 
 const stripSlashes = (s: string) => s.replace(/^\/+/, "").replace(/\/+$/, "");
@@ -83,6 +87,10 @@ export function parseDeepLink(raw: string): DeepLinkTarget | null {
 			const projectId = decodeId(stripSlashes(url.pathname));
 			return projectId ? { kind: "project", projectId } : null;
 		}
+		case "space": {
+			const spaceId = decodeId(stripSlashes(url.pathname));
+			return spaceId ? { kind: "space", spaceId } : null;
+		}
 		case "new-task": {
 			const projectId = url.searchParams.get("project") || undefined;
 			const text = url.searchParams.get("text") || undefined;
@@ -101,6 +109,19 @@ export function buildTaskDeepLink(taskId: string): string {
 /** `dev3://project/<projectId>` */
 export function buildProjectDeepLink(projectId: string): string {
 	return `${DEEP_LINK_SCHEME}://project/${encodeURIComponent(projectId)}`;
+}
+
+/** `dev3://space/<spaceId>` — the space's unified board. */
+export function buildSpaceDeepLink(spaceId: string): string {
+	return `${DEEP_LINK_SCHEME}://space/${encodeURIComponent(spaceId)}`;
+}
+
+/**
+ * `https://dev3.h0x91b.com/open.html?space=<spaceId>` — the clickable, GitHub-safe
+ * twin of {@link buildSpaceDeepLink}, same bounce as the task link.
+ */
+export function buildSpaceWebLink(spaceId: string): string {
+	return `${DEEP_LINK_WEB_BASE}/open.html?space=${encodeURIComponent(spaceId)}`;
 }
 
 /** `dev3://new-task?project=…&text=…` — both params optional. */

@@ -31,25 +31,43 @@ export function readSpacesRaw(): SpacesFile {
 }
 
 /**
- * `dev3 current` fields for the project's space memberships: the space names
- * plus read-only sibling paths (union across its spaces, deduplicated, the
- * project itself excluded, dangling ids skipped). Empty when the project is in
- * no space, so zero-spaces output stays byte-identical.
+ * `dev3 current` fields for the project's space memberships: the space names,
+ * then the read-only sibling repositories.
+ *
+ * A sibling carries its PROJECT ID, so an agent can address it with
+ * `--project <id>` instead of asking the user to paste one. With more than one
+ * space the siblings are GROUPED per space — a flat union cannot say which
+ * repository belongs to which grouping, which is the whole point of a space.
+ * One space keeps the flat single line (the common case stays as quiet as it was)
+ * and zero spaces still print nothing at all.
  */
 export function spaceFields(projectId: string): Array<[string, string]> {
 	const memberships = spacesOfProject(readSpacesRaw().spaces, projectId);
 	if (memberships.length === 0) return [];
 
 	const byId = new Map(readProjectsForSiblings().map((p) => [p.id, p]));
-	const siblingIds = [...new Set(memberships.flatMap((s) => s.projectIds))].filter((id) => id !== projectId);
-	const siblings = siblingIds
-		.map((id) => byId.get(id))
-		.filter((p): p is ProjectDirect => p !== undefined)
-		.map((p) => `${p.path} (${p.name})`);
+	// Dangling ids (a project deleted, or one this machine never had) are skipped.
+	const siblingsOf = (space: { projectIds: string[] }) =>
+		space.projectIds
+			.filter((id) => id !== projectId)
+			.map((id) => byId.get(id))
+			.filter((p): p is ProjectDirect => p !== undefined)
+			.map((p) => `${p.path} (${p.name}, ${p.id})`);
 
 	const fields: Array<[string, string]> = [["Spaces:", memberships.map((s) => s.name).join(", ")]];
-	if (siblings.length > 0) {
-		fields.push(["Siblings:", `${siblings.join(", ")} [read-only]`]);
+
+	if (memberships.length === 1) {
+		const siblings = siblingsOf(memberships[0]);
+		if (siblings.length > 0) fields.push(["Siblings:", `${siblings.join(", ")} [read-only]`]);
+		return fields;
 	}
+
+	const grouped = memberships
+		.map((space) => [space.name, siblingsOf(space)] as const)
+		.filter(([, siblings]) => siblings.length > 0);
+	if (grouped.length === 0) return fields;
+
+	fields.push(["Siblings:", "[read-only]"]);
+	for (const [name, siblings] of grouped) fields.push([`  ${name}:`, siblings.join(", ")]);
 	return fields;
 }

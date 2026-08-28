@@ -9,8 +9,14 @@ import {
 	buildTaskPrDeepLinkLine,
 	buildTaskPrDeepLinkSection,
 	deepLinkSchemeRegistered,
+	buildSpaceDeepLink,
+	buildSpaceWebLink,
 	DEEP_LINK_WEB_BASE,
 } from "../../shared/deep-link";
+
+vi.mock("../spaces-data", () => ({
+	loadSpacesFile: vi.fn(() => Promise.resolve({ version: 1, spaces: [], order: [] })),
+}));
 
 vi.mock("../data", () => ({
 	loadProjects: vi.fn(),
@@ -19,6 +25,7 @@ vi.mock("../data", () => ({
 }));
 
 import * as data from "../data";
+import * as spacesData from "../spaces-data";
 import { resolveDeepLink } from "../deep-link";
 import {
 	markPendingDeepLinkNav,
@@ -86,6 +93,8 @@ describe("build* + round-trip", () => {
 
 	it("builds and re-parses a project link", () => {
 		expect(parseDeepLink(buildProjectDeepLink("p1"))).toEqual({ kind: "project", projectId: "p1" });
+		expect(parseDeepLink(buildSpaceDeepLink("sp 1/x"))).toEqual({ kind: "space", spaceId: "sp 1/x" });
+		expect(buildSpaceWebLink("sp_1")).toBe(`${DEEP_LINK_WEB_BASE}/open.html?space=sp_1`);
 	});
 
 	it("round-trips new-task text with special characters", () => {
@@ -184,6 +193,33 @@ describe("resolveDeepLink", () => {
 
 	it("returns null for an unknown project", async () => {
 		expect(await resolveDeepLink({ kind: "project", projectId: "nope" })).toBeNull();
+	});
+
+	it("resolves a space to its first member project that exists here", async () => {
+		vi.mocked(spacesData.loadSpacesFile).mockResolvedValue({
+			version: 1,
+			spaces: [{ id: "sp_1", name: "Client X", projectIds: ["ghost", "p2"], createdAt: 1 }],
+			order: ["sp_1"],
+		});
+		expect(await resolveDeepLink({ kind: "space", spaceId: "sp_1" })).toEqual({
+			kind: "space",
+			spaceId: "sp_1",
+			projectId: "p2",
+		});
+	});
+
+	it("returns null for a deleted space, and for one whose members are all gone", async () => {
+		vi.mocked(spacesData.loadSpacesFile).mockResolvedValue({
+			version: 1,
+			spaces: [
+				{ id: "sp_dead", name: "Gone", projectIds: ["p1"], createdAt: 1, deleted: true },
+				{ id: "sp_empty", name: "Empty", projectIds: ["ghost"], createdAt: 1 },
+			],
+			order: [],
+		});
+		expect(await resolveDeepLink({ kind: "space", spaceId: "sp_dead" })).toBeNull();
+		expect(await resolveDeepLink({ kind: "space", spaceId: "sp_empty" })).toBeNull();
+		expect(await resolveDeepLink({ kind: "space", spaceId: "sp_never" })).toBeNull();
 	});
 
 	it("keeps a valid requested project for new-task", async () => {

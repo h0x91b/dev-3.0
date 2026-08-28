@@ -4,6 +4,7 @@
 // id, or no projects exist at all) so the caller can ignore the open quietly.
 
 import { loadProjects, loadTasks, loadVirtualProjects } from "./data";
+import { loadSpacesFile } from "./spaces-data";
 import type { Project } from "../shared/types";
 import type { DeepLinkNav, DeepLinkTarget } from "../shared/deep-link";
 
@@ -29,6 +30,15 @@ export async function resolveDeepLink(target: DeepLinkTarget): Promise<DeepLinkN
 		case "project": {
 			const found = projects.find((p) => p.id === target.projectId);
 			return found ? { kind: "project", projectId: found.id } : null;
+		}
+		case "space": {
+			// A space board opens ON a project, so a space whose members are all gone
+			// from this machine is as dead as a deleted one: the caller ignores it and
+			// the renderer lands the user on the dashboard.
+			const file = await loadSpacesFile();
+			const space = file.spaces.find((s) => s.id === target.spaceId && !s.deleted);
+			const projectId = space?.projectIds.find((id) => projects.some((p) => p.id === id));
+			return projectId ? { kind: "space", spaceId: target.spaceId, projectId } : null;
 		}
 		case "new-task": {
 			const requested = target.projectId && projects.some((p) => p.id === target.projectId) ? target.projectId : undefined;

@@ -52,6 +52,8 @@ interface CreateTaskModalProps {
 	initialText?: string;
 	onClose: () => void;
 	onCreateAndRun?: (task: Task, project: Project) => void;
+	/** The user picked a different project in the field. Lets a space board remember it. */
+	onProjectChange?: (projectId: string) => void;
 	onOpenAutomations?: (project: Project) => void;
 	/**
 	 * Reopens this popup on an existing draft instead of creating a task: every
@@ -65,7 +67,7 @@ function sameLabelIds(left: string[], right: string[]): boolean {
 	return left.length === right.length && left.every((id) => right.includes(id));
 }
 
-function CreateTaskModal({ project: initialProject, projects, dispatch, initialText, onClose, onCreateAndRun, onOpenAutomations, draftTask }: CreateTaskModalProps) {
+function CreateTaskModal({ project: initialProject, projects, dispatch, initialText, onClose, onCreateAndRun, onProjectChange, onOpenAutomations, draftTask }: CreateTaskModalProps) {
 	const t = useT();
 	const privacy = useProjectPrivacy();
 	const trapRef = useFocusTrap<HTMLDivElement>();
@@ -143,6 +145,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, initialT
 		if (creating || projectId === selectedProjectId) return;
 		projectBranchRequestRef.current += 1;
 		setSelectedProjectId(projectId);
+		onProjectChange?.(projectId);
 		setSelectedLabelIds([]);
 		setLabelPickerOpen(false);
 		setSelectedBranch(null);

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
+import { useAppState, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type OpenSettingsSectionDetail, type Route } from "./state";
+import { lastProjectForSpace, rememberProjectForSpace } from "./utils/spaceBoardMemory";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
@@ -831,13 +832,17 @@ function App() {
 				openTaskFromNotification(nav.taskId, nav.projectId);
 			} else if (nav.kind === "project") {
 				navigateToProject(nav.projectId);
+			} else if (nav.kind === "space") {
+				// The backend already picked a member project that exists here, so this
+				// never has to re-resolve; a dead space never reaches the renderer.
+				navigate({ screen: "project", projectId: nav.projectId, spaceId: nav.spaceId });
 			} else {
 				navigateToProject(nav.projectId);
 				setCreateTaskInitialText(nav.text);
 				setCreateTaskProjectId(nav.projectId);
 			}
 		},
-		[navigateToProject, openTaskFromNotification],
+		[navigate, navigateToProject, openTaskFromNotification],
 	);
 
 	const cycleVariant = useCallback((direction: -1 | 1): boolean => {
@@ -994,9 +999,15 @@ function App() {
 		const projectId = getProjectIdForRoute(state.route);
 		if (!projectId) return false;
 		if (document.querySelector('[data-create-task-modal="true"]')) return false;
-		setCreateTaskProjectId((current) => current ?? projectId);
+		// On a space board the anchor project is an accident of how the user got
+		// here, so the field starts on the project they last created in on THIS
+		// board — and falls back to the anchor when that project has left.
+		const spaceId = routeSpaceId(state.route);
+		const remembered = spaceId ? lastProjectForSpace(spaceId) : null;
+		const start = remembered && state.projects.some((p) => p.id === remembered) ? remembered : projectId;
+		setCreateTaskProjectId((current) => current ?? start);
 		return true;
-	}, [getProjectIdForRoute, state.route]);
+	}, [getProjectIdForRoute, state.projects, state.route]);
 
 	/**
 	 * Open a space's unified board. A space is a SUBJECT, so the route still names
@@ -2621,6 +2632,13 @@ function App() {
 	const createTaskProject = createTaskProjectId
 		? state.projects.find((project) => project.id === createTaskProjectId) ?? null
 		: null;
+	// On a space board the field offers the space's members and nothing else: work
+	// started from this board cannot land outside the space by a mis-click.
+	const createTaskSpaceId = routeSpaceId(state.route);
+	const createTaskSpace = createTaskSpaceId ? appSpaces.find((sp) => sp.id === createTaskSpaceId) ?? null : null;
+	const createTaskProjects = createTaskSpace
+		? state.projects.filter((p) => createTaskSpace.projectIds.includes(p.id))
+		: state.projects;
 	// While the public tunnel is still coming up, the QR and the URL still point at
 	// the LAN address. Scanned from another network that link just fails, so publish
 	// nothing until the tunnel hostname lands.
@@ -2746,7 +2764,10 @@ function App() {
 			{createTaskProject && (
 				<CreateTaskModal
 					project={createTaskProject}
-					projects={state.projects}
+					projects={createTaskProjects}
+					onProjectChange={(projectId) => {
+						if (createTaskSpaceId) rememberProjectForSpace(createTaskSpaceId, projectId);
+					}}
 					dispatch={dispatch}
 					initialText={createTaskInitialText}
 					onClose={() => {
