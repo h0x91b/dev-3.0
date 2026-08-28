@@ -7,12 +7,20 @@ import { RPC_STATUS_EVENT } from "../../diagnostics";
 import type { Route } from "../../state";
 import { RouteHost } from "../../test-utils/route-host";
 import ProjectView from "../ProjectView";
+import { api } from "../../rpc";
+import { toast } from "../../toast";
 
 // Mutable so a test can flip to remote/browser mode; a getter proves the layout
 // no longer branches on it (regression guard for #992 over-hiding the sidebar).
 const rpcMock = vi.hoisted(() => ({ isElectrobun: true }));
 vi.mock("../../rpc", () => ({
-	api: { request: { getTasks: vi.fn().mockResolvedValue([]), getAgents: vi.fn().mockResolvedValue([]) } },
+	api: {
+		request: {
+			getTasks: vi.fn().mockResolvedValue([]),
+			getAgents: vi.fn().mockResolvedValue([]),
+			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
+		},
+	},
 	get isElectrobun() {
 		return rpcMock.isElectrobun;
 	},
@@ -28,6 +36,7 @@ vi.mock("../KanbanBoard", () => ({
 		</div>
 	),
 }));
+vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 vi.mock("../TaskInfoPanel", () => ({ default: () => <div data-testid="info-panel" /> }));
 vi.mock("../ActiveTasksSidebar", () => ({ default: () => <div data-testid="sidebar" /> }));
 vi.mock("../TaskWorkspacePane", () => ({
@@ -345,5 +354,70 @@ describe("ProjectView narrow viewport (mobile zoom)", () => {
 		const navigate = vi.fn();
 		renderView({ taskView: true, navigate });
 		await waitFor(() => expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" }));
+	});
+});
+
+
+// ---- A board whose subject is a space ----
+
+describe("ProjectView — space as the subject", () => {
+	const web: Project = { ...project, id: "p2", name: "web", path: "/w" };
+	const space = { id: "sp_1", name: "Client X", parentId: null, projectIds: ["p1", "p2"], createdAt: 1 };
+
+	function renderSpaceView(spaces: unknown[], navigate = vi.fn()) {
+		vi.mocked(api.request.getSpaces).mockResolvedValue({ version: 1, spaces, order: ["sp_1"] } as never);
+		const route: Route = { screen: "project", projectId: "p1", spaceId: "sp_1" };
+		render(
+			<I18nProvider>
+				<RouteHost
+					route={route}
+					element={
+						<ProjectView
+							projectId="p1"
+							spaceId="sp_1"
+							projects={[project, web]}
+							tasks={[]}
+							dispatch={vi.fn()}
+							route={route}
+							navigate={navigate}
+							bellCounts={new Map()}
+							taskPorts={new Map()}
+							taskDevServers={new Map()}
+						/>
+					}
+				/>
+			</I18nProvider>,
+		);
+		return { navigate };
+	}
+
+	beforeEach(() => {
+		vi.mocked(api.request.getTasks).mockClear();
+		vi.mocked(toast.info).mockClear();
+	});
+
+	// Spaces arrive over RPC, so the board briefly shows the anchor alone and then
+	// widens; what matters is that it ends up fetching every member.
+	it("fetches one snapshot per member project", async () => {
+		renderSpaceView([space]);
+		await waitFor(() => {
+			const ids = [...new Set(vi.mocked(api.request.getTasks).mock.calls.map((call) => call[0].projectId))].sort();
+			expect(ids).toEqual(["p1", "p2"]);
+		});
+	});
+
+	// A route that lost its subject is the same class as a deleted task: leave for
+	// the dashboard and say why, rather than render a board about nothing.
+	it("lands on the dashboard with a toast when the space is gone", async () => {
+		const { navigate } = renderSpaceView([]);
+		await waitFor(() => expect(navigate).toHaveBeenCalledWith({ screen: "dashboard" }));
+		expect(toast.info).toHaveBeenCalled();
+	});
+
+	it("a renamed space is not a disappearance — the user stays put", async () => {
+		const { navigate } = renderSpaceView([{ ...space, name: "Client Y" }]);
+		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalled());
+		expect(navigate).not.toHaveBeenCalledWith({ screen: "dashboard" });
+		expect(toast.info).not.toHaveBeenCalled();
 	});
 });

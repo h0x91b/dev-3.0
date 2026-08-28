@@ -1,4 +1,4 @@
-import { reducer, initialState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward, routeDiffRequest, routeWithDiff, routeWithoutDiff } from "../state";
+import { reducer, initialState, routeTaskId, projectIdForRoute, routeSpaceId, routeAfterTaskClosed, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward, routeDiffRequest, routeWithDiff, routeWithoutDiff } from "../state";
 import type { Route } from "../state";
 import type { TaskInlineDiffRequest } from "../components/task-inline-diff";
 import type { AppState, AppAction } from "../state";
@@ -1168,5 +1168,66 @@ describe("inline diff as a history step", () => {
 		expect(routeDiffRequest(board)).toBeNull();
 		// A project route with no active task cannot hold a diff.
 		expect(routeWithDiff(board, request)).toBeNull();
+	});
+});
+
+
+// ---- A space is a subject of the board route, not a destination ----
+
+describe("routeSpaceId", () => {
+	it("is null on every route that is not a board about a space", () => {
+		expect(routeSpaceId({ screen: "dashboard" })).toBeNull();
+		expect(routeSpaceId({ screen: "project", projectId: "p1" })).toBeNull();
+		expect(routeSpaceId({ screen: "task", projectId: "p1", taskId: "t1" })).toBeNull();
+	});
+
+	it("is the space when the board carries one", () => {
+		expect(routeSpaceId({ screen: "project", projectId: "p1", spaceId: "sp_1" })).toBe("sp_1");
+	});
+
+	// The whole reason a space rides on the board route rather than becoming its
+	// own screen: nothing that reads a project out of the route starts seeing null.
+	it("a space board still resolves to a project", () => {
+		expect(projectIdForRoute({ screen: "project", projectId: "p1", spaceId: "sp_1" })).toBe("p1");
+	});
+});
+
+describe("reducer — a board whose subject is a space", () => {
+	const spaceRoute: Route = { screen: "project", projectId: "p1", spaceId: "sp_1" };
+	const taskIn = (projectId: string, id: string): Task => ({ ...mockTask, id, projectId });
+
+	function onSpaceBoard(tasks: Task[] = []): AppState {
+		return { ...initialState, route: spaceRoute, routeHistory: [spaceRoute], currentProjectTasks: tasks };
+	}
+
+	it("keeps one fetch per member project instead of overwriting the board", () => {
+		let state = onSpaceBoard();
+		state = reducer(state, { type: "setTasks", projectId: "p1", tasks: [taskIn("p1", "a")] });
+		state = reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "b")] });
+		expect(state.currentProjectTasks.map((t) => t.id).sort()).toEqual(["a", "b"]);
+	});
+
+	it("a re-fetch replaces only that project's slice", () => {
+		let state = onSpaceBoard([taskIn("p1", "a"), taskIn("p2", "b")]);
+		state = reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "c")] });
+		expect(state.currentProjectTasks.map((t) => t.id).sort()).toEqual(["a", "c"]);
+	});
+
+	it("keeps a card pushed for a member project that is not the anchor", () => {
+		const state = reducer(onSpaceBoard(), { type: "updateTask", task: taskIn("p2", "b") });
+		expect(state.currentProjectTasks.map((t) => t.id)).toEqual(["b"]);
+	});
+
+	it("zooming out from a project to its space empties the cached list, so it refetches", () => {
+		const projectRoute: Route = { screen: "project", projectId: "p1" };
+		const state: AppState = { ...initialState, route: projectRoute, routeHistory: [projectRoute], currentProjectTasks: [taskIn("p1", "a")] };
+		const next = reducer(state, { type: "navigate", route: spaceRoute });
+		expect(next.currentProjectTasks).toEqual([]);
+	});
+
+	it("a project board still refuses a fetch that belongs to another project", () => {
+		const projectRoute: Route = { screen: "project", projectId: "p1" };
+		const state: AppState = { ...initialState, route: projectRoute, routeHistory: [projectRoute] };
+		expect(reducer(state, { type: "setTasks", projectId: "p2", tasks: [taskIn("p2", "b")] })).toBe(state);
 	});
 });

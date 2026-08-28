@@ -24,6 +24,7 @@ vi.mock("../../rpc", () => ({
 			resetTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
 			getProjectPRs: vi.fn().mockResolvedValue([]),
+			moveTaskToCustomColumn: vi.fn(async ({ taskId }: { taskId: string }) => ({ id: taskId })),
 		},
 	},
 }));
@@ -111,6 +112,8 @@ async function renderBoardWith(props: Partial<React.ComponentProps<typeof Kanban
 			<I18nProvider>
 				<KanbanBoard
 					project={props.project ?? project}
+					space={props.space}
+					memberProjects={props.memberProjects}
 					tasks={props.tasks ?? []}
 					dispatch={props.dispatch ?? vi.fn()}
 					navigate={props.navigate ?? vi.fn()}
@@ -840,5 +843,95 @@ describe("task sort order follows the settings push", () => {
 			);
 		});
 		expect(renderedTaskIds()).toEqual(["fresh", "stale"]);
+	});
+});
+
+
+// ---- The board's subject is a space (the unified cross-project board) ----
+
+describe("KanbanBoard — space as the subject", () => {
+	const web: Project = { ...project, id: "p2", name: "web", customColumns: [{ id: "w-hold", name: "  ON   HOLD ", color: "#00f", llmInstruction: "" }] };
+	// The FIRST project names the merged lane; the second one's stray capitals and
+	// double spaces must not split it into a second lane.
+	const api2: Project = { ...project, id: "p1", name: "api", customColumns: [{ id: "a-hold", name: "On hold", color: "#f00", llmInstruction: "" }] };
+	const space = { id: "sp_1", name: "Client X", parentId: null, projectIds: ["p1", "p2"], createdAt: 1 };
+
+	const apiTask = makeTask({ id: "t-api", seq: 1, projectId: "p1", title: "api work", description: "api work" });
+	const webTask = makeTask({ id: "t-web", seq: 2, projectId: "p2", title: "web work", description: "web work" });
+
+	async function renderSpaceBoard(tasks: Task[]) {
+		return renderBoardWith({ project: api2, space, memberProjects: [api2, web], tasks });
+	}
+
+	it("shows cards from every member project on one set of lanes", async () => {
+		await renderSpaceBoard([apiTask, webTask]);
+		expect(screen.getByText("api work")).toBeTruthy();
+		expect(screen.getByText("web work")).toBeTruthy();
+	});
+
+	it("merges two projects' same-named custom columns into ONE lane, however they were capitalised", async () => {
+		await renderSpaceBoard([apiTask, webTask]);
+		const holdLanes = getColumnLabels().filter((label) => label.toLowerCase().trim().replace(/\s+/g, " ") === "on hold");
+		expect(holdLanes).toHaveLength(1);
+	});
+
+	it("says how many projects a merged lane covers", async () => {
+		await renderSpaceBoard([apiTask, webTask]);
+		expect(screen.getAllByTitle("2 projects").length).toBeGreaterThan(0);
+	});
+
+	it("names each card's own project", async () => {
+		await renderSpaceBoard([apiTask, webTask]);
+		const marks = screen.getAllByTestId("task-card-project-mark").map((el) => el.textContent);
+		expect(marks).toContain("api");
+		expect(marks).toContain("web");
+	});
+
+	it("a card in a custom column renders in that merged lane and nowhere else", async () => {
+		const held = makeTask({ id: "t-held", seq: 3, projectId: "p2", title: "held", description: "held", customColumnId: "w-hold" });
+		await renderSpaceBoard([held]);
+		const lane = getColumnEl("On hold");
+		expect(within(lane).getByText("held")).toBeTruthy();
+		// Exactly one card on the whole board — it did not also land in a status column.
+		expect(screen.getAllByText("held")).toHaveLength(1);
+	});
+
+	it("a drop on a merged lane writes the dropped card's OWN project's column id", async () => {
+		await renderSpaceBoard([webTask]);
+		const card = screen.getByText("web work").closest("[data-task-id]")!;
+		dispatchDrag(card, "dragstart", { dataTransfer: makeDt() });
+		const lane = getColumnEl("On hold");
+		dispatchDrag(lane, "drop", { dataTransfer: makeDt({ "text/plain": "t-web" }) });
+		await waitFor(() =>
+			expect(api.request.moveTaskToCustomColumn).toHaveBeenCalledWith({
+				taskId: "t-web",
+				projectId: "p2",
+				customColumnId: "w-hold",
+			}),
+		);
+	});
+
+	it("dims a lane the dragged card's project has no column in, and refuses the drop", async () => {
+		vi.mocked(api.request.moveTaskToCustomColumn).mockClear();
+		const deployer: Project = { ...project, id: "p2", name: "web", customColumns: [{ id: "w-deploy", name: "Deploy", color: "#00f", llmInstruction: "" }] };
+		await renderBoardWith({ project: api2, space, memberProjects: [api2, deployer], tasks: [apiTask, webTask] });
+
+		const card = screen.getByText("api work").closest("[data-task-id]")!;
+		dispatchDrag(card, "dragstart", { dataTransfer: makeDt() });
+
+		// "Deploy" belongs to web only, so an api card cannot enter it...
+		const deploy = getColumnEl("Deploy");
+		expect(deploy.className).toContain("opacity-40");
+		// ...while "On hold", which api does have, stays fully lit.
+		expect(getColumnEl("On hold").className).not.toContain("opacity-40");
+
+		dispatchDrag(deploy, "drop", { dataTransfer: makeDt({ "text/plain": "t-api" }) });
+		await act(async () => {});
+		expect(api.request.moveTaskToCustomColumn).not.toHaveBeenCalled();
+	});
+
+	it("no card carries a project mark on a project's own board", async () => {
+		await renderBoardWith({ tasks: [apiTask] });
+		expect(screen.queryByTestId("task-card-project-mark")).toBeNull();
 	});
 });
