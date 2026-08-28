@@ -5,6 +5,7 @@ import type { TFunction } from "../../i18n";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import SettingsToggle from "./SettingsToggle";
+import { MIN_REMOTE_STATIC_CODE_LENGTH, remoteStaticCodeError } from "../../../shared/remote-static-code";
 
 export default function SystemSettingsSection({
 	t,
@@ -257,6 +258,11 @@ function StaticAccessCodeField({
 }) {
 	const [draft, setDraft] = useState(value);
 	const [revealed, setRevealed] = useState(false);
+	const trimmed = draft.trim();
+	// The host drops a code that fails this check and falls back to QR links, so
+	// saving one would produce a field that looks set and a feature that is off.
+	// Same validator the CLI and the server use — the floor lives in one place.
+	const problem = trimmed ? remoteStaticCodeError(trimmed) : null;
 
 	return (
 		<div>
@@ -273,8 +279,12 @@ function StaticAccessCodeField({
 					value={draft}
 					placeholder={t("settings.staticAccessCodePlaceholder")}
 					onChange={(event) => setDraft(event.target.value)}
-					onBlur={() => onChange(draft.trim())}
-					className="flex-1 px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono outline-none focus:border-accent/40 transition-colors streamer-private"
+					onBlur={() => { if (!problem) onChange(trimmed); }}
+					aria-invalid={problem !== null}
+					aria-describedby={problem ? "static-access-code-error" : undefined}
+					className={`flex-1 px-4 py-3 bg-raised border rounded-xl text-fg text-sm font-mono outline-none transition-colors streamer-private ${
+						problem ? "border-danger" : "border-edge focus:border-accent/40"
+					}`}
 				/>
 				<button
 					type="button"
@@ -285,7 +295,11 @@ function StaticAccessCodeField({
 					{t(revealed ? "settings.staticAccessCodeHide" : "settings.staticAccessCodeReveal")}
 				</button>
 			</div>
-			{draft.trim() ? (
+			{problem ? (
+				<p id="static-access-code-error" data-testid="static-access-code-error" role="alert" className="text-danger text-xs mt-2 leading-snug">
+					{t("settings.staticAccessCodeTooShort", { min: String(MIN_REMOTE_STATIC_CODE_LENGTH) })}
+				</p>
+			) : trimmed ? (
 				<p data-testid="static-access-code-warning" className="text-warning-strong text-xs mt-2 leading-snug">
 					{t("settings.staticAccessCodeTunnelWarning")}
 				</p>

@@ -154,6 +154,7 @@ vi.mock("../remote-access-server", () => ({
 	getAccessUrl: vi.fn(async () => "http://10.0.0.5:41234/?token=fresh"),
 	getServerPort: vi.fn(() => 0),
 	getStaticCode: vi.fn(() => null),
+	getSignInLink: vi.fn(async () => null),
 }));
 
 // `tunnelManager` too: `port-tunnels` registers its change hook at module scope,
@@ -370,6 +371,7 @@ describe("remote.accessUrl", () => {
 			port: 41234,
 			tunnelUrl: null,
 			staticCode: null,
+			signInLink: null,
 		});
 	});
 });

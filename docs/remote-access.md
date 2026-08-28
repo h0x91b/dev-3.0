@@ -122,11 +122,34 @@ The same code can be set without the flag, in **Settings → System → Remote a
 (stored in plain text in the settings file). `DEV3_REMOTE_STATIC_CODE` wins over that
 field where it is set, which is what headless boxes and Docker images use.
 
-Two things worth knowing:
+Three things worth knowing:
 
 - The code coexists with the QR flow. A new device may scan a QR **or** type the code.
 - Changing the code does not sign out devices that are already signed in — a new code
   applies to new sign-ins only.
+- A code shorter than the minimum length is **ignored**, and remote access falls back to
+  one-time QR links. The Settings field refuses to save one; a hand-edited settings file
+  gets a warning in the log instead.
+
+#### The bookmarkable sign-in link
+
+Typing 30 characters on a phone every time the 24-hour session lapses gets old, so
+`dev3 remote url` also prints a link that signs you in with nothing typed:
+
+```
+https://something.trycloudflare.com/?token=<one-time>#code=<your-code>
+```
+
+The code rides the **fragment** (`#…`). Browsers resolve fragments locally and never put
+them on the wire, so the code reaches no server log, no tunnel log and no `Referer` header.
+The app strips it from the address bar on the first paint. In the desktop app the same link
+is behind **Copy sign-in link** in the Remote Access modal — copied to the clipboard, never
+shown on screen, because that modal is the one people screenshot.
+
+What the fragment does **not** do: it is still part of the URL, so it enters the browser's
+own history, and a bookmark holds the code for as long as the bookmark lives. Anyone who
+reaches that bookmark is signed in. That is the trade — a bookmark is your own store, a
+proxy log is not.
 
 Anyone holding the code can sign in from anywhere the server is reachable, including over
 the public tunnel, so make it long. The CLI prints a warning when a code and a public

@@ -208,6 +208,9 @@ const dashboard = {
 	"remote.staticCodeActive": "Код доступа включён",
 	"remote.staticCodeActiveDesc": "Любой, у кого есть ваш код доступа, войдёт, введя его на экране входа — из любого браузера и сколько угодно раз. Изменить: Настройки → Система.",
 	"remote.staticCodeTunnelWarning": "Публичный туннель поднят, поэтому код работает из любой точки интернета.",
+	"remote.copySignInLink": "Скопировать ссылку для входа",
+	"remote.copySignInLinkDone": "Ссылка скопирована",
+	"remote.signInLinkHint": "Ссылка для закладки: открыл — уже внутри, ничего вводить не надо. Код едет во #фрагменте, на сервер он не уходит — но живёт в самой закладке.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi не установлен",

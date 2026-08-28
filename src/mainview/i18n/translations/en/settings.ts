@@ -293,6 +293,7 @@ const settings = {
 	"settings.staticAccessCodeHide": "Hide",
 	"settings.staticAccessCodeTunnelWarning": "While the public tunnel is on, this code is reachable from anywhere on the internet.",
 	"settings.staticAccessCodeEnvHint": "DEV3_REMOTE_STATIC_CODE overrides this field where it is set (headless servers, Docker). Changing the code does not sign out devices that are already signed in.",
+	"settings.staticAccessCodeTooShort": "Too short — use at least {min} characters. A shorter code is ignored and remote access falls back to one-time QR links.",
 	"settings.preventSleep": "Prevent sleep",
 	"settings.preventSleepDesc": "Keep your system awake while dev-3.0 is open (forced on while remote access is active). Also toggleable from the header.",
 	"settings.preventSleepNotAvailable": "No sleep inhibitor found (caffeinate on macOS, systemd-inhibit on Linux).",

@@ -303,6 +303,7 @@ const settings = {
 	"settings.staticAccessCodeHide": "Скрыть",
 	"settings.staticAccessCodeTunnelWarning": "Пока поднят публичный туннель, этот код доступен из любой точки интернета.",
 	"settings.staticAccessCodeEnvHint": "Где задана DEV3_REMOTE_STATIC_CODE, она перебивает это поле (headless-серверы, Docker). Смена кода не разлогинивает устройства, которые уже вошли.",
+	"settings.staticAccessCodeTooShort": "Слишком короткий — нужно минимум {min} символов. Более короткий код игнорируется, и удалённый доступ откатывается на одноразовые QR-ссылки.",
 	"settings.preventSleep": "Не давать уснуть",
 	"settings.preventSleepDesc": "Не даёт системе уснуть, пока открыт dev-3.0 (форсится при активном удалённом доступе). Также переключается из шапки.",
 	"settings.preventSleepNotAvailable": "Инструмент для блокировки сна не найден (caffeinate на macOS, systemd-inhibit на Linux).",

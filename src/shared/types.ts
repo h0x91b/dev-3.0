@@ -5216,7 +5216,7 @@ export type AppRPCSchema = {
 			};
 			getRemoteAccessQR: {
 				params: { tunnel?: boolean; host?: string };
-				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; tunnelBinaryInstalled: boolean; tunnelProvider: "cloudflare" | "custom" | "misconfigured"; tunnelFailureReason: string | null; interfaces: RemoteNetInterface[]; selectedHost: string; staticCodeActive: boolean };
+				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; tunnelBinaryInstalled: boolean; tunnelProvider: "cloudflare" | "custom" | "misconfigured"; tunnelFailureReason: string | null; interfaces: RemoteNetInterface[]; selectedHost: string; staticCodeActive: boolean; signInLink: string | null };
 			};
 			startTunnel: {
 				params: void;
@@ -5620,7 +5620,7 @@ export type AppRPCSchema = {
 			zoomReset: {};
 			osc52Clipboard: { taskId: string; text: string; len: number };
 			qrTokenConsumed: {};
-			showRemoteAccessQR: { qrDataUrl: string; accessUrl: string; tunnelState: string; tunnelBinaryInstalled: boolean; tunnelProvider: "cloudflare" | "custom" | "misconfigured"; tunnelFailureReason?: string | null; autoStartTunnel?: boolean; staticCodeActive?: boolean };
+			showRemoteAccessQR: { qrDataUrl: string; accessUrl: string; tunnelState: string; tunnelBinaryInstalled: boolean; tunnelProvider: "cloudflare" | "custom" | "misconfigured"; tunnelFailureReason?: string | null; autoStartTunnel?: boolean; staticCodeActive?: boolean; signInLink?: string | null };
 			/**
 			 * Universal menu-action dispatch. The bun side fires this whenever the
 			 * native menu emits an `application-menu-clicked` event whose action is

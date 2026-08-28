@@ -113,6 +113,8 @@ type RemoteAccessQRData = {
 	selectedHost?: string;
 	/** A permanent access code is configured on the host — the code itself never travels here. */
 	staticCodeActive?: boolean;
+	/** Bookmarkable link carrying the code in its fragment; copied, never displayed. */
+	signInLink?: string | null;
 };
 
 function isRemoteTunnelActive(tunnelState?: string): boolean {
@@ -451,6 +453,7 @@ function App() {
 	// so waiting for the rpc:authFailed event alone would miss it and leave the
 	// user on an eternal "Loading…" spinner.
 	const [authFailed, setAuthFailed] = useState(() => getRpcConnectionState() === "auth-failed");
+	const [signInLinkCopied, setSignInLinkCopied] = useState(false);
 
 	useEffect(() => {
 		function onAuthFailed() { setAuthFailed(true); }
@@ -2910,6 +2913,27 @@ function App() {
 									<p data-testid="remote-static-code-tunnel-warning" className="text-warning-strong text-xs leading-snug">
 										{t("remote.staticCodeTunnelWarning")}
 									</p>
+								)}
+								{remoteQR.signInLink && (
+									<>
+										<p className="text-fg-muted text-xs leading-snug pt-1">{t("remote.signInLinkHint")}</p>
+										{/* Copied, never rendered: the link holds the code, and this modal
+										    is the one people screenshot to share the QR. */}
+										<button
+											type="button"
+											data-testid="remote-copy-sign-in-link"
+											onClick={async () => {
+												try {
+													await navigator.clipboard.writeText(remoteQR.signInLink!);
+													setSignInLinkCopied(true);
+													setTimeout(() => setSignInLinkCopied(false), 2000);
+												} catch { /* clipboard blocked — nothing copied, nothing claimed */ }
+											}}
+											className="w-full min-h-8 px-3 py-1.5 rounded-lg border border-edge text-fg-2 text-xs hover:text-fg hover:bg-elevated hover:border-edge-active transition-[color,background-color,border-color,transform] active:scale-[0.96]"
+										>
+											{t(signInLinkCopied ? "remote.copySignInLinkDone" : "remote.copySignInLink")}
+										</button>
+									</>
 								)}
 							</div>
 						)}

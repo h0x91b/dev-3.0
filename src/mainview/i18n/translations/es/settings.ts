@@ -293,6 +293,7 @@ const settings = {
 	"settings.staticAccessCodeHide": "Ocultar",
 	"settings.staticAccessCodeTunnelWarning": "Mientras el túnel público esté activo, este código es accesible desde cualquier lugar de internet.",
 	"settings.staticAccessCodeEnvHint": "DEV3_REMOTE_STATIC_CODE tiene prioridad sobre este campo donde esté definida (servidores headless, Docker). Cambiar el código no cierra la sesión de los dispositivos que ya han entrado.",
+	"settings.staticAccessCodeTooShort": "Demasiado corto: usa al menos {min} caracteres. Un código más corto se ignora y el acceso remoto vuelve a los enlaces QR de un solo uso.",
 	"settings.preventSleep": "Evitar suspensión",
 	"settings.preventSleepDesc": "Mantiene el sistema despierto mientras dev-3.0 está abierto (forzado cuando el acceso remoto está activo). También se alterna desde la cabecera.",
 	"settings.preventSleepNotAvailable": "No se encontró herramienta para inhibir suspensión (caffeinate en macOS, systemd-inhibit en Linux).",

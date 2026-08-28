@@ -104,11 +104,31 @@ describe("static access code", () => {
 		expect(field).toHaveAttribute("type", "text");
 	});
 
+	// The host DROPS a code below the floor and falls back to QR links, so saving
+	// one would leave a field that looks set and a feature that is quietly off.
+	it("refuses to save a code shorter than the shared minimum", async () => {
+		const { onStaticAccessCodeChange } = renderSection();
+		await userEvent.type(screen.getByTestId("static-access-code"), "short");
+		expect(screen.getByTestId("static-access-code-error")).toBeInTheDocument();
+
+		await userEvent.tab();
+		expect(onStaticAccessCodeChange).not.toHaveBeenCalled();
+	});
+
+	it("saves once the code clears the minimum", async () => {
+		const { onStaticAccessCodeChange } = renderSection();
+		await userEvent.type(screen.getByTestId("static-access-code"), "long-enough-code");
+		expect(screen.queryByTestId("static-access-code-error")).not.toBeInTheDocument();
+
+		await userEvent.tab();
+		expect(onStaticAccessCodeChange).toHaveBeenCalledWith("long-enough-code");
+	});
+
 	it("warns about public reach only while a code is set", async () => {
 		renderSection();
 		expect(screen.queryByTestId("static-access-code-warning")).not.toBeInTheDocument();
 
-		await userEvent.type(screen.getByTestId("static-access-code"), "sesame");
+		await userEvent.type(screen.getByTestId("static-access-code"), "sesame-open-up");
 		expect(screen.getByTestId("static-access-code-warning")).toBeInTheDocument();
 	});
 });

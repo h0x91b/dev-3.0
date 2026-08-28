@@ -67,6 +67,7 @@ vi.mock("../rpc", () => ({
 				interfaces: [],
 				selectedHost: "127.0.0.1",
 				staticCodeActive: false,
+				signInLink: null,
 			}),
 			stopTunnel: vi.fn().mockResolvedValue(undefined),
 			readArtifactContent: vi.fn().mockResolvedValue({ html: "<p>artifact</p>", assets: [] }),
@@ -2076,6 +2077,55 @@ describe("App keyboard shortcuts", () => {
 			expect(document.body.textContent).not.toContain("sesame");
 		});
 
+		// The link is copied, never rendered: this modal is the one people
+		// screenshot to share the QR, and the link holds the permanent code.
+		it("copies the sign-in link without ever putting it on screen", async () => {
+			await renderApp();
+			const link = "https://foo.trycloudflare.com/?token=one-time#code=sesame-open-up";
+			const writeText = vi.fn().mockResolvedValue(undefined);
+			Object.assign(navigator, { clipboard: { writeText } });
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,tunnel",
+					accessUrl: "https://foo.trycloudflare.com/?token=one-time",
+					tunnelState: "connected",
+					tunnelBinaryInstalled: true,
+					tunnelProvider: "cloudflare" as const,
+					tunnelFailureReason: null,
+					staticCodeActive: true,
+					signInLink: link,
+				},
+			}));
+
+			const button = await screen.findByTestId("remote-copy-sign-in-link");
+			expect(document.body.textContent).not.toContain("sesame-open-up");
+
+			await userEvent.click(button);
+			expect(writeText).toHaveBeenCalledWith(link);
+			expect(await screen.findByText("Sign-in link copied")).toBeInTheDocument();
+		});
+
+		it("offers no sign-in link when the host has no access code", async () => {
+			await renderApp();
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,local",
+					accessUrl: "http://192.168.0.1:1234/?token=t",
+					tunnelState: "idle",
+					tunnelBinaryInstalled: true,
+					tunnelProvider: "cloudflare" as const,
+					tunnelFailureReason: null,
+					staticCodeActive: false,
+					signInLink: null,
+				},
+			}));
+
+			await screen.findByRole("dialog");
+			expect(screen.queryByTestId("remote-copy-sign-in-link")).not.toBeInTheDocument();
+		});
+
 		it("says nothing about an access code when none is configured", async () => {
 			await renderApp();
 
@@ -2088,6 +2138,7 @@ describe("App keyboard shortcuts", () => {
 					tunnelProvider: "cloudflare" as const,
 					tunnelFailureReason: null,
 					staticCodeActive: false,
+					signInLink: null,
 				},
 			}));
 
@@ -2107,6 +2158,7 @@ describe("App keyboard shortcuts", () => {
 				interfaces: [],
 				selectedHost: "192.168.0.1",
 				staticCodeActive: false,
+				signInLink: null,
 			});
 
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
@@ -2191,6 +2243,7 @@ describe("App keyboard shortcuts", () => {
 					interfaces: [],
 					selectedHost: "",
 					staticCodeActive: false,
+					signInLink: null,
 				});
 
 				await act(async () => {
@@ -2219,6 +2272,7 @@ describe("App keyboard shortcuts", () => {
 				interfaces: [],
 				selectedHost: "",
 				staticCodeActive: false,
+				signInLink: null,
 			});
 
 			// The button/menu open the modal immediately with the local QR and
@@ -2234,6 +2288,7 @@ describe("App keyboard shortcuts", () => {
 					interfaces: [],
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
+					signInLink: null,
 					autoStartTunnel: true,
 				},
 			}));
@@ -2264,6 +2319,7 @@ describe("App keyboard shortcuts", () => {
 					interfaces: [],
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
+					signInLink: null,
 					autoStartTunnel: true,
 				},
 			}));
@@ -2284,6 +2340,7 @@ describe("App keyboard shortcuts", () => {
 					interfaces: [],
 					selectedHost: "",
 					staticCodeActive: false,
+					signInLink: null,
 				});
 			});
 
@@ -2306,6 +2363,7 @@ describe("App keyboard shortcuts", () => {
 					interfaces: [],
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
+					signInLink: null,
 				},
 			}));
 			await waitFor(() => expect(screen.getByAltText("QR Code")).toBeInTheDocument());
@@ -2332,6 +2390,7 @@ describe("App keyboard shortcuts", () => {
 					interfaces: [],
 					selectedHost: "",
 					staticCodeActive: false,
+					signInLink: null,
 					autoStartTunnel: true,
 				},
 			}));
@@ -2386,6 +2445,7 @@ describe("App keyboard shortcuts", () => {
 				interfaces,
 				selectedHost: "127.0.0.1",
 				staticCodeActive: false,
+				signInLink: null,
 			});
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
 				detail: {
@@ -2398,6 +2458,7 @@ describe("App keyboard shortcuts", () => {
 					interfaces,
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
+					signInLink: null,
 				},
 			}));
 
@@ -2454,6 +2515,7 @@ describe("App keyboard shortcuts", () => {
 					],
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
+					signInLink: null,
 				},
 			}));
 			await waitFor(() => expect(screen.getByText("Copy URL")).toBeInTheDocument());

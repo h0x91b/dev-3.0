@@ -192,6 +192,9 @@ const dashboard = {
 	"remote.staticCodeActive": "Access code is on",
 	"remote.staticCodeActiveDesc": "Anyone holding your access code can sign in by typing it on the sign-in screen — from any browser, any number of times. Change it in Settings → System.",
 	"remote.staticCodeTunnelWarning": "The public tunnel is live, so the code works from anywhere on the internet.",
+	"remote.copySignInLink": "Copy sign-in link",
+	"remote.copySignInLinkDone": "Sign-in link copied",
+	"remote.signInLinkHint": "A bookmarkable link that signs in with nothing typed. The code rides the #fragment, so it is never sent to a server — but it does live in the bookmark.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi is not installed",

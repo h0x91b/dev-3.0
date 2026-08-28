@@ -73,6 +73,8 @@ import {
 	handleAuthExchange,
 	handleAuthRefresh,
 	assertStaticCodeStrongEnough,
+	getStaticCode,
+	resetWeakSettingsCodeWarning,
 } from "../remote-access-server";
 import { initSecret, createQrToken, _resetForTests } from "../jwt";
 import { AUTH_FAILURE_LIMIT, _resetAuthRateLimitForTests } from "../remote-auth-rate-limit";
@@ -378,6 +380,27 @@ describe("handleAuthExchange (static code)", () => {
 		settingsMocks.settings.value = { theme: "light", resolvedTheme: "light", staticAccessCode: "from-settings" };
 		expect((await handleAuthExchange(exchangeRequest("from-settings"))).status).toBe(200);
 		expect((await handleAuthExchange(exchangeRequest("sesame42"))).status).toBe(401);
+	});
+
+	// Arseny's ruling: a settings code below the floor is DROPPED and logged once.
+	// The Settings field refuses to save one, but that check does not cover a
+	// hand-edited settings.json or a code saved before the check existed.
+	it("drops a settings code that is too short instead of honouring it", async () => {
+		delete process.env.DEV3_REMOTE_STATIC_CODE;
+		resetWeakSettingsCodeWarning();
+		settingsMocks.settings.value = { theme: "light", resolvedTheme: "light", staticAccessCode: "short" };
+		expect(getStaticCode()).toBeNull();
+		expect((await handleAuthExchange(exchangeRequest("short"))).status).toBe(401);
+	});
+
+	// Dropping it must never take the server down — this source is UI-editable and
+	// the boot check is a top-level await, so a throw would strand the user.
+	it("keeps serving one-time QR links after dropping a short settings code", async () => {
+		delete process.env.DEV3_REMOTE_STATIC_CODE;
+		resetWeakSettingsCodeWarning();
+		settingsMocks.settings.value = { theme: "light", resolvedTheme: "light", staticAccessCode: "short" };
+		const qr = await createQrToken();
+		expect((await handleAuthExchange(exchangeRequest(qr))).status).toBe(200);
 	});
 
 	it("lets the env var win over the settings file", async () => {

@@ -190,6 +190,9 @@ const dashboard = {
 	"remote.staticCodeActive": "Código de acceso activo",
 	"remote.staticCodeActiveDesc": "Cualquiera que tenga tu código de acceso puede entrar escribiéndolo en la pantalla de inicio de sesión, desde cualquier navegador y tantas veces como quiera. Cámbialo en Ajustes → Sistema.",
 	"remote.staticCodeTunnelWarning": "El túnel público está activo, así que el código funciona desde cualquier lugar de internet.",
+	"remote.copySignInLink": "Copiar enlace de inicio de sesión",
+	"remote.copySignInLinkDone": "Enlace copiado",
+	"remote.signInLinkHint": "Un enlace para guardar en marcadores que inicia sesión sin escribir nada. El código viaja en el #fragmento, así que nunca se envía a un servidor, pero sí vive en el marcador.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi no está instalado",
