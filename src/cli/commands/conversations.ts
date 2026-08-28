@@ -11,6 +11,8 @@ import {
 	writeConversationDump,
 } from "../../bun/conversation-parse";
 import { renderHandoff } from "../../shared/conversation-render";
+import { resolveDev3Home } from "../../shared/dev3-home";
+import { resolveUserHome } from "../../shared/user-home";
 import { scanImportableConversations } from "../../bun/conversation-import";
 import type { ImportConversationsResult } from "../../shared/conversation-import-model";
 import { sendRequest } from "../socket-client";
@@ -21,17 +23,19 @@ import { detectFromWorktreePath, readProjectDirect, resolveProjectId, type CliCo
 import { exitError, exitUsage, printTable } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 
-/** Derive the real HOME / dev3 home, honoring sandbox-rewritten HOME via the worktree path. */
-function resolveHomes(): { home: string; dev3Home: string } {
-	const cwd = process.cwd();
+/**
+ * The user home (where `~/.claude` lives) and the data root of the board being
+ * addressed. Two different questions: a redirected instance keeps its board
+ * elsewhere while its agents still write transcripts into the real home.
+ *
+ * A cwd inside a worktree outranks `$DEV3_HOME` by design — that is how the CLI
+ * decides which board a worktree belongs to. Everywhere else the resolver wins;
+ * reading `HOME` directly here is what made a redirected board invisible, so the
+ * dry-run re-offered conversations another instance had already imported.
+ */
+export function resolveHomes(cwd: string = process.cwd()): { home: string; dev3Home: string } {
 	const info = detectFromWorktreePath(cwd);
-	if (info) {
-		const dev3Home = info.realDev3Home;
-		const home = dev3Home.replace(/\/\.dev3\.0$/, "");
-		return { home, dev3Home };
-	}
-	const home = process.env.HOME || "/tmp";
-	return { home, dev3Home: `${home}/.dev3.0` };
+	return { home: resolveUserHome(), dev3Home: info?.realDev3Home ?? resolveDev3Home() };
 }
 
 function loadProjectTasks(dev3Home: string, slug: string): Task[] {
@@ -301,6 +305,7 @@ async function importCmd(args: ParsedArgs, context: CliContext | null, socketPat
 			.map((task) => task.importedSessionId)
 			.filter((id): id is string => typeof id === "string" && id.length > 0),
 		home,
+		dev3Home,
 	});
 	const selected = requested.length > 0 ? found.filter((c) => requested.includes(c.sessionId)) : found;
 

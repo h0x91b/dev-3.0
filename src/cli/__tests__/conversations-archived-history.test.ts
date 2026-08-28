@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { loadArchivedHistory } from "../commands/conversations";
+import { loadArchivedHistory, resolveHomes } from "../commands/conversations";
 
 const HOME = `${process.env.DEV3_TEST_ROOT}/cli-archived-history`;
 const DIR = `${HOME}/data/slug/task-blobs`;
@@ -50,5 +50,36 @@ describe("loadArchivedHistory", () => {
 			JSON.stringify({ taskId: "stats", completedDiffFileStats: [{ path: "a.ts", insertions: 1, deletions: 0 }] }),
 		);
 		expect(loadArchivedHistory(HOME, "slug").size).toBe(0);
+	});
+});
+
+/**
+ * Which board `dev3 conversations` addresses. This read `$HOME` directly once, so
+ * a redirected instance was invisible: the import dry-run loaded the real board's
+ * tasks, found none of its own session ids, and offered conversations that
+ * instance had already imported.
+ */
+describe("resolveHomes", () => {
+	it("honours a redirected data root outside a worktree", () => {
+		const previous = process.env.DEV3_HOME;
+		process.env.DEV3_HOME = `${HOME}/scoped/.dev3.0`;
+		try {
+			expect(resolveHomes("/somewhere/else").dev3Home).toBe(`${HOME}/scoped/.dev3.0`);
+		} finally {
+			if (previous === undefined) delete process.env.DEV3_HOME;
+			else process.env.DEV3_HOME = previous;
+		}
+	});
+
+	it("reports the real user home, not the data root's parent", () => {
+		const previous = process.env.DEV3_HOME;
+		process.env.DEV3_HOME = "/var/tmp/some-scoped-root";
+		try {
+			// `~/.claude` is where the transcripts are, wherever the board lives.
+			expect(resolveHomes("/somewhere/else").home).not.toBe("/var/tmp");
+		} finally {
+			if (previous === undefined) delete process.env.DEV3_HOME;
+			else process.env.DEV3_HOME = previous;
+		}
 	});
 });

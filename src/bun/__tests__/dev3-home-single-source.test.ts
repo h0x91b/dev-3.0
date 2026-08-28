@@ -91,7 +91,7 @@ describe("the dev3 data root has one source", () => {
 	it("the CLI resolves the same root, because it is a separate process", () => {
 		// Without this the isolation is half: a scoped app instance plus a dev3 CLI
 		// still pointed at the user's real board.
-		for (const file of ["context.ts", "spaces.ts", "commands/install-hooks.ts"]) {
+		for (const file of ["context.ts", "spaces.ts", "commands/install-hooks.ts", "commands/conversations.ts"]) {
 			const source = readFileSync(join(APP_ROOT, "..", "cli", file), "utf-8");
 			expect(source, `src/cli/${file} must use resolveDev3Home`).toContain("resolveDev3Home");
 		}
