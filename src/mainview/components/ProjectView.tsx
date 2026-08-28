@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, type Dispatch, type MutableRefObject } from "react";
 import type { DevServerSummary, PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
+import { useSpaces } from "../useSpaces";
+import { toast } from "../toast";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
@@ -22,6 +24,12 @@ import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ProjectViewProps {
 	projectId: string;
+	/**
+	 * The space this board is about, when the user zoomed out. The board still
+	 * belongs to `projectId` for every other purpose — a space is a subject, not
+	 * a destination.
+	 */
+	spaceId?: string;
 	projects: Project[];
 	tasks: Task[];
 	dispatch: Dispatch<AppAction>;
@@ -46,6 +54,7 @@ interface ProjectViewProps {
 
 function ProjectView({
 	projectId,
+	spaceId,
 	projects,
 	tasks,
 	dispatch,
@@ -68,6 +77,22 @@ function ProjectView({
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
+	const { spaces, loading: spacesLoading } = useSpaces();
+	const space = spaceId ? spaces.find((candidate) => candidate.id === spaceId) ?? null : null;
+	// Dangling member ids (a project deleted, or one this machine never had) are
+	// skipped rather than rendered as a ghost column of nothing.
+	const memberProjects = useMemo(
+		() => (space ? space.projectIds.map((id) => projects.find((p) => p.id === id)).filter((p): p is Project => !!p) : []),
+		[space, projects],
+	);
+	// One fetch per member project; a project board keeps its single fetch.
+	const boardProjectIds = useMemo(
+		() => (space ? [...new Set([projectId, ...memberProjects.map((p) => p.id)])] : [projectId]),
+		[space, memberProjects, projectId],
+	);
+	// The in-flight push listener mounts once; a ref keeps it reading the live set.
+	const boardProjectIdsRef = useRef<string[]>(boardProjectIds);
+	boardProjectIdsRef.current = boardProjectIds;
 	const agents = useAgents();
 	const inlineDiff = useTaskInlineDiffState(route, dispatch);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -99,33 +124,43 @@ function ProjectView({
 		function onTaskUpdated(e: Event) {
 			if (!tasksFetchInFlightRef.current) return;
 			const { task } = (e as CustomEvent<{ task: Task }>).detail;
-			if (task?.projectId === projectId) inFlightTaskUpdatesRef.current.set(task.id, task);
+			if (task && boardProjectIdsRef.current.includes(task.projectId)) {
+				inFlightTaskUpdatesRef.current.set(task.id, task);
+			}
 		}
 		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
-	}, [projectId]);
+	}, []);
 
+	const boardProjectKey = boardProjectIds.join(",");
 	useEffect(() => {
 		const pushed = inFlightTaskUpdatesRef.current;
 		pushed.clear();
 		tasksFetchInFlightRef.current = true;
 		let cancelled = false;
 		setTasksStatus("loading");
+		const ids = boardProjectKey.split(",");
 		(async () => {
 			try {
-				const tasks = await api.request.getTasks({ projectId });
+				const snapshots = await Promise.all(
+					ids.map(async (id) => [id, await api.request.getTasks({ projectId: id })] as const),
+				);
 				// A superseded fetch must not touch the flag — a newer one owns it now.
 				if (cancelled) return;
 				tasksFetchInFlightRef.current = false;
-				// Fast path: nothing raced the fetch, so the snapshot ships untouched.
-				let merged = tasks;
-				if (pushed.size > 0) {
-					merged = tasks.map((task) => pushed.get(task.id) ?? task);
-					const known = new Set(tasks.map((task) => task.id));
-					for (const [id, task] of pushed) if (!known.has(id)) merged.push(task);
+				for (const [id, tasks] of snapshots) {
+					// Fast path: nothing raced the fetch, so the snapshot ships untouched.
+					let merged = tasks;
+					if (pushed.size > 0) {
+						merged = tasks.map((task) => pushed.get(task.id) ?? task);
+						const known = new Set(tasks.map((task) => task.id));
+						for (const [pushedId, task] of pushed) {
+							if (!known.has(pushedId) && task.projectId === id) merged.push(task);
+						}
+					}
+					dispatch({ type: "setTasks", projectId: id, tasks: merged });
 				}
 				pushed.clear();
-				dispatch({ type: "setTasks", projectId, tasks: merged });
 				setTasksStatus("ready");
 			} catch (err) {
 				console.error("Failed to load tasks:", err);
@@ -139,7 +174,7 @@ function ProjectView({
 			tasksFetchInFlightRef.current = false;
 			pushed.clear();
 		};
-	}, [projectId, dispatch, tasksReloadNonce]);
+	}, [boardProjectKey, dispatch, tasksReloadNonce]);
 
 	// A remote socket that dropped mid-session leaves the board frozen on a stale
 	// snapshot (or on the error state above). Refetch as soon as the transport is
@@ -161,6 +196,16 @@ function ProjectView({
 		trackDiffView();
 	}, [inlineDiff.isOpen, activeTaskId]);
 
+	// A space board whose space is gone is a route that lost its subject — the same
+	// class as a deleted task, handled the same way: leave for the dashboard and
+	// say why. A RENAME is not a disappearance: the space object is still there,
+	// so the breadcrumb just re-reads its name and the user stays put.
+	useEffect(() => {
+		if (!spaceId || spacesLoading || space) return;
+		toast.info(t("spaces.boardGone"));
+		navigate({ screen: "dashboard" });
+	}, [spaceId, spacesLoading, space, navigate, t]);
+
 	// The empty "select a task" pane is a dead end on narrow viewports — there is
 	// no split task list to pick from — so bounce straight back to the Kanban board.
 	const showingEmptyTaskPane = Boolean(taskView) && !activeTaskId;
@@ -181,6 +226,10 @@ function ProjectView({
 		unresolvedRouteKeyRef.current = routeKey;
 		inlineDiff.open(createUnresolvedCommentsDiffRequest(task, project));
 	}, [activeTaskId, inlineDiff.open, openUnresolvedComments, project, tasks]);
+
+	// A project that left the space must not keep its cards on screen until the
+	// next fetch; membership decides what the board holds, not the task store.
+	const boardTasks = space ? tasks.filter((task) => boardProjectIds.includes(task.projectId)) : tasks;
 
 	if (!project) {
 		return (
@@ -301,7 +350,9 @@ function ProjectView({
 		<div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
 			<KanbanBoard
 				project={project}
-				tasks={tasks}
+				space={space}
+				memberProjects={memberProjects}
+				tasks={boardTasks}
 				dispatch={dispatch}
 				navigate={navigate}
 				bellCounts={bellCounts}

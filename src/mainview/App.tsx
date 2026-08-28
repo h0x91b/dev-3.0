@@ -41,6 +41,7 @@ import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
 import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, taskToastContext, ToastHost, toast, type ToastEntry, type ToastOrigin } from "./toast";
+import { useSpaces } from "./useSpaces";
 import AgentTrafficLog from "./components/agent-traffic/AgentTrafficLog";
 import { noteTrafficArrival } from "./agent-traffic";
 import { OPEN_AGENT_TRAFFIC_LOG_EVENT } from "./agent-traffic-events";
@@ -354,6 +355,7 @@ function App() {
 	const [addProjectSpaceIds, setAddProjectSpaceIds] = useState<string[]>([]);
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
 	const [showProjectSwitch, setShowProjectSwitch] = useState(false);
+	const { spaces: appSpaces } = useSpaces();
 	// Cmd/Ctrl+O picker when no app is chosen yet (or the chosen one is gone).
 	const [openInPicker, setOpenInPicker] = useState<{ path: string; taskId?: string } | null>(null);
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -996,6 +998,22 @@ function App() {
 		return true;
 	}, [getProjectIdForRoute, state.route]);
 
+	/**
+	 * Open a space's unified board. A space is a SUBJECT, so the route still names
+	 * a project — the first member this machine actually has, which is what keeps
+	 * every existing `projectIdForRoute` reader working.
+	 */
+	const navigateToSpace = useCallback((spaceId: string) => {
+		const space = appSpaces.find((candidate) => candidate.id === spaceId);
+		const anchorId = space?.projectIds.find((id) => state.projects.some((p) => p.id === id));
+		if (!anchorId) {
+			toast.info(t("spaces.boardGone"));
+			navigate({ screen: "dashboard" });
+			return;
+		}
+		navigate({ screen: "project", projectId: anchorId, spaceId });
+	}, [appSpaces, navigate, state.projects, t]);
+
 	const openAddProject = useCallback(() => {
 		if (state.route.screen === "dashboard") {
 			setOpenAddProjectOnDashboard(false);
@@ -1159,6 +1177,13 @@ function App() {
 				e.stopPropagation();
 				if (showQuitDialog) return;
 				openAddProject();
+			} else if (matchesShortcut(e, "zoom-out-to-space")) {
+				// The header owns the rule (one space → go, several → ask) so the button
+				// and the key can never disagree.
+				e.preventDefault();
+				e.stopPropagation();
+				if (showQuitDialog || createTaskProjectId || showAddProjectModal) return;
+				window.dispatchEvent(new CustomEvent("dev3:zoomOutToSpace"));
 			} else if (matchesShortcut(e, "go-to-project")) {
 				// Project quick-switch palette (Slack/Linear/VSCode "go to anything").
 				// Not Cmd+T: that's the universal new-tab key and the live terminal
@@ -2682,6 +2707,10 @@ function App() {
 						setShowProjectSwitch(false);
 						navigateToProject(projectId);
 					}}
+					onSelectSpace={(spaceId) => {
+						setShowProjectSwitch(false);
+						navigateToSpace(spaceId);
+					}}
 					onClose={() => setShowProjectSwitch(false)}
 				/>
 			)}
@@ -3261,6 +3290,7 @@ function App() {
 				return (
 					<ProjectView
 						projectId={route.projectId}
+						spaceId={route.spaceId}
 						projects={state.projects}
 						tasks={state.currentProjectTasks}
 						dispatch={dispatch}

@@ -80,6 +80,18 @@ export function DropdownIcon({ className }: HeaderIconProps) {
 	);
 }
 
+// 04b — Zoom out to the space board: one square steps back and two neighbours
+// join it — "show me the rest of this client's work", not a magnifying glass.
+export function ZoomOutIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className, 2)}>
+			<rect x="3" y="9.5" width="5.5" height="5.5" rx="1.4" />
+			<rect x="9.75" y="9.5" width="4.5" height="5.5" rx="1.4" opacity="0.55" />
+			<rect x="15.5" y="9.5" width="5.5" height="5.5" rx="1.4" opacity="0.55" />
+		</svg>
+	);
+}
+
 // 05 — No Sleep (off, sleep allowed): calm z's; on hover they drift upward.
 export function SleepZzzIcon({ className }: HeaderIconProps) {
 	return (

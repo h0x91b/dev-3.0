@@ -47,7 +47,7 @@ function renderModal(handlers: { onSelect?: (id: string) => void; onClose?: () =
 	const onClose = handlers.onClose ?? vi.fn();
 	render(
 		<I18nProvider>
-			<ProjectQuickSwitchModal projects={PROJECTS} onSelect={onSelect} onClose={onClose} />
+			<ProjectQuickSwitchModal projects={PROJECTS} onSelect={onSelect} onSelectSpace={() => {}} onClose={onClose} />
 		</I18nProvider>,
 	);
 	return { onSelect, onClose };
@@ -128,6 +128,7 @@ describe("ProjectQuickSwitchModal", () => {
 					projects={[PROJECTS[2], PROJECTS[0], PROJECTS[1]]}
 					shortcutIndexById={{ p1: 0, p2: 1, p3: 2 }}
 					onSelect={vi.fn()}
+					onSelectSpace={() => {}}
 					onClose={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -146,6 +147,7 @@ describe("ProjectQuickSwitchModal", () => {
 					projects={[ops, PROJECTS[0]]}
 					shortcutIndexById={{ p1: 0 }}
 					onSelect={vi.fn()}
+					onSelectSpace={() => {}}
 					onClose={vi.fn()}
 				/>
 			</I18nProvider>,
@@ -159,21 +161,48 @@ describe("ProjectQuickSwitchModal", () => {
 	});
 });
 
-describe("ProjectQuickSwitchModal — space name matching", () => {
-	it("lists a project when the query matches one of its spaces, keeping the label", async () => {
+describe("ProjectQuickSwitchModal — spaces", () => {
+	/** Rows in order; spaces sit after the projects. */
+	const rowTexts = () => screen.getAllByRole("option").map((el) => el.textContent ?? "");
+
+	it("lists every space as its own row, after the projects", async () => {
+		renderModal();
+		// 3 projects + the one space, once its fetch lands.
+		await waitFor(() => expect(rowTexts()).toHaveLength(4));
+		expect(rowTexts()[3]).toContain("Client X");
+	});
+
+	it("a query matching a space name lists both the space's board and its member project", async () => {
 		const user = userEvent.setup();
 		renderModal();
-		const rowTexts = () => screen.getAllByRole("option").map((el) => el.textContent ?? "");
-		await waitFor(() => expect(rowTexts()).toHaveLength(3));
+		await waitFor(() => expect(rowTexts()).toHaveLength(4));
 
 		await user.type(screen.getByRole("textbox"), "client");
 
 		await waitFor(() => {
 			const rows = rowTexts();
-			expect(rows).toHaveLength(1);
-			expect(rows[0]).toContain("users-service");
-			// The space name widens the haystack only — it never leaks into the row.
-			expect(rows[0]).not.toContain("Client X");
+			expect(rows).toHaveLength(2);
+			// Both are listed; ranking decides the order, so assert on membership.
+			const projectRow = rows.find((row) => row.includes("users-service"));
+			expect(projectRow).toBeTruthy();
+			// The space name widens the project's haystack — it never leaks into its label.
+			expect(projectRow).not.toContain("Client X");
+			expect(rows.some((row) => row.includes("Client X"))).toBe(true);
 		});
+	});
+
+	it("selecting a space row reports the space, never a project", async () => {
+		const user = userEvent.setup();
+		const onSelect = vi.fn();
+		const onSelectSpace = vi.fn();
+		render(
+			<I18nProvider>
+				<ProjectQuickSwitchModal projects={PROJECTS} onSelect={onSelect} onSelectSpace={onSelectSpace} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(rowTexts()).toHaveLength(4));
+		await user.click(screen.getByText("Client X"));
+		expect(onSelectSpace).toHaveBeenCalledWith("sp_a");
+		expect(onSelect).not.toHaveBeenCalled();
 	});
 });

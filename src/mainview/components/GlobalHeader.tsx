@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { CodingAgent, Project, Task, UpdateChangelog } from "../../shared/types";
-import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
+import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderSpaces, spacesOfProject, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { HELP_ATTRACTOR_DISMISS_EVENT } from "../help";
@@ -38,6 +38,7 @@ import {
 	ForwardIcon,
 	HomeIcon,
 	DropdownIcon,
+	ZoomOutIcon,
 	QuickShellIcon,
 	ProjectTerminalIcon,
 	RemoteQRIcon,
@@ -100,6 +101,8 @@ interface BreadcrumbSegment {
 	badge?: string;
 	onClick?: () => void;
 	isProjectDropdown?: boolean;
+	/** Streamer mode blurs this crumb (a space name can be a client's name). */
+	masked?: boolean;
 	task?: Task;
 }
 
@@ -132,6 +135,8 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	const [countdown, setCountdown] = useState(0);
 	const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 	const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+	// Which space to zoom out to, when the current project sits in more than one.
+	const [showSpacePicker, setShowSpacePicker] = useState(false);
 	const [projectTaskCounts, setProjectTaskCounts] = useState<Record<string, number>>({});
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const projectDropdownRef = useRef<HTMLDivElement>(null);
@@ -247,6 +252,9 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 			if (showProjectDropdown && projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
 				setShowProjectDropdown(false);
 			}
+			if (showSpacePicker && projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
+				setShowSpacePicker(false);
+			}
 			// A menu row's flyout (memory breakdown, tmux sessions) is portaled to
 			// <body>, so it is "outside" the menu by DOM — without this exemption the
 			// first click inside it closed the menu and unmounted the flyout with it.
@@ -361,6 +369,36 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		[tasks],
 	);
 
+	const currentProjectId = "projectId" in route ? route.projectId : null;
+	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
+	// ---- Zoom out: from a project's board to its space's unified board ----
+	// Only offered where it means something: on a project board (never on a space
+	// board, never on a task screen) whose project belongs to at least one space.
+	const routeSpace = route.screen === "project" ? route.spaceId ?? null : null;
+	const onProjectBoard = route.screen === "project" && !route.activeTaskId && !route.taskView && !routeSpace;
+	const zoomOutSpaces = currentProjectId && onProjectBoard
+		? orderSpaces(spacesOfProject(spacesFile.spaces, currentProjectId), spacesFile.order)
+		: [];
+	const currentSpace = routeSpace ? spacesFile.spaces.find((sp) => sp.id === routeSpace && !sp.deleted) ?? null : null;
+
+	const zoomOutTo = useCallback((spaceId: string) => {
+		setShowSpacePicker(false);
+		if (!currentProjectId) return;
+		navigate({ screen: "project", projectId: currentProjectId, spaceId });
+	}, [currentProjectId, navigate]);
+
+	// The keyboard path (⇧⌘U) is the button's own behaviour, dispatched here so
+	// there is exactly one rule for "one space → go, several → ask".
+	useEffect(() => {
+		function onZoomOut() {
+			if (zoomOutSpaces.length === 0) return;
+			if (zoomOutSpaces.length === 1) zoomOutTo(zoomOutSpaces[0].id);
+			else setShowSpacePicker(true);
+		}
+		window.addEventListener("dev3:zoomOutToSpace", onZoomOut);
+		return () => window.removeEventListener("dev3:zoomOutToSpace", onZoomOut);
+	}, [zoomOutSpaces, zoomOutTo]);
+
 	const segments: BreadcrumbSegment[] = [];
 
 	// App name — always present
@@ -380,10 +418,15 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 			// Clickable when not already on the kanban board (no activeTaskId, not in task/activity view)
 			const isOnKanban = route.screen === "project" && !route.activeTaskId && !route.taskView;
 			const projectNameOnClick = !isOnKanban ? handleProjectNameClick : undefined;
+			// A space board is about the space, so the crumb names it — a rename lands
+			// here and nowhere else, which is why a rename never moves the user. With a
+			// task open the crumb goes back to the project: that is the repo you act in.
+			const onSpaceBoard = currentSpace && route.screen === "project" && !route.activeTaskId && !route.taskView;
 			segments.push({
-				label: projectDisplayName(project, t("ops.boardName")),
+				label: onSpaceBoard ? currentSpace.name : projectDisplayName(project, t("ops.boardName")),
 				isProjectDropdown: true,
-				onClick: projectNameOnClick,
+				onClick: onSpaceBoard ? undefined : projectNameOnClick,
+				masked: onSpaceBoard ? isSpaceSensitive(currentSpace, sensitiveProjectIds) : false,
 			});
 		}
 	}
@@ -421,7 +464,6 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		segments.push({ label: t("nativePaneLab.title") });
 	}
 
-	const currentProjectId = "projectId" in route ? route.projectId : null;
 	// Virtual ("Operations") boards have no git repo — the project-level git
 	// affordances (Pull) are meaningless and must be hidden.
 	const isVirtualProject = currentProjectId
@@ -445,7 +487,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 	// current project's own space is hoisted first. null = no space holds a
 	// visible project, and the flat list below stays byte-identical to today's.
 	const switcherGroups = groupProjectsForSwitcher(availableProjects, spacesFile, currentProjectId);
-	const sensitiveProjectIds = new Set(projects.filter((p) => p.sensitive).map((p) => p.id));
+
 
 	// One switcher row. `keyPrefix` disambiguates a project that belongs to
 	// several spaces and therefore renders under each of them.
@@ -613,12 +655,12 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 									{seg.onClick ? (
 										<button
 											onClick={seg.onClick}
-											className="header-anim px-2 py-[3px] min-w-0 text-accent hover:text-accent-emphasis hover:bg-elevated transition-colors truncate"
+											className={`header-anim px-2 py-[3px] min-w-0 text-accent hover:text-accent-emphasis hover:bg-elevated transition-colors truncate ${seg.masked ? MASK_CLASS : ""}`}
 										>
 											{seg.label}
 										</button>
 									) : (
-										<span className="px-2 py-[3px] min-w-0 text-fg font-semibold truncate">{seg.label}</span>
+										<span className={`px-2 py-[3px] min-w-0 text-fg font-semibold truncate ${seg.masked ? MASK_CLASS : ""}`}>{seg.label}</span>
 									)}
 									<span className="w-px self-stretch bg-edge flex-shrink-0" aria-hidden="true" />
 									<Tooltip content={t("header.switchProject")} detail={t("ttip.header.switchProject")}>
@@ -637,7 +679,44 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 											</span>
 										</button>
 									</Tooltip>
+									{zoomOutSpaces.length > 0 && (
+										<>
+											<span className="w-px self-stretch bg-edge flex-shrink-0" aria-hidden="true" />
+											<Tooltip content={t("spaces.zoomOut")}>
+												<button
+													onClick={() => (zoomOutSpaces.length === 1 ? zoomOutTo(zoomOutSpaces[0].id) : setShowSpacePicker((v) => !v))}
+													aria-haspopup={zoomOutSpaces.length > 1 ? "menu" : undefined}
+													aria-expanded={zoomOutSpaces.length > 1 ? showSpacePicker : undefined}
+													aria-label={t("spaces.zoomOut")}
+													data-testid="space-zoom-out"
+													className="header-anim px-1.5 py-[3px] flex items-center justify-center text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+												>
+													<ZoomOutIcon className="w-3.5 h-3.5 block" />
+												</button>
+											</Tooltip>
+										</>
+									)}
 								</div>
+								{/* A project may sit in several spaces — the button never guesses
+								    which one was meant, it asks. */}
+								{showSpacePicker && zoomOutSpaces.length > 1 && (
+									<div role="menu" className="absolute left-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1">
+										<div className="px-3 py-1 text-nano font-semibold uppercase tracking-wider text-fg-3">
+											{t("spaces.zoomOutPick")}
+										</div>
+										{zoomOutSpaces.map((sp) => (
+											<button
+												key={sp.id}
+												onClick={() => zoomOutTo(sp.id)}
+												className={`w-full text-left px-3 py-2 text-fg-2 hover:bg-elevated hover:text-fg transition-colors truncate ${
+													isSpaceSensitive(sp, sensitiveProjectIds) ? MASK_CLASS : ""
+												}`}
+											>
+												{sp.name}
+											</button>
+										))}
+									</div>
+								)}
 								{/* `w-96`, not `w-72`: a row carries the space indent, an active-task
 								    count and a shortcut badge beside the project name. */}
 								{showProjectDropdown && (
