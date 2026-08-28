@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { extractRepoName } from "../../shared/types";
+import type { Project } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -17,9 +18,14 @@ interface AddProjectModalProps {
 	onClose: () => void;
 	/** Pre-selected space memberships when the flow started from a space. */
 	initialSpaceIds?: string[];
+	/**
+	 * The git projects this dialog just added, reported once it is done. dev3
+	 * offers to import the Claude Code conversations that already ran in them.
+	 */
+	onGitProjectsAdded?: (projects: Project[]) => void;
 }
 
-function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModalProps) {
+function AddProjectModal({ dispatch, onClose, initialSpaceIds, onGitProjectsAdded }: AddProjectModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [kind, setKind] = useState<"git" | "operations">("git");
@@ -89,6 +95,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 			if (!folders || folders.length === 0) return;
 
 			const errors: string[] = [];
+			const added: Project[] = [];
 			let anySucceeded = false;
 			for (const folder of folders) {
 				// The backend names the project — see the addProject RPC comment.
@@ -97,6 +104,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 					const result = await api.request.addProject({ path: folder });
 					if (result.ok) {
 						dispatch({ type: "addProject", project: result.project });
+						added.push(result.project);
 						void applyPendingSpaces(result.project.id);
 						trackEvent("project_added", { source: "local" });
 						posthog.capture("project_added", { source: "local" });
@@ -111,8 +119,10 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 
 			if (errors.length === 0) {
 				onClose();
+				if (added.length > 0) onGitProjectsAdded?.(added);
 			} else if (anySucceeded) {
 				onClose();
+				if (added.length > 0) onGitProjectsAdded?.(added);
 				for (const err of errors) toast.error(err, { source: "dashboard" });
 			} else {
 				setError(errors.join("\n"));
@@ -147,6 +157,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 				trackEvent("project_added", { source: "init" });
 				posthog.capture("project_added", { source: "init" });
 				onClose();
+				onGitProjectsAdded?.([result.project]);
 			} else {
 				setError(result.error);
 			}
@@ -198,6 +209,7 @@ function AddProjectModal({ dispatch, onClose, initialSpaceIds }: AddProjectModal
 				trackEvent("project_added", { source: "clone" });
 				posthog.capture("project_added", { source: "clone" });
 				onClose();
+				onGitProjectsAdded?.([result.project]);
 			} else {
 				setError(result.error);
 			}

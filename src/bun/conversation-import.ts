@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { resolveUserHome } from "../shared/user-home";
+import { resolveDev3Home } from "../shared/dev3-home";
 import { claudeEncodePath, claudeProjectsDir } from "../shared/conversation-search-core";
 import { RECENT_ACTIVITY_WINDOW_MS, type ImportTargetStatus } from "../shared/conversation-import-model";
 import { claudeConfigDirs } from "./agent-store-roots";
@@ -115,6 +116,8 @@ export interface ScanOptions {
 	/** Session ids already imported — never offered twice. */
 	importedSessionIds?: Iterable<string>;
 	home?: string;
+	/** Data root of THIS instance. Its worktrees are rejected alongside the real one. */
+	dev3Home?: string;
 	nowMs?: number;
 }
 
@@ -130,7 +133,10 @@ export function scanImportableConversations(options: ScanOptions): ImportableCon
 	const home = options.home ?? resolveUserHome();
 	const nowMs = options.nowMs ?? Date.now();
 	const already = new Set(options.importedSessionIds ?? []);
-	const dev3Prefix = `${home}/.dev3.0`;
+	// Two roots, not one: a redirected instance (`DEV3_HOME`, the `--qa` board)
+	// keeps its worktrees elsewhere, and conversations from EITHER set of worktrees
+	// are dev3's own work, never a project's history.
+	const dev3Prefixes = [`${home}/.dev3.0`, options.dev3Home ?? resolveDev3Home()];
 	const encodedProject = claudeEncodePath(options.projectPath);
 
 	const found: ImportableConversation[] = [];
@@ -152,7 +158,7 @@ export function scanImportableConversations(options: ScanOptions): ImportableCon
 				if (!workingDir) continue;
 				// A working directory dev3 owns is never project work, and one that is
 				// gone is not somewhere work can be picked up again.
-				if (workingDir === dev3Prefix || workingDir.startsWith(`${dev3Prefix}/`)) continue;
+				if (dev3Prefixes.some((p) => workingDir === p || workingDir.startsWith(`${p}/`))) continue;
 				if (!existsSync(workingDir)) continue;
 
 				const lastActivityMs = mtimeMsOf(file);

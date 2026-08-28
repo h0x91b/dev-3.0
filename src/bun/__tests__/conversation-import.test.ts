@@ -144,6 +144,16 @@ describe("scanImportableConversations", () => {
 		expect(scan()).toEqual([]);
 	});
 
+	it("never offers a conversation from a redirected instance's worktrees either", () => {
+		// A `--qa` board keeps its worktrees under its own DEV3_HOME, which is not
+		// `~/.dev3.0` at all — its own work must stay just as invisible.
+		const scoped = join(home, "qa-root");
+		const worktree = join(scoped, "worktrees", "code-dev-3-0", "abcd1234", "worktree");
+		mkdirSync(worktree, { recursive: true });
+		seedConversation("inside-qa", { workingDir: worktree, cwd: worktree });
+		expect(scan({ dev3Home: scoped })).toEqual([]);
+	});
+
 	it("does not let a project claim a sibling whose name merely starts the same", () => {
 		const sibling = join(home, "code", "dev-3.0-scratch");
 		mkdirSync(sibling, { recursive: true });

@@ -28,6 +28,7 @@ import AppMenuBar from "./components/AppMenuBar";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
 import AddProjectModal from "./components/AddProjectModal";
+import ImportConversationsModal from "./components/ImportConversationsModal";
 import CreateTaskModal from "./components/CreateTaskModal";
 import LaunchVariantsModal from "./components/LaunchVariantsModal";
 import ProjectView from "./components/ProjectView";
@@ -354,6 +355,9 @@ function App() {
 	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 	// Spaces a project created from a space flow should join on creation.
 	const [addProjectSpaceIds, setAddProjectSpaceIds] = useState<string[]>([]);
+	// Projects waiting for their conversation-import offer. A queue because the
+	// local tab adds several folders at once and each gets its own answer.
+	const [importOfferQueue, setImportOfferQueue] = useState<Project[]>([]);
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
 	const [showProjectSwitch, setShowProjectSwitch] = useState(false);
 	const { spaces: appSpaces } = useSpaces();
@@ -2755,10 +2759,19 @@ function App() {
 				<AddProjectModal
 					dispatch={dispatch}
 					initialSpaceIds={addProjectSpaceIds}
+					onGitProjectsAdded={(projects) => setImportOfferQueue((q) => [...q, ...projects])}
 					onClose={() => {
 						setShowAddProjectModal(false);
 						setAddProjectSpaceIds([]);
 					}}
+				/>
+			)}
+			{importOfferQueue.length > 0 && (
+				<ImportConversationsModal
+					key={importOfferQueue[0].id}
+					project={importOfferQueue[0]}
+					autoOffer
+					onClose={() => setImportOfferQueue((q) => q.slice(1))}
 				/>
 			)}
 			{createTaskProject && (

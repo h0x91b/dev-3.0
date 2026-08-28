@@ -15,6 +15,7 @@ import AutomationsPanel from "./AutomationsPanel";
 import ColorSwatchPicker from "./ColorSwatchPicker";
 import SettingsSection from "./global-settings/SettingsSection";
 import ProjectSpacesField from "./ProjectSpacesField";
+import ImportConversationsModal from "./ImportConversationsModal";
 import { matchesBranchQuery } from "./BranchSelector";
 import type { NavigationGuard } from "../navigation-guard";
 
@@ -1268,6 +1269,7 @@ function ProjectSettings({
 
 	// Operations boards only have the Board tab (no git → no Project/Worktree
 	// config); never let a deep-linked initialTab strand them on a hidden git tab.
+	const [importingConversations, setImportingConversations] = useState(false);
 	const [activeTab, setActiveTab] = useState<ConfigTab>(
 		project?.kind === "virtual"
 			? (initialTab === "automations" ? "automations" : "global")
@@ -2009,6 +2011,21 @@ function ProjectSettings({
 							<ProjectSpacesField projectId={project.id} />
 							</SettingsSection>
 
+							{project.kind !== "virtual" && (
+								<SettingsSection
+									title={t("projectSettings.importConversations")}
+									description={t("projectSettings.importConversationsDesc")}
+								>
+								<button
+									type="button"
+									onClick={() => setImportingConversations(true)}
+									className="px-4 py-2 bg-raised border border-edge rounded-xl text-fg-2 text-sm hover:border-edge-active hover:text-fg transition-colors"
+								>
+									{t("projectSettings.importConversationsBtn")}
+								</button>
+								</SettingsSection>
+							)}
+
 							<SettingsSection
 								title={t("projectSettings.groupPrivacy")}
 								description={t("projectSettings.groupPrivacyDesc")}
@@ -2373,6 +2390,9 @@ function ProjectSettings({
 						</div>
 					</div>
 				</div>
+			)}
+			{importingConversations && (
+				<ImportConversationsModal project={project} onClose={() => setImportingConversations(false)} />
 			)}
 		</div>
 	);

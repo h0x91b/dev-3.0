@@ -1,0 +1,3 @@
+Short: Import Claude Code chats as tasks
+
+Add a project and dev3 offers to import the Claude Code conversations that already ran in that folder and belong to no task: each becomes an ordinary task titled by Claude, described by a retelling of the conversation, labelled `imported`, with work from the last week landing in Has Questions with its own worktree and older work in Completed. The same offer is re-openable from Project Settings, available as `dev3 conversations import --dry-run`, and every task now writes a conversation dump when it goes terminal so its transcript outlives Claude's retention window.
