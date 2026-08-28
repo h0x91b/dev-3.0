@@ -267,6 +267,24 @@ describe("task lifecycle transition table", () => {
 		});
 	});
 
+	it("archives the conversation once, on the way to a terminal status", () => {
+		const result = transition(state("in-progress"), {
+			type: "moveRequested",
+			target: { status: "completed" },
+			runId: "run-dump",
+		});
+		const types = result.effects.map((candidate) => candidate.type);
+
+		expect(types.filter((type) => type === "dumpTaskConversations")).toHaveLength(1);
+		// Before the worktree goes: the store is keyed on the path a completed task
+		// no longer keeps.
+		expect(types.indexOf("dumpTaskConversations")).toBeLessThan(types.indexOf("removeWorktree"));
+		// Best-effort: a missing archive must not block a completion.
+		expect(result.effects.find((candidate) => candidate.type === "dumpTaskConversations")).not.toMatchObject({
+			onError: "abort",
+		});
+	});
+
 	it("aborts a delete before cleanup and the record delete when the PTY teardown fails", () => {
 		const result = transition(state("in-progress"), { type: "deleteRequested" });
 		const types = result.effects.map((candidate) => candidate.type);
@@ -473,6 +491,7 @@ describe("task lifecycle transition table", () => {
 			"killDevServer",
 			"runCleanupScript",
 			"captureCompletedDiffStats",
+			"dumpTaskConversations",
 			"reapWorktreeProcesses",
 			"removeWorktree",
 			"persistTerminalTask",

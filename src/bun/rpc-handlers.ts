@@ -78,6 +78,7 @@ import { remoteAccessHandlers } from "./rpc-handlers/remote-access";
 import { scriptsHandlers } from "./rpc-handlers/scripts";
 import { portTunnelHandlers } from "./rpc-handlers/port-tunnels";
 import { conversationSearchHandlers } from "./rpc-handlers/conversation-search-handlers";
+import { conversationImportHandlers } from "./rpc-handlers/conversation-import-handlers";
 import { productivityStatsHandlers } from "./rpc-handlers/productivity-stats";
 import { agentUsageHandlers } from "./rpc-handlers/agent-usage";
 import { automationsHandlers } from "./rpc-handlers/automations";
@@ -101,6 +102,7 @@ export const handlers = {
 	...scriptsHandlers,
 	...portTunnelHandlers,
 	...conversationSearchHandlers,
+	...conversationImportHandlers,
 	...productivityStatsHandlers,
 	...agentUsageHandlers,
 	...automationsHandlers,

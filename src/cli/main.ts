@@ -242,8 +242,20 @@ async function main(): Promise<void> {
 		return await handleInlineHtml(rawArgs.slice(1));
 	}
 	if (command === "conversations") {
-		// Read-only search over local transcript files — no app/socket needed.
-		return await handleConversations(subcommand, args, context);
+		// search/dump/handoff are read-only over local transcript files and answer
+		// with no app at all. `import` creates tasks, so it takes the socket like
+		// every other write — except in `--dry-run`, which is the same local scan.
+		if (subcommand === "import" && args.flags["dry-run"] !== "true") {
+			if (!socketPath) socketPath = await resolveSocketPathWithRetry();
+			if (!socketPath) {
+				exitAppNotRunning({
+					stage: "discovery",
+					tolerate: tolerateAppOffline,
+					...debugAppNotRunning("discovery"),
+				});
+			}
+		}
+		return await handleConversations(subcommand, args, context, socketPath ?? null);
 	}
 	if (command === "remote") {
 		// `dev3 remote` IS the app in headless mode — it must not require a

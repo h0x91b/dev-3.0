@@ -22,6 +22,7 @@ import {
 	getTaskTitle,
 } from "../../shared/types";
 import { clonePaths } from "../cow-clone";
+import { dumpTerminalTaskConversations } from "../conversation-archive";
 import * as data from "../data";
 import * as git from "../git";
 import { DEV3_HOME, OPS_DIR } from "../paths";
@@ -907,6 +908,18 @@ export async function executeLifecycleEffect(
 				effect.allowDerivedPath && !ctx.sourceTask.worktreePath
 					? { ...ctx.sourceTask, worktreePath: derivedPreparationPath(ctx.project, ctx.sourceTask) }
 					: ctx.sourceTask,
+			);
+			return {};
+		case "dumpTaskConversations":
+			// Best-effort by design (no abort policy): the archive is a nice-to-have,
+			// a completion is not blocked by it. Claude's own transcripts are pruned
+			// on a retention window (~30 days) and dev3 nulls the worktree path a
+			// completed task was keyed on, so this is the last moment the conversation
+			// can be captured at all.
+			await dumpTerminalTaskConversations(
+				ctx.project,
+				ctx.sourceTask,
+				effect.allowDerivedPath === true ? derivedPreparationPath(ctx.project, ctx.sourceTask) : null,
 			);
 			return {};
 		case "reapWorktreeProcesses":

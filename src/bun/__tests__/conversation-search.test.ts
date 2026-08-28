@@ -240,6 +240,54 @@ describe("searchConversations", () => {
 		expect(results[0].snippets[0].toLowerCase()).toContain("kafka");
 	});
 
+	it("finds a transcript written under a dev3 Claude agent account", () => {
+		// dev3 injects the account dir as CLAUDE_CONFIG_DIR, so half a machine's
+		// history lives here and a home-only scan cannot see it.
+		const wt = reconstructWorktreePath(dev3Home, SLUG, "acct0000-a");
+		const dir = join(dev3Home, "agent-accounts", "claude", "acc-1", "projects", claudeEncodePath(wt));
+		mkdirSync(dir, { recursive: true });
+		writeFileSync(
+			join(dir, "session.jsonl"),
+			JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "the tunnel handshake failed" }] } }) + "\n",
+		);
+
+		const results = searchConversations({
+			query: "tunnel handshake",
+			tasks: [task("acct0000-a")],
+			projectSlug: SLUG,
+			currentTaskId: null,
+			currentGroupId: null,
+			home,
+			dev3Home,
+		});
+		expect(results.map((r) => r.taskId)).toEqual(["acct0000-a"]);
+		expect(results[0].transcriptPaths[0]).toContain("agent-accounts/claude/acc-1");
+	});
+
+	it("keeps finding a task through dev3's own dump after the transcript is gone", () => {
+		// The dump is written when a task goes terminal, and it is the only copy
+		// that outlives Claude's retention window.
+		const wt = reconstructWorktreePath(dev3Home, SLUG, "dump0000-a");
+		const container = wt.slice(0, wt.lastIndexOf("/"));
+		mkdirSync(join(container, "conversations"), { recursive: true });
+		writeFileSync(
+			join(container, "conversations", "claude-sess.json"),
+			JSON.stringify({ turns: [{ events: [{ kind: "message", text: "the retention window pruned it" }] }] }),
+		);
+
+		const results = searchConversations({
+			query: "retention window",
+			tasks: [task("dump0000-a")],
+			projectSlug: SLUG,
+			currentTaskId: null,
+			currentGroupId: null,
+			home,
+			dev3Home,
+		});
+		expect(results.map((r) => r.taskId)).toEqual(["dump0000-a"]);
+		expect(results[0].transcriptPaths[0]).toContain("/conversations/claude-sess.json");
+	});
+
 	it("returns nothing for an empty query", () => {
 		expect(
 			searchConversations({

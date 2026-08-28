@@ -22,6 +22,7 @@ import { loadSpacesFile } from "./spaces-data";
 import { resolveTaskStartRef } from "./task-start-ref";
 import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
+import { conversationImportHandlers } from "./rpc-handlers/conversation-import-handlers";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
@@ -1133,6 +1134,22 @@ const handlers: Record<string, Handler> = {
 
 		const vent = addVent(name, content);
 		return { fileName: vent.fileName };
+	},
+
+	"conversations.scanImport": async (params) => {
+		const projectId = params.projectId as string;
+		if (!projectId) throw new Error("projectId is required");
+		return conversationImportHandlers.scanImportableConversations({ projectId });
+	},
+
+	"conversations.import": async (params) => {
+		const projectId = params.projectId as string;
+		if (!projectId) throw new Error("projectId is required");
+		const sessionIds = params.sessionIds;
+		if (!Array.isArray(sessionIds) || sessionIds.some((id) => typeof id !== "string")) {
+			throw new Error("sessionIds must be an array of session ids");
+		}
+		return conversationImportHandlers.importConversations({ projectId, sessionIds: sessionIds as string[] });
 	},
 
 	"label.list": async (params) => {

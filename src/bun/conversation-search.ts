@@ -1,9 +1,10 @@
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import type { TaskStatus } from "../shared/types";
+import { claudeConfigDirs, codexSessionRoots } from "./agent-store-roots";
 import {
 	bm25Score,
-	claudeEncodePath,
+	claudeTranscriptDir,
 	computeExclusionSet,
 	countTermFrequencies,
 	countWords,
@@ -107,12 +108,21 @@ function textFromBlocks(content: unknown, wanted: (type: string) => boolean): st
 	return parts.join("\n");
 }
 
-// ---- claude: path-keyed under ~/.claude/projects/<encoded-cwd> ----
+// ---- claude: path-keyed under <config-dir>/projects/<encoded-cwd> ----
+
+/**
+ * Every Claude transcript directory for one working directory — the home store
+ * plus each dev3 agent account. Exported because import discovery needs the same
+ * set: a conversation that ran under a second account is history all the same.
+ */
+export function claudeTranscriptDirs(workingDir: string, home: string): string[] {
+	return claudeConfigDirs(home).map((configDir) => claudeTranscriptDir(configDir, workingDir));
+}
 
 const claudeLocator: TranscriptLocator = {
 	kind: "claude",
 	filesForWorktree(worktreePath, home) {
-		return jsonlFilesIn(`${home}/.claude/projects/${claudeEncodePath(worktreePath)}`);
+		return claudeTranscriptDirs(worktreePath, home).flatMap(jsonlFilesIn);
 	},
 	extractUnits(filePath) {
 		const content = readFileSafe(filePath);
@@ -137,24 +147,6 @@ const claudeLocator: TranscriptLocator = {
 };
 
 // ---- codex: date-bucketed rollouts; cwd lives in the SessionMeta header line ----
-
-/**
- * Every store a Codex rollout can land in. The default `~/.codex/sessions` is only
- * one of them: dev3's own agent accounts point `CODEX_HOME` at
- * `~/.dev3.0/agent-accounts/codex/<accountId>/`, so a session launched from a task
- * writes there and is invisible to a scan of the home store. Missing directories
- * are normal — a machine has whichever ones it has.
- */
-function codexSessionRoots(home: string): string[] {
-	const roots = [`${home}/.codex/sessions`];
-	const accounts = `${home}/.dev3.0/agent-accounts/codex`;
-	try {
-		for (const entry of readdirSync(accounts)) roots.push(`${accounts}/${entry}/sessions`);
-	} catch {
-		// No agent accounts configured.
-	}
-	return roots.filter((root) => existsSync(root));
-}
 
 const codexLocator: TranscriptLocator = {
 	kind: "codex",
@@ -273,8 +265,45 @@ const geminiLocator: TranscriptLocator = {
 	},
 };
 
+// ---- dev3's own dumps: <task container>/conversations, written when a task goes
+// terminal. The only copy that outlives both the worktree and Claude's own
+// retention window, which is exactly the case search exists for. ----
+
+const dumpLocator: TranscriptLocator = {
+	kind: "dev3-dump",
+	filesForWorktree(worktreePath) {
+		const container = worktreePath.slice(0, worktreePath.lastIndexOf("/"));
+		if (!container) return [];
+		const dir = `${container}/conversations`;
+		if (!existsSync(dir)) return [];
+		try {
+			return readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => `${dir}/${f}`);
+		} catch {
+			return [];
+		}
+	},
+	extractUnits(filePath) {
+		const content = readFileSafe(filePath);
+		if (!content) return [];
+		let dump: { turns?: { events?: { kind?: string; text?: unknown }[] }[] };
+		try {
+			dump = JSON.parse(content) as typeof dump;
+		} catch {
+			return [];
+		}
+		const units: string[] = [];
+		for (const turn of dump.turns ?? []) {
+			for (const event of turn.events ?? []) {
+				if (event.kind !== "message" && event.kind !== "thinking") continue;
+				if (typeof event.text === "string" && event.text.trim()) units.push(event.text);
+			}
+		}
+		return units;
+	},
+};
+
 /** Registered locators — every agent whose store maps to a single task (variant isolation). */
-const LOCATORS: TranscriptLocator[] = [claudeLocator, codexLocator, geminiLocator];
+const LOCATORS: TranscriptLocator[] = [claudeLocator, codexLocator, geminiLocator, dumpLocator];
 
 /** One transcript file found on disk, tagged with the agent whose store held it. */
 export interface TranscriptFile {

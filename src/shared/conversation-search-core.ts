@@ -43,6 +43,21 @@ export function claudeEncodePath(absolutePath: string): string {
 }
 
 /**
+ * The transcript directory for one working directory inside one Claude config
+ * dir. The config dir is `~/.claude` for a normal login and
+ * `~/.dev3.0/agent-accounts/claude/<id>` for a dev3 agent account, which dev3
+ * injects as `CLAUDE_CONFIG_DIR` — the layout below it is identical.
+ */
+export function claudeTranscriptDir(configDir: string, workingDir: string): string {
+	return `${claudeProjectsDir(configDir)}/${claudeEncodePath(workingDir)}`;
+}
+
+/** The directory holding one config dir's per-working-directory stores. */
+export function claudeProjectsDir(configDir: string): string {
+	return `${configDir}/projects`;
+}
+
+/**
  * Reconstruct a task's worktree path deterministically from project slug and
  * the task's short id. dev3 nulls `task.worktreePath` once a task is completed
  * or cancelled (see task-lifecycle moveTask), so the stored field cannot be

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseClaudeTranscript, parseCodexTranscript } from "../../shared/conversation-parsers";
 import { normalizeToolCall, describeToolCall, filesTouched } from "../../shared/conversation-tools";
-import { renderHandoff } from "../../shared/conversation-render";
+import { renderHandoff, renderImportedDescription } from "../../shared/conversation-render";
 import { toolCallsOf } from "../../shared/conversation-model";
 
 function jsonl(...records: unknown[]): string {
@@ -251,5 +251,62 @@ describe("renderHandoff", () => {
 			"/r.jsonl",
 		);
 		expect(renderHandoff(codex)).toContain("encrypted");
+	});
+});
+
+describe("renderImportedDescription", () => {
+	function conversationWith(turns: number, promptLength = 40): string {
+		const records: unknown[] = [{ type: "ai-title", aiTitle: "Imported", sessionId: "s" }];
+		for (let i = 0; i < turns; i++) {
+			records.push({
+				type: "user",
+				uuid: `u${i}`,
+				sessionId: "s",
+				cwd: "/w",
+				gitBranch: "main",
+				timestamp: "2026-08-20T10:00:00.000Z",
+				message: { role: "user", content: [{ type: "text", text: `${i === 0 ? "FIRST" : "later"} ${"x".repeat(promptLength)}` }] },
+			});
+			records.push({
+				type: "assistant",
+				uuid: `a${i}`,
+				parentUuid: `u${i}`,
+				sessionId: "s",
+				timestamp: "2026-08-20T10:01:00.000Z",
+				message: { role: "assistant", content: [{ type: "text", text: `answer ${i} ${"y".repeat(promptLength)}` }] },
+			});
+		}
+		return jsonl(...records);
+	}
+
+	it("leads with the user's first request, in full, before the context block", () => {
+		const parsed = parseClaudeTranscript(conversationWith(3), "/t.jsonl");
+		const text = renderImportedDescription(parsed);
+		expect(text).toContain("## The request that started this");
+		expect(text.indexOf("FIRST")).toBeLessThan(text.indexOf("## Context"));
+	});
+
+	it("stays under the cap and says how many turns it dropped", () => {
+		const parsed = parseClaudeTranscript(conversationWith(400, 400), "/t.jsonl");
+		const text = renderImportedDescription(parsed, { limit: 20_000 });
+		expect(text.length).toBeLessThanOrEqual(20_000);
+		expect(text).toMatch(/The first \d+ of \d+ turns are omitted/);
+		// The point of the work survives the shrinking.
+		expect(text).toContain("FIRST");
+	});
+
+	it("marks the cut when even one turn does not fit", () => {
+		const parsed = parseClaudeTranscript(conversationWith(2, 5_000), "/t.jsonl");
+		const text = renderImportedDescription(parsed, { limit: 2_000 });
+		expect(text.length).toBeLessThanOrEqual(2_000);
+		expect(text).toContain("more characters cut");
+	});
+
+	it("keeps a short conversation whole", () => {
+		const parsed = parseClaudeTranscript(conversationWith(2), "/t.jsonl");
+		const text = renderImportedDescription(parsed);
+		expect(text).toContain("answer 0");
+		expect(text).toContain("answer 1");
+		expect(text).not.toMatch(/turns are omitted/);
 	});
 });

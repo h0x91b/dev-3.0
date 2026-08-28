@@ -124,7 +124,9 @@ describe("a declared family overrides the command-name guess", () => {
 		expect(adapter.supportsResume).toBe(true);
 		expect(adapter.supportsPreAssignedSessionId).toBe(true);
 		expect(adapter.buildResumeCommand("my-claude", "abc")).toBe("my-claude --resume abc");
-		expect(adapter.transcriptStore?.("/w", "/home")).toEqual(claudeAdapter.transcriptStore?.("/w", "/home"));
+		expect(adapter.transcriptStore?.("/w", ["/home/.claude"])).toEqual(
+			claudeAdapter.transcriptStore?.("/w", ["/home/.claude"]),
+		);
 	});
 
 	it("resumes rather than re-sending the prompt, unlike the generic fallback", () => {

@@ -336,6 +336,19 @@ const COMMANDS: CommandHelp[] = [
 				],
 			},
 			{
+				name: "import",
+				usage: "dev3 conversations import [--project <id>] [--dry-run] [--sessions <id,id>] [--json]",
+				summary: "Turn Claude Code conversations that ran in this project's directory into tasks.",
+				details: [
+					"Only conversations that belong to no dev3 task are offered, and an already",
+					"imported one is never offered again. Work from the last week lands in Has",
+					"Questions with a worktree; older work lands in Completed as archive.",
+					"--dry-run          List what would be imported and create nothing (needs no running app).",
+					"--sessions IDS     Import only these session ids (comma-separated). Default: everything found.",
+					"--json             Machine-readable output.",
+				],
+			},
+			{
 				name: "search",
 				usage: 'dev3 conversations search "<query>" [--limit N] [--all-statuses] [--json]',
 				summary: "Search completed/cancelled task conversations for relevant prior work.",

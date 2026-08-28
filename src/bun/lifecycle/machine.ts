@@ -322,6 +322,9 @@ function moveTransition(
 				effect({ type: "killDevServer" }),
 				effect({ type: "runCleanupScript", toStatus: terminalStatus, allowDerivedPath }),
 				effect({ type: "captureCompletedDiffStats", allowDerivedPath }),
+				// Once per terminal transition, never per agent reply: parsing a
+				// transcript is milliseconds, writing its dump is megabytes.
+				effect({ type: "dumpTaskConversations", allowDerivedPath }),
 				// Last thing that runs INSIDE the worktree, so it never kills the
 				// cleanup script or the diff capture above.
 				effect({ type: "reapWorktreeProcesses", allowDerivedPath }),

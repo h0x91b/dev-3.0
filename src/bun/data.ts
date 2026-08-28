@@ -872,6 +872,10 @@ export async function addTask(
 		automationId?: string | null;
 		priority?: TaskPriority;
 		relations?: Task["relations"];
+		/** Overrides the derived base branch — the imported conversation's own branch. */
+		baseBranch?: string;
+		/** See Task.importedSessionId. */
+		importedSessionId?: string;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -902,7 +906,7 @@ export async function addTask(
 			description,
 			status,
 			priority: extras?.priority ?? DEFAULT_PRIORITY,
-			baseBranch: deriveTaskBaseBranch(project, extras?.existingBranch),
+			baseBranch: extras?.baseBranch || deriveTaskBaseBranch(project, extras?.existingBranch),
 			worktreePath: null,
 			branchName: null,
 			groupId: extras?.groupId ?? null,
@@ -928,6 +932,7 @@ export async function addTask(
 			...(extras?.draft ? { draft: true } : {}),
 			...(extras?.foreignCode ? { foreignCode: true } : {}),
 			...(extras?.taskType ? { taskType: extras.taskType } : {}),
+			...(extras?.importedSessionId ? { importedSessionId: extras.importedSessionId } : {}),
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
 			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),

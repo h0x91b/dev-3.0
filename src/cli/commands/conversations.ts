@@ -11,11 +11,14 @@ import {
 	writeConversationDump,
 } from "../../bun/conversation-parse";
 import { renderHandoff } from "../../shared/conversation-render";
+import { scanImportableConversations } from "../../bun/conversation-import";
+import type { ImportConversationsResult } from "../../shared/conversation-import-model";
+import { sendRequest } from "../socket-client";
 import { DEFAULT_DUMP_BUDGET, type DumpBudget } from "../../shared/conversation-dump";
 import { atomicWriteFile } from "../../bun/atomic-write";
 import type { ParsedArgs } from "../args";
 import { detectFromWorktreePath, readProjectDirect, resolveProjectId, type CliContext } from "../context";
-import { exitError, exitUsage } from "../output";
+import { exitError, exitUsage, printTable } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 
 /** Derive the real HOME / dev3 home, honoring sandbox-rewritten HOME via the worktree path. */
@@ -266,10 +269,100 @@ async function handoffCmd(args: ParsedArgs): Promise<void> {
 	process.stdout.write(text);
 }
 
+/**
+ * Import the Claude Code conversations that ran in this project's directory and
+ * belong to no dev3 task.
+ *
+ * `--dry-run` answers entirely from local files — the same scan the app runs, so
+ * the list can be inspected on a machine where dev3 is not even open. A real
+ * import creates tasks, so it goes through the app like every other write.
+ */
+async function importCmd(args: ParsedArgs, context: CliContext | null, socketPath: string | null): Promise<void> {
+	rejectUnknownFlags(args, ["project", "dry-run", "json", "sessions"]);
+
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (!projectId) {
+		exitError("Could not determine project. Run from inside a worktree or pass --project <id>.");
+	}
+	const project = readProjectDirect(projectId);
+	if (!project) {
+		exitError(`Project not found: ${projectId}`);
+	}
+
+	const dryRun = args.flags["dry-run"] === "true";
+	const asJson = args.flags.json === "true";
+	const requested = (args.flags.sessions ?? "").split(",").map((id) => id.trim()).filter(Boolean);
+
+	const { home, dev3Home } = resolveHomes();
+	const tasks = loadProjectTasks(dev3Home, projectSlug(project.path));
+	const found = scanImportableConversations({
+		projectPath: project.path,
+		importedSessionIds: tasks
+			.map((task) => task.importedSessionId)
+			.filter((id): id is string => typeof id === "string" && id.length > 0),
+		home,
+	});
+	const selected = requested.length > 0 ? found.filter((c) => requested.includes(c.sessionId)) : found;
+
+	if (dryRun) {
+		if (asJson) {
+			process.stdout.write(`${JSON.stringify(selected, null, 2)}\n`);
+			return;
+		}
+		if (selected.length === 0) {
+			process.stdout.write("No importable Claude Code conversations for this project.\n");
+			return;
+		}
+		process.stdout.write(`${selected.length} conversation(s) would be imported (nothing was created):\n\n`);
+		printTable(
+			["SESSION", "LAST ACTIVE", "TURNS", "COLUMN", "TITLE"],
+			selected.map((c) => [
+				c.sessionId.slice(0, 8),
+				new Date(c.lastActivityMs).toISOString().slice(0, 16).replace("T", " "),
+				String(c.turns),
+				c.targetStatus === "user-questions" ? "Has Questions" : "Completed",
+				c.title,
+			]),
+		);
+		return;
+	}
+
+	if (!socketPath) {
+		exitError("dev3 must be running to import conversations. Use --dry-run to inspect the list without it.");
+	}
+	if (selected.length === 0) {
+		process.stdout.write("No importable Claude Code conversations for this project.\n");
+		return;
+	}
+
+	const resp = await sendRequest(socketPath, "conversations.import", {
+		projectId,
+		sessionIds: selected.map((c) => c.sessionId),
+	});
+	if (!resp.ok) exitError(resp.error || "Failed to import conversations");
+	const result = resp.data as ImportConversationsResult;
+
+	if (asJson) {
+		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+	} else {
+		process.stdout.write(`Imported ${result.imported} conversation(s) as tasks.\n`);
+		for (const task of result.tasks) {
+			process.stdout.write(`  seq ${task.seq}  ${task.status}  ${task.title}\n`);
+		}
+	}
+	if (result.problems.length > 0) {
+		exitError(
+			`${result.problems.length} conversation(s) had trouble`,
+			result.problems.map((p) => `${p.title}: ${p.error}`).join("\n"),
+		);
+	}
+}
+
 export async function handleConversations(
 	subcommand: string | undefined,
 	args: ParsedArgs,
 	context: CliContext | null,
+	socketPath: string | null = null,
 ): Promise<void> {
 	switch (subcommand) {
 		case "search":
@@ -278,10 +371,12 @@ export async function handleConversations(
 			return dumpCmd(args, context);
 		case "handoff":
 			return handoffCmd(args);
+		case "import":
+			return importCmd(args, context, socketPath);
 		default:
 			exitUsage(
 				`Unknown subcommand: conversations ${subcommand || "(none)"}` +
-				'\nAvailable: conversations search "<query>", conversations dump, conversations handoff',
+				'\nAvailable: conversations search "<query>", conversations dump, conversations handoff, conversations import',
 			);
 	}
 }

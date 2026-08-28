@@ -1,6 +1,6 @@
 /** Claude Code adapter. */
 import { CLAUDE_SKILL_BODY } from "../agent-skill-content";
-import { claudeEncodePath } from "../conversation-search-core";
+import { claudeTranscriptDir } from "../conversation-search-core";
 import { modelArgs, providerArgs } from "./common";
 import { shellEscape, quoteIfUnsafe } from "./shell";
 import { buildTaskPrompt } from "./template";
@@ -77,8 +77,11 @@ export const claudeAdapter: AgentAdapter = {
 		return sessionId ? `${baseCmd} --resume ${sessionId}` : `${baseCmd} --continue`;
 	},
 
-	transcriptStore(worktreePath, home) {
-		return { dir: `${home}/.claude/projects/${claudeEncodePath(worktreePath)}`, ext: ".jsonl" };
+	transcriptStore(worktreePath, configDirs) {
+		return {
+			dirs: configDirs.map((configDir) => claudeTranscriptDir(configDir, worktreePath)),
+			ext: ".jsonl",
+		};
 	},
 
 	hooksSpec(options) {

@@ -1,5 +1,6 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "./conversation-search-core";
+import type { ImportConversationsResult, ImportableConversationView } from "./conversation-import-model";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
@@ -2353,6 +2354,14 @@ export interface Task {
 	 */
 	taskType?: TaskType | null;
 	/**
+	 * The Claude Code session this task was imported from, for a task created by
+	 * the conversation import. Nothing about the task behaves differently
+	 * afterwards — this is the key that keeps a second import from offering the
+	 * same conversation again, and it is never rewritten once set (an import is a
+	 * snapshot, and the description belongs to the user from then on).
+	 */
+	importedSessionId?: string | null;
+	/**
 	 * For tasks in a virtual ("Operations") project only: the user-chosen fixed
 	 * working folder picked at creation (e.g. `~/Downloads`). When absent, the
 	 * operation uses a managed temp dir under `~/.dev3.0/ops/<slug>/<taskId>/work`.
@@ -4483,6 +4492,20 @@ export type AppRPCSchema = {
 			searchConversations: {
 				params: { projectId: string; query: string; currentTaskId?: string | null; limit?: number; allStatuses?: boolean };
 				response: ConversationMatch[];
+			};
+			/**
+			 * Claude Code conversations that ran in this project's directory and
+			 * belong to no dev3 task. Read-only: nothing is created and a decline is
+			 * not recorded, so the same list comes back next time.
+			 */
+			scanImportableConversations: {
+				params: { projectId: string };
+				response: { conversations: ImportableConversationView[] };
+			};
+			/** Turn the selected conversations into ordinary tasks. Idempotent per session id. */
+			importConversations: {
+				params: { projectId: string; sessionIds: string[] };
+				response: ImportConversationsResult;
 			};
 			createTask: {
 				/**
