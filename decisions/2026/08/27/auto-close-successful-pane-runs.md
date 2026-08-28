@@ -1,5 +1,8 @@
 # Auto-close a pane run only when it succeeded
 
+> Superseded on 2026-08-28 by `decisions/2026/08/28/bound-every-pane-run-dismissal.md`: a failed run
+> no longer waits for Enter forever — it gets a 30-minute window instead.
+
 ## Context
 
 `dev3 pane run` held its pane open forever after the command ended (`waitForDismissal` in

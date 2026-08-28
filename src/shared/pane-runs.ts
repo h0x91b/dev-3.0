@@ -39,19 +39,33 @@ export type PaneRunPlacement = "right" | "below";
 /** How long a SUCCESSFUL run's pane stays on screen before it closes itself. */
 export const PANE_RUN_AUTO_CLOSE_SECONDS = 10;
 
+/**
+ * How long a FAILED run's pane stays. Long enough that the output is still there
+ * when the user comes back from lunch, short enough that yesterday's red builds
+ * are not still on screen today.
+ */
+export const PANE_RUN_FAILED_AUTO_CLOSE_SECONDS = 30 * 60;
+
 export interface PaneRunDismissal {
-	/** null = wait for the human, forever. */
-	readonly autoCloseMs: number | null;
+	/** Every outcome closes eventually — a pane is never left waiting forever. */
+	readonly autoCloseMs: number;
 	readonly message: string;
 }
 
 /**
- * What a finished pane does with itself. A clean run closes on a timer so finished
- * panes stop piling up; anything else — a non-zero exit, a signal, an outcome we
- * cannot read — keeps the pane, because its output is what the human came for.
+ * What a finished pane does with itself. Every pane closes itself eventually so
+ * finished panes stop piling up; a clean run goes quickly, and anything else — a
+ * non-zero exit, a signal, an outcome we cannot read — gets the long window,
+ * because its output is what the human came for.
  */
 export function paneRunDismissal(exitCode: number | null): PaneRunDismissal {
-	if (exitCode !== 0) return { autoCloseMs: null, message: "press Enter to close this pane" };
+	if (exitCode !== 0) {
+		const minutes = Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60);
+		return {
+			autoCloseMs: PANE_RUN_FAILED_AUTO_CLOSE_SECONDS * 1000,
+			message: `closing this pane in ${minutes}m — press Enter to close it now`,
+		};
+	}
 	return {
 		autoCloseMs: PANE_RUN_AUTO_CLOSE_SECONDS * 1000,
 		message: `closing this pane in ${PANE_RUN_AUTO_CLOSE_SECONDS}s — press Enter to close it now`,

@@ -16,7 +16,7 @@ import {
 	AGENT_MESSAGE_HOLD_IDLE_SECONDS,
 } from "./agent-message-hold-timing";
 import { deepLinkSchemeRegistered } from "./deep-link";
-import { PANE_RUN_AUTO_CLOSE_SECONDS } from "./pane-runs";
+import { PANE_RUN_AUTO_CLOSE_SECONDS, PANE_RUN_FAILED_AUTO_CLOSE_SECONDS } from "./pane-runs";
 
 /**
  * How the agent should link a PR back to its task — or why it must not. The
@@ -263,7 +263,9 @@ dev3 pane close <run-id>                      # close that pane (kills the comma
 
 The outcome line distinguishes **still running** from **finished, exit code N** — never treat a quiet tail as a finished command. Runs are non-interactive (stdin is closed): builds, tests, servers, watchers. Quick one-shot commands stay inline in your own shell, and the project's canonical dev server is \`dev3 dev-server start\`, not a pane run.
 
-**Clean up after yourself — a finished pane the user has to close by hand is litter.** A run that exits 0 closes its own pane after ${PANE_RUN_AUTO_CLOSE_SECONDS} seconds, so the ordinary green case needs nothing from you. Everything else stays on screen deliberately: a failed run keeps its pane so the user can read it, and a server or watcher you started keeps running until something stops it. Once you have read what you needed from a run you are done with, \`dev3 pane close <run-id>\` — do not leave a watcher or a red build parked in the user's terminal after the work that needed it is over.
+**Close every pane you are done with — this is your job, not the user's.** \`dev3 pane close <run-id>\` the moment you have read what you came for. Do it per run, as you go, and again before you end a turn: \`dev3 pane list\` must show nothing of yours except panes still doing work you still need. A watcher, a dev server, or a red build parked in the user's terminal after the work that needed it is over is litter, and the user is the one who has to clear it.
+
+The pane's own timer is a backstop for panes you abandon, never a substitute for closing them: a run that exits 0 closes itself after ${PANE_RUN_AUTO_CLOSE_SECONDS} seconds, and a failed one after ${Math.round(PANE_RUN_FAILED_AUTO_CLOSE_SECONDS / 60)} minutes, so its output is still on screen when the user comes back. Closing a pane never destroys anything you need — the full output stays in the run's log and \`dev3 pane logs <run-id>\` reads it afterwards.
 
 Reading the SCREEN of a pane you did not start (the user's own pane, "look at the error on the right") is a different thing and is **tmux-only today**: \`dev3 peek --pane <N>\` returns a screen tail on a tmux task, and on a native task it returns the pane summary with no tail, because the native host publishes no screen snapshot. \`dev3 pane list\` says which case you are in.
 

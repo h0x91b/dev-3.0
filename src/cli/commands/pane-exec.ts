@@ -86,16 +86,12 @@ async function keyPressed(): Promise<void> {
 /**
  * Hold the pane open after the command ends, so a finished build stays on screen
  * instead of the pane vanishing the moment it succeeds. The agent never needs this
- * — it reads the log — so the wait exists purely for the human watching, and a
- * clean run gives that human a few seconds rather than a pane to close by hand.
+ * — it reads the log — so the wait exists purely for the human watching, and it is
+ * always bounded: nothing here ever leaves a pane for the user to close by hand.
  */
 async function waitForDismissal(exitCode: number | null): Promise<void> {
 	const { autoCloseMs, message } = paneRunDismissal(exitCode);
 	process.stdout.write(`[dev3] ${message}\n`);
-	if (autoCloseMs === null) {
-		await keyPressed();
-		return;
-	}
 	await Promise.race([keyPressed(), Bun.sleep(autoCloseMs)]);
 }
 
