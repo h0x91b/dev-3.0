@@ -28,6 +28,7 @@ import { getTunnelUrl, getTunnelState, tunnelManager } from "./cloudflare-tunnel
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
 import { telemetryBootstrapScript } from "./analytics-identity";
+import { buildSignInLink } from "../shared/remote-sign-in-link";
 
 const log = createLogger("remote-access");
 
@@ -1047,6 +1048,19 @@ export async function getAccessUrl(host?: string): Promise<string> {
 	if (tunnel) return `${tunnel}/?token=${token}`;
 	const ip = resolveAccessHost(host);
 	return `http://${ip}:${serverPort}/?token=${token}`;
+}
+
+/**
+ * The bookmarkable sign-in link, or null when no access code is set. The code
+ * rides the fragment, so it never reaches this server's own logs, the tunnel, or
+ * a proxy — see `src/shared/remote-sign-in-link.ts` for what that does and does
+ * not buy. The URL half still carries a one-time QR token, so the link works
+ * even before its fragment is read.
+ */
+export async function getSignInLink(host?: string): Promise<string | null> {
+	const code = getStaticCode();
+	if (!code) return null;
+	return buildSignInLink(await getAccessUrl(host), code);
 }
 
 export function getBaseUrl(): string {

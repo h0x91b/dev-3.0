@@ -814,7 +814,13 @@ export async function printAccessForState(
 	}
 	process.stdout.write(`  (the token is single-use — rerun \`dev3 remote url\` for a fresh one)\n`);
 	if (info.staticCode) {
-		process.stdout.write(`  Static access code: ${info.staticCode} — type it on the sign-in screen instead\n`);
+		process.stdout.write(`\n  Static access code: ${info.staticCode}\n`);
+	}
+	// The code sits in the fragment, so this link never puts it on the wire — but
+	// a bookmark holds it for as long as the bookmark lives. Say both.
+	if (info.signInLink) {
+		process.stdout.write(`\n  Bookmark this to sign in with nothing typed:\n  ${info.signInLink}\n`);
+		process.stdout.write(`  (the code is in the #fragment — never sent to a server, but it does live in the bookmark)\n`);
 	}
 }
 

@@ -3778,14 +3778,19 @@ export interface RemoteNetInterface {
  * a scannable URL it could never mint itself.
  */
 export interface RemoteAccessInfo {
-	/** Full access URL with a fresh `?token=` (QR or static code). */
+	/** Full access URL with a fresh one-time `?token=` — never the access code. */
 	url: string;
 	/** Public Cloudflare tunnel URL, or null if no tunnel is connected. */
 	tunnelUrl: string | null;
 	/** TCP port the server is bound to. */
 	port: number;
-	/** Static access code if in `--static-code` mode, else null. */
+	/** The permanent access code, if one is set, else null. */
 	staticCode: string | null;
+	/**
+	 * Bookmarkable sign-in link: the access URL with the code in its FRAGMENT, so
+	 * clicking the bookmark signs in with nothing typed. Null when no code is set.
+	 */
+	signInLink: string | null;
 }
 
 // ---- Tmux sessions ----

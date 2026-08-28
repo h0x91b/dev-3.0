@@ -78,6 +78,7 @@ type FetchOutcome = { ok: boolean; status: number } | "network-error";
 
 function createHarness(opts: {
 	qrToken?: string | null;
+	accessCode?: string | null;
 	authMode?: "cookie" | "none";
 	exchange?: FetchOutcome;
 	refresh?: FetchOutcome | FetchOutcome[];
@@ -109,6 +110,7 @@ function createHarness(opts: {
 
 	const session = createRemoteSession({
 		qrToken: opts.qrToken ?? null,
+		accessCode: opts.accessCode ?? null,
 		authMode: opts.authMode ?? "cookie",
 		fetchFn,
 		createSocket: () => {
@@ -423,5 +425,77 @@ describe("submitAccessCode", () => {
 		h.session.destroy();
 		await expect(h.session.submitAccessCode("sesame")).resolves.toBe("network");
 		expect(h.sockets).toHaveLength(0);
+	});
+});
+
+// ── The bookmarked sign-in link (#code=…) ────────────────────────────
+//
+// The point of the link is "click the bookmark, you are in" — so the tests
+// below pin the ORDER: a live cookie is never spent to use the code, and a bad
+// code in an old bookmark still lands on the sign-in screen rather than looping.
+
+describe("access code from a bookmarked link", () => {
+	it("signs in with no typing when there is no cookie", async () => {
+		const h = createHarness({ accessCode: "sesame", refresh: { ok: false, status: 401 } });
+		h.session.start();
+		await h.timers.flush();
+
+		expect(h.onExpired).not.toHaveBeenCalled();
+		expect(h.sockets).toHaveLength(1);
+		expect(exchangeCalls(h)).toHaveLength(1);
+	});
+
+	// Order matters: the refresh probe runs first, so a returning visitor never
+	// burns an exchange, and the code is a fallback rather than the normal path.
+	it("prefers a live cookie and never touches the code", async () => {
+		const h = createHarness({ accessCode: "sesame", refresh: { ok: true, status: 200 } });
+		h.session.start();
+		await h.timers.flush();
+
+		expect(exchangeCalls(h)).toHaveLength(0);
+		expect(h.sockets).toHaveLength(1);
+	});
+
+	it("a stale code in an old bookmark ends on the sign-in screen, not in a loop", async () => {
+		const h = createHarness({
+			accessCode: "rotated-away",
+			exchange: { ok: false, status: 401 },
+			refresh: { ok: false, status: 401 },
+		});
+		h.session.start();
+		await h.timers.flush();
+
+		expect(h.onExpired).toHaveBeenCalledOnce();
+		expect(h.onExpired.mock.calls[0][0]).toMatchObject({ reason: "link-code-rejected" });
+		expect(exchangeCalls(h)).toHaveLength(1);
+		expect(h.sockets).toHaveLength(0);
+	});
+
+	// A dead network is not a wrong code. Expiring here would show "that code was
+	// not accepted" to someone whose wifi merely dropped.
+	it("keeps retrying instead of expiring when the exchange cannot reach the host", async () => {
+		const h = createHarness({
+			accessCode: "sesame",
+			exchange: "network-error",
+			refresh: { ok: false, status: 401 },
+		});
+		h.session.start();
+		await h.timers.flush();
+
+		expect(h.onExpired).not.toHaveBeenCalled();
+		expect(h.timers.pendingCount()).toBeGreaterThan(0);
+	});
+
+	it("a QR token in the same URL still wins — it is one-time and must be spent fresh", async () => {
+		const h = createHarness({
+			qrToken: "qr",
+			accessCode: "sesame",
+			exchange: { ok: true, status: 200 },
+		});
+		h.session.start();
+		await h.timers.flush();
+
+		expect(exchangeCalls(h)).toHaveLength(1);
+		expect(h.sockets).toHaveLength(1);
 	});
 });

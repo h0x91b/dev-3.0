@@ -1921,7 +1921,7 @@ const handlers: Record<string, Handler> = {
 	// platform shim, so we import them LAZILY here: a static import would drag
 	// electrobun into every unit test that merely imports this socket server.
 	"remote.accessUrl": async () => {
-		const { getAccessUrl, getServerPort, getStaticCode } = await import("./remote-access-server");
+		const { getAccessUrl, getServerPort, getStaticCode, getSignInLink } = await import("./remote-access-server");
 		const { getTunnelUrl } = await import("./cloudflare-tunnel");
 		if (getServerPort() === 0) {
 			throw new Error("Remote access server is not running in this instance (start it with `dev3 remote`).");
@@ -1931,6 +1931,7 @@ const handlers: Record<string, Handler> = {
 			tunnelUrl: getTunnelUrl(),
 			port: getServerPort(),
 			staticCode: getStaticCode(),
+			signInLink: await getSignInLink(),
 		};
 	},
 

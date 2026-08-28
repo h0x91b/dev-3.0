@@ -56,6 +56,12 @@ export interface RemoteSessionCallbacks {
 export interface RemoteSessionOptions {
 	/** One-time QR token from the page URL, if any. */
 	qrToken?: string | null;
+	/**
+	 * The owner's permanent access code, lifted from the URL fragment of a
+	 * bookmarked sign-in link. Tried only after an existing cookie has failed, so
+	 * a live session is never spent on it.
+	 */
+	accessCode?: string | null;
 	/** "cookie" = real remote server; "none" = Vite dev (no auth endpoints). */
 	authMode: "cookie" | "none";
 	fetchFn: (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<FetchResponseLike>;
@@ -92,6 +98,7 @@ type ProbeOutcome = "ok" | "unauthorized" | "network";
 export function createRemoteSession(opts: RemoteSessionOptions): RemoteSession {
 	const {
 		qrToken = null,
+		accessCode = null,
 		authMode,
 		fetchFn,
 		createSocket,
@@ -169,6 +176,34 @@ export function createRemoteSession(opts: RemoteSessionOptions): RemoteSession {
 		} catch {
 			return "network";
 		}
+	}
+
+	/**
+	 * POST a credential — QR token or access code, the endpoint takes either — and
+	 * classify the answer. "rejected" is the server's verdict on the credential
+	 * itself; anything else that is not a 2xx is transient and worth a retry.
+	 */
+	async function exchangeToken(token: string): Promise<AccessCodeOutcome> {
+		try {
+			const resp = await fetchFn("/auth/exchange", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ token }),
+			});
+			if (resp.ok) return "ok";
+			return resp.status === 401 || resp.status === 403 ? "rejected" : "network";
+		} catch {
+			return "network";
+		}
+	}
+
+	/** Adopt a freshly minted cookie: reset backoff, start rolling refresh, connect. */
+	function enterSession(): void {
+		attempts = 0;
+		cancelRetry();
+		if (state === "expired") setState("connecting");
+		startRefreshLoop();
+		connect();
 	}
 
 	function expire(detail: Record<string, unknown>): void {
@@ -261,36 +296,41 @@ export function createRemoteSession(opts: RemoteSessionOptions): RemoteSession {
 		setState("authenticating");
 		if (qrToken && !qrSpent) {
 			qrSpent = true;
-			try {
-				const resp = await fetchFn("/auth/exchange", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ token: qrToken }),
-				});
+			// Consumed/expired QR (typical when the URL is reopened from browser
+			// history) falls through to the cookie probe: a still-valid session
+			// must re-enter silently. So does a network error.
+			if (await exchangeToken(qrToken) === "ok") {
 				if (destroyed) return;
-				if (resp.ok) {
-					attempts = 0;
-					startRefreshLoop();
-					connect();
-					return;
-				}
-				// Consumed/expired QR (typical when the URL is reopened from
-				// browser history) — fall through to the cookie probe: a
-				// still-valid session must re-enter silently.
-			} catch {
-				// Network error — fall through to the probe/backoff path.
+				enterSession();
+				return;
 			}
+			if (destroyed) return;
 		}
 		const outcome = await probeRefresh();
 		if (isDead()) return;
 		if (outcome === "ok") {
-			attempts = 0;
-			startRefreshLoop();
-			connect();
+			enterSession();
 			return;
 		}
 		if (outcome === "unauthorized") {
-			expire({ reason: qrToken ? "exchange-and-refresh-rejected" : "no-session" });
+			// No live cookie. A bookmarked sign-in link carries the access code in
+			// its fragment for exactly this moment — it is the difference between
+			// "click the bookmark, you are in" and typing 30 characters on a phone.
+			// Tried last on purpose: an existing session is never spent to use it.
+			if (accessCode) {
+				const codeOutcome = await exchangeToken(accessCode);
+				if (isDead()) return;
+				if (codeOutcome === "ok") {
+					enterSession();
+					return;
+				}
+				if (codeOutcome === "network") {
+					setState(hasConnected ? "reconnecting" : "connecting");
+					scheduleRetry(() => void bootAuth());
+					return;
+				}
+			}
+			expire({ reason: qrToken ? "exchange-and-refresh-rejected" : accessCode ? "link-code-rejected" : "no-session" });
 			return;
 		}
 		// Network down — keep probing with backoff until the server answers.
@@ -311,26 +351,14 @@ export function createRemoteSession(opts: RemoteSessionOptions): RemoteSession {
 
 		async submitAccessCode(code: string): Promise<AccessCodeOutcome> {
 			if (destroyed) return "network";
-			try {
-				const resp = await fetchFn("/auth/exchange", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ token: code }),
-				});
-				if (destroyed) return "network";
-				if (!resp.ok) return resp.status === 401 || resp.status === 403 ? "rejected" : "network";
-			} catch {
-				return "network";
-			}
+			const outcome = await exchangeToken(code);
+			if (destroyed) return "network";
+			if (outcome !== "ok") return outcome;
 			// Accepted: leave `expired` and reconnect. `started` is forced on because
 			// a browser opened without any credential expires during boot, and the
 			// code is what starts the session in that case.
 			started = true;
-			attempts = 0;
-			cancelRetry();
-			setState("connecting");
-			startRefreshLoop();
-			connect();
+			enterSession();
 			return "ok";
 		},
 
