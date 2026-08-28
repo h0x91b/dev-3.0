@@ -761,6 +761,7 @@ const settings = {
 	"spaces.homeGroup": "Home",
 	"spaces.boardGone": "Ese espacio ya no existe.",
 	"spaces.zoomOut": "Mostrar todo el espacio",
+	"spaces.openBoard": "Abrir tablero del espacio",
 	"spaces.zoomOutPick": "¿Qué espacio?",
 	"spaces.boardSubtitle": "Todos los proyectos de este espacio",
 	"spaces.addProjectsSearch": "Buscar proyectos…",

@@ -469,6 +469,44 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			expect(badgeOf("Project Delta")).toBe("⌘3");
 		});
 
+		// A heading names a board of its own, so it has to lead somewhere. Before
+		// this it was an inert label and the space board had exactly one entrance.
+		it("opens the space board when its heading is clicked", async () => {
+			withSpaces();
+			const navigate = vi.fn();
+			const user = userEvent.setup();
+			renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], navigate);
+			await user.click(getChevronButton());
+			const menu = await screen.findByRole("menu");
+			await within(menu).findByText("Dev Space");
+
+			await user.click(screen.getByTestId("switcher-space-sp_dev"));
+
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", spaceId: "sp_dev" });
+		});
+
+		it("anchors on a member that still exists, not on the current project", async () => {
+			withSpaces();
+			const navigate = vi.fn();
+			const user = userEvent.setup();
+			renderHeader({ screen: "project", projectId: "p1" }, [project1, project2, project4], navigate);
+			await user.click(getChevronButton());
+			const menu = await screen.findByRole("menu");
+			await within(menu).findByText("Other Space");
+
+			// p1 is the current project but is not in sp_other; p2 is its only member.
+			await user.click(screen.getByTestId("switcher-space-sp_other"));
+
+			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p2", spaceId: "sp_other" });
+		});
+
+		it("leaves the Home heading inert — it names no space", async () => {
+			withSpaces();
+			const menu = await openSwitcher();
+			await within(menu).findByText("Home");
+			expect(within(menu).getByText("Home").closest("button")).toBeNull();
+		});
+
 		it("stays flat when no space holds a visible project", async () => {
 			const menu = await openSwitcher();
 			expect(within(menu).queryByText("Home")).not.toBeInTheDocument();

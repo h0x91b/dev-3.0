@@ -14,6 +14,7 @@ import { filterDashboardGroups, groupProjectsForDashboard } from "../utils/space
 import ProjectSpaceChips from "./ProjectSpaceChips";
 import SpacePicker from "./SpacePicker";
 import { useProjectSpaceMembership } from "../useProjectSpaceMembership";
+import { lastProjectForSpace } from "../utils/spaceBoardMemory";
 import SpaceGroupedProjects, { type RowReorderCtx } from "./SpaceGroupedProjects";
 import { getStatusLabel } from "../utils/statusLabel";
 import { statusKey } from "../i18n/status";
@@ -153,6 +154,16 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
+	}
+
+	// A space board is still a project route carrying a space, so it needs a member
+	// to anchor on: the one last used here, else the first that still exists.
+	function openSpaceBoard(space: Space) {
+		const members = space.projectIds.filter((id) => projects.some((p) => p.id === id && !p.deleted));
+		if (members.length === 0) return;
+		const remembered = lastProjectForSpace(space.id);
+		const anchor = remembered && members.includes(remembered) ? remembered : members[0];
+		navigate({ screen: "project", projectId: anchor, spaceId: space.id });
 	}
 
 	// A brand-new install is never at zero projects — the builtin Operations board
@@ -1028,6 +1039,7 @@ function ActivityOverview({ projects, dispatch, navigate, bellCounts, onRemovePr
 								(tasksByProject.get(projectId) ?? []).filter((task) => BACKGROUND_STATUSES.includes(task.status)).length
 							}
 							onEditProjects={onEditSpaceProjects}
+							onOpenSpaceBoard={openSpaceBoard}
 							onRenameSpace={(space, name) => void renameSpace(space, name, t)}
 							onDeleteSpace={(space) => void deleteSpaceWithConfirm(space, t)}
 							onMoveSpace={(space, delta) => void moveSpace(space, delta, spaces, t)}

@@ -760,6 +760,7 @@ const settings = {
 	"spaces.homeGroup": "Home",
 	"spaces.boardGone": "That space no longer exists.",
 	"spaces.zoomOut": "Show the whole space",
+	"spaces.openBoard": "Open space board",
 	"spaces.zoomOutPick": "Which space?",
 	"spaces.boardSubtitle": "All projects in this space",
 	"spaces.addProjectsSearch": "Search projects…",

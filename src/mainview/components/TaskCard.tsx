@@ -971,15 +971,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</span>
 					</Tooltip>
 				)}
-				{showProjectMark && (
-					<span
-						data-testid="task-card-project-mark"
-						className="flex-shrink-0 truncate max-w-[9rem] text-dense text-fg-3"
-						title={projectDisplayName(project, t("ops.boardName"))}
-					>
-						{projectDisplayName(project, t("ops.boardName"))}
-					</span>
-				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
 				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />
 				{isCoordinator && (
@@ -1070,6 +1061,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<div className="flex min-w-0 flex-1 flex-col px-3 pt-2.5">
 					{/* CONTENT */}
 					<div>
+						{/* On a space board the card has to say which project it belongs to.
+						    It sits above the title, not in the identity row: that row is the
+						    most crowded on the card, and an eyebrow is read before the title,
+						    so a column groups itself by project while scanning. */}
+						{showProjectMark && (
+							<div
+								data-testid="task-card-project-mark"
+								className="truncate text-dense font-semibold uppercase tracking-[0.07em] text-fg-3"
+								title={projectDisplayName(project, t("ops.boardName"))}
+							>
+								{projectDisplayName(project, t("ops.boardName"))}
+							</div>
+						)}
 						<div
 							className={`break-words text-sm font-medium leading-relaxed text-fg line-clamp-3 ${isTodo ? "cursor-pointer hover:text-fg-2" : ""}`}
 							onClick={handleTitleClick}

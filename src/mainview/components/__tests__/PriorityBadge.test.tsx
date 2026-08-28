@@ -83,3 +83,17 @@ describe("PriorityBadge", () => {
 		expect(onChange).not.toHaveBeenCalled();
 	});
 });
+
+// A crowded identity row (coordinator badge + project name) used to squeeze the
+// badge into a padding-wide circle, because it was the row's only shrinkable item.
+describe("PriorityBadge never shrinks", () => {
+	it("keeps flex-shrink-0 on the interactive badge", () => {
+		renderBadge({ priority: "P0", onChange: vi.fn() });
+		expect(screen.getByRole("button", { name: /Priority P0/ }).className).toContain("flex-shrink-0");
+	});
+
+	it("keeps flex-shrink-0 on the static badge", () => {
+		renderBadge({ priority: "P1" });
+		expect(screen.getByText("P1").className).toContain("flex-shrink-0");
+	});
+});

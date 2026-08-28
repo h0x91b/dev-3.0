@@ -776,6 +776,7 @@ const settings = {
 	"spaces.homeGroup": "Home",
 	"spaces.boardGone": "Этого пространства больше нет.",
 	"spaces.zoomOut": "Показать всё пространство",
+	"spaces.openBoard": "Доска пространства",
 	"spaces.zoomOutPick": "Какое пространство?",
 	"spaces.boardSubtitle": "Все проекты этого пространства",
 	"spaces.addProjectsSearch": "Поиск проектов…",

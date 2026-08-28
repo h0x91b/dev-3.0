@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import type { CodingAgent, Project, Task, UpdateChangelog } from "../../shared/types";
+import type { CodingAgent, Project, Space, Task, UpdateChangelog } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, isSpaceSensitive, orderSpaces, spacesOfProject, orderProjectsForDisplay, projectDisplayName } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
@@ -9,6 +9,7 @@ import { parseDisplayVersion } from "../../shared/update-channel";
 import { MASK_CLASS, useProjectPrivacy } from "../sensitive-projects";
 import { useSpaces } from "../useSpaces";
 import { groupProjectsForSwitcher } from "../utils/spaceGroups";
+import { lastProjectForSpace } from "../utils/spaceBoardMemory";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api, isElectrobun } from "../rpc";
@@ -471,6 +472,17 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 		: false;
 	// Built-in Operations board pinned first; ⌘0 jumps to it, ⌘1-9 to the rest.
 	const availableProjects = orderProjectsForDisplay(projects.filter((p) => !p.deleted));
+
+	// The switcher's group headings are the other way in: the space they name is
+	// itself a board, so the heading opens it instead of only labelling rows. The
+	// route anchors on a member — the one last used there, else the first listed.
+	const openSpaceBoardFromSwitcher = useCallback((space: Space) => {
+		const members = space.projectIds.filter((id) => availableProjects.some((p) => p.id === id));
+		if (members.length === 0) return;
+		const remembered = lastProjectForSpace(space.id);
+		setShowProjectDropdown(false);
+		navigate({ screen: "project", projectId: remembered && members.includes(remembered) ? remembered : members[0], spaceId: space.id });
+	}, [availableProjects, navigate]);
 	const switcherHasPinnedBuiltin = availableProjects.length > 0 && isBuiltinOpsProject(availableProjects[0]);
 	// ⌘N stays keyed to BOARD order, so the badge keeps matching the shortcut once
 	// spaces regroup the rows (same split as the ⌘K palette's shortcutIndexById).
@@ -733,14 +745,37 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 													return (
 														<div key={group.space?.id ?? "home"} className="pt-2 first:pt-0">
 															{/* Label, then a hairline running to the edge — the same
-															    grammar the Keyboard settings use for their sections. */}
-															<div className="px-3 pb-1 flex items-center gap-2">
-																<span className={`text-nano font-semibold uppercase tracking-wider truncate ${group.space ? "text-accent/90" : "text-fg-3"} ${masked ? MASK_CLASS : ""}`}>
-																	{group.space ? group.space.name : t("spaces.homeGroup")}
-																</span>
-																<span className="text-nano text-fg-muted tabular-nums flex-shrink-0">{group.projects.length}</span>
-																<span aria-hidden="true" className={`h-px flex-1 ${group.space ? "bg-accent/25" : "bg-edge/60"}`} />
-															</div>
+															    grammar the Keyboard settings use for their sections. A
+															    space heading is a menu item of its own: it names a board,
+															    so clicking it opens that board. Home names no space and
+															    stays an inert label. */}
+															{group.space ? (
+																<button
+																	type="button"
+																	role="menuitem"
+																	onClick={() => openSpaceBoardFromSwitcher(group.space as Space)}
+																	title={t("spaces.openBoard")}
+																	className="group/space w-full px-3 pb-1 pt-0.5 flex items-center gap-2 text-left rounded-md hover:bg-raised-hover"
+																	data-testid={`switcher-space-${group.space.id}`}
+																>
+																	<span className={`text-nano font-semibold uppercase tracking-wider truncate text-accent/90 group-hover/space:text-accent ${masked ? MASK_CLASS : ""}`}>
+																		{group.space.name}
+																	</span>
+																	<span className="text-nano text-fg-muted tabular-nums flex-shrink-0">{group.projects.length}</span>
+																	<span aria-hidden="true" className="h-px flex-1 bg-accent/25" />
+																	<span className="text-nano text-fg-muted opacity-0 transition-opacity group-hover/space:opacity-100 flex-shrink-0">
+																		{t("spaces.openBoard")}
+																	</span>
+																</button>
+															) : (
+																<div className="px-3 pb-1 flex items-center gap-2">
+																	<span className="text-nano font-semibold uppercase tracking-wider truncate text-fg-3">
+																		{t("spaces.homeGroup")}
+																	</span>
+																	<span className="text-nano text-fg-muted tabular-nums flex-shrink-0">{group.projects.length}</span>
+																	<span aria-hidden="true" className="h-px flex-1 bg-edge/60" />
+																</div>
+															)}
 															{/* The trunk: rows sit indented off a vertical rule, so a
 															    project reads as filed under its space. */}
 															<div className={`ml-3 border-l ${group.space ? "border-accent/30" : "border-edge/60"}`}>

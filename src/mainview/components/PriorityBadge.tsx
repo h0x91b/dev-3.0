@@ -34,7 +34,10 @@ function PriorityBadge({ priority, onChange, size = "xs", className = "" }: Prio
 			: size === "sm"
 				? "text-xs px-1.5 py-0.5 rounded-md"
 				: "text-dense px-1 py-0.5 rounded";
-	const baseCls = `${size === "touch" ? "" : "touch-inline "}inline-flex items-center justify-center font-mono font-semibold leading-none`;
+	// flex-shrink-0: the badge is the only unshrinkable item in the card's identity
+	// row. Without it a crowded row (coordinator badge, project name) squeezes the
+	// `P{n}` down to a padding-wide circle instead of clipping the config string.
+	const baseCls = `${size === "touch" ? "" : "touch-inline "}inline-flex flex-shrink-0 items-center justify-center font-mono font-semibold leading-none`;
 	const aria = t("priority.badgeAria", { level, name: t(PRIORITY_NAME_KEYS[level]) });
 
 	if (!onChange) {
