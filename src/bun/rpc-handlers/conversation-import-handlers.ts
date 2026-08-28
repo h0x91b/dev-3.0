@@ -60,13 +60,18 @@ async function scanImportableConversationsHandler(
 
 /** The `imported` label, created on first use and reused afterwards. */
 async function ensureImportedLabel(projectId: string): Promise<Label> {
-	const { result } = await data.updateProjectWith(projectId, async (project) => {
+	let created = false;
+	const { result, project: updated } = await data.updateProjectWith(projectId, async (project) => {
 		const labels = project.labels ?? [];
 		const existing = labels.find((label) => label.name.toLowerCase() === IMPORTED_LABEL_NAME);
 		if (existing) return { updates: {}, result: existing };
 		const label: Label = { id: crypto.randomUUID(), name: IMPORTED_LABEL_NAME, color: "#94a3b8" };
+		created = true;
 		return { updates: { labels: [...labels, label] }, result: label };
 	});
+	// Without this the cards carry a label id the renderer's project does not know
+	// yet, so the chip is invisible until something else reloads the project.
+	if (created && updated) getPushMessage()?.("projectUpdated", { project: updated });
 	return result;
 }
 

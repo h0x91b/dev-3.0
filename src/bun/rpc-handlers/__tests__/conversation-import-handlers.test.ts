@@ -124,7 +124,12 @@ beforeEach(() => {
 	mocks.refExists.mockResolvedValue(true);
 	mocks.resolveProjectConfig.mockImplementation(async (p: Project) => p);
 	mocks.createWorktree.mockResolvedValue({ worktreePath: "/wt/task/worktree", branchName: "dev3/task-abcd1234" });
-	mocks.updateProjectWith.mockImplementation(async (_id: string, fn: (p: Project) => Promise<{ result: unknown }>) => fn(PROJECT));
+	// The real one returns the SAVED project next to the mutator's result — the
+	// import pushes it so the new label exists in the renderer's own copy.
+	mocks.updateProjectWith.mockImplementation(async (_id: string, fn: (p: Project) => Promise<{ updates: Partial<Project>; result: unknown }>) => {
+		const out = await fn(PROJECT);
+		return { ...out, project: { ...PROJECT, ...out.updates } };
+	});
 	mocks.addTask.mockImplementation(async (_p: Project, description: string, status: string, extras: Record<string, unknown>) =>
 		createdTask(description, status, extras));
 	mocks.updateTask.mockImplementation(async (_p: Project, id: string, updates: Partial<Task>) => ({ id, ...updates } as Task));
@@ -193,6 +198,15 @@ describe("importConversations", () => {
 		const labelWrites = updates.filter((u) => Array.isArray(u.updates.labels));
 		expect(labelWrites).toHaveLength(1);
 		expect((labelWrites[0].updates.labels as { name: string }[])[0].name).toBe("imported");
+	});
+
+	it("hands the renderer the project carrying the new label, not just the tasks", async () => {
+		mocks.scanImportableConversations.mockReturnValue([conversation()]);
+		await conversationImportHandlers.importConversations({ projectId: "p1", sessionIds: ["sess-1"] });
+
+		const pushed = mocks.push.mock.calls.find(([name]) => name === "projectUpdated");
+		expect(pushed, "a card labelled with an id the renderer never received shows no chip").toBeDefined();
+		expect((pushed![1] as { project: Project }).project.labels?.[0].name).toBe("imported");
 	});
 
 	it("gives a recent conversation a worktree branched off the branch it ran on", async () => {
