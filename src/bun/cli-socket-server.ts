@@ -22,7 +22,6 @@ import { loadSpacesFile } from "./spaces-data";
 import { resolveTaskStartRef } from "./task-start-ref";
 import { createScratchTask, createTask, deleteTask, getPushMessage, getPushMessageLocal, launchTaskWithAgentChoice, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, dropQueuedAttention, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
-import { conversationImportHandlers } from "./rpc-handlers/conversation-import-handlers";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
 import { NATIVE_PROMPT_DELIVERY_METHOD, deliverNativePromptAsOwner } from "./agent-prompt-native";
@@ -495,6 +494,16 @@ async function loadBoardTasks(project: Project): Promise<Task[] | null> {
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Loaded on demand, not at module load. The handler module reaches the renderer
+ * bridge through `rpc-handlers/shared`, which pulls Electrobun in — and the suites
+ * that import this file mock only the handler BARREL, so a static import here
+ * kills them at collect time with an error from inside Electrobun.
+ */
+async function conversationImport() {
+	return (await import("./rpc-handlers/conversation-import-handlers")).conversationImportHandlers;
 }
 
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
@@ -1139,7 +1148,7 @@ const handlers: Record<string, Handler> = {
 	"conversations.scanImport": async (params) => {
 		const projectId = params.projectId as string;
 		if (!projectId) throw new Error("projectId is required");
-		return conversationImportHandlers.scanImportableConversations({ projectId });
+		return (await conversationImport()).scanImportableConversations({ projectId });
 	},
 
 	"conversations.import": async (params) => {
@@ -1149,7 +1158,7 @@ const handlers: Record<string, Handler> = {
 		if (!Array.isArray(sessionIds) || sessionIds.some((id) => typeof id !== "string")) {
 			throw new Error("sessionIds must be an array of session ids");
 		}
-		return conversationImportHandlers.importConversations({ projectId, sessionIds: sessionIds as string[] });
+		return (await conversationImport()).importConversations({ projectId, sessionIds: sessionIds as string[] });
 	},
 
 	"label.list": async (params) => {
