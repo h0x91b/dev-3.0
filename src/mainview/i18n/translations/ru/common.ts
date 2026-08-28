@@ -372,6 +372,8 @@ const common = {
 	"artifactViewer.saveImage": "Сохранить изображение",
 	"artifactViewer.imageSaved": "Изображение сохранено в Downloads",
 	"artifactViewer.imageSaveFailed": "Не удалось сохранить изображение",
+	"artifactViewer.messageSent": "Отправлено агенту",
+	"artifactViewer.messageFailed": "Не удалось отправить агенту",
 	"artifactViewer.loadFailed": "Артефакт недоступен",
 	"artifactViewer.loading": "Загрузка артефакта…",
 	"artifactViewer.resize": "Изменить ширину панели артефакта",

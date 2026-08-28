@@ -85,6 +85,7 @@ import { modelCatalogHandlers } from "./rpc-handlers/model-catalog";
 import { pxpipeProxyHandlers } from "./rpc-handlers/pxpipe-proxy";
 import { agentAccountHandlers } from "./rpc-handlers/agent-accounts";
 import { prCommentsHandlers } from "./rpc-handlers/pr-comments";
+import { artifactMessageHandlers } from "./rpc-handlers/artifact-messages";
 import { taskPanesHandlers } from "./rpc-handlers/task-panes";
 import { spacesHandlers } from "./rpc-handlers/spaces";
 
@@ -107,6 +108,7 @@ export const handlers = {
 	...pxpipeProxyHandlers,
 	...agentAccountHandlers,
 	...prCommentsHandlers,
+	...artifactMessageHandlers,
 	...taskPanesHandlers,
 	...spacesHandlers,
 };

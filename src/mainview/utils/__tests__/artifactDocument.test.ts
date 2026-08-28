@@ -134,4 +134,16 @@ describe("composeArtifactDocument", () => {
 		expect(output).toContain("data-dev3-artifact-find");
 		expect(output).toContain("no html wrapper");
 	});
+
+	// The bridge's own behaviour is covered in artifactBridge.test.ts — here we only
+	// assert it reaches the document with the capability the viewer asked for.
+	it("injects the agent bridge carrying the requested capability flag", () => {
+		const enabled = composeArtifactDocument("<p>report</p>", [], undefined, true);
+		expect(enabled).toContain("data-dev3-artifact-bridge");
+		expect(enabled).toContain('"canSend":true');
+
+		expect(composeArtifactDocument("<p>report</p>", [], undefined, false)).toContain('"canSend":false');
+		// Callers that pass no flag get the inert bridge, never a live one.
+		expect(composeArtifactDocument("<p>report</p>", [])).toContain('"canSend":false');
+	});
 });

@@ -16,7 +16,7 @@ export default function TaskArtifacts({ task, projectId, compact = false, touch 
 			<button
 				type="button"
 				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-					detail: { taskId: task.id, projectId, artifacts: task.sharedArtifacts, index: count - 1, standalone },
+					detail: { taskId: task.id, taskStatus: task.status, projectId, artifacts: task.sharedArtifacts, index: count - 1, standalone },
 				}))}
 				className={`task-anim flex items-center gap-1 rounded-lg transition-colors flex-shrink-0 border ${touch ? "min-h-11 px-3" : "px-2 py-1"} ${isUnread
 					? "text-success bg-success/15 border-success/40 hover:bg-success/25"

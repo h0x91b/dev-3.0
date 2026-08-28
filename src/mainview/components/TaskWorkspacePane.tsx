@@ -290,6 +290,7 @@ function TaskWorkspacePane({
 						>
 							<TaskArtifactViewer
 								taskId={taskId}
+								taskStatus={task?.status}
 								artifacts={artifactViewer.artifacts}
 								initialIndex={artifactViewer.index}
 								onClose={onCloseArtifactViewer}

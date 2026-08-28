@@ -227,6 +227,33 @@ Choose Auto, Light, or Dark in the report, then print with Cmd/Ctrl+P. The style
 - For dense charts, set `--dev3-print-chart-height` on `<html>` to keep every label visible.
 - Check print preview in both Light and Dark after changing layout.
 
+## Asking the user something (`window.dev3.sendToAgent`)
+
+A report can carry a form and send the answer straight to the agent that published it, instead of making the user retype it into the terminal. The channel is one-way: the agent answers by republishing the artifact as a new version.
+
+**`window.dev3` comes from the viewer, not from this template.** It is injected into the document before `app.js` runs, so it exists in every artifact — including ones not built from this starter. Never define, wrap, or shadow `window.dev3` in report or shell code; the bridge is gone the moment you do. It is a separate global from `window.dev3Artifact` for exactly that reason: the shell freezes its own object, and freezing would drop the bridge.
+
+```js
+if (window.dev3?.canSendToAgent) {
+  sendButton.addEventListener("click", async () => {
+    try {
+      await window.dev3.sendToAgent(`Picked option ${choice}. Skip: ${skipped.join(", ")}`);
+      dev3Artifact.toast("Sent to the agent");
+    } catch (err) {
+      dev3Artifact.toast(err.reason === "failed" ? "The agent is not running" : "Could not send that");
+    }
+  });
+} else {
+  form.remove();   // no channel here — do not render a control that cannot work
+}
+```
+
+- **`canSendToAgent`** — read it before rendering the form. It is false in a copy opened in its own browser tab, in a downloaded file, on an older version of the artifact, and when the owning task has finished. It does **not** promise an agent is running right now — that is only knowable at send time, and it arrives as a rejection.
+- **`sendToAgent(text)`** — returns a promise; the rejected `Error` carries a machine-readable `reason`: `unavailable`, `empty`, `busy`, `no-gesture`, `timeout`, `failed`.
+- **Call it from a real click or key press.** A call that no trusted input precedes is refused (`no-gesture`) — that guard is why an unattended script in a report cannot drive the agent.
+- **One send at a time.** A second call while one is in flight rejects with `busy`, so a double click cannot send twice.
+- The body is a plain string and travels verbatim. Want structure, format it yourself. There is no length cap — an oversized body is spilled to a file the same way an oversized `dev3 message` is.
+
 ## Contracts to preserve
 
 - Keep `data-dev3-artifact-template="v1"` on `<html>`.
@@ -239,3 +266,4 @@ Choose Auto, Light, or Dark in the report, then print with Cmd/Ctrl+P. The style
 - Route every panel that opens over the report through `.popover` / `dev3Artifact.popover()`; never hand-roll an absolutely positioned menu.
 - Keep the page responsive and keyboard-accessible.
 - Keep report content/data local; external libraries and live integrations are allowed.
+- Never define or shadow `window.dev3` — the viewer owns it (see the section above).

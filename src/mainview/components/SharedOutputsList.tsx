@@ -95,7 +95,7 @@ export default function SharedOutputsList({ task, projectId }: SharedOutputsList
 								data-testid="shared-artifact-link"
 								aria-label={t("infoPanel.openSharedArtifact", { name: artifact.title || artifact.name })}
 								onClick={() => window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
-									detail: { taskId: task.id, projectId, artifacts, index: i, standalone: true },
+									detail: { taskId: task.id, taskStatus: task.status, projectId, artifacts, index: i, standalone: true },
 								}))}
 							>
 								<span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">

@@ -356,6 +356,8 @@ const common = {
 	"artifactViewer.saveImage": "Guardar imagen",
 	"artifactViewer.imageSaved": "Imagen guardada en Descargas",
 	"artifactViewer.imageSaveFailed": "No se pudo guardar la imagen",
+	"artifactViewer.messageSent": "Enviado al agente",
+	"artifactViewer.messageFailed": "No se pudo enviar al agente",
 	"artifactViewer.loadFailed": "Artefacto no disponible",
 	"artifactViewer.loading": "Cargando artefacto…",
 	"artifactViewer.resize": "Cambiar el ancho del panel de artefactos",

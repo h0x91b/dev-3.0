@@ -387,7 +387,7 @@ function App() {
 	const [filePreview, setFilePreview] = useState<OpenFilePreviewDetail | null>(null);
 	// `standalone` requests come from surfaces with no workspace pane to dock into
 	// (the archived task modal) and are hosted as an overlay here instead.
-	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; artifacts: SharedArtifact[]; index: number; standalone?: boolean } | null>(null);
+	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; taskStatus?: TaskStatus; artifacts: SharedArtifact[]; index: number; standalone?: boolean } | null>(null);
 	const markSharedItemsRead = useCallback((
 		projectId: string,
 		taskId: string,
@@ -1711,8 +1711,9 @@ function App() {
 
 	useEffect(() => {
 		function onOpenArtifactViewer(e: Event) {
-			const { taskId, projectId, artifacts, index, standalone } = (e as CustomEvent).detail as {
+			const { taskId, taskStatus, projectId, artifacts, index, standalone } = (e as CustomEvent).detail as {
 				taskId: string;
+				taskStatus?: TaskStatus;
 				projectId: string;
 				artifacts: SharedArtifact[];
 				index?: number;
@@ -1720,7 +1721,7 @@ function App() {
 			};
 			if (!taskId || !projectId || !artifacts?.length) return;
 			markSharedItemsRead(projectId, taskId, "artifacts", artifacts);
-			setArtifactViewer({ taskId, artifacts, index: index ?? artifacts.length - 1, standalone });
+			setArtifactViewer({ taskId, taskStatus, artifacts, index: index ?? artifacts.length - 1, standalone });
 		}
 		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
@@ -3141,6 +3142,7 @@ function App() {
 				<TaskArtifactViewer
 					standalone
 					taskId={artifactViewer.taskId}
+					taskStatus={artifactViewer.taskStatus}
 					artifacts={artifactViewer.artifacts}
 					initialIndex={artifactViewer.index}
 					onClose={closeArtifactViewer}

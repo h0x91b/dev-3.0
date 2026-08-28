@@ -57,6 +57,27 @@ export function wrapAgentMessage(
 }
 
 /**
+ * Wrap text a human submitted from inside an HTML artifact. The agent published
+ * that artifact, so it needs to know which one answered and which version the
+ * human was looking at — a report republished twice since then asked a different
+ * question. Same tag family as {@link wrapAgentMessage} on purpose.
+ */
+export function wrapArtifactMessage(
+	text: string,
+	artifact: { title: string; version: number; versionCount: number },
+): string {
+	return [
+		"<dev3-artifact-message>",
+		`<artifact-title>${escapeXmlText(artifact.title)}</artifact-title>`,
+		`<artifact-version>${artifact.version} of ${artifact.versionCount}</artifact-version>`,
+		"<message>",
+		text,
+		"</message>",
+		"</dev3-artifact-message>",
+	].join("\n");
+}
+
+/**
  * The address a peer agent must use to reach this task: the readable `seq:<N>`
  * handle unless ANOTHER task on that board still shares the seq, which is the
  * only case where the CLI rejects it as ambiguous.

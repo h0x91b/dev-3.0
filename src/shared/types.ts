@@ -2368,7 +2368,7 @@ export type TaskTimeInput = Pick<Task, "status" | "createdAt"> & {
 	focusMs?: number;
 };
 
-const TERMINAL_STATUSES: readonly TaskStatus[] = ["completed", "cancelled"];
+export const TERMINAL_STATUSES: readonly TaskStatus[] = ["completed", "cancelled"];
 
 function sumStatusDurations(
 	durations: Partial<Record<TaskStatus, number>>,
@@ -4894,6 +4894,17 @@ export type AppRPCSchema = {
 			 */
 			sendAgentMessageNow: {
 				params: { taskId: string; projectId: string; text: string };
+				response: { spilledPath: string | null };
+			};
+			/**
+			 * An artifact message: text a human submitted from inside an artifact,
+			 * typed into that task's live agent pane wrapped in the
+			 * `<dev3-artifact-message>` envelope. The viewer knows only the task, so
+			 * the host finds its project itself. Throws when the task has no live
+			 * agent session or its status is terminal.
+			 */
+			sendArtifactMessageToAgent: {
+				params: { taskId: string; text: string; artifactTitle: string; version: number; versionCount: number };
 				response: { spilledPath: string | null };
 			};
 			addTaskNote: {

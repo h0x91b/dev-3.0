@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentReplyCommand, agentReplyRef, seqIsShared, wrapAgentMessage } from "../../shared/agent-message-envelope";
+import { agentReplyCommand, agentReplyRef, seqIsShared, wrapAgentMessage, wrapArtifactMessage } from "../../shared/agent-message-envelope";
 
 const PROJECT_A = "aaaaaaaa-1111-2222-3333-444455556666";
 const PROJECT_B = "bbbbbbbb-1111-2222-3333-444455556666";
@@ -187,5 +187,27 @@ describe("agentReplyCommand", () => {
 				quoted: "your reply",
 			}),
 		).toBe('dev3 message --task seq:7 --subject "what your reply is about" "your reply"');
+	});
+});
+
+describe("wrapArtifactMessage", () => {
+	it("names the artifact and the version the human was looking at", () => {
+		expect(wrapArtifactMessage("Option B, and skip src/legacy/**", { title: "Rollout plan", version: 3, versionCount: 7 })).toBe(
+			[
+				"<dev3-artifact-message>",
+				"<artifact-title>Rollout plan</artifact-title>",
+				"<artifact-version>3 of 7</artifact-version>",
+				"<message>",
+				"Option B, and skip src/legacy/**",
+				"</message>",
+				"</dev3-artifact-message>",
+			].join("\n"),
+		);
+	});
+
+	it("escapes the title but passes the body through verbatim", () => {
+		const out = wrapArtifactMessage('use <b>bold</b> & "quotes"', { title: "A & B <report>", version: 1, versionCount: 1 });
+		expect(out).toContain("<artifact-title>A &amp; B &lt;report&gt;</artifact-title>");
+		expect(out).toContain('use <b>bold</b> & "quotes"');
 	});
 });

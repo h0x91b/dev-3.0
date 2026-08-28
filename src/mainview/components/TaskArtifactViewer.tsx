@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { SharedArtifact } from "../../shared/types";
+import type { SharedArtifact, TaskStatus } from "../../shared/types";
+import { TERMINAL_STATUSES } from "../../shared/types";
 import { artifactAtVersion, latestArtifactVersion } from "../../shared/artifact-versions";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -16,7 +17,10 @@ interface TaskArtifactViewerProps {
 	artifacts: SharedArtifact[];
 	initialIndex: number;
 	onClose: () => void;
-	taskId?: string;
+	/** Required: an artifact with no addressable task has nowhere to send. */
+	taskId: string;
+	/** Status of the owning task, when the host knows it. Terminal → no send channel. */
+	taskStatus?: TaskStatus;
 	/**
 	 * Overlay-only host: opened from a surface with no workspace pane to dock into
 	 * (the archived task modal). Locks the overlay layout, drops the fullscreen
@@ -60,7 +64,7 @@ function imageFileName(src: string, alt: string, mime: string, assets: ArtifactA
 	return /\.[a-z0-9]+$/i.test(base) ? base : `${base}.${ext}`;
 }
 
-export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId, standalone = false }: TaskArtifactViewerProps) {
+export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId, taskStatus, standalone = false }: TaskArtifactViewerProps) {
 	const t = useT();
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
 	const [srcDoc, setSrcDoc] = useState<string | null>(null);
@@ -98,6 +102,15 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		setIndex(Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
 	}, [artifacts.length, initialIndex]);
 
+	// Compose-time half of `window.dev3.canSendToAgent`. An older version's form is
+	// inert on purpose: it asks a question the newest report has already replaced.
+	// The runtime half (is this document actually inside the viewer's frame) lives
+	// in the injected bridge, and whether an agent is alive is only knowable at send
+	// time — that failure arrives as a toast.
+	const canSendToAgent = Boolean(group)
+		&& selectedVersion === latestArtifactVersion(group)
+		&& !(taskStatus && TERMINAL_STATUSES.includes(taskStatus));
+
 	useEffect(() => {
 		if (!current) return;
 		let cancelled = false;
@@ -113,11 +126,11 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 			.then((payload) => {
 				if (cancelled) return;
 				assetsRef.current = payload.assets;
-				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage")));
+				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage"), canSendToAgent));
 			})
 			.catch(() => { if (!cancelled) setError(true); });
 		return () => { cancelled = true; };
-	}, [current, t]);
+	}, [current, t, canSendToAgent]);
 
 	const postToFrame = useCallback((message: Record<string, unknown>) => {
 		frameRef.current?.contentWindow?.postMessage(message, "*");
@@ -164,10 +177,19 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		postToFrame({ type: "dev3-artifact-find-step", delta, token: ++searchTokenRef.current });
 	}, [matches, postToFrame]);
 
+	// Read at send time, not captured when the listener registers: the user may have
+	// paged to another artifact between opening the form and clicking send.
+	const currentRef = useRef({ title: "", version: 1, versionCount: 1 });
+	currentRef.current = {
+		title: current?.title ?? "",
+		version: selectedVersion,
+		versionCount: group ? latestArtifactVersion(group) : 1,
+	};
+
 	useEffect(() => {
 		function onMessage(event: MessageEvent) {
 			if (event.source !== frameRef.current?.contentWindow) return;
-			const data = event.data as { type?: string; src?: string; alt?: string; token?: number; matches?: number; index?: number } | null;
+			const data = event.data as { type?: string; src?: string; alt?: string; token?: number; matches?: number; index?: number; id?: number; text?: string } | null;
 			if (!data) return;
 			// Keyboard events inside the sandboxed iframe never reach this window, so
 			// the artifact's own ⌘F handler asks us to open the bar.
@@ -176,6 +198,33 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				if (data.token !== searchTokenRef.current) return;
 				setMatches(typeof data.matches === "number" ? data.matches : 0);
 				setActiveIndex(typeof data.index === "number" ? data.index : -1);
+				return;
+			}
+			// An artifact message: the user filled in a form the report drew and
+			// clicked send. It goes into this task's agent pane as if they had typed
+			// it; the outcome goes back into the frame so the report can render its
+			// own state, and to a toast so the click is never silent.
+			if (data.type === "dev3-artifact-send") {
+				const id = data.id;
+				const text = data.text;
+				if (typeof id !== "number" || typeof text !== "string") return;
+				const reply = (payload: Record<string, unknown>) =>
+					frameRef.current?.contentWindow?.postMessage({ type: "dev3-artifact-send-result", id, ...payload }, "*");
+				api.request.sendArtifactMessageToAgent({
+					taskId,
+					text,
+					artifactTitle: currentRef.current.title,
+					version: currentRef.current.version,
+					versionCount: currentRef.current.versionCount,
+				})
+					.then(() => {
+						reply({ ok: true });
+						toast.success(t("artifactViewer.messageSent"), { taskId });
+					})
+					.catch((err) => {
+						reply({ ok: false, reason: "failed", message: String(err) });
+						toast.error(t("artifactViewer.messageFailed"), { taskId });
+					});
 				return;
 			}
 			if (data.type !== "dev3-artifact-save-image" || typeof data.src !== "string") return;

@@ -1,0 +1,3 @@
+Short: Reports can message their agent
+
+An HTML artifact can now send text back to the agent that published it: report code calls `window.dev3.sendToAgent(...)` from a button or form, and the answer lands in that task's agent pane tagged with the artifact and version the user was looking at. So a report can ask a question — pick an option, approve a variant, name the files to skip — instead of making you retype the answer into the terminal. The form is inert on an older version, in a downloaded copy, and in a tab opened outside the app; a send that cannot be delivered fails with a toast rather than silently.

@@ -1,3 +1,5 @@
+import { artifactBridgeScript } from "./artifactBridge";
+
 interface ArtifactAssetPayload {
 	name: string;
 	mime: string;
@@ -83,7 +85,12 @@ function rewriteAssetAttribute(
  * Relative local asset references are replaced with copied data URLs so CSS,
  * classic scripts, and raster images work without giving the iframe an origin.
  */
-export function composeArtifactDocument(source: string, assets: ArtifactAssetPayload[], saveImageLabel?: string): string {
+export function composeArtifactDocument(
+	source: string,
+	assets: ArtifactAssetPayload[],
+	saveImageLabel?: string,
+	canSendToAgent = false,
+): string {
 	const byName = new Map(assets.map((asset) => [asset.name, asset.dataUrl]));
 	const resolve = (url: string): string => {
 		const key = assetKey(url.trim());
@@ -113,7 +120,7 @@ export function composeArtifactDocument(source: string, assets: ArtifactAssetPay
 		(_match, quote: string, value: string) => `url(${quote}${resolve(value)}${quote})`,
 	);
 
-	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}">${assetRuntimeScript(assets)}${findScript()}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
+	const injected = `<meta http-equiv="Content-Security-Policy" content="${CSP}">${assetRuntimeScript(assets)}${findScript()}${artifactBridgeScript(canSendToAgent)}${saveImageLabel ? saveImageMenuScript(saveImageLabel) : ""}`;
 	if (/<head(?:\s|>)/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${injected}`);
 	if (/<html(?:\s|>)/i.test(html)) return html.replace(/<html([^>]*)>/i, `<html$1><head>${injected}</head>`);
 	const body = html.replace(/<!doctype[^>]*>/i, "");
