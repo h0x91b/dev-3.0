@@ -2,7 +2,7 @@ import { Fragment, useState, useRef, useEffect, useLayoutEffect, type Dispatch }
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, DevServerSummary, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle, isCoordinatorTask, isTaskDisconnected, projectDisplayName } from "../../shared/types";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -74,9 +74,15 @@ interface TaskCardProps {
 	onOpenUnresolvedComments?: (task: Task) => void;
 	/** Reopens the New Task popup on a draft card instead of the detail modal. */
 	onEditDraft?: (task: Task) => void;
+	/**
+	 * Name the card's project on the card. Identity, not an action: plain text, no
+	 * focus, no menu row, and it spends none of the card's action slots. Set only
+	 * where more than one project shares a board (the unified space board).
+	 */
+	showProjectMark?: boolean;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, resourceUsage, bellCount = 0, bellReasons, ports, devServer, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft, showProjectMark = false }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -964,6 +970,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							{"\u{F0150}"}
 						</span>
 					</Tooltip>
+				)}
+				{showProjectMark && (
+					<span
+						data-testid="task-card-project-mark"
+						className="flex-shrink-0 truncate max-w-[9rem] text-dense text-fg-3"
+						title={projectDisplayName(project, t("ops.boardName"))}
+					>
+						{projectDisplayName(project, t("ops.boardName"))}
+					</span>
 				)}
 				<NativeBackendMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-native-backend" />
 				<ForeignCodeMark task={task} className="w-3.5 h-3.5 flex-shrink-0" testId="task-card-foreign-code" />

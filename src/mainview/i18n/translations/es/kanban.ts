@@ -21,6 +21,8 @@ const kanban = {
 	"kanban.showLess": "Mostrar menos",
 	"kanban.collapseColumn": "Desanclar columna",
 	"kanban.renameColumn": "Renombrar columna",
+	"kanban.mergedLaneProjects_one": "{count} proyecto",
+	"kanban.mergedLaneProjects_other": "{count} proyectos",
 	"kanban.draftNotDroppable": "Esto es un borrador: completa su descripción y guárdalo como tarea antes de iniciarlo.",
 
 	// CreateTaskModal

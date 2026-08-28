@@ -21,6 +21,10 @@ const kanban = {
 	"kanban.showLess": "Свернуть",
 	"kanban.collapseColumn": "Открепить колонку",
 	"kanban.renameColumn": "Переименовать колонку",
+	"kanban.mergedLaneProjects_one": "{count} проект",
+	"kanban.mergedLaneProjects_few": "{count} проекта",
+	"kanban.mergedLaneProjects_many": "{count} проектов",
+	"kanban.mergedLaneProjects_other": "{count} проектов",
 	"kanban.draftNotDroppable": "Это черновик — допишите описание и сохраните как задачу, прежде чем запускать.",
 
 	// CreateTaskModal

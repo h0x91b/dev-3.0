@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, DEFAULT_PRIORITY } from "../../shared/types";
+import type { BoardColumnSlot, CustomColumn, DevServerSummary, GlobalSettings, Label, PortInfo, PRInfo, Project, ResourceUsage, Space, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, laneAcceptsProject, laneColumnIdForProject, laneKey, normalizeLaneName, DEFAULT_PRIORITY } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 
 // Column ordering + visibility lives in the shared, unit-tested getBoardColumns
@@ -28,7 +28,19 @@ import { useAgents } from "../hooks/useAgents";
 import MobileBoardCarousel, { CAROUSEL_MAX_WIDTH, type CarouselColumn } from "./MobileBoardCarousel";
 
 interface KanbanBoardProps {
+	/**
+	 * The board's anchor project: its own subject on a project board, and on a
+	 * space board the project the user zoomed out of (it still owns the route, the
+	 * breadcrumb, and anything asked of "the current project").
+	 */
 	project: Project;
+	/**
+	 * The space this board is ABOUT. Set ⇒ every member project's tasks share one
+	 * set of lanes; unset ⇒ today's project board, unchanged.
+	 */
+	space?: Space | null;
+	/** Member projects of `space`, in display order. Ignored without a space. */
+	memberProjects?: Project[];
 	tasks: Task[];
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
@@ -99,6 +111,8 @@ function hydrateTaskPRMap(tasks: Task[], previous = new Map<string, TaskPRBadgeI
 
 function KanbanBoard({
 	project,
+	space,
+	memberProjects,
 	tasks,
 	dispatch,
 	navigate,
@@ -112,6 +126,17 @@ function KanbanBoard({
 	onOpenUnresolvedComments,
 }: KanbanBoardProps) {
 	const t = useT();
+	// A space is the subject; without one everything below collapses to the single
+	// anchor project and the board renders exactly what it renders today.
+	const isSpaceBoard = !!space;
+	const boardProjects = useMemo<Project[]>(
+		() => (isSpaceBoard && memberProjects && memberProjects.length > 0 ? memberProjects : [project]),
+		[isSpaceBoard, memberProjects, project],
+	);
+	const projectById = useMemo(() => new Map(boardProjects.map((p) => [p.id, p])), [boardProjects]);
+	// A card always renders with ITS OWN project — that is what makes every action
+	// on a space board act on the right repository.
+	const projectOfTask = useCallback((task: Task) => projectById.get(task.projectId) ?? project, [projectById, project]);
 	const isCarousel = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const statusColors = useStatusColors();
 	const agents = useAgents();
@@ -127,6 +152,9 @@ function KanbanBoard({
 	const [editDraftTaskId, setEditDraftTaskId] = useState<string | null>(null);
 	const [dragFromDraft, setDragFromDraft] = useState(false);
 	const [dragFromCustomColumnId, setDragFromCustomColumnId] = useState<string | null>(null);
+	// Whose repository the dragged card belongs to — a merged lane that project has
+	// no column in must refuse it, visibly, before the drop.
+	const [dragFromProjectId, setDragFromProjectId] = useState<string | null>(null);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
@@ -136,7 +164,9 @@ function KanbanBoard({
 	const [autoEditColumnId, setAutoEditColumnId] = useState<string | null>(null);
 	// Feature-discovery tip rotation (board context). Shared logic lives in the hook.
 	const { tip: currentTip, tipState, applyTipState } = useTipRotation("board", globalSettings.tipsDisabled);
-	const collapseState = useColumnCollapse(project.id);
+	// Keyed by the board SUBJECT: a space board has its own lane set, so it keeps
+	// its own collapse memory instead of inheriting the anchor project's.
+	const collapseState = useColumnCollapse(space ? `space-${space.id}` : project.id);
 
 	// PR badge data for task cards. Seed from persisted task metadata so the board
 	// stays useful while the first live GitHub lookup is still in flight.
@@ -179,16 +209,31 @@ function KanbanBoard({
 	// Fetch open PRs for the project and map branch names to task IDs. CI/review
 	// state is supplied separately by the background poller's `taskPrStatus`
 	// push, so preserve any already-known ci/review fields when rebuilding here.
+	const gitProjectIds = useMemo(
+		() => boardProjects.filter((p) => p.kind !== "virtual").map((p) => p.id),
+		[boardProjects],
+	);
 	const fetchPRs = useCallback(() => {
-		api.request.getProjectPRs({ projectId: project.id }).then((prs: PRInfo[]) => {
+		// One lookup per member project: a branch name is only unique inside its own
+		// repository, so the branch→PR map is per project too.
+		Promise.all(
+			gitProjectIds.map((projectId) =>
+				api.request.getProjectPRs({ projectId }).then(
+					(prs: PRInfo[]) => [projectId, prs] as const,
+					() => [projectId, [] as PRInfo[]] as const,
+				),
+			),
+		).then((results) => {
 			const branchToPR = new Map<string, { number: number; url: string }>();
-			for (const pr of prs) {
-				branchToPR.set(pr.headRefName, { number: pr.number, url: pr.url });
+			for (const [projectId, prs] of results) {
+				for (const pr of prs) {
+					branchToPR.set(`${projectId}::${pr.headRefName}`, { number: pr.number, url: pr.url });
+				}
 			}
 			setTaskPrMap((prev) => {
 				const map = new Map<string, TaskPRBadgeInfo>();
 				for (const task of tasks) {
-					const discovered = task.branchName ? branchToPR.get(task.branchName) : undefined;
+					const discovered = task.branchName ? branchToPR.get(`${task.projectId}::${task.branchName}`) : undefined;
 					const stored = taskPRBadgeFromStoredData(task, discovered);
 					const existing = prev.get(task.id);
 					const badge = stored && existing && samePRIdentity(existing, stored) ? existing : stored;
@@ -197,14 +242,14 @@ function KanbanBoard({
 				return map;
 			});
 		}).catch(() => {});
-	}, [project.id, tasks]);
+	}, [gitProjectIds, tasks]);
 
 	useEffect(() => {
 		// Virtual (Operations) boards have no git repo, branches, or PRs — skip the
 		// poll entirely instead of firing a doomed getProjectPRs RPC every 60s.
-		if (project.kind === "virtual") return;
+		if (gitProjectIds.length === 0) return;
 		return startVisibilityAwarePoll({ fn: fetchPRs, intervalMs: 60_000 });
-	}, [fetchPRs, project.kind]);
+	}, [fetchPRs, gitProjectIds]);
 
 	// CI/review status pushed by the background PR poller — merge onto the
 	// existing PR badge entry (carrying number/url forward if already known).
@@ -225,7 +270,7 @@ function KanbanBoard({
 				prTitle: TaskPRBadgeInfo["prTitle"];
 				isDraft: TaskPRBadgeInfo["isDraft"];
 			};
-			if (detail.projectId !== project.id) return;
+			if (!projectById.has(detail.projectId)) return;
 			setTaskPrMap((prev) => {
 				const existing = prev.get(detail.taskId);
 				const number = detail.prNumber ?? existing?.number;
@@ -250,7 +295,7 @@ function KanbanBoard({
 		}
 		window.addEventListener("rpc:taskPrStatus", onPrStatus);
 		return () => window.removeEventListener("rpc:taskPrStatus", onPrStatus);
-	}, [project.id]);
+	}, [projectById]);
 
 	// Global dragend listener to clear drag state
 	useEffect(() => {
@@ -258,6 +303,7 @@ function KanbanBoard({
 			setDragFromStatus(null);
 			setDragFromCustomColumnId(null);
 			setDragFromDraft(false);
+			setDragFromProjectId(null);
 		}
 		window.addEventListener("dragend", handleDragEnd);
 		return () => window.removeEventListener("dragend", handleDragEnd);
@@ -269,6 +315,7 @@ function KanbanBoard({
 			setDragFromStatus(task.status);
 			setDragFromCustomColumnId(task.customColumnId ?? null);
 			setDragFromDraft(task.draft === true);
+			setDragFromProjectId(task.projectId);
 		}
 	}
 
@@ -276,6 +323,7 @@ function KanbanBoard({
 		setDragFromStatus(null);
 		setDragFromCustomColumnId(null);
 		setDragFromDraft(false);
+		setDragFromProjectId(null);
 		const task = tasks.find((t) => t.id === taskId);
 		if (!task) return;
 
@@ -295,32 +343,43 @@ function KanbanBoard({
 			return;
 		}
 
+		const taskProject = projectOfTask(task);
 		await moveTaskToStatus({
 			task,
-			project,
+			project: taskProject,
 			newStatus: targetStatus,
 			dispatch,
 			t,
 			onOpenTask: () => {
 				const openMode = getTaskOpenMode();
 				navigate(openMode === "fullscreen"
-					? { screen: "task", projectId: project.id, taskId: task.id }
-					: { screen: "project", projectId: project.id, activeTaskId: task.id });
+					? { screen: "task", projectId: taskProject.id, taskId: task.id }
+					: { screen: "project", projectId: taskProject.id, spaceId: space?.id, activeTaskId: task.id });
 			},
 			onMovingChange: (moving) => handleSetMoving(task.id, moving),
 		});
 	}
 
-	async function handleTaskDropToCustomColumn(taskId: string, customColumnId: string) {
+	// `laneId` is the LANE's id (the representative column). The id actually
+	// written is the dropped card's own project's column inside that lane, which
+	// is what keeps one gesture inside one repository.
+	async function handleTaskDropToCustomColumn(taskId: string, laneId: string) {
 		setDragFromStatus(null);
 		setDragFromCustomColumnId(null);
 		setDragFromDraft(false);
+		setDragFromProjectId(null);
 		const task = tasks.find((t) => t.id === taskId);
-		if (!task || task.customColumnId === customColumnId) return;
+		if (!task) return;
+		const lane = getOrderedColumns().find((slot) => laneKey(slot) === laneId);
+		const customColumnId = lane ? laneColumnIdForProject(lane, task.projectId) : null;
+		// The lane holds no column of this card's project — the column already
+		// refuses the drop; this is the last-resort guard behind it.
+		if (!customColumnId || task.customColumnId === customColumnId) return;
 		if (task.draft === true) {
 			toast.error(t("kanban.draftNotDroppable"), { taskId: task.id });
 			return;
 		}
+		const taskProject = projectOfTask(task);
 
 		// Optimistic update
 		const optimisticTask = { ...task, customColumnId };
@@ -330,7 +389,7 @@ function KanbanBoard({
 		try {
 			const updated = await api.request.moveTaskToCustomColumn({
 				taskId: task.id,
-				projectId: project.id,
+				projectId: taskProject.id,
 				customColumnId,
 			});
 			dispatch({ type: "updateTask", task: updated });
@@ -362,24 +421,53 @@ function KanbanBoard({
 		return map;
 	}, [tasks]);
 
-	const projectLabels = project.labels ?? [];
+	// Filter chips: one per label NAME across the board's projects, same merge rule
+	// as the lanes. The `label:"…"` token already matches by name, so a merged chip
+	// and the token it toggles mean the same thing.
+	const projectLabels = useMemo<Label[]>(() => {
+		if (!isSpaceBoard) return project.labels ?? [];
+		const byName = new Map<string, Label>();
+		for (const member of boardProjects) {
+			for (const label of member.labels ?? []) {
+				const key = label.name.trim().toLowerCase();
+				if (!byName.has(key)) byName.set(key, label);
+			}
+		}
+		return [...byName.values()];
+	}, [isSpaceBoard, boardProjects, project.labels]);
 	const customColumns: CustomColumn[] = project.customColumns ?? [];
-	const customStatusLabels = project.customStatusLabels ?? {};
-	const customColumnIds = new Set(customColumns.map((c) => c.id));
-	// A task belongs to a custom column only if that column still exists. A
-	// dangling customColumnId (its column was deleted, or a multi-instance write
+	// `customStatusLabels` is per project: two projects that renamed the same status
+	// cannot be reconciled, and a merged label would misrepresent both. A space
+	// board therefore shows dev3's canonical status names.
+	const customStatusLabels = isSpaceBoard ? {} : (project.customStatusLabels ?? {});
+	// Which LANE each project's custom column feeds. Built from the lane set alone
+	// (occupancy only ever affects built-in visibility), so it is also the answer to
+	// "does this card have a lane at all" — a card can never be excluded from the
+	// status columns without a custom lane to land in.
+	const laneIdByProjectColumn = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const slot of getBoardColumns(boardProjects)) {
+			if (slot.type !== "custom") continue;
+			for (const member of slot.members) map.set(`${member.projectId}::${member.columnId}`, laneKey(slot));
+		}
+		return map;
+	}, [boardProjects]);
+	// A task belongs to a custom lane only if its own project still has that column.
+	// A dangling customColumnId (its column was deleted, or a multi-instance write
 	// referenced a column this instance never had) falls back to the task's
 	// underlying status column so the task can never silently vanish from the board.
-	const isInCustomColumn = (task: Task) => !!task.customColumnId && customColumnIds.has(task.customColumnId);
+	const isInCustomColumn = (task: Task) =>
+		!!task.customColumnId && laneIdByProjectColumn.has(`${task.projectId}::${task.customColumnId}`);
 
 	// Facet resolver + funnel pool for the token-DSL filter. Custom-column tasks
 	// report the column name as their canonical status value (mirrors where they
 	// render), while still matching their underlying built-in status.
 	const resolver: FacetResolver = useMemo(() => ({
 		agents,
-		labelsFor: (task) => projectLabels.filter((l) => task.labelIds?.includes(l.id)),
+		labelsFor: (task) => (projectById.get(task.projectId)?.labels ?? []).filter((l) => task.labelIds?.includes(l.id)),
 		statusValuesFor: (task) => {
-			const col = task.customColumnId ? customColumns.find((c) => c.id === task.customColumnId) : undefined;
+			const ownColumns = projectById.get(task.projectId)?.customColumns ?? [];
+			const col = task.customColumnId ? ownColumns.find((c) => c.id === task.customColumnId) : undefined;
 			const label = customStatusLabels[task.status] || t(statusKey(task.status));
 			return col ? [col.name, task.status, label] : [task.status, label];
 		},
@@ -387,18 +475,31 @@ function KanbanBoard({
 		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
 		isAttentionFor: isAttentionTask,
 		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
-	}), [agents, projectLabels, customColumns, customStatusLabels, taskPorts, taskPrMap, t]);
+	}), [agents, projectById, customStatusLabels, taskPorts, taskPrMap, t]);
 
 	// Priority leads the funnel; the board offers all five levels (P0…P4).
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(
 		() => ALL_PRIORITIES.map((p) => ({ facet: "priority" as const, value: p, label: `${p} — ${t(PRIORITY_NAME_KEYS[p])}` })),
 		[t],
 	);
+	// One entry per custom LANE — merged by name across the board's projects, so a
+	// space board offers "On hold" once however many projects have it.
+	const boardCustomColumns = useMemo<CustomColumn[]>(() => {
+		if (!isSpaceBoard) return customColumns;
+		const byName = new Map<string, CustomColumn>();
+		for (const member of boardProjects) {
+			for (const col of member.customColumns ?? []) {
+				const key = normalizeLaneName(col.name);
+				if (!byName.has(key)) byName.set(key, col);
+			}
+		}
+		return [...byName.values()];
+	}, [isSpaceBoard, boardProjects, customColumns]);
 	// The board offers every board status (plus custom columns) in the funnel.
 	const statusCandidates = useMemo<FilterFunnelOption[]>(() => [
 		...ALL_STATUSES.map((s) => ({ facet: "status" as const, value: s, label: customStatusLabels[s] || t(statusKey(s)) })),
-		...customColumns.map((c) => ({ facet: "status" as const, value: c.name, label: c.name, color: c.color })),
-	], [customStatusLabels, customColumns, t]);
+		...boardCustomColumns.map((c) => ({ facet: "status" as const, value: c.name, label: c.name, color: c.color })),
+	], [customStatusLabels, boardCustomColumns, t]);
 
 	const filterGroups = useMemo(
 		() => buildFilterGroups(tasks, resolver, {
@@ -495,7 +596,7 @@ function KanbanBoard({
 		for (const task of tasks) {
 			if (!isInCustomColumn(task)) occupiedStatuses.add(task.status);
 		}
-		return getBoardColumns(project, { occupiedStatuses });
+		return getBoardColumns(boardProjects, { occupiedStatuses });
 	}
 
 	function handleColumnDragStart(colId: string) {
@@ -533,15 +634,16 @@ function KanbanBoard({
 		setDraggedColumnId(null);
 	}
 
-	// Custom column tasks
+	// Custom lane tasks, keyed by LANE (not by one project's column id): a merged
+	// lane collects every member project's same-named column into one list.
 	const tasksByCustomColumn = new Map<string, Task[]>();
-	for (const col of customColumns) {
-		tasksByCustomColumn.set(col.id, []);
+	for (const slot of getOrderedColumns()) {
+		if (slot.type === "custom") tasksByCustomColumn.set(laneKey(slot), []);
 	}
 	for (const task of displayTasks) {
-		if (isInCustomColumn(task)) {
-			tasksByCustomColumn.get(task.customColumnId!)?.push(task);
-		}
+		if (!isInCustomColumn(task)) continue;
+		const laneId = laneIdByProjectColumn.get(`${task.projectId}::${task.customColumnId}`);
+		if (laneId) tasksByCustomColumn.get(laneId)?.push(task);
 	}
 	// Custom columns get the same ordering as built-in ones; they used to render in
 	// raw task order, which put a P4 above a P3.
@@ -613,6 +715,9 @@ function KanbanBoard({
 		dragFromStatus,
 		dragFromCustomColumnId,
 		dragFromDraft,
+		// A card carries its project's name only where there is more than one
+		// project on screen — on a project board it would be noise.
+		projectForTask: isSpaceBoard ? projectOfTask : undefined,
 		onEditDraft: (task: Task) => setEditDraftTaskId(task.id),
 		onDragStart: handleDragStart,
 		bellCounts,
@@ -638,36 +743,43 @@ function KanbanBoard({
 					label={customStatusLabels[slot.status] || t(statusKey(slot.status))}
 					description={t(statusDescKey(slot.status))}
 					tasks={tasksByStatus.get(slot.status) || []}
-					onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
+					onColumnDrop={isSpaceBoard ? undefined : (side) => handleColumnDrop(slot.status, side)}
 					tip={tipColumnId === slot.status ? currentTip : undefined}
 					onTipChanged={handleTipChanged}
 					tipState={tipState ?? undefined}
 					collapsed={full ? false : collapseState.isCollapsed(colId)}
 					onCollapseToggle={full ? undefined : () => collapseState.toggle(colId)}
 					collapseDragHandlers={full ? undefined : collapseState.dragExpandHandlers(colId)}
-					onRenameColumn={(name) => handleRenameBuiltinColumn(slot.status, name)}
+					onRenameColumn={isSpaceBoard ? undefined : (name) => handleRenameBuiltinColumn(slot.status, name)}
 					fullWidth={full}
 					{...commonProps}
 				/>
 			);
 		}
 		const col = slot.col;
+		const laneId = laneKey(slot);
+		// Reordering, renaming and deleting a lane belong to ONE project's board:
+		// a merged lane stands for several projects' columns and has no single
+		// order or name to write. Cards still drag freely.
+		const laneIsMerged = isSpaceBoard;
 		return (
 			<KanbanColumn
-				key={col.id}
+				key={laneId}
 				status="todo"
 				label={col.name}
-				tasks={tasksByCustomColumn.get(col.id) || []}
+				mergedProjectCount={slot.members.length > 1 ? slot.members.length : undefined}
+				laneRefusesDrag={dragFromProjectId !== null && !laneAcceptsProject(slot, dragFromProjectId)}
+				tasks={tasksByCustomColumn.get(laneId) || []}
 				onTaskDropToCustomColumn={handleTaskDropToCustomColumn}
 				isCustomColumn
-				customColumnId={col.id}
+				customColumnId={laneId}
 				colorOverride={col.color}
-				isDraggedColumn={draggedColumnId === col.id}
-				onColumnDragStart={() => handleColumnDragStart(col.id)}
-				onColumnDragEnd={handleColumnDragEnd}
-				onColumnDrop={(side) => handleColumnDrop(col.id, side)}
-				onRenameColumn={(name) => handleRenameCustomColumn(col.id, name ?? "")}
-				autoStartEditing={autoEditColumnId === col.id}
+				isDraggedColumn={draggedColumnId === laneId}
+				onColumnDragStart={laneIsMerged ? undefined : () => handleColumnDragStart(laneId)}
+				onColumnDragEnd={laneIsMerged ? undefined : handleColumnDragEnd}
+				onColumnDrop={laneIsMerged ? undefined : (side) => handleColumnDrop(laneId, side)}
+				onRenameColumn={laneIsMerged ? undefined : (name) => handleRenameCustomColumn(laneId, name ?? "")}
+				autoStartEditing={autoEditColumnId === laneId}
 				onAutoEditConsumed={() => setAutoEditColumnId(null)}
 				tip={tipColumnId === col.id ? currentTip : undefined}
 				onTipChanged={handleTipChanged}
@@ -683,7 +795,7 @@ function KanbanBoard({
 	// excluded from rotation. Empty columns stay for position stability.
 	const carouselColumns: CarouselColumn[] = isCarousel
 		? orderedColumns
-				.filter((slot) => !collapseState.isUserCollapsed(slot.type === "builtin" ? slot.status : slot.col.id))
+				.filter((slot) => !collapseState.isUserCollapsed(laneKey(slot)))
 				.map((slot) =>
 					slot.type === "builtin"
 						? {
@@ -694,10 +806,10 @@ function KanbanBoard({
 								element: renderColumnElement(slot, true),
 							}
 						: {
-								id: slot.col.id,
+								id: laneKey(slot),
 								label: slot.col.name,
 								color: slot.col.color ?? statusColors.todo,
-								count: tasksByCustomColumn.get(slot.col.id)?.length ?? 0,
+								count: tasksByCustomColumn.get(laneKey(slot))?.length ?? 0,
 								element: renderColumnElement(slot, true),
 							},
 				)
@@ -726,10 +838,10 @@ function KanbanBoard({
 						const hasCompleted = orderedColumns.some((s) => s.type === "builtin" && s.status === "completed");
 						return orderedColumns.flatMap((slot) => {
 							const el = renderColumnElement(slot, false);
-							const beforeCompleted = slot.type === "builtin" && slot.status === "completed";
+							const beforeCompleted = !isSpaceBoard && slot.type === "builtin" && slot.status === "completed";
 							return beforeCompleted ? [addColumnButton, el] : [el];
 							// Defensive fallback handled below when Completed is somehow absent.
-						}).concat(hasCompleted ? [] : [addColumnButton]);
+						}).concat(hasCompleted || isSpaceBoard ? [] : [addColumnButton]);
 					})()}
 				</div>
 			)}

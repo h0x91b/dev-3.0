@@ -22,6 +22,8 @@ const kanban = {
 	"kanban.showLess": "Show less",
 	"kanban.collapseColumn": "Unpin column",
 	"kanban.renameColumn": "Rename column",
+	"kanban.mergedLaneProjects_one": "{count} project",
+	"kanban.mergedLaneProjects_other": "{count} projects",
 	"kanban.draftNotDroppable": "This is a draft — finish its description and save it as a task before starting it.",
 
 	// CreateTaskModal

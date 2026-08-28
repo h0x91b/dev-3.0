@@ -40,6 +40,20 @@ interface KanbanColumnProps {
 	dragFromCustomColumnId?: string | null;
 	/** The card being dragged is an unfinished draft: only To Do may accept it. */
 	dragFromDraft?: boolean;
+	/**
+	 * This lane holds no column of the dragged card's project, so it cannot accept
+	 * it. Set by the board from the shared `laneAcceptsProject` rule; the lane is
+	 * dimmed for the whole drag, which is how the user learns the refusal BEFORE
+	 * letting go instead of from a toast afterwards.
+	 */
+	laneRefusesDrag?: boolean;
+	/**
+	 * The card's own project, on a board whose subject is a space. Undefined on a
+	 * project board — there is only one project and the mark would be noise.
+	 */
+	projectForTask?: (task: Task) => Project;
+	/** How many projects a merged custom lane covers. Undefined = not a merge. */
+	mergedProjectCount?: number;
 	onDragStart: (taskId: string) => void;
 	bellCounts: Map<string, number>;
 	bellReasons?: Map<string, string[]>;
@@ -101,6 +115,9 @@ function KanbanColumn({
 	dragFromStatus,
 	dragFromCustomColumnId,
 	dragFromDraft = false,
+	laneRefusesDrag = false,
+	projectForTask,
+	mergedProjectCount,
 	onDragStart,
 	bellCounts,
 	bellReasons,
@@ -250,7 +267,7 @@ function KanbanColumn({
 	const draftBlocksDrop = dragFromDraft && !(!isCustomColumn && status === "todo");
 
 	// Can this column accept a cross-column drop?
-	const isCrossColumnTarget = !draftBlocksDrop && (isCustomColumn
+	const isCrossColumnTarget = !draftBlocksDrop && !laneRefusesDrag && (isCustomColumn
 		// Custom columns accept drops from any column except themselves
 		? (dragFromStatus !== null || dragFromCustomColumnId !== null) && dragFromCustomColumnId !== customColumnId
 		// Built-in columns use transition logic; also accept from custom columns (underlying status governs)
@@ -358,7 +375,7 @@ function KanbanColumn({
 						: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
 							? "border-edge-active"
 							: "border-transparent"
-				} ${isDraggedColumn ? "opacity-40" : ""}`}
+				} ${isDraggedColumn ? "opacity-40" : ""} ${laneRefusesDrag ? "opacity-40 saturate-50" : ""}`}
 				style={{
 					"--col-rgb": hexToRgb(color),
 					...(columnDragSide === "before" && { boxShadow: "-4px 0 0 0 rgb(var(--accent))" }),
@@ -439,7 +456,7 @@ function KanbanColumn({
 					: isCrossColumnTarget && (dragFromStatus || dragFromCustomColumnId)
 						? "border-edge-active"
 						: "border-transparent"
-			} ${isDraggedColumn ? "opacity-40" : ""}`}
+			} ${isDraggedColumn ? "opacity-40" : ""} ${laneRefusesDrag ? "opacity-40 saturate-50" : ""}`}
 			style={{
 				"--col-rgb": hexToRgb(color),
 				// Column reorder indicator via box-shadow avoids dragleave false-fires
@@ -546,6 +563,14 @@ function KanbanColumn({
 							/>
 						)
 					)}
+					{mergedProjectCount !== undefined && !isCompactNarrow && (
+						<span
+							className="text-nano text-fg-3 px-1.5 py-px rounded-full bg-raised flex-shrink-0"
+							title={t.plural("kanban.mergedLaneProjects", mergedProjectCount)}
+						>
+							{t.plural("kanban.mergedLaneProjects", mergedProjectCount)}
+						</span>
+					)}
 					{tasks.length > 0 && (
 						<span
 							className="text-dense font-bold px-1.5 py-px rounded-full flex-shrink-0"
@@ -586,7 +611,8 @@ function KanbanColumn({
 					<div key={task.id} data-task-id={task.id}>
 						<TaskCard
 							task={task}
-							project={project}
+							project={projectForTask ? projectForTask(task) : project}
+							showProjectMark={!!projectForTask}
 							dispatch={dispatch}
 							navigate={navigate}
 							agents={agents}
