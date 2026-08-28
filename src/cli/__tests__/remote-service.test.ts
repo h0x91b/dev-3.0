@@ -131,11 +131,18 @@ describe("buildExecStartArgs", () => {
 		expect(out).toContain("--no-tunnel");
 	});
 
-	// Safety gate: a non-rotating static code must never front a default-on public
-	// tunnel — the unit would expose a guessable, replayable bearer code.
-	it("rejects --static-code without --no-tunnel (no static code on a public tunnel)", () => {
-		expect(() => buildExecStartArgs(args({ "static-code": "letmein1" }))).toThrow("__exit__");
-		expect(stderrText()).toContain("cannot be combined with a public tunnel");
+	// The combination is legitimate — it is how you sign in to a headless box from
+	// a phone — so the unit is written and the user is told what it means.
+	it("warns but still writes the unit for --static-code without --no-tunnel", () => {
+		const out = buildExecStartArgs(args({ "static-code": "letmein1" }));
+		expect(out).toContain("--static-code=letmein1");
+		expect(out).not.toContain("--no-tunnel");
+		expect(stderrText()).toContain("public tunnel is on");
+	});
+
+	it("stays quiet about the tunnel when --no-tunnel is given", () => {
+		buildExecStartArgs(args({ "static-code": "letmein1", "no-tunnel": "true" }));
+		expect(stderrText()).not.toContain("public tunnel is on");
 	});
 });
 

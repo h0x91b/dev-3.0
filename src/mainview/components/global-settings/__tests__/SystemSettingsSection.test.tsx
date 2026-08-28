@@ -11,6 +11,7 @@ const t = Object.assign((key: string) => key, {
 
 function renderSection(settings: Partial<GlobalSettings> = {}) {
 	const onRemoteTunnelChange = vi.fn();
+	const onStaticAccessCodeChange = vi.fn();
 	render(
 		<I18nProvider>
 			<SystemSettingsSection
@@ -21,12 +22,13 @@ function renderSection(settings: Partial<GlobalSettings> = {}) {
 				onUpdateChannelChange={vi.fn()}
 				onRemoteTunnelChange={onRemoteTunnelChange}
 				onRemoteSilentUpdateToggle={vi.fn()}
+				onStaticAccessCodeChange={onStaticAccessCodeChange}
 				onPreventSleepToggle={vi.fn()}
 				onConfirmBeforeQuitToggle={vi.fn()}
 			/>
 		</I18nProvider>,
 	);
-	return { onRemoteTunnelChange };
+	return { onRemoteTunnelChange, onStaticAccessCodeChange };
 }
 
 describe("SystemSettingsSection — tunnel provider", () => {
@@ -71,5 +73,42 @@ describe("SystemSettingsSection — tunnel provider", () => {
 
 		await userEvent.type(screen.getByTestId("remote-tunnel-command"), "ngrok http {port}");
 		expect(screen.queryByTestId("remote-tunnel-command-required")).not.toBeInTheDocument();
+	});
+});
+
+describe("static access code", () => {
+	it("persists the trimmed code on blur, not on every keystroke", async () => {
+		const { onStaticAccessCodeChange } = renderSection();
+		const field = screen.getByTestId("static-access-code") as HTMLInputElement;
+
+		await userEvent.type(field, "  correct-horse-battery-staple  ");
+		expect(onStaticAccessCodeChange).not.toHaveBeenCalled();
+
+		await userEvent.tab();
+		expect(onStaticAccessCodeChange).toHaveBeenCalledWith("correct-horse-battery-staple");
+	});
+
+	it("clearing the field clears the code", async () => {
+		const { onStaticAccessCodeChange } = renderSection({ staticAccessCode: "sesame" });
+		await userEvent.clear(screen.getByTestId("static-access-code"));
+		await userEvent.tab();
+		expect(onStaticAccessCodeChange).toHaveBeenCalledWith("");
+	});
+
+	it("masks the code by default and reveals it on request", async () => {
+		renderSection({ staticAccessCode: "sesame" });
+		const field = screen.getByTestId("static-access-code");
+		expect(field).toHaveAttribute("type", "password");
+
+		await userEvent.click(screen.getByTestId("static-access-code-reveal"));
+		expect(field).toHaveAttribute("type", "text");
+	});
+
+	it("warns about public reach only while a code is set", async () => {
+		renderSection();
+		expect(screen.queryByTestId("static-access-code-warning")).not.toBeInTheDocument();
+
+		await userEvent.type(screen.getByTestId("static-access-code"), "sesame");
+		expect(screen.getByTestId("static-access-code-warning")).toBeInTheDocument();
 	});
 });

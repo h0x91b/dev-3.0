@@ -14,6 +14,7 @@ export default function SystemSettingsSection({
 	onUpdateChannelChange,
 	onRemoteTunnelChange,
 	onRemoteSilentUpdateToggle,
+	onStaticAccessCodeChange,
 	onPreventSleepToggle,
 	onConfirmBeforeQuitToggle,
 }: {
@@ -25,6 +26,8 @@ export default function SystemSettingsSection({
 	onUpdateChannelChange: (channel: UpdateChannel) => void;
 	onRemoteTunnelChange: (tunnel: RemoteTunnelSettings | undefined) => void;
 	onRemoteSilentUpdateToggle: (enabled: boolean) => void;
+	/** Empty string clears the code. */
+	onStaticAccessCodeChange: (code: string) => void;
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
 }) {
@@ -85,6 +88,14 @@ export default function SystemSettingsSection({
 						<CustomTunnelFields t={t} tunnel={globalSettings.remoteTunnel} onChange={onRemoteTunnelChange} />
 					) : null}
 				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="static-access-code">
+				<StaticAccessCodeField
+					t={t}
+					value={globalSettings.staticAccessCode ?? ""}
+					onChange={onStaticAccessCodeChange}
+				/>
 			</SettingsEntry>
 
 			<SettingsEntry anchor="remote-silent-update">
@@ -223,6 +234,63 @@ function CustomTunnelFields({
 				/>
 				<p className="text-fg-muted text-xs mt-1">{t("settings.remoteTunnelUrlPatternHint")}</p>
 			</div>
+		</div>
+	);
+}
+
+/**
+ * The permanent remote-access sign-in code. Persisted on blur so a half-typed
+ * value never becomes the live credential, and shown as a password field
+ * because this screen gets screenshotted and screen-shared.
+ *
+ * Deliberately NOT a strength meter or a generator: the code is whatever the
+ * owner wants it to be, and the minimum length is enforced by the host.
+ */
+function StaticAccessCodeField({
+	t,
+	value,
+	onChange,
+}: {
+	t: TFunction;
+	value: string;
+	onChange: (code: string) => void;
+}) {
+	const [draft, setDraft] = useState(value);
+	const [revealed, setRevealed] = useState(false);
+
+	return (
+		<div>
+			<label htmlFor="static-access-code" className="block text-fg text-sm font-semibold mb-2">
+				{t("settings.staticAccessCode")}
+			</label>
+			<p className="text-fg-3 text-sm mb-3">{t("settings.staticAccessCodeDesc")}</p>
+			<div className="flex items-center gap-2">
+				<input
+					id="static-access-code"
+					data-testid="static-access-code"
+					type={revealed ? "text" : "password"}
+					autoComplete="off"
+					value={draft}
+					placeholder={t("settings.staticAccessCodePlaceholder")}
+					onChange={(event) => setDraft(event.target.value)}
+					onBlur={() => onChange(draft.trim())}
+					className="flex-1 px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono outline-none focus:border-accent/40 transition-colors streamer-private"
+				/>
+				<button
+					type="button"
+					data-testid="static-access-code-reveal"
+					onClick={() => setRevealed((on) => !on)}
+					className="px-3 py-3 rounded-xl border border-edge text-fg-2 text-xs hover:text-fg hover:bg-elevated hover:border-edge-active transition-[color,background-color,border-color,transform] active:scale-[0.96]"
+				>
+					{t(revealed ? "settings.staticAccessCodeHide" : "settings.staticAccessCodeReveal")}
+				</button>
+			</div>
+			{draft.trim() ? (
+				<p data-testid="static-access-code-warning" className="text-warning-strong text-xs mt-2 leading-snug">
+					{t("settings.staticAccessCodeTunnelWarning")}
+				</p>
+			) : null}
+			<p className="text-fg-muted text-xs mt-2 leading-snug">{t("settings.staticAccessCodeEnvHint")}</p>
 		</div>
 	);
 }

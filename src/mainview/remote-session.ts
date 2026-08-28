@@ -8,9 +8,11 @@
  * The browser WebSocket API hides the HTTP status of a failed upgrade (close
  * code 1006 whether the server is down or the session is dead), so on every
  * socket close the machine probes POST /auth/refresh: an auth rejection
- * (401/403) terminates the loop and surfaces `onExpired` (the scan-QR
+ * (401/403) terminates the loop and surfaces `onExpired` (the sign-in
  * screen); a network failure keeps the exponential backoff going (2s
- * doubling, 15s cap). The session credential itself is an HttpOnly cookie —
+ * doubling, 15s cap). `expired` is terminal for the automatic paths and is
+ * left only by `submitAccessCode` — the owner typing their permanent access
+ * code. The session credential itself is an HttpOnly cookie —
  * this module never sees it; the injected `fetchFn` must send requests with
  * same-origin credentials.
  *
@@ -67,10 +69,19 @@ export interface RemoteSessionOptions {
 	callbacks?: RemoteSessionCallbacks;
 }
 
+/** Result of typing the owner's static access code on the sign-in screen. */
+export type AccessCodeOutcome = "ok" | "rejected" | "network";
+
 export interface RemoteSession {
 	start(): void;
 	/** Force-replace a possibly-dead socket now (resume from background, Retry button). */
 	kick(): void;
+	/**
+	 * Trade the owner's static access code for a session cookie. This is the only
+	 * way out of `expired` — the code is permanent and multi-use, so a rejected
+	 * attempt is not terminal and the user may simply type it again.
+	 */
+	submitAccessCode(code: string): Promise<AccessCodeOutcome>;
 	getState(): RemoteSessionState;
 	getSocket(): SocketLike | null;
 	destroy(): void;
@@ -296,6 +307,31 @@ export function createRemoteSession(opts: RemoteSessionOptions): RemoteSession {
 				return;
 			}
 			void bootAuth();
+		},
+
+		async submitAccessCode(code: string): Promise<AccessCodeOutcome> {
+			if (destroyed) return "network";
+			try {
+				const resp = await fetchFn("/auth/exchange", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ token: code }),
+				});
+				if (destroyed) return "network";
+				if (!resp.ok) return resp.status === 401 || resp.status === 403 ? "rejected" : "network";
+			} catch {
+				return "network";
+			}
+			// Accepted: leave `expired` and reconnect. `started` is forced on because
+			// a browser opened without any credential expires during boot, and the
+			// code is what starts the session in that case.
+			started = true;
+			attempts = 0;
+			cancelRetry();
+			setState("connecting");
+			startRefreshLoop();
+			connect();
+			return "ok";
 		},
 
 		kick(): void {

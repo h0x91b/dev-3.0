@@ -111,8 +111,26 @@ Under systemd the log goes to the journal: `journalctl --user -u dev3-remote.ser
 | `--no-detach` | Stay in the foreground; Ctrl-C stops it |
 | `--views-dir <path>` | Serve static assets from a different directory |
 
-`--static-code=<value>` replaces the rotating token with a fixed one. **Local development
-only** — never expose a static code on the public internet.
+### The static access code
+
+`--static-code=<value>` sets a **permanent, multi-use sign-in code**. It is typed on the
+browser's sign-in screen; it never appears in the URL or the QR code, both of which keep
+carrying a rotating one-time token. It is never rotated, expired or voided, and it works
+from any number of browsers and machines — reuse is the point.
+
+The same code can be set without the flag, in **Settings → System → Remote access code**
+(stored in plain text in the settings file). `DEV3_REMOTE_STATIC_CODE` wins over that
+field where it is set, which is what headless boxes and Docker images use.
+
+Two things worth knowing:
+
+- The code coexists with the QR flow. A new device may scan a QR **or** type the code.
+- Changing the code does not sign out devices that are already signed in — a new code
+  applies to new sign-ins only.
+
+Anyone holding the code can sign in from anywhere the server is reachable, including over
+the public tunnel, so make it long. The CLI prints a warning when a code and a public
+tunnel are on together; it does not refuse to start.
 
 ## Notifications that reach you when nothing is open
 

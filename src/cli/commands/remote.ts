@@ -7,6 +7,7 @@ import { exitError, exitUsage, printDetail } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 import { sendRequest } from "../socket-client";
 import { installRemoteService, uninstallRemoteService } from "./remote-service";
+import { STATIC_CODE_PUBLIC_TUNNEL_WARNING, shouldWarnAboutPublicTunnel } from "../remote-static-code-notice";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "../../shared/cli-exit-codes";
 import { MIN_REMOTE_STATIC_CODE_LENGTH, remoteStaticCodeError } from "../../shared/remote-static-code";
 import {
@@ -103,11 +104,14 @@ Flags (start):
       dist/ next to the binary, or the current working directory's ./dist).
 
   --static-code=<value>
-      Use a fixed access code instead of a rotating short-lived JWT.
-      The QR/URL token will be exactly <value>; auto-refresh is disabled.
-      The code is long-lived and reusable, so several devices can enrol from
-      it — which also means it is worth guessing. Requires --no-tunnel, and
-      failed attempts are throttled. Minimum length: ${MIN_REMOTE_STATIC_CODE_LENGTH} characters.
+      Set a permanent sign-in code. It is typed on the browser's sign-in
+      screen — it never appears in the URL or the QR, both of which keep
+      carrying a rotating one-time token. \`dev3 remote url\` prints a
+      bookmarkable link that carries it in the #fragment, so a saved bookmark
+      signs in with nothing typed; a fragment is never sent to a server.
+      Reusable from any number of devices, and it is never rotated or voided.
+      Anyone holding it can sign in, so make it long, and failed attempts are
+      throttled. Minimum length: ${MIN_REMOTE_STATIC_CODE_LENGTH} characters.
 
 Connection options shown on startup:
   ① Public tunnel URL (Cloudflare quick tunnel, unless --no-tunnel)
@@ -219,17 +223,15 @@ function collectRemoteEnv(args: ParsedArgs): Record<string, string> {
 		}
 		remoteEnv.DEV3_REMOTE_EXPOSE_PORTS = ports.join(",");
 	}
-	// Safety gate: a static access code has no replay protection (the URL token
-	// never rotates), so it must never ride a default-on public Cloudflare tunnel
-	// — that would put a guessable, replayable bearer code on the open internet,
-	// fronting full terminal access to this box. Tunnel is opt-OUT, so require an
-	// explicit --no-tunnel when --static-code is set rather than silently exposing.
-	if (remoteEnv.DEV3_REMOTE_STATIC_CODE && remoteEnv.DEV3_REMOTE_NO_TUNNEL !== "1") {
-		exitUsage(
-			"--static-code cannot be combined with a public tunnel (it has no replay protection).\n" +
-			"Add --no-tunnel for local-only / SSH-forward use, or drop --static-code to use the\n" +
-			"rotating single-use QR token, which is safe to expose over the tunnel.",
-		);
+	// A static code on a public tunnel is a warning, never a refusal — see
+	// remote-static-code-notice.ts. The env is read alongside the flag so an
+	// exported DEV3_REMOTE_STATIC_CODE gets the same line instead of sneaking past.
+	if (shouldWarnAboutPublicTunnel({
+		flagCode: remoteEnv.DEV3_REMOTE_STATIC_CODE,
+		envCode: process.env.DEV3_REMOTE_STATIC_CODE,
+		tunnelDisabled: remoteEnv.DEV3_REMOTE_NO_TUNNEL === "1",
+	})) {
+		process.stderr.write(`${STATIC_CODE_PUBLIC_TUNNEL_WARNING}\n`);
 	}
 	return remoteEnv;
 }
@@ -579,7 +581,7 @@ async function statusRemote(args: ParsedArgs): Promise<void> {
 		["Port:", String(state.port)],
 		["Uptime:", uptime],
 		["Tunnel:", state.tunnelRequested ? "requested" : "disabled (--no-tunnel)"],
-		["Static code:", state.staticCode ? "yes (rotation disabled)" : "no (rotating JWT)"],
+		["Static code:", state.staticCode ? "yes (permanent, reusable)" : "no (QR token only)"],
 		["Version:", state.version || "unknown"],
 	];
 	if (state.logFile) fields.push(["Log:", state.logFile]);
@@ -810,10 +812,9 @@ export async function printAccessForState(
 	if (info.tunnelUrl) {
 		process.stdout.write(`\n  Public tunnel: ${info.tunnelUrl}\n`);
 	}
+	process.stdout.write(`  (the token is single-use — rerun \`dev3 remote url\` for a fresh one)\n`);
 	if (info.staticCode) {
-		process.stdout.write(`  Static access code: ${info.staticCode} (rotation disabled — local use only)\n`);
-	} else {
-		process.stdout.write(`  (the token is single-use — rerun \`dev3 remote url\` for a fresh one)\n`);
+		process.stdout.write(`  Static access code: ${info.staticCode} — type it on the sign-in screen instead\n`);
 	}
 }
 

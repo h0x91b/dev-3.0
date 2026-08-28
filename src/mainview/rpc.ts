@@ -3,7 +3,7 @@ import type { AppRPCSchema } from "../shared/types";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { createWatchdogState, decidePingOutcome, shouldAllowReload } from "./rpc-watchdog";
 import { recordDiagnostic, RPC_STATUS_EVENT, type RpcConnectionState } from "./diagnostics";
-import { createRemoteSession, type RemoteSessionState, type SocketLike } from "./remote-session";
+import { createRemoteSession, type AccessCodeOutcome, type RemoteSessionState, type SocketLike } from "./remote-session";
 import { debugLog } from "./debug-log";
 
 // ── Transport connection state ──────────────────────────────────────
@@ -15,6 +15,21 @@ let rpcConnectionState: RpcConnectionState = "connected";
 // Set by whichever transport initializes — lets `reconnectRpc()` do a soft
 // recovery (re-open socket) before the user has to hard-reload the page.
 let reconnectImpl: (() => void) | null = null;
+
+// Wired by the browser transport only: the sign-in screen's access-code form.
+// The desktop bridge has no auth, so it stays null and the form never renders.
+let submitAccessCodeImpl: ((code: string) => Promise<AccessCodeOutcome>) | null = null;
+
+/**
+ * Trade the owner's permanent access code for a session cookie and reconnect.
+ * Returns "unsupported" on the desktop bridge, where there is nothing to sign
+ * into. A "rejected" answer is not terminal — the code is multi-use, so the
+ * user simply types it again.
+ */
+export async function submitRemoteAccessCode(code: string): Promise<AccessCodeOutcome | "unsupported"> {
+	if (!submitAccessCodeImpl) return "unsupported";
+	return submitAccessCodeImpl(code);
+}
 
 /**
  * One timed round trip of the cheapest request there is, through the transport
@@ -488,6 +503,8 @@ function initBrowserApi(): ApiShape {
 			},
 		},
 	});
+
+	submitAccessCodeImpl = (code) => session.submitAccessCode(code);
 
 	// Soft reconnect for the bootstrap "Retry": replace the (possibly dead)
 	// socket without a full page reload.

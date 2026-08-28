@@ -44,7 +44,7 @@ interface BannerOptions {
 	tunnelUrl: string | null;
 	tunnelRequested: boolean;
 	accessUrl: string;
-	/** Set when `--static-code=<value>` is in effect. Disables QR refresh + URL caveat. */
+	/** The owner's permanent sign-in code, if one is set. Never part of the URL. */
 	staticCode?: string | null;
 }
 
@@ -65,16 +65,15 @@ export async function renderHeadlessBanner(opts: BannerOptions): Promise<void> {
 	console.log("╚════════════════════════════════════════════════════════════════╝");
 	console.log("");
 	console.log(qrAscii);
-	if (staticCode) {
-		console.log("  URL (static code — no rotation, dev only):");
-	} else {
-		console.log("  URL (includes one-time QR token, regenerated every 60s):");
-	}
+	console.log("  URL (includes one-time QR token, regenerated every 60s):");
 	console.log(`  ${accessUrl}`);
 	if (staticCode) {
 		console.log("");
 		console.log(`  Static access code: ${staticCode}`);
-		console.log("  ⚠ Replay protection is disabled — do NOT expose on the public internet.");
+		console.log("  Type it on the sign-in screen — permanent, reusable, any number of devices.");
+		if (tunnelRequested) {
+			console.log("  ⚠ This code is reachable over the public tunnel. Keep it long and private.");
+		}
 	}
 	console.log("");
 

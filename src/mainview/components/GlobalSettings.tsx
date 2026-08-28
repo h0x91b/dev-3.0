@@ -530,6 +530,18 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleStaticAccessCodeChange = useCallback(
+		(code: string) => {
+			persistSettingChange(
+				// Undefined rather than "" so an unset code leaves no key behind in
+				// settings.json — getStaticCode() reads absence, not emptiness.
+				{ staticAccessCode: code || undefined },
+				{ tracking: { setting: "remote_static_access_code", value: code ? "set" : "cleared" } },
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handleRemoteSilentUpdateToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ remoteSilentUpdate: enabled });
@@ -902,6 +914,7 @@ function GlobalSettings({
 							onUpdateChannelChange={handleUpdateChannelChange}
 							onRemoteTunnelChange={handleRemoteTunnelChange}
 							onRemoteSilentUpdateToggle={handleRemoteSilentUpdateToggle}
+							onStaticAccessCodeChange={handleStaticAccessCodeChange}
 							onPreventSleepToggle={handlePreventSleepToggle}
 							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
 						/>

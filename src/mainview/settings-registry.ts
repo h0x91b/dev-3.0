@@ -410,6 +410,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "static-access-code",
+		category: "system",
+		titleKey: "settings.staticAccessCode",
+		descriptionKey: "settings.staticAccessCodeDesc",
+		anchor: "static-access-code",
+		globalField: "staticAccessCode",
+		storage: "global",
+	},
+	{
 		id: "remote-silent-update",
 		category: "system",
 		titleKey: "settings.remoteSilentUpdate",
@@ -540,6 +549,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"theme",
 	"resolvedTheme",
 	"analyticsDistinctId",
+	"staticAccessCode",
 	"cloneBaseDirectory",
 	"customBinaryPaths",
 	"agentBinaryPaths",

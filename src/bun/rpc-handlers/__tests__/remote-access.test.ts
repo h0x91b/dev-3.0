@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 	getLocalInterfaces: vi.fn(),
 	resolveAccessHost: vi.fn(),
 	getServerPort: vi.fn(),
+	getStaticCode: vi.fn<() => string | null>(),
 	resolveRemoteTunnelProvider: vi.fn(),
 }));
 
@@ -31,6 +32,7 @@ vi.mock("../../remote-access-server", () => ({
 	getLocalInterfaces: mocks.getLocalInterfaces,
 	resolveAccessHost: mocks.resolveAccessHost,
 	getServerPort: mocks.getServerPort,
+	getStaticCode: mocks.getStaticCode,
 }));
 
 import { remoteAccessHandlers, TUNNEL_DNS_SETTLE_DELAY_MS } from "../remote-access";
@@ -48,6 +50,7 @@ describe("remote access handler", () => {
 		mocks.getLocalInterfaces.mockReturnValue([]);
 		mocks.resolveAccessHost.mockReturnValue("127.0.0.1");
 		mocks.resolveRemoteTunnelProvider.mockReturnValue({ kind: "cloudflare", command: null, urlRegex: null });
+		mocks.getStaticCode.mockReturnValue(null);
 	});
 
 	afterEach(() => {
@@ -93,5 +96,17 @@ describe("remote access handler", () => {
 
 		expect(result.tunnelProvider).toBe("custom");
 		expect(result.tunnelBinaryInstalled).toBe(true);
+	});
+
+	// The modal must be able to say "a permanent code is set" without ever seeing
+	// the code — reporting the value would put it in the renderer and in screenshots.
+	it("reports whether a static access code is set, never the code itself", async () => {
+		mocks.getStaticCode.mockReturnValue("sesame");
+		const withCode = await remoteAccessHandlers.getRemoteAccessQR({ tunnel: false });
+		expect(withCode.staticCodeActive).toBe(true);
+		expect(JSON.stringify(withCode)).not.toContain("sesame");
+
+		mocks.getStaticCode.mockReturnValue(null);
+		expect((await remoteAccessHandlers.getRemoteAccessQR({ tunnel: false })).staticCodeActive).toBe(false);
 	});
 });

@@ -199,7 +199,15 @@ const dashboard = {
 	"remote.close": "Закрыть",
 	"remote.connected": "Подключено",
 	"remote.authFailed": "Сессия истекла",
-	"remote.authFailedDesc": "Ссылка доступа истекла. Получите новую на хосте — команда `dev3 remote url` на headless-сервере или повторно откройте QR «Удалённый доступ» в десктопном приложении — и откройте её здесь.",
+	"remote.authFailedDesc": "Введите код доступа, настроенный на хосте, или откройте свежую QR-ссылку с хоста (`dev3 remote url` на headless-сервере или QR «Удалённый доступ» в десктопном приложении).",
+	"remote.signInCodeLabel": "Код доступа",
+	"remote.signInSubmit": "Войти",
+	"remote.signInSubmitting": "Вход…",
+	"remote.signInRejected": "Код не принят. Проверьте его и попробуйте ещё раз.",
+	"remote.signInNetworkError": "Не удалось связаться с хостом. Проверьте соединение и попробуйте ещё раз.",
+	"remote.staticCodeActive": "Код доступа включён",
+	"remote.staticCodeActiveDesc": "Любой, у кого есть ваш код доступа, войдёт, введя его на экране входа — из любого браузера и сколько угодно раз. Изменить: Настройки → Система.",
+	"remote.staticCodeTunnelWarning": "Публичный туннель поднят, поэтому код работает из любой точки интернета.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi не установлен",

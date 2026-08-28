@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -362,13 +362,6 @@ describe("resolveAccessHost", () => {
 });
 
 describe("getAccessUrl host override", () => {
-	// dev3-managed shells export DEV3_REMOTE_STATIC_CODE (the dev app's own
-	// web-access code), and getAccessUrl prefers it over the mocked QR token.
-	// Unset it so these tests stay hermetic when run inside a dev3 worktree.
-	beforeEach(() => {
-		vi.stubEnv("DEV3_REMOTE_STATIC_CODE", undefined);
-	});
-
 	afterEach(() => {
 		vi.unstubAllEnvs();
 	});
@@ -387,6 +380,24 @@ describe("getAccessUrl host override", () => {
 	it("generateQrDataUrl threads the host through to the QR image", async () => {
 		const qr = await generateQrDataUrl("127.0.0.1");
 		expect(qr).toBe("data:image/png;base64,test");
+	});
+
+	// The static code is a PERMANENT credential. In a URL it would land in browser
+	// history, the address bar and every proxy log on the way; it is typed on the
+	// sign-in screen instead, so the URL keeps carrying the one-time QR token.
+	it("never puts the static access code in the URL", async () => {
+		vi.stubEnv("DEV3_REMOTE_STATIC_CODE", "sesame");
+		const url = await getAccessUrl("127.0.0.1");
+		expect(url).not.toContain("sesame");
+		expect(url).toContain("?token=test-token");
+	});
+
+	it("never puts the static access code in the QR image either", async () => {
+		vi.stubEnv("DEV3_REMOTE_STATIC_CODE", "sesame");
+		await generateQrDataUrl("127.0.0.1");
+		const { default: QRCode } = await import("qrcode");
+		const calls = vi.mocked(QRCode.toDataURL).mock.calls;
+		expect(String(calls[calls.length - 1]?.[0])).not.toContain("sesame");
 	});
 });
 

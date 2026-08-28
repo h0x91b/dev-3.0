@@ -4,6 +4,7 @@ import type { ParsedArgs } from "../args";
 import { exitError, exitUsage } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 import { remoteStaticCodeError } from "../../shared/remote-static-code";
+import { STATIC_CODE_PUBLIC_TUNNEL_WARNING, shouldWarnAboutPublicTunnel } from "../remote-static-code-notice";
 
 /**
  * `dev3 remote install-service` / `uninstall-service` — manage a **systemd
@@ -92,15 +93,14 @@ export function buildExecStartArgs(args: ParsedArgs): string[] {
 	} else if (args.flags["static-code"] === "true") {
 		exitUsage(`--static-code requires a value: --static-code=<your-code>`);
 	}
-	// Same safety gate as the interactive `dev3 remote` path (collectRemoteEnv): a
-	// non-rotating static code must never front a default-on public tunnel. Enforce
-	// it at install time so the unit isn't written to expose a guessable code.
-	if (out.some((a) => a.startsWith("--static-code=")) && !out.includes("--no-tunnel")) {
-		exitUsage(
-			"--static-code cannot be combined with a public tunnel (it has no replay protection).\n" +
-			"Add --no-tunnel for local-only / SSH-forward use, or drop --static-code to use the\n" +
-			"rotating single-use QR token, which is safe to expose over the tunnel.",
-		);
+	// Same notice as the interactive `dev3 remote` path (collectRemoteEnv): the
+	// combination is allowed — it is how you reach a headless box from a phone —
+	// so say what it means at install time instead of refusing to write the unit.
+	if (shouldWarnAboutPublicTunnel({
+		flagCode: out.find((a) => a.startsWith("--static-code="))?.slice("--static-code=".length),
+		tunnelDisabled: out.includes("--no-tunnel"),
+	})) {
+		process.stderr.write(`${STATIC_CODE_PUBLIC_TUNNEL_WARNING}\n`);
 	}
 	return out;
 }

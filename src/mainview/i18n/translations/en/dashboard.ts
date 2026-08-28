@@ -183,7 +183,15 @@ const dashboard = {
 	"remote.close": "Close",
 	"remote.connected": "Connected",
 	"remote.authFailed": "Session Expired",
-	"remote.authFailedDesc": "Your access link expired. Get a fresh one from the host — run `dev3 remote url` on a headless server, or reopen the Remote Access QR in the desktop app — then open it here.",
+	"remote.authFailedDesc": "Enter the access code your host is configured with, or open a fresh QR link from the host (`dev3 remote url` on a headless server, or the Remote Access QR in the desktop app).",
+	"remote.signInCodeLabel": "Access code",
+	"remote.signInSubmit": "Sign in",
+	"remote.signInSubmitting": "Signing in…",
+	"remote.signInRejected": "That code was not accepted. Check it and try again.",
+	"remote.signInNetworkError": "Could not reach the host. Check the connection and try again.",
+	"remote.staticCodeActive": "Access code is on",
+	"remote.staticCodeActiveDesc": "Anyone holding your access code can sign in by typing it on the sign-in screen — from any browser, any number of times. Change it in Settings → System.",
+	"remote.staticCodeTunnelWarning": "The public tunnel is live, so the code works from anywhere on the internet.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi is not installed",

@@ -27,7 +27,7 @@ import { ensureDev3CliSymlink } from "./cli-self-install";
 import { managedCliWriteAllowed } from "./managed-cli-guard";
 import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
+import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl, getStaticCode } from "./remote-access-server";
 import { startTunnel, stopTunnel, isTunnelBinaryAvailable, getTunnelUrl } from "./cloudflare-tunnel";
 import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
 import { writeRemoteState, clearRemoteStateIfOwnedBy, readRemoteHandoff, readRemoteState, carriedOverState } from "./remote-state";
@@ -335,7 +335,7 @@ try {
 		port: getServerPort(),
 		socketPath: cliSocketPath,
 		tunnelRequested: wantTunnel,
-		staticCode: process.env.DEV3_REMOTE_STATIC_CODE || null,
+		staticCode: getStaticCode(),
 		logFile: process.env.DEV3_REMOTE_LOG_FILE || null,
 		startedAt: new Date().toISOString(),
 		version: BUILD_VERSION,
@@ -449,19 +449,16 @@ async function isPortListening(port: number): Promise<boolean> {
 }
 
 // ── Banner + QR + auto-refresh ──
-const staticCode = process.env.DEV3_REMOTE_STATIC_CODE || null;
 await renderHeadlessBanner({
 	port: getServerPort(),
 	tunnelUrl: getTunnelUrl(),
 	tunnelRequested: wantTunnel,
 	accessUrl: await getAccessUrl(),
-	staticCode,
+	staticCode: getStaticCode(),
 });
-// Skip the rolling JWT refresh when a static code is in effect — the URL is
-// stable, so there is nothing to refresh.
-if (!staticCode) {
-	startQrAutoRefresh(() => getAccessUrl());
-}
+// The URL always carries a one-time QR token now — a static code never rides
+// in it — so the rolling refresh runs regardless of whether a code is set.
+startQrAutoRefresh(() => getAccessUrl());
 
 // ── Background pollers ──
 await rehydrateTaskLifecycles();

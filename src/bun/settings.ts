@@ -121,6 +121,11 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		analyticsDistinctId: typeof d.analyticsDistinctId === "string" && d.analyticsDistinctId
 			? d.analyticsDistinctId
 			: undefined,
+		// Trimmed on the way in: a code that differs from what the owner typed only
+		// by trailing whitespace is a sign-in that fails for no visible reason.
+		staticAccessCode: typeof d.staticAccessCode === "string" && d.staticAccessCode.trim()
+			? d.staticAccessCode.trim()
+			: undefined,
 		cloneBaseDirectory: d.cloneBaseDirectory ?? undefined,
 		customBinaryPaths: d.customBinaryPaths ?? undefined,
 		agentBinaryPaths: d.agentBinaryPaths ?? undefined,

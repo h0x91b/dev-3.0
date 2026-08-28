@@ -221,11 +221,30 @@ async function withRemoteEnvRestored(fn: () => Promise<void>): Promise<void> {
 	}
 }
 
-describe("dev3 remote --static-code safety gate", () => {
-	it("rejects --static-code on a default-on public tunnel", async () => {
+describe("dev3 remote --static-code on a public tunnel", () => {
+	it("starts anyway and warns", async () => {
 		await withRemoteEnvRestored(async () => {
-			await expect(handleRemote(undefined, args({ "static-code": "secret123" }))).rejects.toThrow("__exit__");
-			expect(stderrText()).toContain("cannot be combined with a public tunnel");
+			await handleRemote(undefined, args({ "static-code": "secret123", "no-detach": "true" }));
+			expect(process.env.DEV3_REMOTE_STATIC_CODE).toBe("secret123");
+			expect(process.env.DEV3_REMOTE_NO_TUNNEL).toBeUndefined();
+			expect(stderrText()).toContain("public tunnel is on");
+		});
+	});
+
+	// The old gate read only the flag, so the same combination arriving through an
+	// exported env var was waved through silently. Both spellings warn now.
+	it("warns for a code inherited from the environment too", async () => {
+		await withRemoteEnvRestored(async () => {
+			process.env.DEV3_REMOTE_STATIC_CODE = "from-the-env";
+			await handleRemote(undefined, args({ "no-detach": "true" }));
+			expect(stderrText()).toContain("public tunnel is on");
+		});
+	});
+
+	it("stays quiet with --no-tunnel", async () => {
+		await withRemoteEnvRestored(async () => {
+			await handleRemote(undefined, args({ "static-code": "secret123", "no-tunnel": "true", "no-detach": "true" }));
+			expect(stderrText()).not.toContain("public tunnel is on");
 		});
 	});
 

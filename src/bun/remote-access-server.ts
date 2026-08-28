@@ -34,8 +34,8 @@ const log = createLogger("remote-access");
 // ── Auth ────────────────────────────────────────────────────────────
 //
 // The session credential is an HttpOnly cookie (decision 133, supersedes 086):
-// POST /auth/exchange trades a one-time QR token (or the dev static code) for a
-// Set-Cookie; every gated surface — the RPC and PTY WebSocket upgrades,
+// POST /auth/exchange trades a one-time QR token (or the static access code) for
+// a Set-Cookie; every gated surface — the RPC and PTY WebSocket upgrades,
 // /auth/refresh, /health — authenticates by that cookie. The token never
 // appears in URLs, so it stops leaking into proxy/tunnel logs, and HttpOnly
 // keeps it unreadable to injected script. SameSite=Strict is safe because
@@ -122,8 +122,9 @@ interface AuthHandlerContext {
 }
 
 /**
- * POST /auth/exchange — trade a one-time QR token (or the static code)
- * for a session cookie. Exported for handler-level tests.
+ * POST /auth/exchange — trade a one-time QR token OR the static access code for
+ * a session cookie. Both paths are live at once: a new device may scan a QR or
+ * type the code, and neither disables the other. Exported for handler-level tests.
  */
 export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext = {}): Promise<Response> {
 	const { clientIp, ua } = ctx;
@@ -145,16 +146,13 @@ export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext =
 			log.warn("Auth exchange: missing token", { ip: clientIp, ua });
 			return new Response("Missing token", { status: 400 });
 		}
-		// Static code path — fixed code, no replay protection, dev only.
-		// When active, the JWT exchange path is disabled entirely: only
-		// the static code is accepted so that a stale QR JWT cannot bypass it.
+		// Static access code — permanent and multi-use by design: the owner sets
+		// one long code and signs in with it from any browser, any number of
+		// times. It never rotates and is never voided. A wrong code simply falls
+		// through to the QR path below, so a configured code cannot shadow a
+		// freshly scanned QR (and vice versa) — both credentials stay live.
 		const staticCode = getStaticCode();
-		if (staticCode) {
-			if (body.token !== staticCode) {
-				recordAuthFailure(throttleKey);
-				log.warn("Auth exchange: invalid static code", { ip: clientIp, ua });
-				return new Response("Invalid or expired token", { status: 401 });
-			}
+		if (staticCode && body.token === staticCode) {
 			const sessionToken = await createSessionToken();
 			clearAuthFailures(throttleKey);
 			log.info("Auth exchange: static code accepted", { ip: clientIp, ua });
@@ -166,8 +164,10 @@ export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext =
 			// Do NOT clear an existing cookie here: a consumed QR token replayed
 			// from browser history must not kill a still-valid session — the
 			// client falls back to /auth/refresh with that cookie.
+			// A wrong static code lands here too, now that it falls through — so
+			// this single branch is what feeds the throttle for BOTH credentials.
 			recordAuthFailure(throttleKey);
-			log.warn("Auth exchange: invalid/expired QR token", { ip: clientIp, ua });
+			log.warn("Auth exchange: rejected (not the access code, not a live QR token)", { ip: clientIp, ua });
 			return new Response("Invalid or expired token", { status: 401 });
 		}
 		clearAuthFailures(throttleKey);
@@ -954,13 +954,57 @@ export function resolveAccessHost(host?: string): string {
 }
 
 /**
- * True when `dev3 remote --static-code=<value>` is in effect. In that mode the
- * URL token is the fixed user-supplied code (not a rolling JWT), the auth
- * exchange accepts it as a magic word, and the QR auto-refresher is skipped.
- * Intended for local dev only — there is no replay protection.
+ * The static access code, if the owner set one. Permanent and multi-use: it is
+ * typed into the browser's sign-in screen and accepted for as many sign-ins as
+ * the owner wants, from as many devices. It never rotates and never expires.
+ *
+ * Two sources, env first: `DEV3_REMOTE_STATIC_CODE` (headless, Docker, systemd)
+ * beats the `staticAccessCode` global setting, so a container's environment is
+ * always authoritative over whatever settings file it happens to mount.
  */
 export function getStaticCode(): string | null {
-	return process.env.DEV3_REMOTE_STATIC_CODE || null;
+	const fromEnv = process.env.DEV3_REMOTE_STATIC_CODE?.trim();
+	if (fromEnv) return fromEnv;
+	let fromSettings: string | null = null;
+	try {
+		fromSettings = loadSettingsSync().staticAccessCode?.trim() || null;
+	} catch {
+		return null;
+	}
+	if (!fromSettings) return null;
+	// A settings code too short to survive `remoteStaticCodeError` is dropped, not
+	// honoured: the Settings field's save-time check does not cover a hand-edited
+	// settings.json, nor a code saved before that check existed, and this is the
+	// line where such a string would silently become a working credential.
+	//
+	// Dropped rather than thrown — unlike the env source above, this one is
+	// UI-editable, and `startRemoteAccessServer` is a top-level await on the boot
+	// path. Killing the app over a settings field would leave the only fix inside
+	// the app that no longer starts.
+	const problem = remoteStaticCodeError(fromSettings);
+	if (problem) {
+		warnOnceAboutWeakSettingsCode(problem);
+		return null;
+	}
+	return fromSettings;
+}
+
+// Once per process: this is read on every auth exchange, and a per-request line
+// would bury the log under a brute-force attempt it is meant to explain.
+let weakSettingsCodeWarned = false;
+
+function warnOnceAboutWeakSettingsCode(problem: string): void {
+	if (weakSettingsCodeWarned) return;
+	weakSettingsCodeWarned = true;
+	log.warn(
+		`Ignoring the remote access code from settings: it ${problem}. ` +
+		"Remote access is falling back to one-time QR links until it is fixed in Settings → System.",
+	);
+}
+
+/** Test seam — the warn-once latch is module state that survives between cases. */
+export function resetWeakSettingsCodeWarning(): void {
+	weakSettingsCodeWarned = false;
 }
 
 /**
@@ -991,8 +1035,14 @@ export function assertStaticCodeStrongEnough(): void {
 	);
 }
 
+/**
+ * The URL carries a one-time QR token and NOTHING else. The static code is
+ * deliberately absent: a permanent credential in a URL lands in browser history,
+ * the address bar, and every proxy/referrer log along the way. It is typed into
+ * the sign-in screen instead.
+ */
 export async function getAccessUrl(host?: string): Promise<string> {
-	const token = getStaticCode() ?? await createQrToken();
+	const token = await createQrToken();
 	const tunnel = getTunnelUrl();
 	if (tunnel) return `${tunnel}/?token=${token}`;
 	const ip = resolveAccessHost(host);

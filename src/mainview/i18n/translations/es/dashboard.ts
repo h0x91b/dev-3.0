@@ -181,7 +181,15 @@ const dashboard = {
 	"remote.close": "Cerrar",
 	"remote.connected": "Conectado",
 	"remote.authFailed": "Sesión expirada",
-	"remote.authFailedDesc": "Tu enlace de acceso caducó. Consigue uno nuevo en el host — ejecuta `dev3 remote url` en un servidor headless, o vuelve a abrir el QR de Acceso remoto en la app de escritorio — y ábrelo aquí.",
+	"remote.authFailedDesc": "Introduce el código de acceso configurado en el host, o abre un enlace QR nuevo desde el host (`dev3 remote url` en un servidor headless, o el QR de Acceso remoto en la app de escritorio).",
+	"remote.signInCodeLabel": "Código de acceso",
+	"remote.signInSubmit": "Entrar",
+	"remote.signInSubmitting": "Entrando…",
+	"remote.signInRejected": "No se aceptó ese código. Compruébalo e inténtalo de nuevo.",
+	"remote.signInNetworkError": "No se pudo contactar con el host. Comprueba la conexión e inténtalo de nuevo.",
+	"remote.staticCodeActive": "Código de acceso activo",
+	"remote.staticCodeActiveDesc": "Cualquiera que tenga tu código de acceso puede entrar escribiéndolo en la pantalla de inicio de sesión, desde cualquier navegador y tantas veces como quiera. Cámbialo en Ajustes → Sistema.",
+	"remote.staticCodeTunnelWarning": "El túnel público está activo, así que el código funciona desde cualquier lugar de internet.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi no está instalado",
