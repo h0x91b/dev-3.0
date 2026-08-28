@@ -198,7 +198,7 @@ describe("resolveDeepLink", () => {
 	it("resolves a space to its first member project that exists here", async () => {
 		vi.mocked(spacesData.loadSpacesFile).mockResolvedValue({
 			version: 1,
-			spaces: [{ id: "sp_1", name: "Client X", projectIds: ["ghost", "p2"], createdAt: 1 }],
+			spaces: [{ id: "sp_1", name: "Client X", parentId: null, projectIds: ["ghost", "p2"], createdAt: 1 }],
 			order: ["sp_1"],
 		});
 		expect(await resolveDeepLink({ kind: "space", spaceId: "sp_1" })).toEqual({
@@ -212,8 +212,8 @@ describe("resolveDeepLink", () => {
 		vi.mocked(spacesData.loadSpacesFile).mockResolvedValue({
 			version: 1,
 			spaces: [
-				{ id: "sp_dead", name: "Gone", projectIds: ["p1"], createdAt: 1, deleted: true },
-				{ id: "sp_empty", name: "Empty", projectIds: ["ghost"], createdAt: 1 },
+				{ id: "sp_dead", name: "Gone", parentId: null, projectIds: ["p1"], createdAt: 1, deleted: true },
+				{ id: "sp_empty", name: "Empty", parentId: null, projectIds: ["ghost"], createdAt: 1 },
 			],
 			order: [],
 		});
