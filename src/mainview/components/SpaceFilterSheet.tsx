@@ -1,5 +1,6 @@
 import type { Space } from "../../shared/types";
 import BottomSheet from "./BottomSheet";
+import SpaceIcon from "./SpaceIcon";
 import { HOME_GROUP_ID } from "../utils/spaceGroups";
 import { MASK_CLASS } from "../sensitive-projects";
 import { useT } from "../i18n";
@@ -37,7 +38,7 @@ function SpaceFilterSheet({
 }: SpaceFilterSheetProps) {
 	const t = useT();
 
-	function Row({ id, label, count, masked }: { id: string | null; label: string; count: number; masked?: boolean }) {
+	function Row({ id, label, count, masked, space }: { id: string | null; label: string; count: number; masked?: boolean; space?: boolean }) {
 		const active = selectedSpaceId === id;
 		return (
 			<button
@@ -55,6 +56,9 @@ function SpaceFilterSheet({
 				<span aria-hidden="true" className={`text-accent text-sm leading-none w-4 ${active ? "" : "invisible"}`} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 					{"\u{F012C}"}
 				</span>
+				{/* Only a real space wears the glyph: "All projects" and "Home" are
+				    computed rows, not spaces. */}
+				{space && <SpaceIcon className={`w-4 h-4 flex-shrink-0 ${active ? "text-accent" : "text-fg-muted"}`} />}
 				<span className={`flex-1 text-sm truncate ${masked ? MASK_CLASS : ""}`}>{label}</span>
 				<span className={`text-fg-muted text-xs tabular-nums ${masked ? MASK_CLASS : ""}`}>{count}</span>
 			</button>
@@ -72,6 +76,7 @@ function SpaceFilterSheet({
 						label={space.name}
 						count={projectCountOf(space.id)}
 						masked={maskedSpaceIds.has(space.id)}
+						space
 					/>
 				))}
 				{homeCount > 0 && <Row id={HOME_GROUP_ID} label={t("spaces.homeGroup")} count={homeCount} />}

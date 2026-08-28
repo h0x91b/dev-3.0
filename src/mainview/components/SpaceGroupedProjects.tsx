@@ -6,6 +6,7 @@ import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
 import SpaceHeaderMenu from "./SpaceHeaderMenu";
+import SpaceIcon from "./SpaceIcon";
 
 const LS_COLLAPSED_SPACES = "dev3-collapsed-spaces";
 
@@ -263,6 +264,7 @@ function SpaceGroupedProjects({
 								>
 									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
 								</svg>
+								<SpaceIcon className="w-4 h-4 flex-shrink-0 text-fg-muted group-hover:text-fg-3" />
 								<span className={`text-fg-2 text-sm font-semibold truncate ${masked ? MASK_CLASS : ""}`}>
 									{space.name}
 								</span>

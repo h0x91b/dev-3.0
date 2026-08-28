@@ -19,6 +19,7 @@ import { toast, usePinnedToastSlot } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import NativeBackendMark from "./NativeBackendMark";
+import SpaceIcon from "./SpaceIcon";
 import TaskTitleHoverCard from "./TaskTitleHoverCard";
 import TaskBreadcrumbBadge from "./TaskBreadcrumbBadge";
 import GitPullButton from "./GitPullButton";
@@ -39,7 +40,6 @@ import {
 	ForwardIcon,
 	HomeIcon,
 	DropdownIcon,
-	ZoomOutIcon,
 	QuickShellIcon,
 	ProjectTerminalIcon,
 	RemoteQRIcon,
@@ -703,7 +703,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 													data-testid="space-zoom-out"
 													className="header-anim px-1.5 py-[3px] flex items-center justify-center text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
 												>
-													<ZoomOutIcon className="w-3.5 h-3.5 block" />
+													<SpaceIcon className="w-3.5 h-3.5 block" />
 												</button>
 											</Tooltip>
 										</>
@@ -720,11 +720,10 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 											<button
 												key={sp.id}
 												onClick={() => zoomOutTo(sp.id)}
-												className={`w-full text-left px-3 py-2 text-fg-2 hover:bg-elevated hover:text-fg transition-colors truncate ${
-													isSpaceSensitive(sp, sensitiveProjectIds) ? MASK_CLASS : ""
-												}`}
+												className="w-full flex items-center gap-2 px-3 py-2 text-left text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
 											>
-												{sp.name}
+												<SpaceIcon className="w-3.5 h-3.5 flex-shrink-0 text-fg-muted" />
+												<span className={`truncate ${isSpaceSensitive(sp, sensitiveProjectIds) ? MASK_CLASS : ""}`}>{sp.name}</span>
 											</button>
 										))}
 									</div>
@@ -758,6 +757,7 @@ function GlobalHeader({ route, projects, tasks, agents, navigate, goBack, goForw
 																	className="group/space w-full px-3 pb-1 pt-0.5 flex items-center gap-2 text-left rounded-md hover:bg-raised-hover"
 																	data-testid={`switcher-space-${group.space.id}`}
 																>
+																	<SpaceIcon className="w-3.5 h-3.5 flex-shrink-0 text-accent/90" />
 																	<span className={`text-nano font-semibold uppercase tracking-wider truncate text-accent/90 group-hover/space:text-accent ${masked ? MASK_CLASS : ""}`}>
 																		{group.space.name}
 																	</span>

@@ -4,6 +4,7 @@ import HelpSpot from "./HelpSpot";
 import SpaceHeaderMenu, { SPACE_MENU_GLYPH } from "./SpaceHeaderMenu";
 import { HOME_GROUP_ID } from "../utils/spaceGroups";
 import { MASK_CLASS } from "../sensitive-projects";
+import SpaceIcon from "./SpaceIcon";
 import { useT } from "../i18n";
 
 /**
@@ -222,9 +223,12 @@ function SpacesRail({
 								type="button"
 								onClick={() => onSelect(space.id)}
 								aria-pressed={active}
-								className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
+								className="flex-1 min-w-0 flex items-center gap-2 text-left"
 								data-testid={`rail-space-${space.id}`}
 							>
+								{/* The row's leading slot held only the grip, which says what you
+								    can DO to the row and never what it is. */}
+								<SpaceIcon className={`w-4 h-4 flex-shrink-0 ${active ? "text-accent" : "text-fg-muted"}`} />
 								<span className={`flex-1 text-sm truncate ${masked ? MASK_CLASS : ""}`}>
 									{space.name}
 								</span>
@@ -276,6 +280,9 @@ function SpacesRail({
 								{GRIP_GLYPH}
 							</span>
 						)}
+						{/* Home is computed, not a space, so it carries no space glyph — but it
+						    needs the glyph's width or its name hangs left of every row above. */}
+						<span aria-hidden="true" className="w-4 h-4 flex-shrink-0" />
 						<span className="flex-1 text-sm truncate">{t("spaces.homeGroup")}</span>
 						<span className="text-fg-muted text-xs tabular-nums">{homeCount}</span>
 						{/* No menu on a computed row, but the counts above it must stay

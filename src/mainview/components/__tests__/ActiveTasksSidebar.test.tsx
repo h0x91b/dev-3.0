@@ -1296,9 +1296,9 @@ describe("ActiveTasksSidebar — space scope", () => {
 		const spaceBtn = await screen.findByTestId("sidebar-scope-space");
 		await waitFor(() => expect(spaceBtn).toHaveAttribute("aria-disabled", "true"));
 		expect(spaceBtn.className).toContain("cursor-not-allowed");
-		// The strike lives on the glyph wrapper — an inline-flex box stops the
-		// button's own text-decoration from reaching it.
-		expect(spaceBtn.querySelector(".line-through")).not.toBeNull();
+		// The glyph is an SVG, so the strike is a drawn rule: `line-through` has
+		// nothing to decorate on an <svg>.
+		expect(spaceBtn.querySelector('[data-testid="sidebar-scope-space-struck"]')).not.toBeNull();
 	});
 
 	it("falls back to the project scope when the stored scope is space but the project has no memberships", async () => {

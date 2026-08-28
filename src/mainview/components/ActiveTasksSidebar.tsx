@@ -22,6 +22,7 @@ import Tooltip from "./Tooltip";
 import { PanelLeftIcon } from "./TaskIcons";
 import ActiveTaskRow from "./ActiveTaskRow";
 import { useSpaces } from "../useSpaces";
+import SpaceIcon from "./SpaceIcon";
 import { spaceSiblingProjectIds } from "../utils/spaceScope";
 
 type SidebarScope = "project" | "global" | "space";
@@ -101,6 +102,26 @@ function ScopeGlyph({ outline, filled, active, struck }: { outline: string; fill
 			<span className={`absolute inset-0 flex items-center justify-center ${motion} ${active ? shown : hidden}`}>
 				{filled}
 			</span>
+		</span>
+	);
+}
+
+/**
+ * The space scope wears the app's space glyph rather than a ring, so the control
+ * says which pool it selects. It is an SVG, so it cannot cross-fade two font
+ * glyphs like {@link ScopeGlyph} — weight carries the on state instead, and the
+ * disabled strike is a drawn rule (`line-through` does nothing to an `<svg>`).
+ */
+function SpaceScopeGlyph({ active, struck }: { active: boolean; struck?: boolean }) {
+	return (
+		<span aria-hidden className="relative inline-flex items-center justify-center">
+			<SpaceIcon className={`w-3.5 h-3.5 transition-[stroke-width] duration-300 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none ${active ? "[stroke-width:2.2]" : ""}`} />
+			{struck && (
+				<span
+					data-testid="sidebar-scope-space-struck"
+					className="pointer-events-none absolute left-0 right-0 top-1/2 h-px -translate-y-1/2 rotate-[-20deg] bg-current"
+				/>
+			)}
 		</span>
 	);
 }
@@ -527,8 +548,7 @@ function ActiveTasksSidebar({
 								}`}
 								data-testid="sidebar-scope-space"
 							>
-								{/* Nerd Font: nf-cod-circle_large_outline (U+EABC) \u2192 nf-cod-circle_large_filled (U+EBB5) */}
-								<ScopeGlyph outline={"\uEABC"} filled={"\uEBB5"} active={effectiveScope === "space"} struck={siblingIds === null} />
+								<SpaceScopeGlyph active={effectiveScope === "space"} struck={siblingIds === null} />
 							</button>
 						</Tooltip>
 						)}
