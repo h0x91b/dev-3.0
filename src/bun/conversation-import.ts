@@ -144,8 +144,9 @@ export function scanImportableConversations(options: ScanOptions): ImportableCon
 
 	for (const storeRoot of claudeConfigDirs(home).map(claudeProjectsDir)) {
 		for (const storeName of subdirs(storeRoot)) {
-			// Forward-encoded boundary match: `<project>` itself, or something under
-			// it. `…-scratch` is not a boundary, so a sibling repo never matches.
+			// Cheap prefix filter, not the boundary: encoding maps `/` and `.` to `-`,
+			// so a sibling `<project>-scratch` matches here too. `resolveWorkingDir`
+			// is what rejects it, on the record's own cwd — do not drop that check.
 			if (storeName !== encodedProject && !storeName.startsWith(`${encodedProject}-`)) continue;
 			for (const file of jsonlFiles(`${storeRoot}/${storeName}`)) {
 				const body = readFileSafe(file);

@@ -82,4 +82,23 @@ describe("resolveHomes", () => {
 			else process.env.DEV3_HOME = previous;
 		}
 	});
+
+	// The Codex sandbox rewrites HOME=/tmp while the cwd still names the real home
+	// (see detectFromWorktreePath). Trusting $HOME there points every one of these
+	// commands at `/tmp/.claude`, which has no transcripts at all.
+	it("prefers the home the worktree path spells over a sandbox-rewritten HOME", () => {
+		const previousHome = process.env.HOME;
+		const previousDev3 = process.env.DEV3_HOME;
+		process.env.HOME = "/tmp";
+		delete process.env.DEV3_HOME;
+		try {
+			const homes = resolveHomes("/Users/real/.dev3.0/worktrees/slug/abcd1234/worktree");
+			expect(homes.home).toBe("/Users/real");
+			expect(homes.dev3Home).toBe("/Users/real/.dev3.0");
+		} finally {
+			if (previousHome === undefined) delete process.env.HOME;
+			else process.env.HOME = previousHome;
+			if (previousDev3 !== undefined) process.env.DEV3_HOME = previousDev3;
+		}
+	});
 });

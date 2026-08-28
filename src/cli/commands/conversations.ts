@@ -23,19 +23,30 @@ import { detectFromWorktreePath, readProjectDirect, resolveProjectId, type CliCo
 import { exitError, exitUsage, printTable } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 
+const DEV3_DIR = "/.dev3.0";
+
 /**
  * The user home (where `~/.claude` lives) and the data root of the board being
  * addressed. Two different questions: a redirected instance keeps its board
  * elsewhere while its agents still write transcripts into the real home.
  *
- * A cwd inside a worktree outranks `$DEV3_HOME` by design — that is how the CLI
- * decides which board a worktree belongs to. Everywhere else the resolver wins;
- * reading `HOME` directly here is what made a redirected board invisible, so the
- * dry-run re-offered conversations another instance had already imported.
+ * A cwd inside a worktree outranks `$DEV3_HOME` for the DATA ROOT by design —
+ * that is how the CLI decides which board a worktree belongs to. Everywhere else
+ * the resolver wins; reading `HOME` directly here is what made a redirected board
+ * invisible, so the dry-run re-offered conversations another instance had already
+ * imported.
+ *
+ * The HOME is the other way round: a `<home>/.dev3.0/worktrees/…` cwd spells the
+ * real one, and it outranks `$HOME` because the Codex sandbox rewrites `$HOME` to
+ * `/tmp` while `~/.claude` stays where it was. A redirected root not named
+ * `.dev3.0` says nothing about the home, so the resolver answers there.
  */
 export function resolveHomes(cwd: string = process.cwd()): { home: string; dev3Home: string } {
 	const info = detectFromWorktreePath(cwd);
-	return { home: resolveUserHome(), dev3Home: info?.realDev3Home ?? resolveDev3Home() };
+	const homeFromWorktree = info?.realDev3Home.endsWith(DEV3_DIR)
+		? info.realDev3Home.slice(0, -DEV3_DIR.length)
+		: null;
+	return { home: homeFromWorktree || resolveUserHome(), dev3Home: info?.realDev3Home ?? resolveDev3Home() };
 }
 
 function loadProjectTasks(dev3Home: string, slug: string): Task[] {
