@@ -1,0 +1,3 @@
+Short: One kanban across a whole space
+
+A space can now be the subject of the kanban board itself: a zoom-out button beside the project switcher (⇧⌘U, or pick the space in ⌘K) opens one board showing every member project's tasks on one set of columns, with drag, filters and task creation working exactly as they do on a project's own board. Columns and labels are the union across member projects, merged by name, and a drag only ever changes status in the card's own repository — each card names which project it belongs to. A project's own board is untouched. The board is addressable as `dev3://space/<id>`, and `dev3 current` now groups a worktree's siblings per space and prints each one's project id.

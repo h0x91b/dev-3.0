@@ -15,6 +15,7 @@ this page and the website all read from it.
 | Action | macOS | Linux |
 |---|---|---|
 | Go to project (quick switch) | ⌘K | Ctrl+K |
+| Zoom out to the space board | ⇧⌘U | Ctrl+Shift+U |
 | Command palette | ⇧⌘P / ⇧⌘Space | Ctrl+Shift+P / Ctrl+Shift+Space |
 | Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
 | Agent traffic log (beta — Settings → System → Advanced Experience) | ⇧⌘M | Ctrl+Shift+M |
