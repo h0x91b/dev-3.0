@@ -111,6 +111,16 @@ export const WINDOWS_SCOPE_PATHS = [
 	"src/bun/rpc-handlers/tmux-pty.ts",
 	"src/bun/rpc-handlers/__tests__/agent-spawn-shell-launch.test.ts",
 	"src/bun/__tests__/launch-failure.test.ts",
+	// The agent command line itself (Seq 1737). It is TEXT the wrapper re-parses, so
+	// POSIX quoting reached PowerShell as a syntax error and every Claude launch on
+	// Windows died before the binary was looked up. Two parsers stand between the
+	// quoting and the agent's argv, and only a Windows run puts both of them in line.
+	"src/shared/agent-adapters/**",
+	"src/bun/agents.ts",
+	"src/bun/__tests__/agent-launch-args.test.ts",
+	"src/bun/__tests__/agent-launch-args.bun-e2e.ts",
+	"src/bun/agent-system-prompt-file.ts",
+	"src/bun/__tests__/agent-command-golden.test.ts",
 	// The git-operation panes (Seq 1547). Same criterion (1): these scripts push,
 	// rebase and squash-merge, and only a Windows run can tell the two dialects
 	// apart — a bash body handed to PowerShell half-runs instead of failing.

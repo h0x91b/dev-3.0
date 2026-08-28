@@ -207,7 +207,15 @@ const EXPECTED: Record<string, string> = {
 	"codex/theme-profile": "codex --model gpt-5.6-sol -p dev3-dark -c 'default_permissions=\"dev3\"' -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 };
 
+// The expectations below are POSIX text, so the platform is pinned rather than
+// inherited. Quoting follows the launch dialect (a `"` inside an argument is
+// written `\"` on Windows), which would otherwise make this whole file fail on a
+// Windows machine and say nothing about the structure it exists to guard. The
+// Windows spelling has its own test: `agent-launch-args.test.ts`.
+const realPlatform = Object.getOwnPropertyDescriptor(process, "platform");
+
 beforeEach(() => {
+	Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
 	setCurrentUiTheme("dark");
 	// Force pre-0.131 profile semantics so codex theme cases are deterministic
 	// regardless of the installed codex version.
@@ -215,6 +223,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	if (realPlatform) Object.defineProperty(process, "platform", realPlatform);
 	__setCodexProfileV2Override(null);
 });
 

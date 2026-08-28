@@ -16,6 +16,7 @@ import { GEMINI_TRUSTED_FOLDERS } from "./worktree-trust";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
+import { ensureAgentSystemPromptFile, systemPromptNeedsFile } from "./agent-system-prompt-file";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv } from "./agent-accounts";
 import { ENV_UNSET, claudeModelFamily } from "../shared/agent-accounts";
 export { claudeModelFamily } from "../shared/agent-accounts";
@@ -33,6 +34,7 @@ import type { TemplateContext } from "../shared/agent-adapters/template";
 // adapter layer (src/shared must not import src/bun), but many callers/tests
 // still import them from here.
 export { shellEscape, quoteIfUnsafe } from "../shared/agent-adapters/shell";
+import { commandToken } from "../shared/agent-adapters/shell";
 export { interpolateTemplate } from "../shared/agent-adapters/template";
 export type { TemplateContext } from "../shared/agent-adapters/template";
 
@@ -453,7 +455,9 @@ export interface CommandOptions {
  * agent adapter (single source of truth for resume syntax + capability).
  */
 export function buildResumeCommand(agentCmd: string, sessionId?: string, family?: AgentFamily): string | null {
-	return getAgentAdapter(agentCmd, family).buildResumeCommand(agentCmd, sessionId);
+	// Same boundary rule as resolveAgentCommand: this string is re-parsed by a
+	// wrapper script, so the binary is spelled as a command for that dialect.
+	return getAgentAdapter(agentCmd, family).buildResumeCommand(commandToken(agentCmd), sessionId);
 }
 
 /** Returns true when the agent CLI supports session resumption. */
@@ -497,9 +501,32 @@ export function resolveAgentCommand(
 		// Codex-only: resolve the theme/profile runtime (impure) here so the pure
 		// adapter stays pure. Non-Codex agents skip it (avoids the codex --help probe).
 		codex: adapter.command === "codex" ? codexLaunchRuntime() : undefined,
+		// Windows caps a command line at 32 767 characters and the protocol is
+		// ~34 000, so there it has to reach the agent as a file. Resolved here
+		// because writing one is impure and the adapters are not.
+		systemPromptFile: options?.skipSystemPrompt ? undefined : systemPromptFileFor(adapter),
 	};
 
-	return adapter.launchArgs(baseCmd, config, ctx, adapterOptions).join(" ");
+	// The adapter returns argv with the binary first; only the boundary knows the
+	// command line is about to be re-parsed by a wrapper script, so the binary is
+	// spelled as a command here rather than in six adapters.
+	const [binary, ...args] = adapter.launchArgs(baseCmd, config, ctx, adapterOptions);
+	return [commandToken(binary ?? baseCmd), ...args].join(" ");
+}
+
+/**
+ * The file this adapter's protocol body was written to, or undefined when the
+ * platform can carry it inline (every POSIX platform) or the adapter has no
+ * flag that takes a file.
+ *
+ * Only Claude has one (`--append-system-prompt-file`). Codex delivers the body
+ * through `-c developer_instructions=…` and the rest concatenate it onto the
+ * prompt, so on Windows those launches are still over the ceiling — a separate
+ * per-agent channel, not something this function can paper over.
+ */
+function systemPromptFileFor(adapter: { command: string; skillBody?: string }): string | undefined {
+	if (!systemPromptNeedsFile() || adapter.command !== "claude" || !adapter.skillBody) return undefined;
+	return ensureAgentSystemPromptFile("claude", adapter.skillBody) ?? undefined;
 }
 
 /** Every raw arg a launch adds beyond the preset's own: the selected backend's

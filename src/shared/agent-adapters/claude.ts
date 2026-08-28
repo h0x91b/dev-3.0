@@ -49,7 +49,13 @@ export const claudeAdapter: AgentAdapter = {
 		}
 
 		if (!options?.skipSystemPrompt) {
-			args.push("--append-system-prompt", shellEscape(CLAUDE_SKILL_BODY));
+			// The body is ~34 000 characters, which is past the Windows command-line
+			// ceiling on its own, so there it travels as a file the backend wrote.
+			if (options?.systemPromptFile) {
+				args.push("--append-system-prompt-file", quoteIfUnsafe(options.systemPromptFile));
+			} else {
+				args.push("--append-system-prompt", shellEscape(CLAUDE_SKILL_BODY));
+			}
 		}
 
 		// Route statusLine through `dev3 statusline` (rate-limit capture), unless

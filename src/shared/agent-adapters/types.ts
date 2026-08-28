@@ -51,6 +51,11 @@ export interface AdapterLaunchOptions {
 	skipSystemPrompt?: boolean;
 	/** statusLine-wrapper settings file (Claude only). */
 	statuslineSettingsFile?: string;
+	/** Path the dev3 protocol was written to, when this platform cannot carry it
+	 *  on the command line (Windows caps one at 32 767 characters and the protocol
+	 *  is ~34 000). Set by the backend; adapters that have a file-taking flag use
+	 *  it instead of the inline argument. */
+	systemPromptFile?: string;
 	/** True when a third-party backend delivers the model via env → omit --model. */
 	skipModelForProvider?: boolean;
 	/** Raw (unescaped) CLI args the active third-party backend adds to the launch

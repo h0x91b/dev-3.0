@@ -83,6 +83,26 @@ jobs:
         if: always()
         run: bun run test:agent-spawn-shell
 
+      # Seq 1737: the agent command line was POSIX-quoted and then re-parsed by the
+      # wrapper, so the apostrophe in "the task's title" reached PowerShell as `'\''`
+      # and every Claude launch on Windows died with a ParserError before the binary
+      # was looked up. Text is only half the question: PowerShell builds a raw command
+      # line and the callee's C runtime splits it again, and 5.1 escapes nothing on the
+      # way through. So the E2E RUNS the wrapper on this runner against a probe binary
+      # and compares its argv byte-for-byte, including the real system prompt and a
+      # binary whose path holds a space. The pure test pins both dialects and covers the
+      # call site, which an E2E calling the helper cannot.
+      # `always()`: a step that runs only when an unrelated one passes is evidence
+      # about that step, not about this one.
+      - name: Agent command line quoting (pure, both dialects)
+        if: always()
+        run: bunx vitest run --config vitest.config.bun.ts src/bun/__tests__/agent-launch-args.test.ts src/bun/__tests__/agent-command-golden.test.ts
+
+      - name: Agent command line executed against a real binary (${{ matrix.os }})
+        if: always()
+        timeout-minutes: 5
+        run: bun run test:agent-launch-args-e2e
+
       # Seq 1547: the git-operation panes (rebase, push, merge) were hand-written
       # `#!/bin/bash` launched through `/bin/bash`, so they were dead on Windows.
       # These scripts rewrite history and touch the remote, so "the pane opened"

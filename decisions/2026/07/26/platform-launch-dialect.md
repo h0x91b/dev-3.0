@@ -39,10 +39,13 @@ structural primitives (`header`, `envLines`, `print`/`style`, `captureExitCode`,
   existing macOS/Linux task terminal does on the next launch.
   `src/bun/__tests__/platform-launch-posix-golden.test.ts` pins the full rendered
   text of all wrappers against the pre-dialect output.
-- The PowerShell flavour is unexecuted on POSIX CI. Agent command lines are still
-  produced as POSIX-quoted strings elsewhere and are run through
-  `Invoke-Expression`; simple forms (`claude 'task'`) parse in PowerShell, complex
-  quoting will need a separate normalisation pass.
+- The PowerShell flavour is unexecuted on POSIX CI. Agent command lines were still
+  produced as POSIX-quoted strings elsewhere and run through `Invoke-Expression`;
+  simple forms (`claude 'task'`) parsed in PowerShell, and anything with an
+  apostrophe did not — every Claude launch on Windows died on it. That
+  normalisation pass landed on 2026-08-28 as
+  `decisions/2026/08/28/agent-command-lines-quote-in-the-launch-dialect.md`
+  (`dialect.nativeArg` / `dialect.commandToken`).
 
 ## Alternatives considered
 

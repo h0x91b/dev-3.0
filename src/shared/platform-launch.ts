@@ -71,6 +71,26 @@ export interface LaunchDialect {
 	header(): string[];
 	/** Quote a literal so the script's parser sees it as one word. */
 	quote(value: string): string;
+	/**
+	 * Quote a literal that reaches a NATIVE executable as exactly one argument,
+	 * through a command line this dialect re-parses ({@link announceAndRun}).
+	 *
+	 * Not the same job as {@link quote}. On POSIX it is: the shell hands the word
+	 * to `execve` untouched. On Windows two parsers run in series — PowerShell
+	 * builds a raw command line and the callee's C runtime splits it again — and
+	 * Windows PowerShell 5.1 escapes nothing on the way through, so the C
+	 * runtime's escapes have to be baked in here.
+	 */
+	nativeArg(value: string): string;
+	/**
+	 * Render the first token of a re-parsed command line — the agent binary.
+	 *
+	 * An absolute path that needs quoting is the only thing touched. A user's own
+	 * `baseCommand` may be several words (`npx claude`), which is shell text and
+	 * has to keep parsing as shell text, so anything that is not an absolute path
+	 * is left exactly as it was.
+	 */
+	commandToken(value: string): string;
 	/** Set the terminal pane title (OSC 2). */
 	paneTitle(title: string): string;
 	/** `export K=v` / `unset K` equivalents; {@link ENV_UNSET} means remove. */
@@ -221,6 +241,16 @@ export function posixEscapeForDoubleQuotes(value: string): string {
 }
 
 /**
+ * A token a shell parser reads as one bare word — no quoting needed, and no
+ * quoting wanted, so `claude` and `/usr/local/bin/claude` keep looking like
+ * themselves in the pane. Deliberately excludes `\`, which is an escape in every
+ * dialect here and belongs in quotes even inside a Windows path.
+ */
+function isBareToken(value: string): boolean {
+	return /^[A-Za-z0-9_\-./:]+$/.test(value);
+}
+
+/**
  * An argv rendered for a HUMAN reading the pane, not for a parser: only the
  * words that need it are quoted, so the echoed line looks like the git command
  * the user would have typed (`git rebase origin/main`, not `'git' 'rebase' …`).
@@ -236,6 +266,8 @@ const posixDialect: LaunchDialect = {
 	lastExitCodeExpr: "$?",
 	header: () => ["#!/bin/bash"],
 	quote: posixShellQuote,
+	nativeArg: posixShellQuote,
+	commandToken: (value) => (value.startsWith("/") && !isBareToken(value) ? posixShellQuote(value) : value),
 	paneTitle: (title) => `printf '\\033]2;${title}\\033\\\\'`,
 	envLines: (env) =>
 		Object.entries(env).map(([key, value]) =>
@@ -331,6 +363,35 @@ export function powerShellQuote(value: string): string {
 	return "'" + value.replace(/'/g, "''") + "'";
 }
 
+/**
+ * One argument for a native executable, as spelled inside a PowerShell command
+ * line that `Invoke-Expression` re-parses.
+ *
+ * Two parsers, in this order:
+ *
+ *  1. PowerShell reads the single-quoted literal and appends it to the raw
+ *     command line it hands to `CreateProcess`. Windows PowerShell 5.1 wraps the
+ *     value in `"` only when it holds whitespace or is empty, and escapes
+ *     nothing inside it (`about_Parsing`: quotes meant for a native command must
+ *     be escaped by hand).
+ *  2. The callee's C runtime splits that command line back into argv, where
+ *     `\"` is a literal quote and a run of backslashes is halved before a quote.
+ *
+ * So the C runtime's escapes go in here. A quote becomes `\"`, and the
+ * backslashes in front of it double; a trailing backslash run doubles too, but
+ * only when PowerShell is going to append a closing quote for it to eat.
+ */
+export function powerShellNativeArg(value: string): string {
+	let escaped = value.replace(/(\\*)"/g, (_match, slashes: string) => `${slashes}${slashes}\\"`);
+	if (value === "" || /\s/.test(value)) {
+		escaped = escaped.replace(/(\\+)$/, (_match, slashes: string) => `${slashes}${slashes}`);
+	}
+	return powerShellQuote(escaped);
+}
+
+/** `C:\dir\claude.exe`, `\\host\share\claude.exe` — a resolved binary, not shell text. */
+const WINDOWS_ABSOLUTE_PATH = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+
 /** Escape for a PowerShell double-quoted (interpolating) string. */
 function powerShellEscapeDoubleQuoted(value: string): string {
 	return value.replace(/[`"$]/g, "`$&");
@@ -363,6 +424,12 @@ const windowsDialect: LaunchDialect = {
 	// No shebang on Windows; stop on unhandled errors instead of limping on.
 	header: () => ["$ErrorActionPreference = 'Continue'"],
 	quote: powerShellQuote,
+	nativeArg: powerShellNativeArg,
+	// `&` is what makes a quoted path a command rather than a string PowerShell
+	// would just print back. Anything else is left alone — a bare name resolves on
+	// PATH, and a multi-word `baseCommand` is shell text the user wrote.
+	commandToken: (value) =>
+		WINDOWS_ABSOLUTE_PATH.test(value) && !isBareToken(value) ? `& ${powerShellQuote(value)}` : value,
 	paneTitle: (title) => `Write-Host -NoNewline "$([char]27)]2;${powerShellEscapeDoubleQuoted(title)}$([char]27)\\"`,
 	envLines: (env) =>
 		Object.entries(env).map(([key, value]) =>
