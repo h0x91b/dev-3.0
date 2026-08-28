@@ -57,7 +57,31 @@ const line = dev3Artifact.color("--dev3-accent");        // "rgb(68, 150, 255)"
 const fill = dev3Artifact.color("--dev3-accent", .3);    // "rgba(68, 150, 255, 0.3)"
 ```
 
-The tokens: `--dev3-surface-base`, `--dev3-surface-raised`, `--dev3-surface-elevated`, `--dev3-text-primary`, `--dev3-text-secondary`, `--dev3-text-muted`, `--dev3-border`, `--dev3-accent`, `--dev3-on-accent`, `--dev3-success`, `--dev3-warning`, `--dev3-danger`, `--dev3-shadow`.
+The tokens: `--dev3-surface-base`, `--dev3-surface-raised`, `--dev3-surface-elevated`, `--dev3-text-primary`, `--dev3-text-secondary`, `--dev3-text-muted`, `--dev3-border`, `--dev3-accent`, `--dev3-on-accent`, `--dev3-gold`, `--dev3-gold-ink`, `--dev3-on-gold`, `--dev3-success`, `--dev3-warning`, `--dev3-danger`, `--dev3-shadow`, and `--dev3-viz-1` … `--dev3-viz-6`.
+
+## One color, one meaning
+
+Three families, and mixing them is the mistake this section exists to prevent.
+
+**Semantic — states only.** `--dev3-success`, `--dev3-warning`, `--dev3-danger` assert a verdict, so they belong to a passing check, a caution, a failure. Never reach for green because a bar needs to differ from the bar beside it: a reader takes green as "good" whatever you meant. `--dev3-accent` is the interactive color — selection, focus, links, the primary button — and stays out of decoration.
+
+**Brand — `--dev3-gold`.** Emphasis without a verdict: the artifact eyebrow chip, panel heading markers, a significance mark, a total row, a target line. It is not a warning; `--dev3-warning` still owns that.
+
+Gold ships as three tokens because a gold that passes contrast as *text* on a white page is brown. Use `--dev3-gold` for fills, rules, and markers; `--dev3-gold-ink` only when gold is the text color; `--dev3-on-gold` for text sitting **on** a gold fill.
+
+**Categorical — `--dev3-viz-1` … `--dev3-viz-6`.** Six hues at one lightness for things that merely differ from each other: chart series, cohorts, categories. Equal lightness is the point — no series looks more important than its neighbour. They are also the chart theme's default series order, so a plain chart is already correctly colored and needs no `color` array at all.
+
+## Tones — a hue per panel, without writing a color
+
+Add `tone-1` … `tone-6` (or `tone-gold`) to any element and everything under it that reads `--dev3-tone` picks up that hue: the KPI card's top rail, its section heading marker, `.pill.tone`, `.mini-fill`, and `.evidence-marker`. Drop the class and each falls back to its default — accent for the rail, gold for the heading marker.
+
+```html
+<article class="card kpi tone-5">…</article>
+<article class="card section tone-2"><h2 class="section-title">Cost</h2>…</article>
+<span class="pill tone">Research</span>
+```
+
+This is the sanctioned way to color a report. It keeps every hue inside the theme, so light mode, dark mode, and print all stay correct — a hand-written hex does none of that.
 
 ## Text size
 
@@ -210,7 +234,7 @@ Choose Auto, Light, or Dark in the report, then print with Cmd/Ctrl+P. The style
 - Keep `Built with dev3 Artifacts` in the footer.
 - Keep the Auto → Light → Dark theme control and the `A− / 100% / A+` text-size control.
 - Keep local navigation functional: a click must scroll, focus the section heading, and expose `aria-current`.
-- Use only the bundled `--dev3-*` semantic tokens for color, always as `rgb(var(--token))` or `rgb(var(--token) / a)`, and the `--dev3-z-*` tokens for stacking.
+- Use only the bundled `--dev3-*` tokens for color, always as `rgb(var(--token))` or `rgb(var(--token) / a)`, and the `--dev3-z-*` tokens for stacking. Reach for a `tone-*` class before a token, and never for a status color to make two things merely look different.
 - Resolve any asset path built by report code through `dev3Artifact.asset()`.
 - Route every panel that opens over the report through `.popover` / `dev3Artifact.popover()`; never hand-roll an absolutely positioned menu.
 - Keep the page responsive and keyboard-accessible.

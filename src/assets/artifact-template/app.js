@@ -433,7 +433,14 @@
     const axisLabel = { color: tokenColor("--dev3-text-muted"), fontSize: scaledFont(12) };
     const softSplit = { lineStyle: { color: tokenColor("--dev3-border", .6) } };
     window.echarts.registerTheme("dev3", {
-      color: [tokenColor("--dev3-accent"), tokenColor("--dev3-success"), tokenColor("--dev3-warning"), tokenColor("--dev3-danger"), tokenColor("--dev3-text-secondary")],
+      // Categorical, never semantic: the old default painted series three yellow
+      // and series four red, so a chart claimed a warning and a failure purely
+      // from series order. The viz ramp sits at one lightness, so no series
+      // outshouts its neighbours either.
+      color: [
+        tokenColor("--dev3-viz-1"), tokenColor("--dev3-viz-2"), tokenColor("--dev3-viz-3"),
+        tokenColor("--dev3-viz-4"), tokenColor("--dev3-viz-5"), tokenColor("--dev3-viz-6"),
+      ],
       backgroundColor: "transparent",
       textStyle: { fontFamily: CHART_FONT, color: tokenColor("--dev3-text-secondary"), fontSize: scaledFont(12) },
       categoryAxis: { axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, axisTick: { show: false }, axisLabel, splitLine: { show: false } },

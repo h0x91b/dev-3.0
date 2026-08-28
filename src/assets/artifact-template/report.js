@@ -36,11 +36,11 @@
       heatmapUnit: "runs",
       sankeyNodes: [
         { name: "Backlog", token: "--dev3-text-muted" },
-        { name: "Planned", token: "--dev3-accent", alpha: .55 },
-        { name: "In progress", token: "--dev3-accent" },
-        { name: "Review", token: "--dev3-warning" },
+        { name: "Planned", token: "--dev3-viz-1", alpha: .55 },
+        { name: "In progress", token: "--dev3-viz-1" },
+        { name: "Review", token: "--dev3-viz-3" },
         { name: "Shipped", token: "--dev3-success" },
-        { name: "Rework", token: "--dev3-warning", alpha: .7 },
+        { name: "Rework", token: "--dev3-viz-6" },
         { name: "Blocked", token: "--dev3-danger" },
       ],
       sankeyLinks: [
@@ -98,8 +98,8 @@
         color: {
           type: "linear", x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: tokenColor("--dev3-accent", .3) },
-            { offset: 1, color: tokenColor("--dev3-accent", 0) },
+            { offset: 0, color: tokenColor("--dev3-viz-1", .3) },
+            { offset: 1, color: tokenColor("--dev3-viz-1", 0) },
           ],
         },
       },
@@ -108,7 +108,8 @@
   }));
 
   const pipelinePie = dev3Chart(document.getElementById("pipelinePie"), () => ({
-    color: [tokenColor("--dev3-accent"), tokenColor("--dev3-warning"), tokenColor("--dev3-danger")],
+    // Two ordinary states get categorical hues; only the genuinely bad one is red.
+    color: [tokenColor("--dev3-viz-1"), tokenColor("--dev3-viz-3"), tokenColor("--dev3-danger")],
     tooltip: { trigger: "item", formatter: "{b}: {c}%" },
     legend: { bottom: 0, icon: "circle" },
     series: [{
@@ -138,7 +139,7 @@
       symbolSize: 5,
       data: [
         { name: report.capability.currentLabel, value: capabilityValues, lineStyle: { width: 3 }, areaStyle: { opacity: .22 } },
-        { name: report.capability.targetLabel, value: report.capability.targetValues, symbol: "none", lineStyle: { type: "dashed", width: 2, color: tokenColor("--dev3-success") }, itemStyle: { color: tokenColor("--dev3-success") } },
+        { name: report.capability.targetLabel, value: report.capability.targetValues, symbol: "none", lineStyle: { type: "dashed", width: 2, color: tokenColor("--dev3-gold") }, itemStyle: { color: tokenColor("--dev3-gold") } },
       ],
     }],
   }));
@@ -158,7 +159,7 @@
         min: 0, max: 10, orient: "horizontal", left: "center", bottom: 0,
         itemWidth: 10, itemHeight: 90,
         textStyle: { color: tokenColor("--dev3-text-muted"), fontSize: 10 },
-        inRange: { color: [tokenColor("--dev3-accent", .06), tokenColor("--dev3-accent")] },
+        inRange: { color: [tokenColor("--dev3-viz-1", .08), tokenColor("--dev3-viz-1"), tokenColor("--dev3-viz-2")] },
       },
       series: [{
         type: "heatmap",
@@ -201,7 +202,7 @@
         axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, pointer: { show: false }, anchor: { show: false },
         title: { offsetCenter: [0, "30%"], color: tokenColor("--dev3-text-secondary"), fontSize: 12 },
         detail: { offsetCenter: [0, "-6%"], formatter: "{value}%", color: tokenColor("--dev3-text-primary"), fontSize: 30, fontWeight: 700, valueAnimation: true },
-        itemStyle: { color: tokenColor("--dev3-accent") },
+        itemStyle: { color: tokenColor("--dev3-viz-5") },
         data: [report.gallery.gauge],
       }],
     }),
@@ -219,7 +220,8 @@
 
   // ---- table and scenario ---------------------------------------------------
   function statusClass(status) {
-    return status === "Shipped" ? "success" : status === "Review" ? "warning" : "accent";
+    // Only "Shipped" is a verdict; the rest are stages and take a tone.
+    return status === "Shipped" ? "success" : status === "Review" ? "tone tone-3" : "tone tone-1";
   }
 
   function renderTable() {

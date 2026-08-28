@@ -11,12 +11,26 @@
        number here and the whole report follows. Starting from 100% instead of a
        px base keeps the reader's own browser font setting intact. */
     html { scroll-behavior: smooth; font-size: calc(100% * var(--dev3-font-scale)); }
+    /* The page color lives on `html`, never on `body` — an opaque body background
+       would paint over the wash below, which sits at z-index -1 inside it. */
     body {
       margin: 0;
       padding: 24px;
-      background: rgb(var(--dev3-surface-base));
       color: rgb(var(--dev3-text-primary));
       font: .875rem/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    /* A faint fixed wash behind the report, so the page reads as deep blue with
+       light in it instead of as black. `--dev3-wash` dials it down in light mode. */
+    body::before {
+      position: fixed;
+      z-index: -1;
+      inset: 0;
+      background:
+        radial-gradient(58% 44% at 10% -8%, rgb(var(--dev3-accent) / calc(.28 * var(--dev3-wash))), transparent 70%),
+        radial-gradient(46% 38% at 90% 0%, rgb(var(--dev3-viz-2) / calc(.24 * var(--dev3-wash))), transparent 72%),
+        radial-gradient(54% 42% at 46% 106%, rgb(var(--dev3-gold) / calc(.16 * var(--dev3-wash))), transparent 74%);
+      content: "";
+      pointer-events: none;
     }
     .sr-only {
       position: absolute;
@@ -43,11 +57,23 @@
       width: 3rem;
       height: 3rem;
       border-radius: 14px;
-      box-shadow: 0 10px 28px rgb(var(--dev3-accent) / .22);
+      box-shadow: 0 10px 28px rgb(var(--dev3-accent) / .22), 0 2px 14px rgb(var(--dev3-gold) / .18);
     }
     h1 { margin: 0; font-size: 1.375rem; line-height: 1.15; letter-spacing: -.03em; }
-    .eyebrow, .muted { color: rgb(var(--dev3-text-secondary)); }
-    .eyebrow { margin-bottom: 3px; font-size: .6875rem; letter-spacing: .1em; text-transform: uppercase; }
+    .muted { color: rgb(var(--dev3-text-secondary)); }
+    /* A gold chip, not gold text: on white the metal only survives as a fill. */
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 5px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgb(var(--dev3-gold));
+      color: rgb(var(--dev3-on-gold));
+      font-size: .625rem;
+      font-weight: 750;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
     /* A squeezed action row must lose a whole control to the next line, never
        fold one control's label into two — a wrapped pill turns into an oval and
        a wrapped button changes height. */
@@ -144,6 +170,15 @@
       background: rgb(var(--dev3-accent) / .14);
       color: rgb(var(--dev3-accent));
     }
+    /* One opt-in hue per panel: a KPI rail, heading marker, pill, bar, and
+       evidence marker all read `--dev3-tone`, so no author writes a color. */
+    .tone-1 { --dev3-tone: var(--dev3-viz-1); }
+    .tone-2 { --dev3-tone: var(--dev3-viz-2); }
+    .tone-3 { --dev3-tone: var(--dev3-viz-3); }
+    .tone-4 { --dev3-tone: var(--dev3-viz-4); }
+    .tone-5 { --dev3-tone: var(--dev3-viz-5); }
+    .tone-6 { --dev3-tone: var(--dev3-viz-6); }
+    .tone-gold { --dev3-tone: var(--dev3-gold); }
     .grid { display: grid; gap: 14px; }
     .kpis { grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
     .stack { display: grid; gap: 14px; }
@@ -154,7 +189,16 @@
       background: rgb(var(--dev3-surface-raised));
       box-shadow: 0 14px 34px rgb(var(--dev3-shadow) / .08);
     }
-    .kpi { padding: 16px; }
+    /* A toned panel carries its hue on its own edge, so a grid of cards reads as
+       a set of distinct panels rather than one repeated grey box. */
+    .card:is(.tone-1, .tone-2, .tone-3, .tone-4, .tone-5, .tone-6, .tone-gold) {
+      border-color: rgb(var(--dev3-tone) / .34);
+      box-shadow: 0 14px 34px rgb(var(--dev3-shadow) / .08), 0 0 22px -12px rgb(var(--dev3-tone) / .5);
+    }
+    /* The tone rides a rail, not the number, so the figure stays most legible. */
+    .kpi { position: relative; overflow: hidden; padding: 16px; }
+    .kpi::before { position: absolute; inset: 0 0 auto; height: 3px; background: rgb(var(--dev3-tone, var(--dev3-accent))); content: ""; }
+    .kpi-top > :last-child { color: rgb(var(--dev3-tone, var(--dev3-accent))); font-size: .8125rem; }
     .kpi-top {
       display: flex;
       justify-content: space-between;
@@ -199,7 +243,16 @@
       gap: 12px;
       margin-bottom: 16px;
     }
-    .section-title { margin: 0; font-size: .9375rem; font-weight: 700; }
+    /* Warm rhythm down the page; a toned panel recolors its own marker. */
+    .section-title { display: flex; align-items: center; gap: 9px; margin: 0; font-size: .9375rem; font-weight: 700; }
+    .section-title::before {
+      flex: 0 0 auto;
+      width: 3px;
+      height: 1em;
+      border-radius: 2px;
+      background: rgb(var(--dev3-tone, var(--dev3-gold)));
+      content: "";
+    }
     .section-copy { margin-top: 2px; color: rgb(var(--dev3-text-secondary)); font-size: .75rem; }
     .segmented {
       gap: 3px;
@@ -535,10 +588,10 @@
     .evidence-toolbar .choices { min-width: min(22.5rem, 100%); }
     .evidence-legend { color: rgb(var(--dev3-text-secondary)); font-size: .6875rem; }
     .evidence-marker { display: inline-flex; align-items: center; gap: 5px; }
-    .evidence-marker::before { width: .58em; height: .58em; border-radius: 50%; background: rgb(var(--dev3-text-muted)); content: ""; }
+    .evidence-marker::before { width: .58em; height: .58em; border-radius: 50%; background: rgb(var(--dev3-tone, var(--dev3-text-muted))); content: ""; }
     .evidence-marker.good::before { background: rgb(var(--dev3-success)); }
     .evidence-marker.bad::before { background: rgb(var(--dev3-danger)); }
-    .evidence-marker.sig::before { background: rgb(var(--dev3-accent)); box-shadow: 0 0 0 3px rgb(var(--dev3-accent) / .16); }
+    .evidence-marker.sig::before { background: rgb(var(--dev3-gold)); box-shadow: 0 0 0 3px rgb(var(--dev3-gold) / .18); }
     .evidence-group { overflow: hidden; border: 1px solid rgb(var(--dev3-border)); border-radius: 16px; background: rgb(var(--dev3-surface-raised)); }
     .evidence-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 16px 18px; border-bottom: 1px solid rgb(var(--dev3-border)); }
     .evidence-group-title { margin: 0 0 4px; color: rgb(var(--dev3-text-primary)); font-size: .9375rem; }
@@ -559,17 +612,20 @@
     .evidence-table .good { color: rgb(var(--dev3-success)); }
     .evidence-table .bad, .evidence-table .neg { color: rgb(var(--dev3-danger)); }
     .evidence-table .flat, .evidence-table .dim { color: rgb(var(--dev3-text-muted)); }
-    .evidence-table .sig { font-weight: 700; }
+    /* "Notable", never "good": emphasis takes the brand hue, not a verdict one. */
+    .evidence-table .sig { color: rgb(var(--dev3-gold-ink)); font-weight: 700; }
     .evidence-table .wrap { text-align: left; line-height: 1.45; }
     .evidence-table tr.regime td { border-top: 2px solid rgb(var(--dev3-accent) / .55); }
-    .evidence-table tr.total td { border-top: 2px solid rgb(var(--dev3-border)); color: rgb(var(--dev3-text-primary)); font-weight: 700; }
+    .evidence-table tr.total td { border-top: 2px solid rgb(var(--dev3-gold) / .5); color: rgb(var(--dev3-text-primary)); font-weight: 700; }
     .pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: .6875rem; font-weight: 650; }
     .pill.success { color: rgb(var(--dev3-success)); background: rgb(var(--dev3-success) / .1); }
     .pill.warning { color: rgb(var(--dev3-warning)); background: rgb(var(--dev3-warning) / .1); }
     .pill.accent { color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent) / .1); }
+    /* A category pill, not a verdict: it follows the panel's tone. */
+    .pill.tone { color: rgb(var(--dev3-tone, var(--dev3-accent))); background: rgb(var(--dev3-tone, var(--dev3-accent)) / .12); }
     .bar-cell { display: flex; align-items: center; gap: 9px; }
     .mini-track { width: 4.75rem; height: 6px; overflow: hidden; border-radius: 99px; background: rgb(var(--dev3-border)); }
-    .mini-fill { height: 100%; border-radius: 99px; background: rgb(var(--dev3-accent)); }
+    .mini-fill { height: 100%; border-radius: 99px; background: rgb(var(--dev3-tone, var(--dev3-accent))); }
     .toast {
       position: fixed;
       z-index: var(--dev3-z-toast);
@@ -598,7 +654,7 @@
       color: rgb(var(--dev3-text-muted));
       font-size: .6875rem;
     }
-    .dev3-footer strong { color: rgb(var(--dev3-text-secondary)); font-weight: 650; }
+    .dev3-footer strong { color: rgb(var(--dev3-gold-ink)); font-weight: 650; }
     .dev3-footer a { color: rgb(var(--dev3-accent)); text-decoration: none; }
     .dev3-footer a:hover { text-decoration: underline; }
 
@@ -672,6 +728,8 @@
       .eyebrow { font-size: .5rem; }
       .muted, .section-copy { font-size: .5625rem; }
       .actions, .scenario-panel, .table-tools, .toast, .print-hidden { display: none !important; }
+      /* Paper gets the page color, never the wash. */
+      body::before { display: none !important; }
       /* An overlay is a live interaction, never static output. */
       .popover, [popover] { display: none !important; }
       .print-only { display: block !important; }
@@ -718,10 +776,16 @@
       .mini-track { width: 3.25rem; height: 4px; }
       .dev3-footer { padding: 8px 2px 0; font-size: .5rem; }
     }
-    :root, [data-theme="dark"] { color-scheme: dark; --dev3-surface-base: 6 9 21; --dev3-surface-raised: 14 18 30; --dev3-surface-elevated: 21 26 41; --dev3-text-primary: 250 252 255; --dev3-text-secondary: 170 187 212; --dev3-text-muted: 82 98 121; --dev3-border: 32 38 55; --dev3-accent: 68 150 255; --dev3-success: 74 222 128; --dev3-warning: 250 204 21; --dev3-danger: 255 130 130; --dev3-on-accent: 255 255 255; --dev3-shadow: 0 0 0; }
-    [data-theme="light"] { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 148 163 184; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; }
+    /* The semantic four assert a verdict; `--dev3-gold` is brand emphasis and
+       `--dev3-viz-*` are categorical hues at one lightness. Never swap families. */
+    /* Gold ships twice on purpose. On a white page a gold that passes 4.5:1 as
+       TEXT is brown, so `--dev3-gold` stays the real metal for fills, rules and
+       markers, and `--dev3-gold-ink` is the darker one used only when gold is
+       text. Light mode was the whole reason for the split. */
+    :root, [data-theme="dark"] { color-scheme: dark; --dev3-surface-base: 6 9 21; --dev3-surface-raised: 17 22 36; --dev3-surface-elevated: 25 31 48; --dev3-text-primary: 232 238 250; --dev3-text-secondary: 170 187 212; --dev3-text-muted: 115 129 149; --dev3-border: 39 49 64; --dev3-accent: 68 150 255; --dev3-gold: 243 183 67; --dev3-gold-ink: 240 178 54; --dev3-on-gold: 28 22 8; --dev3-success: 74 222 128; --dev3-warning: 250 204 21; --dev3-danger: 255 130 130; --dev3-on-accent: 255 255 255; --dev3-shadow: 0 0 0; --dev3-wash: 1; --dev3-viz-1: 139 184 250; --dev3-viz-2: 194 163 250; --dev3-viz-3: 251 134 220; --dev3-viz-4: 231 169 42; --dev3-viz-5: 49 210 177; --dev3-viz-6: 250 153 115; }
+    [data-theme="light"] { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 100 116 139; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-gold: 187 136 0; --dev3-gold-ink: 127 92 24; --dev3-on-gold: 28 22 8; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; --dev3-wash: .8; --dev3-viz-1: 19 106 219; --dev3-viz-2: 142 31 243; --dev3-viz-3: 186 26 156; --dev3-viz-4: 144 104 20; --dev3-viz-5: 24 130 109; --dev3-viz-6: 183 73 19; }
     @media (prefers-color-scheme: light) {
-      :root:not([data-theme]) { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 148 163 184; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; }
+      :root:not([data-theme]) { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 100 116 139; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-gold: 187 136 0; --dev3-gold-ink: 127 92 24; --dev3-on-gold: 28 22 8; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; --dev3-wash: .8; --dev3-viz-1: 19 106 219; --dev3-viz-2: 142 31 243; --dev3-viz-3: 186 26 156; --dev3-viz-4: 144 104 20; --dev3-viz-5: 24 130 109; --dev3-viz-6: 183 73 19; }
     }
     html { background: rgb(var(--dev3-surface-base)); color: rgb(var(--dev3-text-primary)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     body { margin: 0; }

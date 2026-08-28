@@ -498,8 +498,9 @@ describe("bundled artifact starter contract", () => {
 		// The shell stylesheet and script are not part of the authoring surface, so
 		// their budgets only have to stay far below an inlined library — these are
 		// ~25x under one, and both sat at 98%+ of the previous caps before the
-		// responsive-table work, which left no room for any real change.
-		expect(statSync(cssPath).size).toBeLessThan(40_000);
+		// responsive-table work, which left no room for any real change. The CSS
+		// cap moved again for the gold/viz palette and the tone classes.
+		expect(statSync(cssPath).size).toBeLessThan(44_000);
 		expect(statSync(appPath).size).toBeLessThan(33_000);
 		expect(statSync(reportPath).size).toBeLessThan(15_000);
 	});

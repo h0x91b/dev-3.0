@@ -42,14 +42,16 @@
 
     <section class="grid kpis section-anchor" id="overview">
       <h2 class="sr-only">Overview</h2>
-      <article class="card kpi"><div class="kpi-top"><span>Tasks shipped</span><span>↗</span></div><div class="kpi-value" id="shipped">128</div><div class="trend" id="shippedTrend">+18.4% vs previous</div></article>
-      <article class="card kpi"><div class="kpi-top"><span>Agent success</span><span>◎</span></div><div class="kpi-value" id="success">94.2%</div><div class="trend">+3.1 points</div></article>
-      <article class="card kpi"><div class="kpi-top"><span>Median cycle</span><span>◷</span></div><div class="kpi-value" id="cycle">22m</div><div class="trend">8m faster</div></article>
-      <article class="card kpi"><div class="kpi-top"><span>Review queue</span><span>◇</span></div><div class="kpi-value" id="queue">7</div><div class="trend warn" id="queueTrend">2 need attention</div></article>
+      <!-- tone-N gives each card its own hue from the viz ramp; drop the class and
+           the rail falls back to the accent. -->
+      <article class="card kpi tone-5"><div class="kpi-top"><span>Tasks shipped</span><span>↗</span></div><div class="kpi-value" id="shipped">128</div><div class="trend" id="shippedTrend">+18.4% vs previous</div></article>
+      <article class="card kpi tone-1"><div class="kpi-top"><span>Agent success</span><span>◎</span></div><div class="kpi-value" id="success">94.2%</div><div class="trend">+3.1 points</div></article>
+      <article class="card kpi tone-2"><div class="kpi-top"><span>Median cycle</span><span>◷</span></div><div class="kpi-value" id="cycle">22m</div><div class="trend">8m faster</div></article>
+      <article class="card kpi tone-4"><div class="kpi-top"><span>Review queue</span><span>◇</span></div><div class="kpi-value" id="queue">7</div><div class="trend warn" id="queueTrend">2 need attention</div></article>
     </section>
 
     <section class="dashboard-grid section-anchor" id="charts">
-      <article class="card section velocity-panel">
+      <article class="card section velocity-panel tone-1">
         <div class="section-head">
           <div><h2 class="section-title">Delivery velocity</h2><div class="section-copy">Completed tasks and predicted capacity</div></div>
           <div class="segmented" id="periods"><button type="button" data-period="7">7d</button><button type="button" class="active" data-period="30">30d</button><button type="button" data-period="90">90d</button></div>
@@ -57,17 +59,17 @@
         <div class="chart-host" id="velocityChart" role="img"></div>
       </article>
 
-      <article class="card section pie-panel">
+      <article class="card section pie-panel tone-3">
         <div class="section-head"><div><h2 class="section-title">Pipeline health</h2><div class="section-copy">Current task distribution</div></div></div>
         <div class="chart-host" id="pipelinePie" role="img"></div>
       </article>
 
-      <article class="card section radar-panel">
+      <article class="card section radar-panel tone-5">
         <div class="section-head"><div><h2 class="section-title">Capability profile</h2><div class="section-copy">Current scenario against the delivery target</div></div></div>
         <div class="chart-host" id="capabilityRadar" role="img"></div>
       </article>
 
-      <article class="card section scenario-panel section-anchor" id="scenario">
+      <article class="card section scenario-panel section-anchor tone-2" id="scenario">
         <div class="section-head"><div><h2 class="section-title">Scenario builder</h2><div class="section-copy">Tune the next agent run</div></div></div>
         <form id="scenarioForm" class="controls">
           <div class="field"><label for="workflow">Workflow</label><select id="workflow" data-ui-select><option>Feature delivery</option><option>Bug hunt</option><option>PR review</option><option>Research sprint</option></select></div>
@@ -81,7 +83,7 @@
       </article>
     </section>
 
-    <section class="card section section-anchor" id="gallery">
+    <section class="card section section-anchor tone-6" id="gallery">
       <div class="section-head">
         <div><h2 class="section-title">Chart gallery</h2><div class="section-copy">More ECharts types through the same bridge — keep what fits your report, delete the rest</div></div>
         <div class="segmented" id="galleryTabs">
