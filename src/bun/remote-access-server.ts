@@ -18,6 +18,8 @@ import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
 import type { RemoteNetInterface } from "../shared/types";
 import { NATIVE_STREAM_SINCE_PARAM, parseSinceParam } from "../shared/native-terminal-stream";
+import { remoteStaticCodeError } from "../shared/remote-static-code";
+import { authAttemptRetryAfterS, recordAuthFailure, clearAuthFailures } from "./remote-auth-rate-limit";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { isCustomTunnelProviderActive } from "./tunnel-provider";
@@ -110,11 +112,17 @@ async function isSessionAuthenticated(req: Request): Promise<boolean> {
 interface AuthHandlerContext {
 	clientIp?: string;
 	ua?: string;
+	/**
+	 * Socket peer address, used as the throttle bucket for failed exchanges.
+	 * Deliberately NOT `clientIp`, which is read from headers a direct caller
+	 * controls and could rotate at will.
+	 */
+	rateLimitKey?: string;
 	onQrConsumed?: () => void;
 }
 
 /**
- * POST /auth/exchange — trade a one-time QR token (or the dev static code)
+ * POST /auth/exchange — trade a one-time QR token (or the static code)
  * for a session cookie. Exported for handler-level tests.
  */
 export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext = {}): Promise<Response> {
@@ -122,6 +130,14 @@ export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext =
 	if (!checkOrigin(req)) {
 		log.warn("Auth exchange: origin mismatch", { ip: clientIp, ua, origin: req.headers.get("origin") });
 		return new Response("Forbidden", { status: 403 });
+	}
+	// Throttle before the credential is even read: a static code is long-lived
+	// and multi-use by design, so an unthrottled endpoint makes it guessable.
+	const throttleKey = ctx.rateLimitKey ?? "unknown";
+	const retryAfterS = authAttemptRetryAfterS(throttleKey);
+	if (retryAfterS !== null) {
+		log.warn("Auth exchange: throttled", { ip: clientIp, ua, retryAfterS });
+		return new Response("Too many attempts", { status: 429, headers: { "Retry-After": String(retryAfterS) } });
 	}
 	try {
 		const body = await req.json() as { token?: string };
@@ -135,10 +151,12 @@ export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext =
 		const staticCode = getStaticCode();
 		if (staticCode) {
 			if (body.token !== staticCode) {
+				recordAuthFailure(throttleKey);
 				log.warn("Auth exchange: invalid static code", { ip: clientIp, ua });
 				return new Response("Invalid or expired token", { status: 401 });
 			}
 			const sessionToken = await createSessionToken();
+			clearAuthFailures(throttleKey);
 			log.info("Auth exchange: static code accepted", { ip: clientIp, ua });
 			ctx.onQrConsumed?.();
 			return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(sessionToken) } });
@@ -148,9 +166,11 @@ export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext =
 			// Do NOT clear an existing cookie here: a consumed QR token replayed
 			// from browser history must not kill a still-valid session — the
 			// client falls back to /auth/refresh with that cookie.
+			recordAuthFailure(throttleKey);
 			log.warn("Auth exchange: invalid/expired QR token", { ip: clientIp, ua });
 			return new Response("Invalid or expired token", { status: 401 });
 		}
+		clearAuthFailures(throttleKey);
 		log.info("Auth exchange: success", { ip: clientIp, ua });
 		ctx.onQrConsumed?.();
 		return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(sessionToken) } });
@@ -624,6 +644,7 @@ export function resolveListenPort(): number {
 }
 
 export async function startRemoteAccessServer(options: StartOptions): Promise<void> {
+	assertStaticCodeStrongEnough();
 	await initSecret();
 	requestHandler = options.rpcHandler;
 	ptyPortGetter = options.getPtyPort;
@@ -652,7 +673,11 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 
 			// ── Auth endpoints (no session required) ──
 			if (url.pathname === "/auth/exchange" && req.method === "POST") {
-				return handleAuthExchange(req, { clientIp, ua, onQrConsumed: qrConsumedCallback ?? undefined });
+				// The throttle bucket is the socket peer, not `clientIp`: the
+				// headers `clientIp` comes from are set by the caller on a direct
+				// connection, so an attacker could mint a fresh budget per request.
+				const peer = server.requestIP(req)?.address || "unknown";
+				return handleAuthExchange(req, { clientIp, ua, rateLimitKey: peer, onQrConsumed: qrConsumedCallback ?? undefined });
 			}
 
 			if (url.pathname === "/auth/refresh" && req.method === "POST") {
@@ -936,6 +961,34 @@ export function resolveAccessHost(host?: string): string {
  */
 export function getStaticCode(): string | null {
 	return process.env.DEV3_REMOTE_STATIC_CODE || null;
+}
+
+/**
+ * Refuse to serve remote access on an ENV-supplied static code short enough to
+ * guess. Reads `process.env` directly, deliberately NOT `getStaticCode()`.
+ *
+ * Both CLI entry points reject a short code at flag-parse time, so reaching the
+ * server with one means the env var was set directly (Docker, a hand-written
+ * unit file, an exported shell). Those are unattended contexts where a log line
+ * goes unread, and silently downgrading to rotating QR tokens would break the
+ * caller's saved URL with a plain 401 — an outage that reads as "auth broken"
+ * rather than "your code is too short". So: throw, and name the cause.
+ *
+ * A code from any UI-editable source must NOT come through here. This runs as a
+ * top-level await on the app's boot path, so a typo in a settings field would
+ * take the whole app down with no way to fix it from inside the app. Such a
+ * source rejects the *value* — drop it, log it, surface the error in its own
+ * field — never the boot.
+ */
+export function assertStaticCodeStrongEnough(): void {
+	const code = process.env.DEV3_REMOTE_STATIC_CODE || null;
+	if (!code) return;
+	const problem = remoteStaticCodeError(code);
+	if (!problem) return;
+	throw new Error(
+		`DEV3_REMOTE_STATIC_CODE ${problem}. It is a long-lived, multi-use credential ` +
+		"fronting full terminal access; refusing to start remote access on a guessable code.",
+	);
 }
 
 export async function getAccessUrl(host?: string): Promise<string> {

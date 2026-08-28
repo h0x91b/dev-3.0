@@ -8,6 +8,7 @@ import { rejectUnknownFlags } from "../flag-validation";
 import { sendRequest } from "../socket-client";
 import { installRemoteService, uninstallRemoteService } from "./remote-service";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "../../shared/cli-exit-codes";
+import { MIN_REMOTE_STATIC_CODE_LENGTH, remoteStaticCodeError } from "../../shared/remote-static-code";
 import {
 	REMOTE_DIR,
 	REMOTE_LOG_FILE,
@@ -104,8 +105,9 @@ Flags (start):
   --static-code=<value>
       Use a fixed access code instead of a rotating short-lived JWT.
       The QR/URL token will be exactly <value>; auto-refresh is disabled.
-      For local dev only — do NOT expose a static code on the public
-      internet. Minimum length: 4 characters.
+      The code is long-lived and reusable, so several devices can enrol from
+      it — which also means it is worth guessing. Requires --no-tunnel, and
+      failed attempts are throttled. Minimum length: ${MIN_REMOTE_STATIC_CODE_LENGTH} characters.
 
 Connection options shown on startup:
   ① Public tunnel URL (Cloudflare quick tunnel, unless --no-tunnel)
@@ -190,8 +192,9 @@ function collectRemoteEnv(args: ParsedArgs): Record<string, string> {
 	}
 	if (args.flags["static-code"] && args.flags["static-code"] !== "true") {
 		const code = args.flags["static-code"];
-		if (code.length < 4) {
-			exitUsage(`--static-code must be at least 4 characters (got "${code}")`);
+		const problem = remoteStaticCodeError(code);
+		if (problem) {
+			exitUsage(`--static-code ${problem}`);
 		}
 		remoteEnv.DEV3_REMOTE_STATIC_CODE = code;
 	} else if (args.flags["static-code"] === "true") {

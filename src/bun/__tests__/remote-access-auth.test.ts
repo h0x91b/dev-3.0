@@ -7,7 +7,7 @@
  * exercised end-to-end at the Request/Response seam.
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
-import { rmSync } from "node:fs";
+import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -68,14 +68,20 @@ import {
 	checkOrigin,
 	handleAuthExchange,
 	handleAuthRefresh,
+	assertStaticCodeStrongEnough,
 } from "../remote-access-server";
 import { initSecret, createQrToken, _resetForTests } from "../jwt";
+import { AUTH_FAILURE_LIMIT, _resetAuthRateLimitForTests } from "../remote-auth-rate-limit";
+import { MIN_REMOTE_STATIC_CODE_LENGTH } from "../../shared/remote-static-code";
 
 const testSecretDir = join(tmpdir(), `dev3-remote-auth-test-${process.pid}`);
 const testSecretFile = join(testSecretDir, "remote-jwt-secret");
 
 beforeEach(async () => {
 	delete process.env.DEV3_REMOTE_STATIC_CODE;
+	// Failed exchanges are throttled per key; without this reset the accumulated
+	// 401s from earlier tests in this file would 429 the later ones.
+	_resetAuthRateLimitForTests();
 	_resetForTests();
 	rmSync(testSecretDir, { recursive: true, force: true });
 	await initSecret(testSecretFile);
@@ -321,17 +327,17 @@ describe("handleAuthExchange (QR flow)", () => {
 
 describe("handleAuthExchange (static code)", () => {
 	beforeEach(() => {
-		process.env.DEV3_REMOTE_STATIC_CODE = "sesame";
+		process.env.DEV3_REMOTE_STATIC_CODE = "sesame42";
 	});
 
 	it("accepts the static code and sets a session cookie", async () => {
-		const resp = await handleAuthExchange(exchangeRequest("sesame"));
+		const resp = await handleAuthExchange(exchangeRequest("sesame42"));
 		expect(resp.status).toBe(200);
 		expect(cookieValue(resp.headers.get("set-cookie"))).toBeTruthy();
 	});
 
 	it("rejects a wrong code with 401", async () => {
-		const resp = await handleAuthExchange(exchangeRequest("wrong"));
+		const resp = await handleAuthExchange(exchangeRequest("wrong123"));
 		expect(resp.status).toBe(401);
 	});
 
@@ -339,6 +345,111 @@ describe("handleAuthExchange (static code)", () => {
 		const qr = await createQrToken();
 		const resp = await handleAuthExchange(exchangeRequest(qr));
 		expect(resp.status).toBe(401);
+	});
+});
+
+// ── Brute-force throttle ─────────────────────────────────────────────
+
+describe("handleAuthExchange throttling", () => {
+	beforeEach(() => {
+		process.env.DEV3_REMOTE_STATIC_CODE = "sesame42";
+	});
+
+	it("429s a guessing peer once it burns its budget, and stops evaluating codes", async () => {
+		for (let i = 0; i < AUTH_FAILURE_LIMIT; i++) {
+			const resp = await handleAuthExchange(exchangeRequest(`guess-${i}`), { rateLimitKey: "10.0.0.9" });
+			expect(resp.status).toBe(401);
+		}
+		const blocked = await handleAuthExchange(exchangeRequest("guess-next"), { rateLimitKey: "10.0.0.9" });
+		expect(blocked.status).toBe(429);
+		expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+
+		// Even the correct code is refused while the budget is spent — the throttle
+		// runs before the comparison, so a blocked attacker learns nothing.
+		const correctWhileBlocked = await handleAuthExchange(exchangeRequest("sesame42"), { rateLimitKey: "10.0.0.9" });
+		expect(correctWhileBlocked.status).toBe(429);
+	});
+
+	it("never locks out another peer — the owner's device still enrols", async () => {
+		for (let i = 0; i < AUTH_FAILURE_LIMIT + 3; i++) {
+			await handleAuthExchange(exchangeRequest(`guess-${i}`), { rateLimitKey: "10.0.0.9" });
+		}
+		const owner = await handleAuthExchange(exchangeRequest("sesame42"), { rateLimitKey: "10.0.0.42" });
+		expect(owner.status).toBe(200);
+		expect(cookieValue(owner.headers.get("set-cookie"))).toBeTruthy();
+	});
+
+	it("lets several devices enrol back to back on one key — success is never counted", async () => {
+		for (let i = 0; i < AUTH_FAILURE_LIMIT * 3; i++) {
+			const resp = await handleAuthExchange(exchangeRequest("sesame42"), { rateLimitKey: "10.0.0.42" });
+			expect(resp.status).toBe(200);
+		}
+	});
+
+	it("clears the record on success, so a typo before the right code costs nothing", async () => {
+		for (let i = 0; i < AUTH_FAILURE_LIMIT - 1; i++) {
+			await handleAuthExchange(exchangeRequest("typo1234"), { rateLimitKey: "10.0.0.42" });
+		}
+		expect((await handleAuthExchange(exchangeRequest("sesame42"), { rateLimitKey: "10.0.0.42" })).status).toBe(200);
+		// Budget is full again: another run of failures still fits before a 429.
+		for (let i = 0; i < AUTH_FAILURE_LIMIT; i++) {
+			const resp = await handleAuthExchange(exchangeRequest("typo1234"), { rateLimitKey: "10.0.0.42" });
+			expect(resp.status).toBe(401);
+		}
+	});
+
+	it("throttles QR-token guessing too, not just the static code", async () => {
+		delete process.env.DEV3_REMOTE_STATIC_CODE;
+		for (let i = 0; i < AUTH_FAILURE_LIMIT; i++) {
+			expect((await handleAuthExchange(exchangeRequest(`bad.${i}`), { rateLimitKey: "10.0.0.9" })).status).toBe(401);
+		}
+		expect((await handleAuthExchange(exchangeRequest("bad.x"), { rateLimitKey: "10.0.0.9" })).status).toBe(429);
+	});
+});
+
+// ── Startup gate on a weak static code ───────────────────────────────
+
+describe("assertStaticCodeStrongEnough", () => {
+	it("passes when no static code is configured", () => {
+		delete process.env.DEV3_REMOTE_STATIC_CODE;
+		expect(() => assertStaticCodeStrongEnough()).not.toThrow();
+	});
+
+	it("throws on a code set straight into the env below the minimum", () => {
+		process.env.DEV3_REMOTE_STATIC_CODE = "a".repeat(MIN_REMOTE_STATIC_CODE_LENGTH - 1);
+		expect(() => assertStaticCodeStrongEnough()).toThrow(/at least 8 characters/);
+	});
+
+	it("accepts exactly the minimum", () => {
+		process.env.DEV3_REMOTE_STATIC_CODE = "a".repeat(MIN_REMOTE_STATIC_CODE_LENGTH);
+		expect(() => assertStaticCodeStrongEnough()).not.toThrow();
+	});
+
+	// The gate runs as a top-level await on the app's boot path, so whatever it
+	// can throw on can take the whole app down. That is acceptable for an env var
+	// (unattended, and the CLI already rejected it) and NOT acceptable for a
+	// UI-editable source: a typo in a settings field would leave a dead app with
+	// no way to fix it from inside the app. Pinned at source level because the
+	// second source does not exist here yet — this fails the moment someone
+	// "tidies" the body into getStaticCode(), which is where that source lands.
+	it("reads the env var directly, never the resolved code", () => {
+		const src = readFileSync(new URL("../remote-access-server.ts", import.meta.url), "utf8");
+		const body = src.slice(src.indexOf("export function assertStaticCodeStrongEnough"));
+		const fn = body.slice(0, body.indexOf("\n}\n") + 3);
+		expect(fn).toContain("process.env.DEV3_REMOTE_STATIC_CODE");
+		expect(fn).not.toContain("getStaticCode(");
+	});
+
+	it("never puts the code itself in the error message (it reaches the log)", () => {
+		process.env.DEV3_REMOTE_STATIC_CODE = "hunter2";
+		let message = "";
+		try {
+			assertStaticCodeStrongEnough();
+		} catch (err) {
+			message = String(err);
+		}
+		expect(message).toContain("at least 8 characters");
+		expect(message).not.toContain("hunter2");
 	});
 });
 

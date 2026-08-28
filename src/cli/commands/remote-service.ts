@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import type { ParsedArgs } from "../args";
 import { exitError, exitUsage } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
+import { remoteStaticCodeError } from "../../shared/remote-static-code";
 
 /**
  * `dev3 remote install-service` / `uninstall-service` — manage a **systemd
@@ -77,8 +78,9 @@ export function buildExecStartArgs(args: ParsedArgs): string[] {
 		// and enabled, but every `dev3 remote start` it spawns exits non-zero, and
 		// Restart=on-failure turns that into a silent restart loop (only visible in
 		// journalctl). Validate at install time instead.
-		if (code.length < 4) {
-			exitUsage(`--static-code must be at least 4 characters (got "${code}")`);
+		const problem = remoteStaticCodeError(code);
+		if (problem) {
+			exitUsage(`--static-code ${problem}`);
 		}
 		// systemd splits ExecStart on whitespace (no shell), so a code with spaces
 		// would be parsed as extra positional args and crash the server on every

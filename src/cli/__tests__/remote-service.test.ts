@@ -20,6 +20,7 @@ import {
 import { writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { ParsedArgs } from "../args";
+import { MIN_REMOTE_STATIC_CODE_LENGTH } from "../../shared/remote-static-code";
 
 function args(flags: Record<string, string> = {}, positional: string[] = []): ParsedArgs {
 	return { positional, flags };
@@ -72,8 +73,8 @@ describe("buildExecStartArgs", () => {
 	});
 
 	it("maps --port / --no-tunnel / --expose-ports / --static-code", () => {
-		const out = buildExecStartArgs(args({ port: "3017", "no-tunnel": "true", "expose-ports": "3000,5173", "static-code": "letmein" }));
-		expect(out).toEqual(["remote", "start", "--no-detach", "--port", "3017", "--no-tunnel", "--expose-ports=3000,5173", "--static-code=letmein"]);
+		const out = buildExecStartArgs(args({ port: "3017", "no-tunnel": "true", "expose-ports": "3000,5173", "static-code": "letmein1" }));
+		expect(out).toEqual(["remote", "start", "--no-detach", "--port", "3017", "--no-tunnel", "--expose-ports=3000,5173", "--static-code=letmein1"]);
 	});
 
 	it("forces --no-detach so systemd keeps the foreground process (never bare --detach)", () => {
@@ -87,11 +88,29 @@ describe("buildExecStartArgs", () => {
 		expect(stderrText()).toContain("--port must be an integer");
 	});
 
-	// F1: install-service must enforce the same ≥4 minimum that `remote start`
+	// F1: install-service must enforce the same minimum that `remote start`
 	// does — otherwise systemd Restart=on-failure loops forever on a too-short code.
-	it("rejects a static-code shorter than 4 chars (no silent systemd restart loop)", () => {
+	it("rejects a static-code shorter than the minimum (no silent systemd restart loop)", () => {
 		expect(() => buildExecStartArgs(args({ "static-code": "ab" }))).toThrow("__exit__");
-		expect(stderrText()).toContain("--static-code must be at least 4 characters");
+		expect(stderrText()).toContain(`--static-code must be at least ${MIN_REMOTE_STATIC_CODE_LENGTH} characters`);
+	});
+
+	// Literal 7/8: a boundary expressed via MIN_… would move with the constant and
+	// survive someone lowering it, which is exactly the regression to catch.
+	it("rejects a 7-character code — the minimum is pinned at 8", () => {
+		expect(MIN_REMOTE_STATIC_CODE_LENGTH).toBe(8);
+		expect(() => buildExecStartArgs(args({ "static-code": "abcdefg", "no-tunnel": "true" }))).toThrow("__exit__");
+		expect(buildExecStartArgs(args({ "static-code": "abcdefgh", "no-tunnel": "true" }))).toContain("--static-code=abcdefgh");
+	});
+
+	// Boundary, both sides — relative to the constant, so it keeps holding if the
+	// minimum is ever raised.
+	it("rejects one character below the minimum and accepts exactly the minimum", () => {
+		const tooShort = "a".repeat(MIN_REMOTE_STATIC_CODE_LENGTH - 1);
+		expect(() => buildExecStartArgs(args({ "static-code": tooShort, "no-tunnel": "true" }))).toThrow("__exit__");
+
+		const exact = "a".repeat(MIN_REMOTE_STATIC_CODE_LENGTH);
+		expect(buildExecStartArgs(args({ "static-code": exact, "no-tunnel": "true" }))).toContain(`--static-code=${exact}`);
 	});
 
 	// F7: systemd splits ExecStart on whitespace, so a code with a space would be
@@ -107,15 +126,15 @@ describe("buildExecStartArgs", () => {
 	});
 
 	it("accepts a valid static-code when paired with --no-tunnel", () => {
-		const out = buildExecStartArgs(args({ "static-code": "letmein", "no-tunnel": "true" }));
-		expect(out).toContain("--static-code=letmein");
+		const out = buildExecStartArgs(args({ "static-code": "letmein1", "no-tunnel": "true" }));
+		expect(out).toContain("--static-code=letmein1");
 		expect(out).toContain("--no-tunnel");
 	});
 
 	// Safety gate: a non-rotating static code must never front a default-on public
 	// tunnel — the unit would expose a guessable, replayable bearer code.
 	it("rejects --static-code without --no-tunnel (no static code on a public tunnel)", () => {
-		expect(() => buildExecStartArgs(args({ "static-code": "letmein" }))).toThrow("__exit__");
+		expect(() => buildExecStartArgs(args({ "static-code": "letmein1" }))).toThrow("__exit__");
 		expect(stderrText()).toContain("cannot be combined with a public tunnel");
 	});
 });

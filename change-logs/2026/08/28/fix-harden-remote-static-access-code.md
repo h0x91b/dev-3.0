@@ -1,0 +1,3 @@
+Short: Remote access code harder to guess
+
+Hardened the remote-access static code (`dev3 remote --static-code` / `DEV3_REMOTE_STATIC_CODE`) against brute force: the minimum length is now 8 characters instead of 4, and a code set straight into the environment below that makes the server refuse to start rather than silently ignore it. Failed `/auth/exchange` attempts are now throttled per client — 5 failures per 30 seconds, then a 429 with `Retry-After` — checked before the submitted code is even compared. Only failures count and a success clears the record, so several devices can still enrol back to back and nobody can lock the owner out.

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { handleRemote, printAccessForState, computeDetachedChildArgs, awaitTunnelReady, isTunnelLive, REMOTE_TUNNEL_WAIT } from "../commands/remote";
 import type { ParsedArgs } from "../args";
+import { MIN_REMOTE_STATIC_CODE_LENGTH } from "../../shared/remote-static-code";
 
 /**
  * On the happy path `handleRemote` boots the headless server in-process via
@@ -236,10 +237,42 @@ describe("dev3 remote --static-code safety gate", () => {
 		});
 	});
 
-	it("still enforces the 4-char minimum", async () => {
+	it("still enforces the minimum length", async () => {
 		await withRemoteEnvRestored(async () => {
 			await expect(handleRemote(undefined, args({ "static-code": "ab", "no-tunnel": "true" }))).rejects.toThrow("__exit__");
-			expect(stderrText()).toContain("at least 4 characters");
+			expect(stderrText()).toContain(`at least ${MIN_REMOTE_STATIC_CODE_LENGTH} characters`);
+		});
+	});
+
+	// The code is a long-lived, multi-use bearer credential fronting a terminal,
+	// so its length is the whole search space. Literal 7/8, NOT the constant: a
+	// boundary written in terms of MIN_… moves with it and survives a lowering.
+	it("rejects a 7-character code — the minimum is pinned at 8", async () => {
+		expect(MIN_REMOTE_STATIC_CODE_LENGTH).toBe(8);
+		await withRemoteEnvRestored(async () => {
+			await expect(
+				handleRemote(undefined, args({ "static-code": "abcdefg", "no-tunnel": "true" })),
+			).rejects.toThrow("__exit__");
+		});
+		await withRemoteEnvRestored(async () => {
+			await handleRemote(undefined, args({ "static-code": "abcdefgh", "no-tunnel": "true", "no-detach": "true" }));
+			expect(process.env.DEV3_REMOTE_STATIC_CODE).toBe("abcdefgh");
+		});
+	});
+
+	it("rejects one character below the minimum and accepts exactly the minimum", async () => {
+		await withRemoteEnvRestored(async () => {
+			const tooShort = "a".repeat(MIN_REMOTE_STATIC_CODE_LENGTH - 1);
+			await expect(
+				handleRemote(undefined, args({ "static-code": tooShort, "no-tunnel": "true" })),
+			).rejects.toThrow("__exit__");
+			expect(stderrText()).toContain(`at least ${MIN_REMOTE_STATIC_CODE_LENGTH} characters`);
+		});
+
+		await withRemoteEnvRestored(async () => {
+			const exact = "a".repeat(MIN_REMOTE_STATIC_CODE_LENGTH);
+			await handleRemote(undefined, args({ "static-code": exact, "no-tunnel": "true", "no-detach": "true" }));
+			expect(process.env.DEV3_REMOTE_STATIC_CODE).toBe(exact);
 		});
 	});
 });
