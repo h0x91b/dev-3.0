@@ -13,6 +13,7 @@ import type { ImportableConversationView } from "../../../shared/conversation-im
 const mocks = vi.hoisted(() => ({
 	scan: vi.fn(),
 	importConversations: vi.fn(),
+	markOffered: vi.fn(),
 	success: vi.fn(),
 	error: vi.fn(),
 }));
@@ -20,7 +21,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../toast", () => ({ toast: { success: mocks.success, error: mocks.error, info: vi.fn() } }));
 vi.mock("../../analytics", () => ({ trackEvent: vi.fn() }));
 vi.mock("../../rpc", () => ({
-	api: { request: { scanImportableConversations: mocks.scan, importConversations: mocks.importConversations } },
+	api: {
+		request: {
+			scanImportableConversations: mocks.scan,
+			importConversations: mocks.importConversations,
+			markConversationImportOffered: mocks.markOffered,
+		},
+	},
 }));
 
 const project = { id: "p1", name: "dev-3.0", path: "/code/dev-3.0" } as Project;
@@ -51,6 +58,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.scan.mockResolvedValue({ conversations: [conversation()] });
 	mocks.importConversations.mockResolvedValue({ imported: 1, tasks: [], problems: [] });
+	mocks.markOffered.mockResolvedValue({ project });
 });
 
 describe("ImportConversationsModal", () => {
@@ -119,6 +127,30 @@ describe("ImportConversationsModal", () => {
 		mocks.scan.mockResolvedValue({ conversations: [] });
 		const props = renderModal({ autoOffer: true });
 		await waitFor(() => expect(props.onClose).toHaveBeenCalled());
+	});
+
+	it("spends the project's single offer as soon as it is made, accepted or not", async () => {
+		renderModal({ autoOffer: true });
+		await waitFor(() => expect(mocks.markOffered).toHaveBeenCalledWith({ projectId: "p1" }));
+	});
+
+	it("spends it on an empty answer too, so a quiet project is not asked again", async () => {
+		mocks.scan.mockResolvedValue({ conversations: [] });
+		renderModal({ autoOffer: true });
+		await waitFor(() => expect(mocks.markOffered).toHaveBeenCalledWith({ projectId: "p1" }));
+	});
+
+	it("does not burn the offer when the scan itself failed", async () => {
+		mocks.scan.mockRejectedValue(new Error("disk on fire"));
+		const props = renderModal({ autoOffer: true });
+		await waitFor(() => expect(props.onClose).toHaveBeenCalled());
+		expect(mocks.markOffered).not.toHaveBeenCalled();
+	});
+
+	it("records nothing when the user opened the dialog themselves", async () => {
+		renderModal();
+		expect(await screen.findByTestId("import-conversations-all")).toBeChecked();
+		expect(mocks.markOffered).not.toHaveBeenCalled();
 	});
 
 	it("shows nothing at all while an unasked-for offer is still scanning", () => {

@@ -19,6 +19,9 @@ vi.mock("../rpc", () => ({
 			getRosettaWarning: vi.fn().mockResolvedValue(null),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
+			// Opening a project board asks once whether there is anything to import.
+			scanImportableConversations: vi.fn().mockResolvedValue({ conversations: [] }),
+			markConversationImportOffered: vi.fn().mockResolvedValue({ project: null }),
 			getSpaces: vi.fn().mockResolvedValue({ version: 1, spaces: [], order: [] }),
 			getLastRoute: vi.fn().mockResolvedValue({ route: null }),
 			saveLastRoute: vi.fn().mockResolvedValue(undefined),

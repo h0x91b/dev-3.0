@@ -169,7 +169,24 @@ async function importConversationsHandler(
 	return { imported: tasks.length, tasks, problems };
 }
 
+/**
+ * Spend the project's one unprompted offer. Written whatever the user answered,
+ * including "there was nothing to offer" — the point is that dev3 asked, not
+ * that it got a yes.
+ */
+async function markConversationImportOfferedHandler(
+	params: { projectId: string },
+): Promise<{ project: Project }> {
+	const { project } = await data.updateProjectWith(params.projectId, (current) => ({
+		updates: current.conversationImportOfferedAt ? {} : { conversationImportOfferedAt: new Date().toISOString() },
+		result: undefined,
+	}));
+	getPushMessage()?.("projectUpdated", { project });
+	return { project };
+}
+
 export const conversationImportHandlers = {
 	scanImportableConversations: scanImportableConversationsHandler,
 	importConversations: importConversationsHandler,
+	markConversationImportOffered: markConversationImportOfferedHandler,
 };

@@ -45,6 +45,10 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 		api.request.scanImportableConversations({ projectId: project.id })
 			.then((result) => {
 				if (!live) return;
+				// The offer is spent the moment it is made, not when it is accepted —
+				// declining is an answer. A scan that FAILED marks nothing, so a
+				// transient error does not burn the project's single offer.
+				if (autoOffer) api.request.markConversationImportOffered({ projectId: project.id }).catch(() => {});
 				if (autoOffer && result.conversations.length === 0) {
 					onClose();
 					return;

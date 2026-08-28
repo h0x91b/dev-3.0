@@ -216,6 +216,12 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			return;
 		}
 
+		case "project-import-conversations": {
+			const projectId = currentProjectId(state);
+			if (projectId) window.dispatchEvent(new CustomEvent("menu:import-conversations", { detail: { projectId } }));
+			return;
+		}
+
 		// ── Project: git ──
 		case "project-pull-main": {
 			const projectId = currentProjectId(state);
@@ -468,7 +474,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"debug-play-sound-completed", "debug-play-sound-cancelled", "debug-push-sound-completed",
 	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette",
 	// Project
-	"project-settings", "project-pull-main", "project-create-pr",
+	"project-settings", "project-import-conversations", "project-pull-main", "project-create-pr",
 	"project-dev-server-start", "project-dev-server-stop", "project-dev-server-restart", "project-dev-server-status",
 	// Task (safe, non-destructive)
 	"task-toggle-watch", "task-run-script", "task-open-in-finder", "task-copy-worktree-path",

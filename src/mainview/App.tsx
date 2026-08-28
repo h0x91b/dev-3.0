@@ -355,9 +355,14 @@ function App() {
 	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 	// Spaces a project created from a space flow should join on creation.
 	const [addProjectSpaceIds, setAddProjectSpaceIds] = useState<string[]>([]);
-	// Projects waiting for their conversation-import offer. A queue because the
-	// local tab adds several folders at once and each gets its own answer.
-	const [importOfferQueue, setImportOfferQueue] = useState<Project[]>([]);
+	// Projects waiting for the import dialog. A queue because the local tab adds
+	// several folders at once and each gets its own answer. `autoOffer` separates
+	// the two ways in: dev3's own one-time offer, which vanishes silently when it
+	// has nothing to say, and the user asking, which always answers.
+	const [importOfferQueue, setImportOfferQueue] = useState<{ project: Project; autoOffer: boolean }[]>([]);
+	const enqueueImportOffer = useCallback((project: Project, autoOffer: boolean) => {
+		setImportOfferQueue((q) => (q.some((entry) => entry.project.id === project.id) ? q : [...q, { project, autoOffer }]));
+	}, []);
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
 	const [showProjectSwitch, setShowProjectSwitch] = useState(false);
 	const { spaces: appSpaces } = useSpaces();
@@ -1072,17 +1077,39 @@ function App() {
 		// Cmd+K / Cmd+Shift+P keydown handlers below own the toggle behavior.
 		const onProjectSwitch = () => setShowProjectSwitch(true);
 		const onCommandPalette = () => setShowCommandPalette(true);
+		const onImportConversations = (e: Event) => {
+			const projectId = (e as CustomEvent<{ projectId: string }>).detail?.projectId;
+			const project = state.projects.find((p) => p.id === projectId);
+			if (project) enqueueImportOffer(project, false);
+		};
+		window.addEventListener("menu:import-conversations", onImportConversations);
 		window.addEventListener("menu:open-new-task", onNewTask);
 		window.addEventListener("menu:open-add-project", onAddProject);
 		window.addEventListener("menu:open-project-switch", onProjectSwitch);
 		window.addEventListener("menu:open-command-palette", onCommandPalette);
 		return () => {
+			window.removeEventListener("menu:import-conversations", onImportConversations);
 			window.removeEventListener("menu:open-new-task", onNewTask);
 			window.removeEventListener("menu:open-add-project", onAddProject);
 			window.removeEventListener("menu:open-project-switch", onProjectSwitch);
 			window.removeEventListener("menu:open-command-palette", onCommandPalette);
 		};
-	}, [openCreateTaskModal, openAddProject]);
+	}, [openCreateTaskModal, openAddProject, enqueueImportOffer, state.projects]);
+
+	// The one unprompted offer, for a project that predates the feature: the first
+	// time its board is opened, dev3 looks for conversations it could import and
+	// asks once. `conversationImportOfferedAt` is written whatever the answer is,
+	// so this never asks a second time. The ref covers the gap between closing the
+	// dialog and that flag arriving back through `projectUpdated`.
+	const offeredThisSession = useRef<Set<string>>(new Set());
+	useEffect(() => {
+		const projectId = projectIdForRoute(state.route);
+		if (!projectId || offeredThisSession.current.has(projectId)) return;
+		const project = state.projects.find((p) => p.id === projectId);
+		if (!project || project.kind === "virtual" || project.conversationImportOfferedAt) return;
+		offeredThisSession.current.add(projectId);
+		enqueueImportOffer(project, true);
+	}, [state.route, state.projects, enqueueImportOffer]);
 
 	// Global app shortcuts — capture phase so the terminal can't swallow them.
 	//
@@ -2759,7 +2786,7 @@ function App() {
 				<AddProjectModal
 					dispatch={dispatch}
 					initialSpaceIds={addProjectSpaceIds}
-					onGitProjectsAdded={(projects) => setImportOfferQueue((q) => [...q, ...projects])}
+					onGitProjectsAdded={(projects) => projects.forEach((p) => enqueueImportOffer(p, true))}
 					onClose={() => {
 						setShowAddProjectModal(false);
 						setAddProjectSpaceIds([]);
@@ -2768,9 +2795,9 @@ function App() {
 			)}
 			{importOfferQueue.length > 0 && (
 				<ImportConversationsModal
-					key={importOfferQueue[0].id}
-					project={importOfferQueue[0]}
-					autoOffer
+					key={importOfferQueue[0].project.id}
+					project={importOfferQueue[0].project}
+					autoOffer={importOfferQueue[0].autoOffer}
 					onClose={() => setImportOfferQueue((q) => q.slice(1))}
 				/>
 			)}

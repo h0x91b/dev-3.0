@@ -68,6 +68,7 @@ export const MENU_ACTIONS = {
 	projectDevServerRestart: "project-dev-server-restart",
 	projectDevServerStatus: "project-dev-server-status",
 	projectSettings: "project-settings",
+	projectImportConversations: "project-import-conversations",
 	projectCustomColumns: "project-custom-columns",
 	projectCustomLabels: "project-custom-labels",
 
@@ -392,6 +393,7 @@ const REQUIRES_PROJECT: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	MENU_ACTIONS.revealProjectFolder,
 	MENU_ACTIONS.projectPullMain,
 	MENU_ACTIONS.projectSettings,
+	MENU_ACTIONS.projectImportConversations,
 	MENU_ACTIONS.projectCustomColumns,
 	MENU_ACTIONS.projectCustomLabels,
 	MENU_ACTIONS.termToggleProjectTerminal,
@@ -636,6 +638,10 @@ function projectMenu(): ApplicationMenuItemConfig {
 					item({ label: "Status", action: MENU_ACTIONS.projectDevServerStatus }),
 				],
 			},
+			SEP,
+			// Named for every agent, not for Claude Code: Codex and the rest arrive
+			// behind the same entry point, and only the dialog says what was found.
+			item({ label: "Import from Other Agents…", action: MENU_ACTIONS.projectImportConversations }),
 			SEP,
 			item({ label: "Project Settings…", action: MENU_ACTIONS.projectSettings }),
 			item({ label: "Custom Columns…", action: MENU_ACTIONS.projectCustomColumns }),

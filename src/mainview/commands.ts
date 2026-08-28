@@ -14,7 +14,7 @@ import type { TranslationKey } from "./i18n";
  * Those keep living on their own surfaces (inspector, context menu, native menu).
  */
 
-export type CommandCategory = "app" | "create" | "nav" | "git" | "devserver" | "task" | "terminal";
+export type CommandCategory = "app" | "create" | "import" | "nav" | "git" | "devserver" | "task" | "terminal";
 
 /** What context a command needs to be runnable in the current route. */
 export type CommandScope = "always" | "project" | "task";
@@ -31,6 +31,7 @@ export interface PaletteCommand {
 export const COMMAND_CATEGORY_KEY: Record<CommandCategory, TranslationKey> = {
 	app: "command.category.app",
 	create: "command.category.create",
+	import: "command.category.import",
 	nav: "command.category.nav",
 	git: "command.category.git",
 	devserver: "command.category.devserver",
@@ -42,6 +43,9 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 	// ── Create ──
 	{ id: "open-new-task", labelKey: "command.newTask", category: "create", scope: "always" },
 	{ id: "open-add-project", labelKey: "command.addProject", category: "create", scope: "always" },
+
+	// ── Import ──
+	{ id: "project-import-conversations", labelKey: "command.importConversations", category: "import", scope: "project" },
 
 	// ── App: help ──
 	{ id: "help-explain-screen", labelKey: "keymap.shortcut.helpMode", category: "app", scope: "always" },
@@ -128,6 +132,9 @@ export function availableCommands(ctx: CommandContext): PaletteCommand[] {
 			ctx.isVirtual &&
 			(c.category === "git" ||
 				c.category === "devserver" ||
+					// An Operations board has no repository, so nothing could have run
+					// "in" it — the scan would always answer nothing.
+					c.category === "import" ||
 				c.id === "task-run-script" ||
 				c.id === "term-toggle-project-terminal")
 		) {

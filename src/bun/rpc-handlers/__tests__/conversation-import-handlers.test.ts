@@ -280,3 +280,21 @@ describe("importConversations", () => {
 		expect(mocks.push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: "p1" }));
 	});
 });
+
+describe("markConversationImportOffered", () => {
+	it("stamps the project and tells the renderer, so the offer is not made twice", async () => {
+		const { project } = await conversationImportHandlers.markConversationImportOffered({ projectId: "p1" });
+		expect(project.conversationImportOfferedAt).toEqual(expect.any(String));
+		expect(mocks.push).toHaveBeenCalledWith("projectUpdated", { project });
+	});
+
+	it("keeps the first stamp when it is called again", async () => {
+		const already = { ...PROJECT, conversationImportOfferedAt: "2026-01-01T00:00:00.000Z" };
+		mocks.updateProjectWith.mockImplementation(async (_id: string, fn: (p: Project) => { updates: Partial<Project> }) => {
+			const out = await fn(already);
+			return { ...out, project: { ...already, ...out.updates } };
+		});
+		const { project } = await conversationImportHandlers.markConversationImportOffered({ projectId: "p1" });
+		expect(project.conversationImportOfferedAt).toBe("2026-01-01T00:00:00.000Z");
+	});
+});

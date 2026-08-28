@@ -1721,6 +1721,13 @@ export interface Project {
 	 * the global setting, then the built-in. See resolvePresetPrompt.
 	 */
 	coordinatorPrompt?: string;
+	/**
+	 * When dev3 offered to import this project's outside-dev3 agent conversations
+	 * on its own. Set once, whatever the answer was — the unprompted offer is
+	 * spent, and every later import is one the user asked for. Absent means a
+	 * project added before this existed, which is exactly who the offer is for.
+	 */
+	conversationImportOfferedAt?: string;
 }
 
 /**
@@ -4506,6 +4513,15 @@ export type AppRPCSchema = {
 			importConversations: {
 				params: { projectId: string; sessionIds: string[] };
 				response: ImportConversationsResult;
+			};
+			/**
+			 * Records that dev3 has now asked this project's owner about importing,
+			 * once. Spends the single unprompted offer — every later import is asked
+			 * for from Project Settings, the Project menu or the palette.
+			 */
+			markConversationImportOffered: {
+				params: { projectId: string };
+				response: { project: Project };
 			};
 			createTask: {
 				/**
