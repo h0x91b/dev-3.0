@@ -34,8 +34,11 @@ export default function SystemSettingsSection({
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
 }) {
-	const remoteAccessStatus = useRemoteAccessStatus();
-	const retryRemoteAccess = useCallback(() => api.request.retryRemoteAccess(), []);
+	const [remoteAccessStatus, setRemoteAccessStatus] = useRemoteAccessStatus();
+	const retryRemoteAccess = useCallback(
+		async () => setRemoteAccessStatus(await api.request.retryRemoteAccess()),
+		[setRemoteAccessStatus],
+	);
 
 	return (
 		<SettingsSection title={t("settings.categorySystem")} helpTopicId="settings.system">

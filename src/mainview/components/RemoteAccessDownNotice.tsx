@@ -8,7 +8,7 @@ import { api } from "../rpc";
  * its port, so this is the only thing that tells the user it happened — and it
  * has to stay true for as long as it lasts, not fire once and vanish.
  */
-export function useRemoteAccessStatus(): RemoteAccessStatus | null {
+export function useRemoteAccessStatus(): [RemoteAccessStatus | null, (next: RemoteAccessStatus) => void] {
 	const [status, setStatus] = useState<RemoteAccessStatus | null>(null);
 
 	useEffect(() => {
@@ -22,7 +22,9 @@ export function useRemoteAccessStatus(): RemoteAccessStatus | null {
 		};
 	}, []);
 
-	return status;
+	// The setter is part of the contract: a retry that finds the server already up
+	// short-circuits without firing the push, so the caller has to apply its answer.
+	return [status, setStatus];
 }
 
 /**

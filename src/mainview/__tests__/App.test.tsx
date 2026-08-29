@@ -71,7 +71,7 @@ vi.mock("../rpc", () => ({
 				selectedHost: "127.0.0.1",
 				staticCodeActive: false,
 				signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+				serverStatus: { running: true, port: 51473, failure: null },
 			}),
 			stopTunnel: vi.fn().mockResolvedValue(undefined),
 			readArtifactContent: vi.fn().mockResolvedValue({ html: "<p>artifact</p>", assets: [] }),
@@ -2123,7 +2123,7 @@ describe("App keyboard shortcuts", () => {
 					tunnelFailureReason: null,
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 				},
 			}));
 
@@ -2144,12 +2144,41 @@ describe("App keyboard shortcuts", () => {
 					tunnelFailureReason: null,
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 				},
 			}));
 
 			await screen.findByRole("dialog");
 			expect(screen.queryByTestId("remote-static-code-active")).not.toBeInTheDocument();
+		});
+
+		// With nothing listening the port is 0, so a QR minted anyway encodes
+		// http://host:0/ — a code that looks scannable and goes nowhere.
+		it("shows the failure instead of a QR when the server never bound its port", async () => {
+			await renderApp();
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "",
+					accessUrl: "",
+					tunnelState: "idle",
+					tunnelBinaryInstalled: true,
+					tunnelProvider: "cloudflare" as const,
+					tunnelFailureReason: null,
+					staticCodeActive: false,
+					signInLink: null,
+					serverStatus: {
+						running: false,
+						port: 0,
+						failure: { port: 45999, reason: "port-in-use" as const, message: "Is port 45999 in use?" },
+					},
+				},
+			}));
+
+			await screen.findByRole("dialog");
+			expect(screen.getByTestId("remote-access-down")).toHaveTextContent("45999");
+			expect(screen.queryByAltText("QR Code")).not.toBeInTheDocument();
+			expect(screen.getByTestId("remote-access-down-settings-link")).toBeInTheDocument();
 		});
 
 		it("stops the tunnel and clears the toggle from the Stop button", async () => {
@@ -2165,7 +2194,7 @@ describe("App keyboard shortcuts", () => {
 				selectedHost: "192.168.0.1",
 				staticCodeActive: false,
 				signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+				serverStatus: { running: true, port: 51473, failure: null },
 			});
 
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
@@ -2251,7 +2280,7 @@ describe("App keyboard shortcuts", () => {
 					selectedHost: "",
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 				});
 
 				await act(async () => {
@@ -2281,7 +2310,7 @@ describe("App keyboard shortcuts", () => {
 				selectedHost: "",
 				staticCodeActive: false,
 				signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+				serverStatus: { running: true, port: 51473, failure: null },
 			});
 
 			// The button/menu open the modal immediately with the local QR and
@@ -2298,7 +2327,7 @@ describe("App keyboard shortcuts", () => {
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 					autoStartTunnel: true,
 				},
 			}));
@@ -2330,7 +2359,7 @@ describe("App keyboard shortcuts", () => {
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 					autoStartTunnel: true,
 				},
 			}));
@@ -2352,7 +2381,7 @@ describe("App keyboard shortcuts", () => {
 					selectedHost: "",
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 				});
 			});
 
@@ -2376,7 +2405,7 @@ describe("App keyboard shortcuts", () => {
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 				},
 			}));
 			await waitFor(() => expect(screen.getByAltText("QR Code")).toBeInTheDocument());
@@ -2404,7 +2433,7 @@ describe("App keyboard shortcuts", () => {
 					selectedHost: "",
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 					autoStartTunnel: true,
 				},
 			}));
@@ -2460,7 +2489,7 @@ describe("App keyboard shortcuts", () => {
 				selectedHost: "127.0.0.1",
 				staticCodeActive: false,
 				signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+				serverStatus: { running: true, port: 51473, failure: null },
 			});
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
 				detail: {
@@ -2474,7 +2503,7 @@ describe("App keyboard shortcuts", () => {
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 				},
 			}));
 
@@ -2532,7 +2561,7 @@ describe("App keyboard shortcuts", () => {
 					selectedHost: "192.168.0.1",
 					staticCodeActive: false,
 					signInLink: null,
-		serverStatus: { running: true, port: 51473, failure: null },
+					serverStatus: { running: true, port: 51473, failure: null },
 				},
 			}));
 			await waitFor(() => expect(screen.getByText("Copy URL")).toBeInTheDocument());
