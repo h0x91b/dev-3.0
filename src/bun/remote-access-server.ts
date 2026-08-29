@@ -16,7 +16,7 @@ import { existsSync, statSync, readFileSync } from "node:fs";
 import { isAbsolute, join, extname, relative, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
-import type { RemoteNetInterface } from "../shared/types";
+import type { RemoteAccessStartFailure, RemoteAccessStatus, RemoteNetInterface } from "../shared/types";
 import { NATIVE_STREAM_SINCE_PARAM, parseSinceParam } from "../shared/native-terminal-stream";
 import { remoteStaticCodeError } from "../shared/remote-static-code";
 import { authAttemptRetryAfterS, recordAuthFailure, clearAuthFailures } from "./remote-auth-rate-limit";
@@ -866,6 +866,74 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 
 	// Print access URL to console
 	printAccessInfo();
+}
+
+// ── Guarded start, for the desktop app only ──────────────────────────────────
+//
+// `startRemoteAccessServer` throws, and `Bun.serve` throws SYNCHRONOUSLY when the
+// port is taken. On the desktop boot path that call is a top-level await, so the
+// throw does not merely kill remote access — it aborts the rest of the module and
+// takes the whole app down a millisecond after the window appears. See
+// `decisions/2026/08/29/remote-access-port-in-use-keeps-the-app-alive.md`.
+//
+// Headless keeps calling the throwing form on purpose: there, remote access IS
+// the process, so dying is the correct answer.
+
+let lastStartOptions: StartOptions | null = null;
+let startFailure: RemoteAccessStartFailure | null = null;
+let statusHook: ((status: RemoteAccessStatus) => void) | null = null;
+
+/** Set by the app so both settings and the QR modal see a status change live. */
+export function setRemoteAccessStatusHook(hook: (status: RemoteAccessStatus) => void): void {
+	statusHook = hook;
+}
+
+export function getRemoteAccessStatus(): RemoteAccessStatus {
+	return { running: serverPort !== 0, port: serverPort, failure: startFailure };
+}
+
+/**
+ * Start remote access without letting its failure escape into the caller's module.
+ *
+ * Returns the resulting status instead of throwing. The pin is NEVER silently
+ * traded for a random port: a taken port stays a visible failure the user can act
+ * on, because a pin exists precisely to keep an external URL or a Docker mapping
+ * valid, and quietly moving it breaks that without saying so.
+ */
+export async function startRemoteAccessServerGuarded(options: StartOptions): Promise<RemoteAccessStatus> {
+	lastStartOptions = options;
+	const requestedPort = resolveListenPort();
+	try {
+		await startRemoteAccessServer(options);
+		startFailure = null;
+	} catch (err) {
+		const message = err instanceof Error ? err.message : String(err);
+		const portInUse = /EADDRINUSE/i.test(String(err)) || /is port \d+ in use/i.test(message);
+		startFailure = { port: requestedPort, reason: portInUse ? "port-in-use" : "other", message };
+		log.error("Remote access server failed to start — the app keeps running without it", {
+			requestedPort,
+			reason: startFailure.reason,
+			error: message,
+		});
+	}
+	const status = getRemoteAccessStatus();
+	statusHook?.(status);
+	return status;
+}
+
+/** Re-attempt the bind after the user freed the port — no app restart needed. */
+export async function retryRemoteAccessServer(): Promise<RemoteAccessStatus> {
+	if (serverPort !== 0) return getRemoteAccessStatus();
+	if (!lastStartOptions) return getRemoteAccessStatus();
+	return startRemoteAccessServerGuarded(lastStartOptions);
+}
+
+/** Test seam — module state survives between cases. */
+export function resetRemoteAccessStartState(): void {
+	lastStartOptions = null;
+	startFailure = null;
+	statusHook = null;
+	serverPort = 0;
 }
 
 /**

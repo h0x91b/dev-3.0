@@ -1,16 +1,29 @@
 import { getAccessUrl, generateQrDataUrl, getLocalInterfaces, getSignInLink, getStaticCode, resolveAccessHost } from "../remote-access-server";
-import type { RemoteNetInterface } from "../../shared/types";
+import type { RemoteAccessStatus, RemoteNetInterface } from "../../shared/types";
 
 /** Give Cloudflare's quick-tunnel hostname time to propagate before publishing it to the UI. */
 export const TUNNEL_DNS_SETTLE_DELAY_MS = 5_000;
 
-async function getRemoteAccessQR(params: { tunnel?: boolean; host?: string }): Promise<{ qrDataUrl: string; accessUrl: string; tunnelState: string; tunnelBinaryInstalled: boolean; tunnelProvider: "cloudflare" | "custom" | "misconfigured"; tunnelFailureReason: string | null; interfaces: RemoteNetInterface[]; selectedHost: string; staticCodeActive: boolean; signInLink: string | null }> {
+async function getRemoteAccessQR(params: { tunnel?: boolean; host?: string }): Promise<{ qrDataUrl: string; accessUrl: string; tunnelState: string; tunnelBinaryInstalled: boolean; tunnelProvider: "cloudflare" | "custom" | "misconfigured"; tunnelFailureReason: string | null; interfaces: RemoteNetInterface[]; selectedHost: string; staticCodeActive: boolean; signInLink: string | null; serverStatus: RemoteAccessStatus }> {
 	const { isTunnelBinaryAvailable, getTunnelState, getMainTunnelFailureReason, startTunnel } = await import("../cloudflare-tunnel");
 	const { resolveRemoteTunnelProvider } = await import("../tunnel-provider");
-	const { getServerPort } = await import("../remote-access-server");
+	const { getServerPort, getRemoteAccessStatus: readStatus } = await import("../remote-access-server");
+	const serverStatus = readStatus();
 	const tunnelBinaryInstalled = isTunnelBinaryAvailable();
 	const tunnelProvider = resolveRemoteTunnelProvider().kind;
 	const tunnelState = getTunnelState();
+
+	// Nothing is listening, so there is nothing to tunnel to and no URL worth
+	// minting: a QR built on port 0 is a link that looks real and cannot work.
+	// The modal renders the failure instead and offers the way out.
+	if (!serverStatus.running) {
+		return {
+			qrDataUrl: "", accessUrl: "", tunnelState, tunnelBinaryInstalled, tunnelProvider,
+			tunnelFailureReason: getMainTunnelFailureReason(), interfaces: getLocalInterfaces(),
+			selectedHost: resolveAccessHost(params?.host), staticCodeActive: getStaticCode() !== null,
+			signInLink: null, serverStatus,
+		};
+	}
 
 	// Opening Remote Access is an explicit request to share the app, so the
 	// public tunnel is the default when cloudflared is available. Callers that
@@ -42,7 +55,23 @@ async function getRemoteAccessQR(params: { tunnel?: boolean; host?: string }): P
 		// The one place the code reaches the renderer, and only inside a link the
 		// user copies by an explicit click — it is never rendered on screen.
 		signInLink: await getSignInLink(host),
+		serverStatus,
 	};
+}
+
+/**
+ * Whether remote access is actually serving. The QR modal and Settings both read
+ * it: with the server down `getServerPort()` is 0, so a QR minted anyway would
+ * point at `http://host:0/` — a link that looks real and cannot work.
+ */
+async function getRemoteAccessStatus(): Promise<RemoteAccessStatus> {
+	const { getRemoteAccessStatus: read } = await import("../remote-access-server");
+	return read();
+}
+
+async function retryRemoteAccess(): Promise<RemoteAccessStatus> {
+	const { retryRemoteAccessServer } = await import("../remote-access-server");
+	return retryRemoteAccessServer();
 }
 
 async function startTunnel(): Promise<{ url: string | null; state: string }> {
@@ -59,6 +88,8 @@ async function stopTunnel(): Promise<void> {
 
 export const remoteAccessHandlers = {
 	getRemoteAccessQR,
+	getRemoteAccessStatus,
+	retryRemoteAccess,
 	startTunnel,
 	stopTunnel,
 };

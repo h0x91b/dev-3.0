@@ -3887,6 +3887,23 @@ export interface RemoteUpdateAttempts {
 }
 
 /**
+ * Why the remote-access server is not serving. `port` is the port that was asked
+ * for — 0 when none was pinned and the random pick itself failed.
+ */
+export interface RemoteAccessStartFailure {
+	port: number;
+	reason: "port-in-use" | "other";
+	message: string;
+}
+
+/** Whether remote access is serving, and on what. `failure` is null while it is. */
+export interface RemoteAccessStatus {
+	running: boolean;
+	port: number;
+	failure: RemoteAccessStartFailure | null;
+}
+
+/**
  * One IPv4 address the headless server is reachable at, for the Remote Access
  * modal's interface picker. `internal: true` marks loopback (127.0.0.1).
  */
@@ -5378,7 +5395,15 @@ export type AppRPCSchema = {
 			};
 			getRemoteAccessQR: {
 				params: { tunnel?: boolean; host?: string };
-				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; tunnelBinaryInstalled: boolean; tunnelProvider: "cloudflare" | "custom" | "misconfigured"; tunnelFailureReason: string | null; interfaces: RemoteNetInterface[]; selectedHost: string; staticCodeActive: boolean; signInLink: string | null };
+				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; tunnelBinaryInstalled: boolean; tunnelProvider: "cloudflare" | "custom" | "misconfigured"; tunnelFailureReason: string | null; interfaces: RemoteNetInterface[]; selectedHost: string; staticCodeActive: boolean; signInLink: string | null; serverStatus: RemoteAccessStatus };
+			};
+			getRemoteAccessStatus: {
+				params: void;
+				response: RemoteAccessStatus;
+			};
+			retryRemoteAccess: {
+				params: void;
+				response: RemoteAccessStatus;
 			};
 			startTunnel: {
 				params: void;
@@ -5584,6 +5609,8 @@ export type AppRPCSchema = {
 			 */
 			devServerUpdated: DevServerSummary;
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
+			/** Remote access came up, went down, or a retry changed the verdict. */
+			remoteAccessStatusChanged: RemoteAccessStatus;
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
 			/**
 			 * System-wide memory, sampled in the same resource-monitor tick as the

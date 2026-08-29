@@ -10,7 +10,7 @@ import { statusKey } from "./i18n/status";
 import { columnAgentFailureCopy } from "./utils/columnAgentFailureToast";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
+import type { AgentLaunchChoice, AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteAccessStatus, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, getTaskTitle } from "../shared/types";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
@@ -54,6 +54,7 @@ import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
 import UpdatePopoverSimulatorModal from "./components/UpdatePopoverSimulatorModal";
 import RemoteAccessDialog from "./components/RemoteAccessDialog";
+import RemoteAccessDownNotice from "./components/RemoteAccessDownNotice";
 import RemoteSignIn from "./components/RemoteSignIn";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm, whenConfirmHostMounted } from "./confirm";
@@ -118,6 +119,8 @@ type RemoteAccessQRData = {
 	staticCodeActive?: boolean;
 	/** Bookmarkable link carrying the code in its fragment; copied, never displayed. */
 	signInLink?: string | null;
+	/** Whether the server behind this modal is actually listening. */
+	serverStatus?: RemoteAccessStatus;
 };
 
 function isRemoteTunnelActive(tunnelState?: string): boolean {
@@ -2920,6 +2923,20 @@ function App() {
 			)}
 			{remoteQR && (
 				<RemoteAccessDialog titleId="remote-access-dialog-title" onClose={closeRemoteQR}>
+					{remoteQR.serverStatus && !remoteQR.serverStatus.running ? (
+						// Nothing is listening, so there is no URL and no QR to show — a code
+						// minted on port 0 would look scannable and go nowhere.
+						<>
+							<h2 id="remote-access-dialog-title" className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
+							<RemoteAccessDownNotice
+								status={remoteQR.serverStatus}
+								onOpenSettings={() => {
+									closeRemoteQR();
+									navigate({ screen: "settings", section: "system" });
+								}}
+							/>
+						</>
+					) : (
 					<>
 						<h2 id="remote-access-dialog-title" className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
 						<p className="text-fg-2 text-sm">{t("remote.subtitle")}</p>
@@ -3242,6 +3259,7 @@ function App() {
 							</button>
 						</div>
 					</>
+					)}
 				</RemoteAccessDialog>
 			)}
 			<StuckPreparationPopover tasks={state.currentProjectTasks} />

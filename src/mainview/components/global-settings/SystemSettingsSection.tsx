@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { GlobalSettings, RemoteTunnelSettings } from "../../../shared/types";
 import type { UpdateChannel } from "../../../shared/update-channel";
 import type { TFunction } from "../../i18n";
@@ -6,6 +6,8 @@ import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import SettingsToggle from "./SettingsToggle";
 import { MIN_REMOTE_STATIC_CODE_LENGTH, remoteStaticCodeError } from "../../../shared/remote-static-code";
+import RemoteAccessDownNotice, { useRemoteAccessStatus } from "../RemoteAccessDownNotice";
+import { api } from "../../rpc";
 
 export default function SystemSettingsSection({
 	t,
@@ -32,6 +34,9 @@ export default function SystemSettingsSection({
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onConfirmBeforeQuitToggle: (enabled: boolean) => void;
 }) {
+	const remoteAccessStatus = useRemoteAccessStatus();
+	const retryRemoteAccess = useCallback(() => api.request.retryRemoteAccess(), []);
+
 	return (
 		<SettingsSection title={t("settings.categorySystem")} helpTopicId="settings.system">
 			<SettingsEntry anchor="update-channel">
@@ -60,6 +65,10 @@ export default function SystemSettingsSection({
 					) : null}
 				</div>
 			</SettingsEntry>
+
+			{/* Not a setting, so no registry entry: a status that only exists while
+			    remote access is down, sitting above the controls that fix it. */}
+			<RemoteAccessDownNotice status={remoteAccessStatus} onRetry={retryRemoteAccess} />
 
 			<SettingsEntry anchor="remote-tunnel">
 				<div>

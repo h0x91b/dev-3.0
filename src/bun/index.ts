@@ -39,7 +39,7 @@ import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-server";
+import { startRemoteAccessServerGuarded, setRemoteAccessStatusHook, pushToBrowserClients } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
@@ -510,8 +510,18 @@ import("./port-tunnels").then(({ setPortTunnelsPushHook }) => {
 	});
 }).catch((err) => log.warn("port-tunnels push hook setup failed", { error: String(err) }));
 
-// Start remote access server (serves UI + RPC + PTY proxy on LAN)
-await startRemoteAccessServer({
+// Start remote access server (serves UI + RPC + PTY proxy on LAN).
+//
+// Guarded, and that guard is load-bearing: `Bun.serve` throws synchronously on a
+// taken port, and this is a top-level await, so an unguarded throw skips every
+// line below it — lifecycle rehydration and all nine background schedulers — and
+// Electrobun kills the worker outright a millisecond after the window appeared.
+// A failure here is a failure of remote access ALONE; it never costs the app.
+setRemoteAccessStatusHook((status) => {
+	broadcastToAllWindows("remoteAccessStatusChanged", status);
+	pushToBrowserClients("remoteAccessStatusChanged", status);
+});
+await startRemoteAccessServerGuarded({
 	rpcHandler: async (method: string, params: any) => {
 		const handler = (handlers as any)[method];
 		if (!handler) throw new Error(`Unknown RPC method: ${method}`);
