@@ -192,10 +192,10 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 
 		function onMove(e: TouchEvent) {
 			if (axis === "v" || e.touches.length !== 1) return;
-			// A long-press text selection in the terminal drags horizontally too, and
-			// it owns the gesture — swiping panes out from under it would both lose
-			// the selection and change pane.
-			if (el!.querySelector("canvas")?.dataset.selecting === "1") {
+			// While the OS is dragging a text-selection handle in the terminal, the
+			// move is horizontal but not ours — swiping would lose the selection
+			// and change pane under the user's finger.
+			if (el!.querySelector("[data-terminal-text-layer][data-selecting]")) {
 				axis = "v";
 				return;
 			}

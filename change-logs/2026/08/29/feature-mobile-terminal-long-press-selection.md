@@ -1,3 +1,3 @@
-Short: Long-press to select terminal text on mobile
+Short: Native text selection in mobile terminals
 
-Press and hold on a terminal on a phone or tablet, then drag, to select exactly the text you want and copy it on release — it works in both compose and raw mode. Previously an iOS long-press highlighted the whole terminal through the canvas's contenteditable wrapper and copied nothing; that native selection is now suppressed in favour of the real gesture.
+Long-press a terminal on a phone or tablet and you now get your platform's own text selection over it — the drag handles, the magnifier and the Copy menu — so you can grab exactly the line or path you want. Previously an iOS long-press highlighted the whole terminal and copied a page archive instead of text.
