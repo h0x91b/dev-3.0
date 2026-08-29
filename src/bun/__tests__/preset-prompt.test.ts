@@ -49,6 +49,14 @@ describe("COORDINATOR_PROMPT", () => {
 		expect(COORDINATOR_PROMPT).toContain("seq:NNNN:index (id)");
 	});
 
+	// Anthropic's safeguards refuse this prompt outright (`[reasoning_extraction]`)
+	// when it pairs "reason in full in your thinking" with "send only the conclusion" —
+	// see decisions/2026/08/30/coordinator-prompt-reasoning-extraction-refusal.md.
+	it("never pairs the thinking channel with a send-only-the-conclusion instruction", () => {
+		expect(COORDINATOR_PROMPT).toContain("belongs in your thinking");
+		expect(COORDINATOR_PROMPT).not.toMatch(/(?:send|carries)[^.]*conclusion alone/i);
+	});
+
 	it("keeps the four rules that were learned from a specific failure", () => {
 		expect(COORDINATOR_PROMPT).toContain("RELAY THE RULING, NOT YOUR READING OF IT");
 		expect(COORDINATOR_PROMPT).toContain("NEVER ATTRIBUTE WORDS THE USER DID NOT SAY");
