@@ -32,6 +32,7 @@
 		"test:pane-input-native-e2e": "bun src/bun/__tests__/pane-input-native.bun-e2e.ts",
 		"test:native-owner-routing-e2e": "bun src/bun/native-terminal-registry/__tests__/owner-routing.bun-e2e.ts",
 		"test:native-multipane-e2e": "bun src/bun/native-terminal-multipane/__tests__/multipane.bun-e2e.ts",
+		"test:aux-pane-close-e2e": "bun src/bun/__tests__/aux-pane-close-keeps-task.bun-e2e.ts",
 		"test:native-capture-e2e": "bun src/bun/terminal-backend/__tests__/native-capture.bun-e2e.ts",
 		"test:session-lock-e2e": "bun src/bun/native-terminal-registry/__tests__/session-lock.bun-e2e.ts",
 		"test:capture-cost-e2e": "bun src/bun/terminal-backend/__tests__/capture-cost.bun-e2e.ts",
