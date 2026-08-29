@@ -203,7 +203,7 @@ function ImportConversationsModal({ project, autoOffer, onClose }: ImportConvers
 													<span className="truncate">
 														{t("importConversations.rowMeta", {
 															age: compactAge(new Date(c.lastActivityMs).toISOString()),
-															turns: String(c.turns),
+															turns: t.plural("importConversations.turnCount", c.turns, { count: c.turns }),
 														})}
 													</span>
 												</span>
