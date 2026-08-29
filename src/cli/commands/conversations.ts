@@ -19,9 +19,10 @@ import { sendRequest } from "../socket-client";
 import { DEFAULT_DUMP_BUDGET, type DumpBudget } from "../../shared/conversation-dump";
 import { atomicWriteFile } from "../../bun/atomic-write";
 import type { ParsedArgs } from "../args";
-import { detectFromWorktreePath, readProjectDirect, resolveProjectId, type CliContext } from "../context";
+import { detectFromWorktreePath, projectOwningCwd, readProjectDirect, resolveProjectId, type CliContext } from "../context";
 import { exitError, exitUsage, printTable } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
+import { CLI_EXIT_CODE_NO_PROJECT_FOR_CWD } from "../../shared/cli-exit-codes";
 
 const DEV3_DIR = "/.dev3.0";
 
@@ -373,6 +374,102 @@ async function importCmd(args: ParsedArgs, context: CliContext | null, socketPat
 			result.problems.map((p) => `${p.title}: ${p.error}`).join("\n"),
 		);
 	}
+}
+
+/**
+ * `dev3 import` — put the conversation you are sitting in onto the board.
+ *
+ * Run from the agent's own shell, so both halves are already known: the cwd says
+ * which project owns the work, and `CLAUDE_CODE_SESSION_ID` says which
+ * conversation this is. `dev3 conversations import` covers the batch case; this
+ * covers "this one, now".
+ */
+export async function handleImportCurrentSession(
+	args: ParsedArgs,
+	socketPath: string | null,
+): Promise<void> {
+	rejectUnknownFlags(args, ["json"]);
+	const asJson = args.flags.json === "true";
+
+	const sessionId = process.env.CLAUDE_CODE_SESSION_ID?.trim();
+	if (!sessionId) {
+		exitError(
+			"Not running inside a Claude Code session.",
+			"`dev3 import` imports the conversation it is run from, so it needs CLAUDE_CODE_SESSION_ID.\n" +
+			"To import past conversations instead, use `dev3 conversations import`.",
+		);
+	}
+
+	const cwd = process.cwd();
+	const project = projectOwningCwd(cwd);
+	if (!project) exitNoProjectForCwd(cwd);
+
+	const { home, dev3Home } = resolveHomes();
+	const tasks = loadProjectTasks(dev3Home, projectSlug(project.path));
+	const found = scanImportableConversations({
+		projectPath: project.path,
+		importedSessionIds: tasks
+			.map((task) => task.importedSessionId)
+			.filter((id): id is string => typeof id === "string" && id.length > 0),
+		home,
+		dev3Home,
+	});
+
+	const match = found.find((c) => c.sessionId === sessionId);
+	if (!match) {
+		const alreadyImported = tasks.find((task) => task.importedSessionId === sessionId);
+		if (alreadyImported) {
+			process.stdout.write(`This conversation is already on the board as seq ${alreadyImported.seq}.\n`);
+			return;
+		}
+		// Every other miss is the same answer: the transcript is not yet in a
+		// shape the importer accepts (no title until the agent writes one, or
+		// nothing on disk yet for a brand-new session).
+		exitError(
+			"This conversation is not importable yet.",
+			"It needs a title the agent has written and at least one exchange on disk. Try again after a reply.",
+		);
+	}
+
+	if (!socketPath) {
+		exitError("dev3 must be running to import a conversation.");
+	}
+	const resp = await sendRequest(socketPath, "conversations.import", {
+		projectId: project.id,
+		sessionIds: [match.sessionId],
+	});
+	if (!resp.ok) exitError(resp.error || "Failed to import the conversation");
+	const result = resp.data as ImportConversationsResult;
+
+	if (asJson) {
+		process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+		return;
+	}
+	for (const task of result.tasks) {
+		process.stdout.write(`Imported as seq ${task.seq} (${task.status}): ${task.title}\n`);
+	}
+	if (result.problems.length > 0) {
+		exitError(
+			`${result.problems.length} conversation(s) had trouble`,
+			result.problems.map((p) => `${p.title}: ${p.error}`).join("\n"),
+		);
+	}
+}
+
+/** The common miss: this directory belongs to no board, so nothing can own the import. */
+function exitNoProjectForCwd(cwd: string): never {
+	const lines = [
+		"No dev3 project owns this directory:",
+		`  ${cwd}`,
+		"",
+		"A conversation is imported into the project that owns the directory it ran in,",
+		"and nowhere else — anywhere else would attach it to the wrong repository.",
+		"",
+		"Next step: add this repository to dev3 (File > Add Local Project), then run",
+		"`dev3 import` here again.",
+	];
+	process.stderr.write(`${lines.join("\n")}\n`);
+	process.exit(CLI_EXIT_CODE_NO_PROJECT_FOR_CWD);
 }
 
 export async function handleConversations(

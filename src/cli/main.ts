@@ -17,7 +17,7 @@ import { handleConfig } from "./commands/config";
 import { handleDevServer } from "./commands/dev-server";
 import { handleRemote } from "./commands/remote";
 import { handleGui } from "./commands/gui";
-import { handleConversations } from "./commands/conversations";
+import { handleConversations, handleImportCurrentSession } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleMessage } from "./commands/message";
 import { handlePeek } from "./commands/peek";
@@ -241,6 +241,19 @@ async function main(): Promise<void> {
 		// Pure local file transform (fold a multi-file report into one HTML) —
 		// runs before publishing an artifact and needs no app or socket.
 		return await handleInlineHtml(rawArgs.slice(1));
+	}
+	if (command === "import") {
+		// Imports the conversation this shell is running inside. Creates a task, so
+		// it needs the socket like every other write.
+		if (!socketPath) socketPath = await resolveSocketPathWithRetry();
+		if (!socketPath) {
+			exitAppNotRunning({
+				stage: "discovery",
+				tolerate: tolerateAppOffline,
+				...debugAppNotRunning("discovery"),
+			});
+		}
+		return await handleImportCurrentSession(args, socketPath ?? null);
 	}
 	if (command === "conversations") {
 		// search/dump/handoff are read-only over local transcript files and answer

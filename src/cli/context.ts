@@ -758,6 +758,25 @@ export type ProjectDirect = Pick<Project, "id" | "name" | "path"> & Partial<Proj
  * stored object (incl. customColumns/columnOrder/kind) so offline callers can
  * enumerate board columns; `name` is coalesced to "" if a legacy record lacks it.
  */
+/**
+ * The registered project whose directory contains `cwd`, or null.
+ *
+ * Deepest path wins, so a project nested inside another claims its own
+ * subdirectory. Matching is on a path boundary, never a bare prefix: a project
+ * at `…/app` must not claim `…/app-scratch`.
+ */
+export function projectOwningCwd(cwd: string): ProjectDirect | null {
+	const target = cwd.replace(/\/+$/, "");
+	let best: ProjectDirect | null = null;
+	for (const project of readAllProjectsRaw()) {
+		if (!project.path || project.kind === "virtual") continue;
+		const root = project.path.replace(/\/+$/, "");
+		if (target !== root && !target.startsWith(`${root}/`)) continue;
+		if (!best || root.length > best.path.length) best = { ...project, name: project.name ?? "" };
+	}
+	return best;
+}
+
 export function readProjectDirect(projectId: string): ProjectDirect | null {
 	const match = readAllProjectsRaw().find((p) => p.id === projectId || p.id.startsWith(projectId));
 	return match ? { ...match, name: match.name ?? "" } : null;

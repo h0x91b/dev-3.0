@@ -18,6 +18,7 @@ export const CLI_EXIT_CODE_INSTANCE_NOT_FOUND = 16;
 export const CLI_EXIT_CODE_MESSAGE_SUBJECT_REQUIRED = 17;
 export const CLI_EXIT_CODE_TASK_REF_UNRESOLVED = 18;
 export const CLI_EXIT_CODE_EVENT_CURSOR_INVALID = 19;
+export const CLI_EXIT_CODE_NO_PROJECT_FOR_CWD = 20;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -134,5 +135,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_EVENT_CURSOR_INVALID,
 		description:
 			"`dev3 events --from <cursor>` was given a cursor it cannot parse, and NOTHING was read. Four shapes are accepted: an event id from the ID column (`8eb2da3d`, or an unambiguous prefix), a cursor as printed by a previous run (`2026-08-29T10:12:03.114`), a plain date or instant for a deliberately wider sweep, and a duration such as `2h`. The same code covers an id that resolves to nothing or to more than one event — a lost id must never be answered with 'nothing since then', which reads as a quiet board. Distinct from exit 3 so a caller that lost its cursor can recognise this one case and fall back to a bare `dev3 events` instead of treating it as a misspelled command. Never silently degraded into a time window — a cursor that quietly becomes 'the last day' skips everything older and reports success.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_NO_PROJECT_FOR_CWD",
+		code: CLI_EXIT_CODE_NO_PROJECT_FOR_CWD,
+		description:
+			"`dev3 import` was run in a directory no registered dev3 project owns. A conversation can only be imported into the project that owns the directory it ran in, so the project has to be added to the board first — there is deliberately no flag to import it somewhere else. The message names the directory checked and lists the projects that ARE registered.",
 	},
 ] as const;

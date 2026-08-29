@@ -319,6 +319,24 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "import",
+		summary: "Put the conversation you are running inside onto the board as a task.",
+		subcommands: [],
+		usage: "dev3 import [--json]",
+		details: [
+			"Run it from the agent's own shell. The working directory decides which",
+			"project owns the work, and CLAUDE_CODE_SESSION_ID decides which",
+			"conversation — so there is nothing to pass and nothing to pick.",
+			"",
+			"A conversation is imported into the project that owns the directory it ran",
+			"in, and nowhere else. If no project owns this directory, add the repository",
+			"to dev3 first (exit 20).",
+			"",
+			"To import PAST conversations in bulk instead, use `dev3 conversations import`.",
+			"--json        Print the result as JSON.",
+		],
+	},
+	{
 		name: "conversations",
 		summary: "Search past task conversations, or parse this task's transcripts into JSON.",
 		subcommands: [
