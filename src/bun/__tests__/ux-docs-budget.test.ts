@@ -45,7 +45,12 @@ const UX_DIR = fileURLToPath(new URL("../../../docs/ux", import.meta.url));
  */
 const BUDGET_KB: Record<string, number> = {
 	"PRODUCT_UX_BIBLE.md": 128,
-	"ux-architecture.yaml": 114,
+	// 114 → 115 for `global_header.agent_rate_limit_indicator`: the header gained a second
+	// mutation (the default-account switch, pinned-only) and an undocumented mutation on an
+	// ambient readout is exactly what this manifest exists to prevent. Compaction was the
+	// alternative and it meant deleting other rules' why — the failure the note above names.
+	// Reasoning: decisions/2026/08/29/default-account-switch-lives-in-the-usage-flyout.md.
+	"ux-architecture.yaml": 115,
 	"UX_DECISIONS.md": 80,
 };
 

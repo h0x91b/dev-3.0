@@ -203,6 +203,11 @@ ux_architecture:
     global_header:
       purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
       allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "variant_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator", "ambient_resource_readout", "agent_traffic_readout"]
+      agent_rate_limit_indicator:
+        budget: 1
+        spec: "Permanent readout of the account-wide Claude/Codex limit windows, hidden until there is usable data. Hover drops its panel below the pill READ-ONLY; a click PINS it, and only a pinned panel exposes the single mutation this surface carries: picking the default account for new launches (the Settings -> Agent Accounts contract — preselect only, running sessions keep their login), with a success toast as the receipt because the panel is transient. No confirm dialog — a preselect is a cheap blast radius — but never one stray click from a hovered panel either. Settings stays the canonical home and NO second configuration may enter here: a readout that accumulates settings is toolbar creep. Why: decisions/2026/08/29/default-account-switch-lives-in-the-usage-flyout.md."
+        narrow: "Folds into the kebab bottom sheet; a sheet is opened deliberately, so its rows are choosable there without a pin."
+        status: "observed"
       agent_traffic_readout:
         budget: 1
         spec: "PRESENCE IS THE DATA, THE BADGE IS THE UNREAD COUNT — never one question. The labelled kebab row is always present; the bar pill sits immediately right of the three dots while the project's agents have messaged each other at all, absent where they never have (conditional, unlike the permanent ambient_resource_readout). Never key presence off unread — hovering marks it seen, and that shipped once as a pill retiring under the pointer. Unread counts from the last look (per-browser stamp, first look stamps itself, badge caps at 9+). Violet --agent (identity, never severity); text-warning only when an unread message has no proof of delivery. The panel lists pairs unfiltered by recency (receiver of the newest message = the one that owes an answer); a row navigates to that RECEIVER. Never invents an importance axis — no sender can set one."

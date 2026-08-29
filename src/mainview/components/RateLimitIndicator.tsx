@@ -34,11 +34,12 @@ const PANEL_WIDTH = 26 * 16;
  * dev running many parallel agents is never blindsided by hitting a limit.
  * Hidden until usable data exists; shows the most constrained window for the
  * most recently active account and treats unlimited credits as 0% used.
- * Hovering drops its panel below the pill (a click pins it open, so the rows
- * inside can be used): the same per-account quota cards, plus the settings
- * screen's radio control for the default account. Codex monthly credits come from a cached
- * app-server account read; all other data comes from local files — see
- * rate-limit-monitor.ts.
+ * Hovering drops its panel below the pill — read-only while it is merely
+ * hovered. A click PINS it, and only then do its per-account cards become the
+ * settings screen's radio control for the default account: a durable setting
+ * must not be one stray click away from a panel the pointer passed through.
+ * Codex monthly credits come from a cached app-server account read; all other
+ * data comes from local files — see rate-limit-monitor.ts.
  */
 function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const t = useT();
@@ -46,7 +47,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const [accounts, setAccounts] = useState<AgentAccountsState | null>(null);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	// Same open/pin/position machinery as the memory-headroom readout: hover drops
-	// the panel below the pill, a click pins it so its rows can be clicked.
+	// the panel below the pill, a click pins it — and pinned is what unlocks its rows.
 	const flyout = useHeaderFlyout({ variant: "bar", isNarrow, repositionKey: report });
 
 	useEffect(() => {
@@ -92,8 +93,8 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 			: windowLabel(latestWindow)
 		: null;
 	const ariaLabel = unlimited
-		? `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source} ${t("rateLimits.unlimited")}`
-		: `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source}${latestLabel ? ` ${latestLabel}` : ""} ${t("rateLimits.percentUsed", { percent })}${latestReset ? `, ${t("rateLimits.resetsIn", { time: latestReset })}` : ""}`;
+		? `${t("rateLimits.panelTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source} ${t("rateLimits.unlimited")}`
+		: `${t("rateLimits.panelTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source}${latestLabel ? ` ${latestLabel}` : ""} ${t("rateLimits.percentUsed", { percent })}${latestReset ? `, ${t("rateLimits.resetsIn", { time: latestReset })}` : ""}`;
 	const interactiveAriaLabel = `${ariaLabel}. ${t("rateLimits.openAccounts")}`;
 
 	const pillSnapshots = report.snapshots.slice(0, MAX_PILL_BARS);
@@ -112,6 +113,9 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 		<AgentUsagePanel
 			report={report}
 			accounts={accounts}
+			// A sheet is opened deliberately and has no hover state to pass through;
+			// the desktop flyout has to be pinned first.
+			interactive={isNarrow || flyout.pinned}
 			onOpenSettings={() => {
 				flyout.close();
 				openAccountsSettings();
@@ -167,7 +171,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 				<BottomSheet
 					open={flyout.open}
 					onClose={flyout.close}
-					title={t("rateLimits.tooltipTitle")}
+					title={t("rateLimits.panelTitle")}
 					testId="agent-usage-sheet"
 				>
 					{panel}
@@ -177,7 +181,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 					<HeaderFlyoutPanel
 						flyout={flyout}
 						width={PANEL_WIDTH}
-						ariaLabel={t("rateLimits.tooltipTitle")}
+						ariaLabel={t("rateLimits.panelTitle")}
 						testId="agent-usage-panel"
 					>
 						{panel}

@@ -137,10 +137,12 @@ const dashboard = {
 	"caffeine.tooltipForced": "Forced on while remote access is active — the machine must stay reachable",
 
 	// Ambient agent rate-limit indicator
-	"rateLimits.tooltipTitle": "Agent rate limits",
+	"rateLimits.panelTitle": "Agent rate limits",
 	"rateLimits.openAccounts": "Open agent usage and accounts",
 	"rateLimits.manageAccounts": "Account settings",
 	"rateLimits.panelSubtitle": "Usage per account. Pick the account new launches start with — running sessions keep their current login.",
+	"rateLimits.pinToSwitch": "Usage per account. Click the pill to pin this panel, then pick the account new launches start with.",
+	"rateLimits.defaultSwitched": "{label} is now the default for new launches",
 	"rateLimits.makeDefault": "Make {label} the default account",
 	"rateLimits.used": "used",
 	"rateLimits.percentUsed": "{percent}% used",

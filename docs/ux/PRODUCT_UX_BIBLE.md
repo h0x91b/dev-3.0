@@ -112,7 +112,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 
 | Surface | Purpose | Allowed | Forbidden | Evidence |
 |---|---|---|---|---|
-| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom), **≤1 conditional agent-traffic pill** (§5.9) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
+| Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle, **≤1 ambient resource readout** (memory headroom), **≤1 conditional agent-traffic pill** (§5.9), agent rate-limit readout (default-account switch only while PINNED) | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
 | Application menu (native) | Canonical home for the full action taxonomy | every action type | — | `application-menu.ts`, `menu-actions.ts` |
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, task filter (token-DSL search + funnel; label chips are a view of it) | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx`, `LabelFilterBar.tsx`, `FilterFunnel.tsx` |
 | Task card | Compact task summary | status dot, labels, variant dots (≤3, clickable → sibling popover), open, context menu, git badge, native-backend marker (§5.6), **one dev-server split control (open \| stop, §9)** | full settings, global destination, unbounded dot rows, dev-server start/restart/logs | `TaskCard.tsx` (large — watch density) |

@@ -153,10 +153,12 @@ const dashboard = {
 	"caffeine.tooltipForced": "Принудительно включено, пока активен удалённый доступ — машина должна оставаться доступной",
 
 	// Ambient agent rate-limit indicator
-	"rateLimits.tooltipTitle": "Лимиты агентов",
+	"rateLimits.panelTitle": "Лимиты агентов",
 	"rateLimits.openAccounts": "Открыть использование и аккаунты агентов",
 	"rateLimits.manageAccounts": "Настройки аккаунтов",
 	"rateLimits.panelSubtitle": "Использование по аккаунтам. Выберите аккаунт, с которым будут стартовать новые запуски — запущенные сессии сохранят текущий логин.",
+	"rateLimits.pinToSwitch": "Использование по аккаунтам. Нажмите на плашку, чтобы закрепить панель, и выберите аккаунт для новых запусков.",
+	"rateLimits.defaultSwitched": "{label} теперь аккаунт по умолчанию для новых запусков",
 	"rateLimits.makeDefault": "Сделать {label} аккаунтом по умолчанию",
 	"rateLimits.used": "использовано",
 	"rateLimits.percentUsed": "{percent}% использовано",

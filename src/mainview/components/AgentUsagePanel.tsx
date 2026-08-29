@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAccountKind, AgentAccountsState } from "../../shared/agent-accounts";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport, RateLimitSource } from "../../shared/rate-limits";
 import { isUnlimitedRateLimitSnapshot } from "../../shared/rate-limits";
@@ -17,7 +17,7 @@ import {
 
 const KINDS: AgentAccountKind[] = ["claude", "codex"];
 
-/** One card in the modal: an account (or a leftover reading) plus its usage. */
+/** One card in the panel: an account (or a leftover reading) plus its usage. */
 interface UsageRow {
 	key: string;
 	kind: AgentAccountKind;
@@ -38,6 +38,15 @@ function snapshotFor(
 	accountId: string | null,
 ): AgentRateLimitSnapshot | null {
 	return report.snapshots.find((s) => s.source === source && (s.accountId ?? null) === accountId) ?? null;
+}
+
+/** Everything that distinguishes one row from another, spoken. Several accounts
+ *  legitimately share an email, so the name alone names three rows at once. */
+function spokenName(row: UsageRow, fallback: string): string {
+	const account = row.account;
+	if (!account) return fallback;
+	const extras = [account.organization, account.planLabel, row.chip].filter((part): part is string => !!part);
+	return [account.name, ...extras].join(" · ");
 }
 
 /** Rows for one provider: its accounts first (the switchable set), then any
@@ -127,24 +136,32 @@ function rowsForKind(
 function UsageRowCard({
 	row,
 	now,
-	busy,
+	inert,
+	focusable,
 	onSetDefault,
+	onKeyDown,
+	rowRef,
 	t,
 }: {
 	row: UsageRow;
 	now: number;
-	busy: boolean;
+	inert: boolean;
+	/** Roving tabindex: one stop per group, so Tab does not walk every account. */
+	focusable: boolean;
 	onSetDefault: () => void;
+	onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
+	rowRef: (el: HTMLButtonElement | null) => void;
 	t: TFunction;
 }) {
-	const inert = busy || !row.selectable || row.isDefault;
-	const name = row.account?.name ?? SOURCE_NAMES[row.kind] ?? row.kind;
+	const name = spokenName(row, SOURCE_NAMES[row.kind] ?? row.kind);
 	return (
 		<button
+			ref={rowRef}
 			type="button"
 			role="radio"
 			aria-checked={row.isDefault}
 			aria-disabled={inert || undefined}
+			tabIndex={focusable ? 0 : -1}
 			// Only an actionable row gets the "make default" name; an informational
 			// one would otherwise promise something the click cannot do.
 			aria-label={inert ? undefined : t("rateLimits.makeDefault", { label: name })}
@@ -152,6 +169,7 @@ function UsageRowCard({
 				if (inert) return;
 				onSetDefault();
 			}}
+			onKeyDown={onKeyDown}
 			className={`${ACCOUNT_CARD_CLASS} w-full text-left ${
 				row.isDefault ? "border-accent/50" : ""
 			} ${inert ? "cursor-default" : "cursor-pointer hover:bg-elevated-hover"} transition-colors`}
@@ -190,74 +208,129 @@ function UsageRowCard({
 
 /**
  * Usage details for every agent account: the quota cards the header pill has
- * always shown, plus the settings screen's radio semantics — clicking a card
+ * always shown, plus the settings screen's radio semantics — picking a card
  * makes that account the default for new launches (running sessions keep their
  * login). Rendered as the pill's own anchored flyout (or a BottomSheet on
  * narrow), never as a centred dialog: the readout belongs next to the pill it
  * explains, not on top of the whole board.
+ *
+ * `interactive` is the guard on that mutation. The flyout opens on hover, and a
+ * durable setting must not be one stray click away from a panel the pointer
+ * merely passed through — so the rows only become choosable once the panel is
+ * pinned (or on narrow, where it is a sheet the user deliberately opened).
  */
 export default function AgentUsagePanel({
 	report,
 	accounts,
+	interactive,
 	onOpenSettings,
 }: {
 	report: AgentRateLimitsReport;
 	accounts: AgentAccountsState | null;
+	interactive: boolean;
 	onOpenSettings: () => void;
 }) {
 	const t = useT();
 	const [busy, setBusy] = useState(false);
 	const now = Date.now();
+	const rowRefs = useRef(new Map<string, HTMLButtonElement>());
+	/** Row keys in render order, so the pin-focus effect does not depend on the
+	 *  freshly-rebuilt blocks array. */
+	const orderedKeys = useRef<{ key: string; isDefault: boolean }[]>([]);
 
-	const setDefault = useCallback(async (kind: AgentAccountKind, accountId: string | null) => {
+	const setDefault = useCallback(async (kind: AgentAccountKind, accountId: string | null, label: string) => {
 		setBusy(true);
 		try {
 			// Same contract as Settings → Agent Accounts: the default is only the
-			// preselect for future launches, so no confirmation is needed.
+			// preselect for future launches, so no confirmation is needed. The toast
+			// is the receipt — hover-out can close this panel before the moved
+			// "Default" chip is ever seen.
 			await api.request.setActiveAgentAccount({ kind, accountId });
 			notifyAgentAccountsChanged();
+			toast.success(t("rateLimits.defaultSwitched", { label }), { source: "settings" });
 		} catch (err) {
 			toast.error(err instanceof Error ? err.message : String(err), { source: "settings" });
 		} finally {
 			setBusy(false);
 		}
-	}, []);
+	}, [t]);
 
 	const labels = { systemLogin: t("settings.accountsSystemLogin"), unmanaged: t("settings.accountsUnmanaged") };
 	const blocks = KINDS.map((kind) => ({ kind, rows: rowsForKind(kind, accounts, report, labels) })).filter(
 		(block) => block.rows.length > 0,
 	);
 
+	const isInert = (row: UsageRow) => busy || !interactive || !row.selectable || row.isDefault;
+	orderedKeys.current = blocks.flatMap((block) => block.rows.map((row) => ({ key: row.key, isDefault: row.isDefault })));
+
+	// Pinning is the moment the panel becomes usable, so it is also the moment
+	// focus belongs inside it: the panel is portaled to <body>, so Tab from the
+	// pill would otherwise walk the rest of the header instead of entering it.
+	useEffect(() => {
+		if (!interactive) return;
+		const rows = orderedKeys.current;
+		const target = rows.find((row) => row.isDefault) ?? rows[0];
+		if (target) rowRefs.current.get(target.key)?.focus();
+	}, [interactive]);
+
+	/** Arrows move focus only; Enter/Space commits. Selection-follows-focus is the
+	 *  radiogroup norm, but here a selection writes durable state — arrowing past
+	 *  three accounts must not switch the default three times. */
+	const onRowKeyDown = (rowsInGroup: UsageRow[], index: number) => (e: React.KeyboardEvent<HTMLButtonElement>) => {
+		const delta = e.key === "ArrowDown" || e.key === "ArrowRight" ? 1 : e.key === "ArrowUp" || e.key === "ArrowLeft" ? -1 : 0;
+		if (delta === 0) return;
+		e.preventDefault();
+		const next = rowsInGroup[(index + delta + rowsInGroup.length) % rowsInGroup.length];
+		if (next) rowRefs.current.get(next.key)?.focus();
+	};
+
 	return (
 		<div className="p-3 space-y-3 text-xs">
-			<p className="text-fg-3 leading-snug">{t("rateLimits.panelSubtitle")}</p>
-			{blocks.map((block) => (
-				<div key={block.kind} className="space-y-1.5">
-					<div className="text-fg-2 font-semibold uppercase tracking-wider">
-						{SOURCE_NAMES[block.kind] ?? block.kind}
+			<p className="text-fg-3 leading-snug">
+				{interactive ? t("rateLimits.panelSubtitle") : t("rateLimits.pinToSwitch")}
+			</p>
+			{blocks.map((block) => {
+				// One tab stop per group: the current default, or the first row.
+				const stop = block.rows.find((row) => row.isDefault) ?? block.rows[0];
+				return (
+					<div key={block.kind} className="space-y-1.5">
+						<div className="text-fg-2 font-semibold uppercase tracking-wider">
+							{SOURCE_NAMES[block.kind] ?? block.kind}
+						</div>
+						<div role="radiogroup" aria-label={SOURCE_NAMES[block.kind] ?? block.kind} className="space-y-1.5">
+							{block.rows.map((row, index) => (
+								<UsageRowCard
+									key={row.key}
+									row={row}
+									now={now}
+									inert={isInert(row)}
+									focusable={row.key === stop?.key}
+									onSetDefault={() =>
+										setDefault(row.kind, row.accountId, spokenName(row, SOURCE_NAMES[row.kind] ?? row.kind))
+									}
+									onKeyDown={onRowKeyDown(block.rows, index)}
+									rowRef={(el) => {
+										if (el) rowRefs.current.set(row.key, el);
+										else rowRefs.current.delete(row.key);
+									}}
+									t={t}
+								/>
+							))}
+						</div>
 					</div>
-					<div role="radiogroup" aria-label={SOURCE_NAMES[block.kind] ?? block.kind} className="space-y-1.5">
-						{block.rows.map((row) => (
-							<UsageRowCard
-								key={row.key}
-								row={row}
-								now={now}
-								busy={busy}
-								onSetDefault={() => setDefault(row.kind, row.accountId)}
-								t={t}
-							/>
-						))}
-					</div>
-				</div>
-			))}
-			<p className="text-fg-muted">{t("settings.accountsNewSessionsHint")}</p>
-			<button
-				type="button"
-				onClick={onOpenSettings}
-				className="w-full px-3 py-1.5 rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
-			>
-				{t("rateLimits.manageAccounts")}
-			</button>
+				);
+			})}
+			{/* Sticky, because a user with several accounts scrolls past the fold and
+			    the way out of this panel must not be the thing below it. */}
+			<div className="sticky bottom-0 -mx-3 -mb-3 px-3 pb-3 pt-2 bg-overlay">
+				<button
+					type="button"
+					onClick={onOpenSettings}
+					className="w-full px-3 py-1.5 rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+				>
+					{t("rateLimits.manageAccounts")}
+				</button>
+			</div>
 		</div>
 	);
 }

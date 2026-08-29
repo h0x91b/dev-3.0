@@ -59,8 +59,8 @@ function getIndicator() {
 	return screen.getByRole("button", { name: /Agent rate limits/ });
 }
 
-/** Per-account details now live in the pill's own flyout panel, one click away
- *  (a click pins it; hover alone opens it too). */
+/** Per-account details live in the pill's own flyout panel. Hover opens it
+ *  read-only; the CLICK pins it, and pinned is what makes its rows choosable. */
 async function openUsagePanel() {
 	await userEvent.click(getIndicator());
 	return await screen.findByTestId("agent-usage-panel");
@@ -191,7 +191,38 @@ describe("RateLimitIndicator", () => {
 		expect(document.querySelector(".bg-black\\/50")).toBeNull();
 	});
 
-	it("opens agent accounts settings from the modal's account-settings button", async () => {
+	it("keeps the account rows inert while the panel is only hovered", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		mockedAccounts.mockResolvedValue({
+			claude: {
+				accounts: [
+					{ id: "work", kind: "claude", label: "Work Claude", identity: null, auth: "oauth", api: null, createdAt: 0 },
+				],
+				activeId: null,
+				systemIdentity: null,
+			},
+			codex: { accounts: [], activeId: null, currentIdentity: null },
+		});
+		renderIndicator();
+		await act(async () => {});
+		// Hover only — the gesture a pointer passing through the header makes.
+		await userEvent.hover(getIndicator());
+		const panel = await screen.findByTestId("agent-usage-panel");
+		const rows = panel.querySelectorAll("[role='radio']");
+		expect(rows.length).toBeGreaterThan(0);
+		expect([...rows].every((row) => row.getAttribute("aria-disabled") === "true")).toBe(true);
+
+		// Clicking the pill pins it, and the non-default row becomes choosable.
+		await userEvent.click(getIndicator());
+		const pinned = await screen.findByTestId("agent-usage-panel");
+		const live = [...pinned.querySelectorAll("[role='radio']")].filter(
+			(row) => row.getAttribute("aria-disabled") !== "true",
+		);
+		expect(live.length).toBe(1);
+		expect(live[0]?.textContent).toContain("Work Claude");
+	});
+
+	it("opens agent accounts settings from the panel's account-settings button", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		const onOpenSettings = vi.fn();
 		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettings);
@@ -208,7 +239,7 @@ describe("RateLimitIndicator", () => {
 		}
 	});
 
-	it("spells out '<n>% used' on each Claude window row in the usage modal", async () => {
+	it("spells out '<n>% used' on each Claude window row in the usage panel", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
@@ -251,7 +282,7 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 		await openUsagePanel();
-		// One match in the pill label, one as the modal card chip.
+		// One match in the pill label, one as the panel card chip.
 		expect((await screen.findAllByText("∞ unlimited")).length).toBe(2);
 		expect(screen.queryByText(/credits: unlimited/)).toBeNull();
 	});
@@ -424,7 +455,7 @@ describe("RateLimitIndicator", () => {
 		expect(await screen.findByText(/329.53 \/ 8,824/)).toBeTruthy();
 	});
 
-	it("shows the system-login account identity and plan in the usage modal", async () => {
+	it("shows the system-login account identity and plan in the usage panel", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		mockedAccounts.mockResolvedValue({
 			claude: {

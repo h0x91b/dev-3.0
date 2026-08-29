@@ -224,24 +224,6 @@ export function AccountQuotaLines({ snap, now }: { snap: AgentRateLimitSnapshot;
 	);
 }
 
-/** One account's quota card: identity header + a bar per limit window. */
-export function AccountCard({
-	snap,
-	account,
-	now,
-}: {
-	snap: AgentRateLimitSnapshot;
-	account: AccountLine | null;
-	now: number;
-}) {
-	return (
-		<div className={ACCOUNT_CARD_CLASS}>
-			<AccountCardHeader source={snap.source} account={account} unlimited={isUnlimitedRateLimitSnapshot(snap)} />
-			<AccountQuotaLines snap={snap} now={now} />
-		</div>
-	);
-}
-
 /**
  * Per-card provenance line: how long ago this account's rate-limit reading was
  * captured. Data is only refreshed while a session for that account is active,
