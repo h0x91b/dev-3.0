@@ -1070,9 +1070,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			const canvas = containerRef.current.querySelector("canvas");
 			if (canvas) {
 				// Real text over the canvas, so a long press gets the platform's own
-				// selection UI. Touch devices in the browser only: a desktop mouse
-				// selects through ghostty, and this layer would intercept its drag.
-				if (!isElectrobun && navigator.maxTouchPoints > 0) {
+				// selection UI. Gated on a COARSE primary pointer, not merely on touch
+				// support: the layer is what a pointer lands on, so installing it on a
+				// touchscreen laptop would take every mouse click away from ghostty.
+				if (!isElectrobun && matchMedia("(pointer: coarse)").matches) {
 					touchTextLayerRef.current = installTouchTextLayer(
 						containerRef.current,
 						canvas,
