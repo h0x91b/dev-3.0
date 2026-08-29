@@ -26,6 +26,8 @@ vi.mock("../../rpc", () => ({
 			getAgents: vi.fn(),
 			saveAgents: vi.fn(),
 			getGlobalSettings: vi.fn(),
+			getRemoteAccessStatus: vi.fn().mockResolvedValue({ running: true, port: 51473, failure: null }),
+			retryRemoteAccess: vi.fn().mockResolvedValue({ running: true, port: 51473, failure: null }),
 			saveGlobalSettings: vi.fn(),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			setTmuxTheme: vi.fn().mockResolvedValue(undefined),
