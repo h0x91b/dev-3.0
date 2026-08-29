@@ -419,6 +419,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "remote-port",
+		category: "system",
+		titleKey: "settings.remotePort",
+		descriptionKey: "settings.remotePortDesc",
+		anchor: "remote-port",
+		globalField: "remotePort",
+		storage: "global",
+	},
+	{
 		id: "remote-silent-update",
 		category: "system",
 		titleKey: "settings.remoteSilentUpdate",
@@ -580,6 +589,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"remoteTunnel",
+	"remotePort",
 	"favorites",
 	"keyboardShortcuts",
 	"reviewModePrompt",

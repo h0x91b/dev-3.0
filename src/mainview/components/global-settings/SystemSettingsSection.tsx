@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { GlobalSettings, RemoteTunnelSettings } from "../../../shared/types";
 import type { UpdateChannel } from "../../../shared/update-channel";
 import type { TFunction } from "../../i18n";
@@ -16,6 +16,7 @@ export default function SystemSettingsSection({
 	canaryAvailable,
 	onUpdateChannelChange,
 	onRemoteTunnelChange,
+	onRemotePortChange,
 	onRemoteSilentUpdateToggle,
 	onStaticAccessCodeChange,
 	onPreventSleepToggle,
@@ -28,6 +29,7 @@ export default function SystemSettingsSection({
 	canaryAvailable: boolean;
 	onUpdateChannelChange: (channel: UpdateChannel) => void;
 	onRemoteTunnelChange: (tunnel: RemoteTunnelSettings | undefined) => void;
+	onRemotePortChange: (port: number | undefined) => void;
 	onRemoteSilentUpdateToggle: (enabled: boolean) => void;
 	/** Empty string clears the code. */
 	onStaticAccessCodeChange: (code: string) => void;
@@ -109,6 +111,18 @@ export default function SystemSettingsSection({
 					value={globalSettings.staticAccessCode ?? ""}
 					onChange={onStaticAccessCodeChange}
 				/>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="remote-port">
+				<div>
+					<label htmlFor="remote-port" className="block text-fg text-sm font-semibold mb-2">
+						{t("settings.remotePort")}
+					</label>
+					<p className="text-fg-3 text-sm mb-3">
+						{t("settings.remotePortDesc")}
+					</p>
+					<RemotePortField t={t} port={globalSettings.remotePort} onChange={onRemotePortChange} />
+				</div>
 			</SettingsEntry>
 
 			<SettingsEntry anchor="remote-silent-update">
@@ -318,5 +332,56 @@ function StaticAccessCodeField({
 			) : null}
 			<p className="text-fg-muted text-xs mt-2 leading-snug">{t("settings.staticAccessCodeEnvHint")}</p>
 		</div>
+	);
+}
+
+/**
+ * The port is the one remote-access knob a Finder launch cannot be given: every
+ * `DEV3_*` key is stripped out of the IMPORTED login-shell environment, so a
+ * shell profile never reaches the app. Blank ⇒ a free port each launch;
+ * anything outside 1-65535 is refused rather than silently persisted.
+ */
+function RemotePortField({
+	t,
+	port,
+	onChange,
+}: {
+	t: TFunction;
+	port: number | undefined;
+	onChange: (port: number | undefined) => void;
+}) {
+	const [value, setValue] = useState(port === undefined ? "" : String(port));
+
+	// Settings load asynchronously AFTER this mounts, and this section renders
+	// unconditionally — so the initial state is "" on any route that opens
+	// straight into System, and blurring would then persist undefined and unpin
+	// a port that was set. Adopt the stored value whenever it arrives or changes.
+	useEffect(() => {
+		setValue(port === undefined ? "" : String(port));
+	}, [port]);
+
+	function persist() {
+		const trimmed = value.trim();
+		if (!trimmed) return onChange(undefined);
+		const n = Number.parseInt(trimmed, 10);
+		if (String(n) !== trimmed || n < 1 || n > 65535) {
+			setValue(port === undefined ? "" : String(port)); // reject, keep what is stored
+			return;
+		}
+		onChange(n);
+	}
+
+	return (
+		<input
+			id="remote-port"
+			data-testid="remote-port"
+			type="text"
+			inputMode="numeric"
+			value={value}
+			placeholder={t("settings.remotePortAuto")}
+			onChange={(event) => setValue(event.target.value)}
+			onBlur={persist}
+			className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm font-mono outline-none focus:border-accent/40 transition-colors"
+		/>
 	);
 }

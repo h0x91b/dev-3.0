@@ -133,8 +133,22 @@ export function buildCustomTunnelArgv(command: string, targetPort: number): stri
 	return ["sh", "-c", execLine];
 }
 
-/** The tool a custom command runs, used to attribute its output lines in logs. */
+/**
+ * The tool a custom command runs, used to attribute its output lines in logs.
+ *
+ * A wrapper is the normal shape here, not an exotic one: `cloudflared tunnel run`
+ * never prints its own hostname, so a named-tunnel command must echo the URL
+ * itself (`echo https://host; exec cloudflared tunnel run …`). Taking the first
+ * word attributed cloudflared's output to `echo`.
+ *
+ * `exec` is matched as a whole word and nothing else is split. Deciding the tool
+ * by carving the line on `;` and `&` reads `2>&1` as a command and answers `1`.
+ */
 export function tunnelCommandName(command: string): string {
-	const binary = command.trim().split(/\s+/)[0] ?? "";
+	const line = command.trim();
+	const execs = [...line.matchAll(/(?:^|[\s;&|])exec\s+(\S+)/g)];
+	const segment = execs.length > 0 ? execs[execs.length - 1]![1]! : line;
+	// Leading VAR=value assignments belong to the command, not to its name.
+	const binary = segment.replace(/^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*/, "").split(/\s+/)[0] ?? "";
 	return binary.split(/[\\/]/).pop() || "custom-tunnel";
 }

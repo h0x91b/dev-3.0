@@ -230,6 +230,9 @@ cloudflared tunnel run dev3
 ```
 
 Pass `--port` as well, so the port is stable too: the origin is scheme, host **and** port.
+Serving the **desktop app** rather than `dev3 remote`? Pin it in Settings → System →
+**Remote access port**; `DEV3_REMOTE_PORT` never reaches the app, because every `DEV3_*`
+variable is stripped out of the imported shell environment.
 
 > **If that node also has Tailscale Funnel enabled, serve on 443, not another port.** Funnel
 > publishes public DNS records for the machine's `ts.net` name, and those point at Tailscale's

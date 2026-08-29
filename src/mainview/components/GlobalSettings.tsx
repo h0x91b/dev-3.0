@@ -542,6 +542,16 @@ function GlobalSettings({
 		[persistSettingChange],
 	);
 
+	const handleRemotePortChange = useCallback(
+		(port: number | undefined) => {
+			persistSettingChange(
+				{ remotePort: port },
+				{ tracking: { setting: "remote_port", value: port === undefined ? "auto" : "pinned" } },
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handleRemoteSilentUpdateToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ remoteSilentUpdate: enabled });
@@ -913,6 +923,7 @@ function GlobalSettings({
 							canaryAvailable={canaryAvailable}
 							onUpdateChannelChange={handleUpdateChannelChange}
 							onRemoteTunnelChange={handleRemoteTunnelChange}
+							onRemotePortChange={handleRemotePortChange}
 							onRemoteSilentUpdateToggle={handleRemoteSilentUpdateToggle}
 							onStaticAccessCodeChange={handleStaticAccessCodeChange}
 							onPreventSleepToggle={handlePreventSleepToggle}

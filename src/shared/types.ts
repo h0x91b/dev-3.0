@@ -1287,6 +1287,16 @@ export interface GlobalSettings {
 	 */
 	remoteTunnel?: RemoteTunnelSettings;
 	/**
+	 * Pin the port the remote-access server listens on, so a tunnel ingress, a
+	 * reverse proxy or a `tailscale serve` entry does not break on every launch.
+	 * Absent ⇒ a random free port. `DEV3_REMOTE_PORT` still wins where it is set
+	 * (the CLI's `--port`, the dev script) — but the desktop app cannot read it:
+	 * every `DEV3_*` key is stripped out of the imported shell environment on
+	 * purpose (SHELL_ENV_DENIED_PREFIXES), which left the GUI with no way to pin
+	 * the port at all.
+	 */
+	remotePort?: number;
+	/**
 	 * Custom text the PR review preset in the create-task popup injects into the
 	 * description. Absent/blank ⇒ the localized built-in prompt. A project can
 	 * override it; see resolvePresetPrompt.

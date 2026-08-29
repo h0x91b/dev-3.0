@@ -217,6 +217,7 @@ const MIME_TYPES: Record<string, string> = {
 	".js": "application/javascript; charset=utf-8",
 	".css": "text/css; charset=utf-8",
 	".json": "application/json; charset=utf-8",
+	".webmanifest": "application/manifest+json",
 	".png": "image/png",
 	".jpg": "image/jpeg",
 	".svg": "image/svg+xml",
@@ -616,12 +617,19 @@ interface StartOptions {
 let qrConsumedCallback: (() => void) | null = null;
 
 /**
- * Resolve the listen port from DEV3_REMOTE_PORT env.
+ * Resolve the listen port from DEV3_REMOTE_PORT env, else the `remotePort`
+ * setting.
  *
  * Returns 0 (let Bun pick a random port) when unset, invalid, or explicitly "0".
  * The env is set by the CLI's `--port <n>` flag (Docker maps a stable host port
  * to a known container port) and by the dev script as `DEV3_REMOTE_PORT=${DEV3_PORT0:-0}`,
  * which pins the dev app to its task's pool-allocated port — see decision 093.
+ * It wins over the setting: both are explicit, and the env one names this launch.
+ *
+ * The setting exists because the desktop app cannot be given the env at all —
+ * `SHELL_ENV_DENIED_PREFIXES` strips every `DEV3_*` key out of the imported
+ * shell environment, so a shell profile, `launchctl setenv` and a `.zshenv`
+ * all silently do nothing.
  *
  * "0" is the documented "pick a random port" sentinel: the dev script's `:-0`
  * fallback produces it whenever no pool port is allocated, so it is a normal,
@@ -633,12 +641,13 @@ let qrConsumedCallback: (() => void) | null = null;
  * surfaces the EACCES cleanly, which is more informative than "refused at startup".
  */
 export function resolveListenPort(): number {
-	const raw = process.env.DEV3_REMOTE_PORT;
+	const settingsPort = loadSettingsSync().remotePort;
+	const raw = process.env.DEV3_REMOTE_PORT || (settingsPort === undefined ? "" : String(settingsPort));
 	if (!raw) return 0;
 	const n = Number.parseInt(raw, 10);
 	if (n === 0) return 0; // explicit random-port sentinel — not an error
 	if (!Number.isFinite(n) || n < 1 || n > 65535) {
-		log.warn("Invalid DEV3_REMOTE_PORT, falling back to random port", { raw });
+		log.warn("Invalid remote access port, falling back to random port", { raw });
 		return 0;
 	}
 	return n;

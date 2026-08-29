@@ -31,6 +31,31 @@ describe("tunnelCommandName", () => {
 	it("falls back to a generic label for a blank command", () => {
 		expect(tunnelCommandName("   ")).toBe("custom-tunnel");
 	});
+
+	it("names the exec'd tool, not the wrapper that echoes the hostname", () => {
+		expect(
+			tunnelCommandName("echo https://host.example.com; exec cloudflared tunnel run --url http://localhost:{port} name"),
+		).toBe("cloudflared");
+	});
+
+	it("keeps leading env assignments out of the label", () => {
+		expect(tunnelCommandName("TUNNEL_TOKEN=abc exec /usr/local/bin/cloudflared tunnel run")).toBe("cloudflared");
+	});
+
+	// The tunnel is what FEEDS a pipeline, not what consumes it.
+	it("names the producer of a pipeline, not the sink", () => {
+		expect(tunnelCommandName("ngrok http {port} | tee log")).toBe("ngrok");
+	});
+
+	// Splitting the line on `;` and `&` to find "the last command" reads the `&`
+	// inside `2>&1` as a separator and answers `1`. Redirection is not a command.
+	it("is not fooled by a stderr redirection", () => {
+		expect(tunnelCommandName("ngrok http {port} --log stdout 2>&1")).toBe("ngrok");
+		expect(tunnelCommandName("ngrok http {port} > out.log 2>&1")).toBe("ngrok");
+		expect(
+			tunnelCommandName("cloudflared tunnel --url http://localhost:{port} 2>&1 | tee tunnel.log"),
+		).toBe("cloudflared");
+	});
 });
 
 describe("resolveRemoteTunnelProvider", () => {

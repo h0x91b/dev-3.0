@@ -12,23 +12,28 @@ const t = Object.assign((key: string) => key, {
 function renderSection(settings: Partial<GlobalSettings> = {}) {
 	const onRemoteTunnelChange = vi.fn();
 	const onStaticAccessCodeChange = vi.fn();
-	render(
+	const onRemotePortChange = vi.fn();
+	const tree = (next: Partial<GlobalSettings>) => (
 		<I18nProvider>
 			<SystemSettingsSection
 				t={t}
-				globalSettings={{ updateChannel: "stable", ...settings } as GlobalSettings}
+				globalSettings={{ updateChannel: "stable", ...next } as GlobalSettings}
 				caffeinateAvailable
 				canaryAvailable
 				onUpdateChannelChange={vi.fn()}
 				onRemoteTunnelChange={onRemoteTunnelChange}
+				onRemotePortChange={onRemotePortChange}
 				onRemoteSilentUpdateToggle={vi.fn()}
 				onStaticAccessCodeChange={onStaticAccessCodeChange}
 				onPreventSleepToggle={vi.fn()}
 				onConfirmBeforeQuitToggle={vi.fn()}
 			/>
-		</I18nProvider>,
+		</I18nProvider>
 	);
-	return { onRemoteTunnelChange, onStaticAccessCodeChange };
+	const { rerender } = render(tree(settings));
+	/** Settings arrive asynchronously; this is the second render carrying them. */
+	const settingsArrive = (next: Partial<GlobalSettings>) => rerender(tree(next));
+	return { onRemoteTunnelChange, onRemotePortChange, onStaticAccessCodeChange, settingsArrive };
 }
 
 describe("SystemSettingsSection — tunnel provider", () => {
@@ -130,5 +135,51 @@ describe("static access code", () => {
 
 		await userEvent.type(screen.getByTestId("static-access-code"), "sesame-open-up");
 		expect(screen.getByTestId("static-access-code-warning")).toBeInTheDocument();
+	});
+});
+
+describe("SystemSettingsSection — remote access port", () => {
+	it("shows the stored port and persists a new one on blur", async () => {
+		const { onRemotePortChange } = renderSection({ remotePort: 41234 });
+		const input = screen.getByTestId("remote-port") as HTMLInputElement;
+		expect(input.value).toBe("41234");
+
+		await userEvent.clear(input);
+		await userEvent.type(input, "8443");
+		await userEvent.tab();
+		expect(onRemotePortChange).toHaveBeenCalledWith(8443);
+	});
+
+	it("clearing the field goes back to a free port each launch", async () => {
+		const { onRemotePortChange } = renderSection({ remotePort: 41234 });
+		await userEvent.clear(screen.getByTestId("remote-port"));
+		await userEvent.tab();
+		expect(onRemotePortChange).toHaveBeenCalledWith(undefined);
+	});
+
+	// Settings load in a useEffect AFTER this section mounts, so the field's first
+	// render never carries the stored port. Freezing it at mount showed
+	// "Automatic" over a pinned port, and touching the field then unpinned it.
+	it("adopts the stored port when settings arrive after the first render", async () => {
+		const { onRemotePortChange, settingsArrive } = renderSection({});
+		expect((screen.getByTestId("remote-port") as HTMLInputElement).value).toBe("");
+
+		settingsArrive({ remotePort: 41234 });
+		expect((screen.getByTestId("remote-port") as HTMLInputElement).value).toBe("41234");
+
+		// And blurring the untouched field must not unpin what just arrived.
+		await userEvent.click(screen.getByTestId("remote-port"));
+		await userEvent.tab();
+		expect(onRemotePortChange).not.toHaveBeenCalledWith(undefined);
+	});
+
+	it("refuses an out-of-range port instead of persisting it", async () => {
+		const { onRemotePortChange } = renderSection({ remotePort: 41234 });
+		const input = screen.getByTestId("remote-port") as HTMLInputElement;
+		await userEvent.clear(input);
+		await userEvent.type(input, "70000");
+		await userEvent.tab();
+		expect(onRemotePortChange).not.toHaveBeenCalled();
+		expect(input.value).toBe("41234");
 	});
 });

@@ -1,5 +1,30 @@
+import { existsSync, readdirSync } from "node:fs";
 import type { ElectrobunConfig } from "electrobun";
 import { MINIMUM_WINDOWS_CONPTY_BUN_VERSION } from "./src/shared/native-terminal-runtime";
+
+/**
+ * Vite copies `src/mainview/public/*` to the dist root, but `copy` below is an
+ * allow-list, so anything missing from it never reaches the bundle and the
+ * remote server answers the SPA index.html instead — a service worker served as
+ * text/html cannot register, which killed Web Push in every packaged build. The
+ * list is read off disk so a new public asset can never be forgotten again.
+ *
+ * This module is also bundled INTO the app (src/bun/index.ts imports it), where
+ * `src/` does not exist and the map is never consumed — hence the existsSync
+ * guard rather than a throw. The build-time contents are asserted in
+ * src/bun/__tests__/electrobun-config.test.ts.
+ */
+export function publicAssetCopyEntries(
+	dir: URL | string = new URL("src/mainview/public/", import.meta.url),
+): Record<string, string> {
+	if (!existsSync(dir)) return {};
+	return Object.fromEntries(
+		readdirSync(dir)
+			.filter((name) => !name.startsWith("."))
+			.sort()
+			.map((name) => [`dist/${name}`, `views/mainview/${name}`]),
+	);
+}
 
 /** Windows refuses to execute an extensionless binary, so the packaged CLI keeps `.exe`. */
 export function cliBinaryName(platform: NodeJS.Platform = process.platform): string {
@@ -59,13 +84,7 @@ export default {
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets": "views/mainview/assets",
-			// index.html links these at the views root. They were never copied, so
-			// every launch failed three resource loads — silent on macOS, loud in the
-			// Windows console.
-			"dist/favicon.png": "views/mainview/favicon.png",
-			"dist/favicon-32.png": "views/mainview/favicon-32.png",
-			"dist/favicon-16.png": "views/mainview/favicon-16.png",
-			"dist/apple-touch-icon.png": "views/mainview/apple-touch-icon.png",
+			...publicAssetCopyEntries(),
 			"changelog.json": "changelog.json",
 			[cliCopySource]: cliCopyDestination,
 			"src/assets/sounds": "sounds",

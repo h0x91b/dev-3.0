@@ -188,6 +188,11 @@ function normalizeSettings(data: Record<string, unknown>): GlobalSettings {
 		pxpipeProxyEnabled: d.pxpipeProxyEnabled === true ? true : undefined,
 		// Bring-your-own-tunnel config; kept only when it names a runnable custom command.
 		remoteTunnel: sanitizeRemoteTunnel(d.remoteTunnel),
+		// Pinned remote-access port; anything outside the TCP range means "auto".
+		remotePort:
+			typeof d.remotePort === "number" && Number.isInteger(d.remotePort) && d.remotePort >= 1 && d.remotePort <= 65535
+				? d.remotePort
+				: undefined,
 		// Default-off beta toggle — only an explicit true is a stored opt-in.
 		experimentalTerminalBidi: d.experimentalTerminalBidi === true ? true : undefined,
 		// Default-off beta toggle — only an explicit true is a stored opt-in.

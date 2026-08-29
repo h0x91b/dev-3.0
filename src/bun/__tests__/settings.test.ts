@@ -175,6 +175,7 @@ describe("saveSettings", () => {
 			coordinatorPrompt: "Coordinate, do not code.",
 			staticAccessCode: "correct-horse-battery-staple",
 			remoteTunnel: { provider: "custom", command: "ngrok http {port} --log stdout", urlPattern: "https://\\S+" },
+			remotePort: 41234,
 			agentLaunchAutoApproveMinutes: 2,
 			defaultAgentId: "builtin-codex",
 			defaultConfigId: "codex-default",

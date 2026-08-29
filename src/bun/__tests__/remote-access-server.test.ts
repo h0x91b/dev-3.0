@@ -58,11 +58,14 @@ vi.mock("../cloudflare-tunnel", () => ({
 	getTunnelState: vi.fn().mockReturnValue("idle"),
 }));
 
+// Mutable so the port tests can drive the `remotePort` setting.
+const mockSettings: { theme: string; resolvedTheme: string; remotePort?: number } = {
+	theme: "light",
+	resolvedTheme: "light",
+};
+
 vi.mock("../settings", () => ({
-	loadSettingsSync: vi.fn(() => ({
-		theme: "light",
-		resolvedTheme: "light",
-	})),
+	loadSettingsSync: vi.fn(() => mockSettings),
 }));
 
 vi.mock("../theme-state", () => ({
@@ -264,6 +267,7 @@ describe("resolveListenPort", () => {
 		} else {
 			process.env.DEV3_REMOTE_PORT = originalEnv;
 		}
+		delete mockSettings.remotePort;
 	});
 
 	it("returns 0 when env var is unset", () => {
@@ -303,6 +307,27 @@ describe("resolveListenPort", () => {
 
 	it("falls back to 0 for negative port", () => {
 		process.env.DEV3_REMOTE_PORT = "-1";
+		expect(resolveListenPort()).toBe(0);
+	});
+
+	// The desktop app never sees DEV3_REMOTE_PORT — every DEV3_* key is stripped
+	// out of the imported shell environment — so the setting is its only way to
+	// pin the port a tunnel ingress or reverse proxy is aimed at.
+	it("uses the remotePort setting when the env is unset", () => {
+		delete process.env.DEV3_REMOTE_PORT;
+		mockSettings.remotePort = 41234;
+		expect(resolveListenPort()).toBe(41234);
+	});
+
+	it("lets the env win over the setting — it names this launch", () => {
+		process.env.DEV3_REMOTE_PORT = "3000";
+		mockSettings.remotePort = 41234;
+		expect(resolveListenPort()).toBe(3000);
+	});
+
+	it("honours the env random-port sentinel over a pinned setting", () => {
+		process.env.DEV3_REMOTE_PORT = "0";
+		mockSettings.remotePort = 41234;
 		expect(resolveListenPort()).toBe(0);
 	});
 });
