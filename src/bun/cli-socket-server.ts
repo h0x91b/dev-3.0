@@ -8,6 +8,7 @@ import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
+import { DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, normalizeEventInstant, selectEvents, type BoardEvent, type EventCursor } from "../shared/board-events";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { SharedImageError, saveSharedImage } from "./shared-images";
@@ -1130,6 +1131,65 @@ const handlers: Record<string, Handler> = {
 		});
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
+	},
+
+	/**
+	 * `dev3 events` — every note recorded anywhere on the board, in one feed.
+	 *
+	 * Completed and cancelled tasks are deliberately included: that is the whole
+	 * point. A live task can still message a coordinator, a finished one cannot,
+	 * and its notes are all that survived its worktree.
+	 *
+	 * Selection happens here rather than in the CLI because the "older than the
+	 * window" count needs the full corpus, and shipping every note body over the
+	 * socket to count them would be the expensive way to learn one number.
+	 */
+	"events.list": async (params) => {
+		const rawLimit = Number(params.limit ?? DEFAULT_EVENT_LIMIT);
+		const limit = Number.isFinite(rawLimit)
+			? Math.min(MAX_EVENT_LIMIT, Math.max(1, Math.floor(rawLimit)))
+			: DEFAULT_EVENT_LIMIT;
+
+		const projects = params.projectId
+			? [await data.getProject(params.projectId as string)]
+			: [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+
+		const events: BoardEvent[] = [];
+		for (const project of projects) {
+			let tasks: Task[];
+			try {
+				tasks = await data.loadTasks(project);
+			} catch (err) {
+				log.warn("events.list: skipping unreadable project", { projectId: project.id, error: String(err) });
+				continue;
+			}
+			for (const task of tasks) {
+				for (const note of task.notes ?? []) {
+					const at = normalizeEventInstant(note.createdAt) ?? normalizeEventInstant(task.createdAt);
+					if (!at) continue;
+					events.push({
+						kind: "note",
+						at,
+						id: note.id,
+						projectId: project.id,
+						projectName: project.name ?? "",
+						taskId: task.id,
+						seq: task.seq ?? null,
+						taskTitle: getTaskTitle(task),
+						taskStatus: task.status,
+						source: note.source,
+						text: note.content,
+					});
+				}
+			}
+		}
+
+		return selectEvents(events, {
+			cursor: (params.cursor as EventCursor | null | undefined) ?? null,
+			limit,
+			now: Date.now(),
+			windowMs: params.windowMs as number | undefined,
+		});
 	},
 
 	"vent.add": async (params) => {

@@ -201,6 +201,23 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "events",
+		summary: "Cross-task feed of what was recorded on the board, addressed by a cursor.",
+		subcommands: [],
+		usage: "dev3 events [--from <cursor>] [--limit <n>] [--project <ref>|all] [--kind all|note] [--json]",
+		details: [
+			"Every note from EVERY task, including completed and cancelled ones — a finished task cannot message you, its notes are all that survived.",
+			"--from <cursor>  Read from a position: the value a previous run printed on its `Cursor:` line, or a bare ISO instant.",
+			"--limit <n>      Cap the lines, 1..1000 (default 100). The OLDEST matches are kept and the dropped newer ones are counted.",
+			"--project <ref>  One board; `--project all` sweeps every board. Defaults to the current worktree's project.",
+			"--kind all|note  v1 records notes only; the filter exists so a future kind does not reshape the output.",
+			"--json           Emit the raw selection object (events, droppedNewer, olderThanWindow, cursor).",
+			"With no --from it shows the last 24 hours and says, as a number, how many events are OLDER than that window.",
+			"The cursor is never guessed: an unparseable --from exits 19 and reads nothing.",
+			"One line per event — `dev3 note show <id> --task <seq>` prints the full body.",
+		],
+	},
+	{
 		name: "overview",
 		summary: "The task overview — a 1-2 sentence sticky-note summary.",
 		subcommands: [

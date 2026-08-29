@@ -4250,3 +4250,118 @@ describe("message.send — --variant narrows a variant group", () => {
 		expect(resp.error).toContain("matches 2 variant tasks");
 	});
 });
+
+describe("events.list — the board's memory channel", () => {
+	function note(id: string, createdAt: string, content = `note ${id}`): TaskNote {
+		return { id, content, source: "ai", createdAt, updatedAt: createdAt };
+	}
+
+	beforeEach(() => {
+		vi.mocked(data.loadProjects).mockResolvedValue([makeProject()]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+	});
+
+	// The whole reason the command exists: a live task can still message a
+	// coordinator, a finished one cannot, and its notes outlived its worktree.
+	it("includes notes from completed and cancelled tasks", async () => {
+		const now = new Date().toISOString();
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			makeTask({ id: "t-live", seq: 1, status: "in-progress", notes: [note("n-live", now)] }),
+			makeTask({ id: "t-done", seq: 2, status: "completed", notes: [note("n-done", now)] }),
+			makeTask({ id: "t-dead", seq: 3, status: "cancelled", notes: [note("n-dead", now)] }),
+		]);
+
+		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
+
+		expect(resp.ok).toBe(true);
+		const ids = (resp.data as { events: Array<{ id: string }> }).events.map((e) => e.id);
+		expect(ids.sort()).toEqual(["n-dead", "n-done", "n-live"]);
+	});
+
+	it("carries the owning task's seq, title and status on every event", async () => {
+		const now = new Date().toISOString();
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			makeTask({ id: "t-done", seq: 1738, title: "Add dev3 events", status: "completed", notes: [note("n1", now)] }),
+		]);
+
+		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
+
+		expect((resp.data as { events: unknown[] }).events[0]).toMatchObject({
+			kind: "note",
+			seq: 1738,
+			taskTitle: "Add dev3 events",
+			taskStatus: "completed",
+			projectName: "Test Project",
+		});
+	});
+
+	it("advances: a cursor from one read returns nothing, then exactly the new note", async () => {
+		const tasks = [makeTask({ id: "t1", notes: [note("n1", "2026-08-29T10:00:00.000Z")] })];
+		vi.mocked(data.loadTasks).mockResolvedValue(tasks);
+
+		const first = await handleRequest(makeRequest("events.list", {
+			cursor: { at: "2026-01-01T00:00:00.000Z", id: null },
+			limit: 100,
+		}));
+		const cursorLine = (first.data as { cursor: string }).cursor;
+		expect(cursorLine).toBe("2026-08-29T10:00:00.000Z.n1");
+
+		const second = await handleRequest(makeRequest("events.list", {
+			cursor: { at: "2026-08-29T10:00:00.000Z", id: "n1" },
+			limit: 100,
+		}));
+		expect((second.data as { events: unknown[] }).events).toHaveLength(0);
+
+		tasks[0] = makeTask({ id: "t1", notes: [note("n1", "2026-08-29T10:00:00.000Z"), note("n2", "2026-08-29T11:00:00.000Z")] });
+		const third = await handleRequest(makeRequest("events.list", {
+			cursor: { at: "2026-08-29T10:00:00.000Z", id: "n1" },
+			limit: 100,
+		}));
+		expect((third.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["n2"]);
+	});
+
+	it("counts the cap instead of truncating in silence", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			makeTask({
+				id: "t1",
+				notes: Array.from({ length: 12 }, (_, i) => note(`n${String(i).padStart(2, "0")}`, `2026-08-29T${String(i).padStart(2, "0")}:00:00.000Z`)),
+			}),
+		]);
+
+		const resp = await handleRequest(makeRequest("events.list", {
+			cursor: { at: "2026-01-01T00:00:00.000Z", id: null },
+			limit: 5,
+		}));
+
+		const sel = resp.data as { events: Array<{ id: string }>; droppedNewer: number; matched: number };
+		expect(sel.events.map((e) => e.id)).toEqual(["n00", "n01", "n02", "n03", "n04"]);
+		expect(sel.droppedNewer).toBe(7);
+		expect(sel.matched).toBe(12);
+	});
+
+	it("keeps reading the other boards when one project is unreadable", async () => {
+		const alpha = makeProject({ id: "proj-a", name: "Alpha", path: "/tmp/a" });
+		const beta = makeProject({ id: "proj-b", name: "Beta", path: "/tmp/b" });
+		vi.mocked(data.loadProjects).mockResolvedValue([alpha, beta]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => {
+			if (p.id === "proj-a") throw new Error("tasks.json is corrupt");
+			return [makeTask({ id: "t-b", projectId: "proj-b", notes: [note("n-b", new Date().toISOString())] })];
+		});
+
+		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
+
+		expect(resp.ok).toBe(true);
+		expect((resp.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["n-b"]);
+	});
+
+	it("skips a note whose timestamp cannot be read rather than dating it to 1970", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			makeTask({ id: "t1", createdAt: "not a date", notes: [note("n-bad", "not a date"), note("n-ok", new Date().toISOString())] }),
+		]);
+
+		const resp = await handleRequest(makeRequest("events.list", { cursor: null, limit: 100 }));
+
+		expect((resp.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["n-ok"]);
+	});
+});
