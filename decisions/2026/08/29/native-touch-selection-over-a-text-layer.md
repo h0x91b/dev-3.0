@@ -60,7 +60,9 @@ viewport is in the DOM, so a selection cannot run off-screen into scrollback: sc
 first, then select. The layer carries logical text, so a bidi viewport selects in
 logical rather than visual order. Alignment leans on the font measuring the same way
 for `measureText` as it does for ghostty's `charWidth`; a fallback font that does not
-would drift across a wide row.
+would drift across a wide row. Font size and family are both live settings, so the
+layer re-reads them from `term.options` on every refresh rather than capturing them —
+a stale family measures a different advance than ghostty draws with.
 
 ## Alternatives considered
 
