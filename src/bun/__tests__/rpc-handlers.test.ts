@@ -10472,6 +10472,60 @@ describe("launchTaskPty", () => {
 		}
 	});
 
+	// This write replaces pane[0] wholesale, so it is the one place an origin
+	// store can silently disappear — after which resume resolves the id against
+	// an empty worktree store and starts a brand new conversation instead.
+	describe("sessionOriginCwd across the sessionState rewrite", () => {
+		const ORIGIN = "/Users/dev/code/my-app";
+		const withOrigin = () => makeTask({
+			sessionState: {
+				panes: [{
+					agentCmd: "claude",
+					sessionId: "from-elsewhere",
+					agentId: "builtin-claude",
+					configId: "claude-default",
+					sessionOriginCwd: ORIGIN,
+				}],
+			},
+		});
+		const persistedPane = () => {
+			const call = vi.mocked(data.updateTask).mock.calls.find(([, , updates]) => (updates as any)?.sessionState);
+			return (call?.[2] as any)?.sessionState?.panes?.[0];
+		};
+
+		it("carries the origin store forward when the same id is resumed", async () => {
+			const task = withOrigin();
+			mockTaskWrites(task);
+
+			await launchTaskPty(makeProject(), task, "/tmp/wt", "builtin-claude", "claude-default", false, true, {
+				sessionId: "from-elsewhere",
+			});
+
+			expect(persistedPane()).toMatchObject({ sessionId: "from-elsewhere", sessionOriginCwd: ORIGIN });
+		});
+
+		it("drops the origin store when the resolver substituted a different id", async () => {
+			const task = withOrigin();
+			mockTaskWrites(task);
+
+			await launchTaskPty(makeProject(), task, "/tmp/wt", "builtin-claude", "claude-default", false, true, {
+				sessionId: "healed-local",
+			});
+
+			expect(persistedPane()).toMatchObject({ sessionId: "healed-local" });
+			expect(persistedPane()?.sessionOriginCwd).toBeUndefined();
+		});
+
+		it("leaves a fresh launch without an origin store", async () => {
+			const task = withOrigin();
+			mockTaskWrites(task);
+
+			await launchTaskPty(makeProject(), task, "/tmp/wt", "builtin-claude", "claude-default");
+
+			expect(persistedPane()?.sessionOriginCwd).toBeUndefined();
+		});
+	});
+
 	it("throws without creating a PTY session when command resolution fails", async () => {
 		const project = makeProject();
 		const task = makeTask();

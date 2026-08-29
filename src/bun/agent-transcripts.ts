@@ -66,6 +66,9 @@ export function resolveResumableSessionId(
 	storedSessionId: string | null | undefined,
 	home: string = resolveUserHome(),
 	family?: AgentFamily,
+	/** The directory whose store actually holds this pane's conversation, when it
+	 *  is not the task's own. Checked before healing. */
+	originCwd?: string | null,
 ): ResumeTarget {
 	const stored = storedSessionId ?? null;
 	const store = storeFor(agentCmd, worktreePath, home, family);
@@ -74,6 +77,20 @@ export function resolveResumableSessionId(
 
 	const ids = sessionIdsNewestFirst(store.dirs, store.ext);
 	if (ids.includes(stored)) return { sessionId: stored, substituted: false };
+
+	// A conversation that began elsewhere never migrates into this worktree's
+	// store: a resume appends to the original file and only stamps the new cwd
+	// into the new records. The agent DOES create the worktree's store directory
+	// though — empty, holding just `memory/` — so the early-out above sees a
+	// store that exists, finds no ids in it, and would heal a live id to null,
+	// i.e. `--continue`, i.e. a brand new conversation.
+	if (originCwd) {
+		const origin = storeFor(agentCmd, originCwd, home, family);
+		if (origin && sessionIdsNewestFirst(origin.dirs, origin.ext).includes(stored)) {
+			return { sessionId: stored, substituted: false };
+		}
+	}
+
 	return { sessionId: ids[0] ?? null, substituted: true };
 }
 

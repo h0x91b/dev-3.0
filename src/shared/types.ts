@@ -2870,6 +2870,12 @@ export interface PaneSessionEntry {
 	 *  carrying the task description. Absent on panes stored by older versions,
 	 *  which fall back to the command-name guess. */
 	agentFamily?: AgentFamily | null;
+	/** For a pane whose conversation started in ANOTHER directory: the directory it
+	 *  started in. Its transcript stays in that directory's store forever — a resume
+	 *  appends to the original file and only stamps the new cwd into new records — so
+	 *  recovery must look there, not in the task's own worktree store. Absent on every
+	 *  pane whose session began where the task lives. */
+	sessionOriginCwd?: string | null;
 }
 
 /** Captured session state for agent recovery after tmux death / app restart. */

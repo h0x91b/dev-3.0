@@ -23,6 +23,22 @@ function seedTranscript(sessionId: string, ageSeconds: number): void {
 	utimesSync(file, when, when);
 }
 
+/** Seed a transcript for an arbitrary working directory — a conversation's origin store. */
+function seedTranscriptFor(cwd: string, sessionId: string): void {
+	const dir = join(home, ".claude", "projects", claudeEncodePath(cwd));
+	mkdirSync(dir, { recursive: true });
+	writeFileSync(join(dir, `${sessionId}.jsonl`), `${JSON.stringify({ type: "assistant", cwd, sessionId })}\n`);
+}
+
+/**
+ * The worktree's own store as a pane resumed from elsewhere really finds it: the
+ * directory EXISTS (the agent creates it on resume) but holds no transcript,
+ * because the conversation stayed in the origin's store.
+ */
+function seedEmptyWorktreeStore(): void {
+	mkdirSync(join(transcriptDir(), "memory"), { recursive: true });
+}
+
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), "agent-transcripts-"));
 });
@@ -86,6 +102,38 @@ describe("resolveResumableSessionId", () => {
 			sessionId: null,
 			substituted: false,
 		});
+	});
+
+	it("keeps an id whose conversation lives in the origin store", () => {
+		// Without the origin lookup the empty-but-present worktree store yields
+		// null, which becomes `--continue`, which starts a BRAND NEW conversation
+		// and silently orphans the one the pane was resuming.
+		const origin = "/Users/dev/code/my-app";
+		seedEmptyWorktreeStore();
+		seedTranscriptFor(origin, "elsewhere-1");
+
+		expect(
+			resolveResumableSessionId("claude", WORKTREE, "elsewhere-1", home, undefined, origin),
+		).toEqual({ sessionId: "elsewhere-1", substituted: false });
+	});
+
+	it("does not let a later local session hijack an id from the origin store", () => {
+		const origin = "/Users/dev/code/my-app";
+		seedTranscript("local-session", 10);
+		seedTranscriptFor(origin, "elsewhere-1");
+
+		expect(
+			resolveResumableSessionId("claude", WORKTREE, "elsewhere-1", home, undefined, origin),
+		).toEqual({ sessionId: "elsewhere-1", substituted: false });
+	});
+
+	it("still heals when the origin store has lost the conversation too", () => {
+		seedTranscript("survivor", 10);
+		seedEmptyWorktreeStore();
+
+		expect(
+			resolveResumableSessionId("claude", WORKTREE, "gone", home, undefined, "/Users/dev/code/my-app"),
+		).toEqual({ sessionId: "survivor", substituted: true });
 	});
 });
 

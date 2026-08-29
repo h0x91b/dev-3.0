@@ -722,6 +722,13 @@ export async function launchTaskPty(
 		if (!skipSessionPersist) {
 			const effectiveSessionId = resume ? sessionId
 				: (agents.supportsPreAssignedSessionId(resolvedBaseCmd, resolvedAgentFamily) ? freshSessionId : null);
+			// This write replaces pane[0] wholesale, so an origin store the resolver
+			// still needs has to be carried across it. It belongs to one specific id:
+			// a substituted id was found in this worktree's own store, so it drops.
+			const priorMain = task.sessionState?.panes?.[0];
+			const carriedOriginCwd = resume && effectiveSessionId && effectiveSessionId === priorMain?.sessionId
+				? priorMain.sessionOriginCwd ?? undefined
+				: undefined;
 			const paneEntry = {
 				agentCmd: resolvedBaseCmd,
 				sessionId: effectiveSessionId ?? null,
@@ -729,6 +736,7 @@ export async function launchTaskPty(
 				configId: configId ?? task.configId,
 				accountId: task.accountId,
 				agentFamily: resolvedAgentFamily,
+				sessionOriginCwd: carriedOriginCwd,
 			};
 			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry] };
@@ -1631,6 +1639,7 @@ function resolveResumeTarget(task: Task, pane: PaneSessionEntry, label: string):
 		pane.sessionId,
 		undefined,
 		pane.agentFamily ?? undefined,
+		pane.sessionOriginCwd,
 	);
 	if (target.substituted) {
 		log.warn("Stored session id has no transcript — resuming the newest conversation instead", {
