@@ -151,7 +151,7 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 								)}
 
 								<div className="text-fg-3 text-xs font-medium pt-1">{t("updateSim.rawPayload")}</div>
-								<pre className="text-fg-2 text-micro font-mono bg-base rounded-lg p-3 overflow-x-auto">
+								<pre data-wheel-x className="text-fg-2 text-micro font-mono bg-base rounded-lg p-3 overflow-x-auto">
 									{JSON.stringify(preview.changelog, null, 2)}
 								</pre>
 							</div>

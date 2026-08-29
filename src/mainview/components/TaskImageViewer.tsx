@@ -394,6 +394,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId,
 				{images.length > 1 && (
 					<div
 						ref={thumbStripRef}
+						data-wheel-x
 						className="flex-shrink-0 flex justify-center gap-2 overflow-x-auto px-4 py-3 border-t border-edge bg-raised"
 					>
 						{images.map((img, i) => {

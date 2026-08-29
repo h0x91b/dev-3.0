@@ -286,7 +286,7 @@ function LoginFlowCard({
 		<div className="bg-base border border-accent/30 rounded-lg p-3 space-y-2.5">
 			<p className="text-fg-2 text-xs">{t("settings.accountsLoginHint")}</p>
 			<div className="flex items-center gap-1.5">
-				<code className="flex-1 bg-elevated border border-edge rounded px-2 py-1.5 text-xs font-mono text-fg overflow-x-auto whitespace-nowrap">
+				<code data-wheel-x className="flex-1 bg-elevated border border-edge rounded px-2 py-1.5 text-xs font-mono text-fg overflow-x-auto whitespace-nowrap">
 					{flow.loginCommand}
 				</code>
 				<button

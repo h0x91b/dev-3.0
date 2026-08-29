@@ -134,7 +134,7 @@ function EditTable({
 	children,
 }: { columns: string[]; actionsLabel: string; children: React.ReactNode }) {
 	return (
-		<div className="overflow-x-auto rounded-xl border border-edge bg-raised">
+		<div data-wheel-x className="overflow-x-auto rounded-xl border border-edge bg-raised">
 			<table className="w-full text-sm border-collapse">
 				<thead>
 					<tr className="border-b border-edge">

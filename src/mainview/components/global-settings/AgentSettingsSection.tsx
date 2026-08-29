@@ -649,7 +649,7 @@ function CommandPreview({
 	const parts = command.split(/(\{\{\w+\}\})/g);
 
 	return (
-		<div className="bg-base border border-edge rounded-lg p-3 font-mono text-xs leading-relaxed overflow-x-auto">
+		<div data-wheel-x className="bg-base border border-edge rounded-lg p-3 font-mono text-xs leading-relaxed overflow-x-auto">
 			{envLine ? (
 				<div className="text-fg-3 mb-1">
 					<span className="text-fg-muted">env: </span>

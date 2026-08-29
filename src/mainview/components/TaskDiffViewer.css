@@ -203,12 +203,19 @@
 	border-radius: 0.25rem;
 	padding: 0.0625rem 0.25rem;
 }
+/* Wraps rather than scrolls: a mouse has no horizontal axis, and stealing the
+   wheel for a code block would pin a long PR body every time the cursor crossed
+   one. The surrounding document already wraps (`overflow-wrap: anywhere`). */
 .dev3-pr-md pre {
 	background: rgb(var(--surface-base));
 	border: 1px solid rgb(var(--border-default));
 	border-radius: 0.5rem;
 	padding: 0.5rem 0.75rem;
-	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.dev3-pr-md pre code {
+	white-space: inherit;
 }
 .dev3-pr-md pre code {
 	background: transparent;

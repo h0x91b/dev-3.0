@@ -461,7 +461,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 					? "flex flex-col flex-1 min-h-[18rem]"
 					: "flex h-[min(36rem,80vh)] min-h-0"}>
 					{narrow ? (
-						<div data-testid="folder-picker-places-strip" className="flex gap-1.5 px-3 py-2 border-b border-edge bg-raised/40 overflow-x-auto flex-shrink-0">
+						<div data-testid="folder-picker-places-strip" data-wheel-x className="flex gap-1.5 px-3 py-2 border-b border-edge bg-raised/40 overflow-x-auto flex-shrink-0">
 							{quickPlaces.map((place) => {
 								const active = currentRoot === place.path;
 								return (

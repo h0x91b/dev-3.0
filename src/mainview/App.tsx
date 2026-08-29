@@ -16,6 +16,7 @@ import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
 import { isTypingContext } from "./utils/typing-context";
+import { installHorizontalWheelBridge } from "./utils/horizontal-wheel";
 import { matchesShortcut } from "./keymap";
 import { setShortcutOverrides } from "./keymap-store";
 import { syncTerminalBidiFromGlobalSettings } from "./terminal-bidi/flag";
@@ -179,6 +180,10 @@ function App() {
 		// genuinely stale tmux copy-mode session.
 		skipNextTerminalCopyResetRef.current = false;
 	}, [terminalImmersiveVisible]);
+
+	// A plain mouse has no horizontal axis, so horizontal-only containers (the
+	// board above all) were unreachable without a trackpad.
+	useEffect(() => installHorizontalWheelBridge(), []);
 
 	useEffect(() => {
 		return () => {

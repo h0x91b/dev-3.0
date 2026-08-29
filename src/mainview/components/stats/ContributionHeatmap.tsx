@@ -73,7 +73,7 @@ export function ContributionHeatmap({ days, maxCount, legendLess, legendMore, to
 	}, [weeks]);
 
 	return (
-		<div ref={scrollRef} className="overflow-x-auto">
+		<div ref={scrollRef} data-wheel-x className="overflow-x-auto">
 			<div className="inline-flex flex-col gap-1">
 				{/* Month labels, column-aligned with the grid below. */}
 				<div
