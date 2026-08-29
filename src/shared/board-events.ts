@@ -34,6 +34,12 @@ export interface EventSelection {
 	matched: number;
 	/** Cursor for the newest shown event, or null when nothing was shown. */
 	cursor: string | null;
+	/**
+	 * The instant `--from` actually resolved to. Set by the app, because an id
+	 * prefix can only be resolved there — without it a quiet sweep started from
+	 * an id would leave the caller with no position at all.
+	 */
+	from?: string | null;
 }
 
 /** Default look-back when the caller supplies no cursor. */
@@ -63,6 +69,21 @@ const DURATION_UNIT_MS: Record<string, number> = {
 	d: 24 * 60 * 60 * 1000,
 	w: 7 * 24 * 60 * 60 * 1000,
 };
+
+/**
+ * A `--from` value that is neither an instant nor a duration is read as an
+ * event id prefix — the 8-hex value already sitting in the ID column, or any
+ * unambiguous head of it. Four characters is the floor: shorter is ambiguous
+ * across a board with hundreds of notes far more often than it is convenient.
+ */
+const EVENT_ID_PREFIX_RE = /^[0-9a-fA-F]{4,32}$/;
+
+/** Prefixes an `events.list` error the CLI must report as a cursor problem. */
+export const EVENT_CURSOR_UNRESOLVED_PREFIX = "event-cursor-unresolved: ";
+
+export function isEventIdPrefix(raw: string): boolean {
+	return EVENT_ID_PREFIX_RE.test(raw.trim());
+}
 
 /** What a run prints on its `Cursor:` line. */
 export function formatEventCursor(event: BoardEvent): string {
@@ -113,6 +134,29 @@ export function parseEventCursor(raw: string, now: number = Date.now()): string 
 function compareEvents(a: BoardEvent, b: BoardEvent): number {
 	if (a.at !== b.at) return a.at < b.at ? -1 : 1;
 	return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
+ * Turn an id prefix into the instant it points at. Throws a message the CLI
+ * turns into exit 19 — an id that resolves to nothing must never be answered
+ * with "no events since then", which reads as a quiet board.
+ */
+export function resolveEventIdPrefix(all: BoardEvent[], prefix: string): string {
+	const wanted = prefix.trim().toLowerCase();
+	const hits = all.filter((e) => e.id.toLowerCase().startsWith(wanted));
+	if (hits.length === 1) return hits[0].at;
+	if (hits.length === 0) {
+		throw new Error(
+			`${EVENT_CURSOR_UNRESOLVED_PREFIX}no event id starts with "${prefix}".\n`
+			+ "Notes can be deleted, and a task keeps only its 50 most recent, so an old id may be gone.\n"
+			+ "Use the instant form from a previous run's `Cursor:` line, or run `dev3 events` with no --from.",
+		);
+	}
+	const sample = hits.slice(0, 5).map((e) => `${e.id.slice(0, 8)} (seq ${e.seq ?? "-"})`).join(", ");
+	throw new Error(
+		`${EVENT_CURSOR_UNRESOLVED_PREFIX}"${prefix}" matches ${hits.length} events: ${sample}`
+		+ `${hits.length > 5 ? ", …" : ""}\nGive more characters of the id.`,
+	);
 }
 
 /**

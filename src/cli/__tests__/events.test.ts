@@ -4,6 +4,7 @@ import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { CliResponse } from "../../shared/types";
 import type { BoardEvent, EventSelection } from "../../shared/board-events";
+import { EVENT_CURSOR_UNRESOLVED_PREFIX } from "../../shared/board-events";
 import { CLI_EXIT_CODE_EVENT_CURSOR_INVALID, CLI_EXIT_CODE_USAGE_ERROR } from "../../shared/cli-exit-codes";
 
 vi.mock("../socket-client", () => ({ sendRequest: vi.fn() }));
@@ -51,6 +52,10 @@ function okResp(data: unknown): CliResponse {
 	return { id: "test-id", ok: true, data };
 }
 
+function errResp(error: string): CliResponse {
+	return { id: "test-id", ok: false, error };
+}
+
 function args(flags: Record<string, string> = {}, positional: string[] = []): ParsedArgs {
 	return { positional, flags };
 }
@@ -91,7 +96,7 @@ describe("dev3 events — the cursor is never guessed", () => {
 		);
 		expect(mockSend).not.toHaveBeenCalled();
 		expect(stderrOutput).toContain("Unparseable --from value: yesterday");
-		expect(stderrOutput).toContain("Three shapes are accepted");
+		expect(stderrOutput).toContain("Four shapes are accepted");
 	});
 
 	it("accepts a duration and resolves it to an instant before sending", async () => {
@@ -111,6 +116,42 @@ describe("dev3 events — the cursor is never guessed", () => {
 			`EXIT_${CLI_EXIT_CODE_USAGE_ERROR}`,
 		);
 		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("sends an id prefix as cursorId, leaving the instant for the app to resolve", async () => {
+		mockSend.mockResolvedValue(okResp(selection({ from: "2026-08-29T09:00:00.000" })));
+
+		await handleEvents(args({ from: "8eb2da3d" }), SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "events.list", {
+			limit: 100,
+			cursor: null,
+			cursorId: "8eb2da3d",
+			projectId: "proj-001",
+		});
+	});
+
+	it("keeps the position after a quiet sweep started from an id", async () => {
+		mockSend.mockResolvedValue(okResp(selection({
+			events: [], cursor: null, matched: 0, from: "2026-08-29T09:00:00.000",
+		})));
+
+		await handleEvents(args({ from: "8eb2da3d" }), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Cursor: 2026-08-29T09:00:00.000");
+		expect(stdoutOutput).not.toContain("none yet");
+	});
+
+	it("reports an id that resolves to nothing as exit 19, not a failed read", async () => {
+		mockSend.mockResolvedValue(errResp(
+			`${EVENT_CURSOR_UNRESOLVED_PREFIX}no event id starts with "deadbeef".\nA task keeps only its 50 most recent notes.`,
+		));
+
+		await expect(handleEvents(args({ from: "deadbeef" }), SOCKET, CTX)).rejects.toThrow(
+			`EXIT_${CLI_EXIT_CODE_EVENT_CURSOR_INVALID}`,
+		);
+		expect(stderrOutput).toContain('no event id starts with "deadbeef"');
+		expect(stderrOutput).not.toContain(EVENT_CURSOR_UNRESOLVED_PREFIX);
 	});
 
 	it("sends the parsed cursor to the app", async () => {

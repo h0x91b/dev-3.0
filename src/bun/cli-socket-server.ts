@@ -8,7 +8,7 @@ import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ACTIVE_STATUSES, ALL_STATUSES, DEFAULT_PRIORITY, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, TASK_TYPES, agentLaunchAutoApproveMs, appendTaskNote, buildTaskDialogSubject, getTaskTitle, isStatusGuardBlocked, normalizePriority, normalizeTaskType, presetPromptForTaskType, titleFromDescription, withPresetPrompt, withoutPresetPrompt } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { CLAUDE_STOP_FAILURE_ERRORS, describeClaudeStopFailure, type ClaudeStopFailureError } from "../shared/agent-stop-failure";
-import { DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, normalizeEventInstant, selectEvents, type BoardEvent } from "../shared/board-events";
+import { DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT, normalizeEventInstant, resolveEventIdPrefix, selectEvents, type BoardEvent } from "../shared/board-events";
 import type { DeepLinkNav } from "../shared/deep-link";
 import { markPendingDeepLinkNav } from "./deep-link-nav";
 import { SharedImageError, saveSharedImage } from "./shared-images";
@@ -1184,12 +1184,22 @@ const handlers: Record<string, Handler> = {
 			}
 		}
 
-		return selectEvents(events, {
-			cursor: (params.cursor as string | null | undefined) ?? null,
-			limit,
-			now: Date.now(),
-			windowMs: params.windowMs as number | undefined,
-		});
+		// An id prefix is resolved against the same scope that is about to be read,
+		// so "not found" always means "not in what you asked for".
+		const cursorId = params.cursorId as string | undefined;
+		const cursor = cursorId
+			? resolveEventIdPrefix(events, cursorId)
+			: (params.cursor as string | null | undefined) ?? null;
+
+		return {
+			...selectEvents(events, {
+				cursor,
+				limit,
+				now: Date.now(),
+				windowMs: params.windowMs as number | undefined,
+			}),
+			from: cursor ? cursor.replace(/Z$/, "") : null,
+		};
 	},
 
 	"vent.add": async (params) => {

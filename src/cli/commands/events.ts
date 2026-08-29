@@ -1,7 +1,9 @@
 import {
 	DEFAULT_EVENT_LIMIT,
 	DEFAULT_EVENT_WINDOW_MS,
+	EVENT_CURSOR_UNRESOLVED_PREFIX,
 	MAX_EVENT_LIMIT,
+	isEventIdPrefix,
 	parseEventCursor,
 	type BoardEvent,
 	type EventSelection,
@@ -72,7 +74,7 @@ function renderFooter(
 		if (sel.olderThanWindow > 0) {
 			out(
 				`Older than the window: ${sel.olderThanWindow} event${sel.olderThanWindow === 1 ? "" : "s"} NOT shown.` +
-				" Pass --from <cursor> to read from a position instead.",
+				" Pass --from <id|cursor> to read from a position instead.",
 			);
 		} else {
 			out("Older than the window: 0 events. Nothing was cut off.");
@@ -102,24 +104,26 @@ async function listEvents(args: ParsedArgs, socketPath: string, context: CliCont
 	if (args.positional.length > 0) {
 		exitUsage(
 			`dev3 events takes no subcommand or positional argument (got: ${args.positional[0]}).\n` +
-			"Usage: dev3 events [--from <cursor>] [--limit <n>] [--project <ref>|all] [--json]",
+			"Usage: dev3 events [--from <id|cursor|instant|duration>] [--limit <n>] [--project <ref>|all] [--json]",
 		);
 	}
 
 	const rawFrom = args.flags.from;
 	if (rawFrom === "true") {
-		exitUsage("--from needs a value. Usage: dev3 events --from <cursor|instant|duration>");
+		exitUsage("--from needs a value. Usage: dev3 events --from <id|cursor|instant|duration>");
 	}
 	// Never degraded into a default window: silently answering "the last day"
 	// skips everything older and looks like success.
 	const cursor = rawFrom ? parseEventCursor(rawFrom) : null;
-	if (rawFrom && !cursor) {
+	const cursorId = !cursor && rawFrom && isEventIdPrefix(rawFrom) ? rawFrom : null;
+	if (rawFrom && !cursor && !cursorId) {
 		exitError(
 			`Unparseable --from value: ${rawFrom}`,
-			"Three shapes are accepted:\n" +
-			"  a cursor    dev3 events --from 2026-08-29T10:12:03.114   (the `Cursor:` line of a previous run)\n" +
-			"  an instant  dev3 events --from 2026-08-01                (a deliberately wider sweep)\n" +
-			"  a duration  dev3 events --from 2h                        (s, m, h, d, w)\n" +
+			"Four shapes are accepted:\n" +
+			"  an event id  dev3 events --from 8eb2da3d                  (the ID column of a previous run)\n" +
+			"  a cursor     dev3 events --from 2026-08-29T10:12:03.114   (its `Cursor:` line)\n" +
+			"  an instant   dev3 events --from 2026-08-01                (a deliberately wider sweep)\n" +
+			"  a duration   dev3 events --from 2h                        (s, m, h, d, w)\n" +
 			"Lost your cursor? Run `dev3 events` with no --from; it reports how much it cut off.",
 			CLI_EXIT_CODE_EVENT_CURSOR_INVALID,
 		);
@@ -145,10 +149,20 @@ async function listEvents(args: ParsedArgs, socketPath: string, context: CliCont
 	const projectId = allProjects ? undefined : resolveProjectId(args.flags.project, context);
 
 	const params: Record<string, unknown> = { limit, cursor };
+	if (cursorId) params.cursorId = cursorId;
 	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, "events.list", params);
-	if (!resp.ok) exitError(resp.error || "Failed to read events");
+	if (!resp.ok) {
+		// An id that points at nothing is a cursor problem, not a failed read:
+		// answering "no events since then" would read as a quiet board.
+		const marker = resp.error?.indexOf(EVENT_CURSOR_UNRESOLVED_PREFIX) ?? -1;
+		if (marker !== -1 && resp.error) {
+			const [head, ...rest] = resp.error.slice(marker + EVENT_CURSOR_UNRESOLVED_PREFIX.length).split("\n");
+			exitError(head, rest.join("\n") || undefined, CLI_EXIT_CODE_EVENT_CURSOR_INVALID);
+		}
+		exitError(resp.error || "Failed to read events");
+	}
 
 	const selection = resp.data as EventSelection;
 
@@ -164,7 +178,7 @@ async function listEvents(args: ParsedArgs, socketPath: string, context: CliCont
 	}
 	renderFooter(selection, {
 		asked: rawFrom ?? null,
-		resolved: cursor ? cursor.replace(/Z$/, "") : null,
+		resolved: selection.from ?? (cursor ? cursor.replace(/Z$/, "") : null),
 		limit,
 		windowMs: DEFAULT_EVENT_WINDOW_MS,
 	});

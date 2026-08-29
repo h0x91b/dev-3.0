@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
 	DEFAULT_EVENT_WINDOW_MS,
 	formatEventCursor,
+	isEventIdPrefix,
 	normalizeEventInstant,
 	parseEventCursor,
+	resolveEventIdPrefix,
 	selectEvents,
 	type BoardEvent,
 } from "../../shared/board-events";
@@ -161,5 +163,48 @@ describe("selectEvents — the bare window reports what it cut off", () => {
 		const sel = selectEvents([old], { cursor: parseEventCursor("2025-01-01"), limit: 100, now: NOW });
 		expect(sel.events.map((e) => e.id)).toEqual(["ancient1"]);
 		expect(sel.olderThanWindow).toBe(0);
+	});
+});
+
+describe("event ids as a cursor", () => {
+	const all = [
+		event("2026-08-29T09:00:00.000Z", "8eb2da3d-1111-2222-3333-444444444444"),
+		event("2026-08-29T10:00:00.000Z", "8eb2ffff-1111-2222-3333-444444444444"),
+		event("2026-08-29T11:00:00.000Z", "cafe0001-1111-2222-3333-444444444444"),
+	];
+
+	it("recognises a hex id prefix, and nothing that is already an instant or duration", () => {
+		expect(isEventIdPrefix("8eb2da3d")).toBe(true);
+		expect(isEventIdPrefix("cafe")).toBe(true);
+		expect(isEventIdPrefix("2h")).toBe(false);
+		expect(isEventIdPrefix("2026-08-01")).toBe(false);
+		expect(isEventIdPrefix("abc")).toBe(false);
+	});
+
+	it("resolves a full 8-char id to that event's instant", () => {
+		expect(resolveEventIdPrefix(all, "cafe0001")).toBe("2026-08-29T11:00:00.000Z");
+	});
+
+	it("resolves a shorter prefix when it is unambiguous, ignoring case", () => {
+		expect(resolveEventIdPrefix(all, "CAFE")).toBe("2026-08-29T11:00:00.000Z");
+	});
+
+	it("refuses an ambiguous prefix and names the candidates", () => {
+		expect(() => resolveEventIdPrefix(all, "8eb2")).toThrow(/matches 2 events/);
+		expect(() => resolveEventIdPrefix(all, "8eb2")).toThrow(/8eb2da3d/);
+	});
+
+	// A vanished id must never be answered with "nothing since then" — that reads
+	// as a quiet board when it actually means the position was lost.
+	it("refuses an id that resolves to nothing and says why it may be gone", () => {
+		expect(() => resolveEventIdPrefix(all, "deadbeef")).toThrow(/no event id starts with/);
+		expect(() => resolveEventIdPrefix(all, "deadbeef")).toThrow(/50 most recent/);
+	});
+
+	it("continues from the resolved id exactly as from its instant", () => {
+		const fromId = selectEvents(all, { cursor: resolveEventIdPrefix(all, "8eb2da3d"), limit: 100, now: NOW });
+		const fromInstant = selectEvents(all, { cursor: parseEventCursor("2026-08-29T09:00:00.000"), limit: 100, now: NOW });
+		expect(fromId.events.map((e) => e.id)).toEqual(fromInstant.events.map((e) => e.id));
+		expect(fromId.events).toHaveLength(2);
 	});
 });

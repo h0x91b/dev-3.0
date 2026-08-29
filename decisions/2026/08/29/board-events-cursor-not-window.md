@@ -34,9 +34,18 @@ pure selection in `src/shared/board-events.ts`).
 when the user asks, not on a schedule, so a relative window silently drops everything older than
 itself and reports success. The caller cannot tell a quiet period from a truncated one. A cursor is
 a position — one instant, printed as `2026-08-28T20:22:22.303` — so the same cursor against the same
-board gives the same answer, every time. `--from` also takes a plain date and a duration (`2h`,
-`3d`); both resolve to an instant before anything is read, and a duration is never what a quiet
-sweep echoes back, or a stored cursor would be a moving window.
+board gives the same answer, every time. `--from` also takes **an event id** from the ID column
+(`8eb2da3d`, or any unambiguous prefix), a plain date, and a duration (`2h`, `3d`); all of them
+resolve to an instant before anything is read, and a duration is never what a quiet sweep echoes
+back, or a stored cursor would be a moving window.
+
+The id form exists because it is the shortest thing a caller can carry and it is already on screen —
+there is deliberately no small sequence number, which would mean a new persisted field on every note
+plus a one-off backfill of the 1799 that already exist, for a form the board cannot make global
+across projects anyway. Its one weakness is stated rather than hidden: notes can be deleted and a
+task keeps only its 50 most recent, so an id can vanish. When it does, the command exits 19 and says
+so — answering "nothing since then" would read as a quiet board, which is the same silent-loss
+failure as a truncating window. The instant form never vanishes and stays the durable one.
 
 **The caller carries the cursor; the app remembers nothing per caller.** Server-side memory is
 easier to use, but it has no honest answer to "who is asking". Identity would have to be derived

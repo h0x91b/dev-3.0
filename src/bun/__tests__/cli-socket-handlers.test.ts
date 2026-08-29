@@ -4321,6 +4321,38 @@ describe("events.list — the board's memory channel", () => {
 		expect((third.data as { events: Array<{ id: string }> }).events.map((e) => e.id)).toEqual(["n2"]);
 	});
 
+	it("resolves an id prefix against the same scope it is about to read", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			makeTask({
+				id: "t1",
+				notes: [
+					note("8eb2da3d", "2026-08-29T10:00:00.000Z"),
+					note("cafe0001", "2026-08-29T11:00:00.000Z"),
+				],
+			}),
+		]);
+
+		const resp = await handleRequest(makeRequest("events.list", { cursorId: "8eb2da3d", limit: 100 }));
+
+		expect(resp.ok).toBe(true);
+		const sel = resp.data as { events: Array<{ id: string }>; from: string };
+		expect(sel.events.map((e) => e.id)).toEqual(["cafe0001"]);
+		// Handed back so a quiet sweep started from an id still leaves a position.
+		expect(sel.from).toBe("2026-08-29T10:00:00.000");
+	});
+
+	it("fails an id that resolves to nothing instead of answering with a quiet board", async () => {
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			makeTask({ id: "t1", notes: [note("8eb2da3d", "2026-08-29T10:00:00.000Z")] }),
+		]);
+
+		const resp = await handleRequest(makeRequest("events.list", { cursorId: "deadbeef", limit: 100 }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("event-cursor-unresolved:");
+		expect(resp.error).toContain("deadbeef");
+	});
+
 	it("counts the cap instead of truncating in silence", async () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([
 			makeTask({
