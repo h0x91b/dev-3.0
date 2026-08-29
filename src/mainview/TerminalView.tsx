@@ -915,6 +915,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				// handling entirely; the pane carousel and our axis arbitration
 				// handle every gesture themselves.
 				containerRef.current.style.touchAction = "none";
+				// That same contenteditable makes an iOS long-press select the whole
+				// editable block — the entire terminal highlighted, with a callout
+				// that copies nothing (the text lives in a canvas). Suppress both;
+				// the long-press gesture below owns selection instead.
+				containerRef.current.style.setProperty("-webkit-user-select", "none");
+				containerRef.current.style.setProperty("user-select", "none");
+				containerRef.current.style.setProperty("-webkit-touch-callout", "none");
 			}
 
 			// Stretch ghostty-web's hidden textarea over the canvas.
@@ -929,6 +936,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				hiddenTextarea.style.pointerEvents = "none";
 				hiddenTextarea.style.caretColor = "transparent";
 				hiddenTextarea.style.zIndex = "-1";
+				// The container's user-select:none above must not reach the IME buffer.
+				hiddenTextarea.style.setProperty("-webkit-user-select", "text");
+				hiddenTextarea.style.setProperty("user-select", "text");
 
 				// In browser mode, keep the textarea focused to prevent
 				// the mobile keyboard from dismissing. Re-focus on blur
@@ -1010,17 +1020,36 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				}
 			}
 
+			// Long-press selection state, declared out here because the compose-mode
+			// blocker below needs it: `touchSelecting` is true from the moment a
+			// long press anchors a selection until its mouseup, and is what lets that
+			// one drag's synthetic mouse events past the blocker.
+			const LONG_PRESS_MS = 450; // hold before a still finger starts selecting
+			let touchSelecting = false;
+			let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+			function cancelLongPress() {
+				if (longPressTimer === null) return;
+				clearTimeout(longPressTimer);
+				longPressTimer = null;
+			}
+
 			// ghostty-web registers its OWN canvas listeners that grab focus on any
 			// interaction (mousedown → textarea.focus(), touchend → preventDefault +
 			// textarea.focus()), bypassing our compose-mode gating and summoning the
 			// OSK on every tap / pane-swipe. Capture-phase listeners on the container
 			// run BEFORE the canvas target listeners, so in compose mode we stop
-			// these events (real, browser-emulated after a tap, or synthesized by
-			// MobilePaneCarousel's selection-collapse) before ghostty sees them.
+			// these events (real or browser-emulated after a tap) before ghostty sees
+			// them.
 			if (!isElectrobun) {
 				const containerEl = containerRef.current;
 				const blockInComposeMode = (e: Event) => {
-					if (touchComposeModeRef.current) e.stopPropagation();
+					// A finger that left cannot still be pressing. Cancel here rather
+					// than in the canvas handler: this blocker swallows touchend before
+					// the canvas ever sees it, which would let the timer fire with
+					// nothing on the glass and start a phantom selection.
+					if (e.type === "touchend") cancelLongPress();
+					if (touchComposeModeRef.current && !touchSelecting) e.stopPropagation();
 				};
 				for (const type of ["mousedown", "mouseup", "click", "touchend"]) {
 					containerEl.addEventListener(type, blockInComposeMode, { capture: true });
@@ -1034,11 +1063,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 			//     raw mode — previously nothing scrolled the terminal on a phone.
 			//   • tap (raw mode) → mousedown+mouseup at the point, then focus the
 			//     hidden textarea (the user gesture that opens the mobile keyboard).
-			//   • horizontal drag (raw mode) → drag-selection via mouse translation.
-			//     Clearly-horizontal swipes are claimed earlier by MobilePaneCarousel
-			//     (ancestor, capture) to switch panes.
-			// Compose mode dispatches NO mouse events and never focuses: taps must
-			// neither summon the OSK nor start a tmux/SGR drag-selection —
+			//   • long press, then drag → text selection, in BOTH modes. It is the
+			//     only selection trigger: horizontal drag belongs to the pane
+			//     carousel, and iOS's own long-press is suppressed above.
+			//   • horizontal drag → the pane swipe MobilePaneCarousel claims earlier
+			//     (ancestor, capture).
+			// Compose mode otherwise dispatches NO mouse events and never focuses:
+			// taps must neither summon the OSK nor start a tmux/SGR drag —
 			// TerminalComposer owns text entry; the ⌨ raw toggle restores direct
 			// interaction.
 			const canvas = containerRef.current.querySelector("canvas");
@@ -1061,6 +1092,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				}
 
 				canvas.addEventListener("touchstart", (e) => {
+					cancelLongPress();
 					if (e.touches.length !== 1) {
 						touchGesture = "ignore"; // pinch / multi-touch is never ours
 						return;
@@ -1069,6 +1101,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 					touchStartY = e.touches[0].clientY;
 					touchLastY = touchStartY;
 					touchGesture = null;
+					longPressTimer = setTimeout(() => {
+						longPressTimer = null;
+						if (touchGesture !== null) return; // already scrolling / swiping
+						touchGesture = "select";
+						touchSelecting = true;
+						// Tells MobilePaneCarousel to leave this gesture alone: a
+						// selection drag is horizontal, and it must not swipe panes.
+						canvas!.dataset.selecting = "1";
+						dispatchMouse("mousedown", touchStartX, touchStartY, 1);
+					}, LONG_PRESS_MS);
 				}, { passive: true });
 
 				canvas.addEventListener("touchmove", (e) => {
@@ -1078,16 +1120,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 						const dx = touch.clientX - touchStartX;
 						const dy = touch.clientY - touchStartY;
 						if (Math.abs(dy) > SCROLL_DECIDE_PX && Math.abs(dy) >= Math.abs(dx)) {
+							cancelLongPress();
 							touchGesture = "scroll";
 						} else if (Math.abs(dx) > SCROLL_DECIDE_PX) {
-							if (touchComposeModeRef.current) {
-								// Horizontal in compose mode belongs to the pane swipe.
-								touchGesture = "ignore";
-								return;
-							}
-							touchGesture = "select";
-							// Anchor the selection where the finger first went down.
-							dispatchMouse("mousedown", touchStartX, touchStartY, 1);
+							// Horizontal belongs to the pane swipe.
+							cancelLongPress();
+							touchGesture = "ignore";
+							return;
 						} else {
 							return;
 						}
@@ -1117,14 +1156,20 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				}, { passive: true });
 
 				canvas.addEventListener("touchend", (e) => {
+					cancelLongPress();
 					const gesture = touchGesture;
 					touchGesture = null;
-					if (e.changedTouches.length !== 1) return;
-					const touch = e.changedTouches[0];
 					if (gesture === "select") {
-						dispatchMouse("mouseup", touch.clientX, touch.clientY, 0);
+						// Release where the finger last was, then stop shielding the
+						// synthetic mouse events from compose mode's blocker.
+						const touch = e.changedTouches[0];
+						if (touch) dispatchMouse("mouseup", touch.clientX, touch.clientY, 0);
+						touchSelecting = false;
+						delete canvas!.dataset.selecting;
 						return;
 					}
+					if (e.changedTouches.length !== 1) return;
+					const touch = e.changedTouches[0];
 					if (gesture === null && !touchComposeModeRef.current) {
 						// MobilePaneCarousel claims clearly-horizontal pane swipes in
 						// the capture phase and stops touchmove propagation, so a
@@ -1145,6 +1190,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, onSe
 				}, { passive: true });
 
 				canvas.addEventListener("touchcancel", () => {
+					cancelLongPress();
+					if (touchGesture === "select") {
+						// Collapse the anchor rather than leaving a half-made selection.
+						dispatchMouse("mouseup", touchStartX, touchStartY, 0);
+						touchSelecting = false;
+						delete canvas!.dataset.selecting;
+					}
 					touchGesture = null;
 				}, { passive: true });
 			}
