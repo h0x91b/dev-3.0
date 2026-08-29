@@ -23,7 +23,7 @@ export interface TouchTextLayerTerminal {
 	/** Rows scrolled up from the live bottom; 0 while following output. */
 	viewportY: number;
 	buffer: { active: { getLine(y: number): CellLine | null | undefined } };
-	options: { fontSize?: number };
+	options: { fontSize?: number; fontFamily?: string };
 	renderer?: { charWidth: number; charHeight: number } | null;
 	wasmTerm?: { getScrollbackLength?: () => number } | null;
 }
@@ -42,7 +42,6 @@ export function installTouchTextLayer(
 	container: HTMLElement,
 	canvas: HTMLCanvasElement,
 	term: TouchTextLayerTerminal,
-	fontFamily: string,
 ): TouchTextLayer {
 	const element = document.createElement("div");
 	element.setAttribute("data-terminal-text-layer", "true");
@@ -52,7 +51,6 @@ export function installTouchTextLayer(
 		padding: "0",
 		overflow: "hidden",
 		zIndex: "1",
-		fontFamily,
 		fontVariantLigatures: "none",
 		whiteSpace: "pre",
 		color: "transparent",
@@ -74,7 +72,7 @@ export function installTouchTextLayer(
 	let lastFontKey = "";
 	let lastAdvance = 0;
 
-	function naturalAdvance(fontSize: number): number {
+	function naturalAdvance(fontSize: number, fontFamily: string): number {
 		const key = `${fontSize}px ${fontFamily}`;
 		if (key === lastFontKey) return lastAdvance;
 		if (!measurer) return 0;
@@ -109,10 +107,15 @@ export function installTouchTextLayer(
 		element.style.width = `${canvas.clientWidth}px`;
 		element.style.height = `${canvas.clientHeight}px`;
 
+		// Read the font off the terminal every time: size and family are both live
+		// settings, and a stale family measures a different advance than ghostty
+		// draws — the layer would drift a fraction of a cell per column.
 		const fontSize = term.options.fontSize ?? Math.round(charHeight * 0.8);
+		const fontFamily = term.options.fontFamily || "monospace";
 		element.style.fontSize = `${fontSize}px`;
+		element.style.fontFamily = fontFamily;
 		element.style.lineHeight = `${charHeight}px`;
-		element.style.letterSpacing = `${charWidth - naturalAdvance(fontSize)}px`;
+		element.style.letterSpacing = `${charWidth - naturalAdvance(fontSize, fontFamily)}px`;
 
 		// `getLine` indexes the WHOLE buffer, scrollback included, so screen row 0
 		// is `scrollbackLength` — not 0, which is the oldest line ever printed.

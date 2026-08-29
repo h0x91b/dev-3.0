@@ -14,7 +14,7 @@ function makeTerm(rows: string[], over: Partial<TouchTextLayerTerminal> = {}): T
 		rows: rows.length,
 		viewportY: 0,
 		buffer: { active: { getLine: (y: number) => (rows[y] === undefined ? null : line(rows[y])) } },
-		options: { fontSize: 14 },
+		options: { fontSize: 14, fontFamily: "monospace" },
 		renderer: { charWidth: 8, charHeight: 16 },
 		wasmTerm: { getScrollbackLength: () => 0 },
 		...over,
@@ -32,7 +32,7 @@ function mount(term: TouchTextLayerTerminal) {
 	Object.defineProperty(canvas, "clientHeight", { value: 480, configurable: true });
 	container.appendChild(canvas);
 	document.body.appendChild(container);
-	const layer = installTouchTextLayer(container, canvas, term, "monospace");
+	const layer = installTouchTextLayer(container, canvas, term);
 	return { container, canvas, layer };
 }
 
@@ -90,6 +90,23 @@ describe("terminal touch text layer", () => {
 		m.layer.refresh();
 
 		expect([...m.layer.element.children].map((r) => r.textContent)).toEqual(["old-2", "live-1"]);
+	});
+
+	// Terminal font size and family are both live settings; a layer that captured
+	// either at install would measure a different advance than ghostty draws with.
+	it("follows a font the user changes after install", () => {
+		const term = makeTerm(["x"]);
+		const m = mount(term);
+		mounted.push(m);
+		m.layer.refresh();
+
+		term.options.fontFamily = "'Fira Code', monospace";
+		term.options.fontSize = 18;
+		m.layer.refresh();
+
+		// The DOM re-quotes the family, so compare on the name that matters.
+		expect(m.layer.element.style.fontFamily).toContain("Fira Code");
+		expect(m.layer.element.style.fontSize).toBe("18px");
 	});
 
 	it("pins itself over the canvas box and the renderer's cell metrics", () => {

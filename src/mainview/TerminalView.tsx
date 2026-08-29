@@ -1175,7 +1175,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, nati
 						containerRef.current,
 						canvas,
 						term,
-						TERMINAL_FONT,
 					);
 					touchTextLayerRef.current.refresh();
 				}
