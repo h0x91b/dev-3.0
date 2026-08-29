@@ -24,8 +24,11 @@ recognise.
 
 Stop implementing selection. Give the platform something real to select instead:
 [`terminal-touch-text-layer.ts`](../../../../src/mainview/terminal-touch-text-layer.ts)
-lays a transparent copy of the visible rows over the canvas, installed only for
-`navigator.maxTouchPoints > 0` in browser mode. iOS and Android then run their own
+lays a transparent copy of the visible rows over the canvas, installed in browser
+mode when the PRIMARY pointer is coarse — `matchMedia("(pointer: coarse)")`, not
+`navigator.maxTouchPoints > 0`. The layer is what a pointer lands on, so gating on
+mere touch support would install it on a touchscreen laptop and take every mouse
+click away from ghostty. iOS and Android then run their own
 selection — handles, magnifier, Copy / Look Up / Share — and the copy is plain text
 straight out of the DOM, with no OSC 52 round trip and no insecure-context clipboard
 problem.
@@ -49,8 +52,9 @@ now listen there and stand down whenever the layer carries `data-selecting`;
 
 ## Risks
 
-The platform's selection UI cannot be reproduced in a headless browser, so the iOS
-half is only verifiable on a device — the tests cover the layer's content, geometry,
+The platform's selection UI cannot be reproduced in a headless browser, and neither
+can a coarse pointer (Playwright's device emulation still reports `pointer: fine`),
+so both the callout and the gate that admits it are only verifiable on a device — the tests cover the layer's content, geometry,
 selection-safety and the gesture stand-down, not the callout itself. Only the visible
 viewport is in the DOM, so a selection cannot run off-screen into scrollback: scroll
 first, then select. The layer carries logical text, so a bidi viewport selects in
