@@ -3471,3 +3471,44 @@ describe("TerminalView – long-press selection on touch", () => {
 		expect(canvas.dataset.selecting).toBeUndefined();
 	});
 });
+// ── Mobile text selection: the platform's own, over a real-DOM text layer ─────
+// The layer and the touch gestures live on the canvas ghostty appends to the
+// container, which the mocked `open` normally never creates — so this block
+// gives it one, and a touch device to install onto.
+describe("TerminalView – touch text layer", () => {
+	function touch(type: string, x: number, y: number, ended = false) {
+			touches: ended ? [] : [point],
+	async function renderOnTouchDevice() {
+		mockTermInstance.buffer.active = {
+			getLine: () => ({ isWrapped: false, length: 3, getCell: (x: number) => ({ getCode: () => "abc".charCodeAt(x) }) }),
+		} as never;
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" touchComposeMode />
+		const layer = result.container.querySelector("[data-terminal-text-layer]") as HTMLElement;
+		const wheels: number[] = [];
+		canvas.addEventListener("wheel", (e) => wheels.push((e as WheelEvent).deltaY));
+		return { canvas, layer, wheels };
+	beforeEach(() => {
+		Object.defineProperty(navigator, "maxTouchPoints", { value: 5, configurable: true });
+	});
+		Object.defineProperty(navigator, "maxTouchPoints", { value: 0, configurable: true });
+		mockTermInstance.buffer.active = mockBufferActive as never;
+		vi.restoreAllMocks();
+	it("installs a selectable text layer over the canvas on a touch device", async () => {
+		const { layer } = await renderOnTouchDevice();
+		expect(layer).toBeTruthy();
+		expect(layer.style.getPropertyValue("user-select")).toBe("text");
+		// The container stays unselectable, so a press off the glyphs selects nothing.
+		expect(layer.parentElement!.style.getPropertyValue("user-select")).toBe("none");
+	it("scrolls from a vertical drag on the layer, which is what a finger now hits", async () => {
+		const { layer, wheels } = await renderOnTouchDevice();
+		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
+		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
+		expect(wheels.length).toBeGreaterThan(0);
+	// A long press hands the gesture to the OS. Scrolling under its handles would
+	// move the text out from under the selection the user is still adjusting.
+	it("stands down while the platform holds a selection", async () => {
+		const { layer, wheels } = await renderOnTouchDevice();
+		layer.setAttribute("data-selecting", "1");
+		act(() => { layer.dispatchEvent(touch("touchstart", 40, 200)); });
+		act(() => { layer.dispatchEvent(touch("touchmove", 40, 160)); });
+		expect(wheels).toEqual([]);
