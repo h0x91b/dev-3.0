@@ -84,13 +84,13 @@ const task = {
 	terminalBackend: "native",
 };
 
-/** `projectSlug()` is frozen: `/a/b/c` → `a-b-c`. Recomputed, never imported early. */
-function slugOf(path: string): string {
-	return path.replace(/^\//, "").replaceAll("/", "-");
-}
+// The real slug function, never a local re-derivation: a hand-rolled POSIX
+// version writes the task file under a path containing a drive letter on Windows,
+// where the whole run dies in `mkdir` before a single pane exists.
+const { projectSlug } = await import("../git");
 
 writeFileSync(join(home, "projects.json"), JSON.stringify([project]));
-const dataDir = join(home, "data", slugOf(projectPath));
+const dataDir = join(home, "data", projectSlug(projectPath));
 mkdirSync(dataDir, { recursive: true });
 writeFileSync(join(dataDir, "tasks.json"), JSON.stringify([task]));
 
